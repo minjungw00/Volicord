@@ -69,6 +69,10 @@ applicability:
   storage_baseline_sqlite_v6:
     description: '`baseline_sqlite_v6` storage profile with immutable host-capability verification
       history and current pointers in addition to the unified user-action record families.'
+  storage_baseline_sqlite_v7:
+    description: '`baseline_sqlite_v7` storage profile for project-owned workflow policy, Task
+      control levels, state-bound Write Ticket validity, observation confidence, and session-stop
+      continuity records.'
   doc_index_schema_v3:
     description: Documentation index metadata schema version 3 used by `docs/doc-index.yaml` and
       `docs-check`.
@@ -286,14 +290,14 @@ documents:
   path_ko: README.ko.md
   kind: landing
   summary: Bilingual first-user Volicord onboarding route for product orientation, environment fit,
-    executable setup, host setup, connection-readiness and host-feature status distinctions, first use,
-    and documentation navigation.
+    executable and host setup, connection and feature status distinctions, next-action-driven first
+    use, Task control, and documentation navigation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -312,6 +316,7 @@ documents:
   - user-guide.installation
   - user-guide.quickstart
   - user-guide.user-workflow
+  - user-guide.agent-workflow
   - user-guide.agent-host-setup
   - user-guide.agent-host-troubleshooting
   - reference.system-requirements
@@ -480,13 +485,14 @@ documents:
   path_en: docs/en/user-guide/agent-workflow.md
   path_ko: docs/ko/user-guide/agent-workflow.md
   kind: how_to
-  summary: How-to guidance for agents operating against Volicord authority boundaries.
+  summary: How-to guidance for next-action-driven agent work, separate integration and Task-control
+    axes, user-owned judgment, write boundaries, observation confidence, and honest session handoff.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -494,6 +500,19 @@ documents:
   - agent operators
   journeys:
   - operate
+  depends_on:
+  - reference.core-model
+  - reference.admin-cli
+  - reference.agent-connection
+  - reference.mcp-transport
+  - reference.security
+  - reference.api.method-intake
+  - reference.api.method-prepare-write
+  - reference.api.method-record-run
+  - reference.api.method-reconcile-changes
+  - reference.api.method-close-task
+  - reference.api.schema-state
+  - reference.api.schema-value-sets
 - doc_id: user-guide.judgment-examples
   path_en: docs/en/user-guide/judgment-examples.md
   path_ko: docs/ko/user-guide/judgment-examples.md
@@ -647,8 +666,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -888,8 +907,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -902,6 +921,12 @@ documents:
   depends_on:
   - architecture-guide.decision.agent-connection-routing
   - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.decision.task-control-levels-vs-integration-profiles
+  - architecture-guide.decision.state-bound-write-ticket-validity
+  - architecture-guide.decision.stop-completion-separation
+  - architecture-guide.decision.observation-confidence-boundary
+  - architecture-guide.decision.external-user-judgment-authority
+  - architecture-guide.decision.static-compact-mcp-tool-list
   - architecture-guide.decision.final-output-authority-disclosure
   - architecture-guide.decision.host-capability-verification
   - architecture-guide.decision.managed-host-session-turn-binding
@@ -917,6 +942,195 @@ documents:
   - architecture-guide.source-map
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
+- doc_id: architecture-guide.decision.task-control-levels-vs-integration-profiles
+  path_en: docs/en/architecture-guide/decisions/task-control-levels-vs-integration-profiles.md
+  path_ko: docs/ko/architecture-guide/decisions/task-control-levels-vs-integration-profiles.md
+  kind: explanation
+  summary: Architecture decision separating host integration profiles from Core-owned per-Task
+    control levels constrained by project-owned workflow policy.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-16'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - storage_baseline_sqlite_v7
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - reference.core-model
+  - reference.api.method-intake
+  - reference.api.schema-state
+  - reference.api.schema-value-sets
+  - reference.admin-cli
+  - reference.storage-records
+  - reference.storage-ddl
+  - reference.storage-versioning
+- doc_id: architecture-guide.decision.state-bound-write-ticket-validity
+  path_en: docs/en/architecture-guide/decisions/state-bound-write-ticket-validity.md
+  path_ko: docs/ko/architecture-guide/decisions/state-bound-write-ticket-validity.md
+  kind: explanation
+  summary: Architecture decision binding Write Ticket validity and reuse to relevant Task, scope,
+    baseline, workspace, and approval state rather than unrelated global changes or fixed time alone.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-16'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - storage_baseline_sqlite_v7
+  primary_audience:
+  - implementers
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - reference.core-model
+  - reference.api.method-prepare-write
+  - reference.api.method-record-run
+  - reference.api.method-close-task
+  - reference.storage-records
+  - reference.storage-ddl
+  - reference.storage-effects
+  - reference.storage-versioning
+- doc_id: architecture-guide.decision.stop-completion-separation
+  path_en: docs/en/architecture-guide/decisions/stop-completion-separation.md
+  path_ko: docs/ko/architecture-guide/decisions/stop-completion-separation.md
+  kind: explanation
+  summary: Architecture decision separating host session Stop permission from Core-owned Task close
+    state and completion-claim disclosure.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-16'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - storage_baseline_sqlite_v7
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.final-output-authority-disclosure
+  - reference.core-model
+  - reference.admin-cli
+  - reference.agent-connection
+  - reference.api.method-close-task
+  - reference.api.schema-state
+  - reference.storage-records
+  - reference.security
+- doc_id: architecture-guide.decision.observation-confidence-boundary
+  path_en: docs/en/architecture-guide/decisions/observation-confidence-boundary.md
+  path_ko: docs/ko/architecture-guide/decisions/observation-confidence-boundary.md
+  kind: explanation
+  summary: Architecture decision separating confirmed structured effects from heuristic observations
+    for pre-action enforcement, post-action reconciliation, and close projection.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-16'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - storage_baseline_sqlite_v7
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - reference.core-model
+  - reference.admin-cli
+  - reference.security
+  - reference.api.method-reconcile-changes
+  - reference.api.schema-state
+  - reference.api.schema-value-sets
+  - reference.storage-records
+  - reference.storage-ddl
+- doc_id: architecture-guide.decision.external-user-judgment-authority
+  path_en: docs/en/architecture-guide/decisions/external-user-judgment-authority.md
+  path_ko: docs/ko/architecture-guide/decisions/external-user-judgment-authority.md
+  kind: explanation
+  summary: Architecture decision keeping user-owned judgment resolution outside the Agent Connection
+    while allowing agent-facing requests and policy-owned low-control close evaluation.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-16'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.unified-user-action-request-resolution
+  - reference.core-model
+  - reference.admin-cli
+  - reference.agent-connection
+  - reference.security
+  - reference.api.method-request-user-action
+  - reference.api.method-resolve-user-action
+  - reference.api.method-close-task
+  - reference.api.schema-user-action
+  - reference.api.schema-judgment
+- doc_id: architecture-guide.decision.static-compact-mcp-tool-list
+  path_en: docs/en/architecture-guide/decisions/static-compact-mcp-tool-list.md
+  path_ko: docs/ko/architecture-guide/decisions/static-compact-mcp-tool-list.md
+  kind: explanation
+  summary: Architecture decision retaining a static mode-specific MCP tool set with compact runtime
+    schemas and next-action routing before any capability-gated dynamic-list extension.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-16'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - mcp_protocol_2025_11_25
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.core-adapter-boundary
+  - reference.mcp-transport
+  - reference.agent-connection
+  - reference.api.methods
+  - reference.api.schema-state
 - doc_id: architecture-guide.decision.core-adapter-boundary
   path_en: docs/en/architecture-guide/decisions/core-adapter-boundary.md
   path_ko: docs/ko/architecture-guide/decisions/core-adapter-boundary.md
@@ -1592,8 +1806,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1612,6 +1826,7 @@ documents:
   - close-readiness authority concepts
   - user-owned judgment boundaries
   - write ticket, approval, final-acceptance, and residual-risk non-substitution boundaries
+  - Task requested/effective control levels and project-policy authority boundary
   - User Channel and actor_source boundaries for authority-bearing user judgments
   - verification criteria and evidence/acceptance authority boundaries
 - doc_id: reference.runtime-boundaries
@@ -1624,8 +1839,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1656,12 +1871,13 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
   - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - implementers
   - agent integrators
@@ -1697,6 +1913,9 @@ documents:
   - exact six-key host_feature_support map and Doctor per-connection row projection
   - auxiliary CLI and Doctor projection boundary from the canonical host release evidence gate and audit
   - exact Codex version normalization and session-bound managed lifecycle diagnostic meaning
+  - project workflow policy show, validation, and atomic application commands
+  - offline v6-to-v7 Runtime Home copy-conversion command
+  - privacy-bounded workflow-metrics diagnostics command
   depends_on:
   - reference.runtime-boundaries
   - reference.agent-connection
@@ -1713,12 +1932,12 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
-  - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - agent integrators
   - implementers
@@ -1732,6 +1951,8 @@ documents:
   - MCP stdio process startup and exit behavior
   - MCP local HTTP serve startup and transport-bound authentication and Origin checks
   - MCP local web consent fallback endpoint
+  - static runtime-compact tool schemas, documentation schema projection, and 35000-byte tool-list bound
+  - capability-first host eligibility with exact versions retained as evidence coordinates
   - local web consent token half-open canonical-time validity interval
   - MCP process environment variables and integration-bound startup
   - MCP startup validation and integration process binding
@@ -2520,11 +2741,11 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-05-06'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - implementers
   - maintainers
@@ -2544,11 +2765,12 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - storage implementers
   - maintainers
@@ -2569,6 +2791,7 @@ documents:
   - local web consent token record family
   - opaque managed-host session identifier persistence and raw native session identifier exclusion
   - session_watch_baselines metadata_json bounded single-pair actual initialize client_name and client_version placement, idempotent exact replay, binding-conflict handling, and raw initialize payload exclusion
+  - project workflow policy, state-bound write-ticket, observation-confidence, session-end receipt, and non-authority workflow-metric records
   depends_on:
   - reference.host-release-evidence
   - reference.mcp-transport
@@ -2581,11 +2804,11 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - storage implementers
   - API implementers
@@ -2613,11 +2836,11 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - storage implementers
   - API implementers
@@ -2644,6 +2867,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - storage implementers
   - API implementers
@@ -2665,11 +2889,12 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - storage implementers
   - maintainers
@@ -2687,6 +2912,7 @@ documents:
   - unsupported storage-profile failure semantics
   - incompatible Runtime Home recreation boundary
   - '`baseline_sqlite_v6` host-capability history addition, exact UTF-8 byte constraints, and v5 no-conversion boundary'
+  - '`baseline_sqlite_v7` authority-shape changes and read-only offline v6-to-fresh-v7 copy conversion'
 - doc_id: reference.agent-connection
   path_en: docs/en/reference/agent-connection.md
   path_ko: docs/ko/reference/agent-connection.md
@@ -2696,12 +2922,12 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
-  - storage_baseline_sqlite_v6
+  - storage_baseline_sqlite_v7
   primary_audience:
   - agent integrators
   - agents

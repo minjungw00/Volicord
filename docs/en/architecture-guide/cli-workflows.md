@@ -210,8 +210,8 @@ including an event that follows replay. A previous mutation response, Stop
 result, or model-authored answer is not cached as current authority.
 
 Record and Detective profiles share this disclosure workflow. Detective Stop
-may consume the same validation facts for its separate allow-or-deny decision,
-while Record disclosure remains non-blocking. Generic, user-managed,
+uses the same validation facts for its separate completion-claim decision while
+always allowing session termination; Record disclosure remains non-blocking. Generic, user-managed,
 unsupported, inactive, or degraded host paths report only their supported
 fallback and diagnostic facts rather than claiming a fixed host UI surface.
 

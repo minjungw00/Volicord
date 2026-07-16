@@ -14,7 +14,7 @@
 - 전송 또는 어댑터 실패, Core 거부 응답, `dry_run` 미리보기, 메서드가 담당하는 차단 결과, 커밋된 차단 사유형 결과를 구분하는 정식 결정 흐름.
 - 오류를 담는 분기의 주 `errors[0]` 선택 순서.
 - `STATE_VERSION_CONFLICT`의 결과 쪽 및 차단 사유 코드 경로 경계.
-- 공개 요청의 오래된 `expected_state_version`, 오래된 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌 동작.
+- 공개 요청의 오래된 `expected_state_version`, 멱등 요청 해시 충돌, 상태 결합 쓰기 티켓 무효화 동작.
 
 이웃 담당 문서:
 
@@ -88,7 +88,7 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 ### `STATE_VERSION_CONFLICT` 선택 경계
 
 선택 조건:
-- 오래된 `expected_state_version`, 오래된 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌 때문에 메서드가 진행될 수 없으면 거부 응답에서 `STATE_VERSION_CONFLICT`가 선택됩니다.
+- 오래된 `expected_state_version` 또는 멱등 요청 해시 충돌 때문에 메서드가 진행될 수 없으면 거부 응답에서 `STATE_VERSION_CONFLICT`가 선택됩니다. 티켓 `basis_state_version`은 감사 전용이므로 제외합니다.
 
 선택 경계:
 - 이 충돌은 `ToolRejectedResponse.errors[]`로 표현하며, `MethodResult`나 `CloseTaskResult(close_state=blocked)` 분기를 만들지 않습니다. `STATE_VERSION_CONFLICT`를 결과 쪽 판단, 차단 사유 코드, 닫기 차단 사유 코드, 미리보기 차단 사유 코드로 모델링하지 않으며, 여기에는 `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`가 포함됩니다.
@@ -103,10 +103,9 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 | 충돌 경우 | 세부 항목 |
 |---|---|
 | 오래된 `expected_state_version` | [오래된 `expected_state_version`](#state-conflict-expected-state-version) |
-| 오래된 `WriteTicket.basis_state_version` | [오래된 쓰기 티켓 근거 버전](#state-conflict-write-ticket-basis) |
 | 멱등 요청 해시 충돌 | [멱등 요청 해시 충돌](#state-conflict-idempotency-hash) |
 
-우선순위에서 아래 충돌 경우는 프로젝트 전체의 커밋 전 최신성 또는 멱등성 충돌로 `STATE_VERSION_CONFLICT`를 선택합니다.
+우선순위에서 아래 충돌 경우는 프로젝트 전체의 커밋 전 최신성 또는 멱등성 충돌로 `STATE_VERSION_CONFLICT`를 선택합니다. 상태 결합 티켓 무효화는 티켓 소비 시도에서 `WRITE_TICKET_INVALID`를 선택합니다.
 
 충돌 처리 경계:
 
@@ -133,28 +132,23 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 - [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.
 
 <a id="state-conflict-write-ticket-basis"></a>
-### 오래된 쓰기 티켓 근거 버전
+### 쓰기 티켓 감사 근거 제외
 
 조건:
-- 소비 전에 `WriteTicket.basis_state_version`이 현재 `project_state.state_version`과 같지 않습니다.
+- `WriteTicket.basis_state_version`이 현재 전역 상태 버전과 다르지만 티켓의 명시적 유효성 좌표는 계속 일치합니다.
 
 공개 오류 코드:
-- `STATE_VERSION_CONFLICT`
+- 이 불일치만으로는 없음.
 
-응답 경로:
-- `ToolRejectedResponse.errors[]`
+경계:
+- 감사 근거 불일치는 티켓을 무효화하거나 소비하지 않습니다. 대신 Task, Change Unit, 범위 리비전, 기준선, workspace, 승인 근거, Task 상태, 소비, 명시적 철회, 선택적 idle timeout을 검증합니다.
 
-소비 경계:
-- 오래된 쓰기 티켓은 소비되지 않습니다.
-- 거절된 시도는 소비 쪽 상태 변경을 만들지 않습니다.
+이 오류가 아닌 조건에는 오류 세부 객체를 만들지 않습니다.
 
-세부 필드:
-- [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.
-
-### 만료된 쓰기 티켓
+### 상태 결합 무효 쓰기 티켓
 
 조건:
-- 소비 전에 쓰기 티켓이 [`volicord.record_run`](method-record-run.md)과 [`volicord.prepare_write`](method-prepare-write.md)가 담당하는 유효 만료 규칙에 따라 만료되었고, `WriteTicket.basis_state_version`은 오래되지 않았습니다.
+- 소비 전에 티켓에 무효화 사유가 기록됐거나, 소비 또는 철회됐거나, 현재 유효성 좌표와 불일치하거나, 설정된 선택적 idle timeout을 넘었습니다.
 
 공개 오류 코드:
 - `WRITE_TICKET_INVALID`
@@ -163,11 +157,11 @@ MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `Too
 - `ToolRejectedResponse.errors[]`
 
 우선순위 경계:
-- `WriteTicket.basis_state_version`이 오래되었으면 만료로 인한 무효 처리 대신 `STATE_VERSION_CONFLICT`를 선택합니다.
-- 만료는 결과 쪽 판단, 차단 사유 코드, 닫기 준비 상태 차단 사유 코드, 미리보기 차단 사유 코드로 모델링하지 않습니다.
+- 요청 envelope의 `expected_state_version`이 오래되면 여전히 `STATE_VERSION_CONFLICT`를 먼저 선택합니다. 티켓 `basis_state_version`은 선택하지 않습니다.
+- 무효 티켓 사용은 결과 쪽 판단이나 미리보기 차단 사유로 모델링하지 않습니다. 닫기 준비 상태는 별도로 메서드 소유의 안정된 미해결 티켓 차단 사유를 노출할 수 있습니다.
 
 세부 필드:
-- `ToolError.details.write_ticket_reason=expired`를 사용합니다.
+- [API 오류 세부사항](error-details.md#write-ticket-reason)이 담당하는 안정된 상태 결합 또는 시도 불일치 `write_ticket_reason`을 사용합니다.
 
 <a id="state-conflict-idempotency-hash"></a>
 ### 멱등 요청 해시 충돌

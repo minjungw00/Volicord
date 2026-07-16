@@ -60,6 +60,8 @@ Task를 만들 때 선행 Task 관계 하나도 기록할 수 있습니다. 이 
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `plain_language_request`, `requested_mode`, `resume_policy`.
+- 선택적인 `requested_control_level`. 생략은 정확히 `auto`이며 허용 값은
+  `auto`, `observe`, `light`, `tracked`, `sensitive`입니다.
 - `acceptance_policy`. `required`, `not_required`, `policy_dependent`, JSON
   `null` 가운데 하나를 반드시 제공합니다. `null`이면 Core가 모드 기본값을 선택하고,
   선택한 정책과 이유는 여전히 Task에 기록됩니다.
@@ -82,6 +84,7 @@ IntakeRequest:
   envelope: ToolEnvelope
   plain_language_request: string
   requested_mode: string
+  requested_control_level?: string
   resume_policy: string
   acceptance_policy: string | null
   lineage: TaskLineageInput | null
@@ -102,20 +105,33 @@ TaskLineageInput:
 - `initial_context_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md#state-references)가 담당합니다.
 - `initial_source_refs`는 [API 상태 스키마](schema-state.md#non-authoritative-source-references)가 담당하는 권한 효력이 없는 `SourceRef[]` 형태를 사용합니다. Core는 이 참조의 구조를 검증해 Task 맥락으로 저장하지만 그 내용을 검사하거나 범위를 넓히거나 기준선을 선택하거나 증거 또는 권한을 만들 때 사용하지 않습니다.
 - `requested_mode`와 `resume_policy` 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)과 [메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다.
+- `requested_control_level` 값과 유효 통제 수준 값은
+  [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다.
 - `acceptance_policy`, `lineage.relation`, `lineage.carry_forward` 값은
   [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다.
 
 수락 정책 규칙:
 
-- `acceptance_policy=null`은 `advisor`에서 `not_required`, `direct` 또는 `work`에서
-  `required`를 선택합니다.
+- Core는 수락 정책보다 먼저 `requested_control_level`을 결정합니다. `advisor`는
+  `observe`로만 결정되며 명시적으로 호환되지 않는 advisor 요청은 유효하지
+  않습니다. `direct`는 권위 있는 프로젝트 기본값에서 시작하고 `work`는 최소
+  `tracked`에서 시작합니다. 프로젝트 최소 수준과 민감 효과는 요청 수준을 높일
+  수 있으며 호출자가 낮출 수는 없습니다.
+- `acceptance_policy=null`은 `observe`에서 `not_required`, `light`에서 권위 있는
+  프로젝트 정책 값(보수적 기본값은 `policy_dependent`), `tracked` 또는
+  `sensitive`에서 `required`를 선택합니다.
 - `resume_policy=resume_active`는 `acceptance_policy=null`을 요구하고 선택한 Task에
-  저장된 정책과 이유를 유지합니다. 접수 재개로 이 값을 바꾸지 않습니다.
-- `not_required`는 접수 시 `advisor` Task에만 유효합니다. Agent Connection은 이 값을
-  선택해 쓰기 가능한 작업의 최종 수락을 면제할 수 없습니다.
+  저장된 요청을 유지합니다. 권위 있는 프로젝트 정책이 강화되면 Core가 유효
+  수준과 수락 요구를 높일 수 있지만 정책 완화 뒤 활성 `Task`를 낮추지는 않습니다.
+- `not_required`는 `observe`에서 필수이고, 권위 있는 프로젝트 정책이 저위험
+  완료를 명시적으로 허용할 때만 `light`에서 유효합니다. `tracked`의 기준 면제가
+  아니며 `sensitive`에서는 항상 유효하지 않습니다. Agent Connection이 값을
+  선택해 면제를 만들 수 없습니다.
 - `policy_dependent`는 현재 결과와 위험 기준에 따라 Core가 담당 문서의 닫기 정책을
   평가해야 한다는 뜻입니다. 닫기 시점의 에이전트 재량이 아닙니다.
-- 커밋된 `StateSummary`는 선택한 정책과 Core가 만든 이유를 함께 노출합니다. 정책은
+- 커밋된 `StateSummary`는 선택한 정책과 Core가 만든 이유뿐 아니라
+  `requested_control_level`, `effective_control_level`, `control_level_reason`,
+  결정에 사용한 프로젝트 정책 버전, fingerprint, source를 함께 노출합니다. 정책은
   증거, 잔여 위험 수락, 민감 동작 승인, 다른 차단 사유를 대체하지 않습니다.
 
 Task 계보와 선택적 승계 규칙:
@@ -187,7 +203,7 @@ Task 계보와 선택적 승계 규칙:
 - 현재 `state`
 - `next_actions`
 
-`requested_mode=auto`라면 저장되고 표시되는 모드는 확정된 구체적 모드여야 하며 `auto`가 되면 안 됩니다.
+`requested_mode=auto`라면 저장되고 표시되는 모드는 확정된 구체적 모드여야 하며 `auto`가 되면 안 됩니다. 요청 통제 값은 `auto`를 포함해 그대로 기록하고 유효 통제 값은 항상 구체적입니다.
 
 ## 메서드 결과 필드
 
@@ -198,7 +214,7 @@ Task 계보와 선택적 승계 규칙:
 | `base` | 공통 결과 메타데이터입니다. `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. `base.events[].event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열입니다. |
 | `task_ref` | 접수 결과가 선택한 `Task`의 `StateRecordRef`입니다. |
 | `change_unit_ref` | 접수 중 선택되거나 만들어진 Change Unit의 `StateRecordRef | null`입니다. 아직 현재 적용 Change Unit이 없으면 `null`입니다. |
-| `state` | 접수 뒤의 현재 `StateSummary`입니다. 현재 적용 범위, 현재 적용 Change Unit 표시 필드, 현재 Change Unit 효과 계약이 있으면 그 값을 포함합니다. |
+| `state` | 접수 뒤의 현재 `StateSummary`입니다. 요청/유효 통제 수준과 이유, 정책 identity, 현재 적용 범위, 현재 적용 Change Unit 표시 필드, 현재 Change Unit 효과 계약이 있으면 그 값을 포함합니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. |
 
 지원되는 `resume_policy` 입력 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. 이 메서드는 그 값들이 `task_ref`, `change_unit_ref`, `state`에 표시되는 `Task`와 선택적 Change Unit을 어떻게 선택하는지를 담당합니다.

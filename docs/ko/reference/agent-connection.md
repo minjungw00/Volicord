@@ -16,8 +16,8 @@
 - Agent Connection 계층의 저장소 루트 프로젝트 선택과 프로젝트 가용성 경계
 - 담당 결과와 Agent Connection 사이의 에이전트 맥락 전달 규칙
 - 관리되는 최종 출력 권한 고지 기능과 연결 경계
-- 정규 여섯 기능 `HostFeatureSupportStatus` 평가기, 우선순위, 현재 호스트·버전 매트릭스,
-  재생, 최신성 경계
+- 정규 여섯 기능 `HostFeatureSupportStatus` 평가기, 일곱 probe 영역, 우선순위, 정확한 버전
+  Evidence 좌표, replay, 최신성 경계
 - 관리 MCP 관찰과 호스트 훅 관찰에 공통으로 쓰는 관리 호스트 세션 결속
 - 선택된 Agent Connection이나 현재 연결 맥락을 사용할 수 없거나, 맞지 않거나,
   오래되었거나, 충분하지 않을 때의 대체 표시
@@ -390,6 +390,7 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
   호스트 규칙 파일, MCP 서버 지침은 도구 선택을 개선할 수 있지만 강제 메커니즘이 아니며
   모델이 항상 Volicord 도구를 선택한다고 보장할 수 없습니다.
 
+<a id="host-feature-support"></a>
 <a id="host-feature-support-state"></a>
 ## 호스트 기능 지원 상태
 
@@ -410,36 +411,49 @@ detective_final_output
 사실입니다. `configured=true`나 `configuration_verified=true`만으로 기능 상태를
 `verified`로 올릴 수 없습니다.
 
-중앙 평가기는 기능과 그 기능에 필요한 모든 하위 역량에 다음 순서를 적용합니다.
+중앙 평가기는 capability probe를 우선합니다. 관리 어댑터는 적용되는 다음 일곱 영역의
+크기가 제한된 probe 결과를 각각 기록합니다.
 
-1. 정확한 호스트, 호스트 버전, 플랫폼 또는 호스트 소유 표면이 필요한 역량 하나라도
-   제공하지 않으면 `unsupported_by_host`입니다.
-2. 그렇지 않고 구현은 있지만 정확한 현재 최종 바이너리 실제 증거가 없거나, 오래됐거나,
-   만료됐거나, 형식이 잘못됐거나, 일치하지 않으면 `implemented_unverified`입니다.
-3. 그렇지 않고 증거는 일치하지만 설정, 연결 결속, 호스트 승인, listener 준비 상태,
-   이벤트 전달 같은 현재 런타임 전제 조건이 내려가 있으면
-   `temporarily_unavailable`입니다.
-4. 필요한 모든 역량에 일치하는 최신 증거가 있고 현재 런타임 전제 조건도 모두 준비됐을
-   때만 `verified`입니다.
+1. 설정된 생명주기 훅이 실제로 호출되는지
+2. PreTool 이벤트가 구조화된 대상 경로를 제공하는지
+3. PostTool 이벤트가 구조화된 변경 경로를 제공하는지
+4. 사용자 행동 UI가 호스트 소유이며 모델 맥락과 분리되는지
+5. 호스트가 두 번째 Stop을 시도하는지를 포함해 Stop 전달과 replay 동작을 관찰할 수 있는지
+6. 최종 권한 고지가 요구되는 고정 UI 표면에 표시되는지
+7. 실행 중인 MCP 클라이언트가 필요한 capability를 광고하고 실제로 수행하는지
 
-집계도 같은 우선순위를 사용합니다. 필요한 항목 중 하나라도
-`unsupported_by_host`이면 그 값이 우선하고, 그렇지 않으면
-`implemented_unverified`가 하나라도 있을 때 그 값이 우선합니다. 그다음 현재 런타임
-전제 조건이 내려가 있으면 `temporarily_unavailable`이며, 모든 증거가 정확하고 준비된
-경우에만 `verified`입니다. 따라서 증거가 없는 기본 상태는 구현된 내장 기능이면
-`implemented_unverified`, generic 또는 없는 호스트 기능이면
-`unsupported_by_host`입니다. 정확한 재생도 현재 증거와 최신성, 호스트 신원, 최종
-Volicord 아티팩트, 런타임 전제 조건을 다시 평가하며 이전 `verified` 결과를 물려받을 수
-없습니다.
+각 probe 결과는 capability, 관찰 상태, 관찰 시각, 크기가 제한된 실패 종류, 알 수 있을 때
+정확한 호스트·클라이언트·어댑터 Evidence 좌표를 식별합니다. 프롬프트, 모델 출력, 명령,
+경로, 파일 내용, 사용자 답변, 원시 호스트 이벤트는 저장하지 않습니다. Probe는 이름 붙인
+표면을 실제로 시험해야 하며 생성 파일, 자체 보고 버전, configured flag, fixture만으로는
+런타임 probe 성공이 아닙니다.
 
-현재 버전별 기준은 다음과 같습니다.
+평가기에는 다음 순서를 적용합니다.
 
-| 호스트/버전 | 기능 상태 |
-|---|---|
-| Codex `0.144.4` | `native_user_action`, `verified_tool_producer`, `registered_connection_observation`는 구현되어 있으며 정확한 증거가 통과할 때까지 `implemented_unverified`입니다. 이 검토 버전에서 `local_web_user_channel`, `record_final_output`, `detective_final_output`는 `unsupported_by_host`입니다. 정확한 probe 외피는 `codex-cli 0.144.4`이고 정규 `host_version` 및 보존된 `clientInfo.version` 좌표는 접두사 없는 `0.144.4`입니다. |
-| Codex 버전 없음 또는 미검토 | 보수적인 호스트 종류 대체 표는 `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, `registered_connection_observation`를 구현됐지만 미검증인 상태로 두고 두 최종 출력 기능을 `unsupported_by_host`로 둡니다. 정확한 `0.144.4` 검토를 물려받을 수 없습니다. |
-| Claude Code | 여섯 기능 모두 최종 Volicord 아티팩트와 설치 호스트 버전에 결속된 정확한 실제 증거가 생길 때까지 `implemented_unverified`입니다. 정규 설치 호스트 probe 외피는 비어 있지 않은 UTF-8 stdout 행 정확히 하나와 그 뒤의 LF 하나이며 stderr는 비어 있어야 합니다. LF 앞의 행을 변경 없이 `host_version`으로 보존합니다. |
-| Generic | 여섯 기능 모두 `unsupported_by_host`입니다. |
+1. 명시적 capability 응답이나 담당자가 검토한 호스트 표면이 필요한 capability가 없다고
+   밝힐 때만 `unsupported_by_host`입니다. 알 수 없거나 더 새로운 유효 호스트 버전은
+   부재가 아닙니다.
+2. 구현된 내장 표면에 일치하는 최신 probe Evidence가 없으면 아직 릴리스 Evidence가 없는
+   새 버전을 포함해 `implemented_unverified`입니다.
+3. 현재 probe가 실패했거나 이전에 입증한 capability의 현재 설정, 결속, 승인, listener,
+   이벤트 전달을 사용할 수 없으면 `temporarily_unavailable`입니다.
+4. 일치하는 최신 최종 아티팩트 Evidence, 필요한 probe 성공, 준비된 런타임 전제 조건을
+   모두 갖췄을 때만 `verified`입니다.
+
+집계도 같은 capability 사실을 사용합니다. 필요한 capability의 명시적 부재는
+`unsupported_by_host`, 현재 probe나 전제 조건 실패는 `temporarily_unavailable`, 정확한
+Evidence 부재는 `implemented_unverified`, 모두 입증·probe·준비된 경우만 `verified`입니다.
+`degraded`는 진단 요약 또는 이유일 뿐 `HostFeatureSupportStatus`가 아닙니다. 정확한 replay도
+현재 probe, Evidence 최신성, 호스트 신원, 최종 Volicord 아티팩트, 런타임 전제 조건을 다시
+평가하며 이전 `verified`를 물려받지 않습니다.
+
+따라서 Codex, Claude Code, 다른 구현된 내장 어댑터는 구현한 capability에 대해 probe와 최신
+Evidence가 더 강한 상태를 확정할 때까지 `implemented_unverified`가 기본값입니다. Generic
+또는 사용자 관리 연결은 명시적으로 제공하지 않는 표면에 대해서만
+`unsupported_by_host`입니다. 검토된 Codex `host_version=0.144.4`, probe 외피
+`codex-cli 0.144.4`, 보존된 `clientInfo.version=0.144.4`는 정확한 검증·릴리스 Evidence
+좌표일 뿐 런타임 기능을 gate하지 않습니다. 다른 정규 버전은 관찰한 그대로 보존하고 실제
+capability probe로 평가합니다.
 
 설치 호스트 버전 probe는 프로세스가 성공으로 종료된 뒤에만 null이 아닌 가용성 좌표를
 확정합니다. UTF-8이 잘못됐거나 timeout, 0이 아닌 종료, stderr 출력, 누락되거나 추가된
@@ -451,13 +465,14 @@ stream을 합치거나 행을 trim·대체하거나 좌표를 보존하지 않�
 사용합니다. 설정 발견 사항, 픽스처, 직접 래퍼 결과, 무시된 테스트, 과거 실제 결과를 각각
 다시 해석하여 기능 지원으로 올리면 안 됩니다.
 
-init과 `volicord connection verify`처럼 설치 호스트의 정규 probe를 성공적으로 수행한
-명령은 그 명령의 출력에 한해 새로 관찰한 구조화 `host_version`을 평가기에 전달합니다.
-`last_verification_report_json`에 보존된 버전은 진단 이력일 뿐 현재 설치 호스트의
-증명이 아닙니다. `volicord connection status`와 `volicord doctor`는 설치 호스트 probe를
-실행하지 않으므로 현재 버전 없이 평가기를 호출하고 호스트 종류 대체 표를 사용합니다.
-저장된 과거 좌표로 지원 상태를 승격하거나 다시 분류해서는 안 됩니다. 릴리스 셀은 해당
-셀이 직접 관찰하고 결속한 정확한 버전만 사용합니다.
+init과 `volicord connection verify`처럼 capability probe를 수행한 명령은 그 명령의
+출력에 새 구조화 결과와 관찰한 `host_version`을 평가기에 전달하고, 최신성 진단에 쓸
+크기가 제한된 probe 사실을 저장합니다. `last_verification_report_json`에 보존된 버전은
+진단 이력일 뿐 현재 설치 호스트의 증명이 아닙니다. `volicord connection status`와
+`volicord doctor`는 호스트 probe를 시작하지 않습니다. 읽을 수 있는 probe 관찰을 최신성과
+바인딩에 따라 평가하고, 그렇지 않으면 구현된 표면을 `implemented_unverified`로 둡니다.
+과거 버전 좌표만으로 지원 상태를 승격하거나 다시 분류해서는 안 됩니다. 릴리스 셀은 해당
+셀이 직접 관찰하고 결속한 정확한 버전과 probe만 사용합니다.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ## 관리되는 최종 출력 권한 고지
@@ -466,9 +481,12 @@ init과 `volicord connection verify`처럼 설치 호스트의 정규 probe를 �
 최선형으로 동작할 수 있지만, 지원 또는 릴리스 주장을 하려면 프로필 기능이
 `support_status=verified`여야 합니다. Record 지원에는 `authority_display`와
 `authenticated_exact_replay`가 필요합니다. Detective 지원에는 `authority_display`,
-`authenticated_exact_replay`, `block_finalization`이 필요합니다. 담당 문서가 정의한 모든
-전달은 Detective 재생을 포함해 현재 권한을 다시 읽으므로 재생 역량도 필요합니다. 표시가
-동작하더라도 재생이나 block 표면이 지원되지 않으면 집계 상태는 계속 지원되지 않습니다.
+`authenticated_exact_replay`, 현재 이름이 `block_finalization`인 진단 하위 역량이
+필요합니다. 이 유지된 이름은 세션 종료는 계속 허용하면서 호스트가
+`completion_claim_allowed=false`를 별도로 표시할 수 있다는 뜻입니다. Stop 거부, 강제
+replay, 두 번째 Stop 요청을 허용하지 않습니다. 담당 문서가 정의한 모든 전달은 Detective
+재생을 포함해 현재 권한을 다시 읽으므로 재생 역량도 필요합니다. 표시가 동작하더라도
+재생이나 완료 고지 표면이 지원되지 않으면 집계 상태는 계속 미검증입니다.
 출력에는 해당 프로필에 적용되는 하위 역량만 담고, 최선형 출력은 그 상태를 올리지 않습니다.
 표시는 모델이 작성한 최종 산문이 아니라 호스트 어댑터에 속하며 MCP 도구 맥락과 분리된
 호스트 소유 고정 UI 표면을 사용합니다.
@@ -495,8 +513,10 @@ User Channel 검증 근거가 아닙니다.
   `record`는 사용할 수 있지만, 이 관리 고지 기능을 설치하거나 제공한다고 표시하지 않고
   적용되는 `volicord status` 대체 경로를 보고합니다. Claude Code에는 이 Git 루트 전제
   조건이 없습니다.
-- `detective`는 별도 Stop 결정과 관찰 경로에 더해 같은 고지 상태 보기를 사용합니다.
-  영속된 과거 Stop 결정은 표시되는 receipt의 원천이 아닙니다.
+- `detective`는 별도 Stop 관찰·완료 적격성 경로에 더해 같은 고지 상태 보기를 사용합니다.
+  Stop은 항상 호스트 종료를 허용하며 차단 사유나 갱신 실패는 Stop을 거부하거나 반복하지
+  않고 내용 없는 receipt에 `completion_claim_allowed=false`로 기록합니다. 영속된 과거
+  Stop 결과는 표시되는 receipt의 원천이 아닙니다.
 
 정확한 재생을 포함해 전달할 때마다 새 읽기 전용 상태 갱신을 수행하고
 [상태 보기와 템플릿 표시 경계](projection-and-templates.md#managed-final-output-authority-disclosure)가

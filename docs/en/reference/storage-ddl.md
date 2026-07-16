@@ -2,6 +2,8 @@
 
 This document owns the baseline SQLite DDL contract for the storage layout described by [Storage Records](storage-records.md). It makes the baseline `registry.sqlite` and project `state.sqlite` layouts implementable without moving method effects, artifact lifecycle rules, state-version meaning, API schemas, or security guarantees into this document.
 
+The current DDL profile is `baseline_sqlite_v7`.
+
 ## Owner Boundaries
 
 This document owns:
@@ -59,7 +61,7 @@ The physical `write_tickets` table stores write-ticket authority records for pro
 
 ## Canonical SQL Sources
 
-The executable canonical SQL sources are [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies these sources to empty SQLite databases. Existing Runtime Homes whose storage shape is incompatible with these sources fail clearly and require Runtime Home recreation; baseline storage does not define a legacy migration path.
+The executable canonical SQL sources are [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies these sources to empty SQLite databases. Normal opening rejects incompatible profiles. The separately invoked offline read-only v6-to-fresh-v7 copy path is owned by [Storage Versioning](storage-versioning.md); it never performs in-place conversion.
 
 `docs-check` validates that the canonical SQL blocks below match those source files exactly. The focused `storage_ddl_contract` test validates the executable schema semantics.
 
@@ -416,6 +418,9 @@ CREATE TABLE tasks (
   task_id TEXT NOT NULL,
   created_by_actor_source TEXT NOT NULL,
   mode TEXT NOT NULL,
+  requested_control_level TEXT NOT NULL CHECK (requested_control_level IN ('auto', 'observe', 'light', 'tracked', 'sensitive')),
+  effective_control_level TEXT NOT NULL CHECK (effective_control_level IN ('observe', 'light', 'tracked', 'sensitive')),
+  control_level_reason TEXT NOT NULL CHECK (length(trim(control_level_reason)) > 0),
   work_phase TEXT NOT NULL CHECK (work_phase IN ('shaping', 'implementation')),
   acceptance_policy TEXT NOT NULL CHECK (
     acceptance_policy IN ('required', 'not_required', 'policy_dependent')
@@ -666,18 +671,27 @@ CREATE TABLE write_tickets (
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version > 0),
-  status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'expired', 'stale', 'revoked')),
+  status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'invalidated', 'revoked')),
+  validity_basis_json TEXT NOT NULL,
+  allowed_path_prefixes_json TEXT NOT NULL DEFAULT '[]',
+  denied_path_prefixes_json TEXT NOT NULL DEFAULT '[]',
   attempt_scope_json TEXT NOT NULL DEFAULT '{}',
   created_by_actor_source TEXT NOT NULL,
   created_by_user_action_resolution_id TEXT,
-  expires_at TEXT NOT NULL,
+  idle_expires_at TEXT,
+  invalidation_reason TEXT CHECK (
+    invalidation_reason IS NULL OR invalidation_reason IN (
+      'scope_revision_changed', 'change_unit_changed', 'baseline_changed',
+      'workspace_changed', 'approval_basis_changed', 'idle_timeout',
+      'task_closed', 'explicit_revoke'
+    )
+  ),
   consumed_by_run_id TEXT,
   consumed_at TEXT,
   revoked_at TEXT,
   created_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, write_ticket_id),
-  UNIQUE (project_id, task_id, basis_state_version),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -1262,6 +1276,7 @@ CREATE TABLE unrecorded_changes (
   connection_internal_id TEXT NOT NULL,
   task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('unresolved', 'resolved')),
+  confidence TEXT NOT NULL CHECK (confidence IN ('confirmed', 'suspected')),
   summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
   observed_paths_json TEXT NOT NULL DEFAULT '[]',
   detection_json TEXT NOT NULL DEFAULT '{}',
@@ -1483,6 +1498,62 @@ CREATE INDEX idx_user_action_channel_tokens_connection
   ON user_action_channel_tokens (project_id, connection_internal_id, channel_kind, status, expires_at);
 CREATE INDEX idx_user_action_channel_tokens_expiry
   ON user_action_channel_tokens (project_id, status, expires_at);
+
+CREATE TABLE project_workflow_policies (
+  project_id TEXT PRIMARY KEY,
+  policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord-policy-v2'),
+  policy_version INTEGER NOT NULL CHECK (policy_version > 0),
+  policy_json TEXT NOT NULL,
+  policy_fingerprint TEXT NOT NULL CHECK (
+    length(policy_fingerprint) = 71
+    AND substr(policy_fingerprint, 1, 7) = 'sha256:'
+    AND substr(policy_fingerprint, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  source TEXT NOT NULL CHECK (length(trim(source)) > 0),
+  applied_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id)
+);
+
+CREATE TABLE session_end_receipts (
+  project_id TEXT NOT NULL,
+  session_end_receipt_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  active_task_id TEXT,
+  task_state TEXT NOT NULL CHECK (
+    task_state IN (
+      'none', 'ready', 'blocked', 'closed', 'cancelled', 'superseded',
+      'authority_unknown'
+    )
+  ),
+  close_blocker_codes_json TEXT NOT NULL DEFAULT '[]',
+  next_actor TEXT NOT NULL CHECK (next_actor IN ('agent', 'user', 'none')),
+  completion_claim_allowed INTEGER NOT NULL CHECK (completion_claim_allowed IN (0, 1)),
+  authority_refresh_succeeded INTEGER NOT NULL CHECK (authority_refresh_succeeded IN (0, 1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_end_receipt_id),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
+  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
+  FOREIGN KEY (project_id, active_task_id) REFERENCES tasks (project_id, task_id),
+  CHECK (
+    (authority_refresh_succeeded = 0 AND task_state = 'authority_unknown')
+    OR (authority_refresh_succeeded = 1 AND task_state <> 'authority_unknown')
+  ),
+  CHECK (
+    (task_state = 'none' AND active_task_id IS NULL)
+    OR (task_state = 'authority_unknown')
+    OR (task_state NOT IN ('none', 'authority_unknown') AND active_task_id IS NOT NULL)
+  ),
+  CHECK (
+    completion_claim_allowed = 0
+    OR (
+      authority_refresh_succeeded = 1
+      AND task_state = 'ready'
+      AND active_task_id IS NOT NULL
+      AND close_blocker_codes_json = '[]'
+    )
+  )
+);
 ```
 <!-- canonical-storage-sql: project end -->
 
@@ -1537,7 +1608,8 @@ Project-state constraints:
   same bound before replay lookup or mutation planning.
 - Store application validation strict-decodes request, basis, and resolution JSON, derives the capture form from the stored request, and requires matching closed tags and derived `action_kind`. It limits target and artifact candidates to 32 each, note-like text to 1,000 Unicode scalar values, observation summary to 4,000 Unicode scalar values, and canonical serialized forms to 32 KiB, rejecting rather than truncating excess.
 - `user_action_channel_tokens` stores hashed one-time local-web User Channel tokens for pending user actions. The raw token is not stored. `created_metadata_json` strict-decodes as exactly `{fallback_kind, delivery_surface, endpoint, form_digest}` with `fallback_kind=local_web_consent`, `delivery_surface=model_invisible_user_surface`, `endpoint=/consent`, and a digest matching the canonical form derived from the stored closed request. Missing, extra, wrong-typed, or mismatched metadata—including a legacy row without `delivery_surface`—makes the row permanently unusable under corrected code. The four stored timestamps used to derive and validate the issuance window—`user_action_requests.requested_at`, optional `user_action_requests.expires_at`, token `created_at`, and token `expires_at`—must be the canonical RFC 3339 UTC strings for their instants. Store application validation requires token `created_at >= user_action_requests.requested_at` and requires token `expires_at` to equal exactly `min(user_action_requests.expires_at, created_at + 600 seconds)` when the request has an expiry, or exactly `created_at + 600 seconds` otherwise. A token is valid only in the half-open interval `created_at <= now < expires_at`. Invalid creation metadata, a noncanonical issuance-window timestamp, an earlier or later token expiry, or any other window mismatch is corrupt stored state: token validation, local-web GET or POST, expiry cleanup, and token consumption fail closed without rendering a form or changing token status, the project state or UTC floor, or user-action resolution state. Issuance advances `project_state.updated_at` to at least token `created_at` atomically with insertion. Token consumption and immutable resolution insertion commit together. These rows are transient capture metadata and are not Core user authority by themselves.
-- `write_tickets` records single-use write-ticket compatibility. The unique `(project_id, task_id, basis_state_version)` constraint makes the state-version ordering key unique within a Task. The unique indexes on `write_tickets.consumed_by_run_id` and `runs.write_ticket_id` prevent one write-ticket consumption from forking across multiple runs.
+- `write_tickets` records reusable-until-consumed, state-bound compatibility. `basis_state_version` is audit ordering and is not unique or a validity coordinate. Validity comes from `validity_basis_json`, status, stable invalidation reason, and optional `idle_expires_at`. The unique consumption indexes still prevent one consumption from forking across Runs. Prefix arrays are strict normalized repository-relative exact-or-descendant prefixes: no glob grammar, invalid absolute/empty/`..`/ambiguous entries, denied wins, and empty allowed means no product-file writes.
+- `project_workflow_policies` stores only the authoritative v2 database copy and its `sha256:<64-lowercase-hex>` fingerprint; administrative file/CLI/host behavior is outside this owner. Privacy-bounded workflow metrics belong to the separate non-authority `diagnostics.sqlite` store, never this authority database. `session_end_receipts` requires a managed session, a closed Task-state and next-actor value, blocker codes rather than blocker refs, and conditional completeness: refresh failure uses `authority_unknown`, no active Task uses `none`, and a completion claim is allowed only for a refreshed blocker-free `ready` Task.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
 - `evidence_capture_intents` binds one expiring request to exact current-basis,
   command/tool source input or the Core-derived connection-source selector,

@@ -35,6 +35,13 @@
 
 미기록 변경을 해결하면 미해결 호스트 훅 상태 수와 `unresolved_unrecorded_changes` 닫기 차단 사유 계산에서 빠집니다. 해결됐다는 사실만으로 제품 파일이 정확하거나, 검토 또는 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 뜻은 아닙니다.
 
+모든 finding은 `confidence=confirmed|suspected`를 가집니다. 확인된
+(`confirmed`) 미해결 Product Repository 변경은 `unresolved_unrecorded_changes`에
+기여하며 닫기 전에 조정해야 합니다. 의심(`suspected`) finding은 경고와 검증
+요청이지 닫기 차단 사유가 아닙니다. 결정적 검증은 이를 `confirmed`로 승격하거나
+제품 변경 아님, 되돌림, 이미 포함됨, 잘못된 관찰로 해결할 수 있습니다. Agent
+Connection은 차단 사유를 없애기 위해 confidence를 낮출 수 없습니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 상태를 변경하는 커밋된 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
@@ -96,6 +103,12 @@ UnrecordedChangeResolutionRequest:
 
 세션에 묶인 메서드 경계에서는 조정 계획 전에 런타임이 제한된 `session-watch` 확인을 실행할 수 있습니다. 이 진단 확인은 관찰을 하나의 결정적 예상 쓰기 또는 `active` 쓰기 티켓과 연결할 수 있습니다. Product Repository 스냅샷 변경이 일치하지 않거나, 티켓 범위 밖이거나, 모호하면 새 미해결 미기록 변경을 만듭니다.
 
+경로나 내용 변경을 결정적으로 관찰하면 `confirmed`입니다. 불완전하거나 휴리스틱
+기반이거나 모호한 watcher 신호는 이후 비교에서 변경을 확정하거나 기각할 때까지
+`suspected`로 저장할 수 있습니다. 조정 변경은 별도 동작이 티켓의 명시적 유효성
+좌표 중 하나를 바꾸지 않는 한 쓰기 티켓을 소비하거나 무효화하지 않습니다. 조정에
+따른 상태 버전 증가만으로는 티켓 유효성이 바뀌지 않습니다.
+
 `dry_run`은 계획된 해결이나 대기 사용자 행동을 미리 보여 줄 뿐 참조, 이벤트, 재실행 행, 사용자 행동 요청, 해결 행을 만들지 않습니다. 거절된 시도도 효과를 만들지 않습니다.
 
 ## 성공 결과
@@ -141,7 +154,7 @@ Core가 결정하는 해결 근거(`basis`):
 - `invalid_observation`: 저장된 관찰 데이터를 Product Repository 경로로 해석할 수 없습니다.
 - `not_product_change`: 저장된 관찰 데이터에 조정할 Product Repository 경로가 없습니다.
 - `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 포함하거나, 같은 `Task`의 결정적 예상 쓰기 상관관계가 감시자가 관찰한 Product Repository 경로를 포함합니다.
-- `covered_by_write_ticket`: 같은 `Task`의 호환되는 소비된 쓰기 티켓 하나 또는 현재 `active`이고 만료되지 않은 쓰기 티켓 하나가 관찰된 Product Repository 경로를 결정적으로 포함합니다.
+- `covered_by_write_ticket`: 같은 `Task`의 호환되는 소비된 쓰기 티켓 하나 또는 현재 `active`이고 소비되지 않았으며 상태에 묶여 유효한 쓰기 티켓 하나가 관찰된 Product Repository 경로를 결정적으로 포함합니다. 선택적 idle timeout이 설정된 경우에만 이를 확인하며 고정 티켓 수명은 없습니다.
 - `reverted`: 감시자가 만든 미기록 변경이 `session-watch` 관찰에 연결되어 있고 현재 Product Repository 스냅샷이 저장된 감시 기준선과 다시 일치합니다.
 
 사용자가 결정하는 해결 근거:
@@ -166,7 +179,7 @@ Form, 명령, URL, credential, request ref를 반환하지 않고 결과 project
 
 사용자 소유 행동이 해결되면 `volicord.reconcile_changes`가 연결된 미기록 변경을 `accepted_by_user`로 해결할 수 있습니다.
 
-Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이전트 단독 묵살로 해결하지 않습니다. 둘 이상의 `active` 쓰기 티켓이 경로를 포함할 수 있거나, 어떤 `active` 티켓도 경로를 포함하지 않거나, 경로가 티켓 범위 밖이거나, 저장된 미기록 변경에 사용자 수락이 필요하면 해당 변경을 미해결로 남기거나 대기 중인 사용자 소유 행동을 만듭니다.
+Core는 모호하거나 허가되지 않은 Product Repository 변경을 에이전트 단독 묵살로 해결하지 않습니다. 둘 이상의 `active` 쓰기 티켓이 경로를 포함할 수 있거나, 어떤 `active` 티켓도 경로를 포함하지 않거나, 경로가 티켓 범위 밖이거나, 저장된 미기록 변경에 사용자 수락이 필요하면 해당 변경을 미해결로 남기거나 대기 중인 사용자 소유 행동을 만듭니다. 호환되는 로컬 사용자 권한만 `accepted_by_user`를 제공할 수 있습니다. 민감 동작 승인과 다른 사용자 소유 판단은 별개이며 조정 결과에서 추론하지 않습니다.
 
 ## 거절 결과
 

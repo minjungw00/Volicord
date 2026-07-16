@@ -546,9 +546,8 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
    필드는 같을 필요가 없습니다. LocalUser의 `ready` 및 차단 사유 없음 상태는 깨끗한
    픽스처의 전제일 뿐 호스트 고유 검증 단언 출처가 아닙니다. 하네스는 영속 GuardEvent에서
    완전한 정규 Stop 영수증을 읽으며 최종 출력 UI 복사본을 요청하거나 증거로 인정하지
-   않습니다. 첫 차단된 Stop 메시지가 보인 뒤 호스트가 자동으로 재시도하면 두 번째 별도
-   Stop이 생기기 전에 운영자는 한 번 중단할 수 있습니다. 프로세스 종료가 나중의 Stop을
-   합성하지는 않습니다.
+   않습니다. 첫 관리 Stop은 세션 종료를 허용해야 하고 호스트가 이를 재시도하면 안
+   됩니다. 프로세스 종료가 나중의 Stop을 합성하지는 않습니다.
 6. 크기가 제한된 JSON 결과가 고유 `validation_run.run_id`, 시작·기록 시각, 호스트 버전,
    Volicord `build_id`, 정확한 Agent Connection ID, 운영자가 확인한 선택과 저장된 선택,
    권한 이벤트 순서, 소비한 Run, 최종 `result=passed`를 보고하며 대화 기록이나 프롬프트

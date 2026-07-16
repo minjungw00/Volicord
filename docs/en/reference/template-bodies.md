@@ -8,6 +8,8 @@ This document owns display-facing wording and presentation packet/body shape for
 - run/evidence summaries
 - close results
 - final-output authority disclosures
+- managed `AGENTS.md` guidance blocks
+- content-free Stop termination receipts
 - agent context packets
 
 It owns only rendered body guidance, user-facing labels, and display phrasing.
@@ -20,6 +22,8 @@ This document owns display presentation only:
 
 - rendered template body guidance and presentation packet/body shape for current status and support displays
 - complete-receipt and bounded-fallback body guidance for managed final-output authority disclosure
+- the exact generated managed `AGENTS.md` guidance body and the bounded
+  content-free Stop termination-receipt body
 - user-facing labels, display phrasing, localized labels, and recovery cues for those bodies
 - public-error display labels as display text
 - links from body placeholders to schema and authority owners
@@ -290,6 +294,46 @@ Recovery cue:
 - Show the specific validator or check result when available.
 - Use this fallback label only when no typed public code gives a clearer label.
 
+<a id="managed-agents-guidance-body"></a>
+## Managed `AGENTS.md` guidance body
+
+Init generates this exact block. It states durable authority and safety
+boundaries without requiring a fixed status/intake/check-close call ritual.
+
+```markdown
+<!-- BEGIN VOLICORD MANAGED GUIDANCE -->
+# Volicord
+
+- Treat Volicord's recorded scope and user-owned decisions as authoritative.
+- Do not modify Product Repository files outside an active compatible write authorization.
+- Do not infer, resolve, or record user-owned judgments on the user's behalf.
+- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.
+- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.
+- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.
+<!-- END VOLICORD MANAGED GUIDANCE -->
+```
+
+The block is generated repository guidance, not Core state, a write ticket,
+user authority, proof that an Agent followed it, or permission to edit product
+files.
+
+<a id="stop-termination-receipt-body"></a>
+## Stop termination receipt body
+
+The host-facing result always shows an allow/continue termination decision and
+separately shows the active Task when present, Task state, bounded incomplete
+reason codes, next actor, `completion_claim_allowed`, and
+`authoritative_refresh_succeeded`. It may include a validated fresh authority
+receipt after a successful refresh. A failed refresh shows only a safe failure
+class and valid public error codes.
+
+The persisted receipt contains only the managed session coordinate, optional
+active Task coordinate, Task state, blocker codes, next actor, completion flag,
+refresh-success flag, and observation time. It must not contain model final
+prose, prompts, commands, file paths or contents, user answers, raw host events,
+or error bodies. Exact replay returns the same result and never asks the host to
+issue a second Stop.
+
 <a id="final-output-authority-disclosure-body"></a>
 ## Final-output authority disclosure body
 
@@ -327,7 +371,8 @@ must also fit the same limit.
   final prose, or raw host event text.
 - That generated configuration proves the host displayed the disclosure.
 - That the disclosure creates authority, changes Core state, records a host
-  observation, or replaces Detective close gating.
+  observation, blocks host termination, or replaces Detective completion-claim
+  disclosure.
 
 ### User-facing wording
 

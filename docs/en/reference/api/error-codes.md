@@ -82,7 +82,7 @@ Condition:
 - A public freshness or idempotency conflict is present. Stale `expected_state_version` is the request-state form.
 
 Notes:
-- Stale `WriteTicket.basis_state_version` and idempotency request-hash conflicts are covered in [State version conflict](error-precedence.md#state-conflict-behavior).
+- Idempotency request-hash conflicts are covered in [State version conflict](error-precedence.md#state-conflict-behavior). `WriteTicket.basis_state_version` is audit metadata and never selects this error by itself.
 
 <a id="errorcode-mcp-unavailable"></a>
 ### `MCP_UNAVAILABLE`
@@ -185,11 +185,11 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- Supplied write ticket is expired, revoked, consumed, or incompatible for a non-version reason.
+- A supplied ticket is consumed, revoked, explicitly invalidated, outside its allowed path prefixes, or incompatible with its state-bound Task, Change Unit, scope revision, baseline, workspace, approval basis, or optional idle timeout.
 
 Notes:
-- Expired write-ticket use stays on this code with `ToolError.details.write_ticket_reason=expired`.
-- Stale `WriteTicket.basis_state_version` is routed through `STATE_VERSION_CONFLICT`, not this code.
+- State-bound invalidation and attempt mismatch stay on this code with stable `ToolError.details.write_ticket_reason` values.
+- `basis_state_version` mismatch and unrelated state-version increments do not invalidate a ticket and do not select an error.
 
 <a id="errorcode-approval-denied"></a>
 ### `APPROVAL_DENIED`

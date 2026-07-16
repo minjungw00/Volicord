@@ -339,6 +339,13 @@ bare 좌표 `0.144.4`만 저장합니다. null이 아닌 모든 Codex `host_vers
 여섯 기능 모두 `implemented`인 호스트 종류 대체 표를 유지합니다. 새 검토 버전 표에는
 담당 문서 변경과 완전한 새 12개 셀 manifest가 필요합니다.
 
+이 정확한 버전 표는 릴리스 gate Evidence 좌표일 뿐 일반 런타임 기능 gate가 아닙니다.
+런타임 지원은 [Agent Connection](agent-connection.md#host-feature-support-state)에 따라
+capability probe를 우선합니다. 다른 또는 더 새로운 유효 설치 버전은 구현된 표면에 대해
+probe와 최신 Evidence가 다른 상태를 확정할 때까지 `implemented_unverified`이며, 이 표에
+행이 없다는 이유만으로 `unsupported_by_host`가 되지 않습니다. 그 버전의 릴리스 주장은
+여전히 담당 문서 변경과 자체 완전한 12개 셀 manifest를 요구합니다.
+
 null이 아닌 클라이언트 정체성으로 허용되는 유일한 값은 해당 셀에 사용한 성공한 관리 MCP
 `initialize`에서 실제로 관찰한 정확한 쌍입니다. `host_kind`, 호스트 실행 파일 이름, 버전
 probe 출력, 환경이나 설정, 프로토콜 버전, 알려진 상수, 이후 도구 메타데이터, 다른 셀에서
@@ -412,8 +419,9 @@ canonical `adapter_profile`은 `record_final_output`에서만 `record`이고,
 시점입니다. 이때 짝이 되는 `pre_tool` 결정은 `deny`가 아니어야 합니다. Stop 이벤트나
 결정, 닫기 준비 결과, 모델 응답 완료, 호스트 turn 완료, 호스트 프로세스 종료는 이 장벽의
 일부가 아닙니다. Stop으로 선택한 `registered_connection_observation`의 source 관찰 장벽은
-intent 이후의 정확한 Stop 이벤트가 영속 저장되는 시점입니다. 그 allow 또는 deny 결정은
-캡처하는 source 결과이며 프로세스 종료 전제 조건이 아닙니다. `guard_events` 행은
+intent 이후의 정확한 Stop 이벤트가 영속 저장되는 시점입니다. 완료 주장 flag와 항상
+allow인 종료 결과는 캡처하는 source 결과이며 프로세스 종료 전제 조건이 아닙니다.
+`guard_events` 행은
 append-only이므로 단독 `post_tool` 또는 불완전한 `post_tool`을 관찰하면 종단 source-shape
 실패입니다. 나중에 행을 추가해도 어느 상태도 정확한 쌍이 될 수 없습니다. 후보가 없거나
 deny가 아닌 정확한 `pre_tool` 하나만 있는 경우에만 쌍을 기다리는 상태로 남습니다. 제한
@@ -439,20 +447,23 @@ negative 행렬의 증거로 인용하면 안 됩니다.
 `native_user_action`의 `authority_receipt_observed`는 실제 셀이 정확히 인증된 세션, 같은
 연결, Task에 결속된 Stop 이벤트가 저장한 완전하고 최신인 영수증을 관찰했다는 뜻입니다.
 영수증은 선택한 Project, Task, 현재 `state_version`, 선택지를 소비한 정확한 Run에
-결속되어야 합니다. 저장된 Stop 결정, 이유, `close_state`, 완전한 `close_blockers` 집합도
-영수증과 내부적으로 일관되어야 합니다. 이 검증 단언은 `close_state=ready`, 빈
-`close_blockers`, Stop `allow`를 요구하지 않습니다. 유지하는 깨끗한 픽스처는 정확히 두
-Stop 결과만 허용합니다. 경고나 차단 사유 없이 완전한 `mcp_start` 관찰 범위를 가진
-`ready` `allow`, 또는 일부 관찰 경고가 있는 활성 `first_project_selection`이나
-`method_boundary` 관찰 범위에서 `close_readiness_blocked` 이유 하나와 정확한
-`session_watch_unavailable` 차단 사유를 가진 `deny`입니다. 영수증이 정직하더라도 다른
+결속되어야 합니다. 저장된 Stop 결정, 완료 주장 flag, 이유, `close_state`, 완전한
+`close_blockers` 집합도 영수증과 내부적으로 일관되어야 합니다. Stop 종료는 항상
+`allow`입니다. 유지하는 깨끗한 픽스처는 정확히 두 완료 결과만 허용합니다. 경고나 차단
+사유 없이 완전한 `mcp_start` 관찰 범위를 가진 `ready`와
+`completion_claim_allowed=true`, 또는 일부 관찰 경고가 있는 활성
+`first_project_selection`이나 `method_boundary` 관찰 범위에서
+`close_readiness_blocked` 이유 하나와 정확한 `session_watch_unavailable` 차단 사유를 가진
+`completion_claim_allowed=false`입니다. 어느 결과도 호스트에 Stop retry를 요구하지
+않습니다. 영수증이 정직하더라도 다른
 결과이면 이 셀은 실패합니다. 새 LocalUser 상태가 `ready`이고 차단 사유가 없는 것은
 깨끗한 픽스처의 별도 정상성 전제이며, 이 검증 단언을 충족하는 영수증은 아닙니다.
 LocalUser CLI 상태 영수증과 Agent Connection Stop 영수증은 권한 좌표를 공유하지만 호출
 맥락별 상태 보기입니다. 따라서 `close_state`와 `close_blockers`가 같을 필요가 없으며 두
 호출 맥락의 영수증 전체가 같다는 것은 검증 단언이 아닙니다.
 
-이 호스트 고유 셀 관찰은 `authority_display_observed`,
+기존 이름 `block_finalization_observed`는 종료를 허용하면서 호스트가 완료 주장 억제를
+별도로 표시했다는 뜻이며 Stop deny나 retry를 뜻하지 않습니다. 이 호스트 고유 셀 관찰은 `authority_display_observed`,
 `authenticated_exact_replay_observed`, `block_finalization_observed`를 충족하지 않으며
 어느 최종 출력 기능도 승격하지 않습니다. 해당 검증 단언은 계속 각 최종 출력
 셀만 담당합니다.

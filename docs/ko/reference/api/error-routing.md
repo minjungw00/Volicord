@@ -99,7 +99,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 ### 상태 또는 멱등성 충돌
 
 조건:
-- `expected_state_version`, `WriteTicket.basis_state_version`, 멱등 요청 해시가 오래되었거나 충돌합니다.
+- `expected_state_version`이 오래됐거나 멱등 요청 해시가 충돌합니다. 쓰기 티켓 감사용 `basis_state_version` 불일치는 충돌이 아닙니다.
 
 응답 경로:
 - `STATE_VERSION_CONFLICT`를 담은 `ToolRejectedResponse.errors[]`.
@@ -110,6 +110,10 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 
 경로 경계:
 - 이 충돌은 차단 사유가 아닙니다.
+- 소비 메서드에서 상태 결합 쓰기 티켓이 유효하지 않으면 대신
+  `WRITE_TICKET_INVALID`를 반환합니다. 닫기 준비 상태에서 발견한 미해결 무효화
+  티켓은 메서드 소유 차단 사유 데이터입니다. 관련 없는 상태 읽기와 쓰기는 티켓을
+  무효화하지 않습니다.
 
 <a id="rejected-dry-run-pre-preview-failure"></a>
 ### `dry_run=true` 미리보기 전 실패

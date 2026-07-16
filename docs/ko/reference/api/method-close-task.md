@@ -83,21 +83,24 @@ API 경계 블록:
 상태 변경 조건:
 
 - `dry_run=false`인 상태 변경 `intent`에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
-- 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌은 닫기 준비 상태 평가 전에 거절됩니다.
-- 닫기 관련 `WriteTicket.basis_state_version`은 사전 확인 시 현재 `project_state.state_version`과 같지 않을 때 오래된 값입니다.
-- 닫기 관련 쓰기 티켓 최신성 확인은 쓰기 호환성 확인일 뿐입니다. 최종 수락, 잔여 위험 수락, 사용자 소유 판단, 민감 동작 승인, 포괄적 승인을 기록하지 않습니다.
+- 오래된 `expected_state_version` 또는 멱등 요청 해시 충돌은 닫기 준비 상태 평가 전에 거절됩니다.
+- 닫기 관련 쓰기 티켓은 현재 Task, Change Unit, 범위 리비전, 기준선, workspace 맥락, 승인 근거, Task 상태, 선택적으로 설정된 idle timeout이라는 명시적 유효성 근거로 확인합니다. 감사 전용 `basis_state_version`은 전역 상태 버전과 비교하지 않습니다.
+- 쓰기 티켓 유효성 확인은 최종 수락, 잔여 위험 수락, 사용자 소유 판단, 민감 동작 승인, 포괄적 승인을 기록하지 않습니다.
 
 닫기 조건:
 
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
-- 해당 `Task`의 쓰기 티켓이 아직 열려 있거나, `active` 쓰기 티켓이 해결 없이 만료되었거나, 호스트 훅 또는 감시자 관찰이 티켓 범위 밖의 미해결 Product Repository 경로를 보고하면 닫기 준비 상태는 차단됩니다.
-- 유효한 `Task.mode=advisor` 상태에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 이 모드의 닫기 준비 상태 결과는 쓰기 티켓 갱신 항목을 만들거나 `volicord.prepare_write`를 추천하지 않으며, 현재 결과나 닫기 근거가 없으면 호환되는 `volicord.record_run` 경로로 안내합니다.
-- 최종 수락은 intake에서 선택한 Task 소유 `acceptance_policy`를 따릅니다.
-  `required`는 항상 호환 최종 수락을 확인하고, advisor Task에만 허용되는
-  `not_required`는 그 확인만 생략하며, `policy_dependent`는 쓰기 가능한 Task와
-  잔여 위험이 있는 advisor 결과에 수락을 요구합니다. 어떤 정책도 Evidence,
-  위험 수락, 다른 blocker를 면제하지 않습니다.
-- `detective` 프로필에서는 호스트 훅 경로 안전성, 프롬프트 캡처 가능 여부, 미해결 미기록 변경, 호스트 훅이 감지한 쓰기 티켓 문제, `session-watch` 가용성을 포함한 `GuardHealthSummary` 상태도 확인합니다. 호스트 훅 상태를 선택하면 도출된 `CoverageSummary`도 보고합니다. `record` 프로필에서는 호스트 훅이 필요하지 않습니다. 미해결 미기록 변경은 조정으로 해결될 때까지 닫기를 막습니다.
+- 해당 `Task`의 쓰기 티켓이 활성이고 소비되지 않은 채 남아 있거나, 무효화됐지만 해결되지 않았거나, 호스트 훅 또는 감시자 관찰이 티켓 범위 밖의 확인된 미해결 Product Repository 경로를 보고하면 닫기 준비 상태는 차단됩니다. 선택적 idle timeout은 안정된 무효화 티켓 차단 사유로 처리하며 고정 티켓 만료는 없습니다.
+- 유효한 `effective_control_level=observe` Task에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 닫기 준비 상태 결과는 `volicord.prepare_write`를 추천하지 않으며, 현재 결과나 닫기 근거가 없으면 호환되는 `volicord.record_run` 경로로 안내합니다.
+- 최종 수락은 유효 통제 수준과 권위 있는 프로젝트 정책을 따릅니다. `sensitive`와
+  `tracked`는 호환되는 최종 수락을 요구하고 `observe`는 `not_required`를 사용합니다.
+  `light`는 `policy_dependent`이며 현재 프로젝트 정책이 명시적으로 허용하고 민감 동작,
+  미해결 사용자 요구사항, 잔여 위험 수락 요구사항, 필수 Evidence 공백, 확인된 미기록
+  Product Repository 변경이 없는 등 정책 조건을 모두 계속 만족할 때만
+  `not_required`를 사용할 수 있습니다. 정책 강화는 이 판단 전에 유효 통제 수준을
+  올리며 절대 낮추지 않습니다. 어떤 정책도 Evidence, 민감 승인, 위험 수락, 다른
+  blocker를 면제하지 않습니다.
+- `detective` 프로필에서는 호스트 훅 경로 안전성, 프롬프트 캡처 가능 여부, 확인된 미해결 미기록 변경, 호스트 훅이 감지한 쓰기 티켓 문제, `session-watch` 가용성을 포함한 `GuardHealthSummary` 상태도 확인합니다. 호스트 훅 상태를 선택하면 도출된 `CoverageSummary`도 보고합니다. `record` 프로필에서는 호스트 훅이 필요하지 않습니다. 확인된 미해결 미기록 변경은 조정으로 해결될 때까지 닫기를 막습니다. 의심 변경은 경고나 검증 요청으로 남으며 `confirmed`로 승격되지 않는 한 `unresolved_unrecorded_changes`를 만들지 않습니다.
 - `GuardHealthSummary.native_host_output_adapter_config_verified`는 Detective의 생성 설정
   닫기 gating에만 참여합니다. `false`이면 적용되는 `guard_*` 설정 차단 사유에 기여할 수
   있고, `true`이면 그 설정 전제 조건만 충족합니다. 관리 최종 출력 지원, 정확한 실제 호스트
@@ -197,7 +200,7 @@ CloseTaskRequest:
 
 1. 요청 래퍼, 메서드 필드, `intent` 필드 조합, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 호출 맥락, 작업 범주, 행위자 출처, 요청한 종료 경로의 선행조건을 확인합니다.
-3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 `WriteTicket.basis_state_version`을 확인합니다. 오래되었거나 충돌하는 값은 `ToolRejectedResponse`를 반환합니다.
+3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 각 쓰기 티켓의 명시적인 상태 결합 유효성을 확인합니다. 충돌하는 envelope 버전이나 요청 해시는 `ToolRejectedResponse`를 반환하고, 무효화된 미해결 티켓은 안정된 닫기 차단 사유로 처리합니다. `basis_state_version`은 감사 전용입니다.
 4. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
 5. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`, 모드와 호환되는 종료 닫기 결과, 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계에 대해 메서드가 선택한 프로젝트 연속성 기록을 커밋합니다. 종료 결과는 `Task.mode=advisor`에서 `advice_only`, `Task.mode=direct` 또는 `work`에서 `completed`입니다.
 6. `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가지며 현재 `Task`, 범위 리비전, Change Unit과 호환되는 현재 수락된 `judgment_kind=cancellation`을 요구합니다. 취소 권한이 없거나 호환되지 않으면 차단 분기를 반환합니다.
@@ -212,7 +215,10 @@ CloseTaskRequest:
 | 상태 변경 `intent`의 차단 결과 | `project_state.state_version`을 증가시키지 않습니다. 종료 상태 변경, 이벤트, 재실행 행 없이 `base.effect_kind=no_effect`를 반환합니다. |
 | 사전 확인 거절 또는 유효한 `dry_run` 미리보기 | 아무것도 증가시키지 않습니다. |
 
-사전 확인 거절에는 오래된 `expected_state_version`, 오래된 닫기 관련 `WriteTicket.basis_state_version`, 멱등 요청 해시 충돌이 포함됩니다. 이런 충돌은 오류 담당 문서로 처리되며 닫기 차단 사유가 아닙니다.
+사전 확인 거절에는 오래된 `expected_state_version`과 멱등 요청 해시 충돌이 포함됩니다. 이런 충돌은 오류 담당 문서로 처리되며 닫기 차단 사유가 아닙니다. 쓰기 티켓 무효화는 상태에 묶이며 닫기 차단 사유 목록으로 처리합니다.
+
+읽기 전용 확인, 그 닫기 준비 상태 계산, 관련 없는 권한 상태 변경은 활성 쓰기
+티켓을 소비하거나 무효화하지 않습니다.
 
 ## 성공 결과
 
@@ -249,6 +255,7 @@ CloseTaskRequest:
 | `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 현재 닫기 근거가 선택된 요약을 참조하면 `evidence_summary.evidence_state`는 `accepted_for_close`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
 | `evidence_gate` | `blockers`를 만든 동일한 닫기 평가에서 파생된 필수 `EvidenceGateSummary`입니다. `state.evidence_gate`와 `summary_card.evidence`가 이 값을 복사합니다. 값은 [API 값 집합](schema-value-sets.md#evidence-gate-values)이 담당합니다. |
 | `artifact_refs` | 결과에 선택된 닫기 관련 아티팩트의 `ArtifactRef[]`입니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당합니다. |
+| `authority_receipt` | 선택한 Task에 대해 새로 계산한 `AuthorityReceipt`입니다. `completion_claim_allowed`는 유효하고 blocker가 없는 완료 근거(성공한 완료 종료 결과 포함)에서만 `true`이고, 차단됨, 취소됨, 대체됨, refresh 실패 또는 그 밖의 완료 불가 상태에서는 `false`입니다. |
 
 `CloseTaskResult`에는 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 `presentation_role=primary`인 차단 사유 행동에서 선택된 단일 표시 다음 행동이며 배열 위치는 선택 계약이 아닙니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 결과 하나의 `blockers[*].next_actions` 전체에는 primary가 정확히 하나 있으며 뒤쪽의 차단 사유 목록에는 additional 행동만 있을 수 있습니다.
 
@@ -275,8 +282,8 @@ CloseTaskRequest:
 | `rejected_cancellation_authority` | `user_action` | 현재 로컬 사용자의 취소 `UserActionResolution`이 `intent=cancel`을 명시적으로 거부했습니다. |
 | `stale_cancellation_authority` | `user_action` | 취소 `UserActionResolution`은 있지만 그 `Task`, 범위 리비전, Change Unit 또는 유효 사용자 행동 근거가 더 이상 현재 상태가 아닙니다. |
 | `open_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 열려 있고 아직 해결되지 않았습니다. |
-| `expired_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 해결되지 않은 상태로 만료되었습니다. |
-| `write_ticket_stale` | `write_compatibility` | 닫기 관련 쓰기 티켓이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
+| `expired_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 선택적으로 설정된 `idle_timeout` 때문에 무효화됐고 해결되지 않았습니다. 고정 만료는 없습니다. |
+| `write_ticket_stale` | `write_compatibility` | 닫기 관련 티켓이 `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `task_closed`, `explicit_revoke` 같은 상태 결합 무효화 뒤에도 해결되지 않았습니다. 관련 없는 전역 상태 버전 증가는 이 차단 사유를 만들지 않습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
 | `guard_not_installed` | `connection_capability` | `detective` 닫기 경로에 검증된 연결에서 사용할 수 있는 호스트 훅 설치 기록이 없습니다. |
 | `guard_reload_required` | `connection_capability` | `detective` 호스트 훅 파일은 설치되어 있지만, Volicord가 설정된 훅을 관찰하려면 먼저 호스트를 다시 시작하거나 설정을 다시 불러와야 합니다. |
@@ -287,7 +294,7 @@ CloseTaskRequest:
 | `guard_degraded` | `connection_capability` | `detective` 닫기 경로의 호스트 훅 설정이나 관찰 상태가 저하되었고 더 구체적인 `guard_*` 차단 사유가 적용되지 않습니다. 현재 호스트 훅 상태 정책이 이 저하 상태에서 닫기를 차단합니다. |
 | `guard_connection_unhealthy` | `connection_capability` | `detective` 닫기 경로에 정상 상태가 아닌 Agent Connection 정보가 있습니다. |
 | `session_watch_unavailable` | `connection_capability` | `detective` 닫기 경로에 Product Repository의 `session-watch` 관찰이 필요하지만 감시자 상태가 `disabled`, `degraded`, `unavailable`이거나 일부만 관찰한다는 경고가 있습니다. 복구나 재시도에는 채팅 밖의 행동이 필요하므로 `outside_chat_action_required=true`입니다. |
-| `unresolved_unrecorded_changes` | `connection_capability` | `detective` 관찰 상태가 닫기 전에 조정해야 하는 미해결 미기록 변경을 보고합니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함합니다. `can_resolve_in_chat`은 현재 경로가 채팅을 통한 사용자 경로로 진행할 수 있는지를 나타냅니다. |
+| `unresolved_unrecorded_changes` | `connection_capability` | `detective` 관찰 상태가 닫기 전에 조정해야 하는 확인된 미해결 미기록 변경을 보고합니다. 의심 변경은 이 차단 사유를 만들지 않고 경고와 검증 요청을 만듭니다. 이 차단 사유는 `owner_method=volicord.reconcile_changes`인 `next_actions`를 포함합니다. `can_resolve_in_chat`은 현재 경로가 채팅을 통한 사용자 경로로 진행할 수 있는지를 나타냅니다. |
 | `guard_write_ticket_missing_or_stale` | `write_compatibility` | 호스트 훅 이벤트가 누락되었거나, 판별할 수 없거나, 모호하거나, 오래된 쓰기 티켓 준비 상태를 닫기 경로에서 감지했습니다. |
 | `guard_write_ticket_path_scope_violation` | `write_compatibility` | 호스트 훅 이벤트가 `active` 쓰기 티켓 범위 밖의 Product Repository 경로를 관찰했습니다. |
 | `evidence_claim_unsupported` | `evidence_claim` | 필요한 닫기 주장이 지원되는 증거 범위를 갖지 못했습니다. |
@@ -361,7 +368,6 @@ CloseTaskRequest:
 - 검증 실패
 - 행위자 출처 또는 작업 범주 불일치
 - 오래된 `expected_state_version`
-- 오래된 닫기 관련 `WriteTicket.basis_state_version`
 - 멱등 요청 해시 충돌
 - 잘못된 프로젝트 또는 읽을 수 없는 `Task` 식별
 - Core 사용 불가
@@ -399,6 +405,10 @@ CloseTaskRequest:
 닫기 차단 사유 지속 저장 및 Core 권한 상태 변경과 별개입니다.
 
 커밋되는 `dry_run=false` 상태 변경 `intent`는 성공한 종료 결과만 지속 저장합니다. 차단 사유가 있는 상태 변경 `intent`는 응답 전용 `base.effect_kind=no_effect` 결과를 반환하고 종료 상태를 변경하지 않습니다. 성공한 종료 닫기는 닫기 전 준비 상태에 사용한 현재 닫기 근거와 별개인 종료 닫기 요약을 지속 저장할 수 있습니다. 성공한 `intent=complete`는 현재 닫기 근거의 잔여 위험 중 보이지만 잔여 위험 수락이 필요하지 않은 항목에 대해 `kind=known_limit` 프로젝트 연속성 기록도 지속 저장할 수 있습니다. 정확한 저장 효과, 재실행 행, 이벤트, 상태 버전 증가, 프로젝트 연속성 지속 저장, 별도 `session-watch` 진단 경계는 [저장 효과](../storage-effects.md)와 [저장소 버전 관리](../storage-versioning.md)가 담당합니다.
+
+반환되는 모든 authority receipt는 `completion_claim_allowed`를 도출합니다. 호출자는
+`false`를 권한 경계로 취급해야 하며 요약 문구, 성공한 전송, 부분 결과만으로 완료
+주장을 출력하면 안 됩니다.
 
 거절 응답과 유효한 상태 변경 `intent`의 `ToolDryRunResponse` 미리보기에는 저장 효과가 없습니다.
 

@@ -27,6 +27,8 @@ This document does not own:
 - blockers, pending user actions, available User Channel resolution paths, and write-ticket state
 - evidence and close-readiness observations, including `GuardHealthSummary` and `CoverageSummary`
 - project continuity, guarantee display, and next safe actions
+- requested and effective control, the project-policy basis, and whether the
+  current authority permits a completion claim
 
 Every successful result also includes the compact `summary_card`.
 When a Task is selected, every successful result also includes a freshly
@@ -77,6 +79,10 @@ The method creates no:
 - evidence update
 - write-ticket change
 
+In particular, a status read and its observed `state_version` do not invalidate
+or consume a write ticket. `WriteTicket.basis_state_version` is audit ordering
+metadata, not a validity coordinate.
+
 ## Success result
 
 Returns `StatusResult` with:
@@ -99,7 +105,7 @@ Include projection contract:
   separate internal Core boundary. Relevant stale or superseded records can
   still appear as opaque authority refs in owner-defined state and next-action
   fields; those refs are not request-detail projections.
-- `include.write_ticket` returns active, expired, stale, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`.
+- `include.write_ticket` returns active, invalidated, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`. An invalidated summary exposes its stable invalidation reason and validity basis; an optional project idle timeout is represented by `idle_timeout`, not by a fixed lifetime.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available, plus the canonical `evidence_gate` projection.
 - `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, the derived `CoverageSummary`, relevant next actions, and the same canonical `evidence_gate`. The blockers use the same close-readiness calculation as `volicord.check_close`.
@@ -124,6 +130,17 @@ Truthful projection rules:
 - `authority_receipt.latest_run_ref` uses durable `run_recorded` authority-event
   commit order. Run IDs and equal-millisecond timestamps never determine which
   Run is latest.
+- `active_task` exposes `requested_control_level`, `effective_control_level`,
+  and `control_level_reason`, together with the authoritative
+  `policy_schema`, `policy_version`, `policy_fingerprint`, and policy source.
+  Status never derives a lower effective control than the stored value.
+- `authority_receipt.completion_claim_allowed` is `true` only when the current
+  close basis is valid and the complete close-blocker set is empty. It is
+  `false` when no active Task exists, authority refresh cannot be completed, or
+  any blocker remains; display text and an agent assertion cannot override it.
+- Confirmed unresolved Unrecorded Changes contribute the close blocker.
+  Suspected changes remain visible as warnings or verification requests and do
+  not block close unless later promoted to `confirmed`.
 - A terminal selected Task projects its stored terminal state as `closed`,
   `cancelled`, or `superseded`, with an empty close-blocker set and no next
   action. A non-terminal `ready` close state selects `volicord.close_task` as
@@ -160,7 +177,7 @@ Truthful projection rules:
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
 | `continuity_summary` | `ProjectContinuitySummary[]` when `include.continuity=true`; omitted when the projection is not selected. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `task_flow` | `TaskFlowItem[]` when `include.continuity=true` and a Task is selected; omitted otherwise. It is the connected lineage projection, not inherited current authority. |
-| `authority_receipt` | Fresh `AuthorityReceipt` whenever a Task is selected, otherwise `null`. It uses the same observed `state_version` and carries the complete close-blocker set, latest recorded Run, product-write observation, evidence gate, and next actor/action. Shape is owned by [API State Schemas](schema-state.md#task-lineage-workspace-and-authority-receipt). |
+| `authority_receipt` | Fresh `AuthorityReceipt` whenever a Task is selected, otherwise `null`. It uses the same observed `state_version` and carries the complete close-blocker set, latest recorded Run, product-write observation, evidence gate, next actor/action, and derived `completion_claim_allowed`. Shape is owned by [API State Schemas](schema-state.md#task-lineage-workspace-and-authority-receipt). |
 
 The nested `AgentSafeUserActionRequestSummary` shape is owned by
 [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). Nested

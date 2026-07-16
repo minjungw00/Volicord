@@ -13,6 +13,8 @@ This page does not define storage record layouts, SQLite DDL, storage effects, a
 | Method or branch storage effects | [Storage Effects](storage-effects.md) |
 | Artifact storage lifecycle | [Artifact Storage](storage-artifacts.md) |
 | State-version clock, replay, locking, and incompatible storage handling | [Storage Versioning](storage-versioning.md) |
+| `baseline_sqlite_v7`, normal-open rejection of v6, and offline read-only v6-to-v7 copy/validation | [Storage Versioning](storage-versioning.md) |
+| Project policy copies, session-end receipts, control fields, state-bound ticket records, and separate non-authority workflow metrics | [Storage Records](storage-records.md) and [Storage DDL](storage-ddl.md) |
 | Runtime and repository location boundaries | [Runtime Boundaries](runtime-boundaries.md) |
 
 ## Nearby Routes
@@ -22,3 +24,6 @@ This page does not define storage record layouts, SQLite DDL, storage effects, a
 - Core authority concepts: [Core Model](core-model.md).
 - Security wording and guarantee semantics: [Security](security.md).
 - API error families: [API Errors](api/errors.md).
+- Administrative command, file, and host integration for policy application or
+  storage upgrade: [Administrative CLI](admin-cli.md). Storage pages own only
+  the database records and conversion effects.

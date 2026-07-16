@@ -10,6 +10,8 @@
 - 실행/증거 요약
 - 닫기 결과
 - 최종 출력 권한 고지
+- 관리 `AGENTS.md` 안내 블록
+- 내용 없는 Stop 종료 receipt
 - 에이전트 맥락 패킷
 
 이 문서는 렌더링 본문 지침, 사용자 표시 라벨, 표시 문구만 담당합니다.
@@ -22,6 +24,7 @@
 
 - 현재 상태 표시와 지원 표시를 위한 렌더링 템플릿 본문 지침과 표시용 패킷/본문 형태
 - 관리되는 최종 출력 권한 고지의 receipt 전체 및 크기 제한 대체 안내 본문 지침
+- 정확한 생성 `AGENTS.md` 관리 안내 본문과 크기가 제한된 내용 없는 Stop 종료 receipt 본문
 - 그 본문의 사용자 표시 라벨, 표시 문구, 지역화 라벨, 해결 안내
 - 표시 문구로서의 공개 오류 표시 라벨
 - 본문 자리 표시자에서 스키마 및 권한 담당 문서로 가는 링크
@@ -293,6 +296,42 @@
 - 가능하면 특정 검증기나 확인 결과를 보여 줍니다.
 - 더 분명한 타입 있는 공개 코드가 없을 때만 이 대체 라벨을 사용합니다.
 
+<a id="managed-agents-guidance-body"></a>
+## 관리 `AGENTS.md` 안내 본문
+
+Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/check-close 호출 절차를
+강요하지 않고 오래 유지되는 권한·안전 경계를 설명합니다.
+
+```markdown
+<!-- BEGIN VOLICORD MANAGED GUIDANCE -->
+# Volicord
+
+- Treat Volicord's recorded scope and user-owned decisions as authoritative.
+- Do not modify Product Repository files outside an active compatible write authorization.
+- Do not infer, resolve, or record user-owned judgments on the user's behalf.
+- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.
+- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.
+- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.
+<!-- END VOLICORD MANAGED GUIDANCE -->
+```
+
+이 블록은 생성된 저장소 안내일 뿐 Core 상태, 쓰기 티켓, 사용자 권한, Agent가 지침을
+따랐다는 증거, 제품 파일 편집 허가가 아닙니다.
+
+<a id="stop-termination-receipt-body"></a>
+## Stop 종료 receipt 본문
+
+호스트 대상 결과는 항상 allow/continue 종료 결정을 표시하고 활성 Task가 있으면 그 Task,
+Task 상태, 크기가 제한된 incomplete 이유 코드, 다음 actor,
+`completion_claim_allowed`, `authoritative_refresh_succeeded`를 별도로 표시합니다. 갱신에
+성공하면 검증된 새 권한 receipt도 포함할 수 있습니다. 갱신 실패는 안전한 실패 종류와
+유효한 공개 오류 코드만 표시합니다.
+
+영속 receipt는 관리 세션 좌표, 선택적 활성 Task 좌표, Task 상태, 차단 코드, 다음 actor,
+완료 flag, 갱신 성공 flag, 관찰 시각만 담습니다. 모델 최종 산문, 프롬프트, 명령, 파일
+경로·내용, 사용자 답변, 원시 호스트 이벤트, 오류 본문은 포함하면 안 됩니다. 정확한 replay는
+같은 결과를 반환하며 호스트에 두 번째 Stop을 요구하지 않습니다.
+
 <a id="final-output-authority-disclosure-body"></a>
 ## 최종 출력 권한 고지 본문
 
@@ -323,8 +362,8 @@
 - Core 오류 메시지, 오류 세부사항, 요청·응답 본문, 모델이 작성한 최종 산문, 원시
   호스트 이벤트 텍스트.
 - 생성된 설정만으로 호스트가 이 고지를 표시했다는 의미.
-- 이 고지가 권한을 만들거나, Core 상태를 바꾸거나, 호스트 관찰을 기록하거나,
-  Detective 닫기 관문을 대체한다는 의미.
+- 이 고지가 권한을 만들거나, Core 상태를 바꾸거나, 호스트 관찰을 기록하거나, 호스트
+  종료를 차단하거나, Detective 완료 주장 고지를 대체한다는 의미.
 
 ### 사용자에게 보이는 문구
 

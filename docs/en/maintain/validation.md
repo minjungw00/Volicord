@@ -626,9 +626,8 @@ For each host, confirm all of these observations against the release candidate:
    ready/blocker-free status is a clean-fixture precondition, not the native
    assertion source. The harness reads the complete canonical Stop receipt from
    the persisted GuardEvent; it neither requests nor credits a final-output UI
-   copy. After the first blocked Stop message is visible, an automatically
-   retrying host may be interrupted once before a second distinct Stop is
-   created; process exit does not synthesize a later Stop.
+   copy. The first managed Stop must allow session termination and the host
+   must not retry it; process exit does not synthesize a later Stop.
 6. The bounded JSON result reports a unique validation `run_id`, start and
    record times, host version, Volicord `build_id`, exact Agent Connection ID,
    operator-confirmed and stored choice, authority-event order, consumed Run,

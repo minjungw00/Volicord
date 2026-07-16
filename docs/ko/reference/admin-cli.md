@@ -70,6 +70,11 @@ volicord init --host codex|claude-code --repo PATH [--shared] [--profile record|
 volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json] [--privacy-footprint]
 volicord diagnostics session [--session ID] [--json]
+volicord diagnostics workflow-metrics --repo PATH --json
+volicord policy show --repo PATH --json
+volicord policy validate --file PATH
+volicord policy apply --repo PATH --file PATH --json
+volicord storage upgrade --source-home PATH --destination-home PATH --json
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
 volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
@@ -116,14 +121,17 @@ volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --
   출력은 결과 상태, 진단, `summary_card`, `checks`, `actions`, 안정 필드를 위한 자동화
   표면입니다. 자동화는 기본 사람용 텍스트 출력을 파싱하면 안 됩니다.
 - 숨겨진 내부 훅 명령은 기본적으로 `--output volicord-json`을 사용합니다.
-  `volicord-json` 모드에서는 Volicord 래퍼 JSON을 쓰고, `deny`는 종료 코드
-  `1`로 끝나며, `allow`, `warn`, `inject_context`는 종료 코드 `0`으로 끝납니다.
-  `--output text`는 같은 종료 동작으로 사람이 읽기 쉬운 짧은 한 줄을 씁니다.
+  `volicord-json` 모드에서는 Volicord 래퍼 JSON을 씁니다. 도구 실행 전 단계와
+  프롬프트 캡처의 `deny` 결정은 종료 코드 `1`로 끝나고, `allow`, `warn`,
+  `inject_context`는 종료 코드 `0`으로 끝납니다. Stop은 항상 종료 코드 `0`과
+  `decision=allow`를 사용하고 완료 주장 가능 여부를 별도로 보고합니다.
+  `--output text`도 같은 종료 동작으로 사람이 읽기 쉬운 짧은 한 줄을 씁니다.
 - `--host-output codex|claude-code`를 받은 숨겨진 내부 훅 명령은 Volicord 래퍼 JSON
   대신 호스트 고유 훅 출력을 씁니다. 정책 결정은 해당 호스트의 stdout, stderr, 종료
   코드 규칙을 사용합니다. 생성되는 Codex와 Claude Code 훅 래퍼 스크립트는 이 모드를
-  사용하며, Claude Code 정책 차단은 종료 코드 `1`로 표현하지
-  않습니다.
+  사용합니다. Stop은 항상 해당 호스트의 한 번에 끝나는 continue/allow 형태를 선택하며
+  Stop 재호출을 요청하면 안 됩니다. 그 밖의 Claude Code 정책 차단은 종료 코드 `1`로
+  표현하지 않습니다.
 - 오류는 CLI 종료 코드 모델에 따라 stderr 진단으로 남습니다.
 - `volicord serve --transport local-http`는 명시적 장기 실행 MCP 전송 프로세스입니다.
   네이티브 실행은 루프백 주소만 허용하고, `--container-listen`은 Docker 호스트 루프백
@@ -301,6 +309,38 @@ manifest가 아닙니다. 정확한 외부 스키마와 게이트는
 `non_guarantees` 값을 담습니다.
 
 <a id="project-commands"></a>
+<a id="offline-storage-upgrade"></a>
+## 오프라인 저장소 업그레이드
+
+`volicord storage upgrade --source-home PATH --destination-home PATH --json`은
+저장소 프로필 사이에서 지원되는 오프라인 복사·변환 경로입니다. Runtime Home을
+제자리에서 업그레이드하지 않습니다. 두 `PATH`는 서로 다른 위치로 해석되어야 하며,
+원본은 이미 존재해야 하고 대상에는 초기화된 Runtime Home이 없어야 합니다.
+
+명령은 다음 단계를 순서대로 수행합니다.
+
+1. 저장소 프로필을 포함해 원본을 읽기 전용으로 열고 검증합니다.
+2. 원본을 바꾸지 않고 새 대상 Runtime Home을 만듭니다.
+3. 원본과 대상 프로필 담당 계약에 따라 레코드를 복사하고 변환합니다.
+4. 외래 키, 행 수, 보존 식별자, canonical JSON을 검증합니다.
+5. 사용자 소유 판단과 증거의 canonical hash를 비교합니다.
+6. 내용이 없는 변환 보고서를 대상에 기록합니다.
+7. 원본 파일과 프로필 좌표가 바뀌지 않았는지 다시 확인합니다.
+8. 관리자가 별도로 활성화할 대상 경로를 반환합니다.
+
+모든 단계가 통과한 뒤에만 성공을 보고합니다. 실패한 대상은 사용할 수 있거나 활성화된
+상태로 표시하면 안 됩니다. 재실행은 앞선 실패 시도가 자신이 만든 미완료 스테이징
+상태라고 식별한 대상만 재사용할 수 있으며, 그 밖의 비어 있지 않은 대상은 충돌입니다.
+JSON은 `status`, 원본·대상 프로필 식별자와 위치, 완료 단계, 보존 레코드 수,
+canonical-hash 점검 수, `source_unchanged`, `destination_ready`, 별도 활성화 동작을
+보고합니다. 판단 본문, 증거 본문, 프롬프트, 답변, Product Repository 파일 내용,
+비밀값, 원시 데이터베이스 행은 포함하지 않습니다.
+
+이 명령은 `VOLICORD_HOME`을 전환하거나, 호스트 설정을 다시 쓰거나, 대상을 활성화하거나,
+원본을 삭제·변경하거나, 이전 프로필의 열기 규칙을 완화하거나, 복사된 기록으로 정확성을
+주장하지 않습니다. 정확한 프로필 변환과 레코드 보존은 집중 저장소 담당 문서가
+담당합니다.
+
 ## 프로젝트 명령
 
 프로젝트 명령은 저장소 루트를 사용자 대상 프로젝트 식별자로 사용합니다. 내부 프로젝트
@@ -468,9 +508,10 @@ Code는 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다.
 
 연결 의도는 관리 Agent Connection 대상을 선택합니다. 이와 별도로 init은
 `personal`과 `shared` 모두에서 현재 저장소 통합 파일 구성을 유지합니다.
-`AGENTS.md`의 관리 블록은 저장소 안내이고, `.volicord/policy.json`은 의도와
-무관한 로컬 오버레이입니다. 정책은 `storage_scope=local_overlay`와 선택한
-`connection_intent`를 기록하며 공유 저장소 상태 보기가 될 수 없습니다. 공유
+`AGENTS.md`의 관리 블록은 저장소 안내이고, `.volicord/policy.json`은 로컬 관리
+`volicord-policy-v2` 사본입니다. `storage_scope=local_overlay`, 선택한
+`connection_intent`, 닫힌 프로젝트 작업 흐름 정책을 유지하지만 공유 저장소 상태 보기나
+권한 있는 정책 사본이 될 수 없습니다. 공유
 Claude Code init은 저장소의 `.mcp.json` 상태 보기도 함께 관리합니다. 개인 Claude
 Code init은 MCP 등록에 호스트의 로컬 CLI 대상만 사용합니다. Detective profile은
 어댑터 소유 저장소 훅 설정과 규칙에 더해 로컬 래퍼 스크립트를 추가합니다. 개인 Claude
@@ -614,15 +655,18 @@ final_output_authority_disclosure:
 
 선택한 프로필에 적용되는 하위 역량만 존재합니다. Record에는 `authority_display`와
 `authenticated_exact_replay`가 필요하고, Detective에는 두 항목과
-`block_finalization`이 필요합니다. 폐기한 `supported`와 `verified` boolean은 별칭이
+기존 이름 `block_finalization`인 진단이 필요합니다. 이는 종료는 계속 허용하면서 호스트가
+`completion_claim_allowed=false`를 고지할 수 있다는 뜻이며 Stop deny나 retry를 뜻하지
+않습니다. 폐기한 `supported`와 `verified` boolean은 별칭이
 아닙니다. 설정 필드만으로 `support_status`를 올릴 수 없으며, 이 필드는 중앙의 정확한
 증거·런타임 평가기에서 나옵니다. 현재 Volicord 출력은 `os_enforced=false`와
 `actor_identity_provable=false`를 보고해야 합니다.
 
-init과 연결 검증은 같은 명령이 설치 호스트의 새 probe를 완료했을 때만 정규 호스트
-버전을 이 projection에 전달합니다. 연결 상태와 Doctor는 그 probe를 실행하지 않으므로
-호스트 종류 대체 표를 사용합니다. 저장된 검증 보고서의 버전은 진단 이력이며 두 현재
-projection의 입력으로 사용해서는 안 됩니다.
+init과 연결 검증은 새 capability probe 결과와 관찰한 정규 호스트 버전을 이 projection에
+전달합니다. 연결 상태와 Doctor는 probe를 시작하지 않습니다. 읽을 수 있는 현재 probe
+관찰이 최신이면 사용하고, 그렇지 않으면 구현된 표면을 `implemented_unverified`로 둡니다.
+저장된 검증 보고서의 버전은 진단 이력이며 동등성만으로 두 현재 projection을 좌우하면 안
+됩니다.
 
 연결 상태는 여섯 키 map을 항상 `states.host_feature_support`에 출력합니다. 저장된 설치
 프로필이 정확히 `record` 또는 `detective`일 때만 선택 프로필 세부정보를
@@ -729,9 +773,12 @@ init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 MCP 시�
   `volicord mcp --stdio --discover-repository --host codex|claude-code`와 호스트별
   `VOLICORD_HOME` 전달 형태 하나를 씁니다. Runtime Home의 리터럴 경로나 그 밖의 환경
   항목은 쓰지 않습니다.
-- `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
-- 선택한 `connection_intent`와 숨겨진 내부 훅 명령군을 호출하는 탐지용 호스트 훅
-  명령을 담은 `local_overlay` 정책으로 `.volicord/policy.json`을 씁니다.
+- [템플릿 본문](template-bodies.md#managed-agents-guidance-body)이 담당하는 경계 중심
+  본문을 사용해 `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다. 이 블록은
+  고정된 status/intake/check-close 호출 절차를 강요하지 않습니다.
+- 선택한 `connection_intent`, 닫힌 작업 흐름 정책, 숨겨진 내부 훅 명령군을 호출하는
+  Detective 호스트 훅 명령을 담은 로컬 관리 `volicord-policy-v2` 사본으로
+  `.volicord/policy.json`을 씁니다. 프로젝트 데이터베이스 정책은 계속 권한 원천입니다.
 - Git 기반 저장소에서는 두 의도 모두 실제 Git `info/exclude`의 Volicord 관리 로컬
   경로 블록을 쓰거나 갱신합니다. 이 블록은 항상 `.volicord/`와 생성된 래퍼
   스크립트를 보호하고, 독립형 `personal` init에서는 개인 전용 훅 설정과 규칙 경로도
@@ -825,24 +872,45 @@ Unix에서 새 `.volicord/policy.json`은 사용자 전용 모드 `0600`으로 �
 이는 로컬 오버레이 스키마이며, 이 로컬 오버레이 환경 리터럴 값은 어느 것도 공유
 `.codex/config.toml`이나 `.mcp.json`의 Volicord 항목으로 복사하지 않습니다. 공유 항목에는
 위에서 정의한 호스트별 이식 가능한 `VOLICORD_HOME` 전달 형태만 허용합니다.
-정책 스키마는 `storage_scope=local_overlay`, 선택한 `connection_intent`, 비어 있지 않은
-호스트·저장소·연결 식별자 집합, 문자열 인자와 문자열 환경 값을 가진 MCP 명령, 그리고
-`selected_profile`과 일치하는 호스트 훅 활성 상태도 요구합니다. 최상위, `mcp`,
-`host_hook`, 필수 단계 명령, 개별 명령 객체는 닫힌 필드 집합을 사용합니다. 알 수 없는
-필드나 단계, 문자열이 아닌 인자 또는 환경 값은 거부됩니다. 감사에서는 현재 기록된
-정책이 이 형태를 어기거나 기록된 의도와 맞지 않으면 깨진 상태로 취급합니다. 대응하는
-기록된 호스트 capability에도 문자열 `connection_intent`가 있어야 합니다. 값이 없거나
-문자열이 아니면 호환 대체 경로를 사용하지 않고 깨진 상태로 취급합니다.
+현재 관리 정책 스키마는 정확히 `volicord-policy-v2`입니다. v1의 저장소, 연결, MCP,
+호스트 훅 바인딩을 모두 유지하면서 닫힌 프로젝트 소유 `workflow` 정책을 추가합니다.
+정책은 `managed_by=volicord`, `storage_scope=local_overlay`, 선택한
+`connection_intent`, 비어 있지 않은 호스트·저장소·연결 식별자 집합, 문자열 인자와
+문자열 환경 값을 가진 MCP 명령, 그리고 `selected_profile`과 일치하는 호스트 훅 활성
+상태를 요구합니다. 감사에서는 현재 기록된 정책이 이 형태를 어기거나 기록된 의도와
+맞지 않거나 권한 있는 프로젝트 정책 fingerprint와 다르면 깨진 상태로 취급합니다. v2
+런타임 경로에는 암묵적인 v1 호환 대체 경로가 없습니다.
 
-닫힌 정책 객체가 허용하는 필드는 정확히 다음과 같습니다.
+닫힌 v2 객체가 허용하는 필드는 정확히 다음과 같습니다.
 
 - 최상위: `schema`, `managed_by`, `storage_scope`, `connection_intent`, `host`,
   `repo_root`, `connection_id`, `guard_installation_id`, `selected_profile`, `mcp`,
-  `host_hook`
+  `host_hook`, `workflow`
 - `mcp`: `command`, `args`, `env`
 - `host_hook`: `enabled`, `commands`
 - `host_hook.commands`: `session_start`, `pre_tool`, `post_tool`, `prompt_capture`, `stop`
 - 각 단계 명령: `command`, `args`
+- `workflow`: `default_direct_control`, `default_work_control`, `light`,
+  `write_ticket`, `detective`
+- `workflow.light`: `enabled`, `max_intended_paths`, `allowed_path_patterns`,
+  `denied_path_patterns`, `final_acceptance`
+- `workflow.write_ticket`: `idle_timeout_minutes`
+- `workflow.detective`: `unknown_effect_behavior`, `stop_behavior`
+
+`default_direct_control`과 `default_work_control`은 `observe`, `light`, `tracked`,
+`sensitive` 중 하나이며 보수적인 `tracked`가 둘의 기본값입니다. 이는 프로젝트 최솟값으로,
+담당자가 정의한 상향 규칙을 덮어쓰거나 활성 Task의 수준을 자동으로 낮추지 않습니다.
+`light.enabled` 기본값은 `false`, `max_intended_paths` 기본값은 `3`,
+`final_acceptance`는 `policy_dependent`입니다. `idle_timeout_minutes`는 양의 정수 또는
+`null`이고 기본값은 `null`입니다. `unknown_effect_behavior`는 `warn`,
+`stop_behavior`는 `allow_with_disclosure`이며 v2 기준선에서는 이 값들만 허용합니다.
+
+`allowed_path_patterns`와 `denied_path_patterns`의 각 항목은 정규화된 저장소 상대 파일
+또는 디렉터리 prefix입니다. 정확한 경로나 디렉터리 prefix의 하위 경로가 일치합니다.
+빈 항목, 절대 경로, 저장소를 벗어나는 `..` segment, 모호한 비정규화 형태는
+잘못되었습니다. 거부 prefix가 항상 우선합니다. 허용 목록이 비어 있으면 Light 제품
+파일 쓰기를 하나도 허용하지 않으며 wildcard로 해석하지 않습니다. 알 수 없는 필드와
+잘못된 값은 관대한 기본값으로 처리하지 않고 거부합니다.
 
 init에서 계획된 관찰 훅 통합 관리 파일은 같은 디렉터리의 조건부 커밋으로 적용합니다.
 이 규칙은 관리 지침, 정책, 훅, 래퍼, 규칙, Git 제외 파일에 적용됩니다. 프로젝트
@@ -899,6 +967,59 @@ Detective 계획은 추가 개인 전용 경로를 공통 메타데이터에 안
 - 새 관리 파일은 선택된 디렉터리에서 새 파일이 일반적으로 받는 메타데이터를
   사용합니다. 플랫폼 전체에서 소유자, ACL, 확장 속성, 타임스탬프, 대체 데이터
   스트림, 라벨, 그 밖의 메타데이터 전체가 동등하다는 의미는 아닙니다.
+
+<a id="project-workflow-policy-commands"></a>
+## 프로젝트 작업 흐름 정책 명령
+
+이 명령들은 Agent Connection MCP 표면과 독립적으로 프로젝트 소유 작업 흐름 정책을
+관리합니다.
+
+```text
+volicord policy show --repo PATH --json
+volicord policy validate --file PATH
+volicord policy apply --repo PATH --file PATH --json
+```
+
+`policy validate`는 크기가 제한된 정규 JSON 파일 하나를 엄격하게 읽고 닫힌
+`volicord-policy-v2` 형태와 정규화된 경로 prefix를 검증한 뒤 canonical
+`sha256:<lowercase-hex>` fingerprint를 계산합니다. Runtime Home을 선택하거나 만들지
+않고, 프로젝트 상태를 열거나 입력을 바꾸거나 `.volicord/policy.json`을 쓰지 않습니다.
+성공하면 스키마와 fingerprint를 보고하고, 실패하면 비밀값처럼 보이는 환경 값을 복사하지
+않은 채 크기가 제한된 필드 경로와 검증 코드를 보고합니다.
+
+`policy show`는 `--repo`로 등록 프로젝트를 선택하고 권한 있는 프로젝트 데이터베이스
+정책과 관리 파일을 서로 독립적으로 읽어 다음을 반환합니다.
+
+- `schema`, 단조 증가하는 프로젝트 로컬 `policy_version`, 권한 있는
+  `policy_fingerprint`
+- 작업 흐름 결정을 지배하는 정책에 대한 `source=project_database`
+- 파일을 읽을 수 있을 때 관리 파일의 스키마와 fingerprint
+- `file_matches_authority`와 파일 없음, 형식 오류, fingerprint 불일치, 바인딩 불일치,
+  권한 실패 같은 제한된 불일치 상태
+- 활성 Task가 다음 쓰기 전에 통제 수준 상향을 필요로 하는지 여부
+- 두 사본이 다를 때 실행 가능한 복구 명령
+
+관리 파일을 데이터베이스보다 조용히 우선하거나 어느 사본도 변경하지 않습니다. MCP 환경
+값, 정책 원본 JSON, 프롬프트, 파일 내용, 사용자 답변도 출력하지 않습니다.
+
+`policy apply`는 엄격한 스키마 검증, Product Repository·Runtime Home·호스트·연결·guard
+installation 바인딩 검증, 현재 권한 fingerprint와 비교, canonical 정책·fingerprint·스키마와
+다음 `policy_version`을 프로젝트 상태에 기록, 관리 정책 파일의 조건부 원자적 교체, 다음
+쓰기 전 통제 수준 상향 재평가가 필요한 활성 Task 표시를 순서대로 수행합니다. 프로젝트
+정책은 Agent가 요청한 통제 수준보다 항상 우선합니다. 덜 제한적인 정책을 적용해도 활성
+Task 수준을 자동으로 낮추지 않습니다.
+
+같은 canonical fingerprint를 다시 적용하는 것은 멱등이며 `policy_version`을 올리지
+않습니다. 다만 누락되거나 불일치하는 관리 파일은 복구할 수 있습니다. 변경된 canonical
+정책은 `policy_version`을 정확히 한 번 올립니다. 프로젝트 데이터베이스가 권한 원천이므로
+커밋 뒤 검증된 파일 교체 전에 실패하면 `status=failed`, `database_changed=true`,
+`file_matches_authority=false`와 정확한 복구 행동을 반환하며 적용 완료를 보고하지 않습니다.
+이후 `policy show`, doctor, connection status 진단은 계속 그 불일치를 드러내야 합니다.
+
+Apply JSON은 `status`, `changed`, `database_changed`, `file_changed`,
+`restart_required`, 스키마, 이전·결과 정책 version과 fingerprint, 파일 일치 상태, 활성 Task
+상향 상태, `actions`를 보고합니다. 정책 원본 JSON, 훅 바인딩의 명령 텍스트, 환경 값,
+프롬프트, Product Repository 내용, 사용자 답변은 포함하지 않습니다.
 
 <a id="volicord-agent-install"></a>
 ## Agent Connection 명령
@@ -1246,29 +1367,36 @@ Codex 이벤트에는 정확한 최상위 `turn_id`도 있어야 합니다. 중�
 - `session-start`는 Agent Session을 기록하거나 재사용하고, 호스트 세션 주입용으로
   간결한 프로젝트, 현재 작업, 쓰기 티켓, 대기 사용자 행동, 차단 사유, 미해결 변경
   맥락과 함께 `inject_context`를 반환합니다.
-- `pre-tool`은 읽기 전용, 명확한 변경, 불확실한 도구 시도를 분류합니다. 읽기와 상태
-  명령은 차단 사유를 만들지 않고 허용됩니다. 제품 파일 쓰기 시도는 현재 작업이 없거나,
-  현재 활성 쓰기 티켓 행이 없거나, 시도 대상이 선택된 `Product Repository` 밖에 있거나,
-  관찰된 경로가 활성 쓰기 티켓 범위 밖에 있거나, 활성 티켓 대조가 모호하거나, 정책이
-  명확한 변경 셸 명령을 차단할 때 `deny` 또는 `warn`을
-  반환할 수 있습니다. 이러한 결정은 협력형 호스트 결정이며 OS 수준 집행이 아닙니다.
-  불확실한 셸 명령은 탐지용 호스트 훅 정책이 `deny`를 요구하지 않으면 기본적으로
-  `warn`입니다. `pre-tool`이 구체적인 저장소 내부 경로 집합, 현재 작업, 정확히 하나의
-  현재 활성 일치 쓰기 티켓, 호환되는 프로젝트 범위를 가진 명확한 제품 파일 쓰기를
-  허용하면 예상 쓰기 상관 행을 기록합니다. 이 행은 프로젝트, 연결, 세션, 선택적 호스트
-  호출 식별 정보, 도구 종류, 정확한 경로 정책, Task/Change Unit/쓰기 티켓
-  근거, 타임스탬프 메타데이터를 담습니다. 읽기 전용, 불확실한, 모호한, 티켓 범위 밖
-  명령은 예상 쓰기 행을 만들지 않습니다.
-- `post-tool`은 관찰된 도구 결과를 기록합니다. 이벤트가 변경된 `Product Repository`
-  경로를 제공하면 먼저 같은 프로젝트, 연결, 세션, 제한된 시간 창, 정확한 경로 정책의
-  이전 예상 쓰기 행과 맞춰 봅니다. 호스트가 호출 식별 정보를 제공하면 그 식별 정보를
-  사용합니다. 예상 쓰기 행이 일치하지 않으면 `post-tool`은 변경 경로를 정확히 하나의
-  현재 활성 일치 쓰기 티켓에 연결할 수 있습니다. 일치한 범위 안 쓰기는 미해결 미기록
-  변경 행을 만들지 않습니다. 일치하지 않았거나, 티켓 범위 밖이거나, 모호한 Product
-  Repository 변경은 미해결 미기록 변경 행을 기록하고 `warn`을 반환합니다. `post-tool`
-  관찰과 대조는 호스트 관찰 기록이지 제품 정확성, 행위자 신원, 쓰기 방지 증명이 아닙니다.
-  변경을 찾기 위해 신뢰할 수 없는
-  명령을 실행하지 않습니다.
+- `pre-tool`은 `MutationAssessment`를 반환합니다. `effect`는 `read_only`,
+  `product_write`, `outside_product_write`, `unknown` 중 하나이고 `confidence`는
+  `confirmed` 또는 `uncertain`이며, 결정은 `allow`, `warn`, `deny` 중 하나입니다.
+  하드 `deny`는 호스트가 구조화한 직접 제품 파일 쓰기이고, 구체적인 정규화 저장소 내부
+  대상 경로가 `confirmed`이며, 현재 Task나 정확히 하나의 현재 활성 일치 쓰기 티켓이
+  없거나 경로가 티켓 범위 밖이거나 sensitive 승인이 누락된 경우에만 허용됩니다. 명령
+  이름이나 셸 텍스트만으로 경로 또는 효과를 확정해서는 안 됩니다. 효과·경로·티켓 대조가
+  하나라도 불확실하면 `warn`이며 정상 작업을 하드 차단하지 않습니다.
+
+  안전한 읽기 분류는 구조화된 호스트 효과 또는 명시적으로 열거된 좁은 부작용 없는
+  subcommand에만 적용합니다. `git`, `cargo`, `npm`, `python`, `sh` 같은 전체 명령군을
+  읽기 전용으로 간주하지 않습니다. `pre-tool`이 구체적인 저장소 내부 경로 집합, 현재
+  Task, 정확히 하나의 현재 활성 일치 쓰기 티켓, 호환 프로젝트 범위를 가진 명확한 제품
+  파일 쓰기를 허용하면 예상 쓰기 상관 행을 기록합니다. 읽기 전용, 불확실한, 모호한,
+  티켓 범위 밖 시도는 그런 행을 만들지 않습니다. 이 결정은 협력형 호스트 결정이며 OS
+  수준 집행이 아닙니다.
+- `post-tool`은 변경 관찰을 다음 우선순위로 평가합니다. 먼저 호스트가 제공한 구조화된
+  `changed_paths`, 다음으로 세션 감시기의 before/after 스냅샷, 그다음 안전하고 경계가
+  정해진 Git diff, 마지막으로 제한된 heuristic을 사용합니다. 더 낮은 신뢰도 원천은 더
+  높은 신뢰도 원천과 모순되는 `confirmed` 사실을 만들 수 없습니다. 알려진 경로와 신뢰할
+  수 있는 before/after 증거가 실제 Product Repository 변경을 보이면 `confirmed`입니다.
+  감시기를 사용할 수 없거나 heuristic·모호한 Git 상태만 있으면 `suspected`입니다.
+
+  `confirmed` 변경은 이전 예상 쓰기 행 또는 정확히 하나의 현재 활성 일치 쓰기 티켓과
+  대조합니다. 범위 안에서 일치하면 미해결 미기록 변경을 만들지 않습니다. 일치하지 않거나
+  범위 밖인 confirmed 변경은 미해결 미기록 변경과 닫기 차단 사유를 기록하고 `warn`을
+  반환합니다. `suspected` 변경은 진단과 경고만 기록하며 닫기 차단 사유가 아닙니다. 이후
+  신뢰할 수 있는 관찰이 이를 confirmed로 승격하거나 변경 없음으로 해소해야 합니다.
+  `post-tool` 관찰은 제품 정확성, 행위자 신원, 쓰기 방지의 증명이 아니며 변경을 찾기 위해
+  신뢰할 수 없는 명령을 실행하지 않습니다.
 - `prompt-capture`는 현재 호스트, 프로젝트, 연결의 프롬프트 캡처 사용 가능 상태가
   `configured`, `observed`, `active`일 때만 프롬프트 캡처 메타데이터를 기록하고 엄격한
   채팅 사용자 행동 명령을 인식합니다. 프롬프트에는 저장된 양식과 일치하는 명시적 줄이
@@ -1308,23 +1436,26 @@ Codex 이벤트에는 정확한 최상위 `turn_id`도 있어야 합니다. 중�
   `replayed=true`는 동일한 지속 resolution이 멱등 재실행으로 반환됐을 때만
   사용합니다. 로컬 진단은 성공한 인식 명령을 모두 Core 도달로 세지만, 재실행이 아닌
   경우만 Core 커밋으로 셉니다.
-- `stop`은 현재 작업을 완료로 다뤄도 되는지 점검합니다. 현재 작업에 대해 `allow`를
-  반환하기 전에 닫기 데이터를 포함한 최신 Core 상태 응답을 가져옵니다.
-  `base.response_kind=result`이고 `base.effect_kind=read_only`인 응답만 이 결정의 후보가
-  됩니다. Core 소유 `AuthorityReceipt`가 새로 읽은 상태 버전, 프로젝트, Task, Task 참조
-  버전, 범위 revision, 현재 Change Unit, 증거 gate, 닫기 상태, 닫기 차단 사유, 이 훅
-  이벤트에서 캡처한 guard 맥락과 일치해야 합니다. 하나라도 맞지 않거나, 응답 종류가
-  `result`가 아니거나, 필요한 상태 필드가 누락되었거나 형식이 잘못되었으면 이유 코드
-  `authoritative_refresh_failed`와 함께 `deny`를 반환합니다. 이 거절에서
-  `result.close_status.authoritative_refresh`는 인식된 `response_kind` 값만 담고, 값이
-  누락되었거나 형식이 잘못되었으면 `null`을 담으며, 유효한 공개 `ErrorCode` 값으로만
-  구성된 `error_codes` 목록을 함께 담습니다. Core 오류 메시지, 오류 세부사항, 요청 본문,
-  응답 본문을 복사하면 안 됩니다. Core 호출 자체가 실패하면 기존 내부 훅 명령 오류
-  경로를 유지합니다. 이 갱신은 읽기 전용이며, 갱신 실패 거절은 일반 훅 관찰 기록 외에
-  Core 상태 효과를 만들지 않습니다. 유효한 결과는 일치한 receipt를
-  `result.close_status.authority_receipt`에 주입합니다. 닫기 차단 사유가 남아 있거나,
-  사용자 소유 판단이 대기 중이거나, 미해결 미기록 변경이 남아 있으면 `deny`를 반환하고,
-  그렇지 않으면 `allow`를 반환합니다.
+- `stop`은 호스트 세션 종료를 항상 허용합니다. 활성 Task가 있으면 닫기 데이터를 포함한
+  최신 읽기 전용 Core 상태를 가져와 검증하지만, 상태 갱신과 완료 주장 적격성은 종료
+  허용 여부와 분리됩니다. 결과는 항상 `decision=allow`, `allowed=true`, 성공적인 호스트
+  continue 형태를 사용합니다. 사용자 행동이 대기 중이거나, confirmed 미기록 변경이
+  있거나, Evidence 또는 다른 닫기 요건이 누락됐거나, 권한 있는 갱신에 실패하면
+  `completion_claim_allowed=false`입니다. suspected 변경 하나만으로는 다른 담당자 정의
+  차단 사유가 없는 한 완료 주장을 억제하지 않습니다.
+
+  결과는 활성 Task, `task_state`, `severity=incomplete`인 제한된 이유,
+  `next_actor`, `completion_claim_allowed`, `authoritative_refresh_succeeded`를
+  보고합니다. 성공한 갱신은 검증된 현재 `AuthorityReceipt`도 포함할 수 있습니다. 실패하거나
+  형식이 잘못된 갱신은 안전한 실패 종류와 유효한 공개 `ErrorCode`만 드러내며 Core 메시지,
+  오류 상세, 요청·응답 본문은 드러내지 않습니다.
+
+  Stop은 관리 세션, 활성 Task가 있으면 그 좌표, Task 상태, 차단 코드, 다음 actor, 완료
+  주장 flag, 갱신 성공 flag, 관찰 시각을 담은 내용 없는 세션 종료 receipt 하나를
+  영속화합니다. 모델의 최종 문장, 프롬프트, 명령, 파일 경로·내용, 사용자 답변, 오류 본문,
+  원시 호스트 이벤트는 저장하지 않습니다. 정확한 replay는 호스트에 두 번째 Stop을
+  요구하지 않고 같은 종료 결과를 반환합니다. 현재 최종 출력 표시는 별도의 새 읽기 전용
+  갱신을 수행할 수 있습니다.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ### 관리되는 최종 출력 권한 고지
@@ -1602,6 +1733,36 @@ Core 커밋 수, 재실행 수를 보고합니다. 전체 집계는 관찰된 �
 지원하지 않습니다. 향후 상세 추적을 추가하려면 별도로 문서화한 명시적 opt-in 표면과
 독립된 보존·가림 계약이 필요하며, 이 기본 수집 범위를 조용히 넓히면 안 됩니다. 정확한
 배치와 보존은 [저장소 기록](storage-records.md#local-diagnostics-store)이 담당합니다.
+
+<a id="workflow-metrics"></a>
+### 작업 흐름 지표
+
+`volicord diagnostics workflow-metrics --repo PATH --json`은 등록 프로젝트의 크기가 제한된
+로컬 집계 측정값을 읽습니다. 진단 데이터만 읽으며 Task를 만들거나 Core 권한을 열거나
+바꾸거나, 쓰기 티켓을 발급하거나, 사용자 행동을 해결하거나, `state_version` 또는 Guard
+결과를 바꾸지 않습니다. 측정값이 없으면 `status=no_data`를 반환하고 진단 데이터베이스를
+만들지 않습니다.
+
+JSON 결과에는 다음 집계 횟수 또는 시간만 포함됩니다.
+
+- Task 지속 시간과 시작부터 첫 제품 파일 쓰기까지 걸린 시간 분포
+- 공개 메서드별 MCP 호출 횟수와 `volicord.status` 재조회 횟수
+- 쓰기 티켓 발급, 재사용, 재발급 횟수
+- 사용자 왕복 횟수
+- Stop 호출과 반복 Stop 횟수
+- `tools/list` 직렬화 byte 측정값
+- 관찰 confidence별 PreTool allow, warn, deny 횟수
+- confirmed 범위 밖 쓰기, 나중에 변경 없음으로 해소된 suspected 변경, 측정 가능한
+  confirmed 미기록 변경 false-positive 횟수
+- 정상 작업 하드 차단, 누락된 sensitive 승인 차단, 완료 주장 억제 횟수
+
+필요한 관찰이 없으면 지속 시간과 false-positive 비율은 `null`이며 0이나 목표 달성을
+주장하는 대신 `measurement_pending`을 사용합니다. 제한된 범주형 method, host, profile,
+effect, confidence, outcome 값으로 횟수를 묶을 수 있습니다. 명령행, 셸 조각, 프롬프트,
+모델 출력, Product Repository 경로나 파일 내용, 정책 원본 JSON, 사용자 행동 질문·양식·
+선택·note·답변, Evidence summary, 비밀값, 원시 호스트 이벤트, 오류 본문은 포함하면 안
+됩니다. 이 지표는 운용 관찰일 뿐 Evidence, 호스트 적합성, 행위자 귀속, 쓰기 방지,
+정확성, 수용, 닫기 준비 상태가 아닙니다.
 
 <a id="noninteractive-approval-behavior"></a>
 ## 비대화식 동작

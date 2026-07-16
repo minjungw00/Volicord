@@ -11,7 +11,7 @@ Owned here:
 - The canonical decision flow that distinguishes transport or adapter failures, Core rejected responses, dry-run previews, method-owned blocked results, and committed blocker-shaped results.
 - The primary `errors[0]` selection order for error-bearing branches.
 - The result-side and blocker-code path boundary for `STATE_VERSION_CONFLICT`.
-- Public stale `expected_state_version`, stale `WriteTicket.basis_state_version`, and idempotency request-hash conflict behavior.
+- Public stale `expected_state_version`, idempotency request-hash conflict, and state-bound write-ticket invalidation behavior.
 
 Adjacent owners:
 
@@ -85,7 +85,7 @@ The otherwise applicable global order is unchanged.
 ### `STATE_VERSION_CONFLICT` selection boundary
 
 Selection condition:
-- A rejected response selects `STATE_VERSION_CONFLICT` when a stale `expected_state_version`, stale `WriteTicket.basis_state_version`, or idempotency request-hash conflict prevents the method from proceeding.
+- A rejected response selects `STATE_VERSION_CONFLICT` when a stale `expected_state_version` or idempotency request-hash conflict prevents the method from proceeding. Ticket `basis_state_version` is audit-only and is excluded.
 
 Selection boundary:
 - Represent these conflicts through `ToolRejectedResponse.errors[]`; they do not produce a `MethodResult` or `CloseTaskResult(close_state=blocked)` branch. Do not model `STATE_VERSION_CONFLICT` as a result-side decision, blocker code, close-readiness blocker code, or planned blocker code, including `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`.
@@ -101,10 +101,9 @@ Related owner:
 | Conflict case | Detail section |
 |---|---|
 | stale `expected_state_version` | [Stale `expected_state_version`](#state-conflict-expected-state-version) |
-| stale `WriteTicket.basis_state_version` | [Stale write-ticket basis](#state-conflict-write-ticket-basis) |
 | idempotency request-hash conflict | [Idempotency request-hash conflict](#state-conflict-idempotency-hash) |
 
-For precedence, these conflict cases select `STATE_VERSION_CONFLICT` as a project-wide pre-commit freshness or idempotency conflict.
+For precedence, these conflict cases select `STATE_VERSION_CONFLICT` as a project-wide pre-commit freshness or idempotency conflict. State-bound ticket invalidation instead selects `WRITE_TICKET_INVALID` on a ticket-consuming attempt.
 
 Conflict routing boundary:
 
@@ -131,28 +130,23 @@ Detail fields:
 - Use [State conflict detail fields](error-details.md#state-conflict-detail-fields).
 
 <a id="state-conflict-write-ticket-basis"></a>
-### Stale write-ticket basis
+### Write-ticket audit basis exclusion
 
 Condition:
-- Before consumption, `WriteTicket.basis_state_version` does not equal the current `project_state.state_version`.
+- `WriteTicket.basis_state_version` does not equal the current global state version, but the ticket's explicit validity coordinates still match.
 
 Public code:
-- `STATE_VERSION_CONFLICT`
+- None for that mismatch alone.
 
-Response path:
-- `ToolRejectedResponse.errors[]`
+Boundary:
+- The audit-basis mismatch neither invalidates nor consumes the ticket. Validate Task, Change Unit, scope revision, baseline, workspace, approval basis, task state, consumption, explicit revocation, and optional idle timeout instead.
 
-Consumption boundary:
-- The stale write ticket is not consumed.
-- The rejected attempt creates no consumption-side state changes.
+No error detail object is produced for this non-error condition.
 
-Detail fields:
-- Use [State conflict detail fields](error-details.md#state-conflict-detail-fields).
-
-### Expired write ticket
+### State-bound invalid write ticket
 
 Condition:
-- Before consumption, the write ticket is expired under the effective expiration rule owned by [`volicord.record_run`](method-record-run.md) and [`volicord.prepare_write`](method-prepare-write.md), and `WriteTicket.basis_state_version` is not stale.
+- Before consumption, the ticket has a recorded invalidation reason, is consumed or revoked, mismatches its current validity coordinates, or crosses a configured optional idle timeout.
 
 Public code:
 - `WRITE_TICKET_INVALID`
@@ -161,11 +155,11 @@ Response path:
 - `ToolRejectedResponse.errors[]`
 
 Precedence boundary:
-- If `WriteTicket.basis_state_version` is stale, select `STATE_VERSION_CONFLICT` instead of expiration invalidity.
-- Expiration is not modeled as a result-side decision, blocker code, close-readiness blocker code, or planned blocker code.
+- A stale request-envelope `expected_state_version` still selects `STATE_VERSION_CONFLICT` first. Ticket `basis_state_version` never does.
+- Invalid ticket use is not modeled as a result-side decision or planned blocker. Close-readiness may separately expose its stable method-owned unresolved-ticket blocker.
 
 Detail fields:
-- Use `ToolError.details.write_ticket_reason=expired`.
+- Use the stable state-bound or attempt-mismatch `write_ticket_reason` owned by [API error details](error-details.md#write-ticket-reason).
 
 <a id="state-conflict-idempotency-hash"></a>
 ### Idempotency request-hash conflict

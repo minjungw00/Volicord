@@ -10,23 +10,30 @@ and close contracts stay in the [Reference Index](../reference/README.md).
 
 ## Operating Loop
 
-Use this loop for tracked work:
+Do not memorize one universal method sequence. Start from the latest
+authoritative `next_action` and follow its `owner_method` when it names one. If
+there is no current Volicord result, the Task is unknown, or an authoritative
+refresh is required, obtain current state first. Do not poll status between
+steps merely for reassurance.
 
-1. Turn the request into a visible goal, current scope, non-goals, and next safe
-   action.
-2. Inspect available files, documentation, tests, and Volicord state before
-   asking the user.
+For each returned handoff:
+
+1. Confirm that it belongs to the intended Product Repository and `Task`.
+2. Inspect files, documentation, and tests that can resolve uncertainty without
+   changing authority state.
 3. Ask only for a user-owned decision that changes the next safe action.
-4. Refresh scope before a product-file write or sensitive action.
-5. Record meaningful execution and Evidence after acting.
-6. Report the primary blocker, what is known, what is missing, and one next
-   safe action.
-7. Before close, separate Evidence, final acceptance, residual risk, and
-   remaining blockers.
+4. Act only inside the current scope and compatible write or sensitive-action
+   boundary shown by Volicord.
+5. Record meaningful execution and Evidence after acting when the returned
+   handoff calls for it.
+6. Report the primary blocker, what is known, what is missing, the next actor,
+   and one next safe action.
+7. Keep Evidence, final acceptance, residual risk, session Stop, and Task
+   completion separate.
 
-Keep the process light for advice and tiny changes. Increase its weight when
-the work becomes ambiguous, spans several files, changes a public interface,
-introduces security or privacy risk, or depends on user-owned judgment.
+The returned handoff can legitimately say to inspect, write, record, ask the
+user, wait, reconcile, or close. A later response can choose a different route
+when the recorded facts change.
 
 ## Keep Agent Work And User Judgment Separate
 
@@ -61,6 +68,33 @@ Escalate a small change to tracked work when you find scope drift, a new public
 interface, a dependency or migration choice, destructive risk, security or
 privacy impact, an Evidence limit, final-acceptance need, residual risk, or
 another user-owned decision.
+
+Representative flows are intentionally not exact API sequences:
+
+| Work shape | Follow the returned handoff |
+|---|---|
+| Advice or read-only investigation | Inspect the available sources, state uncertainty, and stop without creating write or close ceremony that the work does not need. |
+| Narrow product-file change | Establish the Task only when needed, obtain a compatible current write authorization before editing, run focused verification, record the meaningful result, and follow the resulting close or continuation action. |
+| Multi-file or long-running work | Keep scope, the current Change Unit, Evidence, and user-owned decisions visible; resume from the persisted next action rather than reconstructing a sequence from chat. |
+| Waiting on the user or another blocker | Report the blocker and next actor. The session may end, but do not claim that the Task is complete. |
+| Sensitive or newly expanded work | Stop before the affected action and follow the projected policy, scope, and User Channel handoff. Do not self-approve or silently keep a lighter path. |
+
+## Keep Integration Profile And Task Control Separate
+
+Record and Detective are integration profiles. They select host setup,
+observation, and diagnostic paths. They are not Task-risk grades.
+
+Each Task has a separate requested and effective control level with an
+owner-provided reason. Treat the effective level and project-owned policy as
+authoritative for the current Task. Do not infer a lower level from the Record
+profile, a higher level from the Detective profile, or a policy waiver from the
+agent's own request. If the work reveals scope, sensitivity, external effects,
+or other escalation facts, follow the returned next action instead of
+downgrading or continuing from stale chat context.
+
+Exact values and derivation rules belong to
+[Core Model](../reference/core-model.md),
+[Intake](../reference/api/method-intake.md), and the public schema owners.
 
 <a id="project-selection"></a>
 
@@ -154,7 +188,8 @@ and [Administrative CLI](../reference/admin-cli.md#user-channel-commands).
 ## Check Before Writes
 
 Before a product-file write, make the intended paths and effect specific enough
-to evaluate. Request a Write Ticket through the prepare-write path, then show:
+to evaluate. When the returned next action routes to write preparation, obtain
+or reuse a compatible current Write Ticket, then show:
 
 - the intended change
 - whether it fits the current scope
@@ -162,9 +197,9 @@ to evaluate. Request a Write Ticket through the prepare-write path, then show:
 - stale or unavailable context
 - the next action when a Write Ticket cannot be issued
 
-If scope changes, update it before requesting another Write Ticket. Do not claim
-write compatibility from a plan, stale chat context, broad enthusiasm, or a
-generated summary. Exact method behavior belongs to
+If scope changes, follow the returned scope handoff before another write. Do not
+claim write compatibility from a plan, stale chat context, broad enthusiasm,
+elapsed time alone, or a generated summary. Exact method behavior belongs to
 [Prepare-write](../reference/api/method-prepare-write.md).
 
 <a id="record-evidence"></a>
@@ -198,8 +233,10 @@ malicious.
 
 Use `volicord.reconcile_changes` when available. If MCP is unavailable, route
 the user to `volicord changes reconcile`. Any user acceptance must go through a
-supported User Channel. Report unresolved Unrecorded Changes as close blockers
-and name the next action.
+supported User Channel. Preserve the reported confidence: a suspected change
+calls for verification, not an agent-authored promotion to confirmed state.
+Report the Close Status and next action projected by the owner rather than
+turning every uncertain observation into a blocker.
 
 <a id="report-status"></a>
 <a id="handle-close"></a>
@@ -220,11 +257,20 @@ Before close, show the visible close facts:
 - remaining blockers
 - the next close-unblocking action
 
-Use a read-only Close Status check when the user only asks whether close is
-blocked. Change task state only through the supported close path. Do not close
-from prose, tests alone, broad acceptance language, a generated view, or stale
-status. Final acceptance and residual-risk acceptance do not replace missing
-required Evidence.
+Use a read-only Close Status check when the user asks whether close is blocked
+or the current close facts need an authoritative refresh. Do not insert a
+separate check merely because a memorized ritual says that completion is near
+when the current response already provides a fresh close handoff. Change Task
+state only through the supported close path. Do not close from prose, tests
+alone, broad acceptance language, a generated view, or stale status. Final
+acceptance and residual-risk acceptance do not replace missing required
+Evidence.
+
+A host Stop ends a session; it does not close the Task. A session can end while
+the next actor is the user or another Close Status blocker remains. In that
+case disclose the blocker and do not claim completion. If authority refresh is
+unavailable, disclose that Volicord state was not verified rather than
+inventing a terminal result.
 
 Exact close meaning belongs to [Core Model](../reference/core-model.md). Exact
 method behavior belongs to [Close-task](../reference/api/method-close-task.md).

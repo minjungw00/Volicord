@@ -61,7 +61,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 `Product Repository`는 `repo_root`로 등록되는 사용자 제품 파일 경계입니다. Volicord Runtime Home이 아니며, Core 권한 저장소가 아니고, 런타임 기록, 재실행 행, 판단, 쓰기 티켓, 호스트 훅 기록, Agent Connection 레지스트리 상태를 저장하는 위치도 아닙니다.
 
-기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, 기준 SQL 원본은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v6`이며, 저장소 프로필과 호환되지 않는 저장소 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, 기준 SQL 원본은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v7`이며, 저장소 프로필과 호환되지 않는 저장소 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 Runtime Home 식별은 파일시스템 경로에만 의존하면 안 됩니다. 복사되거나 이동된 Runtime Home은 같은 저장된 `runtime_home_id`를 가질 수 있고, 새 Runtime Home은 새 식별자를 가져야 합니다. 이 식별자는 의심스러운 복사본, 중복 등록, 경로 변경을 감지하는 데 도움이 될 수 있지만 보안 보장은 아닙니다.
 
@@ -83,6 +83,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 |---|---|---|---|
 | `diagnostics.sqlite` | `diagnostic_sessions` | 크기 제한 로컬 운영 세션 | 세션, 선택적 연결 및 프로젝트 식별 정보, 전송, 선택적 호스트 종류, 기록 생성 패키지/빌드 식별 정보, 시작/갱신 타임스탬프. |
 | `diagnostics.sqlite` | `diagnostic_events` | 내용을 담지 않는 운영 관찰 | 세션 관계, 이벤트/도구 범주, 지연과 바이트 카운터, 검증/재시도/Core/재실행 플래그, 선택적 User Channel 또는 대체 경로 범주, 관찰된 제품 쓰기 수, 권한 상태 새로 고침 실패 플래그, 범주형 결과, 타임스탬프. |
+| `diagnostics.sqlite` | `workflow_metric_events` | 개인정보 제한 workflow 측정 | 세션/프로젝트 상관 관계, 닫힌 metric kind 하나, 음이 아닌 수치 값, 선택적이고 크기가 제한된 범주 차원, timestamp를 저장하며 prompt, path, file, answer, command, error 본문은 저장하지 않습니다. |
 | `registry.sqlite` | Runtime Home 식별 정보 | 런타임 식별 | 저장된 `runtime_home_id` 하나, Runtime Home 경로, 레지스트리 데이터베이스 경로, 스키마/저장 프로필, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 설치 프로필 | 실행 파일 프로필 | `volicord init`이 마련한 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 프로젝트 등록과 별칭 | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, 별칭에서 내부 식별 정보로 가는 매핑. |
@@ -92,14 +93,15 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `registry.sqlite` | `host_capability_state` | 현재 호스트 역량 포인터 | 연결과 역량마다 크기가 제한된 현재 변경 불가능한 검증 행 식별 정보 하나를 가리키며 이후 통과·실패·사용 불가·취소 관찰로 원자적으로 교체됩니다. |
 | `registry.sqlite` | 호스트 훅 설치 | 호스트 훅 설정과 호스트 역량 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, 통합 모드, 호스트 역량 JSON, 설치 생명주기 상태, 관찰된 훅 메타데이터, 타임스탬프, 메타데이터. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필, 정규 Core UTC 시계의 영속 하한인 `updated_at`. |
+| `state.sqlite` | `project_workflow_policies` | 권위 있는 workflow 정책 복사본 | `policy_schema=volicord-policy-v2`, 단조 증가 버전, 기준 JSON, SHA-256 지문, source provenance, 적용 timestamp를 가진 현재 프로젝트 정책 하나. |
 | `state.sqlite` | `agent_sessions` | 관찰된 에이전트 세션 | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 호스트 훅 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
 | `state.sqlite` | `guard_events` | 호스트 훅 판단 이벤트 | 연결 및 선택적 세션 또는 설치에 묶이는 프로젝트 범위 호스트 훅 이벤트입니다. 판단 값, 대상 JSON, 결과 JSON, 타임스탬프, 메타데이터를 포함합니다. |
 | `state.sqlite` | `prompt_captures` | 프롬프트 캡처 | 세션에 대한 프로젝트 범위 프롬프트 캡처입니다. 연결, 캡처 종류, 프롬프트 해시, 선택적 프롬프트 본문, 타임스탬프, 메타데이터를 포함합니다. |
 | `state.sqlite` | `expected_writes` | 예상 Product Repository 쓰기 | 허용된 `detective` 도구 실행 전 쓰기가 만드는 프로젝트 범위 예상 쓰기 상관 기록입니다. 연결/세션 식별 정보, 선택적 호스트 호출 식별 정보, 정확한 경로 정책, 현재 적용 `Task`/Change Unit/쓰기 티켓 근거, 타임스탬프, 일치한 도구 실행 후 메타데이터를 포함합니다. |
-| `state.sqlite` | `unrecorded_changes` | 미기록 Product Repository 변경 | Core 실행 또는 담당 문서가 정의한 다른 기록과 아직 연결되지 않은 관찰된 Product Repository 변경에 대한 프로젝트 범위 미해결 또는 해결 기록. |
+| `state.sqlite` | `unrecorded_changes` | 미기록 Product Repository 변경 | Core 실행 또는 담당 문서가 정의한 다른 기록과 아직 연결되지 않은 Product Repository 변경에 대한 프로젝트 범위 미해결 또는 해결 기록이며 `confirmed` 또는 `suspected` confidence를 가집니다. |
 | `state.sqlite` | `session_watch_baselines` | 세션 감시 기준선 | 등록된 Product Repository 또는 감시 경로 집합에 대한 프로젝트 범위 세션 감시 상태와 기준선 스냅샷입니다. 유효한 제외 항목, 스냅샷 다이제스트 메타데이터, 간결한 스냅샷 항목, 관리 MCP 기준선의 크기가 제한된 실제 initialize 클라이언트 정체성을 포함합니다. |
 | `state.sqlite` | `session_watch_observations` | 세션 감시 관찰 | 이후의 안전한 스냅샷을 기준선과 비교해 얻은 프로젝트 범위 `detective` 관찰입니다. 관찰된 변경 경로, 선택적 예상 쓰기 또는 쓰기 티켓 상관 관계, 기존 미기록 변경 행에 대한 선택적 연결을 포함합니다. |
-| `state.sqlite` | `tasks` | 작업 단위 상태 | 모드와 work phase, Task 소유 acceptance policy와 이유, 선택적 predecessor 관계와 carry-forward 감사, 구체화 요약, 범위와 닫기 근거 리비전, `null` 허용 현재 닫기 근거, 생명주기/결과/종료 요약, 현재 Change Unit 포인터, 생성자 actor source를 가진 사용자 가치 단위. |
+| `state.sqlite` | `tasks` | 작업 단위 상태 | 요청/유효 통제 수준과 이유, 기존 mode와 work phase, 정책에서 도출한 acceptance policy와 이유, 선택적 predecessor 관계와 carry-forward 감사, 범위와 닫기 근거 리비전, 생명주기/결과/종료 요약, 현재 Change Unit 포인터, 생성자 actor source를 가진 사용자 가치 단위. |
 | `state.sqlite` | `acceptance_criteria` | 수락 기준 | Core가 생성한 기준 identity, 소유 `Task`, 문장, 증거 요구 수준, 교체 순서, 활성/폐기 상태, 타임스탬프. |
 | `state.sqlite` | `evidence_claims` | 보충 증거 주장 | 호출자가 부여한 `Task` 범위 주장 identity와 비어 있지 않은 불변 문장 하나. |
 | `state.sqlite` | `change_units` | 범위 있는 작업 경계 | 범위 요약, 쓰기 근거, Change Unit 생명주기, 소유 `Task` 관계. |
@@ -108,7 +110,8 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `user_action_resolutions` | 변경 불가능한 User Channel resolution | 요청당 최대 하나이며 폐쇄형 종류 일치 본문, channel kind와 크기가 제한된 visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, Core 캡처 시각을 담습니다. Choice 사실 또는 전체 관찰 detail은 본문에 남습니다. |
 | `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | 요청, connection, expiry, capture basis, 정확한 fallback 종류·`delivery_surface=model_invisible_user_surface`·endpoint·canonical-form digest를 담은 폐쇄형 생성 metadata에 결속된 hash-only 일회성 local-web token. |
 | `state.sqlite` | `project_continuity_records` | 프로젝트 연속성 맥락 | 원천 `Task`가 닫힌 뒤에도 주소 지정할 수 있게 남는 프로젝트 수준 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약. |
-| `state.sqlite` | `write_tickets` | 쓰기 티켓 권한 | 단일 사용 쓰기 티켓 권한 기록, 기준 버전, 시도 범위, 만료, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장하는 물리 테이블입니다. |
+| `state.sqlite` | `write_tickets` | 쓰기 티켓 권한 | 소비 전까지 재사용 가능한 권한이며 감사 근거 버전, 명시적 validity-basis JSON, path prefix, nullable idle 경계, 안정된 무효화 사유, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장합니다. |
+| `state.sqlite` | `session_end_receipts` | Session-end 권한 receipt | 관리 세션, 선택적 활성 Task, 닫힌 Task 상태, 크기가 제한된 close-blocker code, 다음 actor, `completion_claim_allowed`, 권한 refresh 성공 여부, timestamp를 저장합니다. |
 | `state.sqlite` | `runs` | 실행 또는 관찰 기록 | 커밋된 실행 또는 관찰 기록, 선택적 호환 쓰기 티켓 소비, 행위자 출처, 간결한 증거 갱신. |
 | `state.sqlite`와 `artifacts/tmp/` | `artifact_staging` | 임시 아티팩트 스테이징 | 스테이징된 핸들 메타데이터, 생성자 행위자 출처, 안전한 스테이징 사실, 임시 바이트 또는 알림. |
 | `state.sqlite`와 `artifacts/tmp/` | `evidence_capture_receipts` | transient staging을 가진 영속 evidence-source fact receipt | Capture intent마다 정확한 source/result digest, 관찰 outcome, 등록 source 좌표, 한계, timestamp를 가진 불변의 완전하고 content-bound된 redacted safe receipt와 transient staging handle 하나. Staged bytes를 승격한 뒤에도 receipt 행은 계속 주소 지정할 수 있습니다. |
@@ -474,6 +477,19 @@ Core, 최종 출력, 연결, Doctor의 사실 소비자는 guard-event 증거 �
 
 미해결 `unrecorded_changes` 행은 관찰된 Product Repository 변경에 담당 문서가 정의한 조정이 아직 필요하다는 뜻입니다. 행을 해결하면 그 행을 보존하면서 로컬 해결 근거, 행위자 출처, 캡처 근거, 해결 시각, 선택적으로 연결된 사용자 행동 resolution을 기록합니다.
 
+Confidence는 status와 독립적입니다. 미해결 `confirmed` 행은 닫기 차단 사유 count에
+들어가고 미해결 `suspected` 행은 경고/검증 기록으로 남습니다. 결정적 관찰이나
+조정만 승격 또는 해결할 수 있으며 사용자 수락은 별도의 사용자 소유 resolution입니다.
+
+현재 `project_workflow_policies` 행은 Core가 사용하는 데이터베이스 권한입니다.
+기준 JSON, 버전, 지문, source를 함께 저장합니다. 파일 탐색, 명령 문법, 호스트 적용은
+이 기록 계약이 아니라 관리 담당 문서가 담당합니다.
+
+`workflow_metric_events`는 별도의 비권한 진단 저장소에만 남고 집계로만 노출됩니다.
+`session_end_receipts`는 크기가 제한된 프로젝트 권한 snapshot이며 모델 산문이나 blocker
+메시지가 아니라 blocker code를 저장합니다. 권한 refresh 실패, 활성 Task 없음, blocker 남음에서는
+`completion_claim_allowed=false`를 보존합니다.
+
 `session_watch_baselines`와 `session_watch_observations`는 탐지형 세션 단위 Product Repository 감시를 지원합니다. 샌드박스, 파일시스템 권한 경계, 쓰기 전 차단, 파일을 바꾼 주체나 이유에 대한 증명이 아닙니다.
 
 - 기준선은 감시 가용성, 등록된 저장소 루트 또는 감시 경로 집합, 적용된 제외 항목, 결정적 스냅샷 다이제스트 메타데이터를 저장합니다.
@@ -515,6 +531,21 @@ User Channel, 호스트 관찰 권한 데이터베이스가 아닙니다. 스키
 - 선택적 대기 대체 경로 범주: `prompt_capture`, `local_web_consent`, `cli_inbox`
 - 호출, 지연, 요청/응답 바이트, 검증 실패, 재시도, Core 도달, Core 커밋,
   재실행, 관찰된 제품 쓰기, 권한 상태 새로 고침 실패 카운터
+
+`workflow_metric_events.metric_kind`는
+`task_duration_micros`, `first_product_write_duration_micros`,
+`mcp_method_call`, `status_reread`, `write_ticket_issued`,
+`write_ticket_reused`, `write_ticket_reissued`, `user_roundtrip`,
+`stop_call`, `stop_repeat`, `tools_list_serialized_bytes`,
+`pre_tool_decision`, `observation_assessment`,
+`confirmed_out_of_scope_write`, `suspected_resolved_no_change`,
+`confirmed_unrecorded_false_positive`, `normal_operation_hard_block`,
+`sensitive_approval_missing_block`, `completion_claim_suppressed`로 닫혀 있습니다.
+각 행은 음이 아닌 정수 `value` 하나를 저장합니다. Duration kind는 microsecond,
+tool-list kind는 직렬화된 UTF-8 byte, occurrence kind는 count를 사용합니다. 선택적 차원은
+공개 method 이름, 통합 profile, `allow|warn|deny` 판단, 담당 문서가 정의한 observation
+confidence, 크기가 제한된 범주형 outcome으로 한정합니다. Store 검증은 metric kind에
+적용되지 않는 차원을 거부하며 자유 형식 label은 받지 않습니다.
 
 스키마에는 프롬프트, 경로, 파일 본문, 오류 세부 정보, 비밀값, 사용자 행동 질문이나
 캡처 양식, 선택 note, Evidence 관찰 summary 열이 없습니다. 크기가 제한된 도구 필드는 임의 요청 텍스트가 아니라 식별 정보만
@@ -590,12 +621,13 @@ relevance 상태, 비어 있지 않은 관찰 요약, 현재 정확한 아티팩
 | `expected_writes.path_policy` | `exact_paths` |
 | `expected_writes.status` | `pending`, `matched` |
 | `unrecorded_changes.status` | `unresolved`, `resolved` |
+| `unrecorded_changes.confidence` | `confirmed`, `suspected` |
 | `session_watch_baselines.status` | `disabled`, `active`, `degraded`, `unavailable` |
 | `session_watch_baselines.scope_kind` | `repository`, `path_set` |
 | `session_watch_observations.observation_status` | `unresolved`, `linked` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
 | `change_units.is_current` | `0`, `1` |
-| `write_tickets.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
+| `write_tickets.status` | `active`, `consumed`, `invalidated`, `revoked` |
 | `user_action_requests.action_kind` | 일곱 판단 종류와 `evidence_observation` |
 | `user_action_requests.basis_status` | `current`, `stale`, `superseded` |
 | `user_action_requests.source_method` | `volicord.request_user_action`, `volicord.reconcile_changes` |
@@ -662,7 +694,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `user_action_resolutions` | 폐쇄형 불변 resolution 본문, channel kind와 크기가 제한된 visible-ASCII submission ID, 파생 actor/verification/assurance, Core 캡처 시각, 선택적 비공개 note, choice 또는 Evidence 관찰 detail. Local-web 행은 파생 digest identity만 저장하며 원문 token은 저장하지 않습니다. |
 | `user_action_channel_tokens` | 요청 결합 local-web hash-token lifecycle, capture basis, 폐쇄형 delivery-surface 생성 metadata. |
 | `project_continuity_records` | 오래 유지하는 프로젝트 맥락을 위한 적용 대상 경로, 적용 대상 참조, 원천 참조, 아티팩트 참조, 대체된 참조, 검토 트리거, 비권한 메타데이터. |
-| `write_tickets` | 쓰기 티켓 시도 범위와 비권한 메타데이터. |
+| `write_tickets` | 상태 결합 유효성 좌표, 정규화된 exact-or-descendant path prefix, 감사 순서, 선택적 idle 경계, 안정된 무효화 사유, 시도 범위, 비권한 메타데이터. Denied prefix가 우선하며 wildcard 문법은 저장하지 않습니다. |
 | `runs` | 요약, 관찰된 변경, 증거 갱신, 쓰기 티켓 효과 데이터, 비권한 메타데이터. |
 | `artifact_staging` | 스테이징된 아티팩트 데이터, 안전 메타데이터, 비권한 메타데이터. |
 | `evidence_capture_intents` | 정확한 target/capture JSON, command/tool input digest 또는 Core가 파생한 connection source-selector digest, 예상 outcome, 등록 session 및 Git workspace 근거, actor/connection provenance, 만료, 비권한 메타데이터. Connection capture JSON에는 미래 source ID, observation timestamp, snapshot digest, raw-event digest가 없습니다. |

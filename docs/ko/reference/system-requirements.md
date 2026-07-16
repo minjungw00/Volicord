@@ -205,7 +205,7 @@ Volicord가 등록된 프로젝트를 검증하거나 사용할 때는 읽기 �
 - 프로젝트 범위 Codex `.codex/config.toml`
 - 프로젝트 범위 Claude Code `.mcp.json`
 - Volicord 관리 `AGENTS.md` 지침 블록
-- `.volicord/policy.json` 탐지형 호스트 훅 정책 파일
+- `.volicord/policy.json` 로컬 관리 `volicord-policy-v2` 사본
 - Codex `.codex/hooks.json` 훅 설정과 `.codex/hooks/` 아래의 Volicord 관리 래퍼 스크립트
 - `.claude/settings.json` 안의 Volicord 관리 Claude Code 훅 항목
 - `.claude/hooks/` 아래의 Volicord 관리 Claude Code 훅 래퍼 스크립트
@@ -269,23 +269,18 @@ Detective 훅에 의존하기 전에 운영자는 Codex에서 현재 Volicord �
 `complete` 결과, `hook_path_safety=ok`, exact-owned 생성 파일, 성공한 설정 audit만으로는
 command hook 신뢰, 이벤트 전달, 실행을 증명하지 못합니다.
 
-호스트 기능 적용 가능성은 설치 적용 가능성과 구분합니다. 다음 설치 전 요약은
-[Agent Connection](agent-connection.md#host-feature-support-state)이 담당하는 현재 평가를
-투영하며 이 문서가 별도로 소유하는 기능 매트릭스가 아닙니다. 정확한 Codex
-`host_version=0.144.4`에서 `native_user_action`, `verified_tool_producer`,
-`registered_connection_observation`는 구현되어 있지만 정확한 증거가 통과할 때까지
-미검증입니다. `local_web_user_channel`, `record_final_output`,
-`detective_final_output`는 `unsupported_by_host`입니다. Codex 버전이 없거나 검토되지
-않았으면 보수적인 호스트 종류 대체 표를 사용합니다. 앞의 네 기능은 구현됐지만 미검증인
-상태로 두고 두 최종 출력 기능은 지원되지 않는 상태로 둡니다. Claude Code는 정확한 최종
-아티팩트 실제 증거가 생길 때까지 여섯 기능 모두 `implemented_unverified`입니다. Generic은
-여섯 기능 모두 `unsupported_by_host`입니다.
-
-일치하는 증거가 없는 구현된 내장 기능을 `temporarily_unavailable`로 바꾸면 안 됩니다. 그
-값은 정확한 현재 증거가 있고 지금의 런타임 전제 조건만 내려가 있을 때 사용합니다. 호스트
-업그레이드, 오래됐거나 일치하지 않는 증거, 다른 최종 Volicord 실행 파일은 새 평가가
-필요합니다. 정확한 의미와 우선순위는
+호스트 기능 적용 가능성은 설치 적용 가능성과 구분하며 capability probe를 우선합니다. 관리
+검증은 적용될 때 실제 훅 호출, 구조화된 대상 경로, 구조화된 변경 경로, 모델과 분리된 사용자
+행동 UI, Stop 전달·replay 동작, 고정 UI 권한 표시, 광고한 MCP capability를 probe합니다.
+구현된 내장 표면은 알 수 없는 더 새 호스트 버전을 포함해 일치하는 최신 Evidence가 없으면
+`implemented_unverified`입니다. 현재 probe 실패나 현재 전제 조건 장애는
+`temporarily_unavailable`이고 `unsupported_by_host`에는 capability의 명시적 부재가
+필요합니다. `degraded`는 진단일 뿐입니다. 정확한 의미와 우선순위는
 [호스트 기능 지원 상태](agent-connection.md#host-feature-support-state)가 담당합니다.
+
+검토된 Codex `0.144.4` 좌표와 정확한 Claude Code 버전은 검증·regression·릴리스 Evidence
+좌표로 남습니다. 관찰한 그대로 보존하되 주 런타임 활성 gate로 쓰거나 최소 버전 약속으로
+일반화하면 안 됩니다. 다른 유효한 버전은 실제 probe와 Evidence로 평가합니다.
 
 ## MCP 호스트 환경 요구사항
 

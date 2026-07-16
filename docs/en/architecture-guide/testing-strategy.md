@@ -255,9 +255,9 @@ reuse the runner's normal host authentication environment; the fixture does
 not copy credentials into its isolated Runtime Home. The operator must complete
 the applicable hook-trust preflight, approve the project/MCP entry when the host
 requires it, choose the answer in the host-native MCP elicitation UI, wait for
-the first task-bound managed `Stop` hook to complete, and only then exit the
-host. If a blocked host retries, the operator may interrupt before a second
-distinct Stop; no final-output receipt is copied or credited.
+the first task-bound managed `Stop` hook to allow termination, verify that the
+host does not retry it, and only then exit the host. No final-output receipt is
+copied or credited.
 
 A passing Judgment variant verifies marker Task and Judgment creation,
 host-native prompt/response recording with

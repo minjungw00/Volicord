@@ -81,7 +81,7 @@
 - 공개 API의 최신성 또는 멱등성 충돌이 있습니다. 오래된 `expected_state_version`은 요청 상태 형태입니다.
 
 참고:
-- 오래된 `WriteTicket.basis_state_version`과 멱등 요청 해시 충돌은 [상태 버전 충돌](error-precedence.md#state-conflict-behavior)에서 다룹니다.
+- 멱등 요청 해시 충돌은 [상태 버전 충돌](error-precedence.md#state-conflict-behavior)에서 다룹니다. `WriteTicket.basis_state_version`은 감사 메타데이터이며 그 자체로 이 오류를 선택하지 않습니다.
 
 <a id="errorcode-mcp-unavailable"></a>
 ### `MCP_UNAVAILABLE`
@@ -182,11 +182,11 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 제공된 쓰기 티켓이 만료되었거나, 철회되었거나, 이미 소비되었거나, 버전과 무관한 이유로 호환되지 않습니다.
+- 제공된 티켓이 소비됨, 철회됨, 명시적으로 무효화됨, 허용 path prefix 밖이거나 상태에 묶인 Task, Change Unit, 범위 리비전, 기준선, workspace, 승인 근거, 선택적 idle timeout과 호환되지 않습니다.
 
 참고:
-- 만료된 쓰기 티켓 사용은 `ToolError.details.write_ticket_reason=expired`와 함께 이 코드를 유지합니다.
-- 오래된 `WriteTicket.basis_state_version`은 이 코드가 아니라 `STATE_VERSION_CONFLICT`로 경로가 정해집니다.
+- 상태 결합 무효화와 시도 불일치는 안정된 `ToolError.details.write_ticket_reason` 값과 함께 이 코드를 유지합니다.
+- `basis_state_version` 불일치와 관련 없는 상태 버전 증가는 티켓을 무효화하지 않고 오류도 선택하지 않습니다.
 
 <a id="errorcode-approval-denied"></a>
 ### `APPROVAL_DENIED`

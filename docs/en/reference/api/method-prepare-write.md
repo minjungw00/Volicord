@@ -35,7 +35,15 @@ This document does not own:
 - required separate sensitive-action approval
 - verified invocation context
 
-When the check is allowed, the method issues one open write ticket. The ticket is a Volicord authority record for authorized write intent within the current Task and Change Unit. It is not filesystem enforcement, OS permission, shell permission, or proof that a write occurred. When the check is not allowed, the method denies or defers the ticket path.
+When the check is allowed, the method first searches for a compatible active
+ticket. It reuses that ticket when its Task, Change Unit, `scope_revision`,
+baseline, workspace and approval basis are current, its allowed paths cover all
+newly intended paths, its sensitive basis is equal or stronger, and it remains
+unconsumed. Otherwise it issues one open ticket. A ticket is a Volicord
+authority record for authorized write intent within the current Task and Change
+Unit. It is not filesystem enforcement, OS permission, shell permission, or
+proof that a write occurred. When the check is not allowed, the method denies or
+defers the ticket path without invalidating an unrelated compatible ticket.
 
 `Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not recommend this method as the generic next action for an advisor Task, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. This does not prevent a compatible shaping `record_run` call from committing Core Run or evidence state.
 
@@ -75,6 +83,14 @@ Requires:
 
 - verified invocation context with `operation_category=agent_workflow`
 - a current Task whose mode is `direct` or `work` and whose `work_phase` is `implementation`; `advisor` and shaping are incompatible with write preparation
+- a current effective control level. `observe` is incompatible with product
+  writes. Before ticket selection Core applies any pending upward-only policy
+  reevaluation; a policy relaxation never lowers an active Task.
+- for `light`, every intended path must be covered by an allowed normalized
+  repository-relative prefix and by no denied prefix. Prefixes match the exact
+  path or descendants; wildcard/glob syntax, absolute paths, empty entries,
+  `..`, and ambiguous forms are invalid. An empty allowed set permits no Light
+  product-file write.
 - compatible current scope
 - compatible current Change Unit effect contract for product-file writes, when one is recorded
 - a request baseline that exactly matches both the current Task baseline and
@@ -92,15 +108,28 @@ A separate sensitive-action approval satisfies this method only when the user ac
 
 | Result | State-version effect | Write-ticket effect |
 |---|---|---|
-| Committed `decision=allowed` | Increments `project_state.state_version` exactly once. | Issues one open write ticket. |
+| Committed `decision=allowed`, new ticket | Increments `project_state.state_version` exactly once. | Issues one open ticket; `write_ticket_effect=issued`. |
+| Committed `decision=allowed`, compatible ticket found | Increments `project_state.state_version` exactly once. | Reuses the existing ticket; `write_ticket_effect=reused`; no ticket row is inserted. |
 | Committed non-allow decision | Increments `project_state.state_version` exactly once. | Issues no write ticket. |
 | Pre-commit rejection or dry run | Increments nothing. | Creates nothing. |
 
-## Write ticket lifetime and ID allocation
+The committed state-version increment is authority-event ordering. It does not
+invalidate the issued or reused ticket and is not part of ticket validity.
 
-Newly issued write tickets have a default lifetime of 15 minutes. `expires_at` is an enforced Volicord compatibility condition, not display-only metadata and not an OS-level write deadline. The effective expiration is the earlier of stored `expires_at` and `created_at + 15 minutes`; this same effective rule limits historical rows with far-future expiration timestamps. Expiration is calculated using parsed UTC timestamps, not lexical string comparison.
+## Write ticket validity, idle timeout, and ID allocation
 
-A newly allowed committed call receives its durable `write_ticket_id` only when the allowed mutation is committed. Blocked, approval-required, decision-required, rejected, and `dry_run` paths do not allocate a durable write ticket ID.
+There is no fixed lifetime and the default idle timeout is `null`. Project
+policy may select an idle timeout; when it does, Core stores the derived
+`idle_expires_at` and invalidates the ticket with reason `idle_timeout` at the
+semantic UTC boundary. A sensitive approval can retain its own expiration;
+approval expiry invalidates a dependent ticket as `approval_basis_changed`, not
+as ordinary elapsed ticket time. `basis_state_version` records issuance order
+for audit and references only; it is never a freshness condition.
+
+A newly allowed committed call receives a durable `write_ticket_id` only when
+the issuance mutation commits. A reuse result returns the existing ID and ref.
+Blocked, approval-required, decision-required, rejected, and `dry_run` paths do
+not allocate a durable ID.
 
 ## Method result fields
 
@@ -111,10 +140,10 @@ A newly allowed committed call receives its durable `write_ticket_id` only when 
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Committed `PrepareWriteResult` branches use `base.response_kind=result`, `base.effect_kind=core_committed`, and `base.disclosure.guarantee_class=authority_record`. `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `decision` | The method decision for this write-preparation attempt. Supported values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
 | `state` | Current `StateSummary` when this result includes a state snapshot. Nested state fields, including `write_ticket_summary`, are owned by [API State Schemas](schema-state.md). |
-| `write_ticket_id` | `WriteTicketId | null` for the issued write ticket in an allowed decision result. A new allowed commit allocates it; idempotent replay returns the stored original result without changing this field. It is `null` for non-allow committed decisions. |
-| `write_ticket_ref` | `StateRecordRef | null` with `record_kind=write_ticket` for the issued write ticket. It is `null` for non-allow committed decisions. |
-| `write_ticket` | `WriteTicket | null` for the issued write-ticket authority record. It is `null` for non-allow committed decisions. |
-| `write_ticket_effect` | Method result effect for the write-ticket path. `issued` means this committed result created the open ticket. `none` means no ticket was issued. Supported values are owned by [API Value Sets](schema-value-sets.md#method-local-values). |
+| `write_ticket_id` | `WriteTicketId | null` for the issued or reused ticket in an allowed result. New issuance allocates it; reuse returns the existing ID; idempotent replay returns the stored original result. It is `null` for non-allow committed decisions. |
+| `write_ticket_ref` | `StateRecordRef | null` with `record_kind=write_ticket` for the issued or reused ticket. It is `null` for non-allow committed decisions. |
+| `write_ticket` | `WriteTicket | null` for the issued or reused authority record. It is `null` for non-allow committed decisions. |
+| `write_ticket_effect` | `issued` means this commit created the ticket, `reused` means it selected an existing compatible active ticket, and `none` means no ticket was selected. `would_issue` remains preview-only. |
 | `allowed_path_patterns` | Normalized Product Repository path patterns captured as allowed by the ticket decision. In an allowed result, this is the ticket's allowed path pattern list. |
 | `denied_path_patterns` | Normalized Product Repository path patterns captured as denied by the ticket decision, or `[]` when no path-level denial applies. |
 | `control_surface` | `ControlSurfaceSummary | null` describing the current Volicord control surface used for disclosure. `os_enforced=false` means the ticket is not OS-level enforcement. |
@@ -137,7 +166,8 @@ For `decision=allowed`:
 - `write_ticket_id`, `write_ticket_ref`, and `write_ticket` are non-null
 - `write_ticket_ref.record_kind` is `write_ticket`
 - `write_ticket.state` is `open`
-- `write_ticket_effect` is `issued` for a new committed `decision=allowed` response
+- `write_ticket_effect` is `issued` for new issuance or `reused` when an
+  existing compatible active ticket is selected
 - `write_ticket.path_patterns.allowed` and top-level `allowed_path_patterns` contain the normalized repo-relative `intended_paths` allowed for this ticket
 - `write_ticket.path_patterns.denied` and top-level `denied_path_patterns` are `[]` for an allowed result
 - `write_ticket.observed_paths` is `[]` in the baseline; detective host-hook and watcher observations use separate host-observation and unrecorded-change records
@@ -145,6 +175,9 @@ For `decision=allowed`:
 - idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect
 - replay eligibility requires the current verified invocation to retain the exact optional Git workspace context captured with the original replay row; a changed, newly absent, or newly present workspace context returns `INVOCATION_CONTEXT_MISMATCH` without exposing the stored allowed response or its write ticket
 - the write ticket is scoped to `WriteTicketScope` using normalized repo-relative `intended_paths`
+- `write_ticket.validity_basis` reports its Task, Change Unit,
+  `scope_revision`, baseline, optional workspace digest, and approval-basis refs;
+  `basis_state_version` is audit-only
 - `active_user_action_refs` may cite current accepted user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
 
 ## Blocked result
@@ -161,6 +194,8 @@ Result data:
 - `write_ticket_effect` is `none`.
 - `write_decision_reasons` must be non-empty.
 - A valid committed `dry_run=false` non-allow result appends one `authority_events` row containing the structured `write_decision_reasons`, creates a replay row when an idempotency key is present, and increments `project_state.state_version` exactly once.
+- That non-allow commit and its unrelated state-version increment do not
+  invalidate any otherwise compatible active ticket.
 - It issues no write ticket, creates no separate public history method, and does not create a product-file write authority record.
 - `volicord.status` is not required to expose historical non-allow decisions.
 - Each entry is a `WriteDecisionReason`.
@@ -193,7 +228,7 @@ Non-claims:
 - `STATE_VERSION_CONFLICT` is a rejected-response `ErrorCode`; it must not be represented as a method-local write decision reason.
 - `write_decision_reasons` are not `CloseReadinessBlocker` values.
 - `write_decision_reasons` do not evaluate close readiness.
-- Effect contract decision reasons do not replace sensitive-action approval, user-owned judgment, evidence, final acceptance, close readiness, residual-risk acceptance, or the separate write ticket that this method creates only on `decision=allowed`.
+- Effect contract decision reasons do not replace sensitive-action approval, user-owned judgment, evidence, final acceptance, close readiness, residual-risk acceptance, or the issued-or-reused ticket selected only on `decision=allowed`.
 - No write ticket is issued.
 - The result disclosure is not OS sandboxing, network isolation, malware defense, full write prevention, correctness proof, test sufficiency proof, human review replacement, or actor attribution proof.
 
@@ -225,6 +260,8 @@ For `dry_run=true`, a valid preview:
 - returns `ToolDryRunResponse`
 - issues no committed write ticket
 - may describe a planned `write_ticket` effect such as `would_issue` in the dry-run summary when the preview would otherwise be allowed
+- may describe `would_reuse` as a planned effect when a compatible active
+  ticket exists; this is preview text, not a committed `WriteTicketEffect`
 - persists no write-decision state
 
 ## Storage effect
@@ -268,7 +305,10 @@ This branch applies after the separate sensitive-action approval is already pres
 
 `uj_sensitive_pref_001` represents an existing current `judgment_kind=sensitive_approval` resolved by the user with `resolution_outcome=accepted` and a `SensitiveActionScope` that matches the profile preference update. It is not ordinary write approval, final acceptance, residual-risk acceptance, or a write ticket.
 
-In this example, the request carries `expected_state_version: 19`; the allowed commit advances the project to `state_version: 20` and issues an open write ticket with `basis_state_version: 20`.
+In this example, the request carries `expected_state_version: 19`; the allowed
+commit advances the project to `state_version: 20` and issues an open ticket.
+Its `basis_state_version: 20` records issuance order and is not its validity
+basis.
 
 ```yaml
 base:
@@ -368,7 +408,7 @@ write_ticket:
     denied: []
   observed_paths: []
   basis_state_version: 20
-  expires_at: "<future-expiration-timestamp>"
+  expires_at: null
   control_surface:
     selected_profile: record
     host_hooks_active: false

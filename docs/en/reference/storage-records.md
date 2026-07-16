@@ -62,7 +62,7 @@ For operational project records, `project_home` is the location owner for projec
 
 The `Product Repository` is the user product-file boundary registered by `repo_root`. It is not a Volicord runtime home, not Core authority storage, and not where runtime records, replay rows, judgments, write tickets, guard records, or Agent Connection registry state are stored.
 
-Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v6`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
+Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v7`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
 
 Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`, while a newly created Runtime Home gets a new id. The id can help detect suspicious copies, duplicate registrations, or path drift; it is not a security guarantee.
 
@@ -84,6 +84,7 @@ Baseline storage persists only the record families defined by this baseline stor
 |---|---|---|---|
 | `diagnostics.sqlite` | `diagnostic_sessions` | Bounded local operability session | Session, optional connection and project identifiers, transport, optional host kind, producer package/build identity, and start/update timestamps. |
 | `diagnostics.sqlite` | `diagnostic_events` | Content-free operability observation | Session relation, event/tool category, latency and byte counters, validation/retry/Core/replay flags, optional User Channel or fallback category, observed product-write count, authoritative-refresh-failure flag, categorical outcome, and timestamp. |
+| `diagnostics.sqlite` | `workflow_metric_events` | Privacy-bounded workflow measurement | Session/project correlation, one closed metric kind, a non-negative numeric value, optional bounded categorical dimensions, and timestamp; never prompt, path, file, answer, command, or error bodies. |
 | `registry.sqlite` | Runtime Home identity | Runtime identity | One stored `runtime_home_id`, Runtime Home path, registry database path, schema/storage profile, metadata, and timestamps. |
 | `registry.sqlite` | Installation profile | Executable profile | Selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps established by `volicord init`. |
 | `registry.sqlite` | Project registration and aliases | Project mapping | `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, unique `repo_root`, location-owning `project_home`, stored `state_db_path` that must match `project_home/state.sqlite` for execution, status, metadata, and alias-to-internal-identity mappings. |
@@ -93,14 +94,15 @@ Baseline storage persists only the record families defined by this baseline stor
 | `registry.sqlite` | `host_capability_state` | Current host-capability pointer | One bounded current immutable verification-row identifier per connection and capability, replaced atomically by later passing, failed, unavailable, or revoked observations. |
 | `registry.sqlite` | Host-hook installation | Host-hook setup and host capability record | Runtime Home, Agent Connection, optional project scope, host kind, integration mode, host capability JSON, installation lifecycle status, observed hook metadata, timestamps, and metadata. |
 | `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, project enforcement profile, and `updated_at` as the persisted floor of the canonical Core UTC clock. |
+| `state.sqlite` | `project_workflow_policies` | Authoritative workflow-policy copy | One current project policy with `policy_schema=volicord-policy-v2`, monotonic version, canonical JSON, SHA-256 fingerprint, source provenance, and application timestamps. |
 | `state.sqlite` | `agent_sessions` | Observed Agent Session | Project-scoped session for one Agent Connection, optional host-hook installation, host kind, integration profile, start/end timestamps, and metadata. |
 | `state.sqlite` | `guard_events` | Host-hook decision event | Project-scoped host-hook event tied to a connection and optional session or installation, with decision, subject JSON, result JSON, timestamp, and metadata. |
 | `state.sqlite` | `prompt_captures` | Prompt capture | Project-scoped prompt capture for a session, including connection, capture kind, prompt hash, optional prompt text, timestamp, and metadata. |
 | `state.sqlite` | `expected_writes` | Expected Product Repository write | Project-scoped expected-write correlation record created by an allowed detective pre-tool write, with connection/session identity, optional host invocation identity, exact path policy, active task/Change Unit/write-ticket basis, timestamps, and matched post-tool metadata. |
-| `state.sqlite` | `unrecorded_changes` | Unrecorded Product Repository change | Project-scoped unresolved or resolved record for detected Product Repository changes that are not yet matched to a Core run or other owner-defined record. |
+| `state.sqlite` | `unrecorded_changes` | Unrecorded Product Repository change | Project-scoped unresolved or resolved record with `confirmed` or `suspected` confidence for Product Repository changes not yet matched to a Core run or other owner-defined record. |
 | `state.sqlite` | `session_watch_baselines` | Session watch baseline | Project-scoped session watch status and baseline snapshot for a registered Product Repository or watched path set, including effective exclusions, snapshot digest metadata, compact snapshot entries, and the bounded actual initialize client identity for a managed MCP baseline. |
 | `state.sqlite` | `session_watch_observations` | Session watch observation | Project-scoped detective observation derived from comparing a later safe snapshot to a baseline, with observed changed paths, optional expected-write or write-ticket correlation, and optional link to an existing unrecorded-change row. |
-| `state.sqlite` | `tasks` | Work-unit state | User-value unit with mode and work phase, Task-owned acceptance policy and reason, optional predecessor relation and carry-forward audit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal summary, current Change Unit pointer, and creator actor source. |
+| `state.sqlite` | `tasks` | Work-unit state | User-value unit with requested/effective control and reason, legacy mode and work phase, policy-derived acceptance policy and reason, optional predecessor relation and carry-forward audit, scope and close-basis revisions, lifecycle/result/terminal summary, current Change Unit pointer, and creator actor source. |
 | `state.sqlite` | `acceptance_criteria` | Acceptance criterion | Core-generated criterion identity, owning `Task`, statement, evidence requirement, replacement order, active/retired state, and timestamps. |
 | `state.sqlite` | `evidence_claims` | Supplemental evidence claim | Caller-assigned `Task`-scoped claim identity with one immutable non-empty statement. |
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, Change Unit lifecycle, and owning `Task` relation. |
@@ -109,7 +111,8 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `user_action_resolutions` | Immutable User Channel resolution | At most one resolution per request, with a closed kind-matching body, channel kind and bounded visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, and Core capture time. Choice facts or full observation detail stay in the body. |
 | `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | Hash-only one-time local-web token bound to one request, connection, expiry, capture basis, and closed creation metadata containing exactly the fallback kind, `delivery_surface=model_invisible_user_surface`, endpoint, and exact canonical-form digest. |
 | `state.sqlite` | `project_continuity_records` | Project continuity context | Durable project-level decisions, obligations, known limits, accepted residual risks, and constraints that remain addressable after the source `Task` closes. |
-| `state.sqlite` | `write_tickets` | Write-ticket authority | Physical storage table for single-use write ticket authority records, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. |
+| `state.sqlite` | `write_tickets` | Write-ticket authority | Reusable-until-consumed authority with audit basis version, explicit validity-basis JSON, path prefixes, nullable idle boundary, stable invalidation reason, actor source, optional originating judgment, and consumption state. |
+| `state.sqlite` | `session_end_receipts` | Session-end authority receipt | Managed session, optional active Task, closed Task state, bounded close-blocker codes, next actor, `completion_claim_allowed`, authority-refresh success, and timestamp. |
 | `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible write-ticket consumption, actor source, and compact evidence updates. |
 | `state.sqlite` plus `artifacts/tmp/` | `artifact_staging` | Transient artifact staging | Staged handle metadata, creator actor source, safe staging facts, and transient bytes or notices. |
 | `state.sqlite` plus `artifacts/tmp/` | `evidence_capture_receipts` | Durable evidence-source fact receipt with transient staging | One immutable, complete, content-bound, redacted safe receipt and transient staging handle per capture intent, with exact source/result digests, observed outcome, registered source coordinates, limitations, and timestamps. The row remains addressable after staged bytes are promoted. |
@@ -508,6 +511,22 @@ behavior belongs to [Administrative CLI](admin-cli.md).
 
 An unresolved `unrecorded_changes` row means that an observed Product Repository change still needs owner-defined reconciliation. Resolving it preserves the row and records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user-action resolution.
 
+Confidence is independent of status. Unresolved `confirmed` rows enter the
+close-blocker count; unresolved `suspected` rows remain warning/verification
+records. Only deterministic observation or reconciliation may promote or
+resolve them, and user acceptance remains a separate user-owned resolution.
+
+The current `project_workflow_policies` row is the database authority used by
+Core. Its canonical JSON, version, fingerprint, and source are stored together.
+File discovery, command syntax, and host application belong to administrative
+owners, not this record contract.
+
+`workflow_metric_events` remain in the separate non-authority diagnostics
+store and are exposed only as aggregates. `session_end_receipts` are bounded
+project-authority snapshots. They store blocker codes, not model prose or
+blocker messages. `completion_claim_allowed=false` is preserved whenever
+authority refresh failed, no active Task was available, or blockers remained.
+
 `session_watch_baselines` and `session_watch_observations` support detective session-level Product Repository watching. They are not a sandbox, filesystem permission boundary, pre-write block, or proof of who changed a file or why it changed.
 
 - A baseline stores watch availability, the registered repository root or watched path set, effective exclusions, and deterministic snapshot-digest metadata.
@@ -556,6 +575,23 @@ observations:
 - call, latency, request/response byte, validation failure, retry,
   Core-reached, Core-committed, replay, observed product-write, and
   authoritative-refresh-failure counters
+
+`workflow_metric_events.metric_kind` is closed to
+`task_duration_micros`, `first_product_write_duration_micros`,
+`mcp_method_call`, `status_reread`, `write_ticket_issued`,
+`write_ticket_reused`, `write_ticket_reissued`, `user_roundtrip`,
+`stop_call`, `stop_repeat`, `tools_list_serialized_bytes`,
+`pre_tool_decision`, `observation_assessment`,
+`confirmed_out_of_scope_write`, `suspected_resolved_no_change`,
+`confirmed_unrecorded_false_positive`, `normal_operation_hard_block`,
+`sensitive_approval_missing_block`, and `completion_claim_suppressed`.
+Every row stores one non-negative integer `value`. Duration kinds use
+microseconds, the tool-list kind uses serialized UTF-8 bytes, and occurrence
+kinds use a count. Optional dimensions are limited to a public method name,
+integration profile, `allow|warn|deny` decision, owner-defined observation
+confidence, and bounded categorical outcome. Store validation rejects a
+dimension that is not applicable to its metric kind; no free-form label is
+accepted.
 
 The schema has no prompt, path, file-body, error-detail, secret, user-action
 question or capture-form, choice-note, or evidence-observation-summary column.
@@ -639,12 +675,13 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | `expected_writes.path_policy` | `exact_paths` |
 | `expected_writes.status` | `pending`, `matched` |
 | `unrecorded_changes.status` | `unresolved`, `resolved` |
+| `unrecorded_changes.confidence` | `confirmed`, `suspected` |
 | `session_watch_baselines.status` | `disabled`, `active`, `degraded`, `unavailable` |
 | `session_watch_baselines.scope_kind` | `repository`, `path_set` |
 | `session_watch_observations.observation_status` | `unresolved`, `linked` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
 | `change_units.is_current` | `0`, `1` |
-| `write_tickets.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
+| `write_tickets.status` | `active`, `consumed`, `invalidated`, `revoked` |
 | `user_action_requests.action_kind` | seven judgment kinds plus `evidence_observation` |
 | `user_action_requests.basis_status` | `current`, `stale`, `superseded` |
 | `user_action_requests.source_method` | `volicord.request_user_action`, `volicord.reconcile_changes` |
@@ -714,7 +751,7 @@ Rules:
 | `user_action_resolutions` | Closed immutable resolution body, channel kind and bounded visible-ASCII submission id, derived actor/verification/assurance, Core capture time, optional private note, and choice or evidence-observation detail. Local-web rows store only the derived digest identity, never the raw token. |
 | `user_action_channel_tokens` | Request-bound local-web hash-token lifecycle, capture basis, and closed delivery-surface creation metadata. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |
-| `write_tickets` | Write-ticket attempt scope and non-authority metadata. |
+| `write_tickets` | State-bound validity coordinates, normalized exact-or-descendant path prefixes, audit ordering, optional idle boundary, stable invalidation reason, attempt scope, and non-authority metadata. Denied prefixes win; no wildcard grammar is stored. |
 | `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |
 | `artifact_staging` | Staged artifact data, safe metadata, and non-authority metadata. |
 | `evidence_capture_intents` | Exact target/capture JSON, command/tool input digest or Core-derived connection source-selector digest, expected outcome, registered session and Git workspace basis, actor/connection provenance, expiry, and non-authority metadata. Connection capture JSON contains no future source ID, observation timestamp, snapshot digest, or raw-event digest. |

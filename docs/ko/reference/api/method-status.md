@@ -27,6 +27,7 @@
 - 차단 사유, 대기 중인 사용자 행동, 사용할 수 있는 User Channel resolution 경로, 쓰기 티켓 상태
 - 증거와 닫기 준비 상태 관찰 정보(`GuardHealthSummary`, `CoverageSummary` 포함)
 - 프로젝트 연속성, 보장 표시, 다음 안전한 행동
+- 요청 및 유효 통제 수준, 프로젝트 정책 근거, 현재 권한이 완료 주장을 허용하는지 여부
 
 성공한 결과에는 항상 간결한 `summary_card`도 포함됩니다.
 Task가 선택되면 성공한 모든 결과는 선택적 `include` 필드와 무관하게 새로 계산한
@@ -77,6 +78,10 @@ StatusRequest:
 - 증거 갱신
 - 쓰기 티켓 변경
 
+특히 status 읽기와 그때 관찰한 `state_version`은 쓰기 티켓을 무효화하거나
+소비하지 않습니다. `WriteTicket.basis_state_version`은 유효성 좌표가 아니라 감사
+순서 메타데이터입니다.
+
 ## 성공 결과
 
 아래 값을 담은 `StatusResult`를 반환합니다.
@@ -98,7 +103,7 @@ StatusRequest:
   Core 경계를 통해 가용성과 완전한 항목을 조회합니다. 관련 stale 또는 superseded
   기록은 owner가 정의한 상태와 다음 행동 필드에 불투명한 authority ref로 계속 나타날
   수 있지만, 그 ref는 요청 상세 projection이 아닙니다.
-- `include.write_ticket`는 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 상태를 `write_ticket_summary`로 반환합니다.
+- `include.write_ticket`는 활성, 무효화됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 상태를 `write_ticket_summary`로 반환합니다. 무효화된 요약은 안정된 무효화 사유와 유효성 근거를 노출합니다. 선택적 프로젝트 idle timeout은 고정 수명이 아니라 `idle_timeout`으로 나타냅니다.
 - `write_ticket_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위, 기준 `evidence_gate` 상태 보기를 반환합니다.
 - `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 호스트 훅 경로 안전성을 포함한 `GuardHealthSummary` 상태 정보, 도출된 `CoverageSummary`, 관련 다음 행동, 동일한 기준 `evidence_gate`를 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
@@ -120,6 +125,17 @@ StatusRequest:
 정직한 상태 보기 규칙:
 - `authority_receipt.latest_run_ref`는 오래 유지되는 `run_recorded` 권한 이벤트 커밋
   순서를 사용합니다. Run ID나 밀리초가 같은 시각 값으로 최신 Run을 정하지 않습니다.
+- `active_task`는 권위 있는 `policy_schema`, `policy_version`,
+  `policy_fingerprint`, 정책 source와 함께 `requested_control_level`,
+  `effective_control_level`, `control_level_reason`을 노출합니다. status는 저장된
+  값보다 낮은 유효 통제 수준을 도출하지 않습니다.
+- `authority_receipt.completion_claim_allowed`는 현재 닫기 근거가 유효하고 전체
+  닫기 차단 사유 집합이 비어 있을 때만 `true`입니다. 활성 Task가 없거나 권한
+  refresh를 완료할 수 없거나 차단 사유가 하나라도 남으면 `false`이며, 표시 문구나
+  에이전트의 주장이 이를 덮어쓸 수 없습니다.
+- 확인된(`confirmed`) 미해결 미기록 변경만 닫기 차단 사유에 기여합니다.
+  의심(`suspected`) 변경은 경고나 검증 요청으로 계속 보이지만 나중에
+  `confirmed`로 승격되지 않는 한 닫기를 막지 않습니다.
 - 선택한 종료 Task는 저장된 종료 상태를 `closed`, `cancelled`, `superseded` 중 하나로
   표시하고 닫기 차단 사유는 빈 목록, 다음 행동은 없음으로 둡니다. 종료되지 않은
   `ready` 닫기 상태에서는 일반 작업 흐름 제안보다 먼저 에이전트의 다음 행동으로
@@ -156,7 +172,7 @@ StatusRequest:
 | `guarantee_display` | 현재 상태 조회 보기에 대한 `GuaranteeDisplay | null`입니다. |
 | `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuitySummary[]`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 | `task_flow` | `include.continuity=true`이고 Task를 선택했을 때의 `TaskFlowItem[]`이며 그 밖에는 생략합니다. 연결된 lineage projection이지 승계된 현재 권한이 아닙니다. |
-| `authority_receipt` | Task를 선택했을 때 새로 계산한 `AuthorityReceipt`이며 Task가 없으면 `null`입니다. 같은 관찰 `state_version`에서 전체 close blocker, 최신 기록 Run, product-write 관찰, Evidence gate, 다음 actor/action을 담습니다. 형태는 [API 상태 스키마](schema-state.md#task-lineage-workspace-and-authority-receipt)가 담당합니다. |
+| `authority_receipt` | Task를 선택했을 때 새로 계산한 `AuthorityReceipt`이며 Task가 없으면 `null`입니다. 같은 관찰 `state_version`에서 전체 close blocker, 최신 기록 Run, product-write 관찰, Evidence gate, 다음 actor/action, 도출된 `completion_claim_allowed`를 담습니다. 형태는 [API 상태 스키마](schema-state.md#task-lineage-workspace-and-authority-receipt)가 담당합니다. |
 
 중첩된 `AgentSafeUserActionRequestSummary` 형태는 [API 사용자 행동
 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. 중첩된

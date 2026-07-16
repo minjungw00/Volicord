@@ -99,7 +99,7 @@ State effect:
 ### State or idempotency conflict
 
 Condition:
-- `expected_state_version`, `WriteTicket.basis_state_version`, or idempotency request hash is stale or conflicting.
+- `expected_state_version` is stale or the idempotency request hash conflicts. A write-ticket audit `basis_state_version` mismatch is not a conflict.
 
 Route:
 - `ToolRejectedResponse.errors[]` with `STATE_VERSION_CONFLICT`.
@@ -110,6 +110,10 @@ State effect:
 
 Routing boundary:
 - The conflict is not a blocker.
+- State-bound write-ticket invalidity on a consuming method instead returns
+  `WRITE_TICKET_INVALID`; an unresolved invalidated ticket discovered during
+  close readiness is method-owned blocker data. Unrelated state reads and
+  writes do not invalidate the ticket.
 
 <a id="rejected-dry-run-pre-preview-failure"></a>
 ### `dry_run=true` pre-preview failure

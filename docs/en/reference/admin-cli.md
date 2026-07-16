@@ -76,6 +76,11 @@ volicord init --host codex|claude-code --repo PATH [--shared] [--profile record|
 volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json] [--privacy-footprint]
 volicord diagnostics session [--session ID] [--json]
+volicord diagnostics workflow-metrics --repo PATH --json
+volicord policy show --repo PATH --json
+volicord policy validate --file PATH
+volicord policy apply --repo PATH --file PATH --json
+volicord storage upgrade --source-home PATH --destination-home PATH --json
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
 volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
@@ -123,14 +128,17 @@ Exit and stream behavior:
   states, diagnostics, `summary_card`, `checks`, `actions`, and stable fields.
   Automation must not parse default human text output.
 - Hidden internal hook commands use `--output volicord-json` by default. In
-  `volicord-json` mode they write the Volicord wrapper JSON, `deny` exits `1`,
-  and `allow`, `warn`, and `inject_context` exit `0`. `--output text` uses the
-  same exit behavior with a concise human-readable line.
+  `volicord-json` mode they write the Volicord wrapper JSON. Pre-tool and
+  prompt-capture `deny` decisions exit `1`; `allow`, `warn`, and
+  `inject_context` exit `0`. Stop always exits `0` with `decision=allow` and
+  reports completion eligibility separately. `--output text` uses the same
+  exit behavior with a concise human-readable line.
 - Hidden internal hook commands with `--host-output codex|claude-code` write
   host-native hook output instead of the Volicord wrapper JSON. Policy decisions
   use the host's stdout, stderr, and exit-code rules; generated Codex and Claude
-  Code hook wrapper scripts use this mode, and Claude Code policy blocks are not
-  represented as exit code `1`.
+  Code hook wrapper scripts use this mode. Stop must always select the host's
+  one-pass continue/allow form and must not request a repeated Stop. Other
+  Claude Code policy blocks are not represented as exit code `1`.
 - Errors remain stderr diagnostics under the CLI exit-code model.
 - `volicord serve --transport local-http` is an explicit long-running MCP
   transport process. Native runs accept only loopback addresses, and
@@ -334,6 +342,43 @@ such as `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 and `NotHumanReviewReplacement`.
 
 <a id="project-commands"></a>
+<a id="offline-storage-upgrade"></a>
+## Offline storage upgrade
+
+`volicord storage upgrade --source-home PATH --destination-home PATH --json`
+performs the supported offline copy-and-convert path between storage profiles.
+It never upgrades a Runtime Home in place. `PATH` values must resolve to
+different locations; the source must already exist, and the destination must
+not contain an initialized Runtime Home.
+
+The command performs these stages in order:
+
+1. open and validate the source read-only, including its storage profile;
+2. create a new destination Runtime Home without changing the source;
+3. copy and transform records according to the source and destination profile
+   owners;
+4. verify foreign keys, row counts, preserved identifiers, and canonical JSON;
+5. compare canonical hashes for user-owned judgments and evidence;
+6. write a content-free conversion report in the destination;
+7. recheck that the source files and profile coordinates did not change; and
+8. return the destination path for a separate administrator-controlled
+   activation step.
+
+The command reports success only after every stage passes. A failure must not
+mark the destination usable or active. A retry may reuse only a destination
+that the prior failed attempt identifies as its own incomplete staging state;
+otherwise a nonempty destination is a conflict. JSON reports `status`, source
+and destination profile identifiers, source and destination locations,
+completed stages, preserved-record counts, canonical-hash check counts,
+`source_unchanged`, `destination_ready`, and the separate activation action.
+It contains no judgment body, evidence body, prompt, answer, Product Repository
+file content, secret, or raw database row.
+
+The command does not switch `VOLICORD_HOME`, rewrite host configuration, activate
+the destination, delete or alter the source, relax opening rules for an old
+profile, or claim that copied records prove correctness. Exact profile
+transformation and record preservation belong to the focused storage owners.
+
 ## Project commands
 
 Project commands use repository roots as the user-facing project identity.
@@ -514,9 +559,10 @@ Codex `env_vars = ["VOLICORD_HOME"]` or Claude Code
 Connection intent selects the managed Agent Connection target. Init separately
 keeps its current repository integration inventory for both `personal` and
 `shared`. The managed `AGENTS.md` block is repository guidance, while
-`.volicord/policy.json` is an intent-independent local overlay. The policy
-records `storage_scope=local_overlay` and the selected `connection_intent`; it
-is never a shared repository projection. Shared Claude Code init also maintains
+`.volicord/policy.json` is the local managed `volicord-policy-v2` mirror. It
+retains `storage_scope=local_overlay`, the selected `connection_intent`, and the
+closed project workflow policy; it is never a shared repository projection or
+the authoritative policy copy. Shared Claude Code init also maintains
 the repository `.mcp.json` projection; personal Claude Code init uses only the
 host's local CLI target for MCP registration. The Detective profile adds the
 adapter-owned repository hook configuration and rules plus local wrapper scripts.
@@ -683,17 +729,20 @@ final_output_authority_disclosure:
 
 Only profile-applicable subcapabilities are present. Record requires
 `authority_display` and `authenticated_exact_replay`. Detective requires those
-two plus `block_finalization`. The retired `supported` and `verified` booleans
+two plus the legacy-named `block_finalization` diagnostic, which means the host
+can disclose `completion_claim_allowed=false` while still allowing termination;
+it never means Stop denial or retry. The retired `supported` and `verified` booleans
 are not aliases. Configuration fields never promote `support_status`; that
 field comes from the centralized exact-evidence and runtime evaluator. Current
 Volicord output must report `os_enforced=false` and
 `actor_identity_provable=false`.
 
-Init and connection verification pass a canonical host version to this
-projection only when that same command completed a fresh installed-host probe.
-Connection status and Doctor do not run that probe and therefore use the
-host-kind fallback. The version retained in a stored verification report is
-diagnostic history and must not drive either current projection.
+Init and connection verification pass fresh capability-probe results and the
+observed canonical host version to this projection. Connection status and
+Doctor do not launch probes; they use readable current probe observations when
+fresh and otherwise keep an implemented surface `implemented_unverified`. The
+version retained in a stored verification report is diagnostic history and
+must not drive either current projection by equality.
 
 Connection status always emits the six-key map at
 `states.host_feature_support`. It emits selected-profile detail at
@@ -813,10 +862,14 @@ Non-dry-run `volicord init`:
   `volicord mcp --stdio --discover-repository --host codex|claude-code`
   descriptor with the one host-specific portable `VOLICORD_HOME` forwarding
   form and no literal Runtime Home path or other environment entry
-- writes or updates only the Volicord-managed block in `AGENTS.md`
-- writes `.volicord/policy.json` as a `local_overlay` policy carrying the
-  selected `connection_intent` and detective host hook commands that invoke the
-  hidden internal hook namespace
+- writes or updates only the Volicord-managed block in `AGENTS.md`, using the
+  boundary-focused body owned by
+  [Template Bodies](template-bodies.md#managed-agents-guidance-body); the block
+  does not impose a fixed status/intake/check-close call ritual
+- writes `.volicord/policy.json` as the local managed `volicord-policy-v2`
+  mirror carrying the selected `connection_intent`, closed workflow policy,
+  and Detective host-hook commands that invoke the hidden internal hook
+  namespace; project database policy remains authoritative
 - in a Git-backed repository, writes or updates the Volicord-managed local-path
   block in the effective Git `info/exclude` for both intents; the block always
   protects `.volicord/` and generated wrapper scripts, while a standalone
@@ -924,27 +977,51 @@ This is a local-overlay schema; none of these literal local-overlay environment
 values is copied into a shared `.codex/config.toml` or `.mcp.json` Volicord
 entry. The shared entry permits only the host-specific portable
 `VOLICORD_HOME` forwarding form defined above.
-The policy schema also requires `storage_scope=local_overlay`, the selected
-`connection_intent`, a non-empty host/repository/connection identity set, an MCP
-command with string arguments and string environment values, and a host-hook
-enabled state that matches `selected_profile`. The top-level, `mcp`,
-`host_hook`, required phase-command, and individual command objects use closed
-field sets; unknown fields, phases, and non-string argument or environment
-values are rejected. Audit treats a current recorded policy that violates this
-shape or disagrees with its recorded intent as broken. The matching recorded
-host capability must carry a string `connection_intent`; a missing or non-string
-value is broken rather than a compatibility fallback.
+The current managed policy schema is exactly `volicord-policy-v2`. It retains
+every v1 repository, connection, MCP, and host-hook binding and adds a closed
+project-owned `workflow` policy. It requires
+`managed_by=volicord`, `storage_scope=local_overlay`, the selected
+`connection_intent`, a non-empty
+host/repository/connection identity set, an MCP command with string arguments
+and string environment values, and a host-hook enabled state that matches
+`selected_profile`. Audit treats a current recorded policy that violates this
+shape, disagrees with its recorded intent, or differs from the authoritative
+project-policy fingerprint as broken. There is no implicit v1 compatibility
+fallback on a v2 runtime path.
 
-The closed policy objects allow exactly these fields:
+The closed v2 objects allow exactly these fields:
 
 - top level: `schema`, `managed_by`, `storage_scope`, `connection_intent`,
   `host`, `repo_root`, `connection_id`, `guard_installation_id`,
-  `selected_profile`, `mcp`, and `host_hook`
+  `selected_profile`, `mcp`, `host_hook`, and `workflow`
 - `mcp`: `command`, `args`, and `env`
 - `host_hook`: `enabled` and `commands`
 - `host_hook.commands`: `session_start`, `pre_tool`, `post_tool`,
   `prompt_capture`, and `stop`
 - each phase command: `command` and `args`
+- `workflow`: `default_direct_control`, `default_work_control`, `light`,
+  `write_ticket`, and `detective`
+- `workflow.light`: `enabled`, `max_intended_paths`,
+  `allowed_path_patterns`, `denied_path_patterns`, and `final_acceptance`
+- `workflow.write_ticket`: `idle_timeout_minutes`
+- `workflow.detective`: `unknown_effect_behavior` and `stop_behavior`
+
+`default_direct_control` and `default_work_control` use `observe`, `light`,
+`tracked`, or `sensitive`; both default to the conservative value `tracked`.
+These are project minima and do not override owner-defined elevation rules or
+automatically lower an active Task. `light.enabled` defaults to `false`,
+`max_intended_paths` defaults to `3`, and `final_acceptance` is
+`policy_dependent`. `idle_timeout_minutes` is a positive integer or `null` and
+defaults to `null`. `unknown_effect_behavior` is `warn`, and `stop_behavior` is
+`allow_with_disclosure`; those are the only baseline v2 values.
+
+Every entry in `allowed_path_patterns` and `denied_path_patterns` is a
+normalized repository-relative file or directory prefix. An exact path or a
+descendant of a directory prefix matches. Empty entries, absolute paths,
+escaping `..` segments, and ambiguous non-normalized forms are invalid. A
+denied prefix always wins. An empty allowed list permits no Light product-file
+write; it is never a wildcard. Unknown fields and invalid values are rejected
+without treating them as a permissive default.
 
 Applying a planned guard-integration managed file during init is a conditional
 same-directory commit. This rule covers managed guidance, policy, hook, wrapper,
@@ -1009,6 +1086,69 @@ platform-specific:
 - A newly created managed file receives the normal metadata of a new file in the
   selected directory. No cross-platform owner, ACL, extended-attribute, timestamp,
   alternate-stream, label, or other complete-metadata equivalence is implied.
+
+<a id="project-workflow-policy-commands"></a>
+## Project workflow policy commands
+
+These commands administer project-owned workflow policy independently of the
+Agent Connection MCP surface:
+
+```text
+volicord policy show --repo PATH --json
+volicord policy validate --file PATH
+volicord policy apply --repo PATH --file PATH --json
+```
+
+`policy validate` strict-reads one bounded regular JSON file, validates the
+closed `volicord-policy-v2` shape and normalized path prefixes, and computes its
+canonical `sha256:<lowercase-hex>` fingerprint. It does not select or create a
+Runtime Home, open project state, modify the input, or write
+`.volicord/policy.json`. Success reports the schema and fingerprint; failure
+reports bounded field paths and validation codes without copying secret-like
+environment values.
+
+`policy show` selects the registered project from `--repo`, reads the
+authoritative project-database policy and the managed file independently, and
+returns:
+
+- `schema`, the monotonically increasing project-local `policy_version`, and
+  authoritative `policy_fingerprint`;
+- `source=project_database` for the policy that governs workflow decisions;
+- the managed-file schema and fingerprint when the file is readable;
+- `file_matches_authority`, plus a bounded mismatch status such as missing,
+  malformed, fingerprint mismatch, binding mismatch, or permission failure;
+- whether an active Task needs control-level escalation before its next write;
+  and
+- an actionable repair command when the copies do not match.
+
+It does not silently prefer the managed file over the database, mutate either
+copy, or print MCP environment values, policy source JSON, prompts, file
+contents, or user answers.
+
+`policy apply` performs, in order, strict schema validation; Product Repository,
+Runtime Home, host, connection, and guard-installation binding validation;
+comparison with the current authoritative fingerprint; recording the
+canonical policy, fingerprint, schema, and next `policy_version` in project
+state; conditional atomic replacement of the managed policy file; and marking
+active Tasks that require upward control-level reevaluation before another
+write. The project policy always takes precedence over an Agent-requested
+control level. Applying a less restrictive policy never automatically lowers
+an active Task.
+
+Reapplying the same canonical fingerprint is idempotent and does not increment
+`policy_version`; it may repair a missing or mismatched managed file. A changed
+canonical policy increments `policy_version` exactly once. Because the project
+database is authoritative, failure after its commit but before verified file
+replacement returns `status=failed`, `database_changed=true`,
+`file_matches_authority=false`, and an exact repair action; it must not report
+complete application. The next `policy show`, `doctor`, and connection-status
+diagnostics must continue to surface that mismatch.
+
+Apply JSON reports `status`, `changed`, `database_changed`, `file_changed`,
+`restart_required`, schema, prior and resulting policy versions and
+fingerprints, file-match state, active-Task escalation state, and `actions`.
+It does not include policy source JSON, command text from hook bindings,
+environment values, prompts, Product Repository contents, or user answers.
 
 <a id="volicord-agent-install"></a>
 ## Agent Connection commands
@@ -1399,34 +1539,48 @@ Lifecycle behavior:
 - `session-start` records or reuses the Agent Session and returns
   `inject_context` with concise project, active task, write-ticket, pending
   judgment, blocker, and unresolved-change context for host-session injection.
-- `pre-tool` classifies read-only, clearly mutating, and uncertain tool
-  attempts. Read and status commands are allowed without creating blockers. A
-  product-file write attempt may return `deny` or `warn` when there is no active
-  task, no current active write-ticket row, an attempted target is outside the
-  selected Product Repository, an observed path is outside active write-ticket
-  scope, the active ticket match is ambiguous, or policy blocks a clearly
-  mutating shell command. These decisions are cooperative host decisions, not
-  OS-level enforcement. Uncertain shell commands default to `warn` unless host-hook
-  policy asks for `deny`. When pre-tool allows a clearly mutating product-file
-  write with a concrete in-repository path set, active task, exactly one current
-  active matching write ticket, and compatible project scope, it records an
-  expected-write correlation row with project, connection, session, optional
-  host invocation identity, tool kind, exact path policy,
-  task/change-unit/write-ticket basis, and timestamp metadata. Read-only,
-  uncertain, ambiguous, and ticket-out-of-scope commands do not create
-  expected-write rows.
-- `post-tool` records the observed tool outcome. When the event supplies
-  changed Product Repository paths, post-tool first tries to match them to a
-  prior expected-write row from the same project, connection, session, bounded
-  time window, and exact path policy, using host invocation identity when the
-  host supplies it. If no expected-write row matches, post-tool may correlate
-  the changed paths to exactly one current active matching write ticket.
-  Matched in-scope writes do not create unresolved unrecorded-change rows.
-  Unmatched, ticket-out-of-scope, or ambiguous observed Product Repository
-  changes record an unresolved unrecorded-change row and return `warn`.
-  Post-tool observation and matching are host-observation records, not proof of
-  product correctness, actor identity, or write prevention. It does not execute
-  untrusted commands to discover changes.
+- `pre-tool` produces a `MutationAssessment` with `effect` as `read_only`,
+  `product_file_write`, `non_product_write`, `external_effect`, or `unknown`,
+  and `confidence` as `confirmed`, `structured`, `heuristic`, or `unknown`.
+  It may return `deny` only when a structured host event or deterministic
+  direct-write tool confirms a Product Repository write, the target paths are
+  known, and at least one hard boundary is present: no active Task, no covering
+  write ticket, a confirmed repository escape or ticket-scope violation, or a
+  required sensitive-action approval is absent. A deterministic denied policy
+  prefix is also a confirmed scope violation. These are cooperative host
+  decisions, not OS-level enforcement.
+
+  Missing paths, parser uncertainty, complex shell syntax, pipes, subshells,
+  scripts, watcher unavailability, more than one candidate ticket, or an
+  unknown effect return `warn`, never a policy-selected hard denial. Only exact
+  safe command forms may be classified read-only: the baseline shell allowlist
+  includes `git status`, `git diff`, `git log`, `git show`, `git rev-parse`, and
+  `cargo metadata`. Command-name-only rules must not classify arbitrary `git`,
+  `cargo`, `npm`, `pnpm`, `yarn`, `node`, or `rustc` invocations as read-only.
+  In particular, Git mutation commands, package-manager scripts, Node scripts,
+  builds, redirection, pipes, and subshells remain mutating or uncertain.
+
+  When pre-tool allows a confirmed or structured product-file write with a
+  concrete in-repository path set, active Task, exactly one current matching
+  write ticket, and compatible policy scope, it records an expected-write
+  correlation. Read-only, heuristic, unknown, ambiguous, and ticket-out-of-
+  scope attempts do not create expected-write rows.
+- `post-tool` records the observed outcome and determines changed paths in this
+  order: structured host `changed_paths`; a session-watcher before/after
+  comparison for the same managed session; a bounded read-only Git diff when
+  that repository and capability are available; then heuristic paths. It does
+  not execute caller-supplied commands to discover changes. Structured or
+  independently observed changed paths can produce `confirmed` unrecorded
+  changes. Heuristic or incomplete observations produce `suspected` changes.
+
+  Post-tool first correlates confirmed paths to the matching expected write,
+  then to exactly one compatible active write ticket. An unmatched or
+  out-of-scope confirmed change records a `confirmed` unresolved change and is
+  a close-readiness blocker. A `suspected` change returns a warning and asks for
+  confirmation but is not a blocker by itself. A later diff promotes it when a
+  change is confirmed or resolves it when no change exists. Matching and
+  confidence are observation records, not proof of product correctness, actor
+  identity, or write prevention.
 - `prompt-capture` records prompt-capture metadata and recognizes strict
   chat user-action commands only when prompt-capture availability for the current
   host, project, and connection is `configured`, `observed`, or `active`, and
@@ -1473,28 +1627,30 @@ Lifecycle behavior:
   `replayed=true` only when the same durable resolution was returned from
   idempotent replay. Local diagnostics count every successful recognized
   command as Core-reached, but count only a non-replay as Core-committed.
-- `stop` checks whether the active task can safely be treated as complete.
-  Before it can return `allow` for an active task, it obtains a current Core
-  status response with close data. Only a response with
-  `base.response_kind=result` and `base.effect_kind=read_only` is eligible for
-  this decision. Its Core-owned `AuthorityReceipt` must match the refreshed
-  status state version, project, Task, Task reference version, scope revision,
-  current Change Unit, evidence gate, close state, close blockers, and the
-  guard context captured for this hook event. A mismatch, non-result response,
-  or response whose required status fields are missing or malformed returns
-  `deny` with reason code `authoritative_refresh_failed`.
-  For that denial,
-  `result.close_status.authoritative_refresh` contains only the recognized
-  `response_kind` value, or `null` when it is missing or malformed, and an
-  `error_codes` list containing valid public `ErrorCode` values. It must not
-  copy Core error messages, error details, or request or response bodies. A
-  failure to call Core remains an internal hook-command failure on the existing
-  error path. The refresh is read-only and a refresh-failure denial creates no
-  Core state effect beyond ordinary hook-observation recording. A valid result
-  injects the matched receipt as `result.close_status.authority_receipt` and
-  returns `deny` when close-readiness blockers remain, user-owned judgments are
-  pending, or unresolved unrecorded changes remain; otherwise it returns
-  `allow`.
+- `stop` always allows the host session to terminate. It obtains and validates
+  a fresh read-only Core status with close data when an active Task exists, but
+  status refresh and completion eligibility are separate from termination.
+  The result always uses `decision=allow`, `allowed=true`, and a successful
+  host-continue form. It sets `completion_claim_allowed=false` when a user
+  action is pending, a confirmed unrecorded change exists, evidence or another
+  close requirement is missing, or the authoritative refresh fails. A
+  suspected change alone does not suppress completion unless another owner-
+  defined blocker does.
+
+  The result reports the active Task, `task_state`, bounded reasons with
+  `severity=incomplete`, `next_actor`, `completion_claim_allowed`, and
+  `authoritative_refresh_succeeded`. A successful refresh may also include the
+  validated current `AuthorityReceipt`; a failed or malformed refresh exposes
+  only the safe failure class and valid public `ErrorCode` values, never Core
+  messages, error details, or request/response bodies.
+
+  Stop persists one content-free session-termination receipt containing the
+  managed session, active Task coordinate when present, Task state, blocker
+  codes, next actor, completion-claim flag, refresh-success flag, and observed
+  time. It stores no model final prose, prompt, command, file path, file content,
+  user answer, error body, or raw host event. Exact replay returns the same
+  termination result without asking the host to issue a second Stop; a current
+  final-output display may still perform its separate fresh read-only refresh.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ### Managed final-output authority disclosure
@@ -1815,6 +1971,40 @@ is not supported. Any future detailed trace must be a separately documented,
 explicit opt-in surface with its own retention and redaction contract; it must
 not silently widen this default collection. Exact placement and retention are
 owned by [Storage Records](storage-records.md#local-diagnostics-store).
+
+<a id="workflow-metrics"></a>
+### Workflow metrics
+
+`volicord diagnostics workflow-metrics --repo PATH --json` reads bounded local
+aggregate measurements for the registered project. It reads diagnostic data
+only and does not create a Task, open or change Core authority, issue a write
+ticket, resolve a user action, change `state_version`, or alter a Guard result.
+If no measurements exist it returns `status=no_data` and does not create the
+diagnostics database.
+
+The JSON result contains aggregate counts or durations only:
+
+- Task duration and start-to-first-product-write duration distributions;
+- MCP calls by public method and `volicord.status` reread count;
+- write-ticket issue, reuse, and reissue counts;
+- user roundtrip count;
+- Stop call and repeated-Stop counts;
+- `tools/list` serialized-byte measurements;
+- PreTool allow, warn, and deny counts by observation confidence;
+- confirmed out-of-scope writes, suspected changes later resolved as no
+  change, and measurable confirmed-unrecorded-change false-positive counts;
+- normal-operation hard blocks, missing-sensitive-approval blocks, and
+  completion-claim suppression counts.
+
+Durations and false-positive rates are nullable when the required observations
+are absent; the report uses `measurement_pending` rather than claiming a zero or
+an achieved target. It may group counts by bounded categorical method, host,
+profile, effect, confidence, and outcome values. It must not contain command
+lines, shell fragments, prompts, model output, Product Repository paths or file
+contents, policy source JSON, user-action questions, forms, choices, notes,
+answers, Evidence summaries, secrets, raw host events, or error bodies. The
+metrics are operability observations, not evidence, host conformance, actor
+attribution, write prevention, correctness, acceptance, or close readiness.
 
 <a id="noninteractive-approval-behavior"></a>
 ## Noninteractive behavior

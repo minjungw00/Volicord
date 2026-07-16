@@ -115,6 +115,9 @@ ToolEnvelope:
 의미:
 - `MethodResult`는 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 정의하는 메서드별 결과 분기입니다.
 - 모든 구체 메서드 결과는 `base: ToolResultBase`를 담고 그 뒤에 그 메서드의 결과 필드만 둡니다.
+- `response_kind=result`와 성공한 전송은 완료 주장을 허가하지 않습니다. Task 범위
+  workflow 결과는 현재 `AuthorityReceipt.completion_claim_allowed`를 사용하며 거절,
+  dry-run, refresh 실패, 활성 Task 없음 분기는 완료 권한이 아닙니다.
 
 의미하지 않는 것:
 - `MethodResult`는 하나의 구체 스키마 이름이 아닙니다.
@@ -144,6 +147,8 @@ ToolDryRunResponse:
 의미하지 않는 것:
 - `ToolRejectedResponse`와 `ToolDryRunResponse`는 `task_ref`, `run_summary`, `staged_artifact_handle`, `write_ticket_ref`, `user_action_resolution_ref`, `decision`, `close_state` 같은 결과 전용 필드를 담지 않습니다.
 - `ToolResultBase.disclosure`는 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 변조 불가능 감사 로그, 전체 쓰기 방지, 전체 파일시스템 감시, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체를 만들지 않습니다.
+- `effect_kind`와 표시 문구는 `completion_claim_allowed=false`, 닫기 차단 사유,
+  누락된 권한을 덮어쓸 수 없습니다.
 
 담당 문서 링크:
 - 지원되는 `response_kind`와 `effect_kind` 값: [응답과 효과 값](schema-value-sets.md#response-and-effect-values)

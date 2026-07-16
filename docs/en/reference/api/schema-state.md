@@ -135,6 +135,10 @@ StateSummary:
   state_version: integer
   task_ref: StateRecordRef | null
   mode: string | null
+  requested_control_level: string | null
+  effective_control_level: string | null
+  control_level_reason: string | null
+  project_policy: ProjectWorkflowPolicySummary | null
   work_phase: string | null
   acceptance_policy: string | null
   acceptance_policy_reason: string | null
@@ -168,6 +172,10 @@ Meaning:
 - `mode`, `work_phase`, `acceptance_policy`, and `close_state` are controlled
   value strings when present. `acceptance_policy_reason` records why Core chose
   the Task-owned final-acceptance policy; it is not an approval or waiver.
+- `requested_control_level` preserves `auto` or the caller's explicit request.
+  `effective_control_level` is the upward-only Core decision. The free-form
+  `control_level_reason` explains the decision without becoming authority.
+  `project_policy` identifies the exact authoritative policy copy used.
 - `lineage` is the Task's one canonical predecessor edge and its carry-forward
   audit. `scope_revision` is the current Task scope revision.
 - `goal_summary`, `scope_summary`, `non_goals`, and `autonomy_boundary` are
@@ -231,6 +239,12 @@ WorkspaceContext:
   head_sha: string | null
   workspace_fingerprint: string
 
+ProjectWorkflowPolicySummary:
+  policy_schema: string
+  policy_version: integer
+  policy_fingerprint: string
+  source: string
+
 AuthorityReceipt:
   project_id: string
   state_version: integer
@@ -242,6 +256,7 @@ AuthorityReceipt:
   evidence_gate: EvidenceGateSummary | null
   close_state: string
   close_blockers: CloseReadinessBlocker[]
+  completion_claim_allowed: boolean
   next_actor: string
   next_action: NextActionSummary | null
 ```
@@ -253,6 +268,13 @@ Meaning:
   predecessor context without making its authority current.
 - `TaskFlowItem[]` is a full-status projection over the connected predecessor
   component. It is derived display, not a new parent-goal record.
+- `ProjectWorkflowPolicySummary.policy_schema` is
+  `volicord-policy-v2`; `policy_version` is monotonic per project and
+  `policy_fingerprint` is the SHA-256 of canonical policy JSON. `source` is
+  provenance for the authoritative database copy, not a file-loading contract.
+- `AuthorityReceipt.completion_claim_allowed` is derived, never caller supplied.
+  It is true only for a valid completion basis with no blockers and false when
+  no active Task is available or authority refresh fails.
 - `WorkspaceContext` uses the canonical Git common-directory and linked-
   worktree identity shared by local integration and Core write checks. A null
   branch represents detached HEAD. Non-Git repositories return null context.
@@ -511,6 +533,7 @@ Owner links:
 UnrecordedChangeFinding:
   unrecorded_change_ref: StateRecordRef
   status: string
+  confidence: string
   summary: string
   observed_paths: string[]
   detected_at: string
@@ -530,6 +553,8 @@ Meaning:
 
 - `unrecorded_change_ref` uses `StateRecordRef` with `record_kind=unrecorded_change`.
 - `status` is a controlled value string.
+- `confidence` is `confirmed` or `suspected`. Only an unresolved confirmed
+  finding is a close blocker; suspected findings remain visible for verification.
 - `summary`, `capture_basis`, and `next_action.label` are display strings, not proof of correctness.
 - `observed_paths` contains Product Repository relative paths when Core can safely decode them. It does not include prompt text, command text, shell arguments, or full sensitive content.
 - `can_resolve_in_chat` reports whether the finding can proceed through a chat-mediated user path selected by the method owner.
@@ -710,6 +735,9 @@ WriteTicketStateSummary:
   status: string
   write_ticket_ref: StateRecordRef | null
   basis_state_version: integer | null
+  validity_basis: WriteTicketValidityBasis | null
+  invalidation_reason: string | null
+  idle_expires_at: string | null
   intended_paths: string[]
   consumed_by_run_ref: StateRecordRef | null
   observation_refs: StateRecordRef[]
@@ -728,6 +756,14 @@ WriteTicketPathPatterns:
   allowed: string[]
   denied: string[]
 
+WriteTicketValidityBasis:
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string | null
+  workspace_context_sha256: string | null
+  approval_basis_refs: StateRecordRef[]
+
 WriteTicketScope:
   task_id: string
   change_unit_id: string
@@ -744,7 +780,9 @@ WriteTicket:
   path_patterns: WriteTicketPathPatterns
   observed_paths: string[]
   basis_state_version: integer
-  expires_at: string | null
+  validity_basis: WriteTicketValidityBasis
+  invalidation_reason: string | null
+  idle_expires_at: string | null
   control_surface: ControlSurfaceSummary | null
   guarantee_display: GuaranteeDisplay | null
 
@@ -787,9 +825,12 @@ Meaning:
 - `WriteTicketStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the write ticket is not consumed or the consuming Run created no observations.
 - `WriteTicketAttemptScope` is the one-attempt boundary captured by the write ticket.
 - `WriteTicketAttemptScope` is not ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user approval.
-- `WriteTicket` is the ticket-first authority record returned by `volicord.prepare_write` when a committed allowed decision issues a write ticket.
+- `WriteTicket` is the ticket-first authority record returned by `volicord.prepare_write` when a committed allowed decision issues or reuses a compatible ticket.
 - `WriteTicket.state` is a controlled value string.
-- `WriteTicket.path_patterns.allowed` and `WriteTicket.path_patterns.denied` are normalized Product Repository path patterns captured by the ticket decision.
+- `WriteTicket.path_patterns.allowed` and `WriteTicket.path_patterns.denied` are normalized repository-relative path prefixes captured by the ticket decision. A prefix matches its exact path or descendants; wildcard and glob grammar is not supported. Absolute, empty, `..`-containing, or ambiguous entries are invalid; denied prefixes win, and an empty allowed list permits no product-file writes.
+- `WriteTicket.validity_basis`, consumption state, optional idle timeout, and
+  invalidation reason determine validity. `basis_state_version` records audit
+  order only; an unrelated state-version increment never invalidates a ticket.
 - `WriteTicket.observed_paths` is empty in the baseline. Detective host-hook and watcher observations are recorded through host-observation and unrecorded-change records rather than written back into the ticket.
 - `WriteTicket.control_surface` and `WriteTicket.guarantee_display` disclose the current Volicord observation summary and guarantee wording. They do not claim OS-level filesystem enforcement.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
@@ -829,8 +870,10 @@ Meaning:
 | `scope` | `WriteTicketScope`. | Captures the Task, Change Unit, operation, sensitive categories, product-write flag, and baseline used for ticket issuance. |
 | `path_patterns` | `WriteTicketPathPatterns`. | Captures allowed and denied normalized Product Repository path patterns for the ticket decision. |
 | `observed_paths` | Normalized Product Repository path strings. | Lists observed paths only when an owner-defined detective path has connected observations to the ticket. Use `[]` when no observations are connected. |
-| `basis_state_version` | State-clock value. | The `project_state.state_version` basis committed with the ticket. |
-| `expires_at` | UTC timestamp or `null`. | Ticket expiration used as a Volicord compatibility condition, not as OS-level enforcement. |
+| `basis_state_version` | State-clock value. | Audit ordering captured at issue or reuse; never a ticket-validity coordinate. |
+| `validity_basis` | `WriteTicketValidityBasis`. | Exact Task, Change Unit, scope, baseline, workspace, and approval coordinates used for state-bound reuse and invalidation. |
+| `invalidation_reason` | Controlled invalidation reason or `null`. | Stable reason recorded when the ticket is invalidated. |
+| `idle_expires_at` | UTC timestamp or `null`. | Optional project-policy idle boundary. `null` means no idle timeout; there is no fixed default lifetime. |
 | `control_surface` | `ControlSurfaceSummary | null`. | Disclosure of the current Volicord control surface. |
 | `guarantee_display` | `GuaranteeDisplay | null`. | Human-display guarantee wording scoped by [Security](../security.md). |
 

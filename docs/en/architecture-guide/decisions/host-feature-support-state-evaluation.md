@@ -16,21 +16,27 @@ same facts differently.
 
 ## Decision
 
-Use one shared static implementation evaluator for the six feature IDs and the
+Use one shared capability-first evaluator for the six feature IDs and the
 final-output subcapabilities defined by the Agent Connection and API value-set
-owners. Shared types own the closed identifiers, reviewed host/version/client
-facts, canonical Codex version grammar, version-aware implementation matrix,
-and the single-feature support-state precedence over exact evidence and current
+owners. Shared types own the closed identifiers, runtime probe facts, reviewed
+host/version/client evidence coordinates, canonical Codex version grammar, and
+the single-feature support-state precedence over exact evidence and current
 readiness. CLI diagnostics, MCP delivery eligibility, and release validation
 must consume those results rather than reconstructing host-kind fallbacks,
-version tables, or feature-state precedence.
+version gates, or feature-state precedence. An unfamiliar version is
+`implemented_unverified`, not `unsupported_by_host`; a successful applicable
+runtime probe can establish `verified`, a failed probe yields a degraded or
+temporarily unavailable state, and only demonstrated host absence yields
+`unsupported_by_host`.
 
 The CLI aggregates the shared single-feature results across the six-feature
 matrix and each final-output profile. Exact live evidence and current runtime
 readiness remain separate inputs. Configuration is reported only through
 `configured` and `configuration_verified`; it never promotes support. MCP must
-reject a statically unsupported local-web surface before consulting persisted
-verification and must repeat the same check when issuing a delivery lease.
+reject a demonstrated unsupported local-web surface before consulting
+persisted verification and must repeat the capability check when issuing a
+delivery lease. An exact client version remains evidence metadata, not the
+primary runtime eligibility gate.
 
 Doctor, connection status, and the release feature matrix consume one
 evaluation result. Exact replay re-runs the evaluator. Evidence must bind the
@@ -61,8 +67,8 @@ init workflow. No fallback inference is made from its old Boolean.
   feature rather than inheriting a historical pass.
 - Final-output Record and Detective claims expose their distinct required
   subcapabilities while continuing to share fresh authority projection code.
-- MCP, CLI diagnostics, and release validation cannot assign different static
-  implementation dispositions to the same canonical host/version/feature.
+- MCP, CLI diagnostics, and release validation cannot assign different
+  capability dispositions to the same current probe and evidence facts.
 
 ## Public and diagnostic compatibility
 
@@ -100,23 +106,24 @@ support state does not create Core authority or a new public method.
   rejected because it would preserve the ambiguous contract.
 - Letting every command recompute support independently was rejected because
   precedence, freshness, and subcapability aggregation would drift.
-- Keeping the reviewed version matrix in the CLI was rejected because MCP and
-  test-only release validation cannot depend on an adapter binary crate without
-  either reversing dependency direction or duplicating the decision.
+- Using a reviewed exact-version matrix as the primary runtime gate was
+  rejected because a newer compatible host would be mislabeled unsupported
+  before its actual capabilities were probed. Reviewed versions remain
+  regression and release-evidence coordinates.
 
 ## Relevant implementation areas
 
 - [`crates/volicord-types/src/host_feature_support.rs`](../../../../crates/volicord-types/src/host_feature_support.rs):
-  closed identifiers, reviewed host/version/client facts, canonical parsing,
-  shared static implementation matrix, and single-feature state precedence.
+  closed identifiers, reviewed host/version/client evidence facts, canonical
+  parsing, capability-probe facts, and single-feature state precedence.
 - [`crates/volicord-cli/src/host_integration/capability_status.rs`](../../../../crates/volicord-cli/src/host_integration/capability_status.rs):
   profile-specific final-output and six-feature diagnostic aggregation over
-  shared static and single-feature support results.
+  shared capability and single-feature support results.
 - [`crates/volicord-mcp/src/adapter.rs`](../../../../crates/volicord-mcp/src/adapter.rs):
-  initial and issuance-time local-web eligibility checks over the same static
+  initial and issuance-time local-web eligibility checks over the same capability
   result.
 - [`tests/release-validation`](../../../../tests/release-validation):
-  exact-artifact claim evaluation over the same static result.
+  exact-artifact claim evaluation over the same capability result.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../../crates/volicord-cli/src/connection_command.rs)
   and [`doctor_command.rs`](../../../../crates/volicord-cli/src/doctor_command.rs):
   diagnostic consumers.

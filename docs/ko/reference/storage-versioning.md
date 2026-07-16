@@ -1,10 +1,10 @@
 # 저장소 버전 관리
 
-이 문서는 현재 Volicord SQLite 저장소의 기준 버전 관리 규칙을 정의합니다. 공개 API 동작, Core 권한 의미, 보안 보장, 스키마 변환 절차, 이전 Runtime Home의 호환성 변환은 정의하지 않습니다.
+이 문서는 현재 Volicord SQLite 저장소의 기준 버전 관리 규칙과 유일하게 지원되는 오프라인 v6-to-v7 복사 변환을 정의합니다. 공개 API 동작, Core 권한 의미, 보안 보장, 관리 명령 문법, 정책 파일 탐색, host 통합은 정의하지 않습니다.
 
 ## 저장소 프로필
 
-현재 기준 저장소 프로필은 `baseline_sqlite_v6`입니다.
+현재 기준 저장소 프로필은 `baseline_sqlite_v7`입니다.
 
 기준 저장소는 기준 SQL 원본인 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)을 사용합니다. Runtime Home을 초기화할 때 이 원본을 빈 SQLite 데이터베이스에 적용합니다. `schema_migrations`, `schema_version`, `migration_version`, `storage_version` 같은 저장소 버전 필드나 테이블은 만들지 않습니다.
 
@@ -16,9 +16,16 @@
 - 저장소 프로필이 일치하지 않습니다.
 - 필수 기록의 형식이 잘못되었습니다.
 
-저장소 코드는 기록의 의미를 추측하거나, 데이터를 알리지 않고 다시 쓰거나, 지원하지 않는 저장소를 변환하면 안 됩니다. 기존 Runtime Home의 저장소가 호환되지 않으면 명확한 오류를 반환하고 Runtime Home을 다시 만들도록 요구해야 합니다.
+일반 Store open은 기록 의미를 추측하거나, 데이터를 알리지 않고 다시 쓰거나, 지원하지 않는 저장소를 변환하면 안 됩니다. v7은 v6를 호환되지 않는 것으로 거절합니다. 아래에서 명시적으로 실행하는 오프라인 복사 변환만 예외이며 v6 source를 변경 가능하게 열지 않습니다.
 
 기준 `registry.sqlite`에는 Runtime Home 식별 정보, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, `connection_projects`, 변경 불가능한 호스트 역량 검증 이력, 현재 호스트 역량 포인터, `guard_installations`가 들어갑니다. 기준 프로젝트 `state.sqlite`에는 Core 상태 보기 기록, `authority_events`, 재실행 행, 스테이징·영속 아티팩트, 증거, evidence capture intent, receipt, 배타적 source claim, 불변 evidence producer, 사용자 행동 요청, 변경 불가능한 사용자 행동 해결, 요청 결속 로컬 채널 token, 실행 기록, 차단 사유, `write_tickets`, 호스트 관찰 기록, 세션 감시 기록이 들어갑니다.
+
+`baseline_sqlite_v7`은 요청/유효 통제 수준 필드, 권위 있는
+`volicord-policy-v2` 데이터베이스 복사본과 지문, 안정된 무효화 사유와 선택적 idle
+timeout을 가진 재사용 가능한 상태 결합 쓰기 티켓, 미기록 변경 confidence,
+`completion_claim_allowed`를 가진 session-end 권한 receipt를 추가합니다. 개인정보를
+제한한 workflow metric은 별도의 비권한 진단 schema에 남으며 프로젝트 저장 profile
+권한이 아닙니다.
 
 `baseline_sqlite_v6`는 credential 전달 자격이 클라이언트 선언이나 변경 가능한 설정 검증
 JSON이 아니라 변경 불가능하고 만료되며 정확한 프로필에 결속된 실제 호스트 증거에
@@ -163,7 +170,7 @@ UTC 값은 시간 경계와 담당자가 정의한 시각을 나타내며 권한
 
 관련 필드:
 
-- `write_tickets.basis_state_version`은 쓰기 티켓 발급이 커밋된 뒤의 `project_state.state_version`을 저장합니다. Core는 나중에 쓰기 티켓을 소비할 때 이 값을 최신성 근거로 사용합니다. Task 안에서 현재 쓰기 티켓을 선택할 때 이 필드를 내림차순으로 정렬하며 DDL이 Task별 정렬 키를 고유하게 만들므로 timestamp와 불투명 record ID는 권한 순서 tie-breaker가 아닙니다.
+- `write_tickets.basis_state_version`은 발급 또는 재사용의 감사 순서를 저장합니다. 고유하지 않고 유효성 좌표도 아닙니다. 티켓 유효성은 명시적 Task, Change Unit, 범위 리비전, 기준선, workspace, 승인 근거, 소비/철회 상태, 선택적 idle timeout을 사용합니다.
 - `evidence_summaries.produced_at_state_version`은 해당 요약을 가장 최근에 삽입하거나
   갱신한 커밋의 결과 `project_state.state_version`을 저장합니다. 현재 Evidence
   Summary를 선택할 때 이 필드를 내림차순으로 정렬하며 timestamp나 불투명 record
@@ -173,13 +180,14 @@ UTC 값은 시간 경계와 담당자가 정의한 시각을 나타내며 권한
 
 ## 쓰기 티켓
 
-쓰기 티켓은 제안된 제품 파일 쓰기 시도 하나에 대한 권한 있는 쓰기 의도를 기록하는 Volicord 권한입니다. OS 권한, OS 샌드박스, 파일시스템 ACL, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 실제 쓰기가 일어났다는 증거가 아닙니다.
+쓰기 티켓은 호환되는 승인 product-file 쓰기 의도에 대해 소비 전까지 재사용 가능한 Volicord 권한입니다. OS 권한, OS 샌드박스, 파일시스템 ACL, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 실제 쓰기가 일어났다는 증거가 아닙니다.
 
 쓰기 티켓 발급과 호환되는 소비에는 일반 상태 버전 규칙이 적용됩니다.
 
 - 담당 문서가 정의한 메서드 분기만 쓰기 티켓 발급을 커밋할 수 있습니다.
-- 저장된 `write_tickets` 행이 `active` 상태이고, 호환되며, 만료되거나 소비되지 않았고, 현재 프로젝트 상태 근거와 맞을 때만 소비를 커밋할 수 있습니다.
-- 오래된 `WriteTicket.basis_state_version`은 소비 전에 거부합니다.
+- prepare-write는 모든 유효성 좌표가 일치하고 기존 allowed prefix가 요청 prefix를 포함하며 denied prefix가 계속 적용되고 민감 권한이 같거나 더 강할 때 활성 미소비 티켓을 재사용할 수 있습니다.
+- 실제 product-file 쓰기에서만 행이 활성, 호환, 미소비, 미철회, 미무효화이고 선택적으로 설정된 idle 경계 안일 때 소비를 커밋할 수 있습니다.
+- 관련 없는 상태 버전 증가는 티켓을 무효화하지 않습니다. 명시적 무효화 사유는 `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`, `explicit_revoke`입니다.
 - 거부, `dry_run`, 재실행 전용 분기에서는 발급하거나 소비하지 않습니다.
 
 ## 멱등성과 재실행
@@ -266,6 +274,34 @@ Agent Connection 조회 대상이 아닙니다. 조회한 응답은 과거 결�
 행이나 `OperationResultRef`를 만들지 않으며, 스테이징 효과가 일어나기 전에 전체
 직렬화 결과가 지원되는 예상 크기 상한을 만족해야 합니다.
 
+## 오프라인 v6-to-v7 복사 변환
+
+일반 v7 open은 v6를 거절합니다. 오프라인 converter는 v6 Runtime Home과 모든 source
+database를 읽기 전용으로 열고 전체 v6 형태와 타입이 지정된 owner 상태를 검증한 뒤,
+기준 DDL로 별도의 빈 v7 destination을 만들고 transaction 안에서 변환한 기록을
+복사합니다. Source를 relabel하거나 바꾸지 않고, table을 in-place 갱신하지 않으며,
+변환의 일부로 destination을 활성화하지 않습니다.
+
+변환은 project, Task, Change Unit, Run, judgment, Evidence, artifact, blocker, event,
+replay 식별자, 사용자 권한, 잔여 위험 결정, 기준 Evidence/judgment hash, 영속 관계를
+보존합니다. 기존 `advisor`는 `observe`, `direct`와 `work`는 보수적으로 `tracked`로
+매핑합니다. 기존 acceptance outcome은 보존합니다. 초기 v2 정책 복사본은 보수적인
+tracked 기본값을 사용합니다. v6 사실이 변경을 결정적으로 확정할 때만 관찰 기반
+confidence를 두 영역에서 따로 변환합니다. 복사한 `unrecorded_changes` 행은 v6 사실이
+제품 변경을 결정적으로 확정할 때만 `UnrecordedChangeConfidence::Confirmed`, 그 밖에는
+`Suspected`를 사용합니다. 복사한 기존 Detective 평가의 `guard_events.result_json`은 v6
+source 사실이 해당 수준을 입증할 때만 `ObservationConfidence::Confirmed` 또는
+`Structured`를 사용하고 그 밖에는 `Heuristic`으로 표시합니다. 두 영역은 서로의 값
+집합을 빌려 쓰지 않습니다. 활성 v6 쓰기 티켓은
+모두 `invalidation_reason=explicit_revoke`인 revoked 상태로 복사하고 소비된 티켓/Run
+연결은 보존합니다.
+
+성공을 보고하기 전에 converter는 foreign key, table과 대상 row count, 식별자 보존,
+기준 JSON, 정책/record fingerprint, Evidence/judgment hash, 티켓 변환, source 불변성을
+검증하고 크기가 제한된 변환 report를 만듭니다. 실패하면 source는 그대로이고
+destination은 수락되지 않습니다. 일부 output을 성공한 v7 store로 취급하면 안 됩니다.
+활성화는 별도 관리 동작입니다.
+
 ## 실패와 재시도
 
 커밋 전 실패에는 저장 효과가 없습니다. 트랜잭션 실패는 상태 버전 증가, 정규 하한 갱신, 이벤트, 재실행 행, 쓰기 티켓 변경, 아티팩트 효과, 증거 갱신, 사용자 행동 요청 또는 해결 효과, 닫기 효과, 생명주기 효과, 스테이징 핸들 소비 중 일부만 남기면 안 됩니다.
@@ -273,7 +309,7 @@ Agent Connection 조회 대상이 아닙니다. 조회한 응답은 과거 결�
 예:
 
 - 오래된 `expected_state_version`
-- 오래된 `WriteTicket.basis_state_version`
+- 소비 시도에서 유효하지 않거나 상태 결합 비호환인 쓰기 티켓
 - 검증 실패
 - 잘못된 요청
 - 타입이 지정된 담당 상태의 손상

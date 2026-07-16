@@ -35,7 +35,14 @@
 - 필요한 별도 민감 동작 승인
 - 확인된 호출 맥락
 
-확인이 허용되면 열린 쓰기 티켓 하나를 발급합니다. 이 티켓은 현재 `Task`와 Change Unit 안에서 권한 있는 쓰기 의도를 나타내는 Volicord 권한 기록입니다. 파일시스템 집행, OS 권한, 셸 권한, 쓰기가 실제로 일어났다는 증명이 아닙니다. 확인이 허용되지 않으면 쓰기 티켓 경로를 거부하거나 미룹니다.
+확인이 허용되면 먼저 호환되는 활성 티켓을 찾습니다. 그 티켓의 `Task`, Change
+Unit, `scope_revision`, 기준선, workspace, 승인 근거가 현재 상태이고, 허용 경로가
+새 intended path를 모두 포함하며, 민감 근거가 같거나 더 강하고, 아직 소비되지
+않았으면 재사용합니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
+`Task`와 Change Unit 안에서 권한 있는 쓰기 의도를 나타내는 Volicord 권한
+기록입니다. 파일시스템 집행, OS 권한, 셸 권한, 쓰기가 실제로 일어났다는 증명이
+아닙니다. 확인이 허용되지 않으면 관련 없는 호환 티켓을 무효화하지 않고 쓰기
+티켓 경로를 거부하거나 미룹니다.
 
 `Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor Task의 일반 다음 행동으로 이 메서드를 추천하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. 이는 호환되는 shaping `record_run` 호출이 Core Run이나 증거 상태를 커밋하는 것을 막지 않습니다.
 
@@ -75,6 +82,13 @@ PrepareWriteRequest:
 
 - `operation_category=agent_workflow`인 확인된 호출 맥락
 - 모드가 `direct` 또는 `work`이고 `work_phase=implementation`인 현재 Task. `advisor`와 shaping은 쓰기 준비와 호환되지 않습니다.
+- 현재 유효 통제 수준. `observe`는 제품 파일 쓰기와 호환되지 않습니다. 티켓을
+  고르기 전에 Core는 보류 중인 상향 전용 정책 재평가를 적용하며 정책 완화로
+  활성 `Task`를 낮추지 않습니다.
+- `light`에서는 모든 intended path가 허용된 정규화 저장소 상대 prefix 안에 있고
+  거부 prefix에는 없어야 합니다. Prefix는 정확한 경로나 하위 경로와 일치하며
+  wildcard/glob 문법, 절대 경로, 빈 항목, `..`, 모호한 형태는 유효하지 않습니다.
+  빈 허용 집합은 Light 제품 파일 쓰기를 허용하지 않습니다.
 - 호환되는 현재 적용 범위
 - 기록된 경우 제품 파일 쓰기에 대해 호환되는 현재 적용 Change Unit 효과 계약
 - 현재 Task 기준선과 현재 Change Unit 쓰기 근거에 모두 정확히 일치하는 요청 기준선
@@ -90,15 +104,26 @@ PrepareWriteRequest:
 
 | 결과 | 상태 버전 효과 | 쓰기 티켓 효과 |
 |---|---|---|
-| 커밋된 `decision=allowed` | `project_state.state_version`을 정확히 한 번 올립니다. | 열린 쓰기 티켓 하나를 발급합니다. |
+| 커밋된 `decision=allowed`, 새 티켓 | `project_state.state_version`을 정확히 한 번 올립니다. | 열린 티켓 하나를 발급하며 `write_ticket_effect=issued`입니다. |
+| 커밋된 `decision=allowed`, 호환 티켓 발견 | `project_state.state_version`을 정확히 한 번 올립니다. | 기존 티켓을 재사용하며 `write_ticket_effect=reused`이고 티켓 행을 추가하지 않습니다. |
 | 커밋된 비허용 결정 | `project_state.state_version`을 정확히 한 번 올립니다. | 쓰기 티켓을 발급하지 않습니다. |
 | 커밋 전 거절 또는 `dry_run` | 올리지 않습니다. | 만들지 않습니다. |
 
-## 쓰기 티켓 수명과 ID 할당
+커밋의 상태 버전 증가는 권한 이벤트 순서입니다. 발급되거나 재사용된 티켓을
+무효화하지 않으며 티켓 유효성의 일부가 아닙니다.
 
-새로 발급되는 쓰기 티켓의 기본 수명은 15분입니다. `expires_at`은 표시 전용 메타데이터가 아니라 Volicord 호환성 조건이며 OS 수준 쓰기 기한이 아닙니다. 유효 만료 시점은 저장된 `expires_at`과 `created_at + 15 minutes` 중 더 이른 시점입니다. 이 같은 유효 규칙은 먼 미래 만료 시각을 가진 이력 행도 제한합니다. 만료는 문자열 사전식 비교가 아니라 파싱한 UTC 타임스탬프로 계산합니다.
+## 쓰기 티켓 유효성, 유휴 제한 시간, ID 할당
 
-새로 허용되어 커밋된 호출은 허용된 상태 변경이 커밋될 때만 지속 `write_ticket_id`를 받습니다. 차단, 승인 필요, 판단 필요, 거절, `dry_run` 경로는 지속 쓰기 티켓 ID를 할당하지 않습니다.
+고정 수명은 없으며 기본 유휴 제한 시간은 `null`입니다. 프로젝트 정책이 유휴
+제한 시간을 선택하면 Core는 파생된 `idle_expires_at`을 저장하고 의미상 UTC
+경계에서 `idle_timeout` 사유로 티켓을 무효화합니다. 민감 승인은 자체 만료를
+유지할 수 있습니다. 승인 만료는 단순 티켓 시간 경과가 아니라
+`approval_basis_changed`로 종속 티켓을 무효화합니다. `basis_state_version`은
+발급 순서 감사와 참조에만 쓰며 최신성 조건이 아닙니다.
+
+새로 허용되어 커밋된 호출은 발급 mutation이 커밋될 때만 영속
+`write_ticket_id`를 받습니다. 재사용 결과는 기존 ID와 참조를 반환합니다. 차단,
+승인 필요, 판단 필요, 거절, `dry_run` 경로는 영속 ID를 할당하지 않습니다.
 
 ## 메서드 결과 필드
 
@@ -109,10 +134,10 @@ PrepareWriteRequest:
 | `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 커밋된 `PrepareWriteResult` 분기는 `base.response_kind=result`, `base.effect_kind=core_committed`, `base.disclosure.guarantee_class=authority_record`를 사용합니다. `base.events[].event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열입니다. |
 | `decision` | 이 쓰기 준비 시도에 대한 메서드 결정입니다. 지원되는 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. |
 | `state` | 이 결과가 상태 스냅샷을 포함할 때의 현재 `StateSummary`입니다. `write_ticket_summary`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
-| `write_ticket_id` | 허용 결정 결과에서 발급된 쓰기 티켓의 `WriteTicketId | null`입니다. 새로 커밋된 허용 결정은 이를 할당하고, 멱등 재실행은 이 필드를 바꾸지 않은 원래 커밋 응답을 반환합니다. 커밋된 비허용 결정에서는 `null`입니다. |
-| `write_ticket_ref` | 발급된 쓰기 티켓을 가리키는 `record_kind=write_ticket`의 `StateRecordRef | null`입니다. 커밋된 비허용 결정에서는 `null`입니다. |
-| `write_ticket` | 발급된 쓰기 티켓 권한 기록의 `WriteTicket | null`입니다. 커밋된 비허용 결정에서는 `null`입니다. |
-| `write_ticket_effect` | 쓰기 티켓 경로에 대한 메서드 결과 효과입니다. `issued`는 이 커밋 결과가 열린 티켓을 만들었다는 뜻입니다. `none`은 티켓을 발급하지 않았다는 뜻입니다. 지원되는 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. |
+| `write_ticket_id` | 허용 결과에서 발급되거나 재사용된 티켓의 `WriteTicketId | null`입니다. 새 발급은 할당하고 재사용은 기존 ID를 반환하며, 멱등 재실행은 원래 커밋 응답을 반환합니다. 비허용 결정에서는 `null`입니다. |
+| `write_ticket_ref` | 발급되거나 재사용된 티켓을 가리키는 `record_kind=write_ticket`의 `StateRecordRef | null`입니다. 비허용 결정에서는 `null`입니다. |
+| `write_ticket` | 발급되거나 재사용된 권한 기록의 `WriteTicket | null`입니다. 비허용 결정에서는 `null`입니다. |
+| `write_ticket_effect` | `issued`는 이 커밋이 티켓을 만들었다는 뜻이고 `reused`는 기존 호환 활성 티켓을 선택했다는 뜻이며 `none`은 티켓을 선택하지 않았다는 뜻입니다. `would_issue`는 미리보기 전용입니다. |
 | `allowed_path_patterns` | 티켓 결정에서 허용으로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 허용 결과에서는 티켓의 허용 경로 패턴 목록입니다. |
 | `denied_path_patterns` | 티켓 결정에서 거부로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 경로 수준 거부가 없으면 `[]`입니다. |
 | `control_surface` | 현재 Volicord 제어 표면을 공개하는 `ControlSurfaceSummary | null`입니다. `os_enforced=false`는 티켓이 OS 수준 집행이 아니라는 뜻입니다. |
@@ -135,7 +160,8 @@ PrepareWriteRequest:
 - `write_ticket_id`, `write_ticket_ref`, `write_ticket`은 `null`이 아닙니다.
 - `write_ticket_ref.record_kind`는 `write_ticket`입니다.
 - `write_ticket.state`는 `open`입니다.
-- `write_ticket_effect`는 새로 커밋된 `decision=allowed` 응답에서 `issued`입니다.
+- `write_ticket_effect`는 새 발급이면 `issued`, 기존 호환 활성 티켓을 선택하면
+  `reused`입니다.
 - `write_ticket.path_patterns.allowed`와 최상위 `allowed_path_patterns`는 이 티켓에 허용된 정규화 저장소 상대 `intended_paths`를 담습니다.
 - `write_ticket.path_patterns.denied`와 최상위 `denied_path_patterns`는 허용 결과에서 `[]`입니다.
 - `write_ticket.observed_paths`는 기준 범위에서 `[]`입니다. `detective` 호스트 훅과 감시자 관찰은 별도의 호스트 관찰 및 미기록 변경 기록을 사용합니다.
@@ -143,6 +169,9 @@ PrepareWriteRequest:
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.
 - 재실행을 사용하려면 현재 검증된 호출이 원래 재실행 행에 포착된 선택적 Git 작업 공간 맥락을 정확히 유지해야 합니다. 맥락이 달라지거나 새로 없어지거나 생기면 저장된 허용 응답이나 그 쓰기 티켓을 노출하지 않고 `INVOCATION_CONTEXT_MISMATCH`를 반환합니다.
 - 쓰기 티켓은 정규화된 저장소 상대 `intended_paths`를 사용하는 `WriteTicketScope`에 묶입니다.
+- `write_ticket.validity_basis`는 `Task`, Change Unit, `scope_revision`, 기준선,
+  선택적 workspace digest, 승인 근거 참조를 보고합니다.
+  `basis_state_version`은 감사 전용입니다.
 - `active_user_action_refs`는 별도 `sensitive_approval`을 포함해 쓰기 선행조건을 만족하는 현재 `accepted` 결과의 사용자 소유 판단을 가리킬 수 있습니다.
 
 ## 차단 결과
@@ -159,6 +188,8 @@ PrepareWriteRequest:
 - `write_ticket_effect`는 `none`입니다.
 - `write_decision_reasons`는 비어 있으면 안 됩니다.
 - 유효하게 커밋된 `dry_run=false` 비허용 결과는 구조화된 `write_decision_reasons`를 담은 `authority_events` 행을 하나 추가하고, 멱등성 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
+- 이 비허용 커밋과 관련 없는 상태 버전 증가는 그 밖에 호환되는 활성 티켓을
+  무효화하지 않습니다.
 - 쓰기 티켓을 발급하지 않고, 별도 공개 이력 메서드를 만들지 않으며, 제품 파일 쓰기 권한 기록을 만들지 않습니다.
 - `volicord.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
 - 각 항목은 `WriteDecisionReason`입니다.
@@ -191,7 +222,7 @@ PrepareWriteRequest:
 - `STATE_VERSION_CONFLICT`는 거절 응답 `ErrorCode`입니다. 메서드 로컬 쓰기 결정 이유로 표현하면 안 됩니다.
 - `write_decision_reasons`는 `CloseReadinessBlocker` 값이 아닙니다.
 - 쓰기 결정 이유는 닫기 준비 상태를 평가하지 않습니다.
-- 효과 계약 결정 사유는 민감 동작 승인, 사용자 소유 판단, 증거, 최종 수락, 닫기 준비 상태, 잔여 위험 수락, 또는 이 메서드가 `decision=allowed`일 때만 만드는 별도 쓰기 티켓을 대신하지 않습니다.
+- 효과 계약 결정 사유는 민감 동작 승인, 사용자 소유 판단, 증거, 최종 수락, 닫기 준비 상태, 잔여 위험 수락, 또는 이 메서드가 `decision=allowed`일 때만 고르는 발급/재사용 티켓을 대신하지 않습니다.
 - 쓰기 티켓은 발급되지 않습니다.
 - 결과 공개는 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 행위자 귀속 증명이 아닙니다.
 
@@ -223,6 +254,8 @@ advisor 모드 거절은 쓰기 결정, 쓰기 티켓, 이벤트, 재실행 행,
 - `ToolDryRunResponse`를 반환합니다.
 - 커밋된 쓰기 티켓을 발급하지 않습니다.
 - 미리보기가 허용될 경우 `dry_run` 요약에 `would_issue` 같은 계획된 `write_ticket` 효과를 설명할 수 있습니다.
+- 호환되는 활성 티켓이 있으면 계획된 효과를 `would_reuse`로 설명할 수 있습니다.
+  이는 미리보기 문구이지 커밋된 `WriteTicketEffect`가 아닙니다.
 - 쓰기 결정 상태를 지속하지 않습니다.
 
 ## 저장 효과
@@ -266,7 +299,9 @@ params:
 
 `uj_sensitive_pref_001`은 사용자가 `resolution_outcome=accepted`로 해결했고 프로필 환경설정 갱신에 맞는 `SensitiveActionScope`를 가진 현재 `judgment_kind=sensitive_approval`을 나타냅니다. 이는 일반 쓰기 승인, 최종 수락, 잔여 위험 수락, 쓰기 티켓이 아닙니다.
 
-이 예시에서 요청은 `expected_state_version: 19`를 담습니다. 허용 커밋은 프로젝트 전체 상태를 `state_version: 20`으로 올리고, `basis_state_version: 20`을 가진 열린 쓰기 티켓을 발급합니다.
+이 예시에서 요청은 `expected_state_version: 19`를 담습니다. 허용 커밋은 프로젝트
+전체 상태를 `state_version: 20`으로 올리고 열린 티켓을 발급합니다.
+`basis_state_version: 20`은 발급 순서를 기록할 뿐 유효성 근거가 아닙니다.
 
 ```yaml
 base:
@@ -366,7 +401,7 @@ write_ticket:
     denied: []
   observed_paths: []
   basis_state_version: 20
-  expires_at: "<future-expiration-timestamp>"
+  expires_at: null
   control_surface:
     selected_profile: record
     host_hooks_active: false

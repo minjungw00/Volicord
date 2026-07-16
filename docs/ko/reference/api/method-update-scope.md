@@ -107,23 +107,30 @@ UpdateScopeRequest:
 
 커밋된 `dry_run`이 아닌 결과는 `project_state.state_version`을 정확히 한 번 올립니다.
 
+커밋 전에 Core는 권위 있는 프로젝트 정책과 제안된 범위/효과 계약을 기준으로
+`Task`의 유효 통제 수준을 다시 평가합니다. `sensitive`를 포함해 수준을 높일 수
+있지만 활성 `Task`를 자동으로 낮추지는 않습니다. 따라서 정책 완화는 활성
+`Task`를 바꾸지 않고, 강화된 정책이나 새로 드러난 민감 효과는 커밋된
+`StateSummary`에 반영됩니다.
+
 기준 문장이나 `evidence_requirement`의 실질적 변경은 `Task` 범위 리비전을
 증가시킵니다. 유지된 `AcceptanceCriterionId`가 같더라도 이전 범위에서 기록한
 증거 범위는 `stale`로 표시됩니다. 대상 identity가 현재라는 사실만으로 이전
 범위 증거가 현재 상태가 되지는 않습니다.
 
-기준이 아래 항목과 더 이상 맞지 않으면 Core는 `status=active`인 쓰기 티켓을 `status=stale`로 표시합니다.
+커밋된 갱신이 아래 상태 결속 유효성 좌표 중 하나를 바꾸면 Core는
+`status=active`인 쓰기 티켓을 무효화합니다.
 
-- 현재 적용 범위
+- `scope_revision`
 - 기준선
-- 수락 기준
-- 범위 밖 항목
-- 자율성 경계
 - 현재 적용 Change Unit
 - 현재 적용 Change Unit에 기록된 작업 공간 결합
-- 프로젝트 상태
 
-비주장: `status=stale` 표시는 쓰기 티켓을 소비, 철회, 만료하거나 조용히 재사용하지 않습니다.
+저장되는 무효화 사유는 각각 `scope_revision_changed`, `baseline_changed`,
+`change_unit_changed`, `workspace_changed`입니다. 정규화된 무효과 갱신,
+`scope_revision`을 바꾸지 않는 수락 기준/범위 밖 항목/자율성 경계 편집, 관련
+없는 `state_version` 증가는 티켓을 무효화하지 않습니다. 무효화는 티켓을
+소비하거나 조용히 재사용하지 않습니다.
 
 ## 성공 결과
 
@@ -149,9 +156,9 @@ UpdateScopeRequest:
 | `task_ref` | 범위 결과가 갱신한 `Task`의 `StateRecordRef`입니다. |
 | `change_unit_ref` | 작업 뒤 현재 적용 Change Unit의 `StateRecordRef | null`입니다. 현재 적용 Change Unit이 없으면 `null`입니다. |
 | `linked_scope_decision_refs` | 갱신에 적용된 `scope_decision` 사용자 판단의 `StateRecordRef[]`입니다. |
-| `stale_write_ticket_refs` | 커밋된 갱신 때문에 오래된 상태가 된 쓰기 티켓의 `StateRecordRef[]`입니다. 저장 효과와 버전 관리는 지속 세부사항을 담당합니다. |
+| `stale_write_ticket_refs` | 커밋된 갱신으로 무효화된 티켓의 `StateRecordRef[]`를 담는 호환 필드입니다. 각 티켓 상태 요약은 구조화된 무효화 사유를 담으며 이 필드 이름이 전역 버전 기반 오래됨 의미를 되살리지는 않습니다. |
 | `blocker_refs` | 메서드가 소유하며 갱신에서 커밋했거나 계속 관련되는 차단 사유의 `StateRecordRef[]`입니다. |
-| `state` | 범위 갱신 뒤의 현재 `StateSummary`입니다. 현재 적용 범위와 현재 적용 Change Unit 표시 필드를 포함합니다. |
+| `state` | 범위 갱신 뒤의 현재 `StateSummary`입니다. 현재 요청/유효 통제 수준, 정책 identity, 현재 적용 범위, 현재 적용 Change Unit 표시 필드를 포함합니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. |
 
 지원되는 `change_unit.operation` 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. 이 메서드는 각 작업이 `change_unit_ref`, `state.active_change_unit_ref`, 오래된 쓰기 티켓 참조, 차단 사유 참조, `next_actions`에 어떻게 반영되는지를 담당합니다.

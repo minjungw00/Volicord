@@ -214,7 +214,7 @@ Read access is required when Volicord validates or uses the registered project. 
 - project-scoped Codex `.codex/config.toml`
 - project-scoped Claude Code `.mcp.json`
 - Volicord-managed `AGENTS.md` guidance blocks
-- `.volicord/policy.json` detective host hook policy files
+- `.volicord/policy.json` local managed `volicord-policy-v2` mirrors
 - Codex `.codex/hooks.json` hook configuration and Volicord-managed wrapper
   scripts under `.codex/hooks/`
 - Volicord-managed Claude Code hook entries in `.claude/settings.json`
@@ -286,27 +286,22 @@ connection result of `complete`, `hook_path_safety=ok`, exact-owned generated
 files, or a successful configuration audit does not prove command-hook trust,
 event delivery, or execution.
 
-Host feature applicability is separate from installation applicability. The
-following pre-installation summary projects the current evaluation owned by
-[Agent Connection](agent-connection.md#host-feature-support-state); it is not an
-independent feature matrix owned by this document. For exact Codex
-`host_version=0.144.4`, `native_user_action`,
-`verified_tool_producer`, and `registered_connection_observation` are
-implemented but unverified until exact evidence passes;
-`local_web_user_channel`, `record_final_output`, and
-`detective_final_output` are `unsupported_by_host`. An absent or unreviewed
-Codex version uses the conservative host-kind fallback: the first four
-features remain implemented but unverified and both final-output features
-remain unsupported. Claude Code is `implemented_unverified` for all six
-features pending exact final-artifact live evidence. Generic is
-`unsupported_by_host` for all six.
+Host feature applicability is separate from installation applicability and is
+capability-probe-first. Managed verification probes actual hook calls,
+structured target paths, structured changed paths, model-separated user-action
+UI, Stop delivery/replay behavior, fixed-UI authority display, and advertised
+MCP capability as applicable. A built-in implemented surface remains
+`implemented_unverified` without fresh matching evidence, including on an
+unknown newer host version. A current failed probe or down current prerequisite
+is `temporarily_unavailable`; `unsupported_by_host` requires explicit capability
+absence. `degraded` is diagnostic only. Exact meanings and precedence are owned
+by [Host feature support state](agent-connection.md#host-feature-support-state).
 
-An implemented built-in feature without matching evidence does not become
-`temporarily_unavailable`; that value applies only after exact current evidence
-exists and a present-time runtime prerequisite is down. Host upgrades, stale or
-mismatched evidence, and a different final Volicord executable require a new
-evaluation. Exact meanings and precedence are owned by
-[Host feature support state](agent-connection.md#host-feature-support-state).
+The reviewed Codex `0.144.4` coordinate and any exact Claude Code version remain
+validation, regression, and release-evidence coordinates. They are preserved as
+observed and must not be used as primary runtime activation gates or generalized
+into minimum-version promises. A different valid version is evaluated by its
+actual probes and evidence.
 
 ## MCP Host Environment Requirements
 

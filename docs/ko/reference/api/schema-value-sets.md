@@ -235,6 +235,20 @@ work
 
 `volicord.intake`의 `requested_mode`는 입력 전용 값으로 `auto`도 받습니다. 출력 `Task.mode` 필드는 `advisor`, `direct`, `work`를 사용합니다. 접수 확정 동작은 [접수 메서드](method-intake.md)가 담당합니다.
 
+`requested_control_level`은 아래 값을 사용합니다.
+
+```text
+auto
+observe
+light
+tracked
+sensitive
+```
+
+`effective_control_level`은 `auto`를 뺀 같은 집합을 사용합니다. 통제 수준 순서는
+`observe < light < tracked < sensitive`이며 Core와 프로젝트 정책은 Task의 유효
+통제 수준을 올릴 수 있지만 절대 낮출 수 없습니다.
+
 모드와 `work_phase`가 함께 Run 종류 호환성을 제한합니다.
 
 | `Task.mode` | `work_phase` | 허용되는 `RunKind` | 성공한 `intent=complete` 결과 |
@@ -264,8 +278,10 @@ not_required
 policy_dependent
 ```
 
-정책과 이유는 intake에서 선택합니다. `not_required`는 advisor Task에만 사용할 수
-있고 `policy_dependent`는 닫기 담당 규칙이 평가하며 에이전트가 고르는 면제가
+정책과 이유는 유효 통제 수준과 현재 프로젝트 정책으로 선택합니다. `observe`는
+`not_required`, `tracked`와 `sensitive`는 `required`, `light`는
+`policy_dependent`를 사용합니다. `light`는 명시적인 현재 프로젝트 규칙과 그 전체
+닫기 조건을 만족할 때만 `not_required`로 평가할 수 있으며 에이전트가 고르는 면제가
 아닙니다.
 
 `TaskLineageSummary.relation`은 아래 값을 사용합니다.
@@ -432,9 +448,12 @@ decision_required
 none
 would_issue
 issued
+reused
 ```
 
-`issued`는 커밋된 `decision=allowed` 결과가 열린 쓰기 티켓 권한 기록 하나를 발급했다는 뜻입니다. `would_issue`는 미리보기나 계획 설명에서만 쓰이며 커밋된 티켓을 만들지 않습니다.
+`issued`는 커밋된 허용 결과가 티켓 하나를 만들었다는 뜻입니다. `reused`는 새 티켓을
+만들지 않고 이미 활성인 호환 티켓 하나를 반환했다는 뜻입니다. `would_issue`는
+미리보기 전용이며 티켓을 만들지 않습니다.
 
 `WriteTicket.state`는 아래 값을 사용합니다.
 
@@ -443,7 +462,7 @@ open
 observed
 reconciled
 closed
-expired
+invalidated
 revoked
 ```
 
@@ -454,10 +473,25 @@ revoked
 ```text
 active
 consumed
-expired
-stale
+invalidated
 revoked
 ```
+
+`WriteTicket.invalidation_reason`은 아래 값을 사용합니다.
+
+```text
+scope_revision_changed
+change_unit_changed
+baseline_changed
+workspace_changed
+approval_basis_changed
+idle_timeout
+task_closed
+explicit_revoke
+```
+
+이 사유는 상태에 묶입니다. `basis_state_version` 불일치와 관련 없는 상태 변경은
+의도적으로 포함하지 않습니다.
 
 `RecordRunRequest.kind`와 `RunSummary.kind`는 아래 값을 사용합니다.
 
@@ -507,6 +541,12 @@ detective_final_output
 최종 출력 `required_subcapabilities`와 `subcapabilities` 키는
 `authority_display`, `authenticated_exact_replay`, `block_finalization`만 사용합니다.
 선택한 프로필에 적용되는 키만 출력하며 제품 지원 상태에는 `not_applicable`이 없습니다.
+
+`block_finalization`은 현재 authority receipt의
+`completion_claim_allowed=false`일 때 권한 없는 완료 주장을 억제한다는 뜻입니다.
+Stop, session 종료, connection shutdown, 사용자가 나가는 동작을 거부, 지연, 방지한다는
+뜻이 아닙니다. 사용할 수 있으면 Stop은 크기가 제한된 session-end receipt를 계속
+기록합니다.
 
 `PlannedBlocker.source_kind`는 아래 값을 사용합니다.
 
@@ -694,6 +734,20 @@ degraded
 unresolved
 resolved
 ```
+
+`UnrecordedChangeFinding.confidence`는 아래 값을 사용합니다.
+
+```text
+confirmed
+suspected
+```
+
+미해결 `confirmed` 변경만 닫기를 막습니다. `suspected` 변경은 경고와 검증 요청을
+만듭니다.
+
+변경 관찰 confidence는 `confirmed`, `structured`, `heuristic`, `unknown`을
+사용합니다. 관찰 effect kind는 `read_only`, `product_file_write`,
+`non_product_write`, `external_effect`, `unknown`을 사용합니다.
 
 <a id="unrecorded-change-resolution-basis-values"></a>
 `UnrecordedChangeResolutionSummary.resolution_basis`와 저장된 미기록 변경 해결 메타데이터는 아래 값을 사용합니다.

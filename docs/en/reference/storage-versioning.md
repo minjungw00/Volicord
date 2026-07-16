@@ -1,10 +1,10 @@
 # Storage Versioning
 
-This document owns baseline storage-versioning rules for current Volicord SQLite storage. It does not define public API behavior, Core authority meaning, security guarantees, schema conversion chains, or compatibility conversion for old Runtime Homes.
+This document owns baseline storage-versioning rules for current Volicord SQLite storage, including the single supported offline v6-to-v7 copy conversion. It does not define public API behavior, Core authority meaning, security guarantees, administrative command syntax, policy-file discovery, or host integration.
 
 ## Storage Profile
 
-The current baseline storage profile is `baseline_sqlite_v6`.
+The current baseline storage profile is `baseline_sqlite_v7`.
 
 Baseline storage uses the canonical SQL sources [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies those sources to empty SQLite databases. Baseline storage does not create `schema_migrations`, `schema_version`, `migration_version`, `storage_version`, or equivalent storage-version fields.
 
@@ -16,9 +16,17 @@ A database is usable only when its table shape, columns, indexes, foreign keys, 
 - a storage-profile mismatch
 - a malformed required record
 
-Store code must not guess record meaning, silently rewrite data, or convert unsupported storage. Existing Runtime Homes with incompatible storage fail clearly and require Runtime Home recreation.
+Normal Store opening must not guess record meaning, silently rewrite data, or convert unsupported storage. It rejects v6 as incompatible with v7. The explicitly invoked offline copy conversion below is the only exception and never opens the v6 source for mutation.
 
 Baseline registry storage includes Runtime Home identity, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, `connection_projects`, immutable host-capability verification history, current host-capability pointers, and `guard_installations`. Baseline project-state storage includes Core state projection records, `authority_events`, replay rows, staged artifacts, persistent artifacts, evidence, evidence-capture intents, receipts, exclusive source claims, immutable evidence producers, user-action requests, immutable user-action resolutions, request-bound local channel tokens, runs, blockers, `write_tickets`, host-observation records, and session-watch records.
+
+`baseline_sqlite_v7` adds requested/effective control fields, the authoritative
+`volicord-policy-v2` database copy and fingerprint, reusable state-bound write
+tickets with stable invalidation reasons and optional idle timeout, unrecorded-
+change confidence, and session-end authority receipts with
+`completion_claim_allowed`. Privacy-bounded workflow metrics remain in the
+separate non-authority diagnostics schema and are not project storage-profile
+authority.
 
 `baseline_sqlite_v6` adds `host_capability_verifications` and
 `host_capability_state` to the Registry so credential-delivery eligibility can
@@ -178,7 +186,7 @@ Every newly committed authority mutation appends at least one durable `authority
 
 Related fields:
 
-- `write_tickets.basis_state_version` stores the resulting `project_state.state_version` after the write-ticket issuance commit. Core uses it as the freshness basis for later write-ticket consumption. Current write-ticket selection within a Task orders this field descending; the DDL makes the ordering key unique per Task, so timestamps and opaque record IDs are not authority-order tie-breakers.
+- `write_tickets.basis_state_version` stores audit ordering for issue or reuse. It is not unique and is never a validity coordinate. Ticket validity uses the explicit Task, Change Unit, scope revision, baseline, workspace, approval basis, consumption/revocation state, and optional idle timeout.
 - `evidence_summaries.produced_at_state_version` stores the resulting
   `project_state.state_version` of the commit that most recently inserted or
   updated that summary. Current Evidence Summary selection orders this field
@@ -189,13 +197,14 @@ Related fields:
 
 ## Write Tickets
 
-A write ticket is Volicord authority for authorized write intent for one proposed product-file write attempt. It is not OS permission, OS sandboxing, a filesystem ACL, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
+A write ticket is reusable-until-consumed Volicord authority for compatible authorized product-file write intent. It is not OS permission, OS sandboxing, a filesystem ACL, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
 
 Write-ticket issuance and compatibility consumption follow normal state-version rules:
 
 - issuance can commit only through an owner-defined method branch
-- consumption can commit only when the stored physical `write_tickets` row for the write ticket is active, compatible, unexpired, unconsumed, and current for the project state basis
-- stale `WriteTicket.basis_state_version` is rejected before consumption
+- prepare-write may reuse an active unconsumed ticket when every validity coordinate matches, the existing allowed prefixes cover the requested prefixes, denied prefixes remain effective, and sensitive authority is equal or stronger
+- consumption can commit only for an actual product-file write when the row is active, compatible, unconsumed, not revoked or invalidated, and within an optional configured idle boundary
+- unrelated state-version increments do not invalidate tickets; explicit invalidation reasons are `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`, and `explicit_revoke`
 - issuance or consumption never occurs on rejected, dry-run, or replay-only branches
 
 ## Idempotency And Replay
@@ -289,6 +298,37 @@ no replay row and exposes no `OperationResultRef`. Its complete serialized resul
 must satisfy the supported prospective size bound before any staging side effect
 occurs.
 
+## Offline v6-to-v7 copy conversion
+
+Normal v7 open rejects v6. The offline converter opens the v6 Runtime Home and
+every source database read-only, validates the complete v6 shape and typed
+owner state, creates a separate empty v7 destination from canonical DDL, and
+copies transformed records in transactions. It never relabels or alters the
+source, never updates tables in place, and never activates the destination as
+part of conversion.
+
+The transform preserves project, Task, Change Unit, Run, judgment, evidence,
+artifact, blocker, event, and replay identifiers; user authority; residual-risk
+decisions; canonical evidence and judgment hashes; and durable relationships.
+Legacy `advisor` maps to `observe`; `direct` and `work` map conservatively to
+`tracked`. Existing acceptance outcomes remain preserved. The initial v2 policy
+copy uses a conservative tracked default. Observation-derived confidence is
+transformed in two distinct domains: a copied `unrecorded_changes` row uses
+`UnrecordedChangeConfidence::Confirmed` only when v6 facts deterministically
+establish the product change and otherwise uses `Suspected`; a copied legacy
+Detective assessment in `guard_events.result_json` uses
+`ObservationConfidence::Confirmed` or `Structured` only when its v6 source
+facts prove that level and otherwise is annotated `Heuristic`. Neither domain
+borrows the other's value set. Every active v6 write ticket is copied as revoked with
+`invalidation_reason=explicit_revoke`; consumed ticket/Run links remain intact.
+
+Before reporting success, the converter verifies foreign keys, table and
+eligible-row counts, identifier preservation, canonical JSON, policy and
+record fingerprints, evidence/judgment hashes, ticket transformations, and
+source immutability, and emits a bounded conversion report. Any failure leaves
+the source untouched and the destination unaccepted; partial output is never a
+successful v7 store. Activation is a separate administrative operation.
+
 ## Failure And Retry
 
 Pre-commit failures have no storage effect. Transaction failures must leave no partial state-version increment, canonical-floor update, event, replay row, write-ticket change, artifact effect, evidence update, user-action request or resolution effect, close effect, lifecycle effect, or staged-handle consumption.
@@ -296,7 +336,7 @@ Pre-commit failures have no storage effect. Transaction failures must leave no p
 Examples:
 
 - stale `expected_state_version`
-- stale `WriteTicket.basis_state_version`
+- invalid or state-bound incompatible write ticket on a consuming attempt
 - validation failure
 - malformed request
 - corrupt typed owner state

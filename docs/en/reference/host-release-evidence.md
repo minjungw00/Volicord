@@ -395,6 +395,15 @@ first four features `implemented` and both final-output features
 features `implemented`. A new reviewed version table requires an owner change
 and a complete new twelve-cell manifest.
 
+This exact-version table is a release-gate evidence coordinate, not an ordinary
+runtime feature gate. Runtime support remains capability-probe-first under
+[Agent Connection](agent-connection.md#host-feature-support-state). A different
+or newer valid installed version is `implemented_unverified` for an implemented
+surface until its probes and fresh evidence establish another state; it is not
+`unsupported_by_host` solely because it lacks a row here. A release claim for
+that version still requires an owner change and its own complete twelve-cell
+manifest.
+
 The only admissible non-null client identity is the exact pair observed from
 the successful managed MCP `initialize` used by that cell. It must not be
 inferred from `host_kind`, the host executable name, version-probe output,
@@ -481,8 +490,9 @@ intent and post-intent exact `pre_tool` event whose decision was not `deny`. A
 Stop event or decision, close-readiness result, model response completion,
 host-turn completion, or host-process exit is not part of that barrier. For
 `registered_connection_observation` selected by Stop, the source-observation
-barrier is durable persistence of the exact post-intent Stop event; its allow
-or deny decision is captured source outcome, not a process-exit prerequisite.
+barrier is durable persistence of the exact post-intent Stop event; its
+completion-claim flag and always-allow termination result are captured source
+outcomes, not process-exit prerequisites.
 Because guard-event rows are append-only, an observed lone `post_tool` or an
 observed incomplete `post_tool` is a terminal source-shape failure: neither can
 become the exact pair through a later append. Only no candidate or one
@@ -514,13 +524,14 @@ For `native_user_action`, `authority_receipt_observed` means that the live cell
 observed the complete fresh receipt stored by the exact authenticated,
 same-connection, Task-bound Stop event. The receipt must bind the selected
 Project, Task, current `state_version`, and exact consuming Run, and the stored
-Stop decision, reasons, close state, and complete blocker set must be internally
-consistent with it. This assertion does not require `close_state=ready`, an
-empty blocker set, or a Stop `allow`. The maintained clean fixture admits
-exactly two Stop outcomes: ready `allow` under full `mcp_start` coverage with no
-warning or blocker, and `deny` with only `close_readiness_blocked` plus the
-exact `session_watch_unavailable` blocker under active partial
-`first_project_selection` or `method_boundary` coverage. Any other outcome
+Stop decision, completion-claim flag, reasons, close state, and complete blocker
+set must be internally consistent with it. Stop termination is always `allow`.
+The maintained clean fixture admits exactly two completion outcomes: ready with
+`completion_claim_allowed=true` under full `mcp_start` coverage and no warning
+or blocker, and `completion_claim_allowed=false` with only
+`close_readiness_blocked` plus the exact `session_watch_unavailable` blocker
+under active partial `first_project_selection` or `method_boundary` coverage.
+Neither outcome asks the host to retry Stop. Any other outcome
 fails this cell even when its receipt is truthful. The fresh LocalUser status
 must separately be ready and blocker-free as a clean-fixture sanity
 precondition; it is not the receipt that satisfies this assertion. A LocalUser
@@ -529,7 +540,9 @@ coordinates but are invocation-context projections; their close state and
 blocker set need not be equal, so whole-receipt equality across those contexts
 is not an assertion.
 
-That native-cell observation does not satisfy `authority_display_observed`,
+The legacy-named `block_finalization_observed` assertion means the host showed
+completion-claim suppression separately while allowing termination; it never
+means Stop denial or retry. That native-cell observation does not satisfy `authority_display_observed`,
 `authenticated_exact_replay_observed`, or `block_finalization_observed` and
 does not promote either final-output feature. Those assertions remain owned
 only by their corresponding final-output cells.

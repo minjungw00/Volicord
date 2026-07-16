@@ -53,8 +53,8 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **`Volicord Runtime Home`**
 
-- **Contains:** `registry.sqlite`; the lazily created non-authority `diagnostics.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel user-action resolutions, artifacts, and session-watch records. The separate diagnostics database stores only bounded local operability aggregates.
-- **Used by:** `volicord init`, project, connection, inbox, changes, doctor, diagnostics, and hidden internal hook commands through their owner-defined paths. `volicord doctor --privacy-footprint` reports storage categories and counts without printing row bodies. `volicord diagnostics session` reads only the bounded diagnostics store after normal setup checks. `volicord mcp --stdio`, Core, and Store use Runtime Home state for startup, project routing, Core state, artifacts, and best-effort operability aggregation.
+- **Contains:** `registry.sqlite`; the lazily created non-authority `diagnostics.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel user-action resolutions, artifacts, session-watch records, the authoritative canonical project workflow policy with schema, fingerprint, and monotonic version, and content-free session-termination receipts. The separate diagnostics database stores only bounded local operability aggregates, including privacy-safe workflow metrics.
+- **Used by:** `volicord init`, project, policy, connection, inbox, changes, storage-upgrade, doctor, diagnostics, and hidden internal hook commands through their owner-defined paths. `volicord doctor --privacy-footprint` reports storage categories and counts without printing row bodies. `volicord diagnostics session` and `volicord diagnostics workflow-metrics` read only the bounded diagnostics store after normal setup checks. `volicord mcp --stdio`, Core, and Store use Runtime Home state for startup, project routing, Core state, artifacts, policy authority, termination receipts, and best-effort operability aggregation.
 - **Boundary:** It is not a Product Repository, external host configuration, or installation directory. It does not provide or prove OS sandboxing, network isolation, scanning, host trust, actor attribution, write prevention, tamper-proof audit, full filesystem monitoring, correctness, test sufficiency, review completion, final acceptance, or residual-risk acceptance.
 
 **`Product Repository`**
@@ -111,7 +111,7 @@ The only baseline exceptions are explicitly requested integration files:
 
 - project-scoped host configuration, such as Codex `.codex/config.toml` or Claude Code `.mcp.json`
 - a Volicord-managed block in `AGENTS.md`
-- an intent-independent local policy overlay at `.volicord/policy.json`
+- the local managed `volicord-policy-v2` mirror at `.volicord/policy.json`
 - host hook configuration, such as Codex `.codex/hooks.json` or Claude Code
   `.claude/settings.local.json` for personal init and `.claude/settings.json`
   for shared init
@@ -147,8 +147,13 @@ target. Personal Claude Code detective hooks use
 wrapper scripts untracked through Git `info/exclude` without changing
 `.gitignore`; a standalone personal init also protects its personal hook
 configuration and rule paths. `.volicord/policy.json` declares
-`storage_scope=local_overlay` and records the selected `connection_intent`; it
-must not be committed as a shared projection. Generated wrapper scripts are
+`storage_scope=local_overlay`, records the selected `connection_intent`, and
+contains the closed workflow policy; it must not be committed as a shared
+projection. The canonical project-database copy in Runtime Home is authoritative
+and carries the policy schema, canonical fingerprint, and monotonic
+`policy_version`. A missing, malformed, binding-mismatched, or fingerprint-
+mismatched managed file is a diagnostic and repair condition, never authority
+to replace the database copy. Generated wrapper scripts are
 also local because they carry process-binding paths and identifiers. Every
 managed lifecycle or final-output wrapper exports the init-selected absolute
 `VOLICORD_HOME` and invokes the installation profile's absolute
@@ -329,6 +334,10 @@ May claim:
 - Storage/runtime owners define what operational data belongs in `Volicord Runtime Home`.
 - Storage/runtime owners define validation, storage effects, record layout, artifact storage, versioning, and recovery behavior for that data.
 - `diagnostics.sqlite` may live at the Runtime Home root while remaining separate from the registry and every project authority database. Its location does not give its observations Core, evidence, close-readiness, User Channel, or security authority.
+- Content-free Stop receipts and authoritative project-policy copies live only
+  in per-project Runtime Home state. Workflow metrics live only in the separate
+  diagnostics store. None belongs in the Product Repository, maintained docs,
+  generated guidance, or host configuration.
 
 Must not claim:
 - `Volicord Runtime Home` is the `Product Repository`.

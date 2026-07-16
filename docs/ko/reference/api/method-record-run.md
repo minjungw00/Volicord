@@ -275,8 +275,10 @@ Capture-backed 관찰 규칙:
 제품 쓰기 기록이 쓰기 티켓을 소비하려면 아래 조건을 모두 만족해야 합니다.
 
 - 티켓이 `status=active`이고 이미 소비되거나 철회되지 않았습니다.
-- 소비 직전 현재 `project_state.state_version`이 `WriteTicket.basis_state_version`과 같습니다.
-- 티켓이 유효 만료 규칙, 즉 저장된 `expires_at`과 `created_at + 15 minutes` 중 더 이른 시점에 따라 만료되지 않았습니다.
+- `WriteTicketValidityBasis`가 현재 `task_id`, `change_unit_id`,
+  `scope_revision`, 기준선, workspace digest, 승인 근거 참조와 계속 일치합니다.
+- 프로젝트 정책이 선택한 선택적 `idle_expires_at` 경계를 지나지 않았습니다.
+  기본 유휴 제한 시간은 `null`입니다.
 - 티켓과 그 `WriteTicketAttemptScope`가 기록하려는 Run과 같은 `task_id`와 `change_unit_id`를 식별합니다.
 - `WriteTicketAttemptScope`가 포착한 시도에 `product_file_write_intended=true`가 있습니다.
 - `WriteTicketAttemptScope`가 포착한 시도의 `baseline_ref`가 Run의 `baseline_ref`와 일치합니다.
@@ -285,13 +287,26 @@ Capture-backed 관찰 규칙:
 - 관찰된 민감 범주가 포착한 시도의 정규화된 `sensitive_categories`와 일치합니다.
 - `Product Repository` 경로 정규화 뒤의 관찰된 변경 경로가 포착한 시도와 호환됩니다.
 
-`volicord.prepare_write`가 발급한 쓰기 티켓은 사이에 다른 프로젝트 상태 변경이 없으면 발급 직후 오래되지 않습니다. 예를 들어 `volicord.prepare_write`가 버전 `19`에서 버전 `20`으로 커밋하면 현재 `project_state.state_version`과 `WriteTicket.basis_state_version`이 모두 `20`인 동안 `volicord.record_run`이 그 쓰기 티켓을 소비할 수 있습니다.
+티켓은 상태/닫기 확인, 증거 기록, 진단, 과거 operation 결과 조회, 관련 없는
+사용자 행동, 커밋된 비허용 쓰기 준비 결정을 포함한 관련 없는 `state_version`
+변경 뒤에도 유효합니다. `WriteTicket.basis_state_version`은 발급 순서만 기록합니다.
 
-오래된 `expected_state_version`과 오래된 쓰기 티켓 근거는 티켓을 소비하기 전에 거절됩니다. 오래된 `WriteTicket.basis_state_version`은 같은 티켓이 함께 만료되었더라도 더 높은 우선순위의 `STATE_VERSION_CONFLICT` 경로를 유지합니다.
+오래된 `expected_state_version`은 일반 요청 충돌 우선순위에 따라 거절합니다.
+티켓 근거는 별도로 검증하며 전역 상태 버전 차이만으로 티켓에
+`STATE_VERSION_CONFLICT`를 만들지 않습니다.
 
-만료는 문자열 사전식 비교가 아니라 파싱한 UTC 타임스탬프로 계산합니다. 만료된 쓰기 티켓은 절대 소비되지 않습니다. 만료된 쓰기 티켓 사용은 `ToolError.details.write_ticket_reason=expired`와 함께 `WRITE_TICKET_INVALID`를 반환합니다.
+선택적 유휴 경계가 설정되면 문자열 사전식 비교가 아니라 파싱한 UTC
+타임스탬프로 계산합니다. 이 경계로 무효화된 티켓은 소비하지 않고
+`ToolError.details.write_ticket_reason=idle_timeout`과 함께
+`WRITE_TICKET_INVALID`를 반환합니다.
 
-호환성 불일치 거절은 `WRITE_TICKET_INVALID`를 사용하고 `ToolError.details.write_ticket_reason`에 `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `workspace_context_mismatch`, `sensitive_category_mismatch`, `path_mismatch` 같은 값을 담습니다.
+저장된 무효화는 저장 사유 `scope_revision_changed`, `change_unit_changed`,
+`baseline_changed`, `workspace_changed`, `approval_basis_changed`,
+`idle_timeout`, `task_closed`, `explicit_revoke`와 함께 `WRITE_TICKET_INVALID`를
+사용합니다. 시도 호환성 불일치는 `task_mismatch`, `change_unit_mismatch`,
+`product_write_flag_mismatch`, `baseline_mismatch`,
+`workspace_context_mismatch`, `sensitive_category_mismatch`, `path_mismatch`
+같은 메서드 로컬 세부 값을 사용합니다.
 
 ## 메서드 결과 필드
 
@@ -337,7 +352,8 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 
 허용되지 않는 것:
 
-- 커밋된 차단 결과는 유효하지 않은 스테이징 핸들, 누락된 쓰기 티켓, 오래된 상태, 오래된 쓰기 티켓 근거, 호출 맥락 실패를 숨기면 안 됩니다.
+- 커밋된 차단 결과는 유효하지 않은 스테이징 핸들, 누락되거나 무효화된 쓰기
+  티켓, 오래된 요청 상태, 호출 맥락 실패를 숨기면 안 됩니다.
 
 위 경우는 커밋 전에 거절됩니다.
 
@@ -348,10 +364,10 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 - 현재 저장된 `Task.mode`와 `work_phase`에 호환되지 않는 `kind`
 - 제품 파일 쓰기, 비어 있지 않은 변경 경로, 또는 `null`이 아닌 쓰기 티켓을 보고하는 `advisor` 요청
 - 오래된 `expected_state_version`
-- 오래된 쓰기 티켓 기준
+- 무효화된 쓰기 티켓 유효성 근거
 - 오래되었거나 일치하지 않는 현재 Git 작업 공간 맥락
 - 제품 쓰기에 필요한 쓰기 티켓 누락 또는 무효
-- 만료된 쓰기 티켓
+- 선택적 유휴 제한 시간으로 무효화된 쓰기 티켓
 - 쓰기 티켓 경로, 기준선, 제품 쓰기 플래그, 민감 범주, Task, Change Unit 비호환
 - 유효하지 않은 스테이징 핸들
 - 스테이징 핸들 출처 불일치
@@ -370,9 +386,9 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 
 공개 오류 코드 의미, 우선순위, 세부사항, 거절 응답 처리 경로는 아래 오류 담당 문서가 담당합니다.
 
-오래된 쓰기 티켓 근거에서는 소비 전에 거절되며 Run, 증거 갱신, 증거 관찰, 아티팩트 연결, 아티팩트 승격, 이벤트, 재실행 행, `project_state.state_version` 증가를 만들지 않습니다.
+무효화된 쓰기 티켓 근거에서는 소비 전에 거절되며 Run, 증거 갱신, 증거 관찰, 아티팩트 연결, 아티팩트 승격, 이벤트, 재실행 행, `project_state.state_version` 증가를 만들지 않습니다.
 
-만료된 쓰기 티켓에서는 소비 전에 거절되며 Run, 이벤트, 재실행 행, 아티팩트 승격, 증거 갱신, 증거 관찰, 쓰기 티켓 소비, `project_state.state_version` 증가를 만들지 않습니다.
+유휴 제한 시간으로 무효화된 쓰기 티켓에서는 소비 전에 거절되며 Run, 이벤트, 재실행 행, 아티팩트 승격, 증거 갱신, 증거 관찰, 쓰기 티켓 소비, `project_state.state_version` 증가를 만들지 않습니다.
 
 Task 모드 또는 advisor 읽기 전용 검증 거절도 Run, 닫기 근거 리비전, 증거 갱신, 증거 관찰, 아티팩트 연결이나 승격, 이벤트, 재실행 행, 쓰기 티켓 효과, 상태 버전 증가를 만들지 않습니다.
 

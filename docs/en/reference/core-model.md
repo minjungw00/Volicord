@@ -55,7 +55,8 @@ User-owned judgment stays user-owned.
 
 Write ticket is narrow.
 
-- A write ticket records authorized write intent for one proposed product-file change within current Volicord state.
+- A write ticket records authorized write intent for one state-bound product-file change. Repeating `prepare_write` may reuse the same compatible unconsumed ticket; reuse does not widen its paths, approvals, or authority.
+- Ticket validity depends on the current Task, Change Unit, `scope_revision`, baseline, workspace binding, approval basis, explicit revocation state, and an optional policy-selected idle timeout. An unrelated `state_version` change is not an invalidation condition.
 - It is not reusable scope, ordinary write approval, command approval, shell permission, sensitive-action approval, user-owned judgment, OS permission, deployment approval, final acceptance, residual-risk acceptance, evidence, or proof that the write occurred.
 
 Runs and evidence record support, not authority substitutes.
@@ -71,8 +72,9 @@ Close must stay honest.
 Acceptance and risk acceptance are specific.
 
 - Final acceptance is the user's judgment of the visible close basis.
-- Whether final acceptance is required is explicit Task-owned policy selected
-  at intake, not an implicit global rule or an agent-selected close waiver.
+- Whether final acceptance is required is derived from the Task's effective
+  control level, its recorded acceptance policy, and the authoritative project
+  workflow policy. It is never an agent-selected close waiver.
 - Residual-risk acceptance is the user's acceptance of named visible residual risk for the requested close.
 - Neither fills evidence gaps, changes scope, grants write authority, proves verification, or makes the result risk-free.
 
@@ -173,7 +175,33 @@ remain reference-only unless a current owner-defined transition establishes new
 authority.
 
 Its `acceptance_policy` and reason own whether the final-acceptance check is
-required, not required for pure advice, or evaluated from current close policy.
+required, not required under the effective control-level policy, or evaluated
+from current close policy.
+
+Every `Task` also records `requested_control_level`, `effective_control_level`,
+and `control_level_reason`. `requested_control_level` is one of `auto`,
+`observe`, `light`, `tracked`, or `sensitive`; the effective value is one of
+`observe`, `light`, `tracked`, or `sensitive`. These values are distinct from
+the Record and Detective installation profiles.
+
+Core resolves control as follows:
+
+- `advisor` permits only `observe`.
+- `direct` starts from the authoritative project-policy default; `work` starts
+  from at least `tracked`.
+- The project minimum wins over a lower caller request. `light` is available
+  only when project policy explicitly enables it and authorizes the affected
+  normalized repository-relative path prefixes. Each prefix means the exact
+  path or a descendant; wildcard and glob grammar is not supported. Absolute,
+  empty, `..`-containing, or otherwise ambiguous entries are invalid, an empty
+  allowed-prefix set authorizes no product-file write, and a denied prefix
+  always wins.
+- A sensitive category, denied or protected path, secret access, external
+  transmission, destructive operation, or another owner-defined sensitive
+  effect raises the effective level to `sensitive`.
+- Core never automatically lowers an active Task. A relaxed policy affects new
+  Tasks only. A strengthened policy marks an active Task for reevaluation and
+  Core raises it before the next write-compatible operation.
 
 ### Change Unit
 
@@ -270,7 +298,10 @@ facts. Section 10 lists the close inputs in detail.
 An authority receipt is a compact Core-generated view of one freshly read
 project state version. It binds the current Task and Change Unit, scope
 revision, latest Run and observed product-file-write fact, evidence gate, full
-close-blocker set, and next actor/action. It lets a host report recorded state
+close-blocker set, `completion_claim_allowed`, and next actor/action. The
+completion field is true only when the current Task has a valid completion
+basis and the full close-readiness evaluation has no blocker; it is false when
+there is no current Task or authority state cannot be refreshed. It lets a host report recorded state
 without reconstructing authority in prose. A receipt is derived state: it does
 not itself commit, accept, close, or prove correctness, and a host must refresh
 it after a mutation before making a completion or blocked claim.
@@ -481,13 +512,14 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 | Check area | Authority meaning |
 |---|---|
 | Scope | The requested work, write, evidence claim, or close claim must fit the current `Task` scope and current Change Unit. |
+| Task control | The effective control level must be current for the authoritative project policy. Policy strengthening can raise an active Task before its next write, but policy relaxation never lowers it automatically. |
 | Workspace | For a Git-bound Change Unit, write preparation must match the recorded common directory, worktree identity, branch or detached HEAD, HEAD SHA, and workspace fingerprint. A mismatch requires explicit retarget/rebaseline. |
 | Change Unit effect contract | When present, requested product-file write effects and paths must fit the current Change Unit effect contract before a write ticket can be issued. |
 | User-owned judgment | Required product, technical, scope, sensitive-action, final-acceptance, residual-risk, or cancellation judgment must be resolved by the user with the required stored outcome and compatible with the affected object and consequence. |
 | Sensitive action | A named sensitive step must have its own compatible user approval when that approval is required. |
 | Write compatibility | A product-file write attempt must be compatible with current scope and an open write ticket. |
 | Run and evidence | Recorded Runs, evidence summaries, and evidence-eligible artifacts must support the claims they are used for. |
-| Final acceptance | The Task-owned acceptance policy determines whether final acceptance is required; when required, it must be tied to the visible close basis. |
+| Final acceptance | Effective control and the Task-owned acceptance policy determine whether final acceptance is required; when required, it must be tied to the visible close basis. |
 | Residual risk | Known close-relevant residual risk must be visible, and required risk acceptance must be compatible with the requested close. |
 | Close readiness | All close-relevant owner-defined requirements must support an honest terminal transition; remaining blockers keep the `Task` open. |
 
@@ -499,10 +531,22 @@ A write ticket is a durable Core authority record for authorized write intent fo
 
 It has these compatibility properties:
 
-- Scope-limited: it covers the proposed product-file change, not subsequent changes or a broader project area.
-- State-bound: it is based on current Volicord state and can become stale when relevant state changes.
+- Scope-limited: it covers only its authorized path set and effect basis, not a broader project area.
+- State-bound: its validity basis is the exact Task, current Change Unit,
+  `scope_revision`, baseline, workspace binding, and approval-basis refs. Its
+  issuance `basis_state_version` is audit ordering only.
+- Reusable before consumption: a compatible active ticket may satisfy a later
+  `prepare_write` when it covers every newly intended path and has the same or
+  stronger sensitive basis. Reuse does not create another ticket.
 - Effect-contract-bound when present: it is created only when the proposed product-file change fits the current Change Unit effect contract.
 - Single-use: one compatible product-write Run consumes it once.
+- Explicitly invalidated: Task close or replacement, Change Unit or scope
+  revision change, baseline or relevant workspace change, approval-basis
+  revocation/expiry/replacement, explicit revoke, or the policy's optional idle
+  timeout invalidates it with a structured reason. There is no default timeout.
+- Unrelated reads, evidence recording, diagnostics, user actions, blocked
+  prepare-write attempts, and unrelated global state changes do not invalidate
+  it.
 - Cooperative: it tells an Agent Connection what is authorized inside Volicord state; it does not claim OS-level prevention, filesystem interception, or sandboxing.
 
 This lifecycle diagram shows authority eligibility for a write ticket. Arrows
@@ -516,8 +560,9 @@ flowchart LR
   compatible{"Compatible with<br/>current Core state?"}
   blocked["Blocked write decision;<br/>no write ticket"]
   open["Open write ticket<br/>for one proposed write"]
-  still{"Still current<br/>and unconsumed?"}
-  invalid["Stale, expired,<br/>revoked, or incompatible"]
+  still{"Validity basis current<br/>and unconsumed?"}
+  reused["Compatible prepare_write<br/>reuses the open ticket"]
+  invalid["Invalidated with a<br/>structured reason"]
   attempt["One product-file<br/>write attempt"]
   run["record_run records<br/>compatible product-write Run"]
   consumed["Write ticket<br/>consumed once"]
@@ -527,6 +572,7 @@ flowchart LR
   compatible -- no --> blocked
   compatible -- yes --> open --> still
   still -- no --> invalid
+  still -- yes --> reused --> still
   still -- yes --> attempt --> run --> consumed --> evidence
 ```
 
@@ -537,6 +583,21 @@ acceptance, residual-risk acceptance, proof that a write happened, or `Task`
 close.
 
 The prepare-write, record-run, API state schema, storage, and security owners define the method behavior, public shapes, storage effects, replay and stale-state behavior, and guarantee wording.
+
+`observe` Tasks require `acceptance_policy=not_required` and cannot record a
+product-file write. `light` permits `policy_dependent`, and permits
+`not_required` only when authoritative project policy explicitly allows it.
+`tracked` requires final acceptance in the baseline policy. `sensitive` always
+requires both its compatible sensitive-action approval and final acceptance.
+
+A `light` Task with `policy_dependent` may complete without final acceptance
+only when policy explicitly allows low-risk automatic completion, required
+evidence is sufficient, no user action or acceptance-requiring residual risk is
+pending, no sensitive/secret/external-network effect exists, no confirmed
+Unrecorded Change exists, actual paths fit the consumed ticket, scope has not
+expanded since the first write, the Change Unit and baseline remain unchanged,
+and no Run or verification failure remains unresolved. Failure of any condition
+keeps the applicable close blocker; it never creates an inferred user answer.
 
 <a id="9-evidence-and-run-authority"></a>
 ## 9. Evidence and Run authority

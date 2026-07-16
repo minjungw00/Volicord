@@ -330,6 +330,34 @@ page 단위 과거 형태는 대기 요청에 대해 요청 ID, 과거 `pending`
 - 표시된 `ArtifactRef`, `UserActionRequest`, `UserActionResolution`, 쓰기 티켓, `connection_id` 텍스트가 그 식별자가 가리키는 권한을 만든다는 주장.
 - 최종 출력 `AuthorityReceipt` 상태 보기가 두 번째 권한 기록, Core 변경, 호스트 관찰, 또는 모델이 작성한 최종 산문이 현재 권한을 사용했다는 증명이라는 주장.
 
+<a id="detective-observation-confidence"></a>
+### Detective 관찰 confidence와 종료
+
+Detective가 하드 deny할 수 있는 경우는 호스트가 구조화한 결정적 직접 Product Repository
+쓰기이고 구체적인 정규화 경로가 confirmed이며, 현재 Task, 정확히 하나의 일치하는 활성
+쓰기 티켓, 티켓 범위, 필요한 sensitive 승인이 누락된 때뿐입니다. 셸 텍스트, 넓은 명령
+이름, 누락된 감시기 데이터, 모호한 대상, heuristic 추론은 uncertain입니다. 경고는 만들 수
+있지만 하드 보안 주장이나 정상 작업 deny의 근거가 될 수 없습니다.
+
+PostTool 관찰은 구조화된 변경 경로, 감시기 before/after 비교, 크기가 제한된 안전한 Git
+diff, heuristic 신호 순으로 사용합니다. 신뢰할 수 있는 before/after Evidence가 있는 알려진
+경로 변경은 `confirmed`, 감시기를 사용할 수 없거나 heuristic뿐인 신호는 `suspected`입니다.
+confirmed 미기록 또는 범위 밖 변경만 해당 닫기 차단 사유를 만들 수 있습니다. suspected
+변경은 이후 관찰이 confirmed로 올리거나 변경 없음으로 해소할 때까지 경고입니다. 어느
+분류도 행위자 신원, 악의적 의도, 완전한 파일시스템 가로채기, 방지를 증명하지 않습니다.
+
+Stop은 호스트 세션 종료를 항상 허용합니다. 대기 사용자 행동, confirmed 미기록 변경,
+누락된 Evidence나 다른 닫기 요건, 권한 상태 갱신 실패는
+`completion_claim_allowed=false`로 만들 뿐 Stop deny나 강제 retry를 정당화하지 않습니다.
+영속 종료 receipt는 내용이 없습니다. 모델 산문, 프롬프트, 명령, 경로, 파일 내용, 사용자
+답변, 원시 이벤트, 오류 본문을 저장하지 않습니다.
+
+작업 흐름 지표에도 같은 개인정보 경계가 적용됩니다. 크기가 제한된 집계 횟수, 시간,
+byte 크기, 범주형 결과만 저장할 수 있으며 프롬프트, 답변, 명령, 경로, 파일 내용, 모델
+출력, 원시 호스트 이벤트는 저장하지 않습니다. 지표와 정확한 또는 자체 보고 호스트·
+클라이언트 버전은 진단이나 Evidence 좌표일 뿐 권한을 부여하거나 신원을 확정하거나 버전
+동등성으로 런타임 capability를 gate하거나 방지·닫기 준비 상태를 증명하지 않습니다.
+
 ## 명시적 비보장
 
 ### 운영체제와 격리

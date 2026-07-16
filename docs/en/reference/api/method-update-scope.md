@@ -110,23 +110,31 @@ A committed non-dry-run request requires:
 
 A committed non-dry-run result increments `project_state.state_version` exactly once.
 
+Before committing, Core reevaluates the Task's effective control level against
+the authoritative project policy and the proposed scope/effect contract. It may
+raise the level, including to `sensitive`; it never automatically lowers an
+active Task. A policy relaxation therefore does not change an active Task, while
+a strengthened policy or newly visible sensitive effect is reflected in the
+committed `StateSummary`.
+
 A material criterion statement or `evidence_requirement` update increments the
 Task scope revision. Evidence coverage recorded against the earlier scope is
 projected as `stale`, even when the retained `AcceptanceCriterionId` is
 unchanged; current target identity does not make earlier-scope evidence current.
 
-Core marks a `status=active` write ticket `status=stale` when its basis no longer matches:
+Core invalidates a `status=active` write ticket when the committed update changes
+one of its state-bound validity coordinates:
 
-- current scope
+- `scope_revision`
 - baseline
-- acceptance criteria
-- non-goals
-- autonomy boundary
 - currently applied Change Unit
 - recorded workspace binding for the currently applied Change Unit
-- project state
 
-Non-claim: `status=stale` does not consume, revoke, expire, or silently reuse the write ticket.
+The stored invalidation reason is respectively `scope_revision_changed`,
+`baseline_changed`, `change_unit_changed`, or `workspace_changed`. A normalized
+no-op, acceptance/non-goal/autonomy edit that does not change `scope_revision`,
+or the unrelated `state_version` increment does not invalidate the ticket.
+Invalidation does not consume or silently reuse it.
 
 ## Success result
 
@@ -152,9 +160,9 @@ Returns `UpdateScopeResult` with:
 | `task_ref` | `StateRecordRef` for the Task updated by the scope result. |
 | `change_unit_ref` | `StateRecordRef | null` for the currently applied Change Unit after the operation, or `null` when no current Change Unit applies. |
 | `linked_scope_decision_refs` | `StateRecordRef[]` for `scope_decision` user judgments applied by the update. |
-| `stale_write_ticket_refs` | `StateRecordRef[]` for write tickets made stale by the committed update. Storage effects and versioning own the persistence detail. |
+| `stale_write_ticket_refs` | Compatibility field containing `StateRecordRef[]` for tickets invalidated by the committed update. Each ticket's state summary carries the structured invalidation reason; the field name does not restore global-version staleness semantics. |
 | `blocker_refs` | `StateRecordRef[]` for method-owned blockers committed or still relevant to the update. |
-| `state` | Current `StateSummary` after the scope update, including current scope and currently applied Change Unit display fields. |
+| `state` | Current `StateSummary` after the scope update, including current requested/effective control, policy identity, scope, and currently applied Change Unit display fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
 
 The supported `change_unit.operation` values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how each operation is reflected in `change_unit_ref`, `state.active_change_unit_ref`, stale write-ticket refs, blocker refs, and `next_actions`.

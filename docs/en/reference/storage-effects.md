@@ -182,7 +182,7 @@ These failures return no-effect branches:
 - validation failures before commit
 - connection routing or mode-gating failures before a protected operation can proceed
 - stale `expected_state_version`
-- stale `WriteTicket.basis_state_version`
+- invalid, consumed, revoked, or state-bound incompatible write ticket on a consuming attempt
 - idempotency request-hash conflicts
 - rejected artifact inputs
 
@@ -312,6 +312,18 @@ Those stored reasons are not:
 - close-readiness blockers
 - `CloseReadinessBlocker[]`
 - close-readiness blocker records
+
+Project-policy application atomically writes the authoritative
+`project_workflow_policies` v2 copy, monotonic version, canonical JSON,
+fingerprint, and source, then reevaluates active Tasks upward only. It never
+silently lowers effective control. Exact command, file, and host behavior is an
+administrative-owner concern.
+
+Workflow metrics writes store aggregate counters, durations, serialized tool
+byte counts, and categorical outcomes only. Session-end recording stores a
+bounded authority receipt. Refresh failure, no active Task, or any close
+blocker requires `completion_claim_allowed=0`; no summary string may override
+it. These records never contain prompt, file, answer, or command bodies.
 
 <a id="method-effects"></a>
 ## Method effect summary
@@ -459,10 +471,15 @@ Owner links:
 
 An original committed `dry_run=false` call with `decision=allowed` may:
 
-- issue one open write ticket stored in the physical `write_tickets` table
+- issue one active write ticket or reuse one compatible active, unconsumed ticket stored in the physical `write_tickets` table
 - append events
 - create a replay row
 - increment `project_state.state_version` once
+
+Issue inserts one row. Reuse inserts no ticket and preserves its identifier;
+the event/replay/state-version effects still occur exactly once. Neither this
+increment nor an unrelated Core mutation invalidates the ticket. A non-allow
+decision does not revoke unrelated active tickets.
 
 Idempotent replay returns the stored original response under [Storage Versioning](storage-versioning.md) and does not repeat these effects.
 
@@ -592,7 +609,7 @@ Owner links:
 Committed `dry_run=false` may:
 
 - create `runs`
-- consume a compatible `write_tickets` row
+- consume a compatible `write_tickets` row only when the Run records an actual Product Repository file write
 - consume eligible `artifact_staging`
 - promote or link `artifacts`
 - create `evidence_claims` rows for new Task-scoped supplemental targets while preserving the immutable statement of an existing same-Task ID
@@ -605,6 +622,12 @@ Committed `dry_run=false` may:
 - append events
 - create a replay row
 - increment `project_state.state_version` once
+
+A Run with no product-file write leaves a compatible ticket active for reuse.
+Consumption, Run insertion, and all evidence/artifact effects are one atomic
+commit. Rejection records no consumption. `basis_state_version` is audit-only;
+validity uses the stored Task/Change Unit/scope/baseline/workspace/approval
+basis, status, and optional idle timeout.
 
 No-effect branches:
 

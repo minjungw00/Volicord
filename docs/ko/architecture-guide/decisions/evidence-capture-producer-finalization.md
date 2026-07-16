@@ -147,8 +147,9 @@ SQLite 형태 변경이었습니다. 당시 기준이던 `baseline_sqlite_v5`가
 - Session과 시각으로 tool event를 결합하는 방법은 동시 실행, retry, resume에서
   충돌할 수 있으므로 Strong Evidence에는 사용하지 않습니다.
 - 이미 영속 저장된 source를 claim하기 전에 호스트 turn이나 프로세스 종료를 기다리는
-  방법은 거부했습니다. Task가 닫기 준비 상태가 아닐 때 Detective Stop이 정당하게 deny할
-  수 있고, 관련 없는 생명주기 대기 중에 불변 intent가 만료될 수 있기 때문입니다.
+  방법은 거부했습니다. Stop은 producer finalization 경계가 아니며 관련 없는 생명주기
+  대기 중에 불변 intent가 만료될 수 있기 때문입니다. Task가 닫기 준비 상태가 아니어도
+  Stop은 세션 종료를 허용하고 완료 주장만 억제합니다.
 - 미래 host-generated event 또는 watcher observation의 digest에 connection intent를
   결합하는 방법은 intent 이후 source identity, timestamp, snapshot/raw-event digest가
   호출자가 알 수 있는 intent 사실이 아니므로 거부했습니다.

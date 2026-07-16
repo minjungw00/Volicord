@@ -50,8 +50,8 @@ Detail data must stay limited to stable diagnostic facts. It must not expose sen
 Stale `expected_state_version` details:
 - Include `state_clock: project_state.state_version`, `current_state_version`, `expected_state_version`, `project_id`, and `task_id` when available.
 
-Stale write-ticket basis details:
-- Identify both the stale `WriteTicket.basis_state_version` value and the current `project_state.state_version` value.
+`WriteTicket.basis_state_version` is not a state-conflict detail field. It is
+audit ordering metadata and its mismatch alone produces no error.
 
 Idempotency request-hash conflict details:
 - Identify the `idempotency_key` and request-hash mismatch without exposing sensitive request bodies.
@@ -79,27 +79,36 @@ These diagnostics must not include raw stored JSON, secrets, SQL text, or sensit
 
 `ToolError.details.write_ticket_reason` uses:
 
+<a id="write-ticket-reason"></a>
+
 ```text
 missing
-expired
-stale
 revoked
 consumed
 incompatible
 task_mismatch
 change_unit_mismatch
+scope_revision_changed
+change_unit_changed
+baseline_changed
+workspace_changed
+approval_basis_changed
+idle_timeout
+task_closed
+explicit_revoke
 product_write_flag_mismatch
 baseline_mismatch
+workspace_mismatch
+approval_basis_mismatch
 sensitive_category_mismatch
 path_mismatch
 ```
 
-The mismatch-specific values identify the incompatible record or scope fact
-while keeping the public code `WRITE_TICKET_INVALID`.
-
-Expired write-ticket use sets `write_ticket_reason=expired` with public code
-`WRITE_TICKET_INVALID`. A stale `WriteTicket.basis_state_version` uses
-`STATE_VERSION_CONFLICT`, not `WRITE_TICKET_INVALID`.
+The `*_changed`, `idle_timeout`, `task_closed`, and `explicit_revoke` values are
+stable recorded invalidation reasons. The `*_mismatch`, `consumed`, `revoked`,
+and `incompatible` values identify attempt-time incompatibility. They keep the
+public code `WRITE_TICKET_INVALID`. A global `basis_state_version` mismatch has
+no helper value because it is not invalidity.
 
 <a id="artifact-input-error-reason"></a>
 

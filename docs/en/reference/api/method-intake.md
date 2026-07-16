@@ -64,6 +64,8 @@ the stored predecessor edges to show the connected Task flow.
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `plain_language_request`, `requested_mode`, and `resume_policy`.
+- Optional `requested_control_level`. Omission is exactly `auto`; accepted
+  values are `auto`, `observe`, `light`, `tracked`, and `sensitive`.
 - `acceptance_policy`, present as `required`, `not_required`,
   `policy_dependent`, or JSON `null`. `null` asks Core to select the mode
   default and still records the selected policy and its reason on the Task.
@@ -86,6 +88,7 @@ IntakeRequest:
   envelope: ToolEnvelope
   plain_language_request: string
   requested_mode: string
+  requested_control_level?: string
   resume_policy: string
   acceptance_policy: string | null
   lineage: TaskLineageInput | null
@@ -106,24 +109,36 @@ Nested owner links:
 - `initial_context_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
 - `initial_source_refs` uses the non-authoritative `SourceRef[]` shape owned by [API State Schemas](schema-state.md#non-authoritative-source-references). Core structurally validates and stores these refs as Task context; it does not inspect their content or use them to expand scope, select a baseline, establish evidence, or create authority.
 - `requested_mode` and `resume_policy` values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values) and [method-local values](schema-value-sets.md#method-local-values).
+- `requested_control_level` values and the effective control-level values are
+  owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values).
 - `acceptance_policy`, `lineage.relation`, and `lineage.carry_forward` values
   are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values).
 
 Acceptance-policy rules:
 
-- `acceptance_policy=null` selects `not_required` for `advisor` and `required`
-  for `direct` or `work`.
+- Core resolves `requested_control_level` before acceptance. `advisor` resolves
+  only to `observe`; an explicit incompatible advisor request is invalid.
+  `direct` starts from the authoritative project default and `work` starts from
+  at least `tracked`. Project minimums and sensitive effects can raise the
+  requested level. They can never be lowered by the caller.
+- `acceptance_policy=null` selects `not_required` for `observe`, the
+  authoritative project-policy choice for `light` (conservatively
+  `policy_dependent`), and `required` for `tracked` or `sensitive`.
 - `resume_policy=resume_active` requires `acceptance_policy=null` and preserves
-  the selected Task's stored policy and reason; intake does not mutate them on
-  resume.
-- `not_required` is valid only for an `advisor` Task at intake. An Agent
-  Connection cannot waive final acceptance for write-capable work by selecting
-  that value.
+  the selected Task's stored request. Core may raise its effective level and
+  acceptance requirement when authoritative project policy strengthened; it
+  never lowers an active Task after policy relaxation.
+- `not_required` is required for `observe`, is valid for `light` only when
+  authoritative project policy explicitly permits low-risk completion, is not
+  a baseline waiver for `tracked`, and is never valid for `sensitive`. An Agent
+  Connection cannot create a waiver by selecting the value.
 - `policy_dependent` records that Core must evaluate the owner-defined close
   policy from the current result and risk basis. It is not agent discretion at
   close time.
 - The committed `StateSummary` exposes both the selected policy and a
-  Core-generated reason. A policy never substitutes for evidence,
+  Core-generated reason. It also exposes `requested_control_level`,
+  `effective_control_level`, `control_level_reason`, and the project-policy
+  version, fingerprint, and source used for the decision. A policy never substitutes for evidence,
   residual-risk acceptance, sensitive-action approval, or another blocker.
 
 Lineage and carry-forward rules:
@@ -203,7 +218,7 @@ Returns `IntakeResult` with:
 - current `state`
 - `next_actions`
 
-If `requested_mode=auto`, the persisted and displayed mode must be the resolved concrete mode, never `auto`.
+If `requested_mode=auto`, the persisted and displayed mode must be the resolved concrete mode, never `auto`. The requested control value remains recorded, including `auto`; the effective control value is always concrete.
 
 ## Method result fields
 
@@ -214,7 +229,7 @@ If `requested_mode=auto`, the persisted and displayed mode must be the resolved 
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
 | `task_ref` | `StateRecordRef` for the Task selected by the intake result. |
 | `change_unit_ref` | `StateRecordRef | null` for a Change Unit selected or created during intake, or `null` when no current Change Unit applies yet. |
-| `state` | Current `StateSummary` after intake, including current scope, currently applied Change Unit display fields, and any current Change Unit effect contract. |
+| `state` | Current `StateSummary` after intake, including requested/effective control and reason, policy identity, current scope, currently applied Change Unit display fields, and any current Change Unit effect contract. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
 
 The supported `resume_policy` input values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how those values select the Task and optional Change Unit shown in `task_ref`, `change_unit_ref`, and `state`.

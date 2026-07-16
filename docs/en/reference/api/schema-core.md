@@ -115,6 +115,10 @@ Every public method response uses exactly one branch:
 Meaning:
 - `MethodResult` is the method-specific result branch defined by method owner documents routed from [API Methods](methods.md).
 - Every concrete method result carries `base: ToolResultBase` and then only that method's result fields.
+- `response_kind=result` and a successful transport do not authorize a
+  completion claim. Task-scoped workflow results use the current
+  `AuthorityReceipt.completion_claim_allowed`; rejected, dry-run, refresh-
+  failed, and no-active-Task branches are never completion authority.
 
 Does not imply:
 - `MethodResult` is not a single concrete schema.
@@ -144,6 +148,8 @@ Meaning:
 Does not imply:
 - `ToolRejectedResponse` and `ToolDryRunResponse` do not carry result-only fields such as `task_ref`, `run_summary`, `staged_artifact_handle`, `write_ticket_ref`, `user_action_resolution_ref`, `decision`, or `close_state`.
 - `ToolResultBase.disclosure` does not create OS sandboxing, network isolation, malware defense, tamper-proof audit logging, full write prevention, full filesystem monitoring, actor attribution proof, correctness proof, test sufficiency proof, or a replacement for human review.
+- Neither `effect_kind` nor display text can override
+  `completion_claim_allowed=false`, a close blocker, or missing authority.
 
 Owner links:
 - supported `response_kind` and `effect_kind` values: [response and effect values](schema-value-sets.md#response-and-effect-values)

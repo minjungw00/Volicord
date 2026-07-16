@@ -96,6 +96,13 @@ Add idempotency-key support for payment creation, update the tests, and tell me 
 
 The agent should keep the task, scope, evidence, pending user decisions, and
 Close Status current. You do not need to drive the workflow from the terminal.
+Volicord returns a `next_action` that identifies the current safe handoff. The
+agent should follow that result instead of running a fixed
+status-then-intake-then-write-then-close ritual or probing workflow tools in
+case they might be needed. Advice and read-only investigation do not need write
+or close ceremony. Product-file changes still need a compatible current write
+authorization, and a blocked session may end without claiming that its Task is
+complete.
 
 When Volicord needs a recorded user action, use the resolution path it shows. The
 stable manual path is the CLI inbox:
@@ -105,8 +112,9 @@ volicord inbox --repo /path/to/your-product-repo
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo /path/to/your-product-repo
 ```
 
-Before treating the work as finished, ask the agent for the current Close
-Status. You can also inspect the local summary:
+When the agent reports its result, ask it to distinguish Evidence, pending user
+decisions, visible residual risk, and any Close Status blockers. You can also
+inspect the local summary when you need an authoritative refresh:
 
 ```sh
 volicord status --repo /path/to/your-product-repo
@@ -121,6 +129,8 @@ For a guided first run and host-specific checks, continue with
 | Concept | Meaning |
 |---|---|
 | `Task` | The unit of work being shaped, performed, blocked, or closed. |
+| Task control level | The Core-recorded amount of workflow control currently applied to one Task. It is separate from the host integration profile. |
+| Integration profile | The Record or Detective host-setup choice. It selects integration and observation paths, not the risk level of a Task. |
 | Write Ticket | A Volicord record that one proposed product-file change was checked against the current work boundary. It is not OS permission or proof that a write occurred. |
 | Evidence | Recorded support for a specific claim. It is not user acceptance or proof of correctness. |
 | User Judgment | A decision that belongs to the user, such as product direction, material technical direction, scope, final acceptance, or residual-risk acceptance. |
@@ -156,15 +166,16 @@ flowchart LR
   record -. checks work boundaries .-> repo
 ```
 
-The normal work loop keeps agent action and User Channel resolution separate. This is a
+The normal work loop keeps agent action and User Channel resolution separate.
+It follows the next action returned from current Volicord state; this is a
 guide-level handoff, not an exact API sequence.
 
 ```mermaid
 flowchart TD
   request["User requests work"]
-  boundary["Agent shows task, scope,<br/>and next safe action"]
-  action["Agent inspects or acts"]
-  status["Agent reports evidence,<br/>blockers, and pending user actions"]
+  boundary["Volicord returns the current<br/>next safe action"]
+  action["Agent follows that action<br/>inside the recorded boundary"]
+  status["Agent reports evidence,<br/>blockers, and the next handoff"]
   judgment{"User action needed?"}
   answer["User resolves it through<br/>a User Channel"]
   close{"Close blocker remains?"}
@@ -178,7 +189,7 @@ flowchart TD
   close -- no --> finish
 ```
 
-## Integration Profiles
+## Integration Profiles And Task Control
 
 Use the Record profile (`--profile record`) for the ordinary first setup. It
 supports cooperative workflow recording through MCP without requiring host
@@ -190,6 +201,14 @@ owner-defined host-hook and watcher observation paths. That setup does not by
 itself establish current feature support. The resulting observations can reveal
 Unrecorded Changes, but they do not provide OS-level enforcement or prove who
 changed a file.
+
+Record and Detective are integration profiles, not Task-risk grades. Each Task
+also has a separate control level derived by Core from the request,
+project-owned policy, current scope, and relevant risk facts. The agent can
+request a level, but it cannot use that request to weaken project policy. See
+the [Agent Guide](docs/en/user-guide/agent-workflow.md) for representative
+flows and [Core Model](docs/en/reference/core-model.md) for the exact authority
+meaning.
 
 See [Agent Host Setup](docs/en/user-guide/agent-host-setup.md) for setup choices
 and [Security](docs/en/reference/security.md) for exact guarantee limits.

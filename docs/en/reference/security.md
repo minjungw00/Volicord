@@ -352,6 +352,41 @@ Must not claim:
 - Displayed `ArtifactRef`, `UserActionRequest`, `UserActionResolution`, write-ticket identifier, or `connection_id` text creates the authority named by those identifiers.
 - A final-output `AuthorityReceipt` projection is a second authority record, a Core mutation, a host observation, or proof that model-authored final prose used current authority.
 
+<a id="detective-observation-confidence"></a>
+### Detective observation confidence and termination
+
+Detective may hard-deny only a deterministic, host-structured direct Product
+Repository write whose concrete normalized paths are confirmed and whose
+current Task, exactly one matching active write ticket, ticket scope, or
+required sensitive approval is missing. Shell text, a broad command name,
+missing watcher data, an ambiguous target, or a heuristic inference is
+uncertain and can produce a warning, not a hard security claim or ordinary-work
+denial.
+
+PostTool observation uses structured changed paths first, then a watcher
+before/after comparison, then a bounded safe Git diff, then heuristic signals.
+A known-path change with trustworthy before/after evidence is `confirmed`; an
+unavailable watcher or heuristic-only signal is `suspected`. Only a confirmed
+unrecorded or out-of-scope change can create the corresponding close blocker.
+A suspected change remains a warning until later observation promotes it or
+resolves it as no change. Neither classification proves actor identity,
+malicious intent, complete filesystem interception, or prevention.
+
+Stop always allows host-session termination. Pending user action, confirmed
+unrecorded change, missing Evidence or another close requirement, and failed
+authoritative refresh set `completion_claim_allowed=false`; they do not justify
+a Stop denial or forced retry. The persisted termination receipt is content
+free: no model prose, prompt, command, path, file content, user answer, raw
+event, or error body.
+
+Workflow metrics have the same privacy boundary. They may store bounded
+aggregate counts, durations, byte sizes, and categorical outcomes, but never
+prompts, answers, commands, paths, file contents, model output, or raw host
+events. Metrics and exact/self-declared host or client versions are diagnostic
+or evidence coordinates only; they do not grant authority, establish identity,
+gate runtime capability by equality, prove prevention, or establish close
+readiness.
+
 ## Explicit non-guarantees
 
 ### Operating system and isolation

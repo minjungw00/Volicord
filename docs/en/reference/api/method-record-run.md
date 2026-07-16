@@ -288,8 +288,11 @@ The Run, current close basis, evidence updates, evidence observations, artifact 
 Product-write recording consumes the write ticket only when:
 
 - the ticket has `status=active` and has not already been consumed or revoked
-- the current `project_state.state_version` equals `WriteTicket.basis_state_version` immediately before consumption
-- the ticket is not expired under the effective expiration rule: the earlier of stored `expires_at` and `created_at + 15 minutes`
+- its `WriteTicketValidityBasis` still matches the current `task_id`,
+  `change_unit_id`, `scope_revision`, baseline, workspace digest, and approval
+  basis refs
+- it has not crossed a project-policy-selected optional `idle_expires_at`; the
+  default idle timeout is `null`
 - the ticket and its `WriteTicketAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
 - the checked attempt has `product_file_write_intended=true`
 - the checked attempt `baseline_ref` matches the Run `baseline_ref`
@@ -299,13 +302,28 @@ Product-write recording consumes the write ticket only when:
 - observed sensitive categories match the checked attempt's normalized `sensitive_categories`
 - observed changed paths, after Product Repository path normalization, are compatible with the checked attempt
 
-A write ticket issued by `volicord.prepare_write` is not stale immediately after issuance when no intervening project state change has occurred. If `volicord.prepare_write` commits from version `19` to version `20`, `volicord.record_run` may consume that write ticket while the current `project_state.state_version` and `WriteTicket.basis_state_version` are both `20`.
+A ticket remains valid across unrelated `state_version` changes, including
+status or close checks, evidence recording, diagnostics, operation-result
+retrieval, unrelated user actions, and committed non-allow prepare-write
+decisions. `WriteTicket.basis_state_version` records issuance order only.
 
-The method rejects stale `expected_state_version` and stale write-ticket basis before consuming the ticket. A stale `WriteTicket.basis_state_version` retains higher-priority `STATE_VERSION_CONFLICT` routing even if the same ticket is also expired.
+The method rejects stale `expected_state_version` according to normal request
+conflict precedence. It independently validates the ticket basis; a different
+global state version never produces `STATE_VERSION_CONFLICT` for the ticket.
 
-Expiration is calculated using parsed UTC timestamps, not lexical string comparison. An expired write ticket is never consumed. Expired write-ticket use returns `WRITE_TICKET_INVALID` with `ToolError.details.write_ticket_reason=expired`.
+When an optional idle boundary is configured it is calculated from parsed UTC
+timestamps, not lexical strings. A ticket invalidated by that boundary is never
+consumed and returns `WRITE_TICKET_INVALID` with
+`ToolError.details.write_ticket_reason=idle_timeout`.
 
-Compatibility mismatch rejections use `WRITE_TICKET_INVALID` with `ToolError.details.write_ticket_reason` values such as `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `workspace_context_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`.
+Persisted invalidation uses `WRITE_TICKET_INVALID` with the stored reason:
+`scope_revision_changed`, `change_unit_changed`, `baseline_changed`,
+`workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`,
+or `explicit_revoke`. Attempt compatibility mismatch uses method-local detail
+values such as `task_mismatch`, `change_unit_mismatch`,
+`product_write_flag_mismatch`, `baseline_mismatch`,
+`workspace_context_mismatch`, `sensitive_category_mismatch`, or
+`path_mismatch`.
 
 ## Method result fields
 
@@ -351,7 +369,8 @@ The method may commit compatible run-related blocker state when the run is recor
 
 Not allowed:
 
-- A committed blocked result must not hide invalid staged handles, missing write ticket, stale state, stale write-ticket basis, or invocation-context failures.
+- A committed blocked result must not hide invalid staged handles, missing or
+  invalidated write tickets, stale request state, or invocation-context failures.
 
 Those failures are rejected before commit.
 
@@ -362,10 +381,10 @@ Returns `ToolRejectedResponse` for:
 - a `kind` incompatible with the current persisted `Task.mode` and `work_phase`
 - an `advisor` request that reports a product-file write, non-empty changed paths, or a non-null write ticket
 - stale `expected_state_version`
-- stale write-ticket basis
+- invalidated write-ticket validity basis
 - stale or mismatched current Git workspace context
 - missing or invalid write ticket for product writes
-- expired write ticket
+- write ticket invalidated by optional idle timeout
 - incompatible write-ticket path, baseline, product-write flag, sensitivity category, Task, or Change Unit
 - invalid staged handle
 - incompatible staged-handle provenance
@@ -385,9 +404,9 @@ Non-claim: invalid staged handles are validation failures with artifact-input de
 
 Public error code meaning, precedence, details, and rejected-response routing are owned by the error documents linked below.
 
-For a stale write-ticket basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
+For an invalidated write-ticket basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
 
-For an expired write ticket, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
+For an idle-timeout-invalidated write ticket, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
 
 Task-mode or advisor read-only validation rejection likewise creates no Run, close-basis revision, evidence update, evidence observation, artifact link or promotion, event, replay row, write-ticket effect, or state-version increment.
 

@@ -423,6 +423,10 @@ Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에
 `clientInfo.version=0.144.4`를 보존하지만 초기화만으로 관리 세션을 결속하지 않습니다.
 설치 호스트의 정규 좌표는 정확한 probe 외피 `codex-cli 0.144.4`에서 해석한
 `0.144.4`입니다.
+이 정확한 버전은 검증과 릴리스 Evidence 좌표로 보존할 뿐 런타임 기능 gate로 사용하지
+않습니다. 다른 유효한 버전은 관찰한 그대로 보존합니다. 기능 가용성은 이 검토 좌표와의
+동등성이 아니라 [Agent Connection](agent-connection.md#host-feature-support)이 담당하는 현재
+capability probe 결과에서 나옵니다.
 
 관리 결속이 `session_watch_baselines` 행을 구체화할 때 기준선 `metadata_json`은 기존의
 크기가 제한된 감시 메타데이터와 함께 성공한 initialize의 정확한 정체성만 최상위
@@ -813,6 +817,12 @@ MCP 어댑터는 시작과 탐색 중 프로젝트 상태를 읽기 전용으로
 허용 프로젝트 상태를 하나도 읽을 수 없으면 호출자가 프로젝트 사용 가능성을 확인할 수
 있도록 `volicord.list_projects`만 보이게 유지합니다.
 
+해석된 연결 모드와 유효 저장 capability 조합 하나에서는 이 도구 집합이 정적입니다. Task
+상태, 현재 차단 사유, 쓰기 티켓 상태, 모델의 이전 호출에 따라 도구를 추가하거나 제거하지
+않으며 그런 조건은 도구 결과로 보고합니다. JSON-RPC envelope와 요청 ID를 더하기 전 정확히
+`{"tools":[...]}` 형태인 compact `tools/list` 결과 객체 전체는 지원되는 모든 모드와 저장
+capability 조합에서 직렬화된 UTF-8 기준 35,000바이트 이하여야 합니다.
+
 유효 저장소가 읽기 전용이면 읽기 호환 공개 메서드 도구는 세션 감시 기준선,
 `tool_invocations`, `task_events`, 새 `project_state.state_version`을 만들지 않고 실행됩니다.
 호스트 쪽 오래된 도구 캐시가 선택된 프로젝트 상태를 쓸 수 없을 때도 공개 워크플로 변경
@@ -910,19 +920,16 @@ MCP에 보이는 모든 변경 도구는 `detail=summary|workflow|full`도 받�
 상태 스키마가 담당하는 엄격한 태그형 수락 기준 또는 보충 주장 합집합입니다. 이 규칙은 그 밖의 필드에 암묵적 값을 만들지
 않으며, 정확히 광고한 `required` 배열이 기준입니다.
 
-도구 description에는 짧은 목적과 핵심 경계만 둡니다. `volicord.record_run.kind`의
-호환성은 MCP에 보이는 다른 인자가 아니라 현재 저장된 Task에 따라 달라지므로, 이 도구의
-description은 완전한 모드와 실행 종류 호환 행렬을 포함합니다. `advisor`는 `shaping_update`,
-`direct`는 `direct`, `work`는 `shaping_update` 또는 `implementation`을 사용합니다.
-자주 쓰는 인자 형태 예시는 `inputSchema.examples` 값으로 광고합니다. 여기에는 intake의
-생성·재개·대체·활성 Task 거절, update-scope의 유지·생성·교체, status의 세 detail 수준,
-첫 operation-result page 조회, prepare-write, prepare-evidence-capture 세 변형,
-stage-artifact, Product Repository 파일 쓰기가
-없는 `advisor`의 `shaping_update`,
-증거를 포함한 work `implementation`, request-user-action create와 resume, reconcile, check-close, close의
-완료·취소·대체 분기가 포함됩니다. 광고한 각 예시는 호출에 쓰는 동일한 `inputSchema`와
-MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 줄 뿐이며, 일치하는 프로젝트
-상태나 권한, 전제조건, 성공적인 Core 결과를 주장하지 않습니다.
+스키마 생성에는 두 가지 명시적 detail mode가 있습니다.
+`ToolSchemaDetail::RuntimeCompact`는 MCP `tools/list`에 사용하며 모든
+`inputSchema.examples` 구성원을 생략하고 각 description을 도구의 결과, 권한 또는 쓰기
+경계, 호출해야 하는 시점으로 제한합니다. 모드 행렬, 긴 절차, 복구 목록, 예시를 넣지
+않습니다. `ToolSchemaDetail::Documentation`은 생성 문서와 스키마 점검에서 쓰는 canonical
+예시와 완전한 분기 설명을 유지합니다. 두 mode는 같은 허용 인자 형태, `required` 필드,
+닫힌 필드 규칙, output schema, annotation을 사용하며 compact mode는 표시 크기만 바꿉니다.
+`advisor`/`shaping_update`, `direct`/`direct`, `work`와 `shaping_update` 또는
+`implementation` 같은 mode-to-kind 호환성은 런타임 description이 아니라 Documentation
+detail과 메서드 담당 문서에 둡니다.
 
 나열되는 모든 Volicord 도구는 루트 타입이 `object`인 MCP 2025-11-25
 `outputSchema`도 노출합니다. 읽기 전용 공개 메서드 도구는 공개 메서드 응답 분기에서 이
@@ -1004,6 +1011,14 @@ Request-user-action resume 분기는 대신 읽기 전용 접근 맥락을 파�
 필드에 현재 `next_actions`를 추가합니다. `full`은 `authority_receipt`와 정확한 공개 응답을
 `method_result` 아래에 반환합니다. Core/도메인 거절 분기는 모든 detail 값에서 기존 응답
 객체를 유지합니다. 어댑터는 Core 진입 전에 이 인자를 검증합니다.
+
+어댑터가 내보내는 모든 작업 흐름 `next_actions` 항목은 null이 아닌 공개
+`owner_method`를 가집니다. 끝나지 않은 작업 흐름 상태에 Agent 행동이 필요하면 주 행동은
+그 행동을 수행할 공개 `volicord.*` 메서드와 호출에 필요한 크기가 제한된 인자 또는 영속
+ref를 제시합니다. Agent가 그 메서드를 찾기 위해 `volicord.status`를 한 번 더 호출하게 하면
+안 됩니다. 로컬 정책 복구, 호스트 reload, 연결 설정, 저장소 upgrade 같은 관리 작업은
+해당할 때 정확한 CLI 명령을 가진 별도 typed 진단 행동으로 남으며 owner 없는 작업 흐름
+next action이 아닙니다.
 
 간결한 `method_result`는 항상 효과 종류, 결과 state version, 커밋된 event ref를
 보존합니다. 또한 `volicord.prepare_write`에서는 발급된 쓰기 티켓과 결정을,

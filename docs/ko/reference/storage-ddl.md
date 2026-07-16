@@ -2,6 +2,8 @@
 
 이 문서는 [저장소 기록](storage-records.md)이 설명하는 저장소 배치를 위한 기준 SQLite DDL 계약을 담당합니다. 기준 `registry.sqlite`와 프로젝트 `state.sqlite` 배치를 구현할 수 있게 하되, 메서드 효과, 아티팩트 생명주기 규칙, 상태 버전 의미, API 스키마, 보안 보장을 이 문서로 옮기지 않습니다.
 
+현재 DDL 프로필은 `baseline_sqlite_v7`입니다.
+
 ## 담당 경계
 
 이 문서가 담당합니다.
@@ -58,7 +60,7 @@ PRAGMA foreign_keys = ON;
 
 ## 기준 SQL 원본
 
-실행 가능한 기준 SQL 원본은 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)입니다. Runtime Home 초기화는 비어 있는 SQLite 데이터베이스에 이 원본을 적용합니다. 이 원본과 호환되지 않는 저장소 형태를 가진 기존 Runtime Home은 분명하게 실패하고 Runtime Home 재생성을 요구합니다. 기준 저장소는 이전 버전 저장소의 마이그레이션 경로를 정의하지 않습니다.
+실행 가능한 기준 SQL 원본은 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)입니다. Runtime Home 초기화는 비어 있는 SQLite 데이터베이스에 이 원본을 적용합니다. 일반 open은 호환되지 않는 프로필을 거절합니다. 별도로 실행하는 오프라인 읽기 전용 v6-to-fresh-v7 복사 경로는 [저장소 버전 관리](storage-versioning.md)가 담당하며 in-place 변환을 수행하지 않습니다.
 
 `docs-check`는 아래 기준 SQL 블록이 해당 원본 파일과 정확히 일치하는지 검증합니다. 집중 `storage_ddl_contract` 테스트는 실행 가능한 스키마 의미를 검증합니다.
 
@@ -410,6 +412,9 @@ CREATE TABLE tasks (
   task_id TEXT NOT NULL,
   created_by_actor_source TEXT NOT NULL,
   mode TEXT NOT NULL,
+  requested_control_level TEXT NOT NULL CHECK (requested_control_level IN ('auto', 'observe', 'light', 'tracked', 'sensitive')),
+  effective_control_level TEXT NOT NULL CHECK (effective_control_level IN ('observe', 'light', 'tracked', 'sensitive')),
+  control_level_reason TEXT NOT NULL CHECK (length(trim(control_level_reason)) > 0),
   work_phase TEXT NOT NULL CHECK (work_phase IN ('shaping', 'implementation')),
   acceptance_policy TEXT NOT NULL CHECK (
     acceptance_policy IN ('required', 'not_required', 'policy_dependent')
@@ -660,18 +665,27 @@ CREATE TABLE write_tickets (
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version > 0),
-  status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'expired', 'stale', 'revoked')),
+  status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'invalidated', 'revoked')),
+  validity_basis_json TEXT NOT NULL,
+  allowed_path_prefixes_json TEXT NOT NULL DEFAULT '[]',
+  denied_path_prefixes_json TEXT NOT NULL DEFAULT '[]',
   attempt_scope_json TEXT NOT NULL DEFAULT '{}',
   created_by_actor_source TEXT NOT NULL,
   created_by_user_action_resolution_id TEXT,
-  expires_at TEXT NOT NULL,
+  idle_expires_at TEXT,
+  invalidation_reason TEXT CHECK (
+    invalidation_reason IS NULL OR invalidation_reason IN (
+      'scope_revision_changed', 'change_unit_changed', 'baseline_changed',
+      'workspace_changed', 'approval_basis_changed', 'idle_timeout',
+      'task_closed', 'explicit_revoke'
+    )
+  ),
   consumed_by_run_id TEXT,
   consumed_at TEXT,
   revoked_at TEXT,
   created_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, write_ticket_id),
-  UNIQUE (project_id, task_id, basis_state_version),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -1256,6 +1270,7 @@ CREATE TABLE unrecorded_changes (
   connection_internal_id TEXT NOT NULL,
   task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('unresolved', 'resolved')),
+  confidence TEXT NOT NULL CHECK (confidence IN ('confirmed', 'suspected')),
   summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
   observed_paths_json TEXT NOT NULL DEFAULT '[]',
   detection_json TEXT NOT NULL DEFAULT '{}',
@@ -1477,6 +1492,62 @@ CREATE INDEX idx_user_action_channel_tokens_connection
   ON user_action_channel_tokens (project_id, connection_internal_id, channel_kind, status, expires_at);
 CREATE INDEX idx_user_action_channel_tokens_expiry
   ON user_action_channel_tokens (project_id, status, expires_at);
+
+CREATE TABLE project_workflow_policies (
+  project_id TEXT PRIMARY KEY,
+  policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord-policy-v2'),
+  policy_version INTEGER NOT NULL CHECK (policy_version > 0),
+  policy_json TEXT NOT NULL,
+  policy_fingerprint TEXT NOT NULL CHECK (
+    length(policy_fingerprint) = 71
+    AND substr(policy_fingerprint, 1, 7) = 'sha256:'
+    AND substr(policy_fingerprint, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  source TEXT NOT NULL CHECK (length(trim(source)) > 0),
+  applied_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id)
+);
+
+CREATE TABLE session_end_receipts (
+  project_id TEXT NOT NULL,
+  session_end_receipt_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  active_task_id TEXT,
+  task_state TEXT NOT NULL CHECK (
+    task_state IN (
+      'none', 'ready', 'blocked', 'closed', 'cancelled', 'superseded',
+      'authority_unknown'
+    )
+  ),
+  close_blocker_codes_json TEXT NOT NULL DEFAULT '[]',
+  next_actor TEXT NOT NULL CHECK (next_actor IN ('agent', 'user', 'none')),
+  completion_claim_allowed INTEGER NOT NULL CHECK (completion_claim_allowed IN (0, 1)),
+  authority_refresh_succeeded INTEGER NOT NULL CHECK (authority_refresh_succeeded IN (0, 1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_end_receipt_id),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
+  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
+  FOREIGN KEY (project_id, active_task_id) REFERENCES tasks (project_id, task_id),
+  CHECK (
+    (authority_refresh_succeeded = 0 AND task_state = 'authority_unknown')
+    OR (authority_refresh_succeeded = 1 AND task_state <> 'authority_unknown')
+  ),
+  CHECK (
+    (task_state = 'none' AND active_task_id IS NULL)
+    OR (task_state = 'authority_unknown')
+    OR (task_state NOT IN ('none', 'authority_unknown') AND active_task_id IS NOT NULL)
+  ),
+  CHECK (
+    completion_claim_allowed = 0
+    OR (
+      authority_refresh_succeeded = 1
+      AND task_state = 'ready'
+      AND active_task_id IS NOT NULL
+      AND close_blocker_codes_json = '[]'
+    )
+  )
+);
 ```
 <!-- canonical-storage-sql: project end -->
 
@@ -1525,7 +1596,8 @@ CREATE INDEX idx_user_action_channel_tokens_expiry
   적용합니다.
 - Store application validation은 요청, 근거, resolution JSON을 strict decode하고 저장 요청에서 캡처 폼을 도출하며 폐쇄형 tag와 파생 `action_kind` 일치를 요구합니다. 대상과 아티팩트 후보는 각각 32개, note 성격 텍스트는 Unicode scalar value 1,000개, 관찰 summary는 4,000개, canonical 직렬화 폼은 32 KiB로 제한하며 초과 값을 자르지 않고 거부합니다.
 - `user_action_channel_tokens`는 대기 사용자 행동의 해시된 일회성 로컬 웹 User Channel token을 저장합니다. raw token은 저장하지 않습니다. `created_metadata_json`은 정확히 `{fallback_kind, delivery_surface, endpoint, form_digest}`로 strict decode되어야 하며 `fallback_kind=local_web_consent`, `delivery_surface=model_invisible_user_surface`, `endpoint=/consent`, 저장된 닫힌 요청에서 도출한 canonical form과 일치하는 digest를 사용해야 합니다. Metadata가 누락됐거나 추가됐거나, 타입이 잘못됐거나, 값이 일치하지 않으면 사용할 수 없습니다. 특히 `delivery_surface`가 없는 기존 행은 수정된 코드에서 영구적으로 사용할 수 없습니다. 발급 창을 도출하고 검증하는 네 저장 timestamp인 `user_action_requests.requested_at`, 선택적 `user_action_requests.expires_at`, token `created_at`, token `expires_at`은 각 instant의 canonical RFC 3339 UTC 문자열이어야 합니다. Store application validation은 token `created_at >= user_action_requests.requested_at`을 요구합니다. 요청에 expiry가 있으면 token `expires_at`은 정확히 `min(user_action_requests.expires_at, created_at + 600 seconds)`여야 하고, 요청 expiry가 없으면 정확히 `created_at + 600 seconds`여야 합니다. Token은 반열린 구간 `created_at <= now < expires_at`에서만 유효합니다. 잘못된 생성 metadata, noncanonical 발급 창 timestamp, 더 이르거나 늦은 token expiry, 그 밖의 창 불일치는 손상된 저장 상태입니다. 이때 token 검증, 로컬 웹 GET·POST, expiry 정리, token 소비는 form을 표시하지 않고 닫힌 상태로 실패하며 token status, 프로젝트 상태나 UTC 하한, 사용자 행동 resolution 상태를 변경하지 않습니다. 발급은 token 삽입과 원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다. token 소비와 변경 불가능한 resolution 삽입은 함께 커밋합니다. 이 행은 일시적인 캡처 metadata이며 그 자체로 Core 사용자 권한이 아닙니다.
-- `write_tickets`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `(project_id, task_id, basis_state_version)` 고유 제약은 Task 안에서 상태 버전 정렬 키를 고유하게 만듭니다. `write_tickets.consumed_by_run_id`와 `runs.write_ticket_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
+- `write_tickets`는 소비 전까지 재사용 가능하고 상태에 묶인 호환성을 기록합니다. `basis_state_version`은 감사 순서이며 고유하거나 유효성 좌표가 아닙니다. 유효성은 `validity_basis_json`, status, 안정된 무효화 사유, 선택적 `idle_expires_at`에서 나옵니다. 고유 소비 인덱스는 소비 하나가 여러 Run으로 갈라지는 것을 계속 막습니다. Prefix 배열은 엄격하게 정규화된 repository-relative exact-or-descendant prefix이며 glob 문법 없음, 절대/빈 값/`..`/모호한 항목 거절, denied 우선, allowed 빈 배열은 product-file 쓰기 없음 규칙을 적용합니다.
+- `project_workflow_policies`는 권위 있는 v2 데이터베이스 복사본과 `sha256:<64자리 소문자 16진수>` 지문만 저장하며 관리 파일/CLI/host 동작은 이 담당 문서 밖입니다. 개인정보를 제한한 workflow metric은 이 권한 데이터베이스가 아니라 별도의 비권한 `diagnostics.sqlite` 저장소에만 둡니다. `session_end_receipts`에는 관리 세션, 닫힌 Task 상태와 다음 actor 값, blocker ref가 아닌 blocker code, 조건부 완전성이 필요합니다. Refresh 실패는 `authority_unknown`, 활성 Task 없음은 `none`을 사용하고 완료 주장은 새로 고친 blocker 없는 `ready` Task에서만 허용합니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_capture_intents`는 만료되는 요청 하나를 정확한 현재 근거, command/tool
   source input 또는 Core가 도출한 connection-source selector, connection/actor,

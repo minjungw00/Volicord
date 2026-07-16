@@ -489,6 +489,11 @@ reviewed path retains exact `clientInfo.name=codex-mcp-client` and
 `clientInfo.version=0.144.4` from a successful `initialize`; initialization
 alone does not bind a managed session. The canonical installed-host coordinate
 is `0.144.4`, parsed from the exact probe envelope `codex-cli 0.144.4`.
+These exact versions are preserved validation and release-evidence coordinates,
+not runtime feature gates. A different valid version is retained as observed;
+feature availability comes from the current capability probes owned by
+[Agent Connection](agent-connection.md#host-feature-support), not equality to
+this reviewed coordinate.
 
 When a managed binding materializes its `session_watch_baselines` row, the
 baseline's `metadata_json` retains only the exact bounded initialize identity as
@@ -921,6 +926,14 @@ returns `MCP_UNAVAILABLE`. If no allowed project state can be read, the adapter 
 `volicord.list_projects` visible so the caller can inspect project
 availability.
 
+For one resolved connection mode and effective storage capability, this is a
+static tool set. Task state, current blockers, write-ticket state, and a model's
+previous call do not add or remove tools; those conditions are reported by tool
+results. The complete compact `tools/list` result object, exactly
+`{"tools":[...]}` before the JSON-RPC envelope and request ID are added, must be
+at most 35,000 serialized UTF-8 bytes for every supported mode and storage-capability
+combination.
+
 When effective storage is read-only, read-compatible public method tools run
 without creating session-watch baselines, `tool_invocations`, `task_events`, or a
 new `project_state.state_version`. If a stale host-side tool cache still calls
@@ -1033,21 +1046,18 @@ This rule supplies no implicit value
 for any other field; the exact advertised `required` array remains
 authoritative.
 
-Tool descriptions contain only a short purpose and key boundary. Because
-`volicord.record_run.kind` compatibility depends on the current persisted Task
-rather than another visible MCP argument, that tool's description includes the
-exhaustive mode-to-kind matrix: `advisor` uses `shaping_update`, `direct` uses
-`direct`, and `work` uses `shaping_update` or `implementation`. Frequently used
-argument-shape examples are advertised as values in `inputSchema.examples`,
-including intake create/resume/supersede/reject, update-scope
-keep/create/replace, all three status detail levels, first-page operation-result
-retrieval, prepare-write, all three prepare-evidence-capture variants,
-stage-artifact, an advisor `shaping_update` with no Product Repository write, an
-evidence-bearing work `implementation`, request-user-action create and resume, reconcile,
-check-close, and close complete/cancel/supersede branches. Each advertised
-example conforms to the same `inputSchema` and MCP argument DTO used for calls.
-Examples illustrate supported argument branches only; they do not assert
-matching project state, authority, preconditions, or a successful Core result.
+Schema generation has two explicit detail modes. `ToolSchemaDetail::RuntimeCompact`
+is used for MCP `tools/list`; it omits every `inputSchema.examples` member and
+keeps each description to the tool's outcome, authority or write boundary, and
+when to call it. It does not embed mode matrices, long procedures, recovery
+catalogs, or examples. `ToolSchemaDetail::Documentation` retains the canonical
+examples and exhaustive branch documentation used by generated documentation
+and schema checks. The two modes use the same accepted argument shape,
+`required` fields, closed-field rules, output schema, and annotations; compact
+mode changes presentation size only. Mode-to-kind compatibility such as
+`advisor`/`shaping_update`, `direct`/`direct`, and `work` with
+`shaping_update` or `implementation` remains in Documentation detail and the
+method owner, not the runtime description.
 
 Every listed Volicord tool also exposes an MCP 2025-11-25 `outputSchema` whose
 root type is `object`. Read-only public method tools derive that schema from
@@ -1145,6 +1155,15 @@ Mutation `detail` has the same three values but a different default and effect.
 `method_result`. A Core/domain rejected branch keeps its existing response
 object for every detail value. The adapter validates the argument before Core
 entry.
+
+Every workflow `next_actions` item emitted by the adapter has a non-null public
+`owner_method`. When a non-terminal workflow state requires Agent action, the
+primary action names the public `volicord.*` method that can perform it and
+includes the bounded arguments or durable refs needed to call it; the Agent is
+not required to issue an extra `volicord.status` merely to discover that method.
+Local policy repair, host reload, connection setup, storage upgrade, and other
+administrative work remain separately typed diagnostic actions with exact CLI
+commands where applicable. They are not ownerless workflow next actions.
 
 The compact `method_result` always preserves effect kind, resulting state
 version, and committed event refs. It additionally preserves the issued write

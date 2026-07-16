@@ -167,9 +167,10 @@ compatibility checks and require recreation.
 - Correlating tool events by session and time was rejected for Strong Evidence
   because concurrent, retried, and resumed invocations can collide.
 - Waiting for host-turn or process exit before claiming an already durable
-  source was rejected because a Detective Stop can legitimately deny while the
-  Task is not close-ready and the immutable intent can expire during that
-  unrelated lifecycle wait.
+  source was rejected because Stop is not a producer-finalization boundary and
+  the immutable intent can expire during that unrelated lifecycle wait. Stop
+  still allows session termination when the Task is not close-ready; it only
+  withholds the completion claim.
 - Binding a connection intent to a digest over a future host-generated event or
   watcher observation was rejected because a post-intent source identity,
   timestamp, and snapshot/raw-event digest are not caller-known intent facts.

@@ -19,8 +19,9 @@ This document owns:
   Agent Connection layer
 - agent context transfer rules between owner results and an Agent Connection
 - managed final-output authority-disclosure capability and connection boundary
-- canonical six-feature `HostFeatureSupportStatus` evaluator, precedence,
-  current host/version matrix, replay, and freshness boundaries
+- canonical six-feature `HostFeatureSupportStatus` evaluator, seven probe
+  areas, precedence, exact-version evidence coordinates, replay, and freshness
+  boundaries
 - managed-host session binding use across managed MCP and host-hook observations
 - fallback display when the selected Agent Connection or current connection
   context is unavailable, mismatched, stale, or insufficient
@@ -463,6 +464,7 @@ Rules:
   improve tool selection, but they are not enforcement mechanisms and cannot
   guarantee that a model will choose Volicord tools.
 
+<a id="host-feature-support"></a>
 <a id="host-feature-support-state"></a>
 ## Host feature support state
 
@@ -483,39 +485,58 @@ Its values are exactly `verified`, `implemented_unverified`,
 checks are orthogonal facts: `configured=true` or
 `configuration_verified=true` never promotes a feature to `verified`.
 
-The centralized evaluator applies this order to a feature and all of its
-required subcapabilities:
+The centralized evaluator is capability-probe-first. A managed adapter records
+separate bounded probe results for these seven areas when they apply:
 
-1. If the exact host, host version, platform, or host-owned surface does not
-   provide any required capability, the result is `unsupported_by_host`.
-2. Otherwise, if an implementation exists but exact, current, final-binary
-   live evidence is absent, stale, expired, malformed, or mismatched, the
-   result is `implemented_unverified`.
-3. Otherwise, if the evidence matches but a current runtime prerequisite such
-   as configuration, connection binding, host approval, listener readiness, or
-   event delivery is down, the result is `temporarily_unavailable`.
-4. Only when every required capability has matching fresh evidence and every
-   current runtime prerequisite is ready is the result `verified`.
+1. configured lifecycle hooks are actually called;
+2. PreTool events provide structured target paths;
+3. PostTool events provide structured changed paths;
+4. a user-action UI is host-owned and separated from model context;
+5. Stop delivery and replay behavior is observable, including whether the host
+   attempts a second Stop;
+6. final authority disclosure is rendered in the required fixed UI surface;
+7. the running MCP client advertises and exercises the required capability.
 
-Aggregation uses the same precedence: any required
-`unsupported_by_host` result wins; otherwise any
-`implemented_unverified` result wins; otherwise any unavailable current
-runtime prerequisite yields `temporarily_unavailable`; only an all-exact and
-ready set yields `verified`. A default with no evidence is therefore
-`implemented_unverified` for an implemented built-in feature and
-`unsupported_by_host` for a generic or absent host feature. An exact replay
-re-evaluates the current evidence, freshness, host identity, final Volicord
-artifact, and runtime prerequisites; it cannot inherit an earlier
-`verified` result.
+Each probe result identifies the capability, observed status, observation time,
+bounded failure class, and the exact host/client/adapter evidence coordinates
+when known. It stores no prompt, model output, command, path, file content, user
+answer, or raw host event. A probe must test the named surface; a generated file,
+self-reported version, configured flag, or fixture alone is not a successful
+runtime probe.
 
-The current baseline is:
+The evaluator applies this order to a feature and all required probes and
+subcapabilities:
 
-| Host/version | Feature state |
-|---|---|
-| Codex `0.144.4` | `native_user_action`, `verified_tool_producer`, and `registered_connection_observation` are implemented and remain `implemented_unverified` until exact evidence passes. `local_web_user_channel`, `record_final_output`, and `detective_final_output` are `unsupported_by_host` for this reviewed version. The exact probe envelope is `codex-cli 0.144.4`; the canonical `host_version` and retained `clientInfo.version` coordinate is bare `0.144.4`. |
-| Codex absent or unreviewed version | The conservative host-kind fallback keeps `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, and `registered_connection_observation` implemented but unverified, and keeps both final-output features `unsupported_by_host`. It cannot inherit the exact `0.144.4` review. |
-| Claude Code | All six features are `implemented_unverified` pending exact live evidence bound to the final Volicord artifact and installed host version. The canonical installed-host probe envelope is exactly one non-empty UTF-8 stdout line terminated by one LF, with empty stderr; the line before that LF is preserved exactly as `host_version`. |
-| Generic | All six features are `unsupported_by_host`. |
+1. `unsupported_by_host` is used only when an explicit capability response or
+   owner-reviewed host surface says the required capability is absent. An
+   unknown or newer valid host version is not absence.
+2. An implemented built-in surface with no fresh matching probe evidence is
+   `implemented_unverified`, including a new version that has not yet acquired
+   release evidence.
+3. A failed current probe, or a previously evidenced capability whose current
+   configuration, binding, approval, listener, or event delivery is down, is
+   `temporarily_unavailable`.
+4. Only matching fresh final-artifact evidence, successful required probes, and
+   ready runtime prerequisites yield `verified`.
+
+Aggregation uses the same capability facts. Explicit required-capability
+absence yields `unsupported_by_host`; otherwise a current failed prerequisite
+or probe yields `temporarily_unavailable`; otherwise missing exact evidence
+yields `implemented_unverified`; only an all-evidenced, all-probed, ready set is
+`verified`. `degraded` is a diagnostic summary or reason only and is never a
+`HostFeatureSupportStatus`. Exact replay re-evaluates current probes, evidence
+freshness, host identity, final Volicord artifact, and runtime prerequisites; it
+cannot inherit an earlier `verified` result.
+
+Codex, Claude Code, and another implemented built-in adapter therefore default
+to `implemented_unverified` for a capability they implement until probes and
+fresh evidence establish more. Generic or user-managed connections are
+`unsupported_by_host` only for surfaces they explicitly do not provide. The
+reviewed Codex `host_version=0.144.4`, probe envelope
+`codex-cli 0.144.4`, and retained `clientInfo.version=0.144.4` remain exact
+validation and release-evidence coordinates; they do not gate runtime feature
+availability. A different canonical version is preserved as observed and
+evaluated from its actual capability probes.
 
 An installed-host version probe establishes a non-null availability coordinate
 only after the process exits successfully. Invalid UTF-8, timeout, non-zero
@@ -530,15 +551,17 @@ consume this one evaluator. They must not independently reinterpret
 configuration findings, fixtures, direct-wrapper results, ignored tests, or
 historical live results as feature support.
 
-A command that performs a successful canonical installed-host probe, including
-init and `volicord connection verify`, passes that fresh structured
-`host_version` to the evaluator for the output of that command. The retained
-version in `last_verification_report_json` is diagnostic history, not proof of
-the currently installed host. `volicord connection status` and `volicord
-doctor` do not run the installed-host probe and therefore invoke the evaluator
-with no current version, using the host-kind fallback. They must never promote
-or reclassify support from the stored historical coordinate. Release cells use
-only the exact version observed and bound by that cell.
+A command that performs capability probes, including init and `volicord
+connection verify`, passes their fresh structured results and observed
+`host_version` to the evaluator for that command and stores the bounded probe
+facts for freshness-aware diagnostics. The version retained in
+`last_verification_report_json` is diagnostic history, not proof of the
+currently installed host. `volicord connection status` and `volicord doctor`
+do not launch host probes; they evaluate readable probe observations subject to
+their freshness and binding, and otherwise use `implemented_unverified` for an
+implemented surface. They never promote or reclassify support from a historical
+version coordinate alone. Release cells use only the exact version and probes
+observed and bound by that cell.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ## Managed final-output authority disclosure
@@ -548,10 +571,14 @@ its `authority_display` implementation and configuration are available, but a
 support or release claim requires the profile feature to have
 `support_status=verified`. Record support requires `authority_display` and
 `authenticated_exact_replay`. Detective support requires
-`authority_display`, `authenticated_exact_replay`, and `block_finalization`;
-replay remains required because every owner-defined delivery, including
-Detective replay, refreshes current authority. An unsupported replay or block
-surface keeps the aggregate unsupported even if the display runs. Only
+`authority_display`, `authenticated_exact_replay`, and the currently named
+`block_finalization` diagnostic subcapability. That retained name means the host
+can present `completion_claim_allowed=false` distinctly while still allowing
+the session to terminate; it never permits a Stop denial, a forced retry, or a
+second Stop request. Replay remains required because every owner-defined
+delivery, including Detective replay, refreshes current authority. An
+unsupported replay or completion-disclosure surface keeps the aggregate
+unverified even if the display runs. Only
 profile-applicable subcapabilities are emitted, and best-effort output never
 promotes their typed state. The display belongs to the host adapter, not to
 model-authored final prose, and uses a host-owned fixed UI surface separate
@@ -582,8 +609,11 @@ Profile boundaries:
   applicable `volicord status` fallback. Claude Code does not have this Git-root
   prerequisite.
 - `detective` uses the same disclosure projection in addition to its separate
-  Stop decision and observation path. The persisted historical Stop decision is
-  not the source of a displayed receipt.
+  Stop observation and completion-eligibility path. Stop always allows host
+  termination; blockers and refresh failure set
+  `completion_claim_allowed=false` in the content-free receipt rather than
+  denying or repeating Stop. The persisted historical Stop result is not the
+  source of a displayed receipt.
 
 Every delivery, including an exact replay, performs a new read-only status
 refresh and uses the complete-receipt-or-fallback projection owned by

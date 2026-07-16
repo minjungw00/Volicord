@@ -179,7 +179,7 @@ mutation application이 생성하는 적용 가능한 Store transaction metadata
 - 커밋 전 검증 실패.
 - 보호된 동작이 진행되기 전의 연결 처리 경로 또는 모드 관문 실패.
 - 오래된 `expected_state_version`.
-- 오래된 `WriteTicket.basis_state_version`.
+- 소비 시도에서 유효하지 않거나 소비됨, 철회됨, 상태 결합 비호환인 쓰기 티켓.
 - 멱등 요청 해시 충돌.
 - 거절된 아티팩트 입력.
 
@@ -306,6 +306,17 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - 닫기 차단 사유.
 - `CloseReadinessBlocker[]`.
 - 닫기 차단 사유 기록.
+
+프로젝트 정책 적용은 권위 있는 `project_workflow_policies` v2 복사본, 단조 증가
+버전, 기준 JSON, 지문, source를 원자적으로 쓰고 활성 Task를 위쪽으로만 다시
+평가합니다. 유효 통제 수준을 조용히 낮추지 않습니다. 정확한 명령, 파일, host 동작은
+관리 담당 문서의 관심사입니다.
+
+Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범주형
+outcome만 저장합니다. Session-end 기록은 크기가 제한된 권한 receipt를 저장합니다.
+Refresh 실패, 활성 Task 없음, 닫기 blocker 존재 시
+`completion_claim_allowed=0`이어야 하며 요약 문자열로 덮어쓸 수 없습니다. 이 기록은
+prompt, file, answer, command 본문을 저장하지 않습니다.
 
 <a id="method-effects"></a>
 ## 메서드 저장 효과 요약
@@ -453,10 +464,14 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 
 `decision=allowed`인 재실행이 아닌 원래 커밋된 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 물리 `write_tickets` 테이블에 저장되는 열린 쓰기 티켓 하나를 발급합니다.
+- 물리 `write_tickets` 테이블에 활성 쓰기 티켓 하나를 발급하거나 호환되는 활성 미소비 티켓 하나를 재사용합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
+
+발급은 행 하나를 삽입합니다. 재사용은 티켓을 삽입하지 않고 식별자를 보존하며
+이벤트/재실행/상태 버전 효과는 정확히 한 번 발생합니다. 이 증가나 관련 없는 Core
+변경은 티켓을 무효화하지 않습니다. 비허용 판단은 관련 없는 활성 티켓을 철회하지 않습니다.
 
 멱등 재실행은 [저장소 버전 관리](storage-versioning.md)에 따라 저장된 원래 응답을 반환하며, 이러한 효과를 반복하지 않습니다.
 
@@ -585,7 +600,7 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - `runs`를 생성합니다.
-- 호환되는 `write_tickets` 행을 소비합니다.
+- Run이 실제 Product Repository 파일 쓰기를 기록할 때만 호환되는 `write_tickets` 행을 소비합니다.
 - 사용할 수 있는 `artifact_staging`을 소비합니다.
 - `artifacts`를 승격하거나 연결합니다.
 - 새 `Task` 범위 보충 대상에 `evidence_claims` 행을 만들고, 기존 같은 `Task` ID의 불변 문장을 보존합니다.
@@ -597,6 +612,11 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
+
+제품 파일 쓰기가 없는 Run은 호환 티켓을 재사용할 수 있도록 활성 상태로 둡니다.
+소비, Run 삽입, 모든 증거/아티팩트 효과는 하나의 원자적 커밋입니다. 거절은 소비를
+기록하지 않습니다. `basis_state_version`은 감사 전용이며 유효성은 저장된
+Task/Change Unit/범위/기준선/workspace/승인 근거, 상태, 선택적 idle timeout을 사용합니다.
 
 효과가 없는 분기:
 

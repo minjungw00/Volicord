@@ -7,7 +7,7 @@ receipt is useful at the end of an agent turn only if the host exposes it
 without asking model-authored prose to preserve or interpret it. In the
 existing source structure, the user-visible receipt path is coupled to the
 Detective profile Stop hook. That hook can place a validated receipt on a
-separate host UI surface, but its allow-or-deny decision is a different
+separate host UI surface, but its completion-claim decision is a different
 responsibility from final-output disclosure and is not available to the Record
 profile.
 
@@ -46,10 +46,11 @@ from Detective Stop enforcement.
    degraded paths expose only the fallback and diagnostic behavior their
    Reference owners support; they do not claim a host surface was installed or
    observed.
-5. Detective Stop remains a separate consumer. It may use the same fresh
-   validation facts while deciding its host-native allow-or-deny result, but
-   that enforcement result is not the canonical final-output display. Record
-   profile disclosure remains non-blocking.
+5. Detective Stop remains a separate consumer. It uses the same fresh
+   validation facts to decide whether a completion claim is allowed while the
+   host-native Stop result always permits session termination. That lifecycle
+   result is not the canonical final-output display. Record profile disclosure
+   remains non-blocking.
 
 The disclosure plan is an adapter projection, not a new Core result, public
 schema, Store record, or authority source. It is rebuilt for every final-output

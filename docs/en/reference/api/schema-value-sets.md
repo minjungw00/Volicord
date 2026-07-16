@@ -226,6 +226,20 @@ work
 
 `requested_mode` for `volicord.intake` also accepts `auto` as an input-only value. Output `Task.mode` fields use `advisor`, `direct`, or `work`; intake resolution behavior is owned by [Intake method](method-intake.md).
 
+`requested_control_level` uses:
+
+```text
+auto
+observe
+light
+tracked
+sensitive
+```
+
+`effective_control_level` uses the same set without `auto`. Control order is
+`observe < light < tracked < sensitive`; Core and project policy may raise a
+Task but never lower its effective control.
+
 Mode and `work_phase` jointly constrain Run-kind compatibility:
 
 | `Task.mode` | `work_phase` | Allowed `RunKind` | Successful `intent=complete` result |
@@ -255,9 +269,11 @@ not_required
 policy_dependent
 ```
 
-The policy is selected and reasoned at intake. `not_required` is limited to
-advisor Tasks; `policy_dependent` is evaluated by the close owner and is not an
-agent-selected waiver.
+The policy is selected and reasoned from effective control plus the current
+project policy. `observe` uses `not_required`; `tracked` and `sensitive` use
+`required`; `light` uses `policy_dependent` and may resolve to `not_required`
+only under an explicit current project rule and its complete close conditions.
+It is not an agent-selected waiver.
 
 `TaskLineageSummary.relation` uses:
 
@@ -423,9 +439,12 @@ decision_required
 none
 would_issue
 issued
+reused
 ```
 
-`issued` means a committed `decision=allowed` result issued one open write-ticket authority record. `would_issue` is used only for preview/planning descriptions and does not create a committed ticket.
+`issued` means a committed allowed result created one ticket. `reused` means it
+returned one already-active compatible ticket without creating another.
+`would_issue` is preview-only and creates no ticket.
 
 `WriteTicket.state` uses:
 
@@ -434,7 +453,7 @@ open
 observed
 reconciled
 closed
-expired
+invalidated
 revoked
 ```
 
@@ -445,10 +464,25 @@ These states describe Volicord ticket authority and observation lifecycle. They 
 ```text
 active
 consumed
-expired
-stale
+invalidated
 revoked
 ```
+
+`WriteTicket.invalidation_reason` uses:
+
+```text
+scope_revision_changed
+change_unit_changed
+baseline_changed
+workspace_changed
+approval_basis_changed
+idle_timeout
+task_closed
+explicit_revoke
+```
+
+These reasons are state-bound. `basis_state_version` mismatch and unrelated
+state changes are deliberately absent.
 
 `RecordRunRequest.kind` and `RunSummary.kind` use:
 
@@ -498,6 +532,12 @@ Final-output `required_subcapabilities` and `subcapabilities` keys use only
 `authority_display`, `authenticated_exact_replay`, and `block_finalization`.
 The selected profile emits only its applicable keys; there is no product
 `not_applicable` support status.
+
+`block_finalization` means suppression of an unauthorized completion claim when
+the current authority receipt has `completion_claim_allowed=false`. It never
+means denying, delaying, or preventing Stop, session termination, connection
+shutdown, or the user's ability to leave. Stop still records the bounded
+session-end receipt when available.
 
 `PlannedBlocker.source_kind` uses:
 
@@ -687,6 +727,20 @@ watcher coverage.
 unresolved
 resolved
 ```
+
+`UnrecordedChangeFinding.confidence` uses:
+
+```text
+confirmed
+suspected
+```
+
+Only unresolved `confirmed` changes block close. `suspected` changes warn and
+request verification.
+
+Mutation observation confidence uses `confirmed`, `structured`, `heuristic`,
+or `unknown`. Observed effect kind uses `read_only`, `product_file_write`,
+`non_product_write`, `external_effect`, or `unknown`.
 
 <a id="unrecorded-change-resolution-basis-values"></a>
 `UnrecordedChangeResolutionSummary.resolution_basis` and stored unrecorded-change resolution metadata use:

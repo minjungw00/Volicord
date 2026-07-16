@@ -137,6 +137,10 @@ StateSummary:
   state_version: integer
   task_ref: StateRecordRef | null
   mode: string | null
+  requested_control_level: string | null
+  effective_control_level: string | null
+  control_level_reason: string | null
+  project_policy: ProjectWorkflowPolicySummary | null
   work_phase: string | null
   acceptance_policy: string | null
   acceptance_policy_reason: string | null
@@ -170,6 +174,10 @@ StateSummary:
 - `mode`, `work_phase`, `acceptance_policy`, `close_state`는 값이 있을 때 제어
   값 문자열입니다. `acceptance_policy_reason`은 Core가 Task 소유의 최종 수락
   정책을 선택한 이유이며 승인이나 면제가 아닙니다.
+- `requested_control_level`은 `auto` 또는 호출자의 명시적 요청을 보존합니다.
+  `effective_control_level`은 Core가 위쪽으로만 조정해 결정한 값입니다. 자유 형식
+  `control_level_reason`은 권한이 되지 않으면서 결정 이유를 설명합니다.
+  `project_policy`는 사용한 정확한 권위 정책 복사본을 식별합니다.
 - `lineage`는 Task의 정규 predecessor edge 하나와 carry-forward 감사
   기록입니다. `scope_revision`은 현재 Task 범위 리비전입니다.
 - `goal_summary`, `scope_summary`, `non_goals`, `autonomy_boundary`는 자유 형식
@@ -229,6 +237,12 @@ WorkspaceContext:
   head_sha: string | null
   workspace_fingerprint: string
 
+ProjectWorkflowPolicySummary:
+  policy_schema: string
+  policy_version: integer
+  policy_fingerprint: string
+  source: string
+
 AuthorityReceipt:
   project_id: string
   state_version: integer
@@ -240,6 +254,7 @@ AuthorityReceipt:
   evidence_gate: EvidenceGateSummary | null
   close_state: string
   close_blockers: CloseReadinessBlocker[]
+  completion_claim_allowed: boolean
   next_actor: string
   next_action: NextActionSummary | null
 ```
@@ -251,6 +266,13 @@ AuthorityReceipt:
   현재 상태로 만들지 않은 채 predecessor 맥락만 보존합니다.
 - `TaskFlowItem[]`은 full status가 연결된 predecessor component를 표시하는
   파생 보기이며 새 parent-goal 레코드가 아닙니다.
+- `ProjectWorkflowPolicySummary.policy_schema`는 `volicord-policy-v2`입니다.
+  `policy_version`은 프로젝트별 단조 증가 값이고 `policy_fingerprint`는 기준 정책
+  JSON의 SHA-256입니다. `source`는 권위 있는 데이터베이스 복사본의 출처이며 파일
+  로딩 계약이 아닙니다.
+- `AuthorityReceipt.completion_claim_allowed`는 호출자가 제공하지 않고 도출합니다.
+  유효한 완료 근거에 blocker가 없을 때만 참이며, 활성 Task가 없거나 권한 refresh가
+  실패하면 거짓입니다.
 - `WorkspaceContext`는 local integration과 Core 쓰기 검사가 함께 사용하는 정규
   Git common-directory 및 linked-worktree identity입니다. branch가 null이면
   detached HEAD이고 Non-Git repository에서는 context가 null입니다.
@@ -503,6 +525,7 @@ Product Repository 변경에 대해 반환하는 공개 형태입니다.
 UnrecordedChangeFinding:
   unrecorded_change_ref: StateRecordRef
   status: string
+  confidence: string
   summary: string
   observed_paths: string[]
   detected_at: string
@@ -522,6 +545,8 @@ UnrecordedChangeResolutionSummary:
 
 - `unrecorded_change_ref`는 `record_kind=unrecorded_change`인 `StateRecordRef`를 사용합니다.
 - `status`는 제어 값 문자열입니다.
+- `confidence`는 `confirmed` 또는 `suspected`입니다. 미해결 `confirmed` finding만
+  닫기 차단 사유이며 `suspected` finding은 검증 대상으로 계속 보입니다.
 - `summary`, `capture_basis`, `next_action.label`은 표시 문자열이며 정확성 증명이 아닙니다.
 - `observed_paths`는 Core가 안전하게 디코딩할 수 있을 때 Product Repository 상대 경로를 담습니다. 프롬프트 텍스트, 명령 텍스트, 셸 인수, 전체 민감 내용을 포함하지 않습니다.
 - `can_resolve_in_chat`은 메서드 담당 문서가 선택한 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다.
@@ -702,6 +727,9 @@ WriteTicketStateSummary:
   status: string
   write_ticket_ref: StateRecordRef | null
   basis_state_version: integer | null
+  validity_basis: WriteTicketValidityBasis | null
+  invalidation_reason: string | null
+  idle_expires_at: string | null
   intended_paths: string[]
   consumed_by_run_ref: StateRecordRef | null
   observation_refs: StateRecordRef[]
@@ -720,6 +748,14 @@ WriteTicketPathPatterns:
   allowed: string[]
   denied: string[]
 
+WriteTicketValidityBasis:
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string | null
+  workspace_context_sha256: string | null
+  approval_basis_refs: StateRecordRef[]
+
 WriteTicketScope:
   task_id: string
   change_unit_id: string
@@ -736,7 +772,9 @@ WriteTicket:
   path_patterns: WriteTicketPathPatterns
   observed_paths: string[]
   basis_state_version: integer
-  expires_at: string | null
+  validity_basis: WriteTicketValidityBasis
+  invalidation_reason: string | null
+  idle_expires_at: string | null
   control_surface: ControlSurfaceSummary | null
   guarantee_display: GuaranteeDisplay | null
 
@@ -776,9 +814,12 @@ WriteDecisionReason:
 - `WriteTicketStateSummary.observation_refs`는 사용할 수 있을 때 그 소비 Run이 만든 증거 관찰 참조를 나열합니다. 쓰기 티켓이 소비되지 않았거나 소비 Run이 관찰을 만들지 않았다면 비어 있습니다.
 - `WriteTicketAttemptScope`는 쓰기 티켓이 포착하는 한 번의 시도 경계입니다.
 - `WriteTicketAttemptScope`는 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 포괄적 사용자 승인이 아닙니다.
-- `WriteTicket`은 커밋된 허용 결정이 쓰기 티켓을 발급할 때 `volicord.prepare_write`가 반환하는 티켓 우선 권한 기록입니다.
+- `WriteTicket`은 커밋된 허용 결정이 호환되는 티켓을 발급하거나 재사용할 때 `volicord.prepare_write`가 반환하는 티켓 우선 권한 기록입니다.
 - `WriteTicket.state`는 제어되는 값 문자열입니다.
-- `WriteTicket.path_patterns.allowed`와 `WriteTicket.path_patterns.denied`는 티켓 결정이 포착한 정규화된 `Product Repository` 경로 패턴입니다.
+- `WriteTicket.path_patterns.allowed`와 `WriteTicket.path_patterns.denied`는 티켓 결정이 포착한 정규화된 repository-relative 경로 prefix입니다. Prefix는 정확한 경로나 하위 경로와 일치하며 wildcard와 glob 문법은 지원하지 않습니다. 절대 경로, 빈 값, `..` 포함 값, 모호한 값은 유효하지 않고 denied prefix가 우선하며 allowed가 비어 있으면 product-file 쓰기를 하나도 허용하지 않습니다.
+- `WriteTicket.validity_basis`, 소비 상태, 선택적 idle timeout, 무효화 사유가
+  유효성을 결정합니다. `basis_state_version`은 감사 순서만 기록하며 관련 없는 상태
+  버전 증가는 티켓을 무효화하지 않습니다.
 - `WriteTicket.observed_paths`는 기준 범위에서 비어 있습니다. `detective` 호스트 훅과 세션 감시기 관찰은 티켓에 다시 쓰지 않고 호스트 관찰 및 미기록 변경 기록으로 남깁니다.
 - `WriteTicket.control_surface`와 `WriteTicket.guarantee_display`는 현재 Volicord 관찰 요약과 보장 문구를 공개합니다. OS 수준 파일시스템 집행을 주장하지 않습니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
@@ -818,8 +859,10 @@ WriteDecisionReason:
 | `scope` | `WriteTicketScope`. | 티켓 발급에 사용된 Task, Change Unit, 작업, 민감 범주, 제품 쓰기 플래그, 기준선을 포착합니다. |
 | `path_patterns` | `WriteTicketPathPatterns`. | 티켓 결정에 대한 허용·거부 정규화 `Product Repository` 경로 패턴을 포착합니다. |
 | `observed_paths` | 정규화된 `Product Repository` 경로 문자열. | 담당 문서가 정의한 `detective` 경로가 관찰을 티켓에 연결했을 때만 관찰된 경로를 나열합니다. 연결된 관찰이 없으면 `[]`를 사용합니다. |
-| `basis_state_version` | 상태 시계 값. | 티켓과 함께 커밋된 `project_state.state_version` 근거입니다. |
-| `expires_at` | UTC 타임스탬프 또는 `null`. | Volicord 호환성 조건으로 쓰이는 티켓 만료입니다. OS 수준 집행이 아닙니다. |
+| `basis_state_version` | 상태 시계 값. | 발급 또는 재사용 때 포착한 감사 순서이며 티켓 유효성 좌표가 아닙니다. |
+| `validity_basis` | `WriteTicketValidityBasis`. | 상태 결합 재사용과 무효화에 사용하는 정확한 Task, Change Unit, 범위, 기준선, workspace, 승인 좌표입니다. |
+| `invalidation_reason` | 제어되는 무효화 사유 또는 `null`. | 티켓이 무효화될 때 기록하는 안정된 사유입니다. |
+| `idle_expires_at` | UTC 타임스탬프 또는 `null`. | 선택적 프로젝트 정책 idle 경계입니다. `null`은 idle timeout이 없다는 뜻이며 고정 기본 수명은 없습니다. |
 | `control_surface` | `ControlSurfaceSummary | null`. | 현재 Volicord 제어 표면 공개입니다. |
 | `guarantee_display` | `GuaranteeDisplay | null`. | [보안](../security.md)이 범위를 정하는 사람이 읽는 보장 문구입니다. |
 

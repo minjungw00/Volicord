@@ -53,8 +53,8 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **`Volicord Runtime Home`**
 
-- **포함하는 것:** `registry.sqlite`, 필요할 때 생성되는 비권한 `diagnostics.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 사용자 행동 resolution, 아티팩트, 세션 감시 기록을 저장할 수 있습니다. 별도 진단 데이터베이스는 크기가 제한된 로컬 운영 집계만 저장합니다.
-- **사용 경로:** `volicord init`, `project`, `connection`, `inbox`, `changes`, `doctor`, `diagnostics`, 숨겨진 내부 훅 명령이 각 담당 경로에 따라 상태를 초기화하거나 읽거나 갱신합니다. `volicord doctor --privacy-footprint`는 행 본문을 출력하지 않고 저장 범주와 개수를 보고합니다. `volicord diagnostics session`은 일반 설정 점검 뒤 크기 제한 진단 저장소만 읽습니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 처리 경로, Core 상태, 아티팩트, 최선 노력 운영 집계를 위해 Runtime Home 상태를 사용합니다.
+- **포함하는 것:** `registry.sqlite`, 필요할 때 생성되는 비권한 `diagnostics.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 사용자 행동 resolution, 아티팩트, 세션 감시 기록, 스키마·fingerprint·단조 증가 version을 가진 권한 있는 canonical 프로젝트 작업 흐름 정책, 내용 없는 세션 종료 receipt를 저장할 수 있습니다. 별도 진단 데이터베이스는 개인정보 안전 작업 흐름 지표를 포함해 크기가 제한된 로컬 운영 집계만 저장합니다.
+- **사용 경로:** `volicord init`, `project`, `policy`, `connection`, `inbox`, `changes`, 저장소 upgrade, `doctor`, `diagnostics`, 숨겨진 내부 훅 명령이 각 담당 경로에 따라 상태를 초기화하거나 읽거나 갱신합니다. `volicord doctor --privacy-footprint`는 행 본문을 출력하지 않고 저장 범주와 개수를 보고합니다. `volicord diagnostics session`과 `volicord diagnostics workflow-metrics`는 일반 설정 점검 뒤 크기 제한 진단 저장소만 읽습니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 처리 경로, Core 상태, 아티팩트, 정책 권한, 종료 receipt, 최선 노력 운영 집계를 위해 Runtime Home 상태를 사용합니다.
 - **경계:** Product Repository, 외부 호스트 설정, 설치 디렉터리가 아닙니다. OS 샌드박스, 네트워크 격리, 악성코드·비밀값 검사, 호스트 신뢰, 행위자 귀속, 쓰기 방지, 변조 방지 감사, 전체 파일시스템 감시, 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락을 제공하거나 증명하지 않습니다.
 
 **`Product Repository`**
@@ -111,7 +111,7 @@ Volicord 런타임 상태, SQLite 데이터베이스, 생성 기록, 런타임 �
 
 - Codex `.codex/config.toml` 또는 Claude Code `.mcp.json` 같은 프로젝트 범위 호스트 설정
 - `AGENTS.md` 안의 Volicord 관리 블록
-- `.volicord/policy.json`에 있는 의도와 무관한 로컬 정책 오버레이
+- `.volicord/policy.json`에 있는 로컬 관리 `volicord-policy-v2` 사본
 - Codex `.codex/hooks.json`, 개인 Claude Code `.claude/settings.local.json`, 공유
   Claude Code `.claude/settings.json` 같은 호스트 훅 설정
 - Codex `.codex/hooks/` 또는 Claude Code `.claude/hooks/` 아래의 Volicord 관리 호스트 훅
@@ -142,8 +142,11 @@ Record profile init에서 기본 개인 Codex 연결은 Codex 사용자 설정 �
 사용합니다. 두 의도 모두 `.gitignore`를 바꾸지 않고 Git `info/exclude`를 통해
 `/.volicord/`와 생성된 훅 래퍼 스크립트를 추적 대상에서 제외합니다. 독립형 개인
 init은 개인 훅 설정과 규칙 경로도 보호합니다. `.volicord/policy.json`은
-`storage_scope=local_overlay`를 선언하고 선택한 `connection_intent`를 기록하므로 공유
-상태 보기로 커밋하면 안 됩니다. 생성된 래퍼 스크립트도 프로세스 바인딩 경로와
+`storage_scope=local_overlay`를 선언하고 선택한 `connection_intent`와 닫힌 작업 흐름
+정책을 기록하므로 공유 상태 보기로 커밋하면 안 됩니다. Runtime Home의 canonical 프로젝트
+데이터베이스 사본이 권한 원천이며 정책 스키마, canonical fingerprint, 단조 증가
+`policy_version`을 가집니다. 관리 파일의 누락, 형식 오류, 바인딩 불일치, fingerprint
+불일치는 진단·복구 조건일 뿐 데이터베이스 사본을 대체할 권한이 아닙니다. 생성된 래퍼 스크립트도 프로세스 바인딩 경로와
 식별자를 담으므로 로컬 파일입니다. 모든 관리 생명주기 또는 최종 출력 래퍼는 init이
 선택한 절대 `VOLICORD_HOME`을 내보내고 설치 프로필의 절대 `volicord_command`를
 실행합니다. 호스트 환경의 기존 Runtime Home 값이나 `PATH`로 해석되는 단순 명령을 신뢰하지
@@ -309,6 +312,9 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 - 저장소/런타임 담당 문서는 어떤 운영 데이터가 `Volicord Runtime Home`에 속하는지 정의합니다.
 - 저장소/런타임 담당 문서는 그 데이터의 검증, 저장 효과, 기록 배치, 아티팩트 저장, 버전 관리, 복구 동작을 정의합니다.
 - `diagnostics.sqlite`는 Runtime Home 루트에 있을 수 있지만 레지스트리 및 모든 프로젝트 권한 데이터베이스와 분리됩니다. 그 위치는 진단 관찰에 Core, 증거, 닫기 준비 상태, User Channel, 보안 권한을 부여하지 않습니다.
+- 내용 없는 Stop receipt와 권한 있는 프로젝트 정책 사본은 프로젝트별 Runtime Home 상태에만
+  둡니다. 작업 흐름 지표는 별도 진단 저장소에만 둡니다. 어느 것도 Product Repository,
+  유지 문서, 생성 안내, 호스트 설정에 두면 안 됩니다.
 
 주장하면 안 되는 것:
 - `Volicord Runtime Home`이 `Product Repository`라는 주장.

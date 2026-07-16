@@ -35,6 +35,14 @@ The method never silently dismisses a bypass. An Agent Connection cannot mark an
 
 Resolving an Unrecorded Change removes it from the unresolved host-hook health count and the `unresolved_unrecorded_changes` close-blocker calculation. Resolution does not prove that the changed product files are correct, reviewed, tested, accepted for close, or acceptable as residual risk.
 
+Every finding carries `confidence=confirmed|suspected`. A confirmed unresolved
+Product Repository change contributes `unresolved_unrecorded_changes` and must
+be reconciled before close. A suspected finding is a warning and verification
+request, not a close blocker. Deterministic verification may promote it to
+`confirmed` or resolve it as not a product change, reverted, covered, or an
+invalid observation. An Agent Connection cannot lower confidence merely to
+remove a blocker.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests that mutate state require non-null `idempotency_key` and current `expected_state_version`.
@@ -96,6 +104,13 @@ A valid call with no storage mutations returns a read-only result and does not c
 
 At a session-bound method boundary, the runtime may run a bounded session-watch check before reconciliation planning. That diagnostic check can link an observation to one deterministic expected-write or active write-ticket match. It creates a new unresolved Unrecorded Change when a Product Repository snapshot change is unmatched, outside ticket scope, or ambiguous.
 
+Deterministically observed path or content changes are `confirmed`. Incomplete,
+heuristic, or ambiguous watcher signals may be stored as `suspected` until a
+later comparison establishes or dismisses the change. Reconciliation changes
+do not consume or invalidate a write ticket unless a separate operation changes
+one of that ticket's explicit validity coordinates; their state-version
+increments alone are irrelevant to ticket validity.
+
 Dry run previews planned resolutions or pending user actions without creating refs, events, replay rows, user-action requests, or resolution rows. Rejected attempts create no effects.
 
 ## Success result
@@ -141,7 +156,7 @@ Core-owned deterministic bases:
 - `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
 - `not_product_change`: stored observation data contains no Product Repository path to reconcile.
 - `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers watcher-observed Product Repository paths.
-- `covered_by_write_ticket`: one compatible consumed write ticket or one current active unexpired write ticket for the same Task deterministically covers the observed Product Repository paths.
+- `covered_by_write_ticket`: one compatible consumed write ticket or one current active, unconsumed, state-bound valid write ticket for the same Task deterministically covers the observed Product Repository paths. Optional idle-timeout validity is checked when configured; there is no fixed ticket lifetime.
 - `reverted`: a watcher-created Unrecorded Change is linked to a session-watch observation and the current Product Repository snapshot matches the stored watch baseline again.
 
 User-owned basis:
@@ -169,7 +184,7 @@ User Channel paths can resolve those user actions:
 After the user-owned action is resolved, `volicord.reconcile_changes` can
 resolve the linked Unrecorded Change with `accepted_by_user`.
 
-Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one active write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored Unrecorded Change needs user acceptance, reconciliation leaves it unresolved or creates a pending user-owned action.
+Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one active write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored Unrecorded Change needs user acceptance, reconciliation leaves it unresolved or creates a pending user-owned action. Only compatible local-user authority can supply `accepted_by_user`; sensitive approval and other user-owned judgments remain separate and are never inferred from reconciliation.
 
 ## Rejected result
 
