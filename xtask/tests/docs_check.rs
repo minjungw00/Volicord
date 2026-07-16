@@ -19,6 +19,11 @@ fn valid_fixture() -> TempDir {
     write(root, "AGENTS.md", "# Root Agent Rules\n");
     write(root, "docs/AGENTS.md", "# Docs Agent Rules\n");
     write(root, "crates/AGENTS.md", "# Crates Agent Rules\n");
+    write(
+        root,
+        "Cargo.toml",
+        "[workspace.package]\nversion = \"1.2.3\"\n",
+    );
     write(root, "README.md", "# Volicord\n");
     write(root, "docs/README.md", "# Documentation\n");
     write(root, "docs/en/README.md", "# English Docs\n");
@@ -66,7 +71,8 @@ owner_areas:
     description: Developer documentation.
 applicability:
   volicord_workspace_0_1:
-    description: Volicord workspace 0.1.
+    description: Volicord workspace package version 1.2.3, as declared by the workspace `Cargo.toml`.
+    version_source: workspace_package
   doc_index_schema_v3:
     description: Documentation index schema v3.
   terminology_map_v1:
@@ -431,6 +437,122 @@ fn accepts_valid_version_3_metadata() {
     let fixture = valid_fixture();
 
     let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_matching_workspace_package_version_description() {
+    let fixture = valid_fixture();
+
+    let report = report(fixture.path());
+
+    assert!(
+        category_errors(&report, "workspace_version.mismatch").is_empty(),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn reports_stale_workspace_package_version_description_with_both_versions() {
+    let fixture = valid_fixture();
+    let index = valid_doc_index().replace(
+        "workspace package version 1.2.3",
+        "workspace package version 1.2.2",
+    );
+    write(fixture.path(), "docs/doc-index.yaml", &index);
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "workspace_version.mismatch");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(errors[0].message().contains("`1.2.2`"));
+    assert!(errors[0].message().contains("`1.2.3`"));
+    assert!(errors[0]
+        .message()
+        .contains("applicability.volicord_workspace_0_1.description"));
+    assert!(errors[0].message().contains("update"));
+}
+
+#[test]
+fn ignores_historical_versions_outside_current_workspace_version_entry() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\nVersion 0.9.0 is retained here as historical release context.\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n버전 0.9.0은 이전 릴리스 맥락으로 남아 있습니다.\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn reports_missing_current_workspace_version_entry() {
+    let fixture = valid_fixture();
+    let index = valid_doc_index().replace("    version_source: workspace_package\n", "");
+    write(fixture.path(), "docs/doc-index.yaml", &index);
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "workspace_version.missing_index_entry");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(errors[0]
+        .message()
+        .contains("version_source: workspace_package"));
+}
+
+#[test]
+fn reports_malformed_workspace_package_version() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "Cargo.toml",
+        "[workspace.package]\nversion = [\"1.2.3\"]\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "workspace_version.invalid_manifest");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert_eq!(errors[0].file(), "Cargo.toml");
+    assert!(errors[0]
+        .message()
+        .contains("[workspace.package].version as a string"));
+}
+
+#[test]
+fn reports_malformed_workspace_package_version_description() {
+    let fixture = valid_fixture();
+    let index = valid_doc_index().replace(
+        "Volicord workspace package version 1.2.3, as declared by the workspace `Cargo.toml`.",
+        "Current Volicord workspace release is 1.2.3.",
+    );
+    write(fixture.path(), "docs/doc-index.yaml", &index);
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "workspace_version.invalid_index_entry");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(errors[0]
+        .message()
+        .contains("applicability.volicord_workspace_0_1.description"));
+}
+
+#[test]
+fn repository_documentation_has_consistent_workspace_package_version() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask manifest has a repository parent");
+
+    let report = report(root);
 
     assert!(report.is_ok(), "{:#?}", report.errors());
 }

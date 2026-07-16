@@ -22,7 +22,12 @@ read-only and verifies the machine-checkable shape:
 - Required top-level sections are present and unsupported top-level fields are
   rejected.
 - The `owner_areas` catalog and `applicability` catalog use stable identifiers
-  with string descriptions.
+  with string descriptions. Exactly one applicability entry uses
+  `version_source: workspace_package` to mark the current workspace package
+  version description.
+- The root `Cargo.toml` parses as TOML, its `[workspace.package].version` is a
+  string, and the marked applicability description identifies that same
+  version. Historical release references elsewhere are not compared.
 - Every shared entry uses only `doc_id`, `path`, `kind`, `summary`,
   `normative_level`, `owner_area`, `created_on`, `last_updated_on`,
   `last_verified_on`, `applies_to`, `primary_audience`, `journeys`,

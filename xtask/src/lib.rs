@@ -78,6 +78,10 @@ const TOP_LEVEL_REQUIRED: &[&str] = &[
 ];
 const TOP_LEVEL_ALLOWED: &[&str] = TOP_LEVEL_REQUIRED;
 const CATALOG_ENTRY_ALLOWED: &[&str] = &["description"];
+const APPLICABILITY_ENTRY_ALLOWED: &[&str] = &["description", "version_source"];
+const WORKSPACE_PACKAGE_VERSION_SOURCE: &str = "workspace_package";
+const WORKSPACE_VERSION_DESCRIPTION_PREFIX: &str = "Volicord workspace package version ";
+const WORKSPACE_VERSION_DESCRIPTION_SUFFIX: &str = "as declared by the workspace `Cargo.toml`.";
 const SHARED_REQUIRED: &[&str] = &[
     "doc_id",
     "path",
@@ -720,12 +724,7 @@ pub fn run_release_version_check(
     let root = normalize_existing_root(root)?;
     let root_manifest_path = root.join("Cargo.toml");
     let root_manifest = read_toml_document(&root_manifest_path, "root Cargo.toml")?;
-    let Some(workspace_version) = root_manifest
-        .get("workspace")
-        .and_then(|workspace| workspace.get("package"))
-        .and_then(|package| package.get("version"))
-        .and_then(Item::as_str)
-    else {
+    let Some(workspace_version) = workspace_package_version(&root_manifest) else {
         anyhow::bail!(
             "release-version-check requires [workspace.package].version in the root Cargo.toml"
         );
@@ -784,6 +783,14 @@ pub fn run_release_version_check(
         member_package_count,
         checked_tag: release_tag.map(str::to_owned),
     })
+}
+
+fn workspace_package_version(manifest: &DocumentMut) -> Option<&str> {
+    manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get("version"))
+        .and_then(Item::as_str)
 }
 
 fn read_toml_document(path: &Path, label: &str) -> Result<DocumentMut> {
@@ -1721,8 +1728,9 @@ fn validate_doc_index(root: &Path, errors: &mut Vec<ValidationError>) -> Option<
     validate_top_level_mapping(top, "metadata", errors);
     validate_top_level_mapping(top, "language_retrieval", errors);
     validate_top_level_mapping(top, "entry_schema", errors);
-    let owner_areas = validate_catalog(top, "owner_areas", errors);
-    let applicability = validate_catalog(top, "applicability", errors);
+    let owner_areas = validate_catalog(top, "owner_areas", CATALOG_ENTRY_ALLOWED, errors);
+    let applicability = validate_catalog(top, "applicability", APPLICABILITY_ENTRY_ALLOWED, errors);
+    validate_workspace_version_consistency(root, top, errors);
 
     let mut entries = Vec::new();
     let mut doc_ids = BTreeSet::new();
@@ -1814,6 +1822,7 @@ fn validate_top_level_mapping(top: &Mapping, key: &'static str, errors: &mut Vec
 fn validate_catalog(
     top: &Mapping,
     key: &'static str,
+    allowed_fields: &[&str],
     errors: &mut Vec<ValidationError>,
 ) -> BTreeSet<String> {
     let mut identifiers = BTreeSet::new();
@@ -1864,7 +1873,7 @@ fn validate_catalog(
             continue;
         };
         for field in entry.keys().filter_map(Value::as_str) {
-            if !CATALOG_ENTRY_ALLOWED.contains(&field) {
+            if !allowed_fields.contains(&field) {
                 errors.push(ValidationError::new(
                     DOC_INDEX_PATH,
                     "metadata.unknown_field",
@@ -1888,6 +1897,154 @@ fn validate_catalog(
     }
 
     identifiers
+}
+
+fn validate_workspace_version_consistency(
+    root: &Path,
+    top: &Mapping,
+    errors: &mut Vec<ValidationError>,
+) {
+    let Some(workspace_version) = read_docs_workspace_package_version(root, errors) else {
+        return;
+    };
+    let Some(applicability) = mapping_get(top, "applicability").and_then(Value::as_mapping) else {
+        return;
+    };
+
+    let mut version_entries = Vec::new();
+    for (identifier, value) in applicability {
+        let (Some(identifier), Some(entry)) = (identifier.as_str(), value.as_mapping()) else {
+            continue;
+        };
+        let Some(version_source) = mapping_get(entry, "version_source") else {
+            continue;
+        };
+        match version_source.as_str() {
+            Some(WORKSPACE_PACKAGE_VERSION_SOURCE) => {
+                if let Some(description) = mapping_get(entry, "description").and_then(Value::as_str)
+                {
+                    version_entries.push((identifier, description));
+                }
+            }
+            Some(version_source) => errors.push(ValidationError::new(
+                DOC_INDEX_PATH,
+                "workspace_version.invalid_index_entry",
+                format!(
+                    "applicability.{identifier}.version_source must be {WORKSPACE_PACKAGE_VERSION_SOURCE}, found {version_source}"
+                ),
+            )),
+            None => errors.push(ValidationError::new(
+                DOC_INDEX_PATH,
+                "workspace_version.invalid_index_entry",
+                format!(
+                    "applicability.{identifier}.version_source must be the string {WORKSPACE_PACKAGE_VERSION_SOURCE}"
+                ),
+            )),
+        }
+    }
+
+    let (entry_id, description) = match version_entries.as_slice() {
+        [(entry_id, description)] => (*entry_id, *description),
+        [] => {
+            errors.push(ValidationError::new(
+                DOC_INDEX_PATH,
+                "workspace_version.missing_index_entry",
+                "applicability is missing the current workspace package version entry; mark exactly one entry with version_source: workspace_package",
+            ));
+            return;
+        }
+        _ => {
+            let entry_ids = version_entries
+                .iter()
+                .map(|(entry_id, _)| *entry_id)
+                .collect::<Vec<_>>()
+                .join(", ");
+            errors.push(ValidationError::new(
+                DOC_INDEX_PATH,
+                "workspace_version.duplicate_index_entry",
+                format!(
+                    "exactly one applicability entry may use version_source: workspace_package; found {entry_ids}"
+                ),
+            ));
+            return;
+        }
+    };
+
+    let documented_version = match documented_workspace_package_version(description) {
+        Some(version) => version,
+        None => {
+            errors.push(ValidationError::new(
+                DOC_INDEX_PATH,
+                "workspace_version.invalid_index_entry",
+                format!(
+                    "applicability.{entry_id}.description must use `{WORKSPACE_VERSION_DESCRIPTION_PREFIX}VERSION, {WORKSPACE_VERSION_DESCRIPTION_SUFFIX}`"
+                ),
+            ));
+            return;
+        }
+    };
+
+    if documented_version != workspace_version {
+        errors.push(ValidationError::new(
+            DOC_INDEX_PATH,
+            "workspace_version.mismatch",
+            format!(
+                "applicability.{entry_id}.description identifies current workspace package version `{documented_version}`, but Cargo.toml [workspace.package].version declares `{workspace_version}`; update applicability.{entry_id}.description to identify `{workspace_version}`"
+            ),
+        ));
+    }
+}
+
+fn read_docs_workspace_package_version(
+    root: &Path,
+    errors: &mut Vec<ValidationError>,
+) -> Option<String> {
+    let manifest_path = root.join("Cargo.toml");
+    let contents = match fs::read_to_string(&manifest_path) {
+        Ok(contents) => contents,
+        Err(error) => {
+            errors.push(ValidationError::new(
+                "Cargo.toml",
+                "workspace_version.manifest_read",
+                format!("failed to read root workspace manifest: {error}"),
+            ));
+            return None;
+        }
+    };
+    let manifest = match contents.parse::<DocumentMut>() {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            errors.push(ValidationError::new(
+                "Cargo.toml",
+                "workspace_version.manifest_toml",
+                format!("failed to parse root workspace manifest as TOML: {error}"),
+            ));
+            return None;
+        }
+    };
+    match workspace_package_version(&manifest) {
+        Some(version) => Some(version.to_owned()),
+        None => {
+            errors.push(ValidationError::new(
+                "Cargo.toml",
+                "workspace_version.invalid_manifest",
+                "root workspace manifest must declare [workspace.package].version as a string",
+            ));
+            None
+        }
+    }
+}
+
+fn documented_workspace_package_version(description: &str) -> Option<&str> {
+    let remainder = description.strip_prefix(WORKSPACE_VERSION_DESCRIPTION_PREFIX)?;
+    let (version, suffix) = remainder.split_once(',')?;
+    if version.is_empty()
+        || version.chars().any(char::is_whitespace)
+        || suffix.trim_start() != WORKSPACE_VERSION_DESCRIPTION_SUFFIX
+    {
+        return None;
+    }
+    Some(version)
 }
 
 fn is_catalog_identifier(identifier: &str) -> bool {

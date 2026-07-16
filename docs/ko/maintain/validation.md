@@ -20,7 +20,12 @@ cargo run -p xtask -- docs-check
 - `docs/doc-index.yaml`이 YAML로 파싱되고 `version: 3`을 갖습니다.
 - 필요한 최상위 섹션이 있으며 지원되지 않는 최상위 필드는 거부됩니다.
 - `owner_areas` 카탈로그와 `applicability` 카탈로그는 안정적인 식별자와 문자열
-  설명을 사용합니다.
+  설명을 사용합니다. 정확히 하나의 적용 가능성 항목이
+  `version_source: workspace_package`를 사용하여 현재 작업 공간 패키지 버전
+  설명을 표시합니다.
+- 루트 `Cargo.toml`이 TOML로 파싱되고 `[workspace.package].version`이 문자열이며,
+  표시된 적용 가능성 설명이 같은 버전을 식별하는지 확인합니다. 다른 곳의 이전
+  릴리스 참조는 비교하지 않습니다.
 - 모든 공유 항목은 `doc_id`, `path`, `kind`, `summary`, `normative_level`,
   `owner_area`, `created_on`, `last_updated_on`, `last_verified_on`,
   `applies_to`, `primary_audience`, `journeys`, `canonical_for`,
