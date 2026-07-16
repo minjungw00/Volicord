@@ -1,0 +1,12 @@
+{
+  "schema": "volicord.agent_evaluation.live_config.v1",
+  "enabled": false,
+  "model_id": "replace-me",
+  "host_kind": "replace-me",
+  "host_version": "replace-me",
+  "driver_command": [
+    "/absolute/path/to/agent-evaluation-driver"
+  ],
+  "seed": 20260716,
+  "repetitions": 3
+}

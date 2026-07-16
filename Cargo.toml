@@ -8,6 +8,7 @@ members = [
     "crates/volicord-platform-fs",
     "crates/volicord-test-support",
     "tests/conformance",
+    "tests/agent-evaluation",
     "tests/integration",
     "tests/release-validation",
     "xtask",
