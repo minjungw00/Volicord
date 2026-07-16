@@ -307,6 +307,12 @@ Ordinary non-sensitive Runs with no product-file write still require no ticket.
 
 Category-only `observed_changes.sensitive_categories` is a caller report rather than a Core-confirmed approval basis. It does not by itself raise the Task's effective control level or create sensitive-action approval authority. It does atomically strengthen the Task's acceptance policy to `required`, so policy-dependent Light auto-close cannot consume the signal and current final acceptance remains mandatory. A Core-confirmed `sensitive` control basis still requires both matching user approval and final acceptance; category-only input can provide neither.
 
+Recording a successful Run, its close assessment, or later final acceptance
+does not repair a missing pre-write approval and does not retroactively
+authorize a write. When the current policy requires `sensitive` control and
+sensitive-action approval, `record_run` requires the already approved, currently
+policy-bound ticket before it creates the Run.
+
 The Run, current close basis, evidence updates, evidence observations, artifact links or promotions, write-ticket consumption, and revision changes are committed atomically when the result commits.
 
 Ticket-backed recording consumes the write ticket only when:

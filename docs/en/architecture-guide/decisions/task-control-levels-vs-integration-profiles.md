@@ -22,6 +22,13 @@ Keep integration profile and Task control level as independent, visible axes.
   facts that require escalation.
 - Project policy may constrain or raise a requested level. An Agent Connection
   may carry the request, but it does not become the policy authority.
+- When the normalized write-authority policy changes, the active Task is marked
+  for policy reevaluation even if its stored control level and final-acceptance
+  policy do not need to rise. Incompatible active Write Tickets are invalidated
+  at that boundary.
+- The next `volicord.prepare_write` resolves the current policy against the
+  requested operation and paths, clears a satisfied reevaluation mark, and may
+  raise the request to `sensitive` or require new sensitive-action approval.
 - Adapters project both facts without translating one into the other.
 - An active Task does not become less controlled merely because configuration
   or a later request becomes less restrictive.
@@ -39,8 +46,12 @@ the storage Reference family.
   host profile.
 - Tests cover the cross-product of integration capability and Task control
   instead of treating profiles as a risk ladder.
-- Policy changes and storage-profile transitions need an explicit compatible
-  mapping for existing Tasks.
+- A changed normalized write authority creates an explicit reevaluation point
+  for the active Task and invalidates incompatible active tickets; reapplying a
+  normalized-equivalent authority preserves them.
+- This binding uses the existing Write Ticket validity record. The storage
+  profile remains `baseline_sqlite_v7`; no storage-profile transition is part
+  of this behavior.
 - Core, rather than generated host guidance, remains the place that resolves a
   requested level against project-owned constraints.
 
@@ -52,6 +63,8 @@ the storage Reference family.
   that an agent followed instructions.
 - It does not rename or remove the Record or Detective profiles.
 - It does not make the agent the owner of project workflow policy.
+- It does not let a host profile, Guard result, or post-write final acceptance
+  substitute for required pre-write approval.
 
 ## Rejected alternatives
 
@@ -72,6 +85,11 @@ the storage Reference family.
   Task creation and Core-owned control selection.
 - [`crates/volicord-cli/src/guard_integration/policy.rs`](../../../../crates/volicord-cli/src/guard_integration/policy.rs):
   managed project policy parsing and administrative integration.
+- [`crates/volicord-core/src/policy/workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
+  current-policy control resolution for Task work.
+- [`crates/volicord-store/src/workflow_records.rs`](../../../../crates/volicord-store/src/workflow_records.rs):
+  normalized write-authority comparison, Task reevaluation marks, and active
+  Write Ticket invalidation during policy apply.
 - [`crates/volicord-store/src/schema/project.sql`](../../../../crates/volicord-store/src/schema/project.sql):
   durable project and Task state.
 
@@ -87,3 +105,5 @@ the storage Reference family.
   [API Value Sets](../../reference/api/schema-value-sets.md),
   [Administrative CLI](../../reference/admin-cli.md), and
   [Storage Records](../../reference/storage-records.md).
+- [State-bound Write Ticket validity](state-bound-write-ticket-validity.md)
+  records the complementary ticket-validity decision.

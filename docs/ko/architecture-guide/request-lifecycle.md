@@ -1,10 +1,11 @@
 # 요청 생명주기
 
-이 가이드는 현재 Rust 구현에서 세 가지 대표 공개 메서드 호출을 따라갑니다.
+이 가이드는 현재 Rust 구현에서 네 가지 대표 공개 메서드 호출을 따라갑니다.
 
 - 읽기 전용 경로인 `volicord.status`
 - 커밋된 상태 변경 경로인 `volicord.intake`
 - 정책과 쓰기 티켓에 민감한 경로인 `volicord.prepare_write`
+- 티켓 소비를 독립적으로 방어하는 경로인 `volicord.record_run`
 
 개발자가 코드를 따라갈 수 있도록 소스 파일과 심볼을 이름으로 가리킵니다.
 정확한 공개 메서드 동작, 요청이나 응답 스키마, 저장 효과, 보안 보장,
@@ -379,7 +380,12 @@ API 오류는 거부 응답으로 남으며 닫기 차단 사유가 아닙니다
    `Product Repository` 경로 정규화 도우미를 제공합니다.
 6. [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../crates/volicord-core/src/policy/user_action_relevance.rs)는
    계획기가 사용하는 사용자 행동 관련성 점검을 제공합니다.
-7. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
+7. [`crates/volicord-core/src/policy/workflow.rs`](../../../crates/volicord-core/src/policy/workflow.rs)는
+   권위 프로젝트 정책을 불러오고, 현재 Task 통제를 해석하고, 정규화된 쓰기 권한
+   fingerprint를 제공합니다.
+8. [`crates/volicord-store/src/workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs)는
+   그 fingerprint를 파생하고 정책 적용 재평가와 활성 티켓 무효화를 담당합니다.
+9. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
    커밋된 허용 분기가 쓰기 티켓을 발급할 때 Store 커밋 트랜잭션 안에서
    `CoreStorageMutation::InsertWriteTicket`을 적용합니다.
 
@@ -399,26 +405,35 @@ API 오류는 거부 응답으로 남으며 닫기 차단 사유가 아닙니다
 5. `prepare_or_response`는 공통 사전 점검으로 위임합니다. 접근 불일치,
    오래된 상태, 누락된 커밋 효과 요청 래퍼 필드, 재실행 불일치, Store 사용
    불가가 메서드별 계획 전에 응답을 반환할 수 있습니다.
-6. `plan_prepare_write`는 `intended_operation`, `sensitive_categories`,
-   `Product Repository` 경로를 정규화합니다. 그런 뒤 Task와 현재 Change
-   Unit을 해석합니다. 제품 파일 쓰기 의도, 기준 범위, 경로 범위, 대기 중인
-   사용자 소유 판단, 민감 동작 승인, 검증된 `operation_category`, 연결 역량을 비교합니다.
-7. `prepare_write_decision`은 모인 `WriteDecisionReason` 값을 분류합니다.
+6. `plan_prepare_write`는 권위 프로젝트 작업 흐름 정책을 다시 읽고 현재 Task 통제를
+   해석한 뒤 `intended_operation`, `sensitive_categories`, `Product Repository`
+   경로를 정규화합니다. 저장된 통제 수준과 최종 수락이 높아지지 않았더라도 정책
+   재평가 표시가 있는 Task를 다시 평가합니다. 현재 경로에 따라 `light` 작업을
+   `tracked` 또는 `sensitive`로 높일 수 있으며, `sensitive` 작업은 티켓 발급 전에
+   일치하는 사용자 승인이 필요합니다.
+7. 계획기는 현재 Change Unit을 해석하고 제품 파일 쓰기 의도, baseline, 경로 범위,
+   대기 중인 사용자 소유 판단, 민감 동작 승인, 검증된 `operation_category`, 연결
+   역량을 비교합니다. 필요한 유효성 근거에는 현재 정규화된
+   `write_authority_fingerprint`가 들어갑니다.
+8. `prepare_write_decision`은 모인 `WriteDecisionReason` 값을 분류합니다.
    이유가 없으면 허용 계획이고, 있으면 비허용 결정입니다.
-8. 요청이 `dry-run`이면 `CoreService::execute_prepared_request`는
+9. 요청이 `dry-run`이면 `CoreService::execute_prepared_request`는
    `prepare_write_dry_run_summary`가 담긴 `OwnerPipelineBranch::DryRunPreview`를
    받습니다. 쓰기 티켓 ID는 할당되지 않고 Store 커밋은 실행되지
    않습니다.
-9. 커밋된 허용 계획이면 `OwnerPipelineBranch::CommitMutation`은
-   `CoreStorageMutation::InsertWriteTicket`,
-   `event_kind="write_ticket_issued"`, 새 `write_ticket_ref`를
-   담은 결과 필드를 운반합니다.
-10. 커밋된 비허용 계획이면 `OwnerPipelineBranch::CommitMutation`은
+10. 커밋된 허용 계획이면 현재 호환되는 활성 티켓을 재사용합니다. 그런 티켓이 없으면
+    현재 정책 결속을 담은 `CoreStorageMutation::InsertWriteTicket`을 커밋합니다.
+    결속이 없거나 다른 활성 티켓은 재사용 후보에서 제외하고 같은 커밋에서
+    `explicit_revoke`로 무효화합니다. Event kind는 `write_ticket_reused` 또는
+    `write_ticket_issued`입니다.
+11. 커밋된 비허용 계획이면 `OwnerPipelineBranch::CommitMutation`은
     `event_kind="write_decision_recorded"`를 운반하고
     `InsertWriteTicket` 변이는 없습니다. 그래도 Store 트랜잭션은 결정
     이벤트를 기록하고, 상태 버전을 전진시키며, 커밋 호출이 멱등이면
-    재실행 데이터를 저장합니다.
-11. `CoreProjectStore::commit_mutation`은 트랜잭션을 실행하고
+    재실행 데이터를 저장합니다. 티켓 선택에서 정책 결속이 없거나 일치하지 않는 활성
+    티켓을 찾았다면 같은 커밋이 그 티켓을 `explicit_revoke`로 무효화한 뒤 비허용
+    결정을 반환합니다.
+12. `CoreProjectStore::commit_mutation`은 트랜잭션을 실행하고
     `MutationCommitOutcome`을 반환합니다. Core는 그 결과를
     `PipelineResponse`로 만들고, MCP는 응답 JSON을 `tools/call`의 텍스트
     `content`에 담습니다.
@@ -430,9 +445,13 @@ API 오류는 거부 응답으로 남으며 닫기 차단 사유가 아닙니다
 - `dry-run`은 `ToolDryRunResponse`를 반환하고, Core 커밋이 없으며, 영속
   쓰기 티켓 ID를 할당하지 않습니다.
 - 커밋된 비허용 결정은 결정 이벤트를 커밋하지만 소비 가능한
-  쓰기 티켓을 만들지 않습니다.
-- 커밋된 허용 결정은 이벤트와
-  `CoreStorageMutation::InsertWriteTicket`을 커밋합니다.
+  쓰기 티켓을 만들지 않습니다. 선택된 활성 티켓의 정책 결속이 오래된 경우에는 같은
+  커밋에서 그 티켓을 무효화합니다.
+- 커밋된 허용 결정은 호환되는 티켓 하나를 재사용하거나 이벤트와
+  `CoreStorageMutation::InsertWriteTicket`을 커밋합니다. 결속이 없거나 일치하지 않는
+  이전 활성 티켓은 닫힌 방식으로 실패하고 재사용하지 않으며 새 티켓으로 대체합니다.
+- 정규화 결과가 같은 쓰기 권한을 다시 적용해도 그 밖에 호환되는 티켓을 오래된 것으로
+  만들지 않습니다.
 - 멱등 재실행은 다른 쓰기 티켓을 만들지 않고 재실행 처리에서 저장된
   원래 응답을 반환합니다.
 
@@ -440,6 +459,8 @@ API 오류는 거부 응답으로 남으며 닫기 차단 사유가 아닙니다
 
 - [`crates/volicord-core/src/methods/tests/prepare_write.rs`](../../../crates/volicord-core/src/methods/tests/prepare_write.rs)의
   `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
+  `prepare_write_replaces_active_ticket_missing_write_authority_binding`,
+  `prepare_write_replaces_active_ticket_with_mismatched_write_authority_binding`,
   `prepare_write_blocked_path_issues_no_write_ticket`,
   `prepare_write_dry_run_has_no_write_ticket_effect`,
   `prepare_write_user_only_category_is_invocation_context_rejection`
@@ -461,3 +482,63 @@ API 오류는 거부 응답으로 남으며 닫기 차단 사유가 아닙니다
 - 판단 형태: [판단 스키마](../reference/api/schema-judgment.md)
 - 저장 효과: [저장 효과](../reference/storage-effects.md)
 - 보안 보장 의미: [보안](../reference/security.md)
+
+## `volicord.record_run`: 티켓 소비 방어
+
+참조 담당 문서:
+
+- [실행 기록 메서드 담당 문서](../reference/api/method-record-run.md)
+
+주요 소스 경로:
+
+1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)는
+   요청, 관찰된 변경 입력, 결과 형태를 정의합니다.
+2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
+   공유 형식 어댑터 경로로 `"volicord.record_run"`을 전달합니다.
+3. [`crates/volicord-core/src/methods/record_run.rs`](../../../crates/volicord-core/src/methods/record_run.rs)는
+   현재 정책을 읽고, 티켓을 검증하고, Run과 티켓 소비를 계획합니다.
+4. [`crates/volicord-core/src/policy/workflow.rs`](../../../crates/volicord-core/src/policy/workflow.rs)는
+   현재 Task 통제와 정규화된 쓰기 권한을 해석합니다.
+5. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
+   소비 트랜잭션 안에서 티켓과 정책 권한을 다시 확인합니다.
+
+생명주기:
+
+1. MCP 디코딩과 공통 Core 사전 점검은 정확한 Task와 커밋 변경 정책을 사용해 공유
+   경로를 따릅니다.
+2. `plan_record_run`은 변경 경로와 민감 범주를 정규화하고, 현재 프로젝트 정책을
+   불러오고, 현재 Task 통제를 해석합니다.
+3. 제품 파일 쓰기나 유효 통제가 `sensitive`인 Task에는 쓰기 티켓이 필요합니다. 정책
+   통제 재평가가 대기 중이면 기존 티켓을 소비하기 전에 새 `prepare_write`가 필요합니다.
+4. Core는 티켓이 활성 상태이고 현재 Task, Change Unit, 범위, baseline, workspace,
+   경로, 범주, 승인 근거, 유휴 제한, `write_authority_fingerprint`와 호환되는지
+   확인합니다. 결속이 없는 이전 티켓이나 결속이 다른 티켓은
+   `policy_authority_mismatch`가 담긴 `WRITE_TICKET_INVALID`를 반환하고 Run을 만들지
+   않습니다.
+5. Core는 예상 근거 상태 버전과 현재 fingerprint를 담은 `ConsumeWriteTicket`을 새
+   Run과 같은 변경 계획에 넣습니다. 필요한 민감 동작 승인은 이 계획 전에 확인하며,
+   이후의 최종 수락은 그 사전 쓰기 승인을 대신할 수 없습니다.
+6. Store는 트랜잭션 안에서 티켓과 현재 프로젝트 정책을 다시 읽습니다. 상태, 근거
+   버전, 저장된 결속, 현재 권한 중 하나라도 바뀌면 충돌로 전체 변경을 rollback합니다.
+7. 커밋에 성공하면 Run을 기록하고 티켓을 정확히 한 번 소비합니다. 소비된 티켓 기록은
+   계속 조회할 수 있습니다.
+
+Guard는 협력형 `pre-tool` 경로에서 정책 결속이 오래된 티켓을 먼저 거부할 수 있지만,
+Guard를 우회해도 Core와 Store의 독립 점검을 거칩니다. 이 기록은 OS 샌드박스,
+파일시스템 권한 경계, 변조 방지 감사 로그, 정확성 증명이 아닙니다.
+
+대표 테스트:
+
+- [`crates/volicord-core/src/methods/tests/record_run.rs`](../../../crates/volicord-core/src/methods/tests/record_run.rs)의
+  `record_run_rejects_missing_write_authority_binding_without_consumption`,
+  `record_run_rejects_mismatched_write_authority_binding_without_consumption`
+- [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)의
+  `write_ticket_consumption_revalidates_policy_authority_inside_transaction`
+
+정확한 동작 질문:
+
+- 메서드 동작: [실행 기록 메서드 담당 문서](../reference/api/method-record-run.md)
+- 티켓과 승인 권한: [Core 모델](../reference/core-model.md)
+- 영속 효과와 과거 기록: [저장 효과](../reference/storage-effects.md),
+  [저장소 기록](../reference/storage-records.md)
+- 협력형 Guard와 비보장: [보안](../reference/security.md)

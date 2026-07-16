@@ -33,13 +33,15 @@
 - 기록된 경우 현재 적용 Change Unit 효과 계약
 - 기준선
 - 현재 Task 작업 단계와 Change Unit에 기록된 작업 공간 맥락
+- 현재 정규화된 프로젝트 정책 쓰기 권한
 - 필요한 별도 민감 동작 승인
 - 확인된 호출 맥락
 
 확인이 허용되면 먼저 호환되는 활성 티켓을 찾습니다. 그 티켓의 `Task`, Change
-Unit, `scope_revision`, 기준선, workspace, 승인 근거가 현재 상태이고, 허용 경로가
-새 intended path를 모두 포함하며, 민감 근거가 같거나 더 강하고, 아직 소비되지
-않았으면 재사용합니다. 민감 티켓을 재사용하려면 정규화된 `intended_operation`이
+Unit, `scope_revision`, 기준선, workspace, 승인 근거가 현재 상태이고 null이 아닌
+정규화 프로젝트 쓰기 권한 결속이 현재 값과 일치하며, 허용 경로가 새 intended path를
+모두 포함하고, 민감 근거가 같거나 더 강하고, 아직 소비되지 않았으면 재사용합니다.
+민감 티켓을 재사용하려면 정규화된 `intended_operation`이
 정확히 같고 일치하는 승인 resolution 정체성도 같아야 합니다. 표현을 바꾼 동작은
 이전 승인이나 티켓을 빌려 쓸 수 없습니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
 `Task`와 Change Unit 안에서 경계가 정해진 제품 쓰기 또는 민감 동작 의도를 나타내는
@@ -49,6 +51,12 @@ Change Unit, 범위 리비전, 사용자 소유 승인 근거를 결속하고 �
 소비합니다. 파일시스템 집행, OS 권한, 셸 권한, 효과가 실제로 일어났다는 증명이
 아닙니다. 확인이 허용되지 않으면 관련 없는 호환 티켓을 무효화하지 않고 티켓 경로를
 거부하거나 미룹니다.
+
+모든 요청은 현재 정책에 따라 다시 평가됩니다. 정책 변경은 제안된 쓰기를
+`sensitive`로 만들거나 새로운 사용자 소유 승인을 요구할 수 있으며, 호환되지 않는
+이전 쓰기 권한에서 발급된 승인이나 티켓은 이 경계를 넘지 못합니다. 최종 수락은 작업
+후 판단이지 쓰기 전에 필요한 민감 동작 승인이 아니며, 쓰기를 소급해 권한 부여할 수
+없습니다.
 
 `Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor Task의 일반 다음 행동으로 이 메서드를 추천하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. 이는 호환되는 shaping `record_run` 호출이 Core Run이나 증거 상태를 커밋하는 것을 막지 않습니다.
 
@@ -108,14 +116,21 @@ PrepareWriteRequest:
 
 별도 민감 동작 승인은 그 사용자 행동이 현재 상태이고, `resolved_by_actor_source=local_user`와 호환 User Channel 출처로 해결되었으며, `resolution_outcome=accepted`인 선택지를 골랐고, 그 `UserActionBasis`가 현재 `scope_revision`, 현재 Change Unit, 의도한 동작, 정규화된 `intended_paths`, 민감 범주, `baseline_ref`와 계속 호환될 때만 이 메서드를 만족합니다. 근거 상태가 유효하지 않거나 오래됨, 대체됨, 만료됨, 거절, 연기, 필요한 해결 권한 정보 누락, 비호환인 사용자 행동은 민감 동작 승인을 만족할 수 없습니다. 호출자는 승인을 호환되게 만들기 위한 리비전 필드를 제출하지 않습니다.
 
+티켓 선택에는 현재 정규화 쓰기 권한 fingerprint와 같은 `null`이 아닌
+`WriteTicketValidityBasis.write_authority_fingerprint`도 필요합니다. 결속이 없는 레거시
+활성 티켓과 결속이 다른 활성 티켓은 모두 닫힌 실패로 처리되며 현재 정책에 따른 재발급이
+필요합니다. 커밋되는 `dry_run`이 아닌 허용 또는 비허용 평가에서 Core는 선택된 오래된
+활성 티켓을 각각 `invalidation_reason=explicit_revoke`로 내구성 있게 무효화합니다.
+`dry_run`과 `ToolRejectedResponse` 분기는 이 무효화 변경을 수행하지 않습니다.
+
 ## 상태 버전 동작
 
 | 결과 | 상태 버전 효과 | 쓰기 티켓 효과 |
 |---|---|---|
 | 커밋된 `decision=allowed`, 새 티켓 | `project_state.state_version`을 정확히 한 번 올립니다. | 열린 티켓 하나를 발급하며 `write_ticket_effect=issued`입니다. |
 | 커밋된 `decision=allowed`, 호환 티켓 발견 | `project_state.state_version`을 정확히 한 번 올립니다. | 기존 티켓을 재사용하며 `write_ticket_effect=reused`이고 티켓 행을 추가하지 않습니다. |
-| 커밋된 비허용 결정 | `project_state.state_version`을 정확히 한 번 올립니다. | 쓰기 티켓을 발급하지 않습니다. |
-| 커밋 전 거절 또는 `dry_run` | 올리지 않습니다. | 만들지 않습니다. |
+| 커밋된 비허용 결정 | `project_state.state_version`을 정확히 한 번 올립니다. | 쓰기 티켓을 발급하지 않으며 선택된 오래된 활성 티켓을 `explicit_revoke`로 무효화할 수 있습니다. |
+| 커밋 전 거절 또는 `dry_run` | 올리지 않습니다. | 티켓을 만들거나 무효화하지 않습니다. |
 
 커밋의 상태 버전 증가는 권한 이벤트 순서입니다. 발급되거나 재사용된 티켓을
 무효화하지 않으며 티켓 유효성의 일부가 아닙니다.
@@ -318,6 +333,9 @@ params:
 전체 상태를 `state_version: 20`으로 올리고 열린 티켓을 발급합니다.
 `basis_state_version: 20`은 발급 순서를 기록할 뿐 유효성 근거가 아닙니다.
 
+아래 `write_authority_fingerprint` 값은 정규화된 쓰기 권한 다이제스트의 예시이며,
+예시 전체 정책 `policy_fingerprint`와 구별됩니다.
+
 ```yaml
 base:
   response_kind: result
@@ -338,11 +356,24 @@ state:
     task_id: task_pref_001
     produced_at_state_version: 20
   mode: work
+  requested_control_level: auto
+  effective_control_level: sensitive
+  control_level_reason: "현재 정책은 이 계정 환경설정 갱신을 sensitive로 분류합니다."
+  project_policy:
+    policy_schema: volicord-policy-v2
+    policy_version: 4
+    policy_fingerprint: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    source: project_database
+  work_phase: implementation
+  acceptance_policy: required
+  acceptance_policy_reason: "Sensitive 작업에는 최종 수락이 필요합니다."
+  lineage: null
   lifecycle:
     lifecycle_phase: ready
     close_reason: none
     result: none
     closed_at: null
+  scope_revision: 1
   goal_summary: "프로필 환경설정 저장 흐름을 갱신합니다."
   scope_summary: "프로필 환경설정 저장 흐름 갱신."
   non_goals:
@@ -358,7 +389,9 @@ state:
     project_id: proj_pref_001
     task_id: task_pref_001
     produced_at_state_version: 20
+  effect_contract: null
   baseline_ref: baseline_pref_001
+  workspace_context: null
   shaping_readiness: null
   pending_user_action_summaries: []
   blocker_refs: []
@@ -371,9 +404,26 @@ state:
       task_id: task_pref_001
       produced_at_state_version: 20
     basis_state_version: 20
+    validity_basis:
+      task_id: task_pref_001
+      change_unit_id: cu_pref_001
+      scope_revision: 1
+      baseline_ref: baseline_pref_001
+      workspace_context_sha256: null
+      write_authority_fingerprint: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      approval_basis_refs:
+        - record_kind: user_action_resolution
+          record_id: uj_sensitive_pref_001
+          project_id: proj_pref_001
+          task_id: task_pref_001
+          produced_at_state_version: 19
+    invalidation_reason: null
+    idle_expires_at: null
     intended_paths:
       - src/preferences/profile-save.ts
       - src/preferences/profile-save.test.ts
+    consumed_by_run_ref: null
+    observation_refs: []
     guarantee_display:
       level: cooperative
       basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
@@ -416,7 +466,21 @@ write_ticket:
     denied: []
   observed_paths: []
   basis_state_version: 20
-  expires_at: null
+  validity_basis:
+    task_id: task_pref_001
+    change_unit_id: cu_pref_001
+    scope_revision: 1
+    baseline_ref: baseline_pref_001
+    workspace_context_sha256: null
+    write_authority_fingerprint: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    approval_basis_refs:
+      - record_kind: user_action_resolution
+        record_id: uj_sensitive_pref_001
+        project_id: proj_pref_001
+        task_id: task_pref_001
+        produced_at_state_version: 19
+  invalidation_reason: null
+  idle_expires_at: null
   control_surface:
     selected_profile: record
     host_hooks_active: false

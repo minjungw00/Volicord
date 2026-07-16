@@ -33,14 +33,16 @@ non-product action for an effective `sensitive` Task, against:
 - current Change Unit effect contract, when one is recorded
 - baseline
 - current Task work phase and the Change Unit's recorded workspace context
+- current normalized project-policy write authority
 - required separate sensitive-action approval
 - verified invocation context
 
 When the check is allowed, the method first searches for a compatible active
 ticket. It reuses that ticket when its Task, Change Unit, `scope_revision`,
-baseline, workspace and approval basis are current, its allowed paths cover all
-newly intended paths, its sensitive basis is equal or stronger, and it remains
-unconsumed. Sensitive reuse additionally requires the exact normalized
+baseline, workspace, approval basis, and non-null normalized project
+write-authority binding are current, its allowed paths cover all newly intended
+paths, its sensitive basis is equal or stronger, and it remains unconsumed.
+Sensitive reuse additionally requires the exact normalized
 `intended_operation` and the same matching approval-resolution identity; a
 reworded operation cannot borrow an earlier approval or ticket. Otherwise it
 issues one open ticket. A ticket is a Volicord
@@ -52,6 +54,13 @@ basis, and is consumed only by the matching sensitive Run. It is not filesystem
 enforcement, OS permission, shell permission, or proof that an effect occurred.
 When the check is not allowed, the method denies or defers the ticket path
 without invalidating an unrelated compatible ticket.
+
+Every request is reevaluated under the current policy. A policy change can make
+the proposed write `sensitive` or otherwise require a new user-owned approval;
+an approval or ticket issued under an incompatible earlier write authority does
+not cross that boundary. Final acceptance is a post-work judgment, not the
+required pre-write sensitive-action approval, and cannot retroactively
+authorize a write.
 
 `Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not recommend this method as the generic next action for an advisor Task, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. This does not prevent a compatible shaping `record_run` call from committing Core Run or evidence state.
 
@@ -115,14 +124,23 @@ Requires:
 
 A separate sensitive-action approval satisfies this method only when the user action is current, resolved with `resolved_by_actor_source=local_user` and compatible User Channel provenance, selected an option with `resolution_outcome=accepted`, and its `UserActionBasis` remains compatible with the current `scope_revision`, current Change Unit, intended operation, normalized `intended_paths`, sensitive categories, and `baseline_ref`. A user action cannot satisfy sensitive-action approval if it has invalid basis state or is stale, superseded, expired, rejected, deferred, missing required resolution authority, or incompatible. Callers do not submit revision fields to make an approval compatible.
 
+Ticket selection also requires a non-null
+`WriteTicketValidityBasis.write_authority_fingerprint` equal to the current
+normalized write-authority fingerprint. A legacy active ticket with a missing
+binding and an active ticket with a different binding both fail closed and
+require reissuance under the current policy. During a committed non-dry-run
+allowed or non-allow evaluation, Core durably invalidates each selected stale
+active ticket with `invalidation_reason=explicit_revoke`; dry-run and
+`ToolRejectedResponse` branches do not perform that invalidation mutation.
+
 ## State version behavior
 
 | Result | State-version effect | Write-ticket effect |
 |---|---|---|
 | Committed `decision=allowed`, new ticket | Increments `project_state.state_version` exactly once. | Issues one open ticket; `write_ticket_effect=issued`. |
 | Committed `decision=allowed`, compatible ticket found | Increments `project_state.state_version` exactly once. | Reuses the existing ticket; `write_ticket_effect=reused`; no ticket row is inserted. |
-| Committed non-allow decision | Increments `project_state.state_version` exactly once. | Issues no write ticket. |
-| Pre-commit rejection or dry run | Increments nothing. | Creates nothing. |
+| Committed non-allow decision | Increments `project_state.state_version` exactly once. | Issues no write ticket; may invalidate selected stale active tickets with `explicit_revoke`. |
+| Pre-commit rejection or dry run | Increments nothing. | Creates or invalidates no ticket. |
 
 The committed state-version increment is authority-event ordering. It does not
 invalidate the issued or reused ticket and is not part of ticket validity.
@@ -330,6 +348,10 @@ commit advances the project to `state_version: 20` and issues an open ticket.
 Its `basis_state_version: 20` records issuance order and is not its validity
 basis.
 
+The `write_authority_fingerprint` value below is an illustrative normalized
+write-authority digest, distinct from the illustrative whole-policy
+`policy_fingerprint`.
+
 ```yaml
 base:
   response_kind: result
@@ -350,11 +372,24 @@ state:
     task_id: task_pref_001
     produced_at_state_version: 20
   mode: work
+  requested_control_level: auto
+  effective_control_level: sensitive
+  control_level_reason: "Current policy classifies this account preference update as sensitive."
+  project_policy:
+    policy_schema: volicord-policy-v2
+    policy_version: 4
+    policy_fingerprint: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    source: project_database
+  work_phase: implementation
+  acceptance_policy: required
+  acceptance_policy_reason: "Sensitive work requires final acceptance."
+  lineage: null
   lifecycle:
     lifecycle_phase: ready
     close_reason: none
     result: none
     closed_at: null
+  scope_revision: 1
   goal_summary: "Update profile preference save flow."
   scope_summary: "Profile preference save flow update."
   non_goals:
@@ -370,7 +405,9 @@ state:
     project_id: proj_pref_001
     task_id: task_pref_001
     produced_at_state_version: 20
+  effect_contract: null
   baseline_ref: baseline_pref_001
+  workspace_context: null
   shaping_readiness: null
   pending_user_action_summaries: []
   blocker_refs: []
@@ -383,9 +420,26 @@ state:
       task_id: task_pref_001
       produced_at_state_version: 20
     basis_state_version: 20
+    validity_basis:
+      task_id: task_pref_001
+      change_unit_id: cu_pref_001
+      scope_revision: 1
+      baseline_ref: baseline_pref_001
+      workspace_context_sha256: null
+      write_authority_fingerprint: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      approval_basis_refs:
+        - record_kind: user_action_resolution
+          record_id: uj_sensitive_pref_001
+          project_id: proj_pref_001
+          task_id: task_pref_001
+          produced_at_state_version: 19
+    invalidation_reason: null
+    idle_expires_at: null
     intended_paths:
       - src/preferences/profile-save.ts
       - src/preferences/profile-save.test.ts
+    consumed_by_run_ref: null
+    observation_refs: []
     guarantee_display:
       level: cooperative
       basis: "Write ticket is a Volicord authority record, not OS permission."
@@ -428,7 +482,21 @@ write_ticket:
     denied: []
   observed_paths: []
   basis_state_version: 20
-  expires_at: null
+  validity_basis:
+    task_id: task_pref_001
+    change_unit_id: cu_pref_001
+    scope_revision: 1
+    baseline_ref: baseline_pref_001
+    workspace_context_sha256: null
+    write_authority_fingerprint: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    approval_basis_refs:
+      - record_kind: user_action_resolution
+        record_id: uj_sensitive_pref_001
+        project_id: proj_pref_001
+        task_id: task_pref_001
+        produced_at_state_version: 19
+  invalidation_reason: null
+  idle_expires_at: null
   control_surface:
     selected_profile: record
     host_hooks_active: false

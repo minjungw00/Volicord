@@ -53,7 +53,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **`Volicord Runtime Home`**
 
-- **포함하는 것:** `registry.sqlite`, 필요할 때 생성되는 비권한 `diagnostics.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 사용자 행동 resolution, 아티팩트, 세션 감시 기록, 스키마·fingerprint·단조 증가 version을 가진 권한 있는 canonical 프로젝트 작업 흐름 정책, 내용 없는 세션 종료 receipt를 저장할 수 있습니다. 별도 진단 데이터베이스는 개인정보 안전 작업 흐름 지표를 포함해 크기가 제한된 로컬 운영 집계만 저장합니다.
+- **포함하는 것:** `registry.sqlite`, 필요할 때 생성되는 비권한 `diagnostics.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 사용자 행동 resolution, 아티팩트, 세션 감시 기록, 스키마·fingerprint·단조 증가 version을 가진 권한 있는 canonical 프로젝트 작업 흐름 정책, 내용 없는 세션 종료 receipt를 저장할 수 있습니다. 쓰기 티켓의 현재 정규화 쓰기 권한 결속은 기존 `validity_basis_json`에 저장하며 Product Repository 파일이나 호스트 훅 사실이 아닙니다. 별도 진단 데이터베이스는 개인정보 안전 작업 흐름 지표를 포함해 크기가 제한된 로컬 운영 집계만 저장합니다.
 - **사용 경로:** `volicord init`, `project`, `policy`, `connection`, `inbox`, `changes`, 저장소 upgrade, `doctor`, `diagnostics`, 숨겨진 내부 훅 명령이 각 담당 경로에 따라 상태를 초기화하거나 읽거나 갱신합니다. `volicord doctor --privacy-footprint`는 행 본문을 출력하지 않고 저장 범주와 개수를 보고합니다. `volicord diagnostics session`과 `volicord diagnostics workflow-metrics`는 일반 설정 점검 뒤 크기 제한 진단 저장소만 읽습니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 처리 경로, Core 상태, 아티팩트, 정책 권한, 종료 receipt, 최선 노력 운영 집계를 위해 Runtime Home 상태를 사용합니다.
 - **경계:** Product Repository, 외부 호스트 설정, 설치 디렉터리가 아닙니다. OS 샌드박스, 네트워크 격리, 악성코드·비밀값 검사, 호스트 신뢰, 행위자 귀속, 쓰기 방지, 변조 방지 감사, 전체 파일시스템 감시, 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락을 제공하거나 증명하지 않습니다.
 
@@ -152,6 +152,16 @@ init은 개인 훅 설정과 규칙 경로도 보호합니다. `.volicord/policy
 실행합니다. 호스트 환경의 기존 Runtime Home 값이나 `PATH`로 해석되는 단순 명령을 신뢰하지
 않습니다.
 
+Canonical `policy_fingerprint`는 전체 관리 정책을 식별합니다. 별도의 정규화된
+`write_authority_fingerprint`는 `volicord-write-authority-v1` 스키마 식별자와 Core가
+쓰기 권한에 사용하는 필드만 포함합니다. 그 필드는 direct와 work 통제 기본값, Light
+활성화 여부, 경로 수 제한, 정렬하고 중복을 제거한 allowed·denied 경로 패턴, Light
+최종 수락, 쓰기 티켓 유휴 제한 시간입니다.
+Detective와 바깥쪽 repository, connection, MCP, host-hook, profile, 관리 결속은 이
+digest에 들어가지 않습니다. Runtime Home에 바뀐 정규화 권한을 적용하면 활성 Task에
+재평가 표시를 만들고 호환되지 않는 활성 티켓을 무효화합니다. 정규화 결과가 같은 권한을
+다시 적용했다는 이유만으로 호환 티켓을 무효화하지 않습니다.
+
 Product Repository 하나에서 이 저장소 로컬 표면은 선택한 내장 호스트 어댑터, 활성 의도,
 프로필을 각각 하나씩 나타냅니다. 선택한 호스트, 의도, 프로필 중 하나를 바꾸는 init은
 여러 주체가 소유한 파일의 관련 없는 내용을 보존하고, 일치하는 Volicord 소유 이전
@@ -233,6 +243,7 @@ Runtime Home/Product Repository 경로 분리 규칙은 선택된 `Volicord Runt
 의미하지 않는 것:
 - 이 경로 규칙은 OS 샌드박싱, 명령 차단, 네트워크 차단, 비밀값 차단, 또는 기준 범위의 `detective` 강제를 제공하지 않습니다.
 - 쓰기 티켓 호환성은 Core 담당 메서드 경로로 기록되는 제안된 제품 파일 변경 또는 정확한 승인 결속 비제품 동작에만 적용됩니다. 전역 파일시스템 가로채기, 셸 권한, 명령 승인, 효과가 실제로 일어났다는 증명이 아닙니다.
+- 협력형 Guard는 정책 결속이 없거나 일치하지 않는 티켓을 현재 활성 후보에서 제외합니다. Core `record_run`과 Store 소비 경로가 현재 정책을 독립적으로 다시 확인하므로 Guard를 우회해도 오래된 티켓이 권한이 되지 않습니다.
 - 메서드별 호환성 결정은 API 메서드 담당 문서에 둡니다.
 
 <a id="runtime-location-source-installation-processes"></a>
@@ -315,6 +326,12 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 - 내용 없는 Stop receipt와 권한 있는 프로젝트 정책 사본은 프로젝트별 Runtime Home 상태에만
   둡니다. 작업 흐름 지표는 별도 진단 저장소에만 둡니다. 어느 것도 Product Repository,
   유지 문서, 생성 안내, 호스트 설정에 두면 안 됩니다.
+- 정책 결속은 `baseline_sqlite_v7`의 기존 쓰기 티켓 `validity_basis_json`을 사용합니다.
+  이 동작은 출발·도착 저장소 프로필 전환을 만들지 않으며 오프라인 복사 업그레이드가
+  필요하지 않습니다.
+- 유효한 현재 결속이 없는 이전 활성 티켓은 닫힌 방식으로 실패하며 다시 발급해야 합니다.
+  이미 소비된 과거 티켓은 소급해 무효화하지 않고 저장소 기록 계약에 따라 계속 저장하고
+  조회할 수 있습니다.
 
 주장하면 안 되는 것:
 - `Volicord Runtime Home`이 `Product Repository`라는 주장.
@@ -361,6 +378,7 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 주장하면 안 되는 것:
 - 로컬 경로, 디렉터리 이름, 복사된 식별자, 렌더링된 표시, 대화 메시지, 커넥터 설명, 에이전트 기억이 Volicord 권한을 증명한다는 주장.
 - 문서화된 Volicord 계약 밖의 직접 로컬 수정이 유효한 Volicord 기록, 증거, 수락, 잔여 위험 수락, 쓰기 티켓, 아티팩트 권한을 만든다는 주장.
+- 쓰기 뒤의 최종 수락이 현재 정책에서 요구한 사전 쓰기 승인을 보완하거나 대신한다는 주장.
 - 런타임 데이터 위치만으로 보안 보장 수준이 달라진다는 주장.
 
 ## 런타임 위치, 저장소, 보안 담당 문서

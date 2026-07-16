@@ -71,8 +71,8 @@ applicability:
       history and current pointers in addition to the unified user-action record families.'
   storage_baseline_sqlite_v7:
     description: '`baseline_sqlite_v7` storage profile for project-owned workflow policy, Task
-      control levels, state-bound Write Ticket validity, observation confidence, and session-stop
-      continuity records.'
+      control levels, state-bound Write Ticket validity including normalized project write-authority
+      bindings, observation confidence, and session-stop continuity records.'
   doc_index_schema_v3:
     description: Documentation index metadata schema version 3 used by `docs/doc-index.yaml` and
       `docs-check`.
@@ -237,8 +237,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -255,12 +255,13 @@ shared_documents:
 - doc_id: terminology.map
   path: docs/terminology-map.yaml
   kind: maintenance
-  summary: Structured terminology metadata and identifier-preservation controls.
+  summary: Structured terminology metadata, normalized write-authority terminology, and
+    identifier-preservation controls.
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - terminology_map_v1
@@ -296,8 +297,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -395,8 +396,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -472,8 +473,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -491,8 +492,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -603,8 +604,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -726,13 +727,14 @@ documents:
   path_en: docs/en/architecture-guide/cli-workflows.md
   path_ko: docs/ko/architecture-guide/cli-workflows.md
   kind: explanation
-  summary: Administrative CLI workflow boundary explanation for local setup, connection provisioning, verification, diagnostics, host integration, guard integration, and final-output authority disclosure.
+  summary: Administrative CLI workflow boundary explanation for local setup, connection provisioning,
+    verification, diagnostics, policy-aware Guard integration, and final-output authority disclosure.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -761,14 +763,14 @@ documents:
   path_en: docs/en/architecture-guide/request-lifecycle.md
   path_ko: docs/ko/architecture-guide/request-lifecycle.md
   kind: explanation
-  summary: Explanation of adapter or transport request flow through Core, Store interaction, and response
-    shaping.
+  summary: Explanation of adapter or transport request flow through Core, policy-aware Write Ticket
+    reuse and invalidation, Store interaction, and response shaping.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -907,8 +909,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -947,13 +949,13 @@ documents:
   path_ko: docs/ko/architecture-guide/decisions/task-control-levels-vs-integration-profiles.md
   kind: explanation
   summary: Architecture decision separating host integration profiles from Core-owned per-Task
-    control levels constrained by project-owned workflow policy.
+    control levels and normalized write authority constrained by project-owned workflow policy.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -979,13 +981,14 @@ documents:
   path_ko: docs/ko/architecture-guide/decisions/state-bound-write-ticket-validity.md
   kind: explanation
   summary: Architecture decision binding Write Ticket validity and reuse to relevant Task, scope,
-    baseline, workspace, and approval state rather than unrelated global changes or fixed time alone.
+    baseline, workspace, approval, and normalized current project write authority rather than
+    unrelated global changes or fixed time alone.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1643,8 +1646,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-02'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -1826,7 +1829,8 @@ documents:
   - close-readiness authority concepts
   - user-owned judgment boundaries
   - write ticket, approval, final-acceptance, and residual-risk non-substitution boundaries
-  - Task requested/effective control levels and project-policy authority boundary
+  - Task requested/effective control levels, normalized Write Ticket authority, and project-policy
+    authority boundary
   - User Channel and actor_source boundaries for authority-bearing user judgments
   - verification criteria and evidence/acceptance authority boundaries
 - doc_id: reference.runtime-boundaries
@@ -1839,8 +1843,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1856,6 +1860,7 @@ documents:
   - Volicord implementation, source repository, installation, and executable process boundaries
   - Agent Connection and Connection Projects boundary
   - User Channel boundary for authority-bearing user judgments
+  - authoritative project-policy location and policy-bound Write Ticket runtime boundary
   - runtime-location separation among source repository, installation files, Runtime Home, Product
     Repository, and external MCP host configuration
   - managed MCP and host-hook child-process binding to the Runtime Home selected by init
@@ -1913,7 +1918,8 @@ documents:
   - exact six-key host_feature_support map and Doctor per-connection row projection
   - auxiliary CLI and Doctor projection boundary from the canonical host release evidence gate and audit
   - exact Codex version normalization and session-bound managed lifecycle diagnostic meaning
-  - project workflow policy show, validation, and atomic application commands
+  - project workflow policy show, validation, atomic application, active-Task reevaluation, and
+    incompatible active Write Ticket invalidation commands and result fields
   - offline v6-to-v7 Runtime Home copy-conversion command
   - privacy-bounded workflow-metrics diagnostics command
   depends_on:
@@ -2011,6 +2017,7 @@ documents:
   - Agent Connection and actor_source authority non-inference
   - host trust, host approval, and guidance non-guarantees
   - generated final-output display and model-authored text non-authority boundary
+  - cooperative Guard policy-authority check and independent `record_run` enforcement boundary
   - host-capability evidence, external release-manifest trust boundary, credential-delivery trust
     boundary, and non-attestation wording
   - managed native host session privacy, pending zero-effect state, strict per-call opaque correlation, bounded actual initialize client coordinate retention, and non-authority boundary
@@ -2026,8 +2033,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-05-06'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - terminology_map_v1
@@ -2244,7 +2251,8 @@ documents:
   canonical_for:
   - '`volicord.prepare_write` behavior'
   - '`PrepareWriteResult` branch behavior'
-  - write-ticket issuance behavior
+  - write-ticket issuance, normalized policy-authority binding, compatible reuse, and stale-ticket
+    invalidation behavior
   - method-specific sensitive-action approval handling
 - doc_id: reference.api.method-stage-artifact
   path_en: docs/en/reference/api/method-stage-artifact.md
@@ -2295,6 +2303,7 @@ documents:
   - '`RecordRunResult` branch behavior'
   - run and evidence method behavior
   - artifact promotion method behavior
+  - independent current-policy Write Ticket binding rejection when Guard is bypassed
 - doc_id: reference.api.method-request-user-action
   path_en: docs/en/reference/api/method-request-user-action.md
   path_ko: docs/ko/reference/api/method-request-user-action.md
@@ -2461,6 +2470,8 @@ documents:
   - operate
   canonical_for:
   - state schemas
+  - '`WriteTicketValidityBasis.write_authority_fingerprint` shape, normalization scope, and legacy
+    fail-closed semantics'
   - non-authoritative `SourceRef` shape and field semantics
   - close-readiness state shapes
   - '`CloseReadinessBlocker` shape'
@@ -2556,8 +2567,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2576,6 +2587,7 @@ documents:
   - enum-like API vocabulary
   - '`HostFeatureSupportStatus` and managed-host feature identifier values'
   - final-output subcapability identifier values
+  - Write Ticket invalidation reason values and policy-authority mismatch distinction
 - doc_id: reference.api.errors
   path_en: docs/en/reference/api/errors.md
   path_ko: docs/ko/reference/api/errors.md

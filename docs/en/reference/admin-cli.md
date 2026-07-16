@@ -1120,25 +1120,34 @@ returns:
 - the managed-file schema and fingerprint when the file is readable;
 - `file_matches_authority`, plus a bounded mismatch status such as missing,
   malformed, fingerprint mismatch, binding mismatch, or permission failure;
-- whether an active Task needs control-level escalation before its next write;
-  and
+- whether an active Task needs control-level or final-acceptance escalation
+  before its next write; and
 - an actionable repair command when the copies do not match.
 
 It does not silently prefer the managed file over the database, mutate either
 copy, or print MCP environment values, policy source JSON, prompts, file
 contents, or user answers.
 
-`policy apply` performs, in order, strict schema validation; Product Repository,
-Runtime Home, host, connection, and guard-installation binding validation;
-comparison with the current authoritative fingerprint; recording the
-canonical policy, fingerprint, schema, and next `policy_version` in project
-state; deriving the normalized write-authority fingerprint; conditional atomic
-replacement of the managed policy file; and marking the active Task for
-reevaluation whenever write authority changes. The project policy always takes
+`policy show` projects only `active_task_requires_escalation`; it does not
+project the distinct `active_task_requires_policy_reevaluation` flag. Therefore
+`active_task_requires_escalation=false` does not prove that no same-level
+policy reevaluation mark is pending. The apply result below owns that separate
+post-operation field.
+
+`policy apply` first strict-validates and canonicalizes the candidate, validates
+its Product Repository, Runtime Home, host, connection, and guard-installation
+bindings, and compares it with the current authoritative policy. An exact
+canonical-fingerprint match is a database no-op. Otherwise the authoritative
+database transaction derives the prior and resulting normalized write-authority
+fingerprints, records the canonical policy, fingerprint, schema, and next
+`policy_version`, marks the active Task when required, and invalidates affected
+active tickets. Only after that transaction commits does the CLI conditionally
+replace and verify the managed policy file. The project policy always takes
 precedence over an Agent-requested control level. Applying a less restrictive
 policy never automatically lowers an active Task.
 
-For a changed fingerprint, the authoritative database step is one transaction:
+For a changed canonical policy fingerprint, the authoritative database step is
+one transaction:
 it replaces `project_workflow_policies`, advances `project_state.state_version`
 and the canonical UTC floor once, appends one project-scoped
 `project_workflow_policy_applied` authority event, and creates or updates the
@@ -1152,6 +1161,17 @@ A later relaxed policy does not weaken an existing stronger requirement. The
 next write-compatible Core commit reevaluates current policy, raises the Task
 when needed, and clears the mark atomically only after both control and
 acceptance requirements are satisfied.
+
+The normalized write-authority fingerprint is the `sha256:` canonical-JSON
+digest of exactly
+`{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
+The values come from those corresponding `workflow` fields; the two path-pattern
+arrays are sorted and deduplicated before canonicalization. Every other
+`volicord-policy-v2` field, including `workflow.detective` and the outer host,
+connection, MCP, host-hook, profile, and managed-binding fields, is outside this
+digest. It is therefore narrower than the whole canonical `policy_fingerprint`:
+a canonical policy change can set `database_changed=true` while leaving
+`write_authority_changed=false` and compatible tickets valid.
 
 Reapplying the same canonical fingerprint is idempotent and does not increment
 `policy_version` or `state_version` and does not append another authority event;
@@ -1174,10 +1194,23 @@ and resulting write-authority fingerprints as
 `resulting_write_authority_fingerprint`, exact `affected_task_ids`, exact
 `invalidated_write_ticket_ids`, and `actions`.
 
+`active_task_requires_escalation` reports whether the active Task is still
+below a pending mark's required control or final-acceptance rank.
+`active_task_requires_policy_reevaluation` reports any pending policy mark,
+including a same-level write-authority change. `write_authority_changed` says
+only whether this apply changed the normalized digest. The two Task booleans
+are post-operation state, so an exact no-op can continue to report a mark that
+was already pending; `affected_task_ids` and `invalidated_write_ticket_ids`
+report effects of this apply and are empty when it has no write-authority
+effect. `restart_required` follows `database_changed`, not
+`write_authority_changed`.
+
 When no prior policy row exists, the prior write-authority fingerprint is the
-conservative-default digest. A changed normalized authority reports affected
-Task and invalidated-ticket identifiers in deterministic order; no-effect
-authority cases report empty arrays.
+conservative-default digest: `tracked` direct and work control, Light disabled,
+`max_intended_paths=3`, empty allowed and denied pattern arrays,
+`final_acceptance=policy_dependent`, and `idle_timeout_minutes=null`. A changed
+normalized authority reports affected Task and invalidated-ticket identifiers
+in deterministic order; no-effect authority cases report empty arrays.
 
 It does not include policy source JSON, command text from hook bindings,
 environment values, prompts, Product Repository contents, or user answers.

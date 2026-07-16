@@ -197,6 +197,13 @@ or reuse a compatible current Write Ticket, then show:
 - stale or unavailable context
 - the next action when a Write Ticket cannot be issued
 
+Compatibility includes an exact non-null binding to the current normalized
+project write authority. A policy change can invalidate an earlier ticket or
+make it stale even when the Task control level does not rise. Request fresh
+write preparation so the proposed write is reevaluated under current policy; it
+may move to `sensitive` control or require new sensitive-action approval. Final
+acceptance after the write cannot replace approval that was required before it.
+
 If scope changes, follow the returned scope handoff before another write. Do not
 claim write compatibility from a plan, stale chat context, broad enthusiasm,
 elapsed time alone, or a generated summary. Exact method behavior belongs to

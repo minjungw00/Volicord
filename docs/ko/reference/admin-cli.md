@@ -999,20 +999,29 @@ volicord policy apply --repo PATH --file PATH --json
 - 파일을 읽을 수 있을 때 관리 파일의 스키마와 fingerprint
 - `file_matches_authority`와 파일 없음, 형식 오류, fingerprint 불일치, 바인딩 불일치,
   권한 실패 같은 제한된 불일치 상태
-- 활성 Task가 다음 쓰기 전에 통제 수준 상향을 필요로 하는지 여부
+- 활성 Task가 다음 쓰기 전에 통제 수준 또는 최종 수락 상향을 필요로 하는지 여부
 - 두 사본이 다를 때 실행 가능한 복구 명령
 
 관리 파일을 데이터베이스보다 조용히 우선하거나 어느 사본도 변경하지 않습니다. MCP 환경
 값, 정책 원본 JSON, 프롬프트, 파일 내용, 사용자 답변도 출력하지 않습니다.
 
-`policy apply`는 엄격한 스키마 검증, Product Repository·Runtime Home·호스트·연결·guard
-installation 바인딩 검증, 현재 권한 fingerprint와 비교, canonical 정책·fingerprint·스키마와
-다음 `policy_version`을 프로젝트 상태에 기록, 정규화된 쓰기 권한 fingerprint 파생, 관리
-정책 파일의 조건부 원자적 교체, 쓰기 권한이 바뀔 때마다 활성 Task 재평가 표시를 순서대로
-수행합니다. 프로젝트 정책은 Agent가 요청한 통제 수준보다 항상 우선합니다. 덜 제한적인
-정책을 적용해도 활성 Task 수준을 자동으로 낮추지 않습니다.
+`policy show`는 `active_task_requires_escalation`만 표시하며 별도 필드인
+`active_task_requires_policy_reevaluation`은 표시하지 않습니다. 따라서
+`active_task_requires_escalation=false`만으로 같은 수준의 정책 재평가 표시가 대기하지
+않는다고 판단할 수 없습니다. 아래 apply 결과가 작업 뒤의 이 별도 필드를 담당합니다.
 
-Fingerprint가 바뀌면 권위 있는 데이터베이스 단계는 하나의 트랜잭션입니다.
+`policy apply`는 먼저 후보를 엄격하게 검증하고 canonicalize한 뒤 Product Repository,
+Runtime Home, 호스트, 연결, guard installation 결속을 검증하고 현재 권위 정책과
+비교합니다. Canonical fingerprint가 정확히 같으면 데이터베이스를 변경하지 않습니다.
+그 밖의 경우 권위 있는 데이터베이스 트랜잭션 안에서 이전·결과 정규화 쓰기 권한
+fingerprint를 파생하고 canonical 정책, fingerprint, 스키마, 다음 `policy_version`을
+기록하며, 필요하면 활성 Task를 표시하고 영향받는 활성 티켓을 무효화합니다. 그
+트랜잭션이 커밋된 뒤에만 CLI가 관리 정책 파일을 조건부로 교체하고 검증합니다. 프로젝트
+정책은 Agent가 요청한 통제 수준보다 항상 우선합니다. 덜 제한적인 정책을 적용해도 활성
+Task 수준을 자동으로 낮추지 않습니다.
+
+Canonical 정책 fingerprint가 바뀌면 권위 있는 데이터베이스 단계는 하나의
+트랜잭션입니다.
 `project_workflow_policies`를 교체하고 `project_state.state_version`과 정규 UTC 하한을
 각각 한 번 전진시키며, 프로젝트 범위 `project_workflow_policy_applied` 권한 이벤트
 하나를 추가합니다. 정규화된 쓰기 권한 fingerprint가 바뀌면 활성 Task의 닫힌
@@ -1022,6 +1031,16 @@ Fingerprint가 바뀌면 권위 있는 데이터베이스 단계는 하나의 �
 경계를 넘을 수 없습니다. 이후 완화된 정책은 기존의 더 강한 요구사항을 약화하지 않습니다.
 다음 쓰기 호환 Core 커밋은 현재 정책을 다시 평가하고 필요하면 Task를 높이며, 통제와
 수락 요구사항을 모두 충족한 뒤에만 표시를 원자적으로 지웁니다.
+
+정규화된 쓰기 권한 fingerprint는 정확히
+`{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`
+객체를 canonical JSON으로 만든 `sha256:` digest입니다. 값은 대응하는 `workflow` 필드에서
+가져오며 두 경로 패턴 배열은 canonicalization 전에 정렬하고 중복을 제거합니다.
+`workflow.detective`와 바깥쪽 host, connection, MCP, host-hook, profile, 관리 결속 필드를
+포함한 그 밖의 모든 `volicord-policy-v2` 필드는 이 digest 범위 밖입니다. 따라서 이 값은
+전체 canonical `policy_fingerprint`보다 좁습니다. Canonical 정책이 바뀌어
+`database_changed=true`여도 `write_authority_changed=false`일 수 있으며, 이때 호환 티켓은
+계속 유효합니다.
 
 같은 canonical fingerprint를 다시 적용하는 것은 멱등이며 `policy_version`을 올리지
 않고 `state_version`도 올리거나 권한 이벤트를 추가하지 않습니다. 다만 누락되거나
@@ -1034,15 +1053,28 @@ Fingerprint가 바뀌면 권위 있는 데이터베이스 단계는 하나의 �
 이후 `policy show`, doctor, connection status 진단은 계속 그 불일치를 드러내야 합니다.
 
 Apply JSON은 `status`, `changed`, `database_changed`, `file_changed`,
-`restart_required`, 스키마, 이전·결과 정책 version과 fingerprint, 파일 일치 상태, 활성 Task
-상향 상태, `active_task_requires_policy_reevaluation`, `write_authority_changed`, 이전·결과
+`restart_required`, 스키마, 이전·결과 정책 version과 fingerprint, 파일 일치 상태,
+`active_task_requires_escalation`, `active_task_requires_policy_reevaluation`,
+`write_authority_changed`, 이전·결과
 쓰기 권한 fingerprint인 `prior_write_authority_fingerprint`와
 `resulting_write_authority_fingerprint`, 정확한 `affected_task_ids`, 정확한
 `invalidated_write_ticket_ids`, `actions`를 보고합니다.
 
+`active_task_requires_escalation`은 활성 Task가 대기 표시에서 요구하는 통제 또는 최종
+수락 순위에 아직 미치지 못하는지를 보고합니다. `active_task_requires_policy_reevaluation`은
+같은 수준의 쓰기 권한 변경을 포함해 대기 중인 정책 표시가 하나라도 있는지를 보고합니다.
+`write_authority_changed`는 이번 적용이 정규화 digest를 바꿨는지만 나타냅니다. 두 Task
+boolean 값은 작업 뒤 상태이므로 정확한 no-op도 이미 대기 중이던 표시를 계속 보고할 수
+있습니다. `affected_task_ids`와 `invalidated_write_ticket_ids`는 이번 적용의 효과이며 쓰기
+권한 효과가 없으면 비어 있습니다. `restart_required`는 `write_authority_changed`가 아니라
+`database_changed`를 따릅니다.
+
 이전 정책 행이 없으면 이전 쓰기 권한 fingerprint는 보수적 기본값의 digest입니다.
-정규화된 권한이 바뀐 경우 영향받은 Task와 무효화된 티켓 식별자를 결정적 순서로
-보고하고, 권한 효과가 없는 경우에는 빈 배열을 보고합니다.
+이 기본값은 direct와 work 통제 `tracked`, Light 비활성,
+`max_intended_paths=3`, 빈 allowed·denied 패턴 배열,
+`final_acceptance=policy_dependent`, `idle_timeout_minutes=null`입니다. 정규화된 권한이
+바뀐 경우 영향받은 Task와 무효화된 티켓 식별자를 결정적 순서로 보고하고, 권한 효과가
+없는 경우에는 빈 배열을 보고합니다.
 
 정책 원본 JSON, 훅 바인딩의 명령 텍스트, 환경 값,
 프롬프트, Product Repository 내용, 사용자 답변은 포함하지 않습니다.

@@ -70,8 +70,9 @@ Volicord keeps these concepts distinct:
   themselves Evidence or acceptance.
 - A **Write Ticket** records that one proposed product-file change, or one exact
   approval-bound non-product action under `sensitive` control, was checked
-  against the current work boundary. It is not filesystem permission, code
-  review approval, or proof that the effect occurred.
+  against the current work boundary and normalized project write authority. It
+  is not filesystem permission, code review approval, or proof that the effect
+  occurred.
 - **Close Status** shows whether current records still contain blockers. It is
   not proof of correctness, test sufficiency, QA completion, deployment
   success, human review completion, or risk-free completion.

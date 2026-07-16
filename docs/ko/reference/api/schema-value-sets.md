@@ -493,6 +493,14 @@ explicit_revoke
 이 사유는 상태에 묶입니다. `basis_state_version` 불일치와 관련 없는 상태 변경은
 의도적으로 포함하지 않습니다.
 
+정규화된 쓰기 권한 fingerprint가 바뀌면 영향받는 활성 티켓은
+`status=invalidated`, `invalidation_reason=explicit_revoke`로 내구성 있게
+무효화됩니다. 정규화 결과가 동등한 정책 적용은 무효화하지 않습니다. 과거에 소비된
+티켓은 `consumed` 상태로 계속 조회할 수 있습니다. `policy_authority_mismatch`는
+`WRITE_TICKET_INVALID` 오류 상세 사유이고, `policy_authority_stale`와
+`write_ticket_policy_changed`는 Guard 진단 값입니다. 이 세 값은 이 무효화 사유 집합에
+속하지 않습니다.
+
 `RecordRunRequest.kind`와 `RunSummary.kind`는 아래 값을 사용합니다.
 
 ```text

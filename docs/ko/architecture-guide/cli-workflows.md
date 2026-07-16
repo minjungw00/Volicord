@@ -2,8 +2,9 @@
 
 이 가이드는 로컬 `volicord` 관리 작업 흐름의 아키텍처 수준 실행 경계를
 담당합니다. CLI 오케스트레이션이 Runtime Home 설정, 설치 프로필 준비, Agent
-Connection 기록, 호스트 어댑터, guard 통합, 검증, 진단, 렌더링을 어떻게
-조합하는지 설명합니다. 이 조합에는 최종 출력 권한 고지도 포함됩니다.
+Connection 기록, 호스트 어댑터, 프로젝트 정책 적용, guard 통합, 검증, 진단,
+렌더링을 어떻게 조합하는지 설명합니다. 이 조합에는 최종 출력 권한 고지도
+포함됩니다.
 
 이 문서는 명령 문법, 플래그, 표준 출력 또는 표준 오류 계약, 종료 코드, JSON 출력
 스키마, 공개 API 동작, 저장 효과, 보안 보장, Core 권한 의미, 제품 계약을
@@ -26,6 +27,7 @@ Connection 기록, 호스트 어댑터, guard 통합, 검증, 진단, 렌더링�
 | 설정 작업 흐름 | Runtime Home 해석, 설치 프로필 준비, 명령 탐색, 선택적 대화형 선택, 링크 설치, 셸 시작 파일 갱신, 보고서 렌더링 경계. | [관리 CLI](../reference/admin-cli.md#runtime-home-selection)와 [런타임 경계](../reference/runtime-boundaries.md). |
 | 연결 초기화/추가 | 프로젝트와 Agent Connection 등록, 호스트 계획 구성, guard 통합 계획 또는 적용, 검증, 렌더링 경계. | [관리 CLI](../reference/admin-cli.md#volicord-agent-install), [Agent Connection](../reference/agent-connection.md), [MCP 전송](../reference/mcp-transport.md). |
 | 연결 상태/검증 | 저장된 연결 정보, 현재 호스트 진단, CLI MCP 사전 점검, 선택적 표준 입출력 핸드셰이크, guard 감사 정보, 최종 출력 고지 역량 진단, 렌더링 경계. | [관리 CLI](../reference/admin-cli.md#agent-connection-result-states), [Agent Connection](../reference/agent-connection.md), [MCP 전송](../reference/mcp-transport.md). |
+| 프로젝트 정책 적용 | 후보 검증, 권위 데이터베이스 적용, 활성 Task 재평가와 티켓 무효화, 관리 파일 수렴, 결과 렌더링 경계. | [관리 CLI](../reference/admin-cli.md#project-workflow-policy-commands), [Core 모델](../reference/core-model.md), [저장소 기록](../reference/storage-records.md). |
 | Guard 훅 생명주기 | `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop` 단계를 아우르는 숨겨진 내부 훅 명령 오케스트레이션. | [관리 CLI](../reference/admin-cli.md#guard-hook-commands), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
 | 최종 출력 권한 고지 | 최신 읽기 전용 status 새로 고침, 공유 형식 receipt 검증, 프로필과 무관한 고지 계획, 호스트 고유 고정 UI 렌더링, Stop 집행과 분리된 크기 제한 fallback 경계. | [상태 보기와 템플릿](../reference/projection-and-templates.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
 | Doctor 진단 | 설정, 프로필, 연결, 호스트, guard, 개인정보 흔적 정보를 읽기 전용으로 검사한 뒤 진단 결과를 렌더링하는 경계. | [관리 CLI](../reference/admin-cli.md#runtime-home-selection), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
@@ -127,6 +129,40 @@ guard 파일, MCP 프로세스 점검을 하나의 트랜잭션으로 처리하�
 사실을 증명하지 않습니다. OS 강제, 사용자 승인, 행위자 신원, 제품 정확성, 테스트 충분성,
 닫기 상태도 증명하지 않습니다.
 
+## 프로젝트 정책 적용
+
+정책 적용은 관리 권한 작업 흐름이며 Agent Connection이나 공개 Core 메서드가 아닙니다.
+CLI는 후보를 검증하고 canonicalize하고, 바꿀 수 없는 저장소와 통합 결속을 확인한 뒤
+Store에 권위 프로젝트 데이터베이스 적용을 요청합니다. 관리
+`.volicord/policy.json` 파일은 데이터베이스 트랜잭션이 커밋된 뒤에만 교체하고
+검증합니다. 이후 파일 단계가 실패해도 데이터베이스 권한은 유지되며 복구 행동을
+보고합니다.
+
+Store는 전체 canonical `policy_fingerprint`와 더 좁게 정규화된
+`write_authority_fingerprint`를 구분합니다. 후자는
+`volicord-write-authority-v1` 스키마 식별자, direct와 work 통제 기본값, Light 활성화
+여부, 경로 수 제한, 정렬하고 중복을 제거한 allowed·denied 경로 패턴, Light 최종 수락
+정책, 쓰기 티켓 유휴 제한 시간만 포함합니다. Detective와 통합 결속은 이 digest 범위
+밖입니다.
+
+정규화된 권한이 바뀌면 데이터베이스 트랜잭션 하나가 새 정책을 기록하고 같은 수준의
+변경이어도 활성 Task에 정책 재평가 표시를 만들며 호환되지 않는 활성 티켓을
+`explicit_revoke`로 무효화합니다. 통제 수준이나 최종 수락 강화뿐 아니라 정규화된 권한
+변경 모두에 적용됩니다. Canonical 정책을 정확히 다시 적용하면 데이터베이스 효과가
+없습니다. Canonical 정책이 바뀌었더라도 정규화된 권한이 같으면 적용했다는 이유만으로
+호환 티켓을 무효화하지 않습니다.
+
+적용 출력은 `active_task_requires_escalation`과
+`active_task_requires_policy_reevaluation`을 구분하고 이전·결과 쓰기 권한 fingerprint,
+영향받은 Task ID, 무효화된 티켓 ID를 보고합니다. 다음 `prepare_write`는 현재 동작과
+경로를 평가하고 Task를 `sensitive`로 높이거나 새로운 민감 동작 승인을 요구할 수
+있습니다. 쓰기 뒤의 최종 수락은 그 사전 쓰기 승인을 대신하지 않습니다. 결속은 기존
+티켓 유효성 JSON을 사용하므로 저장소
+프로필은 `baseline_sqlite_v7`을 유지하며 이 작업 흐름에는 오프라인 저장소 업그레이드
+단계가 없습니다. 정확한 계약은
+[관리 CLI](../reference/admin-cli.md#project-workflow-policy-commands),
+[Core 모델](../reference/core-model.md), 저장소 참조 문서 묶음이 담당합니다.
+
 ## Guard 훅 생명주기
 
 생성된 호스트 래퍼 파일은 지원되는 생명주기 단계에서 숨겨진 내부 훅 명령을 호출합니다.
@@ -138,8 +174,9 @@ CLI 훅 작업 흐름은 Runtime Home과 등록 프로젝트를 해석하고, �
 
 - `session-start`는 Agent Session을 기록하거나 재사용하고, 호스트 세션에 주입할 맥락을
   렌더링합니다.
-- `pre-tool`은 도구 실행 시도를 분류합니다. 필요한 경우 현재 `Task`와 쓰기 티켓의 호환성을
-  확인하고, `expected write` 상관관계 정보를 저장할 수 있습니다.
+- `pre-tool`은 도구 실행 시도를 분류하고 현재 정규화된 쓰기 권한을 파생합니다. 정책
+  결속이 없거나 일치하지 않는 활성 티켓은 현재 후보에서 제외하고, 현재 후보에 대한
+  `expected write` 상관관계 정보를 저장할 수 있습니다.
 - `post-tool`은 관찰된 도구 결과를 기록하고 `expected write` 또는 현재 쓰기 티켓 정보와
   연결합니다. 아직 해결되지 않은 Product Repository 변경도 기록할 수 있습니다.
 - `prompt-capture`는 프롬프트 캡처를 사용할 수 있을 때 User Channel 사용자 행동 resolution에 필요한
@@ -160,6 +197,11 @@ Task, 쓰기 티켓, 대기 UserAction, 프롬프트 명령 적격성 조회는 
 Guard 훅 결정은 협력형 호스트 결정과 관찰입니다. 공개 Core 메서드, 사용자 소유 판단,
 쓰기 티켓, 호스트 신뢰, 셸 승인, OS 샌드박싱, 완전한 쓰기 방지, 행위자 귀속 증명,
 정확성 증명, 테스트 충분성 증명, 사람의 검토를 대신하지 않습니다.
+
+Guard는 이전 활성 티켓을 읽었다는 이유만으로 영속 상태를 바꾸지 않습니다.
+`volicord.record_run`은 오래된 정책 결속을 독립적으로 거부하고 Store는 티켓 소비
+트랜잭션 안에서 현재 권한을 다시 확인하므로 Guard를 우회해도 그 티켓을 사용할 수
+없습니다.
 
 ## 최종 출력 권한 고지
 

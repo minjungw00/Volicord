@@ -484,6 +484,15 @@ explicit_revoke
 These reasons are state-bound. `basis_state_version` mismatch and unrelated
 state changes are deliberately absent.
 
+A change to the normalized write-authority fingerprint durably invalidates
+affected active tickets with `status=invalidated` and
+`invalidation_reason=explicit_revoke`; a normalized-equivalent policy apply
+does not. Historical consumed tickets remain `consumed` and inspectable.
+`policy_authority_mismatch` is a `WRITE_TICKET_INVALID` error-detail reason,
+while `policy_authority_stale` and `write_ticket_policy_changed` are Guard
+diagnostic values. None of those three values belongs to this invalidation
+reason set.
+
 `RecordRunRequest.kind` and `RunSummary.kind` use:
 
 ```text

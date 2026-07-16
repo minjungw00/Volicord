@@ -3,8 +3,8 @@
 This guide owns architecture-level execution-flow boundaries for local
 `volicord` administrative workflows. It explains how CLI orchestration combines
 Runtime Home setup, installation profile preparation, Agent Connection records,
-host adapters, guard integration, final-output authority disclosure,
-verification, diagnostics, and rendering.
+host adapters, project-policy application, guard integration, final-output
+authority disclosure, verification, diagnostics, and rendering.
 
 This page does not define command syntax, flags, stdout or stderr contracts,
 exit codes, JSON output schemas, public API behavior, storage effects, security
@@ -30,6 +30,7 @@ orchestration, not a separate public command family.
 | Setup workflow | Runtime Home resolution, installation profile preparation, command discovery, optional interactive choice, link installation, shell startup file update, and report rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#runtime-home-selection) and [Runtime Boundaries](../reference/runtime-boundaries.md). |
 | Connection init/add | Project registration, Agent Connection registration, host plan construction, guard integration planning or application, verification, and rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#volicord-agent-install), [Agent Connection](../reference/agent-connection.md), and [MCP Transport](../reference/mcp-transport.md). |
 | Connection status/verify | Stored connection facts, current host diagnostics, CLI MCP preflight, optional stdio handshake, guard audit facts, final-output disclosure capability diagnostics, and rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states), [Agent Connection](../reference/agent-connection.md), and [MCP Transport](../reference/mcp-transport.md). |
+| Project policy apply | Candidate validation, authoritative database apply, active-Task reevaluation and ticket invalidation, managed-file convergence, and result rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#project-workflow-policy-commands), [Core Model](../reference/core-model.md), and [Storage Records](../reference/storage-records.md). |
 | Guard hook lifecycle | Hidden internal hook command orchestration across session-start, pre-tool, post-tool, prompt capture, and stop phases. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
 | Final-output authority disclosure | Fresh read-only status refresh, shared typed receipt validation, profile-independent disclosure planning, host-native fixed UI rendering, and bounded fallback boundaries separate from Stop enforcement. | [Projection and Templates](../reference/projection-and-templates.md), [Administrative CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
 | Doctor diagnostics | Read-only inspection of setup, profile, connection, host, guard, and privacy-footprint facts, then diagnostic rendering. | [Administrative CLI](../reference/admin-cli.md#runtime-home-selection), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md). |
@@ -148,6 +149,43 @@ configuration unless the relevant Reference owner defines that exact meaning.
 They also do not prove OS enforcement, user approval, actor identity, product
 correctness, test sufficiency, or Close Status.
 
+## Project policy apply
+
+Policy apply is an administrative authority workflow, not an Agent Connection
+or public Core method. The CLI validates and canonicalizes the candidate,
+checks its immutable repository and integration bindings, and asks Store to
+apply it to the authoritative project database. The managed
+`.volicord/policy.json` file is replaced and verified only after that database
+transaction commits; a later file failure leaves database authority in force
+and produces a repair action.
+
+Store distinguishes the whole canonical `policy_fingerprint` from the narrower
+normalized `write_authority_fingerprint`. The latter contains only the
+`volicord-write-authority-v1` schema discriminator, direct and work control
+defaults, Light enablement, path-count limit, sorted and deduplicated allowed
+and denied path patterns, Light final-acceptance policy, and Write Ticket idle
+timeout. Detective and integration bindings are outside that digest.
+
+When the normalized authority changes, one database transaction records the
+new policy, marks the active Task for policy reevaluation even for a same-level
+change, and invalidates incompatible active tickets with `explicit_revoke`.
+This applies to any normalized authority change, not only a control-level or
+final-acceptance tightening. An exact canonical replay has no database effect;
+a changed canonical policy with the same normalized authority does not
+invalidate compatible tickets merely because apply ran.
+
+Apply output keeps `active_task_requires_escalation` separate from
+`active_task_requires_policy_reevaluation` and reports the prior and resulting
+write-authority fingerprints, affected Task IDs, and invalidated ticket IDs.
+The next `prepare_write` evaluates current operation and paths, may raise the
+Task to `sensitive`, and may require new sensitive-action approval. Post-write
+final acceptance is not a replacement for that pre-write approval. The binding
+uses the existing ticket validity JSON, so the
+storage profile remains `baseline_sqlite_v7` and this workflow has no offline
+storage-upgrade step. Exact contracts remain with
+[Administrative CLI](../reference/admin-cli.md#project-workflow-policy-commands),
+[Core Model](../reference/core-model.md), and the storage Reference family.
+
 ## Guard hook lifecycle
 
 Generated host wrapper files invoke the hidden internal hook namespace for
@@ -161,9 +199,10 @@ Phase handlers have distinct architecture responsibilities:
 
 - `session-start` records or reuses an Agent Session and renders context for
   host session injection.
-- `pre-tool` classifies tool attempts, checks current task and write-ticket
-  compatibility where applicable, and may persist expected-write correlation
-  facts.
+- `pre-tool` classifies tool attempts, derives the current normalized write
+  authority, and excludes an active ticket whose policy binding is missing or
+  mismatched from current candidates. It may persist expected-write correlation
+  facts for a current candidate.
 - `post-tool` records observed tool results, correlates them with expected
   writes or current write-ticket facts, and can record unresolved observed
   Product Repository changes.
@@ -189,6 +228,11 @@ not public Core methods, user-owned judgments by themselves, write tickets,
 host trust, shell approval, OS sandboxing, full write prevention, actor
 attribution proof, correctness proof, test sufficiency proof, or human review
 replacement.
+
+Guard does not mutate a legacy active ticket merely by reading it.
+`volicord.record_run` independently rejects a stale policy binding, and Store
+rechecks current authority inside ticket consumption, so bypassing Guard does
+not make that ticket usable.
 
 ## Final-output authority disclosure
 

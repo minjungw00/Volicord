@@ -501,6 +501,8 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
   `sensitive` Task의 정확한 승인 결속 비제품 동작 의도 하나를 기록합니다. 효과 실행
   증명, 증거 기록, 결과 수락, 위험 수락,
   `Task` 닫기, 시스템 접근 권한, 파일시스템 쓰기 방지가 아닙니다.
+- 반대로 작업 뒤 기록한 최종 수락은 누락된 쓰기 전 민감 동작 승인이나 쓰기 티켓을
+  제공하지 않으며 쓰기에 소급해 권한을 부여할 수 없습니다.
 
 차단 데이터는 서로 다른 권한 질문을 대신하면 안 됩니다.
 
@@ -535,7 +537,7 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 | 확인 영역 | 권한 의미 |
 |---|---|
 | 범위 | 요청한 작업, 쓰기, 증거 주장, 닫기 주장은 현재 적용 `Task` 범위와 현재 적용 Change Unit에 맞아야 합니다. |
-| Task 통제 | 유효 통제 수준은 권위 있는 프로젝트 정책에 대해 현재 상태여야 합니다. 정책 강화는 다음 쓰기 전에 활성 `Task` 수준을 높일 수 있지만 정책 완화가 자동으로 낮추지는 않습니다. |
+| Task 통제 | 유효 통제 수준은 권위 있는 프로젝트 정책에 대해 현재 상태여야 합니다. 정규화된 쓰기 권한 fingerprint가 바뀌면 통제와 최종 수락 순위가 높아지지 않아도 활성 `Task`에 재평가 표시를 만들고 결속이 없거나 일치하지 않는 활성 티켓을 오래된 상태로 만듭니다. 더 엄격한 정책은 다음 쓰기 전에 활성 `Task` 수준도 높일 수 있지만 정책 완화가 자동으로 낮추지는 않습니다. |
 | Workspace | Git에 결합된 Change Unit은 쓰기 준비 때 기록한 common directory, worktree identity, branch 또는 detached HEAD, HEAD SHA, workspace fingerprint가 현재 값과 일치해야 합니다. 다르면 명시적 retarget/rebaseline이 필요합니다. |
 | Change Unit 효과 계약 | 값이 있으면 요청한 제품 파일 쓰기 효과와 경로가 현재 적용 Change Unit 효과 계약에 맞아야 쓰기 티켓을 발급할 수 있습니다. |
 | 사용자 소유 판단 | 필요한 제품, 기술, 범위, 민감 동작, 최종 수락, 잔여 위험, 취소 판단은 사용자가 필요한 저장 결과로 해결해야 하며 영향을 받는 대상과 결과에 호환되어야 합니다. |
@@ -562,6 +564,11 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
   fingerprint, 승인 근거 참조입니다. 발급 때의 `basis_state_version`은 감사 순서에만
   사용합니다. 결속이 없거나 다르면 활성 티켓을 사용할 수 없지만 소비된 과거 기록은
   숨기지 않습니다.
+- 정책 결속: fingerprint는 정확한
+  `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
+  canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 두 패턴 배열은
+  먼저 정렬하고 중복을 제거합니다. 이 정규화 fingerprint는 전체 canonical 정책
+  `policy_fingerprint`보다 좁으며 그 밖의 모든 정책 필드는 제외합니다.
 - 소비 전 재사용 가능: 호환되는 활성 티켓이 새 intended path를 모두 포함하고
   민감 근거가 같거나 더 강하면 이후 `prepare_write`에서 재사용할 수 있습니다.
   민감 재사용에는 정규화된 동작과 일치하는 승인 resolution 정체성도 정확히 같아야

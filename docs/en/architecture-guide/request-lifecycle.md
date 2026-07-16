@@ -1,11 +1,12 @@
 # Request lifecycle
 
-This guide traces three representative public method calls through the current
+This guide traces four representative public method calls through the current
 Rust implementation:
 
 - `volicord.status` as a read-only path
 - `volicord.intake` as a committed state-mutation path
 - `volicord.prepare_write` as a policy- and write-ticket-sensitive path
+- `volicord.record_run` as the independent ticket-consumption defense
 
 It names source files and symbols so developers can follow the code. It does
 not define exact public method behavior, request or response schemas, storage
@@ -390,7 +391,13 @@ Primary source path:
    supplies Product Repository path normalization helpers.
 6. [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../crates/volicord-core/src/policy/user_action_relevance.rs)
    supplies user-action relevance checks used by the planner.
-7. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)
+7. [`crates/volicord-core/src/policy/workflow.rs`](../../../crates/volicord-core/src/policy/workflow.rs)
+   loads the authoritative project policy, resolves current Task control, and
+   exposes its normalized write-authority fingerprint.
+8. [`crates/volicord-store/src/workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs)
+   derives that fingerprint and owns policy-apply reevaluation and active-ticket
+   invalidation.
+9. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)
    applies `CoreStorageMutation::InsertWriteTicket` inside the Store commit
    transaction when the committed allowed branch issues a write ticket.
 
@@ -410,27 +417,36 @@ Lifecycle:
 5. `prepare_or_response` delegates to common preflight. Access mismatches,
    stale state, missing committed-effect envelope fields, replay mismatch, and
    Store unavailability can return before method-specific planning.
-6. `plan_prepare_write` normalizes `intended_operation`,
-   `sensitive_categories`, and Product Repository paths. It resolves the Task
-   and current Change Unit, compares product-write intent, baseline, path
-   scope, pending user-owned judgments, sensitive-action approval, verified
-   operation category, and connection capability.
-7. `prepare_write_decision` classifies the collected
+6. `plan_prepare_write` reloads the authoritative project workflow policy and
+   resolves current Task control before normalizing `intended_operation`,
+   `sensitive_categories`, and Product Repository paths. It reevaluates a
+   policy-marked Task even when stored control and final acceptance did not
+   rise. Current paths can move `light` work to `tracked` or `sensitive`;
+   `sensitive` work requires matching user approval before ticket issuance.
+7. The planner resolves the current Change Unit and compares product-write
+   intent, baseline, path scope, pending user-owned judgments, sensitive-action
+   approval, verified operation category, and connection capability. The
+   required validity basis includes the current normalized
+   `write_authority_fingerprint`.
+8. `prepare_write_decision` classifies the collected
    `WriteDecisionReason` values. With no reasons, the plan is allowed. With
    reasons, the plan is a non-allow decision.
-8. If the request is a dry run, `CoreService::execute_prepared_request` receives
+9. If the request is a dry run, `CoreService::execute_prepared_request` receives
    `OwnerPipelineBranch::DryRunPreview` with `prepare_write_dry_run_summary`.
    No write ticket ID is allocated and no Store commit runs.
-9. For a committed allowed plan, `OwnerPipelineBranch::CommitMutation` carries
-   `CoreStorageMutation::InsertWriteTicket`,
-   `event_kind="write_ticket_issued"`, and result fields containing
-   the new `write_ticket_ref`.
-10. For a committed non-allow plan, `OwnerPipelineBranch::CommitMutation`
+10. For a committed allowed plan, a current compatible active ticket is reused;
+    otherwise the commit carries `CoreStorageMutation::InsertWriteTicket` with
+    the current policy binding. An active ticket with a missing or different
+    binding is excluded from reuse and invalidated with `explicit_revoke` in
+    that commit. The event is `write_ticket_reused` or `write_ticket_issued`.
+11. For a committed non-allow plan, `OwnerPipelineBranch::CommitMutation`
     carries `event_kind="write_decision_recorded"` and no
     `InsertWriteTicket` mutation. The Store transaction still records
     the decision event, advances state version, and stores replay data when the
-    committed call is idempotent.
-11. `CoreProjectStore::commit_mutation` executes the transaction and returns a
+    committed call is idempotent. If ticket selection found active legacy or
+    mismatched policy bindings, that same commit invalidates those tickets with
+    `explicit_revoke` before returning the non-allow decision.
+12. `CoreProjectStore::commit_mutation` executes the transaction and returns a
     `MutationCommitOutcome`. Core turns that outcome into `PipelineResponse`,
     and MCP wraps the response JSON as `tools/call` text content.
 
@@ -441,15 +457,21 @@ What changes by branch:
 - Dry-run returns `ToolDryRunResponse`, has no Core commit, and allocates no
   durable write ticket ID.
 - Committed non-allow decisions commit an audit/result event but create no
-  write ticket.
-- Committed allowed decisions commit an event and
-  `CoreStorageMutation::InsertWriteTicket`.
+  write ticket; selected active tickets with stale policy bindings are still
+  invalidated in that commit.
+- Committed allowed decisions reuse one compatible ticket or commit an event
+  and `CoreStorageMutation::InsertWriteTicket`. Missing or mismatched legacy
+  bindings fail closed and are replaced, not reused.
+- Reapplying a normalized-equivalent write authority does not make an otherwise
+  compatible ticket stale.
 - Idempotent replay returns the stored original response through replay
   handling instead of creating another write ticket.
 
 Representative tests:
 
 - `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
+  `prepare_write_replaces_active_ticket_missing_write_authority_binding`,
+  `prepare_write_replaces_active_ticket_with_mismatched_write_authority_binding`,
   `prepare_write_blocked_path_issues_no_write_ticket`,
   `prepare_write_dry_run_has_no_write_ticket_effect`, and
   `prepare_write_user_only_category_is_invocation_context_rejection` in
@@ -473,3 +495,68 @@ Exact behavior questions:
 - Judgment shapes: [API Judgment Schemas](../reference/api/schema-judgment.md)
 - Storage effects: [Storage Effects](../reference/storage-effects.md)
 - Security guarantee meaning: [Security](../reference/security.md)
+
+## `volicord.record_run`: ticket-consumption defense
+
+Reference owner:
+
+- [Record-run method](../reference/api/method-record-run.md)
+
+Primary source path:
+
+1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)
+   defines the request, observed-change input, and result shapes.
+2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
+   routes `"volicord.record_run"` through the shared typed adapter path.
+3. [`crates/volicord-core/src/methods/record_run.rs`](../../../crates/volicord-core/src/methods/record_run.rs)
+   loads current policy, validates the ticket, plans the Run, and requests
+   ticket consumption.
+4. [`crates/volicord-core/src/policy/workflow.rs`](../../../crates/volicord-core/src/policy/workflow.rs)
+   resolves current Task control and normalized write authority.
+5. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)
+   rechecks ticket and policy authority inside the consumption transaction.
+
+Lifecycle:
+
+1. MCP decoding and common Core preflight follow the shared path with an exact
+   Task and committed-mutation policy.
+2. `plan_record_run` normalizes changed paths and sensitive categories, loads
+   the current project policy, and resolves current Task control.
+3. A product-file write or an effective `sensitive` Task requires a Write Ticket.
+   Pending policy-control reevaluation requires a new `prepare_write` before an
+   existing ticket can be consumed.
+4. Core requires the ticket to be active and compatible with the current Task,
+   Change Unit, scope, baseline, workspace, paths, categories, approval basis,
+   idle limit, and `write_authority_fingerprint`. A missing legacy binding or a
+   mismatch returns `WRITE_TICKET_INVALID` with
+   `policy_authority_mismatch` and creates no Run.
+5. Core places `ConsumeWriteTicket`, its expected basis state version, and the
+   current fingerprint in the same mutation plan as the Run. Required
+   sensitive-action approval is checked before this plan; later final
+   acceptance cannot substitute for that pre-write approval.
+6. Store reloads the ticket and current project policy in the transaction. A
+   changed status, basis version, stored binding, or current authority causes a
+   conflict and rolls back the whole mutation.
+7. A successful commit records the Run and consumes the ticket exactly once.
+   Consumed ticket history remains inspectable.
+
+Guard may deny a stale policy-bound ticket earlier in the cooperative pre-tool
+path, but bypassing Guard still reaches the independent Core and Store checks.
+These records are not an OS sandbox, filesystem permission boundary,
+tamper-proof audit log, or correctness proof.
+
+Representative tests:
+
+- `record_run_rejects_missing_write_authority_binding_without_consumption` and
+  `record_run_rejects_mismatched_write_authority_binding_without_consumption`
+  in [`crates/volicord-core/src/methods/tests/record_run.rs`](../../../crates/volicord-core/src/methods/tests/record_run.rs)
+- `write_ticket_consumption_revalidates_policy_authority_inside_transaction`
+  in [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
+
+Exact behavior questions:
+
+- Method behavior: [Record-run method](../reference/api/method-record-run.md)
+- Ticket and approval authority: [Core Model](../reference/core-model.md)
+- Durable effects and history: [Storage Effects](../reference/storage-effects.md)
+  and [Storage Records](../reference/storage-records.md)
+- Cooperative Guard and non-guarantees: [Security](../reference/security.md)

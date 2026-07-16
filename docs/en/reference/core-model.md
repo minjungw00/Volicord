@@ -497,6 +497,9 @@ Change Unit effect contracts do not substitute for authority records.
 Write ticket does not substitute for acceptance.
 
 - A write ticket records one bounded product-file write intent or, for an effective `sensitive` Task, one exact approval-bound non-product action intent inside Volicord state. It does not prove the effect occurred, record evidence, accept the result, accept risk, close the `Task`, grant system access, or prevent filesystem or external effects.
+- Conversely, final acceptance recorded after work does not supply a missing
+  pre-write sensitive-action approval or write ticket and cannot retroactively
+  authorize the write.
 
 Blocker data does not substitute across authority questions.
 
@@ -531,7 +534,7 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 | Check area | Authority meaning |
 |---|---|
 | Scope | The requested work, write, evidence claim, or close claim must fit the current `Task` scope and current Change Unit. |
-| Task control | The effective control level must be current for the authoritative project policy. Policy strengthening can raise an active Task before its next write, but policy relaxation never lowers it automatically. |
+| Task control | The effective control level must be current for the authoritative project policy. A changed normalized write-authority fingerprint marks the active Task for reevaluation and makes missing or mismatched active ticket bindings stale even when the control and final-acceptance ranks do not rise. A stricter policy can also raise the active Task before its next write, while policy relaxation never lowers it automatically. |
 | Workspace | For a Git-bound Change Unit, write preparation must match the recorded common directory, worktree identity, branch or detached HEAD, HEAD SHA, and workspace fingerprint. A mismatch requires explicit retarget/rebaseline. |
 | Change Unit effect contract | When present, requested product-file write effects and paths must fit the current Change Unit effect contract before a write ticket can be issued. |
 | User-owned judgment | Required product, technical, scope, sensitive-action, final-acceptance, residual-risk, or cancellation judgment must be resolved by the user with the required stored outcome and compatible with the affected object and consequence. |
@@ -556,6 +559,12 @@ It has these compatibility properties:
   write-authority fingerprint, and approval-basis refs. Its issuance
   `basis_state_version` is audit ordering only. A missing or mismatched binding
   makes an active ticket unusable without hiding consumed history.
+- Policy-bound: the fingerprint is the `sha256:`-prefixed canonical-JSON SHA-256
+  of exactly
+  `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
+  The two pattern arrays are sorted and deduplicated first. This normalized
+  fingerprint is narrower than the whole canonical-policy
+  `policy_fingerprint`; every other policy field is excluded.
 - Reusable before consumption: a compatible active ticket may satisfy a later
   `prepare_write` when it covers every newly intended path and has the same or
   stronger sensitive basis. Sensitive reuse also requires the exact normalized

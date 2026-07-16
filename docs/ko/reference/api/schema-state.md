@@ -811,6 +811,10 @@ WriteDecisionReason:
   `missing_final_acceptance` 행동은 Agent가 요청을 만드는 데 필요한 질문과 Task/현재 근거
   ref를 담을 수 있습니다. 요청을 만든 뒤에는 대기 규칙을 적용합니다.
 - `WriteTicketStateSummary.status`는 제어 값 문자열입니다.
+- 저장 상태가 active인 티켓에 정책 권한 결속이 없거나 현재 결속과 다르면 현재
+  projection은 이를 사실상 `status=invalidated,invalidation_reason=explicit_revoke`로
+  취급합니다. 이 닫힌 실패 projection은 티켓을 활성 후보로 만들지 않으며 과거에
+  소비된 티켓을 다시 쓰지 않습니다.
 - `WriteTicketStateSummary.consumed_by_run_ref`는 요약된 쓰기 티켓이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
 - `WriteTicketStateSummary.observation_refs`는 사용할 수 있을 때 그 소비 Run이 만든 증거 관찰 참조를 나열합니다. 쓰기 티켓이 소비되지 않았거나 소비 Run이 관찰을 만들지 않았다면 비어 있습니다.
 - `WriteTicketAttemptScope`는 쓰기 티켓이 포착하는 한 번의 시도 경계입니다.
@@ -825,9 +829,17 @@ WriteDecisionReason:
   `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
   canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 각 값은 대응하는
   `workflow` 정책 필드에서 가져오고 두 패턴 배열은 canonicalization 전에 정렬하고 중복을
-  제거합니다. 쓰기 권한 판단에서 참조하지 않는 detective, host, connection,
-  integration binding 필드는 제외합니다. 따라서 패턴 순서와 중복 항목은 digest를 바꾸지
-  않습니다. 새로 발급되는 활성 티켓은 항상 현재 digest를 담습니다. `null`은 과거 기록
+  제거합니다. 이 객체에 나열되지 않은 모든 정책 필드를 제외하며 여기에는 detective,
+  host, connection, MCP, integration binding, 바깥쪽 정책 메타데이터 필드가 포함됩니다.
+  이 digest는 전체 canonical 정책 `policy_fingerprint`보다 좁으며 서로 바꾸어 쓸 수
+  없습니다. 따라서 패턴 순서와 중복 항목은 digest를 바꾸지 않고, canonical 정책이
+  달라도 정규화된 쓰기 권한 객체가 같으면 티켓 호환성을 유지합니다. 프로젝트 정책이
+  없으면 정규화 입력은 `default_direct_control=tracked`,
+  `default_work_control=tracked`, `light.enabled=false`,
+  `light.max_intended_paths=3`, 빈 allowed/denied 패턴 배열,
+  `light.final_acceptance=policy_dependent`,
+  `write_ticket.idle_timeout_minutes=null`을 사용합니다. 새로 발급되는 활성 티켓은 항상
+  현재 digest를 담습니다. `null`은 과거 기록
   디코딩만 지원하며 활성 선택이나 소비에 유효한
   결속이 아닙니다. 과거에 소비된 티켓은 계속 조회할 수 있습니다.
 - `WriteTicket.observed_paths`는 기준 범위에서 비어 있습니다. `detective` 호스트 훅과 세션 감시기 관찰은 티켓에 다시 쓰지 않고 호스트 관찰 및 미기록 변경 기록으로 남깁니다.

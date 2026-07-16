@@ -131,7 +131,7 @@ For a guided first run and host-specific checks, continue with
 | `Task` | The unit of work being shaped, performed, blocked, or closed. |
 | Task control level | The Core-recorded amount of workflow control currently applied to one Task. It is separate from the host integration profile. |
 | Integration profile | The Record or Detective host-setup choice. It selects integration and observation paths, not the risk level of a Task. |
-| Write Ticket | A Volicord record that one proposed product-file change was checked against the current work boundary. It is not OS permission or proof that a write occurred. |
+| Write Ticket | A Volicord record that one proposed product-file change was checked against the current work boundary and normalized project write authority. It is not OS permission or proof that a write occurred. |
 | Evidence | Recorded support for a specific claim. It is not user acceptance or proof of correctness. |
 | User Judgment | A decision that belongs to the user, such as product direction, material technical direction, scope, final acceptance, or residual-risk acceptance. |
 | Close Status | A view of whether current Volicord records still show blockers. It is decision support, not proof of risk-free completion. |
@@ -209,6 +209,14 @@ request a level, but it cannot use that request to weaken project policy. See
 the [Agent Guide](docs/en/user-guide/agent-workflow.md) for representative
 flows and [Core Model](docs/en/reference/core-model.md) for the exact authority
 meaning.
+
+Write Tickets are also bound to the current normalized project write authority.
+When a policy change alters that authority, incompatible active tickets are
+invalidated or treated as stale before another write, and the proposed write is
+reevaluated. It may move to `sensitive` control or require new sensitive-action
+approval. A policy application that leaves the normalized write authority
+unchanged preserves compatible tickets. Final acceptance after the work does
+not replace approval required before the write.
 
 See [Agent Host Setup](docs/en/user-guide/agent-host-setup.md) for setup choices
 and [Security](docs/en/reference/security.md) for exact guarantee limits.

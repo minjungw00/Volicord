@@ -17,7 +17,11 @@ This document owns Volicord security guarantee wording, local connection assumpt
 
 ## Boundary summary
 
-Volicord security wording describes record and policy boundaries inside documented Volicord paths. It does not describe an operating-system sandbox, malware scanner, network isolation layer, full host-trust enforcement system, or general host policy engine.
+Volicord security wording describes authorization and evidence records plus
+policy boundaries inside documented Volicord paths. It does not describe an
+operating-system sandbox, filesystem permission system, tamper-proof audit log,
+correctness proof, malware scanner, network isolation layer, full host-trust
+enforcement system, or general host policy engine.
 
 | Surface | Supported security meaning | Non-guarantee |
 |---|---|---|
@@ -109,6 +113,8 @@ Must not claim:
 - Sensitive-action approval is a write ticket, `WriteTicketScope`, OS permission, shell permission, command approval, deployment approval, final acceptance, residual-risk acceptance, or product correctness.
 - Sensitive-action approval authorizes product-file writes, commands, hosts, networks, secrets, destructive operations, or unbounded activity.
 - Broad approval substitutes for a required sensitive-action approval, final acceptance, residual-risk acceptance, scope decision, or write ticket.
+- Final acceptance recorded after a write substitutes for a required pre-write
+  sensitive-action approval or retroactively authorizes the write.
 - Exact equality between a caller-reported `performed_operation` and a ticket's
   `intended_operation` proves that the external action occurred, proves its
   effect, or attributes that action to an actor. It is only a compatibility
@@ -371,6 +377,18 @@ not an uncertain shell-effect warning. Shell text, a broad command name,
 missing watcher data, an ambiguous target, or a heuristic inference is
 uncertain and can produce a warning, not a hard security claim or ordinary-work
 denial.
+
+Guard excludes a ticket with a missing or mismatched policy binding from
+`current_write_ticket_ids` and `active_write_tickets` and reports it through
+`stale_write_ticket_ids`. If such a stale ticket is the only ticket covering an
+otherwise deterministic direct product write, the decision uses
+`write_ticket_backing.status=policy_authority_stale`, `ticket_backed=false`,
+and denial reason `write_ticket_policy_changed`. This cooperative Guard layer
+is not the only check: [`volicord.record_run`](api/method-record-run.md)
+independently reloads and validates the current policy binding before creating
+a Run, and the Store rechecks it inside ticket consumption. Bypassing Guard
+therefore does not make a stale ticket usable; the method owner defines the
+exact rejection behavior.
 
 PostTool observation uses structured changed paths first, then a watcher
 before/after comparison, then a bounded safe Git diff, then heuristic signals.

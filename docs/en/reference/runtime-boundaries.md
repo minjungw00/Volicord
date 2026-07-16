@@ -53,7 +53,7 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **`Volicord Runtime Home`**
 
-- **Contains:** `registry.sqlite`; the lazily created non-authority `diagnostics.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel user-action resolutions, artifacts, session-watch records, the authoritative canonical project workflow policy with schema, fingerprint, and monotonic version, and content-free session-termination receipts. The separate diagnostics database stores only bounded local operability aggregates, including privacy-safe workflow metrics.
+- **Contains:** `registry.sqlite`; the lazily created non-authority `diagnostics.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel user-action resolutions, artifacts, session-watch records, the authoritative canonical project workflow policy with schema, fingerprint, and monotonic version, and content-free session-termination receipts. A Write Ticket's current normalized write-authority binding is stored in its existing `validity_basis_json`; it is not a Product Repository file or host-hook fact. The separate diagnostics database stores only bounded local operability aggregates, including privacy-safe workflow metrics.
 - **Used by:** `volicord init`, project, policy, connection, inbox, changes, storage-upgrade, doctor, diagnostics, and hidden internal hook commands through their owner-defined paths. `volicord doctor --privacy-footprint` reports storage categories and counts without printing row bodies. `volicord diagnostics session` and `volicord diagnostics workflow-metrics` read only the bounded diagnostics store after normal setup checks. `volicord mcp --stdio`, Core, and Store use Runtime Home state for startup, project routing, Core state, artifacts, policy authority, termination receipts, and best-effort operability aggregation.
 - **Boundary:** It is not a Product Repository, external host configuration, or installation directory. It does not provide or prove OS sandboxing, network isolation, scanning, host trust, actor attribution, write prevention, tamper-proof audit, full filesystem monitoring, correctness, test sufficiency, review completion, final acceptance, or residual-risk acceptance.
 
@@ -160,6 +160,18 @@ managed lifecycle or final-output wrapper exports the init-selected absolute
 `volicord_command`; it does not trust an ambient host Runtime Home or a
 PATH-resolved bare command.
 
+The canonical `policy_fingerprint` identifies the whole managed policy. The
+separate normalized `write_authority_fingerprint` covers only the
+`volicord-write-authority-v1` schema discriminator and Core-consulted
+write-authority fields: direct and work control defaults, Light enablement,
+path-count limit, sorted and deduplicated allowed and denied path patterns,
+Light final acceptance, and Write Ticket idle timeout. Detective and outer
+repository, connection, MCP, host-hook, profile, and managed bindings are not
+in that digest. Applying a changed normalized authority in Runtime Home marks
+the active Task for reevaluation and invalidates incompatible active tickets;
+a normalized-equivalent reapply does not invalidate compatible tickets solely
+because the policy was reapplied.
+
 For one Product Repository, these repository-local surfaces represent one
 selected built-in host adapter, active intent, and profile. An init that changes the
 selected host, intent, or profile must preserve unrelated mixed-owner content,
@@ -251,6 +263,7 @@ Rules:
 Does not imply:
 - These path rules do not provide OS sandboxing, command blocking, network blocking, secret blocking, or baseline detective enforcement.
 - Write-ticket compatibility applies only to a proposed product-file change or exact approval-bound non-product action recorded through the Core-owned method path; it is not global filesystem interception, shell permission, command approval, or proof that an effect occurred.
+- Cooperative Guard excludes a missing or mismatched policy-bound ticket from current active candidates. Core `record_run` and Store consumption independently recheck current policy, so Guard bypass does not turn a stale ticket into authority.
 - Method-specific compatibility decisions stay with API method owners.
 
 <a id="runtime-location-source-installation-processes"></a>
@@ -338,6 +351,12 @@ May claim:
   in per-project Runtime Home state. Workflow metrics live only in the separate
   diagnostics store. None belongs in the Product Repository, maintained docs,
   generated guidance, or host configuration.
+- The policy binding uses the existing Write Ticket `validity_basis_json` under
+  `baseline_sqlite_v7`. This behavior does not introduce a source/destination
+  storage-profile transition or require an offline-copy upgrade.
+- An active legacy ticket with no valid current binding fails closed and must be
+  reissued. A consumed historical ticket remains stored and inspectable under
+  the storage-record contract rather than being retroactively invalidated.
 
 Must not claim:
 - `Volicord Runtime Home` is the `Product Repository`.
@@ -385,6 +404,7 @@ May claim:
 Must not claim:
 - A local path, directory name, copied identifier, rendered display, chat message, connector description, or agent memory proves Volicord authority.
 - Direct local modification outside documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, write ticket, or artifact authority.
+- Post-write final acceptance repairs or replaces a pre-write approval required by current policy.
 - The location of runtime data changes the security guarantee level by itself.
 
 ## Runtime location, storage, and security owners

@@ -21,7 +21,7 @@
 | Runtime Home | 런타임 홈 | 운영 기록과 설정을 위한 로컬 Volicord 데이터 공간입니다. | [런타임 경계](runtime-boundaries.md) |
 | Product Repository | 제품 저장소 | Volicord 런타임 상태와 구분되는 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](runtime-boundaries.md) |
 | Task | 작업 | 구체화되거나, 진행되거나, 막히거나, 닫히는 사용자 가치 단위입니다. | [Core 모델](core-model.md) |
-| Write Ticket | 쓰기 티켓 | 제안된 제품 파일 변경 또는 정확한 승인 결속 비제품 민감 동작이 현재 Task와 범위에 맞는다는 Volicord 기록입니다. | [Core 모델](core-model.md) |
+| Write Ticket | 쓰기 티켓 | 제안된 제품 파일 변경 또는 정확한 승인 결속 비제품 민감 동작이 현재 Task, 범위, 정규화된 프로젝트 쓰기 권한에 맞는다는 Volicord 기록입니다. | [Core 모델](core-model.md) |
 | Evidence | 증거 | 실행, 관찰, 증거 첨부를 포함해 안정적인 수락 기준 또는 보충 주장 대상을 뒷받침하는 기록입니다. | [Core 모델](core-model.md) |
 | User Judgment | 사용자 판단 | 사용자에게 속한 결정입니다. Volicord 상태로 남길 때는 User Channel을 통해 기록합니다. | [Core 모델](core-model.md) |
 | Close Status | 닫기 상태 | 현재 Volicord 기록에서 현재 작업을 정직하게 끝낼 수 있는지 판단하도록 돕는 상태입니다. | [Core 모델](core-model.md) |

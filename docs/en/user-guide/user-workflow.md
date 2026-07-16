@@ -137,16 +137,25 @@ input-method and provenance boundaries belong to
 
 Ordinary write approval is your bounded consent for a named write. A Write
 Ticket is a separate Volicord record that checks one proposed product-file
-change against the current work boundary.
+change against the current work boundary and normalized project write
+authority.
 
 When approving a write, name the relevant paths, commands, dependency changes,
 hosts, or external actions. Treat dependency installation, deployment, secret
 access, destructive commands, and similar actions as separate sensitive-action
 decisions when needed.
 
+If project policy changes that write authority, an earlier incompatible active
+ticket cannot cross the new boundary. The proposed write is reevaluated under
+current policy and may require `sensitive` control or new sensitive-action
+approval. A policy application that leaves the normalized write authority
+unchanged does not invalidate a compatible ticket solely because the policy was
+applied.
+
 Neither write approval nor a Write Ticket is whole-plan approval, final
 acceptance, residual-risk acceptance, OS permission, or proof that a write
-occurred.
+occurred. Final acceptance after a write cannot supply approval that was
+required before it.
 
 <a id="use-evidence-without-replacing-judgment"></a>
 ## Use Evidence Without Replacing Judgment

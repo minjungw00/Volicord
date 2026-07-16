@@ -822,6 +822,11 @@ Meaning:
   carry the question and Task/current-basis refs needed for the Agent to create
   the request. After creation, the pending rule applies.
 - `WriteTicketStateSummary.status` is a controlled value string.
+- When a stored-active ticket has a missing or mismatched policy-authority
+  binding, current projection treats it as effectively
+  `status=invalidated,invalidation_reason=explicit_revoke`. That fail-closed
+  projection does not make the ticket an active candidate and does not rewrite
+  a historical consumed ticket.
 - `WriteTicketStateSummary.consumed_by_run_ref` is non-null only when the summarized write ticket has been consumed by a recorded Run.
 - `WriteTicketStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the write ticket is not consumed or the consuming Run created no observations.
 - `WriteTicketAttemptScope` is the one-attempt boundary captured by the write ticket.
@@ -837,10 +842,18 @@ Meaning:
   `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
   The values come from the corresponding `workflow` policy fields, and both
   pattern arrays are sorted and deduplicated before canonicalization.
-  Detective, host, connection, and integration-binding fields are excluded
-  because write authorization does not consult them. Pattern order and
-  duplicate entries therefore do not change the digest. A newly issued active
-  ticket always carries the current digest.
+  Every policy field not listed in that object is excluded, including
+  Detective, host, connection, MCP, integration-binding, and outer policy
+  metadata fields. This digest is narrower than and is not interchangeable with
+  the whole canonical-policy `policy_fingerprint`. Pattern order and duplicate
+  entries therefore do not change the digest, and canonically different
+  policies with the same normalized write-authority object preserve ticket
+  compatibility. When no project policy exists, the normalized input uses
+  `default_direct_control=tracked`, `default_work_control=tracked`,
+  `light.enabled=false`, `light.max_intended_paths=3`, empty allowed and denied
+  pattern arrays, `light.final_acceptance=policy_dependent`, and
+  `write_ticket.idle_timeout_minutes=null`. A newly issued active ticket always
+  carries the current digest.
   `null` supports historical decoding only and is never a valid binding for
   active selection or consumption; historical consumed tickets remain
   inspectable.
