@@ -19,15 +19,12 @@ use volicord_cli::{
     connection_command::{
         run_init_command, ConnectionProcess, ConnectionProcessOutput, McpLaunch, McpVerification,
     },
-    host_integration::{
-        verification::{ManagedConfigStatus, Verification, VerificationStatus},
-        HostPlan,
-    },
     policy_command::run_policy_command,
 };
 use volicord_store::{
     agent_connections::{
-        update_agent_connection_verification_report, VERIFIED_STATUS_NOT_VERIFIED,
+        update_agent_connection_verification_report, VERIFIED_STATUS_FAILED,
+        VERIFIED_STATUS_NOT_VERIFIED,
     },
     core_pipeline::CoreProjectStore,
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
@@ -86,14 +83,6 @@ impl ConnectionProcess for FakeConnectionProcess {
         Ok(self.current_exe.clone())
     }
 
-    fn verify_host_plan(&self, _plan: &HostPlan) -> Option<Result<Verification, String>> {
-        Some(Ok(Verification::new(
-            VerificationStatus::NotVerified,
-            "deterministic fixture does not claim live Codex trust or reload state",
-        )
-        .with_managed_config(ManagedConfigStatus::Match)))
-    }
-
     fn run_preflight(
         &mut self,
         _launch: &McpLaunch,
@@ -140,10 +129,11 @@ fn fresh_record_init_persists_exact_owner_bound_capability_and_managed_artifacts
 
     assert_minimal_git_worktree(&repo_root)?;
     let output = run_record_init(&repo_root, &mut process)?;
-    assert_init_completed_or_requires_action(&output);
+    assert_failed_init_with_recorded_guard(&output);
 
     let snapshot = registry_snapshot(fixture.path());
     let ids = assert_single_owned_records(&snapshot);
+    assert_unavailable_codex_verification(&snapshot)?;
     assert_eq!(snapshot.projects[0].repo_root, repo_root);
     assert_eq!(snapshot.connection_projects[0].project_id, ids.project_id);
 
@@ -166,9 +156,10 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     let mut process = FakeConnectionProcess::new(&fixture)?;
 
     let seeded_output = run_record_init(&repo_root, &mut process)?;
-    assert_init_completed_or_requires_action(&seeded_output);
+    assert_failed_init_with_recorded_guard(&seeded_output);
     let seeded_snapshot = registry_snapshot(fixture.path());
     let seeded_ids = assert_single_owned_records(&seeded_snapshot);
+    assert_unavailable_codex_verification(&seeded_snapshot)?;
     let seeded_connection = &seeded_snapshot.agent_connections[0];
     let managed_bytes = managed_artifact_bytes(&seeded_snapshot)?;
 
@@ -195,30 +186,24 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     assert_eq!(fs::read_to_string(&unrelated_path)?, unrelated_content);
 
     let repair_output = run_record_init(&repo_root, &mut process)?;
-    assert_init_completed_or_requires_action(&repair_output);
+    assert_failed_init_with_recorded_guard(&repair_output);
     assert_eq!(repair_output["changed_repo_files"], json!([]));
     let repaired = registry_snapshot(fixture.path());
     let repaired_ids = assert_single_owned_records(&repaired);
     assert_eq!(repaired_ids, seeded_ids);
-    assert_eq!(
-        repaired.agent_connections[0].last_verification_status,
-        VERIFIED_STATUS_NOT_VERIFIED
-    );
+    assert_unavailable_codex_verification(&repaired)?;
     let repaired_capability = assert_exact_capability_and_artifacts(&repaired, &repo_root)?;
     assert_capability_commands_bind_policy_hash(&repaired_capability);
     assert_eq!(managed_artifact_bytes(&repaired)?, managed_bytes);
     assert_eq!(fs::read_to_string(&unrelated_path)?, unrelated_content);
 
     let replay_output = run_record_init(&repo_root, &mut process)?;
-    assert_init_completed_or_requires_action(&replay_output);
+    assert_failed_init_with_recorded_guard(&replay_output);
     assert_eq!(replay_output["changed_repo_files"], json!([]));
     let replayed = registry_snapshot(fixture.path());
     let replayed_ids = assert_single_owned_records(&replayed);
     assert_eq!(replayed_ids, seeded_ids);
-    assert_eq!(
-        replayed.agent_connections[0].last_verification_status,
-        VERIFIED_STATUS_NOT_VERIFIED
-    );
+    assert_unavailable_codex_verification(&replayed)?;
     assert_eq!(
         replayed.guard_installations[0].host_capability_json,
         repaired.guard_installations[0].host_capability_json
@@ -265,15 +250,31 @@ fn run_record_init(
     Ok(serde_json::from_str(&output)?)
 }
 
-fn assert_init_completed_or_requires_action(output: &Value) {
-    assert!(
-        matches!(
-            output["status"].as_str(),
-            Some("complete" | "action_required")
-        ),
+fn assert_failed_init_with_recorded_guard(output: &Value) {
+    assert_eq!(
+        output["status"], "failed",
         "unexpected init result: {output}"
     );
     assert_eq!(output["guard_installation"]["recorded"], true);
+}
+
+fn assert_unavailable_codex_verification(
+    snapshot: &RegistryInspectionSnapshot,
+) -> Result<(), Box<dyn Error>> {
+    let connection = &snapshot.agent_connections[0];
+    assert_eq!(connection.last_verification_status, VERIFIED_STATUS_FAILED);
+    let report: Value = serde_json::from_str(&connection.last_verification_report_json)?;
+    assert_eq!(report["status"], "failed");
+    assert_eq!(report["host"]["managed_config"], "match");
+    assert_eq!(report["host"]["host_executable"], "unavailable");
+    assert_eq!(report["host"]["mcp_handshake_allowed"], false);
+    assert_eq!(
+        report["host"]["diagnostic"],
+        "Codex executable `codex` was not found on PATH"
+    );
+    assert_eq!(report["cli_mcp_preflight"]["status"], "passed");
+    assert_eq!(report["cli_mcp_handshake"]["status"], "skipped");
+    Ok(())
 }
 
 fn assert_minimal_git_worktree(repo_root: &Path) -> Result<(), Box<dyn Error>> {

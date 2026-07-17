@@ -15,7 +15,6 @@ use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
 };
 
-use crate::host_integration::verification::Verification as HostVerification;
 use crate::host_integration::{HostPlan, HostScope};
 
 use super::verification::{McpPreflightDiagnostics, VerificationStep};
@@ -43,9 +42,6 @@ pub struct McpLaunch {
 pub trait ConnectionProcess {
     fn env_var(&self, name: &str) -> Option<OsString>;
     fn current_exe(&self) -> Result<PathBuf, String>;
-    fn verify_host_plan(&self, _plan: &HostPlan) -> Option<Result<HostVerification, String>> {
-        None
-    }
     fn run_preflight(
         &mut self,
         launch: &McpLaunch,
