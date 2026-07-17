@@ -473,14 +473,22 @@ mod tests {
         "sha256:0000000000000000000000000000000000000000000000000000000000000000";
     const CONTENT_HASH: &str =
         "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    #[cfg(not(windows))]
+    const REPO_ROOT: &str = "/workspace/repo";
+    #[cfg(windows)]
+    const REPO_ROOT: &str = "C:/workspace/repo";
+    #[cfg(not(windows))]
+    const VOLICORD_COMMAND: &str = "/usr/local/bin/volicord";
+    #[cfg(windows)]
+    const VOLICORD_COMMAND: &str = "C:/Volicord/volicord.exe";
 
     fn capability() -> Value {
         let command = |phase: &str| {
             json!({
-                "command": "/usr/local/bin/volicord",
+                "command": VOLICORD_COMMAND,
                 "args": [
                     "_hook", phase,
-                    "--repo", "/workspace/repo",
+                    "--repo", REPO_ROOT,
                     "--connection", "conn_a",
                     "--guard-installation", "guard_a",
                     "--host", "codex",
@@ -493,13 +501,13 @@ mod tests {
         let wrapper = |phase: &str, command_name: &str| {
             json!({
                 "kind": "host_hook_wrapper",
-                "path": format!("/workspace/repo/.codex/hooks/volicord-{command_name}.sh"),
+                "path": format!("{REPO_ROOT}/.codex/hooks/volicord-{command_name}.sh"),
                 "status": "unchanged",
                 "content_hash": CONTENT_HASH,
                 "ownership": "managed_script",
                 "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
                 "executable_required": true,
-                "managed_script_command": "exec /usr/local/bin/volicord",
+                "managed_script_command": format!("exec {VOLICORD_COMMAND}"),
                 "host_kind": "codex",
                 "phase": phase,
                 "purpose": "guard",
@@ -512,7 +520,7 @@ mod tests {
         let files = vec![
             json!({
                 "kind": "agents_managed_block",
-                "path": "/workspace/repo/AGENTS.md",
+                "path": format!("{REPO_ROOT}/AGENTS.md"),
                 "status": "unchanged",
                 "content_hash": CONTENT_HASH,
                 "ownership": "managed_block",
@@ -521,21 +529,21 @@ mod tests {
             }),
             json!({
                 "kind": "volicord_policy",
-                "path": "/workspace/repo/.volicord/policy.json",
+                "path": format!("{REPO_ROOT}/.volicord/policy.json"),
                 "status": "unchanged",
                 "content_hash": CONTENT_HASH,
                 "ownership": "managed_json"
             }),
             json!({
                 "kind": "host_hook_config",
-                "path": "/workspace/repo/.codex/hooks.json",
+                "path": format!("{REPO_ROOT}/.codex/hooks.json"),
                 "status": "unchanged",
                 "content_hash": CONTENT_HASH,
                 "ownership": "managed_json"
             }),
             json!({
                 "kind": "host_hook_dispatch",
-                "path": "/workspace/repo/.codex/hooks/volicord-dispatch.sh",
+                "path": format!("{REPO_ROOT}/.codex/hooks/volicord-dispatch.sh"),
                 "status": "unchanged",
                 "content_hash": CONTENT_HASH,
                 "ownership": "managed_script",
@@ -550,7 +558,7 @@ mod tests {
             wrapper("prompt_capture", "prompt-capture"),
             json!({
                 "kind": "host_rule_instruction",
-                "path": "/workspace/repo/.codex/rules/volicord.rules",
+                "path": format!("{REPO_ROOT}/.codex/rules/volicord.rules"),
                 "status": "unchanged",
                 "content_hash": CONTENT_HASH,
                 "ownership": "managed_block",
@@ -615,9 +623,44 @@ mod tests {
                     files.remove(0);
                 }
                 "duplicate" => files.push(files[0].clone()),
-                "relocated" => files[0]["path"] = json!("/workspace/repo/elsewhere/AGENTS.md"),
+                "relocated" => {
+                    files[0]["path"] = json!(format!("{REPO_ROOT}/elsewhere/AGENTS.md"));
+                }
                 _ => unreachable!(),
             }
+            assert!(!host_hook_capability_has_exact_current_shape(&unsupported));
+        }
+    }
+
+    #[test]
+    fn exact_record_capability_requires_executable_only_for_dispatch_and_wrappers() {
+        let current = capability();
+        assert!(host_hook_capability_has_exact_current_shape(&current));
+
+        let files = current["files"].as_array().expect("fixture files");
+        let managed_script_indexes = files
+            .iter()
+            .enumerate()
+            .filter_map(|(index, file)| {
+                matches!(
+                    file["kind"].as_str(),
+                    Some("host_hook_dispatch" | "host_hook_wrapper")
+                )
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(managed_script_indexes.len(), 4);
+        for index in managed_script_indexes {
+            let mut unsupported = current.clone();
+            unsupported["files"][index]["executable_required"] = Value::Bool(false);
+            assert!(!host_hook_capability_has_exact_current_shape(&unsupported));
+        }
+
+        for index in files.iter().enumerate().filter_map(|(index, file)| {
+            (file["ownership"].as_str() != Some("managed_script")).then_some(index)
+        }) {
+            let mut unsupported = current.clone();
+            unsupported["files"][index]["executable_required"] = Value::Bool(true);
             assert!(!host_hook_capability_has_exact_current_shape(&unsupported));
         }
     }
@@ -648,7 +691,7 @@ mod tests {
             connection_internal_id: "conn_a",
             connection_host_kind: "codex",
             connection_intent: "shared",
-            project_repo_root: Some(std::path::Path::new("/workspace/repo")),
+            project_repo_root: Some(std::path::Path::new(REPO_ROOT)),
             project_git_info_exclude_path: None,
         };
         assert!(host_hook_capability_matches_owner_binding(

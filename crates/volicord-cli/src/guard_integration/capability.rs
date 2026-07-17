@@ -200,10 +200,7 @@ pub(crate) fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {
                             "managed_marker".to_owned(),
                             Value::String(HOOK_WRAPPER_MARKER.to_owned()),
                         );
-                        object.insert(
-                            "executable_required".to_owned(),
-                            Value::Bool(script_executable_required()),
-                        );
+                        object.insert("executable_required".to_owned(), Value::Bool(true));
                         if file.kind == HostIntegrationFileKind::HostHookDispatch {
                             object.insert(
                                 "managed_script_role".to_owned(),
@@ -313,16 +310,6 @@ fn current_timestamp() -> String {
     DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-#[cfg(unix)]
-fn script_executable_required() -> bool {
-    true
-}
-
-#[cfg(not(unix))]
-fn script_executable_required() -> bool {
-    false
-}
-
 fn path_text(path: &Path) -> String {
     path.display().to_string()
 }
@@ -400,6 +387,43 @@ mod tests {
         assert_eq!(capability_text, host_hook_capability_json(&plan)?);
         let capability = serde_json::from_str::<Value>(&capability_text)?;
         assert!(host_hook_capability_has_exact_current_shape(&capability));
+        let capability_files = capability["files"]
+            .as_array()
+            .expect("capability files array");
+        let managed_scripts = capability_files
+            .iter()
+            .filter(|file| file["ownership"] == "managed_script")
+            .collect::<Vec<_>>();
+        assert_eq!(managed_scripts.len(), 4);
+        assert_eq!(
+            managed_scripts
+                .iter()
+                .filter(|file| file["kind"] == "host_hook_dispatch")
+                .count(),
+            1
+        );
+        assert_eq!(
+            managed_scripts
+                .iter()
+                .filter(|file| file["kind"] == "host_hook_wrapper")
+                .count(),
+            3
+        );
+        assert!(managed_scripts
+            .iter()
+            .all(|file| file["executable_required"] == true));
+        assert_eq!(
+            managed_scripts
+                .iter()
+                .filter(|file| file["kind"] == "host_hook_wrapper")
+                .map(|file| file["phase"].as_str().expect("wrapper phase"))
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["post_tool", "pre_tool", "prompt_capture"])
+        );
+        assert!(capability_files
+            .iter()
+            .filter(|file| file["ownership"] != "managed_script")
+            .all(|file| file.get("executable_required").is_none()));
         let capability_commands = capability["commands"]
             .as_object()
             .expect("capability commands object");

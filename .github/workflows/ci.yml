@@ -79,6 +79,24 @@ jobs:
       - name: Run workspace tests
         run: cargo test --locked --workspace --all-targets --all-features
 
+  host-hook-capability-native-windows:
+    name: Host-hook capability unit tests (native Windows; not release-cell evidence)
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
+
+      - name: Check platform-independent capability generation
+        run: cargo test --locked -p volicord-cli successfully_returned_plan_generates_an_exact_current_capability --lib
+
+      - name: Check strict executable requirements
+        run: cargo test --locked -p volicord-types exact_record_capability_requires_executable_only_for_dispatch_and_wrappers --lib
+
   codex-release-cell-contracts:
     name: Codex ${{ matrix.target_triple }} / ${{ matrix.platform_environment }} definition (static only; never a cell pass)
     runs-on: ${{ matrix.os }}
