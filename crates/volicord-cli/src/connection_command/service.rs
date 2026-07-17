@@ -733,7 +733,7 @@ fn superseded_integrations_for_project(
 ) -> Result<Vec<SupersededIntegration>, ConnectionCommandError> {
     let mut integrations = Vec::new();
     for connection in list_agent_connections(runtime_home)? {
-        if !matches!(connection.host_kind.as_str(), "codex" | "claude_code")
+        if connection.host_kind != "codex"
             || !matches!(connection.intent.as_str(), "personal" | "shared")
             || connection.connection_internal_id == requested_connection_id
         {
@@ -1337,9 +1337,10 @@ mod migration_state_tests {
         };
         let stored = ensure_agent_connection(fixture.path(), current_registration.clone())?;
         let mut captured_before_concurrent_publish = stored.clone();
-        captured_before_concurrent_publish.managed_fingerprint = "fingerprint_legacy".to_owned();
+        captured_before_concurrent_publish.managed_fingerprint =
+            "fingerprint_preexisting".to_owned();
         let mut stale_desired = current_registration;
-        stale_desired.managed_fingerprint = "fingerprint_legacy".to_owned();
+        stale_desired.managed_fingerprint = "fingerprint_preexisting".to_owned();
 
         let selected = connection_before_host_apply(
             fixture.path(),
@@ -1348,7 +1349,7 @@ mod migration_state_tests {
             false,
         )?;
 
-        assert_eq!(selected.managed_fingerprint, "fingerprint_legacy");
+        assert_eq!(selected.managed_fingerprint, "fingerprint_preexisting");
         assert_eq!(
             agent_connection_record(fixture.path(), "connection_race")?
                 .expect("newer registry row remains")

@@ -14,6 +14,10 @@ use volicord_store::{
     StoreError,
 };
 
+use crate::cli::{
+    JsonArgs, ProjectArgs, ProjectCommand, ProjectForgetArgs, ProjectRenameArgs, ProjectUseArgs,
+};
+
 const PROJECT_METADATA_CREATED_BY: &str = "volicord_cli_project_command";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,10 +27,6 @@ pub enum ProjectCommandError {
 }
 
 impl ProjectCommandError {
-    fn usage(message: impl Into<String>) -> Self {
-        Self::Usage(message.into())
-    }
-
     fn runtime(message: impl Into<String>) -> Self {
         Self::Runtime(message.into())
     }
@@ -60,73 +60,44 @@ enum OutputFormat {
     Json,
 }
 
-#[derive(Debug, Default)]
-struct ProjectOptions {
-    json: bool,
-    repo: Option<PathBuf>,
-    positionals: Vec<String>,
-}
-
 pub fn run_project_command<F>(
-    args: &[String],
+    args: ProjectArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, ProjectCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Err(ProjectCommandError::usage(project_usage()));
-    };
-    if matches!(
-        args.get(1).map(String::as_str),
-        Some("-h" | "--help" | "help")
-    ) {
-        return Ok(project_usage());
+    match args.command {
+        ProjectCommand::Use(options) => {
+            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+            command_use(options, &runtime_home, current_dir)
+        }
+        ProjectCommand::Current(options) => {
+            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+            command_current(options, &runtime_home, current_dir)
+        }
+        ProjectCommand::List(options) => {
+            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+            command_list(options, &runtime_home)
+        }
+        ProjectCommand::Rename(options) => {
+            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+            command_rename(options, &runtime_home, current_dir)
+        }
+        ProjectCommand::Forget(options) => {
+            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+            command_forget(options, &runtime_home, current_dir)
+        }
     }
-
-    match subcommand {
-        "use" => {
-            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
-            command_use(&args[1..], &runtime_home, current_dir)
-        }
-        "current" => {
-            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
-            command_current(&args[1..], &runtime_home, current_dir)
-        }
-        "list" => {
-            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
-            command_list(&args[1..], &runtime_home)
-        }
-        "rename" => {
-            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
-            command_rename(&args[1..], &runtime_home, current_dir)
-        }
-        "forget" => {
-            let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
-            command_forget(&args[1..], &runtime_home, current_dir)
-        }
-        "-h" | "--help" | "help" => Ok(project_usage()),
-        other => Err(ProjectCommandError::usage(format!(
-            "unknown project command: {other}\n\n{}",
-            project_usage()
-        ))),
-    }
-}
-
-pub fn project_usage() -> String {
-    "volicord project use [PATH] [--json]\nvolicord project current [--json]\nvolicord project list [--json]\nvolicord project rename NAME [--repo PATH] [--json]\nvolicord project forget [PATH|NAME] [--json]\n"
-        .to_owned()
 }
 
 fn command_use(
-    args: &[String],
+    options: ProjectUseArgs,
     runtime_home: &Path,
     current_dir: &Path,
 ) -> Result<String, ProjectCommandError> {
-    let options = parse_project_options(args, false, 1)?;
-    let repo_root =
-        resolve_repository_root(current_dir, options.positionals.first().map(Path::new))?;
+    let repo_root = resolve_repository_root(current_dir, options.path.as_deref())?;
     let existing = project_record_by_repo_root(runtime_home, &repo_root)?;
     let created = existing.is_none();
     let project = match existing {
@@ -144,42 +115,39 @@ fn command_use(
         )?,
     };
 
-    render_use_output(output_format(&options), &project, created)
+    render_use_output(output_format(options.json), &project, created)
 }
 
 fn command_current(
-    args: &[String],
+    options: JsonArgs,
     runtime_home: &Path,
     current_dir: &Path,
 ) -> Result<String, ProjectCommandError> {
-    let options = parse_project_options(args, false, 0)?;
     let repo_root = resolve_repository_root(current_dir, None)?;
     let project = project_record_by_repo_root(runtime_home, &repo_root)?;
-    render_current_output(output_format(&options), project.as_ref(), &repo_root)
+    render_current_output(output_format(options.json), project.as_ref(), &repo_root)
 }
 
-fn command_list(args: &[String], runtime_home: &Path) -> Result<String, ProjectCommandError> {
-    let options = parse_project_options(args, false, 0)?;
+fn command_list(options: JsonArgs, runtime_home: &Path) -> Result<String, ProjectCommandError> {
     let projects = list_projects(runtime_home)?;
-    render_list_output(output_format(&options), &projects)
+    render_list_output(output_format(options.json), &projects)
 }
 
 fn command_rename(
-    args: &[String],
+    options: ProjectRenameArgs,
     runtime_home: &Path,
     current_dir: &Path,
 ) -> Result<String, ProjectCommandError> {
-    let options = parse_project_options(args, true, 1)?;
-    let name = options
-        .positionals
-        .first()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| ProjectCommandError::usage("missing project name"))?;
     let repo_root = resolve_repository_root(current_dir, options.repo.as_deref())?;
     let project = registered_project_for_repo(runtime_home, &repo_root)?;
-    let project = rename_project(runtime_home, &project.project_internal_id, name, None)?;
+    let project = rename_project(
+        runtime_home,
+        &project.project_internal_id,
+        &options.name,
+        None,
+    )?;
     render_project_action_output(
-        output_format(&options),
+        output_format(options.json),
         "renamed",
         "project renamed",
         &project,
@@ -187,12 +155,11 @@ fn command_rename(
 }
 
 fn command_forget(
-    args: &[String],
+    options: ProjectForgetArgs,
     runtime_home: &Path,
     current_dir: &Path,
 ) -> Result<String, ProjectCommandError> {
-    let options = parse_project_options(args, false, 1)?;
-    let project = match options.positionals.first() {
+    let project = match options.selector.as_ref() {
         Some(selector) if selector_is_path(selector, current_dir)? => {
             let repo_root = resolve_repository_root(current_dir, Some(Path::new(selector)))?;
             registered_project_for_repo(runtime_home, &repo_root)?
@@ -209,74 +176,11 @@ fn command_forget(
             project.repo_root.display()
         )));
     }
-    render_forget_output(output_format(&options), &project)
+    render_forget_output(output_format(options.json), &project)
 }
 
-fn parse_project_options(
-    args: &[String],
-    allow_repo: bool,
-    max_positionals: usize,
-) -> Result<ProjectOptions, ProjectCommandError> {
-    let mut options = ProjectOptions::default();
-    let mut index = 0;
-    while index < args.len() {
-        let token = &args[index];
-        if token == "-h" || token == "--help" || token == "help" {
-            return Err(ProjectCommandError::usage(project_usage()));
-        }
-        if let Some(value) = token.strip_prefix("--repo=") {
-            if !allow_repo {
-                return Err(ProjectCommandError::usage("unknown option: --repo"));
-            }
-            set_repo_option(&mut options, value)?;
-        } else if token == "--repo" {
-            if !allow_repo {
-                return Err(ProjectCommandError::usage("unknown option: --repo"));
-            }
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(ProjectCommandError::usage("missing value for --repo"));
-            };
-            set_repo_option(&mut options, value)?;
-        } else if token == "--json" {
-            if options.json {
-                return Err(ProjectCommandError::usage("duplicate option: --json"));
-            }
-            options.json = true;
-        } else if token.starts_with("--json=") {
-            return Err(ProjectCommandError::usage("--json does not accept a value"));
-        } else if token.starts_with("--") {
-            return Err(ProjectCommandError::usage(format!(
-                "unknown option: {token}"
-            )));
-        } else {
-            options.positionals.push(token.clone());
-        }
-        index += 1;
-    }
-
-    if options.positionals.len() > max_positionals {
-        return Err(ProjectCommandError::usage(format!(
-            "unexpected argument: {}",
-            options.positionals[max_positionals]
-        )));
-    }
-    Ok(options)
-}
-
-fn set_repo_option(options: &mut ProjectOptions, value: &str) -> Result<(), ProjectCommandError> {
-    if options.repo.is_some() {
-        return Err(ProjectCommandError::usage("duplicate option: --repo"));
-    }
-    if value.trim().is_empty() {
-        return Err(ProjectCommandError::usage("--repo must not be empty"));
-    }
-    options.repo = Some(PathBuf::from(value));
-    Ok(())
-}
-
-fn output_format(options: &ProjectOptions) -> OutputFormat {
-    if options.json {
+fn output_format(json: bool) -> OutputFormat {
+    if json {
         OutputFormat::Json
     } else {
         OutputFormat::Text

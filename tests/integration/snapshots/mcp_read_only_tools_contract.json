@@ -26,15 +26,19 @@
       "description": "Read the current Core status view without creating Core authority state.",
       "input_schema": {
         "definitions": [
-          "StatusDetailLevel"
+          "ContinuityCursor",
+          "ContinuityPageRequest",
+          "StatusDetailLevel",
+          "UtcTimestamp"
         ],
         "root_properties": [
+          "continuity_page",
           "detail",
           "project_selector",
           "task_id"
         ],
         "root_required": [],
-        "sha256": "sha256:08f4a479ec598824063010b750a2a046904e4d0c25897890b21e05bee34aa6af"
+        "sha256": "sha256:07410d24243642557fa708e7647f55064546acd4ec9eed244e74039d49d7c6a9"
       },
       "name": "volicord.status",
       "output_schema": {
@@ -59,10 +63,8 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "ControlSurfaceSummary",
-          "CoverageHostHookState",
-          "CoverageSessionWatcherState",
-          "CoverageSummary",
+          "ContinuityCursor",
+          "ContinuityPageInfo",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
@@ -77,17 +79,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -102,19 +98,16 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "ProjectContinuityKind",
+          "ProjectContinuityPage",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -147,7 +140,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2969f7a6a7d2a89a69ec66d11f4b3ee891485da4181b2d1a90d856a40c03ebb4"
+        "sha256": "sha256:ef8957b9c040c53f038134faaf9aa3a6aa2392173af76282c5463ea2d1e544bb"
       }
     },
     {
@@ -180,6 +173,7 @@
           "EffectKind",
           "ErrorCode",
           "EventRef",
+          "FailureCategory",
           "GetOperationResultResult",
           "GuaranteeClass",
           "GuaranteeDisclosure",
@@ -208,7 +202,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7814fe86fcc57b0ae2bb10065b991d8c42109cd6d71c35118ffc4e802c77ce36"
+        "sha256": "sha256:bc2dc42233e3290f0429858857525acca7e4c009bee01fd847b12686cb756931"
       }
     },
     {
@@ -254,10 +248,6 @@
           "CloseReason",
           "CloseState",
           "CloseTaskResult",
-          "ControlSurfaceSummary",
-          "CoverageHostHookState",
-          "CoverageSessionWatcherState",
-          "CoverageSummary",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
@@ -272,17 +262,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -300,16 +284,12 @@
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -340,7 +320,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:729ef2c0288da53f46a333297e0292fb9c5d4b5c86fff240d787d4ffd500c55d"
+        "sha256": "sha256:6a6cd52d81bc335c8679f85b6427f98ad0b73170a6ddd15631a088919e490174"
       }
     },
     {
@@ -366,13 +346,11 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
-          "McpToolIssueCode",
-          "SessionWatchCoverageBasis",
-          "SessionWatchStatus"
+          "McpToolIssueCode"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9c90a9208e784a6efad0391f3a03671f658a630ba9afbf8aa620536d32e5d018"
+        "sha256": "sha256:92bf033bc411c070f0ee25c4dbcf767c881e673646456663844ad176630d6dec"
       }
     }
   ]

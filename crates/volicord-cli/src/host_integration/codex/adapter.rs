@@ -5,21 +5,24 @@ use std::{
 };
 
 use toml_edit::Item;
+use volicord_types::FailureCategory;
 
+use crate::host_integration::process::{CommandRunner, ProductionCommandRunner};
 use crate::host_integration::verification::{
     HostExecutableStatus, HostGateStatus, ManagedConfigStatus, ProjectTrustStatus, Verification,
 };
 use crate::host_integration::{
-    claude_code::{CommandRunner, ProductionCommandRunner},
     config_edit::{read_text_snapshot, write_if_fresh},
-    format_supported_connection_intents, validate_managed_server_entry_schema,
-    validated_server_name, ConnectionIntent, HostAdapter, HostConfigError, HostConflict,
-    HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
-    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange, ProjectContext,
-    UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
+    validate_managed_server_entry_schema, validated_server_name, ConnectionIntent, HostAdapter,
+    HostConfigError, HostConflict, HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan,
+    HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange,
+    ProjectContext, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
 };
 
 use super::{
+    binding::{
+        managed_host_evidence_for_plan, CheckedInCodexReleaseCatalog, ManagedHostEvidenceError,
+    },
     capabilities,
     config::{document_from_snapshot, parse_document, upsert_server_table, validate_mcp_command},
     executable::{
@@ -39,12 +42,14 @@ pub struct CodexEnvironment {
     pub home: Option<PathBuf>,
     pub codex_home: Option<PathBuf>,
     pub path: Option<OsString>,
+    pub native_executable: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CodexAdapter<R = ProductionCommandRunner> {
     env: CodexEnvironment,
     runner: RefCell<R>,
+    release_catalog: CheckedInCodexReleaseCatalog,
 }
 
 impl CodexAdapter<ProductionCommandRunner> {
@@ -58,6 +63,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
         Self {
             env,
             runner: RefCell::new(runner),
+            release_catalog: CheckedInCodexReleaseCatalog,
         }
     }
 
@@ -86,7 +92,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
             runtime_home,
         );
         validate_managed_server_entry_schema(HostKind::Codex, scope, &entry)?;
-        let fingerprint = crate::host_integration::managed_fingerprint(
+        let fingerprint = crate::host_integration::managed_configuration_digest(
             HostKind::Codex,
             scope,
             &server_name,
@@ -166,7 +172,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
             request.runtime_home,
         );
         validate_managed_server_entry_schema(HostKind::Codex, request.scope, &entry)?;
-        let fingerprint = crate::host_integration::managed_fingerprint(
+        let fingerprint = crate::host_integration::managed_configuration_digest(
             HostKind::Codex,
             request.scope,
             &server_name,
@@ -204,13 +210,6 @@ impl<R: CommandRunner> CodexAdapter<R> {
                 })?;
                 Ok(project.repo_root.join(".codex").join("config.toml"))
             }
-            _ => Err(HostConfigError::Conflict(HostConflict::new(
-                HostConflictKind::InvalidScope,
-                format!(
-                    "Codex supports only these connection intents: {}",
-                    format_supported_connection_intents(HostKind::Codex)
-                ),
-            ))),
         }
     }
 
@@ -228,7 +227,12 @@ impl<R: CommandRunner> CodexAdapter<R> {
     }
 
     fn executable_availability(&self, config_target: &Path) -> CodexExecutableAvailability {
-        codex_executable_availability(&self.runner, self.env.path.as_ref(), config_target)
+        codex_executable_availability(
+            &self.runner,
+            self.env.path.as_ref(),
+            self.env.native_executable.as_deref(),
+            config_target,
+        )
     }
 }
 
@@ -308,16 +312,35 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             }
             return Ok(verification.merge_user_actions(&plan.user_actions));
         }
+        if !executable.is_available() {
+            let mut verification = verification_from_executable_unavailable(executable);
+            if let Some(overlay) = managed_evaluation.host_policy_overlay {
+                verification = verification.with_host_policy_overlay(overlay);
+            }
+            if plan.host_scope == HostScope::Project {
+                verification =
+                    verification.with_project_trust(project_trust_for_plan(&self.env, plan));
+            }
+            return Ok(verification.merge_user_actions(&plan.user_actions));
+        }
+        let _availability_evidence =
+            match managed_host_evidence_for_plan(plan, &executable, &self.release_catalog) {
+                Ok(evidence) => evidence,
+                Err(error) => {
+                    let mut verification =
+                        verification_from_managed_host_evidence_error(&error, host_version);
+                    if let Some(overlay) = managed_evaluation.host_policy_overlay {
+                        verification = verification.with_host_policy_overlay(overlay);
+                    }
+                    if plan.host_scope == HostScope::Project {
+                        verification = verification
+                            .with_project_trust(project_trust_for_plan(&self.env, plan));
+                    }
+                    return Ok(verification.merge_user_actions(&plan.user_actions));
+                }
+            };
         if plan.host_scope == HostScope::Project {
             let project_trust = project_trust_for_plan(&self.env, plan);
-            if !executable.is_available() {
-                let mut verification = verification_from_executable_unavailable(executable);
-                if let Some(overlay) = managed_evaluation.host_policy_overlay {
-                    verification = verification.with_host_policy_overlay(overlay);
-                }
-                verification = verification.with_project_trust(project_trust);
-                return Ok(verification.merge_user_actions(&plan.user_actions));
-            }
             let mut verification = match project_trust.status {
                 ProjectTrustStatus::Trusted => Verification::configured_ready(
                     "Codex managed configuration is present, Codex executable is available, and Codex project trust is trusted",
@@ -352,13 +375,6 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             }
             verification = verification.with_project_trust(project_trust);
             verification = verification.with_host_version(host_version);
-            return Ok(verification.merge_user_actions(&plan.user_actions));
-        }
-        if !executable.is_available() {
-            let mut verification = verification_from_executable_unavailable(executable);
-            if let Some(overlay) = managed_evaluation.host_policy_overlay {
-                verification = verification.with_host_policy_overlay(overlay);
-            }
             return Ok(verification.merge_user_actions(&plan.user_actions));
         }
         let mut verification = Verification::configured_ready(
@@ -411,6 +427,25 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
     }
 }
 
+fn verification_from_managed_host_evidence_error(
+    error: &ManagedHostEvidenceError,
+    host_version: Option<String>,
+) -> Verification {
+    let details = error.to_string();
+    let verification = match error.category() {
+        FailureCategory::UnsupportedContract => {
+            Verification::unsupported_contract(error.reason(), details)
+        }
+        FailureCategory::Unavailable => Verification::unavailable(details),
+        _ => Verification::rejected(details),
+    };
+    verification
+        .with_managed_config(ManagedConfigStatus::Match)
+        .with_host_executable(HostExecutableStatus::Available)
+        .with_host_version(host_version)
+        .with_failure(error.category(), error.reason())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct CodexExistingPlanRequest<'a> {
     pub connection_intent: ConnectionIntent,
@@ -428,13 +463,6 @@ fn codex_scope_for_intent(intent: ConnectionIntent) -> Result<HostScope, HostCon
     match intent {
         ConnectionIntent::Personal => Ok(HostScope::User),
         ConnectionIntent::Shared => Ok(HostScope::Project),
-        ConnectionIntent::Global => Err(HostConfigError::Conflict(HostConflict::new(
-            HostConflictKind::InvalidScope,
-            format!(
-                "Codex does not support global connection intent; supported connection intents: {}",
-                format_supported_connection_intents(HostKind::Codex)
-            ),
-        ))),
     }
 }
 

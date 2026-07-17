@@ -1,11 +1,13 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::{Path, PathBuf},
+    fs,
+    path::{Component, Path},
     process::{Command, Stdio},
 };
 
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use volicord_store::{
     bootstrap::ProjectRecord,
     core_pipeline::{CoreProjectStore, RunObservedChangesRecord},
@@ -16,23 +18,19 @@ use volicord_store::{
         promote_suspected_unrecorded_change, recorded_run_write_ticket_consumption,
         resolve_unrecorded_change, unrecorded_change, ExpectedWriteMatch, ExpectedWriteRecord,
         GuardEventRecord, UnrecordedChangeInsert, UnrecordedChangePromotion,
-        UnrecordedChangeResolution,
+        UnrecordedChangeResolution, POST_TOOL_CORRELATION_EVENT_LIMIT,
     },
-    session_watch::{
-        compare_watch_snapshots, latest_watch_baseline_for_session, snapshot_product_repository,
-        validated_watch_baseline_snapshot, SessionWatchStatus, WatchSnapshotOptions,
-        WATCH_SNAPSHOT_ALGORITHM,
-    },
+    StoreError,
 };
 use volicord_types::{
-    canonical_json_bare_sha256, GuardDecision, ProjectId, TaskId, UnrecordedChangeConfidence,
-    UnrecordedChangeResolutionBasis, WriteTicketValidityBasis,
+    canonical_git_object_id, canonical_json_bare_sha256, GuardDecision, ProjectId, TaskId,
+    UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis, WriteTicketValidityBasis,
 };
 
 use super::GuardPhaseResult;
 use crate::guard_command::{
     context::{guard_state_summary, ActiveWriteTicketSummary, GuardStateSummary},
-    envelope::{event_time_or_now, GuardEnvelope},
+    envelope::{event_time, GuardEnvelope},
     json_error,
     mutation::{assess_reported_path, PathAssessment, ToolClassification},
     render::{context_json, tool_observation_json},
@@ -51,12 +49,142 @@ struct PostToolCorrelation {
     unrecorded_changes: Vec<Value>,
     resolved_suspected_changes: Vec<Value>,
     recorded_change_suppressions: Vec<Value>,
+    recorded_change_suppression_outcome: SuppressionOutcome,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RecordedChangeSuppression {
-    remaining_paths: Vec<String>,
-    suppressions: Vec<Value>,
+enum SuppressionOutcome {
+    Applied {
+        remaining_paths: Vec<String>,
+        suppressions: Vec<Value>,
+    },
+    Unavailable {
+        remaining_paths: Vec<String>,
+        reason: SuppressionUnavailableReason,
+        scan_budget: usize,
+        observed_count: usize,
+    },
+}
+
+impl SuppressionOutcome {
+    const fn status(&self) -> &'static str {
+        match self {
+            Self::Applied { .. } => "applied",
+            Self::Unavailable { .. } => "unavailable",
+        }
+    }
+
+    fn remaining_paths(&self) -> &[String] {
+        match self {
+            Self::Applied {
+                remaining_paths, ..
+            }
+            | Self::Unavailable {
+                remaining_paths, ..
+            } => remaining_paths,
+        }
+    }
+
+    fn suppressions(&self) -> &[Value] {
+        match self {
+            Self::Applied { suppressions, .. } => suppressions,
+            Self::Unavailable { .. } => &[],
+        }
+    }
+
+    const fn is_unavailable(&self) -> bool {
+        matches!(self, Self::Unavailable { .. })
+    }
+
+    fn to_json(&self) -> Value {
+        match self {
+            Self::Applied {
+                remaining_paths,
+                suppressions,
+            } => json!({
+                "status": self.status(),
+                "remaining_paths": remaining_paths,
+                "suppressions": suppressions,
+            }),
+            Self::Unavailable {
+                remaining_paths,
+                reason,
+                scan_budget,
+                observed_count,
+            } => json!({
+                "status": self.status(),
+                "remaining_paths": remaining_paths,
+                "reason": reason.as_str(),
+                "scan_budget": scan_budget,
+                "observed_count": observed_count,
+            }),
+        }
+    }
+
+    fn diagnostic_json(&self) -> Option<Value> {
+        let Self::Unavailable {
+            reason,
+            scan_budget,
+            observed_count,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        Some(json!({
+            "code": reason.as_str(),
+            "severity": "warning",
+            "category": "recorded_change_suppression",
+            "scan_budget": scan_budget,
+            "observed_count": observed_count,
+            "message": "Recorded-change suppression was unavailable; every observed path was retained for normal Guard correlation."
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SuppressionUnavailableReason {
+    EventWindowExceeded,
+    StoreReadFailed,
+    StoredEventCorrupt,
+    CorrelationPayloadInvalid,
+    RunLookupFailed,
+    WriteTicketLookupFailed,
+    PathIdentityFailed,
+}
+
+impl SuppressionUnavailableReason {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::EventWindowExceeded => "event_window_exceeded",
+            Self::StoreReadFailed => "store_read_failed",
+            Self::StoredEventCorrupt => "stored_event_corrupt",
+            Self::CorrelationPayloadInvalid => "correlation_payload_invalid",
+            Self::RunLookupFailed => "run_lookup_failed",
+            Self::WriteTicketLookupFailed => "write_ticket_lookup_failed",
+            Self::PathIdentityFailed => "path_identity_failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SuppressionFailure {
+    reason: SuppressionUnavailableReason,
+    observed_count: usize,
+}
+
+impl SuppressionFailure {
+    const fn new(reason: SuppressionUnavailableReason) -> Self {
+        Self {
+            reason,
+            observed_count: 0,
+        }
+    }
+
+    const fn with_observed_count(mut self, observed_count: usize) -> Self {
+        self.observed_count = observed_count;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +219,9 @@ enum ExpectedWriteMatchOutcome {
     Ambiguous(Vec<String>),
 }
 
-const CORRELATED_PATH_IDENTITY_SCHEMA: &str = "volicord-correlated-path-identity-v1";
+const CORRELATED_PATH_IDENTITY_SCHEMA: &str = volicord_types::CORRELATED_PATH_IDENTITY_CONTRACT_ID;
+const CORRELATED_PATH_IDENTITY_ALGORITHM: &str = "sha256";
+const MAX_CORRELATED_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 pub(in crate::guard_command) fn handle_post_tool(
     runtime_home: &Path,
@@ -113,7 +243,17 @@ pub(in crate::guard_command) fn handle_post_tool(
         &observation,
         &observed_changes,
     )?;
-    let decision = if correlation.unrecorded_changes.is_empty() {
+    let suppression_unavailable = correlation
+        .recorded_change_suppression_outcome
+        .is_unavailable();
+    let suppression_outcome_json = correlation.recorded_change_suppression_outcome.to_json();
+    let suppression_diagnostics = correlation
+        .recorded_change_suppression_outcome
+        .diagnostic_json()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let suppression_reasons = suppression_diagnostics.clone();
+    let decision = if correlation.unrecorded_changes.is_empty() && !suppression_unavailable {
         GuardDecision::Allow
     } else {
         GuardDecision::Warn
@@ -129,13 +269,16 @@ pub(in crate::guard_command) fn handle_post_tool(
             "unrecorded_changes": correlation.unrecorded_changes,
             "resolved_suspected_changes": correlation.resolved_suspected_changes,
             "recorded_change_suppressions": correlation.recorded_change_suppressions,
+            "recorded_change_suppression_outcome": suppression_outcome_json,
+            "diagnostics": suppression_diagnostics,
+            "reasons": suppression_reasons,
             "change_observation": {
                 "source": observed_changes.source,
                 "confidence": observed_changes.observation_confidence,
                 "confirms_no_change": observed_changes.confirms_no_change
             },
             "context": context_json(&summary),
-            "enforcement_level": "cooperative_detective"
+            "enforcement_level": "cooperative_guard"
         }),
     ))
 }
@@ -155,30 +298,43 @@ fn record_post_tool_correlation(
             unrecorded_changes: Vec::new(),
             resolved_suspected_changes: Vec::new(),
             recorded_change_suppressions: Vec::new(),
+            recorded_change_suppression_outcome: SuppressionOutcome::Applied {
+                remaining_paths: Vec::new(),
+                suppressions: Vec::new(),
+            },
         });
     }
     let observed_paths = normalized_observed_paths(observation.changed_paths.iter());
-    let RecordedChangeSuppression {
-        remaining_paths: changed,
-        suppressions: recorded_change_suppressions,
-    } = if observed_changes.confidence == UnrecordedChangeConfidence::Confirmed
+    let recorded_change_suppression_outcome = if observed_paths.is_empty() {
+        SuppressionOutcome::Applied {
+            remaining_paths: Vec::new(),
+            suppressions: Vec::new(),
+        }
+    } else if observed_changes.confidence == UnrecordedChangeConfidence::Confirmed
         && matches!(
             observed_changes.source,
-            "session_watcher_diff" | "git_worktree_diff"
-        ) {
+            "structured_host_changed_paths" | "git_worktree_diff"
+        )
+    {
         suppress_previously_recorded_changes(
             runtime_home,
             project,
             envelope,
             observed_changes.source,
             &observed_paths,
-        )?
+        )
     } else {
-        RecordedChangeSuppression {
+        SuppressionOutcome::Unavailable {
             remaining_paths: observed_paths,
-            suppressions: Vec::new(),
+            reason: SuppressionUnavailableReason::CorrelationPayloadInvalid,
+            scan_budget: POST_TOOL_CORRELATION_EVENT_LIMIT,
+            observed_count: 0,
         }
     };
+    let changed = recorded_change_suppression_outcome
+        .remaining_paths()
+        .to_vec();
+    let recorded_change_suppressions = recorded_change_suppression_outcome.suppressions().to_vec();
     if changed.is_empty() {
         let confirms_no_new_change =
             observed_changes.confirms_no_change || !recorded_change_suppressions.is_empty();
@@ -217,6 +373,7 @@ fn record_post_tool_correlation(
             unrecorded_changes,
             resolved_suspected_changes,
             recorded_change_suppressions,
+            recorded_change_suppression_outcome,
         });
     }
     if observed_changes.confidence == UnrecordedChangeConfidence::Suspected {
@@ -238,6 +395,7 @@ fn record_post_tool_correlation(
             })?,
             resolved_suspected_changes: Vec::new(),
             recorded_change_suppressions,
+            recorded_change_suppression_outcome,
         });
     }
     let match_outcome =
@@ -258,7 +416,7 @@ fn record_post_tool_correlation(
                 &record.expected_write_id,
                 ExpectedWriteMatch {
                     matched_post_tool_guard_event_id: envelope.event_id.clone(),
-                    matched_paths_json: serde_json::to_string(&changed).map_err(json_error)?,
+                    matched_paths: changed.clone(),
                     matched_at: envelope.occurred_at.clone(),
                 },
             )?;
@@ -282,6 +440,7 @@ fn record_post_tool_correlation(
                 unrecorded_changes: Vec::new(),
                 resolved_suspected_changes,
                 recorded_change_suppressions,
+                recorded_change_suppression_outcome,
             })
         }
         ExpectedWriteMatchOutcome::AlreadyMatched(record) => {
@@ -313,6 +472,7 @@ fn record_post_tool_correlation(
                 unrecorded_changes: Vec::new(),
                 resolved_suspected_changes,
                 recorded_change_suppressions,
+                recorded_change_suppression_outcome,
             })
         }
         ExpectedWriteMatchOutcome::NoCandidates => {
@@ -346,6 +506,7 @@ fn record_post_tool_correlation(
                         unrecorded_changes: Vec::new(),
                         resolved_suspected_changes,
                         recorded_change_suppressions,
+                        recorded_change_suppression_outcome,
                     })
                 }
                 ActiveWriteTicketMatchOutcome::NoActiveTickets => Ok(PostToolCorrelation {
@@ -366,6 +527,7 @@ fn record_post_tool_correlation(
                     })?,
                     resolved_suspected_changes: Vec::new(),
                     recorded_change_suppressions,
+                    recorded_change_suppression_outcome,
                 }),
                 ActiveWriteTicketMatchOutcome::OutOfScope(ticket_ids) => Ok(PostToolCorrelation {
                     matched_expected_writes: Vec::new(),
@@ -385,6 +547,7 @@ fn record_post_tool_correlation(
                     })?,
                     resolved_suspected_changes: Vec::new(),
                     recorded_change_suppressions,
+                    recorded_change_suppression_outcome,
                 }),
                 ActiveWriteTicketMatchOutcome::Ambiguous(ticket_ids) => Ok(PostToolCorrelation {
                     matched_expected_writes: Vec::new(),
@@ -404,6 +567,7 @@ fn record_post_tool_correlation(
                     })?,
                     resolved_suspected_changes: Vec::new(),
                     recorded_change_suppressions,
+                    recorded_change_suppression_outcome,
                 }),
             }
         }
@@ -425,6 +589,7 @@ fn record_post_tool_correlation(
             })?,
             resolved_suspected_changes: Vec::new(),
             recorded_change_suppressions,
+            recorded_change_suppression_outcome,
         }),
         ExpectedWriteMatchOutcome::Ambiguous(candidate_ids) => Ok(PostToolCorrelation {
             matched_expected_writes: Vec::new(),
@@ -444,6 +609,7 @@ fn record_post_tool_correlation(
             })?,
             resolved_suspected_changes: Vec::new(),
             recorded_change_suppressions,
+            recorded_change_suppression_outcome,
         }),
     }
 }
@@ -514,7 +680,7 @@ fn record_unrecorded_changes(
                     context.correlation_status,
                     "out_of_scope_expected_write" | "out_of_scope_write_ticket"
                 ),
-                "detector_role": "detective",
+                "observer_role": "guard",
                 "does_not_prevent_writes": true,
                 "does_not_identify_actor": true
             })
@@ -631,34 +797,25 @@ fn correlated_path_identity(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    observation_source: &str,
+    _observation_source: &str,
     paths: &[String],
 ) -> Result<Option<Value>, GuardCommandError> {
     if paths.is_empty() {
         return Ok(None);
     }
-    let Some(baseline_identity) =
-        correlation_baseline_identity(runtime_home, project, envelope, observation_source)?
+    let Some(baseline_identity) = correlation_baseline_identity(runtime_home, project, envelope)?
     else {
         return Ok(None);
     };
-    let snapshot = snapshot_product_repository(
-        runtime_home,
-        &project.repo_root,
-        WatchSnapshotOptions {
-            watch_paths: paths.iter().map(PathBuf::from).collect(),
-            ..WatchSnapshotOptions::default()
-        },
-    )?;
-    if !watch_scan_is_complete(&snapshot.scan_summary) {
+    let Some(snapshot_digest) = exact_paths_digest(&project.repo_root, paths) else {
         return Ok(None);
-    }
+    };
     Ok(Some(json!({
         "schema": CORRELATED_PATH_IDENTITY_SCHEMA,
-        "algorithm": snapshot.algorithm,
+        "algorithm": CORRELATED_PATH_IDENTITY_ALGORITHM,
         "scope": "exact_observed_paths",
-        "observed_paths": snapshot.watched_paths,
-        "snapshot_digest": snapshot.digest,
+        "observed_paths": paths,
+        "snapshot_digest": snapshot_digest,
         "baseline_identity": baseline_identity
     })))
 }
@@ -667,39 +824,12 @@ fn correlation_baseline_identity(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    observation_source: &str,
 ) -> Result<Option<Value>, GuardCommandError> {
     let Some(session_id) = envelope.session_id.as_deref() else {
         return Ok(None);
     };
-    let watcher_requested = observation_source == "session_watcher_diff";
-    let structured_source = observation_source == "structured_host_changed_paths";
-    if watcher_requested || structured_source {
-        if let Some(baseline) =
-            latest_watch_baseline_for_session(runtime_home, &project.project_id, session_id)?
-                .filter(|baseline| {
-                    baseline.connection_internal_id == envelope.connection_id
-                        && baseline.status == SessionWatchStatus::Active.as_str()
-                })
-        {
-            return Ok(Some(json!({
-                "kind": "session_watcher",
-                "watch_baseline_id": baseline.watch_baseline_id,
-                "snapshot_algorithm": baseline.snapshot_algorithm,
-                "snapshot_digest": baseline.snapshot_digest,
-                "created_at": baseline.created_at
-            })));
-        }
-        if watcher_requested {
-            return Ok(None);
-        }
-    } else if observation_source != "git_worktree_diff" {
-        return Ok(None);
-    }
-    let Some(session) =
-        agent_session(runtime_home, &project.project_id, session_id)?.filter(|session| {
-            session.connection_internal_id == envelope.connection_id && session.ended_at.is_none()
-        })
+    let Some(session) = agent_session(runtime_home, &project.project_id, session_id)?
+        .filter(|session| session.connection_internal_id == envelope.connection_id)
     else {
         return Ok(None);
     };
@@ -715,6 +845,60 @@ fn correlation_baseline_identity(
     })))
 }
 
+fn exact_paths_digest(repo_root: &Path, paths: &[String]) -> Option<String> {
+    let mut entries = Vec::with_capacity(paths.len());
+    for path in paths {
+        let relative = Path::new(path);
+        if relative.is_absolute()
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            return None;
+        }
+        let absolute = repo_root.join(relative);
+        let metadata = match fs::symlink_metadata(&absolute) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                entries.push(json!({"path": path, "kind": "missing"}));
+                continue;
+            }
+            Err(_) => return None,
+        };
+        if metadata.file_type().is_symlink() {
+            let target = fs::read_link(&absolute).ok()?;
+            entries.push(json!({
+                "path": path,
+                "kind": "symlink",
+                "target": target.to_string_lossy()
+            }));
+        } else if metadata.is_file() {
+            if metadata.len() > MAX_CORRELATED_FILE_BYTES {
+                return None;
+            }
+            let bytes = fs::read(&absolute).ok()?;
+            let mut hasher = Sha256::new();
+            hasher.update(&bytes);
+            entries.push(json!({
+                "path": path,
+                "kind": "file",
+                "size": metadata.len(),
+                "sha256": format!("{:x}", hasher.finalize())
+            }));
+        } else if metadata.is_dir() {
+            entries.push(json!({"path": path, "kind": "directory"}));
+        } else {
+            return None;
+        }
+    }
+    Some(
+        canonical_json_bare_sha256(&entries)
+            .expect("filesystem identity entries always have a canonical JSON encoding"),
+    )
+}
 fn git_head_oid(repo_root: &Path) -> Option<String> {
     let output = Command::new("git")
         .arg("--no-optional-locks")
@@ -730,10 +914,7 @@ fn git_head_oid(repo_root: &Path) -> Option<String> {
         return None;
     }
     let value = std::str::from_utf8(&output.stdout).ok()?.trim();
-    if !(40..=64).contains(&value.len()) || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return None;
-    }
-    Some(value.to_ascii_lowercase())
+    canonical_git_object_id(value).ok()
 }
 
 fn suppress_previously_recorded_changes(
@@ -742,18 +923,22 @@ fn suppress_previously_recorded_changes(
     envelope: &GuardEnvelope,
     observation_source: &str,
     observed_paths: &[String],
-) -> Result<RecordedChangeSuppression, GuardCommandError> {
-    Ok(try_suppress_previously_recorded_changes(
+) -> SuppressionOutcome {
+    match try_suppress_previously_recorded_changes(
         runtime_home,
         project,
         envelope,
         observation_source,
         observed_paths,
-    )
-    .unwrap_or_else(|_| RecordedChangeSuppression {
-        remaining_paths: observed_paths.to_vec(),
-        suppressions: Vec::new(),
-    }))
+    ) {
+        Ok(outcome) => outcome,
+        Err(failure) => SuppressionOutcome::Unavailable {
+            remaining_paths: observed_paths.to_vec(),
+            reason: failure.reason,
+            scan_budget: POST_TOOL_CORRELATION_EVENT_LIMIT,
+            observed_count: failure.observed_count,
+        },
+    }
 }
 
 fn try_suppress_previously_recorded_changes(
@@ -762,45 +947,37 @@ fn try_suppress_previously_recorded_changes(
     envelope: &GuardEnvelope,
     observation_source: &str,
     observed_paths: &[String],
-) -> Result<RecordedChangeSuppression, GuardCommandError> {
-    let Some(session_id) = envelope.session_id.as_deref() else {
-        return Ok(RecordedChangeSuppression {
-            remaining_paths: observed_paths.to_vec(),
-            suppressions: Vec::new(),
-        });
-    };
-    let Some(baseline_identity) =
-        correlation_baseline_identity(runtime_home, project, envelope, observation_source)?
-    else {
-        return Ok(RecordedChangeSuppression {
-            remaining_paths: observed_paths.to_vec(),
-            suppressions: Vec::new(),
-        });
-    };
-    let Some(not_before) = baseline_identity
+) -> Result<SuppressionOutcome, SuppressionFailure> {
+    let session_id = envelope.session_id.as_deref().ok_or_else(|| {
+        SuppressionFailure::new(SuppressionUnavailableReason::CorrelationPayloadInvalid)
+    })?;
+    let baseline_identity = correlation_baseline_identity(runtime_home, project, envelope)
+        .map_err(|_| SuppressionFailure::new(SuppressionUnavailableReason::StoreReadFailed))?
+        .ok_or_else(|| SuppressionFailure::new(SuppressionUnavailableReason::PathIdentityFailed))?;
+    let not_before = baseline_identity
         .get("created_at")
         .or_else(|| baseline_identity.get("session_started_at"))
         .and_then(Value::as_str)
-    else {
-        return Ok(RecordedChangeSuppression {
-            remaining_paths: observed_paths.to_vec(),
-            suppressions: Vec::new(),
-        });
-    };
-    let Some(current_at) = parsed_timestamp(&envelope.occurred_at) else {
-        return Ok(RecordedChangeSuppression {
-            remaining_paths: observed_paths.to_vec(),
-            suppressions: Vec::new(),
-        });
-    };
+        .ok_or_else(|| {
+            SuppressionFailure::new(SuppressionUnavailableReason::CorrelationPayloadInvalid)
+        })?;
+    let current_at = parsed_timestamp(&envelope.occurred_at).ok_or_else(|| {
+        SuppressionFailure::new(SuppressionUnavailableReason::CorrelationPayloadInvalid)
+    })?;
     let events = post_tool_guard_events_for_session_since(
         runtime_home,
         &project.project_id,
         session_id,
         &envelope.connection_id,
         not_before,
-    )?;
-    let store = CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id))?;
+    )
+    .map_err(correlation_event_query_failure)?;
+    let observed_count = events.len();
+    let store = CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id))
+        .map_err(|_| {
+            SuppressionFailure::new(SuppressionUnavailableReason::StoreReadFailed)
+                .with_observed_count(observed_count)
+        })?;
     let observed_set = observed_paths.iter().cloned().collect::<BTreeSet<_>>();
     let mut suppressed = BTreeSet::new();
     let mut suppressions = Vec::new();
@@ -810,24 +987,52 @@ fn try_suppress_previously_recorded_changes(
         if event.guard_event_id == envelope.event_id {
             continue;
         }
-        let Some(event_at) = parsed_timestamp(&event.occurred_at) else {
-            continue;
-        };
-        if event_at > current_at
-            || event.decision != GuardDecision::Allow.as_str()
-            || !guard_event_source_binding_is_valid(&event)
-        {
+        let event_at = parsed_timestamp(&event.occurred_at).ok_or_else(|| {
+            SuppressionFailure::new(SuppressionUnavailableReason::StoredEventCorrupt)
+                .with_observed_count(observed_count)
+        })?;
+        if event_at > current_at {
             continue;
         }
-        let Ok(result) = serde_json::from_str::<Value>(&event.result_json) else {
+        match event.decision.as_str() {
+            "allow" => {}
+            "warn" | "deny" | "inject_context" => continue,
+            _ => {
+                return Err(SuppressionFailure::new(
+                    SuppressionUnavailableReason::StoredEventCorrupt,
+                )
+                .with_observed_count(observed_count))
+            }
+        }
+        if !guard_event_source_binding_is_valid(&event) {
+            return Err(
+                SuppressionFailure::new(SuppressionUnavailableReason::StoredEventCorrupt)
+                    .with_observed_count(observed_count),
+            );
+        }
+        let result = serde_json::from_str::<Value>(&event.result_json).map_err(|_| {
+            SuppressionFailure::new(SuppressionUnavailableReason::StoredEventCorrupt)
+                .with_observed_count(observed_count)
+        })?;
+        if !result.is_object() {
+            return Err(
+                SuppressionFailure::new(SuppressionUnavailableReason::StoredEventCorrupt)
+                    .with_observed_count(observed_count),
+            );
+        }
+        let entries = durable_correlation_entries(&result).map_err(|_| {
+            SuppressionFailure::new(SuppressionUnavailableReason::CorrelationPayloadInvalid)
+                .with_observed_count(observed_count)
+        })?;
+        if entries.is_empty() {
             continue;
-        };
-        for entry in durable_correlation_entries(&result) {
-            let Some((paths, ticket_ids, expected_identity)) =
-                durable_correlation_checkpoint(entry)
-            else {
-                continue;
-            };
+        }
+        for entry in entries {
+            let (paths, ticket_ids, expected_identity) = durable_correlation_checkpoint(entry)
+                .ok_or_else(|| {
+                    SuppressionFailure::new(SuppressionUnavailableReason::CorrelationPayloadInvalid)
+                        .with_observed_count(observed_count)
+                })?;
             let path_set = paths.iter().cloned().collect::<BTreeSet<_>>();
             if !path_set.is_subset(&observed_set) {
                 continue;
@@ -840,7 +1045,8 @@ fn try_suppress_previously_recorded_changes(
                 &path_set,
                 event_at,
                 &mut run_observations,
-            )?
+            )
+            .map_err(|failure| failure.with_observed_count(observed_count))?
             else {
                 continue;
             };
@@ -853,10 +1059,20 @@ fn try_suppress_previously_recorded_changes(
                     envelope,
                     observation_source,
                     &paths,
-                )?;
+                )
+                .map_err(|_| {
+                    SuppressionFailure::new(SuppressionUnavailableReason::PathIdentityFailed)
+                        .with_observed_count(observed_count)
+                })?;
                 current_identities.insert(paths.clone(), identity.clone());
                 identity
             };
+            if current_identity.is_none() {
+                return Err(SuppressionFailure::new(
+                    SuppressionUnavailableReason::PathIdentityFailed,
+                )
+                .with_observed_count(observed_count));
+            }
             if current_identity.as_ref() != Some(expected_identity) {
                 continue;
             }
@@ -871,18 +1087,34 @@ fn try_suppress_previously_recorded_changes(
             }));
         }
     }
-    Ok(RecordedChangeSuppression {
+    Ok(SuppressionOutcome::Applied {
         remaining_paths: observed_set.difference(&suppressed).cloned().collect(),
         suppressions,
     })
 }
 
-fn durable_correlation_entries(result: &Value) -> Vec<&Value> {
-    ["matched_expected_writes", "ticket_backed_observations"]
-        .into_iter()
-        .filter_map(|field| result.get(field).and_then(Value::as_array))
-        .flatten()
-        .collect()
+fn correlation_event_query_failure(error: StoreError) -> SuppressionFailure {
+    match error {
+        StoreError::InvalidInput { detail }
+            if detail.contains("post-tool correlation window exceeds") =>
+        {
+            SuppressionFailure::new(SuppressionUnavailableReason::EventWindowExceeded)
+                .with_observed_count(POST_TOOL_CORRELATION_EVENT_LIMIT + 1)
+        }
+        _ => SuppressionFailure::new(SuppressionUnavailableReason::StoreReadFailed),
+    }
+}
+
+fn durable_correlation_entries(result: &Value) -> Result<Vec<&Value>, ()> {
+    let mut entries = Vec::new();
+    for field in ["matched_expected_writes", "ticket_backed_observations"] {
+        match result.get(field) {
+            Some(Value::Array(values)) => entries.extend(values),
+            Some(_) => return Err(()),
+            None => {}
+        }
+    }
+    Ok(entries)
 }
 
 fn guard_event_source_binding_is_valid(event: &GuardEventRecord) -> bool {
@@ -932,7 +1164,7 @@ fn durable_correlation_checkpoint(entry: &Value) -> Option<(Vec<String>, Vec<Str
     if identity_object.get("schema").and_then(Value::as_str)
         != Some(CORRELATED_PATH_IDENTITY_SCHEMA)
         || identity_object.get("algorithm").and_then(Value::as_str)
-            != Some(WATCH_SNAPSHOT_ALGORITHM)
+            != Some(CORRELATED_PATH_IDENTITY_ALGORITHM)
         || identity_object.get("scope").and_then(Value::as_str) != Some("exact_observed_paths")
         || strict_nonempty_string_set(identity_object.get("observed_paths")?)? != paths
         || !identity_object
@@ -956,9 +1188,12 @@ fn committed_run_for_correlation(
     paths: &BTreeSet<String>,
     correlated_at: DateTime<Utc>,
     run_observations: &mut BTreeMap<String, Vec<RunObservedChangesRecord>>,
-) -> Result<Option<(String, String)>, GuardCommandError> {
+) -> Result<Option<(String, String)>, SuppressionFailure> {
     for ticket_id in ticket_ids {
-        let Some(ticket) = store.write_ticket_record(ticket_id)? else {
+        let Some(ticket) = store.write_ticket_record(ticket_id).map_err(|_| {
+            SuppressionFailure::new(SuppressionUnavailableReason::WriteTicketLookupFailed)
+        })?
+        else {
             continue;
         };
         let (Some(run_id), Some(consumed_at)) = (
@@ -974,22 +1209,30 @@ fn committed_run_for_correlation(
         {
             continue;
         }
-        let Some(run) = store.run_record(run_id)? else {
+        let Some(run) = store
+            .run_record(run_id)
+            .map_err(|_| SuppressionFailure::new(SuppressionUnavailableReason::RunLookupFailed))?
+        else {
             continue;
         };
         let Some(run_ticket_effect) =
-            recorded_run_write_ticket_consumption(runtime_home, &project.project_id, run_id)?
+            recorded_run_write_ticket_consumption(runtime_home, &project.project_id, run_id)
+                .map_err(|_| {
+                    SuppressionFailure::new(SuppressionUnavailableReason::RunLookupFailed)
+                })?
         else {
             continue;
         };
         let validity_basis: WriteTicketValidityBasis =
-            serde_json::from_str(&ticket.validity_basis_json).map_err(json_error)?;
+            serde_json::from_str(&ticket.validity_basis_json).map_err(|_| {
+                SuppressionFailure::new(SuppressionUnavailableReason::WriteTicketLookupFailed)
+            })?;
         if run.status != "recorded"
             || run.task_id != ticket.task_id
-            || run.change_unit_id != ticket.change_unit_id
+            || run.change_unit_id.as_deref() != Some(ticket.change_unit_id.as_str())
             || run_ticket_effect.write_ticket_id != ticket.write_ticket_id
             || validity_basis.task_id.as_str() != ticket.task_id
-            || Some(validity_basis.change_unit_id.as_str()) != ticket.change_unit_id.as_deref()
+            || validity_basis.change_unit_id.as_str() != ticket.change_unit_id
             || validity_basis
                 .baseline_ref
                 .as_ref()
@@ -1002,7 +1245,11 @@ fn committed_run_for_correlation(
         if !run_observations.contains_key(&ticket.task_id) {
             run_observations.insert(
                 ticket.task_id.clone(),
-                store.run_observed_changes_for_task(&TaskId::new(&ticket.task_id))?,
+                store
+                    .run_observed_changes_for_task(&TaskId::new(&ticket.task_id))
+                    .map_err(|_| {
+                        SuppressionFailure::new(SuppressionUnavailableReason::RunLookupFailed)
+                    })?,
             );
         }
         let observations = run_observations
@@ -1063,9 +1310,9 @@ fn parsed_timestamp(value: &str) -> Option<DateTime<Utc>> {
 }
 
 fn observed_changes(
-    runtime_home: &Path,
+    _runtime_home: &Path,
     project: &ProjectRecord,
-    envelope: &GuardEnvelope,
+    _envelope: &GuardEnvelope,
     observation: &ToolObservation,
 ) -> Result<ObservedChanges, GuardCommandError> {
     if observation.changed_paths_reported {
@@ -1075,16 +1322,6 @@ fn observed_changes(
             observation_confidence: "confirmed",
             source: "structured_host_changed_paths",
             confirms_no_change: observation.changed_paths.is_empty(),
-        });
-    }
-    if let Some(paths) = session_watcher_changed_paths(runtime_home, project, envelope)? {
-        let confirms_no_change = paths.is_empty();
-        return Ok(ObservedChanges {
-            paths,
-            confidence: UnrecordedChangeConfidence::Confirmed,
-            observation_confidence: "confirmed",
-            source: "session_watcher_diff",
-            confirms_no_change,
         });
     }
     if let Some(paths) = git_worktree_changed_paths(&project.repo_root) {
@@ -1108,63 +1345,6 @@ fn observed_changes(
         source: "heuristic_event",
         confirms_no_change: false,
     })
-}
-
-fn session_watcher_changed_paths(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-) -> Result<Option<Vec<PathAssessment>>, GuardCommandError> {
-    let Some(session_id) = envelope.session_id.as_deref() else {
-        return Ok(None);
-    };
-    let Some(baseline) =
-        latest_watch_baseline_for_session(runtime_home, &project.project_id, session_id)?
-    else {
-        return Ok(None);
-    };
-    if baseline.status != SessionWatchStatus::Active.as_str()
-        || baseline.connection_internal_id != envelope.connection_id
-    {
-        return Ok(None);
-    }
-    let baseline_snapshot = validated_watch_baseline_snapshot(&baseline)?;
-    let options = WatchSnapshotOptions {
-        watch_paths: baseline_snapshot
-            .watched_paths
-            .iter()
-            .map(PathBuf::from)
-            .collect(),
-        excluded_paths: baseline_snapshot
-            .excluded_paths
-            .iter()
-            .map(PathBuf::from)
-            .collect(),
-        ..WatchSnapshotOptions::default()
-    };
-    let current = snapshot_product_repository(runtime_home, &project.repo_root, options)?;
-    let diff = compare_watch_snapshots(&baseline_snapshot, &current);
-    if diff.changes.is_empty()
-        && (!watch_scan_is_complete(&baseline_snapshot.scan_summary)
-            || !watch_scan_is_complete(&current.scan_summary))
-    {
-        return Ok(None);
-    }
-    Ok(Some(
-        diff.changes
-            .iter()
-            .map(|change| assess_reported_path(&project.repo_root, &change.path))
-            .collect(),
-    ))
-}
-
-fn watch_scan_is_complete(summary: &volicord_store::session_watch::WatchScanSummary) -> bool {
-    summary.files_skipped == 0
-        && summary.unreadable_paths_count == 0
-        && summary.degraded_reasons.is_empty()
-        && summary.degraded_reason_counts.is_empty()
-        && summary.skipped_paths_sample.is_empty()
-        && !summary.skipped_paths_truncated
 }
 
 fn git_worktree_changed_paths(repo_root: &Path) -> Option<Vec<PathAssessment>> {
@@ -1212,13 +1392,25 @@ fn git_worktree_changed_paths(repo_root: &Path) -> Option<Vec<PathAssessment>> {
             }
         }
     }
-    let exclusions = volicord_store::session_watch::default_watch_excluded_paths();
+    const EXCLUSIONS: &[&str] = &[
+        ".git",
+        ".hg",
+        ".svn",
+        ".jj",
+        ".volicord",
+        "target",
+        "node_modules",
+        "dist",
+        "build",
+        "coverage",
+        "vendor",
+    ];
     Some(
         paths
             .into_iter()
             .filter(|path| {
-                !exclusions.iter().any(|excluded| {
-                    path == excluded
+                !EXCLUSIONS.iter().any(|excluded| {
+                    path == *excluded
                         || path
                             .strip_prefix(excluded)
                             .is_some_and(|suffix| suffix.starts_with('/'))
@@ -1375,7 +1567,7 @@ fn match_expected_write(
     }
 
     let host_invocation_id = host_invocation_id_from_observation(observation);
-    let observed_at = event_time_or_now(&envelope.occurred_at);
+    let observed_at = event_time(&envelope.occurred_at)?;
     let pending =
         list_pending_expected_writes(runtime_home, &project.project_id, &envelope.connection_id)?;
     let time_scoped = pending
@@ -1475,7 +1667,7 @@ fn expected_paths_cover_observed(
     if record.path_policy != "exact_paths" {
         return false;
     }
-    let expected = json_string_set(&record.expected_paths_json);
+    let expected = record.expected_paths.iter().cloned().collect();
     !changed_set.is_empty() && changed_set.is_subset(&expected)
 }
 
@@ -1484,18 +1676,11 @@ fn matched_paths_cover_observed(
     changed_set: &BTreeSet<String>,
 ) -> bool {
     let expected = record
-        .matched_paths_json
-        .as_deref()
-        .map(json_string_set)
+        .matched_paths
+        .as_ref()
+        .map(|paths| paths.iter().cloned().collect())
         .unwrap_or_default();
     !changed_set.is_empty() && changed_set.is_subset(&expected)
-}
-
-fn json_string_set(text: &str) -> BTreeSet<String> {
-    serde_json::from_str::<Vec<String>>(text)
-        .unwrap_or_default()
-        .into_iter()
-        .collect()
 }
 
 fn matched_expected_write_json(
@@ -1513,8 +1698,7 @@ fn matched_expected_write_json(
         "task_id": record.task_id,
         "change_unit_id": record.change_unit_id,
         "ticket_backed": true,
-        "write_ticket_ids": serde_json::from_str::<Value>(&record.write_ticket_ids_json)
-            .unwrap_or_else(|_| json!([])),
+        "write_ticket_ids": record.write_ticket_ids,
         "repository_identity": repository_identity
     })
 }
@@ -1536,4 +1720,84 @@ fn ticket_backed_observation_json(
         "idle_expires_at": ticket.idle_expires_at.clone(),
         "repository_identity": repository_identity
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_suppression_retains_every_observed_path_and_machine_diagnostic() {
+        let outcome = SuppressionOutcome::Unavailable {
+            remaining_paths: vec!["src/a.rs".to_owned(), "src/b.rs".to_owned()],
+            reason: SuppressionUnavailableReason::StoredEventCorrupt,
+            scan_budget: POST_TOOL_CORRELATION_EVENT_LIMIT,
+            observed_count: 7,
+        };
+
+        assert_eq!(
+            outcome.remaining_paths(),
+            ["src/a.rs".to_owned(), "src/b.rs".to_owned()]
+        );
+        assert!(outcome.suppressions().is_empty());
+        assert!(outcome.is_unavailable());
+        assert_eq!(outcome.to_json()["status"], "unavailable");
+        assert_eq!(outcome.to_json()["reason"], "stored_event_corrupt");
+        assert_eq!(
+            outcome.to_json()["scan_budget"],
+            POST_TOOL_CORRELATION_EVENT_LIMIT
+        );
+        assert_eq!(outcome.to_json()["observed_count"], 7);
+        assert_eq!(
+            outcome
+                .diagnostic_json()
+                .expect("unavailable has diagnostic")["severity"],
+            "warning"
+        );
+    }
+
+    #[test]
+    fn applied_suppression_projects_remaining_paths_and_suppressions() {
+        let outcome = SuppressionOutcome::Applied {
+            remaining_paths: vec!["src/remaining.rs".to_owned()],
+            suppressions: vec![json!({"status": "recorded_identity_unchanged"})],
+        };
+
+        assert_eq!(outcome.status(), "applied");
+        assert!(!outcome.is_unavailable());
+        assert_eq!(outcome.to_json()["remaining_paths"][0], "src/remaining.rs");
+        assert_eq!(
+            outcome.to_json()["suppressions"][0]["status"],
+            "recorded_identity_unchanged"
+        );
+        assert!(outcome.diagnostic_json().is_none());
+    }
+
+    #[test]
+    fn bounded_event_overflow_has_stable_reason_budget_and_probe_count() {
+        let failure = correlation_event_query_failure(StoreError::InvalidInput {
+            detail: format!(
+                "post-tool correlation window exceeds the bounded event limit of {}",
+                POST_TOOL_CORRELATION_EVENT_LIMIT
+            ),
+        });
+
+        assert_eq!(
+            failure.reason,
+            SuppressionUnavailableReason::EventWindowExceeded
+        );
+        assert_eq!(
+            failure.observed_count,
+            POST_TOOL_CORRELATION_EVENT_LIMIT + 1
+        );
+    }
+
+    #[test]
+    fn malformed_correlation_arrays_are_not_silently_ignored() {
+        assert!(durable_correlation_entries(&json!({
+            "matched_expected_writes": {},
+            "ticket_backed_observations": []
+        }))
+        .is_err());
+    }
 }

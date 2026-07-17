@@ -1,6 +1,0 @@
-[mcp_servers.volicord]
-command = "volicord"
-args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
-env_vars = ["VOLICORD_HOME"]
-enabled = true
-startup_timeout_sec = 10

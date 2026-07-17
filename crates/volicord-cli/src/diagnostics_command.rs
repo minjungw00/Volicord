@@ -1,20 +1,19 @@
-use std::{
-    fmt,
-    path::{Path, PathBuf},
-};
+use std::{fmt, path::Path};
 
 use serde::Serialize;
-use serde_json::json;
 use volicord_store::{
     bootstrap::project_record_by_repo_root_read_only,
     diagnostics::{
-        read_diagnostic_session, read_workflow_metric_aggregates, DiagnosticSessionAggregate,
-        WorkflowMetricAggregateRow, DIAGNOSTICS_DB_FILE, DIAGNOSTICS_MAX_EVENTS_PER_SESSION,
-        DIAGNOSTICS_MAX_SESSIONS, DIAGNOSTICS_RETENTION_DAYS, DIAGNOSTICS_SCHEMA_VERSION,
+        current_diagnostics_storage_manifest, read_diagnostic_session,
+        read_workflow_metric_aggregates, DiagnosticSessionAggregate, WorkflowMetricAggregateRow,
+        DIAGNOSTICS_DB_FILE, DIAGNOSTICS_MAX_EVENTS_PER_SESSION, DIAGNOSTICS_MAX_SESSIONS,
+        DIAGNOSTICS_RETENTION_DAYS,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
+
+use crate::cli::{DiagnosticsArgs, DiagnosticsCommand, DiagnosticsWorkflowMetricsArgs};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticsCommandError {
@@ -44,78 +43,44 @@ impl From<RuntimeHomeResolutionError> for DiagnosticsCommandError {
     }
 }
 
-pub fn diagnostics_usage() -> String {
-    concat!(
-        "volicord diagnostics session [--session ID] [--json]\n",
-        "volicord diagnostics workflow-metrics --repo PATH --json\n",
-        "volicord diagnostics --help\n"
-    )
-    .to_owned()
-}
-
 /// Renders bounded local session diagnostics without opening an authority database.
 pub fn run_diagnostics_command<F>(
-    args: &[String],
+    args: DiagnosticsArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, DiagnosticsCommandError>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    match args.first().map(String::as_str) {
-        None | Some("-h" | "--help" | "help") => {
-            if args.len() <= 1 {
-                Ok(diagnostics_usage())
-            } else {
-                Err(DiagnosticsCommandError::Usage(format!(
-                    "unexpected argument: {}\n\n{}",
-                    args[1],
-                    diagnostics_usage()
-                )))
-            }
-        }
-        Some("session") => {
-            let options = parse_session_options(&args[1..])?;
+    match args.command {
+        DiagnosticsCommand::Session(options) => {
             let runtime_home = resolve_runtime_home(env_var, current_dir)?;
-            let aggregate = read_diagnostic_session(&runtime_home, options.session_id.as_deref())?;
+            let aggregate = read_diagnostic_session(&runtime_home, options.session.as_deref())?;
             if options.json {
                 render_json(aggregate)
             } else {
-                Ok(render_text(aggregate))
+                render_text(aggregate)
             }
         }
-        Some("workflow-metrics") => run_workflow_metrics(&args[1..], env_var, current_dir),
-        Some(other) => Err(DiagnosticsCommandError::Usage(format!(
-            "unknown diagnostics command: {other}\n\n{}",
-            diagnostics_usage()
-        ))),
+        DiagnosticsCommand::WorkflowMetrics(options) => {
+            run_workflow_metrics(options, env_var, current_dir)
+        }
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct WorkflowMetricsOptions {
-    repo: Option<PathBuf>,
-    json: bool,
-}
-
 fn run_workflow_metrics<F>(
-    args: &[String],
+    options: DiagnosticsWorkflowMetricsArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, DiagnosticsCommandError>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    let options = parse_workflow_metrics_options(args)?;
-    let repo = options
-        .repo
-        .as_deref()
-        .expect("workflow metrics parser requires --repo");
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
-    let repo_root = if repo.is_absolute() {
-        repo.to_path_buf()
+    let repo_root = if options.repo.is_absolute() {
+        options.repo
     } else {
-        current_dir.join(repo)
+        current_dir.join(options.repo)
     };
     let project =
         project_record_by_repo_root_read_only(&runtime_home, &repo_root)?.ok_or_else(|| {
@@ -125,114 +90,13 @@ where
             ))
         })?;
     let rows = read_workflow_metric_aggregates(&runtime_home, &project.project_id)?;
-    serde_json::to_string_pretty(&workflow_metrics_report(rows))
+    serde_json::to_string_pretty(&workflow_metrics_report(rows)?)
         .map(|output| format!("{output}\n"))
         .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
 }
 
-fn parse_workflow_metrics_options(
-    args: &[String],
-) -> Result<WorkflowMetricsOptions, DiagnosticsCommandError> {
-    let mut options = WorkflowMetricsOptions::default();
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--json" => {
-                if options.json {
-                    return Err(usage_error("--json was supplied more than once"));
-                }
-                options.json = true;
-                index += 1;
-            }
-            "--repo" => {
-                if options.repo.is_some() {
-                    return Err(usage_error("--repo was supplied more than once"));
-                }
-                index += 1;
-                let value = args
-                    .get(index)
-                    .filter(|value| !value.starts_with('-'))
-                    .ok_or_else(|| usage_error("--repo requires a value"))?;
-                options.repo = Some(PathBuf::from(value));
-                index += 1;
-            }
-            "-h" | "--help" | "help" => {
-                return Err(usage_error(
-                    "help cannot be combined with diagnostics workflow-metrics options",
-                ));
-            }
-            option if option.starts_with('-') => {
-                return Err(usage_error(format!("unknown option: {option}")));
-            }
-            argument => {
-                return Err(usage_error(format!("unexpected argument: {argument}")));
-            }
-        }
-    }
-    if options.repo.is_none() {
-        return Err(usage_error(
-            "diagnostics workflow-metrics requires --repo PATH",
-        ));
-    }
-    if !options.json {
-        return Err(usage_error("diagnostics workflow-metrics requires --json"));
-    }
-    Ok(options)
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct SessionOptions {
-    session_id: Option<String>,
-    json: bool,
-}
-
-fn parse_session_options(args: &[String]) -> Result<SessionOptions, DiagnosticsCommandError> {
-    let mut options = SessionOptions::default();
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--json" => {
-                if options.json {
-                    return Err(usage_error("--json was supplied more than once"));
-                }
-                options.json = true;
-                index += 1;
-            }
-            "--session" => {
-                if options.session_id.is_some() {
-                    return Err(usage_error("--session was supplied more than once"));
-                }
-                index += 1;
-                let value = args
-                    .get(index)
-                    .filter(|value| !value.starts_with('-'))
-                    .ok_or_else(|| usage_error("--session requires a value"))?;
-                options.session_id = Some(value.clone());
-                index += 1;
-            }
-            "-h" | "--help" | "help" => {
-                return Err(usage_error(
-                    "help cannot be combined with diagnostics session options",
-                ));
-            }
-            option if option.starts_with('-') => {
-                return Err(usage_error(format!("unknown option: {option}")));
-            }
-            argument => {
-                return Err(usage_error(format!("unexpected argument: {argument}")));
-            }
-        }
-    }
-    Ok(options)
-}
-
-fn usage_error(message: impl Into<String>) -> DiagnosticsCommandError {
-    DiagnosticsCommandError::Usage(format!("{}\n\n{}", message.into(), diagnostics_usage()))
-}
-
 #[derive(Debug, Serialize)]
 struct DiagnosticsReport {
-    schema_version: u32,
     status: &'static str,
     scope: &'static str,
     storage: DiagnosticsStorageReport,
@@ -245,6 +109,8 @@ struct DiagnosticsReport {
 #[derive(Debug, Serialize)]
 struct DiagnosticsStorageReport {
     database_file: &'static str,
+    contract_id: String,
+    canonical_schema_digest: String,
     retention_days: u32,
     max_sessions: u32,
     max_events_per_session: u32,
@@ -314,9 +180,9 @@ struct DiagnosticToolReport {
 
 #[derive(Debug, Serialize)]
 struct WorkflowMetricsReport {
-    schema_version: u32,
     status: &'static str,
     scope: &'static str,
+    storage: DiagnosticsStorageReport,
     duration_measurements: WorkflowDurationMeasurements,
     confirmed_unrecorded_false_positive_rate: WorkflowRateMeasurement,
     aggregates: Vec<WorkflowMetricAggregateRow>,
@@ -359,7 +225,9 @@ struct WorkflowMetricsRedactionReport {
     stores_or_returns_command_prompt_path_content_or_user_answer: bool,
 }
 
-fn workflow_metrics_report(rows: Vec<WorkflowMetricAggregateRow>) -> WorkflowMetricsReport {
+fn workflow_metrics_report(
+    rows: Vec<WorkflowMetricAggregateRow>,
+) -> Result<WorkflowMetricsReport, DiagnosticsCommandError> {
     let task_duration = distribution_measurement(&rows, "task_duration_micros");
     let first_write_duration =
         distribution_measurement(&rows, "first_product_write_duration_micros");
@@ -390,14 +258,14 @@ fn workflow_metrics_report(rows: Vec<WorkflowMetricAggregateRow>) -> WorkflowMet
             value: None,
         }
     };
-    WorkflowMetricsReport {
-        schema_version: DIAGNOSTICS_SCHEMA_VERSION,
+    Ok(WorkflowMetricsReport {
         status: if rows.is_empty() {
             "no_data"
         } else {
             "available"
         },
         scope: "bounded_local_operability_aggregates_only",
+        storage: diagnostics_storage_report()?,
         duration_measurements: WorkflowDurationMeasurements {
             task_duration_micros: task_duration,
             first_product_write_duration_micros: first_write_duration,
@@ -415,7 +283,7 @@ fn workflow_metrics_report(rows: Vec<WorkflowMetricAggregateRow>) -> WorkflowMet
             changes_close_readiness: false,
             changes_user_actions: false,
         },
-    }
+    })
 }
 
 fn distribution_measurement(
@@ -446,18 +314,14 @@ fn distribution_measurement(
     }
 }
 
-fn diagnostics_report(aggregate: Option<DiagnosticSessionAggregate>) -> DiagnosticsReport {
+fn diagnostics_report(
+    aggregate: Option<DiagnosticSessionAggregate>,
+) -> Result<DiagnosticsReport, DiagnosticsCommandError> {
     let build = volicord_mcp::build_info();
-    DiagnosticsReport {
-        schema_version: DIAGNOSTICS_SCHEMA_VERSION,
+    Ok(DiagnosticsReport {
         status: if aggregate.is_some() { "available" } else { "no_data" },
         scope: "bounded_local_operability_only",
-        storage: DiagnosticsStorageReport {
-            database_file: DIAGNOSTICS_DB_FILE,
-            retention_days: DIAGNOSTICS_RETENTION_DAYS,
-            max_sessions: DIAGNOSTICS_MAX_SESSIONS,
-            max_events_per_session: DIAGNOSTICS_MAX_EVENTS_PER_SESSION,
-        },
+        storage: diagnostics_storage_report()?,
         redaction: DiagnosticsRedactionReport {
             stores_prompt_text: false,
             stores_file_content_or_paths: false,
@@ -477,7 +341,19 @@ fn diagnostics_report(aggregate: Option<DiagnosticSessionAggregate>) -> Diagnost
             build_id: build.build_id,
         },
         session: aggregate.map(session_report),
-    }
+    })
+}
+
+fn diagnostics_storage_report() -> Result<DiagnosticsStorageReport, DiagnosticsCommandError> {
+    let manifest = current_diagnostics_storage_manifest()?;
+    Ok(DiagnosticsStorageReport {
+        database_file: DIAGNOSTICS_DB_FILE,
+        contract_id: manifest.contract_id.clone(),
+        canonical_schema_digest: manifest.canonical_schema_digest.clone(),
+        retention_days: DIAGNOSTICS_RETENTION_DAYS,
+        max_sessions: DIAGNOSTICS_MAX_SESSIONS,
+        max_events_per_session: DIAGNOSTICS_MAX_EVENTS_PER_SESSION,
+    })
 }
 
 fn session_report(aggregate: DiagnosticSessionAggregate) -> DiagnosticSessionReport {
@@ -524,27 +400,29 @@ fn session_report(aggregate: DiagnosticSessionAggregate) -> DiagnosticSessionRep
 fn render_json(
     aggregate: Option<DiagnosticSessionAggregate>,
 ) -> Result<String, DiagnosticsCommandError> {
-    serde_json::to_string_pretty(&diagnostics_report(aggregate))
+    serde_json::to_string_pretty(&diagnostics_report(aggregate)?)
         .map(|output| format!("{output}\n"))
         .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
 }
 
-fn render_text(aggregate: Option<DiagnosticSessionAggregate>) -> String {
-    let report = diagnostics_report(aggregate);
+fn render_text(
+    aggregate: Option<DiagnosticSessionAggregate>,
+) -> Result<String, DiagnosticsCommandError> {
+    let report = diagnostics_report(aggregate)?;
     let Some(session) = report.session else {
-        return concat!(
+        return Ok(concat!(
             "diagnostics session\n",
             "status: no_data\n",
             "scope: bounded local operability only\n",
             "authority_effect: none\n"
         )
-        .to_owned();
+        .to_owned());
     };
     let channels = serde_json::to_string(&session.user_channel_counts)
-        .unwrap_or_else(|_| json!({}).to_string());
-    let fallbacks =
-        serde_json::to_string(&session.fallback_counts).unwrap_or_else(|_| json!({}).to_string());
-    format!(
+        .expect("diagnostic user-channel count maps are JSON-serializable");
+    let fallbacks = serde_json::to_string(&session.fallback_counts)
+        .expect("diagnostic fallback count maps are JSON-serializable");
+    Ok(format!(
         concat!(
             "diagnostics session\n",
             "status: available\n",
@@ -572,7 +450,7 @@ fn render_text(aggregate: Option<DiagnosticSessionAggregate>) -> String {
         session.totals.authoritative_refresh_failures,
         channels,
         fallbacks,
-    )
+    ))
 }
 
 #[cfg(test)]
@@ -581,18 +459,24 @@ mod tests {
 
     use rusqlite::OptionalExtension;
     use serde_json::Value;
-    use volicord_core::{CoreService, InvocationContext};
+    use volicord_core::{validate_host_verification_receipt, CoreService, InvocationContext};
     use volicord_store::diagnostics::{
         diagnostics_db_path, record_diagnostic_event, record_workflow_metric_event,
         start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind,
         DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
         WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     };
-    use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
-    use volicord_types::{
-        ActorSource, IntegrationProfile, JudgmentKind, MethodName, ObservationConfidence,
-        OperationCategory, ProjectId,
+    use volicord_test_support::{
+        core_fixtures::{CoreFixture, UserActionFixture},
+        test_host_receipt_fixture,
     };
+    use volicord_types::{
+        managed_stdio_session_id, ActorSource, IntegrationProfile, JudgmentKind, MethodName,
+        ObservationConfidence, OperationCategory, ProjectId,
+        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    };
+
+    use crate::cli::{DiagnosticsSessionArgs, DiagnosticsWorkflowMetricsArgs};
 
     use super::*;
 
@@ -600,13 +484,33 @@ mod tests {
         move |name| (name == "VOLICORD_HOME").then(|| OsString::from(runtime_home))
     }
 
+    fn session_args(json: bool) -> DiagnosticsArgs {
+        DiagnosticsArgs {
+            command: DiagnosticsCommand::Session(DiagnosticsSessionArgs {
+                session: None,
+                json,
+            }),
+        }
+    }
+
+    fn workflow_metrics_args(repo: &Path) -> DiagnosticsArgs {
+        DiagnosticsArgs {
+            command: DiagnosticsCommand::WorkflowMetrics(DiagnosticsWorkflowMetricsArgs {
+                repo: repo.to_path_buf(),
+                json: true,
+            }),
+        }
+    }
+
     #[test]
     fn json_report_exposes_bounded_operability_aggregates() {
         let fixture = CoreFixture::new("diagnostics-command-json").expect("fixture");
+        let session_id = managed_stdio_session_id(fixture.connection_id(), "session_json")
+            .expect("managed session coordinate");
         start_diagnostic_session(
             fixture.runtime_home_path(),
             DiagnosticSessionStart {
-                session_id: "session_json",
+                session_id: &session_id,
                 connection_id: Some(fixture.connection_id()),
                 project_id: Some(fixture.project_id()),
                 transport: DiagnosticTransport::McpStdio,
@@ -619,7 +523,7 @@ mod tests {
         record_diagnostic_event(
             fixture.runtime_home_path(),
             DiagnosticEvent {
-                session_id: "session_json",
+                session_id: &session_id,
                 event_kind: DiagnosticEventKind::McpToolCall,
                 tool_name: Some("volicord.status"),
                 latency_micros: 90,
@@ -639,13 +543,22 @@ mod tests {
         .expect("event");
 
         let output = run_diagnostics_command(
-            &["session".to_owned(), "--json".to_owned()],
+            session_args(true),
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )
         .expect("diagnostics output");
         let report: serde_json::Value = serde_json::from_str(&output).expect("JSON");
         assert_eq!(report["status"], "available");
+        assert!(report.get("schema_version").is_none());
+        assert_eq!(
+            report["storage"]["contract_id"],
+            "volicord.sqlite.diagnostics"
+        );
+        assert!(report["storage"]["canonical_schema_digest"]
+            .as_str()
+            .expect("schema digest")
+            .starts_with("sha256:"));
         assert_eq!(report["session"]["totals"]["core_reached_count"], 1);
         assert_eq!(report["session"]["fallback_counts"]["cli_inbox"], 1);
         assert_eq!(
@@ -662,18 +575,18 @@ mod tests {
         assert!(!diagnostics_path.exists());
 
         let output = run_diagnostics_command(
-            &[
-                "workflow-metrics".to_owned(),
-                "--repo".to_owned(),
-                fixture.product_repo_path().display().to_string(),
-                "--json".to_owned(),
-            ],
+            workflow_metrics_args(&fixture.product_repo_path()),
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )
         .expect("workflow metrics no-data report");
         let report: Value = serde_json::from_str(&output).expect("JSON");
         assert_eq!(report["status"], "no_data");
+        assert!(report.get("schema_version").is_none());
+        assert_eq!(
+            report["storage"]["contract_id"],
+            "volicord.sqlite.diagnostics"
+        );
         assert_eq!(
             report["duration_measurements"]["task_duration_micros"]["status"],
             "measurement_pending"
@@ -692,10 +605,13 @@ mod tests {
     #[test]
     fn workflow_metrics_returns_only_bounded_project_aggregates() {
         let fixture = CoreFixture::new("workflow-metrics-json").expect("fixture");
+        let session_id =
+            managed_stdio_session_id(fixture.connection_id(), "session_workflow_metrics")
+                .expect("managed session coordinate");
         start_diagnostic_session(
             fixture.runtime_home_path(),
             DiagnosticSessionStart {
-                session_id: "session_workflow_metrics",
+                session_id: &session_id,
                 connection_id: Some(fixture.connection_id()),
                 project_id: Some(fixture.project_id()),
                 transport: DiagnosticTransport::McpStdio,
@@ -709,11 +625,11 @@ mod tests {
             record_workflow_metric_event(
                 fixture.runtime_home_path(),
                 &WorkflowMetricEvent {
-                    session_id: "session_workflow_metrics".to_owned(),
+                    session_id: session_id.clone(),
                     metric_kind: WorkflowMetricKind::TaskDurationMicros,
                     value: duration,
                     method_name: None,
-                    integration_profile: Some(IntegrationProfile::Detective),
+                    integration_profile: Some(IntegrationProfile::Record),
                     decision: None,
                     observation_confidence: None,
                     outcome: None,
@@ -724,11 +640,11 @@ mod tests {
         record_workflow_metric_event(
             fixture.runtime_home_path(),
             &WorkflowMetricEvent {
-                session_id: "session_workflow_metrics".to_owned(),
+                session_id: session_id.clone(),
                 metric_kind: WorkflowMetricKind::McpMethodCall,
                 value: 1,
                 method_name: Some(MethodName::Status),
-                integration_profile: Some(IntegrationProfile::Detective),
+                integration_profile: Some(IntegrationProfile::Record),
                 decision: None,
                 observation_confidence: None,
                 outcome: Some(WorkflowMetricOutcome::Success),
@@ -738,11 +654,11 @@ mod tests {
         record_workflow_metric_event(
             fixture.runtime_home_path(),
             &WorkflowMetricEvent {
-                session_id: "session_workflow_metrics".to_owned(),
+                session_id: session_id.clone(),
                 metric_kind: WorkflowMetricKind::ObservationAssessment,
                 value: 1,
                 method_name: None,
-                integration_profile: Some(IntegrationProfile::Detective),
+                integration_profile: Some(IntegrationProfile::Record),
                 decision: None,
                 observation_confidence: Some(ObservationConfidence::Confirmed),
                 outcome: Some(WorkflowMetricOutcome::ProductFileWrite),
@@ -753,11 +669,11 @@ mod tests {
             record_workflow_metric_event(
                 fixture.runtime_home_path(),
                 &WorkflowMetricEvent {
-                    session_id: "session_workflow_metrics".to_owned(),
+                    session_id: session_id.clone(),
                     metric_kind: WorkflowMetricKind::ConfirmedUnrecordedFalsePositive,
                     value: sample,
                     method_name: None,
-                    integration_profile: Some(IntegrationProfile::Detective),
+                    integration_profile: Some(IntegrationProfile::Record),
                     decision: None,
                     observation_confidence: None,
                     outcome: None,
@@ -767,12 +683,7 @@ mod tests {
         }
 
         let output = run_diagnostics_command(
-            &[
-                "workflow-metrics".to_owned(),
-                "--repo".to_owned(),
-                fixture.product_repo_path().display().to_string(),
-                "--json".to_owned(),
-            ],
+            workflow_metrics_args(&fixture.product_repo_path()),
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )
@@ -821,30 +732,6 @@ mod tests {
         ] {
             assert!(!output.contains(forbidden));
         }
-    }
-
-    #[test]
-    fn workflow_metrics_requires_repo_and_json() {
-        let fixture = CoreFixture::new("workflow-metrics-usage").expect("fixture");
-        let missing_repo = run_diagnostics_command(
-            &["workflow-metrics".to_owned(), "--json".to_owned()],
-            env_for(fixture.runtime_home_path()),
-            fixture.product_repo_path().as_path(),
-        )
-        .expect_err("--repo is required");
-        assert!(matches!(missing_repo, DiagnosticsCommandError::Usage(_)));
-
-        let missing_json = run_diagnostics_command(
-            &[
-                "workflow-metrics".to_owned(),
-                "--repo".to_owned(),
-                fixture.product_repo_path().display().to_string(),
-            ],
-            env_for(fixture.runtime_home_path()),
-            fixture.product_repo_path().as_path(),
-        )
-        .expect_err("--json is required");
-        assert!(matches!(missing_json, DiagnosticsCommandError::Usage(_)));
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -916,19 +803,24 @@ mod tests {
     fn diagnostics_cannot_change_authority_state_evidence_close_assurance_or_user_actions() {
         let fixture = CoreFixture::new("diagnostics-authority-isolation").expect("fixture");
         let core = CoreService::new(fixture.runtime_home_path());
+        let host = test_host_receipt_fixture(fixture.project_id(), fixture.connection_id());
+        let receipt =
+            validate_host_verification_receipt(host.receipt, &host.current, &host.validation_time)
+                .expect("typed host receipt fixture should validate");
         let invocation = InvocationContext::new(
             ProjectId::new(fixture.project_id()),
             ActorSource::agent_connection(fixture.connection_id()),
             OperationCategory::AgentWorkflow,
-            "mcp_stdio_connection_binding",
-        );
+            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        )
+        .with_validated_host_receipt(receipt);
         let intake = core
             .intake(
                 fixture.intake_request("req_diag_intake", "idem_diag_intake", false, Some(0)),
                 invocation.clone(),
             )
             .expect("intake");
-        let task_id = intake.response_value["state"]["task_ref"]["record_id"]
+        let task_id = intake.response_value["task_ref"]["record_id"]
             .as_str()
             .expect("task id");
         let state_version = intake.response_value["base"]["state_version"]
@@ -948,11 +840,13 @@ mod tests {
         )
         .expect("pending user action");
         let before = authority_snapshot(&fixture);
+        let session_id = managed_stdio_session_id(fixture.connection_id(), "session_isolation")
+            .expect("managed session coordinate");
 
         start_diagnostic_session(
             fixture.runtime_home_path(),
             DiagnosticSessionStart {
-                session_id: "session_isolation",
+                session_id: &session_id,
                 connection_id: Some(fixture.connection_id()),
                 project_id: Some(fixture.project_id()),
                 transport: DiagnosticTransport::McpStdio,
@@ -965,7 +859,7 @@ mod tests {
         record_diagnostic_event(
             fixture.runtime_home_path(),
             DiagnosticEvent {
-                session_id: "session_isolation",
+                session_id: &session_id,
                 event_kind: DiagnosticEventKind::McpToolCall,
                 tool_name: Some("volicord.request_user_action"),
                 latency_micros: 120,
@@ -984,7 +878,7 @@ mod tests {
         )
         .expect("diagnostic event");
         let _ = run_diagnostics_command(
-            &["session".to_owned(), "--json".to_owned()],
+            session_args(true),
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )
@@ -998,7 +892,7 @@ mod tests {
         )
         .expect("corrupt only diagnostics storage");
         let error = run_diagnostics_command(
-            &["session".to_owned(), "--json".to_owned()],
+            session_args(true),
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )

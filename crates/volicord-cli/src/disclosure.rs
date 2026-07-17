@@ -7,7 +7,7 @@ pub(crate) const AUTHORITY_RECORD_NON_GUARANTEE_TEXT: &str = "correctness, test 
 
 pub(crate) const USER_CHANNEL_NON_GUARANTEE_TEXT: &str = "approval, close readiness, correctness, test sufficiency, human review completion, or that listing resolved a user action";
 
-pub(crate) const DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT: &str = "OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
+pub(crate) const DIAGNOSTIC_OBSERVATION_NON_GUARANTEE_TEXT: &str = "OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
 
 pub(crate) const COOPERATIVE_DECISION_DISCLOSURE_TEXT: &str = "Does not prove: OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
 
@@ -16,13 +16,6 @@ pub(crate) fn does_not_prove_line(non_guarantees: &str) -> String {
 }
 
 pub(crate) fn cooperative_host_decision_disclosure_json() -> Value {
-    disclosure_json(GuaranteeDisclosure::cooperative_host_decision())
-}
-
-pub(crate) fn detective_observation_disclosure_json() -> Value {
-    disclosure_json(GuaranteeDisclosure::detective_observation())
-}
-
-fn disclosure_json(disclosure: GuaranteeDisclosure) -> Value {
-    serde_json::to_value(disclosure).expect("guarantee disclosure should serialize")
+    serde_json::to_value(GuaranteeDisclosure::cooperative_host_decision())
+        .expect("guarantee disclosure should serialize")
 }

@@ -11,16 +11,11 @@ use crate::host_integration::verification::{
     ManagedConfigStatus, Verification,
 };
 use crate::host_integration::{
-    config_edit::read_text_snapshot, is_legacy_repository_discovery_entry, managed_fingerprint,
-    HostConfigError, HostConflict, HostConflictKind, HostKind, HostPlan, HostScope, HostTarget,
-    ManagedServerEntry, PlannedChange,
+    config_edit::read_text_snapshot, managed_configuration_digest, HostConfigError, HostConflict,
+    HostConflictKind, HostKind, HostPlan, HostScope, HostTarget, ManagedServerEntry, PlannedChange,
 };
 
-use super::{
-    config::parse_document, CODEX_HOST_VALUE, CODEX_TOOL_APPROVAL_OVERLAY_KIND,
-    MANAGED_HOST_LAUNCH_VALUE, VOLICORD_MCP_CONNECTION_ID, VOLICORD_MCP_HOST, VOLICORD_MCP_LAUNCH,
-    VOLICORD_MCP_PROJECT_ID,
-};
+use super::{config::parse_document, CODEX_TOOL_APPROVAL_OVERLAY_KIND};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedCodexManagedIdentity {
@@ -45,34 +40,12 @@ pub(super) fn codex_managed_server_entry(
     connection_id: impl Into<String>,
     project_id: Option<&str>,
     mcp_command: &Path,
-    runtime_home: Option<&Path>,
+    _runtime_home: Option<&Path>,
 ) -> ManagedServerEntry {
     if scope == HostScope::Project {
         return ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex);
     }
-    let connection_id = connection_id.into();
-    let mut entry = ManagedServerEntry::new_project_bound(
-        connection_id.clone(),
-        project_id,
-        mcp_command,
-        runtime_home,
-    );
-    entry.env.insert(
-        VOLICORD_MCP_LAUNCH.to_owned(),
-        MANAGED_HOST_LAUNCH_VALUE.to_owned(),
-    );
-    entry
-        .env
-        .insert(VOLICORD_MCP_HOST.to_owned(), CODEX_HOST_VALUE.to_owned());
-    entry
-        .env
-        .insert(VOLICORD_MCP_CONNECTION_ID.to_owned(), connection_id);
-    if let Some(project_id) = project_id {
-        entry
-            .env
-            .insert(VOLICORD_MCP_PROJECT_ID.to_owned(), project_id.to_owned());
-    }
-    entry
+    ManagedServerEntry::new_project_bound(connection_id, project_id, mcp_command)
 }
 
 pub(super) fn classify_existing_codex_entry(
@@ -96,7 +69,7 @@ pub(super) fn classify_existing_codex_entry(
         }
     };
     let entry = parsed.managed_entry;
-    let current = managed_fingerprint(HostKind::Codex, scope, server_name, &entry);
+    let current = managed_configuration_digest(HostKind::Codex, scope, server_name, &entry);
     if current == desired_fingerprint {
         PlannedChange::Noop
     } else if expected_fingerprint == Some(current.as_str()) {
@@ -183,19 +156,13 @@ fn parse_codex_managed_identity(
     })
 }
 
-pub(crate) fn managed_entry_from_item_for_diagnostics(item: &Item) -> Option<ManagedServerEntry> {
-    parse_codex_managed_identity(item)
-        .ok()
-        .map(|parsed| parsed.managed_entry)
-}
-
 pub(super) fn codex_managed_identity_fingerprint(
     scope: HostScope,
     server_name: &str,
     item: &Item,
 ) -> Option<String> {
     let parsed = parse_codex_managed_identity(item).ok()?;
-    Some(managed_fingerprint(
+    Some(managed_configuration_digest(
         HostKind::Codex,
         scope,
         server_name,
@@ -204,16 +171,7 @@ pub(super) fn codex_managed_identity_fingerprint(
 }
 
 fn has_codex_managed_identity_markers(entry: &ManagedServerEntry) -> bool {
-    entry
-        .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
-        .is_ok()
-        || is_legacy_repository_discovery_entry(entry, RepositoryDiscoveryHost::Codex)
-        || entry.env_vars.is_empty()
-            && entry.env.contains_key(VOLICORD_MCP_LAUNCH)
-            && entry.env.contains_key(VOLICORD_MCP_HOST)
-            && entry.env.contains_key(VOLICORD_MCP_CONNECTION_ID)
-            && (!entry.args.iter().any(|arg| arg == "--project")
-                || entry.env.contains_key(VOLICORD_MCP_PROJECT_ID))
+    crate::host_integration::is_volicord_managed_entry(entry)
 }
 
 pub(super) fn accepted_codex_tool_approval_overlay_item(item: &Item) -> Option<Item> {
@@ -323,7 +281,7 @@ pub(super) fn evaluate_codex_managed_identity(
     };
     match parse_codex_managed_identity(item) {
         Ok(parsed) => {
-            let fingerprint = managed_fingerprint(
+            let fingerprint = managed_configuration_digest(
                 HostKind::Codex,
                 plan.host_scope,
                 &plan.server_name,

@@ -4,7 +4,6 @@ pub(super) fn render_compact_connection_text(
     data: &ConnectionOutput<'_>,
     mcp_config_state: &str,
     primary_next_action: Option<&PrimaryNextAction>,
-    host_feature_diagnostic: ConnectionHostFeatureDiagnostics,
 ) -> Result<String, ConnectionCommandError> {
     let host = public_host_display_name(data.host_kind);
     if data.action == "removed" {
@@ -51,7 +50,6 @@ pub(super) fn render_compact_connection_text(
         "\nProfile:\n  {}\n\n",
         data.guard_state.selected_profile()
     ));
-    append_host_feature_support(&mut output, host_feature_diagnostic);
     if let Some(repo_root) = data.affected_repo_root {
         append_compact_repository(&mut output, repo_root);
     } else {
@@ -77,14 +75,6 @@ pub(super) fn render_compact_connection_text(
         connection_diagnostics_command(data.connection, data.projects)
     ));
     Ok(output)
-}
-
-fn append_host_feature_support(output: &mut String, diagnostic: ConnectionHostFeatureDiagnostics) {
-    output.push_str("Host feature support:\n");
-    for (feature, status) in diagnostic.host_feature_support_rows() {
-        output.push_str(&format!("  {}: {}\n", feature.as_str(), status.as_str()));
-    }
-    output.push('\n');
 }
 
 fn compact_connection_title(action: &str, host: &str) -> String {
@@ -191,6 +181,8 @@ fn compact_connection_checks(
     mcp_config_state: &str,
     primary_next_action: Option<&PrimaryNextAction>,
 ) -> Vec<(&'static str, String)> {
+    let persisted_user_actions =
+        decode_persisted_user_actions(&data.connection.last_user_actions_json);
     if let Some(verification) = data.verification {
         let mut checks = vec![("MCP configuration", mcp_config_state.to_owned())];
         append_host_policy_overlay_compact_check(&mut checks, &verification.host);
@@ -210,6 +202,14 @@ fn compact_connection_checks(
         checks.push((
             "Host follow-up",
             host_follow_up_text(data.status, primary_next_action).to_owned(),
+        ));
+        checks.push((
+            "Stored UserAction values",
+            if persisted_user_actions.is_corrupt() {
+                PERSISTED_USER_ACTIONS_CORRUPT_REASON.to_owned()
+            } else {
+                "current".to_owned()
+            },
         ));
         return checks;
     }
@@ -246,6 +246,14 @@ fn compact_connection_checks(
     checks.push((
         "Host follow-up",
         host_follow_up_text(data.status, primary_next_action).to_owned(),
+    ));
+    checks.push((
+        "Stored UserAction values",
+        if persisted_user_actions.is_corrupt() {
+            PERSISTED_USER_ACTIONS_CORRUPT_REASON.to_owned()
+        } else {
+            "current".to_owned()
+        },
     ));
     checks
 }
@@ -495,7 +503,7 @@ fn append_compact_next_steps(
             push_numbered_text(
                 output,
                 &mut index,
-                "Reinstall missing detective host-hook files.",
+                "Reinstall missing Codex Record Guard files.",
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -503,7 +511,7 @@ fn append_compact_next_steps(
             push_numbered_text(
                 output,
                 &mut index,
-                "Refresh stale detective host-hook files.",
+                "Refresh stale Codex Record Guard files.",
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -511,15 +519,7 @@ fn append_compact_next_steps(
             push_numbered_text(
                 output,
                 &mut index,
-                "Repair broken detective host-hook files.",
-            );
-            push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
-        }
-        "guard_hook_path_safety" => {
-            push_numbered_text(
-                output,
-                &mut index,
-                "Regenerate cwd-independent detective host-hook commands.",
+                "Repair broken Codex Record Guard files.",
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -527,7 +527,7 @@ fn append_compact_next_steps(
             push_numbered_text(
                 output,
                 &mut index,
-                "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite.",
+                "Repair the required Codex Record Guard hook configuration.",
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
@@ -600,10 +600,8 @@ fn stored_verification_step_status(connection: &AgentConnectionRecord, step: &st
 }
 
 fn connection_limits_text(profile: &str) -> &'static str {
-    match profile {
-        "detective" => init_limits_text(InitMode::Detective),
-        _ => init_limits_text(InitMode::Record),
-    }
+    let _ = profile;
+    init_limits_text(InitMode::Record)
 }
 
 fn connection_status_diagnostics_command(
@@ -1020,9 +1018,6 @@ fn init_limits_text(init_mode: InitMode) -> &'static str {
         InitMode::Record => {
             "  The record profile supports cooperative Volicord workflow recording through MCP.\n  It does not provide OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion."
         }
-        InitMode::Detective => {
-            "  The detective profile adds cooperative host observation where supported.\n  It does not provide OS sandboxing, network isolation, malware defense, full write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion."
-        }
     }
 }
 
@@ -1033,23 +1028,46 @@ pub(in crate::connection_command) fn render_connections_output(
     match format {
         OutputFormat::Text => {
             let mut output = String::from(
-                "host\tintent\tmode\tenabled\tconnected_repositories\tverification_status\ttarget\n",
+                "host\tintent\tmode\tenabled\tconnected_repositories\tverification_status\tverification_report_state\tuser_actions_state\tmetadata_state\ttarget\n",
             );
             for (connection, projects) in rows {
+                let user_actions_state =
+                    decode_persisted_user_actions(&connection.last_user_actions_json);
                 output.push_str(&format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
                     public_host_name_text(&connection.host_kind),
                     connection.intent,
                     public_mode_text(&connection.mode),
                     connection.enabled,
                     display_project_roots(projects),
                     connection.last_verification_status,
+                    if decode_persisted_object(&connection.last_verification_report_json).is_some()
+                    {
+                        "current"
+                    } else {
+                        PERSISTED_VERIFICATION_REPORT_CORRUPT_REASON
+                    },
+                    if user_actions_state.is_corrupt() {
+                        PERSISTED_USER_ACTIONS_CORRUPT_REASON
+                    } else {
+                        "current"
+                    },
+                    if decode_persisted_object(&connection.metadata_json).is_some() {
+                        "current"
+                    } else {
+                        PERSISTED_CONNECTION_METADATA_CORRUPT_REASON
+                    },
                     connection.config_target
                 ));
             }
             Ok(output)
         }
         OutputFormat::Json => {
+            let degraded = rows.iter().any(|(connection, _)| {
+                decode_persisted_user_actions(&connection.last_user_actions_json).is_corrupt()
+                    || decode_persisted_object(&connection.last_verification_report_json).is_none()
+                    || decode_persisted_object(&connection.metadata_json).is_none()
+            });
             let values = rows
                 .iter()
                 .map(|(connection, projects)| {
@@ -1075,8 +1093,8 @@ pub(in crate::connection_command) fn render_connections_output(
                 })
                 .collect::<Vec<_>>();
             serde_json::to_string_pretty(&json!({
-                "status": "complete",
-                "disclosure": detective_observation_disclosure_json(),
+                "status": if degraded { "degraded" } else { "complete" },
+                "disclosure": cooperative_host_decision_disclosure_json(),
                 "connections": values,
                 "checks": [],
                 "actions": [],
@@ -1129,7 +1147,7 @@ pub(in crate::connection_command) fn render_connection_remove_dry_run_output(
                 serde_json::to_string_pretty(&json!({
                     "action": "remove",
                     "status": AgentResultStatus::DryRun.as_str(),
-                    "disclosure": detective_observation_disclosure_json(),
+                    "disclosure": cooperative_host_decision_disclosure_json(),
                     "runtime_home": path_text(runtime_home),
                     "states": {
                         "runtime_home": "ready",

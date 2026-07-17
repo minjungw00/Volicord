@@ -1,30 +1,4 @@
 use crate::prelude::*;
-#[derive(Debug)]
-pub enum LocalHttpError {
-    Config { code: &'static str, message: String },
-    Adapter(McpAdapterError),
-    Io(io::Error),
-}
-
-impl fmt::Display for LocalHttpError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Config { code, message } => write!(formatter, "{code}: {message}"),
-            Self::Adapter(error) => write!(formatter, "{error}"),
-            Self::Io(error) => write!(formatter, "{error}"),
-        }
-    }
-}
-
-impl Error for LocalHttpError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Adapter(error) => Some(error),
-            Self::Io(error) => Some(error),
-            Self::Config { .. } => None,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum McpAdapterError {

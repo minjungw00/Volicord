@@ -1,6 +1,7 @@
 use serde::Serialize;
+use volicord_types::FailureCategory;
 
-use super::UserAction;
+use super::{codex::ManagedHostEvidence, UserAction};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -13,6 +14,7 @@ pub enum VerificationStatus {
     Unavailable,
     Unknown,
     Failed,
+    UnsupportedContract,
     NotVerified,
 }
 
@@ -27,6 +29,7 @@ impl VerificationStatus {
             Self::Unavailable => "unavailable",
             Self::Unknown => "unknown",
             Self::Failed => "failed",
+            Self::UnsupportedContract => "unsupported_contract",
             Self::NotVerified => "not_verified",
         }
     }
@@ -43,6 +46,7 @@ pub enum HostVerificationState {
     Unavailable,
     Unknown,
     Failed,
+    UnsupportedContract,
     NotVerified,
 }
 
@@ -57,6 +61,7 @@ impl HostVerificationState {
             Self::Unavailable => "unavailable",
             Self::Unknown => "unknown",
             Self::Failed => "failed",
+            Self::UnsupportedContract => "unsupported_contract",
             Self::NotVerified => "not_verified",
         }
     }
@@ -257,6 +262,9 @@ pub struct Verification {
     pub mcp_handshake_allowed: bool,
     pub details: String,
     pub diagnostic: Option<String>,
+    pub failure_category: Option<FailureCategory>,
+    pub failure_reason: Option<String>,
+    pub(crate) managed_host_evidence: Option<ManagedHostEvidence>,
     pub user_actions: Vec<UserAction>,
 }
 
@@ -555,13 +563,13 @@ impl CliMcpVerification {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationGuaranteeDisclosure {
-    DetectiveObservation,
+    CooperativeHostObservation,
 }
 
 impl VerificationGuaranteeDisclosure {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::DetectiveObservation => "detective_observation",
+            Self::CooperativeHostObservation => "cooperative_host_observation",
         }
     }
 }
@@ -625,6 +633,9 @@ impl Verification {
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -645,6 +656,9 @@ impl Verification {
             mcp_handshake_allowed: true,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -665,6 +679,9 @@ impl Verification {
             mcp_handshake_allowed: true,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -685,6 +702,9 @@ impl Verification {
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -705,6 +725,9 @@ impl Verification {
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -725,6 +748,9 @@ impl Verification {
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -745,6 +771,9 @@ impl Verification {
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -765,6 +794,9 @@ impl Verification {
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -785,6 +817,32 @@ impl Verification {
             mcp_handshake_allowed: false,
             details: details.into(),
             diagnostic: None,
+            failure_category: None,
+            failure_reason: None,
+            managed_host_evidence: None,
+            user_actions: Vec::new(),
+        }
+    }
+
+    pub fn unsupported_contract(reason: impl Into<String>, details: impl Into<String>) -> Self {
+        Self {
+            status: VerificationStatus::UnsupportedContract,
+            host_state: HostVerificationState::UnsupportedContract,
+            host_version: None,
+            managed_config: ManagedConfigStatus::Match,
+            host_executable: HostExecutableStatus::Available,
+            host_gate: HostGateStatus::Rejected,
+            host_configuration: HostConfigurationStatus::Discovered,
+            host_policy_overlay: None,
+            project_trust: None,
+            host_runtime: None,
+            host_mcp_command: None,
+            mcp_handshake_allowed: false,
+            details: details.into(),
+            diagnostic: None,
+            failure_category: Some(FailureCategory::UnsupportedContract),
+            failure_reason: Some(reason.into()),
+            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -841,6 +899,36 @@ impl Verification {
 
     pub fn with_diagnostic(mut self, diagnostic: impl Into<String>) -> Self {
         self.diagnostic = Some(diagnostic.into());
+        self
+    }
+
+    pub fn with_failure(mut self, category: FailureCategory, reason: impl Into<String>) -> Self {
+        self.failure_category = Some(category);
+        self.failure_reason = Some(reason.into());
+        self
+    }
+
+    pub fn with_terminal_failure(
+        mut self,
+        category: FailureCategory,
+        reason: impl Into<String>,
+        details: impl Into<String>,
+    ) -> Self {
+        self.status = if category == FailureCategory::UnsupportedContract {
+            VerificationStatus::UnsupportedContract
+        } else {
+            VerificationStatus::Failed
+        };
+        self.host_state = if category == FailureCategory::UnsupportedContract {
+            HostVerificationState::UnsupportedContract
+        } else {
+            HostVerificationState::Failed
+        };
+        self.host_gate = HostGateStatus::Rejected;
+        self.mcp_handshake_allowed = false;
+        self.details = details.into();
+        self.failure_category = Some(category);
+        self.failure_reason = Some(reason.into());
         self
     }
 
@@ -904,7 +992,7 @@ impl Verification {
             managed_lifecycle: self.managed_lifecycle(),
             active_tool_exposure: self.active_tool_exposure_state(),
             storage_capability: self.storage_capability(),
-            guarantee_disclosure: VerificationGuaranteeDisclosure::DetectiveObservation,
+            guarantee_disclosure: VerificationGuaranteeDisclosure::CooperativeHostObservation,
         }
     }
 }
@@ -919,6 +1007,7 @@ fn host_state_from_status(status: VerificationStatus) -> HostVerificationState {
         VerificationStatus::Unavailable => HostVerificationState::Unavailable,
         VerificationStatus::Unknown => HostVerificationState::Unknown,
         VerificationStatus::Failed => HostVerificationState::Failed,
+        VerificationStatus::UnsupportedContract => HostVerificationState::UnsupportedContract,
         VerificationStatus::NotVerified => HostVerificationState::NotVerified,
     }
 }
@@ -1013,7 +1102,7 @@ mod tests {
         assert_eq!(contract.storage_capability, StorageCapability::ReadWrite);
         assert_eq!(
             contract.guarantee_disclosure,
-            VerificationGuaranteeDisclosure::DetectiveObservation
+            VerificationGuaranteeDisclosure::CooperativeHostObservation
         );
     }
 

@@ -141,8 +141,6 @@
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
-        "ConnectionObservationGuardEventKind",
-        "ConnectionObservationSourceSelector",
         "EvidenceCaptureSpec",
         "EvidenceTarget",
         "ToolEnvelope"
@@ -163,7 +161,7 @@
         "target",
         "task_id"
       ],
-      "sha256": "sha256:573587959a52d0235289f5fb6332cc8b8819465fd84d11b8fab02d79421ba63d"
+      "sha256": "sha256:7c18dd8a132d5d81687d87aa19a9b3fdb24ccc7ae8674a25d2e7e8a6b6566bc6"
     },
     "volicord.prepare_write": {
       "definitions": [
@@ -273,7 +271,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:ec5c18f51fcdf9a2d8a8855cdd35b7d44d164cc01905e796df17b6727b21cb95"
+      "sha256": "sha256:37bc70a10f003ab323046c393d53506f4e67d397c65b5891098b1ea7bc650186"
     },
     "volicord.request_user_action": {
       "definitions": [
@@ -366,10 +364,14 @@
     },
     "volicord.status": {
       "definitions": [
+        "ContinuityCursor",
+        "ContinuityPageRequest",
         "StatusInclude",
-        "ToolEnvelope"
+        "ToolEnvelope",
+        "UtcTimestamp"
       ],
       "root_properties": [
+        "continuity_page",
         "envelope",
         "include"
       ],
@@ -377,7 +379,7 @@
         "envelope",
         "include"
       ],
-      "sha256": "sha256:8358ef5672ec6dcac9bf900cad9b9bbba7e88192e790cda673a0c4d3bada3537"
+      "sha256": "sha256:3d0ae4015b4669e7570478d034760d79c2cd2005601623169733c864e015d5c3"
     },
     "volicord.update_scope": {
       "definitions": [

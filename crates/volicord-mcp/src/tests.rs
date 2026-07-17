@@ -1,33 +1,20 @@
-use chrono::{DateTime, Duration, SecondsFormat, Utc};
-use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     error::Error,
     ffi::OsString,
     fs,
-    io::{self, BufReader, Cursor, Write},
+    io::{BufReader, Cursor},
     path::Path,
-    sync::{Arc, Barrier},
 };
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::adapter::{
-    LocalWebConsentReadiness, ManagedLifecycleEvent, McpUserChannelCapabilities,
-    StartupObservationResult,
-};
-use crate::local_http::{
-    validate_bearer_token_text, validate_local_http_server_config, LOCAL_HTTP_CONTAINER_WARNING,
-    LOCAL_HTTP_EXPOSURE_WARNING, LOCAL_HTTP_GENERATED_TOKEN_WARNING,
-};
-use crate::local_web_consent::{parse_urlencoded, single_param};
 use crate::prelude::*;
 use crate::stdio::{
-    classify_launch_origin, pending_user_action_from_response, percent_encode_query,
-    run_stdio_with_env_marker, tool_execution_error_result, McpLaunchOrigin,
-    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_ELICITATION_WIRE_BYTES,
-    MAX_MCP_FULL_MUTATION_RESULT_BYTES, MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+    classify_launch_origin, run_stdio_with_env_marker, tool_execution_error_result,
+    McpLaunchOrigin, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+    MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
     routing::McpStorageCapability,
@@ -37,7 +24,6 @@ use crate::{
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
         ToolSchemaDetail, CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
         GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, MAX_RUNTIME_TOOLS_LIST_BYTES,
-        PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
@@ -48,10 +34,8 @@ use crate::{
 use volicord_core::CoreBoundary;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
-    remove_connection_project, set_connection_enabled, AgentConnectionRegistration,
-    ConnectionProjectRegistration, CONNECTION_INTENT_GLOBAL, CONNECTION_MODE_READ_ONLY,
-    HOST_KIND_CLAUDE_CODE, HOST_KIND_CODEX, HOST_KIND_GENERIC, HOST_SCOPE_EXPORT,
-    VERIFIED_STATUS_COMPLETE,
+    set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
+    CONNECTION_MODE_READ_ONLY, HOST_KIND_CODEX, VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostics::{
@@ -59,39 +43,25 @@ use volicord_store::diagnostics::{
     WorkflowMetricAggregateRow,
 };
 use volicord_store::guards::{
-    agent_session, end_agent_session, insert_agent_session, list_unresolved_unrecorded_changes,
-    upsert_guard_installation, AgentSessionInsert, GuardInstallationUpsert,
-};
-use volicord_store::host_capabilities::{
-    publish_host_capability_verification, HostCapabilityVerificationInput,
-    HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1, HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
-    HOST_CAPABILITY_OUTCOME_FAILED, HOST_CAPABILITY_OUTCOME_PASSED,
-};
-use volicord_store::host_runtime_probes::host_runtime_probe_snapshot_read_only;
-use volicord_store::session_watch::{
-    latest_watch_baseline_for_connection, latest_watch_baseline_for_session,
+    agent_session, insert_agent_session, upsert_guard_installation, AgentSessionInsert,
+    GuardInstallationUpsert,
 };
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
     UserActionFixture,
 };
+use volicord_test_support::TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING;
 use volicord_types::{
-    AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, EvidenceTarget,
-    HostRuntimeProbeFailureClass, HostRuntimeProbeId, HostRuntimeProbeOutcome,
-    ManagedMcpClientInfo, OperationCategory, ResidualRiskInput, StagedArtifactHandle,
-    REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, IntegrationProfile,
+    OperationCategory, ResidualRiskInput, StagedArtifactHandle, CODEX_MANAGED_MCP_CLIENT_NAME,
 };
 
 use super::*;
 
-const USER_CHANNEL_TEST_SESSION_ID: &str = "session_user_channel_projection";
-const CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME: &str = "claude-code";
-const CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION: &str = "2.3.4";
-const CLAUDE_LOCAL_WEB_TEST_SESSION_ID: &str = "claude.local-web.fixture";
 const CODEX_TEST_SESSION_ID: &str = "fixture_codex_session";
 const CODEX_TEST_THREAD_ID: &str = "fixture_codex_thread";
 const CODEX_TEST_TURN_ID: &str = "fixture_codex_turn";
+const CODEX_TEST_CLIENT_VERSION: &str = "test-codex-client";
 
 #[test]
 fn mcp_boundary_wraps_core_boundary() {
@@ -348,7 +318,12 @@ fn stdio_workflow_metrics_record_exact_tools_list_method_outcomes_and_status_rer
     ])?);
     let mut output = Vec::new();
 
-    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
 
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 5);
@@ -763,27 +738,6 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
             }),
             "command_label",
         ),
-        (
-            json!({
-                "task_id": "task_capture_connection",
-                "change_unit_id": "cu_capture_connection",
-                "baseline_ref": "baseline_capture_connection",
-                "target": {
-                    "target_kind": "acceptance_criterion",
-                    "acceptance_criterion_id": "criterion_capture_connection"
-                },
-                "capture": {
-                    "capture_kind": "registered_connection_observation",
-                    "source_selector": {"source_kind": "session_watcher"}
-                }
-            }),
-            json!({
-                "capture_kind": "registered_connection_observation",
-                "source_selector": {"source_kind": "session_watcher"},
-                "expected_complete": null
-            }),
-            "observation_input_sha256",
-        ),
     ];
 
     for (arguments, expected_capture, foreign_field) in cases {
@@ -807,35 +761,6 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
         assert!(serde_json::from_value::<McpPrepareEvidenceCaptureArguments>(invalid).is_err());
     }
 
-    Ok(())
-}
-
-#[test]
-fn prepare_evidence_capture_rejects_session_start_selector_before_core_without_effects(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-capture-session-start-selector")?;
-    let adapter = adapter(&fixture)?;
-    let before = fixture.counts()?;
-    let mut arguments = canonical_example_value(
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
-        PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
-    )?;
-    arguments["capture"]["source_selector"]["event_kind"] = json!("session_start");
-
-    let error = adapter
-        .call_tool(PREPARE_EVIDENCE_CAPTURE_TOOL_NAME, arguments)
-        .expect_err("session_start must fail before Core intent preparation");
-    let response = structured_tool_error(PREPARE_EVIDENCE_CAPTURE_TOOL_NAME, &error);
-    tool_error_issue(
-        &response,
-        "/capture/source_selector/event_kind",
-        "MCP_ARGUMENT_ENUM_VALUE",
-    );
-    assert_eq!(
-        fixture.counts()?,
-        before,
-        "invalid future-ineligible source selection must create no Core effects"
-    );
     Ok(())
 }
 
@@ -939,7 +864,6 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
             &[
                 PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
                 PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID,
-                PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
             ],
         ),
         (PREPARE_WRITE_TOOL_NAME, &[PREPARE_WRITE_SIMPLE_EXAMPLE_ID]),
@@ -980,7 +904,11 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
             *expected_ids,
             "{tool_name} should advertise exactly the supported example branches"
         );
-        assert!(tool.description.len() <= 160);
+        assert!(
+            tool.description.len() <= 160,
+            "{tool_name} description is {} bytes",
+            tool.description.len()
+        );
         assert!(!tool.description.contains("Required root fields"));
         assert!(!tool.description.contains("{\""));
 
@@ -1537,42 +1465,6 @@ fn dot_free_aliases_are_not_exposed_by_default() {
 }
 
 #[test]
-fn generated_bearer_token_is_visible_ascii_hex() -> Result<(), Box<dyn Error>> {
-    let token = generate_bearer_token()?;
-
-    assert_eq!(token.len(), 64);
-    assert!(validate_bearer_token_text(&token).is_ok());
-    assert!(token
-        .chars()
-        .all(|character| matches!(character, '0'..='9' | 'a'..='f')));
-    assert!(!token.chars().any(char::is_whitespace));
-    Ok(())
-}
-
-#[test]
-fn generated_bearer_tokens_are_unique_in_small_sample() -> Result<(), Box<dyn Error>> {
-    let mut tokens = BTreeSet::new();
-    for _ in 0..8 {
-        let token = generate_bearer_token()?;
-        assert!(
-            tokens.insert(token),
-            "generated bearer token repeated in a small sanity sample"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn local_http_startup_warnings_keep_generated_tokens_and_container_binds_local() {
-    assert!(LOCAL_HTTP_EXPOSURE_WARNING.contains("host loopback"));
-    assert!(LOCAL_HTTP_EXPOSURE_WARNING.contains("do not expose"));
-    assert!(LOCAL_HTTP_CONTAINER_WARNING.contains("Docker host-loopback publishing"));
-    assert!(LOCAL_HTTP_CONTAINER_WARNING.contains("public interfaces"));
-    assert!(LOCAL_HTTP_GENERATED_TOKEN_WARNING.contains("local secret"));
-    assert!(LOCAL_HTTP_GENERATED_TOKEN_WARNING.contains("Docker host-loopback boundary"));
-}
-
-#[test]
 fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("mcp-context")?;
@@ -1604,12 +1496,9 @@ fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result
     assert!(report.contains("registry_read: passed"));
     assert!(report.contains("project_state_read: passed"));
     assert!(report.contains("project_state_write: passed"));
-    assert!(report.contains("startup_observation: recordable"));
     assert!(report.contains("effective_tool_mode: workflow"));
     assert!(report.contains("tools_list_schema_validation: passed"));
     assert!(report.contains("tool_naming_style: dotted_namespace"));
-    assert!(report.contains("watcher_status: pending_mcp_start"));
-    assert!(report.contains("watcher_coverage_basis: mcp_start"));
     Ok(())
 }
 
@@ -1622,7 +1511,6 @@ fn mcp_check_reports_readwrite_effective_tool_mode() -> Result<(), Box<dyn Error
     assert_report_line(&report, "registry_read: passed");
     assert_report_line(&report, "project_state_read: passed");
     assert_report_line(&report, "project_state_write: passed");
-    assert_report_line(&report, "startup_observation: recordable");
     assert_report_line(&report, "effective_tool_mode: workflow");
     assert_report_line(&report, "tools_list_schema_validation: passed");
     assert_report_line(&report, "tool_naming_style: dotted_namespace");
@@ -1636,7 +1524,6 @@ fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-check-no-mutate")?;
     let before_version = read_only_state_version(&fixture)?;
     let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
     let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
 
     let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
@@ -1646,10 +1533,6 @@ fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
         before_sessions
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        before_baselines
     );
     assert_eq!(
         read_only_table_count(&fixture, "tool_invocations")?,
@@ -1669,10 +1552,6 @@ fn mcp_check_reports_readonly_project_state() -> Result<(), Box<dyn Error>> {
     assert_report_line(&report, "registry_read: passed");
     assert_report_line(&report, "project_state_read: passed");
     assert_report_line(&report, "project_state_write: readonly");
-    assert_report_line(
-        &report,
-        "startup_observation: best_effort_skipped_if_readonly",
-    );
     assert_report_line(&report, "effective_tool_mode: read_only_degraded");
     assert_report_line(&report, "tools_list_schema_validation: passed");
     assert_report_line(&report, "tool_naming_style: dotted_namespace");
@@ -1699,37 +1578,6 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
     assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
     assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
     assert!(!names.contains(&INTAKE_TOOL_NAME));
-    Ok(())
-}
-
-#[test]
-fn direct_startup_watch_records_legacy_observation_without_managed_lifecycle(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-direct-startup-watch")?;
-    let adapter = adapter(&fixture)?;
-
-    assert_eq!(
-        adapter.startup_session_watch_observation_best_effort("session_direct_startup"),
-        StartupObservationResult::Recorded
-    );
-
-    let baseline = latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .expect("direct startup watch should create a watch baseline");
-    assert_eq!(baseline.status, "active");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["coverage_basis"], "mcp_start");
-    assert!(metadata.get("launch_origin").is_none());
-    assert!(metadata.get("lifecycle_events").is_none());
-    assert!(metadata.get("partial_coverage_warning").is_none());
-    assert_eq!(
-        metadata["scan_summary"]["not_full_filesystem_monitoring"],
-        true
-    );
-    assert_eq!(metadata["scan_summary"]["follows_symlinks"], false);
     Ok(())
 }
 
@@ -1790,23 +1638,10 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
         ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
         ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
     ]);
-    let valid_claude = markers(&[
-        ("VOLICORD_MCP_LAUNCH", "managed_host"),
-        ("VOLICORD_MCP_HOST", "claude_code"),
-        ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-        ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
-        ("CLAUDECODE", "1"),
-        ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
-    ]);
     assert_eq!(
         classified(&valid_codex, Some("project_alpha"), Some("codex")),
         McpLaunchOrigin::ManagedHost
     );
-    assert_eq!(
-        classified(&valid_claude, Some("project_alpha"), Some("claude_code")),
-        McpLaunchOrigin::ManagedHost
-    );
-
     let invalid_cases = vec![
         (
             "wrong launch",
@@ -1823,7 +1658,7 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
             "wrong host",
             markers(&[
                 ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "claude_code"),
+                ("VOLICORD_MCP_HOST", "unsupported"),
                 ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
                 ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
                 ("CODEX_THREAD_ID", "thread_alpha"),
@@ -1861,42 +1696,6 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
                 ("CODEX_THREAD_ID", "thread_alpha"),
             ]),
             Some("codex"),
-        ),
-        (
-            "cross-host native markers",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "codex"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
-                ("CODEX_THREAD_ID", "thread_alpha"),
-                ("CLAUDECODE", "1"),
-                ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
-            ]),
-            Some("codex"),
-        ),
-        (
-            "claude missing process marker",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "claude_code"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
-                ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
-            ]),
-            Some("claude_code"),
-        ),
-        (
-            "claude wrong process marker",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "claude_code"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
-                ("CLAUDECODE", "true"),
-                ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
-            ]),
-            Some("claude_code"),
         ),
     ];
 
@@ -1943,7 +1742,7 @@ fn non_utf8_managed_marker_is_invalid_instead_of_manual() {
 
 #[test]
 fn managed_codex_launch_stays_effect_free_until_exact_call_binding() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-managed-watch")?;
+    let fixture = CoreFixture::new("mcp-stdio-managed-binding")?;
     let adapter = project_bound_adapter(&fixture)?;
     let input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
@@ -1963,224 +1762,8 @@ fn managed_codex_launch_stays_effect_free_until_exact_call_binding() -> Result<(
     )?;
 
     assert!(output.is_empty());
-    assert!(latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .is_none());
     assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
     assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
-    Ok(())
-}
-
-#[test]
-fn managed_claude_startup_waits_for_valid_initialize_before_baseline_creation(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-managed-claude-startup-buffer")?;
-    let mut output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(Cursor::new(Vec::<u8>::new())),
-        &mut output,
-        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
-    )?;
-
-    assert!(output.is_empty());
-    let session_id = managed_host_session_id(
-        HOST_KIND_CLAUDE_CODE,
-        fixture.connection_id(),
-        CLAUDE_LOCAL_WEB_TEST_SESSION_ID,
-    )?;
-    assert!(latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .is_none());
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        0
-    );
-    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
-    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
-    Ok(())
-}
-
-#[test]
-fn managed_claude_preseeded_pairless_baseline_rejects_without_any_new_effect(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-managed-claude-preseed-pairless")?;
-    let session_id = managed_host_session_id(
-        HOST_KIND_CLAUDE_CODE,
-        fixture.connection_id(),
-        CLAUDE_LOCAL_WEB_TEST_SESSION_ID,
-    )?;
-    let now = fixture.store()?.current_timestamp()?;
-    let seeded_session = insert_agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        AgentSessionInsert {
-            session_id: session_id.clone(),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            host_kind: HOST_KIND_CLAUDE_CODE.to_owned(),
-            guard_mode: "record".to_owned(),
-            started_at: now.clone(),
-            metadata_json: json!({"source":"preseeded_pairless_identity_test"}).to_string(),
-        },
-    )?;
-    let snapshot = snapshot_product_repository(
-        fixture.runtime_home_path(),
-        fixture.product_repo_path(),
-        WatchSnapshotOptions::default(),
-    )?;
-    let seeded_baseline = create_watch_baseline(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        WatchBaselineCreate {
-            watch_baseline_id: "watch_base_preseeded_pairless_identity".to_owned(),
-            session_id: session_id.clone(),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            status: StoreSessionWatchStatus::Active,
-            snapshot,
-            created_at: now,
-            metadata_json: json!({
-                "source":"preseeded_pairless_identity_test",
-                "lifecycle_events":[{"lifecycle_event":"managed_host_startup"}]
-            })
-            .to_string(),
-        },
-    )?;
-    let before_counts = fixture.counts()?;
-    let before_state_version = read_only_state_version(&fixture)?;
-    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
-
-    let input = Cursor::new(json_lines(&[local_web_initialize_request(1, json!({}))])?);
-    let mut output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(input),
-        &mut output,
-        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
-    )?;
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 1);
-    assert_eq!(responses[0]["error"]["code"], -32600);
-    assert_eq!(fixture.counts()?, before_counts);
-    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
-    assert_eq!(
-        agent_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            &session_id,
-        )?,
-        Some(seeded_session)
-    );
-    assert_eq!(
-        latest_watch_baseline_for_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            &session_id,
-        )?,
-        Some(seeded_baseline)
-    );
-    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
-    Ok(())
-}
-
-#[test]
-fn managed_claude_stdio_uses_the_same_native_session_binding() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-managed-claude-binding")?;
-    let connection_id = "connection_fixture_claude";
-    ensure_agent_connection(
-        fixture.runtime_home_path(),
-        AgentConnectionRegistration {
-            connection_internal_id: connection_id.to_owned(),
-            host_kind: "claude_code".to_owned(),
-            intent: CONNECTION_INTENT_SHARED.to_owned(),
-            host_scope: HOST_SCOPE_PROJECT.to_owned(),
-            server_name: "volicord-test-claude".to_owned(),
-            config_target: fixture
-                .runtime_home_path()
-                .join("agent-connections/claude")
-                .display()
-                .to_string(),
-            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            enabled: true,
-            managed_fingerprint: "fixture:claude".to_owned(),
-            last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-            last_verification_report_json: "{}".to_owned(),
-            last_user_actions_json: "[]".to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    add_connection_project(
-        fixture.runtime_home_path(),
-        ConnectionProjectRegistration {
-            connection_internal_id: connection_id.to_owned(),
-            project_id: fixture.project_id().to_owned(),
-        },
-    )?;
-    let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
-        .with_project_allowlist(vec![ProjectId::new(fixture.project_id())]);
-    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
-    let native_session_id = "claude.session:managed-1";
-    let client_version = "2.3.4";
-    let input = Cursor::new(json_lines(&[initialize_request_with_client_info(
-        1,
-        json!({}),
-        "claude-code",
-        client_version,
-    )])?);
-    let mut output = Vec::new();
-
-    run_stdio_with_env_marker(
-        adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("claude_code")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(connection_id)),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-            "CLAUDECODE" => Some(OsString::from("1")),
-            "CLAUDE_CODE_SESSION_ID" => Some(OsString::from(native_session_id)),
-            _ => None,
-        },
-    )?;
-
-    assert_eq!(stdio_responses(&output)?.len(), 1);
-    let expected_session_id =
-        managed_host_session_id("claude_code", connection_id, native_session_id)?;
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &expected_session_id,
-    )?
-    .expect("Claude managed stdio should use the mapped session id");
-    assert_eq!(baseline.session_id, expected_session_id);
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["host_kind"], "claude_code");
-    assert_eq!(metadata["connection_id"], connection_id);
-    assert_eq!(metadata["project_id"], fixture.project_id());
-    assert_eq!(metadata["client_name"], "claude-code");
-    assert_eq!(metadata["client_version"], client_version);
-    let startup = lifecycle_event(&metadata, "managed_host_startup");
-    assert_eq!(startup["host_kind"], "claude_code");
-    assert_eq!(startup["connection_id"], connection_id);
-    assert_eq!(startup["project_id"], fixture.project_id());
-    let session = agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &expected_session_id,
-    )?
-    .expect("Claude managed stdio should create the mapped Agent Session");
-    assert_eq!(session.connection_internal_id, connection_id);
-    assert_eq!(session.host_kind, "claude_code");
-    assert!(!baseline.metadata_json.contains(native_session_id));
     Ok(())
 }
 
@@ -2188,7 +1771,7 @@ fn managed_claude_stdio_uses_the_same_native_session_binding() -> Result<(), Box
 fn managed_stdio_reuses_only_an_exact_preseeded_agent_session() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-managed-preseed-exact")?;
     let native_session_id = CODEX_TEST_SESSION_ID;
-    let session_id = managed_host_session_id("codex", fixture.connection_id(), native_session_id)?;
+    let session_id = managed_stdio_session_id(fixture.connection_id(), native_session_id)?;
     let seeded = insert_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
@@ -2238,24 +1821,6 @@ fn managed_stdio_reuses_only_an_exact_preseeded_agent_session() -> Result<(), Bo
         )?,
         Some(seeded)
     );
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the first exact Codex call should materialize the watch baseline");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
-    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
-    assert_eq!(
-        lifecycle_event_names(&metadata),
-        vec![
-            "managed_host_startup",
-            "managed_host_initialize_response",
-            "managed_host_tool_call",
-            "managed_host_tool_call_completed",
-        ]
-    );
     let diagnostic = read_diagnostic_session(fixture.runtime_home_path(), Some(&session_id))?
         .expect("the exact status call should create its bounded diagnostic session");
     assert_eq!(diagnostic.totals.tool_call_count, 1);
@@ -2265,135 +1830,27 @@ fn managed_stdio_reuses_only_an_exact_preseeded_agent_session() -> Result<(), Bo
 
 #[test]
 fn managed_stdio_preseed_conflicts_fail_before_any_effect() -> Result<(), Box<dyn Error>> {
-    for (label, existing_connection_id, existing_host_kind) in [
-        ("host", None, "generic"),
-        ("connection", Some("connection_fixture_other"), "codex"),
-    ] {
-        let fixture = CoreFixture::new(&format!("mcp-stdio-managed-preseed-{label}"))?;
-        let native_session_id = format!("thread_preseed_conflict_{label}");
-        let session_id =
-            managed_host_session_id("codex", fixture.connection_id(), native_session_id.as_str())?;
-        let existing_connection_id = existing_connection_id.unwrap_or(fixture.connection_id());
-        if existing_connection_id != fixture.connection_id() {
-            ensure_agent_connection(
-                fixture.runtime_home_path(),
-                AgentConnectionRegistration {
-                    connection_internal_id: existing_connection_id.to_owned(),
-                    host_kind: "codex".to_owned(),
-                    intent: CONNECTION_INTENT_SHARED.to_owned(),
-                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
-                    server_name: format!("volicord-test-{label}"),
-                    config_target: fixture
-                        .runtime_home_path()
-                        .join(format!("agent-connections/{label}"))
-                        .display()
-                        .to_string(),
-                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                    enabled: true,
-                    managed_fingerprint: format!("fixture:{label}"),
-                    last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-                    last_verification_report_json: "{}".to_owned(),
-                    last_user_actions_json: "[]".to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-            add_connection_project(
-                fixture.runtime_home_path(),
-                ConnectionProjectRegistration {
-                    connection_internal_id: existing_connection_id.to_owned(),
-                    project_id: fixture.project_id().to_owned(),
-                },
-            )?;
-        }
-        insert_agent_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            AgentSessionInsert {
-                session_id: session_id.clone(),
-                connection_internal_id: existing_connection_id.to_owned(),
-                guard_installation_id: None,
-                host_kind: existing_host_kind.to_owned(),
-                guard_mode: "record".to_owned(),
-                started_at: "2026-07-14T00:00:00Z".to_owned(),
-                metadata_json: json!({"source": "managed_preseed_conflict"}).to_string(),
-            },
-        )?;
-        let before_core = fixture.counts()?;
-        let before_state_version = read_only_state_version(&fixture)?;
-        let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-        let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
-        let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
-        let input = Cursor::new(json_lines(&[
-            initialize_request(1, json!({})),
-            initialized_notification(),
-            tools_call_with_codex_metadata(
-                2,
-                "volicord.status",
-                json!({ "detail": "workflow" }),
-                native_session_id.as_str(),
-                CODEX_TEST_THREAD_ID,
-                CODEX_TEST_TURN_ID,
-            ),
-        ])?);
-        let mut output = Vec::new();
-
-        run_stdio_with_env_marker(
-            project_bound_adapter(&fixture)?,
-            BufReader::new(input),
-            &mut output,
-            |name| match name {
-                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-                _ => None,
-            },
-        )?;
-
-        let responses = stdio_responses(&output)?;
-        assert_eq!(responses.len(), 2, "{label}");
-        assert_eq!(responses[1]["error"]["code"], -32602, "{label}");
-        assert!(!serde_json::to_string(&responses)?.contains(native_session_id.as_str()));
-        assert_eq!(fixture.counts()?, before_core, "{label}");
-        assert_eq!(read_only_state_version(&fixture)?, before_state_version);
-        assert_eq!(
-            read_only_table_count(&fixture, "agent_sessions")?,
-            before_agent_sessions
-        );
-        assert_eq!(
-            read_only_table_count(&fixture, "session_watch_baselines")?,
-            before_watch_baselines
-        );
-        assert_eq!(
-            read_only_table_count(&fixture, "tool_invocations")?,
-            before_tool_invocations
-        );
-        assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&session_id))?.is_none());
-    }
-    Ok(())
-}
-
-#[test]
-fn managed_stdio_late_wrong_host_preseed_with_existing_baseline_has_zero_mutation(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-managed-late-wrong-host")?;
-    let connection_id = "connection_fixture_late_managed";
+    let label = "connection";
+    let existing_connection_id = "connection_fixture_other";
+    let fixture = CoreFixture::new(&format!("mcp-stdio-managed-preseed-{label}"))?;
+    let native_session_id = format!("thread_preseed_conflict_{label}");
+    let session_id = managed_stdio_session_id(fixture.connection_id(), native_session_id.as_str())?;
     ensure_agent_connection(
         fixture.runtime_home_path(),
         AgentConnectionRegistration {
-            connection_internal_id: connection_id.to_owned(),
+            connection_internal_id: existing_connection_id.to_owned(),
             host_kind: "codex".to_owned(),
             intent: CONNECTION_INTENT_SHARED.to_owned(),
             host_scope: HOST_SCOPE_PROJECT.to_owned(),
-            server_name: "volicord-test-late-managed".to_owned(),
+            server_name: format!("volicord-test-{label}"),
             config_target: fixture
                 .runtime_home_path()
-                .join("agent-connections/late-managed")
+                .join(format!("agent-connections/{label}"))
                 .display()
                 .to_string(),
             mode: CONNECTION_MODE_WORKFLOW.to_owned(),
             enabled: true,
-            managed_fingerprint: "fixture:late-managed".to_owned(),
+            managed_fingerprint: format!("fixture:{label}"),
             last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
             last_verification_report_json: "{}".to_owned(),
             last_user_actions_json: "[]".to_owned(),
@@ -2403,121 +1860,75 @@ fn managed_stdio_late_wrong_host_preseed_with_existing_baseline_has_zero_mutatio
     add_connection_project(
         fixture.runtime_home_path(),
         ConnectionProjectRegistration {
-            connection_internal_id: connection_id.to_owned(),
+            connection_internal_id: existing_connection_id.to_owned(),
             project_id: fixture.project_id().to_owned(),
         },
     )?;
-    let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?;
-    assert!(remove_connection_project(
-        fixture.runtime_home_path(),
-        connection_id,
-        fixture.project_id(),
-    )?);
-    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
-    let native_session_id = "thread_late_wrong_host";
-    let session_id = managed_host_session_id("codex", connection_id, native_session_id)?;
-
-    assert_eq!(
-        adapter.managed_lifecycle_observation_best_effort(
-            &session_id,
-            "managed_host",
-            ManagedLifecycleEvent::Startup,
-            None,
-        ),
-        StartupObservationResult::NotAttempted,
-        "a managed process with no connected project must not create project state"
-    );
-
-    add_connection_project(
-        fixture.runtime_home_path(),
-        ConnectionProjectRegistration {
-            connection_internal_id: connection_id.to_owned(),
-            project_id: fixture.project_id().to_owned(),
-        },
-    )?;
-    let seeded_session = insert_agent_session(
+    insert_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionInsert {
             session_id: session_id.clone(),
-            connection_internal_id: connection_id.to_owned(),
+            connection_internal_id: existing_connection_id.to_owned(),
             guard_installation_id: None,
-            host_kind: HOST_KIND_GENERIC.to_owned(),
+            host_kind: "codex".to_owned(),
             guard_mode: "record".to_owned(),
             started_at: "2026-07-14T00:00:00Z".to_owned(),
-            metadata_json: json!({"source": "late_wrong_host_preseed"}).to_string(),
-        },
-    )?;
-    let now = fixture.store()?.current_timestamp()?;
-    let snapshot = snapshot_product_repository(
-        fixture.runtime_home_path(),
-        fixture.product_repo_path(),
-        WatchSnapshotOptions::default(),
-    )?;
-    let seeded_baseline = create_watch_baseline(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        WatchBaselineCreate {
-            watch_baseline_id: "watch_base_late_wrong_host".to_owned(),
-            session_id: session_id.clone(),
-            connection_internal_id: connection_id.to_owned(),
-            guard_installation_id: None,
-            status: StoreSessionWatchStatus::Active,
-            snapshot,
-            created_at: now,
-            metadata_json: json!({"source": "late_wrong_host_baseline"}).to_string(),
+            metadata_json: json!({"source": "managed_preseed_conflict"}).to_string(),
         },
     )?;
     let before_core = fixture.counts()?;
     let before_state_version = read_only_state_version(&fixture)?;
     let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+    let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call_with_codex_metadata(
+            2,
+            "volicord.status",
+            json!({ "detail": "workflow" }),
+            native_session_id.as_str(),
+            CODEX_TEST_THREAD_ID,
+            CODEX_TEST_TURN_ID,
+        ),
+    ])?);
+    let mut output = Vec::new();
 
-    let outcome = adapter.managed_lifecycle_observation_best_effort(
-        &session_id,
-        "managed_host",
-        ManagedLifecycleEvent::ToolsList,
-        None,
-    );
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            _ => None,
+        },
+    )?;
 
-    let reason = match outcome {
-        StartupObservationResult::FailedButNonfatal { reason } => reason,
-        other => panic!("late wrong-host reuse must fail without mutation, got {other:?}"),
-    };
-    assert!(reason.contains("MANAGED_HOST_SESSION_BINDING_CONFLICT"));
-    assert!(!reason.contains(native_session_id));
-    assert_eq!(fixture.counts()?, before_core);
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2, "{label}");
+    assert_eq!(responses[1]["error"]["code"], -32602, "{label}");
+    assert!(!serde_json::to_string(&responses)?.contains(native_session_id.as_str()));
+    assert_eq!(fixture.counts()?, before_core, "{label}");
     assert_eq!(read_only_state_version(&fixture)?, before_state_version);
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
         before_agent_sessions
     );
     assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        before_watch_baselines
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_tool_invocations
     );
-    assert_eq!(
-        agent_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            &session_id,
-        )?,
-        Some(seeded_session)
-    );
-    assert_eq!(
-        latest_watch_baseline_for_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            &session_id,
-        )?,
-        Some(seeded_baseline)
-    );
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&session_id))?.is_none());
     Ok(())
 }
 
 #[test]
-fn managed_codex_tools_list_buffers_without_durable_session() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-managed-tools-list-watch")?;
+fn managed_codex_tools_list_buffers_metrics_until_call_binding() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-tools-list-binding")?;
     let adapter = project_bound_adapter(&fixture)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
@@ -2541,20 +1952,14 @@ fn managed_codex_tools_list_buffers_without_durable_session() -> Result<(), Box<
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 2);
     assert!(responses[1]["result"]["tools"].is_array());
-    assert!(latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .is_none());
     assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
     assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
     Ok(())
 }
 
 #[test]
-fn managed_stdio_tool_call_records_lifecycle_observation() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-managed-tool-call-watch")?;
+fn managed_stdio_tool_call_records_bounded_metrics() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-tool-call-metrics")?;
     let adapter = project_bound_adapter(&fixture)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
@@ -2581,36 +1986,6 @@ fn managed_stdio_tool_call_records_lifecycle_observation() -> Result<(), Box<dyn
     assert_eq!(responses.len(), 3);
     let status = volicord_response_from_tool(&responses[2])?;
     assert_eq!(status["base"]["response_kind"], "result");
-    let baseline = latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .expect("managed tools/call should update the lifecycle baseline");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["coverage_basis"], "method_boundary");
-    assert!(metadata["partial_coverage_warning"].is_string());
-    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
-    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
-    let initialize = lifecycle_event(&metadata, "managed_host_initialize_response");
-    assert!(initialize.get("client_name").is_none());
-    assert!(initialize.get("client_version").is_none());
-    assert_eq!(
-        &lifecycle_event_names(&metadata)[..3],
-        [
-            "managed_host_startup",
-            "managed_host_initialize_response",
-            "managed_host_tools_list"
-        ]
-    );
-    assert!(lifecycle_event_names(&metadata).contains(&"managed_host_tool_call".to_owned()));
-    assert!(
-        lifecycle_event_names(&metadata).contains(&"managed_host_tool_call_completed".to_owned())
-    );
-    let tool_call = lifecycle_event(&metadata, "managed_host_tool_call");
-    assert_eq!(tool_call["tool_name"], "volicord.status");
-    assert_eq!(tool_call["storage_capability"], "read_write");
-    assert_eq!(tool_call["effective_tool_mode"], "workflow");
     let exact_tools_list_bytes = u64::try_from(serde_json::to_vec(&responses[1]["result"])?.len())?;
     let metrics =
         read_workflow_metric_aggregates(fixture.runtime_home_path(), fixture.project_id())?;
@@ -2642,7 +2017,7 @@ fn managed_codex_new_client_version_uses_protocol_and_call_binding() -> Result<(
         initialize_request_with_client_info(
             1,
             json!({}),
-            REVIEWED_CODEX_MCP_CLIENT_NAME,
+            CODEX_MANAGED_MCP_CLIENT_NAME,
             observed_version,
         ),
         initialized_notification(),
@@ -2667,687 +2042,6 @@ fn managed_codex_new_client_version_uses_protocol_and_call_binding() -> Result<(
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 2);
     assert_eq!(responses[1]["result"]["isError"], false);
-    let baseline = latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .expect("a structurally valid managed call should materialize its session baseline");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
-    assert_eq!(metadata["client_version"], observed_version);
-    Ok(())
-}
-
-#[test]
-fn managed_initialize_identity_replay_is_exactly_idempotent_and_drift_conflicts(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-managed-initialize-identity-replay")?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({})),
-        initialized_notification(),
-        tools_call_with_codex_metadata(
-            2,
-            "volicord.status",
-            json!({"detail":"workflow"}),
-            CODEX_TEST_SESSION_ID,
-            CODEX_TEST_THREAD_ID,
-            CODEX_TEST_TURN_ID,
-        ),
-    ])?);
-    let mut output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(input),
-        &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
-    )?;
-    assert_eq!(stdio_responses(&output)?.len(), 2);
-
-    let session_id = managed_host_session_id(
-        HOST_KIND_CODEX,
-        fixture.connection_id(),
-        CODEX_TEST_SESSION_ID,
-    )?;
-    let before = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the exact Codex call should materialize the baseline");
-    let adapter = project_bound_adapter(&fixture)?;
-    let exact =
-        ManagedMcpClientInfo::new(REVIEWED_CODEX_MCP_CLIENT_NAME, REVIEWED_CODEX_HOST_VERSION)?;
-    assert_eq!(
-        adapter.managed_initialize_observation_best_effort(&session_id, "managed_host", &exact,),
-        StartupObservationResult::Recorded
-    );
-
-    let drift = ManagedMcpClientInfo::new(REVIEWED_CODEX_MCP_CLIENT_NAME, "0.144.4-drift")?;
-    assert_eq!(
-        adapter.managed_initialize_observation_best_effort(&session_id, "managed_host", &drift,),
-        StartupObservationResult::IdentityConflict
-    );
-
-    let after = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the original baseline should remain present");
-    assert_eq!(after.metadata_json, before.metadata_json);
-    let metadata: Value = serde_json::from_str(&after.metadata_json)?;
-    assert_eq!(
-        lifecycle_event_names(&metadata)
-            .iter()
-            .filter(|event| event.as_str() == "managed_host_initialize_response")
-            .count(),
-        1
-    );
-    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
-    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
-    Ok(())
-}
-
-#[test]
-fn concurrent_first_managed_initialize_allows_only_one_different_identity(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-managed-initialize-race-different")?;
-    let session_id = managed_host_session_id(
-        HOST_KIND_CLAUDE_CODE,
-        fixture.connection_id(),
-        "claude.initialize.race.different",
-    )?;
-    let first = ManagedMcpClientInfo::new("claude-race-alpha", "1.0.0")?;
-    let second = ManagedMcpClientInfo::new("claude-race-beta", "2.0.0")?;
-    let barrier = Arc::new(Barrier::new(3));
-    let first_handle = {
-        let adapter = project_bound_adapter(&fixture)?;
-        let session_id = session_id.clone();
-        let client_info = first.clone();
-        let barrier = Arc::clone(&barrier);
-        std::thread::spawn(move || {
-            barrier.wait();
-            adapter.managed_initialize_observation_best_effort(
-                &session_id,
-                "managed_host",
-                &client_info,
-            )
-        })
-    };
-    let second_handle = {
-        let adapter = project_bound_adapter(&fixture)?;
-        let session_id = session_id.clone();
-        let client_info = second.clone();
-        let barrier = Arc::clone(&barrier);
-        std::thread::spawn(move || {
-            barrier.wait();
-            adapter.managed_initialize_observation_best_effort(
-                &session_id,
-                "managed_host",
-                &client_info,
-            )
-        })
-    };
-    barrier.wait();
-    let first_result = first_handle.join().expect("first initialize thread");
-    let second_result = second_handle.join().expect("second initialize thread");
-    assert_eq!(
-        [first_result.clone(), second_result.clone()]
-            .into_iter()
-            .filter(|result| *result == StartupObservationResult::Recorded)
-            .count(),
-        1
-    );
-    assert_eq!(
-        [first_result.clone(), second_result.clone()]
-            .into_iter()
-            .filter(|result| *result == StartupObservationResult::IdentityConflict)
-            .count(),
-        1
-    );
-
-    let winner = if first_result == StartupObservationResult::Recorded {
-        &first
-    } else {
-        &second
-    };
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("one racing initialize must create the managed baseline");
-    assert_eq!(
-        baseline.watch_baseline_id,
-        format!("watch_base_managed_{session_id}")
-    );
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["client_name"], winner.name());
-    assert_eq!(metadata["client_version"], winner.version());
-    assert_eq!(
-        lifecycle_event_names(&metadata),
-        vec!["managed_host_startup", "managed_host_initialize_response"]
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        1
-    );
-    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 1);
-    Ok(())
-}
-
-#[test]
-fn concurrent_first_managed_initialize_with_same_identity_is_idempotent(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-managed-initialize-race-same")?;
-    let session_id = managed_host_session_id(
-        HOST_KIND_CLAUDE_CODE,
-        fixture.connection_id(),
-        "claude.initialize.race.same",
-    )?;
-    let client_info = ManagedMcpClientInfo::new("claude-race-same", "3.0.0")?;
-    let barrier = Arc::new(Barrier::new(3));
-    let mut handles = Vec::new();
-    for _ in 0..2 {
-        let adapter = project_bound_adapter(&fixture)?;
-        let session_id = session_id.clone();
-        let client_info = client_info.clone();
-        let barrier = Arc::clone(&barrier);
-        handles.push(std::thread::spawn(move || {
-            barrier.wait();
-            adapter.managed_initialize_observation_best_effort(
-                &session_id,
-                "managed_host",
-                &client_info,
-            )
-        }));
-    }
-    barrier.wait();
-    for handle in handles {
-        assert_eq!(
-            handle.join().expect("initialize race thread"),
-            StartupObservationResult::Recorded
-        );
-    }
-
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("same-identity race must create one baseline");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["client_name"], client_info.name());
-    assert_eq!(metadata["client_version"], client_info.version());
-    assert_eq!(
-        lifecycle_event_names(&metadata),
-        vec!["managed_host_startup", "managed_host_initialize_response"]
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        1
-    );
-    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 1);
-    Ok(())
-}
-
-#[test]
-fn managed_claude_same_session_rejects_client_identity_drift_before_state_change(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-managed-claude-identity-drift")?;
-    let first_input = Cursor::new(json_lines(&[local_web_initialize_request(1, json!({}))])?);
-    let mut first_output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(first_input),
-        &mut first_output,
-        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
-    )?;
-    assert!(stdio_responses(&first_output)?[0]["result"].is_object());
-
-    let session_id = managed_host_session_id(
-        HOST_KIND_CLAUDE_CODE,
-        fixture.connection_id(),
-        CLAUDE_LOCAL_WEB_TEST_SESSION_ID,
-    )?;
-    let before = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the first Claude initialize should persist its exact identity");
-    let before_counts = fixture.counts()?;
-    let before_state_version = read_only_state_version(&fixture)?;
-    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
-
-    let rejected_version = "2.3.4-different-client";
-    let second_input = Cursor::new(json_lines(&[
-        initialize_request_with_client_info(
-            1,
-            json!({}),
-            CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
-            rejected_version,
-        ),
-        local_web_initialize_request(2, json!({})),
-    ])?);
-    let mut second_output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(second_input),
-        &mut second_output,
-        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
-    )?;
-
-    let responses = stdio_responses(&second_output)?;
-    assert_eq!(responses.len(), 2);
-    assert_eq!(responses[0]["error"]["code"], -32600);
-    assert!(responses[1]["result"].is_object());
-    assert!(!serde_json::to_string(&responses)?.contains(rejected_version));
-    let after = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the original Claude baseline should remain present");
-    assert_eq!(after.metadata_json, before.metadata_json);
-    assert!(!after.metadata_json.contains(rejected_version));
-    assert_eq!(fixture.counts()?, before_counts);
-    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
-    assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
-        before_agent_sessions
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        before_watch_baselines
-    );
-    Ok(())
-}
-
-#[cfg(unix)]
-#[test]
-fn managed_codex_lifecycle_failure_does_not_claim_coverage_and_recovers(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-managed-lifecycle-recovery")?;
-    let native_session_id = "native.session.lifecycle-recovery";
-    let native_thread_id = "native.thread.lifecycle-recovery";
-    let input = || {
-        json_lines(&[
-            initialize_request(1, json!({})),
-            request(2, "tools/list", json!({})),
-            initialized_notification(),
-            tools_call_with_codex_metadata(
-                3,
-                "volicord.status",
-                json!({"detail":"workflow"}),
-                native_session_id,
-                native_thread_id,
-                "turn.lifecycle-recovery",
-            ),
-        ])
-    };
-
-    {
-        let _guard = make_project_state_readonly(&fixture)?;
-        let mut output = Vec::new();
-        run_stdio_with_env_marker(
-            project_bound_adapter(&fixture)?,
-            BufReader::new(Cursor::new(input()?)),
-            &mut output,
-            |name| managed_codex_stdio_env(&fixture, true, name),
-        )?;
-        let responses = stdio_responses(&output)?;
-        assert_eq!(responses.len(), 3);
-        assert_eq!(responses[2]["result"]["isError"], false);
-        assert!(latest_watch_baseline_for_connection(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            fixture.connection_id(),
-        )?
-        .is_none());
-        assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
-    }
-
-    let mut output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(Cursor::new(input()?)),
-        &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
-    )?;
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses[2]["result"]["isError"], false);
-    let baseline = latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .expect("a later writable managed call should materialize honest coverage");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["coverage_basis"], "method_boundary");
-    assert_eq!(
-        lifecycle_event_names(&metadata),
-        vec![
-            "managed_host_startup",
-            "managed_host_initialize_response",
-            "managed_host_tools_list",
-            "managed_host_tool_call",
-            "managed_host_tool_call_completed",
-        ]
-    );
-    Ok(())
-}
-
-#[test]
-fn deferred_codex_missing_stored_identity_rejects_before_tool_or_diagnostic_dispatch(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-codex-deferred-identity-conflict")?;
-    let first_input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({})),
-        initialized_notification(),
-        tools_call_with_codex_metadata(
-            2,
-            "volicord.status",
-            json!({"detail":"workflow"}),
-            CODEX_TEST_SESSION_ID,
-            CODEX_TEST_THREAD_ID,
-            "turn.before.identity.conflict",
-        ),
-    ])?);
-    let mut first_output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(first_input),
-        &mut first_output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
-    )?;
-    assert!(stdio_responses(&first_output)?[1]["result"].is_object());
-
-    let session_id = managed_host_session_id(
-        HOST_KIND_CODEX,
-        fixture.connection_id(),
-        CODEX_TEST_SESSION_ID,
-    )?;
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the first Codex call should materialize its baseline");
-    let mut stale_metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    stale_metadata
-        .as_object_mut()
-        .expect("baseline metadata should be an object")
-        .remove("client_name");
-    stale_metadata
-        .as_object_mut()
-        .expect("baseline metadata should be an object")
-        .remove("client_version");
-    update_watch_status(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &baseline.watch_baseline_id,
-        WatchStatusUpdate {
-            status: StoreSessionWatchStatus::Active,
-            updated_at: fixture.store()?.current_timestamp()?,
-            metadata_json: serde_json::to_string(&stale_metadata)?,
-        },
-    )?;
-    let before = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the conflict fixture baseline should remain present");
-    let before_counts = fixture.counts()?;
-    let before_state_version = read_only_state_version(&fixture)?;
-    let before_diagnostic = serde_json::to_string(&read_diagnostic_session(
-        fixture.runtime_home_path(),
-        Some(&session_id),
-    )?)?;
-
-    let second_input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({})),
-        initialized_notification(),
-        tools_call_with_codex_metadata(
-            2,
-            "volicord.status",
-            json!({"detail":"workflow"}),
-            CODEX_TEST_SESSION_ID,
-            CODEX_TEST_THREAD_ID,
-            "turn.rejected.identity.conflict",
-        ),
-    ])?);
-    let mut second_output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(second_input),
-        &mut second_output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
-    )?;
-
-    let responses = stdio_responses(&second_output)?;
-    assert_eq!(responses.len(), 2);
-    assert_eq!(responses[1]["error"]["code"], -32600);
-    let after = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .expect("the conflicting baseline should remain byte-identical");
-    assert_eq!(after.metadata_json, before.metadata_json);
-    assert_eq!(fixture.counts()?, before_counts);
-    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
-    assert_eq!(
-        serde_json::to_string(&read_diagnostic_session(
-            fixture.runtime_home_path(),
-            Some(&session_id),
-        )?)?,
-        before_diagnostic
-    );
-    Ok(())
-}
-
-#[test]
-fn deferred_codex_identity_conflict_restores_pending_and_recovers_only_on_exact_binding(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-codex-conflict-pending-recovery")?;
-    let conflicting_native_session = "native.session.conflicting.identity";
-    let conflicting_native_thread = "native.thread.conflicting.identity";
-    let recovery_native_session = "native.session.exact.recovery";
-    let recovery_native_thread = "native.thread.exact.recovery";
-    let conflicting_session_id = managed_host_session_id(
-        HOST_KIND_CODEX,
-        fixture.connection_id(),
-        conflicting_native_session,
-    )?;
-    let recovery_session_id = managed_host_session_id(
-        HOST_KIND_CODEX,
-        fixture.connection_id(),
-        recovery_native_session,
-    )?;
-    let now = fixture.store()?.current_timestamp()?;
-    let seeded_session = insert_agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        AgentSessionInsert {
-            session_id: conflicting_session_id.clone(),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "record".to_owned(),
-            started_at: now.clone(),
-            metadata_json: json!({"source":"codex_pending_recovery_preseed"}).to_string(),
-        },
-    )?;
-    let snapshot = snapshot_product_repository(
-        fixture.runtime_home_path(),
-        fixture.product_repo_path(),
-        WatchSnapshotOptions::default(),
-    )?;
-    let seeded_baseline = create_watch_baseline(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        WatchBaselineCreate {
-            watch_baseline_id: "watch_base_codex_pending_recovery_preseed".to_owned(),
-            session_id: conflicting_session_id.clone(),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            status: StoreSessionWatchStatus::Active,
-            snapshot,
-            created_at: now,
-            metadata_json: json!({
-                "source":"codex_pending_recovery_preseed",
-                "lifecycle_events":[{"lifecycle_event":"managed_host_startup"}]
-            })
-            .to_string(),
-        },
-    )?;
-    let before_counts = fixture.counts()?;
-    let before_state_version = read_only_state_version(&fixture)?;
-    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
-    let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
-    assert!(
-        read_diagnostic_session(fixture.runtime_home_path(), Some(&conflicting_session_id),)?
-            .is_none()
-    );
-
-    let unknown_tool_sentinel = "volicord.unknown.pending.sentinel";
-    let malformed_metadata_sentinel = "malformed.metadata.pending.sentinel";
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({})),
-        initialized_notification(),
-        tools_call_with_codex_metadata(
-            2,
-            "volicord.status",
-            json!({"detail":"workflow"}),
-            conflicting_native_session,
-            conflicting_native_thread,
-            "turn.identity.conflict",
-        ),
-        tools_call_with_codex_metadata(
-            3,
-            unknown_tool_sentinel,
-            json!({}),
-            recovery_native_session,
-            recovery_native_thread,
-            "turn.unknown.must.not.bind",
-        ),
-        request(
-            4,
-            "tools/call",
-            json!({
-                "name":"volicord.status",
-                "arguments":{"detail":"workflow"},
-                "_meta":{"future":malformed_metadata_sentinel}
-            }),
-        ),
-        tools_call_with_codex_metadata(
-            5,
-            "volicord.status",
-            json!({"detail":"workflow"}),
-            recovery_native_session,
-            recovery_native_thread,
-            "turn.exact.recovery",
-        ),
-    ])?);
-    let mut output = Vec::new();
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(input),
-        &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
-    )?;
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 5);
-    assert_eq!(responses[1]["error"]["code"], -32600);
-    assert_eq!(responses[2]["error"]["code"], -32602);
-    assert_eq!(responses[3]["error"]["code"], -32602);
-    assert!(responses[4]["result"].is_object());
-    assert_eq!(fixture.counts()?, before_counts);
-    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
-    assert_eq!(
-        read_only_table_count(&fixture, "tool_invocations")?,
-        before_tool_invocations
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
-        before_agent_sessions + 1
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        before_watch_baselines + 1
-    );
-    assert_eq!(
-        agent_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            &conflicting_session_id,
-        )?,
-        Some(seeded_session)
-    );
-    assert_eq!(
-        latest_watch_baseline_for_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            &conflicting_session_id,
-        )?,
-        Some(seeded_baseline)
-    );
-    assert!(
-        read_diagnostic_session(fixture.runtime_home_path(), Some(&conflicting_session_id),)?
-            .is_none()
-    );
-
-    let recovery_baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &recovery_session_id,
-    )?
-    .expect("the later exact binding should recover on its own managed session");
-    let recovery_metadata: Value = serde_json::from_str(&recovery_baseline.metadata_json)?;
-    assert_eq!(
-        lifecycle_event_names(&recovery_metadata),
-        vec![
-            "managed_host_startup",
-            "managed_host_initialize_response",
-            "managed_host_tool_call",
-            "managed_host_tool_call_completed",
-        ]
-    );
-    assert_eq!(
-        recovery_metadata["client_name"],
-        REVIEWED_CODEX_MCP_CLIENT_NAME
-    );
-    assert_eq!(
-        recovery_metadata["client_version"],
-        REVIEWED_CODEX_HOST_VERSION
-    );
-    let recovery_diagnostic =
-        read_diagnostic_session(fixture.runtime_home_path(), Some(&recovery_session_id))?
-            .expect("only the exact recovery binding should start diagnostics");
-    assert_eq!(recovery_diagnostic.totals.tool_call_count, 1);
-    assert_eq!(recovery_diagnostic.totals.validation_failures, 0);
-    let persisted = format!(
-        "{}\n{}",
-        recovery_baseline.metadata_json,
-        serde_json::to_string(&recovery_diagnostic)?
-    );
-    for rejected in [
-        conflicting_native_session,
-        conflicting_native_thread,
-        unknown_tool_sentinel,
-        malformed_metadata_sentinel,
-    ] {
-        assert!(
-            !persisted.contains(rejected),
-            "rejected payload leaked: {rejected}"
-        );
-    }
     Ok(())
 }
 
@@ -3420,36 +2114,12 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
     assert!(responses[2]["result"].is_object());
     assert_eq!(responses[3]["error"]["code"], -32602);
     assert_eq!(responses[4]["error"]["code"], -32602);
-    let managed_session_id =
-        managed_host_session_id("codex", fixture.connection_id(), native_session_id)?;
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &managed_session_id,
-    )?
-    .expect("first exact call must materialize the managed baseline");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
-    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
-    assert_eq!(
-        lifecycle_event_names(&metadata),
-        vec![
-            "managed_host_startup",
-            "managed_host_initialize_response",
-            "managed_host_tool_call",
-            "managed_host_tool_call_completed",
-            "managed_host_tool_call",
-            "managed_host_tool_call_completed",
-        ]
-    );
-    let persisted = format!(
-        "{}\n{}",
-        baseline.metadata_json,
-        serde_json::to_string(&read_diagnostic_session(
-            fixture.runtime_home_path(),
-            Some(&managed_session_id)
-        )?)?
-    );
+    let managed_session_id = managed_stdio_session_id(fixture.connection_id(), native_session_id)?;
+    let diagnostic =
+        read_diagnostic_session(fixture.runtime_home_path(), Some(&managed_session_id))?
+            .expect("first exact call must bind the managed diagnostic session");
+    assert_eq!(diagnostic.totals.tool_call_count, 2);
+    let persisted = serde_json::to_string(&diagnostic)?;
     for raw in [
         native_session_id,
         native_thread_id,
@@ -3472,31 +2142,11 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
 }
 
 #[test]
-fn manual_stdio_launch_does_not_create_host_runtime_observation() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-manual-watch-skip")?;
-    let adapter = project_bound_adapter(&fixture)?;
-    let input = Cursor::new(Vec::<u8>::new());
-    let mut output = Vec::new();
-
-    run_stdio_with_env_marker(adapter, BufReader::new(input), &mut output, |_| None)?;
-
-    assert!(output.is_empty());
-    assert!(latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .is_none());
-    Ok(())
-}
-
-#[test]
 fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-invalid-marker-watch-skip")?;
     let adapter = project_bound_adapter(&fixture)?;
     let before_state_version = read_only_state_version(&fixture)?;
     let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
     let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
@@ -3538,20 +2188,10 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
     assert_eq!(responses.len(), 2);
     assert_eq!(responses[1]["error"]["code"], -32602);
     assert!(!serde_json::to_string(&responses)?.contains("thread invalid marker"));
-    assert!(latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .is_none());
     assert_eq!(read_only_state_version(&fixture)?, before_state_version);
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
         before_agent_sessions
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        before_watch_baselines
     );
     assert_eq!(
         read_only_table_count(&fixture, "tool_invocations")?,
@@ -3570,7 +2210,6 @@ fn rejected_codex_client_identity_has_zero_durable_identity_or_core_effect(
     let before = fixture.counts()?;
     let before_state_version = read_only_state_version(&fixture)?;
     let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
     let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let input = Cursor::new(json_lines(&[
         initialize_request_with_client_info(1, json!({}), rejected_name, rejected_version),
@@ -3598,21 +2237,11 @@ fn rejected_codex_client_identity_has_zero_durable_identity_or_core_effect(
     assert_eq!(responses[1]["error"]["code"], -32602);
     assert!(!serde_json::to_string(&responses)?.contains(rejected_name));
     assert!(!serde_json::to_string(&responses)?.contains(rejected_version));
-    assert!(latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .is_none());
     assert_eq!(fixture.counts()?, before);
     assert_eq!(read_only_state_version(&fixture)?, before_state_version);
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
         before_agent_sessions
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        before_watch_baselines
     );
     assert_eq!(
         read_only_table_count(&fixture, "tool_invocations")?,
@@ -3679,28 +2308,17 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
     }
     assert!(responses[4]["result"].is_object());
 
-    let rejected = managed_host_session_id("codex", fixture.connection_id(), rejected_session_id)?;
+    let rejected = managed_stdio_session_id(fixture.connection_id(), rejected_session_id)?;
     assert!(
         agent_session(fixture.runtime_home_path(), fixture.project_id(), &rejected,)?.is_none()
     );
-    assert!(latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &rejected,
-    )?
-    .is_none());
     assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&rejected))?.is_none());
 
-    let accepted = managed_host_session_id("codex", fixture.connection_id(), accepted_session_id)?;
+    let accepted = managed_stdio_session_id(fixture.connection_id(), accepted_session_id)?;
     assert!(
         agent_session(fixture.runtime_home_path(), fixture.project_id(), &accepted,)?.is_some()
     );
-    assert!(latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &accepted,
-    )?
-    .is_some());
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&accepted))?.is_some());
     let serialized = serde_json::to_string(&responses)?;
     assert!(!serialized.contains(rejected_session_id));
     assert!(!serialized.contains(accepted_session_id));
@@ -3819,7 +2437,6 @@ fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-readonly-status-version")?;
     let before_version = read_only_state_version(&fixture)?;
     let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
     let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
@@ -3835,10 +2452,6 @@ fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
         before_sessions
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "session_watch_baselines")?,
-        before_baselines
     );
     assert_eq!(
         read_only_table_count(&fixture, "tool_invocations")?,
@@ -4089,7 +2702,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
 fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-readonly-write-reject")?;
     let before_version = read_only_state_version(&fixture)?;
-    let before_events = read_only_table_count(&fixture, "task_events")?;
+    let before_events = read_only_table_count(&fixture, "authority_events")?;
     let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
@@ -4115,7 +2728,7 @@ fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<
     );
     assert_eq!(read_only_state_version(&fixture)?, before_version);
     assert_eq!(
-        read_only_table_count(&fixture, "task_events")?,
+        read_only_table_count(&fixture, "authority_events")?,
         before_events
     );
     assert_eq!(
@@ -4145,7 +2758,7 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
         .ok_or("request-user-action result should identify its request")?
         .to_owned();
     let before_version = read_only_state_version(&fixture)?;
-    let before_events = read_only_table_count(&fixture, "task_events")?;
+    let before_events = read_only_table_count(&fixture, "authority_events")?;
     let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let before_requests = read_only_table_count(&fixture, "user_action_requests")?;
     let _guard = make_project_state_readonly(&fixture)?;
@@ -4173,7 +2786,7 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
     assert_eq!(resumed.operation_result_ref, exact_operation_result_ref);
     assert_eq!(read_only_state_version(&fixture)?, before_version);
     assert_eq!(
-        read_only_table_count(&fixture, "task_events")?,
+        read_only_table_count(&fixture, "authority_events")?,
         before_events
     );
     assert_eq!(
@@ -4184,65 +2797,6 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
         read_only_table_count(&fixture, "user_action_requests")?,
         before_requests
     );
-    Ok(())
-}
-
-#[cfg(unix)]
-#[test]
-fn mcp_startup_observation_write_failure_is_nonfatal() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-readonly-startup-observation")?;
-    let adapter = adapter(&fixture)?;
-    let _guard = make_project_state_readonly(&fixture)?;
-
-    let result = adapter.startup_session_watch_observation_best_effort("session_readonly_startup");
-
-    assert!(
-        matches!(
-            result,
-            StartupObservationResult::SkippedReadonlyStorage
-                | StartupObservationResult::FailedButNonfatal { .. }
-        ),
-        "readonly startup observation should be degraded, got {result:?}"
-    );
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({})),
-        request(2, "tools/list", json!({})),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 2);
-    assert!(responses[1]["result"]["tools"].is_array());
-    Ok(())
-}
-
-#[test]
-fn mcp_verification_probe_does_not_create_host_runtime_observation() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-verification-watch-skip")?;
-    let adapter = adapter(&fixture)?;
-    let input = Cursor::new(Vec::<u8>::new());
-    let mut output = Vec::new();
-
-    run_stdio_with_env_marker(adapter, BufReader::new(input), &mut output, |name| {
-        (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1"))
-    })?;
-
-    assert!(output.is_empty());
-    let conn = fixture.conn()?;
-    let agent_sessions: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM agent_sessions WHERE project_id = ?1",
-        [fixture.project_id()],
-        |row| row.get(0),
-    )?;
-    let watch_baselines: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM session_watch_baselines WHERE project_id = ?1",
-        [fixture.project_id()],
-        |row| row.get(0),
-    )?;
-    assert_eq!(agent_sessions, 0);
-    assert_eq!(watch_baselines, 0);
     Ok(())
 }
 
@@ -4261,143 +2815,6 @@ fn adapter_auto_selects_single_project_and_injects_connection_invocation(
     assert_eq!(verified.project_id.as_str(), fixture.project_id());
     assert_eq!(verified.actor_source.to_string(), fixture.actor_source());
     assert_eq!(verified.operation_category, OperationCategory::Read);
-    Ok(())
-}
-
-#[test]
-fn multi_project_session_reports_pending_project_selection() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-watch-pending")?;
-    add_allowed_project(&fixture, "project_watch_pending_other")?;
-    let adapter = adapter(&fixture)?;
-
-    let result =
-        adapter.call_adapter_tool(LIST_PROJECTS_TOOL_NAME, json!({}), Some("session_pending"))?;
-
-    assert_eq!(result["watcher_status"], "pending_project_selection");
-    assert!(result["watcher_baseline_created_at"].is_null());
-    assert!(result["watcher_coverage_start_at"].is_null());
-    assert!(result["watcher_coverage_basis"].is_null());
-    assert!(result["watcher_partial_coverage_warning"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("project_selector"));
-    Ok(())
-}
-
-#[test]
-fn first_project_selection_creates_partial_coverage_baseline() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-watch-first-selection")?;
-    add_allowed_project(&fixture, "project_watch_first_selection_other")?;
-    let adapter = adapter(&fixture)?;
-    let session_id = "session_first_project_selection";
-
-    let response = adapter.call_tool_for_session(
-        "volicord.status",
-        json!({ "project_selector": fixture.project_id() }),
-        Some(session_id),
-    )?;
-
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        session_id,
-    )?
-    .expect("first explicit project selection should create a baseline");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["coverage_basis"], "first_project_selection");
-    assert!(metadata["partial_coverage_warning"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("project selection"));
-    Ok(())
-}
-
-#[test]
-fn project_bound_early_edit_is_detected_on_first_close_attempt() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-watch-early-edit")?;
-    let adapter = adapter(&fixture)?;
-    let (task_id, _) = create_task(&adapter)?;
-    let session_id = "session_project_bound_early_edit";
-    assert_eq!(
-        adapter.startup_session_watch_observation_best_effort(session_id),
-        StartupObservationResult::Recorded
-    );
-    write_product_file(&fixture, "src/early.txt", "changed before first method\n")?;
-
-    let response = adapter.call_tool_for_session(
-        CLOSE_TASK_TOOL_NAME,
-        json!({
-            "task_id": task_id,
-            "intent": "complete",
-            "close_reason": "completed_self_checked"
-        }),
-        Some(session_id),
-    )?;
-
-    assert_eq!(
-        response.response_value["guard_health"]["session_watch_coverage_basis"],
-        "mcp_start"
-    );
-    assert_eq!(
-        response.response_value["guard_health"]["session_watch_partial_coverage_warning"],
-        Value::Null
-    );
-    assert_eq!(
-        response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
-        1
-    );
-    let changes = list_unresolved_unrecorded_changes(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        Some(fixture.connection_id()),
-    )?;
-    assert_eq!(changes.len(), 1);
-    assert!(!changes[0]
-        .detection_json
-        .contains("changed before first method"));
-    Ok(())
-}
-
-#[test]
-fn edit_before_project_selection_is_reported_outside_coverage() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-watch-before-selection")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, _) = create_task(&setup_adapter)?;
-    add_allowed_project(&fixture, "project_watch_before_selection_other")?;
-    let adapter = adapter(&fixture)?;
-    let session_id = "session_before_project_selection";
-    write_product_file(&fixture, "src/before-selection.txt", "before selection\n")?;
-
-    let response = adapter.call_tool_for_session(
-        CHECK_CLOSE_TOOL_NAME,
-        json!({
-            "project_selector": fixture.project_id(),
-            "task_id": task_id
-        }),
-        Some(session_id),
-    )?;
-
-    assert_eq!(
-        response.response_value["guard_health"]["session_watch_coverage_basis"],
-        "first_project_selection"
-    );
-    assert!(
-        response.response_value["guard_health"]["session_watch_partial_coverage_warning"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("project selection")
-    );
-    assert_eq!(
-        response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
-        0
-    );
-    let changes = list_unresolved_unrecorded_changes(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        Some(fixture.connection_id()),
-    )?;
-    assert!(changes.is_empty());
     Ok(())
 }
 
@@ -5240,663 +3657,10 @@ fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Resul
 }
 
 #[test]
-fn stdio_elicitation_accept_resolves_user_action_with_agent_safe_summary(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-accept")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter(&fixture)?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            "volicord.request_user_action",
-            default_product_action_args(&fixture, &task_id, state_version),
-        ),
-        elicitation_accept("keep", Some("private-note-must-not-enter-agent-output")),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    assert_eq!(values.len(), 3);
-    assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
-    assert_eq!(values[1]["id"], "elicit_user_action_1");
-    assert_eq!(
-        values[1]["params"]["requestedSchema"]["additionalProperties"],
-        false
-    );
-    assert_eq!(
-        values[1]["params"]["requestedSchema"]["properties"]["selected_option_id"]["enum"][0],
-        "keep"
-    );
-    let elicitation_message = values[1]["params"]["message"]
-        .as_str()
-        .ok_or("elicitation message should be present")?;
-    for expected in [
-        "Keep focused behavior",
-        "Record the user-owned product decision to keep the behavior.",
-        "Only this focused judgment is resolved.",
-        "is_default: true",
-        "Change focused behavior",
-        "is_default: false",
-        "Note max characters: 1000",
-    ] {
-        assert!(
-            elicitation_message.contains(expected),
-            "elicitation must display {expected}"
-        );
-    }
-    let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(response["effect"]["effect_kind"], "core_committed");
-    assert_eq!(response["status"], "resolved");
-    assert_eq!(response["resolution_summary"]["resolution_type"], "choice");
-    assert_eq!(response["resolution_summary"]["selected_option_id"], "keep");
-    assert_eq!(
-        response["resolution_summary"]["selected_option_label"],
-        "Keep focused behavior"
-    );
-    assert_eq!(
-        response["resolution_summary"]["resolution_outcome"],
-        "accepted"
-    );
-    assert!(response["derived_refs"].as_array().is_some_and(|refs| refs
-        .iter()
-        .any(|record_ref| { record_ref["record_kind"] == "project_continuity_record" })));
-    assert!(response.get("note").is_none());
-    assert!(!serde_json::to_string(&response)?.contains("private-note-must-not-enter-agent-output"));
-    assert_eq!(
-        stored_resolution_basis(&fixture, &task_id, &response)?,
-        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
-    );
-    let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
-        .expect("stdio tool call should create bounded diagnostics");
-    assert_eq!(diagnostics.totals.tool_call_count, 1);
-    assert_eq!(diagnostics.totals.core_reached_count, 1);
-    assert_eq!(diagnostics.totals.core_committed_count, 1);
-    assert_eq!(diagnostics.user_channel_counts["mcp_elicitation"], 1);
-    assert!(diagnostics.fallback_counts.is_empty());
-    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
-    assert!(!String::from_utf8_lossy(&diagnostics_bytes)
-        .contains("private-note-must-not-enter-agent-output"));
-    Ok(())
-}
-
-#[test]
-fn elicitation_wire_budget_accepts_exact_line_and_falls_back_at_next_byte_without_partial_form(
-) -> Result<(), Box<dyn Error>> {
-    fn create_with_first_consequence(
-        fixture: &CoreFixture,
-        consequence: String,
-    ) -> Result<PipelineResponse, Box<dyn Error>> {
-        ensure_user_channel_test_session(fixture)?;
-        let setup_adapter = adapter(fixture)?;
-        let (task_id, state_version) = create_task(&setup_adapter)?;
-        let mut arguments = product_action_args(fixture, &task_id, state_version);
-        arguments["request"]["action"]["options"][0]["consequence"] = json!(consequence);
-        Ok(setup_adapter.call_tool_for_session_with_capabilities(
-            REQUEST_USER_ACTION_TOOL_NAME,
-            arguments,
-            Some(USER_CHANNEL_TEST_SESSION_ID),
-            true,
-        )?)
-    }
-
-    let base_fixture = CoreFixture::new("mcp-elicitation-whole-line-boundary-base")?;
-    let base_response = create_with_first_consequence(&base_fixture, "x".to_owned())?;
-    let base_pending = pending_user_action_from_response(&adapter(&base_fixture)?, &base_response)?
-        .ok_or("boundary response should remain pending")?;
-    let base_request =
-        crate::stdio::elicitation_create_request("elicit_user_action_1", &base_pending)?
-            .ok_or("base request should fit")?;
-    let base_wire_bytes = serde_json::to_vec(&base_request)?.len() + 1;
-    assert!(base_wire_bytes < MAX_MCP_ELICITATION_WIRE_BYTES);
-    let exact_consequence_len = 1 + (MAX_MCP_ELICITATION_WIRE_BYTES - base_wire_bytes);
-
-    let exact_fixture = CoreFixture::new("mcp-elicitation-whole-line-boundary-exact")?;
-    let exact_response =
-        create_with_first_consequence(&exact_fixture, "x".repeat(exact_consequence_len))?;
-    let exact_pending =
-        pending_user_action_from_response(&adapter(&exact_fixture)?, &exact_response)?
-            .ok_or("exact-fit response should remain pending")?;
-    exact_pending.inbox_item.form.validate_canonical_size()?;
-    assert_eq!(
-        exact_pending.request.body.capture_form()?,
-        exact_pending.inbox_item.form
-    );
-    let exact_request =
-        crate::stdio::elicitation_create_request("elicit_user_action_1", &exact_pending)?
-            .ok_or("the exact whole-line boundary must fit")?;
-    assert_eq!(
-        serde_json::to_vec(&exact_request)?.len() + 1,
-        MAX_MCP_ELICITATION_WIRE_BYTES,
-        "the budget includes the complete serialized JSON object and trailing LF"
-    );
-
-    let over_fixture = CoreFixture::new("mcp-elicitation-whole-line-boundary-over")?;
-    let over_response =
-        create_with_first_consequence(&over_fixture, "x".repeat(exact_consequence_len + 1))?;
-    let over_pending = pending_user_action_from_response(&adapter(&over_fixture)?, &over_response)?
-        .ok_or("one-byte-over response should remain pending")?;
-    over_pending.inbox_item.form.validate_canonical_size()?;
-    assert!(
-        crate::stdio::elicitation_create_request("elicit_user_action_1", &over_pending,)?.is_none()
-    );
-
-    let mut input_lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
-    let mut wire_output = Vec::new();
-    let mut request_sequence = 1;
-    let output = crate::stdio::user_action_tool_output(
-        &adapter(&over_fixture)?,
-        over_response,
-        true,
-        McpUserChannelCapabilities::new(true, false),
-        &mut request_sequence,
-        &mut input_lines,
-        &mut wire_output,
-    )?;
-    assert!(
-        wire_output.is_empty(),
-        "an oversized elicitation must not send any partial JSON line"
-    );
-    let result = crate::stdio::tool_call_result_from_output(output);
-    assert!(result["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry["text"].as_str())
-        .any(|text| text.contains("complete elicitation request exceeds the 32768-byte wire budget; no partial form was sent")));
-    Ok(())
-}
-
-#[test]
-fn stdio_elicitation_evidence_observation_preserves_canonical_candidates_and_redacts_user_summary(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-evidence-observation")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, _) = create_task(&setup_adapter)?;
-    let baseline_ref = "baseline_mcp_evidence_observation";
-    let scope = setup_adapter.call_tool(
-        UPDATE_SCOPE_TOOL_NAME,
-        json!({
-            "task_id": task_id,
-            "goal_summary": null,
-            "scope_update": null,
-            "scope_boundary": "Observe stored evidence candidates through a User Channel.",
-            "non_goals": [],
-            "acceptance_criteria": [
-                {
-                    "acceptance_criterion_id": null,
-                    "statement": "The first stored target remains available.",
-                    "evidence_requirement": "required"
-                },
-                {
-                    "acceptance_criterion_id": null,
-                    "statement": "The selected stored target is supported by exact bytes.",
-                    "evidence_requirement": "required"
-                }
-            ],
-            "autonomy_boundary": null,
-            "baseline_ref": baseline_ref,
-            "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Exercise the evidence-observation User Channel.",
-                "affected_paths": []
-            },
-            "related_scope_decision_refs": []
-        }),
-    )?;
-    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
-        .as_str()
-        .ok_or("scope response should expose the current Change Unit")?
-        .to_owned();
-    let criteria = scope.response_value["state"]["acceptance_criteria"]
-        .as_array()
-        .ok_or("scope response should expose acceptance criteria")?;
-    assert_eq!(criteria.len(), 2);
-    let target_candidates = criteria
-        .iter()
-        .map(|criterion| {
-            json!({
-                "target_kind": "acceptance_criterion",
-                "acceptance_criterion_id": criterion["acceptance_criterion_id"]
-            })
-        })
-        .collect::<Vec<_>>();
-    let target_selectors = target_candidates
-        .iter()
-        .map(|target| {
-            serde_json::from_value::<volicord_types::EvidenceTarget>(target.clone()).map(|target| {
-                match target {
-                    EvidenceTarget::AcceptanceCriterion {
-                        acceptance_criterion_id,
-                    } => format!("--criterion {acceptance_criterion_id}"),
-                    EvidenceTarget::SupplementalClaim {
-                        evidence_claim_id, ..
-                    } => format!("--claim {evidence_claim_id}"),
-                }
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let mut staged_handles = Vec::new();
-    for (display_name, bytes) in [
-        (
-            "observation-candidate-a.txt",
-            "First exact evidence candidate bytes.",
-        ),
-        (
-            "observation-candidate-b.txt",
-            "Selected exact evidence candidate bytes.",
-        ),
-    ] {
-        let staged = setup_adapter.call_tool(
-            STAGE_ARTIFACT_TOOL_NAME,
-            json!({
-                "task_id": task_id,
-                "display_name": display_name,
-                "content_type": "text/plain",
-                "redaction_state": "none",
-                "safe_bytes_or_notice": bytes
-            }),
-        )?;
-        staged_handles.push(staged.response_value["staged_artifact_handle"].clone());
-    }
-    let recorded = setup_adapter.call_tool(
-        RECORD_RUN_TOOL_NAME,
-        json!({
-            "task_id": task_id,
-            "change_unit_id": change_unit_id,
-            "kind": "implementation",
-            "baseline_ref": baseline_ref,
-            "summary": "Register exact artifacts for a user-owned observation.",
-            "observed_changes": {
-                "changed_paths": [],
-                "product_file_write_observed": false,
-                "sensitive_categories": [],
-                "baseline_ref": baseline_ref
-            },
-            "artifact_inputs": [
-                {
-                    "artifact_input_id": "artifact_input_observation_candidate_a",
-                    "source_kind": "staged_artifact",
-                    "staged_artifact_handle": staged_handles[0],
-                    "existing_artifact_ref": null,
-                    "relation_hint": "user_observation_candidate",
-                    "evidence_target": target_candidates[0],
-                    "expected_sha256": null,
-                    "expected_size_bytes": null,
-                    "redaction_state": "none"
-                },
-                {
-                    "artifact_input_id": "artifact_input_observation_candidate_b",
-                    "source_kind": "staged_artifact",
-                    "staged_artifact_handle": staged_handles[1],
-                    "existing_artifact_ref": null,
-                    "relation_hint": "user_observation_candidate",
-                    "evidence_target": target_candidates[1],
-                    "expected_sha256": null,
-                    "expected_size_bytes": null,
-                    "redaction_state": "none"
-                }
-            ],
-            "evidence_updates": [],
-            "evidence_observations": [],
-            "close_assessment": null
-        }),
-    )?;
-    let registered_artifacts = recorded.response_value["registered_artifacts"]
-        .as_array()
-        .ok_or("record_run should expose registered artifacts")?
-        .clone();
-    assert_eq!(registered_artifacts.len(), 2);
-    let artifact_candidate_ids = registered_artifacts
-        .iter()
-        .map(|artifact| {
-            artifact["artifact_id"]
-                .as_str()
-                .ok_or("registered artifact should expose artifact_id")
-                .map(str::to_owned)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut canonical_artifact_candidate_ids = artifact_candidate_ids.clone();
-    canonical_artifact_candidate_ids.sort();
-    let selected_target = target_candidates[1].clone();
-    let selected_target_selector = target_selectors[1].clone();
-    let selected_artifact_id = artifact_candidate_ids[1].clone();
-    let private_summary = "private-user-observation-summary-must-not-enter-agent-output";
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            evidence_observation_action_args(
-                &task_id,
-                &change_unit_id,
-                target_candidates.clone(),
-                artifact_candidate_ids.clone(),
-            ),
-        ),
-        elicitation_accept_observation(
-            &selected_target_selector,
-            std::slice::from_ref(&selected_artifact_id),
-            "supported",
-            private_summary,
-        ),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    assert_eq!(values.len(), 3);
-    assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
-    let requested_schema = &values[1]["params"]["requestedSchema"];
-    assert_eq!(requested_schema["additionalProperties"], false);
-    assert_eq!(
-        requested_schema["properties"]["selected_target"]["enum"],
-        json!(target_selectors)
-    );
-    assert_eq!(
-        requested_schema["properties"]["selected_artifact_ids"]["items"]["enum"],
-        json!(canonical_artifact_candidate_ids)
-    );
-    assert_eq!(
-        requested_schema["properties"]["relevance_status"]["enum"],
-        json!(["supported", "contradicted"])
-    );
-    let message = values[1]["params"]["message"]
-        .as_str()
-        .ok_or("elicitation message should be present")?;
-    for target in &target_candidates {
-        let target: EvidenceTarget = serde_json::from_value(target.clone())?;
-        match target {
-            EvidenceTarget::AcceptanceCriterion {
-                acceptance_criterion_id,
-            } => assert!(message.contains(acceptance_criterion_id.as_str())),
-            EvidenceTarget::SupplementalClaim {
-                evidence_claim_id,
-                statement,
-            } => {
-                assert!(message.contains(evidence_claim_id.as_str()));
-                assert!(message.contains(&statement));
-            }
-        }
-    }
-    for artifact in &registered_artifacts {
-        for field in [
-            "artifact_id",
-            "display_name",
-            "sha256",
-            "size_bytes",
-            "storage_ref",
-            "created_by_actor_source",
-        ] {
-            let value = &artifact[field];
-            let displayed = value
-                .as_str()
-                .map(str::to_owned)
-                .unwrap_or_else(|| value.to_string());
-            assert!(
-                message.contains(&displayed),
-                "elicitation must display artifact {field} metadata"
-            );
-        }
-    }
-    let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(response["effect"]["effect_kind"], "core_committed");
-    assert_eq!(response["status"], "resolved");
-    assert_eq!(
-        response["resolution_summary"]["resolution_type"],
-        "evidence_observation"
-    );
-    assert_eq!(response["resolution_summary"]["target"], selected_target);
-    assert_eq!(
-        response["resolution_summary"]["relevance_status"],
-        "supported"
-    );
-    assert_eq!(
-        response["resolution_summary"]["artifact_refs"],
-        json!([registered_artifacts[1].clone()])
-    );
-    assert_eq!(
-        response["user_action_resolution_ref"]["produced_at_state_version"],
-        response["current_projection_state_version"]
-    );
-    assert!(
-        response["current_projection_state_version"]
-            .as_u64()
-            .zip(response["effect"]["state_version"].as_u64())
-            .is_some_and(|(current, origin)| current > origin),
-        "resolution projection must remain distinct from the originating request result"
-    );
-    assert_eq!(response["derived_refs"], json!([]));
-    assert!(response["resolution_summary"].get("summary").is_none());
-    assert!(!String::from_utf8_lossy(&output).contains(private_summary));
-
-    let store = CoreProjectStore::open(
-        fixture.runtime_home_path(),
-        &ProjectId::new(fixture.project_id()),
-    )?;
-    let now = volicord_types::UtcTimestamp::parse(&user_action_channel_current_timestamp(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-    )?)?;
-    let records =
-        store.user_action_records_for_task(&volicord_types::TaskId::new(&task_id), &now)?;
-    assert_eq!(
-        records.len(),
-        1,
-        "host capture must not duplicate the request"
-    );
-    let record = &records[0];
-    assert_eq!(record.status, UserActionStatus::Resolved);
-    let resolution = record
-        .resolution
-        .as_ref()
-        .ok_or("stored evidence observation should be resolved")?;
-    assert_eq!(resolution.resolved_by_actor_source, "local_user");
-    assert_eq!(
-        resolution.channel_kind,
-        volicord_types::UserActionChannelKind::McpElicitation
-    );
-    assert_eq!(
-        resolution.resolved_verification_basis,
-        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
-    );
-    assert_eq!(
-        resolution.user_action_resolution_id,
-        response["user_action_resolution_ref"]["record_id"]
-    );
-    let stored_body: volicord_types::UserActionResolutionBody =
-        serde_json::from_str(&resolution.resolution_json)?;
-    let volicord_types::UserActionResolutionBody::EvidenceObservation { observation } = stored_body
-    else {
-        return Err("stored resolution should be an evidence observation".into());
-    };
-    assert_eq!(serde_json::to_value(&observation.target)?, selected_target);
-    assert_eq!(
-        observation.relevance_status,
-        EvidenceRelevanceStatus::Supported
-    );
-    assert_eq!(observation.summary, private_summary);
-    assert_eq!(observation.output_artifact_refs.len(), 1);
-    assert_eq!(
-        observation.output_artifact_refs[0],
-        serde_json::from_value(registered_artifacts[1].clone())?
-    );
-    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
-    assert!(!String::from_utf8_lossy(&diagnostics_bytes).contains(private_summary));
-    Ok(())
-}
-
-#[test]
-fn stdio_elicitation_accept_workflow_preserves_resolution_derived_refs(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-workflow-derived-refs")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let mut arguments = default_product_action_args(&fixture, &task_id, state_version);
-    arguments["detail"] = json!("workflow");
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, arguments),
-        elicitation_accept("keep", None),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    let response = values
-        .iter()
-        .find(|value| value["id"] == 2)
-        .ok_or("tools/call response should be present")?;
-    let structured = &response["result"]["structuredContent"];
-    assert!(structured["next_actions"].is_array());
-    assert!(structured["method_result"]["derived_refs"]
-        .as_array()
-        .is_some_and(|refs| refs
-            .iter()
-            .any(|record_ref| { record_ref["record_kind"] == "project_continuity_record" })));
-    Ok(())
-}
-
-#[test]
-fn stdio_full_elicitation_result_does_not_expose_private_user_note() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-full-private-note")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let mut arguments = default_product_action_args(&fixture, &task_id, state_version);
-    arguments["detail"] = json!("full");
-    let private_note = "private-user-note-must-not-enter-agent-connection-output";
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, arguments),
-        elicitation_accept("keep", Some(private_note)),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    let response = values
-        .iter()
-        .find(|value| value["id"] == 2)
-        .ok_or("tools/call response should be present")?;
-    assert_eq!(response["result"]["isError"], false);
-    assert!(!serde_json::to_string(response)?.contains(private_note));
-    let structured = &response["result"]["structuredContent"];
-    assert_eq!(
-        structured["operation_result_ref"]["source_method"],
-        REQUEST_USER_ACTION_TOOL_NAME
-    );
-    assert!(
-        structured["method_result"]["user_channel_resolution"]["resolution_summary"]
-            .get("note")
-            .is_none()
-    );
-    assert_eq!(
-        structured["method_result"]["agent_workflow_result"]["user_action_request_summary"]
-            ["status"],
-        "pending"
-    );
-    assert!(structured["method_result"]["derived_refs"]
-        .as_array()
-        .is_some_and(|refs| refs
-            .iter()
-            .any(|record_ref| { record_ref["record_kind"] == "project_continuity_record" })));
-
-    let pending_page = adapter(&fixture)?.call_tool(
-        GET_OPERATION_RESULT_TOOL_NAME,
-        json!({
-            "operation_result_ref": structured["operation_result_ref"].clone()
-        }),
-    )?;
-    let pending_exact = pending_page.response_value["chunk_utf8"]
-        .as_str()
-        .ok_or("retrieved pending response should include chunk_utf8")?;
-    assert!(!pending_exact.contains(private_note));
-    let pending_value: Value = serde_json::from_str(pending_exact)?;
-    assert_eq!(
-        pending_value["user_action_request_summary"]["status"],
-        "pending"
-    );
-    Ok(())
-}
-
-#[test]
-fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp-elicitation-write-post-effect")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            default_product_action_args(&fixture, &task_id, state_version),
-        ),
-        elicitation_accept("keep", None),
-    ])?);
-    let mut writer = FailElicitationRequestWriter::default();
-
-    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut writer)?;
-
-    assert!(writer.failed_elicitation);
-    let values = stdio_responses(&writer.output)?;
-    let response = values
-        .iter()
-        .find(|value| value["id"] == 2)
-        .ok_or("tools/call response should remain available after elicitation write failure")?;
-    let structured = &response["result"]["structuredContent"];
-    assert_eq!(response["result"]["isError"], false);
-    assert_eq!(structured["code"], "MCP_POST_EFFECT_ADAPTER_FAILED");
-    assert_eq!(structured["retryable"], false);
-    assert_eq!(structured["reached_core"], true);
-    assert_eq!(structured["committed"], true);
-    assert_eq!(structured["effect_kind"], "core_committed");
-    assert_eq!(structured["effect_applied"], true);
-    assert!(structured["effect_anchor"]
-        .as_str()
-        .is_some_and(|anchor| anchor.starts_with("authority_event:")));
-    assert_eq!(
-        structured["operation_result_ref"]["source_method"],
-        REQUEST_USER_ACTION_TOOL_NAME
-    );
-    assert!(
-        structured["method_result"]["user_action_request_summary"]["user_action_request_id"]
-            .as_str()
-            .is_some_and(|record_id| !record_id.trim().is_empty())
-    );
-    assert_eq!(
-        structured["method_result"]["user_action_request_summary"]["status"],
-        "pending"
-    );
-    assert_eq!(
-        structured["authority_receipt"]["task_ref"]["record_id"],
-        task_id
-    );
-    assert_eq!(structured["authoritative_refresh_succeeded"], true);
-    assert_eq!(structured["response_projection_omitted"], true);
-    assert_eq!(structured["status_read_required"], true);
-    assert_eq!(structured["completion_claim_withheld"], true);
-    Ok(())
-}
-
-#[test]
 fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-diagnostics-validation-retry")?;
     let before = fixture.counts()?;
-    let adapter = adapter(&fixture)?;
     let sensitive_sentinel = "diagnostic-request-secret-and-file-/private/example.txt";
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
@@ -5910,7 +3674,12 @@ fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
 
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 3);
@@ -5936,7 +3705,6 @@ fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
 #[test]
 fn stdio_diagnostics_never_store_unknown_caller_tool_names() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-diagnostics-unknown-tool-private")?;
-    let adapter = adapter(&fixture)?;
     let sensitive_tool_name = "token=abc123-private-tool-name";
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
@@ -5945,18 +3713,23 @@ fn stdio_diagnostics_never_store_unknown_caller_tool_names() -> Result<(), Box<d
     ])?);
     let mut output = Vec::new();
 
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
 
     let responses = stdio_responses(&output)?;
     assert_eq!(responses[1]["error"]["code"], -32602);
-    let diagnostics =
-        read_diagnostic_session(fixture.runtime_home_path(), None)?.expect("diagnostics session");
-    assert!(diagnostics
-        .tools
-        .iter()
-        .all(|tool| tool.tool_name != sensitive_tool_name));
-    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
-    assert!(!String::from_utf8_lossy(&diagnostics_bytes).contains(sensitive_tool_name));
+    assert!(
+        read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none(),
+        "untrusted tool metadata must not bind or create a managed diagnostics session"
+    );
+    assert!(
+        !diagnostics_db_path(fixture.runtime_home_path()).exists(),
+        "rejected untrusted metadata must not create the diagnostics store"
+    );
     Ok(())
 }
 
@@ -6040,426 +3813,17 @@ fn corrupt_diagnostics_store_is_nonfatal_to_managed_codex_binding() -> Result<()
         "second response: {:?}",
         responses[2]
     );
-    let managed_session_id =
-        managed_host_session_id("codex", fixture.connection_id(), native_session_id)?;
-    let baseline = latest_watch_baseline_for_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &managed_session_id,
-    )?
-    .expect("diagnostic failure must not suppress managed lifecycle coverage");
-    assert!(!baseline.metadata_json.contains(native_session_id));
-    assert!(!baseline.metadata_json.contains(native_thread_id));
+    let serialized = serde_json::to_string(&responses)?;
+    assert!(!serialized.contains(native_session_id));
+    assert!(!serialized.contains(native_thread_id));
     Ok(())
 }
 
 #[test]
-fn stdio_elicitation_decline_resolves_stored_reject_choice() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-decline")?;
+fn stdio_pending_user_action_returns_cli_inbox_recovery() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-cli-inbox-recovery")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter(&fixture)?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            "volicord.request_user_action",
-            authority_action_args(&fixture, &task_id, state_version),
-        ),
-        elicitation_action("decline"),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
-    let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(
-        response["user_channel_resolution"]["resolution_summary"]["resolution_type"],
-        "choice"
-    );
-    assert_eq!(
-        response["user_channel_resolution"]["resolution_summary"]["selected_option_id"],
-        "reject"
-    );
-    assert_eq!(
-        response["user_channel_resolution"]["resolution_summary"]["resolution_outcome"],
-        "rejected"
-    );
-    assert_eq!(
-        stored_resolution_basis(&fixture, &task_id, &response)?,
-        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
-    );
-    Ok(())
-}
-
-#[test]
-fn stdio_elicitation_accept_can_resolve_deferred_choice() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-defer")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter(&fixture)?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            "volicord.request_user_action",
-            authority_action_args(&fixture, &task_id, state_version),
-        ),
-        elicitation_accept("defer", Some("Not enough context yet.")),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(
-        response["user_channel_resolution"]["resolution_summary"]["resolution_type"],
-        "choice"
-    );
-    assert_eq!(
-        response["user_channel_resolution"]["resolution_summary"]["selected_option_id"],
-        "defer"
-    );
-    assert_eq!(
-        response["user_channel_resolution"]["resolution_summary"]["resolution_outcome"],
-        "deferred"
-    );
-    assert!(response["user_channel_resolution"]["resolution_summary"]
-        .get("note")
-        .is_none());
-    let stored = stored_action_record(&fixture, &task_id, &response)?;
-    let stored_resolution: Value = serde_json::from_str(
-        &stored
-            .resolution
-            .as_ref()
-            .ok_or("stored deferred action should include a resolution")?
-            .resolution_json,
-    )?;
-    assert_eq!(stored_resolution["note"], "Not enough context yet.");
-    Ok(())
-}
-
-#[test]
-fn stdio_elicitation_cancel_leaves_user_action_pending() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-cancel")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter(&fixture)?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            "volicord.request_user_action",
-            product_action_args(&fixture, &task_id, state_version),
-        ),
-        elicitation_action("cancel"),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(
-        response["agent_workflow_result"]["user_action_request_summary"]["status"],
-        "pending"
-    );
-    assert!(response["user_channel_resolution"].is_null());
-    assert!(values[2]["result"]["content"][1]["text"]
-        .as_str()
-        .expect("extra text")
-        .contains("current status is pending"));
-    assert_pending_user_action_resume_guidance(&values[2], &response, &fixture)?;
-    let record = stored_action_record(&fixture, &task_id, &response)?;
-    assert_eq!(record.status, UserActionStatus::Pending);
-    assert!(record.resolution.is_none());
-    Ok(())
-}
-
-#[test]
-fn stdio_elicitation_invalid_response_leaves_user_action_pending() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-invalid")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter(&fixture)?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            "volicord.request_user_action",
-            product_action_args(&fixture, &task_id, state_version),
-        ),
-        elicitation_accept("not_an_option", None),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
-
-    let values = stdio_responses(&output)?;
-    let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(
-        response["agent_workflow_result"]["user_action_request_summary"]["status"],
-        "pending"
-    );
-    assert!(values[2]["result"]["content"][1]["text"]
-        .as_str()
-        .expect("extra text")
-        .contains("not a stored choice"));
-    assert_pending_user_action_resume_guidance(&values[2], &response, &fixture)?;
-    let record = stored_action_record(&fixture, &task_id, &response)?;
-    assert_eq!(record.status, UserActionStatus::Pending);
-    Ok(())
-}
-
-#[test]
-fn stdio_elicitation_rejects_unknown_mixed_and_null_choice_fields_without_effect(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-closed-choice-content")?;
-    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let before = user_action_side_effect_snapshot(&fixture)?;
-    assert_eq!(before.1, 0);
-    let cases = [
-        (
-            "unknown",
-            json!({"selected_option_id":"keep","unexpected":"discard-me"}),
-            "unsupported field `unexpected`",
-        ),
-        (
-            "mixed",
-            json!({"selected_option_id":"keep","summary":"cross-variant"}),
-            "unsupported field `summary`",
-        ),
-        (
-            "null-note",
-            json!({"selected_option_id":"keep","note":null}),
-            "content.note must be a string when supplied",
-        ),
-    ];
-
-    for (case, content, expected_error) in cases {
-        let (request, result) =
-            invoke_pending_elicitation(&fixture, pending_response.clone(), content)?;
-        assert_eq!(
-            request["params"]["requestedSchema"]["additionalProperties"], false,
-            "choice schema must remain closed for {case}"
-        );
-        assert!(
-            result["content"][1]["text"]
-                .as_str()
-                .is_some_and(|text| text.contains(expected_error)),
-            "missing rejection reason for {case}: {result}"
-        );
-        assert_eq!(
-            user_action_side_effect_snapshot(&fixture)?,
-            before,
-            "invalid choice content must have no effect for {case}"
-        );
-    }
-
-    let record = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
-    assert_eq!(record.status, UserActionStatus::Pending);
-    assert!(record.resolution.is_none());
-    Ok(())
-}
-
-#[test]
-fn stdio_elicitation_rejects_cross_variant_evidence_fields_without_effect(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-closed-evidence-content")?;
-    let pending = create_pending_evidence_observation_action(&fixture)?;
-    let before = user_action_side_effect_snapshot(&fixture)?;
-    let target = match &pending.target_candidates[0] {
-        EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id,
-        } => format!("--criterion {acceptance_criterion_id}"),
-        EvidenceTarget::SupplementalClaim {
-            evidence_claim_id, ..
-        } => format!("--claim {evidence_claim_id}"),
-    };
-    let artifact_id = pending.registered_artifacts[0]
-        .artifact_id
-        .as_str()
-        .to_owned();
-    let (request, result) = invoke_pending_elicitation(
-        &fixture,
-        pending.response.clone(),
-        json!({
-            "selected_target":target,
-            "selected_artifact_ids":[artifact_id],
-            "relevance_status":"supported",
-            "summary":"bounded observation",
-            "selected_option_id":"keep"
-        }),
-    )?;
-
-    assert_eq!(
-        request["params"]["requestedSchema"]["additionalProperties"],
-        false
-    );
-    assert!(result["content"][1]["text"]
-        .as_str()
-        .is_some_and(|text| text.contains("unsupported field `selected_option_id`")));
-    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before);
-    let record =
-        stored_action_record(&fixture, &pending.task_id, &pending.response.response_value)?;
-    assert_eq!(record.status, UserActionStatus::Pending);
-    assert!(record.resolution.is_none());
-    Ok(())
-}
-
-#[test]
-fn sensitive_complete_presentation_skips_elicitation_and_prompt_capture_without_effect(
-) -> Result<(), Box<dyn Error>> {
-    const TARGET_MARKER: &str = "SENSITIVE_TARGET_PRESENTATION_MARKER";
-    const ARTIFACT_MARKER: &str = "SENSITIVE_ARTIFACT_PRESENTATION_MARKER";
-
-    for (case, target_marker, artifact_marker, marker) in [
-        ("target_only", Some(TARGET_MARKER), None, TARGET_MARKER),
-        (
-            "artifact_only",
-            None,
-            Some(ARTIFACT_MARKER),
-            ARTIFACT_MARKER,
-        ),
-    ] {
-        let fixture = CoreFixture::new(&format!("mcp-sensitive-presentation-{case}"))?;
-        let pending = create_pending_evidence_observation_action_with_sensitive_markers(
-            &fixture,
-            target_marker,
-            artifact_marker,
-        )?;
-        let test_adapter = adapter(&fixture)?;
-        let before = user_action_side_effect_snapshot(&fixture)?;
-        let response = pending.response;
-        let parsed = pending_user_action_from_response(&test_adapter, &response)?
-            .ok_or("sensitive presentation should remain a valid pending action")?;
-        assert!(!crate::stdio::agent_facing_user_action_input_allowed(
-            &parsed
-        ));
-        let expected_agent_workflow_result = serde_json::to_vec(&response.response_value)?;
-
-        for client_supports_elicitation in [true, false] {
-            let mut lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
-            let mut writer = Vec::new();
-            let mut request_sequence = 1;
-            let output = crate::stdio::user_action_tool_output(
-                &adapter(&fixture)?,
-                response.clone(),
-                true,
-                McpUserChannelCapabilities::new(client_supports_elicitation, false),
-                &mut request_sequence,
-                &mut lines,
-                &mut writer,
-            )?;
-
-            assert!(writer.is_empty(), "{case}: no elicitation/create wire");
-            assert_eq!(request_sequence, 1, "{case}: no elicitation id");
-            let result = crate::stdio::tool_call_result_from_output(output);
-            assert_eq!(result["structuredContent"]["current_status"], "pending");
-            assert_eq!(
-                serde_json::to_vec(&result["structuredContent"]["agent_workflow_result"])?,
-                expected_agent_workflow_result,
-                "{case}: immutable historical result bytes must not be rewritten"
-            );
-            let agent_result = &result["structuredContent"]["agent_workflow_result"];
-            assert!(!agent_result.to_string().contains(marker));
-            assert!(agent_result.get("inbox_item").is_none());
-            assert!(agent_result.get("user_action_request").is_none());
-            assert_eq!(
-                agent_result["user_action_request_summary"]["status"],
-                "pending"
-            );
-            let fallback_texts = result["content"]
-                .as_array()
-                .expect("tool content")
-                .iter()
-                .skip(1)
-                .filter_map(|entry| entry["text"].as_str())
-                .collect::<Vec<_>>();
-            assert_eq!(
-                fallback_texts
-                    .iter()
-                    .any(|text| text.contains("requires a user-only channel")),
-                client_supports_elicitation
-            );
-            assert!(fallback_texts
-                .iter()
-                .any(|text| text.contains("`volicord inbox`")));
-            assert!(fallback_texts.iter().all(|text| !text.contains(marker)));
-            assert!(fallback_texts
-                .iter()
-                .all(|text| !text.contains("Exact request-bound command template")));
-            assert_eq!(user_action_side_effect_snapshot(&fixture)?, before);
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn sensitive_full_form_is_available_only_through_trusted_local_web_projection(
-) -> Result<(), Box<dyn Error>> {
-    const TARGET_MARKER: &str = "LOCAL_WEB_SENSITIVE_TARGET_MARKER";
-    const ARTIFACT_MARKER: &str = "LOCAL_WEB_SENSITIVE_ARTIFACT_MARKER";
-
-    let fixture = CoreFixture::new("mcp-sensitive-presentation-local-web")?;
-    let pending = create_pending_evidence_observation_action_with_sensitive_markers(
-        &fixture,
-        Some(TARGET_MARKER),
-        Some(ARTIFACT_MARKER),
-    )?;
-    let public_result = serde_json::to_string(&pending.response.response_value)?;
-    assert!(!public_result.contains(TARGET_MARKER));
-    assert!(!public_result.contains(ARTIFACT_MARKER));
-    assert!(pending.response.response_value.get("inbox_item").is_none());
-    assert!(pending
-        .response
-        .response_value
-        .get("user_action_request")
-        .is_none());
-    assert_eq!(
-        pending.response.response_value["user_action_request_summary"]["status"],
-        "pending"
-    );
-    let token = "4545454545454545454545454545454545454545454545454545454545454545";
-    create_consent_token_for_response(&fixture, &pending.response, token)?;
-    let before = fixture.counts()?;
-    let mut server = consent_server(&fixture)?;
-    let get = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        token,
-    )));
-    assert_eq!(get.status, 200);
-    assert_local_web_consent_security_headers(&get);
-    let body = http_body_text(&get)?;
-    assert!(body.contains(TARGET_MARKER));
-    assert!(body.contains(ARTIFACT_MARKER));
-    assert!(body.contains("Supplemental claim"));
-    for artifact in &pending.registered_artifacts {
-        assert!(body.contains(artifact.artifact_id.as_str()));
-        assert!(body.contains(&artifact.display_name));
-    }
-    assert_eq!(fixture.counts()?, before);
-    let record =
-        stored_action_record(&fixture, &pending.task_id, &pending.response.response_value)?;
-    assert_eq!(record.status, UserActionStatus::Pending);
-    assert!(record.resolution.is_none());
-    Ok(())
-}
-
-#[test]
-fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture_unavailable(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-unavailable")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter(&fixture)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -6471,7 +3835,12 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
     ])?);
     let mut output = Vec::new();
 
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
 
     let values = stdio_responses(&output)?;
     assert_eq!(values.len(), 2);
@@ -6504,12 +3873,12 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
 }
 
 #[test]
-fn stdio_does_not_reconstruct_prompt_capture_when_core_prefers_cli() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-elicitation-chat-capture")?;
-    install_prompt_capture_guard(&fixture)?;
+fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-record-guard-cli-inbox")?;
+    install_record_guard(&fixture)?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter(&fixture)?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -6521,7 +3890,12 @@ fn stdio_does_not_reconstruct_prompt_capture_when_core_prefers_cli() -> Result<(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
 
     let values = stdio_responses(&output)?;
     assert_eq!(values.len(), 2);
@@ -6663,7 +4037,7 @@ fn request_user_action_agent_projection_is_only_the_exact_pending_user_summary(
 }
 
 #[test]
-fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(), Box<dyn Error>> {
+fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), Box<dyn Error>> {
     let cases = [
         McpUserActionLeakageCase::choice(
             "product_decision",
@@ -6711,31 +4085,16 @@ fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(),
     ];
 
     for case in cases {
-        let fixture = local_web_fixture(&format!("mcp-user-action-leakage-{}", case.name))?;
+        let fixture = CoreFixture::new(&format!("mcp-user-action-leakage-{}", case.name))?;
         let prepared = prepare_mcp_user_action_leakage_case(&fixture, case)?;
         let input = Cursor::new(json_lines(&[
-            local_web_initialize_request(
-                1,
-                json!({
-                    "experimental": {
-                        "io.volicord/user-channel": {
-                            "model_invisible_user_surface": true
-                        }
-                    }
-                }),
-            ),
+            initialize_request(1, json!({})),
             initialized_notification(),
             tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, prepared.arguments),
         ])?);
         let mut output = Vec::new();
 
-        run_exact_verified_local_web_stdio(
-            &fixture,
-            &format!("all_kinds_{}", case.name),
-            adapter_with_local_web_consent(&fixture)?,
-            BufReader::new(input),
-            &mut output,
-        )?;
+        run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
 
         let values = stdio_responses(&output)?;
         assert_eq!(values.len(), 2, "{}: unexpected MCP exchange", case.name);
@@ -6812,50 +4171,17 @@ fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(),
             );
         }
 
-        let host_meta = &tool_result["_meta"];
-        assert_eq!(
-            host_meta
-                .as_object()
-                .expect("host-only metadata must be an object")
-                .keys()
-                .map(String::as_str)
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["io.volicord/user-channel"]),
-            "{}: host-only metadata must use the single namespaced handoff",
-            case.name
-        );
-        let handoff = &host_meta["io.volicord/user-channel"];
-        assert_eq!(
-            handoff
-                .as_object()
-                .expect("user-channel handoff must be an object")
-                .keys()
-                .map(String::as_str)
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["expires_at", "kind", "url"]),
-            "{}: user-channel handoff must use the closed shape",
-            case.name
-        );
-        assert_eq!(handoff["kind"], "local_web_consent", "{}", case.name);
+        assert!(tool_result.get("_meta").is_none(), "{}", case.name);
         assert!(
-            handoff["url"]
-                .as_str()
-                .is_some_and(|url| url.starts_with(consent_base_url()) && url.contains("token=")),
-            "{}: host-only handoff must carry the local consent URL",
+            tool_result["content"]
+                .as_array()
+                .is_some_and(|content| content.iter().any(|item| item["text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("`volicord inbox`")))),
+            "{}",
             case.name
         );
-        assert!(handoff["expires_at"].is_string(), "{}", case.name);
 
-        let token_count: i64 = fixture.conn()?.query_row(
-            "SELECT COUNT(*) FROM user_action_channel_tokens",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(
-            token_count, 1,
-            "{}: delivery must issue one token",
-            case.name
-        );
         let record = stored_action_record(&fixture, &prepared.task_id, &response)?;
         assert_eq!(
             serde_json::to_value(record.request.action_kind)?,
@@ -6879,889 +4205,11 @@ fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(),
 }
 
 #[test]
-#[allow(deprecated)]
-fn local_web_selection_requires_exact_managed_current_verification_and_client_capability(
-) -> Result<(), Box<dyn Error>> {
-    #[derive(Clone, Copy)]
-    enum ListenerSetup {
-        Tracked,
-        Missing,
-        UntrackedBuilder,
-    }
-
-    let cases = [
-        (
-            "exact_true_current_passed_managed",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-            ListenerSetup::Tracked,
-            true,
-        ),
-        (
-            "managed_without_current_verification",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-            ListenerSetup::Tracked,
-            false,
-        ),
-        (
-            "manual_client_self_declaration_without_verification",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-            ListenerSetup::Tracked,
-            false,
-        ),
-        (
-            "exact_true_listener_unavailable",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-            ListenerSetup::Missing,
-            false,
-        ),
-        (
-            "exact_true_untracked_builder",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-            ListenerSetup::UntrackedBuilder,
-            false,
-        ),
-        ("omitted", json!({}), ListenerSetup::Tracked, false),
-        (
-            "false",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": false
-                    }
-                }
-            }),
-            ListenerSetup::Tracked,
-            false,
-        ),
-        (
-            "wrong_type",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": "true"
-                    }
-                }
-            }),
-            ListenerSetup::Tracked,
-            false,
-        ),
-        (
-            "wrong_namespace",
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel-wrong": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-            ListenerSetup::Tracked,
-            false,
-        ),
-    ];
-    let mut mismatches = Vec::new();
-
-    for (case, capabilities, listener_setup, expected_local_web) in cases {
-        let fixture = local_web_fixture(&format!("mcp-local-web-capability-{case}"))?;
-        let setup_adapter = adapter(&fixture)?;
-        let (task_id, state_version) = create_task(&setup_adapter)?;
-        let input = Cursor::new(json_lines(&[
-            local_web_initialize_request(1, capabilities),
-            initialized_notification(),
-            tools_call(
-                2,
-                REQUEST_USER_ACTION_TOOL_NAME,
-                product_action_args(&fixture, &task_id, state_version),
-            ),
-        ])?);
-        let mut output = Vec::new();
-
-        let runtime_adapter = match listener_setup {
-            ListenerSetup::Tracked => adapter_with_local_web_consent(&fixture)?,
-            ListenerSetup::Missing => adapter(&fixture)?,
-            ListenerSetup::UntrackedBuilder => {
-                adapter(&fixture)?.with_local_web_consent(LocalWebConsentContext {
-                    base_url: consent_base_url().to_owned(),
-                })
-            }
-        };
-        let project_bound = runtime_adapter.context.project_allowlist.is_some();
-        match case {
-            "exact_true_current_passed_managed" => run_exact_verified_local_web_stdio(
-                &fixture,
-                case,
-                runtime_adapter,
-                BufReader::new(input),
-                &mut output,
-            )?,
-            "managed_without_current_verification" => run_stdio_with_env_marker(
-                runtime_adapter,
-                BufReader::new(input),
-                &mut output,
-                |name| {
-                    managed_local_web_stdio_env(
-                        &fixture,
-                        project_bound,
-                        HOST_KIND_CLAUDE_CODE,
-                        name,
-                    )
-                },
-            )?,
-            _ => run_stdio(runtime_adapter, BufReader::new(input), &mut output)?,
-        }
-
-        let values = stdio_responses(&output)?;
-        if values[0].get("error").is_some() {
-            mismatches.push(format!(
-                "{case}: initialize rejected capability shape: {}",
-                values[0]
-            ));
-            continue;
-        }
-        if values[1]["result"]["isError"] != false {
-            mismatches.push(format!("{case}: tools/call failed: {}", values[1]));
-            continue;
-        }
-        let token_count: i64 = fixture.conn()?.query_row(
-            "SELECT COUNT(*) FROM user_action_channel_tokens",
-            [],
-            |row| row.get(0),
-        )?;
-        let expected_token_count = i64::from(expected_local_web);
-        if token_count != expected_token_count {
-            mismatches.push(format!(
-                "{case}: expected {expected_token_count} local-web token rows, observed {token_count}; result={}",
-                values[1]
-            ));
-        }
-        let handoff_present = values[1]["result"]["_meta"]["io.volicord/user-channel"].is_object();
-        if handoff_present != expected_local_web {
-            mismatches.push(format!(
-                "{case}: expected host-only handoff presence {expected_local_web}, observed {handoff_present}; result={}",
-                values[1]
-            ));
-        }
-        let model_visible = json!({
-            "content": values[1]["result"]["content"].clone(),
-            "structuredContent": values[1]["result"]["structuredContent"].clone(),
-        });
-        let model_visible_text = serde_json::to_string(&model_visible)?;
-        if model_visible_text.contains("/consent?") || model_visible_text.contains("token=") {
-            mismatches.push(format!(
-                "{case}: model-visible result exposed local-web credential material: {model_visible_text}"
-            ));
-        }
-        if !expected_local_web
-            && !values[1]["result"]["content"]
-                .as_array()
-                .is_some_and(|items| {
-                    items.iter().any(|item| {
-                        item["text"]
-                            .as_str()
-                            .is_some_and(|text| text.contains("`volicord inbox`"))
-                    })
-                })
-        {
-            mismatches.push(format!(
-                "{case}: degraded selection omitted generic CLI recovery; result={}",
-                values[1]
-            ));
-        }
-    }
-
-    assert!(
-        mismatches.is_empty(),
-        "local-web capability selection mismatches:\n{}",
-        mismatches.join("\n")
-    );
-    Ok(())
-}
-
-#[test]
-fn adapter_without_expected_release_evidence_digest_fails_closed_for_exact_managed_pass(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-local-web-missing-expected-evidence-digest")?;
-    publish_exact_host_capability_verification(&fixture, "missing_expected_evidence_digest")?;
-    let adapter = adapter_with_local_web_consent(&fixture)?;
-
-    assert!(adapter.local_web_consent_listener_ready());
-    assert!(!adapter
-        .effective_local_web_consent_available(&exact_local_web_test_capabilities(&fixture)?));
-    Ok(())
-}
-
-#[test]
-fn newer_codex_local_web_uses_current_capability_evidence_at_selection_and_issuance(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-newer-codex-capability-evidence")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let label = "newer_codex_capability_evidence";
-    let observed_version = "0.145.0";
-    let now = DateTime::<Utc>::from(std::time::SystemTime::now());
-    let mut verification = exact_host_capability_input(
-        &fixture,
-        label,
-        now - Duration::seconds(1),
-        now + Duration::hours(1),
-    )?;
-    verification.host_version = observed_version.to_owned();
-    verification.client_version = observed_version.to_owned();
-    publish_host_capability_verification(fixture.runtime_home_path(), verification)?;
-    let runtime_adapter = adapter_with_local_web_consent(&fixture)?
-        .with_expected_evidence_artifact_sha256_for_test(
-            exact_host_capability_evidence_artifact_sha256(label),
-        );
-    let capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
-        McpLaunchOrigin::ManagedHost.as_str(),
-        Some(REVIEWED_CODEX_MCP_CLIENT_NAME),
-        Some(observed_version),
-    );
-
-    assert!(runtime_adapter.local_web_consent_listener_ready());
-    assert!(runtime_adapter.effective_local_web_consent_available(&capabilities));
-    assert!(runtime_adapter
-        .local_web_consent_issuance_lease(&capabilities)
-        .is_some());
-
-    let input = Cursor::new(json_lines(&[
-        initialize_request_with_client_info(
-            1,
-            model_invisible_user_surface_capability(),
-            REVIEWED_CODEX_MCP_CLIENT_NAME,
-            observed_version,
-        ),
-        initialized_notification(),
-        tools_call(
-            2,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            product_action_args(&fixture, &task_id, state_version),
-        ),
-    ])?);
-    let mut output = Vec::new();
-    run_stdio_with_env_marker(
-        runtime_adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| managed_codex_stdio_env(&fixture, false, name),
-    )?;
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 2);
-    assert_eq!(responses[1]["result"]["isError"], false);
-    assert!(responses[1]["result"]["_meta"]["io.volicord/user-channel"]["url"].is_string());
-    assert_eq!(local_web_token_count(&fixture)?, 1);
-    let probe_snapshot = host_runtime_probe_snapshot_read_only(
-        fixture.runtime_home_path(),
-        fixture.connection_id(),
-    )?
-    .expect("managed local-web exercise stores runtime probes");
-    for profile in [IntegrationProfile::Record, IntegrationProfile::Detective] {
-        for probe_id in [
-            HostRuntimeProbeId::ModelSeparatedUserActionUi,
-            HostRuntimeProbeId::McpCapabilityAdvertisedAndExercised,
-        ] {
-            let observation = probe_snapshot
-                .observations
-                .iter()
-                .find(|observation| {
-                    observation.probe_id == probe_id && observation.adapter_profile == profile
-                })
-                .expect("actual local-web exercise publishes each required probe slot");
-            assert_eq!(observation.outcome, HostRuntimeProbeOutcome::Passed);
-            assert_eq!(
-                observation.failure_class,
-                HostRuntimeProbeFailureClass::None
-            );
-            assert_eq!(observation.host_version.as_deref(), Some(observed_version));
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn manual_stdio_exact_pass_ready_true_declaration_does_not_enable_local_web(
-) -> Result<(), Box<dyn Error>> {
-    assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
-        "mcp-local-web-manual-exact-pass",
-        McpLaunchOrigin::ManualCli,
-    )
-}
-
-#[test]
-fn cli_verification_stdio_exact_pass_ready_true_declaration_does_not_enable_local_web(
-) -> Result<(), Box<dyn Error>> {
-    assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
-        "mcp-local-web-cli-verification-exact-pass",
-        McpLaunchOrigin::CliVerification,
-    )
-}
-
-#[test]
-fn local_http_exact_pass_ready_true_declaration_does_not_enable_local_web(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-local-web-http-exact-pass")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let label = "local_http_exact_pass";
-    publish_exact_host_capability_verification(&fixture, label)?;
-    let runtime_adapter = adapter_with_local_web_consent(&fixture)?
-        .with_expected_evidence_artifact_sha256_for_test(
-            exact_host_capability_evidence_artifact_sha256(label),
-        );
-    assert!(runtime_adapter.local_web_consent_listener_ready());
-    let local_http_capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
-        McpLaunchOrigin::Unknown.as_str(),
-        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME),
-        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION),
-    );
-    assert!(!runtime_adapter.effective_local_web_consent_available(&local_http_capabilities));
-
-    let mut server = LocalHttpServer::new(
-        runtime_adapter,
-        http_config(&fixture, Vec::new(), Vec::new()),
-    );
-    let initialize = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        None,
-        initialize_request(1, model_invisible_user_surface_capability()),
-    )?);
-    assert_eq!(initialize.status, 200);
-    let session_id = http_header(&initialize, "Mcp-Session-Id")
-        .expect("initialize should create a local HTTP session")
-        .to_owned();
-    let initialized = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        Some(&session_id),
-        initialized_notification(),
-    )?);
-    assert_eq!(initialized.status, 202);
-    let called = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        Some(&session_id),
-        tools_call(
-            2,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            product_action_args(&fixture, &task_id, state_version),
-        ),
-    )?);
-    assert_eq!(called.status, 200);
-    let called = http_json(&called);
-    assert_eq!(called["result"]["isError"], false);
-    assert!(called["result"].get("_meta").is_none());
-    assert_eq!(local_web_token_count(&fixture)?, 0);
-    assert!(result_mentions_cli_recovery(&called["result"]));
-    Ok(())
-}
-
-#[test]
-fn generic_connection_self_declaration_never_issues_local_web_handoff() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp-local-web-generic-connection")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let existing = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
-        .expect("fixture connection should exist");
-    let generic_connection_id = "connection_generic_local_web";
-    ensure_agent_connection(
-        fixture.runtime_home_path(),
-        AgentConnectionRegistration {
-            connection_internal_id: generic_connection_id.to_owned(),
-            host_kind: HOST_KIND_GENERIC.to_owned(),
-            intent: CONNECTION_INTENT_GLOBAL.to_owned(),
-            host_scope: HOST_SCOPE_EXPORT.to_owned(),
-            server_name: "generic-local-web".to_owned(),
-            config_target: "generic-export.json".to_owned(),
-            mode: existing.mode,
-            enabled: true,
-            managed_fingerprint: "generic-local-web-fingerprint".to_owned(),
-            last_verification_status: existing.last_verification_status,
-            last_verification_report_json: existing.last_verification_report_json,
-            last_user_actions_json: existing.last_user_actions_json,
-            metadata_json: existing.metadata_json,
-        },
-    )?;
-    add_connection_project(
-        fixture.runtime_home_path(),
-        ConnectionProjectRegistration {
-            connection_internal_id: generic_connection_id.to_owned(),
-            project_id: fixture.project_id().to_owned(),
-        },
-    )?;
-    let context =
-        McpConnectionContext::resolve(fixture.runtime_home_path(), generic_connection_id)?
-            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
-    let generic_adapter = McpAdapter::new(fixture.runtime_home_path(), context)
-        .with_local_web_consent_readiness(
-            LocalWebConsentContext {
-                base_url: consent_base_url().to_owned(),
-            },
-            LocalWebConsentReadiness::ready_for_test(),
-        );
-    let generic_capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
-        McpLaunchOrigin::ManagedHost.as_str(),
-        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME),
-        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION),
-    );
-    assert!(!generic_adapter.effective_local_web_consent_available(&generic_capabilities));
-    let input = Cursor::new(json_lines(&[
-        initialize_request(
-            1,
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-        ),
-        initialized_notification(),
-        tools_call(
-            2,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            product_action_args(&fixture, &task_id, state_version),
-        ),
-    ])?);
-    let mut output = Vec::new();
-    run_stdio_with_env_marker(
-        generic_adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient_generic_thread")),
-    )?;
-
-    let values = stdio_responses(&output)?;
-    assert_eq!(values.len(), 2);
-    assert!(values[1]["result"].get("_meta").is_none());
-    assert_eq!(
-        fixture.conn()?.query_row(
-            "SELECT COUNT(*) FROM user_action_channel_tokens",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?,
-        0
-    );
-    assert!(values[1]["result"]["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry["text"].as_str())
-        .any(|text| text.contains("`volicord inbox`")));
-    Ok(())
-}
-
-#[test]
-fn expired_mismatched_and_superseded_verification_fail_closed_without_token(
-) -> Result<(), Box<dyn Error>> {
-    for case in ["client_version_mismatch", "expired", "superseded_by_failed"] {
-        let fixture = local_web_fixture(&format!("mcp-local-web-verification-{case}"))?;
-        let setup_adapter = adapter(&fixture)?;
-        let (task_id, state_version) = create_task(&setup_adapter)?;
-        let now = DateTime::<Utc>::from(std::time::SystemTime::now());
-        let initial = match case {
-            "expired" => exact_host_capability_input(
-                &fixture,
-                &format!("{case}_pass"),
-                now - Duration::hours(2),
-                now - Duration::hours(1),
-            )?,
-            "superseded_by_failed" => exact_host_capability_input(
-                &fixture,
-                &format!("{case}_pass"),
-                now - Duration::seconds(2),
-                now + Duration::hours(1),
-            )?,
-            _ => exact_host_capability_input(
-                &fixture,
-                &format!("{case}_pass"),
-                now - Duration::seconds(1),
-                now + Duration::hours(1),
-            )?,
-        };
-        let mut expected_evidence_artifact_sha256 = initial.evidence_artifact_sha256.clone();
-        publish_host_capability_verification(fixture.runtime_home_path(), initial)?;
-        if case == "superseded_by_failed" {
-            let mut failed = exact_host_capability_input(
-                &fixture,
-                &format!("{case}_current"),
-                now - Duration::seconds(1),
-                now + Duration::hours(1),
-            )?;
-            failed.outcome = HOST_CAPABILITY_OUTCOME_FAILED.to_owned();
-            expected_evidence_artifact_sha256 = failed.evidence_artifact_sha256.clone();
-            publish_host_capability_verification(fixture.runtime_home_path(), failed)?;
-        }
-
-        let capabilities = json!({
-            "experimental": {
-                "io.volicord/user-channel": {
-                    "model_invisible_user_surface": true
-                }
-            }
-        });
-        let initialize = if case == "client_version_mismatch" {
-            initialize_request_with_client_info(
-                1,
-                capabilities,
-                CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
-                "0.0.1",
-            )
-        } else {
-            local_web_initialize_request(1, capabilities)
-        };
-        let input = Cursor::new(json_lines(&[
-            initialize,
-            initialized_notification(),
-            tools_call(
-                2,
-                REQUEST_USER_ACTION_TOOL_NAME,
-                product_action_args(&fixture, &task_id, state_version),
-            ),
-        ])?);
-        let runtime_adapter = adapter_with_local_web_consent(&fixture)?
-            .with_expected_evidence_artifact_sha256_for_test(expected_evidence_artifact_sha256);
-        let project_bound = runtime_adapter.context.project_allowlist.is_some();
-        let mut output = Vec::new();
-        run_stdio_with_env_marker(
-            runtime_adapter,
-            BufReader::new(input),
-            &mut output,
-            |name| {
-                managed_local_web_stdio_env(&fixture, project_bound, HOST_KIND_CLAUDE_CODE, name)
-            },
-        )?;
-
-        let values = stdio_responses(&output)?;
-        assert_eq!(values.len(), 2, "{case}");
-        assert_eq!(values[1]["result"]["isError"], false, "{case}");
-        assert!(values[1]["result"].get("_meta").is_none(), "{case}");
-        assert_eq!(
-            fixture.conn()?.query_row(
-                "SELECT COUNT(*) FROM user_action_channel_tokens",
-                [],
-                |row| row.get::<_, i64>(0),
-            )?,
-            0,
-            "{case}"
-        );
-        assert!(
-            values[1]["result"]["content"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|entry| entry["text"].as_str())
-                .any(|text| text.contains("`volicord inbox`")),
-            "{case}"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn local_web_bearer_handoff_is_absent_from_model_and_diagnostic_surfaces(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-local-web-model-invisible-handoff")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let input = Cursor::new(json_lines(&[
-        local_web_initialize_request(
-            1,
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-        ),
-        initialized_notification(),
-        tools_call(
-            2,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            product_action_args(&fixture, &task_id, state_version),
-        ),
-    ])?);
-    let mut output = Vec::new();
-
-    run_exact_verified_local_web_stdio(
-        &fixture,
-        "model_invisible_handoff",
-        adapter_with_local_web_consent(&fixture)?,
-        BufReader::new(input),
-        &mut output,
-    )?;
-
-    let values = stdio_responses(&output)?;
-    let tool_result = &values[1]["result"];
-    assert_eq!(tool_result["isError"], false);
-    let model_visible = json!({
-        "content": tool_result["content"].clone(),
-        "structuredContent": tool_result["structuredContent"].clone()
-    });
-    let model_visible_text = serde_json::to_string(&model_visible)?;
-    assert!(
-        !model_visible_text.contains(consent_base_url())
-            && !model_visible_text.contains("/consent?")
-            && !model_visible_text.contains("token="),
-        "content or structuredContent exposed the local-web bearer handoff"
-    );
-    let handoff = &tool_result["_meta"]["io.volicord/user-channel"];
-    let handoff_keys = handoff
-        .as_object()
-        .expect("host-only user-channel handoff must be an object")
-        .keys()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
-    assert_eq!(handoff_keys, BTreeSet::from(["expires_at", "kind", "url"]));
-    assert_eq!(handoff["kind"], "local_web_consent");
-    assert!(handoff["url"].as_str().is_some_and(|url| url
-        .starts_with(&format!("{}{LOCAL_WEB_CONSENT_PATH}?", consent_base_url()))
-        && url.contains("token=")));
-    assert!(handoff["expires_at"].as_str().is_some());
-
-    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
-    let diagnostics_text = String::from_utf8_lossy(&diagnostics_bytes);
-    assert!(
-        !diagnostics_text.contains(consent_base_url())
-            && !diagnostics_text.contains("/consent?")
-            && !diagnostics_text.contains("token="),
-        "diagnostics persisted the local-web bearer handoff"
-    );
-    Ok(())
-}
-
-#[test]
-fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavailable(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = local_web_fixture("mcp-local-web-fallback")?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let adapter = adapter_with_local_web_consent(&fixture)?;
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    let now = volicord_types::UtcTimestamp::parse(&now)?;
-    let request_expires_at = volicord_types::UtcTimestamp::from_datetime(
-        *now.as_datetime() + std::time::Duration::from_secs(120),
-    );
-    let mut arguments = product_action_args(&fixture, &task_id, state_version);
-    arguments["request"]["expires_at"] = json!(request_expires_at);
-    let input = Cursor::new(json_lines(&[
-        local_web_initialize_request(
-            1,
-            json!({
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-        ),
-        initialized_notification(),
-        tools_call(2, "volicord.request_user_action", arguments),
-    ])?);
-    let mut output = Vec::new();
-
-    run_exact_verified_local_web_stdio(
-        &fixture,
-        "fallback",
-        adapter,
-        BufReader::new(input),
-        &mut output,
-    )?;
-
-    let values = stdio_responses(&output)?;
-    assert_eq!(values.len(), 2);
-    assert_eq!(
-        values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
-        REQUEST_USER_ACTION_TOOL_NAME
-    );
-    let response = volicord_response_from_tool(&values[1])?;
-    let workflow = &response["agent_workflow_result"];
-    let summary = &workflow["user_action_request_summary"];
-    assert_eq!(summary["status"], "pending");
-    assert_eq!(summary["next_actor"], "user");
-    assert!(workflow.get("inbox_item").is_none());
-    assert!(workflow.get("user_action_request").is_none());
-    let fallback = values[1]["result"]["content"][1]["text"]
-        .as_str()
-        .expect("fallback text");
-    assert!(fallback.contains("pending UserAction requires the user"));
-    assert!(fallback.contains("`volicord inbox`"));
-    assert!(!fallback.contains("local Volicord consent link"));
-    assert!(!fallback.contains("request.operation=resume"));
-    let model_visible = json!({
-        "content": values[1]["result"]["content"].clone(),
-        "structuredContent": values[1]["result"]["structuredContent"].clone()
-    });
-    assert!(!serde_json::to_string(&model_visible)?.contains(consent_base_url()));
-
-    let state = &values[1]["result"]["_meta"]["io.volicord/user-channel"];
-    assert_eq!(state["kind"], "local_web_consent");
-    let url = state["url"].as_str().expect("host-only fallback URL");
-    assert!(url.starts_with(&format!(
-        "{}{}?project=",
-        consent_base_url(),
-        LOCAL_WEB_CONSENT_PATH
-    )));
-    let token = token_from_consent_url(url)?;
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    let validation = validate_user_action_channel_token(
-        fixture.runtime_home_path(),
-        UserActionChannelTokenCheck {
-            token,
-            expected_project_id: fixture.project_id().to_owned(),
-            expected_connection_internal_id: fixture.connection_id().to_owned(),
-            now,
-        },
-    )?;
-    let UserActionChannelTokenValidation::Valid(record) = validation else {
-        return Err("local-web token should remain valid".into());
-    };
-    assert_eq!(state["expires_at"], record.expires_at);
-    assert_eq!(
-        record.user_action_request_id,
-        summary["user_action_request_id"]
-    );
-    let token_expires_at = volicord_types::UtcTimestamp::parse(&record.expires_at)?;
-    assert!(token_expires_at <= request_expires_at);
-    let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
-        .expect("local web fallback should create bounded diagnostics");
-    assert_eq!(diagnostics.fallback_counts["local_web_consent"], 1);
-    Ok(())
-}
-
-#[test]
-fn stdio_pending_resume_with_local_web_is_read_only_exact_replay() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-pending-resume-local-web-read-only")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    assert!(!pending_response.replayed);
-    let exact_origin_bytes = serde_json::to_vec(&pending_response.response_value)?;
-    let origin_operation_result_ref = serde_json::to_value(
-        pending_response
-            .operation_result_ref
-            .as_ref()
-            .ok_or("created response should have an operation-result ref")?,
-    )?;
-    let user_action_request_id = pending_response.response_value["user_action_request_summary"]
-        ["user_action_request_id"]
-        .as_str()
-        .ok_or("created response should identify the user-action request")?
-        .to_owned();
-    let storage_snapshot = || -> Result<(i64, String), Box<dyn Error>> {
-        Ok(fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at
-               FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?)
-    };
-    let before_counts = fixture.counts()?;
-    let before_storage = storage_snapshot()?;
-    assert_eq!(before_storage.0, 0);
-
-    let resume_input = Cursor::new(json_lines(&[
-        initialize_request(
-            3,
-            json!({
-                "elicitation": {},
-                "experimental": {
-                    "io.volicord/user-channel": {
-                        "model_invisible_user_surface": true
-                    }
-                }
-            }),
-        ),
-        initialized_notification(),
-        tools_call(
-            4,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            resume_user_action_args(&fixture, &user_action_request_id),
-        ),
-    ])?);
-    let mut resume_output = Vec::new();
-    run_stdio(
-        adapter_with_local_web_consent(&fixture)?,
-        BufReader::new(resume_input),
-        &mut resume_output,
-    )?;
-
-    let resume_values = stdio_responses(&resume_output)?;
-    assert_eq!(resume_values.len(), 2);
-    assert!(resume_values[1]["result"].get("_meta").is_none());
-    assert!(resume_values
-        .iter()
-        .all(|value| value["method"] != "elicitation/create"));
-    assert_eq!(
-        resume_values[1]["result"]["content"]
-            .as_array()
-            .map(Vec::len),
-        Some(1)
-    );
-    let resumed = volicord_response_from_tool(&resume_values[1])?;
-    assert_eq!(
-        serde_json::to_vec(&resumed["agent_workflow_result"])?,
-        exact_origin_bytes
-    );
-    assert_eq!(resumed["agent_workflow_result_replayed"], true);
-    assert_eq!(resumed["current_status"], "pending");
-    assert!(resumed["user_channel_resolution_ref"].is_null());
-    assert!(resumed["user_channel_resolution"].is_null());
-    assert_eq!(
-        resume_values[1]["result"]["structuredContent"]["operation_result_ref"],
-        origin_operation_result_ref
-    );
-    assert_eq!(fixture.counts()?, before_counts);
-    assert_eq!(storage_snapshot()?, before_storage);
-    Ok(())
-}
-
-#[test]
-fn stdio_rejects_tampered_safe_summaries_and_legacy_full_forms_before_capture(
+fn stdio_rejects_tampered_safe_summaries_and_legacy_full_forms_before_delivery(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-pending-form-fail-closed")?;
     let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let test_adapter = adapter(&fixture)?;
     let before = user_action_side_effect_snapshot(&fixture)?;
-    assert_eq!(before.1, 0);
 
     let mut mismatched_id = pending_response.clone();
     mismatched_id.response_value["user_action_request_summary"]["user_action_request_id"] =
@@ -7778,30 +4226,12 @@ fn stdio_rejects_tampered_safe_summaries_and_legacy_full_forms_before_capture(
         ("invalid_summary", invalid_summary),
         ("legacy_full_form", legacy_full_form),
     ] {
-        let projection = pending_user_action_from_response(&test_adapter, &response);
-        assert!(
-            projection.is_err() || projection.is_ok_and(|pending| pending.is_none()),
-            "{case} must not resolve to a trusted pending User Channel projection"
-        );
-        let mut lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
-        let mut writer = Vec::new();
-        let mut request_sequence = 1;
-        let error = crate::stdio::user_action_tool_output(
-            &adapter_with_local_web_consent(&fixture)?,
-            response,
-            true,
-            McpUserChannelCapabilities::new(true, true),
-            &mut request_sequence,
-            &mut lines,
-            &mut writer,
-        )
-        .expect_err("untrusted public pending data must fail before capture");
+        let error = crate::stdio::user_action_tool_output(&adapter(&fixture)?, response)
+            .expect_err("untrusted public pending data must fail before delivery");
         assert!(matches!(
             error,
             McpAdapterError::Protocol(_) | McpAdapterError::Json(_)
         ));
-        assert!(writer.is_empty(), "{case} must not elicit");
-        assert_eq!(request_sequence, 1, "{case} must not allocate an id");
         assert_eq!(
             user_action_side_effect_snapshot(&fixture)?,
             before,
@@ -7812,9 +4242,8 @@ fn stdio_rejects_tampered_safe_summaries_and_legacy_full_forms_before_capture(
 }
 
 #[test]
-fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-user-action-cross-channel-resume")?;
+fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-user-action-cli-inbox-resume")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
 
@@ -7853,11 +4282,11 @@ fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
     let core = CoreService::new(fixture.runtime_home_path());
     let resolved = core.resolve_user_action(
         fixture.resolve_user_action_request(ResolveUserActionFixture {
-            request_id: "req_mcp_cross_channel_resolution",
+            request_id: "req_cli_inbox_resolution",
             task_id: &task_id,
             user_action_request_id: &user_action_request_id,
-            channel_submission_id: "submission_mcp_cross_channel_resolution",
-            resolution: UserActionResolutionInput::Choice {
+            channel_submission_id: "submission_cli_inbox_resolution",
+            resolution: volicord_types::UserActionResolutionInput::Choice {
                 selected_option_id: volicord_types::UserActionOptionId::new("keep"),
                 note: Some("This private user note must not enter the MCP projection.".to_owned())
                     .into(),
@@ -7867,7 +4296,7 @@ fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
             ProjectId::new(fixture.project_id()),
             ActorSource::LocalUser,
             OperationCategory::UserOnly,
-            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+            volicord_types::VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         ),
     )?;
     assert_eq!(resolved.response_value["base"]["response_kind"], "result");
@@ -7899,12 +4328,7 @@ fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
             change_unit_id: None,
             judgment_kind: volicord_types::JudgmentKind::TechnicalDecision,
         }),
-        InvocationContext::new(
-            ProjectId::new(fixture.project_id()),
-            ActorSource::agent_connection(fixture.connection_id()),
-            OperationCategory::AgentWorkflow,
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-        ),
+        test_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(unrelated.response_value["base"]["response_kind"], "result");
     let before_resume = fixture.counts()?;
@@ -7926,7 +4350,7 @@ fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
     assert_eq!(fixture.counts()?, before_resume);
 
     let resume_input = Cursor::new(json_lines(&[
-        initialize_request(3, json!({ "elicitation": {} })),
+        initialize_request(3, json!({})),
         initialized_notification(),
         tools_call(
             4,
@@ -7943,9 +4367,6 @@ fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
 
     let resume_values = stdio_responses(&resume_output)?;
     assert_eq!(resume_values.len(), 2);
-    assert!(resume_values
-        .iter()
-        .all(|value| value["method"] != "elicitation/create"));
     let resumed = volicord_response_from_tool(&resume_values[1])?;
     assert_eq!(
         serde_json::to_vec(&resumed["agent_workflow_result"])?,
@@ -7979,1288 +4400,98 @@ fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
     Ok(())
 }
 
-#[test]
-fn local_web_consent_get_renders_pending_user_action_page() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-get")?;
-    let (_task_id, response) = create_pending_product_action(&fixture)?;
-    let token = "1111111111111111111111111111111111111111111111111111111111111111";
-    create_consent_token_for_response(&fixture, &response, token)?;
-    let mut server = consent_server(&fixture)?;
-
-    let response = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        token,
-    )));
-
-    assert_eq!(response.status, 200);
-    assert_local_web_consent_security_headers(&response);
-    let body = http_body_text(&response)?;
-    assert!(body.contains("Resolve user action"));
-    assert!(body.contains("This page records one user-owned action"));
-    assert!(body.contains("The agent cannot resolve it on your behalf."));
-    assert!(body.contains("does not prove correctness"));
-    assert!(body.contains("test sufficiency"));
-    assert!(body.contains("deployment success"));
-    assert!(body.contains("review completion"));
-    assert!(body.contains("Choose the focused User Channel test outcome."));
-    assert!(body.contains(fixture.project_id()));
-    assert!(body.contains(&fixture.product_repo_path().display().to_string()));
-    assert!(body.contains(fixture.connection_id()));
-    assert!(body.contains("User-action request id"));
-    assert!(body.contains("Token expires"));
-    assert!(body.contains("Fallback CLI command"));
-    assert!(body.contains("volicord inbox resolve"));
-    assert!(body.contains("Available choices"));
-    assert!(body.contains("Choice ID: <code>keep</code>"));
-    assert!(body.contains("Consequence: Only this focused judgment is resolved."));
-    assert!(!body.contains("Runtime Home"));
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_handler_fails_closed_after_listener_invalidation_without_effects(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-handler-listener-invalidated")?;
-    let (_task_id, pending) = create_pending_product_action(&fixture)?;
-    let token = "abababababababababababababababababababababababababababababababab";
-    create_consent_token_for_response(&fixture, &pending, token)?;
-    let readiness = LocalWebConsentReadiness::ready_for_test();
-    let context =
-        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING);
-    let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
-        .with_local_web_consent_readiness(
-            LocalWebConsentContext {
-                base_url: consent_base_url().to_owned(),
-            },
-            readiness.clone(),
-        );
-    let mut server = LocalHttpServer::new(adapter, http_config(&fixture, Vec::new(), Vec::new()));
-    let before = user_action_side_effect_snapshot(&fixture)?;
-    readiness.mark_unavailable();
-
-    for request in [
-        consent_get_request(&consent_target(fixture.project_id(), token)),
-        consent_post_request(Some(consent_base_url()), &format!("token={token}")),
-    ] {
-        let response = server.handle_request(request);
-        assert_eq!(response.status, 503);
-        assert!(http_body_text(&response)?.contains("LOCAL_WEB_CONSENT_UNAVAILABLE"));
-    }
-
-    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before);
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_get_and_post_reject_shortened_token_window_without_effects(
-) -> Result<(), Box<dyn Error>> {
-    type TokenSnapshot = (String, String, Option<String>, Option<String>);
-
-    let fixture = CoreFixture::new("mcp-local-web-shortened-token-window")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "1212121212121212121212121212121212121212121212121212121212121212";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let token_hash = volicord_store::user_action_channel::user_action_channel_token_hash(token)?;
-    fixture.conn()?.execute(
-        "UPDATE user_action_channel_tokens
-            SET expires_at = strftime('%Y-%m-%dT%H:%M:%SZ', created_at, '+599 seconds')
-          WHERE project_id = ?1 AND token_hash = ?2",
-        (fixture.project_id(), token_hash.as_str()),
-    )?;
-    let token_snapshot = || -> Result<TokenSnapshot, Box<dyn Error>> {
-        Ok(fixture.conn()?.query_row(
-            "SELECT status, expires_at, consumed_at, completed_at
-                   FROM user_action_channel_tokens
-                  WHERE project_id = ?1 AND token_hash = ?2",
-            (fixture.project_id(), token_hash.as_str()),
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )?)
-    };
-    let before_effects = user_action_side_effect_snapshot(&fixture)?;
-    let before_token = token_snapshot()?;
-    let mut server = consent_server(&fixture)?;
-
-    let get = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        token,
-    )));
-    assert_eq!(get.status, 500);
-    assert_local_web_consent_security_headers(&get);
-    assert!(http_body_text(&get)?.contains("STORE_UNAVAILABLE"));
-    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before_effects);
-    assert_eq!(token_snapshot()?, before_token);
-
-    let post = server.handle_request(consent_post_request(
-        Some(consent_base_url()),
-        &format!(
-            "project={}&token={}&selected_option_id=keep",
-            percent_encode_query(fixture.project_id()),
-            token
-        ),
-    ));
-    assert_eq!(post.status, 500);
-    assert_local_web_consent_security_headers(&post);
-    assert!(http_body_text(&post)?.contains("STORE_UNAVAILABLE"));
-    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before_effects);
-    assert_eq!(token_snapshot()?, before_token);
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_post_resolves_user_owned_action() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-post")?;
-    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "2222222222222222222222222222222222222222222222222222222222222222";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-
-    let response = server.handle_request(consent_post_request(
-        Some(consent_base_url()),
-        &format!(
-            "project={}&token={}&selected_option_id=keep&note=Browser+answer",
-            percent_encode_query(fixture.project_id()),
-            token
-        ),
-    ));
-
-    assert_eq!(response.status, 200);
-    assert_local_web_consent_security_headers(&response);
-    let body = http_body_text(&response)?;
-    assert!(body.contains("Resolution recorded"));
-    assert!(body.contains("resolved user action"));
-    assert!(body.contains("does not prove correctness"));
-    let pending_value = pending_response.response_value;
-    let record = stored_action_record(&fixture, &task_id, &pending_value)?;
-    assert_eq!(record.status, UserActionStatus::Resolved);
-    let resolution = record.resolution.expect("resolution should be stored");
-    assert_eq!(resolution.resolved_by_actor_source, "local_user");
-    assert_eq!(
-        resolution.resolved_verification_basis,
-        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
-    );
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_rejects_unknown_mixed_and_malformed_fields_without_effect(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-closed-choice-fields")?;
-    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "2323232323232323232323232323232323232323232323232323232323232323";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let before = user_action_side_effect_snapshot(&fixture)?;
-    assert_eq!(before.1, 1);
-    let mut server = consent_server(&fixture)?;
-    let canonical_prefix = format!(
-        "project={}&token={}&selected_option_id=keep",
-        percent_encode_query(fixture.project_id()),
-        token
-    );
-    let cases = [
-        (
-            "unknown",
-            format!("{canonical_prefix}&unexpected=discard-me"),
-            "INVALID_SELECTION",
-        ),
-        (
-            "mixed",
-            format!("{canonical_prefix}&summary=cross-variant"),
-            "INVALID_SELECTION",
-        ),
-        (
-            "malformed-extra-name",
-            format!("{canonical_prefix}&%ZZ=discard-me"),
-            "FORM_ENCODING_INVALID",
-        ),
-        (
-            "malformed-extra-value",
-            format!("{canonical_prefix}&unexpected=%ZZ"),
-            "FORM_ENCODING_INVALID",
-        ),
-    ];
-
-    for (case, body, expected_code) in cases {
-        let response = server.handle_request(consent_post_request(Some(consent_base_url()), &body));
-        assert_eq!(response.status, 400, "unexpected status for {case}");
-        assert_local_web_consent_security_headers(&response);
-        assert!(
-            http_body_text(&response)?.contains(expected_code),
-            "missing error code for {case}"
-        );
-        assert_eq!(
-            user_action_side_effect_snapshot(&fixture)?,
-            before,
-            "invalid local-web fields must not consume a token, resolve, or change project state for {case}"
-        );
-    }
-
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    assert!(matches!(
-        validate_user_action_channel_token(
-            fixture.runtime_home_path(),
-            UserActionChannelTokenCheck {
-                token: token.to_owned(),
-                expected_project_id: fixture.project_id().to_owned(),
-                expected_connection_internal_id: fixture.connection_id().to_owned(),
-                now,
-            },
-        )?,
-        UserActionChannelTokenValidation::Valid(_)
-    ));
-    let record = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
-    assert_eq!(record.status, UserActionStatus::Pending);
-    assert!(record.resolution.is_none());
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_evidence_observation_uses_canonical_form_and_consumes_token_atomically(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-evidence-observation")?;
-    let pending = create_pending_evidence_observation_action(&fixture)?;
-    let token = "abababababababababababababababababababababababababababababababab";
-    create_consent_token_for_response(&fixture, &pending.response, token)?;
-    let pending_action = pending_user_action_from_response(&adapter(&fixture)?, &pending.response)?
-        .ok_or("response should include a pending evidence-observation action")?;
-    let expected_form_digest = canonical_json_bare_sha256(&pending_action.inbox_item.form)?;
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    let validation = validate_user_action_channel_token(
-        fixture.runtime_home_path(),
-        UserActionChannelTokenCheck {
-            token: token.to_owned(),
-            expected_project_id: fixture.project_id().to_owned(),
-            expected_connection_internal_id: fixture.connection_id().to_owned(),
-            now,
-        },
-    )?;
-    let UserActionChannelTokenValidation::Valid(token_record) = validation else {
-        return Err("local-web token should be valid before capture".into());
-    };
-    assert_eq!(
-        serde_json::from_str::<Value>(&token_record.created_metadata_json)?,
-        json!({
-            "fallback_kind": "local_web_consent",
-            "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-            "endpoint": LOCAL_WEB_CONSENT_PATH,
-            "form_digest": expected_form_digest
-        })
-    );
-    let before = fixture.counts()?;
-    let mut server = consent_server(&fixture)?;
-
-    let get = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        token,
-    )));
-    assert_eq!(get.status, 200);
-    assert_local_web_consent_security_headers(&get);
-    let get_body = http_body_text(&get)?;
-    for expected in [
-        "Evidence target",
-        "Observed artifacts",
-        "Relevance",
-        "supported",
-        "contradicted",
-        "name=\"summary\"",
-    ] {
-        assert!(
-            get_body.contains(expected),
-            "missing canonical field {expected}"
-        );
-    }
-    for target in &pending.target_candidates {
-        let volicord_types::EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id,
-        } = target
-        else {
-            return Err("fixture should use acceptance-criterion targets".into());
-        };
-        assert!(get_body.contains(acceptance_criterion_id.as_str()));
-    }
-    for artifact in &pending.registered_artifacts {
-        assert!(get_body.contains(artifact.artifact_id.as_str()));
-        assert!(get_body.contains(&artifact.display_name));
-        let metadata = serde_json::to_value(artifact)?;
-        for field in ["sha256", "storage_ref", "created_by_actor_source"] {
-            let value = metadata[field]
-                .as_str()
-                .ok_or("registered artifact should expose exact presentation metadata")?;
-            assert!(
-                get_body.contains(value),
-                "local-web form must display artifact {field} metadata"
-            );
-        }
-        assert!(get_body.contains(&metadata["size_bytes"].to_string()));
-    }
-
-    let selected_target = pending.target_candidates[1].clone();
-    let selected_target_selector = match &selected_target {
-        EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id,
-        } => format!("--criterion {acceptance_criterion_id}"),
-        EvidenceTarget::SupplementalClaim {
-            evidence_claim_id, ..
-        } => format!("--claim {evidence_claim_id}"),
-    };
-    let selected_artifact = pending.registered_artifacts[1].clone();
-    let private_summary =
-        "private-local-web-evidence-summary-must-not-enter-browser-or-agent-output";
-    let post_body = format!(
-        "project={}&token={}&selected_target={}&selected_artifact_ids={}&relevance_status=supported&summary={}",
-        percent_encode_query(fixture.project_id()),
-        token,
-        percent_encode_query(&selected_target_selector),
-        percent_encode_query(selected_artifact.artifact_id.as_str()),
-        percent_encode_query(private_summary),
-    );
-    let before_invalid = user_action_side_effect_snapshot(&fixture)?;
-    let mixed = server.handle_request(consent_post_request(
-        Some(consent_base_url()),
-        &format!("{post_body}&selected_option_id=keep"),
-    ));
-    assert_eq!(mixed.status, 400);
-    assert_local_web_consent_security_headers(&mixed);
-    assert!(http_body_text(&mixed)?.contains("INVALID_SELECTION"));
-    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before_invalid);
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    assert!(matches!(
-        validate_user_action_channel_token(
-            fixture.runtime_home_path(),
-            UserActionChannelTokenCheck {
-                token: token.to_owned(),
-                expected_project_id: fixture.project_id().to_owned(),
-                expected_connection_internal_id: fixture.connection_id().to_owned(),
-                now,
-            },
-        )?,
-        UserActionChannelTokenValidation::Valid(_)
-    ));
-    let post = server.handle_request(consent_post_request(Some(consent_base_url()), &post_body));
-    assert_eq!(post.status, 200);
-    assert_local_web_consent_security_headers(&post);
-    let post_response_body = http_body_text(&post)?;
-    assert!(post_response_body.contains("Resolution recorded"));
-    assert!(!post_response_body.contains(private_summary));
-
-    let record =
-        stored_action_record(&fixture, &pending.task_id, &pending.response.response_value)?;
-    assert_eq!(record.status, UserActionStatus::Resolved);
-    let resolution = record
-        .resolution
-        .as_ref()
-        .ok_or("local-web observation resolution should be stored")?;
-    assert_eq!(resolution.resolved_by_actor_source, "local_user");
-    assert_eq!(
-        resolution.channel_kind,
-        volicord_types::UserActionChannelKind::LocalWebConsent
-    );
-    assert_eq!(
-        resolution.resolved_verification_basis,
-        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
-    );
-    let stored_body: volicord_types::UserActionResolutionBody =
-        serde_json::from_str(&resolution.resolution_json)?;
-    let volicord_types::UserActionResolutionBody::EvidenceObservation { observation } = stored_body
-    else {
-        return Err("stored local-web resolution should be an evidence observation".into());
-    };
-    assert_eq!(observation.target, selected_target);
-    assert_eq!(
-        observation.relevance_status,
-        EvidenceRelevanceStatus::Supported
-    );
-    assert_eq!(observation.summary, private_summary);
-    assert_eq!(
-        observation.output_artifact_refs,
-        vec![selected_artifact.clone()],
-        "the stored resolution must preserve the exact historical artifact ref"
-    );
-
-    let request_id = record.request.user_action_request_id.clone();
-    let projection = CoreService::new(fixture.runtime_home_path())
-        .current_user_action_projection(
-            &ProjectId::new(fixture.project_id()),
-            &volicord_types::UserActionRequestId::new(&request_id),
-        )?
-        .ok_or("resolved action should have a current projection")?;
-    assert_eq!(projection.status, UserActionStatus::Resolved);
-    let safe_resolution = projection
-        .user_action_resolution
-        .as_ref()
-        .ok_or("resolved action should have an agent projection")?;
-    assert_eq!(
-        safe_resolution.channel_kind,
-        volicord_types::UserActionChannelKind::LocalWebConsent
-    );
-    let volicord_types::McpUserActionResolutionSummary::EvidenceObservation {
-        target,
-        artifact_refs,
-        relevance_status,
-    } = &safe_resolution.resolution_summary
-    else {
-        return Err("agent projection should preserve observation semantics".into());
-    };
-    assert_eq!(target, &selected_target);
-    assert_eq!(artifact_refs, &vec![selected_artifact]);
-    assert_eq!(*relevance_status, EvidenceRelevanceStatus::Supported);
-    assert!(!format!("{projection:?}").contains(private_summary));
-
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    let consumed = validate_user_action_channel_token(
-        fixture.runtime_home_path(),
-        UserActionChannelTokenCheck {
-            token: token.to_owned(),
-            expected_project_id: fixture.project_id().to_owned(),
-            expected_connection_internal_id: fixture.connection_id().to_owned(),
-            now,
-        },
-    )?;
-    let UserActionChannelTokenValidation::Rejected(UserActionChannelTokenRejection::Consumed(
-        consumed,
-    )) = consumed
-    else {
-        return Err("successful local-web resolution should atomically consume its token".into());
-    };
-    assert_eq!(consumed.status, "consumed");
-    assert!(consumed.consumed_at.is_some());
-    assert!(consumed.completed_at.is_some());
-    assert!(!consumed.completion_metadata_json.is_empty());
-
-    let after = fixture.counts()?;
-    assert_eq!(after.state_version, before.state_version + 1);
-    assert_eq!(after.user_action_requests, before.user_action_requests);
-    assert_eq!(
-        after.user_action_resolutions,
-        before.user_action_resolutions + 1
-    );
-    let replay = server.handle_request(consent_post_request(Some(consent_base_url()), &post_body));
-    assert_eq!(replay.status, 200);
-    assert!(http_body_text(&replay)?.contains("Resolution recorded"));
-    assert_eq!(fixture.counts()?, after);
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_creation_metadata_failures_are_closed_and_leave_tokens_unconsumed(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-form-digest-fail-closed")?;
-    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let canonical_action =
-        pending_user_action_from_response(&adapter(&fixture)?, &pending_response)?
-            .ok_or("response should include a canonical pending action")?;
-    let exact_form_digest = canonical_json_bare_sha256(&canonical_action.inbox_item.form)?;
-    let cases = [
-        (
-            "legacy-missing-delivery-surface",
-            "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "form_digest": exact_form_digest
-            }),
-        ),
-        (
-            "missing-form-digest",
-            "dededededededededededededededededededededededededededededededede",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE
-            }),
-        ),
-        (
-            "extra-member",
-            "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-                "form_digest": exact_form_digest,
-                "unexpected": true
-            }),
-        ),
-        (
-            "wrong-delivery-surface",
-            "fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "delivery_surface": "agent_visible_model_context",
-                "form_digest": exact_form_digest
-            }),
-        ),
-        (
-            "wrong-delivery-surface-type",
-            "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "delivery_surface": 7,
-                "form_digest": exact_form_digest
-            }),
-        ),
-        (
-            "wrong-fallback-kind",
-            "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
-            json!({
-                "fallback_kind": "prompt_capture",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-                "form_digest": exact_form_digest
-            }),
-        ),
-        (
-            "wrong-endpoint",
-            "cececececececececececececececececececececececececececececececece",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": "/other-consent",
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-                "form_digest": exact_form_digest
-            }),
-        ),
-        (
-            "wrong-form-digest-type",
-            "dfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdf",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-                "form_digest": 7
-            }),
-        ),
-        (
-            "mismatched-form-digest",
-            "eaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaea",
-            json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-                "form_digest": "0".repeat(64)
-            }),
-        ),
-    ];
-    let before = fixture.counts()?;
-    let mut server = consent_server(&fixture)?;
-
-    for (case, token, metadata) in cases {
-        create_consent_token_for_response(&fixture, &pending_response, token)?;
-        overwrite_consent_token_created_metadata(&fixture, token, &metadata)?;
-        let before_attempts = user_action_side_effect_snapshot(&fixture)?;
-
-        let get = server.handle_request(consent_get_request(&consent_target(
-            fixture.project_id(),
-            token,
-        )));
-        assert_eq!(get.status, 409, "unexpected GET status for {case}");
-        assert_local_web_consent_security_headers(&get);
-        let get_body = http_body_text(&get)?;
-        assert!(get_body.contains("TOKEN_FORM_MISMATCH"));
-        assert!(!get_body.contains("<form"));
-        assert!(!get_body.contains("Choose the focused User Channel test outcome."));
-        assert_eq!(
-            user_action_side_effect_snapshot(&fixture)?,
-            before_attempts,
-            "GET must not change token, project clock, or user-action state for {case}"
-        );
-
-        let post = server.handle_request(consent_post_request(
-            Some(consent_base_url()),
-            &format!(
-                "project={}&token={}&selected_option_id=keep",
-                percent_encode_query(fixture.project_id()),
-                token
-            ),
-        ));
-        assert_eq!(post.status, 409, "unexpected POST status for {case}");
-        assert_local_web_consent_security_headers(&post);
-        let post_body = http_body_text(&post)?;
-        assert!(post_body.contains("TOKEN_FORM_MISMATCH"));
-        assert!(!post_body.contains("<form"));
-        assert!(!post_body.contains("Choose the focused User Channel test outcome."));
-        assert_eq!(
-            user_action_side_effect_snapshot(&fixture)?,
-            before_attempts,
-            "POST must not change token, project clock, or user-action state for {case}"
-        );
-        assert_eq!(fixture.counts()?, before);
-
-        let now = user_action_channel_current_timestamp(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-        )?;
-        let validation = validate_user_action_channel_token(
-            fixture.runtime_home_path(),
-            UserActionChannelTokenCheck {
-                token: token.to_owned(),
-                expected_project_id: fixture.project_id().to_owned(),
-                expected_connection_internal_id: fixture.connection_id().to_owned(),
-                now,
-            },
-        )?;
-        let UserActionChannelTokenValidation::Valid(record) = validation else {
-            return Err("a form-digest failure must leave its token pending".into());
-        };
-        assert_eq!(record.status, "pending");
-        assert!(record.consumed_at.is_none());
-        assert!(record.completed_at.is_none());
-    }
-
-    let record = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
-    assert_eq!(record.status, UserActionStatus::Pending);
-    assert!(record.resolution.is_none());
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_ended_creator_session_fails_before_form_rendering(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-ended-session")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "6161616161616161616161616161616161616161616161616161616161616161";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-    let ended_at =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    end_agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        USER_CHANNEL_TEST_SESSION_ID,
-        &ended_at,
-    )?;
-    assert_local_web_projection_denied_without_form(&fixture, &mut server, token)
-}
-
-#[test]
-fn local_web_consent_creator_mismatch_fails_before_form_rendering() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-creator-mismatch")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let action = pending_user_action_from_response(&adapter(&fixture)?, &pending_response)?
-        .ok_or("response should include a pending user action")?;
-    let token = "6262626262626262626262626262626262626262626262626262626262626262";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-    let changed = fixture.conn()?.execute(
-        "UPDATE user_action_requests
-            SET requested_by_actor_source = ?3
-          WHERE project_id = ?1
-            AND user_action_request_id = ?2",
-        (
-            fixture.project_id(),
-            action.request.user_action_request_id.as_str(),
-            "agent_connection:connection_other",
-        ),
-    )?;
-    assert_eq!(changed, 1);
-    assert_local_web_projection_denied_without_form(&fixture, &mut server, token)
-}
-
-#[test]
-fn local_web_consent_disabled_connection_fails_before_form_rendering() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp-local-web-disabled-connection")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "6363636363636363636363636363636363636363636363636363636363636363";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-
-    set_connection_enabled(fixture.runtime_home_path(), fixture.connection_id(), false)?;
-
-    assert_local_web_projection_denied_without_form(&fixture, &mut server, token)
-}
-
-#[test]
-fn local_web_consent_removed_project_membership_fails_before_form_rendering(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-removed-project-membership")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "6464646464646464646464646464646464646464646464646464646464646464";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-
-    assert!(remove_connection_project(
-        fixture.runtime_home_path(),
-        fixture.connection_id(),
-        fixture.project_id(),
-    )?);
-
-    assert_local_web_projection_denied_without_form(&fixture, &mut server, token)
-}
-
-#[test]
-fn local_web_consent_post_requires_one_exact_same_origin_before_effects(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-origin")?;
-    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "9999999999999999999999999999999999999999999999999999999999999999";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-    let form_body = format!(
-        "project={}&token={}&selected_option_id=keep",
-        percent_encode_query(fixture.project_id()),
-        token
-    );
-
-    let get_without_origin = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        token,
-    )));
-    assert_eq!(get_without_origin.status, 200);
-    assert_local_web_consent_security_headers(&get_without_origin);
-    let mut get_with_same_origin =
-        consent_get_request(&consent_target(fixture.project_id(), token));
-    get_with_same_origin
-        .headers
-        .insert("origin".to_owned(), consent_base_url().to_owned());
-    let get_with_same_origin = server.handle_request(get_with_same_origin);
-    assert_eq!(get_with_same_origin.status, 200);
-    assert_local_web_consent_security_headers(&get_with_same_origin);
-    let mut get_with_invalid_origin =
-        consent_get_request(&consent_target(fixture.project_id(), token));
-    get_with_invalid_origin
-        .headers
-        .insert("origin".to_owned(), "null".to_owned());
-    let get_with_invalid_origin = server.handle_request(get_with_invalid_origin);
-    assert_eq!(get_with_invalid_origin.status, 403);
-    assert_local_web_consent_security_headers(&get_with_invalid_origin);
-    assert!(http_body_text(&get_with_invalid_origin)?.contains("ORIGIN_NOT_ALLOWED"));
-    let mut get_with_repeated_origin =
-        consent_post_request_with_repeated_origins(&[consent_base_url(), consent_base_url()], "");
-    get_with_repeated_origin.method = "GET".to_owned();
-    get_with_repeated_origin.target = consent_target(fixture.project_id(), token);
-    get_with_repeated_origin.body.clear();
-    let get_with_repeated_origin = server.handle_request(get_with_repeated_origin);
-    assert_eq!(get_with_repeated_origin.status, 403);
-    assert_local_web_consent_security_headers(&get_with_repeated_origin);
-    assert!(http_body_text(&get_with_repeated_origin)?.contains("ORIGIN_NOT_ALLOWED"));
-
-    let mut missing_origin_before_body_validation = consent_post_request(None, "not-form-data");
-    missing_origin_before_body_validation
-        .headers
-        .insert("content-type".to_owned(), "application/json".to_owned());
-    let rejected_requests = vec![
-        ("missing", missing_origin_before_body_validation),
-        ("empty", consent_post_request(Some(""), &form_body)),
-        ("null", consent_post_request(Some("null"), &form_body)),
-        (
-            "malformed",
-            consent_post_request(Some("http://[::1"), &form_body),
-        ),
-        (
-            "wrong",
-            consent_post_request(Some("http://example.invalid"), &form_body),
-        ),
-        (
-            "wrong-before-token-lookup",
-            consent_post_request(
-                Some("http://example.invalid"),
-                &format!(
-                    "project={}&token=invalid&selected_option_id=keep",
-                    percent_encode_query(fixture.project_id())
-                ),
-            ),
-        ),
-        (
-            "comma-combined",
-            consent_post_request(
-                Some(&format!("{},{}", consent_base_url(), consent_base_url())),
-                &form_body,
-            ),
-        ),
-        (
-            "repeated",
-            consent_post_request_with_repeated_origins(
-                &[consent_base_url(), consent_base_url()],
-                &form_body,
-            ),
-        ),
-    ];
-    let before = user_action_side_effect_snapshot(&fixture)?;
-    for (case, request) in rejected_requests {
-        let rejected = server.handle_request(request);
-        assert_eq!(rejected.status, 403, "unexpected status for {case} Origin");
-        assert_local_web_consent_security_headers(&rejected);
-        assert!(
-            http_body_text(&rejected)?.contains("ORIGIN_NOT_ALLOWED"),
-            "unexpected error for {case} Origin"
-        );
-        assert_eq!(
-            user_action_side_effect_snapshot(&fixture)?,
-            before,
-            "{case} Origin must not consume the token or resolve the action"
-        );
-        let pending_value = pending_response.response_value.clone();
-        let record = stored_action_record(&fixture, &task_id, &pending_value)?;
-        assert_eq!(record.status, UserActionStatus::Pending);
-    }
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    let token_validation = validate_user_action_channel_token(
-        fixture.runtime_home_path(),
-        UserActionChannelTokenCheck {
-            token: token.to_owned(),
-            expected_project_id: fixture.project_id().to_owned(),
-            expected_connection_internal_id: fixture.connection_id().to_owned(),
-            now,
-        },
-    )?;
-    let UserActionChannelTokenValidation::Valid(token_record) = token_validation else {
-        return Err("rejected Origin variants must leave the token valid".into());
-    };
-    assert_eq!(token_record.status, "pending");
-    assert!(token_record.consumed_at.is_none());
-    assert!(token_record.completed_at.is_none());
-
-    let valid = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
-    assert_eq!(valid.status, 200);
-    assert_local_web_consent_security_headers(&valid);
-    assert!(http_body_text(&valid)?.contains("Resolution recorded"));
-    let pending_value = pending_response.response_value;
-    let record = stored_action_record(&fixture, &task_id, &pending_value)?;
-    assert_eq!(record.status, UserActionStatus::Resolved);
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_validation_failure_leaves_token_reusable() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-validation-retry")?;
-    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "8888888888888888888888888888888888888888888888888888888888888888";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-
-    let invalid = server.handle_request(consent_post_request(
-        Some(consent_base_url()),
-        &format!(
-            "project={}&token={}&selected_option_id=missing",
-            percent_encode_query(fixture.project_id()),
-            token
-        ),
-    ));
-    assert_eq!(invalid.status, 400);
-    assert_local_web_consent_security_headers(&invalid);
-    assert!(http_body_text(&invalid)?.contains("INVALID_SELECTION"));
-
-    let valid = server.handle_request(consent_post_request(
-        Some(consent_base_url()),
-        &format!(
-            "project={}&token={}&selected_option_id=keep",
-            percent_encode_query(fixture.project_id()),
-            token
-        ),
-    ));
-
-    assert_eq!(valid.status, 200);
-    assert_local_web_consent_security_headers(&valid);
-    assert!(http_body_text(&valid)?.contains("Resolution recorded"));
-    let pending_value = pending_response.response_value;
-    let record = stored_action_record(&fixture, &task_id, &pending_value)?;
-    assert_eq!(record.status, UserActionStatus::Resolved);
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_rejects_invalid_token() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-invalid")?;
-    let mut server = consent_server(&fixture)?;
-
-    let response = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        "invalid-token",
-    )));
-
-    assert_eq!(response.status, 404);
-    assert_local_web_consent_security_headers(&response);
-    assert!(http_body_text(&response)?.contains("INVALID_TOKEN"));
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_rejects_expired_token() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-expired")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "3333333333333333333333333333333333333333333333333333333333333333";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    volicord_store::user_action_channel::expire_user_action_channel_tokens(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        "2999-01-01T00:00:00.000Z",
-    )?;
-    let mut server = consent_server(&fixture)?;
-
-    let response = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        token,
-    )));
-
-    assert_eq!(response.status, 410);
-    assert_local_web_consent_security_headers(&response);
-    assert!(http_body_text(&response)?.contains("TOKEN_EXPIRED"));
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_duplicate_post_replays_safe_completion() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-replay")?;
-    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let action = pending_user_action_from_response(&adapter(&fixture)?, &pending_response)?
-        .ok_or("response should include a pending user action")?;
-    let request_id = action.request.user_action_request_id.as_str().to_owned();
-    let token = "4444444444444444444444444444444444444444444444444444444444444444";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-    let mut server = consent_server(&fixture)?;
-    let form_body = format!(
-        "project={}&token={}&selected_option_id=keep",
-        percent_encode_query(fixture.project_id()),
-        token
-    );
-
-    let first = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
-    assert_eq!(first.status, 200);
-    set_user_action_basis_status(&fixture, &request_id, "stale")?;
-    let stale = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
-    assert_eq!(stale.status, UserActionStatus::Stale);
-    let after_first = fixture.counts()?;
-    let replay = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
-
-    assert_eq!(replay.status, 200);
-    assert_local_web_consent_security_headers(&first);
-    assert_local_web_consent_security_headers(&replay);
-    assert!(http_body_text(&replay)?.contains("Resolution recorded"));
-    assert_eq!(fixture.counts()?, after_first);
-    Ok(())
-}
-
-#[test]
-fn local_web_consent_hides_wrong_project_and_rejects_wrong_connection() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp-local-web-context")?;
-    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
-    let token = "5555555555555555555555555555555555555555555555555555555555555555";
-    create_consent_token_for_response(&fixture, &pending_response, token)?;
-
-    let mut server = consent_server(&fixture)?;
-    let wrong_project =
-        server.handle_request(consent_get_request(&consent_target("project_other", token)));
-    assert_eq!(wrong_project.status, 404);
-    assert_local_web_consent_security_headers(&wrong_project);
-    assert!(http_body_text(&wrong_project)?.contains("INVALID_TOKEN"));
-
-    let mut wrong_connection_server =
-        consent_server_for_connection(&fixture, "conn_mcp_local_web_other")?;
-    let wrong_connection = wrong_connection_server.handle_request(consent_get_request(
-        &consent_target(fixture.project_id(), token),
-    ));
-    assert_eq!(wrong_connection.status, 403);
-    assert_local_web_consent_security_headers(&wrong_connection);
-    assert!(http_body_text(&wrong_connection)?.contains("WRONG_CONNECTION"));
-    Ok(())
-}
-
-#[test]
-fn local_http_rejects_missing_bearer_auth() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-http-auth")?;
-    let mut server = http_server(&fixture, Vec::new(), Vec::new())?;
-
-    let response = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        None,
-        None,
-        None,
-        initialize_request(1, json!({})),
-    )?);
-
-    assert_eq!(response.status, 401);
-    assert_eq!(http_json(&response)["error"]["code"], "AUTH_REQUIRED");
-    assert_diagnostic_disclosure(&http_json(&response));
-    assert_eq!(http_header(&response, "WWW-Authenticate"), Some("Bearer"));
-
-    let unauthenticated_health = server.handle_request(http_request(
-        "GET",
-        "/healthz",
-        None,
-        None,
-        None,
-        Value::Null,
-    )?);
-    assert_eq!(unauthenticated_health.status, 401);
-    assert_eq!(
-        http_json(&unauthenticated_health)["error"]["code"],
-        "AUTH_REQUIRED"
-    );
-
-    let health = server.handle_request(http_request(
-        "GET",
-        "/healthz",
-        Some("test_token"),
-        None,
-        None,
-        Value::Null,
-    )?);
-    assert_eq!(health.status, 200);
-    assert_eq!(http_json(&health)["status"], "ok");
-    assert_diagnostic_disclosure(&http_json(&health));
-    let health_body = serde_json::to_string(&http_json(&health))?;
-    assert!(!health_body.contains("test_token"));
-    assert!(!health_body.contains(fixture.connection_id()));
-    assert!(!health_body.contains(fixture.project_id()));
-    assert!(!health_body.contains(&fixture.runtime_home_path().display().to_string()));
-    Ok(())
-}
-
-#[test]
-fn local_http_rejects_origin_unless_explicitly_allowed() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-http-origin")?;
-    let mut server = http_server(&fixture, Vec::new(), Vec::new())?;
-
-    let rejected = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        Some("https://example.invalid"),
-        None,
-        initialize_request(1, json!({})),
-    )?);
-
-    assert_eq!(rejected.status, 403);
-    assert_eq!(http_json(&rejected)["error"]["code"], "ORIGIN_NOT_ALLOWED");
-    assert_eq!(http_header(&rejected, "Access-Control-Allow-Origin"), None);
-
-    let denied_preflight = server.handle_request(http_request(
-        "OPTIONS",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        None,
-        Some("https://example.invalid"),
-        None,
-        Value::Null,
-    )?);
-    assert_eq!(denied_preflight.status, 403);
-    assert_eq!(
-        http_json(&denied_preflight)["error"]["code"],
-        "ORIGIN_NOT_ALLOWED"
-    );
-
-    let mut allowed_server = http_server(
-        &fixture,
-        Vec::new(),
-        vec!["https://allowed.example".to_owned()],
-    )?;
-    let allowed = allowed_server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        Some("https://allowed.example"),
-        None,
-        initialize_request(2, json!({})),
-    )?);
-    assert_eq!(allowed.status, 200);
-    assert_eq!(
-        http_header(&allowed, "Access-Control-Allow-Origin"),
-        Some("https://allowed.example")
-    );
-    Ok(())
-}
-
-#[test]
-fn local_http_rejects_unsupported_mcp_endpoint_methods() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-http-method")?;
-    let mut server = http_server(&fixture, Vec::new(), Vec::new())?;
-
-    let rejected = server.handle_request(http_request(
-        "PUT",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        None,
-        Value::Null,
-    )?);
-
-    assert_eq!(rejected.status, 405);
-    assert_eq!(http_json(&rejected)["error"]["code"], "METHOD_NOT_ALLOWED");
-    assert_eq!(
-        http_header(&rejected, "Allow"),
-        Some("POST, GET, DELETE, OPTIONS")
-    );
-    Ok(())
-}
-
-#[test]
-fn local_http_rejects_nonlocal_listen_addresses() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-http-listen")?;
-
-    for listen_addr in ["0.0.0.0:8765", "[::]:8765", "192.0.2.10:8765"] {
-        let mut config = http_config(&fixture, Vec::new(), Vec::new());
-        config.listen_addr = listen_addr.parse()?;
-        let error = validate_local_http_server_config(&config)
-            .expect_err("nonlocal listen address should be rejected");
-        assert!(
-            error.to_string().contains("NONLOCAL_LISTEN_REJECTED"),
-            "unexpected error for {listen_addr}: {error}"
-        );
-    }
-
-    for listen_addr in ["127.0.0.1:0", "[::1]:0"] {
-        let mut config = http_config(&fixture, Vec::new(), Vec::new());
-        config.listen_addr = listen_addr.parse()?;
-        validate_local_http_server_config(&config)?;
-    }
-    Ok(())
-}
-
-#[test]
-fn local_http_container_listen_scope_allows_only_container_wildcard() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp-http-container-listen")?;
-
-    for listen_addr in ["0.0.0.0:8765", "[::]:8765"] {
-        let mut config = http_config(&fixture, Vec::new(), Vec::new());
-        config.listen_addr = listen_addr.parse()?;
-        config.listen_scope = LocalHttpListenScope::ContainerPublishedHostLoopback;
-        validate_local_http_server_config(&config)?;
-    }
-
-    for listen_addr in ["127.0.0.1:8765", "192.0.2.10:8765", "0.0.0.0:0"] {
-        let mut config = http_config(&fixture, Vec::new(), Vec::new());
-        config.listen_addr = listen_addr.parse()?;
-        config.listen_scope = LocalHttpListenScope::ContainerPublishedHostLoopback;
-        let error = validate_local_http_server_config(&config)
-            .expect_err("unsupported container listen address should be rejected");
-        assert!(
-            error.to_string().contains("CONTAINER_LISTEN_REJECTED"),
-            "unexpected error for {listen_addr}: {error}"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn project_bound_http_initialize_creates_baseline_before_tool_handling(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-http-startup-watch")?;
-    let mut server = http_server(
-        &fixture,
-        vec![ProjectId::new(fixture.project_id())],
-        Vec::new(),
-    )?;
-
-    let initialize = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        None,
-        initialize_request(1, json!({})),
-    )?);
-
-    assert_eq!(initialize.status, 200);
-    assert!(http_header(&initialize, "Mcp-Session-Id").is_some());
-    let baseline = latest_watch_baseline_for_connection(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?
-    .expect("HTTP initialize should create a watch baseline");
-    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
-    assert_eq!(metadata["coverage_basis"], "mcp_start");
-    Ok(())
-}
-
-#[test]
-fn local_http_project_allowlist_narrows_connection_projects() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-http-project-allowlist")?;
-    let outside_project_id = "project_http_allowed_by_connection";
-    add_allowed_project(&fixture, outside_project_id)?;
-    let mut server = http_server(
-        &fixture,
-        vec![ProjectId::new(fixture.project_id())],
-        Vec::new(),
-    )?;
-
-    let initialize = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        None,
-        initialize_request(1, json!({})),
-    )?);
-    assert_eq!(initialize.status, 200);
-    let session_id = http_header(&initialize, "Mcp-Session-Id")
-        .expect("initialize should create session")
-        .to_owned();
-
-    let initialized = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        Some(&session_id),
-        initialized_notification(),
-    )?);
-    assert_eq!(initialized.status, 202);
-
-    let listed = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        Some(&session_id),
-        tools_call(2, LIST_PROJECTS_TOOL_NAME, json!({})),
-    )?);
-    assert_eq!(listed.status, 200);
-    let listed_tool = volicord_response_from_tool(&http_json(&listed))?;
-    let projects = listed_tool["projects"]
-        .as_array()
-        .expect("projects should be listed");
-    assert_eq!(projects.len(), 1);
-    assert_eq!(projects[0]["project_selector"], fixture.project_id());
-
-    let rejected = server.handle_request(http_request(
-        "POST",
-        LOCAL_HTTP_MCP_ENDPOINT_PATH,
-        Some("test_token"),
-        None,
-        Some(&session_id),
-        tools_call(
-            3,
-            "volicord.status",
-            json!({
-                "detail": "workflow",
-                "project_selector": outside_project_id
-            }),
-        ),
-    )?);
-    assert_eq!(rejected.status, 200);
-    let rejected_json = http_json(&rejected);
-    let error = structured_error_result(&rejected_json["result"]);
-    assert_eq!(error["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
-    assert_eq!(error["tool_name"], STATUS_TOOL_NAME);
-    let issue = tool_error_issue(
-        &error,
-        "/project_selector",
-        "MCP_ADAPTER_PRECONDITION_FAILED",
-    );
-    assert!(issue["message"]
-        .as_str()
-        .is_some_and(|message| message.contains("outside this MCP transport project allowlist")));
-    Ok(())
-}
-
 fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
+            .with_test_host_receipt_fixture();
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }
 
-fn local_web_fixture(prefix: &str) -> Result<CoreFixture, Box<dyn Error>> {
-    CoreFixture::new_with_host_kind(prefix, HOST_KIND_CLAUDE_CODE)
+fn test_agent_invocation(
+    fixture: &CoreFixture,
+    operation_category: OperationCategory,
+) -> InvocationContext {
+    let host = volicord_test_support::test_host_receipt_fixture(
+        fixture.project_id(),
+        fixture.connection_id(),
+    );
+    let receipt = volicord_core::validate_host_verification_receipt(
+        host.receipt,
+        &host.current,
+        &host.validation_time,
+    )
+    .expect("the typed MCP host-receipt fixture must validate");
+    InvocationContext::new(
+        ProjectId::new(fixture.project_id()),
+        ActorSource::agent_connection(fixture.connection_id()),
+        operation_category,
+        volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    )
+    .with_validated_host_receipt(receipt)
+}
+
+#[test]
+fn production_managed_startup_rejects_a_missing_current_host_receipt() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-managed-host-receipt-required")?;
+    let context =
+        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
+
+    let error = adapter
+        .validate_managed_host_authority_startup()
+        .expect_err("a static managed stdio label must not establish authority");
+    assert!(error.to_string().contains("host_receipt_missing"));
+    Ok(())
+}
+
+#[test]
+fn session_binding_without_guard_rejects_missing_current_host_receipt_before_insert(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-session-binding-host-receipt-required")?;
+    let context =
+        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
+    let session_id = managed_stdio_session_id(fixture.connection_id(), CODEX_TEST_SESSION_ID)?;
+    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+
+    let error = adapter
+        .call_tool_for_session(
+            STATUS_TOOL_NAME,
+            json!({"detail": "workflow"}),
+            Some(&session_id),
+        )
+        .expect_err("session binding must require current typed host authority");
+
+    assert!(error.to_string().contains("host_receipt_missing"));
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_sessions
+    );
+    assert!(agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .is_none());
+    Ok(())
+}
+
+#[test]
+fn production_adapter_does_not_treat_the_fixture_label_as_host_authority(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-fixture-label-not-authority")?;
+    let mut context =
+        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+    context.invocation_binding_basis = VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned();
+    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
+
+    let error = adapter
+        .validate_managed_host_authority_startup()
+        .expect_err("a fixture string must not bypass production host authority validation");
+
+    assert!(error.to_string().contains("host_receipt_missing"));
+    Ok(())
 }
 
 fn adapter_for_additional_connection(
@@ -9295,7 +4526,7 @@ fn adapter_for_additional_connection(
         },
     )?;
     let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
-        .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
+        .with_test_host_receipt_fixture();
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }
 
@@ -9303,213 +4534,8 @@ fn project_bound_adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Er
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
             .with_project_allowlist(vec![ProjectId::new(fixture.project_id())])
-            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
+            .with_test_host_receipt_fixture();
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
-}
-
-fn adapter_with_local_web_consent(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
-    Ok(adapter(fixture)?.with_local_web_consent_readiness(
-        LocalWebConsentContext {
-            base_url: consent_base_url().to_owned(),
-        },
-        LocalWebConsentReadiness::ready_for_test(),
-    ))
-}
-
-fn assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
-    prefix: &str,
-    launch_origin: McpLaunchOrigin,
-) -> Result<(), Box<dyn Error>> {
-    assert!(matches!(
-        launch_origin,
-        McpLaunchOrigin::ManualCli | McpLaunchOrigin::CliVerification
-    ));
-    let fixture = local_web_fixture(prefix)?;
-    let setup_adapter = adapter(&fixture)?;
-    let (task_id, state_version) = create_task(&setup_adapter)?;
-    let label = format!("{prefix}_verification");
-    publish_exact_host_capability_verification(&fixture, &label)?;
-    let runtime_adapter = adapter_with_local_web_consent(&fixture)?
-        .with_expected_evidence_artifact_sha256_for_test(
-            exact_host_capability_evidence_artifact_sha256(&label),
-        );
-    assert!(runtime_adapter.local_web_consent_listener_ready());
-    let capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
-        launch_origin.as_str(),
-        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME),
-        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION),
-    );
-    assert!(!runtime_adapter.effective_local_web_consent_available(&capabilities));
-
-    let input = Cursor::new(json_lines(&[
-        local_web_initialize_request(1, model_invisible_user_surface_capability()),
-        initialized_notification(),
-        tools_call(
-            2,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            product_action_args(&fixture, &task_id, state_version),
-        ),
-    ])?);
-    let mut output = Vec::new();
-    match launch_origin {
-        McpLaunchOrigin::ManualCli => {
-            run_stdio(runtime_adapter, BufReader::new(input), &mut output)?;
-        }
-        McpLaunchOrigin::CliVerification => {
-            run_stdio_with_env_marker(
-                runtime_adapter,
-                BufReader::new(input),
-                &mut output,
-                |name| (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1")),
-            )?;
-        }
-        _ => unreachable!("helper accepts only non-managed stdio launch origins"),
-    }
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 2);
-    assert_eq!(responses[1]["result"]["isError"], false);
-    assert!(responses[1]["result"].get("_meta").is_none());
-    assert_eq!(local_web_token_count(&fixture)?, 0);
-    assert!(result_mentions_cli_recovery(&responses[1]["result"]));
-    Ok(())
-}
-
-fn model_invisible_user_surface_capability() -> Value {
-    json!({
-        "experimental": {
-            "io.volicord/user-channel": {
-                "model_invisible_user_surface": true
-            }
-        }
-    })
-}
-
-fn local_web_token_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
-    Ok(fixture.conn()?.query_row(
-        "SELECT COUNT(*) FROM user_action_channel_tokens",
-        [],
-        |row| row.get(0),
-    )?)
-}
-
-fn result_mentions_cli_recovery(result: &Value) -> bool {
-    result["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry["text"].as_str())
-        .any(|text| text.contains("`volicord inbox`"))
-}
-
-pub(crate) fn exact_host_capability_input(
-    fixture: &CoreFixture,
-    label: &str,
-    observed_at: chrono::DateTime<Utc>,
-    expires_at: chrono::DateTime<Utc>,
-) -> Result<HostCapabilityVerificationInput, Box<dyn Error>> {
-    let connection = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
-        .expect("fixture connection should exist");
-    let build = crate::build_info();
-    let executable_sha256 = crate::build_info::current_executable_sha256()
-        .ok_or("current test executable must be readable")?;
-    let verification_internal_id = format!("hcv_{label}");
-    let evidence_artifact_sha256 = exact_host_capability_evidence_artifact_sha256(label);
-    let observed_at = observed_at.to_rfc3339_opts(SecondsFormat::Nanos, true);
-    let (client_name, client_version) = local_web_test_client_identity(&connection.host_kind)?;
-    Ok(HostCapabilityVerificationInput {
-        verification_internal_id,
-        connection_internal_id: fixture.connection_id().to_owned(),
-        capability: HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE.to_owned(),
-        outcome: HOST_CAPABILITY_OUTCOME_PASSED.to_owned(),
-        host_kind: connection.host_kind,
-        host_version: client_version.to_owned(),
-        client_name: client_name.to_owned(),
-        client_version: client_version.to_owned(),
-        adapter_profile: HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1.to_owned(),
-        adapter_version: build.package_version.to_owned(),
-        managed_fingerprint: connection.managed_fingerprint,
-        volicord_build_id: build.build_id,
-        source_revision: build.git_commit.to_owned(),
-        target_triple: build.target_triple.to_owned(),
-        executable_sha256: executable_sha256.to_owned(),
-        evidence_artifact_sha256,
-        observed_at: observed_at.clone(),
-        expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Nanos, true),
-        metadata_json: "{}".to_owned(),
-        created_at: observed_at,
-    })
-}
-
-pub(crate) fn publish_exact_host_capability_verification(
-    fixture: &CoreFixture,
-    label: &str,
-) -> Result<(), Box<dyn Error>> {
-    let now = DateTime::<Utc>::from(std::time::SystemTime::now());
-    publish_host_capability_verification(
-        fixture.runtime_home_path(),
-        exact_host_capability_input(
-            fixture,
-            label,
-            now - Duration::seconds(1),
-            now + Duration::hours(1),
-        )?,
-    )?;
-    Ok(())
-}
-
-pub(crate) fn exact_local_web_test_capabilities(
-    fixture: &CoreFixture,
-) -> Result<McpUserChannelCapabilities, Box<dyn Error>> {
-    let connection = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
-        .ok_or("fixture connection should exist")?;
-    let (client_name, client_version) = local_web_test_client_identity(&connection.host_kind)?;
-    Ok(
-        McpUserChannelCapabilities::new(false, true).with_stdio_session(
-            McpLaunchOrigin::ManagedHost.as_str(),
-            Some(client_name),
-            Some(client_version),
-        ),
-    )
-}
-
-pub(crate) fn exact_host_capability_evidence_artifact_sha256(label: &str) -> String {
-    format!(
-        "{:x}",
-        Sha256::digest(format!("host-capability-test:{label}").as_bytes())
-    )
-}
-
-fn local_web_test_client_identity(
-    host_kind: &str,
-) -> Result<(&'static str, &'static str), Box<dyn Error>> {
-    match host_kind {
-        HOST_KIND_CODEX => Ok((REVIEWED_CODEX_MCP_CLIENT_NAME, REVIEWED_CODEX_HOST_VERSION)),
-        HOST_KIND_CLAUDE_CODE => Ok((
-            CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
-            CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION,
-        )),
-        _ => Err(format!("unsupported local-web test host kind: {host_kind}").into()),
-    }
-}
-
-fn managed_local_web_stdio_env(
-    fixture: &CoreFixture,
-    project_bound: bool,
-    host_kind: &str,
-    name: &str,
-) -> Option<OsString> {
-    match name {
-        "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-        "VOLICORD_MCP_HOST" => Some(OsString::from(host_kind)),
-        "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-        "VOLICORD_MCP_PROJECT_ID" if project_bound => Some(OsString::from(fixture.project_id())),
-        "CLAUDECODE" if host_kind == HOST_KIND_CLAUDE_CODE => Some(OsString::from("1")),
-        "CLAUDE_CODE_SESSION_ID" if host_kind == HOST_KIND_CLAUDE_CODE => {
-            Some(OsString::from(CLAUDE_LOCAL_WEB_TEST_SESSION_ID))
-        }
-        _ => None,
-    }
 }
 
 fn managed_codex_stdio_env(
@@ -9517,43 +4543,13 @@ fn managed_codex_stdio_env(
     project_bound: bool,
     name: &str,
 ) -> Option<OsString> {
-    managed_local_web_stdio_env(fixture, project_bound, HOST_KIND_CODEX, name)
-}
-
-fn run_exact_verified_local_web_stdio<R, W>(
-    fixture: &CoreFixture,
-    label: &str,
-    adapter: McpAdapter,
-    reader: R,
-    writer: W,
-) -> Result<(), Box<dyn Error>>
-where
-    R: io::BufRead,
-    W: Write,
-{
-    let connection = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
-        .ok_or("fixture connection should exist")?;
-    assert_eq!(
-        connection.host_kind, HOST_KIND_CLAUDE_CODE,
-        "positive local-web transport fixtures require a statically implemented host coordinate"
-    );
-    publish_exact_host_capability_verification(fixture, label)?;
-    let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
-        exact_host_capability_evidence_artifact_sha256(label),
-    );
-    assert!(
-        adapter.effective_local_web_consent_available(&exact_local_web_test_capabilities(fixture)?),
-        "the exact persisted fixture and ready listener must satisfy the adapter evaluator"
-    );
-    let project_bound = adapter.context.project_allowlist.is_some();
-    run_stdio_with_env_marker(adapter, reader, writer, |name| {
-        managed_local_web_stdio_env(fixture, project_bound, &connection.host_kind, name)
-    })?;
-    Ok(())
-}
-
-fn consent_base_url() -> &'static str {
-    "http://127.0.0.1:39000"
+    match name {
+        "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+        "VOLICORD_MCP_HOST" => Some(OsString::from(HOST_KIND_CODEX)),
+        "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+        "VOLICORD_MCP_PROJECT_ID" if project_bound => Some(OsString::from(fixture.project_id())),
+        _ => None,
+    }
 }
 
 fn mcp_fixture_codex_hook_command(command_name: &str) -> String {
@@ -9581,7 +4577,7 @@ fn mcp_fixture_guard_command_args(
         "--host".to_owned(),
         "codex".to_owned(),
         "--integration-profile".to_owned(),
-        "detective".to_owned(),
+        "record".to_owned(),
     ];
     if let Some(policy_hash) = policy_hash {
         args.push("--policy-hash".to_owned());
@@ -9627,25 +4623,26 @@ fn mcp_fixture_policy_command(
     connection_internal_id: &str,
     guard_installation_id: &str,
     command_name: &str,
+    policy_hash: &str,
 ) -> Value {
     json!({
-        "command": "volicord",
+        "command": repo_root.join(".volicord/bin/volicord"),
         "args": mcp_fixture_guard_command_args(
             repo_root,
             connection_internal_id,
             guard_installation_id,
             command_name,
-            None,
+            Some(policy_hash),
         ),
     })
 }
 
-fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
+fn install_record_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
     let repo_root = fixture.product_repo_path();
-    let guard_installation_id = "guard_installation_mcp_prompt_capture";
-    let policy_hash = "sha256:mcp-prompt-capture";
+    let guard_installation_id = "guard_installation_mcp_record";
+    let policy_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    let content_hash = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
     let phases = [
-        ("session_start_hook", "session_start", "session-start"),
         ("pre_tool_hook", "pre_tool", "pre-tool"),
         ("post_tool_hook", "post_tool", "post-tool"),
         (
@@ -9653,7 +4650,6 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
             "prompt_capture",
             "prompt-capture",
         ),
-        ("stop_hook", "stop", "stop"),
     ];
     let host_hook_commands = phases
         .iter()
@@ -9661,7 +4657,7 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
             json!({
                 "host_kind": "codex",
                 "phase": phase,
-                "purpose": "detective_guard",
+                "purpose": "guard",
                 "policy_key": policy_key,
                 "command_shape": "shell_command_string",
                 "command": mcp_fixture_codex_hook_command(command_name),
@@ -9686,11 +4682,9 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
             let command_name = command["policy_key"]
                 .as_str()
                 .and_then(|policy_key| match policy_key {
-                    "session_start" => Some("session-start"),
                     "pre_tool" => Some("pre-tool"),
                     "post_tool" => Some("post-tool"),
                     "prompt_capture" => Some("prompt-capture"),
-                    "stop" => Some("stop"),
                     _ => None,
                 })
                 .expect("known policy key");
@@ -9698,7 +4692,7 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
                 "kind": "host_hook_wrapper",
                 "path": command["expected_phase_wrapper_path"],
                 "status": "unchanged",
-                "content_hash": "wrapper-hash",
+                "content_hash": content_hash,
                 "ownership": "managed_script",
                 "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
                 "executable_required": true,
@@ -9711,7 +4705,7 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
                 ),
                 "host_kind": "codex",
                 "phase": command["policy_key"],
-                "purpose": "detective_guard",
+                "purpose": "guard",
                 "connection_id": fixture.connection_id(),
                 "guard_installation_id": guard_installation_id,
                 "policy_hash": policy_hash,
@@ -9721,17 +4715,26 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
         .collect::<Vec<_>>();
     files.extend([
         json!({
+            "kind": "agents_managed_block",
+            "path": repo_root.join("AGENTS.md"),
+            "status": "unchanged",
+            "content_hash": content_hash,
+            "ownership": "managed_block",
+            "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
+            "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE",
+        }),
+        json!({
             "kind": "volicord_policy",
             "path": repo_root.join(".volicord/policy.json"),
             "status": "unchanged",
-            "content_hash": "policy-file-hash",
+            "content_hash": content_hash,
             "ownership": "managed_json",
         }),
         json!({
             "kind": "host_hook_dispatch",
             "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
             "status": "unchanged",
-            "content_hash": "dispatch-hash",
+            "content_hash": content_hash,
             "ownership": "managed_script",
             "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
             "executable_required": true,
@@ -9743,44 +4746,19 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
             "kind": "host_hook_config",
             "path": repo_root.join(".codex/hooks.json"),
             "status": "unchanged",
-            "content_hash": "config-hash",
+            "content_hash": content_hash,
             "ownership": "managed_json",
         }),
         json!({
             "kind": "host_rule_instruction",
             "path": repo_root.join(".codex/rules/volicord.rules"),
             "status": "unchanged",
-            "content_hash": "rule-hash",
+            "content_hash": content_hash,
             "ownership": "managed_block",
             "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
             "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
         }),
     ]);
-    let root_phases = host_hook_commands
-        .iter()
-        .map(|command| {
-            json!({
-                "phase": command["phase"],
-                "root_resolution_basis": command["root_resolution_basis"],
-                "hook_command_path_basis": command["hook_command_path_basis"],
-                "cwd_independent": command["cwd_independent"],
-                "subdirectory_safe": command["subdirectory_safe"],
-                "wrapper_resolution_status": command["wrapper_resolution_status"],
-            })
-        })
-        .collect::<Vec<_>>();
-    let safety_commands = host_hook_commands
-        .iter()
-        .map(|command| {
-            json!({
-                "phase": command["phase"],
-                "hook_command_path_basis": command["hook_command_path_basis"],
-                "cwd_independent": command["cwd_independent"],
-                "subdirectory_safe": command["subdirectory_safe"],
-                "wrapper_resolution_status": command["wrapper_resolution_status"],
-            })
-        })
-        .collect::<Vec<_>>();
     upsert_guard_installation(
         fixture.runtime_home_path(),
         GuardInstallationUpsert {
@@ -9788,58 +4766,26 @@ fn install_prompt_capture_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Err
             connection_internal_id: fixture.connection_id().to_owned(),
             project_id: Some(fixture.project_id().to_owned()),
             host_kind: "codex".to_owned(),
-            guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
+            guard_mode: IntegrationProfile::Record.as_str().to_owned(),
             host_capability_json: json!({
-                "schema": "volicord-host-hook-capability-v2",
+                "schema": "volicord-host-hook-capability",
                 "policy_hash": policy_hash,
-                "selected_profile": "detective",
+                "selected_profile": "record",
                 "connection_intent": "shared",
-                "final_output_authority_disclosure_implementation_available": true,
-                "native_host_output_adapter": "codex",
-                "native_host_output_adapter_config_verified": true,
-                "bash_shell_mutation_coverage": false,
                 "direct_file_write_matcher_coverage": false,
                 "host_capabilities": {
                     "stdio_mcp": true,
-                    "http_mcp": false,
-                    "session_start_hook": true,
                     "pre_tool_hook": true,
                     "post_tool_hook": true,
                     "user_prompt_submit_hook": true,
-                    "stop_hook": true,
                     "rule_file_support": true,
                     "project_local_configuration": true,
                 },
-                "required_hook_phases": [
-                    "session_start_hook",
-                    "pre_tool_hook",
-                    "post_tool_hook",
-                    "user_prompt_submit_hook",
-                    "stop_hook"
-                ],
-                "missing_required_hooks": [],
-                "prompt_capture": true,
                 "files": files,
-                "host_hook_commands": host_hook_commands,
-                "hook_root_resolution": {
-                    "basis": "git_work_tree",
-                    "all_cwd_independent": true,
-                    "all_subdirectory_safe": true,
-                    "overall_status": "ok",
-                    "phases": root_phases,
-                },
-                "hook_path_safety": {
-                    "overall_status": "ok",
-                    "all_cwd_independent": true,
-                    "all_subdirectory_safe": true,
-                    "commands": safety_commands,
-                },
                 "commands": {
-                    "session_start": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "session-start"),
-                    "pre_tool": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "pre-tool"),
-                    "post_tool": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "post-tool"),
-                    "prompt_capture": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "prompt-capture"),
-                    "stop": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "stop"),
+                    "pre_tool": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "pre-tool", policy_hash),
+                    "post_tool": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "post-tool", policy_hash),
+                    "prompt_capture": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "prompt-capture", policy_hash),
                 },
             })
             .to_string(),
@@ -9882,283 +4828,6 @@ fn set_mode(fixture: &CoreFixture, mode: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn http_config(
-    fixture: &CoreFixture,
-    project_allowlist: Vec<ProjectId>,
-    allowed_origins: Vec<String>,
-) -> LocalHttpServerConfig {
-    LocalHttpServerConfig {
-        runtime_home: fixture.runtime_home_path().to_path_buf(),
-        connection_id: fixture.connection_id().to_owned(),
-        listen_addr: "127.0.0.1:0".parse().expect("valid test listen"),
-        listen_scope: LocalHttpListenScope::NativeLoopback,
-        bearer_token: "test_token".to_owned(),
-        token_source: LocalHttpTokenSource::Supplied,
-        project_allowlist,
-        allowed_origins,
-    }
-}
-
-fn http_server(
-    fixture: &CoreFixture,
-    project_allowlist: Vec<ProjectId>,
-    allowed_origins: Vec<String>,
-) -> Result<LocalHttpServer, Box<dyn Error>> {
-    let config = http_config(fixture, project_allowlist.clone(), allowed_origins);
-    let context =
-        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING)
-            .with_project_allowlist(project_allowlist);
-    Ok(LocalHttpServer::new(
-        McpAdapter::new(fixture.runtime_home_path(), context),
-        config,
-    ))
-}
-
-fn consent_server(fixture: &CoreFixture) -> Result<LocalHttpServer, Box<dyn Error>> {
-    consent_server_with_context(
-        fixture,
-        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING),
-    )
-}
-
-fn consent_server_for_connection(
-    fixture: &CoreFixture,
-    connection_id: &str,
-) -> Result<LocalHttpServer, Box<dyn Error>> {
-    let existing = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
-        .expect("fixture connection should exist");
-    ensure_agent_connection(
-        fixture.runtime_home_path(),
-        AgentConnectionRegistration {
-            connection_internal_id: connection_id.to_owned(),
-            host_kind: existing.host_kind,
-            intent: existing.intent,
-            host_scope: existing.host_scope,
-            server_name: existing.server_name,
-            config_target: format!("{}_other", existing.config_target),
-            mode: existing.mode,
-            enabled: existing.enabled,
-            managed_fingerprint: format!("{}_other", existing.managed_fingerprint),
-            last_verification_status: existing.last_verification_status,
-            last_verification_report_json: existing.last_verification_report_json,
-            last_user_actions_json: existing.last_user_actions_json,
-            metadata_json: existing.metadata_json,
-        },
-    )?;
-    add_connection_project(
-        fixture.runtime_home_path(),
-        ConnectionProjectRegistration {
-            connection_internal_id: connection_id.to_owned(),
-            project_id: fixture.project_id().to_owned(),
-        },
-    )?;
-    consent_server_with_context(
-        fixture,
-        McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
-            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING),
-    )
-}
-
-fn consent_server_with_context(
-    fixture: &CoreFixture,
-    context: McpConnectionContext,
-) -> Result<LocalHttpServer, Box<dyn Error>> {
-    Ok(LocalHttpServer::new(
-        McpAdapter::new(fixture.runtime_home_path(), context).with_local_web_consent_readiness(
-            LocalWebConsentContext {
-                base_url: consent_base_url().to_owned(),
-            },
-            LocalWebConsentReadiness::ready_for_test(),
-        ),
-        http_config(fixture, Vec::new(), Vec::new()),
-    ))
-}
-
-fn http_request(
-    method: &str,
-    target: &str,
-    token: Option<&str>,
-    origin: Option<&str>,
-    session_id: Option<&str>,
-    body: Value,
-) -> Result<HttpRequest, serde_json::Error> {
-    let mut headers = BTreeMap::new();
-    headers.insert(
-        "accept".to_owned(),
-        "application/json, text/event-stream".to_owned(),
-    );
-    headers.insert("content-type".to_owned(), "application/json".to_owned());
-    if let Some(token) = token {
-        headers.insert("authorization".to_owned(), format!("Bearer {token}"));
-    }
-    if let Some(origin) = origin {
-        headers.insert("origin".to_owned(), origin.to_owned());
-    }
-    if let Some(session_id) = session_id {
-        headers.insert("mcp-session-id".to_owned(), session_id.to_owned());
-    }
-    Ok(HttpRequest {
-        method: method.to_owned(),
-        target: target.to_owned(),
-        headers,
-        body: serde_json::to_vec(&body)?,
-    })
-}
-
-fn consent_get_request(target: &str) -> HttpRequest {
-    HttpRequest {
-        method: "GET".to_owned(),
-        target: target.to_owned(),
-        headers: BTreeMap::new(),
-        body: Vec::new(),
-    }
-}
-
-fn consent_post_request(origin: Option<&str>, body: &str) -> HttpRequest {
-    let mut headers = BTreeMap::new();
-    headers.insert(
-        "content-type".to_owned(),
-        "application/x-www-form-urlencoded".to_owned(),
-    );
-    if let Some(origin) = origin {
-        headers.insert("origin".to_owned(), origin.to_owned());
-    }
-    HttpRequest {
-        method: "POST".to_owned(),
-        target: LOCAL_WEB_CONSENT_PATH.to_owned(),
-        headers,
-        body: body.as_bytes().to_vec(),
-    }
-}
-
-fn consent_post_request_with_repeated_origins(origins: &[&str], body: &str) -> HttpRequest {
-    let origin_headers = origins
-        .iter()
-        .map(|origin| format!("Origin: {origin}"))
-        .collect::<Vec<_>>()
-        .join("\r\n");
-    let head = format!(
-        "POST {LOCAL_WEB_CONSENT_PATH} HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n{origin_headers}"
-    );
-    let (method, target, headers) = crate::http::parse_http_head(&head)
-        .unwrap_or_else(|response| panic!("test HTTP head should parse: {response:?}"));
-    HttpRequest {
-        method,
-        target,
-        headers,
-        body: body.as_bytes().to_vec(),
-    }
-}
-
-fn http_json(response: &HttpResponse) -> Value {
-    serde_json::from_slice(&response.body).expect("HTTP body should be JSON")
-}
-
-fn assert_diagnostic_disclosure(value: &Value) {
-    let disclosure = value
-        .get("disclosure")
-        .expect("HTTP status or error should include disclosure");
-    assert_eq!(disclosure["guarantee_class"], "detective_observation");
-    let values = disclosure["non_guarantees"]
-        .as_array()
-        .expect("disclosure should include non_guarantees");
-    for expected in [
-        "NotOsSandbox",
-        "NotActorAttributionProof",
-        "NotNetworkIsolation",
-    ] {
-        assert!(
-            values.iter().any(|value| value.as_str() == Some(expected)),
-            "missing non-guarantee {expected}: {disclosure}"
-        );
-    }
-}
-
-fn http_body_text(response: &HttpResponse) -> Result<String, Box<dyn Error>> {
-    Ok(std::str::from_utf8(&response.body)?.to_owned())
-}
-
-fn http_header<'a>(response: &'a HttpResponse, name: &str) -> Option<&'a str> {
-    response
-        .headers
-        .iter()
-        .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
-        .map(|(_, value)| value.as_str())
-}
-
-fn assert_local_web_consent_security_headers(response: &HttpResponse) {
-    assert_eq!(http_header(response, "Cache-Control"), Some("no-store"));
-    assert_eq!(
-        http_header(response, "Referrer-Policy"),
-        Some("no-referrer")
-    );
-    assert_eq!(
-        http_header(response, "X-Content-Type-Options"),
-        Some("nosniff")
-    );
-    let csp = http_header(response, "Content-Security-Policy")
-        .expect("local web consent response should include CSP");
-    assert!(csp.contains("default-src 'none'"));
-    assert!(csp.contains("form-action 'self'"));
-    assert!(csp.contains("frame-ancestors 'none'"));
-    assert!(csp.contains("script-src 'none'"));
-}
-
-fn assert_local_web_projection_denied_without_form(
-    fixture: &CoreFixture,
-    server: &mut LocalHttpServer,
-    token: &str,
-) -> Result<(), Box<dyn Error>> {
-    let before = user_action_side_effect_snapshot(fixture)?;
-    let get = server.handle_request(consent_get_request(&consent_target(
-        fixture.project_id(),
-        token,
-    )));
-    let post = server.handle_request(consent_post_request(
-        Some(consent_base_url()),
-        &format!(
-            "project={}&token={}&selected_option_id=keep",
-            percent_encode_query(fixture.project_id()),
-            token
-        ),
-    ));
-
-    for (method, response) in [("GET", get), ("POST", post)] {
-        assert_eq!(response.status, 404, "unexpected {method} status");
-        assert_local_web_consent_security_headers(&response);
-        let body = http_body_text(&response)?;
-        assert!(body.contains("INVALID_TOKEN"));
-        assert!(!body.contains("<form"));
-        assert!(!body.contains("Choose the focused User Channel test outcome."));
-        assert!(!body.contains("Keep focused behavior"));
-        assert_eq!(
-            user_action_side_effect_snapshot(fixture)?,
-            before,
-            "{method} must not consume the token or resolve the action"
-        );
-    }
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    let validation = validate_user_action_channel_token(
-        fixture.runtime_home_path(),
-        UserActionChannelTokenCheck {
-            token: token.to_owned(),
-            expected_project_id: fixture.project_id().to_owned(),
-            expected_connection_internal_id: fixture.connection_id().to_owned(),
-            now,
-        },
-    )?;
-    let UserActionChannelTokenValidation::Valid(record) = validation else {
-        return Err("projection denial must leave the token pending".into());
-    };
-    assert_eq!(record.status, "pending");
-    assert!(record.consumed_at.is_none());
-    assert!(record.completed_at.is_none());
-    Ok(())
-}
-
 fn add_allowed_project(fixture: &CoreFixture, project_id: &str) -> Result<(), Box<dyn Error>> {
     let repo_root = fixture.create_product_repo(format!("repo-{project_id}"))?;
     register_project(
@@ -10182,22 +4851,23 @@ fn add_allowed_project(fixture: &CoreFixture, project_id: &str) -> Result<(), Bo
 }
 
 fn ensure_user_channel_test_session(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
+    let session_id =
+        managed_stdio_session_id(fixture.connection_id(), "user-channel-test-session")?;
     if agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        USER_CHANNEL_TEST_SESSION_ID,
+        &session_id,
     )?
     .is_some()
     {
         return Ok(());
     }
-    let started_at =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let started_at = fixture.store()?.current_timestamp()?;
     insert_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionInsert {
-            session_id: USER_CHANNEL_TEST_SESSION_ID.to_owned(),
+            session_id,
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
             host_kind: "codex".to_owned(),
@@ -10215,357 +4885,25 @@ fn create_pending_product_action(
     ensure_user_channel_test_session(fixture)?;
     let setup_adapter = adapter(fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
+    let session_id =
+        managed_stdio_session_id(fixture.connection_id(), "user-channel-test-session")?;
     let response = setup_adapter.call_tool_for_session(
         "volicord.request_user_action",
         product_action_args(fixture, &task_id, state_version),
-        Some(USER_CHANNEL_TEST_SESSION_ID),
+        Some(&session_id),
     )?;
     Ok((task_id, response))
 }
 
-fn invoke_pending_elicitation(
-    fixture: &CoreFixture,
-    pending_response: PipelineResponse,
-    content: Value,
-) -> Result<(Value, Value), Box<dyn Error>> {
-    let input = Cursor::new(json_lines(&[json!({
-        "jsonrpc":"2.0",
-        "id":"elicit_user_action_1",
-        "result":{
-            "action":"accept",
-            "content":content
-        }
-    })])?);
-    let mut lines = BufReader::new(input).lines();
-    let mut request_bytes = Vec::new();
-    let mut request_sequence = 1;
-    let output = crate::stdio::user_action_tool_output(
-        &adapter(fixture)?,
-        pending_response,
-        true,
-        McpUserChannelCapabilities::new(true, false),
-        &mut request_sequence,
-        &mut lines,
-        &mut request_bytes,
-    )?;
-    let requests = stdio_responses(&request_bytes)?;
-    let request = requests
-        .into_iter()
-        .next()
-        .ok_or("elicitation request should be emitted")?;
-    Ok((request, crate::stdio::tool_call_result_from_output(output)))
-}
-
 fn user_action_side_effect_snapshot(
     fixture: &CoreFixture,
-) -> Result<
-    (
-        volicord_store::core_pipeline::StorageEffectCounts,
-        i64,
-        String,
-    ),
-    Box<dyn Error>,
-> {
+) -> Result<(volicord_store::core_pipeline::StorageEffectCounts, String), Box<dyn Error>> {
     let counts = fixture.counts()?;
-    let (tokens, project_updated_at) = fixture.conn()?.query_row(
-        "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at
-           FROM project_state",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
-    Ok((counts, tokens, project_updated_at))
-}
-
-struct PendingEvidenceObservationAction {
-    task_id: String,
-    response: PipelineResponse,
-    target_candidates: Vec<EvidenceTarget>,
-    registered_artifacts: Vec<volicord_types::ArtifactRef>,
-}
-
-fn create_pending_evidence_observation_action(
-    fixture: &CoreFixture,
-) -> Result<PendingEvidenceObservationAction, Box<dyn Error>> {
-    create_pending_evidence_observation_action_with_sensitive_markers(fixture, None, None)
-}
-
-fn create_pending_evidence_observation_action_with_sensitive_markers(
-    fixture: &CoreFixture,
-    target_marker: Option<&str>,
-    artifact_marker: Option<&str>,
-) -> Result<PendingEvidenceObservationAction, Box<dyn Error>> {
-    ensure_user_channel_test_session(fixture)?;
-    let setup_adapter = adapter(fixture)?;
-    let (task_id, _) = create_task(&setup_adapter)?;
-    let baseline_ref = "baseline_local_web_evidence_observation";
-    let scope = setup_adapter.call_tool(
-        UPDATE_SCOPE_TOOL_NAME,
-        json!({
-            "task_id": task_id,
-            "goal_summary": null,
-            "scope_update": null,
-            "scope_boundary": "Observe stored evidence candidates through local consent.",
-            "non_goals": [],
-            "acceptance_criteria": [
-                {
-                    "acceptance_criterion_id": null,
-                    "statement": "The first local-web target remains available.",
-                    "evidence_requirement": "required"
-                },
-                {
-                    "acceptance_criterion_id": null,
-                    "statement": "The selected local-web target is supported by exact bytes.",
-                    "evidence_requirement": "required"
-                }
-            ],
-            "autonomy_boundary": null,
-            "baseline_ref": baseline_ref,
-            "change_unit": {
-                "operation": "create_current",
-                "scope_summary": "Exercise local-web evidence observation.",
-                "affected_paths": []
-            },
-            "related_scope_decision_refs": []
-        }),
-    )?;
-    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
-        .as_str()
-        .ok_or("scope response should expose the current Change Unit")?
-        .to_owned();
-    let target_candidates = if let Some(marker) = target_marker {
-        vec![
-            EvidenceTarget::SupplementalClaim {
-                evidence_claim_id: volicord_types::EvidenceClaimId::new(
-                    "claim_sensitive_presentation_a",
-                ),
-                statement: format!(
-                    "An API key must be handled only through a user-only channel: {marker}"
-                ),
-            },
-            EvidenceTarget::SupplementalClaim {
-                evidence_claim_id: volicord_types::EvidenceClaimId::new(
-                    "claim_sensitive_presentation_b",
-                ),
-                statement: "Ordinary secondary evidence claim.".to_owned(),
-            },
-        ]
-    } else {
-        scope.response_value["state"]["acceptance_criteria"]
-            .as_array()
-            .ok_or("scope response should expose acceptance criteria")?
-            .iter()
-            .map(|criterion| {
-                criterion["acceptance_criterion_id"]
-                    .as_str()
-                    .ok_or("criterion should expose its id")
-                    .map(|id| EvidenceTarget::AcceptanceCriterion {
-                        acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(id),
-                    })
-            })
-            .collect::<Result<Vec<_>, _>>()?
-    };
-    assert_eq!(target_candidates.len(), 2);
-
-    let mut staged_handles = Vec::new();
-    let display_names = if let Some(marker) = artifact_marker {
-        [
-            format!("credential-material-{marker}.txt"),
-            "local-web-candidate-b.txt".to_owned(),
-        ]
-    } else {
-        [
-            "local-web-candidate-a.txt".to_owned(),
-            "local-web-candidate-b.txt".to_owned(),
-        ]
-    };
-    for (display_name, bytes) in display_names.into_iter().zip([
-        "First local-web evidence candidate bytes.",
-        "Selected local-web evidence candidate bytes.",
-    ]) {
-        let staged = setup_adapter.call_tool(
-            STAGE_ARTIFACT_TOOL_NAME,
-            json!({
-                "task_id": task_id,
-                "display_name": display_name,
-                "content_type": "text/plain",
-                "redaction_state": "none",
-                "safe_bytes_or_notice": bytes
-            }),
-        )?;
-        staged_handles.push(staged.response_value["staged_artifact_handle"].clone());
-    }
-    let recorded = setup_adapter.call_tool(
-        RECORD_RUN_TOOL_NAME,
-        json!({
-            "task_id": task_id,
-            "change_unit_id": change_unit_id,
-            "kind": "implementation",
-            "baseline_ref": baseline_ref,
-            "summary": "Register local-web evidence-observation candidates.",
-            "observed_changes": {
-                "changed_paths": [],
-                "product_file_write_observed": false,
-                "sensitive_categories": [],
-                "baseline_ref": baseline_ref
-            },
-            "artifact_inputs": [
-                {
-                    "artifact_input_id": "artifact_input_local_web_candidate_a",
-                    "source_kind": "staged_artifact",
-                    "staged_artifact_handle": staged_handles[0],
-                    "existing_artifact_ref": null,
-                    "relation_hint": "local_web_user_observation_candidate",
-                    "evidence_target": target_candidates[0],
-                    "expected_sha256": null,
-                    "expected_size_bytes": null,
-                    "redaction_state": "none"
-                },
-                {
-                    "artifact_input_id": "artifact_input_local_web_candidate_b",
-                    "source_kind": "staged_artifact",
-                    "staged_artifact_handle": staged_handles[1],
-                    "existing_artifact_ref": null,
-                    "relation_hint": "local_web_user_observation_candidate",
-                    "evidence_target": target_candidates[1],
-                    "expected_sha256": null,
-                    "expected_size_bytes": null,
-                    "redaction_state": "none"
-                }
-            ],
-            "evidence_updates": [],
-            "evidence_observations": [],
-            "close_assessment": null
-        }),
-    )?;
-    let registered_artifacts = recorded.response_value["registered_artifacts"]
-        .as_array()
-        .ok_or("record_run should expose registered artifacts")?
-        .iter()
-        .cloned()
-        .map(serde_json::from_value)
-        .collect::<Result<Vec<volicord_types::ArtifactRef>, _>>()?;
-    assert_eq!(registered_artifacts.len(), 2);
-    let target_values = target_candidates
-        .iter()
-        .map(serde_json::to_value)
-        .collect::<Result<Vec<_>, _>>()?;
-    let artifact_candidate_ids = registered_artifacts
-        .iter()
-        .map(|artifact| artifact.artifact_id.as_str().to_owned())
-        .collect::<Vec<_>>();
-    let response = setup_adapter.call_tool_for_session(
-        REQUEST_USER_ACTION_TOOL_NAME,
-        evidence_observation_action_args(
-            &task_id,
-            &change_unit_id,
-            target_values,
-            artifact_candidate_ids,
-        ),
-        Some(USER_CHANNEL_TEST_SESSION_ID),
-    )?;
-    Ok(PendingEvidenceObservationAction {
-        task_id,
-        response,
-        target_candidates,
-        registered_artifacts,
-    })
-}
-
-fn create_consent_token_for_response(
-    fixture: &CoreFixture,
-    response: &PipelineResponse,
-    token: &str,
-) -> Result<(), Box<dyn Error>> {
-    let action = pending_user_action_from_response(&adapter(fixture)?, response)?
-        .ok_or("response should include a pending user action")?;
-    let form_digest = canonical_json_bare_sha256(&action.inbox_item.form)?;
-    create_user_action_channel_token(
-        fixture.runtime_home_path(),
-        UserActionChannelTokenCreate {
-            token: token.to_owned(),
-            project_id: action.request.project_id.as_str().to_owned(),
-            channel_kind: UserActionChannelKind::LocalWebConsent,
-            connection_internal_id: fixture.connection_id().to_owned(),
-            user_action_request_id: action.request.user_action_request_id.as_str().to_owned(),
-            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            created_metadata_json: json!({
-                "fallback_kind": "local_web_consent",
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "form_digest": form_digest
-            })
-            .to_string(),
-        },
-    )?;
-    Ok(())
-}
-
-fn overwrite_consent_token_created_metadata(
-    fixture: &CoreFixture,
-    token: &str,
-    metadata: &Value,
-) -> Result<(), Box<dyn Error>> {
-    let token_hash = volicord_store::user_action_channel::user_action_channel_token_hash(token)?;
-    let changed = fixture.conn()?.execute(
-        "UPDATE user_action_channel_tokens
-            SET created_metadata_json = ?3
-          WHERE project_id = ?1
-            AND token_hash = ?2",
-        (fixture.project_id(), token_hash, metadata.to_string()),
-    )?;
-    assert_eq!(changed, 1);
-    Ok(())
-}
-
-fn set_user_action_basis_status(
-    fixture: &CoreFixture,
-    user_action_request_id: &str,
-    basis_status: &str,
-) -> Result<(), Box<dyn Error>> {
-    let basis_json: String = fixture.conn()?.query_row(
-        "SELECT basis_json
-           FROM user_action_requests
-          WHERE project_id = ?1
-            AND user_action_request_id = ?2",
-        (fixture.project_id(), user_action_request_id),
-        |row| row.get(0),
-    )?;
-    let mut basis: Value = serde_json::from_str(&basis_json)?;
-    basis["coordinates"]["compatibility_status"] = json!(basis_status);
-    fixture.conn()?.execute(
-        "UPDATE user_action_requests
-            SET basis_status = ?3,
-                basis_json = ?4
-          WHERE project_id = ?1
-            AND user_action_request_id = ?2",
-        (
-            fixture.project_id(),
-            user_action_request_id,
-            basis_status,
-            basis.to_string(),
-        ),
-    )?;
-    Ok(())
-}
-
-fn consent_target(project_id: &str, token: &str) -> String {
-    format!(
-        "{}?project={}&token={}",
-        LOCAL_WEB_CONSENT_PATH,
-        percent_encode_query(project_id),
-        percent_encode_query(token)
-    )
-}
-
-fn token_from_consent_url(url: &str) -> Result<String, Box<dyn Error>> {
-    let query = url
-        .split_once('?')
-        .map(|(_, query)| query)
-        .ok_or("consent URL should include a query string")?;
-    let fields = parse_urlencoded(query)?;
-    Ok(single_param(&fields, "token")
-        .ok_or("consent URL should include exactly one token")?
-        .to_owned())
+    let project_updated_at =
+        fixture
+            .conn()?
+            .query_row("SELECT updated_at FROM project_state", [], |row| row.get(0))?;
+    Ok((counts, project_updated_at))
 }
 
 fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn Error>> {
@@ -10596,19 +4934,6 @@ fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn Error>> {
         .as_u64()
         .expect("state version");
     Ok((task_id, state_version))
-}
-
-fn write_product_file(
-    fixture: &CoreFixture,
-    path: &str,
-    contents: &str,
-) -> Result<(), Box<dyn Error>> {
-    let absolute = fixture.product_repo_path().join(path);
-    if let Some(parent) = absolute.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(absolute, contents)?;
-    Ok(())
 }
 
 #[cfg(unix)]
@@ -10670,17 +4995,8 @@ fn initialize_request(id: u64, capabilities: Value) -> Value {
     initialize_request_with_client_info(
         id,
         capabilities,
-        REVIEWED_CODEX_MCP_CLIENT_NAME,
-        REVIEWED_CODEX_HOST_VERSION,
-    )
-}
-
-fn local_web_initialize_request(id: u64, capabilities: Value) -> Value {
-    initialize_request_with_client_info(
-        id,
-        capabilities,
-        CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
-        CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION,
+        CODEX_MANAGED_MCP_CLIENT_NAME,
+        CODEX_TEST_CLIENT_VERSION,
     )
 }
 
@@ -10846,63 +5162,6 @@ fn resume_user_action_args(fixture: &CoreFixture, user_action_request_id: &str) 
     })
 }
 
-fn default_product_action_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
-    let mut arguments = product_action_args(fixture, task_id, state_version);
-    arguments
-        .as_object_mut()
-        .expect("judgment arguments should be an object")
-        .remove("detail");
-    arguments
-}
-
-#[derive(Default)]
-struct FailElicitationRequestWriter {
-    output: Vec<u8>,
-    pending_line: Vec<u8>,
-    failed_elicitation: bool,
-}
-
-impl Write for FailElicitationRequestWriter {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes == b"\n" {
-            let is_elicitation = self
-                .pending_line
-                .windows(b"elicitation/create".len())
-                .any(|window| window == b"elicitation/create");
-            if is_elicitation && !self.failed_elicitation {
-                self.failed_elicitation = true;
-                self.pending_line.clear();
-                return Err(io::Error::other(
-                    "fixture rejected the elicitation server request",
-                ));
-            }
-            self.output.append(&mut self.pending_line);
-            self.output.push(b'\n');
-            return Ok(1);
-        }
-        self.pending_line.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        if !self.pending_line.is_empty() {
-            self.output.append(&mut self.pending_line);
-        }
-        Ok(())
-    }
-}
-
-fn authority_action_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
-    action_args(
-        fixture,
-        task_id,
-        state_version,
-        "scope_decision",
-        Value::Null,
-        json!(["scope_update"]),
-    )
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum McpUserActionCloseBasis {
     None,
@@ -10962,14 +5221,7 @@ fn prepare_mcp_user_action_leakage_case(
     case: McpUserActionLeakageCase,
 ) -> Result<PreparedMcpUserActionLeakageCase, Box<dyn Error>> {
     let core = CoreService::new(fixture.runtime_home_path());
-    let invocation = || {
-        InvocationContext::new(
-            ProjectId::new(fixture.project_id()),
-            ActorSource::agent_connection(fixture.connection_id()),
-            OperationCategory::AgentWorkflow,
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-        )
-    };
+    let invocation = || test_agent_invocation(fixture, OperationCategory::AgentWorkflow);
     let intake = core.intake(
         fixture.intake_request(
             &format!("req_mcp_user_action_{}_task", case.name),
@@ -11213,54 +5465,6 @@ fn action_args(
     })
 }
 
-fn elicitation_accept(selected_option_id: &str, note: Option<&str>) -> Value {
-    let mut content = json!({
-        "selected_option_id": selected_option_id
-    });
-    if let Some(note) = note {
-        content["note"] = json!(note);
-    }
-    json!({
-        "jsonrpc": "2.0",
-        "id": "elicit_user_action_1",
-        "result": {
-            "action": "accept",
-            "content": content
-        }
-    })
-}
-
-fn elicitation_accept_observation(
-    selected_target: &str,
-    selected_artifact_ids: &[String],
-    relevance_status: &str,
-    summary: &str,
-) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": "elicit_user_action_1",
-        "result": {
-            "action": "accept",
-            "content": {
-                "selected_target": selected_target,
-                "selected_artifact_ids": selected_artifact_ids,
-                "relevance_status": relevance_status,
-                "summary": summary
-            }
-        }
-    })
-}
-
-fn elicitation_action(action: &str) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": "elicit_user_action_1",
-        "result": {
-            "action": action
-        }
-    })
-}
-
 fn json_lines(messages: &[Value]) -> Result<Vec<u8>, serde_json::Error> {
     let mut output = Vec::new();
     for message in messages {
@@ -11309,46 +5513,6 @@ fn json_values_for_key<'a>(value: &'a Value, key: &str) -> Vec<&'a Value> {
     values
 }
 
-fn assert_pending_user_action_resume_guidance(
-    tool_response: &Value,
-    response: &Value,
-    _fixture: &CoreFixture,
-) -> Result<(), Box<dyn Error>> {
-    let summary = &response["agent_workflow_result"]["user_action_request_summary"];
-    assert!(summary["user_action_request_id"]
-        .as_str()
-        .is_some_and(|request_id| !request_id.is_empty()));
-    assert_eq!(summary["status"], "pending");
-    assert_eq!(summary["next_actor"], "user");
-    let content = tool_response["result"]["content"]
-        .as_array()
-        .ok_or("tool response content should be an array")?;
-    assert!(content.iter().any(|item| {
-        item["text"]
-            .as_str()
-            .is_some_and(|text| text.contains("`volicord inbox`"))
-    }));
-    assert!(content
-        .iter()
-        .filter_map(|item| item["text"].as_str())
-        .all(|text| !text.contains("volicord inbox resolve")
-            && !text.contains("request.operation=resume")
-            && !text.contains("volicord_fallback")));
-    Ok(())
-}
-
-fn stored_resolution_basis(
-    fixture: &CoreFixture,
-    task_id: &str,
-    response: &Value,
-) -> Result<String, Box<dyn Error>> {
-    let record = stored_action_record(fixture, task_id, response)?;
-    record
-        .resolution
-        .map(|resolution| resolution.resolved_verification_basis)
-        .ok_or_else(|| "stored user action should have a resolution basis".into())
-}
-
 fn stored_action_record(
     fixture: &CoreFixture,
     task_id: &str,
@@ -11363,8 +5527,7 @@ fn stored_action_record(
         fixture.runtime_home_path(),
         &ProjectId::new(fixture.project_id()),
     )?;
-    let now =
-        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let now = store.current_timestamp()?;
     let now = volicord_types::UtcTimestamp::parse(&now)?;
     let record = store
         .user_action_records_for_task(&volicord_types::TaskId::new(task_id), &now)?
@@ -11530,24 +5693,6 @@ fn assert_tools_list_json_client_compatible(tools: &[Value]) {
             errors.join("\n")
         );
     }
-}
-
-fn lifecycle_event_names(metadata: &Value) -> Vec<String> {
-    metadata["lifecycle_events"]
-        .as_array()
-        .expect("lifecycle_events should be an array")
-        .iter()
-        .filter_map(|event| event["lifecycle_event"].as_str().map(str::to_owned))
-        .collect()
-}
-
-fn lifecycle_event<'a>(metadata: &'a Value, lifecycle_event: &str) -> &'a Value {
-    metadata["lifecycle_events"]
-        .as_array()
-        .expect("lifecycle_events should be an array")
-        .iter()
-        .find(|event| event["lifecycle_event"] == lifecycle_event)
-        .unwrap_or_else(|| panic!("missing lifecycle event {lifecycle_event}: {metadata}"))
 }
 
 fn preflight_report_for_fixture(

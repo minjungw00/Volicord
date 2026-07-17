@@ -1,34 +1,37 @@
 #![forbid(unsafe_code)]
 
-use std::{env, ffi::OsStr, fmt, fs, path::Path, process};
+use std::{
+    env,
+    ffi::{OsStr, OsString},
+    fmt, fs,
+    path::Path,
+    process,
+};
 
+use clap::{error::ErrorKind as ClapErrorKind, Parser};
 use volicord_cli::{
-    changes_command::{changes_usage, run_changes_command, ChangesCommandError},
+    changes_command::{run_changes_command, ChangesCommandError},
+    cli::{Cli, Command as CliCommand, McpArgs, PolicyCommand as CliPolicyCommand},
     connection_command::{
-        connection_usage, init_usage, run_connection_command, run_init_command,
+        prepare_managed_stdio_authority, run_connection_command, run_init_command,
         ConnectionCommandError, ProductionConnectionProcess,
     },
-    diagnostics_command::{diagnostics_usage, run_diagnostics_command, DiagnosticsCommandError},
-    doctor_command::{doctor_usage, run_doctor_command, DoctorCommandError},
-    evidence_command::{evidence_usage, run_evidence_command, EvidenceCommandError},
-    export_command::{export_usage, run_export_command, ExportCommandError},
-    final_output_command::{run_final_output_command, FinalOutputCommandError},
+    diagnostics_command::{run_diagnostics_command, DiagnosticsCommandError},
+    doctor_command::{run_doctor_command, DoctorCommandError},
+    evidence_command::{run_evidence_command, EvidenceCommandError},
+    export_command::{run_export_command, ExportCommandError},
     guard_command::{run_guard_command, GuardCommandError},
-    host_integration::{MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1},
-    policy_command::{policy_usage, run_policy_command, PolicyCommandError},
-    project_context::{project_usage, run_project_command, ProjectCommandError},
-    serve_command::{run_serve_command, serve_usage, ServeCommand, ServeCommandError},
+    host_integration::{MANAGED_WRAPPER_ENV, MANAGED_WRAPPER_VALUE},
+    policy_command::{run_policy_command, PolicyCommandError},
+    project_context::{run_project_command, ProjectCommandError},
     setup_command::CommandOutcome,
-    storage_command::{run_storage_command, storage_usage, StorageCommandError},
-    user_command::{
-        inbox_usage, run_inbox_command, run_status_command, status_usage, UserCommandError,
-    },
+    user_command::{run_inbox_command, run_status_command, UserCommandError},
 };
 use volicord_store::bootstrap::installation_profile;
 use volicord_store::runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError};
 
 fn main() {
-    let args = env::args().collect::<Vec<_>>();
+    let args = env::args_os();
     let current_dir = match env::current_dir() {
         Ok(path) => path,
         Err(error) => {
@@ -43,6 +46,18 @@ fn main() {
             connection_id,
             project_id,
         }) => {
+            if volicord_mcp::managed_host_authority_preparation_required_from_env(
+                &connection_id,
+                project_id.as_deref(),
+                false,
+            ) {
+                if let Err(error) =
+                    prepare_bound_mcp_authority(&connection_id, project_id.as_deref(), &current_dir)
+                {
+                    eprintln!("error: {error}");
+                    process::exit(1);
+                }
+            }
             if let Err(error) =
                 volicord_mcp::run_stdio_from_env(&connection_id, project_id.as_deref())
             {
@@ -51,13 +66,11 @@ fn main() {
             }
         }
         Err(CliError::McpRepositoryStdio { host }) => {
-            if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(host) {
+            if let Err(error) = prepare_repository_mcp_authority(host, &current_dir) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
-        }
-        Err(CliError::ServeLocalHttp { config }) => {
-            if let Err(error) = volicord_mcp::run_local_http_server(*config) {
+            if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(host) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -86,170 +99,124 @@ fn main() {
     }
 }
 
+fn prepare_bound_mcp_authority(
+    connection_id: &str,
+    project_id: Option<&str>,
+    current_dir: &Path,
+) -> Result<(), CliError> {
+    let runtime_home = resolve_runtime_home(|name| env::var_os(name), current_dir)?;
+    prepare_managed_stdio_authority(&runtime_home, connection_id, project_id)
+        .map_err(CliError::from)
+}
+
+fn prepare_repository_mcp_authority(
+    host: volicord_mcp::RepositoryDiscoveryHost,
+    current_dir: &Path,
+) -> Result<(), CliError> {
+    let runtime_home = volicord_mcp::resolve_repository_discovery_runtime_home(
+        |name| env::var_os(name),
+        current_dir,
+    )
+    .map_err(|error| CliError::runtime(error.to_string()))?;
+    let resolution =
+        volicord_mcp::RepositoryDiscoveryResolution::resolve(&runtime_home, current_dir, host)
+            .map_err(|error| CliError::runtime(error.to_string()))?;
+    if volicord_mcp::managed_host_authority_preparation_required_from_env(
+        resolution.connection_internal_id.as_str(),
+        Some(resolution.project_id.as_str()),
+        true,
+    ) {
+        prepare_managed_stdio_authority(
+            &runtime_home,
+            resolution.connection_internal_id.as_str(),
+            Some(resolution.project_id.as_str()),
+        )?;
+    }
+    Ok(())
+}
+
 fn run_cli<I, S, F>(args: I, env_var: F, current_dir: &Path) -> Result<String, CliError>
 where
     I: IntoIterator<Item = S>,
-    S: Into<String>,
+    S: Into<OsString> + Clone,
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
-    let command = args.get(1).map(String::as_str).unwrap_or("--help");
+    let parsed = match Cli::try_parse_from(args) {
+        Ok(parsed) => parsed,
+        Err(error)
+            if matches!(
+                error.kind(),
+                ClapErrorKind::DisplayHelp | ClapErrorKind::DisplayVersion
+            ) =>
+        {
+            return Ok(error.to_string())
+        }
+        Err(error) => return Err(CliError::usage(error.to_string())),
+    };
+    if parsed.version {
+        return Ok(version());
+    }
+    let command = parsed
+        .command
+        .expect("the clap declaration requires a command or --version");
 
     match command {
-        "-h" | "--help" | "help" => Ok(usage()),
-        "-V" | "--version" => {
-            if args.len() == 2 {
-                Ok(version())
-            } else {
-                Err(CliError::usage(format!(
-                    "unexpected argument for {command}\n\n{}",
-                    usage()
-                )))
-            }
+        CliCommand::Doctor(options) => {
+            command_outcome(run_doctor_command(options, &env_var, current_dir)?)
         }
-        "doctor" => command_outcome(run_doctor_command(&args[2..], &env_var, current_dir)?),
-        "diagnostics" => {
-            if !matches!(
-                args.get(2).map(String::as_str),
-                None | Some("-h" | "--help" | "help")
-            ) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            run_diagnostics_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        CliCommand::Diagnostics(options) => {
+            require_setup_completed(&env_var, current_dir)?;
+            run_diagnostics_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        "storage" => run_storage_command(&args[2..], current_dir).map_err(CliError::from),
-        "mcp" => command_mcp(&args[2..], env_var, current_dir),
-        "serve" => command_serve(&args[2..], env_var, current_dir),
-        "init" => {
+        CliCommand::Mcp(options) => command_mcp(options, env_var, current_dir),
+        CliCommand::Init(options) => {
             let mut connection_process = ProductionConnectionProcess;
-            run_init_command(&args[2..], current_dir, &mut connection_process)
+            run_init_command(options, current_dir, &mut connection_process).map_err(CliError::from)
+        }
+        CliCommand::Hook(options) => {
+            require_explicit_runtime_home_binding(&env_var)?;
+            require_setup_completed(&env_var, current_dir)?;
+            guard_command_outcome(run_guard_command(options, env_var, current_dir)?)
+        }
+        CliCommand::Connection(options) => {
+            require_setup_completed(&env_var, current_dir)?;
+            let mut connection_process = ProductionConnectionProcess;
+            run_connection_command(options, current_dir, &mut connection_process)
                 .map_err(CliError::from)
         }
-        "_hook" => {
-            if !guard_help_requested(&args[2..]) {
-                require_explicit_runtime_home_binding(&env_var)?;
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            guard_command_outcome(run_guard_command(&args[2..], env_var, current_dir)?)
+        CliCommand::Evidence(options) => {
+            require_setup_completed(&env_var, current_dir)?;
+            run_evidence_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        "_final-output" => {
-            if !simple_help_requested(&args[2..]) {
-                require_explicit_runtime_home_binding(&env_var)?;
-            }
-            final_output_command_outcome(run_final_output_command(
-                &args[2..],
-                env_var,
-                current_dir,
-            )?)
+        CliCommand::Changes(options) => {
+            require_setup_completed(&env_var, current_dir)?;
+            run_changes_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        "connection" => {
-            if !connection_help_requested(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            let mut connection_process = ProductionConnectionProcess;
-            run_connection_command(&args[2..], current_dir, &mut connection_process)
-                .map_err(CliError::from)
+        CliCommand::Export(options) => {
+            run_export_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        "evidence" => {
-            if !matches!(
-                args.get(2).map(String::as_str),
-                None | Some("-h" | "--help" | "help")
-            ) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            run_evidence_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        CliCommand::Status(options) => {
+            require_setup_completed(&env_var, current_dir)?;
+            run_status_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        "changes" => {
-            if changes_subcommand_requires_setup(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            run_changes_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        CliCommand::Inbox(options) => {
+            require_setup_completed(&env_var, current_dir)?;
+            run_inbox_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        "export" => command_export(&args[2..], env_var, current_dir),
-        "status" => {
-            if !simple_help_requested(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            run_status_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        CliCommand::Project(options) => {
+            require_setup_completed(&env_var, current_dir)?;
+            run_project_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        "inbox" => {
-            if inbox_subcommand_requires_setup(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            run_inbox_command(&args[2..], env_var, current_dir).map_err(CliError::from)
-        }
-        "project" => {
-            if project_subcommand_requires_setup(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            command_project(&args[2..], env_var, current_dir)
-        }
-        "policy" => {
-            if policy_subcommand_requires_setup(&args[2..]) {
-                require_setup_completed(&env_var, current_dir)?;
-            }
-            run_policy_command(&args[2..], env_var, current_dir).map_err(CliError::from)
-        }
-        other => Err(CliError::usage(format!(
-            "unknown command: {other}\n\n{}",
-            usage()
-        ))),
-    }
-}
-
-fn inbox_subcommand_requires_setup(args: &[String]) -> bool {
-    !matches!(
-        args.first().map(String::as_str),
-        Some("-h" | "--help" | "help")
-    )
-}
-
-fn changes_subcommand_requires_setup(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("reconcile"))
-}
-
-fn project_subcommand_requires_setup(args: &[String]) -> bool {
-    matches!(
-        args.first().map(String::as_str),
-        Some("use" | "current" | "list" | "rename" | "forget")
-    )
-}
-
-fn policy_subcommand_requires_setup(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("show" | "apply"))
-}
-
-fn simple_help_requested(args: &[String]) -> bool {
-    matches!(
-        args.first().map(String::as_str),
-        None | Some("-h" | "--help" | "help")
-    )
-}
-
-fn connection_help_requested(args: &[String]) -> bool {
-    match args {
-        [] => true,
-        [first] if matches!(first.as_str(), "-h" | "--help" | "help") => true,
-        [subcommand, help, ..]
+        CliCommand::Policy(options) => {
             if matches!(
-                subcommand.as_str(),
-                "add" | "list" | "status" | "verify" | "mode" | "remove"
-            ) && matches!(help.as_str(), "-h" | "--help" | "help") =>
-        {
-            true
+                &options.command,
+                CliPolicyCommand::Show(_) | CliPolicyCommand::Apply(_)
+            ) {
+                require_setup_completed(&env_var, current_dir)?;
+            }
+            run_policy_command(options, env_var, current_dir).map_err(CliError::from)
         }
-        _ => false,
     }
-}
-
-fn guard_help_requested(args: &[String]) -> bool {
-    matches!(
-        args.first().map(String::as_str),
-        None | Some("-h" | "--help" | "help")
-    ) || matches!(
-        args.get(1).map(String::as_str),
-        Some("-h" | "--help" | "help")
-    )
 }
 
 fn command_outcome(outcome: CommandOutcome) -> Result<String, CliError> {
@@ -262,20 +229,6 @@ fn command_outcome(outcome: CommandOutcome) -> Result<String, CliError> {
 
 fn guard_command_outcome(
     outcome: volicord_cli::guard_command::GuardCommandOutcome,
-) -> Result<String, CliError> {
-    if outcome.exit_code == 0 && outcome.stderr.is_empty() {
-        Ok(outcome.stdout)
-    } else {
-        Err(CliError::ProcessOutput {
-            stdout: outcome.stdout,
-            stderr: outcome.stderr,
-            exit_code: outcome.exit_code,
-        })
-    }
-}
-
-fn final_output_command_outcome(
-    outcome: volicord_cli::final_output_command::FinalOutputCommandOutcome,
 ) -> Result<String, CliError> {
     if outcome.exit_code == 0 && outcome.stderr.is_empty() {
         Ok(outcome.stdout)
@@ -312,9 +265,7 @@ where
         .filter(|value| !value.is_empty() && Path::new(value).is_absolute())
         .map(std::path::PathBuf::from)
         .ok_or_else(managed_process_binding_required)?;
-    if env_var(MANAGED_PROCESS_BINDING_ENV).as_deref()
-        != Some(OsStr::new(MANAGED_PROCESS_BINDING_V1))
-    {
+    if env_var(MANAGED_WRAPPER_ENV).as_deref() != Some(OsStr::new(MANAGED_WRAPPER_VALUE)) {
         return Err(managed_process_binding_required());
     }
     let profile = installation_profile(&runtime_home)
@@ -355,261 +306,35 @@ fn setup_required_message(runtime_home: &Path) -> String {
     }
 }
 
-fn command_serve<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<String, CliError>
+fn command_mcp<F>(args: McpArgs, env_var: F, current_dir: &Path) -> Result<String, CliError>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    match run_serve_command(args, env_var, current_dir)? {
-        ServeCommand::Help => Ok(serve_usage()),
-        ServeCommand::Version => Ok(version()),
-        ServeCommand::LocalHttp { config } => Err(CliError::ServeLocalHttp {
-            config: Box::new(config),
-        }),
+    if args.version {
+        return Ok(version());
     }
-}
-
-fn command_project<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<String, CliError>
-where
-    F: Fn(&str) -> Option<std::ffi::OsString>,
-{
-    run_project_command(args, env_var, current_dir).map_err(CliError::from)
-}
-
-fn command_export<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<String, CliError>
-where
-    F: Fn(&str) -> Option<std::ffi::OsString>,
-{
-    run_export_command(args, env_var, current_dir).map_err(CliError::from)
-}
-
-fn command_mcp<F>(args: &[String], env_var: F, current_dir: &Path) -> Result<String, CliError>
-where
-    F: Fn(&str) -> Option<std::ffi::OsString>,
-{
-    match dispatch_mcp_args(args)? {
-        McpCommand::Help => Ok(mcp_usage()),
-        McpCommand::Version => Ok(version()),
-        McpCommand::Check {
-            connection_id,
-            project_id,
-        } => volicord_mcp::preflight_check(
+    if args.discover_repository {
+        return Err(CliError::McpRepositoryStdio {
+            host: volicord_mcp::RepositoryDiscoveryHost::Codex,
+        });
+    }
+    let connection_id = args
+        .connection
+        .expect("the clap declaration requires --connection for bound MCP modes");
+    if args.check {
+        volicord_mcp::preflight_check(
             env_var,
             current_dir,
             &connection_id,
-            project_id.as_deref(),
+            args.project.as_deref(),
         )
-        .map_err(|error| CliError::runtime(error.to_string())),
-        McpCommand::Stdio {
-            connection_id,
-            project_id,
-        } => Err(CliError::McpStdio {
-            connection_id,
-            project_id,
-        }),
-        McpCommand::RepositoryStdio { host } => Err(CliError::McpRepositoryStdio { host }),
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum McpCommand {
-    Stdio {
-        connection_id: String,
-        project_id: Option<String>,
-    },
-    RepositoryStdio {
-        host: volicord_mcp::RepositoryDiscoveryHost,
-    },
-    Help,
-    Version,
-    Check {
-        connection_id: String,
-        project_id: Option<String>,
-    },
-}
-
-fn dispatch_mcp_args(args: &[String]) -> Result<McpCommand, CliError> {
-    match args {
-        [option] if option == "-h" || option == "--help" || option == "help" => {
-            return Ok(McpCommand::Help)
-        }
-        [option] if option == "-V" || option == "--version" => return Ok(McpCommand::Version),
-        _ => {}
-    }
-
-    let mut stdio = false;
-    let mut check = false;
-    let mut discover_repository = false;
-    let mut connection_id = None;
-    let mut project_id = None;
-    let mut discovery_host = None;
-    let mut index = 0;
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--stdio" => {
-                if stdio {
-                    return Err(CliError::usage("--stdio was supplied more than once"));
-                }
-                stdio = true;
-                index += 1;
-            }
-            "--check" => {
-                if check {
-                    return Err(CliError::usage("--check was supplied more than once"));
-                }
-                check = true;
-                index += 1;
-            }
-            "--discover-repository" => {
-                if discover_repository {
-                    return Err(CliError::usage(
-                        "--discover-repository was supplied more than once",
-                    ));
-                }
-                discover_repository = true;
-                index += 1;
-            }
-            "--host" => {
-                if discovery_host.is_some() {
-                    return Err(CliError::usage("--host was supplied more than once"));
-                }
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| CliError::usage("--host requires a value"))?;
-                if value.starts_with('-') {
-                    return Err(CliError::usage("--host requires a value"));
-                }
-                discovery_host = Some(
-                    volicord_mcp::RepositoryDiscoveryHost::parse(value)
-                        .map_err(|error| CliError::usage(error.to_string()))?,
-                );
-                index += 1;
-            }
-            "--connection" => {
-                if connection_id.is_some() {
-                    return Err(CliError::usage("--connection was supplied more than once"));
-                }
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| CliError::usage("--connection requires a value"))?;
-                if value.starts_with('-') {
-                    return Err(CliError::usage("--connection requires a value"));
-                }
-                connection_id = Some(value.clone());
-                index += 1;
-            }
-            "--project" => {
-                if project_id.is_some() {
-                    return Err(CliError::usage("--project was supplied more than once"));
-                }
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| CliError::usage("--project requires a value"))?;
-                if value.starts_with('-') {
-                    return Err(CliError::usage("--project requires a value"));
-                }
-                project_id = Some(value.clone());
-                index += 1;
-            }
-            "-h" | "--help" | "help" | "-V" | "--version" => {
-                return Err(CliError::usage(
-                    "cannot combine volicord mcp command-line modes",
-                ))
-            }
-            option if option.starts_with('-') => {
-                return Err(CliError::usage(format!("unknown option: {option}")));
-            }
-            argument => return Err(CliError::usage(format!("unexpected argument: {argument}"))),
-        }
-    }
-
-    if stdio && check {
-        return Err(CliError::usage("cannot combine --stdio and --check"));
-    }
-    if discover_repository && (!stdio || check) {
-        return Err(CliError::usage(
-            "--discover-repository is only valid with --stdio",
-        ));
-    }
-    if discovery_host.is_some() && !discover_repository {
-        return Err(CliError::usage(
-            "--host is only valid with --discover-repository",
-        ));
-    }
-    if discover_repository && (connection_id.is_some() || project_id.is_some()) {
-        return Err(CliError::usage(
-            "repository discovery cannot be combined with --connection or --project",
-        ));
-    }
-    if project_id.is_some() && !check && !stdio {
-        return Err(CliError::usage(
-            "--project is only valid with --stdio or --check",
-        ));
-    }
-    if !stdio && !check {
-        return Err(CliError::usage(
-            "MCP mode is required; use --stdio or --check",
-        ));
-    }
-
-    if discover_repository {
-        let host = discovery_host.ok_or_else(|| {
-            CliError::usage("--host is required for repository discovery MCP startup")
-        })?;
-        return Ok(McpCommand::RepositoryStdio { host });
-    }
-
-    let connection_id = connection_id.ok_or_else(|| {
-        CliError::usage("--connection is required for connection-bound MCP startup")
-    })?;
-
-    if check {
-        Ok(McpCommand::Check {
-            connection_id,
-            project_id,
-        })
+        .map_err(|error| CliError::runtime(error.to_string()))
     } else {
-        Ok(McpCommand::Stdio {
+        Err(CliError::McpStdio {
             connection_id,
-            project_id,
+            project_id: args.project,
         })
     }
-}
-
-#[cfg(test)]
-fn display_path(path: &Path) -> String {
-    path.display().to_string()
-}
-
-fn usage() -> String {
-    format!(
-        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands resolve pending user actions.\nThese are local administrative commands, not public Volicord API methods.\n",
-        indent_usage_block(&init_usage()),
-        indent_usage_block(&status_usage()),
-        indent_usage_block(&doctor_usage()),
-        indent_usage_block(&project_usage()),
-        indent_usage_block(&connection_usage()),
-        indent_usage_block(&evidence_usage()),
-        indent_usage_block(&inbox_usage()),
-        indent_usage_block(&changes_usage()),
-        indent_usage_block(&export_usage()),
-        indent_usage_block(&mcp_usage()),
-        indent_usage_block(&serve_usage()),
-        indent_usage_block(&diagnostics_usage()),
-        indent_usage_block(&policy_usage()),
-        indent_usage_block(&storage_usage()),
-    )
-}
-
-fn indent_usage_block(block: &str) -> String {
-    block.lines().map(|line| format!("  {line}\n")).collect()
-}
-
-fn mcp_usage() -> String {
-    "volicord mcp --stdio --connection <connection_id> [--project <project_id>]\nvolicord mcp --stdio --discover-repository --host codex|claude-code\nvolicord mcp --check --connection <connection_id>\nvolicord mcp --check --connection <connection_id> --project <project_id>\n".to_owned()
 }
 
 fn version() -> String {
@@ -636,9 +361,6 @@ enum CliError {
     },
     McpRepositoryStdio {
         host: volicord_mcp::RepositoryDiscoveryHost,
-    },
-    ServeLocalHttp {
-        config: Box<volicord_mcp::LocalHttpServerConfig>,
     },
 }
 
@@ -670,13 +392,6 @@ impl fmt::Display for CliError {
                 "MCP stdio requested through {} repository discovery",
                 host.as_str()
             ),
-            Self::ServeLocalHttp { config } => {
-                write!(
-                    formatter,
-                    "MCP HTTP serve requested for connection {}",
-                    config.connection_id
-                )
-            }
         }
     }
 }
@@ -775,28 +490,11 @@ impl From<PolicyCommandError> for CliError {
     }
 }
 
-impl From<StorageCommandError> for CliError {
-    fn from(error: StorageCommandError) -> Self {
-        match error {
-            StorageCommandError::Usage(message) => Self::Usage(message),
-            StorageCommandError::Runtime(message) => Self::Runtime(message),
-        }
-    }
-}
-
 impl From<GuardCommandError> for CliError {
     fn from(error: GuardCommandError) -> Self {
         match error {
             GuardCommandError::Usage(message) => Self::Usage(message),
             GuardCommandError::Runtime(message) => Self::Runtime(message),
-        }
-    }
-}
-
-impl From<FinalOutputCommandError> for CliError {
-    fn from(error: FinalOutputCommandError) -> Self {
-        match error {
-            FinalOutputCommandError::Usage(message) => Self::Usage(message),
         }
     }
 }
@@ -810,266 +508,24 @@ impl From<EvidenceCommandError> for CliError {
     }
 }
 
-impl From<ServeCommandError> for CliError {
-    fn from(error: ServeCommandError) -> Self {
-        match error {
-            ServeCommandError::Usage(message) => Self::Usage(message),
-            ServeCommandError::Runtime(message) => Self::Runtime(message),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::{
-        ffi::OsString,
-        fs,
-        path::{Path, PathBuf},
-    };
-
-    use serde_json::Value;
-    use volicord_store::bootstrap::{
-        initialize_runtime_home, list_projects, write_installation_profile,
-        InstallationProfileRegistration,
-    };
-    use volicord_test_support::TempRuntimeHome;
+    use std::path::Path;
 
     use super::*;
 
     #[test]
-    fn version_does_not_require_runtime_home_environment() {
-        let output = run_cli(
-            ["volicord", "--version"],
-            |_| None,
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("version should not need Runtime Home");
+    fn version_and_help_do_not_require_runtime_home() {
+        let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let version = run_cli(["volicord", "--version"], |_| None, cwd)
+            .expect("version should not need Runtime Home");
+        assert_eq!(version, super::version());
 
-        assert_eq!(
-            output,
-            format!(
-                "volicord {} (build_id={})\n",
-                env!("CARGO_PKG_VERSION"),
-                volicord_mcp::build_id()
-            )
-        );
-    }
-
-    #[test]
-    fn short_version_is_exact_alias() {
-        let output = run_cli(
-            ["volicord", "-V"],
-            |_| None,
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("short version should not need Runtime Home");
-
-        assert_eq!(output, version());
-    }
-
-    #[test]
-    fn help_mentions_version_discovery() {
-        let output = run_cli(
-            ["volicord", "--help"],
-            |_| None,
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("help should not need Runtime Home");
-
-        assert!(output.contains("volicord --version"));
-        assert!(output.contains("volicord init"));
-        assert!(output.contains("volicord status"));
-        assert!(output.contains("volicord doctor"));
-        assert!(output.contains("volicord diagnostics session"));
-        assert!(output.contains(
-            "volicord storage upgrade --source-home PATH --destination-home PATH --json"
-        ));
-        assert!(output.contains("volicord project use"));
-        assert!(output.contains("volicord connection add"));
-        assert!(output.contains("volicord connection list"));
-        assert!(output.contains("volicord evidence capture-command"));
-        assert!(output.contains("volicord evidence capture-tool"));
-        assert!(output.contains("volicord evidence capture-connection"));
-        assert!(output.contains("volicord export authority-bundle"));
-        assert!(output.contains("volicord mcp --stdio --connection <connection_id>"));
-        assert!(
-            output.contains("volicord mcp --stdio --discover-repository --host codex|claude-code")
-        );
-        assert!(output.contains("volicord serve --transport local-http"));
-        assert!(output.contains("\n  volicord connection verify"));
-        assert!(output.contains("\n  volicord inbox"));
-        assert!(!output.contains("\nvolicord connection verify"));
-        assert!(!output.contains("\nvolicord inbox"));
-        assert!(!output.contains("volicord _hook"));
-        assert!(!output.contains("volicord _final-output"));
-    }
-
-    #[test]
-    fn storage_help_dispatches_without_active_runtime_home_setup() {
-        let output = run_cli(
-            ["volicord", "storage", "--help"],
-            |_| None,
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("storage help should not require setup");
-
-        assert_eq!(output, storage_usage());
-    }
-
-    #[test]
-    fn hidden_final_output_help_dispatches_without_setup_or_stdin() {
-        let output = run_cli(
-            ["volicord", "_final-output", "--help"],
-            |_| None,
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("hidden final-output help should not require setup");
-
-        assert!(output.starts_with("volicord _final-output"));
-        assert!(output.contains("--guard-installation ID"));
-        assert!(output.contains("--host-output codex|claude-code"));
-    }
-
-    #[test]
-    fn hidden_host_commands_reject_platform_default_runtime_home_substitution() {
-        for runtime_home in [None, Some(""), Some("relative/runtime-home")] {
-            for args in [
-                vec!["volicord", "_hook", "session-start"],
-                vec!["volicord", "_final-output", "--repo", "/tmp/repo"],
-            ] {
-                let error = run_cli(
-                    args,
-                    |name| match name {
-                        "HOME" => Some(std::ffi::OsString::from("/wrong/default")),
-                        "VOLICORD_HOME" => runtime_home.map(std::ffi::OsString::from),
-                        _ => None,
-                    },
-                    Path::new(env!("CARGO_MANIFEST_DIR")),
-                )
-                .expect_err("managed host child must require an explicit Runtime Home binding");
-
-                assert!(error.to_string().contains("RUNTIME_HOME_BINDING_REQUIRED"));
-                assert!(!error.to_string().contains("/wrong/default"));
-            }
+        let help = run_cli(["volicord", "--help"], |_| None, cwd)
+            .expect("help should not need Runtime Home");
+        for command in ["init", "connection", "evidence", "mcp", "inbox"] {
+            assert!(help.contains(command), "missing command {command}");
         }
-    }
-
-    #[test]
-    fn hidden_host_commands_reject_missing_or_wrong_managed_binding_marker() {
-        let runtime_home = TempRuntimeHome::new("cli-hidden-binding-marker")
-            .expect("temp Runtime Home should be created");
-        initialize_runtime_home(runtime_home.path(), "runtime_home_hidden_marker", "{}")
-            .expect("Runtime Home should initialize");
-        let current_exe = fs::canonicalize(std::env::current_exe().expect("current executable"))
-            .expect("current executable should canonicalize");
-        write_installation_profile(
-            runtime_home.path(),
-            InstallationProfileRegistration {
-                installation_id: "default".to_owned(),
-                volicord_command: current_exe.display().to_string(),
-                volicord_mcp_command: current_exe.display().to_string(),
-                bin_dir: current_exe
-                    .parent()
-                    .expect("current executable parent")
-                    .to_path_buf(),
-                default_connection_mode: "workflow".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )
-        .expect("installation profile should be written");
-
-        for marker in [None, Some("wrong-binding-version")] {
-            let error = run_cli(
-                ["volicord", "_hook", "session-start"],
-                |name| match name {
-                    "VOLICORD_HOME" => Some(OsString::from(runtime_home.path())),
-                    MANAGED_PROCESS_BINDING_ENV => marker.map(OsString::from),
-                    _ => None,
-                },
-                Path::new(env!("CARGO_MANIFEST_DIR")),
-            )
-            .expect_err("stale wrapper marker must fail closed");
-
-            assert!(error.to_string().contains("RUNTIME_HOME_BINDING_REQUIRED"));
-        }
-    }
-
-    #[test]
-    fn hidden_host_commands_reject_profile_executable_mismatch() {
-        let runtime_home = TempRuntimeHome::new("cli-hidden-binding-command")
-            .expect("temp Runtime Home should be created");
-        initialize_runtime_home(runtime_home.path(), "runtime_home_hidden_command", "{}")
-            .expect("Runtime Home should initialize");
-        let other_command = runtime_home.path().join("different-volicord");
-        fs::write(&other_command, "not the running executable")
-            .expect("different command fixture should be written");
-        write_installation_profile(
-            runtime_home.path(),
-            InstallationProfileRegistration {
-                installation_id: "default".to_owned(),
-                volicord_command: other_command.display().to_string(),
-                volicord_mcp_command: other_command.display().to_string(),
-                bin_dir: runtime_home.path().to_path_buf(),
-                default_connection_mode: "workflow".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )
-        .expect("installation profile should be written");
-
-        let error = run_cli(
-            ["volicord", "_final-output", "--repo", "/tmp/repo"],
-            |name| match name {
-                "VOLICORD_HOME" => Some(OsString::from(runtime_home.path())),
-                MANAGED_PROCESS_BINDING_ENV => Some(OsString::from(MANAGED_PROCESS_BINDING_V1)),
-                _ => None,
-            },
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect_err("profile executable mismatch must fail closed");
-
-        assert!(error.to_string().contains("RUNTIME_HOME_BINDING_REQUIRED"));
-    }
-
-    #[test]
-    fn mcp_repository_discovery_mode_is_host_only_and_mutually_exclusive() {
-        assert_eq!(
-            dispatch_mcp_args(&[
-                "--stdio".to_owned(),
-                "--discover-repository".to_owned(),
-                "--host".to_owned(),
-                "codex".to_owned(),
-            ])
-            .expect("portable discovery args"),
-            McpCommand::RepositoryStdio {
-                host: volicord_mcp::RepositoryDiscoveryHost::Codex,
-            }
-        );
-        assert!(dispatch_mcp_args(&[
-            "--stdio".to_owned(),
-            "--discover-repository".to_owned(),
-            "--host".to_owned(),
-            "claude-code".to_owned(),
-            "--connection".to_owned(),
-            "connection_local".to_owned(),
-        ])
-        .expect_err("discovery must reject local identity")
-        .to_string()
-        .contains("cannot be combined"));
-        assert!(dispatch_mcp_args(&[
-            "--stdio".to_owned(),
-            "--discover-repository".to_owned(),
-            "--host".to_owned(),
-            "unsupported".to_owned(),
-        ])
-        .expect_err("unknown discovery host")
-        .to_string()
-        .contains("codex or claude-code"));
-        assert!(
-            dispatch_mcp_args(&["--stdio".to_owned(), "--discover-repository".to_owned(),])
-                .expect_err("host is required")
-                .to_string()
-                .contains("--host is required")
-        );
     }
 
     #[test]
@@ -1079,368 +535,9 @@ mod tests {
             |_| None,
             Path::new(env!("CARGO_MANIFEST_DIR")),
         )
-        .expect_err("unknown command should be a usage error");
+        .expect_err("unknown command should fail");
 
-        assert_eq!(
-            error,
-            CliError::Usage(format!(
-                "unknown command: not-a-real-command\n\n{}",
-                usage()
-            ))
-        );
-    }
-
-    #[test]
-    fn default_runtime_home_uses_user_home() {
-        let runtime_home = resolve_runtime_home(
-            |name| {
-                if name == "HOME" {
-                    Some(OsString::from("/tmp/volicord-cli-home"))
-                } else {
-                    None
-                }
-            },
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("default runtime home should resolve");
-
-        assert_eq!(
-            runtime_home,
-            PathBuf::from("/tmp/volicord-cli-home/.volicord")
-        );
-    }
-
-    #[test]
-    fn runtime_home_resolver_keeps_relative_volicord_home_based_on_current_dir() {
-        let current_dir = TempRuntimeHome::new("cli-cwd").expect("temp current dir");
-        let runtime_home = resolve_runtime_home(
-            |name| {
-                if name == "VOLICORD_HOME" {
-                    Some(OsString::from("shared-runtime"))
-                } else {
-                    None
-                }
-            },
-            current_dir.path(),
-        )
-        .expect("shared resolver should resolve relative Runtime Home");
-
-        assert_eq!(runtime_home, current_dir.path().join("shared-runtime"));
-    }
-
-    #[test]
-    fn runtime_home_resolution_errors_are_runtime_errors() {
-        let error = run_cli(
-            ["volicord", "doctor"],
-            |name| {
-                if name == "VOLICORD_HOME" {
-                    Some(OsString::new())
-                } else {
-                    None
-                }
-            },
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect_err("empty VOLICORD_HOME should fail");
-
-        assert!(matches!(error, CliError::Runtime(_)));
-        assert!(error
-            .to_string()
-            .contains("VOLICORD_HOME must not be empty"));
-    }
-
-    #[test]
-    fn diagnostics_session_json_dispatches_without_creating_empty_storage() {
-        let runtime_home =
-            TempRuntimeHome::new("cli-diagnostics-empty").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
-
-        let output = run_with_home(
-            runtime_home.path(),
-            ["volicord", "diagnostics", "session", "--json"],
-        )
-        .expect("diagnostics should report no data");
-        let value = json_value(&output);
-        assert_eq!(value["status"], "no_data");
-        assert_eq!(value["session"], Value::Null);
-        assert!(!volicord_store::diagnostics::diagnostics_db_path(runtime_home.path()).exists());
-    }
-
-    #[test]
-    fn project_current_reports_unregistered_repository_without_creating_project() {
-        let runtime_home = TempRuntimeHome::new("cli-project-current").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
-        let repo_root = create_git_repo(&runtime_home, "current-repo");
-        let nested = repo_root.join("src/nested");
-        fs::create_dir_all(&nested).expect("nested repo fixture should be created");
-
-        let output = run_with_home_at(
-            runtime_home.path(),
-            ["volicord", "project", "current"],
-            &nested,
-        )
-        .expect("project current should report without registration");
-
-        assert!(output.contains("project not registered\n"));
-        assert!(output.contains(&format!("repo_root: {}\n", display_path(&repo_root))));
-        assert!(list_projects(runtime_home.path())
-            .expect("project list should read")
-            .is_empty());
-    }
-
-    #[test]
-    fn project_use_detects_nested_git_repository_and_hides_text_internal_id() {
-        let runtime_home = TempRuntimeHome::new("cli-project-use").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
-        let repo_root = create_git_repo(&runtime_home, "product-repo");
-        let nested = repo_root.join("src/nested");
-        fs::create_dir_all(&nested).expect("nested repo fixture should be created");
-
-        let output = run_with_home_at(
-            runtime_home.path(),
-            ["volicord", "project", "use", "--json"],
-            &nested,
-        )
-        .expect("project use should succeed from nested directory");
-        let value = json_value(&output);
-        let project = &value["project"];
-        let internal_id = project["project_internal_id"]
-            .as_str()
-            .expect("project_internal_id should be present");
-
-        assert_eq!(value["status"], "registered");
-        assert_eq!(project["project_name"], "product-repo");
-        assert_eq!(project["repo_root"], display_path(&repo_root));
-        assert!(internal_id.starts_with("prj_"));
-
-        let projects = list_projects(runtime_home.path()).expect("registered project should list");
-        assert_eq!(projects.len(), 1);
-        assert!(projects[0].state_db_path.exists());
-
-        let text = run_with_home_at(
-            runtime_home.path(),
-            ["volicord", "project", "current"],
-            &nested,
-        )
-        .expect("current project should be registered");
-        assert!(text.contains("project current\n"));
-        assert!(text.contains("name: product-repo\n"));
-        assert!(!text.contains(internal_id));
-        assert!(!text.contains("project_internal_id"));
-    }
-
-    #[test]
-    fn project_list_disambiguates_duplicate_basenames_by_path() {
-        let runtime_home =
-            TempRuntimeHome::new("cli-project-duplicates").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
-        let repo_a = create_git_repo(&runtime_home, "left/repo");
-        let repo_b = create_git_repo(&runtime_home, "right/repo");
-
-        let first = run_with_home_at(
-            runtime_home.path(),
-            [
-                "volicord",
-                "project",
-                "use",
-                repo_a.to_str().expect("utf8 repo path"),
-                "--json",
-            ],
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("first same-basename repo should register");
-        let second = run_with_home_at(
-            runtime_home.path(),
-            [
-                "volicord",
-                "project",
-                "use",
-                repo_b.to_str().expect("utf8 repo path"),
-                "--json",
-            ],
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("second same-basename repo should register");
-        let first_id = json_value(&first)["project"]["project_internal_id"]
-            .as_str()
-            .expect("first id")
-            .to_owned();
-        let second_id = json_value(&second)["project"]["project_internal_id"]
-            .as_str()
-            .expect("second id")
-            .to_owned();
-
-        let text = run_with_home(runtime_home.path(), ["volicord", "project", "list"])
-            .expect("project list should succeed");
-        let lines = text.lines().collect::<Vec<_>>();
-        assert_eq!(lines[0], "name\trepo_root\tstatus");
-        assert!(text.contains(&format!("repo\t{}\tactive", display_path(&repo_a))));
-        assert!(text.contains(&format!("repo\t{}\tactive", display_path(&repo_b))));
-        assert!(!text.contains(&first_id));
-        assert!(!text.contains(&second_id));
-
-        let json = run_with_home(
-            runtime_home.path(),
-            ["volicord", "project", "list", "--json"],
-        )
-        .expect("JSON project list should succeed");
-        let value = json_value(&json);
-        assert_eq!(
-            value["projects"]
-                .as_array()
-                .expect("projects should be an array")
-                .len(),
-            2
-        );
-        assert!(json.contains("project_internal_id"));
-    }
-
-    #[test]
-    fn project_rename_and_forget_select_without_user_supplied_ids() {
-        let runtime_home = TempRuntimeHome::new("cli-project-rename").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
-        let repo_root = create_git_repo(&runtime_home, "rename-repo");
-
-        run_with_home_at(
-            runtime_home.path(),
-            [
-                "volicord",
-                "project",
-                "use",
-                repo_root.to_str().expect("utf8 repo path"),
-            ],
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("project use should register");
-        let state_db_path = list_projects(runtime_home.path())
-            .expect("project should list")
-            .remove(0)
-            .state_db_path;
-
-        let renamed = run_with_home_at(
-            runtime_home.path(),
-            [
-                "volicord",
-                "project",
-                "rename",
-                "Renamed Project",
-                "--repo",
-                repo_root.to_str().expect("utf8 repo path"),
-            ],
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect("project rename should succeed");
-        assert!(renamed.contains("project renamed\n"));
-        assert!(renamed.contains("name: Renamed Project\n"));
-
-        let forgotten = run_with_home(
-            runtime_home.path(),
-            ["volicord", "project", "forget", "Renamed Project"],
-        )
-        .expect("project forget by name should succeed");
-        assert!(forgotten.contains("project forgotten\n"));
-        assert!(forgotten.contains("project_state_deleted: false\n"));
-        assert!(state_db_path.exists());
-        assert!(list_projects(runtime_home.path())
-            .expect("registry should remain readable")
-            .is_empty());
-    }
-
-    #[test]
-    fn project_use_rejects_repository_under_runtime_home_without_project_state() {
-        let runtime_home = TempRuntimeHome::new("cli-project-boundary").expect("temp runtime home");
-        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
-        let repo_root = runtime_home.path().join("product-repo");
-        fs::create_dir_all(repo_root.join(".git")).expect("repo fixture should be created");
-
-        let error = run_with_home_at(
-            runtime_home.path(),
-            [
-                "volicord",
-                "project",
-                "use",
-                repo_root.to_str().expect("utf8 path"),
-            ],
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-        )
-        .expect_err("project use should reject Product Repository inside Runtime Home");
-
-        assert!(matches!(error, CliError::Runtime(_)));
-        assert!(error
-            .to_string()
-            .contains("Product Repository must not be inside Volicord Runtime Home"));
-        assert!(list_projects(runtime_home.path())
-            .expect("registry inspection should still work")
-            .is_empty());
-    }
-
-    #[test]
-    fn project_use_requires_installation_profile() {
-        let runtime_home = TempRuntimeHome::new("cli-uninitialized").expect("temp runtime home");
-        let repo_root = create_git_repo(&runtime_home, "missing-setup-repo");
-        let error = run_with_home_at(
-            runtime_home.path(),
-            ["volicord", "project", "use"],
-            &repo_root,
-        )
-        .expect_err("project use should require an installation profile");
-
-        assert!(matches!(error, CliError::Runtime(_)));
-        assert!(error
-            .to_string()
-            .contains("volicord init --host <host> --repo <path>"));
-    }
-
-    fn run_with_home<const N: usize>(
-        runtime_home: &Path,
-        args: [&str; N],
-    ) -> Result<String, CliError> {
-        run_with_home_at(runtime_home, args, Path::new(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    fn run_with_home_at<const N: usize>(
-        runtime_home: &Path,
-        args: [&str; N],
-        current_dir: &Path,
-    ) -> Result<String, CliError> {
-        run_cli(
-            args,
-            |name| {
-                if name == "VOLICORD_HOME" {
-                    Some(OsString::from(runtime_home))
-                } else {
-                    None
-                }
-            },
-            current_dir,
-        )
-    }
-
-    fn setup_runtime_home(runtime_home: &TempRuntimeHome) -> Result<(), CliError> {
-        initialize_runtime_home(runtime_home.path(), "runtime_home_cli_test", "{}")?;
-        write_installation_profile(
-            runtime_home.path(),
-            InstallationProfileRegistration {
-                installation_id: "default".to_owned(),
-                volicord_command: "volicord".to_owned(),
-                volicord_mcp_command: "volicord".to_owned(),
-                bin_dir: runtime_home.path().join("bin"),
-                default_connection_mode: "workflow".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        Ok(())
-    }
-
-    fn json_value(text: &str) -> Value {
-        serde_json::from_str(text).expect("output should be JSON")
-    }
-
-    fn create_git_repo(runtime_home: &TempRuntimeHome, name: &str) -> PathBuf {
-        let repo_root = runtime_home
-            .create_product_repo(name)
-            .expect("repo fixture should be created");
-        fs::create_dir_all(repo_root.join(".git")).expect("git marker should be created");
-        repo_root
+        assert!(matches!(error, CliError::Usage(_)));
+        assert!(error.to_string().contains("unrecognized subcommand"));
     }
 }

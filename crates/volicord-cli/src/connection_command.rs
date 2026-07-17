@@ -1,27 +1,30 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt, fs,
+    io::{self, Read},
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
+use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-#[cfg(test)]
-use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
+use volicord_platform_fs::{observe_local_platform_boundary, observe_parent_process_binding};
 use volicord_store::{
     agent_connections::{
         activate_staged_connection, add_connection_project, agent_connection_record,
         complete_pending_host_cleanup, connection_metadata_has_pending_host_cleanup,
         connection_metadata_has_pending_host_cleanup_for_project, ensure_agent_connection,
-        ensure_staged_agent_connection, list_agent_connections, list_connection_projects,
-        remove_agent_connection_if_unused, remove_connection_project, set_connection_mode,
-        staged_connection_migration_state, update_agent_connection_verification_report,
-        AgentConnectionRecord, AgentConnectionRegistration, ConnectionProjectRecord,
-        ConnectionProjectRegistration, PendingHostCleanupError, StagedConnectionMigrationState,
-        SupersededConnectionProject, CONNECTION_INTENT_GLOBAL, CONNECTION_INTENT_PERSONAL,
-        CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
-        HOST_KIND_CLAUDE_CODE, HOST_KIND_CODEX, HOST_KIND_GENERIC, HOST_SCOPE_EXPORT,
-        HOST_SCOPE_LOCAL, HOST_SCOPE_PROJECT, HOST_SCOPE_USER, VERIFIED_STATUS_NOT_VERIFIED,
+        ensure_staged_agent_connection, list_agent_connections,
+        list_agent_connections_for_diagnostics, list_connection_projects,
+        list_connection_projects_for_diagnostics, remove_agent_connection_if_unused,
+        remove_connection_project, set_connection_mode, staged_connection_migration_state,
+        update_agent_connection_verification_report, AgentConnectionRecord,
+        AgentConnectionRegistration, ConnectionProjectRecord, ConnectionProjectRegistration,
+        PendingHostCleanupError, StagedConnectionMigrationState, SupersededConnectionProject,
+        CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
+        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
+        VERIFIED_STATUS_NOT_VERIFIED,
     },
     bootstrap::{
         ensure_project_for_repo, initialize_runtime_home, installation_profile,
@@ -33,49 +36,39 @@ use volicord_store::{
         guard_health_record, guard_installation_observation_is_current, list_guard_installations,
         GuardInstallationRecord,
     },
-    host_runtime_probes::host_runtime_probe_snapshot_from_report,
+    managed_host_authority::{upsert_managed_host_authority, ManagedHostAuthorityUpsert},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     workflow_records::ProjectWorkflowPolicyAuthorityApply,
     StoreError,
 };
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, GuardInstallationStatus,
-    HostFeatureSupportStatus, IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
+    canonical_json_sha256, canonical_json_string, current_managed_host_binding_external_descriptor,
+    host_hook_capability_managed_artifacts, GeneratedManagedArtifact, GuardInstallationStatus,
+    IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
+    PERSISTED_USER_ACTIONS_CORRUPT_REASON,
 };
 
-use crate::guard_integration::audit::{
-    all_recorded_values_true, combine_optional_file_states, file_state_rank,
-    guard_file_findings_for_installation, host_hook_capability_binding_valid_for_installation,
-    GuardFileFindings,
+use crate::cli::{
+    ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionListArgs, ConnectionModeArgs,
+    ConnectionRemoveArgs, ConnectionSelectArgs, InitArgs,
 };
-#[cfg(test)]
-use crate::guard_integration::audit::{guard_file_findings, script_is_executable, sha256_text};
-#[cfg(all(test, unix))]
-use crate::guard_integration::CODEX_DISPATCH_WRAPPER;
+use crate::guard_integration::audit::{
+    combine_optional_file_states, file_state_rank, guard_file_findings_for_installation,
+    host_hook_capability_binding_valid_for_installation, GuardFileFindings,
+};
 use crate::guard_integration::{
     apply_guard_integration, apply_guard_migration_protection, guard_has_prompt_capture_commands,
     guard_installation_upsert, initial_guard_installation_status, lifecycle_phase_names,
-    observe_hook_root_unsupported_message, plan_guard_integration, record_guard_installation,
-    FilePlanStatus, GeneratedFilePlan, GuardIntegrationError, GuardIntegrationPlan,
-    GuardIntegrationPlanRequest, HookWrapperResolutionStatus,
+    plan_guard_integration, record_guard_installation, FilePlanStatus, GeneratedFilePlan,
+    GuardIntegrationError, GuardIntegrationPlan, GuardIntegrationPlanRequest,
 };
-#[cfg(test)]
-use crate::guard_integration::{
-    generated_files_json, host_hook_capability_json, set_script_executable, shell_word,
-    AGENTS_FILE, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER, HOOK_WRAPPER_MARKER,
-    VOLICORD_POLICY_FILE,
-};
-#[cfg(test)]
-use crate::host_integration::REQUIRED_GUARD_PHASES;
 use crate::host_integration::{
-    capability_status::{
-        default_host_feature_support_matrix_for_version, host_feature_support_json,
-        host_feature_support_matrix_from_runtime_probes, HostFeature,
-        HostFeatureDiagnosticProjection, HostFeatureSupportMatrix,
+    codex::{
+        issue_host_verification_receipt, managed_host_evidence_for_live_process,
+        managed_identity_evaluation_for_plan, CheckedInCodexReleaseCatalog, CodexAdapter,
+        CodexEnvironment, CodexExistingPlanRequest, HostVerificationReceiptIssue,
     },
-    claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
-    codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
-    generic::{GenericAdapter, USER_MANAGED_CONFIGURATION_GUIDANCE},
+    process::canonical_existing_platform_path,
     verification::{
         ActiveToolExposureStatus, HostMcpCommandDiagnostic, HostMcpCommandLaunchMode,
         HostRuntimeDiagnostic, HostRuntimeObservationStatus, ManagedHostStorageDiagnostic,
@@ -83,11 +76,9 @@ use crate::host_integration::{
     },
     ConnectionIntent, HostAdapter, HostConfigError, HostIntegrationFileKind, HostKind,
     HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope, HostTarget,
-    InstallationProfile, ManagedServerEntry, PlannedChange, ProjectContext, UserAction,
-    UserActionKind,
+    InstallationProfile, PlannedChange, ProjectContext, UserAction, UserActionKind,
 };
 use crate::{
-    disclosure::detective_observation_disclosure_json,
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
 };
@@ -95,34 +86,35 @@ use crate::{
 mod args;
 mod mcp_process;
 mod output;
+mod persisted_user_actions;
 mod selection;
 mod service;
 mod verification;
 
-pub use args::{connect_usage, connection_usage, connections_usage, init_usage};
 pub use mcp_process::{
     ConnectionProcess, ConnectionProcessOutput, McpLaunch, McpVerification,
     ProductionConnectionProcess,
 };
 
 use args::{
-    connection_add_usage, connection_list_usage, connection_mode_usage, connection_output_format,
-    connection_remove_usage, connection_status_usage, connection_verify_usage, init_output_format,
-    is_help_request, parse_connection_options, parse_init_options, parse_public_host_kind,
-    parse_user_connection_mode, InitMode, OutputFormat, ParsedConnectionOptions, ParsedInitOptions,
+    connection_output_format, init_options, init_output_format, InitMode, OutputFormat,
+    ParsedConnectionOptions, ParsedInitOptions,
 };
 use mcp_process::mcp_launch_from_host_plan;
-#[cfg(test)]
-use output::connection_states_json;
 use output::{
     detailed_verification_report_json, render_connection_output, render_connection_plan_output,
     render_connection_remove_dry_run_output, render_connections_output, render_init_output,
     ConnectionOutput, ConnectionPlanOutput, ConnectionRemovePlan, InitOutput,
 };
+use persisted_user_actions::{
+    decode_persisted_object, decode_persisted_user_actions, persisted_object_state_json,
+    persisted_user_actions_check_json, PERSISTED_CONNECTION_METADATA_CORRUPT_REASON,
+    PERSISTED_VERIFICATION_REPORT_CORRUPT_REASON,
+};
 use selection::{
     connection_for_host_target, connection_selector, host_scope_for_intent,
     resolve_connection_host, resolve_connection_repo_root, select_connection,
-    selected_connection_project,
+    select_connection_for_diagnostics, selected_connection_project,
 };
 use service::{
     provision_connection, provision_init, ConnectionProvisioningOutcome, InitProvisioningRequest,
@@ -136,6 +128,7 @@ use verification::{
 };
 
 const PATH_ENV: &str = "PATH";
+const CODEX_NATIVE_EXECUTABLE_ENV: &str = "VOLICORD_CODEX_NATIVE_EXECUTABLE";
 const AGENT_METADATA_CREATED_BY: &str = "volicord_cli_agent_connection";
 const AGENT_RUNTIME_HOME_ID: &str = "runtime_home_agent";
 const INIT_METADATA_CREATED_BY: &str = "volicord_cli_init";
@@ -197,14 +190,11 @@ impl From<HostConfigError> for ConnectionCommandError {
 }
 
 pub fn run_init_command(
-    args: &[String],
+    args: InitArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    if is_help_request(args) {
-        return Ok(init_usage());
-    }
-    let parsed = parse_init_options(args, current_dir)?;
+    let parsed = init_options(args, current_dir);
     let outcome = provision_init(
         InitProvisioningRequest {
             parsed: &parsed,
@@ -232,18 +222,11 @@ pub fn run_init_command(
 }
 
 pub fn run_connect_command(
-    args: &[String],
+    args: ConnectionAddArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    if is_help_request(args) {
-        return Ok(connection_add_usage());
-    }
-    let parsed = parse_connection_options(
-        args,
-        &["repo", "shared", "global", "read-only", "dry-run", "json"],
-        1,
-    )?;
+    let parsed = ParsedConnectionOptions::from(args);
     match provision_connection(
         ProvisionConnectionRequest {
             parsed: &parsed,
@@ -292,14 +275,11 @@ pub fn run_connect_command(
 }
 
 pub fn run_connections_command(
-    args: &[String],
+    args: ConnectionListArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    if is_help_request(args) {
-        return Ok(connection_list_usage());
-    }
-    let parsed = parse_connection_options(args, &["repo", "json"], 0)?;
+    let parsed = ParsedConnectionOptions::from(args);
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let repo_root = parsed
         .repo
@@ -307,8 +287,11 @@ pub fn run_connections_command(
         .map(|repo| resolve_connection_repo_root(current_dir, Some(repo)))
         .transpose()?;
     let mut rows = Vec::new();
-    for connection in list_agent_connections(&runtime_home)? {
-        let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
+    for connection in list_agent_connections_for_diagnostics(&runtime_home)? {
+        let projects = list_connection_projects_for_diagnostics(
+            &runtime_home,
+            &connection.connection_internal_id,
+        )?;
         if repo_root.as_ref().is_none_or(|repo_root| {
             projects
                 .iter()
@@ -321,50 +304,61 @@ pub fn run_connections_command(
 }
 
 pub fn run_connection_command(
-    args: &[String],
+    args: ConnectionArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Ok(connection_usage());
-    };
-    if matches!(subcommand, "-h" | "--help" | "help") {
-        if args.len() == 1 {
-            return Ok(connection_usage());
+    match args.command {
+        ConnectionCommand::Add(options) => run_connect_command(options, current_dir, process),
+        ConnectionCommand::List(options) => run_connections_command(options, current_dir, process),
+        ConnectionCommand::Status(options) => {
+            command_connection_status(options, current_dir, process)
         }
-        return Err(ConnectionCommandError::usage(format!(
-            "unexpected argument: {}\n\n{}",
-            args[1],
-            connection_usage()
-        )));
-    }
-    match subcommand {
-        "add" => run_connect_command(&args[1..], current_dir, process),
-        "list" => run_connections_command(&args[1..], current_dir, process),
-        "status" => command_connection_status(&args[1..], current_dir, process),
-        "verify" => command_connection_verify(&args[1..], current_dir, process),
-        "mode" => command_connection_mode(&args[1..], current_dir, process),
-        "remove" => command_connection_remove(&args[1..], current_dir, process),
-        other => Err(ConnectionCommandError::usage(format!(
-            "unknown connection command: {other}\n\n{}",
-            connection_usage()
-        ))),
+        ConnectionCommand::Verify(options) => {
+            command_connection_verify(options, current_dir, process)
+        }
+        ConnectionCommand::Mode(options) => command_connection_mode(options, current_dir, process),
+        ConnectionCommand::Remove(options) => {
+            command_connection_remove(options, current_dir, process)
+        }
     }
 }
 
 fn command_connection_status(
-    args: &[String],
+    args: ConnectionSelectArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    if is_help_request(args) {
-        return Ok(connection_status_usage());
-    }
-    let parsed = parse_connection_options(args, &["repo", "shared", "global", "json"], 1)?;
+    let parsed = ParsedConnectionOptions::from(args);
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
-    let (connection, projects) = select_connection(&runtime_home, &selector)?;
+    let (connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
+    let persisted_user_actions = decode_persisted_user_actions(&connection.last_user_actions_json);
+    let persisted_report_corrupt =
+        decode_persisted_object(&connection.last_verification_report_json).is_none();
+    let persisted_metadata_corrupt = decode_persisted_object(&connection.metadata_json).is_none();
+    if persisted_metadata_corrupt {
+        let user_actions = persisted_user_actions
+            .actions()
+            .unwrap_or_default()
+            .to_vec();
+        return render_connection_output(ConnectionOutput {
+            format: connection_output_format(&parsed),
+            action: "status",
+            status: AgentResultStatus::ActionRequired,
+            runtime_home: &runtime_home,
+            host_kind: parse_host_kind(&connection.host_kind)?,
+            guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
+            user_actions,
+            connection: &connection,
+            projects: &projects,
+            affected_repo_root: None,
+            verification: None,
+            current_host: None,
+            plan: None,
+        });
+    }
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
     let current_host = current_status_host_diagnostic(
@@ -374,12 +368,17 @@ fn command_connection_status(
         &projects,
         process,
     )?;
-    let user_actions = connection_status_actions(&connection, current_host.as_ref());
-    let status = status_with_current_diagnostics(
+    let projected_user_actions =
+        connection_status_actions(current_host.as_ref(), &persisted_user_actions);
+    let user_actions = projected_user_actions.unwrap_or_default();
+    let mut status = status_with_current_diagnostics(
         status_from_store(&connection.last_verification_status),
         &user_actions,
         current_host.as_ref(),
     );
+    if persisted_user_actions.is_corrupt() || persisted_report_corrupt {
+        status = AgentResultStatus::ActionRequired;
+    }
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "status",
@@ -398,17 +397,19 @@ fn command_connection_status(
 }
 
 fn command_connection_verify(
-    args: &[String],
+    args: ConnectionSelectArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    if is_help_request(args) {
-        return Ok(connection_verify_usage());
-    }
-    let parsed = parse_connection_options(args, &["repo", "shared", "global", "json"], 1)?;
+    let parsed = ParsedConnectionOptions::from(args);
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
-    let (mut connection, projects) = select_connection(&runtime_home, &selector)?;
+    let (mut connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
+    if decode_persisted_object(&connection.metadata_json).is_none() {
+        return Err(ConnectionCommandError::runtime(format!(
+            "{PERSISTED_CONNECTION_METADATA_CORRUPT_REASON}: connection verification cannot repair Agent Connection registration metadata; recreate or repair the registration before retrying"
+        )));
+    }
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
@@ -448,29 +449,23 @@ fn command_connection_verify(
 }
 
 fn command_connection_mode(
-    args: &[String],
+    args: ConnectionModeArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    if is_help_request(args) {
-        return Ok(connection_mode_usage());
-    }
-    let parsed = parse_connection_options(args, &["repo", "shared", "global", "json"], 2)?;
-    let (host_kind, mode) = mode_positionals(&parsed, process)?;
-    let parsed = ParsedConnectionOptions {
-        host_kind: Some(host_kind),
-        ..parsed
-    };
+    let mode = args.mode.as_str().to_owned();
+    let parsed = ParsedConnectionOptions::from(args);
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, _) = select_connection(&runtime_home, &selector)?;
+    let persisted_user_actions = decode_persisted_user_actions(&connection.last_user_actions_json);
+    let mut actions = persisted_user_actions.actions().ok_or_else(|| {
+        ConnectionCommandError::runtime(format!(
+            "{PERSISTED_USER_ACTIONS_CORRUPT_REASON}: connection mode was not changed because stored UserAction values are corrupt; run `volicord connection verify` to regenerate current typed values"
+        ))
+    })?.to_vec();
     let mut connection =
         set_connection_mode(&runtime_home, &connection.connection_internal_id, &mode)?;
-    let mut actions = stored_or_default_user_actions(
-        &connection,
-        parse_host_kind(&connection.host_kind)?,
-        parse_host_scope(&connection.host_scope)?,
-    );
     actions.push(UserAction::new(
         UserActionKind::ReloadRequired,
         "Restart or reload the host so it refreshes the Volicord tool list for the selected mode",
@@ -502,15 +497,11 @@ fn command_connection_mode(
 }
 
 fn command_connection_remove(
-    args: &[String],
+    args: ConnectionRemoveArgs,
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    if is_help_request(args) {
-        return Ok(connection_remove_usage());
-    }
-    let parsed =
-        parse_connection_options(args, &["repo", "shared", "global", "dry-run", "json"], 1)?;
+    let parsed = ParsedConnectionOptions::from(args);
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection(&runtime_home, &selector)?;
@@ -575,7 +566,7 @@ fn command_connection_remove(
 fn resolve_init_repo_root(
     current_dir: &Path,
     repo: &Path,
-    host_kind: HostKind,
+    _host_kind: HostKind,
     init_mode: InitMode,
 ) -> Result<PathBuf, ConnectionCommandError> {
     match resolve_connection_repo_root(current_dir, Some(repo)) {
@@ -585,14 +576,6 @@ fn resolve_init_repo_root(
                 && message.contains("no Git repository root found") =>
         {
             resolve_explicit_record_repo_root(current_dir, repo)
-        }
-        Err(ConnectionCommandError::Runtime(message))
-            if init_mode == InitMode::Detective
-                && message.contains("no Git repository root found") =>
-        {
-            Err(ConnectionCommandError::runtime(
-                observe_hook_root_unsupported_message(host_kind, repo),
-            ))
         }
         Err(error) => Err(error),
     }
@@ -631,58 +614,22 @@ fn resolve_explicit_record_repo_root(
 fn connection_intent_from_flags(
     parsed: &ParsedConnectionOptions,
 ) -> Result<ConnectionIntent, ConnectionCommandError> {
-    if parsed.shared && parsed.global {
-        return Err(ConnectionCommandError::usage(
-            "--shared and --global are mutually exclusive",
-        ));
-    }
     if parsed.shared {
         Ok(ConnectionIntent::Shared)
-    } else if parsed.global {
-        Ok(ConnectionIntent::Global)
     } else {
         Ok(ConnectionIntent::Personal)
-    }
-}
-
-fn mode_positionals(
-    parsed: &ParsedConnectionOptions,
-    process: &impl ConnectionProcess,
-) -> Result<(HostKind, String), ConnectionCommandError> {
-    match parsed.positionals.as_slice() {
-        [mode] => {
-            if let Ok(mode) = parse_user_connection_mode(mode) {
-                Ok((resolve_connection_host(None, process)?, mode))
-            } else {
-                Err(ConnectionCommandError::usage(
-                    "missing mode; use `workflow` or `read-only`",
-                ))
-            }
-        }
-        [host, mode] => Ok((
-            parse_public_host_kind(host)?,
-            parse_user_connection_mode(mode)?,
-        )),
-        [] => Err(ConnectionCommandError::usage(
-            "missing mode; use `workflow` or `read-only`",
-        )),
-        _ => Err(ConnectionCommandError::usage("unexpected mode arguments")),
     }
 }
 
 fn public_host_label(host_kind: HostKind) -> &'static str {
     match host_kind {
         HostKind::Codex => "codex",
-        HostKind::ClaudeCode => "claude-code",
-        HostKind::Generic => "generic",
     }
 }
 
 fn public_host_display_name(host_kind: HostKind) -> &'static str {
     match host_kind {
         HostKind::Codex => "Codex",
-        HostKind::ClaudeCode => "Claude Code",
-        HostKind::Generic => "generic host",
     }
 }
 
@@ -690,14 +637,12 @@ fn intent_flag_suffix(intent: ConnectionIntent) -> &'static str {
     match intent {
         ConnectionIntent::Personal => "",
         ConnectionIntent::Shared => " --shared",
-        ConnectionIntent::Global => " --global",
     }
 }
 
 fn public_host_name_text(host_kind: &str) -> &str {
     match host_kind {
         HOST_KIND_CODEX => "codex",
-        HOST_KIND_CLAUDE_CODE => "claude-code",
         other => other,
     }
 }
@@ -713,10 +658,8 @@ fn public_mode_text(mode: &str) -> &str {
 fn parse_host_kind(value: &str) -> Result<HostKind, ConnectionCommandError> {
     match value {
         HOST_KIND_CODEX => Ok(HostKind::Codex),
-        "claude-code" | HOST_KIND_CLAUDE_CODE => Ok(HostKind::ClaudeCode),
-        HOST_KIND_GENERIC => Ok(HostKind::Generic),
         other => Err(ConnectionCommandError::usage(format!(
-            "unknown host: {other}"
+            "unsupported host in Agent Connection registry: {other}"
         ))),
     }
 }
@@ -725,8 +668,6 @@ fn parse_host_scope(value: &str) -> Result<HostScope, ConnectionCommandError> {
     match value {
         HOST_SCOPE_USER => Ok(HostScope::User),
         HOST_SCOPE_PROJECT => Ok(HostScope::Project),
-        HOST_SCOPE_LOCAL => Ok(HostScope::Local),
-        HOST_SCOPE_EXPORT => Ok(HostScope::Export),
         other => Err(ConnectionCommandError::usage(format!(
             "unknown scope: {other}"
         ))),
@@ -737,7 +678,6 @@ fn parse_connection_intent(value: &str) -> Result<ConnectionIntent, ConnectionCo
     match value {
         CONNECTION_INTENT_PERSONAL => Ok(ConnectionIntent::Personal),
         CONNECTION_INTENT_SHARED => Ok(ConnectionIntent::Shared),
-        CONNECTION_INTENT_GLOBAL => Ok(ConnectionIntent::Global),
         other => Err(ConnectionCommandError::runtime(format!(
             "unknown connection intent in registry: {other}"
         ))),
@@ -900,7 +840,7 @@ fn enforce_single_project_scope(
     project_id: &str,
 ) -> Result<(), ConnectionCommandError> {
     let scope = parse_host_scope(&connection.host_scope)?;
-    if !matches!(scope, HostScope::Project | HostScope::Local) {
+    if scope != HostScope::Project {
         return Ok(());
     }
     let projects = list_connection_projects(runtime_home, &connection.connection_internal_id)?;
@@ -909,50 +849,29 @@ fn enforce_single_project_scope(
         .any(|project| project.project_id != project_id)
     {
         return Err(ConnectionCommandError::runtime(
-            "project and local Agent Connections may allow only one project",
+            "shared Agent Connections may allow only one project",
         ));
     }
     Ok(())
 }
 
 fn connection_target_hint(
-    host_kind: HostKind,
+    _host_kind: HostKind,
     scope: HostScope,
     repo_root: Option<&Path>,
     process: &impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    match (host_kind, scope) {
-        (HostKind::Codex, HostScope::User) => {
+    match scope {
+        HostScope::User => {
             let path = codex_home(process)?.join("config.toml");
             Ok(path_text(&path))
         }
-        (HostKind::Codex, HostScope::Project) => {
+        HostScope::Project => {
             let repo_root = repo_root.ok_or_else(|| {
                 ConnectionCommandError::usage("Codex shared connection requires --repo PATH")
             })?;
             Ok(path_text(&repo_root.join(".codex").join("config.toml")))
         }
-        (HostKind::ClaudeCode, HostScope::Project) => {
-            let repo_root = repo_root.ok_or_else(|| {
-                ConnectionCommandError::usage("Claude Code shared connection requires --repo PATH")
-            })?;
-            Ok(path_text(&repo_root.join(".mcp.json")))
-        }
-        (HostKind::ClaudeCode, HostScope::Local) => {
-            let repo_root = repo_root.ok_or_else(|| {
-                ConnectionCommandError::usage(
-                    "Claude Code personal connection requires --repo PATH",
-                )
-            })?;
-            Ok(format!("claude local {}", path_text(repo_root)))
-        }
-        (HostKind::ClaudeCode, HostScope::User) => Ok("claude user".to_owned()),
-        (HostKind::Generic, _) => Err(ConnectionCommandError::usage(
-            USER_MANAGED_CONFIGURATION_GUIDANCE,
-        )),
-        _ => Err(ConnectionCommandError::usage(
-            "host and scope must match the accepted Agent Connection host-and-scope matrix",
-        )),
     }
 }
 
@@ -986,19 +905,13 @@ fn build_host_plan(
         mode: request.mode,
         expected_fingerprint: request.expected_fingerprint,
     };
-    match request.host_kind {
-        HostKind::Codex => {
-            let adapter = CodexAdapter::new(codex_environment(process));
-            adapter.plan(plan_request).map_err(Into::into)
-        }
-        HostKind::ClaudeCode => {
-            let mut adapter = ClaudeCodeAdapter::new(ProductionCommandRunner);
-            adapter.plan(plan_request).map_err(Into::into)
-        }
-        HostKind::Generic => Err(ConnectionCommandError::usage(
-            USER_MANAGED_CONFIGURATION_GUIDANCE,
-        )),
+    if request.host_kind != HostKind::Codex {
+        return Err(ConnectionCommandError::usage(
+            "only Codex managed connections are supported",
+        ));
     }
+    let adapter = CodexAdapter::new(codex_environment(process));
+    adapter.plan(plan_request).map_err(Into::into)
 }
 
 fn apply_host_plan(
@@ -1006,20 +919,13 @@ fn apply_host_plan(
     plan: &HostPlan,
     process: &impl ConnectionProcess,
 ) -> Result<(), ConnectionCommandError> {
-    match host_kind {
-        HostKind::Codex => {
-            let mut adapter = CodexAdapter::new(codex_environment(process));
-            adapter.apply(plan)?;
-        }
-        HostKind::ClaudeCode => {
-            let mut adapter = ClaudeCodeAdapter::new(ProductionCommandRunner);
-            adapter.apply(plan)?;
-        }
-        HostKind::Generic => {
-            let mut adapter = GenericAdapter;
-            adapter.apply(plan)?;
-        }
+    if host_kind != HostKind::Codex {
+        return Err(ConnectionCommandError::usage(
+            "only Codex managed connections are supported",
+        ));
     }
+    let mut adapter = CodexAdapter::new(codex_environment(process));
+    adapter.apply(plan)?;
     Ok(())
 }
 
@@ -1038,20 +944,13 @@ fn remove_host_configuration(
         target: plan.target.clone(),
         expected_fingerprint: connection.managed_fingerprint.clone(),
     };
-    match host_kind {
-        HostKind::Codex => {
-            let mut adapter = CodexAdapter::new(codex_environment(process));
-            adapter.remove(request)?;
-        }
-        HostKind::ClaudeCode => {
-            let mut adapter = ClaudeCodeAdapter::new(ProductionCommandRunner);
-            adapter.remove(request)?;
-        }
-        HostKind::Generic => {
-            let mut adapter = GenericAdapter;
-            adapter.remove(request)?;
-        }
+    if host_kind != HostKind::Codex {
+        return Err(ConnectionCommandError::usage(
+            "only Codex managed connections are supported",
+        ));
     }
+    let mut adapter = CodexAdapter::new(codex_environment(process));
+    adapter.remove(request)?;
     Ok(())
 }
 
@@ -1064,7 +963,7 @@ fn existing_host_plan(
     let host_kind = parse_host_kind(&connection.host_kind)?;
     let host_scope = parse_host_scope(&connection.host_scope)?;
     let connection_intent = parse_connection_intent(&connection.intent)?;
-    let metadata = parse_metadata(&connection.metadata_json);
+    let metadata = parse_metadata(&connection.metadata_json)?;
     let mcp_command = metadata
         .get("mcp_command")
         .map(PathBuf::from)
@@ -1073,110 +972,345 @@ fn existing_host_plan(
         .get("host_runtime_home")
         .map(PathBuf::from)
         .or_else(|| runtime_home_for_host_config(host_scope, runtime_home).map(Path::to_path_buf));
-    match host_kind {
-        HostKind::Codex => {
-            let adapter = CodexAdapter::new(codex_environment(process));
-            adapter
-                .plan_existing(CodexExistingPlanRequest {
-                    connection_intent,
-                    scope: host_scope,
-                    connection_id: &connection.connection_internal_id,
-                    project_id: selected_project.map(|project| project.project_id.as_str()),
-                    server_name: &connection.server_name,
-                    config_target: Path::new(&connection.config_target),
-                    mcp_command: &mcp_command,
-                    runtime_home: runtime_home_for_entry.as_deref(),
-                    mode: &connection.mode,
-                })
-                .map_err(Into::into)
-        }
-        _ => Ok(manual_existing_host_plan(
-            connection,
-            host_kind,
+    if host_kind != HostKind::Codex {
+        return Err(ConnectionCommandError::usage(
+            "only Codex managed connections are supported",
+        ));
+    }
+    let adapter = CodexAdapter::new(codex_environment(process));
+    adapter
+        .plan_existing(CodexExistingPlanRequest {
             connection_intent,
-            host_scope,
-            &mcp_command,
-            runtime_home_for_entry.as_deref(),
-            &metadata,
-        )),
-    }
+            scope: host_scope,
+            connection_id: &connection.connection_internal_id,
+            project_id: selected_project.map(|project| project.project_id.as_str()),
+            server_name: &connection.server_name,
+            config_target: Path::new(&connection.config_target),
+            mcp_command: &mcp_command,
+            runtime_home: runtime_home_for_entry.as_deref(),
+            mode: &connection.mode,
+        })
+        .map_err(Into::into)
 }
 
-fn manual_existing_host_plan(
-    connection: &AgentConnectionRecord,
-    host_kind: HostKind,
-    connection_intent: ConnectionIntent,
-    host_scope: HostScope,
-    mcp_command: &Path,
-    runtime_home: Option<&Path>,
-    metadata: &BTreeMap<String, String>,
-) -> HostPlan {
-    let target = match metadata.get("target_kind").map(String::as_str) {
-        Some("file") => HostTarget::File(PathBuf::from(
-            metadata
-                .get("target_path")
-                .cloned()
-                .unwrap_or_else(|| connection.config_target.clone()),
-        )),
-        Some("export") => HostTarget::Export(PathBuf::from(
-            metadata
-                .get("target_path")
-                .cloned()
-                .unwrap_or_else(|| connection.config_target.clone()),
-        )),
-        Some("external_cli") => HostTarget::ExternalCli {
-            program: metadata
-                .get("external_program")
-                .cloned()
-                .unwrap_or_else(|| "claude".to_owned()),
-            cwd: metadata.get("external_cwd").map(PathBuf::from),
-        },
-        _ if host_kind == HostKind::Generic => {
-            HostTarget::Export(PathBuf::from(&connection.config_target))
-        }
-        _ => HostTarget::File(PathBuf::from(&connection.config_target)),
+/// Issues and persists the current managed Codex authority for one live stdio parent.
+///
+/// The caller invokes this only for an actual managed-host startup. Availability
+/// probes and CLI verification children do not establish live process authority.
+pub fn prepare_managed_stdio_authority(
+    runtime_home: &Path,
+    connection_id: &str,
+    selected_project_id: Option<&str>,
+) -> Result<(), ConnectionCommandError> {
+    let connection = agent_connection_record(runtime_home, connection_id)?.ok_or_else(|| {
+        managed_authority_error(
+            "host_receipt_connection_missing",
+            format!("Agent Connection {connection_id} is not registered"),
+        )
+    })?;
+    if !connection.enabled {
+        return Err(managed_authority_error(
+            "host_receipt_connection_disabled",
+            format!("Agent Connection {connection_id} is disabled"),
+        ));
+    }
+    if connection.host_kind != HOST_KIND_CODEX {
+        return Err(managed_authority_error(
+            "unsupported_host_contract",
+            format!(
+                "managed stdio authority supports only Codex, not {}",
+                connection.host_kind
+            ),
+        ));
+    }
+
+    let projects = list_connection_projects(runtime_home, connection_id)?;
+    let selected = projects
+        .iter()
+        .filter(|project| {
+            selected_project_id.is_none_or(|selected| {
+                selected == project.project_id || selected == project.project_internal_id
+            })
+        })
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        return Err(managed_authority_error(
+            "host_receipt_project_missing",
+            selected_project_id.map_or_else(
+                || format!("Agent Connection {connection_id} has no allowed project"),
+                |project_id| {
+                    format!(
+                        "project {project_id} is not allowed for Agent Connection {connection_id}"
+                    )
+                },
+            ),
+        ));
+    }
+
+    let platform = observe_local_platform_boundary()
+        .map_err(|error| managed_authority_error(error.reason(), error.detail().to_owned()))?;
+    let parent = observe_parent_process_binding()
+        .map_err(|error| managed_authority_error(error.reason(), error.detail().to_owned()))?;
+    let verifier_path = std::env::current_exe().map_err(|error| {
+        managed_authority_error("verifier_build_unavailable", error.to_string())
+    })?;
+    let verifier_build_digest = strict_raw_artifact(&verifier_path, platform.environment)?.digest;
+    let process = ProductionConnectionProcess;
+    let authority_context = ManagedAuthorityPreparationContext {
+        platform: &platform,
+        parent: &parent,
+        verifier_build_digest: &verifier_build_digest,
     };
-    HostPlan {
-        host_kind,
-        connection_intent,
-        host_scope,
-        mode: connection.mode.clone(),
-        server_name: connection.server_name.clone(),
-        target,
-        entry: ManagedServerEntry::new(
-            &connection.connection_internal_id,
-            mcp_command,
+
+    for project in selected {
+        prepare_project_managed_stdio_authority(
             runtime_home,
-        ),
-        change: PlannedChange::Noop,
-        fingerprint: connection.managed_fingerprint.clone(),
-        conflicts: Vec::new(),
-        user_actions: stored_or_default_user_actions(connection, host_kind, host_scope),
-        file_snapshot: None,
+            &connection,
+            &projects,
+            project,
+            &process,
+            &authority_context,
+        )?;
     }
+    Ok(())
 }
 
-fn stored_or_default_user_actions(
+struct ManagedAuthorityPreparationContext<'a> {
+    platform: &'a volicord_platform_fs::LocalPlatformBoundary,
+    parent: &'a volicord_types::ProcessBinding,
+    verifier_build_digest: &'a str,
+}
+
+fn prepare_project_managed_stdio_authority(
+    runtime_home: &Path,
     connection: &AgentConnectionRecord,
-    host_kind: HostKind,
-    host_scope: HostScope,
-) -> Vec<UserAction> {
-    let parsed = serde_json::from_str::<Vec<UserAction>>(&connection.last_user_actions_json)
-        .unwrap_or_default();
-    if !parsed.is_empty() {
-        return parsed;
+    projects: &[ConnectionProjectRecord],
+    project: &ConnectionProjectRecord,
+    process: &impl ConnectionProcess,
+    authority: &ManagedAuthorityPreparationContext<'_>,
+) -> Result<(), ConnectionCommandError> {
+    let plan = existing_host_plan(connection, runtime_home, process, Some(project))?;
+    let identity = managed_identity_evaluation_for_plan(&plan)?;
+    if identity.status != crate::host_integration::verification::ManagedConfigStatus::Match {
+        return Err(managed_authority_error(
+            "managed_host_configuration_stale",
+            format!(
+                "Codex managed configuration for connection {} and project {} is {}",
+                connection.connection_internal_id,
+                project.project_id,
+                identity.status.as_str()
+            ),
+        ));
     }
-    match (host_kind, host_scope) {
-        (HostKind::ClaudeCode, HostScope::Project) => vec![UserAction::new(
-            UserActionKind::ProjectApprovalRequired,
-            "Claude Code requires user approval before project-scoped .mcp.json servers load",
-        )],
-        (HostKind::Generic, HostScope::Export) => vec![UserAction::new(
-            UserActionKind::HostTrustRequired,
-            "Configure the external MCP host manually for an enabled Agent Connection and require the launched process to pass MCP startup validation; Volicord does not write generic host configuration",
-        )],
-        _ => Vec::new(),
+
+    let installations = list_guard_installations(
+        runtime_home,
+        &connection.connection_internal_id,
+        Some(&project.project_id),
+    )?;
+    let [installation] = installations.as_slice() else {
+        return Err(managed_authority_error(
+            "managed_artifact_inventory_ambiguous",
+            format!(
+                "connection {} and project {} require exactly one current Guard installation, found {}",
+                connection.connection_internal_id,
+                project.project_id,
+                installations.len()
+            ),
+        ));
+    };
+    require_current_guard_artifacts(runtime_home, installation, connection, projects)?;
+
+    let capability: Value =
+        serde_json::from_str(&installation.host_capability_json).map_err(|_| {
+            managed_authority_error(
+                "managed_artifact_inventory_corrupt",
+                "the current Guard capability is not typed JSON",
+            )
+        })?;
+    let coordinates = host_hook_capability_managed_artifacts(&capability).ok_or_else(|| {
+        managed_authority_error(
+            "managed_artifact_inventory_corrupt",
+            "the current Guard capability has an unknown or incomplete artifact inventory",
+        )
+    })?;
+    let mut artifacts = coordinates
+        .iter()
+        .map(|coordinate| {
+            strict_raw_artifact(Path::new(&coordinate.path), authority.platform.environment)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let HostTarget::File(configuration_path) = &plan.target else {
+        return Err(managed_authority_error(
+            "configuration_target_invalid",
+            "the managed Codex configuration target is not a file",
+        ));
+    };
+    artifacts.push(strict_raw_artifact(
+        configuration_path,
+        authority.platform.environment,
+    )?);
+
+    require_current_guard_artifacts(runtime_home, installation, connection, projects)?;
+    let second_artifacts = artifacts
+        .iter()
+        .map(|artifact| {
+            strict_raw_artifact(Path::new(&artifact.path), authority.platform.environment)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if artifacts != second_artifacts
+        || managed_identity_evaluation_for_plan(&plan)?.status
+            != crate::host_integration::verification::ManagedConfigStatus::Match
+    {
+        return Err(managed_authority_error(
+            "managed_artifact_inventory_changed",
+            "managed Codex artifacts changed while live authority was being established",
+        ));
     }
+
+    let evidence = managed_host_evidence_for_live_process(
+        &plan,
+        authority.parent.clone(),
+        authority.platform.environment,
+        authority.platform.release_coordinate.clone(),
+        artifacts,
+        &CheckedInCodexReleaseCatalog,
+    )
+    .map_err(|error| managed_authority_error(error.reason(), error.to_string()))?;
+    let store =
+        CoreProjectStore::open_read_only(runtime_home, &ProjectId::new(&project.project_id))?;
+    let policy = store.project_workflow_policy()?.ok_or_else(|| {
+        managed_authority_error(
+            "host_receipt_policy_missing",
+            format!(
+                "project {} has no authoritative workflow policy",
+                project.project_id
+            ),
+        )
+    })?;
+    let observed_at = UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now()));
+    let expires_at = observed_at.checked_add(Duration::hours(24)).map_err(|_| {
+        managed_authority_error(
+            "host_receipt_expiry_unrepresentable",
+            "the receipt expiry cannot be represented as canonical UTC",
+        )
+    })?;
+    let receipt = issue_host_verification_receipt(HostVerificationReceiptIssue {
+        project_id: &project.project_id,
+        connection_id: &connection.connection_internal_id,
+        evidence: &evidence,
+        policy_digest: &policy.policy_fingerprint,
+        verifier_build_digest: authority.verifier_build_digest,
+        observed_at,
+        expires_at,
+    })
+    .map_err(|error| managed_authority_error(error.reason(), error.to_string()))?;
+    upsert_managed_host_authority(
+        runtime_home,
+        ManagedHostAuthorityUpsert {
+            connection_internal_id: connection.connection_internal_id.clone(),
+            project_internal_id: project.project_id.clone(),
+            external_contract_descriptor: current_managed_host_binding_external_descriptor(),
+            managed_host_binding: evidence.binding,
+            generated_artifacts: evidence.generated_artifacts,
+            host_verification_receipt: receipt,
+        },
+    )?;
+    Ok(())
+}
+
+fn require_current_guard_artifacts(
+    runtime_home: &Path,
+    installation: &GuardInstallationRecord,
+    connection: &AgentConnectionRecord,
+    projects: &[ConnectionProjectRecord],
+) -> Result<(), ConnectionCommandError> {
+    if !host_hook_capability_binding_valid_for_installation(installation, connection, projects) {
+        return Err(managed_authority_error(
+            "managed_artifact_inventory_owner_mismatch",
+            "the current Guard artifact inventory is not bound to this connection and project",
+        ));
+    }
+    let findings =
+        guard_file_findings_for_installation(runtime_home, installation, connection, projects);
+    if !findings.generated_config_verified()
+        || !findings.missing_required_hooks.is_empty()
+        || !findings.missing_files.is_empty()
+        || !findings.stale_files.is_empty()
+        || !findings.broken_files.is_empty()
+    {
+        return Err(managed_authority_error(
+            "managed_artifact_inventory_stale",
+            format!(
+                "Guard artifacts are not current (missing={}, stale={}, broken={}, missing_hooks={})",
+                findings.missing_files.len(),
+                findings.stale_files.len(),
+                findings.broken_files.len(),
+                findings.missing_required_hooks.len()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn strict_raw_artifact(
+    path: &Path,
+    platform: volicord_types::PlatformEnvironment,
+) -> Result<GeneratedManagedArtifact, ConnectionCommandError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        managed_authority_error(
+            "managed_artifact_unavailable",
+            format!(
+                "managed artifact {} is unavailable: {error}",
+                path.display()
+            ),
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(managed_authority_error(
+            "managed_artifact_not_regular_file",
+            format!(
+                "managed artifact {} must be a regular non-symlink file",
+                path.display()
+            ),
+        ));
+    }
+    let canonical_path = canonical_existing_platform_path(path, platform)
+        .map_err(|error| managed_authority_error("managed_artifact_path_invalid", error))?;
+    let digest = sha256_regular_file(path).map_err(|error| {
+        managed_authority_error(
+            "managed_artifact_unavailable",
+            format!(
+                "managed artifact {} could not be read: {error}",
+                path.display()
+            ),
+        )
+    })?;
+    Ok(GeneratedManagedArtifact {
+        path: canonical_path,
+        digest,
+    })
+}
+
+fn sha256_regular_file(path: &Path) -> io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn managed_authority_error(
+    reason: &'static str,
+    detail: impl Into<String>,
+) -> ConnectionCommandError {
+    ConnectionCommandError::runtime(format!("{reason}: {}", detail.into()))
 }
 
 fn init_first_run_user_actions(
@@ -1185,15 +1319,7 @@ fn init_first_run_user_actions(
     init_mode: InitMode,
 ) -> Vec<UserAction> {
     let mut actions = existing.to_vec();
-    if host_kind == HostKind::Codex && init_mode != InitMode::Record {
-        let codex_first_run_hook_trust_hint = UserAction::new(
-            UserActionKind::HostTrustRequired,
-            "Review and trust Codex project hook commands before relying on Volicord detective host hooks",
-        );
-        if !actions.contains(&codex_first_run_hook_trust_hint) {
-            actions.push(codex_first_run_hook_trust_hint);
-        }
-    }
+    let _ = init_mode;
     actions.push(UserAction::new(
         UserActionKind::ReloadRequired,
         format!(
@@ -1233,18 +1359,8 @@ struct GuardOperationalState {
     observation_state: String,
     effective_state: String,
     generated_config_verified: bool,
-    native_host_output_adapter_config_verified: bool,
-    final_output_authority_disclosure: FinalOutputAuthorityDisclosureState,
-    hook_path_safety_state: String,
-    hook_commands_cwd_independent: bool,
-    hook_commands_subdirectory_safe: bool,
-    hook_path_safety_details: Vec<Value>,
-    bash_shell_mutation_coverage: bool,
     direct_file_write_matcher_coverage: bool,
     files_state: String,
-    managed_source_state: String,
-    managed_bundle_hash: Option<String>,
-    managed_verification_state: String,
     agents_block_state: String,
     policy_file_state: String,
     rule_instruction_state: String,
@@ -1260,142 +1376,6 @@ struct GuardOperationalState {
     unresolved_blockers: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FinalOutputAuthorityDisclosureState {
-    configured: bool,
-    configuration_verified: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ConnectionHostFeatureDiagnostics {
-    support: HostFeatureSupportMatrix,
-    final_output: Option<HostFeatureDiagnosticProjection>,
-}
-
-impl ConnectionHostFeatureDiagnostics {
-    fn baseline_for_version(
-        host_kind: HostKind,
-        host_version: Option<&str>,
-        profile: Option<IntegrationProfile>,
-        configured: bool,
-        configuration_verified: bool,
-    ) -> Self {
-        let support = default_host_feature_support_matrix_for_version(host_kind, host_version);
-        let final_output = profile.map(|profile| {
-            HostFeatureDiagnosticProjection::from_matrix(
-                support,
-                profile,
-                configured,
-                configuration_verified,
-            )
-        });
-        Self {
-            support,
-            final_output,
-        }
-    }
-
-    fn from_runtime_probes(
-        host_kind: HostKind,
-        profile: Option<IntegrationProfile>,
-        configured: bool,
-        configuration_verified: bool,
-        connection: &AgentConnectionRecord,
-        now: &UtcTimestamp,
-    ) -> Result<Self, ConnectionCommandError> {
-        let selected_profile = profile.unwrap_or(IntegrationProfile::Record);
-        let snapshot =
-            host_runtime_probe_snapshot_from_report(&connection.last_verification_report_json)
-                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        let support = host_feature_support_matrix_from_runtime_probes(
-            &snapshot,
-            host_kind,
-            &connection.managed_fingerprint,
-            selected_profile,
-            now,
-        );
-        let final_output = profile.map(|profile| {
-            HostFeatureDiagnosticProjection::from_matrix(
-                support,
-                profile,
-                configured,
-                configuration_verified,
-            )
-        });
-        Ok(Self {
-            support,
-            final_output,
-        })
-    }
-
-    fn host_feature_support_json(self) -> Value {
-        host_feature_support_json(self.support)
-    }
-
-    fn final_output_authority_disclosure_json(self) -> Option<Value> {
-        self.final_output
-            .map(HostFeatureDiagnosticProjection::final_output_authority_disclosure_json)
-    }
-
-    fn host_feature_support_rows(
-        self,
-    ) -> [(HostFeature, HostFeatureSupportStatus); HostFeature::ALL.len()] {
-        self.support.rows()
-    }
-}
-
-impl FinalOutputAuthorityDisclosureState {
-    const fn unavailable() -> Self {
-        Self {
-            configured: false,
-            configuration_verified: false,
-        }
-    }
-
-    fn from_integration(integration: &GuardIntegrationPlan, applied: bool) -> Self {
-        let has_native_adapter = integration.native_host_output_adapter != "none";
-        let has_config = integration.generated_files.iter().any(|file| {
-            file.kind == HostIntegrationFileKind::HostHookConfig
-                && (!applied
-                    || matches!(
-                        file.status,
-                        FilePlanStatus::Unchanged
-                            | FilePlanStatus::Created
-                            | FilePlanStatus::Updated
-                    ))
-        });
-        let has_wrapper = integration.generated_files.iter().any(|file| {
-            file.kind == HostIntegrationFileKind::HostHookWrapper
-                && (!applied
-                    || matches!(
-                        file.status,
-                        FilePlanStatus::Unchanged
-                            | FilePlanStatus::Created
-                            | FilePlanStatus::Updated
-                    ))
-        });
-        let configured = has_native_adapter && applied && has_config && has_wrapper;
-        let configuration_verified = configured
-            && integration.native_host_output_adapter_config_verified
-            && integration
-                .host_hook_commands
-                .iter()
-                .all(|command| command.cwd_independent && command.subdirectory_safe);
-        Self {
-            configured,
-            configuration_verified,
-        }
-    }
-
-    fn from_findings(findings: &GuardFileFindings) -> Self {
-        Self {
-            configured: findings.final_output_authority_disclosure_configured(),
-            configuration_verified: findings
-                .final_output_authority_disclosure_configuration_verified(),
-        }
-    }
-}
-
 impl GuardOperationalState {
     fn not_configured() -> Self {
         Self {
@@ -1406,18 +1386,8 @@ impl GuardOperationalState {
             observation_state: "not_observed".to_owned(),
             effective_state: "inactive".to_owned(),
             generated_config_verified: false,
-            native_host_output_adapter_config_verified: false,
-            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::unavailable(),
-            hook_path_safety_state: "not_checked".to_owned(),
-            hook_commands_cwd_independent: false,
-            hook_commands_subdirectory_safe: false,
-            hook_path_safety_details: Vec::new(),
-            bash_shell_mutation_coverage: false,
             direct_file_write_matcher_coverage: false,
             files_state: "not_configured".to_owned(),
-            managed_source_state: "not_configured".to_owned(),
-            managed_bundle_hash: None,
-            managed_verification_state: "not_configured".to_owned(),
             agents_block_state: "not_configured".to_owned(),
             policy_file_state: "not_configured".to_owned(),
             rule_instruction_state: "not_configured".to_owned(),
@@ -1436,11 +1406,7 @@ impl GuardOperationalState {
 
     fn planned(init_mode: InitMode, integration: &GuardIntegrationPlan) -> Self {
         let installation_state = "planned".to_owned();
-        let observation_state = if init_mode == InitMode::Record {
-            "disabled".to_owned()
-        } else {
-            "not_observed".to_owned()
-        };
+        let observation_state = "not_observed".to_owned();
         let configuration_state = guard_configuration_state(
             &installation_state,
             !integration.missing_required_hooks.is_empty(),
@@ -1458,30 +1424,8 @@ impl GuardOperationalState {
             observation_state: observation_state.clone(),
             effective_state,
             generated_config_verified: false,
-            native_host_output_adapter_config_verified: integration
-                .native_host_output_adapter_config_verified,
-            final_output_authority_disclosure:
-                FinalOutputAuthorityDisclosureState::from_integration(integration, false),
-            hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
-            hook_commands_cwd_independent: integration
-                .host_hook_commands
-                .iter()
-                .all(|command| command.cwd_independent),
-            hook_commands_subdirectory_safe: integration
-                .host_hook_commands
-                .iter()
-                .all(|command| command.subdirectory_safe),
-            hook_path_safety_details: Vec::new(),
-            bash_shell_mutation_coverage: integration.bash_shell_mutation_coverage,
             direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
-            files_state: if init_mode == InitMode::Record {
-                "disabled".to_owned()
-            } else {
-                "planned".to_owned()
-            },
-            managed_source_state: integration.managed_source.clone(),
-            managed_bundle_hash: integration.managed_bundle_hash.clone(),
-            managed_verification_state: integration.managed_verification_status.clone(),
+            files_state: "planned".to_owned(),
             agents_block_state: generated_file_kind_state(
                 &integration.generated_files,
                 HostIntegrationFileKind::AgentsManagedBlock,
@@ -1512,9 +1456,7 @@ impl GuardOperationalState {
             .into_iter()
             .map(str::to_owned)
             .collect::<Vec<_>>();
-        let hook_observed_state = if init_mode == InitMode::Record {
-            "disabled".to_owned()
-        } else if health == GuardInstallationStatus::Active.as_str() {
+        let hook_observed_state = if health == GuardInstallationStatus::Active.as_str() {
             "observed".to_owned()
         } else {
             "not_observed".to_owned()
@@ -1535,35 +1477,14 @@ impl GuardOperationalState {
             configuration_state,
             observation_state,
             effective_state,
-            generated_config_verified: init_mode != InitMode::Record
-                && integration
-                    .generated_files
-                    .iter()
-                    .all(|file| file.status == FilePlanStatus::Unchanged),
-            native_host_output_adapter_config_verified: integration
-                .native_host_output_adapter_config_verified,
-            final_output_authority_disclosure:
-                FinalOutputAuthorityDisclosureState::from_integration(integration, true),
-            hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
-            hook_commands_cwd_independent: integration
-                .host_hook_commands
-                .iter()
-                .all(|command| command.cwd_independent),
-            hook_commands_subdirectory_safe: integration
-                .host_hook_commands
-                .iter()
-                .all(|command| command.subdirectory_safe),
-            hook_path_safety_details: Vec::new(),
-            bash_shell_mutation_coverage: integration.bash_shell_mutation_coverage,
+            generated_config_verified: integration.generated_files.iter().all(|file| {
+                matches!(
+                    file.status,
+                    FilePlanStatus::Unchanged | FilePlanStatus::Created | FilePlanStatus::Updated
+                )
+            }),
             direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
-            files_state: if init_mode == InitMode::Record {
-                "disabled".to_owned()
-            } else {
-                "installed".to_owned()
-            },
-            managed_source_state: integration.managed_source.clone(),
-            managed_bundle_hash: integration.managed_bundle_hash.clone(),
-            managed_verification_state: integration.managed_verification_status.clone(),
+            files_state: "installed".to_owned(),
             agents_block_state: generated_file_kind_state(
                 &integration.generated_files,
                 HostIntegrationFileKind::AgentsManagedBlock,
@@ -1597,48 +1518,6 @@ impl GuardOperationalState {
         }
     }
 
-    fn host_feature_diagnostic(
-        &self,
-        host_kind: HostKind,
-        profile: Option<IntegrationProfile>,
-    ) -> ConnectionHostFeatureDiagnostics {
-        self.host_feature_diagnostic_for_version(host_kind, None, profile)
-    }
-
-    fn host_feature_diagnostic_for_version(
-        &self,
-        host_kind: HostKind,
-        host_version: Option<&str>,
-        profile: Option<IntegrationProfile>,
-    ) -> ConnectionHostFeatureDiagnostics {
-        ConnectionHostFeatureDiagnostics::baseline_for_version(
-            host_kind,
-            host_version,
-            profile,
-            self.final_output_authority_disclosure.configured,
-            self.final_output_authority_disclosure
-                .configuration_verified,
-        )
-    }
-
-    fn host_feature_diagnostic_from_runtime_probes(
-        &self,
-        host_kind: HostKind,
-        profile: Option<IntegrationProfile>,
-        connection: &AgentConnectionRecord,
-        now: &UtcTimestamp,
-    ) -> Result<ConnectionHostFeatureDiagnostics, ConnectionCommandError> {
-        ConnectionHostFeatureDiagnostics::from_runtime_probes(
-            host_kind,
-            profile,
-            self.final_output_authority_disclosure.configured,
-            self.final_output_authority_disclosure
-                .configuration_verified,
-            connection,
-            now,
-        )
-    }
-
     fn to_json(&self) -> Value {
         json!({
             "selected_profile": &self.guard_profile_state,
@@ -1648,15 +1527,9 @@ impl GuardOperationalState {
             "observation_health": &self.observation_state,
             "effective_health": &self.effective_state,
             "generated_config_verified": self.generated_config_verified,
-            "native_host_output_adapter_config_verified": self.native_host_output_adapter_config_verified,
-            "hook_path_safety": &self.hook_path_safety_state,
-            "hook_commands_cwd_independent": self.hook_commands_cwd_independent,
-            "hook_commands_subdirectory_safe": self.hook_commands_subdirectory_safe,
-            "hook_path_safety_details": &self.hook_path_safety_details,
             "cooperative_pre_tool_warning_available": self.cooperative_pre_tool_warning_available(),
             "cooperative_pre_tool_denial_available": self.cooperative_pre_tool_denial_available(),
             "post_tool_correlation_available": self.post_tool_correlation_available(),
-            "bash_shell_mutation_coverage": self.bash_shell_mutation_coverage,
             "direct_file_write_matcher_coverage": self.direct_file_write_matcher_coverage,
             "bypass_detection_active": self.bypass_detection_active(),
             "files": &self.files_state,
@@ -1671,7 +1544,6 @@ impl GuardOperationalState {
             "last_guard_event_at": &self.last_guard_event_at,
             "prompt_capture": &self.prompt_capture_state,
             "prompt_capture_available": self.prompt_capture_available(),
-            "local_web_consent_available": false,
             "missing_files": &self.missing_files,
             "stale_files": &self.stale_files,
             "broken_files": &self.broken_files,
@@ -1688,10 +1560,9 @@ impl GuardOperationalState {
         json!({
             "selected_profile": self.selected_profile(),
             "host_hooks_active": self.host_hook_guard_available(),
-            "session_watcher_active": false,
             "cooperative_pre_tool_warning_available": self.cooperative_pre_tool_warning_available(),
             "cooperative_pre_tool_denial_available": self.cooperative_pre_tool_denial_available(),
-            "unrecorded_changes_detectable": false,
+            "unrecorded_changes_detectable": self.post_tool_correlation_available(),
             "actor_identity_provable": false,
             "os_enforced": false,
         })
@@ -1701,29 +1572,16 @@ impl GuardOperationalState {
         self.guard_profile_state.as_str()
     }
 
-    fn integration_profile(&self) -> Option<IntegrationProfile> {
-        match self.selected_profile() {
-            "record" => Some(IntegrationProfile::Record),
-            "detective" => Some(IntegrationProfile::Detective),
-            _ => None,
-        }
-    }
-
-    fn detective_hooks_applicable(&self) -> bool {
-        matches!(self.mode_state.as_str(), "detective" | "mixed")
-            || matches!(self.guard_profile_state.as_str(), "detective" | "mixed")
+    fn guard_hooks_applicable(&self) -> bool {
+        self.mode_state == IntegrationProfile::Record.as_str()
+            && self.guard_profile_state == IntegrationProfile::Record.as_str()
     }
 
     fn host_hook_guard_available(&self) -> bool {
-        self.mode_state == IntegrationProfile::Detective.as_str()
+        self.guard_hooks_applicable()
             && self.effective_state == "active"
             && self.missing_required_hooks.is_empty()
             && self.generated_config_verified
-            && self.native_host_output_adapter_config_verified
-            && self.hook_path_safety_state == HookWrapperResolutionStatus::Ok.as_str()
-            && self.hook_commands_cwd_independent
-            && self.hook_commands_subdirectory_safe
-            && self.bash_shell_mutation_coverage
             && self.direct_file_write_matcher_coverage
     }
 
@@ -1751,9 +1609,7 @@ impl GuardOperationalState {
     }
 
     fn required_hook_phases_state(&self) -> &'static str {
-        if self.mode_state == IntegrationProfile::Record.as_str() {
-            "disabled"
-        } else if self.missing_required_hooks.is_empty() {
+        if self.missing_required_hooks.is_empty() {
             "configured"
         } else {
             "missing"
@@ -1780,12 +1636,9 @@ fn combine_file_states(left: &'static str, right: &'static str) -> &'static str 
 }
 
 fn planned_rule_instruction_state(
-    init_mode: InitMode,
+    _init_mode: InitMode,
     integration: &GuardIntegrationPlan,
 ) -> String {
-    if init_mode == InitMode::Record {
-        return "not_applicable".to_owned();
-    }
     let state = generated_file_kind_state(
         &integration.generated_files,
         HostIntegrationFileKind::HostRuleInstruction,
@@ -1799,10 +1652,7 @@ fn planned_rule_instruction_state(
     }
 }
 
-fn planned_hook_config_state(init_mode: InitMode, integration: &GuardIntegrationPlan) -> String {
-    if init_mode == InitMode::Record {
-        return "disabled".to_owned();
-    }
+fn planned_hook_config_state(_init_mode: InitMode, integration: &GuardIntegrationPlan) -> String {
     let config_state = generated_file_kind_state(
         &integration.generated_files,
         HostIntegrationFileKind::HostHookConfig,
@@ -1828,38 +1678,10 @@ fn planned_hook_config_state(init_mode: InitMode, integration: &GuardIntegration
     }
 }
 
-fn planned_hook_path_safety_state(
-    init_mode: InitMode,
-    integration: &GuardIntegrationPlan,
-) -> String {
-    if init_mode == InitMode::Record {
-        return "not_applicable".to_owned();
-    }
-    if integration.host_hook_commands.is_empty() {
-        return HookWrapperResolutionStatus::MetadataMissing
-            .as_str()
-            .to_owned();
-    }
-    if integration.host_hook_commands.iter().all(|command| {
-        command.cwd_independent
-            && command.subdirectory_safe
-            && command.wrapper_resolution_status == HookWrapperResolutionStatus::Ok
-    }) {
-        HookWrapperResolutionStatus::Ok.as_str().to_owned()
-    } else {
-        HookWrapperResolutionStatus::RelativePathUnsafe
-            .as_str()
-            .to_owned()
-    }
-}
-
 fn planned_prompt_capture_state(
-    init_mode: InitMode,
+    _init_mode: InitMode,
     integration: &GuardIntegrationPlan,
 ) -> &'static str {
-    if init_mode == InitMode::Record {
-        return PromptCaptureStatus::NotConfigured.as_str();
-    }
     if !integration.capabilities.user_prompt_submit_hook {
         return PromptCaptureStatus::UnsupportedByHost.as_str();
     }
@@ -1920,313 +1742,79 @@ fn guard_state_for_connection(
         return Ok(GuardOperationalState::not_configured());
     }
 
-    let mut file_findings = GuardFileFindings::default();
-    let mut prompt_capture_configured = false;
-    let mut prompt_capture_host_supported = false;
-    let prompt_capture_disabled = installations
-        .iter()
-        .all(|installation| installation.guard_mode == IntegrationProfile::Record.as_str());
-    let mut detective_installation_count = 0usize;
-    let mut every_detective_observation_current = true;
-    let mut every_detective_prompt_capture_observed = true;
+    let mut findings = GuardFileFindings::default();
+    let mut every_observation_current = true;
+    let mut every_prompt_capture_observed = true;
     let mut last_observed_at = None;
     for installation in &installations {
-        let findings =
+        let installation_findings =
             guard_file_findings_for_installation(runtime_home, installation, connection, projects);
-        file_findings.merge(findings);
-        if installation.last_seen_at.is_some() {
-            last_observed_at = max_optional_utc_timestamp(
-                last_observed_at,
-                installation.last_seen_at.as_deref(),
-                "guard_installations.last_seen_at",
-            )?;
-        }
-        if installation.guard_mode == IntegrationProfile::Detective.as_str() {
-            detective_installation_count += 1;
-            let binding_is_current = host_hook_capability_binding_valid_for_installation(
-                installation,
-                connection,
-                projects,
-            );
-            let observation_is_current =
-                binding_is_current && guard_installation_observation_is_current(installation)?;
-            every_detective_observation_current &= observation_is_current;
-            every_detective_prompt_capture_observed &= observation_is_current
-                && installation.last_seen_phase.as_deref() == Some("prompt_capture");
-        }
-        if installation.guard_mode != IntegrationProfile::Record.as_str()
-            && file_findings.prompt_capture_configured
-        {
-            prompt_capture_configured = true;
-        }
-        prompt_capture_host_supported |= file_findings.prompt_capture_host_supported;
-    }
-    let observed = detective_installation_count > 0 && every_detective_observation_current;
-    let prompt_capture_observed =
-        detective_installation_count > 0 && every_detective_prompt_capture_observed;
-    let last_observed_at = last_observed_at.map(|timestamp| timestamp.to_canonical_string());
-    file_findings.sort_dedup();
-    let guard_profile_state = guard_profile_state_for_installations(&installations, &file_findings);
-    let managed_source_state =
-        managed_source_state_for_installations(&installations, &file_findings);
-    let managed_bundle_hash = managed_bundle_hash_for_findings(&file_findings);
-    let managed_verification_state =
-        managed_verification_state_for_installations(&installations, &file_findings);
-    let hook_path_safety_state = if prompt_capture_disabled {
-        "not_applicable".to_owned()
-    } else {
-        file_findings.hook_path_safety_state()
-    };
-    let hook_commands_cwd_independent = !prompt_capture_disabled
-        && all_recorded_values_true(&file_findings.hook_cwd_independent_values);
-    let hook_commands_subdirectory_safe = !prompt_capture_disabled
-        && all_recorded_values_true(&file_findings.hook_subdirectory_safe_values);
-    let hook_path_safety_details = if prompt_capture_disabled {
-        Vec::new()
-    } else {
-        file_findings.hook_path_safety_details.clone()
-    };
-
-    if !file_findings.broken_files.is_empty() {
-        let mode_state = guard_mode_state(&installations);
-        let installation_state = GuardInstallationStatus::Broken.as_str();
-        let hook_observed_state = if prompt_capture_disabled {
-            "disabled"
-        } else if observed {
-            "observed"
-        } else {
-            "not_observed"
-        };
-        let configuration_state = guard_configuration_state(
-            installation_state,
-            !file_findings.missing_required_hooks.is_empty(),
-        );
-        let observation_state = guard_observation_state(hook_observed_state);
-        let effective_state =
-            guard_effective_state(&mode_state, &configuration_state, &observation_state);
-        let required_hooks_missing = !file_findings.missing_required_hooks.is_empty();
-        return Ok(GuardOperationalState {
-            mode_state: mode_state.clone(),
-            guard_profile_state,
-            installation_state: installation_state.to_owned(),
-            configuration_state,
-            observation_state,
-            effective_state,
-            generated_config_verified: false,
-            native_host_output_adapter_config_verified: file_findings
-                .native_host_output_adapter_config_verified(),
-            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
-                &file_findings,
-            ),
-            hook_path_safety_state: hook_path_safety_state.clone(),
-            hook_commands_cwd_independent,
-            hook_commands_subdirectory_safe,
-            hook_path_safety_details: hook_path_safety_details.clone(),
-            bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
-            direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
-            files_state: "broken".to_owned(),
-            managed_source_state,
-            managed_bundle_hash,
-            managed_verification_state,
-            agents_block_state: file_findings
-                .kind_state(HostIntegrationFileKind::AgentsManagedBlock)
-                .to_owned(),
-            policy_file_state: file_findings
-                .kind_state(HostIntegrationFileKind::VolicordPolicy)
-                .to_owned(),
-            rule_instruction_state: file_findings.rule_instruction_state(prompt_capture_disabled),
-            hook_config_state: file_findings.hook_config_state(prompt_capture_disabled),
-            hook_observed_state: hook_observed_state.to_owned(),
+        findings.merge(installation_findings);
+        let binding_is_current =
+            host_hook_capability_binding_valid_for_installation(installation, connection, projects);
+        let observation_is_current =
+            binding_is_current && guard_installation_observation_is_current(installation)?;
+        every_observation_current &= observation_is_current;
+        every_prompt_capture_observed &= observation_is_current
+            && installation.last_seen_phase.as_deref() == Some("prompt_capture");
+        last_observed_at = max_optional_utc_timestamp(
             last_observed_at,
-            last_guard_event_at: last_guard_event_for_projects(
-                runtime_home,
-                connection_id,
-                projects,
-            )?,
-            prompt_capture_state: PromptCaptureStatus::Degraded.as_str().to_owned(),
-            missing_files: file_findings.missing_files,
-            stale_files: file_findings.stale_files,
-            broken_files: file_findings.broken_files,
-            missing_required_hooks: file_findings.missing_required_hooks,
-            unresolved_blockers: guard_blockers_for_state(
-                &mode_state,
-                GuardInstallationStatus::Broken.as_str(),
-                observed,
-                required_hooks_missing,
-            ),
-        });
+            installation.last_seen_at.as_deref(),
+            "guard_installations.last_seen_at",
+        )?;
     }
+    findings.sort_dedup();
 
-    if !file_findings.missing_files.is_empty() {
-        let mode_state = guard_mode_state(&installations);
-        let installation_state = "files_missing";
-        let hook_observed_state = if prompt_capture_disabled {
-            "disabled"
-        } else if observed {
-            "observed"
-        } else {
-            "not_observed"
-        };
-        let configuration_state = guard_configuration_state(
-            installation_state,
-            !file_findings.missing_required_hooks.is_empty(),
-        );
-        let observation_state = guard_observation_state(hook_observed_state);
-        let effective_state =
-            guard_effective_state(&mode_state, &configuration_state, &observation_state);
-        return Ok(GuardOperationalState {
-            mode_state,
-            guard_profile_state,
-            installation_state: installation_state.to_owned(),
-            configuration_state,
-            observation_state,
-            effective_state,
-            generated_config_verified: false,
-            native_host_output_adapter_config_verified: file_findings
-                .native_host_output_adapter_config_verified(),
-            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
-                &file_findings,
-            ),
-            hook_path_safety_state: hook_path_safety_state.clone(),
-            hook_commands_cwd_independent,
-            hook_commands_subdirectory_safe,
-            hook_path_safety_details: hook_path_safety_details.clone(),
-            bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
-            direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
-            files_state: "missing".to_owned(),
-            managed_source_state,
-            managed_bundle_hash,
-            managed_verification_state,
-            agents_block_state: file_findings
-                .kind_state(HostIntegrationFileKind::AgentsManagedBlock)
-                .to_owned(),
-            policy_file_state: file_findings
-                .kind_state(HostIntegrationFileKind::VolicordPolicy)
-                .to_owned(),
-            rule_instruction_state: file_findings.rule_instruction_state(prompt_capture_disabled),
-            hook_config_state: file_findings.hook_config_state(prompt_capture_disabled),
-            hook_observed_state: hook_observed_state.to_owned(),
-            last_observed_at,
-            last_guard_event_at: last_guard_event_for_projects(
-                runtime_home,
-                connection_id,
-                projects,
-            )?,
-            prompt_capture_state: PromptCaptureStatus::NotConfigured.as_str().to_owned(),
-            missing_files: file_findings.missing_files,
-            stale_files: file_findings.stale_files,
-            broken_files: file_findings.broken_files,
-            missing_required_hooks: file_findings.missing_required_hooks,
-            unresolved_blockers: vec!["guard_not_installed".to_owned()],
-        });
-    }
-
-    if !file_findings.stale_files.is_empty() {
-        let mode_state = guard_mode_state(&installations);
-        let installation_state = GuardInstallationStatus::Stale.as_str();
-        let hook_observed_state = if prompt_capture_disabled {
-            "disabled"
-        } else if observed {
-            "observed"
-        } else {
-            "not_observed"
-        };
-        let configuration_state = guard_configuration_state(
-            installation_state,
-            !file_findings.missing_required_hooks.is_empty(),
-        );
-        let observation_state = guard_observation_state(hook_observed_state);
-        let effective_state =
-            guard_effective_state(&mode_state, &configuration_state, &observation_state);
-        let required_hooks_missing = !file_findings.missing_required_hooks.is_empty();
-        return Ok(GuardOperationalState {
-            mode_state: mode_state.clone(),
-            guard_profile_state,
-            installation_state: installation_state.to_owned(),
-            configuration_state,
-            observation_state,
-            effective_state,
-            generated_config_verified: false,
-            native_host_output_adapter_config_verified: file_findings
-                .native_host_output_adapter_config_verified(),
-            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
-                &file_findings,
-            ),
-            hook_path_safety_state: hook_path_safety_state.clone(),
-            hook_commands_cwd_independent,
-            hook_commands_subdirectory_safe,
-            hook_path_safety_details: hook_path_safety_details.clone(),
-            bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
-            direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
-            files_state: "stale".to_owned(),
-            managed_source_state,
-            managed_bundle_hash,
-            managed_verification_state,
-            agents_block_state: file_findings
-                .kind_state(HostIntegrationFileKind::AgentsManagedBlock)
-                .to_owned(),
-            policy_file_state: file_findings
-                .kind_state(HostIntegrationFileKind::VolicordPolicy)
-                .to_owned(),
-            rule_instruction_state: file_findings.rule_instruction_state(prompt_capture_disabled),
-            hook_config_state: file_findings.hook_config_state(prompt_capture_disabled),
-            hook_observed_state: hook_observed_state.to_owned(),
-            last_observed_at,
-            last_guard_event_at: last_guard_event_for_projects(
-                runtime_home,
-                connection_id,
-                projects,
-            )?,
-            prompt_capture_state: PromptCaptureStatus::Degraded.as_str().to_owned(),
-            missing_files: file_findings.missing_files,
-            stale_files: file_findings.stale_files,
-            broken_files: file_findings.broken_files,
-            missing_required_hooks: file_findings.missing_required_hooks,
-            unresolved_blockers: guard_blockers_for_state(
-                &mode_state,
-                GuardInstallationStatus::Stale.as_str(),
-                observed,
-                required_hooks_missing,
-            ),
-        });
-    }
-
-    let installation_state = if installations.iter().any(|installation| {
-        installation.installation_status == GuardInstallationStatus::Broken.as_str()
-    }) {
+    let observed = every_observation_current;
+    let prompt_capture_observed = every_prompt_capture_observed;
+    let mode_state = guard_mode_state(&installations);
+    let installation_state = if !findings.broken_files.is_empty()
+        || installations.iter().any(|installation| {
+            installation.installation_status == GuardInstallationStatus::Broken.as_str()
+        }) {
         GuardInstallationStatus::Broken.as_str()
-    } else if installations.iter().any(|installation| {
-        installation.installation_status == GuardInstallationStatus::Stale.as_str()
-    }) {
+    } else if !findings.missing_files.is_empty() {
+        "files_missing"
+    } else if !findings.stale_files.is_empty()
+        || installations.iter().any(|installation| {
+            installation.installation_status == GuardInstallationStatus::Stale.as_str()
+        })
+    {
         GuardInstallationStatus::Stale.as_str()
-    } else if !file_findings.missing_required_hooks.is_empty() {
+    } else if !findings.missing_required_hooks.is_empty()
+        || installations.iter().any(|installation| {
+            installation.installation_status == GuardInstallationStatus::Degraded.as_str()
+        })
+    {
         GuardInstallationStatus::Degraded.as_str()
     } else if installations.iter().any(|installation| {
         installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
     }) {
         GuardInstallationStatus::ReloadRequired.as_str()
     } else if installations.iter().any(|installation| {
-        installation.installation_status == GuardInstallationStatus::Degraded.as_str()
-    }) {
-        GuardInstallationStatus::Degraded.as_str()
-    } else if installations.iter().any(|installation| {
         installation.installation_status == GuardInstallationStatus::Active.as_str()
     }) {
         GuardInstallationStatus::Active.as_str()
-    } else if installations.iter().all(|installation| {
-        installation.installation_status == GuardInstallationStatus::Configured.as_str()
-    }) {
-        GuardInstallationStatus::Configured.as_str()
     } else {
-        installations[0].installation_status.as_str()
+        GuardInstallationStatus::Configured.as_str()
     };
-    let prompt_capture_state = if prompt_capture_disabled {
-        PromptCaptureStatus::NotConfigured.as_str()
-    } else if !prompt_capture_host_supported {
+
+    let hook_observed_state = if observed { "observed" } else { "not_observed" };
+    let configuration_state = guard_configuration_state(
+        installation_state,
+        !findings.missing_required_hooks.is_empty(),
+    );
+    let observation_state = guard_observation_state(hook_observed_state);
+    let effective_state =
+        guard_effective_state(&mode_state, &configuration_state, &observation_state);
+    let prompt_capture_state = if !findings.prompt_capture_host_supported {
         PromptCaptureStatus::UnsupportedByHost.as_str()
-    } else if !prompt_capture_configured {
+    } else if !findings.prompt_capture_configured {
         PromptCaptureStatus::NotConfigured.as_str()
-    } else if matches!(installation_state, "broken" | "stale" | "degraded") {
+    } else if matches!(
+        installation_state,
+        "broken" | "stale" | "degraded" | "files_missing"
+    ) {
         PromptCaptureStatus::Degraded.as_str()
     } else if installation_state == GuardInstallationStatus::ReloadRequired.as_str() {
         PromptCaptureStatus::ReloadRequired.as_str()
@@ -2234,83 +1822,65 @@ fn guard_state_for_connection(
         && prompt_capture_observed
     {
         PromptCaptureStatus::Active.as_str()
-    } else if installation_state == GuardInstallationStatus::Active.as_str() && observed {
-        PromptCaptureStatus::Observed.as_str()
-    } else if installation_state == GuardInstallationStatus::Configured.as_str()
-        || installation_state == GuardInstallationStatus::Active.as_str()
-    {
-        PromptCaptureStatus::Configured.as_str()
-    } else {
-        PromptCaptureStatus::Unavailable.as_str()
-    };
-    let mode_state = guard_mode_state(&installations);
-    let hook_observed_state = if prompt_capture_disabled {
-        "disabled"
     } else if observed {
-        "observed"
+        PromptCaptureStatus::Observed.as_str()
     } else {
-        "not_observed"
+        PromptCaptureStatus::Configured.as_str()
     };
-    let configuration_state = guard_configuration_state(
+
+    let generated_config_verified = findings.generated_config_verified();
+    let direct_file_write_matcher_coverage = findings.direct_file_write_matcher_coverage();
+    let files_state = if !findings.broken_files.is_empty() {
+        "broken"
+    } else if !findings.missing_files.is_empty() {
+        "missing"
+    } else if !findings.stale_files.is_empty() {
+        "stale"
+    } else {
+        "installed"
+    }
+    .to_owned();
+    let agents_block_state = findings
+        .kind_state(HostIntegrationFileKind::AgentsManagedBlock)
+        .to_owned();
+    let policy_file_state = findings
+        .kind_state(HostIntegrationFileKind::VolicordPolicy)
+        .to_owned();
+    let rule_instruction_state = findings.rule_instruction_state(false);
+    let hook_config_state = findings.hook_config_state(false);
+    let required_hooks_missing = !findings.missing_required_hooks.is_empty();
+    let unresolved_blockers = guard_blockers_for_state(
+        &mode_state,
         installation_state,
-        !file_findings.missing_required_hooks.is_empty(),
+        observed,
+        required_hooks_missing,
     );
-    let observation_state = guard_observation_state(hook_observed_state);
-    let effective_state =
-        guard_effective_state(&mode_state, &configuration_state, &observation_state);
-    let required_hooks_missing = !file_findings.missing_required_hooks.is_empty();
+
     Ok(GuardOperationalState {
-        mode_state: mode_state.clone(),
-        guard_profile_state,
+        mode_state,
+        guard_profile_state: IntegrationProfile::Record.as_str().to_owned(),
         installation_state: installation_state.to_owned(),
         configuration_state,
         observation_state,
         effective_state,
-        generated_config_verified: file_findings.generated_config_verified(),
-        native_host_output_adapter_config_verified: file_findings
-            .native_host_output_adapter_config_verified(),
-        final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
-            &file_findings,
-        ),
-        hook_path_safety_state,
-        hook_commands_cwd_independent,
-        hook_commands_subdirectory_safe,
-        hook_path_safety_details,
-        bash_shell_mutation_coverage: file_findings.bash_shell_mutation_coverage(),
-        direct_file_write_matcher_coverage: file_findings.direct_file_write_matcher_coverage(),
-        files_state: if prompt_capture_disabled {
-            "not_configured".to_owned()
-        } else {
-            "installed".to_owned()
-        },
-        managed_source_state,
-        managed_bundle_hash,
-        managed_verification_state,
-        agents_block_state: file_findings
-            .kind_state(HostIntegrationFileKind::AgentsManagedBlock)
-            .to_owned(),
-        policy_file_state: file_findings
-            .kind_state(HostIntegrationFileKind::VolicordPolicy)
-            .to_owned(),
-        rule_instruction_state: file_findings.rule_instruction_state(prompt_capture_disabled),
-        hook_config_state: file_findings.hook_config_state(prompt_capture_disabled),
+        generated_config_verified,
+        direct_file_write_matcher_coverage,
+        files_state,
+        agents_block_state,
+        policy_file_state,
+        rule_instruction_state,
+        hook_config_state,
         hook_observed_state: hook_observed_state.to_owned(),
-        last_observed_at,
+        last_observed_at: last_observed_at.map(|timestamp| timestamp.to_canonical_string()),
         last_guard_event_at: last_guard_event_for_projects(runtime_home, connection_id, projects)?,
         prompt_capture_state: prompt_capture_state.to_owned(),
-        missing_files: file_findings.missing_files,
-        stale_files: file_findings.stale_files,
-        broken_files: file_findings.broken_files,
-        missing_required_hooks: file_findings.missing_required_hooks,
-        unresolved_blockers: guard_blockers_for_state(
-            &mode_state,
-            installation_state,
-            observed,
-            required_hooks_missing,
-        ),
+        missing_files: findings.missing_files,
+        stale_files: findings.stale_files,
+        broken_files: findings.broken_files,
+        missing_required_hooks: findings.missing_required_hooks,
+        unresolved_blockers,
     })
 }
-
 fn guard_mode_state(installations: &[GuardInstallationRecord]) -> String {
     let mut modes = installations
         .iter()
@@ -2322,61 +1892,6 @@ fn guard_mode_state(installations: &[GuardInstallationRecord]) -> String {
         modes[0].to_owned()
     } else {
         "mixed".to_owned()
-    }
-}
-
-fn guard_profile_state_for_installations(
-    installations: &[GuardInstallationRecord],
-    _findings: &GuardFileFindings,
-) -> String {
-    match guard_mode_state(installations).as_str() {
-        "record" => "record",
-        "detective" => "detective",
-        _ => "mixed",
-    }
-    .to_owned()
-}
-
-fn managed_source_state_for_installations(
-    installations: &[GuardInstallationRecord],
-    findings: &GuardFileFindings,
-) -> String {
-    if let Some(value) = single_or_mixed(&findings.managed_sources) {
-        return value;
-    }
-    match guard_profile_state_for_installations(installations, findings).as_str() {
-        "record" => "not_applicable",
-        "detective" => "host_hooks",
-        "mixed" => "mixed",
-        _ => "unknown",
-    }
-    .to_owned()
-}
-
-fn managed_bundle_hash_for_findings(findings: &GuardFileFindings) -> Option<String> {
-    single_or_mixed(&findings.managed_bundle_hashes)
-}
-
-fn managed_verification_state_for_installations(
-    installations: &[GuardInstallationRecord],
-    findings: &GuardFileFindings,
-) -> String {
-    if let Some(value) = single_or_mixed(&findings.managed_verification_statuses) {
-        return value;
-    }
-    match guard_profile_state_for_installations(installations, findings).as_str() {
-        "record" | "detective" => "not_applicable",
-        "mixed" => "mixed",
-        _ => "unknown",
-    }
-    .to_owned()
-}
-
-fn single_or_mixed(values: &[String]) -> Option<String> {
-    match values {
-        [] => None,
-        [value] => Some(value.clone()),
-        _ => Some("mixed".to_owned()),
     }
 }
 
@@ -2411,13 +1926,10 @@ fn guard_observation_state(hook_observed_state: &str) -> String {
 }
 
 fn guard_effective_state(
-    guard_mode: &str,
+    _guard_mode: &str,
     configuration_state: &str,
     observation_state: &str,
 ) -> String {
-    if guard_mode == IntegrationProfile::Record.as_str() {
-        return "inactive".to_owned();
-    }
     match configuration_state {
         "absent" => "inactive",
         "broken" => "broken",
@@ -2430,14 +1942,11 @@ fn guard_effective_state(
 }
 
 fn guard_blockers_for_state(
-    guard_mode: &str,
+    _guard_mode: &str,
     installation_state: &str,
     host_hook_observed: bool,
     required_hooks_missing: bool,
 ) -> Vec<String> {
-    if guard_mode == IntegrationProfile::Record.as_str() {
-        return Vec::new();
-    }
     match installation_state {
         "not_configured" | "files_missing" => vec!["guard_not_installed".to_owned()],
         "reload_required" => vec!["guard_reload_required".to_owned()],
@@ -2489,20 +1998,6 @@ fn max_optional_utc_timestamp(
         Some(current) => current.max(candidate),
         None => candidate,
     }))
-}
-
-fn max_optional_observation_timestamp(
-    current: Option<String>,
-    candidate: Option<String>,
-) -> Option<String> {
-    let current = current.as_deref().and_then(canonical_utc_timestamp);
-    let candidate = candidate.as_deref().and_then(canonical_utc_timestamp);
-    match (current, candidate) {
-        (Some(current), Some(candidate)) => Some(current.max(candidate).to_canonical_string()),
-        (Some(current), None) => Some(current.to_canonical_string()),
-        (None, Some(candidate)) => Some(candidate.to_canonical_string()),
-        (None, None) => None,
-    }
 }
 
 fn canonical_utc_timestamp(value: &str) -> Option<UtcTimestamp> {
@@ -2570,20 +2065,30 @@ fn metadata_json_base() -> Result<String, ConnectionCommandError> {
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
 
-fn parse_metadata(text: &str) -> BTreeMap<String, String> {
-    serde_json::from_str::<Value>(text)
-        .ok()
-        .and_then(|value| {
-            value.as_object().map(|object| {
-                object
-                    .iter()
-                    .filter_map(|(key, value)| {
-                        value.as_str().map(|value| (key.clone(), value.to_owned()))
-                    })
-                    .collect()
-            })
+fn parse_metadata(text: &str) -> Result<BTreeMap<String, String>, ConnectionCommandError> {
+    let value = serde_json::from_str::<Value>(text).map_err(|_| {
+        ConnectionCommandError::runtime(
+            "PERSISTED_CONNECTION_METADATA_CORRUPT: metadata_json is not valid JSON",
+        )
+    })?;
+    let object = value.as_object().ok_or_else(|| {
+        ConnectionCommandError::runtime(
+            "PERSISTED_CONNECTION_METADATA_CORRUPT: metadata_json is not an object",
+        )
+    })?;
+    object
+        .iter()
+        .map(|(key, value)| {
+            value
+                .as_str()
+                .map(|value| (key.clone(), value.to_owned()))
+                .ok_or_else(|| {
+                    ConnectionCommandError::runtime(format!(
+                        "PERSISTED_CONNECTION_METADATA_CORRUPT: metadata_json.{key} is not a string"
+                    ))
+                })
         })
-        .unwrap_or_default()
+        .collect()
 }
 
 fn host_target_text(target: &HostTarget) -> String {
@@ -2598,7 +2103,7 @@ fn host_target_text(target: &HostTarget) -> String {
 
 fn runtime_home_for_host_config(scope: HostScope, runtime_home: &Path) -> Option<&Path> {
     match scope {
-        HostScope::User | HostScope::Local | HostScope::Export => Some(runtime_home),
+        HostScope::User => Some(runtime_home),
         HostScope::Project => None,
     }
 }
@@ -2619,7 +2124,7 @@ fn deterministic_connection_id(
     })
     .to_string();
     let label = match (scope, project_id) {
-        (HostScope::Project | HostScope::Local, Some(project_id)) => {
+        (HostScope::Project, Some(project_id)) => {
             format!(
                 "{}_{}_{}_{}",
                 host_kind.as_str(),
@@ -2684,6 +2189,9 @@ fn codex_environment(process: &impl ConnectionProcess) -> CodexEnvironment {
         home: process.env_var("HOME").map(PathBuf::from),
         codex_home: process.env_var("CODEX_HOME").map(PathBuf::from),
         path: process.env_var(PATH_ENV),
+        native_executable: process
+            .env_var(CODEX_NATIVE_EXECUTABLE_ENV)
+            .map(PathBuf::from),
     }
 }
 
@@ -2702,1779 +2210,134 @@ fn path_text(path: &Path) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
+mod persisted_metadata_tests {
+    use std::{ffi::OsString, path::PathBuf};
 
-    #[cfg(unix)]
-    use std::{
-        ffi::OsString,
-        process::{Command, Stdio},
+    use volicord_store::{
+        agent_connections::agent_connection_record,
+        sqlite::{open_registry_database, registry_db_path},
     };
+    use volicord_test_support::core_fixtures::CoreFixture;
 
     use super::*;
-    use volicord_store::agent_connections::VERIFIED_STATUS_COMPLETE;
-    use volicord_types::RECONCILE_CHANGES_TOOL_NAME;
 
-    #[test]
-    fn optional_utc_max_uses_exact_instants_and_canonicalizes_offsets() {
-        let current = max_optional_utc_timestamp(
-            None,
-            Some("2026-07-13T09:00:00.000000499+09:00"),
-            "fixture.observed_at",
-        )
-        .expect("first timestamp should parse");
-        let latest = max_optional_utc_timestamp(
-            current,
-            Some("2026-07-13T00:00:00.000000501Z"),
-            "fixture.observed_at",
-        )
-        .expect("later timestamp should parse")
-        .expect("latest timestamp should exist");
-
-        assert_eq!(
-            latest.to_canonical_string(),
-            "2026-07-13T00:00:00.000000501Z"
-        );
+    #[derive(Debug)]
+    struct DiagnosticProcess {
+        runtime_home: PathBuf,
     }
 
-    #[test]
-    fn optional_utc_max_rejects_unrepresentable_stored_instants() {
-        let error = max_optional_utc_timestamp(
-            None,
-            Some("9999-12-31T23:59:59-23:59"),
-            "fixture.observed_at",
-        )
-        .expect_err("normalized year 10000 must fail closed");
-
-        assert!(error.to_string().contains("fixture.observed_at"));
-        assert!(error.to_string().contains("four-digit RFC 3339"));
-    }
-
-    #[test]
-    fn observation_timestamp_max_ignores_invalid_values_and_uses_exact_instants() {
-        assert_eq!(
-            max_optional_observation_timestamp(None, Some("9999-12-31T23:59:59-23:59".to_owned())),
-            None
-        );
-        let current = max_optional_observation_timestamp(
-            None,
-            Some("2026-07-13T09:00:00.000000499+09:00".to_owned()),
-        );
-        assert_eq!(
-            max_optional_observation_timestamp(
-                current,
-                Some("2026-07-13T00:00:00.000000501Z".to_owned())
-            )
-            .as_deref(),
-            Some("2026-07-13T00:00:00.000000501Z")
-        );
-    }
-
-    #[test]
-    fn inexact_connection_profiles_keep_support_but_do_not_invent_record_detail() {
-        for profile_state in ["mixed", "future_profile"] {
-            let mut guard_state = GuardOperationalState::not_configured();
-            guard_state.guard_profile_state = profile_state.to_owned();
-            guard_state.final_output_authority_disclosure = FinalOutputAuthorityDisclosureState {
-                configured: true,
-                configuration_verified: true,
-            };
-            let diagnostic = guard_state
-                .host_feature_diagnostic(HostKind::ClaudeCode, guard_state.integration_profile());
-            let states = connection_states_json(
-                "complete",
-                "registered",
-                "match",
-                &guard_state,
-                diagnostic,
-                false,
-            );
-
-            assert_eq!(states["selected_profile"], profile_state);
-            assert_eq!(
-                states["host_feature_support"]
-                    .as_object()
-                    .map(serde_json::Map::len),
-                Some(HostFeature::ALL.len())
-            );
-            for feature in HostFeature::ALL {
-                assert_eq!(
-                    states["host_feature_support"][feature.as_str()],
-                    "implemented_unverified"
-                );
-            }
-            assert!(states["final_output_authority_disclosure"].is_null());
-
-            let host_hook = guard_state.to_json();
-            assert_eq!(host_hook["selected_profile"], profile_state);
-            assert!(host_hook.get("host_feature_support").is_none());
-            assert!(host_hook.get("final_output_authority_disclosure").is_none());
-        }
-    }
-
-    #[test]
-    fn no_installation_profile_remains_unselected_without_record_detail() {
-        let guard_state = GuardOperationalState::not_configured();
-        let diagnostic = guard_state
-            .host_feature_diagnostic(HostKind::ClaudeCode, guard_state.integration_profile());
-        let states = connection_states_json(
-            "complete",
-            "registered",
-            "match",
-            &guard_state,
-            diagnostic,
-            false,
-        );
-
-        assert_eq!(states["selected_profile"], "not_configured");
-        assert_eq!(
-            states["control_surface"]["selected_profile"],
-            "not_configured"
-        );
-        assert_eq!(
-            states["host_feature_support"]
-                .as_object()
-                .map(serde_json::Map::len),
-            Some(HostFeature::ALL.len())
-        );
-        assert!(states["final_output_authority_disclosure"].is_null());
-
-        let host_hook = guard_state.to_json();
-        assert_eq!(host_hook["selected_profile"], "not_configured");
-        assert_eq!(
-            host_hook["control_surface"]["selected_profile"],
-            "not_configured"
-        );
-        assert!(host_hook.get("host_feature_support").is_none());
-        assert!(host_hook.get("final_output_authority_disclosure").is_none());
-    }
-
-    #[test]
-    fn reviewed_codex_version_never_changes_the_connection_projection() {
-        let guard_state = GuardOperationalState::not_configured();
-        let fresh =
-            guard_state.host_feature_diagnostic_for_version(HostKind::Codex, Some("0.144.4"), None);
-        let no_current_probe = guard_state.host_feature_diagnostic(HostKind::Codex, None);
-
-        assert_eq!(
-            fresh.host_feature_support_json()["local_web_user_channel"],
-            "implemented_unverified"
-        );
-        assert_eq!(
-            no_current_probe.host_feature_support_json()["local_web_user_channel"],
-            "implemented_unverified"
-        );
-        assert_eq!(
-            fresh.host_feature_support_json()["native_user_action"],
-            "implemented_unverified"
-        );
-        assert_eq!(
-            fresh.host_feature_support_json()["record_final_output"],
-            "implemented_unverified"
-        );
-        assert_eq!(
-            fresh.host_feature_support_json(),
-            no_current_probe.host_feature_support_json()
-        );
-    }
-
-    fn plan_guard_integration_for_test(
-        host_kind: HostKind,
-        init_mode: InitMode,
-        repo_root: &Path,
-        connection_id: &str,
-        guard_installation_id: &str,
-        mcp_entry: &ManagedServerEntry,
-    ) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
-        plan_guard_integration_for_intent_test(
-            host_kind,
-            init_mode,
-            ConnectionIntent::Shared,
-            repo_root,
-            connection_id,
-            guard_installation_id,
-            mcp_entry,
-        )
-    }
-
-    fn plan_guard_integration_for_intent_test(
-        host_kind: HostKind,
-        init_mode: InitMode,
-        intent: ConnectionIntent,
-        repo_root: &Path,
-        connection_id: &str,
-        guard_installation_id: &str,
-        mcp_entry: &ManagedServerEntry,
-    ) -> Result<GuardIntegrationPlan, ConnectionCommandError> {
-        let runtime_home = repo_root.with_file_name(format!(
-            "{}-runtime-home",
-            repo_root
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("volicord-test")
-        ));
-        let volicord_command = runtime_home.join("bin").join("volicord");
-        Ok(plan_guard_integration(GuardIntegrationPlanRequest {
-            host_kind,
-            profile: init_mode.integration_profile(),
-            runtime_home: &runtime_home,
-            volicord_command: &volicord_command,
-            repo_root,
-            connection_id,
-            guard_installation_id,
-            mcp_entry,
-            connection_intent: intent,
-        })?)
-    }
-
-    #[test]
-    fn generated_connection_id_includes_connection_unit_inputs() {
-        let first = deterministic_connection_id(
-            HostKind::Codex,
-            HostScope::Project,
-            Some("project_a"),
-            "/repo/.codex/config.toml",
-            "volicord",
-        );
-        let second = deterministic_connection_id(
-            HostKind::Codex,
-            HostScope::Project,
-            Some("project_b"),
-            "/repo/.codex/config.toml",
-            "volicord",
-        );
-
-        assert!(first.starts_with("conn_codex_project_project_a_"));
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn public_connection_mode_parses_user_labels() {
-        assert_eq!(
-            parse_user_connection_mode("read-only").unwrap(),
-            CONNECTION_MODE_READ_ONLY
-        );
-        assert_eq!(
-            parse_user_connection_mode("workflow").unwrap(),
-            CONNECTION_MODE_WORKFLOW
-        );
-        assert!(parse_user_connection_mode("read_only").is_err());
-    }
-
-    #[test]
-    fn host_scope_mapping_uses_connection_intent_support_matrix() {
-        assert_eq!(
-            host_scope_for_intent(HostKind::Codex, ConnectionIntent::Personal).unwrap(),
-            HostScope::User
-        );
-        assert_eq!(
-            host_scope_for_intent(HostKind::Codex, ConnectionIntent::Shared).unwrap(),
-            HostScope::Project
-        );
-        assert_eq!(
-            host_scope_for_intent(HostKind::ClaudeCode, ConnectionIntent::Global).unwrap(),
-            HostScope::User
-        );
-
-        let error = host_scope_for_intent(HostKind::Codex, ConnectionIntent::Global).unwrap_err();
-        let message = error.to_string();
-        assert!(message.contains("codex does not support --global"));
-        assert!(message.contains("supported connection intents: personal, shared"));
-    }
-
-    #[test]
-    fn mcp_tool_validation_matches_public_connection_modes() {
-        let workflow_tools = mcp_process::workflow_required_tool_names()
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        assert!(
-            mcp_process::validate_tools_for_mode(CONNECTION_MODE_WORKFLOW, &workflow_tools).is_ok()
-        );
-        assert!(workflow_tools
-            .iter()
-            .any(|tool| tool == RECONCILE_CHANGES_TOOL_NAME));
-
-        let read_only_tools = mcp_process::read_only_required_tool_names()
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        assert!(
-            mcp_process::validate_tools_for_mode(CONNECTION_MODE_READ_ONLY, &read_only_tools)
-                .is_ok()
-        );
-        assert!(!read_only_tools
-            .iter()
-            .any(|tool| tool == RECONCILE_CHANGES_TOOL_NAME));
-
-        let missing_reconcile_workflow_tools = mcp_process::workflow_required_tool_names()
-            .filter(|tool| *tool != RECONCILE_CHANGES_TOOL_NAME)
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        let error = mcp_process::validate_tools_for_mode(
-            CONNECTION_MODE_WORKFLOW,
-            &missing_reconcile_workflow_tools,
-        )
-        .unwrap_err();
-        assert!(error.contains(RECONCILE_CHANGES_TOOL_NAME));
-
-        let stale_read_only_tools = vec![
-            "volicord.status".to_owned(),
-            "volicord.get_operation_result".to_owned(),
-            "volicord.close_task".to_owned(),
-            "volicord.list_projects".to_owned(),
-        ];
-        let error =
-            mcp_process::validate_tools_for_mode(CONNECTION_MODE_READ_ONLY, &stale_read_only_tools)
-                .unwrap_err();
-        assert!(error.contains("volicord.check_close"));
-    }
-
-    #[test]
-    fn detective_integration_plan_rejects_missing_generic_hooks(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("guard-capabilities-reject")?;
-        let entry = ManagedServerEntry::new_repository_discovery(
-            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
-        );
-        let error = plan_guard_integration_for_test(
-            HostKind::Generic,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("default detective init should reject missing host hook support");
-
-        assert!(error.to_string().contains("DETECTIVE_HOOKS_UNSUPPORTED"));
-        assert!(error.to_string().contains("--profile record"));
-        assert!(error
-            .to_string()
-            .contains("meet every Detective prerequisite"));
-        assert!(error.to_string().contains("AGENTS.md"));
-        Ok(())
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn detective_profile_is_rejected_on_native_windows() -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("windows-detective-reject")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-
-        let error = plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("native Windows detective init should fail before planning hook files");
-
-        assert!(error.to_string().contains("DETECTIVE_WINDOWS_UNSUPPORTED"));
-        assert!(error.to_string().contains("--profile record"));
-        assert!(error.to_string().contains("WSL2"));
-        assert!(!repo.join(".codex/hooks.json").exists());
-        assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
-        Ok(())
-    }
-
-    #[test]
-    fn codex_guarded_integration_rejects_non_git_root() -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("codex non git")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        let error = plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("Codex detective host hooks should require a Git root strategy");
-
-        assert!(error
-            .to_string()
-            .contains("DETECTIVE_HOOK_ROOT_UNSUPPORTED"));
-        assert!(error.to_string().contains("Git work tree root"));
-        assert!(error.to_string().contains("--profile record"));
-        assert!(error
-            .to_string()
-            .contains("meet every Detective prerequisite"));
-        assert!(!repo.join(".codex/hooks.json").exists());
-        assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
-
-        Ok(())
-    }
-
-    #[test]
-    fn codex_record_integration_without_git_keeps_init_and_reports_final_output_unavailable(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("codex record non git")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        let plan = plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Record,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?;
-
-        assert_eq!(plan.native_host_output_adapter, "none");
-        assert!(!plan.native_host_output_adapter_config_verified);
-        assert!(plan.host_hook_commands.is_empty());
-        assert!(!plan.generated_files.iter().any(|file| {
-            matches!(
-                file.kind,
-                HostIntegrationFileKind::HostHookConfig
-                    | HostIntegrationFileKind::HostHookWrapper
-                    | HostIntegrationFileKind::HostHookDispatch
-            )
-        }));
-        assert!(plan
-            .generated_files
-            .iter()
-            .any(|file| file.kind == HostIntegrationFileKind::VolicordPolicy));
-        Ok(())
-    }
-
-    #[test]
-    fn codex_guarded_integration_plan_generates_required_hook_files(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("guard capabilities")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        let plan = plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?;
-        let applied = apply_guard_integration(plan)?;
-
-        assert!(applied.missing_required_hooks.is_empty());
-        assert_eq!(
-            initial_guard_installation_status(
-                IntegrationProfile::Detective,
-                &host_plan_stub(&entry),
-                &applied
-            ),
-            GuardInstallationStatus::ReloadRequired
-        );
-        let capability: Value = serde_json::from_str(&host_hook_capability_json(&applied)?)?;
-        assert_eq!(capability["prompt_capture"], true);
-        assert_eq!(capability["selected_profile"], "detective");
-        assert_eq!(capability["native_host_output_adapter"], "codex");
-        assert_eq!(
-            capability["native_host_output_adapter_config_verified"],
-            true
-        );
-        assert_eq!(capability["bash_shell_mutation_coverage"], true);
-        assert_eq!(capability["direct_file_write_matcher_coverage"], true);
-        assert_eq!(capability["hook_root_resolution"]["basis"], "git_work_tree");
-        assert_eq!(
-            capability["hook_root_resolution"]["all_cwd_independent"],
-            true
-        );
-        assert_eq!(capability["hook_path_safety"]["overall_status"], "ok");
-        assert_eq!(capability["hook_path_safety"]["all_cwd_independent"], true);
-        assert_eq!(
-            capability["hook_path_safety"]["all_subdirectory_safe"],
-            true
-        );
-        assert_eq!(
-            capability["host_hook_commands"]
-                .as_array()
-                .expect("host hook commands should be recorded")
-                .len(),
-            REQUIRED_GUARD_PHASES.len()
-        );
-        let pre_tool_command = capability["host_hook_commands"]
-            .as_array()
-            .expect("host hook commands should be recorded")
-            .iter()
-            .find(|command| command["phase"] == "pre_tool_hook")
-            .expect("pre-tool command should be recorded");
-        assert_eq!(
-            pre_tool_command["hook_command_path_basis"],
-            "git_root_runtime"
-        );
-        assert_eq!(pre_tool_command["cwd_independent"], true);
-        assert_eq!(pre_tool_command["subdirectory_safe"], true);
-        assert_eq!(pre_tool_command["wrapper_resolution_status"], "ok");
-        assert_eq!(
-            capability["missing_required_hooks"]
-                .as_array()
-                .expect("missing hooks should be an array")
-                .len(),
-            0
-        );
-        let generated_files = generated_files_json(&applied.generated_files);
-        let generated_files = generated_files
-            .as_array()
-            .expect("generated files should be an array");
-        assert!(generated_files
-            .iter()
-            .any(|file| file["kind"] == "host_hook_config"));
-        assert_eq!(
-            generated_files
-                .iter()
-                .filter(|file| file["kind"] == "host_hook_dispatch")
-                .count(),
-            1
-        );
-        assert_eq!(
-            generated_files
-                .iter()
-                .filter(|file| file["kind"] == "host_hook_wrapper")
-                .count(),
-            REQUIRED_GUARD_PHASES.len()
-        );
-        assert!(generated_files
-            .iter()
-            .any(|file| file["kind"] == "host_rule_instruction"));
-        let hooks_text = fs::read_to_string(repo.join(".codex/hooks.json"))?;
-        assert!(!hooks_text.contains("\"command\": \".codex/hooks/"));
-        assert!(hooks_text.contains("sh -c"));
-        assert!(hooks_text.contains("git rev-parse --show-toplevel"));
-        assert!(hooks_text.contains(".codex/hooks/volicord-dispatch.sh"));
-        assert!(hooks_text.contains("session-start"));
-        assert!(hooks_text.contains("pre-tool"));
-        assert!(hooks_text.contains("post-tool"));
-        assert!(hooks_text.contains("prompt-capture"));
-        assert!(hooks_text.contains("stop"));
-        assert!(!hooks_text.contains("volicord _hook "));
-        assert!(hooks_text.contains(
-            "Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
-        ));
-        assert!(!hooks_text.contains("--json"));
-        let dispatch_wrapper_path = repo.join(".codex/hooks/volicord-dispatch.sh");
-        let dispatch_wrapper = fs::read_to_string(&dispatch_wrapper_path)?;
-        assert!(dispatch_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(dispatch_wrapper.contains("phase=dispatch"));
-        assert!(dispatch_wrapper.contains("git rev-parse --show-toplevel"));
-        assert!(dispatch_wrapper.contains(".codex/hooks/volicord-$phase.sh"));
-        assert!(dispatch_wrapper.contains("exec \"$wrapper\""));
-        assert!(script_is_executable(&dispatch_wrapper_path));
-        let pre_tool_wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
-        let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
-        let selected_runtime_home = repo.with_file_name(format!(
-            "{}-runtime-home",
-            repo.file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("volicord-test")
-        ));
-        assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains(&format!(
-            "exec {} _hook pre-tool",
-            shell_word(&path_text(
-                &selected_runtime_home.join("bin").join("volicord")
-            ))
-        )));
-        assert!(pre_tool_wrapper.contains(&format!(
-            "VOLICORD_HOME={}",
-            shell_word(&path_text(&selected_runtime_home))
-        )));
-        assert!(pre_tool_wrapper.contains("export VOLICORD_HOME"));
-        assert!(pre_tool_wrapper.contains(&format!("--repo {}", shell_word(&path_text(&repo)))));
-        assert!(pre_tool_wrapper.contains("--connection conn_alpha"));
-        assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));
-        assert!(pre_tool_wrapper.contains("--host codex"));
-        assert!(pre_tool_wrapper.contains("--policy-hash"));
-        assert!(pre_tool_wrapper.contains(
-            capability["policy_hash"]
-                .as_str()
-                .expect("capability should include policy hash")
-        ));
-        assert!(pre_tool_wrapper.contains("--host-output codex"));
-        assert!(script_is_executable(&pre_tool_wrapper_path));
-        Ok(())
-    }
-
-    #[test]
-    fn personal_claude_detective_uses_only_local_repository_targets(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("personal-claude-local-targets")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let entry = ManagedServerEntry::new(
-            "conn_alpha",
-            Path::new("volicord"),
-            Some(Path::new("/personal/runtime-home")),
-        );
-
-        let plan = plan_guard_integration_for_intent_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            ConnectionIntent::Personal,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?;
-
-        let paths = plan
-            .generated_files
-            .iter()
-            .map(|file| file.path.clone())
-            .collect::<std::collections::BTreeSet<_>>();
-        assert!(paths.contains(&repo.join(".claude/settings.local.json")));
-        assert!(!paths.contains(&repo.join(".claude/settings.json")));
-        assert!(!paths.contains(&repo.join(".mcp.json")));
-        assert!(paths.contains(&repo.join(".volicord/policy.json")));
-        assert!(paths.contains(&repo.join(".git/info/exclude")));
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn codex_dispatch_executes_from_subdirectory_and_preserves_host_protocol(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        use std::io::Write as _;
-
-        let repo = temp_dir("codex dispatch repo spaces")?;
-        init_real_git_repo(&repo)?;
-        let bin_dir = repo.join("fake bin");
-        let fake_volicord = write_fake_guard_volicord(&bin_dir)?;
-        let runtime_home = repo.with_file_name(format!(
-            "{}-runtime-home",
-            repo.file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("volicord-test")
-        ));
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        apply_guard_integration(plan_guard_integration(GuardIntegrationPlanRequest {
-            host_kind: HostKind::Codex,
-            profile: IntegrationProfile::Detective,
-            runtime_home: &runtime_home,
-            volicord_command: &fake_volicord,
-            repo_root: &repo,
-            connection_id: "conn_alpha",
-            guard_installation_id: "guard_installation_alpha",
-            mcp_entry: &entry,
-            connection_intent: ConnectionIntent::Shared,
-        })?)?;
-        let subdir = repo.join("nested dir").join("inner");
-        fs::create_dir_all(&subdir)?;
-        let hooks: Value =
-            serde_json::from_str(&fs::read_to_string(repo.join(".codex/hooks.json"))?)?;
-        let command = hooks["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-            .as_str()
-            .expect("PreToolUse command should be present");
-        assert!(command.contains(CODEX_DISPATCH_WRAPPER));
-        assert!(command.contains("pre-tool"));
-
-        let mut child = Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .current_dir(&subdir)
-            .env("PATH", path_with_prefix(&bin_dir)?)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        let mut stdin = child.stdin.take().expect("stdin should be piped");
-        stdin.write_all(b"payload via stdin")?;
-        drop(stdin);
-        let output = child.wait_with_output()?;
-
-        assert_eq!(output.status.code(), Some(37));
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            "stdout:payload via stdin\n"
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
-            "stderr:guard reached\n"
-        );
-
-        let invalid = Command::new(repo.join(CODEX_DISPATCH_WRAPPER))
-            .arg("bad-phase")
-            .current_dir(&subdir)
-            .output()?;
-        assert!(!invalid.status.success());
-        assert_eq!(String::from_utf8_lossy(&invalid.stdout), "");
-        assert!(String::from_utf8_lossy(&invalid.stderr).contains("unsupported host-hook phase"));
-        Ok(())
-    }
-
-    #[test]
-    fn claude_guarded_integration_generates_hooks_mcp_and_rules(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("claude-guarded")?;
-        let entry = ManagedServerEntry::new_repository_discovery(
-            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
-        );
-        let plan = plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?;
-        let applied = apply_guard_integration(plan)?;
-
-        assert!(applied.missing_required_hooks.is_empty());
-        let capability: Value = serde_json::from_str(&host_hook_capability_json(&applied)?)?;
-        assert_eq!(capability["prompt_capture"], true);
-        assert_eq!(
-            capability["hook_root_resolution"]["basis"],
-            "claude_project_dir"
-        );
-        assert_eq!(
-            capability["hook_root_resolution"]["all_cwd_independent"],
-            true
-        );
-        assert_eq!(capability["hook_path_safety"]["overall_status"], "ok");
-        assert_eq!(capability["hook_path_safety"]["all_cwd_independent"], true);
-        assert_eq!(
-            capability["hook_path_safety"]["all_subdirectory_safe"],
-            true
-        );
-        let pre_tool_command = capability["host_hook_commands"]
-            .as_array()
-            .expect("host hook commands should be recorded")
-            .iter()
-            .find(|command| command["phase"] == "pre_tool_hook")
-            .expect("pre-tool command should be recorded");
-        assert_eq!(
-            pre_tool_command["hook_command_path_basis"],
-            "claude_project_dir"
-        );
-        assert_eq!(pre_tool_command["cwd_independent"], true);
-        assert_eq!(pre_tool_command["subdirectory_safe"], true);
-        assert_eq!(pre_tool_command["wrapper_resolution_status"], "ok");
-        assert_eq!(
-            capability["missing_required_hooks"]
-                .as_array()
-                .expect("missing hooks should be an array")
-                .len(),
-            0
-        );
-        let generated_files = generated_files_json(&applied.generated_files);
-        let generated_files = generated_files
-            .as_array()
-            .expect("generated files should be an array");
-        assert!(generated_files
-            .iter()
-            .any(|file| file["kind"] == "host_mcp_config"));
-        assert!(generated_files
-            .iter()
-            .any(|file| file["kind"] == "host_hook_config"));
-        assert_eq!(
-            generated_files
-                .iter()
-                .filter(|file| file["kind"] == "host_hook_wrapper")
-                .count(),
-            REQUIRED_GUARD_PHASES.len()
-        );
-        assert!(generated_files.iter().any(|file| {
-            file["kind"] == "host_hook_config"
-                && file["ownership"] == "managed_json_projection"
-                && file["managed_projection"] == "claude_code_settings_hooks"
-        }));
-
-        let mcp_text = fs::read_to_string(repo.join(".mcp.json"))?;
-        assert!(mcp_text.contains("\"volicord\""));
-        assert!(mcp_text.contains("\"mcp\""));
-        assert!(mcp_text.contains("\"--stdio\""));
-        assert!(mcp_text.contains("\"--discover-repository\""));
-        assert!(mcp_text.contains("\"claude-code\""));
-        assert!(!mcp_text.contains("\"--connection\""));
-        let settings_text = fs::read_to_string(repo.join(".claude/settings.json"))?;
-        for command in [
-            "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-session-start.sh",
-            "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh",
-            "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-post-tool.sh",
-            "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-prompt-capture.sh",
-            "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-stop.sh",
-        ] {
-            assert!(settings_text.contains(command), "missing {command}");
-        }
-        assert!(!settings_text.contains("\"command\": \".claude/hooks/"));
-        assert!(settings_text.contains("\"args\": []"));
-        assert!(!settings_text.contains("volicord _hook "));
-        let pre_tool_wrapper_path = repo.join(".claude/hooks/volicord-pre-tool.sh");
-        let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
-        let selected_runtime_home = repo.with_file_name(format!(
-            "{}-runtime-home",
-            repo.file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("volicord-test")
-        ));
-        assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains(&format!(
-            "exec {} _hook pre-tool",
-            shell_word(&path_text(
-                &selected_runtime_home.join("bin").join("volicord")
-            ))
-        )));
-        assert!(pre_tool_wrapper.contains(&format!(
-            "VOLICORD_HOME={}",
-            shell_word(&path_text(&selected_runtime_home))
-        )));
-        assert!(pre_tool_wrapper.contains("export VOLICORD_HOME"));
-        assert!(pre_tool_wrapper.contains("--host claude-code"));
-        assert!(pre_tool_wrapper.contains("--host-output claude-code"));
-        assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));
-        assert!(pre_tool_wrapper.contains("--policy-hash"));
-        assert!(pre_tool_wrapper.contains(
-            capability["policy_hash"]
-                .as_str()
-                .expect("capability should include policy hash")
-        ));
-        assert!(script_is_executable(&pre_tool_wrapper_path));
-        assert!(settings_text.contains(
-            "\"matcher\": \"Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*\""
-        ));
-        assert!(fs::read_to_string(repo.join(".claude/rules/volicord.md"))?
-            .contains("Configured local detective host-hook commands"));
-
-        let again = plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?;
-        let applied_again = apply_guard_integration(again)?;
-        let settings_again = fs::read_to_string(repo.join(".claude/settings.json"))?;
-        assert_eq!(settings_text, settings_again);
-        assert_eq!(
-            settings_again
-                .matches("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-")
-                .count(),
-            REQUIRED_GUARD_PHASES.len()
-        );
-        assert!(applied_again
-            .generated_files
-            .iter()
-            .any(|file| file.kind == HostIntegrationFileKind::HostHookConfig
-                && file.status == FilePlanStatus::Unchanged));
-        assert_eq!(
-            applied_again
-                .generated_files
-                .iter()
-                .filter(|file| file.kind == HostIntegrationFileKind::HostHookWrapper
-                    && file.status == FilePlanStatus::Unchanged)
-                .count(),
-            REQUIRED_GUARD_PHASES.len()
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn claude_settings_merge_preserves_unmanaged_hooks_and_keys(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("claude-settings-preserve")?;
-        fs::create_dir_all(repo.join(".claude"))?;
-        fs::write(
-            repo.join(".claude/settings.json"),
-            r#"{
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "theme": "dark",
-  "permissions": {
-    "ask": ["Bash"]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo keep",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  }
-}
-"#,
-        )?;
-        let entry = ManagedServerEntry::new_repository_discovery(
-            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
-        );
-        let applied = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?)?;
-        let settings: Value =
-            serde_json::from_str(&fs::read_to_string(repo.join(".claude/settings.json"))?)?;
-
-        assert_eq!(settings["theme"], "dark");
-        assert_eq!(settings["permissions"]["ask"][0], "Bash");
-        let pre_tool = settings["hooks"]["PreToolUse"]
-            .as_array()
-            .expect("PreToolUse should be an array");
-        assert!(pre_tool.iter().any(|group| group["matcher"] == "Bash"));
-        assert!(pre_tool.iter().any(|group| {
-            group["matcher"]
-                == "Bash|Edit|Write|MultiEdit|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*"
-                && group["hooks"][0]["command"]
-                    .as_str()
-                    .is_some_and(|command| command
-                        == "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh")
-                && group["hooks"][0]["args"]
-                    .as_array()
-                    .is_some_and(|args| args.is_empty())
-        }));
-
-        let capability_json = host_hook_capability_json(&applied)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.stale_files.is_empty());
-        assert!(findings.broken_files.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn claude_settings_conflicting_managed_entry_is_rejected(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("claude-settings-conflict")?;
-        fs::create_dir_all(repo.join(".claude"))?;
-        fs::write(
-            repo.join(".claude/settings.json"),
-            r#"{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "volicord _hook pre-tool --host claude-code --host-output claude-code",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
-}
-"#,
-        )?;
-        let entry = ManagedServerEntry::new_repository_discovery(
-            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
-        );
-        let error = plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("conflicting managed hook should be rejected");
-
-        assert!(error.to_string().contains("conflicting Volicord-managed"));
-        Ok(())
-    }
-
-    #[test]
-    fn guarded_integration_rejects_unmanaged_hook_wrapper() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let repo = temp_dir("hook-wrapper-conflict")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
-        fs::create_dir_all(wrapper_path.parent().expect("wrapper should have parent"))?;
-        fs::write(&wrapper_path, "#!/bin/sh\nexec echo user-owned\n")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-
-        let error = plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("unmanaged hook wrapper should be rejected");
-
-        assert!(error
-            .to_string()
-            .contains("host_hook_wrapper already exists with unmanaged content"));
-        assert!(error.to_string().contains(&path_text(&wrapper_path)));
-        Ok(())
-    }
-
-    #[test]
-    fn guarded_integration_rejects_unmanaged_codex_dispatch_wrapper(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("hook-dispatch-conflict")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let dispatch_path = repo.join(".codex/hooks/volicord-dispatch.sh");
-        fs::create_dir_all(dispatch_path.parent().expect("dispatch should have parent"))?;
-        fs::write(&dispatch_path, "#!/bin/sh\nexec echo user-owned\n")?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-
-        let error = plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("unmanaged dispatch wrapper should be rejected");
-
-        assert!(error
-            .to_string()
-            .contains("host_hook_dispatch already exists with unmanaged content"));
-        assert!(error.to_string().contains(&path_text(&dispatch_path)));
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn guarded_integration_rerun_repairs_hook_wrapper_executable_bit(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        use std::os::unix::fs::PermissionsExt;
-
-        let repo = temp_dir("hook-wrapper-executable-repair")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        let applied = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?)?;
-        let wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
-        let dispatch_path = repo.join(".codex/hooks/volicord-dispatch.sh");
-        assert!(script_is_executable(&wrapper_path));
-        assert!(script_is_executable(&dispatch_path));
-        let capability_json = host_hook_capability_json(&applied)?;
-
-        let mut permissions = fs::metadata(&wrapper_path)?.permissions();
-        permissions.set_mode(0o644);
-        fs::set_permissions(&wrapper_path, permissions)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.stale_files.contains(&path_text(&wrapper_path)));
-
-        let mut permissions = fs::metadata(&dispatch_path)?.permissions();
-        permissions.set_mode(0o644);
-        fs::set_permissions(&dispatch_path, permissions)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.stale_files.contains(&path_text(&dispatch_path)));
-
-        let repaired = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?)?;
-        assert!(script_is_executable(&wrapper_path));
-        assert!(script_is_executable(&dispatch_path));
-        assert!(repaired.generated_files.iter().any(|file| {
-            file.kind == HostIntegrationFileKind::HostHookWrapper
-                && file.path == wrapper_path
-                && file.status == FilePlanStatus::Updated
-        }));
-        assert!(repaired.generated_files.iter().any(|file| {
-            file.kind == HostIntegrationFileKind::HostHookDispatch
-                && file.path == dispatch_path
-                && file.status == FilePlanStatus::Updated
-        }));
-        Ok(())
-    }
-
-    #[test]
-    fn claude_settings_merge_rejects_invalid_preserved_settings(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("claude-settings-invalid")?;
-        fs::create_dir_all(repo.join(".claude"))?;
-        fs::write(
-            repo.join(".claude/settings.json"),
-            r#"{
-  "permissions": []
-}
-"#,
-        )?;
-        let entry = ManagedServerEntry::new_repository_discovery(
-            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
-        );
-        let error = plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )
-        .expect_err("invalid preserved settings should be rejected");
-
-        assert!(error
-            .to_string()
-            .contains("merged Claude Code project settings do not match the verified contract"));
-        Ok(())
-    }
-
-    #[test]
-    fn claude_guard_file_verification_ignores_unmanaged_settings_changes(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("claude-guard-file-verify")?;
-        let entry = ManagedServerEntry::new_repository_discovery(
-            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
-        );
-        let applied = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?)?;
-        let capability_json = host_hook_capability_json(&applied)?;
-
-        let settings_path = repo.join(".claude/settings.json");
-        let mut settings: Value = serde_json::from_str(&fs::read_to_string(&settings_path)?)?;
-        settings["theme"] = Value::String("light".to_owned());
-        fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.stale_files.is_empty());
-
-        settings["hooks"]["PreToolUse"] = Value::Array(Vec::new());
-        fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.stale_files.contains(&path_text(&settings_path)));
-        Ok(())
-    }
-
-    #[test]
-    fn guard_file_verification_detects_stale_policy_and_duplicate_markers(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("guard-file-verify")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        let plan = plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?;
-        let applied = apply_guard_integration(plan)?;
-        let capability_json = host_hook_capability_json(&applied)?;
-
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.missing_files.is_empty());
-        assert!(findings.stale_files.is_empty());
-        assert!(findings.broken_files.is_empty());
-        assert!(findings.missing_required_hooks.is_empty());
-
-        let wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
-        let wrapper_text = fs::read_to_string(&wrapper_path)?;
-        fs::write(
-            &wrapper_path,
-            wrapper_text.replace("--host-output codex", "--host-output claude-code"),
-        )?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.stale_files.contains(&path_text(&wrapper_path)));
-        assert_eq!(
-            findings.kind_state(HostIntegrationFileKind::HostHookWrapper),
-            "stale"
-        );
-
-        fs::remove_file(&wrapper_path)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.missing_files.contains(&path_text(&wrapper_path)));
-        assert_eq!(findings.hook_config_state(false), "missing");
-
-        fs::write(&wrapper_path, &wrapper_text)?;
-        set_script_executable(&wrapper_path)?;
-        let dispatch_path = repo.join(".codex/hooks/volicord-dispatch.sh");
-        let dispatch_text = fs::read_to_string(&dispatch_path)?;
-        fs::remove_file(&dispatch_path)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.missing_files.contains(&path_text(&dispatch_path)));
-        assert_eq!(findings.hook_config_state(false), "missing");
-
-        fs::write(&dispatch_path, &dispatch_text)?;
-        set_script_executable(&dispatch_path)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mut permissions = fs::metadata(&wrapper_path)?.permissions();
-            permissions.set_mode(0o644);
-            fs::set_permissions(&wrapper_path, permissions)?;
-            let findings = guard_file_findings(&capability_json);
-            assert!(findings.stale_files.contains(&path_text(&wrapper_path)));
+    impl ConnectionProcess for DiagnosticProcess {
+        fn env_var(&self, name: &str) -> Option<OsString> {
+            (name == "VOLICORD_HOME").then(|| self.runtime_home.clone().into_os_string())
         }
 
-        let policy_path = repo.join(VOLICORD_POLICY_FILE);
-        let policy_text = fs::read_to_string(&policy_path)?;
-        fs::write(
-            &policy_path,
-            policy_text.replace("conn_alpha", "conn_changed"),
-        )?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.stale_files.contains(&path_text(&policy_path)));
+        fn current_exe(&self) -> Result<PathBuf, String> {
+            Err("current executable is not used by diagnostic commands".to_owned())
+        }
 
-        let hooks_path = repo.join(".codex/hooks.json");
-        fs::write(&hooks_path, r#"{"hooks":{"SessionStart":[]}}"#)?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings.broken_files.contains(&path_text(&hooks_path)));
-
-        fs::write(
-            repo.join(AGENTS_FILE),
-            format!(
-                "{GUIDANCE_START_MARKER}\nfirst\n{GUIDANCE_END_MARKER}\n{GUIDANCE_START_MARKER}\nsecond\n{GUIDANCE_END_MARKER}\n"
-            ),
-        )?;
-        let findings = guard_file_findings(&capability_json);
-        assert!(findings
-            .broken_files
-            .contains(&path_text(&repo.join(AGENTS_FILE))));
-        Ok(())
-    }
-
-    #[test]
-    fn guard_file_verification_reports_hook_path_safety_failures(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = temp_dir("hook-path-safety-verify")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        let applied = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?)?;
-        let capability_json = host_hook_capability_json(&applied)?;
-        let capability: Value = serde_json::from_str(&capability_json)?;
-        let findings = guard_file_findings(&capability_json);
-        assert_eq!(findings.hook_path_safety_state(), "ok");
-        assert!(findings.generated_config_verified());
-
-        let hooks_path = repo.join(".codex/hooks.json");
-        let hooks_text = fs::read_to_string(&hooks_path)?;
-        let mut hooks_json: Value = serde_json::from_str(&hooks_text)?;
-        hooks_json["hooks"]["SessionStart"][0]["hooks"][0]["command"] =
-            json!(".codex/hooks/volicord-dispatch.sh session-start");
-        fs::write(&hooks_path, serde_json::to_string_pretty(&hooks_json)?)?;
-        let findings = guard_file_findings(&capability_json);
-        assert_eq!(findings.hook_path_safety_state(), "relative_path_unsafe");
-        assert!(hook_path_status_recorded(&findings, "relative_path_unsafe"));
-        assert!(findings.stale_files.contains(&path_text(&hooks_path)));
-        assert!(!findings.generated_config_verified());
-        fs::write(&hooks_path, hooks_text)?;
-
-        let mut stale_absolute_capability = capability.clone();
-        let stale_command = format!(
-            "sh -c 'exec \"{}\" session-start'",
-            path_text(&repo.join("stale-root/.codex/hooks/volicord-dispatch.sh"))
-        );
-        stale_absolute_capability["host_hook_commands"][0]["command"] = json!(stale_command);
-        let findings = guard_file_findings(&stale_absolute_capability.to_string());
-        assert_eq!(findings.hook_path_safety_state(), "absolute_path_stale");
-        assert!(hook_path_status_recorded(&findings, "absolute_path_stale"));
-        assert!(!findings.generated_config_verified());
-
-        let wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
-        let wrapper_text = fs::read_to_string(&wrapper_path)?;
-        fs::remove_file(&wrapper_path)?;
-        let findings = guard_file_findings(&capability_json);
-        assert_eq!(findings.hook_path_safety_state(), "wrapper_missing");
-        assert!(hook_path_status_recorded(&findings, "wrapper_missing"));
-        assert!(findings.missing_files.contains(&path_text(&wrapper_path)));
-        fs::write(&wrapper_path, &wrapper_text)?;
-        set_script_executable(&wrapper_path)?;
-
-        fs::write(
-            &wrapper_path,
-            wrapper_text.replace("# host_output=codex", "# host_output=claude-code"),
-        )?;
-        set_script_executable(&wrapper_path)?;
-        let findings = guard_file_findings(&capability_json);
-        assert_eq!(findings.hook_path_safety_state(), "host_output_mismatch");
-        assert!(hook_path_status_recorded(&findings, "host_output_mismatch"));
-        assert!(findings.stale_files.contains(&path_text(&wrapper_path)));
-        Ok(())
-    }
-
-    #[test]
-    fn claude_guard_state_becomes_active_after_synthetic_observation(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let runtime_home = temp_dir("claude-guard-runtime")?;
-        let repo = temp_dir("claude-guard-detective")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        initialize_runtime_home(&runtime_home, "runtime_home_test", "{}")?;
-        let project = ensure_project_for_repo(
-            &runtime_home,
-            RepoProjectRegistration {
-                project_name: None,
-                project_alias: None,
-                repo_root: repo.clone(),
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        let entry = ManagedServerEntry::new_repository_discovery(
-            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
-        );
-        let integration = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?)?;
-        service::record_authoritative_workflow_policy(
-            &runtime_home,
-            &project.project_id,
-            &integration.policy,
-        )?;
-        ensure_agent_connection(
-            &runtime_home,
-            AgentConnectionRegistration {
-                connection_internal_id: "conn_alpha".to_owned(),
-                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                intent: ConnectionIntent::Shared.as_str().to_owned(),
-                host_scope: HostScope::Project.as_str().to_owned(),
-                server_name: DEFAULT_SERVER_NAME.to_owned(),
-                config_target: path_text(&repo.join(".mcp.json")),
-                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                enabled: true,
-                managed_fingerprint: "fingerprint".to_owned(),
-                last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-                last_verification_report_json: "{}".to_owned(),
-                last_user_actions_json: "[]".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        add_connection_project(
-            &runtime_home,
-            ConnectionProjectRegistration {
-                connection_internal_id: "conn_alpha".to_owned(),
-                project_id: project.project_id.clone(),
-            },
-        )?;
-        upsert_guard_installation(
-            &runtime_home,
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_alpha".to_owned(),
-                connection_internal_id: "conn_alpha".to_owned(),
-                project_id: Some(project.project_id.clone()),
-                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
-                host_capability_json: host_hook_capability_json(&integration)?,
-                installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
-                installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
-                last_checked_at: "2026-07-01T00:00:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        volicord_store::guards::observe_guard_installation(
-            &runtime_home,
-            volicord_store::guards::GuardInstallationObservation {
-                guard_installation_id: "guard_installation_alpha".to_owned(),
-                connection_internal_id: "conn_alpha".to_owned(),
-                project_id: project.project_id.clone(),
-                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
-                observed_policy_hash: integration.policy_hash.clone(),
-                observed_binary_version: Some("test".to_owned()),
-                observed_phase: "session_start".to_owned(),
-                observed_at: "2026-07-01T00:01:00Z".to_owned(),
-            },
-        )?;
-        let projects = list_connection_projects(&runtime_home, "conn_alpha")?;
-        let connection = agent_connection_record(&runtime_home, "conn_alpha")?
-            .expect("test connection should exist");
-        let guard_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
-
-        assert_eq!(guard_state.installation_state, "active");
-        assert_eq!(guard_state.hook_observed_state, "observed");
-        assert_eq!(guard_state.effective_state, "active");
-        assert_eq!(guard_state.selected_profile(), "detective");
-        let control_surface = guard_state.control_surface_json();
-        assert_eq!(control_surface["selected_profile"], "detective");
-        assert_eq!(control_surface["host_hooks_active"], true);
-        assert_eq!(
-            control_surface["cooperative_pre_tool_warning_available"],
-            true
-        );
-        assert_eq!(
-            control_surface["cooperative_pre_tool_denial_available"],
-            true
-        );
-        assert_eq!(control_surface["actor_identity_provable"], false);
-        assert_eq!(control_surface["os_enforced"], false);
-        assert!(guard_state.cooperative_pre_tool_warning_available());
-        assert!(guard_state.cooperative_pre_tool_denial_available());
-        assert!(guard_state.post_tool_correlation_available());
-        assert!(guard_state.generated_config_verified);
-        assert!(guard_state.native_host_output_adapter_config_verified);
-        assert!(guard_state.bash_shell_mutation_coverage);
-        assert!(guard_state.direct_file_write_matcher_coverage);
-        assert!(!guard_state.bypass_detection_active());
-        assert_eq!(guard_state.managed_source_state, "host_hooks");
-        assert_eq!(guard_state.managed_bundle_hash, None);
-        assert_eq!(guard_state.managed_verification_state, "not_applicable");
-        assert_eq!(guard_state.prompt_capture_state, "observed");
-
-        let registry =
-            rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(&runtime_home))?;
-        registry.execute(
-            "UPDATE guard_installations
-                SET installation_status = 'configured'
-              WHERE guard_installation_id = 'guard_installation_alpha'",
-            [],
-        )?;
-        let configured_current = guard_state_for_connection(&runtime_home, &connection, &projects)?;
-        assert_eq!(configured_current.installation_state, "configured");
-        assert_eq!(configured_current.hook_observed_state, "observed");
-        assert_eq!(configured_current.effective_state, "active");
-        assert!(configured_current.unresolved_blockers.is_empty());
-
-        registry.execute(
-            "UPDATE guard_installations
-                SET observed_policy_hash = 'sha256:stale-policy'
-              WHERE guard_installation_id = 'guard_installation_alpha'",
-            [],
-        )?;
-        let stale_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
-        assert_eq!(stale_state.installation_state, "configured");
-        assert_eq!(stale_state.hook_observed_state, "not_observed");
-        assert_eq!(stale_state.observation_state, "not_observed");
-        assert_eq!(stale_state.effective_state, "action_required");
-        assert_eq!(
-            stale_state.last_observed_at.as_deref(),
-            Some("2026-07-01T00:01:00Z")
-        );
-        assert_eq!(stale_state.prompt_capture_state, "configured");
-        assert_eq!(
-            stale_state.unresolved_blockers,
-            vec!["guard_not_observed".to_owned()]
-        );
-
-        let repo_beta = temp_dir("claude-guard-detective-beta")?;
-        fs::create_dir_all(repo_beta.join(".git"))?;
-        let project_beta = ensure_project_for_repo(
-            &runtime_home,
-            RepoProjectRegistration {
-                project_name: None,
-                project_alias: None,
-                repo_root: repo_beta.clone(),
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        let integration_beta = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::ClaudeCode,
-            InitMode::Detective,
-            &repo_beta,
-            "conn_alpha",
-            "guard_installation_beta",
-            &entry,
-        )?)?;
-        service::record_authoritative_workflow_policy(
-            &runtime_home,
-            &project_beta.project_id,
-            &integration_beta.policy,
-        )?;
-        add_connection_project(
-            &runtime_home,
-            ConnectionProjectRegistration {
-                connection_internal_id: "conn_alpha".to_owned(),
-                project_id: project_beta.project_id.clone(),
-            },
-        )?;
-        upsert_guard_installation(
-            &runtime_home,
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_beta".to_owned(),
-                connection_internal_id: "conn_alpha".to_owned(),
-                project_id: Some(project_beta.project_id.clone()),
-                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
-                host_capability_json: host_hook_capability_json(&integration_beta)?,
-                installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
-                installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
-                last_checked_at: "2026-07-01T00:00:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        volicord_store::guards::observe_guard_installation(
-            &runtime_home,
-            volicord_store::guards::GuardInstallationObservation {
-                guard_installation_id: "guard_installation_beta".to_owned(),
-                connection_internal_id: "conn_alpha".to_owned(),
-                project_id: project_beta.project_id,
-                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
-                observed_policy_hash: integration_beta.policy_hash,
-                observed_binary_version: Some("test".to_owned()),
-                observed_phase: "session_start".to_owned(),
-                observed_at: "2026-07-01T00:02:00Z".to_owned(),
-            },
-        )?;
-        let projects = list_connection_projects(&runtime_home, "conn_alpha")?;
-        let mixed_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
-        assert_eq!(mixed_state.installation_state, "active");
-        assert_eq!(mixed_state.hook_observed_state, "not_observed");
-        assert_eq!(mixed_state.effective_state, "action_required");
-        assert_eq!(
-            mixed_state.last_observed_at.as_deref(),
-            Some("2026-07-01T00:02:00Z")
-        );
-        assert_eq!(
-            mixed_state.unresolved_blockers,
-            vec!["guard_not_observed".to_owned()]
-        );
-
-        registry.execute(
-            "UPDATE guard_installations
-                SET observed_policy_hash = ?1
-              WHERE guard_installation_id = 'guard_installation_alpha'",
-            [&integration.policy_hash],
-        )?;
-        let all_current = guard_state_for_connection(&runtime_home, &connection, &projects)?;
-        assert_eq!(all_current.hook_observed_state, "observed");
-        assert_eq!(all_current.effective_state, "active");
-        assert!(all_current.unresolved_blockers.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn guard_state_downgrades_when_required_shell_matcher_is_missing(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let runtime_home = temp_dir("codex-missing-shell-matcher-runtime")?;
-        let repo = temp_dir("codex-missing-shell-matcher-repo")?;
-        fs::create_dir_all(repo.join(".git"))?;
-        initialize_runtime_home(&runtime_home, "runtime_home_test", "{}")?;
-        let project = ensure_project_for_repo(
-            &runtime_home,
-            RepoProjectRegistration {
-                project_name: None,
-                project_alias: None,
-                repo_root: repo.clone(),
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        let entry = ManagedServerEntry::new("conn_codex_missing_bash", Path::new("volicord"), None);
-        let integration = apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_codex_missing_bash",
-            "guard_installation_missing_bash",
-            &entry,
-        )?)?;
-        service::record_authoritative_workflow_policy(
-            &runtime_home,
-            &project.project_id,
-            &integration.policy,
-        )?;
-
-        let hooks_path = repo.join(".codex/hooks.json");
-        let hooks_without_bash = fs::read_to_string(&hooks_path)?.replace("Bash|", "");
-        fs::write(&hooks_path, &hooks_without_bash)?;
-        let mut capability: Value =
-            serde_json::from_str(&host_hook_capability_json(&integration)?)?;
-        let hook_file = capability["files"]
-            .as_array_mut()
-            .and_then(|files| {
-                files
-                    .iter_mut()
-                    .find(|file| file["kind"] == HostIntegrationFileKind::HostHookConfig.as_str())
+        fn run_preflight(
+            &mut self,
+            _launch: &McpLaunch,
+            _runtime_home: &Path,
+            _connection_id: &str,
+            _project_id: Option<&str>,
+        ) -> Result<ConnectionProcessOutput, String> {
+            Ok(ConnectionProcessOutput {
+                success: false,
+                status_code: Some(1),
+                stdout: String::new(),
+                stderr: "fixture preflight unavailable".to_owned(),
             })
-            .expect("capability should record hook config file");
-        hook_file["content_hash"] = Value::String(sha256_text(&hooks_without_bash));
+        }
 
-        ensure_agent_connection(
-            &runtime_home,
-            AgentConnectionRegistration {
-                connection_internal_id: "conn_codex_missing_bash".to_owned(),
-                host_kind: HostKind::Codex.as_str().to_owned(),
-                intent: ConnectionIntent::Shared.as_str().to_owned(),
-                host_scope: HostScope::Project.as_str().to_owned(),
-                server_name: DEFAULT_SERVER_NAME.to_owned(),
-                config_target: path_text(&repo.join(".codex/config.toml")),
-                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                enabled: true,
-                managed_fingerprint: "fingerprint".to_owned(),
-                last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-                last_verification_report_json: "{}".to_owned(),
-                last_user_actions_json: "[]".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        add_connection_project(
-            &runtime_home,
-            ConnectionProjectRegistration {
-                connection_internal_id: "conn_codex_missing_bash".to_owned(),
-                project_id: project.project_id.clone(),
-            },
-        )?;
-        upsert_guard_installation(
-            &runtime_home,
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_missing_bash".to_owned(),
-                connection_internal_id: "conn_codex_missing_bash".to_owned(),
-                project_id: Some(project.project_id.clone()),
-                host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
-                host_capability_json: serde_json::to_string(&capability)?,
-                installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
-                installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
-                last_checked_at: "2026-07-01T00:00:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        volicord_store::guards::observe_guard_installation(
-            &runtime_home,
-            volicord_store::guards::GuardInstallationObservation {
-                guard_installation_id: "guard_installation_missing_bash".to_owned(),
-                connection_internal_id: "conn_codex_missing_bash".to_owned(),
-                project_id: project.project_id.clone(),
-                host_kind: HostKind::Codex.as_str().to_owned(),
-                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
-                observed_policy_hash: integration.policy_hash.clone(),
-                observed_binary_version: Some("test".to_owned()),
-                observed_phase: "session_start".to_owned(),
-                observed_at: "2026-07-01T00:01:00Z".to_owned(),
-            },
-        )?;
+        fn verify_mcp_stdio(
+            &mut self,
+            _launch: &McpLaunch,
+            _runtime_home: &Path,
+            _connection_id: &str,
+            _mode: &str,
+        ) -> Result<McpVerification, String> {
+            Ok(McpVerification::failed("fixture handshake unavailable"))
+        }
+    }
 
-        let projects = list_connection_projects(&runtime_home, "conn_codex_missing_bash")?;
-        let connection = agent_connection_record(&runtime_home, "conn_codex_missing_bash")?
-            .expect("test connection should exist");
-        let guard_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
+    #[test]
+    fn stored_connection_metadata_never_defaults_after_decode_failure() {
+        assert!(parse_metadata("{").is_err());
+        assert!(parse_metadata("[]").is_err());
+        assert!(parse_metadata(r#"{"created_by":42}"#).is_err());
+        assert!(parse_metadata("{}").expect("empty typed map").is_empty());
+    }
 
-        assert_eq!(guard_state.hook_config_state, "stale");
-        assert_eq!(guard_state.effective_state, "degraded");
-        assert!(guard_state.stale_files.contains(&path_text(&hooks_path)));
-        assert_eq!(guard_state.selected_profile(), "detective");
-        let control_surface = guard_state.control_surface_json();
-        assert_eq!(control_surface["host_hooks_active"], false);
-        assert_eq!(
-            control_surface["cooperative_pre_tool_warning_available"],
-            false
+    #[test]
+    fn corrupt_user_actions_degrade_list_and_status_then_verify_repairs_them(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("connection-corrupt-user-actions")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let damaged = r#"[{"kind":"removed_variant","message":"unknown"}]"#;
+        open_registry_database(registry_db_path(fixture.runtime_home_path()))?.execute(
+            "UPDATE agent_connections
+                SET last_user_actions_json = ?2
+              WHERE connection_internal_id = ?1",
+            (fixture.connection_id(), damaged),
+        )?;
+        assert!(
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id()).is_err()
         );
-        assert_eq!(
-            control_surface["cooperative_pre_tool_denial_available"],
-            false
-        );
-        assert_eq!(control_surface["os_enforced"], false);
-        assert!(!guard_state.post_tool_correlation_available());
-        assert!(!guard_state.generated_config_verified);
-        assert!(!guard_state.bash_shell_mutation_coverage);
-        Ok(())
-    }
 
-    fn host_plan_stub(entry: &ManagedServerEntry) -> HostPlan {
-        HostPlan {
-            host_kind: HostKind::Codex,
-            connection_intent: ConnectionIntent::Shared,
-            host_scope: HostScope::Project,
-            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            server_name: DEFAULT_SERVER_NAME.to_owned(),
-            target: HostTarget::File(PathBuf::from("/repo/.codex/config.toml")),
-            entry: entry.clone(),
-            change: PlannedChange::Noop,
-            fingerprint: "fingerprint".to_owned(),
-            conflicts: Vec::new(),
-            user_actions: Vec::new(),
-            file_snapshot: None,
-        }
-    }
-
-    #[cfg(unix)]
-    fn init_real_git_repo(repo: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        let output = Command::new("git")
-            .arg("init")
-            .arg("-q")
-            .current_dir(repo)
-            .output()?;
-        if !output.status.success() {
-            return Err(format!(
-                "git init failed\nstdout:\n{}\nstderr:\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            )
-            .into());
-        }
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    fn write_fake_guard_volicord(dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        fs::create_dir_all(dir)?;
-        let path = dir.join("volicord");
-        fs::write(
-            &path,
-            "#!/bin/sh\ninput=$(cat)\nprintf 'stdout:%s\\n' \"$input\"\nprintf 'stderr:guard reached\\n' >&2\nexit 37\n",
+        let mut process = DiagnosticProcess {
+            runtime_home: fixture.runtime_home_path().to_path_buf(),
+        };
+        let list = run_connections_command(
+            ConnectionListArgs {
+                repo: Some(repo_root.clone()),
+                json: true,
+            },
+            &repo_root,
+            &mut process,
         )?;
-        set_script_executable(&path)?;
-        Ok(path)
-    }
+        let list: Value = serde_json::from_str(&list)?;
+        assert_eq!(list["status"], "degraded");
+        assert_eq!(
+            list["connections"][0]["user_actions_state"]["reason"],
+            PERSISTED_USER_ACTIONS_CORRUPT_REASON
+        );
+        assert!(list["connections"][0]["user_actions"].is_null());
 
-    #[cfg(unix)]
-    fn path_with_prefix(prefix: &Path) -> Result<OsString, Box<dyn std::error::Error>> {
-        let mut paths = vec![prefix.to_path_buf()];
-        if let Some(existing) = std::env::var_os("PATH") {
-            paths.extend(std::env::split_paths(&existing));
-        }
-        Ok(std::env::join_paths(paths)?)
-    }
+        let select_args = || ConnectionSelectArgs {
+            host: Some(crate::cli::CodexHost::Codex),
+            repo: Some(repo_root.clone()),
+            shared: false,
+            json: true,
+        };
+        let status = run_connection_command(
+            ConnectionArgs {
+                command: ConnectionCommand::Status(select_args()),
+            },
+            &repo_root,
+            &mut process,
+        )?;
+        let status: Value = serde_json::from_str(&status)?;
+        assert_eq!(status["status"], "action_required");
+        assert_eq!(
+            status["connection"]["user_actions_state"]["reason"],
+            PERSISTED_USER_ACTIONS_CORRUPT_REASON
+        );
 
-    fn hook_path_status_recorded(findings: &GuardFileFindings, status: &str) -> bool {
-        findings
-            .hook_path_safety_statuses
-            .iter()
-            .any(|recorded| recorded == status)
-            || findings.hook_path_safety_details.iter().any(|detail| {
-                detail
-                    .get("wrapper_resolution_status")
-                    .and_then(Value::as_str)
-                    == Some(status)
-            })
-    }
-
-    fn temp_dir(prefix: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let path = std::env::temp_dir().join(format!("{prefix}-{}-{stamp}", std::process::id()));
-        fs::create_dir_all(&path)?;
-        Ok(path)
+        let _verification = run_connection_command(
+            ConnectionArgs {
+                command: ConnectionCommand::Verify(select_args()),
+            },
+            &repo_root,
+            &mut process,
+        )?;
+        let repaired =
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+                .expect("verification should preserve the selected connection");
+        let repaired_actions = decode_persisted_user_actions(&repaired.last_user_actions_json);
+        assert!(!repaired_actions.is_corrupt());
+        assert!(decode_persisted_object(&repaired.last_verification_report_json).is_some());
+        Ok(())
     }
 }

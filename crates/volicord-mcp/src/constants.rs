@@ -1,4 +1,4 @@
-use std::{sync::atomic::AtomicU64, time::Duration};
+use std::sync::atomic::AtomicU64;
 
 use volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING;
 pub use volicord_types::{
@@ -15,21 +15,10 @@ pub(crate) const SERVER_NAME: &str = "volicord-mcp";
 pub(crate) const DEFAULT_INVOCATION_BINDING_BASIS: &str =
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING;
 pub(crate) const DEFAULT_LOCALE: &str = "en-US";
-pub(crate) const ELICITATION_CREATE_METHOD: &str = "elicitation/create";
-pub(crate) const LOCAL_WEB_CONSENT_PATH: &str = "/consent";
-pub(crate) const LOCAL_WEB_CONSENT_DELIVERY_SURFACE: &str = "model_invisible_user_surface";
 pub(crate) static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) const SERVER_INSTRUCTIONS: &str = "Volicord records task scope, write tickets, evidence, runs, user-action requests, evidence attachments, and Close Status for explicitly registered Product Repositories. Preserve the user's requested outcome when choosing Task scope: when analysis or shaping is a step toward an implementation outcome, keep one work Task and record that step as a shaping_update; use advisor only when the requested outcome itself is read-only advice. If the broader outcome is unclear, keep the known boundary in shaping state or ask the user instead of expanding it. If project selection is unclear, call volicord.list_projects and use one listed project_selector; do not guess from folders, roots, labels, or memory. Mutation tools default to a fresh compact authority receipt plus the method outcome needed for the next step; request detail=workflow for current next actions or detail=full only when the bounded full method result is needed. When a mutation returns a non-null operation_result_ref, use volicord.get_operation_result for omitted exact historical bytes and volicord.status separately for current authority; never retry an applied mutation. Volicord state management is separate from product-file edit authority: product-file edits still require the host/user path and any required write ticket. A write ticket records intended product-file changes; it is not OS permission, review bypass, access control, or a promise of automatic tool use.";
-pub(crate) const WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
-pub(crate) const TRANSPORT_DISCLOSURE_TEXT: &str = "Does not prove: public API availability, authentication service status, security boundary, full MCP Streamable HTTP compatibility, OS sandboxing, network isolation, write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
-pub(crate) const FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING: &str =
-    "Session-watch coverage starts at first explicit project selection; Product Repository changes before project selection are outside watcher coverage.";
-pub(crate) const METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING: &str =
-    "Session-watch coverage starts at a method boundary; Product Repository changes before that boundary are outside watcher coverage.";
-pub(crate) const HTTP_HEADER_LIMIT_BYTES: usize = 16 * 1024;
-pub(crate) const HTTP_BODY_LIMIT_BYTES: usize = 1024 * 1024;
-pub(crate) const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const TRANSPORT_DISCLOSURE_TEXT: &str = "Does not prove: public API availability, authentication service status, security boundary, OS sandboxing, network isolation, write prevention, actor identity proof, correctness proof, test sufficiency proof, or human review completion";
 
 #[cfg(test)]
 mod tests {

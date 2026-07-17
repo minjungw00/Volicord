@@ -7,10 +7,6 @@ use volicord_store::{
     bootstrap::ProjectRecord,
     core_pipeline::CoreProjectStore,
     guards::list_unresolved_unrecorded_changes,
-    session_watch::{
-        latest_watch_baseline_for_session, watch_scan_summary_from_entries_json, WatchScanSummary,
-        WatchSnapshot, DEFAULT_MAX_FILE_HASH_BYTES, DEFAULT_MAX_SCAN_FILE_COUNT,
-    },
     workflow_records::{
         project_write_authority_fingerprint, task_policy_control_reevaluation,
         TaskPolicyControlReevaluation,
@@ -18,10 +14,10 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_bare_sha256, AcceptancePolicy, BaselineRef, JudgmentResolutionOutcome,
-    PersistedUserActionRequest, ProjectId, PromptCaptureStatus, SessionWatchScanSummary,
-    StateRecordKind, TaskControlLevel, TaskId, UserActionBasis, UserActionBasisStatus,
-    UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionResolutionBody,
-    UtcTimestamp, WriteTicketAttemptScope, WriteTicketValidityBasis,
+    PersistedUserActionRequest, ProjectId, PromptCaptureStatus, StateRecordKind, TaskControlLevel,
+    TaskId, UserActionBasis, UserActionBasisStatus, UserActionKind, UserActionOptionAction,
+    UserActionRequiredFor, UserActionResolutionBody, UtcTimestamp, WriteTicketAttemptScope,
+    WriteTicketValidityBasis,
 };
 
 use super::{
@@ -47,7 +43,7 @@ pub(super) struct GuardStateSummary {
     pub(super) policy_control_reevaluation: Option<GuardPolicyControlReevaluationSummary>,
     pub(super) active_change_unit_id: Option<String>,
     pub(super) prompt_capture_status: PromptCaptureStatus,
-    pub(super) prompt_capture_enabled: bool,
+    pub(super) prompt_capture_operational: bool,
     pub(super) current_write_ticket_ids: Vec<String>,
     pub(super) stale_write_ticket_ids: Vec<String>,
     pub(super) uncertain_write_ticket_ids: Vec<String>,
@@ -58,7 +54,6 @@ pub(super) struct GuardStateSummary {
     pub(super) active_blocker_count: usize,
     pub(super) unresolved_unrecorded_change_count: usize,
     pub(super) suspected_unrecorded_change_count: usize,
-    pub(super) session_watch_scan_summary: Option<SessionWatchScanSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,7 +65,7 @@ pub(super) struct GuardPolicyControlReevaluationSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ActiveWriteTicketSummary {
     pub(super) write_ticket_id: String,
-    pub(super) change_unit_id: Option<String>,
+    pub(super) change_unit_id: String,
     pub(super) intended_paths: Vec<String>,
     pub(super) denied_paths: Vec<String>,
     pub(super) idle_expires_at: Option<String>,
@@ -120,7 +115,7 @@ pub(super) fn guard_state_summary(
     let prompt_capture_availability =
         prompt_capture_availability_for_event(runtime_home, project, envelope)?;
     let prompt_capture_status = prompt_capture_availability.status;
-    let prompt_capture_enabled = prompt_capture_availability.can_use_chat_commands();
+    let prompt_capture_operational = prompt_capture_availability.is_operational();
     if let Some(active_task_id) = project_state.active_task_id.as_deref() {
         let task_id = TaskId::new(active_task_id);
         let mut current_task_sensitive = false;
@@ -143,8 +138,8 @@ pub(super) fn guard_state_summary(
         for record in store.write_tickets_for_task(&task_id)? {
             let validity_basis: WriteTicketValidityBasis =
                 serde_json::from_str(&record.validity_basis_json).map_err(json_error)?;
-            let policy_binding_is_current = validity_basis.write_authority_fingerprint.as_deref()
-                == Some(current_write_authority_fingerprint.as_str());
+            let policy_binding_is_current =
+                validity_basis.write_authority_fingerprint == current_write_authority_fingerprint;
             if !policy_binding_is_current {
                 stale_write_ticket_ids.push(record.write_ticket_id.clone());
                 if record.status != "consumed" {
@@ -188,7 +183,7 @@ pub(super) fn guard_state_summary(
                 |current| {
                     write_ticket_owner_basis_status(
                         &record.task_id,
-                        record.change_unit_id.as_deref(),
+                        Some(record.change_unit_id.as_str()),
                         &validity_basis,
                         &attempt_scope,
                         current,
@@ -247,8 +242,6 @@ pub(super) fn guard_state_summary(
         .iter()
         .filter(|record| record.confidence == "suspected")
         .count();
-    let session_watch_scan_summary =
-        guard_session_watch_scan_summary(runtime_home, project, envelope)?;
     let _ = input.raw_text.len();
     Ok(GuardStateSummary {
         project_id: project.project_id.clone(),
@@ -260,7 +253,7 @@ pub(super) fn guard_state_summary(
         policy_control_reevaluation,
         active_change_unit_id,
         prompt_capture_status,
-        prompt_capture_enabled,
+        prompt_capture_operational,
         current_write_ticket_ids,
         stale_write_ticket_ids,
         uncertain_write_ticket_ids,
@@ -271,7 +264,6 @@ pub(super) fn guard_state_summary(
         active_blocker_count,
         unresolved_unrecorded_change_count,
         suspected_unrecorded_change_count,
-        session_watch_scan_summary,
     })
 }
 
@@ -600,53 +592,4 @@ fn path_is_within(path: &str, prefix: &str) -> bool {
         || path
             .strip_prefix(prefix)
             .is_some_and(|suffix| suffix.starts_with('/'))
-}
-
-pub(super) fn session_watch_scan_summary_from_snapshot(
-    snapshot: &WatchSnapshot,
-) -> SessionWatchScanSummary {
-    session_watch_scan_summary_from_store(&snapshot.scan_summary)
-}
-
-fn guard_session_watch_scan_summary(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-) -> Result<Option<SessionWatchScanSummary>, GuardCommandError> {
-    let Some(session_id) = envelope.session_id.as_deref() else {
-        return Ok(None);
-    };
-    let Some(baseline) =
-        latest_watch_baseline_for_session(runtime_home, &project.project_id, session_id)?
-    else {
-        return Ok(None);
-    };
-    if let Ok(metadata) = serde_json::from_str::<Value>(&baseline.metadata_json) {
-        if let Some(raw_summary) = metadata.get("scan_summary") {
-            if let Ok(summary) =
-                serde_json::from_value::<SessionWatchScanSummary>(raw_summary.clone())
-            {
-                return Ok(Some(summary));
-            }
-        }
-    }
-    let summary = watch_scan_summary_from_entries_json(&baseline.snapshot_entries_json)?;
-    Ok(Some(session_watch_scan_summary_from_store(&summary)))
-}
-
-fn session_watch_scan_summary_from_store(summary: &WatchScanSummary) -> SessionWatchScanSummary {
-    SessionWatchScanSummary {
-        files_scanned: summary.files_scanned,
-        files_skipped: summary.files_skipped,
-        unreadable_paths_count: summary.unreadable_paths_count,
-        degraded_reasons: summary.degraded_reasons.clone(),
-        degraded_reason_counts: summary.degraded_reason_counts.clone(),
-        skipped_paths_sample: summary.skipped_paths_sample.clone(),
-        skipped_paths_truncated: summary.skipped_paths_truncated,
-        default_excluded_paths: volicord_store::session_watch::default_watch_excluded_paths(),
-        max_file_size_bytes: DEFAULT_MAX_FILE_HASH_BYTES,
-        max_file_count: DEFAULT_MAX_SCAN_FILE_COUNT,
-        follows_symlinks: false,
-        not_full_filesystem_monitoring: true,
-    }
 }

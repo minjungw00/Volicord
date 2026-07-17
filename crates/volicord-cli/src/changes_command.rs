@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     ffi::OsString,
     fmt,
     path::{Path, PathBuf},
@@ -17,6 +16,7 @@ use volicord_types::{
     TaskId, ToolEnvelope, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
+use crate::cli::{ChangesArgs, ChangesCommand, ChangesReconcileArgs};
 use crate::disclosure::does_not_prove_line;
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
@@ -24,8 +24,6 @@ use crate::project_context::{
 use crate::summary_card::{
     render_close_and_next_action_totals_text, render_summary_card_text, summary_card_from_response,
 };
-
-type RawOptions = BTreeMap<String, Vec<String>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangesCommandError {
@@ -80,64 +78,39 @@ enum OutputFormat {
     Json,
 }
 
-#[derive(Debug, Clone, Default)]
-struct ParsedChangesOptions {
-    repo: Option<PathBuf>,
-    task_id: Option<String>,
-    dry_run: bool,
-    output: OutputFormat,
-}
-
-pub fn changes_usage() -> String {
-    "volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]\n".to_owned()
-}
-
 pub fn run_changes_command<F>(
-    args: &[String],
+    args: ChangesArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, ChangesCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Ok(changes_usage());
-    };
-    match subcommand {
-        "reconcile" => command_reconcile(&args[1..], env_var, current_dir),
-        "-h" | "--help" | "help" => Ok(changes_usage()),
-        other => Err(ChangesCommandError::Usage(format!(
-            "unknown changes command: {other}\n\n{}",
-            changes_usage()
-        ))),
+    match args.command {
+        ChangesCommand::Reconcile(options) => command_reconcile(options, env_var, current_dir),
     }
 }
 
 fn command_reconcile<F>(
-    args: &[String],
+    options: ChangesReconcileArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, ChangesCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let parsed = parse_changes_options(args, current_dir)?;
     let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
-    let repo_root = resolve_repository_root(current_dir, parsed.repo.as_deref())?;
+    let repo = options.repo.map(|path| absolute_path(current_dir, path));
+    let repo_root = resolve_repository_root(current_dir, repo.as_deref())?;
     let project = registered_project_for_repo(&runtime_home, &repo_root)?;
     let project_id = ProjectId::new(project.project_id.clone());
     let store = CoreProjectStore::open(&runtime_home, &project_id)?;
-    let task_id = match parsed.task_id.as_deref() {
-        Some("active") | None => store
+    let task_id = match options.task.as_str() {
+        "active" => store
             .active_task_record()?
             .map(|task| task.task_id)
             .ok_or_else(|| ChangesCommandError::Runtime("no active Task for project".to_owned()))?,
-        Some(value) if value.trim().is_empty() => {
-            return Err(ChangesCommandError::Usage(
-                "--task must not be empty".to_owned(),
-            ))
-        }
-        Some(value) => value.to_owned(),
+        value => value.to_owned(),
     };
     let state_version = store.project_state()?.state_version;
     let response = CoreService::new(&runtime_home).reconcile_changes(
@@ -146,13 +119,13 @@ where
                 project_id: project_id.clone(),
                 task_id: Some(TaskId::new(task_id.clone())).into(),
                 request_id: RequestId::new(generated_id("req_changes_reconcile")),
-                idempotency_key: if parsed.dry_run {
+                idempotency_key: if options.dry_run {
                     None.into()
                 } else {
                     Some(IdempotencyKey::new(generated_id("idem_changes_reconcile"))).into()
                 },
                 expected_state_version: Some(state_version).into(),
-                dry_run: parsed.dry_run,
+                dry_run: options.dry_run,
                 locale: None.into(),
             },
             task_id: TaskId::new(task_id),
@@ -165,99 +138,14 @@ where
             VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         ),
     )?;
-    render_reconcile_response(&response, parsed.output)
-}
-
-fn parse_changes_options(
-    args: &[String],
-    current_dir: &Path,
-) -> Result<ParsedChangesOptions, ChangesCommandError> {
-    let mut raw = RawOptions::new();
-    let mut index = 0;
-    while index < args.len() {
-        let token = &args[index];
-        if token == "-h" || token == "--help" || token == "help" {
-            return Err(ChangesCommandError::Usage(changes_usage()));
-        }
-        if token == "--json" {
-            set_option(&mut raw, "json", "true".to_owned())?;
-        } else if token == "--dry-run" {
-            set_option(&mut raw, "dry-run", "true".to_owned())?;
-        } else if token == "--repo" {
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(ChangesCommandError::Usage(
-                    "missing value for --repo".to_owned(),
-                ));
-            };
-            set_nonempty_option(&mut raw, "repo", value)?;
-        } else if let Some(value) = token.strip_prefix("--repo=") {
-            set_nonempty_option(&mut raw, "repo", value)?;
-        } else if token == "--task" {
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(ChangesCommandError::Usage(
-                    "missing value for --task".to_owned(),
-                ));
-            };
-            set_nonempty_option(&mut raw, "task", value)?;
-        } else if let Some(value) = token.strip_prefix("--task=") {
-            set_nonempty_option(&mut raw, "task", value)?;
-        } else if token.starts_with("--") {
-            return Err(ChangesCommandError::Usage(format!(
-                "unknown option: {token}"
-            )));
-        } else {
-            return Err(ChangesCommandError::Usage(format!(
-                "unexpected argument: {token}"
-            )));
-        }
-        index += 1;
-    }
-    Ok(ParsedChangesOptions {
-        repo: option_value(&raw, "repo")
-            .map(PathBuf::from)
-            .map(|path| absolute_path(current_dir, path)),
-        task_id: option_value(&raw, "task"),
-        dry_run: option_value(&raw, "dry-run").is_some(),
-        output: if option_value(&raw, "json").is_some() {
+    render_reconcile_response(
+        &response,
+        if options.json {
             OutputFormat::Json
         } else {
             OutputFormat::Text
         },
-    })
-}
-
-fn set_option(
-    options: &mut RawOptions,
-    name: &'static str,
-    value: String,
-) -> Result<(), ChangesCommandError> {
-    let values = options.entry(name.to_owned()).or_default();
-    if !values.is_empty() {
-        return Err(ChangesCommandError::Usage(format!(
-            "--{name} was supplied more than once"
-        )));
-    }
-    values.push(value);
-    Ok(())
-}
-
-fn set_nonempty_option(
-    options: &mut RawOptions,
-    name: &'static str,
-    value: &str,
-) -> Result<(), ChangesCommandError> {
-    if value.trim().is_empty() {
-        return Err(ChangesCommandError::Usage(format!(
-            "--{name} must not be empty"
-        )));
-    }
-    set_option(options, name, value.to_owned())
-}
-
-fn option_value(options: &RawOptions, name: &str) -> Option<String> {
-    options.get(name).and_then(|values| values.first()).cloned()
+    )
 }
 
 fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {

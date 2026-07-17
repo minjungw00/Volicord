@@ -67,20 +67,16 @@ fn connection_summary_next_text(
             "Repair the malformed MCP configuration, then rerun verification.".to_owned()
         }
         "guard_files_missing" => {
-            "Reinstall missing detective host-hook files, then rerun verification.".to_owned()
+            "Reinstall missing Codex Record Guard files, then rerun verification.".to_owned()
         }
         "guard_files_stale" => {
-            "Refresh stale detective host-hook files, then rerun verification.".to_owned()
+            "Refresh stale Codex Record Guard files, then rerun verification.".to_owned()
         }
         "guard_files_broken" => {
-            "Repair broken detective host-hook files, then rerun verification.".to_owned()
-        }
-        "guard_hook_path_safety" => {
-            "Regenerate cwd-independent detective host-hook commands, then rerun verification."
-                .to_owned()
+            "Repair broken Codex Record Guard files, then rerun verification.".to_owned()
         }
         "guard_capability_degraded" => {
-            "Prepare a host, platform, and configuration that meet every Detective prerequisite, or use the record profile, then rerun verification.".to_owned()
+            "Repair the required Codex Record Guard hook configuration, then rerun verification.".to_owned()
         }
         _ => action.instruction.clone(),
     }

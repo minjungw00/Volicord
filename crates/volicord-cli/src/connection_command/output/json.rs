@@ -34,8 +34,9 @@ pub(in crate::connection_command) fn init_checks_json(
     guard_status: &str,
     guard_state: &GuardOperationalState,
 ) -> Value {
+    let mut checks = Vec::new();
     if let Some(report) = verification {
-        let mut checks = vec![
+        checks.extend([
             json!({
                 "id": "host",
                 "status": report.host.status.as_str(),
@@ -51,246 +52,58 @@ pub(in crate::connection_command) fn init_checks_json(
                 "status": report.handshake.status.as_str(),
                 "summary": report.handshake.details,
             }),
-            json!({
-                "id": "guard_installation",
-                "status": guard_status,
-                "summary": "detective installation status was recorded",
-            }),
-        ];
-        checks.extend(guard_checks_json_values(guard_state));
-        Value::Array(checks)
-    } else {
-        let mut checks = vec![json!({
-            "id": "init_plan",
-            "status": "passed",
-            "summary": "init plan was built without writing files or Runtime Home records"
-        })];
-        checks.extend(guard_checks_json_values(guard_state));
-        Value::Array(checks)
+        ]);
     }
+    checks.push(json!({
+        "id": "guard_installation",
+        "status": guard_status,
+        "summary": "Codex Record Guard installation status",
+    }));
+    checks.push(json!({
+        "id": "guard_files",
+        "status": match guard_state.files_state.as_str() {
+            "installed" => "passed",
+            "planned" | "not_configured" => "skipped",
+            _ => "failed",
+        },
+        "summary": format!("Codex Record Guard files are {}", guard_state.files_state),
+    }));
+    checks.push(json!({
+        "id": "guard_hooks",
+        "status": if guard_state.host_hook_guard_available() {
+            "passed"
+        } else if guard_state.missing_required_hooks.is_empty() {
+            "action_required"
+        } else {
+            "failed"
+        },
+        "summary": format!(
+            "Codex Record Guard effective state is {}",
+            guard_state.effective_state
+        ),
+    }));
+    checks.push(json!({
+        "id": "prompt_capture",
+        "status": match guard_state.prompt_capture_state.as_str() {
+            "active" | "observed" | "configured" => "passed",
+            "reload_required" => "action_required",
+            _ => "failed",
+        },
+        "summary": format!(
+            "Codex prompt observation is {} and UserAction resolution remains CLI inbox only",
+            guard_state.prompt_capture_state
+        ),
+    }));
+    Value::Array(checks)
 }
-
-fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
-    let detective_hooks_applicable = guard_state.detective_hooks_applicable();
-    let files_check = if !detective_hooks_applicable {
-        json!({
-            "id": "guard_files_installed",
-            "status": "skipped",
-            "summary": "detective host-hook files are not applicable for the record profile",
-        })
-    } else {
-        match guard_state.files_state.as_str() {
-            "installed" => json!({
-                "id": "guard_files_installed",
-                "status": "passed",
-                "summary": "detective host-hook files are installed",
-            }),
-            "missing" => json!({
-                "id": "guard_files_installed",
-                "status": "failed",
-                "summary": "detective host-hook files are missing",
-                "details": guard_file_details_json(guard_state),
-            }),
-            "stale" => json!({
-                "id": "guard_files_installed",
-                "status": "failed",
-                "summary": "detective host-hook files are stale",
-                "details": guard_file_details_json(guard_state),
-            }),
-            "broken" => json!({
-                "id": "guard_files_installed",
-                "status": "failed",
-                "summary": "detective host-hook files are broken",
-                "details": guard_file_details_json(guard_state),
-            }),
-            "disabled" => json!({
-                "id": "guard_files_installed",
-                "status": "skipped",
-                "summary": "host hook files are disabled for record profile",
-            }),
-            other => json!({
-                "id": "guard_files_installed",
-                "status": "skipped",
-                "summary": format!("detective host-hook files are {other}"),
-            }),
-        }
-    };
-    let reload_check = if !detective_hooks_applicable {
-        json!({
-            "id": "guard_host_reload_required",
-            "status": "skipped",
-            "summary": "detective host reload is not applicable for the record profile",
-        })
-    } else if guard_state.installation_state == "reload_required" {
-        json!({
-            "id": "guard_host_reload_required",
-            "status": "failed",
-            "summary": "host reload is required before detective host hooks are active",
-        })
-    } else {
-        json!({
-            "id": "guard_host_reload_required",
-            "status": "passed",
-            "summary": "host reload is not currently required by detective installation state",
-        })
-    };
-    let hook_check = if !detective_hooks_applicable {
-        json!({
-            "id": "guard_hook_observed",
-            "status": "skipped",
-            "summary": "detective host-hook observation is not applicable for the record profile",
-        })
-    } else {
-        match guard_state.hook_observed_state.as_str() {
-            "observed" => json!({
-                "id": "guard_hook_observed",
-                "status": "passed",
-                "summary": "detective host hook has been observed",
-                "details": {
-                    "last_observed_at": &guard_state.last_observed_at,
-                    "last_guard_event_at": &guard_state.last_guard_event_at,
-                },
-            }),
-            "not_observed" => json!({
-                "id": "guard_hook_observed",
-                "status": "failed",
-                "summary": "detective host hook has not been observed",
-                "details": {
-                    "last_observed_at": Value::Null,
-                    "last_guard_event_at": &guard_state.last_guard_event_at,
-                },
-            }),
-            other => json!({
-                "id": "guard_hook_observed",
-                "status": "skipped",
-                "summary": format!("detective host-hook observation is {other}"),
-            }),
-        }
-    };
-    let status_check = if !detective_hooks_applicable {
-        json!({
-            "id": "guard_status_active",
-            "status": "skipped",
-            "summary": "detective signal active status is not applicable for the record profile",
-        })
-    } else if guard_state.effective_state == "active" {
-        json!({
-            "id": "guard_status_active",
-            "status": "passed",
-            "summary": "effective detective signal status is active",
-        })
-    } else {
-        json!({
-            "id": "guard_status_active",
-            "status": "failed",
-            "summary": format!("effective detective signal status is {}", guard_state.effective_state),
-            "details": {
-                "installation_status": &guard_state.installation_state,
-                "configuration_health": &guard_state.configuration_state,
-                "observation_health": &guard_state.observation_state,
-                "effective_health": &guard_state.effective_state,
-                "missing_required_hooks": &guard_state.missing_required_hooks,
-                "unresolved_blockers": &guard_state.unresolved_blockers,
-            },
-        })
-    };
-    let capability_check = if !detective_hooks_applicable {
-        json!({
-            "id": "guard_required_hooks_supported",
-            "status": "skipped",
-            "summary": "detective host-hook capabilities are not applicable for the record profile",
-        })
-    } else if guard_state.missing_required_hooks.is_empty() {
-        json!({
-            "id": "guard_required_hooks_supported",
-            "status": "passed",
-            "summary": "required detective host-hook capabilities are supported",
-        })
-    } else {
-        json!({
-            "id": "guard_required_hooks_supported",
-            "status": "failed",
-            "summary": "required detective host-hook capabilities are missing",
-            "details": {
-                "missing_required_hooks": &guard_state.missing_required_hooks,
-            },
-        })
-    };
-    let prompt_capture_check = if !detective_hooks_applicable {
-        json!({
-            "id": "prompt_capture_available",
-            "status": "skipped",
-            "summary": "prompt capture is not applicable for the record profile",
-        })
-    } else {
-        match guard_state.prompt_capture_state.as_str() {
-            "active" | "observed" | "configured" => json!({
-                "id": "prompt_capture_available",
-                "status": "passed",
-                "summary": format!("prompt capture is {}", guard_state.prompt_capture_state),
-            }),
-            "reload_required" => json!({
-                "id": "prompt_capture_available",
-                "status": "failed",
-                "summary": "prompt capture needs host reload",
-            }),
-            "unsupported_by_host" => json!({
-                "id": "prompt_capture_available",
-                "status": "failed",
-                "summary": "host does not support prompt capture",
-            }),
-            "not_configured" => json!({
-                "id": "prompt_capture_available",
-                "status": "failed",
-                "summary": "prompt capture is not configured",
-            }),
-            "degraded" => json!({
-                "id": "prompt_capture_available",
-                "status": "failed",
-                "summary": "prompt capture is degraded",
-            }),
-            other => json!({
-                "id": "prompt_capture_available",
-                "status": "skipped",
-                "summary": format!("prompt capture is {other}"),
-            }),
-        }
-    };
-    vec![
-        files_check,
-        reload_check,
-        hook_check,
-        capability_check,
-        status_check,
-        prompt_capture_check,
-    ]
-}
-
-fn guard_file_details_json(guard_state: &GuardOperationalState) -> Value {
-    json!({
-        "missing_files": &guard_state.missing_files,
-        "stale_files": &guard_state.stale_files,
-        "broken_files": &guard_state.broken_files,
-        "missing_required_hooks": &guard_state.missing_required_hooks,
-        "hook_path_safety": &guard_state.hook_path_safety_state,
-        "hook_path_safety_details": &guard_state.hook_path_safety_details,
-    })
-}
-
 pub(in crate::connection_command) fn connection_states_json(
     connection_state: &str,
     project_registration: &str,
     mcp_config: &str,
     guard_state: &GuardOperationalState,
-    host_feature_diagnostic: ConnectionHostFeatureDiagnostics,
     host_reload_required: bool,
 ) -> Value {
-    let guard_files_state = if guard_state.detective_hooks_applicable() {
-        guard_state.files_state.as_str()
-    } else {
-        "disabled"
-    };
-    let mut states = json!({
+    json!({
         "runtime_home": "ready",
         "connection": connection_state,
         "project_registration": project_registration,
@@ -298,22 +111,17 @@ pub(in crate::connection_command) fn connection_states_json(
         "selected_profile": guard_state.selected_profile(),
         "control_surface": guard_state.control_surface_json(),
         "generated_config_verified": guard_state.generated_config_verified,
-        "native_host_output_adapter_config_verified": guard_state.native_host_output_adapter_config_verified,
-        "host_feature_support": host_feature_diagnostic.host_feature_support_json(),
-        "final_output_authority_disclosure": host_feature_diagnostic.final_output_authority_disclosure_json(),
         "cooperative_pre_tool_warning_available": guard_state.cooperative_pre_tool_warning_available(),
         "cooperative_pre_tool_denial_available": guard_state.cooperative_pre_tool_denial_available(),
         "post_tool_correlation_available": guard_state.post_tool_correlation_available(),
-        "bash_shell_mutation_coverage": guard_state.bash_shell_mutation_coverage,
         "direct_file_write_matcher_coverage": guard_state.direct_file_write_matcher_coverage,
         "bypass_detection_active": guard_state.bypass_detection_active(),
         "prompt_capture_available": guard_state.prompt_capture_available(),
-        "local_web_consent_available": false,
         "guard_installation": &guard_state.installation_state,
         "guard_configuration": &guard_state.configuration_state,
         "guard_observation": &guard_state.observation_state,
         "guard_effective": &guard_state.effective_state,
-        "guard_files": guard_files_state,
+        "guard_files": &guard_state.files_state,
         "agents_managed_block": &guard_state.agents_block_state,
         "volicord_policy_file": &guard_state.policy_file_state,
         "rule_instruction_config": &guard_state.rule_instruction_state,
@@ -327,22 +135,7 @@ pub(in crate::connection_command) fn connection_states_json(
         "prompt_capture": &guard_state.prompt_capture_state,
         "guard_blockers": &guard_state.unresolved_blockers,
         "host_reload_required": host_reload_required,
-    });
-    if let Some(object) = states.as_object_mut() {
-        object.insert(
-            "hook_path_safety".to_owned(),
-            Value::String(guard_state.hook_path_safety_state.clone()),
-        );
-        object.insert(
-            "hook_commands_cwd_independent".to_owned(),
-            Value::Bool(guard_state.hook_commands_cwd_independent),
-        );
-        object.insert(
-            "hook_commands_subdirectory_safe".to_owned(),
-            Value::Bool(guard_state.hook_commands_subdirectory_safe),
-        );
-    }
-    states
+    })
 }
 
 pub(in crate::connection_command) fn actions_json_values(actions: &[UserAction]) -> Value {
@@ -365,6 +158,7 @@ pub(in crate::connection_command) fn checks_json(
     current_host: Option<&Verification>,
     guard_state: &GuardOperationalState,
 ) -> Value {
+    let persisted_user_actions = decode_persisted_user_actions(&connection.last_user_actions_json);
     if let Some(verification) = verification {
         let mut checks = vec![json!({
             "id": "host",
@@ -396,11 +190,50 @@ pub(in crate::connection_command) fn checks_json(
             verification.preflight.preflight_diagnostics.as_ref(),
         ));
         checks.extend(guard_checks_json_values(guard_state));
+        checks.push(persisted_user_actions_check_json(&persisted_user_actions));
         return Value::Array(checks);
     }
     let mut checks = stored_checks_json(connection, current_host);
     checks.extend(guard_checks_json_values(guard_state));
+    checks.push(persisted_user_actions_check_json(&persisted_user_actions));
     Value::Array(checks)
+}
+
+fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
+    vec![
+        json!({
+            "id": "guard_files",
+            "status": match guard_state.files_state.as_str() {
+                "installed" => "passed",
+                "not_configured" => "skipped",
+                _ => "failed",
+            },
+            "summary": format!("Codex Record Guard files are {}", guard_state.files_state),
+        }),
+        json!({
+            "id": "guard_hooks",
+            "status": if guard_state.host_hook_guard_available() {
+                "passed"
+            } else if guard_state.missing_required_hooks.is_empty() {
+                "action_required"
+            } else {
+                "failed"
+            },
+            "summary": format!("Codex Record Guard is {}", guard_state.effective_state),
+        }),
+        json!({
+            "id": "prompt_capture",
+            "status": match guard_state.prompt_capture_state.as_str() {
+                "active" | "observed" | "configured" => "passed",
+                "reload_required" => "action_required",
+                _ => "failed",
+            },
+            "summary": format!(
+                "Codex prompt observation is {}; UserAction resolution is CLI inbox only",
+                guard_state.prompt_capture_state
+            ),
+        }),
+    ]
 }
 
 fn stored_checks_json(
@@ -903,9 +736,17 @@ pub(in crate::connection_command) fn connection_json(
     project_ids: &[String],
     user_actions: Option<&[UserAction]>,
 ) -> Value {
+    let persisted_user_actions = decode_persisted_user_actions(&connection.last_user_actions_json);
     let user_actions = user_actions
         .map(|actions| serde_json::to_value(actions).unwrap_or_else(|_| json!([])))
-        .unwrap_or_else(|| json_array_text(&connection.last_user_actions_json));
+        .or_else(|| {
+            persisted_user_actions
+                .actions()
+                .and_then(|actions| serde_json::to_value(actions).ok())
+        })
+        .unwrap_or(Value::Null);
+    let verification_report =
+        decode_persisted_object(&connection.last_verification_report_json).unwrap_or(Value::Null);
     json!({
         "connection_id": connection.connection_internal_id,
         "host_kind": connection.host_kind,
@@ -915,31 +756,33 @@ pub(in crate::connection_command) fn connection_json(
         "enabled": connection.enabled,
         "connected_projects": project_ids,
         "verification_status": connection.last_verification_status,
-        "verification_report": json_object_text(&connection.last_verification_report_json),
+        "verification_report": verification_report,
+        "verification_report_state": persisted_object_state_json(
+            &connection.last_verification_report_json,
+            PERSISTED_VERIFICATION_REPORT_CORRUPT_REASON,
+            "connection_verify_regenerates_current_typed_values",
+        ),
         "user_actions": user_actions,
+        "user_actions_state": persisted_user_actions.state_json(),
+        "metadata_state": persisted_object_state_json(
+            &connection.metadata_json,
+            PERSISTED_CONNECTION_METADATA_CORRUPT_REASON,
+            "recreate_or_repair_the_agent_connection_registration",
+        ),
         "server_name": connection.server_name,
         "config_target": connection.config_target,
     })
 }
 
 pub(in crate::connection_command) fn json_object_text(text: &str) -> Value {
-    serde_json::from_str::<Value>(text)
-        .ok()
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}))
-}
-
-fn json_array_text(text: &str) -> Value {
-    serde_json::from_str::<Value>(text)
-        .ok()
-        .filter(Value::is_array)
-        .unwrap_or_else(|| json!([]))
+    decode_persisted_object(text).unwrap_or(Value::Null)
 }
 
 pub(in crate::connection_command) fn verification_json(report: &VerificationReport) -> Value {
     json!({
         "status": report.status.as_str(),
-        "disclosure": detective_observation_disclosure_json(),
+        "host_verification_receipt": &report.receipt,
+        "disclosure": cooperative_host_decision_disclosure_json(),
         "project_trust": &report.host.project_trust,
         "host_policy_overlay": &report.host.host_policy_overlay,
         "host_runtime": &report.host.host_runtime,
@@ -972,6 +815,11 @@ pub(in crate::connection_command) fn verification_json(report: &VerificationRepo
             "mcp_handshake_allowed": report.host.mcp_handshake_allowed,
             "details": report.host.details,
             "diagnostic": report.host.diagnostic,
+            "failure_category": report.host.failure_category,
+            "failure_reason": report.host.failure_reason,
+            "managed_host_binding": report.host.managed_host_evidence.as_ref().map(|evidence| &evidence.binding),
+            "binding_digest": report.host.managed_host_evidence.as_ref().map(|evidence| &evidence.binding_digest),
+            "generated_artifacts_digest": report.host.managed_host_evidence.as_ref().map(|evidence| &evidence.generated_artifacts_digest),
             "user_actions": report.host.user_actions,
         },
         "cli_mcp_preflight": step_json(&report.preflight),

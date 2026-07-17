@@ -10,7 +10,6 @@ volicord-core = { path = "../volicord-core" }
 volicord-platform-fs = { path = "../volicord-platform-fs" }
 volicord-store = { path = "../volicord-store" }
 volicord-types = { path = "../volicord-types" }
-getrandom = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 schemars = { version = "0.8", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

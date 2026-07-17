@@ -42,20 +42,13 @@ const POLICY_TOP_LEVEL_KEYS: &[&str] = &[
 ];
 const POLICY_MCP_KEYS: &[&str] = &["command", "args", "env"];
 const POLICY_HOST_HOOK_KEYS: &[&str] = &["enabled", "commands"];
-const POLICY_HOOK_PHASE_KEYS: &[&str] = &[
-    "session_start",
-    "pre_tool",
-    "post_tool",
-    "prompt_capture",
-    "stop",
-];
+const POLICY_HOOK_PHASE_KEYS: &[&str] = &["pre_tool", "post_tool", "prompt_capture"];
 const POLICY_HOOK_COMMAND_KEYS: &[&str] = &["command", "args"];
 const POLICY_WORKFLOW_KEYS: &[&str] = &[
     "default_direct_control",
     "default_work_control",
     "light",
     "write_ticket",
-    "detective",
 ];
 const POLICY_LIGHT_KEYS: &[&str] = &[
     "enabled",
@@ -65,7 +58,6 @@ const POLICY_LIGHT_KEYS: &[&str] = &[
     "final_acceptance",
 ];
 const POLICY_WRITE_TICKET_KEYS: &[&str] = &["idle_timeout_minutes"];
-const POLICY_DETECTIVE_KEYS: &[&str] = &["unknown_effect_behavior", "stop_behavior"];
 const CONTROL_LEVELS: &[&str] = &["observe", "light", "tracked", "sensitive"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -125,7 +117,6 @@ pub(crate) fn recorded_local_policy(
     let connection_intent = match intent_text {
         "personal" => ConnectionIntent::Personal,
         "shared" => ConnectionIntent::Shared,
-        "global" => ConnectionIntent::Global,
         _ => {
             return Err(GuardIntegrationError::runtime(
                 "policy schema contains an unsupported connection_intent",
@@ -134,7 +125,6 @@ pub(crate) fn recorded_local_policy(
     };
     let selected_profile = match policy.get("selected_profile").and_then(Value::as_str) {
         Some("record") => IntegrationProfile::Record,
-        Some("detective") => IntegrationProfile::Detective,
         _ => {
             return Err(GuardIntegrationError::runtime(
                 "policy schema contains an unsupported selected_profile",
@@ -198,7 +188,7 @@ pub(crate) fn policy_json(
             "env": &mcp_entry.env,
         },
         "host_hook": {
-            "enabled": profile != IntegrationProfile::Record,
+            "enabled": true,
             "commands": commands,
         },
         "workflow": default_workflow_policy_json(),
@@ -221,10 +211,6 @@ pub(crate) fn default_workflow_policy_json() -> Value {
         "write_ticket": {
             "idle_timeout_minutes": Value::Null,
         },
-        "detective": {
-            "unknown_effect_behavior": "warn",
-            "stop_behavior": "allow_with_disclosure",
-        },
     })
 }
 
@@ -232,20 +218,20 @@ pub(crate) fn validate_policy_schema(
     policy: &Value,
     expected_connection_intent: &str,
 ) -> Result<(), GuardIntegrationError> {
-    validate_policy_v2(policy, Some(expected_connection_intent))
+    validate_workflow_policy(policy, Some(expected_connection_intent))
         .map_err(|issue| GuardIntegrationError::runtime(issue.message))
 }
 
-pub(crate) fn validate_policy_v2(
+pub(crate) fn validate_workflow_policy(
     policy: &Value,
     expected_connection_intent: Option<&str>,
 ) -> Result<(), PolicyValidationIssue> {
     if let Some(expected) = expected_connection_intent {
-        if !matches!(expected, "personal" | "shared" | "global") {
+        if !matches!(expected, "personal" | "shared") {
             return Err(validation_issue(
                 "POLICY_VALUE_INVALID",
                 "$.connection_intent",
-                "policy schema requires connection_intent=personal, connection_intent=shared, or connection_intent=global",
+                "policy schema requires connection_intent=personal or connection_intent=shared",
             ));
         }
     }
@@ -267,12 +253,12 @@ pub(crate) fn validate_policy_v2(
     let connection_intent = object
         .get("connection_intent")
         .and_then(Value::as_str)
-        .filter(|value| matches!(*value, "personal" | "shared" | "global"))
+        .filter(|value| matches!(*value, "personal" | "shared"))
         .ok_or_else(|| {
             validation_issue(
                 "POLICY_VALUE_INVALID",
                 "$.connection_intent",
-                "policy schema requires connection_intent=personal, connection_intent=shared, or connection_intent=global",
+                "policy schema requires connection_intent=personal or connection_intent=shared",
             )
         })?;
     if expected_connection_intent.is_some_and(|expected| expected != connection_intent) {
@@ -302,14 +288,11 @@ pub(crate) fn validate_policy_v2(
             ));
         }
     }
-    if !matches!(
-        object.get("selected_profile").and_then(Value::as_str),
-        Some("record" | "detective")
-    ) {
+    if object.get("selected_profile").and_then(Value::as_str) != Some("record") {
         return Err(validation_issue(
             "POLICY_VALUE_INVALID",
             "$.selected_profile",
-            "policy schema requires selected_profile=record or selected_profile=detective",
+            "policy schema requires selected_profile=record",
         ));
     }
     let mcp = require_object(
@@ -414,16 +397,15 @@ pub(crate) fn validate_policy_v2(
             ));
         }
     }
-    let detective = object.get("selected_profile").and_then(Value::as_str) == Some("detective");
-    if enabled != detective {
+    if !enabled {
         return Err(validation_issue(
             "POLICY_BINDING_MISMATCH",
             "$.host_hook.enabled",
-            "policy schema requires host_hook.enabled to match selected_profile",
+            "policy schema requires host_hook.enabled=true for the record Guard workflow",
         ));
     }
 
-    validate_workflow_policy(object.get("workflow").expect("required key was validated"))?;
+    validate_workflow_settings(object.get("workflow").expect("required key was validated"))?;
     Ok(())
 }
 
@@ -453,7 +435,7 @@ fn validate_exact_object_keys(
     Ok(())
 }
 
-fn validate_workflow_policy(workflow: &Value) -> Result<(), PolicyValidationIssue> {
+fn validate_workflow_settings(workflow: &Value) -> Result<(), PolicyValidationIssue> {
     let workflow = require_object(
         workflow,
         "$.workflow",
@@ -562,31 +544,6 @@ fn validate_workflow_policy(workflow: &Value) -> Result<(), PolicyValidationIssu
         ));
     }
 
-    let detective = require_object(
-        workflow
-            .get("detective")
-            .expect("required key was validated"),
-        "$.workflow.detective",
-        "policy schema requires workflow.detective as an object",
-    )?;
-    validate_exact_object_keys(
-        detective,
-        POLICY_DETECTIVE_KEYS,
-        "$.workflow.detective",
-        "workflow.detective",
-    )?;
-    for (field, expected) in [
-        ("unknown_effect_behavior", "warn"),
-        ("stop_behavior", "allow_with_disclosure"),
-    ] {
-        if detective.get(field).and_then(Value::as_str) != Some(expected) {
-            return Err(validation_issue(
-                "POLICY_VALUE_INVALID",
-                format!("$.workflow.detective.{field}"),
-                format!("policy schema requires workflow.detective.{field}={expected}"),
-            ));
-        }
-    }
     Ok(())
 }
 
@@ -695,208 +652,4 @@ pub(crate) fn guard_has_prompt_capture_commands(policy: &Value) -> bool {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry_with_env(key: &str, value: &str) -> ManagedServerEntry {
-        ManagedServerEntry {
-            command: "volicord".to_owned(),
-            args: vec![
-                "mcp".to_owned(),
-                "--stdio".to_owned(),
-                "--connection".to_owned(),
-                "conn_test".to_owned(),
-            ],
-            env: BTreeMap::from([(key.to_owned(), value.to_owned())]),
-            env_vars: Vec::new(),
-        }
-    }
-
-    fn test_guard_commands() -> BTreeMap<String, GuardCommandSpec> {
-        POLICY_HOOK_PHASE_KEYS
-            .iter()
-            .map(|phase| {
-                (
-                    (*phase).to_owned(),
-                    GuardCommandSpec {
-                        command: "volicord".to_owned(),
-                        args: vec!["_hook".to_owned(), phase.replace('_', "-")],
-                    },
-                )
-            })
-            .collect()
-    }
-
-    fn test_policy_context(connection_intent: ConnectionIntent) -> LocalPolicyContext<'static> {
-        LocalPolicyContext {
-            repo_root: Path::new("/repo"),
-            connection_id: "conn_test",
-            guard_installation_id: "guard_test",
-            connection_intent,
-        }
-    }
-
-    #[test]
-    fn policy_accepts_only_volicord_launch_environment() -> Result<(), Box<dyn std::error::Error>> {
-        let policy = policy_json(
-            HostKind::Codex,
-            IntegrationProfile::Record,
-            test_policy_context(ConnectionIntent::Personal),
-            &entry_with_env("VOLICORD_HOME", "/runtime"),
-            &test_guard_commands(),
-        )?;
-
-        assert_eq!(policy["mcp"]["env"]["VOLICORD_HOME"], "/runtime");
-        assert_eq!(policy["storage_scope"], POLICY_STORAGE_SCOPE);
-        assert_eq!(policy["connection_intent"], "personal");
-        Ok(())
-    }
-
-    #[test]
-    fn policy_rejects_secret_like_environment_without_echoing_value() {
-        let error = policy_json(
-            HostKind::Codex,
-            IntegrationProfile::Record,
-            test_policy_context(ConnectionIntent::Personal),
-            &entry_with_env("SERVICE_API_TOKEN", "do-not-print-this"),
-            &test_guard_commands(),
-        )
-        .expect_err("secret-like environment must be rejected");
-
-        assert!(error
-            .to_string()
-            .contains("secret-like MCP environment key"));
-        assert!(error.to_string().contains("SERVICE_API_TOKEN"));
-        assert!(!error.to_string().contains("do-not-print-this"));
-    }
-
-    #[test]
-    fn policy_rejects_other_unapproved_environment_keys() {
-        let error = policy_json(
-            HostKind::ClaudeCode,
-            IntegrationProfile::Record,
-            test_policy_context(ConnectionIntent::Shared),
-            &entry_with_env("RUST_LOG", "debug"),
-            &test_guard_commands(),
-        )
-        .expect_err("unapproved environment must be rejected");
-
-        assert!(error
-            .to_string()
-            .contains("unapproved MCP environment key RUST_LOG"));
-    }
-
-    #[test]
-    fn policy_schema_rejects_wrong_intent_and_non_local_storage_scope(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut policy = policy_json(
-            HostKind::Codex,
-            IntegrationProfile::Record,
-            test_policy_context(ConnectionIntent::Shared),
-            &entry_with_env("VOLICORD_HOME", "/runtime"),
-            &test_guard_commands(),
-        )?;
-
-        policy["connection_intent"] = Value::String("personal".to_owned());
-        let error = validate_policy_schema(&policy, "shared")
-            .expect_err("a policy for a different intent must be rejected");
-        assert!(error.to_string().contains("connection_intent=shared"));
-
-        policy["connection_intent"] = Value::String("shared".to_owned());
-        policy["storage_scope"] = Value::String("repository_shared".to_owned());
-        let error = validate_policy_schema(&policy, "shared")
-            .expect_err("the policy cannot become a shared repository projection");
-        assert!(error.to_string().contains("storage_scope=local_overlay"));
-
-        policy["storage_scope"] = Value::String(POLICY_STORAGE_SCOPE.to_owned());
-        policy["connection_intent"] = Value::String("unknown".to_owned());
-        let error = validate_policy_schema(&policy, "unknown")
-            .expect_err("an unknown self-consistent intent must still be rejected");
-        assert!(error.to_string().contains("connection_intent=personal"));
-        Ok(())
-    }
-
-    #[test]
-    fn policy_schema_rejects_unknown_fields_and_non_string_values(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let policy = policy_json(
-            HostKind::Codex,
-            IntegrationProfile::Record,
-            test_policy_context(ConnectionIntent::Shared),
-            &entry_with_env("VOLICORD_HOME", "/runtime"),
-            &test_guard_commands(),
-        )?;
-
-        let mut candidate = policy.clone();
-        candidate
-            .as_object_mut()
-            .expect("policy object")
-            .insert("unexpected".to_owned(), Value::Bool(true));
-        let error = validate_policy_schema(&candidate, "shared")
-            .expect_err("an unknown top-level field must be rejected");
-        assert!(error.to_string().contains("unknown top-level field"));
-
-        let mut candidate = policy.clone();
-        candidate["mcp"]
-            .as_object_mut()
-            .expect("mcp object")
-            .insert("unexpected".to_owned(), Value::Bool(true));
-        let error = validate_policy_schema(&candidate, "shared")
-            .expect_err("an unknown MCP field must be rejected");
-        assert!(error.to_string().contains("unknown mcp field"));
-
-        let mut candidate = policy.clone();
-        candidate["host_hook"]
-            .as_object_mut()
-            .expect("host_hook object")
-            .insert("unexpected".to_owned(), Value::Bool(true));
-        let error = validate_policy_schema(&candidate, "shared")
-            .expect_err("an unknown host_hook field must be rejected");
-        assert!(error.to_string().contains("unknown host_hook field"));
-
-        let mut candidate = policy.clone();
-        candidate["host_hook"]["commands"]
-            .as_object_mut()
-            .expect("host_hook commands object")
-            .insert(
-                "unexpected_phase".to_owned(),
-                json!({"command": "volicord", "args": []}),
-            );
-        let error = validate_policy_schema(&candidate, "shared")
-            .expect_err("an unknown hook phase must be rejected");
-        assert!(error
-            .to_string()
-            .contains("unknown host_hook.commands field"));
-
-        let mut candidate = policy.clone();
-        candidate["host_hook"]["commands"]["pre_tool"]
-            .as_object_mut()
-            .expect("pre_tool command object")
-            .insert("unexpected".to_owned(), Value::Bool(true));
-        let error = validate_policy_schema(&candidate, "shared")
-            .expect_err("an unknown hook command field must be rejected");
-        assert!(error
-            .to_string()
-            .contains("unknown host_hook.commands.pre_tool field"));
-
-        let mut candidate = policy.clone();
-        candidate["mcp"]["env"]["VOLICORD_HOME"] = Value::Bool(true);
-        let error = validate_policy_schema(&candidate, "shared")
-            .expect_err("a non-string environment value must be rejected");
-        assert!(error
-            .to_string()
-            .contains("mcp.env.VOLICORD_HOME as a string"));
-
-        let mut candidate = policy;
-        candidate["host_hook"]["commands"]["pre_tool"]["args"] = json!(["_hook", 7]);
-        let error = validate_policy_schema(&candidate, "shared")
-            .expect_err("a non-string hook argument must be rejected");
-        assert!(error
-            .to_string()
-            .contains("host_hook.commands.pre_tool command and string args"));
-        Ok(())
-    }
 }

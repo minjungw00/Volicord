@@ -8,7 +8,7 @@ use volicord_store::guards::{
 use volicord_types::{GuardInstallationStatus, IntegrationProfile};
 
 pub(crate) use volicord_types::{
-    host_hook_capability_has_exact_v2_shape, HOST_HOOK_CAPABILITY_SCHEMA,
+    host_hook_capability_has_exact_current_shape, HOST_HOOK_CAPABILITY_SCHEMA,
 };
 
 use crate::{
@@ -18,11 +18,9 @@ use crate::{
             FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind, ManagedFileRetirementPlan,
             RetirementPlanStatus, VOLICORD_POLICY_FILE,
         },
-        policy::{
-            guard_has_prompt_capture_commands, lifecycle_phase_names, required_guard_phase_names,
-        },
-        GuardIntegrationError, GuardIntegrationPlan, HookWrapperResolutionStatus, HostHookCommand,
-        HostHookCommandShape, HOOK_WRAPPER_MARKER,
+        policy::required_guard_phase_names,
+        GuardIntegrationError, GuardIntegrationPlan, HostHookCommand, HostHookCommandShape,
+        HOOK_WRAPPER_MARKER,
     },
     host_integration::{HostIntegrationFileKind, HostKind, HostPlan, PlannedChange},
 };
@@ -67,7 +65,7 @@ pub(crate) fn guard_installation_upsert(
         guard_mode: profile.as_str().to_owned(),
         host_capability_json: host_hook_capability_json(integration)?,
         installation_status: installation_status.as_str().to_owned(),
-        installed_at: (profile != IntegrationProfile::Record).then_some(now.clone()),
+        installed_at: Some(now.clone()),
         last_checked_at: now,
         first_seen_at: None,
         last_seen_at: None,
@@ -81,11 +79,7 @@ pub(crate) fn guard_installation_upsert(
             "selected_profile": integration.guard_profile,
             "connection_intent": integration.connection_intent,
             "required_phases": required_guard_phase_names(),
-            "observation_status": if profile == IntegrationProfile::Record {
-                "disabled"
-            } else {
-                "not_observed"
-            },
+            "observation_status": "not_observed",
         }))
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?,
     })
@@ -101,30 +95,14 @@ pub(crate) fn host_hook_capability_json(
         "policy_hash": plan.policy_hash,
         "selected_profile": plan.guard_profile,
         "connection_intent": plan.connection_intent,
-        "final_output_authority_disclosure_implementation_available": plan.final_output_authority_disclosure_implementation_available,
-        "native_host_output_adapter": plan.native_host_output_adapter,
-        "native_host_output_adapter_config_verified": plan.native_host_output_adapter_config_verified,
-        "bash_shell_mutation_coverage": plan.bash_shell_mutation_coverage,
         "direct_file_write_matcher_coverage": plan.direct_file_write_matcher_coverage,
         "host_capabilities": capabilities,
-        "required_hook_phases": if plan.guard_profile == IntegrationProfile::Detective.as_str() {
-            required_guard_phase_names()
-        } else {
-            Vec::new()
-        },
-        "missing_required_hooks": lifecycle_phase_names(&plan.missing_required_hooks),
-        "prompt_capture": plan.guard_profile == IntegrationProfile::Detective.as_str()
-            && plan.capabilities.user_prompt_submit_hook
-            && guard_has_prompt_capture_commands(&plan.policy),
         "files": generated_files_json(&plan.generated_files),
-        "host_hook_commands": host_hook_commands_json(&plan.host_hook_commands),
-        "hook_root_resolution": hook_root_resolution_json(&plan.host_hook_commands),
-        "hook_path_safety": hook_path_safety_json(&plan.host_hook_commands),
         "commands": plan.policy["host_hook"]["commands"].clone(),
     });
-    if !host_hook_capability_has_exact_v2_shape(&capability) {
+    if !host_hook_capability_has_exact_current_shape(&capability) {
         return Err(GuardIntegrationError::runtime(
-            "generated host-hook capability does not match the v2 shape",
+            "generated host-hook capability does not match the current exact shape",
         ));
     }
     serde_json::to_string(&capability)
@@ -132,13 +110,11 @@ pub(crate) fn host_hook_capability_json(
 }
 
 pub(crate) fn initial_guard_installation_status(
-    profile: IntegrationProfile,
+    _profile: IntegrationProfile,
     host_plan: &HostPlan,
     integration: &GuardIntegrationPlan,
 ) -> GuardInstallationStatus {
-    if profile == IntegrationProfile::Record {
-        GuardInstallationStatus::Configured
-    } else if !integration.missing_required_hooks.is_empty() {
+    if !integration.missing_required_hooks.is_empty() {
         GuardInstallationStatus::Degraded
     } else if host_plan.change != PlannedChange::Noop
         || integration.generated_files.iter().any(|file| {
@@ -214,20 +190,6 @@ pub(crate) fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {
                             Value::String("managed_json".to_owned()),
                         );
                     }
-                    GeneratedFileWriteKind::JsonProjection { projection } => {
-                        object.insert(
-                            "ownership".to_owned(),
-                            Value::String("managed_json_projection".to_owned()),
-                        );
-                        object.insert(
-                            "managed_projection".to_owned(),
-                            Value::String(projection.as_str().to_owned()),
-                        );
-                        object.insert(
-                            "managed_projection_json".to_owned(),
-                            Value::String(file.content.clone()),
-                        );
-                    }
                     GeneratedFileWriteKind::Script => {
                         object.insert(
                             "ownership".to_owned(),
@@ -282,10 +244,6 @@ pub(crate) fn host_hook_commands_json(commands: &[HostHookCommand]) -> Value {
                     HostHookCommandShape::ShellCommandString { command_text, .. } => {
                         (command_text.clone(), Value::Null)
                     }
-                    HostHookCommandShape::Exec { command, args } => (
-                        command.clone(),
-                        Value::Array(args.iter().cloned().map(Value::String).collect()),
-                    ),
                 };
                 json!({
                     "host_kind": command.host_kind.as_str(),
@@ -340,36 +298,6 @@ pub(crate) fn hook_root_resolution_json(commands: &[HostHookCommand]) -> Value {
                 json!({
                     "phase": command.phase.capability_name(),
                     "root_resolution_basis": command.root_resolution_basis.as_str(),
-                    "hook_command_path_basis": command.hook_command_path_basis.as_str(),
-                    "cwd_independent": command.cwd_independent,
-                    "subdirectory_safe": command.subdirectory_safe,
-                    "wrapper_resolution_status": command.wrapper_resolution_status.as_str(),
-                })
-            })
-            .collect::<Vec<_>>(),
-    })
-}
-
-pub(crate) fn hook_path_safety_json(commands: &[HostHookCommand]) -> Value {
-    if commands.is_empty() {
-        return Value::Null;
-    }
-    let all_cwd_independent = commands.iter().all(|command| command.cwd_independent);
-    let all_subdirectory_safe = commands.iter().all(|command| command.subdirectory_safe);
-    let all_ok = all_cwd_independent
-        && all_subdirectory_safe
-        && commands
-            .iter()
-            .all(|command| command.wrapper_resolution_status == HookWrapperResolutionStatus::Ok);
-    json!({
-        "overall_status": if all_ok { "ok" } else { "relative_path_unsafe" },
-        "all_cwd_independent": all_cwd_independent,
-        "all_subdirectory_safe": all_subdirectory_safe,
-        "commands": commands
-            .iter()
-            .map(|command| {
-                json!({
-                    "phase": command.phase.capability_name(),
                     "hook_command_path_basis": command.hook_command_path_basis.as_str(),
                     "cwd_independent": command.cwd_independent,
                     "subdirectory_safe": command.subdirectory_safe,

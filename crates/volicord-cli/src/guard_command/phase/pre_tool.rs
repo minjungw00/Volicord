@@ -12,8 +12,8 @@ use super::GuardPhaseResult;
 use crate::guard_command::{
     args::GuardInput,
     context::{guard_state_summary, ActiveWriteTicketSummary, GuardReason, GuardStateSummary},
-    envelope::{event_time_or_now, GuardEnvelope},
-    format_timestamp, json_error,
+    envelope::{event_time, GuardEnvelope},
+    format_timestamp,
     mutation::ToolClassification,
     render::{context_json, reasons_json, tool_observation_json, write_ticket_backing_json},
     stable_id,
@@ -59,7 +59,7 @@ pub(in crate::guard_command) fn handle_pre_tool(
             "write_ticket_backing": write_ticket_backing,
             "expected_write": expected_write_json,
             "context": context_json(&summary),
-            "enforcement_level": "cooperative_detective"
+            "enforcement_level": "cooperative_guard"
         }),
         expected_write,
     ))
@@ -210,7 +210,7 @@ fn expected_write_candidate(
         WriteTicketCoverage::TicketBacked { ticket, .. } => ticket,
         _ => return Ok(None),
     };
-    let created_at = event_time_or_now(&envelope.occurred_at);
+    let created_at = event_time(&envelope.occurred_at)?;
     let expires_at = created_at + ChronoDuration::minutes(EXPECTED_WRITE_TTL_MINUTES);
     let host_invocation_id = host_invocation_id(&input.raw_value);
     let expected_write_id = stable_id(
@@ -237,10 +237,10 @@ fn expected_write_candidate(
             tool_name: observation.tool_name.clone(),
             command_kind: observation.classification.as_str().to_owned(),
             path_policy: "exact_paths".to_owned(),
-            expected_paths_json: serde_json::to_string(&expected_paths).map_err(json_error)?,
+            expected_paths: expected_paths.clone(),
             task_id,
-            change_unit_id: summary.active_change_unit_id.clone(),
-            write_ticket_ids_json: serde_json::to_string(&write_ticket_ids).map_err(json_error)?,
+            change_unit_id: write_ticket.change_unit_id.clone(),
+            write_ticket_ids: write_ticket_ids.clone(),
             basis_state_version: summary.state_version,
             created_at: format_timestamp(created_at),
             expires_at: format_timestamp(expires_at),
@@ -278,9 +278,7 @@ fn expected_write_candidate_json(candidate: &ExpectedWriteCandidate) -> Value {
         "change_unit_id": candidate.insert.change_unit_id,
         "ticket_backed": true,
         "write_ticket_id": candidate.write_ticket.write_ticket_id,
-        "write_ticket_ids": candidate.insert.write_ticket_ids_json
-            .parse::<Value>()
-            .unwrap_or_else(|_| json!([])),
+        "write_ticket_ids": candidate.insert.write_ticket_ids,
         "basis_state_version": candidate.insert.basis_state_version,
         "expires_at": candidate.insert.expires_at
     })

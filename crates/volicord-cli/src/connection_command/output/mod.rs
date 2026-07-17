@@ -4,6 +4,7 @@ mod json;
 mod summary;
 mod text;
 
+use crate::disclosure::cooperative_host_decision_disclosure_json;
 use crate::guard_integration::files::RetirementPlanStatus;
 use crate::guard_integration::{
     generated_files_json, hook_root_resolution_json, host_hook_commands_json, retired_files_json,
@@ -235,39 +236,33 @@ pub(super) fn render_connection_output(
         &host_display,
         primary_next_action.as_ref(),
     );
-    let runtime_probe_now = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(
-        std::time::SystemTime::now(),
-    ));
-    let host_feature_diagnostic = data
-        .guard_state
-        .host_feature_diagnostic_from_runtime_probes(
-            data.host_kind,
-            data.guard_state.integration_profile(),
-            data.connection,
-            &runtime_probe_now,
-        )?;
     match data.format {
-        OutputFormat::Text => render_compact_connection_text(
-            &data,
-            &mcp_config_state,
-            primary_next_action.as_ref(),
-            host_feature_diagnostic,
-        ),
+        OutputFormat::Text => {
+            render_compact_connection_text(&data, &mcp_config_state, primary_next_action.as_ref())
+        }
         OutputFormat::Json => {
+            let projected_user_actions = if data.verification.is_some()
+                || data.current_host.is_some()
+                || !decode_persisted_user_actions(&data.connection.last_user_actions_json)
+                    .is_corrupt()
+            {
+                Some(data.user_actions.as_slice())
+            } else {
+                None
+            };
             let mut value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
-                "disclosure": detective_observation_disclosure_json(),
+                "disclosure": cooperative_host_decision_disclosure_json(),
                 "runtime_home": path_text(data.runtime_home),
                 "states": connection_states_json(
                     data.status.as_str(),
                     project_registration_state(data.projects),
                     mcp_config_state.as_str(),
                     &data.guard_state,
-                    host_feature_diagnostic,
                     has_reload_action(&data.user_actions),
                 ),
-                "connection": connection_json(data.connection, &project_ids, Some(&data.user_actions)),
+                "connection": connection_json(data.connection, &project_ids, projected_user_actions),
                 "target": target,
                 "planned_change": planned_change,
                 "checks": checks_json(
@@ -303,8 +298,6 @@ pub(super) fn render_connection_plan_output(
     let target = host_target_text(&data.plan.target);
     let planned_change = planned_change_text(data.plan.change);
     let guard_state = GuardOperationalState::not_configured();
-    let host_feature_diagnostic =
-        guard_state.host_feature_diagnostic(data.host_kind, guard_state.integration_profile());
     let primary_next_action =
         primary_connection_action(&data.user_actions, None, None, &guard_state, None, &[]);
     let project_state = data.repo_root.map(|_| "planned").unwrap_or("not_selected");
@@ -319,14 +312,13 @@ pub(super) fn render_connection_plan_output(
             let value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
-                "disclosure": detective_observation_disclosure_json(),
+                "disclosure": cooperative_host_decision_disclosure_json(),
                 "runtime_home": path_text(data.runtime_home),
                 "states": connection_states_json(
                     data.status.as_str(),
                     project_state,
                     &format!("planned_{planned_change}"),
                     &guard_state,
-                    host_feature_diagnostic,
                     has_reload_action(&data.user_actions),
                 ),
                 "connection": {
@@ -391,21 +383,6 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
     } else {
         GuardOperationalState::planned(data.init_mode, data.integration)
     };
-    let host_feature_diagnostic =
-        if let Some(connection) = agent_connection_record(data.runtime_home, data.connection_id)? {
-            let runtime_probe_now = UtcTimestamp::from_datetime(
-                chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now()),
-            );
-            guard_state.host_feature_diagnostic_from_runtime_probes(
-                data.host_kind,
-                Some(data.init_mode.integration_profile()),
-                &connection,
-                &runtime_probe_now,
-            )?
-        } else {
-            guard_state
-                .host_feature_diagnostic(data.host_kind, Some(data.init_mode.integration_profile()))
-        };
     let mcp_config_state = init_mcp_config_state(data.verification, Some(data.host_plan));
     let project_state = if data.project_id.is_some() {
         "registered"
@@ -424,13 +401,12 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
             let value = json!({
                 "action": "init",
                 "status": data.status.as_str(),
-                "disclosure": detective_observation_disclosure_json(),
+                "disclosure": cooperative_host_decision_disclosure_json(),
                 "states": connection_states_json(
                     data.status.as_str(),
                     project_state,
                     mcp_config_state.as_str(),
                     &guard_state,
-                    host_feature_diagnostic,
                     has_reload_action(&actions),
                 ),
                 "host": public_host_label(data.host_kind),
@@ -802,24 +778,11 @@ fn primary_connection_action(
             }
         }
     }
-    if guard_state.detective_hooks_applicable() {
+    if guard_state.guard_hooks_applicable() {
         if guard_state.installation_state == "files_missing" {
             return Some(connection_repair_action(
                 "guard_files_missing",
-                "Run init again to reinstall missing detective host-hook files.",
-                connection,
-                projects,
-            ));
-        }
-        if guard_state.hook_path_safety_state != HookWrapperResolutionStatus::Ok.as_str()
-            && !matches!(
-                guard_state.hook_path_safety_state.as_str(),
-                "not_checked" | "not_applicable"
-            )
-        {
-            return Some(connection_repair_action(
-                "guard_hook_path_safety",
-                "Run init again to regenerate cwd-independent detective host-hook commands.",
+                "Run init again to reinstall missing Codex Record Guard files.",
                 connection,
                 projects,
             ));
@@ -827,7 +790,7 @@ fn primary_connection_action(
         if guard_state.installation_state == "stale" {
             return Some(connection_repair_action(
                 "guard_files_stale",
-                "Run init again to refresh stale detective host-hook files.",
+                "Run init again to refresh stale Codex Record Guard files.",
                 connection,
                 projects,
             ));
@@ -835,7 +798,7 @@ fn primary_connection_action(
         if guard_state.installation_state == "broken" {
             return Some(connection_repair_action(
                 "guard_files_broken",
-                "Repair broken detective host-hook files, then run init again.",
+                "Repair broken Codex Record Guard files, then run init again.",
                 connection,
                 projects,
             ));
@@ -967,13 +930,13 @@ fn guard_degraded_action(
     let Some(connection) = connection else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
+            "Repair the required Codex Record Guard hook configuration before rerunning init.",
         );
     };
     let Some(project) = projects.first() else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
+            "Repair the required Codex Record Guard hook configuration before rerunning init.",
         );
     };
     let host = public_host_name_text(&connection.host_kind);
@@ -986,7 +949,7 @@ fn guard_degraded_action(
     );
     PrimaryNextAction::new(
         "guard_capability_degraded",
-        "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
+        "Repair the required Codex Record Guard hook configuration before rerunning init.",
     )
     .with_command(command)
 }
@@ -1032,12 +995,9 @@ fn repair_instruction(id: &str, fallback: &str) -> String {
                 .to_owned()
         }
         "mcp_config_malformed" => "Repair the malformed MCP configuration.".to_owned(),
-        "guard_files_missing" => "Reinstall missing detective host-hook files.".to_owned(),
-        "guard_files_stale" => "Refresh stale detective host-hook files.".to_owned(),
-        "guard_files_broken" => "Repair broken detective host-hook files.".to_owned(),
-        "guard_hook_path_safety" => {
-            "Regenerate cwd-independent detective host-hook commands.".to_owned()
-        }
+        "guard_files_missing" => "Reinstall missing Codex Record Guard files.".to_owned(),
+        "guard_files_stale" => "Refresh stale Codex Record Guard files.".to_owned(),
+        "guard_files_broken" => "Repair broken Codex Record Guard files.".to_owned(),
         _ => fallback.to_owned(),
     }
 }

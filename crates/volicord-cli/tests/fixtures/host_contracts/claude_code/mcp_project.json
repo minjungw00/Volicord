@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "volicord": {
-      "command": "volicord",
-      "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"],
-      "env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}
-    }
-  }
-}

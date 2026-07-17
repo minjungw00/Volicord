@@ -33,26 +33,23 @@ use volicord_store::{
         validate_stored_guard_installation_capability_binding, GuardEventRecord,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    session_watch::validate_current_complete_watch_observation,
     StoreError,
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_string, evidence_capture_input_sha256, ActorSource,
-    AgentConnectionId, AgentSessionId, ConnectionObservationSourceSelector, DurableIdGenerator,
-    DurableIdKind, EvidenceCaptureIntentId, EvidenceCaptureSpec, EvidenceProducerKind,
-    EvidenceTarget, GuardEventId, GuardInstallationId, JsonObject,
+    AgentConnectionId, DurableIdGenerator, DurableIdKind, EvidenceCaptureIntentId,
+    EvidenceCaptureSpec, EvidenceProducerKind, EvidenceTarget, JsonObject,
     PersistedEvidenceCaptureReceiptBody, PersistedEvidenceCaptureReceiptSource, ProjectId,
     RandomDurableIdGenerator, RedactionState, TaskId, UtcTimestamp,
     EVIDENCE_CAPTURE_COMMAND_LIMITATION as COMMAND_LIMITATION,
-    EVIDENCE_CAPTURE_GUARD_LIMITATION as HOOK_LIMITATION,
-    EVIDENCE_CAPTURE_WATCHER_LIMITATION as WATCH_LIMITATION,
+    EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
 };
 
+use crate::cli::{EvidenceArgs, EvidenceCommand};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
 
-const RECEIPT_SCHEMA_VERSION: &str = "volicord.evidence_capture_receipt.v1";
 const MAX_CAPTURE_COMMAND_OUTPUT_BYTES: u64 = 16 * 1024 * 1024;
 const PROJECT_CLOCK_RESAMPLE_DELAY: Duration = Duration::from_millis(1);
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -65,10 +62,6 @@ pub enum EvidenceCommandError {
 }
 
 impl EvidenceCommandError {
-    fn usage(message: impl Into<String>) -> Self {
-        Self::Usage(message.into())
-    }
-
     fn runtime(message: impl Into<String>) -> Self {
         Self::Runtime(message.into())
     }
@@ -105,36 +98,6 @@ impl From<ProjectCommandError> for EvidenceCommandError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum EvidenceCommand {
-    CaptureCommand {
-        intent_id: String,
-        repo: Option<PathBuf>,
-        json: bool,
-        argv: Vec<String>,
-    },
-    CaptureTool {
-        intent_id: String,
-        pre_event_id: String,
-        post_event_id: String,
-        repo: Option<PathBuf>,
-        json: bool,
-    },
-    CaptureConnection {
-        intent_id: String,
-        source: ConnectionSource,
-        repo: Option<PathBuf>,
-        json: bool,
-    },
-    Help,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ConnectionSource {
-    GuardEvent(String),
-    WatchObservation(String),
-}
-
 #[derive(Debug)]
 struct EvidenceContext {
     runtime_home: PathBuf,
@@ -165,232 +128,27 @@ struct CommandStreamDigest {
 }
 
 pub fn run_evidence_command<F>(
-    args: &[String],
+    args: EvidenceArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, EvidenceCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    match parse_evidence_command(args)? {
-        EvidenceCommand::Help => Ok(evidence_usage()),
-        EvidenceCommand::CaptureCommand {
-            intent_id,
-            repo,
-            json,
-            argv,
-        } => {
-            let mut context = resolve_context(env_var, current_dir, repo.as_deref())?;
-            let intent = load_and_validate_intent(&context, &intent_id)?;
-            let facts = fulfill_command(&context, &intent, &argv)?;
-            persist_fulfillment(&mut context, &intent, facts, json)
+    match args.command {
+        EvidenceCommand::CaptureCommand(options) => {
+            let mut context = resolve_context(env_var, current_dir, options.repo.as_deref())?;
+            let intent = load_and_validate_intent(&context, &options.intent)?;
+            let facts = fulfill_command(&context, &intent, &options.program)?;
+            persist_fulfillment(&mut context, &intent, facts, options.json)
         }
-        EvidenceCommand::CaptureTool {
-            intent_id,
-            pre_event_id,
-            post_event_id,
-            repo,
-            json,
-        } => {
-            let mut context = resolve_context(env_var, current_dir, repo.as_deref())?;
-            let intent = load_and_validate_intent(&context, &intent_id)?;
-            let facts = fulfill_tool(&context, &intent, &pre_event_id, &post_event_id)?;
-            persist_fulfillment(&mut context, &intent, facts, json)
-        }
-        EvidenceCommand::CaptureConnection {
-            intent_id,
-            source,
-            repo,
-            json,
-        } => {
-            let mut context = resolve_context(env_var, current_dir, repo.as_deref())?;
-            let intent = load_and_validate_intent(&context, &intent_id)?;
-            let facts = fulfill_connection(&context, &intent, &source)?;
-            persist_fulfillment(&mut context, &intent, facts, json)
+        EvidenceCommand::CaptureTool(options) => {
+            let mut context = resolve_context(env_var, current_dir, options.repo.as_deref())?;
+            let intent = load_and_validate_intent(&context, &options.intent)?;
+            let facts = fulfill_tool(&context, &intent, &options.pre_event, &options.post_event)?;
+            persist_fulfillment(&mut context, &intent, facts, options.json)
         }
     }
-}
-
-pub fn evidence_usage() -> String {
-    concat!(
-        "volicord evidence capture-command --intent ID [--repo PATH] [--json] -- PROGRAM [ARG...]\n",
-        "volicord evidence capture-tool --intent ID --pre-event ID --post-event ID [--repo PATH] [--json]\n",
-        "volicord evidence capture-connection --intent ID (--guard-event ID | --watch-observation ID) [--repo PATH] [--json]\n",
-    )
-    .to_owned()
-}
-
-fn parse_evidence_command(args: &[String]) -> Result<EvidenceCommand, EvidenceCommandError> {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Ok(EvidenceCommand::Help);
-    };
-    if matches!(subcommand, "-h" | "--help" | "help") {
-        if args.len() == 1 {
-            return Ok(EvidenceCommand::Help);
-        }
-        return Err(EvidenceCommandError::usage(format!(
-            "unexpected argument: {}\n\n{}",
-            args[1],
-            evidence_usage()
-        )));
-    }
-    match subcommand {
-        "capture-command" => parse_capture_command(&args[1..]),
-        "capture-tool" => parse_capture_tool(&args[1..]),
-        "capture-connection" => parse_capture_connection(&args[1..]),
-        other => Err(EvidenceCommandError::usage(format!(
-            "unknown evidence command: {other}\n\n{}",
-            evidence_usage()
-        ))),
-    }
-}
-
-fn parse_capture_command(args: &[String]) -> Result<EvidenceCommand, EvidenceCommandError> {
-    let delimiter = args.iter().position(|arg| arg == "--").ok_or_else(|| {
-        EvidenceCommandError::usage("capture-command requires `-- PROGRAM [ARG...]`")
-    })?;
-    let options = parse_options(&args[..delimiter], OptionPolicy::Command)?;
-    let argv = args[delimiter + 1..].to_vec();
-    if argv.is_empty() || argv[0].is_empty() {
-        return Err(EvidenceCommandError::usage(
-            "capture-command requires a non-empty PROGRAM after `--`",
-        ));
-    }
-    Ok(EvidenceCommand::CaptureCommand {
-        intent_id: require_option(options.intent_id, "--intent")?,
-        repo: options.repo,
-        json: options.json,
-        argv,
-    })
-}
-
-fn parse_capture_tool(args: &[String]) -> Result<EvidenceCommand, EvidenceCommandError> {
-    let options = parse_options(args, OptionPolicy::Tool)?;
-    Ok(EvidenceCommand::CaptureTool {
-        intent_id: require_option(options.intent_id, "--intent")?,
-        pre_event_id: require_option(options.pre_event_id, "--pre-event")?,
-        post_event_id: require_option(options.post_event_id, "--post-event")?,
-        repo: options.repo,
-        json: options.json,
-    })
-}
-
-fn parse_capture_connection(args: &[String]) -> Result<EvidenceCommand, EvidenceCommandError> {
-    let options = parse_options(args, OptionPolicy::Connection)?;
-    let source =
-        match (options.guard_event_id, options.watch_observation_id) {
-            (Some(id), None) => ConnectionSource::GuardEvent(id),
-            (None, Some(id)) => ConnectionSource::WatchObservation(id),
-            _ => return Err(EvidenceCommandError::usage(
-                "capture-connection requires exactly one of --guard-event or --watch-observation",
-            )),
-        };
-    Ok(EvidenceCommand::CaptureConnection {
-        intent_id: require_option(options.intent_id, "--intent")?,
-        source,
-        repo: options.repo,
-        json: options.json,
-    })
-}
-
-#[derive(Debug, Clone, Copy)]
-enum OptionPolicy {
-    Command,
-    Tool,
-    Connection,
-}
-
-#[derive(Debug, Default)]
-struct ParsedOptions {
-    intent_id: Option<String>,
-    pre_event_id: Option<String>,
-    post_event_id: Option<String>,
-    guard_event_id: Option<String>,
-    watch_observation_id: Option<String>,
-    repo: Option<PathBuf>,
-    json: bool,
-}
-
-fn parse_options(
-    args: &[String],
-    policy: OptionPolicy,
-) -> Result<ParsedOptions, EvidenceCommandError> {
-    let mut parsed = ParsedOptions::default();
-    let mut index = 0;
-    while index < args.len() {
-        let option = args[index].as_str();
-        match option {
-            "--intent" => set_string_option(args, &mut index, &mut parsed.intent_id, option)?,
-            "--repo" => {
-                let value = option_value(args, &mut index, option)?;
-                if parsed.repo.replace(PathBuf::from(value)).is_some() {
-                    return Err(EvidenceCommandError::usage("duplicate option: --repo"));
-                }
-            }
-            "--json" => {
-                if parsed.json {
-                    return Err(EvidenceCommandError::usage("duplicate option: --json"));
-                }
-                parsed.json = true;
-            }
-            "--pre-event" if matches!(policy, OptionPolicy::Tool) => {
-                set_string_option(args, &mut index, &mut parsed.pre_event_id, option)?
-            }
-            "--post-event" if matches!(policy, OptionPolicy::Tool) => {
-                set_string_option(args, &mut index, &mut parsed.post_event_id, option)?
-            }
-            "--guard-event" if matches!(policy, OptionPolicy::Connection) => {
-                set_string_option(args, &mut index, &mut parsed.guard_event_id, option)?
-            }
-            "--watch-observation" if matches!(policy, OptionPolicy::Connection) => {
-                set_string_option(args, &mut index, &mut parsed.watch_observation_id, option)?
-            }
-            "-h" | "--help" | "help" => return Err(EvidenceCommandError::usage(evidence_usage())),
-            unknown if unknown.starts_with('-') => {
-                return Err(EvidenceCommandError::usage(format!(
-                    "unknown option: {unknown}"
-                )))
-            }
-            argument => {
-                return Err(EvidenceCommandError::usage(format!(
-                    "unexpected argument: {argument}"
-                )))
-            }
-        }
-        index += 1;
-    }
-    Ok(parsed)
-}
-
-fn set_string_option(
-    args: &[String],
-    index: &mut usize,
-    slot: &mut Option<String>,
-    option: &str,
-) -> Result<(), EvidenceCommandError> {
-    let value = option_value(args, index, option)?;
-    if slot.replace(value.to_owned()).is_some() {
-        return Err(EvidenceCommandError::usage(format!(
-            "duplicate option: {option}"
-        )));
-    }
-    Ok(())
-}
-
-fn option_value<'a>(
-    args: &'a [String],
-    index: &mut usize,
-    option: &str,
-) -> Result<&'a str, EvidenceCommandError> {
-    *index += 1;
-    args.get(*index)
-        .map(String::as_str)
-        .filter(|value| !value.is_empty() && !value.starts_with('-'))
-        .ok_or_else(|| EvidenceCommandError::usage(format!("{option} requires a value")))
-}
-
-fn require_option(value: Option<String>, option: &str) -> Result<String, EvidenceCommandError> {
-    value.ok_or_else(|| EvidenceCommandError::usage(format!("{option} is required")))
 }
 
 fn resolve_context<F>(
@@ -765,10 +523,6 @@ fn fulfill_command(
         observed_outcome,
         source: source_object(
             &intent.record.requesting_connection_internal_id,
-            intent.session_id.as_deref(),
-            None,
-            &[],
-            &[],
             Some(&host_invocation_id),
         ),
         observed_at: observed_at.to_string(),
@@ -1036,134 +790,12 @@ fn fulfill_tool(
         "tool_result_sha256": response_sha256,
         "tool_result_size_bytes": response_size_bytes,
     }))?;
-    let session_id = pre.session_id.as_deref().expect("validated guard session");
-    let installation_id = pre
-        .guard_installation_id
-        .as_deref()
-        .expect("validated guard installation");
     Ok(FulfillmentFacts {
         observed_outcome,
-        source: source_object(
-            &pre.connection_internal_id,
-            Some(session_id),
-            Some(installation_id),
-            &[pre.guard_event_id.clone(), post.guard_event_id.clone()],
-            &[],
-            Some(&pre_invocation),
-        ),
+        source: source_object(&pre.connection_internal_id, Some(&pre_invocation)),
         observed_at: post.occurred_at.clone(),
-        limitations: vec![HOOK_LIMITATION.to_owned()],
+        limitations: vec![COMMAND_LIMITATION.to_owned()],
     })
-}
-
-fn fulfill_connection(
-    context: &EvidenceContext,
-    intent: &ValidatedIntent,
-    source: &ConnectionSource,
-) -> Result<FulfillmentFacts, EvidenceCommandError> {
-    let source_selector = match &intent.capture {
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector, ..
-        } => *source_selector,
-        _ => {
-            return Err(EvidenceCommandError::runtime(
-                "capture-connection requires a registered_connection_observation intent",
-            ))
-        }
-    };
-    match source {
-        ConnectionSource::GuardEvent(event_id) => {
-            let ConnectionObservationSourceSelector::GuardEvent { event_kind } = source_selector
-            else {
-                return Err(EvidenceCommandError::runtime(
-                    "capture-connection source kind does not match the intent",
-                ));
-            };
-            let event = required_guard_event(context, event_id)?;
-            validate_guard_source_scope(context, intent, &event)?;
-            validate_source_time_window(intent, &event.occurred_at, "guard event")?;
-            if event.event_kind != event_kind.as_str() {
-                return Err(EvidenceCommandError::runtime(
-                    "guard-event kind does not match the intent source selector",
-                ));
-            }
-            let subject = guard_subject_value(&event)?;
-            let raw_event = required_raw_event(&subject)?;
-            reject_incomplete_value(raw_event)?;
-            let input_sha256 = canonical_json_bare_sha256(raw_event).map_err(json_runtime)?;
-            let observed_outcome = object_from_value(json!({
-                "complete": true,
-                "guard_event_kind": event.event_kind,
-                "guard_decision": event.decision,
-                "observation_sha256": input_sha256,
-            }))?;
-            Ok(FulfillmentFacts {
-                observed_outcome,
-                source: source_object(
-                    &event.connection_internal_id,
-                    event.session_id.as_deref(),
-                    event.guard_installation_id.as_deref(),
-                    std::slice::from_ref(&event.guard_event_id),
-                    &[],
-                    None,
-                ),
-                observed_at: event.occurred_at,
-                limitations: vec![HOOK_LIMITATION.to_owned()],
-            })
-        }
-        ConnectionSource::WatchObservation(observation_id) => {
-            if !matches!(
-                source_selector,
-                ConnectionObservationSourceSelector::SessionWatcher {}
-            ) {
-                return Err(EvidenceCommandError::runtime(
-                    "capture-connection source kind does not match the intent",
-                ));
-            }
-            let intent_session_id = intent.session_id.as_deref().ok_or_else(|| {
-                EvidenceCommandError::runtime(
-                    "registered connection intent has no exact verified session",
-                )
-            })?;
-            let validated = validate_current_complete_watch_observation(
-                &context.runtime_home,
-                &context.project.project_id,
-                &intent.record.requesting_connection_internal_id,
-                intent_session_id,
-                observation_id,
-            )
-            .map_err(|error| {
-                EvidenceCommandError::runtime(format!(
-                    "session-watch observation integrity validation failed: {error}"
-                ))
-            })?;
-            let observation = validated.observation;
-            validate_source_time_window(
-                intent,
-                &observation.observed_at,
-                "session-watch observation",
-            )?;
-            let observed_outcome = object_from_value(json!({
-                "complete": true,
-                "snapshot_algorithm": observation.snapshot_algorithm,
-                "snapshot_digest": observation.snapshot_digest,
-                "observation_sha256": validated.selection_sha256,
-            }))?;
-            Ok(FulfillmentFacts {
-                observed_outcome,
-                source: source_object(
-                    &observation.connection_internal_id,
-                    Some(&observation.session_id),
-                    None,
-                    &[],
-                    std::slice::from_ref(&observation.watch_observation_id),
-                    None,
-                ),
-                observed_at: observation.observed_at,
-                limitations: vec![WATCH_LIMITATION.to_owned()],
-            })
-        }
-    }
 }
 
 fn persist_fulfillment(
@@ -1180,7 +812,7 @@ fn persist_fulfillment(
     let observed_by_actor_source = ActorSource::from_str(&intent.record.requested_by_actor_source)
         .map_err(|error| EvidenceCommandError::runtime(error.to_string()))?;
     let safe_receipt = PersistedEvidenceCaptureReceiptBody {
-        schema_version: RECEIPT_SCHEMA_VERSION.to_owned(),
+        contract_id: EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID.to_owned(),
         capture_kind: capture_producer_kind(&intent.capture),
         capture_intent_id: EvidenceCaptureIntentId::new(&intent.record.evidence_capture_intent_id),
         input_sha256: intent.record.input_sha256.clone(),
@@ -1312,39 +944,6 @@ fn validate_exact_guard_scope(
         pre.guard_installation_id
             .as_deref()
             .expect("checked installation"),
-    )
-}
-
-fn validate_guard_source_scope(
-    context: &EvidenceContext,
-    intent: &ValidatedIntent,
-    event: &GuardEventRecord,
-) -> Result<(), EvidenceCommandError> {
-    if event.connection_internal_id != intent.record.requesting_connection_internal_id {
-        return Err(EvidenceCommandError::runtime(
-            "guard event belongs to another Agent Connection",
-        ));
-    }
-    let session_id = event.session_id.as_deref().ok_or_else(|| {
-        EvidenceCommandError::runtime("guard-event source requires an exact session")
-    })?;
-    let installation_id = event.guard_installation_id.as_deref().ok_or_else(|| {
-        EvidenceCommandError::runtime("guard-event source requires an exact guard installation")
-    })?;
-    if intent
-        .session_id
-        .as_deref()
-        .is_some_and(|expected| expected != session_id)
-    {
-        return Err(EvidenceCommandError::runtime(
-            "guard-event source session does not match the intent",
-        ));
-    }
-    validate_active_guard_installation(
-        context,
-        &event.connection_internal_id,
-        session_id,
-        installation_id,
     )
 }
 
@@ -1559,18 +1158,10 @@ fn reject_incomplete_value(value: &Value) -> Result<(), EvidenceCommandError> {
 
 fn source_object(
     connection_id: &str,
-    session_id: Option<&str>,
-    guard_installation_id: Option<&str>,
-    guard_event_ids: &[String],
-    watch_observation_refs: &[String],
     host_invocation_id: Option<&str>,
 ) -> PersistedEvidenceCaptureReceiptSource {
     PersistedEvidenceCaptureReceiptSource {
         connection_id: AgentConnectionId::new(connection_id),
-        session_id: session_id.map(AgentSessionId::new).into(),
-        guard_installation_id: guard_installation_id.map(GuardInstallationId::new).into(),
-        guard_event_ids: guard_event_ids.iter().map(GuardEventId::new).collect(),
-        watch_observation_refs: watch_observation_refs.to_vec(),
         host_invocation_id: host_invocation_id.map(str::to_owned).into(),
     }
 }
@@ -1579,9 +1170,6 @@ fn capture_kind(capture: &EvidenceCaptureSpec) -> &'static str {
     match capture {
         EvidenceCaptureSpec::VerifiedCommandExecution { .. } => "verified_command_execution",
         EvidenceCaptureSpec::VerifiedToolInvocation { .. } => "verified_tool_invocation",
-        EvidenceCaptureSpec::RegisteredConnectionObservation { .. } => {
-            "registered_connection_observation"
-        }
     }
 }
 
@@ -1592,9 +1180,6 @@ fn capture_producer_kind(capture: &EvidenceCaptureSpec) -> EvidenceProducerKind 
         }
         EvidenceCaptureSpec::VerifiedToolInvocation { .. } => {
             EvidenceProducerKind::VerifiedToolInvocation
-        }
-        EvidenceCaptureSpec::RegisteredConnectionObservation { .. } => {
-            EvidenceProducerKind::RegisteredConnectionObservation
         }
     }
 }
@@ -1656,34 +1241,36 @@ fn json_runtime(error: serde_json::Error) -> EvidenceCommandError {
 
 #[cfg(test)]
 mod tests {
+    use clap::Parser;
+
+    use crate::cli::{Cli, Command as CliCommand};
+
     use super::*;
 
     #[test]
     fn parses_capture_command_delimiter_without_reinterpreting_program_arguments() {
-        let parsed = parse_evidence_command(&[
-            "capture-command".to_owned(),
-            "--intent".to_owned(),
-            "intent_1".to_owned(),
-            "--json".to_owned(),
-            "--".to_owned(),
-            "program".to_owned(),
-            "--intent".to_owned(),
-            "child-value".to_owned(),
+        let parsed = Cli::try_parse_from([
+            "volicord",
+            "evidence",
+            "capture-command",
+            "--intent",
+            "intent_1",
+            "--json",
+            "--",
+            "program",
+            "--intent",
+            "child-value",
         ])
         .expect("capture command should parse");
-        assert_eq!(
-            parsed,
-            EvidenceCommand::CaptureCommand {
-                intent_id: "intent_1".to_owned(),
-                repo: None,
-                json: true,
-                argv: vec![
-                    "program".to_owned(),
-                    "--intent".to_owned(),
-                    "child-value".to_owned(),
-                ],
-            }
-        );
+        let Some(CliCommand::Evidence(EvidenceArgs {
+            command: EvidenceCommand::CaptureCommand(options),
+        })) = parsed.command
+        else {
+            panic!("unexpected parsed command")
+        };
+        assert_eq!(options.intent, "intent_1");
+        assert!(options.json);
+        assert_eq!(options.program, ["program", "--intent", "child-value"]);
     }
 
     #[test]

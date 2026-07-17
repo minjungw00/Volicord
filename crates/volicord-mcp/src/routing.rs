@@ -10,8 +10,10 @@ pub struct McpConnectionContext {
     pub runtime_home: PathBuf,
     pub connection_internal_id: AgentConnectionId,
     pub mode: AgentConnectionMode,
-    pub invocation_binding_basis: String,
+    pub(crate) invocation_binding_basis: String,
     pub project_allowlist: Option<Vec<ProjectId>>,
+    #[cfg(test)]
+    pub(crate) test_host_receipt_fixture: bool,
 }
 
 impl McpConnectionContext {
@@ -25,10 +27,9 @@ impl McpConnectionContext {
         Ok(context)
     }
 
-    /// Replaces the controlled adapter-binding basis carried into Core.
-    pub fn with_invocation_binding_basis(mut self, basis: impl Into<String>) -> Self {
-        let basis = basis.into();
-        self.invocation_binding_basis = controlled_invocation_binding_basis(&basis).to_owned();
+    #[cfg(test)]
+    pub(crate) fn with_test_host_receipt_fixture(mut self) -> Self {
+        self.test_host_receipt_fixture = true;
         self
     }
 
@@ -309,6 +310,8 @@ impl McpConnectionStartupInspection {
             mode: self.mode,
             invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
             project_allowlist: None,
+            #[cfg(test)]
+            test_host_receipt_fixture: false,
         }
     }
 
@@ -330,25 +333,8 @@ impl McpConnectionStartupInspection {
         let tools_list_schema_validation =
             crate::tool_registry::tools_list_schema_validation_status(&tools);
         let tool_naming_style = crate::tool_registry::mcp_tool_naming_style(&tools);
-        let (watcher_status, watcher_coverage_basis, watcher_partial_coverage_warning) =
-            if available_projects == 1 {
-                ("pending_mcp_start", "mcp_start", "")
-            } else if available_projects > 1 {
-                (
-                    "pending_project_selection",
-                    "",
-                    "project_selector is required before session-watch coverage can start",
-                )
-            } else {
-                (
-                    "unavailable",
-                    "",
-                    "no available project is ready for session-watch coverage",
-                )
-            };
-        let startup_observation = self.startup_observation_status(storage_capability);
         let mut report = format!(
-            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nregistry_read: passed\nproject_state_read: {}\nproject_state_write: {}\nstartup_observation: {}\neffective_tool_mode: {}\ntools_list_schema_validation: {}\ntool_naming_style: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\nwatcher_status: {}\nwatcher_baseline_created_at: \nwatcher_coverage_start_at: \nwatcher_coverage_basis: {}\nwatcher_partial_coverage_warning: {}\n",
+            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nregistry_read: passed\nproject_state_read: {}\nproject_state_write: {}\neffective_tool_mode: {}\ntools_list_schema_validation: {}\ntool_naming_style: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\n",
             TRANSPORT_DISCLOSURE_TEXT,
             self.runtime_home.display(),
             self.connection_internal_id.as_str(),
@@ -356,15 +342,11 @@ impl McpConnectionStartupInspection {
             self.enabled,
             self.project_state_read_status(),
             project_state_write_status(storage_capability),
-            startup_observation,
             effective_tool_mode.as_str(),
             tools_list_schema_validation,
             tool_naming_style,
             self.allowed_project_count,
             available_projects,
-            watcher_status,
-            watcher_coverage_basis,
-            watcher_partial_coverage_warning
         );
         for (index, project) in self.projects.iter().enumerate() {
             report.push_str(&format!(
@@ -373,7 +355,10 @@ impl McpConnectionStartupInspection {
                 project.available,
                 project.state_read_status(),
                 project.state_write_status(),
-                project.unavailable_reason.as_deref().unwrap_or(""),
+                project
+                    .unavailable_reason
+                    .as_deref()
+                    .unwrap_or("not_applicable"),
                 project.repo_root_display
             ));
         }
@@ -385,24 +370,6 @@ impl McpConnectionStartupInspection {
             "passed"
         } else {
             "failed"
-        }
-    }
-
-    fn startup_observation_status(&self, storage_capability: McpStorageCapability) -> &'static str {
-        let available_projects = self
-            .projects
-            .iter()
-            .filter(|project| project.available)
-            .count();
-        if available_projects != 1 {
-            return "skipped_verification_probe";
-        }
-        match storage_capability {
-            McpStorageCapability::ReadWrite => "recordable",
-            McpStorageCapability::ReadOnly => "best_effort_skipped_if_readonly",
-            McpStorageCapability::Unavailable | McpStorageCapability::Unknown => {
-                "skipped_verification_probe"
-            }
         }
     }
 }
@@ -467,11 +434,6 @@ fn project_state_write_status(storage_capability: McpStorageCapability) -> &'sta
 pub(crate) struct ListProjectsResult {
     pub(crate) connection_id: String,
     pub(crate) mode: AgentConnectionMode,
-    pub(crate) watcher_status: SessionWatchStatus,
-    pub(crate) watcher_baseline_created_at: Option<String>,
-    pub(crate) watcher_coverage_start_at: Option<String>,
-    pub(crate) watcher_coverage_basis: Option<SessionWatchCoverageBasis>,
-    pub(crate) watcher_partial_coverage_warning: Option<String>,
     pub(crate) projects: Vec<ListProjectItem>,
 }
 
@@ -493,15 +455,6 @@ pub(crate) fn list_projects_output_schema() -> Value {
         .expect("list-projects output schema should be an object")
         .insert("type".to_owned(), Value::String("object".to_owned()));
     schema
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct McpSessionWatchCoverage {
-    pub(crate) status: SessionWatchStatus,
-    pub(crate) baseline_created_at: Option<String>,
-    pub(crate) coverage_start_at: Option<String>,
-    pub(crate) coverage_basis: Option<SessionWatchCoverageBasis>,
-    pub(crate) partial_coverage_warning: Option<String>,
 }
 
 pub(crate) fn validate_mcp_project_allowlist(
@@ -612,6 +565,8 @@ pub(crate) fn resolve_connection_context(
         mode,
         invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
         project_allowlist: None,
+        #[cfg(test)]
+        test_host_receipt_fixture: false,
     };
     Ok((context, connection, projects))
 }
@@ -749,42 +704,6 @@ pub(crate) fn routing_error(message: impl Into<String>) -> McpAdapterError {
     }
 }
 
-pub(crate) fn coverage_from_watch_baseline(
-    baseline: &WatchBaselineRecord,
-) -> McpSessionWatchCoverage {
-    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json).unwrap_or(Value::Null);
-    let coverage_basis = metadata
-        .get("coverage_basis")
-        .and_then(Value::as_str)
-        .and_then(|value| serde_json::from_value(Value::String(value.to_owned())).ok());
-    let fallback_warning = coverage_basis.and_then(|basis| match basis {
-        SessionWatchCoverageBasis::McpStart => None,
-        SessionWatchCoverageBasis::FirstProjectSelection => {
-            Some(FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING.to_owned())
-        }
-        SessionWatchCoverageBasis::MethodBoundary => {
-            Some(METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING.to_owned())
-        }
-    });
-    McpSessionWatchCoverage {
-        status: serde_json::from_value(Value::String(baseline.status.clone()))
-            .unwrap_or(SessionWatchStatus::Unavailable),
-        baseline_created_at: Some(baseline.created_at.clone()),
-        coverage_start_at: metadata
-            .get("coverage_start_at")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| Some(baseline.created_at.clone())),
-        coverage_basis,
-        partial_coverage_warning: metadata
-            .get("partial_coverage_warning")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .map(str::to_owned)
-            .or(fallback_warning),
-    }
-}
-
 pub(crate) fn concise_store_reason(error: &StoreError) -> String {
     match error {
         StoreError::NotFound { entity, .. } => format!("{entity} not found"),
@@ -801,6 +720,9 @@ pub(crate) fn concise_store_reason(error: &StoreError) -> String {
         | StoreError::CorruptOwnerStateValue { logical_column, .. } => {
             format!("corrupt owner state field {logical_column}")
         }
+        StoreError::PersistedUserActionsCorrupt { .. } => {
+            volicord_types::PERSISTED_USER_ACTIONS_CORRUPT_REASON.to_owned()
+        }
         StoreError::SchemaInvariant { database_kind, .. } => {
             format!("{database_kind} schema is invalid")
         }
@@ -810,20 +732,10 @@ pub(crate) fn concise_store_reason(error: &StoreError) -> String {
         } => {
             format!("unsupported storage profile {actual_storage_profile}")
         }
+        StoreError::UnsupportedExternalContract { reason, .. }
+        | StoreError::UnsupportedPlatformEnvironment { reason, .. }
+        | StoreError::PlatformEnvironmentUnavailable { reason, .. } => (*reason).to_owned(),
         StoreError::Sqlite(_) | StoreError::Io(_) => "storage access failed".to_owned(),
-    }
-}
-
-pub(crate) fn controlled_invocation_binding_basis(value: &str) -> &'static str {
-    match value.trim() {
-        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING => {
-            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
-        }
-        VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING => {
-            VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING
-        }
-        VERIFICATION_BASIS_TEST_FIXTURE_BINDING => VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-        _ => DEFAULT_INVOCATION_BINDING_BASIS,
     }
 }
 

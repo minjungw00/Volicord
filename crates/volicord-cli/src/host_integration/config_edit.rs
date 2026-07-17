@@ -4,8 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_json::Value;
-
 use super::{HostConfigError, HostConflict, HostConflictKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,44 +64,6 @@ pub(crate) fn read_text_snapshot(
         }
     };
     Ok((snapshot, text))
-}
-
-pub(crate) fn read_json_object(
-    path: &Path,
-) -> Result<(FileSnapshot, serde_json::Map<String, Value>), HostConfigError> {
-    let (snapshot, text) = read_text_snapshot(path)?;
-    let object = match text {
-        None => serde_json::Map::new(),
-        Some(text) if text.trim().is_empty() => serde_json::Map::new(),
-        Some(text) => {
-            let value = serde_json::from_str::<Value>(&text).map_err(|error| {
-                HostConfigError::Malformed(format!(
-                    "failed to parse JSON configuration {}: {error}",
-                    path.display()
-                ))
-            })?;
-            value.as_object().cloned().ok_or_else(|| {
-                HostConfigError::Malformed(format!(
-                    "JSON configuration must be an object: {}",
-                    path.display()
-                ))
-            })?
-        }
-    };
-    Ok((snapshot, object))
-}
-
-pub(crate) fn write_json_object_if_fresh(
-    path: &Path,
-    object: &serde_json::Map<String, Value>,
-    snapshot: &FileSnapshot,
-) -> Result<(), HostConfigError> {
-    let mut text =
-        serde_json::to_string_pretty(&Value::Object(object.clone())).map_err(|error| {
-            HostConfigError::Malformed(format!("failed to render JSON configuration: {error}"))
-        })?;
-    text.push('\n');
-    write_if_fresh(path, text.as_bytes(), snapshot)
 }
 
 pub(crate) fn write_if_fresh(

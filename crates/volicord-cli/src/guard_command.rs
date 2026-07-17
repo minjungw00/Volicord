@@ -5,7 +5,6 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{Clock, CorePipelineError, SystemClock};
 use volicord_store::{
-    agent_connections::agent_connection_record_read_only,
     bootstrap::{project_record_for_execution, ProjectRecord},
     core_pipeline::CoreProjectStore,
     diagnostics::{
@@ -16,34 +15,25 @@ use volicord_store::{
     },
     guards::{
         agent_session, guard_event, insert_agent_session, insert_guard_event,
-        observe_guard_installation, prior_guard_event_exists_for_session_kind, AgentSessionInsert,
-        GuardEventInsert, GuardInstallationObservation,
+        observe_guard_installation, AgentSessionInsert, GuardEventInsert,
+        GuardInstallationObservation,
     },
-    host_runtime_probes::record_host_runtime_probe_observation,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
 };
 use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, HostRuntimeProbeFailureClass,
-    HostRuntimeProbeId, HostRuntimeProbeObservation, HostRuntimeProbeOutcome, IntegrationProfile,
+    canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, IntegrationProfile,
     ObservationConfidence, UtcTimestamp,
-    VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING,
-    VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT,
 };
 
+use crate::cli::{HookArgs, HookCommand};
 use crate::disclosure::cooperative_host_decision_disclosure_json;
-use crate::final_output_command::{
-    managed_final_output_binding_is_verified, project_managed_final_authority,
-    read_final_authority_coordinates, render_final_authority_response,
-    FinalAuthorityFallbackReason, FinalAuthorityProjection, ManagedFinalOutputHost,
-};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
-const DEFAULT_INTEGRATION_PROFILE: &str = "detective";
+const DEFAULT_INTEGRATION_PROFILE: &str = "record";
 const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
 const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
-const SESSION_WATCH_METADATA_SOURCE: &str = "volicord_session_watch";
 
 mod args;
 mod context;
@@ -51,16 +41,11 @@ mod envelope;
 mod mutation;
 mod phase;
 mod prompt_capture;
-mod prompt_command;
 mod render;
 mod tool_observation;
 mod write_ticket;
 
-pub use args::guard_usage;
-use args::{
-    parse_guard_options, read_guard_input, GuardInput, GuardOptions, GuardPhase, HostOutputMode,
-    OutputFormat,
-};
+use args::{guard_options, read_guard_input, GuardInput, GuardOptions, GuardPhase};
 use envelope::{
     event_path_field, event_string, guard_envelope, is_managed_builtin_host,
     managed_native_session_id, GuardEnvelope,
@@ -68,7 +53,6 @@ use envelope::{
 use phase::{pre_tool::persist_expected_write, GuardPhaseResult};
 use prompt_capture::handle_prompt_capture;
 use render::{render_guard_output, RenderedGuardOutput};
-use tool_observation::{tool_name_is_direct_write, tool_observation, ToolObservation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardCommandOutcome {
@@ -125,69 +109,31 @@ fn core_current_timestamp(store: &CoreProjectStore) -> StoreResult<UtcTimestamp>
 }
 
 pub fn run_guard_command<F>(
-    args: &[String],
+    args: HookArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<GuardCommandOutcome, GuardCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Ok(GuardCommandOutcome {
-            stdout: guard_usage(),
-            stderr: String::new(),
-            exit_code: 0,
-        });
-    };
-    if matches!(subcommand, "-h" | "--help" | "help") {
-        if args.len() == 1 {
-            return Ok(GuardCommandOutcome {
-                stdout: guard_usage(),
-                stderr: String::new(),
-                exit_code: 0,
-            });
-        }
-        return Err(GuardCommandError::Usage(format!(
-            "unexpected argument: {}\n\n{}",
-            args[1],
-            guard_usage()
-        )));
-    }
-
-    let phase = match subcommand {
-        "session-start" => GuardPhase::SessionStart,
-        "pre-tool" => GuardPhase::PreTool,
-        "post-tool" => GuardPhase::PostTool,
-        "prompt-capture" => GuardPhase::PromptCapture,
-        "stop" => GuardPhase::Stop,
-        other => {
-            return Err(GuardCommandError::Usage(format!(
-                "unknown _hook command: {other}\n\n{}",
-                guard_usage()
-            )))
-        }
+    let (phase, options) = match args.command {
+        HookCommand::PreTool(options) => (GuardPhase::PreTool, options),
+        HookCommand::PostTool(options) => (GuardPhase::PostTool, options),
+        HookCommand::PromptCapture(options) => (GuardPhase::PromptCapture, options),
     };
     let diagnostic_started = Instant::now();
-    let options = parse_guard_options(&args[1..])?;
+    let options = guard_options(options);
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let input = read_guard_input(options.event_file.as_deref())?;
     let project = resolve_guard_project(&runtime_home, current_dir, &options, &input.raw_value)?;
     let envelope = guard_envelope(phase, &options, &input, &project)?;
     let input = protect_managed_guard_input(input, &envelope)?;
-    validate_existing_managed_session_binding(&runtime_home, &project, &envelope)?;
+    validate_existing_connection_session_binding(&runtime_home, &project, &envelope)?;
     let subject = guard_subject(phase, &input, &envelope, &project);
-    if matches!(phase, GuardPhase::PostTool | GuardPhase::Stop) {
+    if phase == GuardPhase::PostTool {
         if let Some(replayed) =
             replayed_guard_phase_result(&runtime_home, &project, &envelope, phase, &subject)?
         {
-            record_guard_runtime_probes_best_effort(
-                &runtime_home,
-                &project,
-                &envelope,
-                phase,
-                &input.raw_value,
-                phase == GuardPhase::Stop,
-            );
             record_guard_diagnostic_best_effort(
                 &runtime_home,
                 &project,
@@ -227,12 +173,7 @@ where
     }
     let _activation =
         observe_guard_installation_activation(&runtime_home, &project, &envelope, phase, &options)?;
-    let stop_invocation_binding_basis = (phase == GuardPhase::Stop)
-        .then(|| stop_invocation_binding_basis(&runtime_home, &project, &envelope, &options));
     let mut phase_result = match phase {
-        GuardPhase::SessionStart => {
-            phase::session_start::handle_session_start(&runtime_home, &project, &envelope, &input)?
-        }
         GuardPhase::PreTool => {
             phase::pre_tool::handle_pre_tool(&runtime_home, &project, &envelope, &input)?
         }
@@ -244,14 +185,6 @@ where
                 handle_prompt_capture(&runtime_home, &project, &envelope, &input)?;
             GuardPhaseResult::new(decision, result)
         }
-        GuardPhase::Stop => phase::stop::handle_stop(
-            &runtime_home,
-            &project,
-            &envelope,
-            &input,
-            stop_invocation_binding_basis
-                .expect("Stop phase always derives an invocation binding basis"),
-        )?,
     };
     attach_guard_disclosure(&mut phase_result.result);
 
@@ -264,14 +197,6 @@ where
         subject,
         phase_result.result.clone(),
     )?;
-    record_guard_runtime_probes_best_effort(
-        &runtime_home,
-        &project,
-        &envelope,
-        phase,
-        &input.raw_value,
-        false,
-    );
     if let Some(expected_write) = phase_result.expected_write {
         persist_expected_write(&runtime_home, &project, expected_write)?;
     }
@@ -301,17 +226,6 @@ where
         &runtime_home,
         &project,
     )?;
-    if phase == GuardPhase::Stop && matches!(options.output, OutputFormat::HostNative(_)) {
-        record_guard_probe_results_best_effort(
-            &runtime_home,
-            &envelope,
-            &[(
-                HostRuntimeProbeId::FixedUiAuthorityDisclosure,
-                HostRuntimeProbeOutcome::Unavailable,
-                HostRuntimeProbeFailureClass::ProbeNotRun,
-            )],
-        );
-    }
     Ok(GuardCommandOutcome {
         stdout: rendered.stdout,
         stderr: rendered.stderr,
@@ -325,138 +239,10 @@ fn render_guard_command_output(
     envelope: &GuardEnvelope,
     result: Value,
     options: &GuardOptions,
-    runtime_home: &Path,
-    project: &ProjectRecord,
+    _runtime_home: &Path,
+    _project: &ProjectRecord,
 ) -> Result<RenderedGuardOutput, GuardCommandError> {
-    let mut rendered = render_guard_output(phase, decision, envelope, result, options.output)?;
-    let OutputFormat::HostNative(host_output) = options.output else {
-        return Ok(rendered);
-    };
-    if phase != GuardPhase::Stop {
-        return Ok(rendered);
-    }
-
-    let projection =
-        guard_final_authority_projection(runtime_home, project, envelope, options, host_output);
-    let base_response =
-        serde_json::from_str::<Value>(rendered.stdout.trim()).map_err(json_error)?;
-    match render_final_authority_response(&base_response, &projection) {
-        Ok(authority_output) => {
-            rendered.stdout = authority_output.stdout;
-        }
-        Err(_) => {
-            let minimal_base = json!({"continue": true});
-            let safe_projection = FinalAuthorityProjection::fallback(
-                FinalAuthorityFallbackReason::RenderingUnavailable,
-                None,
-            );
-            rendered.stdout = render_final_authority_response(&minimal_base, &safe_projection)
-                .map_err(|error| {
-                    GuardCommandError::Runtime(format!(
-                        "failed to render the bounded final authority fallback: {error}"
-                    ))
-                })?
-                .stdout;
-        }
-    }
-    Ok(rendered)
-}
-
-fn guard_final_authority_projection(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-    options: &GuardOptions,
-    host_output: HostOutputMode,
-) -> FinalAuthorityProjection {
-    let coordinates = read_final_authority_coordinates(runtime_home, project).ok();
-    let binding = match guard_final_output_binding_input(envelope, options, host_output) {
-        Ok(binding) => binding,
-        Err(reason) => return FinalAuthorityProjection::fallback(reason, coordinates),
-    };
-    project_managed_final_authority(
-        runtime_home,
-        &project.repo_root,
-        &envelope.connection_id,
-        binding.guard_installation_id,
-        binding.host,
-        IntegrationProfile::Detective,
-        binding.expected_policy_hash,
-        binding.output_host,
-        coordinates,
-    )
-}
-
-fn stop_invocation_binding_basis(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-    options: &GuardOptions,
-) -> &'static str {
-    let OutputFormat::HostNative(host_output) = options.output else {
-        return VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT;
-    };
-    let Ok(binding) = guard_final_output_binding_input(envelope, options, host_output) else {
-        return VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT;
-    };
-    if managed_final_output_binding_is_verified(
-        runtime_home,
-        &project.repo_root,
-        &envelope.connection_id,
-        binding.guard_installation_id,
-        binding.host,
-        IntegrationProfile::Detective,
-        binding.expected_policy_hash,
-        binding.output_host,
-    ) {
-        VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING
-    } else {
-        VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT
-    }
-}
-
-struct GuardFinalOutputBindingInput<'a> {
-    host: ManagedFinalOutputHost,
-    output_host: ManagedFinalOutputHost,
-    guard_installation_id: &'a str,
-    expected_policy_hash: &'a str,
-}
-
-fn guard_final_output_binding_input<'a>(
-    envelope: &'a GuardEnvelope,
-    options: &'a GuardOptions,
-    host_output: HostOutputMode,
-) -> Result<GuardFinalOutputBindingInput<'a>, FinalAuthorityFallbackReason> {
-    let Some(host) = managed_final_output_host(&envelope.host_kind) else {
-        return Err(FinalAuthorityFallbackReason::BindingUnavailable);
-    };
-    let output_host = match host_output {
-        HostOutputMode::Codex => ManagedFinalOutputHost::Codex,
-        HostOutputMode::ClaudeCode => ManagedFinalOutputHost::ClaudeCode,
-    };
-    if envelope.guard_mode != IntegrationProfile::Detective.as_str() {
-        return Err(FinalAuthorityFallbackReason::BindingUnavailable);
-    }
-    let (Some(guard_installation_id), Some(expected_policy_hash)) = (
-        envelope.guard_installation_id.as_deref(),
-        options.policy_hash.as_deref(),
-    ) else {
-        return Err(FinalAuthorityFallbackReason::BindingUnavailable);
-    };
-    Ok(GuardFinalOutputBindingInput {
-        host,
-        output_host,
-        guard_installation_id,
-        expected_policy_hash,
-    })
-}
-
-fn managed_final_output_host(host_kind: &str) -> Option<ManagedFinalOutputHost> {
-    match host_kind {
-        "codex" => Some(ManagedFinalOutputHost::Codex),
-        "claude_code" => Some(ManagedFinalOutputHost::ClaudeCode),
-        _ => None,
-    }
+    render_guard_output(phase, decision, envelope, result, options.output)
 }
 
 fn replayed_guard_phase_result(
@@ -532,6 +318,10 @@ fn record_guard_diagnostic_best_effort(
         .any(|reason| {
             reason.get("code").and_then(Value::as_str) == Some("authoritative_refresh_failed")
         });
+    let suppression_unavailable = result
+        .pointer("/recorded_change_suppression_outcome/status")
+        .and_then(Value::as_str)
+        == Some("unavailable");
     let prompt_capture_recorded = phase == GuardPhase::PromptCapture
         && result
             .get("recognized_user_action_command")
@@ -550,17 +340,13 @@ fn record_guard_diagnostic_best_effort(
                     .iter()
                     .any(|path| path.get("inside_repo").and_then(Value::as_bool) == Some(true))
             })) as u64;
-    let core_reached = prompt_capture_recorded
-        || (phase == GuardPhase::Stop
-            && result
-                .pointer("/close_status/active_task")
-                .is_some_and(|value| !value.is_null()));
+    let core_reached = prompt_capture_recorded;
     let core_committed = prompt_capture_recorded && !prompt_capture_replayed;
     let response_bytes = serde_json::to_vec(result)
         .map(|bytes| bytes.len() as u64)
         .unwrap_or(0);
     let elapsed = started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
-    let outcome = if authoritative_refresh_failure {
+    let outcome = if authoritative_refresh_failure || suppression_unavailable {
         DiagnosticOutcome::Unavailable
     } else if result.get("allowed").and_then(Value::as_bool) == Some(false) {
         DiagnosticOutcome::Rejected
@@ -609,9 +395,7 @@ fn start_guard_diagnostic_session_best_effort(
             connection_id: Some(&envelope.connection_id),
             project_id: Some(&project.project_id),
             transport: DiagnosticTransport::GuardHook,
-            host_kind: Some(DiagnosticHostKind::from_connection_host_kind(
-                &envelope.host_kind,
-            )),
+            host_kind: DiagnosticHostKind::from_connection_host_kind(&envelope.host_kind),
             package_version: build.package_version,
             build_id: &build.build_id,
         },
@@ -626,16 +410,13 @@ fn record_guard_workflow_metrics_best_effort(
     phase: GuardPhase,
     decision: GuardDecision,
     result: &Value,
-    repeated_stop: bool,
+    _repeated: bool,
 ) {
     let Some(session_id) = envelope.session_id.as_deref() else {
         return;
     };
-    let integration_profile = match envelope.guard_mode.as_str() {
-        "record" => Some(IntegrationProfile::Record),
-        "detective" => Some(IntegrationProfile::Detective),
-        _ => None,
-    };
+    let integration_profile = (envelope.guard_mode == IntegrationProfile::Record.as_str())
+        .then_some(IntegrationProfile::Record);
     let record = |metric_kind: WorkflowMetricKind,
                   value: u64,
                   metric_decision: Option<WorkflowMetricDecision>,
@@ -757,43 +538,7 @@ fn record_guard_workflow_metrics_best_effort(
                 );
             }
         }
-        GuardPhase::Stop => {
-            let refresh_succeeded = result
-                .get("authoritative_refresh_succeeded")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let outcome = if refresh_succeeded {
-                WorkflowMetricOutcome::Success
-            } else {
-                WorkflowMetricOutcome::Unavailable
-            };
-            record(WorkflowMetricKind::StopCall, 1, None, None, Some(outcome));
-            if repeated_stop {
-                record(WorkflowMetricKind::StopRepeat, 1, None, None, Some(outcome));
-            } else {
-                record(
-                    WorkflowMetricKind::AuthorityRefresh,
-                    1,
-                    None,
-                    None,
-                    Some(outcome),
-                );
-            }
-            if result
-                .get("completion_claim_allowed")
-                .and_then(Value::as_bool)
-                == Some(false)
-            {
-                record(
-                    WorkflowMetricKind::CompletionClaimSuppressed,
-                    1,
-                    None,
-                    None,
-                    Some(outcome),
-                );
-            }
-        }
-        GuardPhase::SessionStart | GuardPhase::PromptCapture => {}
+        GuardPhase::PromptCapture => {}
     }
 }
 
@@ -859,12 +604,10 @@ fn ensure_required_session(
         return Ok(());
     };
     if agent_session(runtime_home, &project.project_id, session_id)?.is_some() {
-        validate_existing_managed_session_binding(runtime_home, project, envelope)?;
+        validate_existing_connection_session_binding(runtime_home, project, envelope)?;
         return Ok(());
     }
-    if matches!(phase, GuardPhase::SessionStart | GuardPhase::PromptCapture)
-        || envelope.session_id.is_some()
-    {
+    if phase == GuardPhase::PromptCapture || envelope.session_id.is_some() {
         insert_agent_session(
             runtime_home,
             &project.project_id,
@@ -885,7 +628,7 @@ fn ensure_required_session(
     Ok(())
 }
 
-fn validate_existing_managed_session_binding(
+fn validate_existing_connection_session_binding(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
@@ -903,7 +646,7 @@ fn validate_existing_managed_session_binding(
         || existing.host_kind != envelope.host_kind
     {
         return Err(GuardCommandError::Runtime(
-            "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match this managed host connection"
+            "managed_stdio_session_ownership_conflict: existing session ownership does not match this Agent Connection"
                 .to_owned(),
         ));
     }
@@ -917,9 +660,6 @@ fn observe_guard_installation_activation(
     phase: GuardPhase,
     options: &GuardOptions,
 ) -> Result<Option<volicord_store::guards::GuardInstallationRecord>, GuardCommandError> {
-    if envelope.guard_mode == IntegrationProfile::Record.as_str() {
-        return Ok(None);
-    }
     let Some(guard_installation_id) = envelope.guard_installation_id.clone() else {
         return Ok(None);
     };
@@ -957,14 +697,14 @@ fn current_policy_hash(project: &ProjectRecord) -> Result<Option<String>, GuardC
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(GuardCommandError::Runtime(format!(
-                "failed to read detective host hook policy {}: {error}",
+                "failed to read host hook policy {}: {error}",
                 policy_path.display()
             )));
         }
     };
     let value = serde_json::from_str::<Value>(&text).map_err(|error| {
         GuardCommandError::Runtime(format!(
-            "detective host hook policy is not valid JSON: {} ({error})",
+            "host hook policy is not valid JSON: {} ({error})",
             policy_path.display()
         ))
     })?;
@@ -1003,7 +743,7 @@ fn persist_guard_event(
         metadata_json: json!({
             "source": "volicord_guard_cli",
             "source_payload_sha256": source_payload_sha256,
-            "cooperative_detective": true
+            "cooperative_guard": true
         })
         .to_string(),
     };
@@ -1022,198 +762,6 @@ fn persist_guard_event(
     Ok(())
 }
 
-fn record_guard_runtime_probes_best_effort(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-    phase: GuardPhase,
-    event: &Value,
-    repeated_stop: bool,
-) {
-    let mut observations = vec![(
-        HostRuntimeProbeId::LifecycleHookDelivery,
-        HostRuntimeProbeOutcome::Passed,
-        HostRuntimeProbeFailureClass::None,
-    )];
-    match phase {
-        GuardPhase::PreTool => {
-            if let Some(observation) = pre_tool_structured_paths_probe(project, event) {
-                observations.push(observation);
-            }
-        }
-        GuardPhase::PostTool => {
-            if let Some(observation) = post_tool_structured_paths_probe(project, event) {
-                observations.push(observation);
-            }
-        }
-        GuardPhase::Stop => observations.push(
-            if repeated_stop
-                || event.get("stop_hook_active").and_then(Value::as_bool) == Some(true)
-                || prior_stop_delivery_exists(runtime_home, project, envelope)
-            {
-                (
-                    HostRuntimeProbeId::StopDeliveryAndReplay,
-                    HostRuntimeProbeOutcome::Failed,
-                    HostRuntimeProbeFailureClass::SecondStopRequested,
-                )
-            } else {
-                (
-                    HostRuntimeProbeId::StopDeliveryAndReplay,
-                    HostRuntimeProbeOutcome::Unavailable,
-                    HostRuntimeProbeFailureClass::ProbeNotRun,
-                )
-            },
-        ),
-        GuardPhase::SessionStart | GuardPhase::PromptCapture => {}
-    }
-
-    record_guard_probe_results_best_effort(runtime_home, envelope, &observations);
-}
-
-type GuardProbeResult = (
-    HostRuntimeProbeId,
-    HostRuntimeProbeOutcome,
-    HostRuntimeProbeFailureClass,
-);
-
-fn pre_tool_structured_paths_probe(
-    project: &ProjectRecord,
-    event: &Value,
-) -> Option<GuardProbeResult> {
-    let observation = tool_observation(event, &project.repo_root);
-    if !tool_name_is_direct_write(observation.tool_name.as_deref()) {
-        return None;
-    }
-    Some(if observation.structured_paths.is_empty() {
-        (
-            HostRuntimeProbeId::PreToolStructuredTargetPaths,
-            HostRuntimeProbeOutcome::Failed,
-            HostRuntimeProbeFailureClass::StructuredPathsMissing,
-        )
-    } else {
-        (
-            HostRuntimeProbeId::PreToolStructuredTargetPaths,
-            HostRuntimeProbeOutcome::Passed,
-            HostRuntimeProbeFailureClass::None,
-        )
-    })
-}
-
-fn post_tool_structured_paths_probe(
-    project: &ProjectRecord,
-    event: &Value,
-) -> Option<GuardProbeResult> {
-    let observation = tool_observation(event, &project.repo_root);
-    if !tool_name_is_direct_write(observation.tool_name.as_deref())
-        || !post_tool_reports_successful_write(&observation)
-        || (observation.changed_paths_reported && observation.changed_paths.is_empty())
-    {
-        return None;
-    }
-    Some(
-        if observation.changed_paths_reported && !observation.changed_paths.is_empty() {
-            (
-                HostRuntimeProbeId::PostToolStructuredChangedPaths,
-                HostRuntimeProbeOutcome::Passed,
-                HostRuntimeProbeFailureClass::None,
-            )
-        } else {
-            (
-                HostRuntimeProbeId::PostToolStructuredChangedPaths,
-                HostRuntimeProbeOutcome::Failed,
-                HostRuntimeProbeFailureClass::StructuredPathsMissing,
-            )
-        },
-    )
-}
-
-fn post_tool_reports_successful_write(observation: &ToolObservation) -> bool {
-    !observation.changed_paths.is_empty()
-        || observation.success == Some(true)
-        || observation.exit_code == Some(0)
-        || observation.status.as_deref().is_some_and(|status| {
-            matches!(
-                status.to_ascii_lowercase().as_str(),
-                "complete" | "completed" | "ok" | "success" | "succeeded"
-            )
-        })
-}
-
-fn prior_stop_delivery_exists(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-) -> bool {
-    let Some(session_id) = envelope.session_id.as_deref() else {
-        return false;
-    };
-    prior_guard_event_exists_for_session_kind(
-        runtime_home,
-        &project.project_id,
-        session_id,
-        &envelope.connection_id,
-        "stop",
-        &envelope.event_id,
-    )
-    .unwrap_or(false)
-}
-
-fn record_guard_probe_results_best_effort(
-    runtime_home: &Path,
-    envelope: &GuardEnvelope,
-    observations: &[(
-        HostRuntimeProbeId,
-        HostRuntimeProbeOutcome,
-        HostRuntimeProbeFailureClass,
-    )],
-) {
-    if !is_managed_builtin_host(&envelope.host_kind) {
-        return;
-    }
-    let Ok(Some(connection)) =
-        agent_connection_record_read_only(runtime_home, &envelope.connection_id)
-    else {
-        return;
-    };
-    let adapter_profile = match envelope.guard_mode.as_str() {
-        "record" => IntegrationProfile::Record,
-        "detective" => IntegrationProfile::Detective,
-        _ => return,
-    };
-    let now = UtcTimestamp::from_datetime(DateTime::<Utc>::from(std::time::SystemTime::now()));
-    let Ok(expires_at) = now.checked_add(chrono::Duration::hours(1)) else {
-        return;
-    };
-    let host_version = serde_json::from_str::<Value>(&connection.last_verification_report_json)
-        .ok()
-        .and_then(|report| {
-            report
-                .pointer("/host/host_version")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        });
-    for &(probe_id, outcome, failure_class) in observations {
-        let _ = record_host_runtime_probe_observation(
-            runtime_home,
-            HostRuntimeProbeObservation {
-                probe_id,
-                outcome,
-                failure_class,
-                connection_internal_id: connection.connection_internal_id.clone(),
-                host_kind: connection.host_kind.clone(),
-                host_version: host_version.clone(),
-                client_name: None,
-                client_version: None,
-                adapter_profile,
-                adapter_version: env!("CARGO_PKG_VERSION").to_owned(),
-                managed_fingerprint: connection.managed_fingerprint.clone(),
-                observed_at: now.clone(),
-                expires_at: expires_at.clone(),
-            },
-        );
-    }
-}
-
 fn guard_subject(
     phase: GuardPhase,
     input: &GuardInput,
@@ -1230,7 +778,10 @@ fn guard_subject(
         "tool_input_sha256": guard_event_tool_input(&input.raw_value).map(canonical_value_sha256),
         "tool_result_sha256": guard_event_tool_result(&input.raw_value).map(canonical_value_sha256),
         "tool_result_size_bytes": guard_event_tool_result(&input.raw_value)
-            .and_then(|value| canonical_json_bytes(value).ok())
+            .map(|value| {
+                canonical_json_bytes(value)
+                    .expect("serde_json::Value always has a canonical JSON encoding")
+            })
             .and_then(|bytes| u64::try_from(bytes.len()).ok()),
         "raw_event": input.redacted_value
     })
@@ -1738,323 +1289,4 @@ fn hex_bytes(bytes: &[u8]) -> String {
 
 fn json_error(error: serde_json::Error) -> GuardCommandError {
     GuardCommandError::Runtime(format!("failed to serialize host-hook output: {error}"))
-}
-
-#[cfg(test)]
-mod replay_tests {
-    use std::error::Error;
-
-    use super::*;
-    use volicord_store::host_runtime_probes::host_runtime_probe_snapshot_read_only;
-    use volicord_test_support::core_fixtures::CoreFixture;
-
-    #[test]
-    fn final_model_prose_is_redacted_from_guard_subjects() {
-        let sentinel = "FORGED_AUTHORITY_RECEIPT_SENTINEL";
-        let redacted = redact_event_value(&json!({
-            "last_assistant_message": sentinel,
-            "assistant_message": sentinel,
-            "nested": {"transcript": sentinel}
-        }));
-        let serialized = serde_json::to_string(&redacted).expect("redacted event serializes");
-
-        assert!(!serialized.contains(sentinel));
-        assert_eq!(redacted["last_assistant_message"]["omitted"], true);
-        assert_eq!(redacted["assistant_message"]["omitted"], true);
-        assert_eq!(redacted["nested"]["transcript"]["omitted"], true);
-    }
-
-    #[test]
-    fn managed_guard_events_publish_actual_runtime_probe_results() -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new("guard-runtime-probes")?;
-        let envelope = GuardEnvelope {
-            event_id: "guard_event_probe".to_owned(),
-            session_id: Some("session_probe".to_owned()),
-            connection_id: fixture.connection_id().to_owned(),
-            guard_installation_id: Some("guard_probe".to_owned()),
-            host_kind: "codex".to_owned(),
-            guard_mode: "detective".to_owned(),
-            occurred_at: "2026-07-16T00:00:00Z".to_owned(),
-        };
-        let project =
-            project_record_for_execution(fixture.runtime_home_path(), fixture.project_id())?
-                .expect("fixture project");
-        assert_eq!(
-            pre_tool_structured_paths_probe(
-                &project,
-                &json!({"tool_name": "bash", "command": "git status"}),
-            ),
-            None
-        );
-        assert_eq!(
-            pre_tool_structured_paths_probe(&project, &json!({"tool_name": "edit"})),
-            Some((
-                HostRuntimeProbeId::PreToolStructuredTargetPaths,
-                HostRuntimeProbeOutcome::Failed,
-                HostRuntimeProbeFailureClass::StructuredPathsMissing,
-            ))
-        );
-        assert_eq!(
-            post_tool_structured_paths_probe(
-                &project,
-                &json!({"tool_name": "edit", "success": true}),
-            ),
-            Some((
-                HostRuntimeProbeId::PostToolStructuredChangedPaths,
-                HostRuntimeProbeOutcome::Failed,
-                HostRuntimeProbeFailureClass::StructuredPathsMissing,
-            ))
-        );
-        assert_eq!(
-            post_tool_structured_paths_probe(
-                &project,
-                &json!({"tool_name": "edit", "success": true, "changed_paths": []}),
-            ),
-            None
-        );
-        record_guard_runtime_probes_best_effort(
-            fixture.runtime_home_path(),
-            &project,
-            &envelope,
-            GuardPhase::PreTool,
-            &json!({"tool_name": "edit", "target_path": ["src/lib.rs"]}),
-            false,
-        );
-        record_guard_runtime_probes_best_effort(
-            fixture.runtime_home_path(),
-            &project,
-            &envelope,
-            GuardPhase::PostTool,
-            &json!({
-                "tool_name": "edit",
-                "success": true,
-                "changed_paths": ["src/lib.rs"]
-            }),
-            false,
-        );
-        for (phase, event) in [
-            (
-                GuardPhase::PreTool,
-                json!({"tool_name": "bash", "command": "git status"}),
-            ),
-            (
-                GuardPhase::PostTool,
-                json!({"tool_name": "bash", "command": "git status", "success": true}),
-            ),
-            (
-                GuardPhase::PostTool,
-                json!({"tool_name": "edit", "success": true, "changed_paths": []}),
-            ),
-        ] {
-            record_guard_runtime_probes_best_effort(
-                fixture.runtime_home_path(),
-                &project,
-                &envelope,
-                phase,
-                &event,
-                false,
-            );
-        }
-        record_guard_runtime_probes_best_effort(
-            fixture.runtime_home_path(),
-            &project,
-            &envelope,
-            GuardPhase::Stop,
-            &json!({}),
-            false,
-        );
-
-        let snapshot = host_runtime_probe_snapshot_read_only(
-            fixture.runtime_home_path(),
-            fixture.connection_id(),
-        )?
-        .expect("fixture connection has a probe snapshot");
-        let outcome = |probe_id| {
-            snapshot
-                .observations
-                .iter()
-                .find(|observation| observation.probe_id == probe_id)
-                .map(|observation| (observation.outcome, observation.failure_class))
-        };
-        assert_eq!(
-            outcome(HostRuntimeProbeId::LifecycleHookDelivery),
-            Some((
-                HostRuntimeProbeOutcome::Passed,
-                HostRuntimeProbeFailureClass::None,
-            ))
-        );
-        assert_eq!(
-            outcome(HostRuntimeProbeId::PreToolStructuredTargetPaths),
-            Some((
-                HostRuntimeProbeOutcome::Passed,
-                HostRuntimeProbeFailureClass::None,
-            ))
-        );
-        assert_eq!(
-            outcome(HostRuntimeProbeId::PostToolStructuredChangedPaths),
-            Some((
-                HostRuntimeProbeOutcome::Passed,
-                HostRuntimeProbeFailureClass::None,
-            ))
-        );
-        assert_eq!(
-            outcome(HostRuntimeProbeId::StopDeliveryAndReplay),
-            Some((
-                HostRuntimeProbeOutcome::Unavailable,
-                HostRuntimeProbeFailureClass::ProbeNotRun,
-            ))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn managed_native_identifiers_are_opaque_across_every_event_value() {
-        let native_session_id = "native.session:secret-1";
-        let managed_session_id =
-            "mhs_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        let mut event = json!({
-            "session_id": native_session_id,
-            "thread_id": native_session_id,
-            "event_id": "native-event-id",
-            "tool_call_id": "native-tool-id",
-            "host_invocation_id": "native-host-invocation-id",
-            "tool_result": {"tool_call_id": "native-tool-id"},
-            "tool": {"id": "native-tool-id"},
-            "project": {"id": "project_canonical"},
-            "connection": {"id": "connection_canonical"},
-            "prompt_capture_id": "native-capture-id",
-            "turn_id": "native-turn-id",
-            "transcript_path": format!("/tmp/{native_session_id}.jsonl"),
-            "repo_root": "/tmp/native-event-id/product-repositories/repo",
-            "nested": [
-                native_session_id,
-                {"value": native_session_id},
-                {"event_echo": "prefix-native-event-id-suffix"},
-                {"tool_echo": "prefix-native-tool-id-suffix"},
-                {"capture_echo": "prefix-native-capture-id-suffix"},
-                {"turn_echo": "prefix-native-turn-id-suffix"},
-                {"invocation_echo": "prefix-native-host-invocation-id-suffix"}
-            ],
-        });
-        event.as_object_mut().expect("managed event object").insert(
-            "dynamic-native-tool-id-key".to_owned(),
-            json!({"value": "must be omitted with its native identifier key"}),
-        );
-        let replacements = managed_native_identifier_replacements(
-            &event,
-            managed_session_id,
-            "guard_event_opaque",
-            "connection_test",
-            native_session_id,
-        );
-        let semantic_context = ManagedEventProtectionContext {
-            managed_session_id,
-            guard_event_id: "guard_event_opaque",
-            connection_id: "connection_test",
-            protection: ManagedEventProtection::Semantic,
-            replacements: &replacements,
-        };
-        let semantic = protect_managed_event_value(&event, None, None, &semantic_context);
-        let persistent_context = ManagedEventProtectionContext {
-            protection: ManagedEventProtection::Persistent,
-            ..semantic_context
-        };
-        let sanitized = protect_managed_event_value(&event, None, None, &persistent_context);
-        let serialized = serde_json::to_string(&sanitized).expect("sanitized event serializes");
-
-        assert_eq!(semantic["session_id"], managed_session_id);
-        assert_eq!(
-            semantic["transcript_path"],
-            format!("/tmp/{native_session_id}.jsonl")
-        );
-        assert_eq!(
-            semantic["repo_root"],
-            "/tmp/native-event-id/product-repositories/repo"
-        );
-        assert!(!serialized.contains(native_session_id));
-        for native_identifier in [
-            "native-event-id",
-            "native-tool-id",
-            "native-capture-id",
-            "native-turn-id",
-            "native-host-invocation-id",
-        ] {
-            assert!(!serialized.contains(native_identifier));
-        }
-        assert_eq!(sanitized["session_id"], sanitized["thread_id"]);
-        assert_eq!(sanitized["event_id"], "guard_event_opaque");
-        assert_eq!(
-            sanitized["tool_call_id"],
-            sanitized["tool_result"]["tool_call_id"]
-        );
-        assert_eq!(sanitized["tool_call_id"], sanitized["tool"]["id"]);
-        assert_eq!(sanitized["project"]["id"], "project_canonical");
-        assert_eq!(sanitized["connection"]["id"], "connection_canonical");
-    }
-
-    #[test]
-    fn guard_event_replay_hash_is_idempotent_for_same_source_and_conflicts_for_changed_payload() {
-        let first = GuardEventInsert {
-            guard_event_id: "guard_event_replay".to_owned(),
-            session_id: Some("session_replay".to_owned()),
-            connection_internal_id: "connection_replay".to_owned(),
-            guard_installation_id: Some("guard_replay".to_owned()),
-            event_kind: "post_tool".to_owned(),
-            decision: "allow".to_owned(),
-            subject_json: json!({
-                "raw_event_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                "raw_event": {"tool_use_id": "same"}
-            })
-            .to_string(),
-            result_json: json!({"state": "first-render"}).to_string(),
-            occurred_at: "2026-07-13T00:00:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
-        };
-        let mut same_source = first.clone();
-        same_source.result_json = json!({"state": "later-render"}).to_string();
-        same_source.occurred_at = "2026-07-13T00:00:01Z".to_owned();
-        assert_eq!(
-            guard_event_insert_payload_sha256(&first).expect("first replay hash"),
-            guard_event_insert_payload_sha256(&same_source).expect("same-source replay hash")
-        );
-
-        let mut changed_payload = first.clone();
-        changed_payload.subject_json = json!({
-            "raw_event_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            "raw_event": {"tool_use_id": "changed"}
-        })
-        .to_string();
-        assert_ne!(
-            guard_event_insert_payload_sha256(&first).expect("first replay hash"),
-            guard_event_insert_payload_sha256(&changed_payload)
-                .expect("changed-payload replay hash")
-        );
-
-        let mut changed_decision = first.clone();
-        changed_decision.decision = "deny".to_owned();
-        assert_eq!(
-            guard_event_source_payload_sha256(
-                first.session_id.as_deref(),
-                &first.connection_internal_id,
-                first.guard_installation_id.as_deref(),
-                &first.event_kind,
-                &first.subject_json,
-            )
-            .expect("first source hash"),
-            guard_event_source_payload_sha256(
-                changed_decision.session_id.as_deref(),
-                &changed_decision.connection_internal_id,
-                changed_decision.guard_installation_id.as_deref(),
-                &changed_decision.event_kind,
-                &changed_decision.subject_json,
-            )
-            .expect("changed-decision source hash"),
-            "an exact Stop replay reuses the immutable historical decision"
-        );
-        assert_ne!(
-            guard_event_insert_payload_sha256(&first).expect("first replay hash"),
-            guard_event_insert_payload_sha256(&changed_decision)
-                .expect("changed-decision replay hash")
-        );
-    }
 }

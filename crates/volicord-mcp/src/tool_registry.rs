@@ -96,9 +96,6 @@ pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID: &str =
 pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"verified_command_execution","command_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","command_label":"Focused validation"}}"#;
 pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID: &str = "verified_tool_capture";
 const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"verified_tool_invocation","tool_name":"example.validate","tool_input_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}"#;
-pub(crate) const PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID: &str =
-    "registered_connection_capture";
-const PREPARE_EVIDENCE_CAPTURE_CONNECTION_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"registered_connection_observation","source_selector":{"source_kind":"guard_event","event_kind":"stop"}}}"#;
 
 const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"detail":"full","task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
 
@@ -197,7 +194,7 @@ const PREPARE_WRITE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     arguments_json: PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON,
 }];
 
-const PREPARE_EVIDENCE_CAPTURE_EXAMPLES: [McpToolExample; 3] = [
+const PREPARE_EVIDENCE_CAPTURE_EXAMPLES: [McpToolExample; 2] = [
     McpToolExample {
         id: PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
         description: "Create an intent for a registered command evidence source.",
@@ -207,11 +204,6 @@ const PREPARE_EVIDENCE_CAPTURE_EXAMPLES: [McpToolExample; 3] = [
         id: PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID,
         description: "Create an intent for an exact registered tool invocation.",
         arguments_json: PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON,
-    },
-    McpToolExample {
-        id: PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
-        description: "Create an intent for a registered connection observation.",
-        arguments_json: PREPARE_EVIDENCE_CAPTURE_CONNECTION_ARGUMENTS_JSON,
     },
 ];
 
@@ -242,7 +234,8 @@ const REQUEST_USER_ACTION_EXAMPLES: [McpToolExample; 2] = [
     },
     McpToolExample {
         id: "resume_user_action",
-        description: "Resume the original exact Agent Connection result after a later User Channel resolution.",
+        description:
+            "Resume the original exact Agent Connection result after a later CLI inbox resolution.",
         arguments_json: REQUEST_USER_ACTION_RESUME_ARGUMENTS_JSON,
     },
 ];
@@ -968,7 +961,7 @@ pub(crate) fn tool_description(name: &str, detail: ToolSchemaDetail) -> &'static
             "After work, record its Run, changes, and evidence."
         }
         (ToolSchemaDetail::RuntimeCompact, REQUEST_USER_ACTION_TOOL_NAME) => {
-            "Create or resume one user action through an available User Channel."
+            "Create or resume one user action; complete pending requests through `volicord inbox`."
         }
         (ToolSchemaDetail::RuntimeCompact, RECONCILE_CHANGES_TOOL_NAME) => {
             "Reconcile unresolved Product Repository changes with current authority."
@@ -1007,7 +1000,7 @@ pub(crate) fn tool_description(name: &str, detail: ToolSchemaDetail) -> &'static
             "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
         }
         (_, REQUEST_USER_ACTION_TOOL_NAME) => {
-            "Create one focused user action, or resume its original result by request ID, and capture only a still-pending action through an available verified User Channel."
+            "Create or resume one focused user action. MCP returns only a bounded pending summary; user-owned delivery and resolution use `volicord inbox`."
         }
         (_, RECONCILE_CHANGES_TOOL_NAME) => {
             "Reconcile unresolved Product Repository changes without agent-only dismissal. The default result includes per-finding outcomes."

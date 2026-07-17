@@ -4,15 +4,7 @@ use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::*;
 use crate::util::*;
-use chrono::{DateTime, SecondsFormat, Utc};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Condvar, Mutex,
-};
 use volicord_platform_fs::capture_git_workspace_snapshot;
-use volicord_types::ManagedMcpClientInfo;
-
-const MANAGED_MCP_CLIENT_IDENTITY_CONFLICT_CODE: &str = "MANAGED_MCP_CLIENT_IDENTITY_CONFLICT";
 
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,9 +32,8 @@ pub struct McpDerivedInvocationContext {
     pub actor_source: ActorSource,
     pub operation_category: OperationCategory,
     pub invocation_binding_basis: String,
+    pub validated_host_receipt: Option<volicord_core::ValidatedHostVerificationReceipt>,
     pub session_id: Option<String>,
-    pub host_elicitation_available: bool,
-    pub local_web_consent_available: bool,
     pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
@@ -53,231 +44,17 @@ impl McpDerivedInvocationContext {
             self.actor_source.clone(),
             self.operation_category,
             self.invocation_binding_basis.clone(),
-        )
-        .with_host_elicitation_available(self.host_elicitation_available)
-        .with_local_web_consent_available(self.local_web_consent_available);
+        );
         if let Some(workspace) = self.git_workspace_context.as_ref() {
             invocation = invocation.with_git_workspace_context(workspace.clone());
+        }
+        if let Some(receipt) = self.validated_host_receipt.as_ref() {
+            invocation = invocation.with_validated_host_receipt(receipt.clone());
         }
         if let Some(session_id) = self.session_id.as_ref() {
             invocation = invocation.with_session_id(session_id.clone());
         }
         invocation
-    }
-}
-
-/// Transport capabilities that may make a User Channel available for one call.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct McpUserChannelCapabilities {
-    pub(crate) host_elicitation_available: bool,
-    pub(crate) model_invisible_user_surface: bool,
-    pub(crate) launch_origin: &'static str,
-    pub(crate) client_name: Option<String>,
-    pub(crate) client_version: Option<String>,
-}
-
-impl Default for McpUserChannelCapabilities {
-    fn default() -> Self {
-        Self::new(false, false)
-    }
-}
-
-impl McpUserChannelCapabilities {
-    pub(crate) const fn new(
-        host_elicitation_available: bool,
-        model_invisible_user_surface: bool,
-    ) -> Self {
-        Self {
-            host_elicitation_available,
-            model_invisible_user_surface,
-            launch_origin: "unknown",
-            client_name: None,
-            client_version: None,
-        }
-    }
-
-    pub(crate) fn with_stdio_session(
-        mut self,
-        launch_origin: &'static str,
-        client_name: Option<&str>,
-        client_version: Option<&str>,
-    ) -> Self {
-        self.launch_origin = launch_origin;
-        self.client_name = client_name.map(str::to_owned);
-        self.client_version = client_version.map(str::to_owned);
-        self
-    }
-}
-
-/// Loopback consent endpoint facts available to adapter fallback selection.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocalWebConsentContext {
-    pub base_url: String,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct LocalWebConsentReadiness(Arc<LocalWebConsentReadinessInner>);
-
-#[derive(Debug)]
-struct LocalWebConsentReadinessInner {
-    ready: AtomicBool,
-    issuance_gate: LocalWebConsentIssuanceGate,
-}
-
-pub(crate) struct LocalWebConsentIssuanceLease<'a> {
-    issuance_gate: &'a LocalWebConsentIssuanceGate,
-}
-
-pub(crate) struct LocalWebConsentListenerGuard(LocalWebConsentReadiness);
-
-#[derive(Debug)]
-struct LocalWebConsentIssuanceGate {
-    state: Mutex<LocalWebConsentIssuanceState>,
-    drained: Condvar,
-}
-
-#[derive(Debug, Default)]
-struct LocalWebConsentIssuanceState {
-    active_issuances: usize,
-    invalidating: bool,
-    drain_waiting: bool,
-}
-
-impl LocalWebConsentIssuanceGate {
-    fn new() -> Self {
-        Self {
-            state: Mutex::new(LocalWebConsentIssuanceState::default()),
-            drained: Condvar::new(),
-        }
-    }
-
-    fn release(&self) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        debug_assert!(state.active_issuances > 0);
-        state.active_issuances -= 1;
-        if state.active_issuances == 0 {
-            self.drained.notify_all();
-        }
-    }
-}
-
-impl Drop for LocalWebConsentIssuanceLease<'_> {
-    fn drop(&mut self) {
-        self.issuance_gate.release();
-    }
-}
-
-impl LocalWebConsentReadiness {
-    pub(crate) fn tracked() -> (Self, LocalWebConsentListenerGuard) {
-        let readiness = Self(Arc::new(LocalWebConsentReadinessInner {
-            ready: AtomicBool::new(true),
-            issuance_gate: LocalWebConsentIssuanceGate::new(),
-        }));
-        let guard = LocalWebConsentListenerGuard(readiness.clone());
-        (readiness, guard)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn ready_for_test() -> Self {
-        Self(Arc::new(LocalWebConsentReadinessInner {
-            ready: AtomicBool::new(true),
-            issuance_gate: LocalWebConsentIssuanceGate::new(),
-        }))
-    }
-
-    pub(crate) fn is_ready(&self) -> bool {
-        !self.0.issuance_gate.state.is_poisoned() && self.0.ready.load(Ordering::Acquire)
-    }
-
-    pub(crate) fn acquire_issuance_lease(&self) -> Option<LocalWebConsentIssuanceLease<'_>> {
-        if !self.0.ready.load(Ordering::Acquire) {
-            return None;
-        }
-        let mut state = self.0.issuance_gate.state.lock().ok()?;
-        if !self.0.ready.load(Ordering::Acquire) || state.invalidating {
-            return None;
-        }
-        state.active_issuances += 1;
-        Some(LocalWebConsentIssuanceLease {
-            issuance_gate: &self.0.issuance_gate,
-        })
-    }
-
-    pub(crate) fn mark_unavailable(&self) {
-        self.mark_unavailable_with_observers(|| {}, |_| {});
-    }
-
-    fn mark_unavailable_with_observers(
-        &self,
-        after_publish: impl FnOnce(),
-        after_drain_attempt: impl FnOnce(bool),
-    ) {
-        self.0.ready.store(false, Ordering::Release);
-        after_publish();
-        let mut state = self
-            .0
-            .issuance_gate
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.invalidating = true;
-        state.drain_waiting = state.active_issuances != 0;
-        after_drain_attempt(state.drain_waiting);
-        while state.active_issuances != 0 {
-            state = self
-                .0
-                .issuance_gate
-                .drained
-                .wait(state)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
-        state.drain_waiting = false;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mark_unavailable_with_observers_for_test(
-        &self,
-        after_publish: impl FnOnce(),
-        after_drain_attempt: impl FnOnce(bool),
-    ) {
-        self.mark_unavailable_with_observers(after_publish, after_drain_attempt);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn issuance_lease_is_held_for_test(&self) -> bool {
-        self.0
-            .issuance_gate
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .active_issuances
-            != 0
-    }
-
-    #[cfg(test)]
-    fn drain_state_for_test(&self) -> (bool, usize) {
-        let state = self
-            .0
-            .issuance_gate
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        (state.drain_waiting, state.active_issuances)
-    }
-}
-
-impl LocalWebConsentListenerGuard {
-    pub(crate) fn mark_unavailable(&self) {
-        self.0.mark_unavailable();
-    }
-}
-
-impl Drop for LocalWebConsentListenerGuard {
-    fn drop(&mut self) {
-        self.mark_unavailable();
     }
 }
 
@@ -287,9 +64,6 @@ pub struct McpAdapter {
     pub(crate) core: CoreService,
     pub(crate) runtime_home: PathBuf,
     pub(crate) context: McpConnectionContext,
-    pub(crate) local_web_consent: Option<LocalWebConsentContext>,
-    pub(crate) local_web_consent_readiness: Option<LocalWebConsentReadiness>,
-    expected_evidence_artifact_sha256: Option<String>,
 }
 
 impl PartialEq for McpAdapter {
@@ -297,50 +71,10 @@ impl PartialEq for McpAdapter {
         self.core == other.core
             && self.runtime_home == other.runtime_home
             && self.context == other.context
-            && self.local_web_consent == other.local_web_consent
-            && self.expected_evidence_artifact_sha256 == other.expected_evidence_artifact_sha256
     }
 }
 
 impl Eq for McpAdapter {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum StartupObservationResult {
-    Recorded,
-    IdentityConflict,
-    SkippedVerificationProbe,
-    SkippedReadonlyStorage,
-    FailedButNonfatal { reason: String },
-    NotAttempted,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManagedLifecycleEvent {
-    Startup,
-    InitializeResponse,
-    ToolsList,
-    ToolCallReceived,
-    ToolCallCompleted,
-}
-
-impl ManagedLifecycleEvent {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Startup => "managed_host_startup",
-            Self::InitializeResponse => "managed_host_initialize_response",
-            Self::ToolsList => "managed_host_tools_list",
-            Self::ToolCallReceived => "managed_host_tool_call",
-            Self::ToolCallCompleted => "managed_host_tool_call_completed",
-        }
-    }
-
-    const fn is_connection_once(self) -> bool {
-        matches!(
-            self,
-            Self::Startup | Self::InitializeResponse | Self::ToolsList
-        )
-    }
-}
 
 impl McpAdapter {
     /// Creates an adapter for a Runtime Home and connection-bound adapter context.
@@ -350,975 +84,7 @@ impl McpAdapter {
             core: CoreService::new(&runtime_home),
             runtime_home,
             context,
-            local_web_consent: None,
-            local_web_consent_readiness: None,
-            expected_evidence_artifact_sha256: None,
         }
-    }
-
-    /// Retained for source compatibility with untracked callers; the
-    /// fail-closed behavior is owned by the MCP Transport reference.
-    #[deprecated(
-        since = "0.8.0",
-        note = "untracked base URLs no longer enable local web; use a supported process entry point"
-    )]
-    pub fn with_local_web_consent(mut self, context: LocalWebConsentContext) -> Self {
-        self.local_web_consent = Some(context);
-        self.local_web_consent_readiness = None;
-        self
-    }
-
-    pub(crate) fn with_local_web_consent_readiness(
-        mut self,
-        context: LocalWebConsentContext,
-        readiness: LocalWebConsentReadiness,
-    ) -> Self {
-        self.local_web_consent = Some(context);
-        self.local_web_consent_readiness = Some(readiness);
-        self
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_expected_evidence_artifact_sha256_for_test(
-        mut self,
-        evidence_artifact_sha256: impl Into<String>,
-    ) -> Self {
-        self.expected_evidence_artifact_sha256 = Some(evidence_artifact_sha256.into());
-        self
-    }
-
-    pub(crate) fn effective_local_web_consent_available(
-        &self,
-        capabilities: &McpUserChannelCapabilities,
-    ) -> bool {
-        capabilities.model_invisible_user_surface
-            && capabilities.launch_origin == "managed_host"
-            && self.local_web_consent_listener_ready()
-            && self.current_host_capability_verification_matches(capabilities)
-    }
-
-    pub(crate) fn record_local_web_runtime_probe_best_effort(
-        &self,
-        capabilities: &McpUserChannelCapabilities,
-        outcome: HostRuntimeProbeOutcome,
-        failure_class: HostRuntimeProbeFailureClass,
-    ) {
-        if capabilities.launch_origin != "managed_host" {
-            return;
-        }
-        let Ok(Some(connection)) = agent_connection_record_read_only(
-            &self.runtime_home,
-            self.context.connection_internal_id.as_str(),
-        ) else {
-            return;
-        };
-        if !connection.enabled || connection.host_kind == "generic" {
-            return;
-        }
-        let now = UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now()));
-        let Ok(expires_at) = now.checked_add(chrono::Duration::hours(1)) else {
-            return;
-        };
-        let probes: &[HostRuntimeProbeId] = if outcome == HostRuntimeProbeOutcome::Unsupported {
-            &[HostRuntimeProbeId::McpCapabilityAdvertisedAndExercised]
-        } else {
-            &[
-                HostRuntimeProbeId::ModelSeparatedUserActionUi,
-                HostRuntimeProbeId::McpCapabilityAdvertisedAndExercised,
-            ]
-        };
-        for profile in [IntegrationProfile::Record, IntegrationProfile::Detective] {
-            for &probe_id in probes {
-                let _ = record_host_runtime_probe_observation(
-                    &self.runtime_home,
-                    HostRuntimeProbeObservation {
-                        probe_id,
-                        outcome,
-                        failure_class,
-                        connection_internal_id: connection.connection_internal_id.clone(),
-                        host_kind: connection.host_kind.clone(),
-                        host_version: capabilities.client_version.clone(),
-                        client_name: capabilities.client_name.clone(),
-                        client_version: capabilities.client_version.clone(),
-                        adapter_profile: profile,
-                        adapter_version: crate::build_info().package_version.to_owned(),
-                        managed_fingerprint: connection.managed_fingerprint.clone(),
-                        observed_at: now.clone(),
-                        expires_at: expires_at.clone(),
-                    },
-                );
-            }
-        }
-    }
-
-    fn current_host_capability_verification_matches(
-        &self,
-        capabilities: &McpUserChannelCapabilities,
-    ) -> bool {
-        let Some(evidence_artifact_sha256) = self.expected_evidence_artifact_sha256.as_deref()
-        else {
-            return false;
-        };
-        let Some(client_name) = capabilities
-            .client_name
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        else {
-            return false;
-        };
-        let Some(client_version) = capabilities
-            .client_version
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        else {
-            return false;
-        };
-        let Ok(Some(connection)) = agent_connection_record_read_only(
-            &self.runtime_home,
-            self.context.connection_internal_id.as_str(),
-        ) else {
-            return false;
-        };
-        if !connection.enabled || connection.host_kind == "generic" {
-            return false;
-        }
-        let Some(executable_sha256) = crate::build_info::current_executable_sha256() else {
-            return false;
-        };
-        let build = crate::build_info();
-        let now =
-            DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Nanos, true);
-        let expectation = HostCapabilityVerificationExpectation {
-            connection_internal_id: connection.connection_internal_id,
-            capability: HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE.to_owned(),
-            host_kind: connection.host_kind,
-            host_version: client_version.to_owned(),
-            client_name: client_name.to_owned(),
-            client_version: client_version.to_owned(),
-            adapter_profile: HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1.to_owned(),
-            adapter_version: build.package_version.to_owned(),
-            managed_fingerprint: connection.managed_fingerprint,
-            volicord_build_id: build.build_id,
-            source_revision: build.git_commit.to_owned(),
-            target_triple: build.target_triple.to_owned(),
-            executable_sha256: executable_sha256.to_owned(),
-            evidence_artifact_sha256: evidence_artifact_sha256.to_owned(),
-        };
-        matches!(
-            evaluate_current_host_capability_verification_read_only(
-                &self.runtime_home,
-                &expectation,
-                &now,
-            ),
-            Ok(Some(_))
-        )
-    }
-
-    pub(crate) fn local_web_consent_listener_ready(&self) -> bool {
-        self.local_web_consent.is_some()
-            && self
-                .local_web_consent_readiness
-                .as_ref()
-                .is_some_and(LocalWebConsentReadiness::is_ready)
-    }
-
-    pub(crate) fn local_web_consent_issuance_lease(
-        &self,
-        capabilities: &McpUserChannelCapabilities,
-    ) -> Option<LocalWebConsentIssuanceLease<'_>> {
-        if !capabilities.model_invisible_user_surface
-            || capabilities.launch_origin != "managed_host"
-            || self.local_web_consent.is_none()
-        {
-            return None;
-        }
-        let lease = self
-            .local_web_consent_readiness
-            .as_ref()?
-            .acquire_issuance_lease()?;
-        self.current_host_capability_verification_matches(capabilities)
-            .then_some(lease)
-    }
-
-    pub(crate) fn startup_session_watch_observation_best_effort(
-        &self,
-        session_id: &str,
-    ) -> StartupObservationResult {
-        match self.startup_session_watch_observation(session_id, None) {
-            Ok(result) => result,
-            Err(error) if startup_observation_storage_is_readonly(&error) => {
-                StartupObservationResult::SkippedReadonlyStorage
-            }
-            Err(error) => StartupObservationResult::FailedButNonfatal {
-                reason: error.to_string(),
-            },
-        }
-    }
-
-    pub(crate) fn startup_session_watch_observation_best_effort_with_origin(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-    ) -> StartupObservationResult {
-        match self.startup_session_watch_observation(session_id, Some(launch_origin)) {
-            Ok(result) => result,
-            Err(error) if startup_observation_storage_is_readonly(&error) => {
-                StartupObservationResult::SkippedReadonlyStorage
-            }
-            Err(error) => StartupObservationResult::FailedButNonfatal {
-                reason: error.to_string(),
-            },
-        }
-    }
-
-    pub(crate) fn managed_lifecycle_observation_best_effort(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        lifecycle_event: ManagedLifecycleEvent,
-        tool_name: Option<&str>,
-    ) -> StartupObservationResult {
-        self.managed_lifecycle_observation_with_basis_best_effort(
-            session_id,
-            launch_origin,
-            lifecycle_event,
-            tool_name,
-            SessionWatchCoverageBasis::McpStart,
-        )
-    }
-
-    pub(crate) fn managed_initialize_observation_best_effort(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        client_info: &ManagedMcpClientInfo,
-    ) -> StartupObservationResult {
-        self.managed_initialize_observation_with_basis(
-            session_id,
-            launch_origin,
-            client_info,
-            SessionWatchCoverageBasis::McpStart,
-        )
-    }
-
-    pub(crate) fn managed_lifecycle_observation_at_binding_best_effort(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        lifecycle_event: ManagedLifecycleEvent,
-        tool_name: Option<&str>,
-    ) -> StartupObservationResult {
-        self.managed_lifecycle_observation_with_basis_best_effort(
-            session_id,
-            launch_origin,
-            lifecycle_event,
-            tool_name,
-            SessionWatchCoverageBasis::MethodBoundary,
-        )
-    }
-
-    pub(crate) fn managed_initialize_observation_at_binding_best_effort(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        client_info: &ManagedMcpClientInfo,
-    ) -> StartupObservationResult {
-        self.managed_initialize_observation_with_basis(
-            session_id,
-            launch_origin,
-            client_info,
-            SessionWatchCoverageBasis::MethodBoundary,
-        )
-    }
-
-    fn managed_initialize_observation_with_basis(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        client_info: &ManagedMcpClientInfo,
-        coverage_basis: SessionWatchCoverageBasis,
-    ) -> StartupObservationResult {
-        match self.managed_initialize_observation(
-            session_id,
-            launch_origin,
-            client_info,
-            coverage_basis,
-        ) {
-            Ok(result) => result,
-            Err(error) if managed_initialize_identity_conflict(&error) => {
-                StartupObservationResult::IdentityConflict
-            }
-            Err(error) if startup_observation_storage_is_readonly(&error) => {
-                StartupObservationResult::SkippedReadonlyStorage
-            }
-            Err(error) => StartupObservationResult::FailedButNonfatal {
-                reason: error.to_string(),
-            },
-        }
-    }
-
-    fn managed_initialize_observation(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        client_info: &ManagedMcpClientInfo,
-        coverage_basis: SessionWatchCoverageBasis,
-    ) -> Result<StartupObservationResult, McpAdapterError> {
-        let Some(project_id) = self.project_bound_startup_project()? else {
-            return Ok(StartupObservationResult::NotAttempted);
-        };
-        let host_kind = self
-            .validate_managed_session_binding_for_project(&project_id, session_id)?
-            .ok_or_else(|| {
-                McpAdapterError::Environment(
-                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed initialize requires an opaque mhs_ session"
-                        .to_owned(),
-                )
-            })?;
-        self.ensure_managed_initialize_baseline(
-            &project_id,
-            session_id,
-            &host_kind,
-            launch_origin,
-            client_info,
-            coverage_basis,
-        )?;
-        Ok(StartupObservationResult::Recorded)
-    }
-
-    fn managed_lifecycle_observation_with_basis_best_effort(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        lifecycle_event: ManagedLifecycleEvent,
-        tool_name: Option<&str>,
-        coverage_basis: SessionWatchCoverageBasis,
-    ) -> StartupObservationResult {
-        match self.managed_lifecycle_observation(
-            session_id,
-            launch_origin,
-            lifecycle_event,
-            tool_name,
-            coverage_basis,
-        ) {
-            Ok(result) => result,
-            Err(error) if startup_observation_storage_is_readonly(&error) => {
-                StartupObservationResult::SkippedReadonlyStorage
-            }
-            Err(error) => StartupObservationResult::FailedButNonfatal {
-                reason: error.to_string(),
-            },
-        }
-    }
-
-    fn startup_session_watch_observation(
-        &self,
-        session_id: &str,
-        launch_origin: Option<&str>,
-    ) -> Result<StartupObservationResult, McpAdapterError> {
-        let Some(project_id) = self.project_bound_startup_project()? else {
-            return Ok(StartupObservationResult::NotAttempted);
-        };
-        self.ensure_session_watch_baseline(
-            &project_id,
-            session_id,
-            SessionWatchCoverageBasis::McpStart,
-            launch_origin,
-        )?;
-        Ok(StartupObservationResult::Recorded)
-    }
-
-    fn managed_lifecycle_observation(
-        &self,
-        session_id: &str,
-        launch_origin: &str,
-        lifecycle_event: ManagedLifecycleEvent,
-        tool_name: Option<&str>,
-        coverage_basis: SessionWatchCoverageBasis,
-    ) -> Result<StartupObservationResult, McpAdapterError> {
-        let Some(project_id) = self.project_bound_startup_project()? else {
-            return Ok(StartupObservationResult::NotAttempted);
-        };
-        if self
-            .validate_managed_session_binding_for_project(&project_id, session_id)?
-            .is_none()
-        {
-            return Err(McpAdapterError::Environment(
-                "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires an opaque mhs_ session"
-                    .to_owned(),
-            ));
-        }
-        self.ensure_session_watch_baseline(
-            &project_id,
-            session_id,
-            coverage_basis,
-            Some(launch_origin),
-        )?;
-        self.append_managed_lifecycle_event(
-            &project_id,
-            session_id,
-            launch_origin,
-            lifecycle_event,
-            tool_name,
-        )?;
-        Ok(StartupObservationResult::Recorded)
-    }
-
-    fn project_bound_startup_project(&self) -> Result<Option<ProjectId>, McpAdapterError> {
-        let available_projects = self
-            .allowed_project_availabilities("session watch startup")?
-            .into_iter()
-            .filter(|project| project.available)
-            .collect::<Vec<_>>();
-        if available_projects.len() == 1 {
-            Ok(Some(ProjectId::new(&available_projects[0].project_id)))
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn ensure_managed_initialize_baseline(
-        &self,
-        project_id: &ProjectId,
-        session_id: &str,
-        host_kind: &str,
-        launch_origin: &str,
-        client_info: &ManagedMcpClientInfo,
-        coverage_basis: SessionWatchCoverageBasis,
-    ) -> Result<(), McpAdapterError> {
-        if let Some(baseline) =
-            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
-                .map_err(McpAdapterError::Store)?
-        {
-            return validate_managed_initialize_baseline(&baseline, client_info);
-        }
-
-        let now = CoreProjectStore::open(&self.runtime_home, project_id)
-            .and_then(|store| store.current_timestamp())
-            .map_err(McpAdapterError::Store)?;
-        self.ensure_agent_session_for_watch(project_id, session_id, &now, Some(host_kind))?;
-
-        if let Some(baseline) =
-            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
-                .map_err(McpAdapterError::Store)?
-        {
-            return validate_managed_initialize_baseline(&baseline, client_info);
-        }
-
-        let store = CoreProjectStore::open(&self.runtime_home, project_id)
-            .map_err(McpAdapterError::Store)?;
-        let snapshot = snapshot_product_repository(
-            &self.runtime_home,
-            &store.project_record().repo_root,
-            WatchSnapshotOptions::default(),
-        )
-        .map_err(McpAdapterError::Store)?;
-        let partial_coverage_warning = match coverage_basis {
-            SessionWatchCoverageBasis::McpStart => None,
-            SessionWatchCoverageBasis::FirstProjectSelection => {
-                Some(FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING)
-            }
-            SessionWatchCoverageBasis::MethodBoundary => {
-                Some(METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING)
-            }
-        };
-        let startup = self.managed_lifecycle_event_metadata(
-            project_id,
-            host_kind,
-            launch_origin,
-            ManagedLifecycleEvent::Startup,
-            &now,
-        );
-        let initialize = self.managed_lifecycle_event_metadata(
-            project_id,
-            host_kind,
-            launch_origin,
-            ManagedLifecycleEvent::InitializeResponse,
-            &now,
-        );
-        let mut metadata = json!({
-            "source": WATCH_METADATA_SOURCE,
-            "status_detail": "active",
-            "detector_role": "detective",
-            "does_not_prevent_writes": true,
-            "does_not_identify_actor": true,
-            "coverage_start_at": now,
-            "coverage_basis": coverage_basis.as_str(),
-            "scan_summary": Self::session_watch_scan_summary_from_snapshot(&snapshot),
-            "launch_origin": launch_origin,
-            "host_kind": host_kind,
-            "connection_id": self.context.connection_internal_id.as_str(),
-            "project_id": project_id.as_str(),
-            "client_name": client_info.name(),
-            "client_version": client_info.version(),
-            "latest_lifecycle_event": ManagedLifecycleEvent::InitializeResponse.as_str(),
-            "latest_lifecycle_observed_at": now,
-            "lifecycle_events": [startup, initialize],
-        });
-        if let Some(warning) = partial_coverage_warning {
-            metadata["partial_coverage_warning"] = json!(warning);
-        }
-        let create_result = create_watch_baseline(
-            &self.runtime_home,
-            project_id.as_str(),
-            WatchBaselineCreate {
-                watch_baseline_id: format!("watch_base_managed_{session_id}"),
-                session_id: session_id.to_owned(),
-                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
-                guard_installation_id: self.selected_guard_installation_id(project_id)?,
-                status: StoreSessionWatchStatus::Active,
-                snapshot,
-                created_at: now,
-                metadata_json: serde_json::to_string(&metadata).map_err(McpAdapterError::Json)?,
-            },
-        );
-        if let Err(error) = create_result {
-            let Some(baseline) = latest_watch_baseline_for_session(
-                &self.runtime_home,
-                project_id.as_str(),
-                session_id,
-            )
-            .map_err(McpAdapterError::Store)?
-            else {
-                return Err(McpAdapterError::Store(error));
-            };
-            return validate_managed_initialize_baseline(&baseline, client_info);
-        }
-
-        let baseline =
-            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
-                .map_err(McpAdapterError::Store)?
-                .ok_or_else(|| {
-                    McpAdapterError::Environment(
-                        "managed initialize baseline is unavailable after creation".to_owned(),
-                    )
-                })?;
-        validate_managed_initialize_baseline(&baseline, client_info)
-    }
-
-    fn ensure_session_watch_baseline(
-        &self,
-        project_id: &ProjectId,
-        session_id: &str,
-        coverage_basis: SessionWatchCoverageBasis,
-        launch_origin: Option<&str>,
-    ) -> Result<(), McpAdapterError> {
-        let managed_host_kind =
-            self.validate_managed_session_binding_for_project(project_id, session_id)?;
-        if let Some(baseline) =
-            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
-                .map_err(McpAdapterError::Store)?
-        {
-            if managed_host_kind.is_some() {
-                let client_info = persisted_managed_client_info(&baseline)?;
-                validate_managed_initialize_baseline(&baseline, &client_info)?;
-            }
-            return Ok(());
-        }
-        if managed_host_kind.is_some() {
-            return Err(managed_initialize_conflict_error());
-        }
-
-        let now = CoreProjectStore::open(&self.runtime_home, project_id)
-            .and_then(|store| store.current_timestamp())
-            .map_err(McpAdapterError::Store)?;
-        self.ensure_agent_session_for_watch(
-            project_id,
-            session_id,
-            &now,
-            managed_host_kind.as_deref(),
-        )?;
-
-        if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
-            .map_err(McpAdapterError::Store)?
-            .is_some()
-        {
-            return Ok(());
-        }
-
-        let store = CoreProjectStore::open(&self.runtime_home, project_id)
-            .map_err(McpAdapterError::Store)?;
-        let snapshot = snapshot_product_repository(
-            &self.runtime_home,
-            &store.project_record().repo_root,
-            WatchSnapshotOptions::default(),
-        )
-        .map_err(McpAdapterError::Store)?;
-        let partial_coverage_warning = match coverage_basis {
-            SessionWatchCoverageBasis::McpStart => None,
-            SessionWatchCoverageBasis::FirstProjectSelection => {
-                Some(FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING)
-            }
-            SessionWatchCoverageBasis::MethodBoundary => {
-                Some(METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING)
-            }
-        };
-        let mut metadata = json!({
-            "source": WATCH_METADATA_SOURCE,
-            "status_detail": "active",
-            "detector_role": "detective",
-            "does_not_prevent_writes": true,
-            "does_not_identify_actor": true,
-            "coverage_start_at": now,
-            "coverage_basis": coverage_basis.as_str(),
-            "scan_summary": Self::session_watch_scan_summary_from_snapshot(&snapshot),
-        });
-        if let Some(warning) = partial_coverage_warning {
-            metadata["partial_coverage_warning"] = json!(warning);
-        }
-        if let Some(launch_origin) = launch_origin {
-            metadata["launch_origin"] = json!(launch_origin);
-        }
-        create_watch_baseline(
-            &self.runtime_home,
-            project_id.as_str(),
-            WatchBaselineCreate {
-                watch_baseline_id: generated_metadata_id(
-                    "watch_base",
-                    project_id.as_str(),
-                    session_id,
-                ),
-                session_id: session_id.to_owned(),
-                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
-                guard_installation_id: self.selected_guard_installation_id(project_id)?,
-                status: StoreSessionWatchStatus::Active,
-                snapshot,
-                created_at: metadata["coverage_start_at"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-                metadata_json: serde_json::to_string(&metadata).map_err(McpAdapterError::Json)?,
-            },
-        )
-        .map_err(McpAdapterError::Store)?;
-        Ok(())
-    }
-
-    fn append_managed_lifecycle_event(
-        &self,
-        project_id: &ProjectId,
-        session_id: &str,
-        launch_origin: &str,
-        lifecycle_event: ManagedLifecycleEvent,
-        tool_name: Option<&str>,
-    ) -> Result<(), McpAdapterError> {
-        if lifecycle_event == ManagedLifecycleEvent::InitializeResponse {
-            return Err(managed_initialize_conflict_error());
-        }
-        let host_kind = self
-            .validate_managed_session_binding_for_project(project_id, session_id)?
-            .ok_or_else(|| {
-                McpAdapterError::Environment(
-                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires an opaque mhs_ session"
-                        .to_owned(),
-                )
-            })?;
-        let Some(baseline) =
-            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
-                .map_err(McpAdapterError::Store)?
-        else {
-            return Err(McpAdapterError::Environment(
-                "managed lifecycle baseline is unavailable after baseline initialization"
-                    .to_owned(),
-            ));
-        };
-        let now = CoreProjectStore::open(&self.runtime_home, project_id)
-            .and_then(|store| store.current_timestamp())
-            .map_err(McpAdapterError::Store)?;
-        let mut metadata =
-            serde_json::from_str::<Value>(&baseline.metadata_json).unwrap_or_else(|_| json!({}));
-        if !metadata.is_object() {
-            metadata = json!({});
-        }
-        let object = metadata
-            .as_object_mut()
-            .expect("metadata was normalized to an object");
-        let existing_connection_event = lifecycle_event.is_connection_once()
-            && object
-                .get("lifecycle_events")
-                .and_then(Value::as_array)
-                .is_some_and(|events| {
-                    events.iter().any(|event| {
-                        event.get("lifecycle_event").and_then(Value::as_str)
-                            == Some(lifecycle_event.as_str())
-                    })
-                });
-        if existing_connection_event {
-            return Ok(());
-        }
-        object.insert("host_kind".to_owned(), json!(&host_kind));
-        object.insert("launch_origin".to_owned(), json!(launch_origin));
-        object.insert(
-            "connection_id".to_owned(),
-            json!(self.context.connection_internal_id.as_str()),
-        );
-        object.insert("project_id".to_owned(), json!(project_id.as_str()));
-        object.insert(
-            "latest_lifecycle_event".to_owned(),
-            json!(lifecycle_event.as_str()),
-        );
-        object.insert("latest_lifecycle_observed_at".to_owned(), json!(&now));
-
-        let mut event = self.managed_lifecycle_event_metadata(
-            project_id,
-            &host_kind,
-            launch_origin,
-            lifecycle_event,
-            &now,
-        );
-        if let Some(tool_name) = tool_name {
-            event["tool_name"] = json!(tool_name);
-        }
-
-        let events = object
-            .entry("lifecycle_events".to_owned())
-            .or_insert_with(|| json!([]));
-        if !events.is_array() {
-            *events = json!([]);
-        }
-        events
-            .as_array_mut()
-            .expect("lifecycle_events was normalized to an array")
-            .push(event);
-
-        let status = session_watch_status_from_storage(&baseline.status)?;
-        let final_host_kind = self
-            .validate_managed_session_binding_for_project(project_id, session_id)?
-            .ok_or_else(|| {
-                McpAdapterError::Environment(
-                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires an opaque mhs_ session"
-                        .to_owned(),
-                )
-            })?;
-        if final_host_kind != host_kind {
-            return Err(McpAdapterError::Environment(
-                "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle host binding changed before persistence"
-                    .to_owned(),
-            ));
-        }
-        update_watch_status(
-            &self.runtime_home,
-            project_id.as_str(),
-            &baseline.watch_baseline_id,
-            WatchStatusUpdate {
-                status,
-                updated_at: now,
-                metadata_json: serde_json::to_string(&metadata).map_err(McpAdapterError::Json)?,
-            },
-        )
-        .map_err(McpAdapterError::Store)?;
-        Ok(())
-    }
-
-    fn managed_lifecycle_event_metadata(
-        &self,
-        project_id: &ProjectId,
-        host_kind: &str,
-        launch_origin: &str,
-        lifecycle_event: ManagedLifecycleEvent,
-        timestamp: &str,
-    ) -> Value {
-        let storage_capability = self
-            .storage_capability_for_project(project_id)
-            .unwrap_or(McpStorageCapability::Unknown);
-        let effective_tool_mode = current_enabled_connection(
-            &self.runtime_home,
-            self.context.connection_internal_id.as_str(),
-            lifecycle_event.as_str(),
-        )
-        .ok()
-        .and_then(|connection| parse_connection_mode(&connection.mode).ok())
-        .map(|mode| effective_tool_mode_for_mode_and_storage(mode, storage_capability).as_str())
-        .unwrap_or("unknown");
-        json!({
-            "connection_id": self.context.connection_internal_id.as_str(),
-            "project_id": project_id.as_str(),
-            "host_kind": host_kind,
-            "launch_origin": launch_origin,
-            "lifecycle_event": lifecycle_event.as_str(),
-            "timestamp": timestamp,
-            "storage_capability": storage_capability.as_str(),
-            "effective_tool_mode": effective_tool_mode,
-        })
-    }
-
-    fn session_watch_scan_summary_from_snapshot(
-        snapshot: &volicord_store::session_watch::WatchSnapshot,
-    ) -> SessionWatchScanSummary {
-        let summary = &snapshot.scan_summary;
-        SessionWatchScanSummary {
-            files_scanned: summary.files_scanned,
-            files_skipped: summary.files_skipped,
-            unreadable_paths_count: summary.unreadable_paths_count,
-            degraded_reasons: summary.degraded_reasons.clone(),
-            degraded_reason_counts: summary.degraded_reason_counts.clone(),
-            skipped_paths_sample: summary.skipped_paths_sample.clone(),
-            skipped_paths_truncated: summary.skipped_paths_truncated,
-            default_excluded_paths: volicord_store::session_watch::default_watch_excluded_paths(),
-            max_file_size_bytes: volicord_store::session_watch::DEFAULT_MAX_FILE_HASH_BYTES,
-            max_file_count: volicord_store::session_watch::DEFAULT_MAX_SCAN_FILE_COUNT,
-            follows_symlinks: false,
-            not_full_filesystem_monitoring: true,
-        }
-    }
-
-    fn ensure_agent_session_for_watch(
-        &self,
-        project_id: &ProjectId,
-        session_id: &str,
-        now: &str,
-        managed_host_kind: Option<&str>,
-    ) -> Result<(), McpAdapterError> {
-        if let Some(existing) = agent_session(&self.runtime_home, project_id.as_str(), session_id)
-            .map_err(McpAdapterError::Store)?
-        {
-            if managed_host_kind.is_some_and(|host_kind| {
-                existing.connection_internal_id != self.context.connection_internal_id.as_str()
-                    || existing.host_kind != host_kind
-            }) {
-                return Err(McpAdapterError::Environment(
-                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match this managed MCP connection"
-                        .to_owned(),
-                ));
-            }
-            return Ok(());
-        }
-        let record = guard_health_record(
-            &self.runtime_home,
-            project_id.as_str(),
-            self.context.connection_internal_id.as_str(),
-        )
-        .map_err(McpAdapterError::Store)?;
-        let guard_installation_id = record
-            .guard_installation
-            .as_ref()
-            .map(|installation| installation.guard_installation_id.clone());
-        let guard_mode = record
-            .guard_installation
-            .as_ref()
-            .map(|installation| installation.guard_mode.clone())
-            .or_else(|| {
-                record
-                    .latest_session
-                    .as_ref()
-                    .map(|session| session.guard_mode.clone())
-            })
-            .unwrap_or_else(|| IntegrationProfile::Record.as_str().to_owned());
-        let host_kind = managed_host_kind.map(str::to_owned).unwrap_or_else(|| {
-            record
-                .guard_installation
-                .as_ref()
-                .map(|installation| installation.host_kind.clone())
-                .or_else(|| {
-                    record
-                        .connection
-                        .as_ref()
-                        .map(|connection| connection.host_kind.clone())
-                })
-                .unwrap_or_else(|| "unknown".to_owned())
-        });
-
-        let insert_result = insert_agent_session(
-            &self.runtime_home,
-            project_id.as_str(),
-            AgentSessionInsert {
-                session_id: session_id.to_owned(),
-                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
-                guard_installation_id,
-                host_kind,
-                guard_mode,
-                started_at: now.to_owned(),
-                metadata_json: serde_json::to_string(&json!({
-                    "source": WATCH_METADATA_SOURCE,
-                    "session_watch_initialized": true
-                }))
-                .map_err(McpAdapterError::Json)?,
-            },
-        );
-        match insert_result {
-            Ok(_) => Ok(()),
-            Err(error) => {
-                let Some(existing) =
-                    agent_session(&self.runtime_home, project_id.as_str(), session_id)
-                        .map_err(McpAdapterError::Store)?
-                else {
-                    return Err(McpAdapterError::Store(error));
-                };
-                if managed_host_kind.is_some_and(|host_kind| {
-                    existing.connection_internal_id != self.context.connection_internal_id.as_str()
-                        || existing.host_kind != host_kind
-                }) {
-                    return Err(McpAdapterError::Environment(
-                        "MANAGED_HOST_SESSION_BINDING_CONFLICT: concurrently created session ownership does not match this managed MCP connection"
-                            .to_owned(),
-                    ));
-                }
-                Ok(())
-            }
-        }
-    }
-
-    fn validate_managed_session_binding_for_project(
-        &self,
-        project_id: &ProjectId,
-        session_id: &str,
-    ) -> Result<Option<String>, McpAdapterError> {
-        if !session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX) {
-            return Ok(None);
-        }
-        validate_managed_host_session_id(session_id).map_err(|_| {
-            McpAdapterError::Environment(
-                "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires a canonical opaque mhs_ session"
-                    .to_owned(),
-            )
-        })?;
-        let connection = agent_connection_record_read_only(
-            &self.runtime_home,
-            self.context.connection_internal_id.as_str(),
-        )
-        .map_err(McpAdapterError::Store)?
-        .ok_or_else(|| {
-            McpAdapterError::Environment(
-                "MANAGED_HOST_SESSION_BINDING_CONFLICT: active managed MCP connection is unavailable"
-                    .to_owned(),
-            )
-        })?;
-        if !matches!(connection.host_kind.as_str(), "codex" | "claude_code") {
-            return Err(McpAdapterError::Environment(
-                "MANAGED_HOST_SESSION_BINDING_CONFLICT: mhs_ sessions require a managed built-in host"
-                    .to_owned(),
-            ));
-        }
-        if let Some(existing) = agent_session(&self.runtime_home, project_id.as_str(), session_id)
-            .map_err(McpAdapterError::Store)?
-        {
-            if existing.connection_internal_id != self.context.connection_internal_id.as_str()
-                || existing.host_kind != connection.host_kind
-            {
-                return Err(McpAdapterError::Environment(
-                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match the current registered connection host"
-                        .to_owned(),
-                ));
-            }
-        }
-        Ok(Some(connection.host_kind))
-    }
-
-    fn selected_guard_installation_id(
-        &self,
-        project_id: &ProjectId,
-    ) -> Result<Option<String>, McpAdapterError> {
-        guard_health_record(
-            &self.runtime_home,
-            project_id.as_str(),
-            self.context.connection_internal_id.as_str(),
-        )
-        .map(|record| {
-            record
-                .guard_installation
-                .map(|installation| installation.guard_installation_id)
-        })
-        .map_err(McpAdapterError::Store)
     }
 
     pub(crate) fn allowed_project_availabilities(
@@ -1343,49 +109,6 @@ impl McpAdapter {
             })
             .map(inspect_allowed_project)
             .collect())
-    }
-
-    fn session_watch_coverage_for_projects(
-        &self,
-        session_id: Option<&str>,
-        projects: &[McpProjectAvailability],
-    ) -> Result<McpSessionWatchCoverage, McpAdapterError> {
-        if let Some(session_id) = session_id {
-            for project in projects.iter().filter(|project| project.available) {
-                if let Some(baseline) = latest_watch_baseline_for_session(
-                    &self.runtime_home,
-                    &project.project_id,
-                    session_id,
-                )
-                .map_err(McpAdapterError::Store)?
-                {
-                    return Ok(coverage_from_watch_baseline(&baseline));
-                }
-            }
-        }
-        let available_project_count = projects.iter().filter(|project| project.available).count();
-        if available_project_count == 1 {
-            Ok(McpSessionWatchCoverage {
-                status: SessionWatchStatus::Unavailable,
-                baseline_created_at: None,
-                coverage_start_at: None,
-                coverage_basis: None,
-                partial_coverage_warning: Some(
-                    "Session-watch baseline has not been created for this MCP session.".to_owned(),
-                ),
-            })
-        } else {
-            Ok(McpSessionWatchCoverage {
-                status: SessionWatchStatus::PendingProjectSelection,
-                baseline_created_at: None,
-                coverage_start_at: None,
-                coverage_basis: None,
-                partial_coverage_warning: Some(
-                    "Session-watch coverage is pending until the MCP request names an explicit project_selector."
-                        .to_owned(),
-                ),
-            })
-        }
     }
 
     /// Returns the tools exposed by this adapter's current connection mode.
@@ -1416,28 +139,45 @@ impl McpAdapter {
         Ok(storage_capability_for_projects(&projects))
     }
 
+    pub(crate) fn validate_managed_host_authority_startup(&self) -> Result<(), McpAdapterError> {
+        #[cfg(test)]
+        if self.context.test_host_receipt_fixture {
+            return Ok(());
+        }
+        let projects = list_connection_projects_read_only(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?;
+        let selected = projects
+            .iter()
+            .filter(|project| {
+                self.context
+                    .project_allowlist_allows(project.project_id.as_str())
+            })
+            .collect::<Vec<_>>();
+        if selected.is_empty() {
+            return Err(McpAdapterError::Environment(
+                "host_receipt_project_missing: managed stdio startup selected no allowed project"
+                    .to_owned(),
+            ));
+        }
+        for project in selected {
+            crate::host_authority::validate_current_managed_host_authority(
+                &self.runtime_home,
+                self.context.connection_internal_id.as_str(),
+                &project.project_id,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Derives local invocation facts for one decoded request envelope.
     pub fn derive_invocation_context(
         &self,
         envelope: &ToolEnvelope,
         operation_category: OperationCategory,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
-    ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
-        self.derive_invocation_context_with_user_channel_capabilities(
-            envelope,
-            operation_category,
-            session_id,
-            McpUserChannelCapabilities::new(host_elicitation_available, false),
-        )
-    }
-
-    fn derive_invocation_context_with_user_channel_capabilities(
-        &self,
-        envelope: &ToolEnvelope,
-        operation_category: OperationCategory,
-        session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
         let store = CoreProjectStore::open(&self.runtime_home, &envelope.project_id)
             .map_err(McpAdapterError::Store)?;
@@ -1462,19 +202,17 @@ impl McpAdapter {
             ),
             operation_category,
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
+            validated_host_receipt: self.validated_receipt_for_project(&envelope.project_id)?,
             session_id: session_id.map(str::to_owned),
-            host_elicitation_available: capabilities.host_elicitation_available,
-            local_web_consent_available: self.effective_local_web_consent_available(&capabilities),
             git_workspace_context,
         })
     }
 
-    fn derive_read_only_invocation_context_with_user_channel_capabilities(
+    fn derive_read_only_invocation_context(
         &self,
         envelope: &ToolEnvelope,
         operation_category: OperationCategory,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
         let store = CoreProjectStore::open_read_only(&self.runtime_home, &envelope.project_id)
             .map_err(McpAdapterError::Store)?;
@@ -1499,11 +237,36 @@ impl McpAdapter {
             ),
             operation_category,
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
+            validated_host_receipt: self.validated_receipt_for_project(&envelope.project_id)?,
             session_id: session_id.map(str::to_owned),
-            host_elicitation_available: capabilities.host_elicitation_available,
-            local_web_consent_available: self.effective_local_web_consent_available(&capabilities),
             git_workspace_context,
         })
+    }
+
+    fn validated_receipt_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<Option<volicord_core::ValidatedHostVerificationReceipt>, McpAdapterError> {
+        #[cfg(test)]
+        if self.context.test_host_receipt_fixture {
+            let fixture = volicord_test_support::test_host_receipt_fixture(
+                project_id.as_str(),
+                self.context.connection_internal_id.as_str(),
+            );
+            let receipt = volicord_core::validate_host_verification_receipt(
+                fixture.receipt,
+                &fixture.current,
+                &fixture.validation_time,
+            )
+            .expect("the typed MCP test receipt fixture must validate");
+            return Ok(Some(receipt));
+        }
+        crate::host_authority::validate_current_managed_host_authority(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            project_id.as_str(),
+        )
+        .map(Some)
     }
 
     /// Calls one public Volicord method tool and returns Core's response.
@@ -1521,65 +284,28 @@ impl McpAdapter {
         params: Value,
         session_id: Option<&str>,
     ) -> Result<PipelineResponse, McpAdapterError> {
-        self.call_tool_for_session_with_capabilities(tool_name, params, session_id, false)
-    }
-
-    pub(crate) fn call_tool_for_session_with_capabilities(
-        &self,
-        tool_name: &str,
-        params: Value,
-        session_id: Option<&str>,
-        host_elicitation_available: bool,
-    ) -> Result<PipelineResponse, McpAdapterError> {
-        self.call_tool_for_session_with_user_channel_capabilities(
-            tool_name,
-            params,
-            session_id,
-            McpUserChannelCapabilities::new(host_elicitation_available, false),
-        )
-    }
-
-    pub(crate) fn call_tool_for_session_with_user_channel_capabilities(
-        &self,
-        tool_name: &str,
-        params: Value,
-        session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
-    ) -> Result<PipelineResponse, McpAdapterError> {
         validate_mcp_tool_arguments(tool_name, &params)?;
         match tool_name {
-            INTAKE_TOOL_NAME => self.call_intake(tool_name, params, session_id, capabilities),
-            UPDATE_SCOPE_TOOL_NAME => {
-                self.call_update_scope(tool_name, params, session_id, capabilities)
-            }
-            STATUS_TOOL_NAME => self.call_status(tool_name, params, session_id, capabilities),
+            INTAKE_TOOL_NAME => self.call_intake(tool_name, params, session_id),
+            UPDATE_SCOPE_TOOL_NAME => self.call_update_scope(tool_name, params, session_id),
+            STATUS_TOOL_NAME => self.call_status(tool_name, params, session_id),
             GET_OPERATION_RESULT_TOOL_NAME => {
-                self.call_get_operation_result(tool_name, params, session_id, capabilities)
+                self.call_get_operation_result(tool_name, params, session_id)
             }
             PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => {
-                self.call_prepare_evidence_capture(tool_name, params, session_id, capabilities)
+                self.call_prepare_evidence_capture(tool_name, params, session_id)
             }
-            PREPARE_WRITE_TOOL_NAME => {
-                self.call_prepare_write(tool_name, params, session_id, capabilities)
-            }
-            STAGE_ARTIFACT_TOOL_NAME => {
-                self.call_stage_artifact(tool_name, params, session_id, capabilities)
-            }
-            RECORD_RUN_TOOL_NAME => {
-                self.call_record_run(tool_name, params, session_id, capabilities)
-            }
+            PREPARE_WRITE_TOOL_NAME => self.call_prepare_write(tool_name, params, session_id),
+            STAGE_ARTIFACT_TOOL_NAME => self.call_stage_artifact(tool_name, params, session_id),
+            RECORD_RUN_TOOL_NAME => self.call_record_run(tool_name, params, session_id),
             REQUEST_USER_ACTION_TOOL_NAME => {
-                self.call_request_user_action(tool_name, params, session_id, capabilities)
+                self.call_request_user_action(tool_name, params, session_id)
             }
             RECONCILE_CHANGES_TOOL_NAME => {
-                self.call_reconcile_changes(tool_name, params, session_id, capabilities)
+                self.call_reconcile_changes(tool_name, params, session_id)
             }
-            CHECK_CLOSE_TOOL_NAME => {
-                self.call_check_close(tool_name, params, session_id, capabilities)
-            }
-            CLOSE_TASK_TOOL_NAME => {
-                self.call_close_task(tool_name, params, session_id, capabilities)
-            }
+            CHECK_CLOSE_TOOL_NAME => self.call_check_close(tool_name, params, session_id),
+            CLOSE_TASK_TOOL_NAME => self.call_close_task(tool_name, params, session_id),
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
     }
@@ -1589,7 +315,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpIntakeArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1616,7 +341,6 @@ impl McpAdapter {
             },
             CoreService::intake,
             session_id,
-            capabilities,
         )
     }
 
@@ -1625,7 +349,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1654,7 +377,6 @@ impl McpAdapter {
             },
             CoreService::update_scope,
             session_id,
-            capabilities,
         )
     }
 
@@ -1663,7 +385,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStatusArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1679,11 +400,11 @@ impl McpAdapter {
             tool_name,
             StatusRequest {
                 envelope,
+                continuity_page: args.continuity_page,
                 include: args.detail.include(),
             },
             CoreService::status,
             session_id,
-            capabilities,
         )
     }
 
@@ -1692,7 +413,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpGetOperationResultArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1712,16 +432,14 @@ impl McpAdapter {
             },
             CoreService::get_operation_result,
             session_id,
-            capabilities,
         )
     }
 
-    pub(crate) fn refresh_authority_status_with_user_channel_capabilities(
+    pub(crate) fn refresh_authority_status(
         &self,
         project_id: &ProjectId,
         task_id: &TaskId,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let envelope = self.generated_envelope(
             STATUS_TOOL_NAME,
@@ -1733,43 +451,12 @@ impl McpAdapter {
             STATUS_TOOL_NAME,
             StatusRequest {
                 envelope,
+                continuity_page: None,
                 include: StatusDetailLevel::Workflow.include(),
             },
             CoreService::status,
             session_id,
-            capabilities,
         )
-    }
-
-    pub(crate) fn user_channel_inbox_projection(
-        &self,
-        project_id: &ProjectId,
-        task_id: &TaskId,
-        session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
-    ) -> Result<Option<volicord_core::UserChannelInboxProjection>, McpAdapterError> {
-        let mut invocation = InvocationContext::new(
-            project_id.clone(),
-            ActorSource::agent_connection(self.context.connection_internal_id.clone()),
-            OperationCategory::Read,
-            self.context.invocation_binding_basis.clone(),
-        )
-        .with_host_elicitation_available(capabilities.host_elicitation_available)
-        .with_local_web_consent_available(
-            self.effective_local_web_consent_available(&capabilities),
-        );
-        if let Some(session_id) = session_id {
-            invocation = invocation.with_session_id(session_id.to_owned());
-        }
-        self.core
-            .user_channel_inbox_projection(
-                volicord_core::UserChannelInboxProjectionRequest {
-                    project_id: project_id.clone(),
-                    task_id: task_id.clone(),
-                },
-                invocation,
-            )
-            .map_err(McpAdapterError::Core)
     }
 
     fn call_prepare_evidence_capture(
@@ -1777,7 +464,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareEvidenceCaptureArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1801,7 +487,6 @@ impl McpAdapter {
             },
             CoreService::prepare_evidence_capture,
             session_id,
-            capabilities,
         )
     }
 
@@ -1810,7 +495,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1836,7 +520,6 @@ impl McpAdapter {
             },
             CoreService::prepare_write,
             session_id,
-            capabilities,
         )
     }
 
@@ -1845,7 +528,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1872,7 +554,6 @@ impl McpAdapter {
             },
             CoreService::stage_artifact,
             session_id,
-            capabilities,
         )
     }
 
@@ -1881,7 +562,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordRunArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1917,7 +597,6 @@ impl McpAdapter {
             },
             CoreService::record_run,
             session_id,
-            capabilities,
         )
     }
 
@@ -1926,7 +605,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRequestUserActionArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1956,7 +634,6 @@ impl McpAdapter {
                     },
                     CoreService::request_user_action,
                     session_id,
-                    capabilities,
                 )
             }
             McpRequestUserActionOperation::Resume {
@@ -1972,13 +649,11 @@ impl McpAdapter {
                     dry_run: false,
                     locale: RequiredNullable::null(),
                 };
-                let invocation = self
-                    .derive_read_only_invocation_context_with_user_channel_capabilities(
-                        &envelope,
-                        OperationCategory::AgentWorkflow,
-                        session_id,
-                        capabilities,
-                    )?;
+                let invocation = self.derive_read_only_invocation_context(
+                    &envelope,
+                    OperationCategory::AgentWorkflow,
+                    session_id,
+                )?;
                 self.core
                     .resume_user_action_request(
                         prepared.project_id,
@@ -1999,7 +674,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -2020,7 +694,6 @@ impl McpAdapter {
             },
             CoreService::reconcile_changes,
             session_id,
-            capabilities,
         )
     }
 
@@ -2029,7 +702,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -2045,7 +717,6 @@ impl McpAdapter {
             CheckCloseRequest { envelope, task_id },
             CoreService::check_close,
             session_id,
-            capabilities,
         )
     }
 
@@ -2054,7 +725,6 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -2078,7 +748,6 @@ impl McpAdapter {
             },
             CoreService::close_task,
             session_id,
-            capabilities,
         )
     }
 
@@ -2139,7 +808,6 @@ impl McpAdapter {
         request: T,
         call: F,
         session_id: Option<&str>,
-        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError>
     where
         T: MethodOperationCategory + HasEnvelope,
@@ -2154,11 +822,10 @@ impl McpAdapter {
         }
         let operation_category = request.operation_category();
         self.ensure_mode_allows(tool_name, operation_category)?;
-        let invocation = self.derive_invocation_context_with_user_channel_capabilities(
+        let invocation = self.derive_invocation_context(
             request_envelope(&request),
             operation_category,
             session_id,
-            capabilities,
         )?;
         call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
     }
@@ -2167,7 +834,7 @@ impl McpAdapter {
         &self,
         tool_name: &str,
         params: Value,
-        session_id: Option<&str>,
+        _session_id: Option<&str>,
     ) -> Result<Value, McpAdapterError> {
         validate_mcp_tool_arguments(tool_name, &params)?;
         match tool_name {
@@ -2184,17 +851,14 @@ impl McpAdapter {
                         message: "volicord.list_projects does not accept arguments".to_owned(),
                     });
                 }
-                let result = self.list_projects_result(session_id)?;
+                let result = self.list_projects_result()?;
                 serde_json::to_value(result).map_err(McpAdapterError::Json)
             }
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
     }
 
-    fn list_projects_result(
-        &self,
-        session_id: Option<&str>,
-    ) -> Result<ListProjectsResult, McpAdapterError> {
+    fn list_projects_result(&self) -> Result<ListProjectsResult, McpAdapterError> {
         let connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
@@ -2210,7 +874,6 @@ impl McpAdapter {
                 repo_root: project.repo_root_display.clone(),
             })
             .collect::<Vec<_>>();
-        let coverage = self.session_watch_coverage_for_projects(session_id, &availabilities)?;
         let mode = parse_connection_mode(&connection.mode).map_err(|error| {
             McpAdapterError::ToolExecution {
                 tool_name: "volicord.list_projects".to_owned(),
@@ -2221,11 +884,6 @@ impl McpAdapter {
         Ok(ListProjectsResult {
             connection_id: connection.connection_internal_id,
             mode,
-            watcher_status: coverage.status,
-            watcher_baseline_created_at: coverage.baseline_created_at,
-            watcher_coverage_start_at: coverage.coverage_start_at,
-            watcher_coverage_basis: coverage.coverage_basis,
-            watcher_partial_coverage_warning: coverage.partial_coverage_warning,
             projects: items,
         })
     }
@@ -2254,23 +912,109 @@ impl McpAdapter {
             if self.storage_capability_for_project(&selected_project_id)?
                 == McpStorageCapability::ReadWrite
             {
-                let coverage_basis = if requested_project_selector.is_some() {
-                    SessionWatchCoverageBasis::FirstProjectSelection
-                } else {
-                    SessionWatchCoverageBasis::MethodBoundary
-                };
-                self.ensure_session_watch_baseline(
-                    &selected_project_id,
-                    session_id,
-                    coverage_basis,
-                    None,
-                )?;
+                self.ensure_agent_session_binding(&selected_project_id, session_id)?;
             }
         }
         Ok(PreparedMcpArguments {
             arguments,
             project_id: selected_project_id,
         })
+    }
+
+    fn ensure_agent_session_binding(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+    ) -> Result<(), McpAdapterError> {
+        let connection = current_enabled_connection(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+            "managed stdio session binding",
+        )?;
+        validate_managed_stdio_session_id(session_id).map_err(|_| {
+            McpAdapterError::Environment(
+                "managed_stdio_session_identity_invalid: managed stdio requires a canonical internal session coordinate"
+                    .to_owned(),
+            )
+        })?;
+        if let Some(existing) = agent_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+        {
+            if existing.connection_internal_id != self.context.connection_internal_id.as_str()
+                || existing.host_kind != connection.host_kind
+            {
+                return Err(McpAdapterError::Environment(
+                    "managed_stdio_session_ownership_conflict: existing session ownership does not match this managed stdio connection"
+                        .to_owned(),
+                ));
+            }
+            return Ok(());
+        }
+
+        let validated_receipt = self
+            .validated_receipt_for_project(project_id)?
+            .ok_or_else(|| {
+                McpAdapterError::Environment(
+                    "host_receipt_missing: managed stdio session binding requires a current typed host receipt"
+                        .to_owned(),
+                )
+            })?;
+        let integration_profile = validated_receipt.receipt().integration_profile;
+        let guard = guard_health_record(
+            &self.runtime_home,
+            project_id.as_str(),
+            self.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?;
+        if let Some(installation) = guard.guard_installation.as_ref() {
+            if installation.guard_mode != integration_profile.as_str() {
+                return Err(McpAdapterError::Environment(
+                    "managed_stdio_session_profile_mismatch: current Guard installation does not match the validated host receipt"
+                        .to_owned(),
+                ));
+            }
+        }
+        let guard_installation_id = guard
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_installation_id.clone());
+        let guard_mode = integration_profile.as_str().to_owned();
+        let started_at = CoreProjectStore::open(&self.runtime_home, project_id)
+            .and_then(|store| store.current_timestamp())
+            .map_err(McpAdapterError::Store)?;
+        let insert_result = insert_agent_session(
+            &self.runtime_home,
+            project_id.as_str(),
+            AgentSessionInsert {
+                session_id: session_id.to_owned(),
+                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                guard_installation_id,
+                host_kind: connection.host_kind.clone(),
+                guard_mode,
+                started_at,
+                metadata_json: "{}".to_owned(),
+            },
+        );
+        match insert_result {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                let Some(existing) =
+                    agent_session(&self.runtime_home, project_id.as_str(), session_id)
+                        .map_err(McpAdapterError::Store)?
+                else {
+                    return Err(McpAdapterError::Store(error));
+                };
+                if existing.connection_internal_id != self.context.connection_internal_id.as_str()
+                    || existing.host_kind != connection.host_kind
+                {
+                    return Err(McpAdapterError::Environment(
+                        "managed_stdio_session_ownership_conflict: concurrently created session ownership does not match this managed stdio connection"
+                            .to_owned(),
+                    ));
+                }
+                Ok(())
+            }
+        }
     }
 
     fn storage_capability_for_project(
@@ -2982,91 +1726,6 @@ fn state_record_ref_skeleton() -> &'static str {
     r#"{"record_kind":"task","record_id":"task_001","project_id":"proj_001","task_id":"task_001","produced_at_state_version":1}"#
 }
 
-fn managed_initialize_conflict_error() -> McpAdapterError {
-    McpAdapterError::Environment(format!(
-        "{MANAGED_MCP_CLIENT_IDENTITY_CONFLICT_CODE}: managed-session initialize identity or lifecycle metadata is absent, malformed, or different"
-    ))
-}
-
-fn persisted_managed_client_info(
-    baseline: &WatchBaselineRecord,
-) -> Result<ManagedMcpClientInfo, McpAdapterError> {
-    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json)
-        .map_err(|_| managed_initialize_conflict_error())?;
-    let object = metadata
-        .as_object()
-        .ok_or_else(managed_initialize_conflict_error)?;
-    let name = object
-        .get("client_name")
-        .and_then(Value::as_str)
-        .ok_or_else(managed_initialize_conflict_error)?;
-    let version = object
-        .get("client_version")
-        .and_then(Value::as_str)
-        .ok_or_else(managed_initialize_conflict_error)?;
-    ManagedMcpClientInfo::new(name, version).map_err(|_| managed_initialize_conflict_error())
-}
-
-fn validate_managed_initialize_baseline(
-    baseline: &WatchBaselineRecord,
-    expected: &ManagedMcpClientInfo,
-) -> Result<(), McpAdapterError> {
-    if persisted_managed_client_info(baseline)? != *expected {
-        return Err(managed_initialize_conflict_error());
-    }
-    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json)
-        .map_err(|_| managed_initialize_conflict_error())?;
-    let events = metadata
-        .get("lifecycle_events")
-        .and_then(Value::as_array)
-        .ok_or_else(managed_initialize_conflict_error)?;
-    for required in [
-        ManagedLifecycleEvent::Startup,
-        ManagedLifecycleEvent::InitializeResponse,
-    ] {
-        if !events.iter().any(|event| {
-            event.get("lifecycle_event").and_then(Value::as_str) == Some(required.as_str())
-        }) {
-            return Err(managed_initialize_conflict_error());
-        }
-    }
-    Ok(())
-}
-
-fn managed_initialize_identity_conflict(error: &McpAdapterError) -> bool {
-    matches!(
-        error,
-        McpAdapterError::Environment(message)
-            if message.starts_with(MANAGED_MCP_CLIENT_IDENTITY_CONFLICT_CODE)
-    )
-}
-
-fn startup_observation_storage_is_readonly(error: &McpAdapterError) -> bool {
-    let McpAdapterError::Store(error) = error else {
-        return false;
-    };
-    match error {
-        StoreError::Io(error) => error.kind() == io::ErrorKind::PermissionDenied,
-        StoreError::Sqlite(_) => error.classification().category == "database_access_denied",
-        _ => false,
-    }
-}
-
-fn session_watch_status_from_storage(
-    status: &str,
-) -> Result<StoreSessionWatchStatus, McpAdapterError> {
-    match status {
-        "disabled" => Ok(StoreSessionWatchStatus::Disabled),
-        "active" => Ok(StoreSessionWatchStatus::Active),
-        "degraded" => Ok(StoreSessionWatchStatus::Degraded),
-        "unavailable" => Ok(StoreSessionWatchStatus::Unavailable),
-        _ => Err(McpAdapterError::ToolExecution {
-            tool_name: "managed MCP lifecycle observation".to_owned(),
-            message: format!("session-watch baseline has unsupported status {status}"),
-        }),
-    }
-}
-
 trait HasEnvelope {
     fn envelope(&self) -> &ToolEnvelope;
 }
@@ -3123,63 +1782,4 @@ fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> 
 struct PreparedMcpArguments<T> {
     arguments: T,
     project_id: ProjectId,
-}
-
-#[cfg(test)]
-mod local_web_readiness_tests {
-    use super::*;
-    use std::sync::mpsc::{self, TryRecvError};
-
-    #[test]
-    fn invalidation_publishes_unavailable_then_drains_granted_issuance() {
-        let readiness = LocalWebConsentReadiness::ready_for_test();
-        let lease = readiness
-            .acquire_issuance_lease()
-            .expect("ready listener must grant an issuance lease");
-        let worker_readiness = readiness.clone();
-        let (published_tx, published_rx) = mpsc::channel();
-        let (drain_attempt_tx, drain_attempt_rx) = mpsc::channel();
-        let (completed_tx, completed_rx) = mpsc::channel();
-        let invalidator = thread::spawn(move || {
-            worker_readiness.mark_unavailable_with_observers_for_test(
-                || {
-                    published_tx
-                        .send(())
-                        .expect("test receiver must observe readiness publication");
-                },
-                |blocked_by_granted_issuance| {
-                    drain_attempt_tx
-                        .send(blocked_by_granted_issuance)
-                        .expect("test receiver must observe the drain attempt");
-                },
-            );
-            completed_tx
-                .send(())
-                .expect("test receiver must observe completed invalidation");
-        });
-
-        published_rx
-            .recv()
-            .expect("invalidation must publish unavailable before draining");
-        assert!(!readiness.is_ready());
-        assert!(readiness.acquire_issuance_lease().is_none());
-        assert!(
-            drain_attempt_rx
-                .recv()
-                .expect("invalidation must attempt to drain the issuance gate"),
-            "the granted issuance lease must block invalidation's drain attempt"
-        );
-        assert_eq!(readiness.drain_state_for_test(), (true, 1));
-        assert_eq!(completed_rx.try_recv(), Err(TryRecvError::Empty));
-
-        drop(lease);
-        completed_rx
-            .recv()
-            .expect("invalidation must complete after granted issuance drains");
-        invalidator
-            .join()
-            .expect("invalidation worker must not panic");
-        assert!(!readiness.is_ready());
-        assert!(readiness.acquire_issuance_lease().is_none());
-    }
 }

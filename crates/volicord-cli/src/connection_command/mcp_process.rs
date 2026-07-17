@@ -205,8 +205,8 @@ fn expect_report_field(
 
 pub(super) fn mcp_launch_from_host_plan(plan: &HostPlan, repo_root: Option<&Path>) -> McpLaunch {
     let cwd = match plan.host_scope {
-        HostScope::Project | HostScope::Local => repo_root.map(Path::to_path_buf),
-        HostScope::User | HostScope::Export => None,
+        HostScope::Project => repo_root.map(Path::to_path_buf),
+        HostScope::User => None,
     };
     McpLaunch {
         command: PathBuf::from(&plan.entry.command),

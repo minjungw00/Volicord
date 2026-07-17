@@ -4,94 +4,31 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
+pub use volicord_types::{
+    ConfigurationTargetOwner as HostScope, HostKind, HostSetupUserAction as UserAction,
+    HostSetupUserActionKind as UserActionKind, ManagedConnectionScope as ConnectionIntent,
+};
 
-pub mod capability_status;
-pub mod claude_code;
 pub mod codex;
 pub mod config_edit;
 pub mod contracts;
-pub mod generic;
+pub mod process;
 pub mod verification;
 
 pub const DEFAULT_SERVER_NAME: &str = "volicord";
 pub const DEFAULT_MCP_COMMAND: &str = "volicord";
-pub const MANAGED_PROCESS_BINDING_ENV: &str = "VOLICORD_MANAGED_PROCESS_BINDING";
-pub const MANAGED_PROCESS_BINDING_V1: &str = "runtime-home-and-profile-command-v1";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostKind {
-    Codex,
-    ClaudeCode,
-    Generic,
-}
-
-impl HostKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::ClaudeCode => "claude_code",
-            Self::Generic => "generic",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostScope {
-    User,
-    Project,
-    Local,
-    Export,
-}
-
-impl HostScope {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::User => "user",
-            Self::Project => "project",
-            Self::Local => "local",
-            Self::Export => "export",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConnectionIntent {
-    Personal,
-    Shared,
-    Global,
-}
-
+pub const MANAGED_WRAPPER_ENV: &str = "VOLICORD_MANAGED_WRAPPER";
+pub const MANAGED_WRAPPER_VALUE: &str = "codex-record";
 static CODEX_SUPPORTED_CONNECTION_INTENTS: [ConnectionIntent; 2] =
     [ConnectionIntent::Personal, ConnectionIntent::Shared];
-static CLAUDE_CODE_SUPPORTED_CONNECTION_INTENTS: [ConnectionIntent; 3] = [
-    ConnectionIntent::Personal,
-    ConnectionIntent::Shared,
-    ConnectionIntent::Global,
-];
-static GENERIC_SUPPORTED_CONNECTION_INTENTS: [ConnectionIntent; 0] = [];
-
-impl ConnectionIntent {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Personal => "personal",
-            Self::Shared => "shared",
-            Self::Global => "global",
-        }
-    }
-}
 
 pub fn supported_connection_intents(host_kind: HostKind) -> &'static [ConnectionIntent] {
     match host_kind {
         HostKind::Codex => &CODEX_SUPPORTED_CONNECTION_INTENTS,
-        HostKind::ClaudeCode => &CLAUDE_CODE_SUPPORTED_CONNECTION_INTENTS,
-        HostKind::Generic => &GENERIC_SUPPORTED_CONNECTION_INTENTS,
     }
 }
 
@@ -129,12 +66,9 @@ pub struct ProjectContext<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct HostCapabilities {
     pub stdio_mcp: bool,
-    pub http_mcp: bool,
-    pub session_start_hook: bool,
     pub pre_tool_hook: bool,
     pub post_tool_hook: bool,
     pub user_prompt_submit_hook: bool,
-    pub stop_hook: bool,
     pub rule_file_support: bool,
     pub project_local_configuration: bool,
 }
@@ -142,11 +76,9 @@ pub struct HostCapabilities {
 impl HostCapabilities {
     pub fn supports_phase(self, phase: HostLifecyclePhase) -> bool {
         match phase {
-            HostLifecyclePhase::SessionStart => self.session_start_hook,
             HostLifecyclePhase::PreTool => self.pre_tool_hook,
             HostLifecyclePhase::PostTool => self.post_tool_hook,
             HostLifecyclePhase::UserPromptSubmit => self.user_prompt_submit_hook,
-            HostLifecyclePhase::Stop => self.stop_hook,
         }
     }
 
@@ -162,54 +94,42 @@ impl HostCapabilities {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HostLifecyclePhase {
-    SessionStart,
     PreTool,
     PostTool,
     UserPromptSubmit,
-    Stop,
 }
 
 impl HostLifecyclePhase {
     pub fn policy_key(self) -> &'static str {
         match self {
-            Self::SessionStart => "session_start",
             Self::PreTool => "pre_tool",
             Self::PostTool => "post_tool",
             Self::UserPromptSubmit => "prompt_capture",
-            Self::Stop => "stop",
         }
     }
 
     pub fn command_name(self) -> &'static str {
         match self {
-            Self::SessionStart => "session-start",
             Self::PreTool => "pre-tool",
             Self::PostTool => "post-tool",
             Self::UserPromptSubmit => "prompt-capture",
-            Self::Stop => "stop",
         }
     }
 
     pub fn capability_name(self) -> &'static str {
         match self {
-            Self::SessionStart => "session_start_hook",
             Self::PreTool => "pre_tool_hook",
             Self::PostTool => "post_tool_hook",
             Self::UserPromptSubmit => "user_prompt_submit_hook",
-            Self::Stop => "stop_hook",
         }
     }
 }
 
-pub const REQUIRED_GUARD_PHASES: [HostLifecyclePhase; 5] = [
-    HostLifecyclePhase::SessionStart,
+pub const REQUIRED_GUARD_PHASES: [HostLifecyclePhase; 3] = [
     HostLifecyclePhase::PreTool,
     HostLifecyclePhase::PostTool,
     HostLifecyclePhase::UserPromptSubmit,
-    HostLifecyclePhase::Stop,
 ];
-
-pub const FINAL_OUTPUT_PHASES: [HostLifecyclePhase; 1] = [HostLifecyclePhase::Stop];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -242,8 +162,6 @@ impl HostIntegrationFileKind {
 pub fn host_capabilities(host_kind: HostKind) -> HostCapabilities {
     match host_kind {
         HostKind::Codex => codex::capabilities(),
-        HostKind::ClaudeCode => claude_code::capabilities(),
-        HostKind::Generic => generic::capabilities(),
     }
 }
 
@@ -267,27 +185,15 @@ pub struct ManagedServerEntry {
 }
 
 impl ManagedServerEntry {
-    pub fn new(
-        connection_id: impl Into<String>,
-        mcp_command: &Path,
-        runtime_home: Option<&Path>,
-    ) -> Self {
-        Self::new_project_bound(connection_id, None, mcp_command, runtime_home)
+    pub fn new(connection_id: impl Into<String>, mcp_command: &Path) -> Self {
+        Self::new_project_bound(connection_id, None, mcp_command)
     }
 
     pub fn new_project_bound(
         connection_id: impl Into<String>,
         project_id: Option<&str>,
         mcp_command: &Path,
-        runtime_home: Option<&Path>,
     ) -> Self {
-        let mut env = BTreeMap::new();
-        if let Some(runtime_home) = runtime_home {
-            env.insert(
-                "VOLICORD_HOME".to_owned(),
-                runtime_home.display().to_string(),
-            );
-        }
         let connection_id = connection_id.into();
         let mut args = vec![
             "mcp".to_owned(),
@@ -302,8 +208,8 @@ impl ManagedServerEntry {
         Self {
             command: mcp_command.display().to_string(),
             args,
-            env,
-            env_vars: Vec::new(),
+            env: BTreeMap::new(),
+            env_vars: vec!["VOLICORD_HOME".to_owned()],
         }
     }
 
@@ -359,41 +265,19 @@ impl ManagedServerEntry {
     }
 }
 
-pub(crate) fn is_legacy_repository_discovery_entry(
-    entry: &ManagedServerEntry,
-    host: RepositoryDiscoveryHost,
-) -> bool {
-    let descriptor = RepositoryDiscoveryDescriptor::new(host);
-    entry.command == RepositoryDiscoveryDescriptor::COMMAND
-        && entry.args == descriptor.args()
-        && entry.env.is_empty()
-        && entry.env_vars.is_empty()
-}
-
 pub(crate) fn validate_managed_server_entry_schema(
     host_kind: HostKind,
     host_scope: HostScope,
     entry: &ManagedServerEntry,
 ) -> Result<(), HostConfigError> {
-    let discovery_host = match host_kind {
-        HostKind::Codex => RepositoryDiscoveryHost::Codex,
-        HostKind::ClaudeCode => RepositoryDiscoveryHost::ClaudeCode,
-        HostKind::Generic => {
-            return Err(HostConfigError::Conflict(HostConflict::new(
-                HostConflictKind::InvalidCommand,
-                "generic host entries cannot use repository discovery",
-            )))
-        }
-    };
+    let _ = host_kind;
+    let discovery_host = RepositoryDiscoveryHost::Codex;
     if host_scope == HostScope::Project {
         return entry.validate_repository_discovery(discovery_host);
     }
     if entry
         .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
         .is_ok()
-        || entry
-            .validate_repository_discovery(RepositoryDiscoveryHost::ClaudeCode)
-            .is_ok()
     {
         return Err(HostConfigError::Conflict(HostConflict::new(
             HostConflictKind::InvalidCommand,
@@ -476,33 +360,6 @@ pub enum HostConflictKind {
     FingerprintMismatch,
     StalePlan,
     ExternalCommandFailed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UserAction {
-    pub kind: UserActionKind,
-    pub message: String,
-}
-
-impl UserAction {
-    pub fn new(kind: UserActionKind, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UserActionKind {
-    HostTrustRequired,
-    ProjectApprovalRequired,
-    ReloadRequired,
-    ManagedHostStartupNotObserved,
-    ManagedHostToolsListNotObserved,
-    ActiveToolExposureUnconfirmed,
-    ManagedHostStorageDegraded,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -609,341 +466,52 @@ pub fn is_valid_server_name(name: &str) -> bool {
     chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
 
-pub fn managed_fingerprint(
+pub fn managed_configuration_digest(
     host_kind: HostKind,
     host_scope: HostScope,
     server_name: &str,
     entry: &ManagedServerEntry,
 ) -> String {
-    let payload = if entry.env_vars.is_empty() {
-        // Preserve the exact v1 payload for every legacy entry that predates
-        // host-native forwarded environment names. Stored fingerprints must
-        // continue to authorize an exact managed migration of those entries.
-        json!({
-            "format": "volicord-host-entry-v1",
-            "host_kind": host_kind.as_str(),
-            "host_scope": host_scope.as_str(),
-            "server_name": server_name,
-            "entry": {
-                "command": entry.command,
-                "args": entry.args,
-                "env": entry.env,
-            },
-        })
-    } else {
-        json!({
-            "format": "volicord-host-entry-v2",
-            "host_kind": host_kind.as_str(),
-            "host_scope": host_scope.as_str(),
-            "server_name": server_name,
-            "entry": {
-                "command": entry.command,
-                "args": entry.args,
-                "env": entry.env,
-                "env_vars": entry.env_vars,
-            },
-        })
-    };
-    digest_json(&payload)
-}
-
-fn digest_json(value: &Value) -> String {
-    let bytes = serde_json::to_vec(value).expect("JSON fingerprint payload should serialize");
-    let digest = Sha256::digest(bytes);
-    let mut text = String::with_capacity(64);
-    for byte in digest {
-        text.push_str(&format!("{byte:02x}"));
-    }
-    text
-}
-
-pub(crate) fn current_entry_fingerprint_from_json(
-    host_kind: HostKind,
-    host_scope: HostScope,
-    server_name: &str,
-    value: &Value,
-) -> Option<String> {
-    let entry = managed_entry_from_json(value)?;
-    Some(managed_fingerprint(
-        host_kind,
-        host_scope,
-        server_name,
-        &entry,
-    ))
-}
-
-pub(crate) fn managed_entry_from_json(value: &Value) -> Option<ManagedServerEntry> {
-    let object = value.as_object()?;
-    let allowed_keys = ["command", "args", "env", "env_vars"];
-    if object
-        .keys()
-        .any(|key| !allowed_keys.contains(&key.as_str()))
-    {
-        return None;
-    }
-    let command = object.get("command")?.as_str()?.to_owned();
-    let args = match object.get("args") {
-        None => Vec::new(),
-        Some(value) => value.as_array().and_then(|items| {
-            items
-                .iter()
-                .map(Value::as_str)
-                .collect::<Option<Vec<_>>>()
-                .map(|items| items.into_iter().map(str::to_owned).collect::<Vec<_>>())
-        })?,
-    };
-    let env = match object.get("env") {
-        None => BTreeMap::new(),
-        Some(value) => value.as_object().and_then(|items| {
-            items
-                .iter()
-                .map(|(key, value)| value.as_str().map(|value| (key.clone(), value.to_owned())))
-                .collect::<Option<BTreeMap<_, _>>>()
-        })?,
-    };
-    let env_vars = match object.get("env_vars") {
-        None => Vec::new(),
-        Some(value) => value.as_array().and_then(|items| {
-            items
-                .iter()
-                .map(Value::as_str)
-                .collect::<Option<Vec<_>>>()
-                .map(|items| items.into_iter().map(str::to_owned).collect())
-        })?,
-    };
-    Some(ManagedServerEntry {
-        command,
-        args,
-        env,
-        env_vars,
-    })
+    let mut digest = Sha256::new();
+    digest.update(b"volicord.codex-managed-configuration\0");
+    digest.update(host_kind.as_str().as_bytes());
+    digest.update([0]);
+    digest.update(host_scope.as_str().as_bytes());
+    digest.update([0]);
+    digest.update(server_name.as_bytes());
+    digest.update([0]);
+    digest.update(
+        serde_json::to_vec(&entry.to_json_value())
+            .expect("managed configuration projection should serialize"),
+    );
+    format!("sha256:{:x}", digest.finalize())
 }
 
 pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
-    if [
-        RepositoryDiscoveryHost::Codex,
-        RepositoryDiscoveryHost::ClaudeCode,
-    ]
-    .into_iter()
-    .any(|host| entry.validate_repository_discovery(host).is_ok())
+    if entry
+        .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
+        .is_ok()
     {
         return true;
     }
-    if !(entry.args.len() == 4 || entry.args.len() == 6)
-        || !entry.env_vars.is_empty()
+    if entry.args.len() != 4
+        || !entry.env.is_empty()
+        || entry.env_vars != ["VOLICORD_HOME"]
         || entry.args[0] != "mcp"
         || entry.args[1] != "--stdio"
         || entry.args[2] != "--connection"
         || entry.args[3].trim().is_empty()
-        || (entry.args.len() == 6
-            && (entry.args[4] != "--project" || entry.args[5].trim().is_empty()))
     {
         return false;
     }
-    Path::new(&entry.command)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name == DEFAULT_MCP_COMMAND)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use volicord_mcp::RepositoryDiscoveryHost;
-
-    #[test]
-    fn default_server_name_is_internal_host_key() {
-        let first = default_server_name("integration/Alpha:One");
-        let second = default_server_name("integration/Alpha:One");
-        let other = default_server_name("integration/Alpha:Two");
-
-        assert_eq!(first, second);
-        assert_eq!(first, other);
-        assert_eq!(first, DEFAULT_SERVER_NAME);
-    }
-
-    #[test]
-    fn repository_visible_schema_is_portable_and_local_schema_is_connection_bound() {
-        let mut shared =
-            ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex);
-        validate_managed_server_entry_schema(HostKind::Codex, HostScope::Project, &shared)
-            .expect("portable shared descriptor");
-        assert_eq!(shared.command, "volicord");
-        assert_eq!(
-            shared.args,
-            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
-        );
-        assert!(shared.env.is_empty());
-        assert_eq!(shared.env_vars, ["VOLICORD_HOME"]);
-
-        shared
-            .args
-            .extend(["--connection".to_owned(), "connection_local".to_owned()]);
-        assert!(
-            validate_managed_server_entry_schema(HostKind::Codex, HostScope::Project, &shared)
-                .is_err()
-        );
-        shared.args.truncate(5);
-        shared.env_vars.push("SECRET_TOKEN".to_owned());
-        assert!(
-            validate_managed_server_entry_schema(HostKind::Codex, HostScope::Project, &shared)
-                .is_err()
-        );
-
-        let local = ManagedServerEntry::new(
-            "connection_local",
-            Path::new("/local/bin/volicord"),
-            Some(Path::new("/local/runtime-home")),
-        );
-        validate_managed_server_entry_schema(HostKind::Codex, HostScope::User, &local)
-            .expect("local binding");
-        assert!(local.args.contains(&"connection_local".to_owned()));
-        assert_eq!(local.env["VOLICORD_HOME"], "/local/runtime-home");
-        assert!(validate_managed_server_entry_schema(
-            HostKind::Codex,
-            HostScope::User,
-            &ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex),
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn explicit_server_name_is_validated() {
-        assert_eq!(
-            validated_server_name("integration", Some("volicord_custom-1")).unwrap(),
-            "volicord_custom-1"
-        );
-        assert_eq!(
-            validated_server_name("integration", Some("-bad"))
-                .expect_err("leading hyphen should fail")
-                .kind,
-            HostConflictKind::InvalidServerName
-        );
-        assert_eq!(
-            validated_server_name("integration", Some("bad.name"))
-                .expect_err("dot should fail")
-                .kind,
-            HostConflictKind::InvalidServerName
-        );
-    }
-
-    #[test]
-    fn fingerprint_changes_when_entry_changes() {
-        let entry = ManagedServerEntry::new("integration", Path::new("/bin/volicord"), None);
-        let mut changed = entry.clone();
-        changed.args.push("--extra".to_owned());
-
-        assert_ne!(
-            managed_fingerprint(
-                HostKind::Generic,
-                HostScope::Export,
-                "volicord-integration",
-                &entry
-            ),
-            managed_fingerprint(
-                HostKind::Generic,
-                HostScope::Export,
-                "volicord-integration",
-                &changed
-            )
-        );
-    }
-
-    #[test]
-    fn entries_without_forwarded_env_vars_keep_the_exact_v1_fingerprint_payload() {
-        let entry = ManagedServerEntry::new(
-            "integration",
-            Path::new("/bin/volicord"),
-            Some(Path::new("/runtime")),
-        );
-        let expected = digest_json(&json!({
-            "format": "volicord-host-entry-v1",
-            "host_kind": "codex",
-            "host_scope": "user",
-            "server_name": "volicord",
-            "entry": {
-                "command": "/bin/volicord",
-                "args": ["mcp", "--stdio", "--connection", "integration"],
-                "env": {"VOLICORD_HOME": "/runtime"},
-            },
-        }));
-
-        assert!(entry.env_vars.is_empty());
-        assert_eq!(
-            managed_fingerprint(HostKind::Codex, HostScope::User, "volicord", &entry),
-            expected
-        );
-    }
-
-    #[test]
-    fn forwarded_env_vars_are_bound_by_the_v2_fingerprint() {
-        let current = ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex);
-        let mut changed = current.clone();
-        changed.env_vars.push("API_TOKEN".to_owned());
-        let mut legacy = current.clone();
-        legacy.env_vars.clear();
-
-        assert_ne!(
-            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &current),
-            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &changed)
-        );
-        assert_ne!(
-            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &current),
-            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &legacy)
-        );
-    }
-
-    #[test]
-    fn host_connection_intent_support_matrix_is_centralized() {
-        assert_eq!(
-            supported_connection_intents(HostKind::Codex),
-            &[ConnectionIntent::Personal, ConnectionIntent::Shared]
-        );
-        assert_eq!(
-            supported_connection_intents(HostKind::ClaudeCode),
-            &[
-                ConnectionIntent::Personal,
-                ConnectionIntent::Shared,
-                ConnectionIntent::Global
-            ]
-        );
-        assert_eq!(supported_connection_intents(HostKind::Generic), &[]);
-
-        assert!(supports_connection_intent(
-            HostKind::Codex,
-            ConnectionIntent::Personal
-        ));
-        assert!(supports_connection_intent(
-            HostKind::Codex,
-            ConnectionIntent::Shared
-        ));
-        assert!(!supports_connection_intent(
-            HostKind::Codex,
-            ConnectionIntent::Global
-        ));
-        assert!(supports_connection_intent(
-            HostKind::ClaudeCode,
-            ConnectionIntent::Global
-        ));
-        assert_eq!(
-            format_supported_connection_intents(HostKind::Codex),
-            "personal, shared"
-        );
-    }
-
-    #[test]
-    fn host_capability_matrix_is_explicit() {
-        let codex = host_capabilities(HostKind::Codex);
-        assert!(codex.stdio_mcp);
-        assert!(codex.project_local_configuration);
-        assert!(codex.rule_file_support);
-        assert!(codex.missing_required_hook_phases().is_empty());
-
-        let claude = host_capabilities(HostKind::ClaudeCode);
-        assert!(claude.stdio_mcp);
-        assert!(claude.project_local_configuration);
-        assert!(claude.rule_file_support);
-        assert!(claude.user_prompt_submit_hook);
-        assert!(claude.missing_required_hook_phases().is_empty());
-    }
+    let command = Path::new(&entry.command);
+    command.is_absolute()
+        && command
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == DEFAULT_MCP_COMMAND)
+        && command
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_none_or(|extension| extension.eq_ignore_ascii_case("exe"))
 }

@@ -4,8 +4,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::{
-    managed_host_session_id, validate_managed_host_native_session_id,
-    validate_managed_host_session_id, HostKind, IntegrationProfile, MANAGED_HOST_SESSION_ID_PREFIX,
+    managed_stdio_session_id, validate_managed_host_native_session_id, HostKind, IntegrationProfile,
 };
 
 use super::{
@@ -76,7 +75,7 @@ pub(super) fn guard_envelope(
                 )
             })
             .or_else(|| options.output.default_host_kind().map(str::to_owned))
-            .unwrap_or_else(|| "generic".to_owned()),
+            .unwrap_or_else(|| "codex".to_owned()),
     )?;
     let guard_mode = normalize_guard_mode(
         options
@@ -94,7 +93,7 @@ pub(super) fn guard_envelope(
             })
             .unwrap_or_else(|| DEFAULT_INTEGRATION_PROFILE.to_owned()),
     )?;
-    if host_kind == "codex" && phase != GuardPhase::SessionStart {
+    if host_kind == "codex" {
         let native_turn_id =
             consistent_exact_event_string(&input.raw_value, &[&["turn_id"]], "native turn id")?;
         validate_managed_host_native_session_id(native_turn_id).map_err(|error| {
@@ -103,48 +102,11 @@ pub(super) fn guard_envelope(
             ))
         })?;
     }
-    let session_id = if is_managed_builtin_host(&host_kind) {
-        Some(managed_builtin_session_id(
-            &host_kind,
-            &connection_id,
-            options.session_id.as_deref(),
-            &input.raw_value,
-        )?)
-    } else {
-        let session_id = options.session_id.clone().or_else(|| {
-            event_string(
-                &input.raw_value,
-                &[
-                    &["session_id"],
-                    &["session", "id"],
-                    &["conversation_id"],
-                    &["transcript_id"],
-                ],
-            )
-        });
-        let session_id = match (phase, session_id) {
-            (GuardPhase::SessionStart | GuardPhase::PromptCapture, None) => Some(stable_id(
-                "agent_session",
-                &[
-                    phase.command_name(),
-                    &connection_id,
-                    &project.project_id,
-                    &input.raw_sha256,
-                ],
-            )),
-            (_, value) => value,
-        };
-        if session_id
-            .as_deref()
-            .is_some_and(|session_id| session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX))
-        {
-            return Err(GuardCommandError::Usage(
-                "mhs_ session ids are reserved for managed Codex and Claude Code bindings"
-                    .to_owned(),
-            ));
-        }
-        session_id
-    };
+    let session_id = Some(managed_builtin_session_id(
+        &host_kind,
+        &connection_id,
+        &input.raw_value,
+    )?);
     let derived_event_id = || {
         stable_id(
             "guard_event",
@@ -157,26 +119,11 @@ pub(super) fn guard_envelope(
             ],
         )
     };
-    let event_id = if is_managed_builtin_host(&host_kind) {
-        derived_event_id()
-    } else {
-        event_string(
-            &input.raw_value,
-            &[
-                &["guard_event_id"],
-                &["event_id"],
-                &["hook_event_id"],
-                &["tool_call_id"],
-                &["id"],
-            ],
-        )
-        .unwrap_or_else(derived_event_id)
-    };
-    let occurred_at = event_string(
+    let event_id = derived_event_id();
+    let occurred_at = event_timestamp_or_now(
         &input.raw_value,
         &[&["occurred_at"], &["timestamp"], &["time"]],
-    )
-    .unwrap_or_else(current_timestamp);
+    )?;
     let guard_installation_id = options.guard_installation_id.clone().or_else(|| {
         event_string(
             &input.raw_value,
@@ -187,20 +134,6 @@ pub(super) fn guard_envelope(
             ],
         )
     });
-    if is_managed_builtin_host(&host_kind) {
-        let native_session_id = managed_native_session_id(&host_kind, &input.raw_value)?;
-        if connection_id.contains(native_session_id)
-            || occurred_at.contains(native_session_id)
-            || guard_installation_id
-                .as_deref()
-                .is_some_and(|value| value.contains(native_session_id))
-        {
-            return Err(GuardCommandError::Usage(
-                "managed host event reuses its native session id in an internal coordinate"
-                    .to_owned(),
-            ));
-        }
-    }
     Ok(GuardEnvelope {
         event_id,
         session_id,
@@ -213,44 +146,32 @@ pub(super) fn guard_envelope(
 }
 
 pub(super) fn is_managed_builtin_host(host_kind: &str) -> bool {
-    matches!(host_kind, "codex" | "claude_code")
+    host_kind == "codex"
 }
 
 pub(super) fn managed_native_session_id<'a>(
     host_kind: &str,
     event: &'a Value,
 ) -> Result<&'a str, GuardCommandError> {
-    let paths: &[&[&str]] = match host_kind {
-        "codex" => &[&["session_id"]],
-        "claude_code" => &[&["session_id"]],
-        _ => {
-            return Err(GuardCommandError::Usage(
-                "managed native session extraction requires codex or claude_code".to_owned(),
-            ));
-        }
-    };
+    if host_kind != "codex" {
+        return Err(GuardCommandError::Usage(
+            "managed native session extraction requires codex".to_owned(),
+        ));
+    }
+    let paths: &[&[&str]] = &[&["session_id"]];
     consistent_exact_event_string(event, paths, "native session id")
 }
 
 fn managed_builtin_session_id(
     host_kind: &str,
     connection_id: &str,
-    session_override: Option<&str>,
     event: &Value,
 ) -> Result<String, GuardCommandError> {
     let native_session_id = managed_native_session_id(host_kind, event)?;
-    let mapped = managed_host_session_id(host_kind, connection_id, native_session_id)
+    validate_managed_host_native_session_id(native_session_id)
         .map_err(|error| GuardCommandError::Usage(error.to_string()))?;
-    if let Some(session_override) = session_override {
-        validate_managed_host_session_id(session_override)
-            .map_err(|error| GuardCommandError::Usage(error.to_string()))?;
-        if session_override != mapped {
-            return Err(GuardCommandError::Usage(
-                "--session does not match the canonical managed-host session binding".to_owned(),
-            ));
-        }
-    }
-    Ok(mapped)
+    managed_stdio_session_id(connection_id, native_session_id)
+        .map_err(|error| GuardCommandError::Usage(error.to_string()))
 }
 
 fn consistent_exact_event_string<'a>(
@@ -291,24 +212,16 @@ fn consistent_exact_event_string<'a>(
 }
 
 fn normalize_host_kind(value: String) -> Result<String, GuardCommandError> {
-    let normalized = match value.as_str() {
-        "claude-code" => "claude_code".to_owned(),
-        other => other.to_owned(),
-    };
-    HostKind::from_str(&normalized).map_err(|error| GuardCommandError::Usage(error.to_string()))?;
-    Ok(normalized)
+    HostKind::from_str(&value).map_err(|error| GuardCommandError::Usage(error.to_string()))?;
+    Ok(value)
 }
 
 fn normalize_guard_mode(value: String) -> Result<String, GuardCommandError> {
-    if matches!(
-        value.as_str(),
-        profile if profile == IntegrationProfile::Record.as_str()
-            || profile == IntegrationProfile::Detective.as_str()
-    ) {
+    if value == IntegrationProfile::Record.as_str() {
         Ok(value)
     } else {
         Err(GuardCommandError::Usage(
-            "integration profile must be record or detective".to_owned(),
+            "integration profile must be record".to_owned(),
         ))
     }
 }
@@ -348,18 +261,55 @@ fn current_timestamp() -> String {
     format_current_timestamp(DateTime::<Utc>::from(SystemTime::now()))
 }
 
-pub(super) fn event_time_or_now(raw: &str) -> DateTime<Utc> {
-    event_time_or_fallback(raw, DateTime::<Utc>::from(SystemTime::now()))
+fn event_timestamp_or_now(event: &Value, paths: &[&[&str]]) -> Result<String, GuardCommandError> {
+    let mut selected: Option<&str> = None;
+    for path in paths {
+        let Some(value) = value_at(event, path) else {
+            continue;
+        };
+        let value = value.as_str().ok_or_else(|| {
+            GuardCommandError::Usage(
+                "managed host event timestamp aliases must be RFC 3339 strings".to_owned(),
+            )
+        })?;
+        if value.is_empty() {
+            return Err(GuardCommandError::Usage(
+                "managed host event timestamp must not be empty".to_owned(),
+            ));
+        }
+        if selected.is_some_and(|selected| selected != value) {
+            return Err(GuardCommandError::Usage(
+                "managed host event contains conflicting timestamp aliases".to_owned(),
+            ));
+        }
+        selected = Some(value);
+    }
+    selected
+        .map(parse_event_timestamp)
+        .transpose()
+        .map(|timestamp| {
+            timestamp
+                .map(format_current_timestamp)
+                .unwrap_or_else(current_timestamp)
+        })
+}
+
+pub(super) fn event_time(raw: &str) -> Result<DateTime<Utc>, GuardCommandError> {
+    parse_event_timestamp(raw)
 }
 
 fn format_current_timestamp(timestamp: DateTime<Utc>) -> String {
     timestamp.to_rfc3339_opts(SecondsFormat::AutoSi, true)
 }
 
-fn event_time_or_fallback(raw: &str, fallback: DateTime<Utc>) -> DateTime<Utc> {
+fn parse_event_timestamp(raw: &str) -> Result<DateTime<Utc>, GuardCommandError> {
     DateTime::parse_from_rfc3339(raw)
         .map(|timestamp| timestamp.with_timezone(&Utc))
-        .unwrap_or(fallback)
+        .map_err(|_| {
+            GuardCommandError::Usage(
+                "managed host event timestamp must be a valid RFC 3339 instant".to_owned(),
+            )
+        })
 }
 
 #[cfg(test)]
@@ -368,39 +318,23 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn builtin_native_fields_map_to_the_shared_opaque_session_id() {
+    fn builtin_native_session_maps_to_a_connection_bound_internal_coordinate() {
         let codex = json!({
             "session_id": "native.session:1",
             "thread_id": "different.subagent.thread"
         });
-        let expected = managed_host_session_id("codex", "connection_alpha", "native.session:1")
-            .expect("valid managed coordinates should bind");
         assert_eq!(
-            managed_builtin_session_id("codex", "connection_alpha", None, &codex)
-                .expect("consistent Codex fields should map"),
-            expected
-        );
-        assert_eq!(
-            managed_builtin_session_id("codex", "connection_alpha", Some(&expected), &codex,)
-                .expect("matching canonical override should be accepted"),
-            expected
-        );
-
-        let claude = json!({
-            "session_id": "claude-native-1"
-        });
-        assert_eq!(
-            managed_builtin_session_id("claude_code", "connection_alpha", None, &claude)
-                .expect("valid Claude Code fields should map"),
-            managed_host_session_id("claude_code", "connection_alpha", "claude-native-1",)
-                .expect("valid managed coordinates should bind")
+            managed_builtin_session_id("codex", "connection_alpha", &codex)
+                .expect("valid Codex identity should bind"),
+            managed_stdio_session_id("connection_alpha", "native.session:1")
+                .expect("valid managed context should bind")
         );
     }
 
     #[test]
     fn builtin_native_fields_and_internal_overrides_fail_closed() {
         for event in [json!({ "session_id": "native with space" }), json!({})] {
-            assert!(managed_builtin_session_id("codex", "connection", None, &event).is_err());
+            assert!(managed_builtin_session_id("codex", "connection", &event).is_err());
         }
 
         let different_thread = json!({
@@ -408,25 +342,15 @@ mod tests {
             "thread_id": "native-b"
         });
         assert_eq!(
-            managed_builtin_session_id("codex", "connection", None, &different_thread)
+            managed_builtin_session_id("codex", "connection", &different_thread)
                 .expect("thread identifiers do not replace the root session binding"),
-            managed_host_session_id("codex", "connection", "native-a")
-                .expect("root session should map")
-        );
-
-        let event = json!({ "session_id": "native" });
-        assert!(
-            managed_builtin_session_id("codex", "connection", Some("native"), &event,).is_err()
-        );
-        let different = managed_host_session_id("codex", "other", "native")
-            .expect("valid but different coordinates should bind");
-        assert!(
-            managed_builtin_session_id("codex", "connection", Some(&different), &event,).is_err()
+            managed_stdio_session_id("connection", "native-a")
+                .expect("valid managed context should bind")
         );
     }
 
     #[test]
-    fn timestamp_fallbacks_preserve_order_after_a_same_millisecond_request() {
+    fn timestamp_aliases_are_typed_exact_and_missing_uses_the_current_sample() {
         let request_timestamp = DateTime::parse_from_rfc3339("2026-07-13T12:34:56.123Z")
             .expect("test timestamp should be RFC3339")
             .with_timezone(&Utc);
@@ -434,15 +358,36 @@ mod tests {
             .expect("test timestamp should be RFC3339")
             .with_timezone(&Utc);
 
-        let missing_event_timestamp =
-            DateTime::parse_from_rfc3339(&format_current_timestamp(fallback_timestamp))
-                .expect("formatted fallback should remain RFC3339")
-                .with_timezone(&Utc);
-        let invalid_event_timestamp = event_time_or_fallback("not-a-timestamp", fallback_timestamp);
-
-        assert_eq!(missing_event_timestamp, fallback_timestamp);
-        assert_eq!(invalid_event_timestamp, fallback_timestamp);
-        assert!(missing_event_timestamp > request_timestamp);
-        assert!(invalid_event_timestamp > request_timestamp);
+        let normalized = event_timestamp_or_now(
+            &json!({"occurred_at":"2026-07-13T21:34:56.123456789+09:00"}),
+            &[&["occurred_at"], &["timestamp"], &["time"]],
+        )
+        .expect("valid timestamp should normalize");
+        assert_eq!(
+            parse_event_timestamp(&normalized).expect("normalized timestamp"),
+            fallback_timestamp
+        );
+        assert!(fallback_timestamp > request_timestamp);
+        assert!(event_timestamp_or_now(
+            &json!({"occurred_at": 1}),
+            &[&["occurred_at"], &["timestamp"]]
+        )
+        .is_err());
+        assert!(event_timestamp_or_now(
+            &json!({"occurred_at":"not-a-timestamp"}),
+            &[&["occurred_at"], &["timestamp"]]
+        )
+        .is_err());
+        assert!(event_timestamp_or_now(
+            &json!({
+                "occurred_at":"2026-07-13T12:34:56Z",
+                "timestamp":"2026-07-13T12:34:57Z"
+            }),
+            &[&["occurred_at"], &["timestamp"]]
+        )
+        .is_err());
+        let missing = event_timestamp_or_now(&json!({}), &[&["occurred_at"], &["timestamp"]])
+            .expect("missing optional timestamp should use a current sample");
+        assert!(parse_event_timestamp(&missing).is_ok());
     }
 }

@@ -4,7 +4,6 @@ use std::{collections::BTreeMap, error::Error, fmt};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryDiscoveryHost {
     Codex,
-    ClaudeCode,
 }
 
 impl RepositoryDiscoveryHost {
@@ -12,9 +11,8 @@ impl RepositoryDiscoveryHost {
     pub fn parse(value: &str) -> Result<Self, RepositoryDiscoveryDescriptorError> {
         match value {
             "codex" => Ok(Self::Codex),
-            "claude-code" => Ok(Self::ClaudeCode),
             _ => Err(RepositoryDiscoveryDescriptorError::new(
-                "repository discovery host must be codex or claude-code",
+                "repository discovery host must be codex",
             )),
         }
     }
@@ -23,7 +21,6 @@ impl RepositoryDiscoveryHost {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Codex => "codex",
-            Self::ClaudeCode => "claude-code",
         }
     }
 
@@ -31,7 +28,6 @@ impl RepositoryDiscoveryHost {
     pub const fn registry_host_kind(self) -> &'static str {
         match self {
             Self::Codex => "codex",
-            Self::ClaudeCode => "claude_code",
         }
     }
 }
@@ -45,7 +41,6 @@ pub struct RepositoryDiscoveryDescriptor {
 impl RepositoryDiscoveryDescriptor {
     pub const COMMAND: &'static str = "volicord";
     pub const RUNTIME_HOME_ENV_VAR: &'static str = "VOLICORD_HOME";
-    pub const CLAUDE_CODE_RUNTIME_HOME_ENV_REFERENCE: &'static str = "${VOLICORD_HOME}";
 
     pub const fn new(host: RepositoryDiscoveryHost) -> Self {
         Self { host }
@@ -67,23 +62,12 @@ impl RepositoryDiscoveryDescriptor {
 
     /// Exact environment values stored in the host-native repository entry.
     pub fn env(self) -> BTreeMap<String, String> {
-        match self.host {
-            RepositoryDiscoveryHost::Codex => BTreeMap::new(),
-            RepositoryDiscoveryHost::ClaudeCode => BTreeMap::from([(
-                Self::RUNTIME_HOME_ENV_VAR.to_owned(),
-                Self::CLAUDE_CODE_RUNTIME_HOME_ENV_REFERENCE.to_owned(),
-            )]),
-        }
+        BTreeMap::new()
     }
 
     /// Exact parent-environment names forwarded by the host-native entry.
     pub fn env_vars(self) -> Vec<String> {
-        match self.host {
-            RepositoryDiscoveryHost::Codex => {
-                vec![Self::RUNTIME_HOME_ENV_VAR.to_owned()]
-            }
-            RepositoryDiscoveryHost::ClaudeCode => Vec::new(),
-        }
+        vec![Self::RUNTIME_HOME_ENV_VAR.to_owned()]
     }
 
     /// Validates the complete repository-visible process entry.
@@ -149,47 +133,42 @@ mod tests {
 
     #[test]
     fn portable_descriptors_require_exact_host_native_runtime_home_forwarding() {
-        for host in [
-            RepositoryDiscoveryHost::Codex,
-            RepositoryDiscoveryHost::ClaudeCode,
-        ] {
-            let descriptor = RepositoryDiscoveryDescriptor::new(host);
-            let command = RepositoryDiscoveryDescriptor::COMMAND;
-            let args = descriptor.args();
-            let env = descriptor.env();
-            let env_vars = descriptor.env_vars();
-            descriptor
-                .validate_entry(command, &args, &env, &env_vars)
-                .expect("canonical descriptor");
+        let descriptor = RepositoryDiscoveryDescriptor::new(RepositoryDiscoveryHost::Codex);
+        let command = RepositoryDiscoveryDescriptor::COMMAND;
+        let args = descriptor.args();
+        let env = descriptor.env();
+        let env_vars = descriptor.env_vars();
+        descriptor
+            .validate_entry(command, &args, &env, &env_vars)
+            .expect("canonical descriptor");
 
-            let mut bound_args = args.clone();
-            bound_args.extend(["--connection".to_owned(), "connection_local".to_owned()]);
-            assert!(descriptor
-                .validate_entry(command, &bound_args, &env, &env_vars)
-                .is_err());
+        let mut bound_args = args.clone();
+        bound_args.extend(["--connection".to_owned(), "connection_local".to_owned()]);
+        assert!(descriptor
+            .validate_entry(command, &bound_args, &env, &env_vars)
+            .is_err());
 
-            let mut absolute_env = env.clone();
-            absolute_env.insert("VOLICORD_HOME".to_owned(), "/local/runtime".to_owned());
-            assert!(descriptor
-                .validate_entry(command, &args, &absolute_env, &env_vars)
-                .is_err());
+        let mut absolute_env = env.clone();
+        absolute_env.insert("VOLICORD_HOME".to_owned(), "/local/runtime".to_owned());
+        assert!(descriptor
+            .validate_entry(command, &args, &absolute_env, &env_vars)
+            .is_err());
 
-            let mut secret_env = env.clone();
-            secret_env.insert("API_TOKEN".to_owned(), "not-serialized".to_owned());
-            assert!(descriptor
-                .validate_entry(command, &args, &secret_env, &env_vars)
-                .is_err());
+        let mut secret_env = env.clone();
+        secret_env.insert("API_TOKEN".to_owned(), "not-serialized".to_owned());
+        assert!(descriptor
+            .validate_entry(command, &args, &secret_env, &env_vars)
+            .is_err());
 
-            let mut injected_env_vars = env_vars.clone();
-            injected_env_vars.push("API_TOKEN".to_owned());
-            assert!(descriptor
-                .validate_entry(command, &args, &env, &injected_env_vars)
-                .is_err());
+        let mut injected_env_vars = env_vars.clone();
+        injected_env_vars.push("API_TOKEN".to_owned());
+        assert!(descriptor
+            .validate_entry(command, &args, &env, &injected_env_vars)
+            .is_err());
 
-            assert!(descriptor
-                .validate_entry("/absolute/volicord", &args, &env, &env_vars)
-                .is_err());
-        }
+        assert!(descriptor
+            .validate_entry("/absolute/volicord", &args, &env, &env_vars)
+            .is_err());
     }
 
     #[test]
@@ -197,12 +176,5 @@ mod tests {
         let codex = RepositoryDiscoveryDescriptor::new(RepositoryDiscoveryHost::Codex);
         assert!(codex.env().is_empty());
         assert_eq!(codex.env_vars(), ["VOLICORD_HOME"]);
-
-        let claude = RepositoryDiscoveryDescriptor::new(RepositoryDiscoveryHost::ClaudeCode);
-        assert_eq!(
-            claude.env(),
-            BTreeMap::from([("VOLICORD_HOME".to_owned(), "${VOLICORD_HOME}".to_owned())])
-        );
-        assert!(claude.env_vars().is_empty());
     }
 }

@@ -1,13 +1,11 @@
 use crate::adapter::*;
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
-use crate::local_http::generate_bearer_token;
-use crate::local_web_consent::start_stdio_local_web_consent_listener;
 use crate::prelude::*;
 use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
 use sha2::{Digest, Sha256};
-use volicord_types::{ManagedMcpClientInfo, REVIEWED_CODEX_MCP_CLIENT_NAME};
+use volicord_types::{ManagedMcpClientInfo, CODEX_MANAGED_MCP_CLIENT_NAME};
 
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
@@ -16,15 +14,11 @@ const VOLICORD_MCP_CONNECTION_ID: &str = "VOLICORD_MCP_CONNECTION_ID";
 const VOLICORD_MCP_PROJECT_ID: &str = "VOLICORD_MCP_PROJECT_ID";
 const MANAGED_HOST_LAUNCH_VALUE: &str = "managed_host";
 const CODEX_HOST_VALUE: &str = "codex";
-const CLAUDE_CODE_HOST_VALUE: &str = "claude_code";
-const CLAUDECODE: &str = "CLAUDECODE";
-const CLAUDE_CODE_SESSION_ID: &str = "CLAUDE_CODE_SESSION_ID";
 const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
-const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord-codex-mcp-thread-binding-v1\0";
+const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord.codex-mcp-thread-binding\0";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
-pub(crate) const MAX_MCP_ELICITATION_WIRE_BYTES: usize = USER_ACTION_FORM_MAX_BYTES;
 
 pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, writer: W) -> Result<(), McpAdapterError>
 where
@@ -36,17 +30,13 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StdioRunOptions {
-    startup_session_watch: bool,
     launch_origin: McpLaunchOrigin,
-    managed_host_session_id: Option<String>,
 }
 
 impl Default for StdioRunOptions {
     fn default() -> Self {
         Self {
-            startup_session_watch: false,
             launch_origin: McpLaunchOrigin::ManualCli,
-            managed_host_session_id: None,
         }
     }
 }
@@ -62,24 +52,15 @@ where
     W: Write,
 {
     reject_invalid_managed_marker(options.launch_origin)?;
-    let mut state =
-        ConnectionState::for_launch_origin(options.launch_origin, options.managed_host_session_id);
+    if options.launch_origin == McpLaunchOrigin::ManagedHost {
+        adapter.validate_managed_host_authority_startup()?;
+    }
+    let mut state = ConnectionState::for_launch_origin(options.launch_origin);
     validate_managed_stdio_session_ownership(&adapter, &state)?;
-    if !state.codex_binding.is_pending() && !state.managed_host_lifecycle_observations {
+    if !state.codex_binding.is_pending() && !state.managed_stdio_binding_active {
         let _ = start_transport_diagnostic_session(&adapter, &state);
     }
-    let _startup_observation =
-        if options.startup_session_watch && options.launch_origin != McpLaunchOrigin::ManagedHost {
-            adapter.startup_session_watch_observation_best_effort_with_origin(
-                &state.session_id,
-                options.launch_origin.as_str(),
-            )
-        } else {
-            StartupObservationResult::SkippedVerificationProbe
-        };
-    let mut lines = reader.lines();
-
-    while let Some(line) = lines.next() {
+    for line in reader.lines() {
         let line = line.map_err(McpAdapterError::Io)?;
         if line.trim().is_empty() {
             continue;
@@ -96,9 +77,7 @@ where
             }
         };
 
-        if let Some(response) =
-            handle_json_rpc_message(&adapter, &mut state, message, &mut lines, &mut writer)?
-        {
+        if let Some(response) = handle_json_rpc_message(&adapter, &mut state, message)? {
             write_json_line(&mut writer, response)?;
         }
     }
@@ -133,35 +112,15 @@ pub fn run_stdio_from_env(
         project_id,
         Some(&connection.host_kind),
     );
-    let managed_host_session_id = managed_host_session_id_from_env(
-        &process_env_var,
-        launch_origin,
-        &connection.host_kind,
-        connection_id,
-    );
-    let startup_session_watch = launch_origin == McpLaunchOrigin::ManagedHost;
-    let local_web_consent =
-        start_optional_stdio_protocol_after_marker_validation(launch_origin, || {
-            start_stdio_local_web_consent_listener(&runtime_home, &context)
-        })?;
-    let mut adapter = McpAdapter::new(runtime_home, context);
-    if let Some(local_web_consent) = local_web_consent {
-        adapter = adapter.with_local_web_consent_readiness(
-            local_web_consent.context,
-            local_web_consent.readiness,
-        );
-    }
+    reject_invalid_managed_marker(launch_origin)?;
+    let adapter = McpAdapter::new(runtime_home, context);
     let stdin = io::stdin();
     let stdout = io::stdout();
     run_stdio_with_options(
         adapter,
         stdin.lock(),
         stdout.lock(),
-        StdioRunOptions {
-            startup_session_watch,
-            launch_origin,
-            managed_host_session_id,
-        },
+        StdioRunOptions { launch_origin },
     )
 }
 
@@ -183,35 +142,34 @@ pub fn run_stdio_discover_repository_from_env(
         Some(resolution.host.registry_host_kind()),
         true,
     );
-    let managed_host_session_id = managed_host_session_id_from_env(
-        &process_env_var,
-        launch_origin,
-        resolution.host.registry_host_kind(),
-        resolution.context.connection_internal_id.as_str(),
-    );
-    let local_web_consent =
-        start_optional_stdio_protocol_after_marker_validation(launch_origin, || {
-            start_stdio_local_web_consent_listener(&runtime_home, &resolution.context)
-        })?;
-    let mut adapter = McpAdapter::new(runtime_home, resolution.context);
-    if let Some(local_web_consent) = local_web_consent {
-        adapter = adapter.with_local_web_consent_readiness(
-            local_web_consent.context,
-            local_web_consent.readiness,
-        );
-    }
+    reject_invalid_managed_marker(launch_origin)?;
+    let adapter = McpAdapter::new(runtime_home, resolution.context);
     let stdin = io::stdin();
     let stdout = io::stdout();
     run_stdio_with_options(
         adapter,
         stdin.lock(),
         stdout.lock(),
-        StdioRunOptions {
-            startup_session_watch: launch_origin == McpLaunchOrigin::ManagedHost,
-            launch_origin,
-            managed_host_session_id,
-        },
+        StdioRunOptions { launch_origin },
     )
+}
+
+/// Returns whether the current process environment denotes one exact managed
+/// Codex stdio launch whose live parent may establish host authority.
+///
+/// CLI verification children and invalid or manual marker shapes return false.
+pub fn managed_host_authority_preparation_required_from_env(
+    connection_id: &str,
+    project_id: Option<&str>,
+    repository_discovery_descriptor: bool,
+) -> bool {
+    classify_launch_origin_with_descriptor(
+        process_env_var,
+        connection_id,
+        project_id,
+        Some(CODEX_HOST_VALUE),
+        repository_discovery_descriptor,
+    ) == McpLaunchOrigin::ManagedHost
 }
 
 fn reject_invalid_managed_marker(launch_origin: McpLaunchOrigin) -> Result<(), McpAdapterError> {
@@ -224,21 +182,8 @@ fn reject_invalid_managed_marker(launch_origin: McpLaunchOrigin) -> Result<(), M
     Ok(())
 }
 
-fn start_optional_stdio_protocol_after_marker_validation<T, F>(
-    launch_origin: McpLaunchOrigin,
-    start: F,
-) -> Result<Option<T>, McpAdapterError>
-where
-    F: FnOnce() -> Result<T, McpAdapterError>,
-{
-    reject_invalid_managed_marker(launch_origin)?;
-    Ok(start().ok())
-}
-
 #[cfg(test)]
 mod managed_marker_protocol_order_tests {
-    use std::cell::Cell;
-
     use super::*;
 
     #[test]
@@ -253,14 +198,6 @@ mod managed_marker_protocol_order_tests {
             ),
             McpLaunchOrigin::ManagedHost
         );
-        assert!(managed_host_session_id_from_env(
-            &|_| None,
-            McpLaunchOrigin::ManagedHost,
-            CODEX_HOST_VALUE,
-            "connection.alpha",
-        )
-        .is_none());
-
         assert_eq!(
             classify_launch_origin_with_descriptor(
                 |name| {
@@ -275,55 +212,10 @@ mod managed_marker_protocol_order_tests {
             "an ambient CODEX_THREAD_ID must not become a second provenance or binding input"
         );
     }
-
-    #[test]
-    fn repository_descriptor_does_not_invent_claude_or_cross_host_provenance() {
-        assert_eq!(
-            classify_launch_origin_with_descriptor(
-                |_| None,
-                "connection.alpha",
-                Some("project.alpha"),
-                Some(CLAUDE_CODE_HOST_VALUE),
-                true,
-            ),
-            McpLaunchOrigin::ManualCli,
-            "a descriptor without Claude's native markers remains a manual launch"
-        );
-        assert_eq!(
-            classify_launch_origin_with_descriptor(
-                |name| match name {
-                    CLAUDECODE => Some(OsString::from("1")),
-                    CLAUDE_CODE_SESSION_ID => Some(OsString::from("claude.session.alpha")),
-                    _ => None,
-                },
-                "connection.alpha",
-                Some("project.alpha"),
-                Some(CODEX_HOST_VALUE),
-                true,
-            ),
-            McpLaunchOrigin::InvalidManagedMarker
-        );
-    }
-
-    #[test]
-    fn invalid_managed_marker_is_rejected_before_optional_protocol_start() {
-        let protocol_started = Cell::new(false);
-
-        let error = start_optional_stdio_protocol_after_marker_validation(
-            McpLaunchOrigin::InvalidManagedMarker,
-            || {
-                protocol_started.set(true);
-                Ok(())
-            },
-        )
-        .expect_err("an invalid managed marker must stop before protocol initialization");
-
-        assert!(!protocol_started.get());
-        assert!(error.to_string().contains("INVALID_MANAGED_MARKER"));
-    }
 }
 
-fn resolve_repository_discovery_runtime_home<F>(
+/// Resolves the explicit Runtime Home required by repository discovery.
+pub fn resolve_repository_discovery_runtime_home<F>(
     env_var: F,
     current_dir: &Path,
 ) -> Result<PathBuf, McpAdapterError>
@@ -364,31 +256,7 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     let launch_origin = classify_launch_origin_for_adapter(&adapter, &env_var);
-    let host_kind = agent_connection_record_read_only(
-        &adapter.runtime_home,
-        adapter.context.connection_internal_id.as_str(),
-    )
-    .ok()
-    .flatten()
-    .map(|connection| connection.host_kind);
-    let managed_host_session_id = host_kind.as_deref().and_then(|host_kind| {
-        managed_host_session_id_from_env(
-            &env_var,
-            launch_origin,
-            host_kind,
-            adapter.context.connection_internal_id.as_str(),
-        )
-    });
-    run_stdio_with_options(
-        adapter,
-        reader,
-        writer,
-        StdioRunOptions {
-            startup_session_watch: launch_origin == McpLaunchOrigin::ManagedHost,
-            launch_origin,
-            managed_host_session_id,
-        },
-    )
+    run_stdio_with_options(adapter, reader, writer, StdioRunOptions { launch_origin })
 }
 
 /// Runs MCP startup validation from process environment.
@@ -571,8 +439,7 @@ where
     ]
     .into_iter()
     .any(|name| env_var(name).is_some());
-    let native_marker_present = host_native_marker_present(&env_var);
-    if !volicord_marker_present && !native_marker_present {
+    if !volicord_marker_present {
         return if repository_discovery_descriptor && expected_host_kind == Some(CODEX_HOST_VALUE) {
             McpLaunchOrigin::ManagedHost
         } else {
@@ -580,18 +447,11 @@ where
         };
     }
 
-    let Some(expected_host_kind) = expected_host_kind.or(host.as_deref()) else {
+    let Some(expected_host_kind) = expected_host_kind else {
         return McpLaunchOrigin::InvalidManagedMarker;
     };
-    let native_marker_matches = host_native_marker_matches(&env_var, expected_host_kind);
-    if !volicord_marker_present {
-        return if repository_discovery_descriptor && native_marker_matches {
-            McpLaunchOrigin::ManagedHost
-        } else if repository_discovery_descriptor {
-            McpLaunchOrigin::InvalidManagedMarker
-        } else {
-            McpLaunchOrigin::ManualCli
-        };
+    if expected_host_kind != CODEX_HOST_VALUE {
+        return McpLaunchOrigin::InvalidManagedMarker;
     }
 
     let project_matches = match project_id {
@@ -602,7 +462,6 @@ where
         && host.as_deref() == Some(expected_host_kind)
         && marker_connection_id.as_deref() == Some(connection_id)
         && project_matches
-        && native_marker_matches
     {
         McpLaunchOrigin::ManagedHost
     } else {
@@ -636,54 +495,6 @@ where
     )
 }
 
-fn host_native_marker_present<F>(env_var: &F) -> bool
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    [CLAUDECODE, CLAUDE_CODE_SESSION_ID]
-        .into_iter()
-        .any(|name| env_var(name).is_some())
-}
-
-fn host_native_marker_matches<F>(env_var: &F, host_kind: &str) -> bool
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    match host_kind {
-        CODEX_HOST_VALUE => {
-            env_var(CLAUDECODE).is_none() && env_var(CLAUDE_CODE_SESSION_ID).is_none()
-        }
-        CLAUDE_CODE_HOST_VALUE => {
-            env_text(env_var, CLAUDECODE).as_deref() == Some("1")
-                && env_text(env_var, CLAUDE_CODE_SESSION_ID)
-                    .is_some_and(|value| validate_managed_host_native_session_id(&value).is_ok())
-        }
-        _ => false,
-    }
-}
-
-fn managed_host_session_id_from_env<F>(
-    env_var: &F,
-    launch_origin: McpLaunchOrigin,
-    host_kind: &str,
-    connection_internal_id: &str,
-) -> Option<String>
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    if launch_origin != McpLaunchOrigin::ManagedHost {
-        return None;
-    }
-    let native_session_id = match host_kind {
-        CLAUDE_CODE_HOST_VALUE if env_text(env_var, CLAUDECODE).as_deref() == Some("1") => {
-            env_text(env_var, CLAUDE_CODE_SESSION_ID)
-        }
-        _ => None,
-    }?;
-    validate_managed_host_native_session_id(&native_session_id).ok()?;
-    managed_host_session_id(host_kind, connection_internal_id, &native_session_id).ok()
-}
-
 fn env_text<F>(env_var: &F, name: &str) -> Option<String>
 where
     F: Fn(&str) -> Option<OsString>,
@@ -711,59 +522,42 @@ impl CodexManagedBinding {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct DeferredCodexLifecycle {
-    initialize_observed: bool,
-    tools_list_observed: bool,
-    first_tools_list_serialized_bytes: Option<u64>,
-    startup_materialized: bool,
-    initialize_materialized: bool,
-    tools_list_materialized: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConnectionState {
     pub(crate) phase: ConnectionPhase,
-    pub(crate) client_supports_elicitation: bool,
-    pub(crate) client_supports_model_invisible_user_surface: bool,
     pub(crate) client_info: Option<ManagedMcpClientInfo>,
-    pub(crate) next_server_request_id: u64,
     pub(crate) session_id: String,
-    pub(crate) managed_host_lifecycle_observations: bool,
+    pub(crate) managed_stdio_binding_active: bool,
     pub(crate) launch_origin: &'static str,
     status_method_call_count: u64,
     codex_binding: CodexManagedBinding,
-    deferred_codex_lifecycle: DeferredCodexLifecycle,
+    deferred_tools_list_serialized_bytes: Option<u64>,
 }
 
 impl Default for ConnectionState {
     fn default() -> Self {
         Self {
             phase: ConnectionPhase::AwaitingInitialize,
-            client_supports_elicitation: false,
-            client_supports_model_invisible_user_surface: false,
             client_info: None,
-            next_server_request_id: 1,
-            session_id: generated_metadata_id("session", "mcp", "stdio"),
-            managed_host_lifecycle_observations: false,
+            session_id: String::new(),
+            managed_stdio_binding_active: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
             status_method_call_count: 0,
             codex_binding: CodexManagedBinding::NotApplicable,
-            deferred_codex_lifecycle: DeferredCodexLifecycle::default(),
+            deferred_tools_list_serialized_bytes: None,
         }
     }
 }
 
 impl ConnectionState {
-    fn for_launch_origin(
-        launch_origin: McpLaunchOrigin,
-        managed_host_session_id: Option<String>,
-    ) -> Self {
-        let pending_codex =
-            launch_origin == McpLaunchOrigin::ManagedHost && managed_host_session_id.is_none();
+    fn managed_session_id(&self) -> Option<&str> {
+        self.managed_stdio_binding_active
+            .then_some(self.session_id.as_str())
+    }
+
+    fn for_launch_origin(launch_origin: McpLaunchOrigin) -> Self {
+        let pending_codex = launch_origin == McpLaunchOrigin::ManagedHost;
         let mut state = Self {
-            managed_host_lifecycle_observations: launch_origin == McpLaunchOrigin::ManagedHost
-                && managed_host_session_id.is_some(),
             launch_origin: launch_origin.as_str(),
             codex_binding: if pending_codex {
                 CodexManagedBinding::Pending
@@ -772,28 +566,10 @@ impl ConnectionState {
             },
             ..Self::default()
         };
-        if let Some(managed_host_session_id) = managed_host_session_id {
-            state.session_id = managed_host_session_id;
-        } else if pending_codex {
+        if pending_codex {
             state.session_id.clear();
         }
         state
-    }
-
-    fn user_channel_capabilities(&self) -> McpUserChannelCapabilities {
-        McpUserChannelCapabilities::new(
-            self.client_supports_elicitation,
-            self.client_supports_model_invisible_user_surface,
-        )
-        .with_stdio_session(
-            if self.codex_binding.is_pending() {
-                McpLaunchOrigin::Unknown.as_str()
-            } else {
-                self.launch_origin
-            },
-            self.client_info.as_ref().map(ManagedMcpClientInfo::name),
-            self.client_info.as_ref().map(ManagedMcpClientInfo::version),
-        )
     }
 }
 
@@ -828,12 +604,10 @@ pub(crate) fn handle_json_rpc_message(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     message: Value,
-    lines: &mut io::Lines<impl BufRead>,
-    writer: &mut impl Write,
 ) -> Result<Option<Value>, McpAdapterError> {
     match parse_client_message(message) {
         Ok(ClientMessage::Request(request)) => {
-            handle_json_rpc_request(adapter, state, request, lines, writer).map(Some)
+            handle_json_rpc_request(adapter, state, request).map(Some)
         }
         Ok(ClientMessage::Notification(notification)) => {
             handle_json_rpc_notification(state, notification);
@@ -923,17 +697,11 @@ pub(crate) fn notification_params_are_object_or_absent(params: Option<&Value>) -
     matches!(params, None | Some(Value::Object(_)))
 }
 
-pub(crate) fn handle_json_rpc_request<R, W>(
+pub(crate) fn handle_json_rpc_request(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     request: JsonRpcRequest,
-    lines: &mut io::Lines<R>,
-    writer: &mut W,
-) -> Result<Value, McpAdapterError>
-where
-    R: BufRead,
-    W: Write,
-{
+) -> Result<Value, McpAdapterError> {
     if let Some(error) = lifecycle_error(state.phase, &request) {
         return Ok(error);
     }
@@ -941,27 +709,13 @@ where
     let response_id = request.id.clone();
     let result = match request.method.as_str() {
         "initialize" => {
-            let capabilities = match validate_initialize_params(&response_id, request.params) {
-                Ok(capabilities) => capabilities,
+            let initialize_params = match validate_initialize_params(&response_id, request.params) {
+                Ok(initialize_params) => initialize_params,
                 Err(error) => return Ok(error),
             };
-            if !state.codex_binding.is_pending()
-                && record_managed_initialize_event(adapter, state, &capabilities.client_info)
-                    == StartupObservationResult::IdentityConflict
-            {
-                return Ok(invalid_request_response(
-                    &response_id,
-                    "initialize client identity conflicts with the existing managed-session identity",
-                ));
-            }
-            state.client_supports_elicitation = capabilities.elicitation;
-            state.client_supports_model_invisible_user_surface =
-                capabilities.model_invisible_user_surface;
-            state.client_info = Some(capabilities.client_info);
+            state.client_info = Some(initialize_params.client_info);
             state.phase = ConnectionPhase::AwaitingInitialized;
-            if state.codex_binding.is_pending() {
-                state.deferred_codex_lifecycle.initialize_observed = true;
-            } else if state.managed_host_lifecycle_observations {
+            if !state.codex_binding.is_pending() && state.managed_stdio_binding_active {
                 let _ = start_transport_diagnostic_session(adapter, state);
             }
             initialize_result()
@@ -987,23 +741,10 @@ where
                         .ok()
                         .and_then(|bytes| u64::try_from(bytes.len()).ok());
                     if state.codex_binding.is_pending() {
-                        state.deferred_codex_lifecycle.tools_list_observed = true;
-                        if state
-                            .deferred_codex_lifecycle
-                            .first_tools_list_serialized_bytes
-                            .is_none()
-                        {
-                            state
-                                .deferred_codex_lifecycle
-                                .first_tools_list_serialized_bytes = serialized_bytes;
+                        if state.deferred_tools_list_serialized_bytes.is_none() {
+                            state.deferred_tools_list_serialized_bytes = serialized_bytes;
                         }
                     } else {
-                        record_managed_lifecycle_event(
-                            adapter,
-                            state,
-                            ManagedLifecycleEvent::ToolsList,
-                            None,
-                        );
                         if let Some(serialized_bytes) = serialized_bytes {
                             record_tools_list_metric_best_effort(adapter, state, serialized_bytes);
                         }
@@ -1013,19 +754,10 @@ where
                 Err(error) => return Ok(json_rpc_error_for_adapter(response_id, error)),
             }
         }
-        "tools/call" => {
-            match call_tool_result_with_elicitation(
-                adapter,
-                &response_id,
-                request.params,
-                state,
-                lines,
-                writer,
-            )? {
-                Ok(result) => result,
-                Err(error) => return Ok(error),
-            }
-        }
+        "tools/call" => match call_tool_result(adapter, &response_id, request.params, state)? {
+            Ok(result) => result,
+            Err(error) => return Ok(error),
+        },
         _ => {
             return Ok(json_rpc_error(
                 response_id,
@@ -1069,38 +801,6 @@ pub(crate) fn lifecycle_error(state: ConnectionPhase, request: &JsonRpcRequest) 
     }
 }
 
-fn record_managed_lifecycle_event(
-    adapter: &McpAdapter,
-    state: &ConnectionState,
-    lifecycle_event: ManagedLifecycleEvent,
-    tool_name: Option<&str>,
-) {
-    if !state.managed_host_lifecycle_observations {
-        return;
-    }
-    let _observation = adapter.managed_lifecycle_observation_best_effort(
-        &state.session_id,
-        state.launch_origin,
-        lifecycle_event,
-        tool_name,
-    );
-}
-
-fn record_managed_initialize_event(
-    adapter: &McpAdapter,
-    state: &ConnectionState,
-    client_info: &ManagedMcpClientInfo,
-) -> StartupObservationResult {
-    if !state.managed_host_lifecycle_observations {
-        return StartupObservationResult::NotAttempted;
-    }
-    adapter.managed_initialize_observation_best_effort(
-        &state.session_id,
-        state.launch_origin,
-        client_info,
-    )
-}
-
 fn bind_codex_managed_tool_call(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
@@ -1110,7 +810,7 @@ fn bind_codex_managed_tool_call(
         return Ok(());
     }
     if state.client_info.as_ref().map(ManagedMcpClientInfo::name)
-        != Some(REVIEWED_CODEX_MCP_CLIENT_NAME)
+        != Some(CODEX_MANAGED_MCP_CLIENT_NAME)
     {
         return Err("managed Codex tools/call requires the Codex MCP client identity");
     }
@@ -1120,11 +820,11 @@ fn bind_codex_managed_tool_call(
     match &state.codex_binding {
         CodexManagedBinding::Pending => {
             let mut candidate = state.clone();
-            candidate.session_id = binding.managed_host_session_id;
+            candidate.session_id = binding.session_id;
             candidate.codex_binding = CodexManagedBinding::Bound {
                 thread_digest: binding.thread_digest,
             };
-            candidate.managed_host_lifecycle_observations = true;
+            candidate.managed_stdio_binding_active = true;
             validate_managed_stdio_session_ownership(adapter, &candidate).map_err(|_| {
                 "managed Codex call metadata conflicts with the registered connection session"
             })?;
@@ -1132,7 +832,7 @@ fn bind_codex_managed_tool_call(
             Ok(())
         }
         CodexManagedBinding::Bound { thread_digest }
-            if state.session_id == binding.managed_host_session_id
+            if state.session_id == binding.session_id
                 && *thread_digest == binding.thread_digest =>
         {
             Ok(())
@@ -1146,7 +846,7 @@ fn bind_codex_managed_tool_call(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodexManagedCallBinding {
-    managed_host_session_id: String,
+    session_id: String,
     thread_digest: [u8; 32],
 }
 
@@ -1174,13 +874,11 @@ fn codex_managed_call_binding(
     if flat_thread_id != nested_thread_id {
         return Err("managed Codex tools/call thread metadata is inconsistent");
     }
-    let managed_host_session_id =
-        managed_host_session_id(CODEX_HOST_VALUE, connection_internal_id, native_session_id)
-            .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?;
     let thread_digest =
         codex_thread_binding_digest(connection_internal_id, native_session_id, nested_thread_id);
     Ok(CodexManagedCallBinding {
-        managed_host_session_id,
+        session_id: managed_stdio_session_id(connection_internal_id, native_session_id)
+            .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?,
         thread_digest,
     })
 }
@@ -1242,9 +940,9 @@ mod codex_call_binding_tests {
         let first = codex_managed_call_binding(&valid_params(), "connection.alpha")
             .expect("exact metadata should bind");
         assert_eq!(
-            first.managed_host_session_id,
-            managed_host_session_id("codex", "connection.alpha", "session.alpha")
-                .expect("expected session mapping")
+            first.session_id,
+            managed_stdio_session_id("connection.alpha", "session.alpha")
+                .expect("valid managed context should bind")
         );
         let replay = codex_managed_call_binding(&valid_params(), "connection.alpha")
             .expect("same metadata should replay");
@@ -1338,58 +1036,6 @@ mod codex_call_binding_tests {
     }
 }
 
-fn materialize_deferred_codex_lifecycle(
-    adapter: &McpAdapter,
-    state: &mut ConnectionState,
-) -> Result<bool, &'static str> {
-    if !matches!(state.codex_binding, CodexManagedBinding::Bound { .. }) {
-        return Ok(true);
-    }
-    let mut lifecycle_ready = true;
-    if state.deferred_codex_lifecycle.initialize_observed
-        && !state.deferred_codex_lifecycle.initialize_materialized
-    {
-        let client_info = state
-            .client_info
-            .as_ref()
-            .ok_or("managed Codex binding is missing its initialized client identity")?;
-        let result = adapter.managed_initialize_observation_at_binding_best_effort(
-            &state.session_id,
-            state.launch_origin,
-            client_info,
-        );
-        if result == StartupObservationResult::IdentityConflict {
-            return Err(
-                "managed Codex initialize identity conflicts with the existing managed-session identity",
-            );
-        }
-        if result == StartupObservationResult::Recorded {
-            state.deferred_codex_lifecycle.startup_materialized = true;
-            state.deferred_codex_lifecycle.initialize_materialized = true;
-        } else {
-            lifecycle_ready = false;
-        }
-    } else if !state.deferred_codex_lifecycle.initialize_materialized {
-        lifecycle_ready = false;
-    }
-    if state.deferred_codex_lifecycle.tools_list_observed
-        && !state.deferred_codex_lifecycle.tools_list_materialized
-    {
-        let result = adapter.managed_lifecycle_observation_at_binding_best_effort(
-            &state.session_id,
-            state.launch_origin,
-            ManagedLifecycleEvent::ToolsList,
-            None,
-        );
-        if result == StartupObservationResult::Recorded {
-            state.deferred_codex_lifecycle.tools_list_materialized = true;
-        } else {
-            lifecycle_ready = false;
-        }
-    }
-    Ok(lifecycle_ready)
-}
-
 pub(crate) fn initialize_result() -> Value {
     let build = crate::build_info();
     let package_version = build.package_version;
@@ -1410,16 +1056,14 @@ pub(crate) fn initialize_result() -> Value {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ClientCapabilities {
-    elicitation: bool,
-    model_invisible_user_surface: bool,
+struct ValidatedInitializeParams {
     client_info: ManagedMcpClientInfo,
 }
 
 fn validate_initialize_params(
     id: &Value,
     params: Option<Value>,
-) -> Result<ClientCapabilities, Value> {
+) -> Result<ValidatedInitializeParams, Value> {
     let object = required_object_params(id, params, "initialize")?;
     if !matches!(object.get("protocolVersion"), Some(Value::String(_))) {
         return Err(invalid_params_response(
@@ -1454,27 +1098,7 @@ fn validate_initialize_params(
     let client_info = ManagedMcpClientInfo::new(client_name.clone(), client_version.clone())
         .map_err(|error| invalid_params_response(id, error.to_string()))?;
 
-    let elicitation = object
-        .get("capabilities")
-        .and_then(Value::as_object)
-        .and_then(|capabilities| capabilities.get("elicitation"))
-        .is_some_and(Value::is_object);
-
-    let model_invisible_user_surface = object
-        .get("capabilities")
-        .and_then(Value::as_object)
-        .and_then(|capabilities| capabilities.get("experimental"))
-        .and_then(Value::as_object)
-        .and_then(|experimental| experimental.get("io.volicord/user-channel"))
-        .and_then(Value::as_object)
-        .and_then(|user_channel| user_channel.get("model_invisible_user_surface"))
-        == Some(&Value::Bool(true));
-
-    Ok(ClientCapabilities {
-        elicitation,
-        model_invisible_user_surface,
-        client_info,
-    })
+    Ok(ValidatedInitializeParams { client_info })
 }
 
 pub(crate) fn validate_optional_object_params(
@@ -1505,18 +1129,12 @@ pub(crate) fn required_object_params(
     }
 }
 
-pub(crate) fn call_tool_result_with_elicitation<R, W>(
+pub(crate) fn call_tool_result(
     adapter: &McpAdapter,
     id: &Value,
     params: Option<Value>,
     state: &mut ConnectionState,
-    lines: &mut io::Lines<R>,
-    writer: &mut W,
-) -> Result<Result<Value, Value>, McpAdapterError>
-where
-    R: BufRead,
-    W: Write,
-{
+) -> Result<Result<Value, Value>, McpAdapterError> {
     let diagnostic_started = Instant::now();
     let diagnostic_request_bytes = params
         .as_ref()
@@ -1625,66 +1243,26 @@ where
         }
     };
     let codex_was_pending = state.codex_binding.is_pending();
-    let pre_binding_state = codex_was_pending.then(|| state.clone());
     if let Err(error) = bind_codex_managed_tool_call(adapter, state, &object) {
         return Ok(Err(invalid_params_response(id, error)));
     }
-    let managed_lifecycle_ready = match materialize_deferred_codex_lifecycle(adapter, state) {
-        Ok(ready) => ready,
-        Err(error) => {
-            if let Some(pre_binding_state) = pre_binding_state {
-                *state = pre_binding_state;
-            }
-            return Ok(Err(invalid_request_response(id, error)));
-        }
-    };
     if codex_was_pending {
         let _ = start_transport_diagnostic_session(adapter, state);
-        if let Some(serialized_bytes) = state
-            .deferred_codex_lifecycle
-            .first_tools_list_serialized_bytes
-            .take()
-        {
+        if let Some(serialized_bytes) = state.deferred_tools_list_serialized_bytes.take() {
             record_tools_list_metric_best_effort(adapter, state, serialized_bytes);
         }
     }
     if tool_name == STATUS_TOOL_NAME {
         state.status_method_call_count = state.status_method_call_count.saturating_add(1);
     }
-    if managed_lifecycle_ready {
-        record_managed_lifecycle_event(
-            adapter,
-            state,
-            ManagedLifecycleEvent::ToolCallReceived,
-            Some(tool_name),
-        );
-    }
     let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
-    let allow_user_action_capture = tool_name == REQUEST_USER_ACTION_TOOL_NAME
-        && arguments
-            .pointer("/request/operation")
-            .and_then(Value::as_str)
-            == Some("create");
 
-    let session_id = state.session_id.clone();
+    let session_id = state.managed_session_id().map(str::to_owned);
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
-        match adapter.call_tool_for_session_with_user_channel_capabilities(
-            tool_name,
-            arguments,
-            Some(&session_id),
-            state.user_channel_capabilities(),
-        ) {
+        match adapter.call_tool_for_session(tool_name, arguments, session_id.as_deref()) {
             Ok(response) if tool_name == REQUEST_USER_ACTION_TOOL_NAME => {
                 let pending_response = response.clone();
-                match user_action_tool_output(
-                    adapter,
-                    response,
-                    allow_user_action_capture,
-                    state.user_channel_capabilities(),
-                    &mut state.next_server_request_id,
-                    lines,
-                    writer,
-                ) {
+                match user_action_tool_output(adapter, response) {
                     Ok(output) => output,
                     Err(_) => ToolCallOutput::from_pipeline_response(&pending_response)?
                         .with_post_effect_failure(
@@ -1743,7 +1321,8 @@ where
             }
         }
     } else {
-        let response = match adapter.call_adapter_tool(tool_name, arguments, Some(&session_id)) {
+        let response = match adapter.call_adapter_tool(tool_name, arguments, session_id.as_deref())
+        {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
                 let response = tool_execution_error_result(tool_name, &error);
@@ -1813,21 +1392,7 @@ where
         }
     };
     let output = finalize_mutation_output(adapter, state, tool_name, mutation_detail, output)?;
-    let output = materialize_local_web_handoff(
-        adapter,
-        mutation_detail,
-        &state.user_channel_capabilities(),
-        output,
-    )?;
 
-    if managed_lifecycle_ready {
-        record_managed_lifecycle_event(
-            adapter,
-            state,
-            ManagedLifecycleEvent::ToolCallCompleted,
-            Some(tool_name),
-        );
-    }
     let diagnostic_facts = output.diagnostic_facts();
     let diagnostic_outcome =
         if response_kind_from_structured_content(&output.structured_content) == Some("rejected") {
@@ -1870,13 +1435,6 @@ struct MutationRefreshContext {
     task_id: TaskId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DeferredLocalWebHandoff {
-    project_id: ProjectId,
-    user_action_request_id: UserActionRequestId,
-    form_digest: String,
-}
-
 impl MutationRefreshContext {
     fn from_pipeline_response(response: &PipelineResponse) -> Option<Self> {
         Some(Self {
@@ -1894,7 +1452,6 @@ struct ToolDiagnosticFacts {
     effect_kind: Option<EffectKind>,
     effect_applied: bool,
     effect_anchor: Option<String>,
-    user_channel_kind: Option<DiagnosticUserChannelKind>,
     fallback_kind: Option<DiagnosticFallbackKind>,
     product_file_write_count: u64,
     authoritative_refresh_failure: bool,
@@ -2010,8 +1567,6 @@ pub(crate) struct ToolCallOutput {
     operation_result_ref: Option<OperationResultRef>,
     mutation_refresh_context: Option<MutationRefreshContext>,
     post_effect_failure: Option<McpPostEffectFailureCode>,
-    host_meta: Option<Value>,
-    deferred_local_web_handoff: Option<DeferredLocalWebHandoff>,
 }
 
 impl ToolCallOutput {
@@ -2032,8 +1587,6 @@ impl ToolCallOutput {
             operation_result_ref: None,
             mutation_refresh_context: None,
             post_effect_failure: None,
-            host_meta: None,
-            deferred_local_web_handoff: None,
         })
     }
 
@@ -2120,11 +1673,6 @@ impl ToolCallOutput {
         self.mutation_refresh_context = MutationRefreshContext::from_pipeline_response(response);
     }
 
-    fn with_user_channel(mut self, channel: DiagnosticUserChannelKind) -> Self {
-        self.diagnostic_facts.user_channel_kind = Some(channel);
-        self
-    }
-
     fn with_post_effect_failure(mut self, code: McpPostEffectFailureCode) -> Self {
         self.post_effect_failure = Some(code);
         self
@@ -2133,22 +1681,11 @@ impl ToolCallOutput {
     fn with_user_action_fallback(mut self, fallback: UserActionFallback) -> Self {
         self.diagnostic_facts.fallback_kind = Some(fallback.kind);
         self.extra_texts.extend(fallback.texts);
-        self.deferred_local_web_handoff = fallback.deferred_local_web_handoff;
         self
     }
 
     fn diagnostic_facts(&self) -> ToolDiagnosticFacts {
         self.diagnostic_facts.clone()
-    }
-
-    fn with_extra(mut self, text: impl Into<String>) -> Self {
-        self.extra_texts.push(text.into());
-        self
-    }
-
-    fn with_extras(mut self, texts: impl IntoIterator<Item = String>) -> Self {
-        self.extra_texts.extend(texts);
-        self
     }
 }
 
@@ -2190,162 +1727,11 @@ fn finalize_mutation_output(
     output: ToolCallOutput,
 ) -> Result<ToolCallOutput, McpAdapterError> {
     finalize_mutation_output_with_refresh(tool_name, detail, output, |context| {
-        adapter.refresh_authority_status_with_user_channel_capabilities(
+        adapter.refresh_authority_status(
             &context.project_id,
             &context.task_id,
-            Some(&state.session_id),
-            state.user_channel_capabilities(),
+            state.managed_session_id(),
         )
-    })
-}
-
-fn materialize_local_web_handoff(
-    adapter: &McpAdapter,
-    detail: Option<MutationDetailLevel>,
-    capabilities: &McpUserChannelCapabilities,
-    output: ToolCallOutput,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    materialize_local_web_handoff_with_token_creator(
-        adapter,
-        detail,
-        capabilities,
-        output,
-        |runtime_home, input| create_user_action_channel_token(runtime_home, input),
-    )
-}
-
-fn materialize_local_web_handoff_with_token_creator(
-    adapter: &McpAdapter,
-    detail: Option<MutationDetailLevel>,
-    capabilities: &McpUserChannelCapabilities,
-    mut output: ToolCallOutput,
-    create_token: impl FnOnce(
-        &Path,
-        UserActionChannelTokenCreate,
-    ) -> Result<UserActionChannelTokenRecord, StoreError>,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let Some(deferred) = output.deferred_local_web_handoff.take() else {
-        return Ok(output);
-    };
-    if !adapter.effective_local_web_consent_available(capabilities) {
-        let (outcome, failure_class) = if !capabilities.model_invisible_user_surface {
-            (
-                HostRuntimeProbeOutcome::Unsupported,
-                HostRuntimeProbeFailureClass::ExplicitCapabilityAbsent,
-            )
-        } else if !adapter.local_web_consent_listener_ready() {
-            (
-                HostRuntimeProbeOutcome::Unavailable,
-                HostRuntimeProbeFailureClass::ListenerUnavailable,
-            )
-        } else {
-            (
-                HostRuntimeProbeOutcome::Unavailable,
-                HostRuntimeProbeFailureClass::BindingMismatch,
-            )
-        };
-        adapter.record_local_web_runtime_probe_best_effort(capabilities, outcome, failure_class);
-        output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
-        return Ok(output);
-    }
-    let Some(context) = adapter.local_web_consent.as_ref() else {
-        output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
-        return Ok(output);
-    };
-    let token = match generate_bearer_token() {
-        Ok(token) => token,
-        Err(_) => {
-            adapter.record_local_web_runtime_probe_best_effort(
-                capabilities,
-                HostRuntimeProbeOutcome::Failed,
-                HostRuntimeProbeFailureClass::ConfigurationUnavailable,
-            );
-            output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
-            return Ok(output);
-        }
-    };
-    let url = format!(
-        "{}{}?project={}&token={}",
-        context.base_url,
-        LOCAL_WEB_CONSENT_PATH,
-        percent_encode_query(deferred.project_id.as_str()),
-        percent_encode_query(&token)
-    );
-    let worst_case_meta = local_web_host_meta(&url, "9999-12-31T23:59:59.999999999Z");
-    output.host_meta = Some(worst_case_meta);
-    let response_budget = match detail.unwrap_or(MutationDetailLevel::Summary) {
-        MutationDetailLevel::Summary | MutationDetailLevel::Workflow => {
-            MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
-        }
-        MutationDetailLevel::Full => MAX_MCP_FULL_MUTATION_RESULT_BYTES,
-    };
-    if rendered_tool_call_output_size(&output)? > response_budget {
-        adapter.record_local_web_runtime_probe_best_effort(
-            capabilities,
-            HostRuntimeProbeOutcome::Failed,
-            HostRuntimeProbeFailureClass::ConfigurationUnavailable,
-        );
-        output.host_meta = None;
-        output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
-        return Ok(output);
-    }
-    output.host_meta = None;
-    let Some(_issuance_lease) = adapter.local_web_consent_issuance_lease(capabilities) else {
-        adapter.record_local_web_runtime_probe_best_effort(
-            capabilities,
-            HostRuntimeProbeOutcome::Unavailable,
-            HostRuntimeProbeFailureClass::ListenerUnavailable,
-        );
-        output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
-        return Ok(output);
-    };
-    let record = match create_token(
-        adapter.runtime_home.as_path(),
-        UserActionChannelTokenCreate {
-            token,
-            project_id: deferred.project_id.as_str().to_owned(),
-            channel_kind: UserActionChannelKind::LocalWebConsent,
-            connection_internal_id: adapter.context.connection_internal_id.to_string(),
-            user_action_request_id: deferred.user_action_request_id.as_str().to_owned(),
-            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            created_metadata_json: json!({
-                "fallback_kind": "local_web_consent",
-                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "form_digest": deferred.form_digest,
-            })
-            .to_string(),
-        },
-    ) {
-        Ok(record) => record,
-        Err(_) => {
-            adapter.record_local_web_runtime_probe_best_effort(
-                capabilities,
-                HostRuntimeProbeOutcome::Failed,
-                HostRuntimeProbeFailureClass::ConfigurationUnavailable,
-            );
-            output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
-            return Ok(output);
-        }
-    };
-    adapter.record_local_web_runtime_probe_best_effort(
-        capabilities,
-        HostRuntimeProbeOutcome::Passed,
-        HostRuntimeProbeFailureClass::None,
-    );
-    output.host_meta = Some(local_web_host_meta(&url, &record.expires_at));
-    output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::LocalWebConsent);
-    debug_assert!(rendered_tool_call_output_size(&output).is_ok_and(|size| size <= response_budget));
-    Ok(output)
-}
-
-fn local_web_host_meta(url: &str, expires_at: &str) -> Value {
-    json!({
-        "io.volicord/user-channel": {
-            "kind": "local_web_consent",
-            "url": url,
-            "expires_at": expires_at,
-        }
     })
 }
 
@@ -2766,8 +2152,6 @@ fn mutation_response_budget_exceeded_output(
                 operation_result_ref: outcome.operation_result_ref.clone(),
                 mutation_refresh_context: None,
                 post_effect_failure: None,
-                host_meta: None,
-                deferred_local_web_handoff: None,
             })
         };
     select_bounded_mutation_recovery(
@@ -2838,8 +2222,6 @@ fn mutation_post_effect_failure_output(
                 operation_result_ref: outcome.operation_result_ref.clone(),
                 mutation_refresh_context: None,
                 post_effect_failure: None,
-                host_meta: None,
-                deferred_local_web_handoff: None,
             })
         };
     select_bounded_mutation_recovery(
@@ -2856,8 +2238,6 @@ struct ToolCallResultRef<'a> {
     content: Vec<ToolCallTextContentRef<'a>>,
     structured_content: &'a Value,
     is_error: bool,
-    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
-    host_meta: Option<&'a Value>,
 }
 
 #[derive(Serialize)]
@@ -2886,7 +2266,6 @@ fn rendered_tool_call_output_size(output: &ToolCallOutput) -> Result<usize, McpA
         content,
         structured_content: &output.structured_content,
         is_error: output.is_error,
-        host_meta: output.host_meta.as_ref(),
     })
     .map(|rendered| rendered.len())
     .map_err(McpAdapterError::Json)
@@ -2943,8 +2322,6 @@ fn authoritative_refresh_failure_output(
                 operation_result_ref: outcome.operation_result_ref.clone(),
                 mutation_refresh_context: None,
                 post_effect_failure: None,
-                host_meta: None,
-                deferred_local_web_handoff: None,
             })
         };
     select_bounded_mutation_recovery(
@@ -2973,29 +2350,24 @@ fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
     }
 }
 
-fn bounded_mutation_compatibility_text(mut text: String) -> String {
+fn bounded_mutation_compatibility_text(text: String) -> String {
     if text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES {
         return text;
     }
-    let mut boundary = MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES.saturating_sub(3);
-    while boundary > 0 && !text.is_char_boundary(boundary) {
-        boundary -= 1;
-    }
-    text.truncate(boundary);
-    text.push_str("...");
-    text
+    "Volicord omitted an oversized compatibility summary without truncating it. Inspect structuredContent for the complete authoritative result."
+        .to_owned()
 }
 
 fn validate_managed_stdio_session_ownership(
     adapter: &McpAdapter,
     state: &ConnectionState,
 ) -> Result<(), McpAdapterError> {
-    if !state.managed_host_lifecycle_observations {
+    if !state.managed_stdio_binding_active {
         return Ok(());
     }
-    if validate_managed_host_session_id(&state.session_id).is_err() {
+    if validate_managed_stdio_session_id(&state.session_id).is_err() {
         return Err(McpAdapterError::Environment(
-            "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed stdio requires an opaque mhs_ session"
+            "managed_stdio_session_identity_invalid: managed stdio requires a canonical internal session coordinate"
                 .to_owned(),
         ));
     }
@@ -3006,7 +2378,7 @@ fn validate_managed_stdio_session_ownership(
     .map_err(McpAdapterError::Store)?
     .ok_or_else(|| {
         McpAdapterError::Environment(
-            "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed stdio connection is unavailable"
+            "managed_stdio_session_ownership_unavailable: managed stdio connection is unavailable"
                 .to_owned(),
         )
     })?;
@@ -3033,7 +2405,7 @@ fn validate_managed_stdio_session_ownership(
                 || existing.host_kind != connection.host_kind
             {
                 return Err(McpAdapterError::Environment(
-                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match this managed stdio connection"
+                    "managed_stdio_session_ownership_conflict: existing session ownership does not match this managed stdio connection"
                         .to_owned(),
                 ));
             }
@@ -3074,13 +2446,8 @@ fn start_transport_diagnostic_session(
     .flatten();
     let host_kind = connection
         .as_ref()
-        .map(|record| DiagnosticHostKind::from_connection_host_kind(&record.host_kind));
+        .and_then(|record| DiagnosticHostKind::from_connection_host_kind(&record.host_kind));
     let project_id = stdio_diagnostic_project_id(adapter);
-    let transport = if state.launch_origin == McpLaunchOrigin::Unknown.as_str() {
-        DiagnosticTransport::LocalHttp
-    } else {
-        DiagnosticTransport::McpStdio
-    };
     let build = crate::build_info();
     start_diagnostic_session(
         &adapter.runtime_home,
@@ -3088,7 +2455,7 @@ fn start_transport_diagnostic_session(
             session_id: &state.session_id,
             connection_id: Some(adapter.context.connection_internal_id.as_str()),
             project_id: project_id.as_deref(),
-            transport,
+            transport: DiagnosticTransport::McpStdio,
             host_kind,
             package_version: build.package_version,
             build_id: &build.build_id,
@@ -3208,7 +2575,7 @@ fn record_tool_diagnostic_best_effort(
             core_reached: facts.core_reached,
             core_committed: facts.core_committed,
             replayed: facts.replayed,
-            user_channel_kind: facts.user_channel_kind,
+            user_channel_kind: None,
             fallback_kind: facts.fallback_kind,
             product_file_write_count: facts.product_file_write_count,
             authoritative_refresh_failure: facts.authoritative_refresh_failure,
@@ -3219,7 +2586,6 @@ fn record_tool_diagnostic_best_effort(
 }
 
 pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
-    let host_meta = output.host_meta.clone();
     let mut content = vec![json!({
         "type": "text",
         "text": output.primary_text
@@ -3231,198 +2597,26 @@ pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
         })
     }));
 
-    let mut result = json!({
+    json!({
         "content": content,
         "structuredContent": output.structured_content,
         "isError": output.is_error
-    });
-    if let Some(host_meta) = host_meta {
-        result["_meta"] = host_meta;
-    }
-    result
+    })
 }
 
-pub(crate) fn user_action_tool_output<R, W>(
+pub(crate) fn user_action_tool_output(
     adapter: &McpAdapter,
     pending_response: PipelineResponse,
-    allow_user_action_capture: bool,
-    capabilities: McpUserChannelCapabilities,
-    server_request_sequence: &mut u64,
-    lines: &mut io::Lines<R>,
-    writer: &mut W,
-) -> Result<ToolCallOutput, McpAdapterError>
-where
-    R: BufRead,
-    W: Write,
-{
+) -> Result<ToolCallOutput, McpAdapterError> {
     let Some(coordinate) = pending_user_action_coordinate_from_response(&pending_response)? else {
         return ToolCallOutput::from_pipeline_response(&pending_response);
     };
     let current = current_user_action_projection_for_coordinate(adapter, &coordinate)?;
-    if !allow_user_action_capture {
-        return compound_user_action_output(&pending_response, &current);
+    let mut output = compound_user_action_output(&pending_response, &current)?;
+    if current.status == UserActionStatus::Pending {
+        output = output.with_user_action_fallback(cli_recovery_fallback());
     }
-    if current.status != UserActionStatus::Pending {
-        return Ok(compound_user_action_output(&pending_response, &current)?.with_extra(format!(
-            "Volicord did not open a new User Channel prompt because user action `{}` is currently {}.",
-            coordinate.user_action_request_id.as_str(),
-            user_action_status_text(current.status)
-        )));
-    }
-    if pending_response.replayed {
-        return Ok(compound_user_action_output(&pending_response, &current)?
-            .with_user_action_fallback(cli_recovery_fallback()));
-    }
-    let Some(pending) = pending_user_action_from_response_with_capabilities(
-        adapter,
-        &pending_response,
-        &capabilities,
-    )?
-    else {
-        return Err(McpAdapterError::Protocol(
-            "the trusted User Channel projection did not contain the newly pending request"
-                .to_owned(),
-        ));
-    };
-
-    if !capabilities.host_elicitation_available {
-        let fallback = user_action_fallback(adapter, &pending, &capabilities)?;
-        return Ok(compound_user_action_output(&pending_response, &current)?
-            .with_user_action_fallback(fallback));
-    }
-
-    if !agent_facing_user_action_input_allowed(&pending) {
-        let fallback = user_action_fallback(adapter, &pending, &capabilities)?;
-        return Ok(compound_user_action_output(&pending_response, &current)?
-            .with_extra(format!(
-                "Volicord did not open host prompt input for pending user action `{}` because its complete presentation requires a user-only channel. No elicitation or prompt-capture presentation was opened. Do not ask the user to enter secrets, credentials, tokens, or private keys through agent-facing host input.",
-                pending.request.user_action_request_id.as_str()
-            ))
-            .with_user_action_fallback(fallback));
-    }
-
-    let request_id = next_server_request_id("elicit_user_action", server_request_sequence);
-    let Some(request) = elicitation_create_request(&request_id, &pending)? else {
-        let fallback = user_action_fallback(adapter, &pending, &capabilities)?;
-        return Ok(compound_user_action_output(&pending_response, &current)?
-            .with_extra(format!(
-                "Volicord did not open host prompt input for pending user action `{}` because the complete elicitation request exceeds the {}-byte wire budget; no partial form was sent.",
-                pending.request.user_action_request_id.as_str(),
-                MAX_MCP_ELICITATION_WIRE_BYTES
-            ))
-            .with_user_action_fallback(fallback));
-    };
-    write_json_line(writer, request)?;
-    writer.flush().map_err(McpAdapterError::Io)?;
-
-    match read_elicitation_response(&request_id, lines) {
-        ElicitationReply::Accepted(content) => {
-            let resolution = match resolution_from_elicitation(&pending, &content) {
-                Ok(resolution) => resolution,
-                Err(message) => {
-                    let current = current_user_action_projection(adapter, &pending)?;
-                    return Ok(compound_user_action_output(&pending_response, &current)?
-                        .with_extra(format!(
-                            "Volicord rejected the host prompt response: {message}. User action `{}` is currently {}.",
-                            pending.request.user_action_request_id.as_str(),
-                            user_action_status_text(current.status)
-                        ))
-                        .with_extras(pending_user_action_resume_texts(&pending, &current)));
-                }
-            };
-            match resolve_elicited_user_action(adapter, &pending, resolution, &request_id)? {
-            ElicitedResolutionOutcome::Committed(current) => Ok(
-                compound_user_action_output(&pending_response, &current)?
-                    .with_user_channel(DiagnosticUserChannelKind::McpElicitation)
-                    .with_extra(format!(
-                "Volicord resolved pending user action `{}` through host prompt input with User Channel basis `{}`.",
-                pending.request.user_action_request_id.as_str(),
-                VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
-            )),
-            ),
-            ElicitedResolutionOutcome::NotCommitted(current) => Ok(
-                compound_user_action_output(&pending_response, &current)?
-                    .with_extra(format!(
-                    "Volicord did not record the host prompt response; user action `{}` is currently {}. No second Agent Workflow request was created.",
-                    pending.request.user_action_request_id.as_str(),
-                    user_action_status_text(current.status)
-                ))
-                    .with_extras(pending_user_action_resume_texts(&pending, &current)),
-            ),
-            }
-        }
-        ElicitationReply::Declined => match reject_resolution(&pending) {
-            Some(resolution) => match resolve_elicited_user_action(
-                adapter,
-                &pending,
-                resolution,
-                &request_id,
-            )? {
-                ElicitedResolutionOutcome::Committed(current) => Ok(
-                    compound_user_action_output(&pending_response, &current)?
-                        .with_user_channel(DiagnosticUserChannelKind::McpElicitation)
-                        .with_extra(format!(
-                    "Volicord resolved pending user action `{}` with its stored reject choice through host prompt input with User Channel basis `{}`.",
-                    pending.request.user_action_request_id.as_str(),
-                    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
-                )),
-                ),
-                ElicitedResolutionOutcome::NotCommitted(current) => Ok(
-                    compound_user_action_output(&pending_response, &current)?
-                        .with_extra(format!(
-                        "Volicord did not record the declined host prompt response; user action `{}` is currently {}. No second Agent Workflow request was created.",
-                        pending.request.user_action_request_id.as_str(),
-                        user_action_status_text(current.status)
-                    ))
-                        .with_extras(pending_user_action_resume_texts(&pending, &current)),
-                ),
-            },
-            None => {
-                let current = current_user_action_projection(adapter, &pending)?;
-                Ok(compound_user_action_output(&pending_response, &current)?
-                    .with_extra(format!(
-                    "The MCP client declined the host prompt request, but this user action has no stored reject choice. User action `{}` is currently {}.",
-                    pending.request.user_action_request_id.as_str(),
-                    user_action_status_text(current.status)
-                ))
-                    .with_extras(pending_user_action_resume_texts(&pending, &current)))
-            },
-        },
-        ElicitationReply::Cancelled => {
-            let current = current_user_action_projection(adapter, &pending)?;
-            Ok(compound_user_action_output(&pending_response, &current)?
-                .with_extra(format!(
-                "The MCP client cancelled or dismissed host prompt input for user action `{}`. Its current status is {}.",
-                pending.request.user_action_request_id.as_str(),
-                user_action_status_text(current.status)
-            ))
-                .with_extras(pending_user_action_resume_texts(&pending, &current)))
-        },
-        ElicitationReply::Invalid(message) => {
-            let current = current_user_action_projection(adapter, &pending)?;
-            Ok(compound_user_action_output(&pending_response, &current)?
-                .with_extra(format!(
-                "Volicord rejected the host prompt response: {message}. User action `{}` is currently {}.",
-                pending.request.user_action_request_id.as_str(),
-                user_action_status_text(current.status)
-            ))
-                .with_extras(pending_user_action_resume_texts(&pending, &current)))
-        },
-        ElicitationReply::Unavailable(message) => {
-            let current = current_user_action_projection(adapter, &pending)?;
-            if current.status != UserActionStatus::Pending {
-                return Ok(compound_user_action_output(&pending_response, &current)?.with_extra(
-                    "Host prompt input became unavailable after the user action had already left pending status. No fallback request was created.",
-                ));
-            }
-            let fallback = user_action_fallback(adapter, &pending, &capabilities)?;
-            Ok(compound_user_action_output(&pending_response, &current)?
-            .with_extra(format!(
-                "Host prompt input was unavailable after the client advertised support: {message}."
-            ))
-            .with_user_action_fallback(fallback))
-        }
-    }
+    Ok(output)
 }
 
 fn compound_user_action_output(
@@ -3449,20 +2643,6 @@ fn compound_user_action_output(
         .with_pipeline_diagnostics(pending_response))
 }
 
-fn current_user_action_projection(
-    adapter: &McpAdapter,
-    pending: &PendingUserAction,
-) -> Result<CurrentUserActionProjection, McpAdapterError> {
-    current_user_action_projection_for_coordinate(
-        adapter,
-        &PendingUserActionCoordinate {
-            project_id: pending.request.project_id.clone(),
-            task_id: pending.request.task_id.clone(),
-            user_action_request_id: pending.request.user_action_request_id.clone(),
-        },
-    )
-}
-
 fn current_user_action_projection_for_coordinate(
     adapter: &McpAdapter,
     coordinate: &PendingUserActionCoordinate,
@@ -3486,36 +2666,9 @@ fn current_user_action_projection_for_coordinate(
     Ok(current)
 }
 
-fn user_action_status_text(status: UserActionStatus) -> &'static str {
-    match status {
-        UserActionStatus::Pending => "pending",
-        UserActionStatus::Resolved => "resolved",
-        UserActionStatus::Stale => "stale",
-        UserActionStatus::Superseded => "superseded",
-        UserActionStatus::Expired => "expired",
-    }
-}
-
-fn pending_user_action_resume_texts(
-    _pending: &PendingUserAction,
-    current: &CurrentUserActionProjection,
-) -> Vec<String> {
-    if current.status != UserActionStatus::Pending {
-        return Vec::new();
-    }
-    vec![generic_user_channel_fallback_text()]
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct PendingUserAction {
-    pub(crate) request: UserActionRequest,
-    pub(crate) inbox_item: UserActionInboxItem,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingUserActionCoordinate {
     project_id: ProjectId,
-    task_id: TaskId,
     user_action_request_id: UserActionRequestId,
 }
 
@@ -3532,583 +2685,27 @@ fn pending_user_action_coordinate_from_response(
             "successful request_user_action response omitted verified invocation facts".to_owned(),
         )
     })?;
-    let task_id = response.resolved_task_id.clone().ok_or_else(|| {
-        McpAdapterError::Protocol(
-            "successful request_user_action response omitted its resolved Task".to_owned(),
-        )
-    })?;
     Ok(Some(PendingUserActionCoordinate {
         project_id: invocation.project_id.clone(),
-        task_id,
         user_action_request_id: result.user_action_request_summary.user_action_request_id,
     }))
-}
-
-#[cfg(test)]
-pub(crate) fn pending_user_action_from_response(
-    adapter: &McpAdapter,
-    response: &PipelineResponse,
-) -> Result<Option<PendingUserAction>, McpAdapterError> {
-    let Some(invocation) = response.verified_invocation.as_ref() else {
-        return pending_user_action_from_response_with_capabilities(
-            adapter,
-            response,
-            &McpUserChannelCapabilities::default(),
-        );
-    };
-    let capabilities = McpUserChannelCapabilities::new(
-        invocation.host_elicitation_available,
-        invocation.local_web_consent_available,
-    );
-    pending_user_action_from_response_with_capabilities(adapter, response, &capabilities)
-}
-
-fn pending_user_action_from_response_with_capabilities(
-    adapter: &McpAdapter,
-    response: &PipelineResponse,
-    capabilities: &McpUserChannelCapabilities,
-) -> Result<Option<PendingUserAction>, McpAdapterError> {
-    let Some(coordinate) = pending_user_action_coordinate_from_response(response)? else {
-        return Ok(None);
-    };
-    let invocation = response
-        .verified_invocation
-        .as_ref()
-        .expect("pending coordinate requires verified invocation");
-    let Some(session_id) = invocation.session_id.as_deref() else {
-        return Ok(None);
-    };
-    let Some(projection) = adapter.user_channel_inbox_projection(
-        &coordinate.project_id,
-        &coordinate.task_id,
-        Some(session_id),
-        capabilities.clone(),
-    )?
-    else {
-        return Ok(None);
-    };
-    let Some(item) = projection
-        .items
-        .into_iter()
-        .find(|item| item.request.user_action_request_id == coordinate.user_action_request_id)
-    else {
-        return Ok(None);
-    };
-    if item.request.project_id != coordinate.project_id
-        || item.request.task_id != coordinate.task_id
-        || item.request.status != UserActionStatus::Pending
-        || item.inbox_item.user_action_request_id != coordinate.user_action_request_id
-        || item.inbox_item.project_id != coordinate.project_id
-        || item.inbox_item.task_id != coordinate.task_id
-        || item.inbox_item.status != UserActionStatus::Pending
-    {
-        return Err(McpAdapterError::Protocol(
-            "trusted User Channel projection coordinates do not match the agent request summary"
-                .to_owned(),
-        ));
-    }
-    let canonical_form = item.request.body.capture_form().map_err(|error| {
-        McpAdapterError::Protocol(format!(
-            "pending user-action request body cannot produce a canonical form: {error}"
-        ))
-    })?;
-    item.inbox_item
-        .form
-        .validate_canonical_size()
-        .map_err(|error| {
-            McpAdapterError::Protocol(format!(
-                "pending user-action inbox form is invalid: {error}"
-            ))
-        })?;
-    if item.inbox_item.form != canonical_form {
-        return Err(McpAdapterError::Protocol(
-            "pending user-action inbox form does not match the canonical request-body projection"
-                .to_owned(),
-        ));
-    }
-    Ok(Some(PendingUserAction {
-        request: item.request,
-        inbox_item: item.inbox_item,
-    }))
-}
-
-pub(crate) fn elicitation_create_request(
-    id: &str,
-    pending: &PendingUserAction,
-) -> Result<Option<Value>, McpAdapterError> {
-    let presentation = UserActionPresentationPlan::from_form(&pending.inbox_item.form)
-        .map_err(McpAdapterError::Json)?;
-    let form_text = presentation
-        .render_plain_text()
-        .map_err(McpAdapterError::Json)?;
-    let (message, requested_schema) = match &presentation.form {
-        UserActionPresentationForm::Choice {
-            choices,
-            note_allowed,
-            note_max_chars,
-        } => {
-            let option_ids = choices
-                .iter()
-                .map(|choice| choice.choice_id.as_str())
-                .collect::<Vec<_>>();
-            let option_names = choices
-                .iter()
-                .map(|choice| {
-                    format!(
-                        "{} ({}){}",
-                        choice.label,
-                        choice.choice_id,
-                        if choice.is_default { " [default]" } else { "" }
-                    )
-                })
-                .collect::<Vec<_>>();
-            let mut properties = json!({
-                "selected_option_id": {
-                    "type": "string",
-                    "title": "User-action choice",
-                    "description": "The exact stored choice_id selected by the user.",
-                    "enum": option_ids,
-                    "enumNames": option_names
-                }
-            });
-            if *note_allowed {
-                properties["note"] = json!({
-                    "type": "string",
-                    "title": "Optional note",
-                    "description": "Optional user note. Do not include secrets, credentials, tokens, or private keys.",
-                    "maxLength": note_max_chars
-                });
-            }
-            (
-                format!(
-                    "Volicord needs one user-owned choice for Task `{}`.\n\nQuestion: {}\n\nContext: {}\n\nCanonical closed form:\n{}\n\nSelect exactly one stored choice. Do not enter secrets, credentials, tokens, private keys, or other private secret material.",
-                    pending.request.task_id.as_str(), pending.inbox_item.question, pending.inbox_item.context_summary, form_text
-                ),
-                json!({"type":"object","properties":properties,"required":["selected_option_id"],"additionalProperties":false}),
-            )
-        }
-        UserActionPresentationForm::EvidenceObservation {
-            targets,
-            artifacts,
-            relevance_options,
-            summary_max_chars,
-        } => {
-            let target_values = targets
-                .iter()
-                .map(|target| target.selector.as_str())
-                .collect::<Vec<_>>();
-            let target_names = targets
-                .iter()
-                .map(|target| format!("{} ({})", target.display_name, target.selector))
-                .collect::<Vec<_>>();
-            let artifact_ids = artifacts
-                .iter()
-                .map(|artifact| artifact.artifact_id.as_str())
-                .collect::<Vec<_>>();
-            let artifact_names = artifacts
-                .iter()
-                .map(|artifact| format!("{} ({})", artifact.display_name, artifact.artifact_id))
-                .collect::<Vec<_>>();
-            (
-                format!(
-                    "Volicord needs one user-owned evidence observation for Task `{}`.\n\nQuestion: {}\n\nContext: {}\n\nCanonical closed form:\n{}\n\nSelect one stored target, one or more stored artifacts, a relevance value, and enter a concise observation summary. Do not enter secrets, credentials, tokens, private keys, or other private secret material.",
-                    pending.request.task_id.as_str(), pending.inbox_item.question, pending.inbox_item.context_summary, form_text
-                ),
-                json!({
-                    "type":"object",
-                    "properties":{
-                        "selected_target": {"type":"string","title":"Evidence target","enum":target_values,"enumNames":target_names},
-                        "selected_artifact_ids": {"type":"array","title":"Observed artifacts","items":{"type":"string","enum":artifact_ids,"enumNames":artifact_names},"minItems":1,"uniqueItems":true},
-                        "relevance_status": {"type":"string","title":"Relevance","enum":relevance_options},
-                        "summary": {"type":"string","title":"Observation summary","maxLength":summary_max_chars}
-                    },
-                    "required":["selected_target","selected_artifact_ids","relevance_status","summary"],
-                    "additionalProperties":false
-                }),
-            )
-        }
-    };
-
-    let request = json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": ELICITATION_CREATE_METHOD,
-        "params": {
-            "message": message,
-            "requestedSchema": requested_schema
-        }
-    });
-    let wire_bytes = serde_json::to_vec(&request)
-        .map_err(McpAdapterError::Json)?
-        .len()
-        .saturating_add(1);
-    Ok((wire_bytes <= MAX_MCP_ELICITATION_WIRE_BYTES).then_some(request))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ElicitationReply {
-    Accepted(Value),
-    Declined,
-    Cancelled,
-    Invalid(String),
-    Unavailable(String),
-}
-
-pub(crate) fn read_elicitation_response<R: BufRead>(
-    request_id: &str,
-    lines: &mut io::Lines<R>,
-) -> ElicitationReply {
-    let Some(line) = lines.next() else {
-        return ElicitationReply::Unavailable(
-            "stdin closed before the client responded".to_owned(),
-        );
-    };
-    let line = match line {
-        Ok(line) => line,
-        Err(error) => {
-            return ElicitationReply::Unavailable(format!(
-                "failed to read elicitation response: {error}"
-            ))
-        }
-    };
-    let value: Value = match serde_json::from_str(&line) {
-        Ok(value) => value,
-        Err(error) => {
-            return ElicitationReply::Invalid(format!("response was not valid JSON: {error}"))
-        }
-    };
-    let Some(object) = value.as_object() else {
-        return ElicitationReply::Invalid("response must be a JSON-RPC object".to_owned());
-    };
-    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-        return ElicitationReply::Invalid("response jsonrpc must be exactly \"2.0\"".to_owned());
-    }
-    if object.get("id").and_then(Value::as_str) != Some(request_id) {
-        return ElicitationReply::Invalid(
-            "response id did not match the elicitation request".to_owned(),
-        );
-    }
-    if let Some(error) = object.get("error") {
-        return ElicitationReply::Unavailable(format!(
-            "client returned JSON-RPC error: {}",
-            concise_json(error)
-        ));
-    }
-    let Some(result) = object.get("result").and_then(Value::as_object) else {
-        return ElicitationReply::Invalid("response result must be an object".to_owned());
-    };
-    match result.get("action").and_then(Value::as_str) {
-        Some("accept") => {
-            let Some(content) = result.get("content").and_then(Value::as_object) else {
-                return ElicitationReply::Invalid(
-                    "accepted elicitation must include object content".to_owned(),
-                );
-            };
-            ElicitationReply::Accepted(Value::Object(content.clone()))
-        }
-        Some("decline") => ElicitationReply::Declined,
-        Some("cancel") => ElicitationReply::Cancelled,
-        Some(other) => {
-            ElicitationReply::Invalid(format!("unsupported elicitation action `{other}`"))
-        }
-        None => ElicitationReply::Invalid("response result.action must be a string".to_owned()),
-    }
-}
-
-pub(crate) enum ElicitedResolutionOutcome {
-    Committed(CurrentUserActionProjection),
-    NotCommitted(CurrentUserActionProjection),
-}
-
-fn resolution_from_elicitation(
-    pending: &PendingUserAction,
-    content: &Value,
-) -> Result<UserActionResolutionInput, String> {
-    let content = content
-        .as_object()
-        .ok_or_else(|| "accepted elicitation content must be an object".to_owned())?;
-    match &pending.inbox_item.form {
-        UserActionInboxForm::Choice {
-            choices,
-            note_allowed,
-            note_max_chars,
-        } => {
-            let allowed = if *note_allowed {
-                &["selected_option_id", "note"][..]
-            } else {
-                &["selected_option_id"][..]
-            };
-            reject_unknown_field_names(
-                content.keys().map(String::as_str),
-                allowed,
-                "accepted elicitation content",
-            )?;
-            let selected = content
-                .get("selected_option_id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "content.selected_option_id must be a string".to_owned())?;
-            let choice = choices
-                .iter()
-                .find(|choice| choice.choice_id.as_str() == selected)
-                .ok_or_else(|| "content.selected_option_id is not a stored choice".to_owned())?;
-            let note = match content.get("note") {
-                None if *note_allowed => None,
-                Some(Value::String(note))
-                    if *note_allowed && note.chars().count() <= *note_max_chars as usize =>
-                {
-                    Some(note.clone())
-                }
-                Some(Value::String(_)) if *note_allowed => {
-                    return Err("content.note exceeds its character limit".to_owned())
-                }
-                Some(_) if *note_allowed => {
-                    return Err("content.note must be a string when supplied".to_owned())
-                }
-                None => None,
-                Some(_) => return Err("this form does not accept a note".to_owned()),
-            };
-            Ok(UserActionResolutionInput::Choice {
-                selected_option_id: choice.choice_id.clone(),
-                note: note.into(),
-            })
-        }
-        UserActionInboxForm::EvidenceObservation {
-            target_candidates,
-            artifact_candidates,
-            relevance_options,
-            summary_max_chars,
-        } => {
-            reject_unknown_field_names(
-                content.keys().map(String::as_str),
-                &[
-                    "selected_target",
-                    "selected_artifact_ids",
-                    "relevance_status",
-                    "summary",
-                ],
-                "accepted elicitation content",
-            )?;
-            let selected_target = content
-                .get("selected_target")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "content.selected_target must be a string".to_owned())?;
-            let presentation = UserActionPresentationPlan::from_form(&pending.inbox_item.form)
-                .map_err(|_| "stored evidence form cannot be rendered".to_owned())?;
-            let UserActionPresentationForm::EvidenceObservation { targets, .. } =
-                &presentation.form
-            else {
-                return Err("stored evidence form has the wrong variant".to_owned());
-            };
-            let target_index = targets
-                .iter()
-                .position(|target| target.selector == selected_target)
-                .ok_or_else(|| "content.selected_target is not a stored target".to_owned())?;
-            let target = target_candidates[target_index].clone();
-            let artifact_values = content
-                .get("selected_artifact_ids")
-                .and_then(Value::as_array)
-                .ok_or_else(|| "content.selected_artifact_ids must be an array".to_owned())?;
-            if artifact_values.is_empty() {
-                return Err("content.selected_artifact_ids must not be empty".to_owned());
-            }
-            let mut artifact_ids = Vec::with_capacity(artifact_values.len());
-            let mut seen = BTreeSet::new();
-            for value in artifact_values {
-                let id = value.as_str().ok_or_else(|| {
-                    "content.selected_artifact_ids must contain strings".to_owned()
-                })?;
-                let artifact = artifact_candidates
-                    .iter()
-                    .find(|artifact| artifact.artifact_id.as_str() == id)
-                    .ok_or_else(|| {
-                        "content.selected_artifact_ids contains an unknown artifact".to_owned()
-                    })?;
-                if !seen.insert(id.to_owned()) {
-                    return Err(
-                        "content.selected_artifact_ids must not contain duplicates".to_owned()
-                    );
-                }
-                artifact_ids.push(artifact.artifact_id.clone());
-            }
-            let relevance_value = content
-                .get("relevance_status")
-                .cloned()
-                .ok_or_else(|| "content.relevance_status is required".to_owned())?;
-            let relevance_status: EvidenceRelevanceStatus = serde_json::from_value(relevance_value)
-                .map_err(|_| "content.relevance_status is invalid".to_owned())?;
-            if !relevance_options.contains(&relevance_status) {
-                return Err("content.relevance_status is not a stored option".to_owned());
-            }
-            let summary = content
-                .get("summary")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "content.summary must be a string".to_owned())?;
-            if summary.trim().is_empty() || summary.chars().count() > *summary_max_chars as usize {
-                return Err(
-                    "content.summary must be non-empty and within its character limit".to_owned(),
-                );
-            }
-            Ok(UserActionResolutionInput::EvidenceObservation {
-                target,
-                artifact_ids,
-                relevance_status,
-                summary: summary.to_owned(),
-            })
-        }
-    }
-}
-
-pub(crate) fn resolve_elicited_user_action(
-    adapter: &McpAdapter,
-    pending: &PendingUserAction,
-    resolution: UserActionResolutionInput,
-    elicitation_request_id: &str,
-) -> Result<ElicitedResolutionOutcome, McpAdapterError> {
-    let channel_submission_id = format!("mcp_elicitation:{elicitation_request_id}");
-    let request = ResolveUserActionRequest {
-        envelope: ToolEnvelope {
-            project_id: pending.request.project_id.clone(),
-            task_id: Some(pending.request.task_id.clone()).into(),
-            request_id: RequestId::new(format!(
-                "req_{}",
-                sanitize_metadata_component(&channel_submission_id)
-            )),
-            idempotency_key: Some(IdempotencyKey::new(channel_submission_id.clone())).into(),
-            expected_state_version: RequiredNullable::null(),
-            dry_run: false,
-            locale: Some(DEFAULT_LOCALE.to_owned()).into(),
-        },
-        user_action_request_id: pending.request.user_action_request_id.clone(),
-        channel_submission_id,
-        resolution,
-    };
-    let invocation = InvocationContext::new(
-        pending.request.project_id.clone(),
-        ActorSource::LocalUser,
-        OperationCategory::UserOnly,
-        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-    );
-    let response = adapter
-        .core
-        .resolve_user_action(request, invocation)
-        .map_err(McpAdapterError::Core)?;
-    let current = current_user_action_projection(adapter, pending)?;
-    if response.response_value["base"]["response_kind"].as_str() == Some("result") {
-        Ok(ElicitedResolutionOutcome::Committed(current))
-    } else {
-        Ok(ElicitedResolutionOutcome::NotCommitted(current))
-    }
-}
-
-fn reject_resolution(pending: &PendingUserAction) -> Option<UserActionResolutionInput> {
-    let UserActionRequestBody::Choice(choice) = &pending.request.body else {
-        return None;
-    };
-    let selected = choice
-        .options
-        .iter()
-        .find(|option| option.machine_action == UserActionOptionAction::Reject)?;
-    Some(UserActionResolutionInput::Choice {
-        selected_option_id: selected.option_id.clone(),
-        note: RequiredNullable::null(),
-    })
 }
 
 pub(crate) struct UserActionFallback {
     texts: Vec<String>,
     kind: DiagnosticFallbackKind,
-    deferred_local_web_handoff: Option<DeferredLocalWebHandoff>,
-}
-
-pub(crate) fn user_action_fallback(
-    adapter: &McpAdapter,
-    pending: &PendingUserAction,
-    capabilities: &McpUserChannelCapabilities,
-) -> Result<UserActionFallback, McpAdapterError> {
-    let local_web_available = pending
-        .inbox_item
-        .preferred_capture_path
-        .as_ref()
-        .into_iter()
-        .chain(pending.inbox_item.fallbacks.iter())
-        .any(|path| path.available && path.kind == "local_web_consent");
-    if local_web_available && adapter.effective_local_web_consent_available(capabilities) {
-        return local_web_consent_fallback(pending);
-    }
-    Ok(cli_recovery_fallback())
-}
-
-pub(crate) fn local_web_consent_fallback(
-    pending: &PendingUserAction,
-) -> Result<UserActionFallback, McpAdapterError> {
-    let form_digest =
-        canonical_json_bare_sha256(&pending.inbox_item.form).map_err(McpAdapterError::Json)?;
-    Ok(UserActionFallback {
-        texts: vec![generic_user_channel_fallback_text()],
-        kind: DiagnosticFallbackKind::CliInbox,
-        deferred_local_web_handoff: Some(DeferredLocalWebHandoff {
-            project_id: pending.request.project_id.clone(),
-            user_action_request_id: pending.request.user_action_request_id.clone(),
-            form_digest,
-        }),
-    })
 }
 
 pub(crate) fn cli_recovery_fallback() -> UserActionFallback {
     UserActionFallback {
-        texts: vec![generic_user_channel_fallback_text()],
+        texts: vec![cli_inbox_fallback_text()],
         kind: DiagnosticFallbackKind::CliInbox,
-        deferred_local_web_handoff: None,
     }
 }
 
-fn generic_user_channel_fallback_text() -> String {
-    "A pending UserAction requires the user. Use the host's User Channel when available; otherwise open `volicord inbox`. Resume the existing request after the user completes it."
+fn cli_inbox_fallback_text() -> String {
+    "A pending UserAction requires the user. Open `volicord inbox` and resume the existing request after the user completes it."
         .to_owned()
-}
-
-pub(crate) fn percent_encode_query(value: &str) -> String {
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.as_bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-            encoded.push(*byte as char);
-        } else {
-            encoded.push('%');
-            encoded.push(hex_digit(byte >> 4));
-            encoded.push(hex_digit(byte & 0x0f));
-        }
-    }
-    encoded
-}
-
-pub(crate) fn hex_digit(value: u8) -> char {
-    match value {
-        0..=9 => (b'0' + value) as char,
-        10..=15 => (b'A' + (value - 10)) as char,
-        _ => unreachable!("hex digit input is masked to four bits"),
-    }
-}
-
-pub(crate) fn agent_facing_user_action_input_allowed(pending: &PendingUserAction) -> bool {
-    UserActionPresentationPlan::from_form(&pending.inbox_item.form)
-        .and_then(|presentation| {
-            presentation.agent_facing_input_safety(
-                &pending.inbox_item.question,
-                &pending.inbox_item.context_summary,
-            )
-        })
-        .map(UserActionPresentationSafety::allows_agent_facing_input)
-        .unwrap_or(false)
-}
-
-pub(crate) fn next_server_request_id(prefix: &str, next_server_request_id: &mut u64) -> String {
-    let sequence = *next_server_request_id;
-    *next_server_request_id = next_server_request_id.saturating_add(1);
-    format!("{prefix}_{sequence}")
-}
-
-pub(crate) fn concise_json(value: &Value) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "unserializable JSON value".to_owned())
 }
 
 pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
@@ -4315,39 +2912,47 @@ pub(crate) fn write_json_line(
 #[cfg(test)]
 mod mutation_output_tests {
     use super::*;
-    use crate::tests::{
-        exact_host_capability_evidence_artifact_sha256, exact_host_capability_input,
-        exact_local_web_test_capabilities, publish_exact_host_capability_verification,
-    };
-    use std::cell::Cell;
-    use std::io::{BufReader, Cursor};
-    use volicord_store::agent_connections::HOST_KIND_CLAUDE_CODE;
     use volicord_store::evidence_capture::EvidenceCaptureReceiptInsert;
-    use volicord_store::host_capabilities::MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES;
-    use volicord_store::sqlite::{open_registry_database, registry_db_path};
     use volicord_test_support::core_fixtures::{
         CoreFixture, UpdateScopeFixture, UserActionFixture,
     };
     use volicord_types::{
-        AcceptanceCriterionId, BaselineRef, ChangeUnitId, ChangeUnitOperation,
-        EvidenceAssuranceLevel, EvidenceCaptureSpec, EvidenceObservationInput, EvidenceProducer,
-        EvidenceSourceKind, EvidenceTarget, JudgmentKind, RecordId, StateRecordKind, UtcTimestamp,
-        EVIDENCE_CAPTURE_COMMAND_LIMITATION, MAX_OPERATION_RESULT_PAGE_BYTES,
+        canonical_json_bare_sha256, AcceptanceCriterionId, BaselineRef, ChangeUnitId,
+        ChangeUnitOperation, EvidenceAssuranceLevel, EvidenceCaptureSpec, EvidenceObservationInput,
+        EvidenceProducer, EvidenceSourceKind, EvidenceTarget, JudgmentKind, RecordId,
+        StateRecordKind, UtcTimestamp, EVIDENCE_CAPTURE_COMMAND_LIMITATION,
+        MAX_OPERATION_RESULT_PAGE_BYTES,
     };
+
+    fn test_agent_invocation(
+        fixture: &CoreFixture,
+        operation_category: OperationCategory,
+    ) -> InvocationContext {
+        let host = volicord_test_support::test_host_receipt_fixture(
+            fixture.project_id(),
+            fixture.connection_id(),
+        );
+        let receipt = volicord_core::validate_host_verification_receipt(
+            host.receipt,
+            &host.current,
+            &host.validation_time,
+        )
+        .expect("the typed MCP host-receipt fixture must validate");
+        InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::agent_connection(fixture.connection_id()),
+            operation_category,
+            volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        )
+        .with_validated_host_receipt(receipt)
+    }
 
     fn committed_intake_with_receipt(
         prefix: &str,
     ) -> Result<(CoreFixture, PipelineResponse, AuthorityReceipt), Box<dyn Error>> {
         let fixture = CoreFixture::new(prefix)?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
             fixture.intake_request(
                 "req_mcp_recovery_order",
@@ -4363,12 +2968,7 @@ mod mutation_output_tests {
             .expect("committed intake resolves a Task");
         let status = core.status(
             fixture.status_request("req_mcp_recovery_order_status", Some(task_id.as_str())),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
         let receipt = serde_json::from_value(status.response_value["authority_receipt"].clone())?;
         Ok((fixture, committed, receipt))
@@ -4399,13 +2999,8 @@ mod mutation_output_tests {
             workspace_fingerprint: format!("sha256:{}", "3".repeat(64)),
         };
         let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-            .with_git_workspace_context(workspace.clone())
+            test_agent_invocation(&fixture, OperationCategory::AgentWorkflow)
+                .with_git_workspace_context(workspace.clone())
         };
         let intake = core.intake(
             fixture.intake_request(
@@ -4482,15 +3077,11 @@ mod mutation_output_tests {
         let result_sha256 = canonical_json_bare_sha256(&observed_outcome)?;
         let source = json!({
             "connection_id": fixture.connection_id(),
-            "session_id": null,
-            "guard_installation_id": null,
-            "guard_event_ids": [],
-            "watch_observation_refs": [],
             "host_invocation_id": "host_invocation_mcp_producer_recovery"
         });
         let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
         let safe_receipt = json!({
-            "schema_version": "volicord.evidence_capture_receipt.v1",
+            "contract_id": volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
             "capture_kind": "verified_command_execution",
             "capture_intent_id": capture_intent_ref.record_id,
             "input_sha256": intent.input_sha256,
@@ -4573,12 +3164,7 @@ mod mutation_output_tests {
 
         let refreshed = core.status(
             fixture.status_request("req_mcp_producer_recovery_status", Some(task_id.as_str())),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
         Ok((fixture, recorded, refreshed, producer_ref))
     }
@@ -4696,14 +3282,8 @@ mod mutation_output_tests {
             false,
             Some(0),
         );
-        let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let workflow_invocation =
+            || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
 
         let committed = core.intake(request.clone(), workflow_invocation())?;
         assert!(!committed.replayed);
@@ -4726,12 +3306,7 @@ mod mutation_output_tests {
                         "req_mcp_mutation_replay_summary_refresh",
                         Some(context.task_id.as_str()),
                     ),
-                    InvocationContext::new(
-                        context.project_id.clone(),
-                        ActorSource::agent_connection(fixture.connection_id()),
-                        OperationCategory::Read,
-                        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-                    ),
+                    test_agent_invocation(&fixture, OperationCategory::Read),
                 )
                 .map_err(McpAdapterError::Core)
             })?;
@@ -4766,14 +3341,8 @@ mod mutation_output_tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-full-fresh-receipt")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let workflow_invocation =
+            || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
             fixture.intake_request(
                 "req_mcp_full_fresh_receipt",
@@ -4812,12 +3381,7 @@ mod mutation_output_tests {
                         "req_mcp_full_fresh_receipt_status",
                         Some(context.task_id.as_str()),
                     ),
-                    InvocationContext::new(
-                        context.project_id.clone(),
-                        ActorSource::agent_connection(fixture.connection_id()),
-                        OperationCategory::Read,
-                        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-                    ),
+                    test_agent_invocation(&fixture, OperationCategory::Read),
                 )
                 .map_err(McpAdapterError::Core)
             },
@@ -4908,12 +3472,7 @@ mod mutation_output_tests {
                 "req_mcp_refresh_freshness_mismatch_status",
                 Some(task_id.as_str()),
             ),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
         mismatched_refresh.response_value["authority_receipt"]["state_version"] = json!(999);
 
@@ -4946,14 +3505,7 @@ mod mutation_output_tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-post-effect-adapter-failure")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
             fixture.intake_request(
                 "req_mcp_post_effect_adapter_failure",
@@ -4972,12 +3524,7 @@ mod mutation_output_tests {
                 "req_mcp_post_effect_adapter_failure_status",
                 Some(task_id.as_str()),
             ),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
         let expected_compact =
             compact_mutation_method_result(INTAKE_TOOL_NAME, &committed.response_value)?;
@@ -5021,613 +3568,16 @@ mod mutation_output_tests {
     }
 
     #[test]
-    fn local_web_handoff_budget_accepts_exact_limit_and_rejects_next_byte_without_orphan(
+    fn superseded_user_action_projects_latest_state_and_preserves_the_origin_effect(
     ) -> Result<(), Box<dyn Error>> {
-        for (detail_case, detail, response_budget) in [
-            (
-                "summary",
-                MutationDetailLevel::Summary,
-                MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
-            ),
-            (
-                "full",
-                MutationDetailLevel::Full,
-                MAX_MCP_FULL_MUTATION_RESULT_BYTES,
-            ),
-        ] {
-            for (edge_case, extra_byte, expected_handoff) in
-                [("exact", 0_usize, true), ("one-over", 1_usize, false)]
-            {
-                let case = format!("{detail_case}-{edge_case}");
-                let fixture = CoreFixture::new_with_host_kind(
-                    &format!("mcp-local-web-budget-{case}"),
-                    HOST_KIND_CLAUDE_CODE,
-                )?;
-                let core = CoreService::new(fixture.runtime_home_path());
-                let invocation = || {
-                    InvocationContext::new(
-                        ProjectId::new(fixture.project_id()),
-                        ActorSource::agent_connection(fixture.connection_id()),
-                        OperationCategory::AgentWorkflow,
-                        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-                    )
-                };
-                let intake = core.intake(
-                    fixture.intake_request(
-                        &format!("req_mcp_local_web_budget_{case}_intake"),
-                        &format!("idem_mcp_local_web_budget_{case}_intake"),
-                        false,
-                        Some(0),
-                    ),
-                    invocation(),
-                )?;
-                let task_id = intake.resolved_task_id.expect("intake resolves a Task");
-                let pending = core.request_user_action(
-                    fixture.user_action_request(UserActionFixture {
-                        request_id: &format!("req_mcp_local_web_budget_{case}_pending"),
-                        idempotency_key: &format!("idem_mcp_local_web_budget_{case}_pending"),
-                        dry_run: false,
-                        expected_state_version: Some(1),
-                        task_id: task_id.as_str(),
-                        change_unit_id: None,
-                        judgment_kind: JudgmentKind::ProductDecision,
-                    }),
-                    invocation(),
-                )?;
-                let request_id = pending.response_value["user_action_request_summary"]
-                    ["user_action_request_id"]
-                    .as_str()
-                    .expect("result identifies the pending request");
-                let context = McpConnectionContext::resolve(
-                    fixture.runtime_home_path(),
-                    fixture.connection_id(),
-                )?;
-                let base_url = "http://127.0.0.1:39000";
-                let readiness = LocalWebConsentReadiness::ready_for_test();
-                let creator_readiness = readiness.clone();
-                let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
-                    .with_local_web_consent_readiness(
-                        LocalWebConsentContext {
-                            base_url: base_url.to_owned(),
-                        },
-                        readiness,
-                    );
-                let before: (i64, String) = fixture.conn()?.query_row(
-                "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
-                let mut output = ToolCallOutput::success("{}".to_owned())?;
-                output.primary_text.clear();
-                output.deferred_local_web_handoff = Some(DeferredLocalWebHandoff {
-                    project_id: ProjectId::new(fixture.project_id()),
-                    user_action_request_id: UserActionRequestId::new(request_id),
-                    form_digest: format!("sha256:{}", "0".repeat(64)),
-                });
-                let fixed_length_url = format!(
-                    "{base_url}{LOCAL_WEB_CONSENT_PATH}?project={}&token={}",
-                    percent_encode_query(fixture.project_id()),
-                    "0".repeat(64)
-                );
-                output.host_meta = Some(local_web_host_meta(
-                    &fixed_length_url,
-                    "9999-12-31T23:59:59.999999999Z",
-                ));
-                let fixed_bytes = rendered_tool_call_output_size(&output)?;
-                assert!(fixed_bytes <= response_budget);
-                output.host_meta = None;
-                output.primary_text = "x".repeat(response_budget - fixed_bytes + extra_byte);
-
-                let token_creator_called = Cell::new(false);
-                let verification_label = format!("budget_{case}");
-                publish_exact_host_capability_verification(&fixture, &verification_label)?;
-                let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
-                    exact_host_capability_evidence_artifact_sha256(&verification_label),
-                );
-                let capabilities = exact_local_web_test_capabilities(&fixture)?;
-                let output = materialize_local_web_handoff_with_token_creator(
-                    &adapter,
-                    Some(detail),
-                    &capabilities,
-                    output,
-                    |runtime_home, input| {
-                        token_creator_called.set(true);
-                        assert!(
-                            creator_readiness.issuance_lease_is_held_for_test(),
-                            "token creator must run while the readiness lease is held"
-                        );
-                        create_user_action_channel_token(runtime_home, input)
-                    },
-                )?;
-                let after: (i64, String) = fixture.conn()?.query_row(
-                "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
-
-                assert!(output.deferred_local_web_handoff.is_none());
-                assert_eq!(output.host_meta.is_some(), expected_handoff, "{case}");
-                assert_eq!(token_creator_called.get(), expected_handoff, "{case}");
-                assert_eq!(
-                    output.diagnostic_facts.fallback_kind,
-                    Some(if expected_handoff {
-                        DiagnosticFallbackKind::LocalWebConsent
-                    } else {
-                        DiagnosticFallbackKind::CliInbox
-                    }),
-                    "{case}"
-                );
-                if expected_handoff {
-                    assert_eq!(after.0, before.0 + 1, "{case}");
-                    assert!(
-                        rendered_tool_call_output_size(&output)? <= response_budget,
-                        "{case}"
-                    );
-                } else {
-                    assert_eq!(
-                        after, before,
-                        "one-byte-over fallback must have no token or clock effect"
-                    );
-                }
-            }
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn degraded_local_web_listener_before_materialization_creates_no_handoff_or_token(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new_with_host_kind(
-            "mcp-local-web-degraded-before-materialization",
-            HOST_KIND_CLAUDE_CODE,
-        )?;
+        let fixture = CoreFixture::new("mcp-user-action-record-race")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let session_id = "session_local_web_degraded_before_materialization";
-        let invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-            )
-            .with_session_id(session_id)
-            .with_local_web_consent_available(true)
-        };
+        let workflow_invocation =
+            || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
             fixture.intake_request(
-                "req_mcp_local_web_degraded_intake",
-                "idem_mcp_local_web_degraded_intake",
-                false,
-                Some(0),
-            ),
-            invocation(),
-        )?;
-        let task_id = intake.resolved_task_id.expect("intake resolves a Task");
-        let pending = core.request_user_action(
-            fixture.user_action_request(UserActionFixture {
-                request_id: "req_mcp_local_web_degraded_pending",
-                idempotency_key: "idem_mcp_local_web_degraded_pending",
-                dry_run: false,
-                expected_state_version: Some(1),
-                task_id: task_id.as_str(),
-                change_unit_id: None,
-                judgment_kind: JudgmentKind::ProductDecision,
-            }),
-            invocation(),
-        )?;
-        let context =
-            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-                .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
-        let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
-            .with_local_web_consent_readiness(
-                LocalWebConsentContext {
-                    base_url: "http://127.0.0.1:39000".to_owned(),
-                },
-                LocalWebConsentReadiness::ready_for_test(),
-            );
-        let mut input_lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
-        let mut wire_output = Vec::new();
-        let mut request_sequence = 1;
-        publish_exact_host_capability_verification(&fixture, "listener_degraded")?;
-        let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
-            exact_host_capability_evidence_artifact_sha256("listener_degraded"),
-        );
-        let capabilities = exact_local_web_test_capabilities(&fixture)?;
-        let output = user_action_tool_output(
-            &adapter,
-            pending,
-            true,
-            capabilities.clone(),
-            &mut request_sequence,
-            &mut input_lines,
-            &mut wire_output,
-        )?;
-        assert!(wire_output.is_empty());
-        assert!(output.deferred_local_web_handoff.is_some());
-        assert!(output.host_meta.is_none());
-        let before: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        adapter
-            .local_web_consent_readiness
-            .as_ref()
-            .expect("fixture listener readiness")
-            .mark_unavailable();
-
-        let output = materialize_local_web_handoff(
-            &adapter,
-            Some(MutationDetailLevel::Summary),
-            &capabilities,
-            output,
-        )?;
-
-        assert!(output.host_meta.is_none());
-        assert!(output.deferred_local_web_handoff.is_none());
-        assert_eq!(
-            output.diagnostic_facts.fallback_kind,
-            Some(DiagnosticFallbackKind::CliInbox)
-        );
-        let result = tool_call_result_from_output(output.clone());
-        let model_visible = json!({
-            "content": result["content"].clone(),
-            "structuredContent": result["structuredContent"].clone(),
-        });
-        assert!(result.get("_meta").is_none());
-        assert!(result["content"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|entry| entry["text"].as_str())
-            .any(|text| text.contains("`volicord inbox`")));
-        let visible_text = serde_json::to_string(&model_visible)?;
-        assert!(!visible_text.contains("http://127.0.0.1:39000"));
-        assert!(!visible_text.contains("token="));
-        let after: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(
-            after, before,
-            "degraded listener fallback must have no token or clock effect"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn final_materialization_rechecks_current_verification_after_deferred_selection(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new_with_host_kind(
-            "mcp-local-web-final-verification-recheck",
-            HOST_KIND_CLAUDE_CODE,
-        )?;
-        let context =
-            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
-        let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
-            .with_local_web_consent_readiness(
-                LocalWebConsentContext {
-                    base_url: "http://127.0.0.1:39000".to_owned(),
-                },
-                LocalWebConsentReadiness::ready_for_test(),
-            )
-            .with_expected_evidence_artifact_sha256_for_test(
-                exact_host_capability_evidence_artifact_sha256("final_recheck_pass"),
-            );
-        publish_exact_host_capability_verification(&fixture, "final_recheck_pass")?;
-        let capabilities = exact_local_web_test_capabilities(&fixture)?;
-        assert!(adapter.effective_local_web_consent_available(&capabilities));
-        let mut output = ToolCallOutput::success("{}".to_owned())?;
-        output.deferred_local_web_handoff = Some(DeferredLocalWebHandoff {
-            project_id: ProjectId::new(fixture.project_id()),
-            user_action_request_id: UserActionRequestId::new("uar_final_recheck"),
-            form_digest: format!("sha256:{}", "0".repeat(64)),
-        });
-        let before: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        let now = chrono::DateTime::<chrono::Utc>::from(SystemTime::now());
-        let mut failed = exact_host_capability_input(
-            &fixture,
-            "final_recheck_failed",
-            now,
-            now + chrono::Duration::hours(1),
-        )?;
-        failed.outcome =
-            volicord_store::host_capabilities::HOST_CAPABILITY_OUTCOME_FAILED.to_owned();
-        volicord_store::host_capabilities::publish_host_capability_verification(
-            fixture.runtime_home_path(),
-            failed,
-        )?;
-
-        let output = materialize_local_web_handoff(
-            &adapter,
-            Some(MutationDetailLevel::Summary),
-            &capabilities,
-            output,
-        )?;
-
-        assert!(output.host_meta.is_none());
-        assert!(output.deferred_local_web_handoff.is_none());
-        assert_eq!(
-            output.diagnostic_facts.fallback_kind,
-            Some(DiagnosticFallbackKind::CliInbox)
-        );
-        let after: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(after, before);
-        Ok(())
-    }
-
-    #[test]
-    fn overbound_current_host_capability_fails_closed_without_local_web_effects(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new_with_host_kind(
-            "mcp-local-web-overbound-current-verification",
-            HOST_KIND_CLAUDE_CODE,
-        )?;
-        let context =
-            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
-        let verification_label = "overbound_current_verification";
-        let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
-            .with_local_web_consent_readiness(
-                LocalWebConsentContext {
-                    base_url: "http://127.0.0.1:39000".to_owned(),
-                },
-                LocalWebConsentReadiness::ready_for_test(),
-            )
-            .with_expected_evidence_artifact_sha256_for_test(
-                exact_host_capability_evidence_artifact_sha256(verification_label),
-            );
-        publish_exact_host_capability_verification(&fixture, verification_label)?;
-        let capabilities = exact_local_web_test_capabilities(&fixture)?;
-        assert!(adapter.effective_local_web_consent_available(&capabilities));
-
-        let output = ToolCallOutput::success("{}".to_owned())?.with_user_action_fallback(
-            UserActionFallback {
-                texts: vec![generic_user_channel_fallback_text()],
-                kind: DiagnosticFallbackKind::CliInbox,
-                deferred_local_web_handoff: Some(DeferredLocalWebHandoff {
-                    project_id: ProjectId::new(fixture.project_id()),
-                    user_action_request_id: UserActionRequestId::new("uar_overbound_current"),
-                    form_digest: format!("sha256:{}", "0".repeat(64)),
-                }),
-            },
-        );
-        let before: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(before.0, 0);
-        let private_marker = "private-overbound-verification-id";
-        let corrupt_verification_internal_id = format!(
-            "{private_marker}{}",
-            "가".repeat(MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES)
-        );
-        assert!(
-            corrupt_verification_internal_id.len() > MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES
-        );
-        let verification_internal_id = format!("hcv_{verification_label}");
-        let registry = open_registry_database(registry_db_path(fixture.runtime_home_path()))?;
-        registry.pragma_update(None, "foreign_keys", "OFF")?;
-        registry.pragma_update(None, "ignore_check_constraints", "ON")?;
-        let corrupted = registry.execute(
-            "UPDATE host_capability_verifications
-                SET verification_internal_id = ?1
-              WHERE verification_internal_id = ?2",
-            [
-                corrupt_verification_internal_id.as_str(),
-                verification_internal_id.as_str(),
-            ],
-        )?;
-        assert_eq!(corrupted, 1);
-        let pointer_corrupted = registry.execute(
-            "UPDATE host_capability_state
-                SET current_verification_internal_id = ?1
-              WHERE current_verification_internal_id = ?2",
-            [
-                corrupt_verification_internal_id.as_str(),
-                verification_internal_id.as_str(),
-            ],
-        )?;
-        assert_eq!(pointer_corrupted, 1);
-        drop(registry);
-
-        assert!(!adapter.effective_local_web_consent_available(&capabilities));
-        let output = materialize_local_web_handoff(
-            &adapter,
-            Some(MutationDetailLevel::Summary),
-            &capabilities,
-            output,
-        )?;
-
-        assert!(output.host_meta.is_none());
-        assert!(output.deferred_local_web_handoff.is_none());
-        assert_eq!(
-            output.diagnostic_facts.fallback_kind,
-            Some(DiagnosticFallbackKind::CliInbox)
-        );
-        let result = tool_call_result_from_output(output);
-        assert!(result.get("_meta").is_none());
-        assert!(result["content"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|entry| entry["text"].as_str())
-            .any(|text| text.contains("`volicord inbox`")));
-        let result_text = serde_json::to_string(&result)?;
-        assert!(!result_text.contains(private_marker));
-        assert!(!result_text.contains("http://127.0.0.1:39000"));
-        assert!(!result_text.contains("token="));
-        let after: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(
-            after, before,
-            "corrupt host-capability fallback must have no token or clock effect"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn idempotent_create_replay_never_reissues_a_local_web_handoff() -> Result<(), Box<dyn Error>> {
-        let fixture =
-            CoreFixture::new_with_host_kind("mcp-local-web-create-replay", HOST_KIND_CLAUDE_CODE)?;
-        let core = CoreService::new(fixture.runtime_home_path());
-        let intake = core.intake(
-            fixture.intake_request(
-                "req_mcp_local_web_replay_intake",
-                "idem_mcp_local_web_replay_intake",
-                false,
-                Some(0),
-            ),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
-        )?;
-        let task_id = intake.resolved_task_id.expect("intake resolves a Task");
-        let context =
-            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-                .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
-        let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
-            .with_local_web_consent_readiness(
-                LocalWebConsentContext {
-                    base_url: "http://127.0.0.1:39000".to_owned(),
-                },
-                LocalWebConsentReadiness::ready_for_test(),
-            );
-        let session_id = "session_mcp_local_web_create_replay";
-        publish_exact_host_capability_verification(&fixture, "create_replay")?;
-        let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
-            exact_host_capability_evidence_artifact_sha256("create_replay"),
-        );
-        let capabilities = exact_local_web_test_capabilities(&fixture)?;
-        adapter.call_tool_for_session_with_user_channel_capabilities(
-            STATUS_TOOL_NAME,
-            json!({"task_id": task_id.as_str()}),
-            Some(session_id),
-            capabilities.clone(),
-        )?;
-        let invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-            )
-            .with_session_id(session_id)
-            .with_local_web_consent_available(true)
-        };
-        let request = fixture.user_action_request(UserActionFixture {
-            request_id: "req_mcp_local_web_create_replay",
-            idempotency_key: "idem_mcp_local_web_create_replay",
-            dry_run: false,
-            expected_state_version: Some(1),
-            task_id: task_id.as_str(),
-            change_unit_id: None,
-            judgment_kind: JudgmentKind::ProductDecision,
-        });
-        let created = core.request_user_action(request.clone(), invocation())?;
-        assert!(!created.replayed);
-        let created_operation_result_ref = created.operation_result_ref.clone();
-        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
-        let mut writer = Vec::new();
-        let mut request_sequence = 1;
-        let created_output = user_action_tool_output(
-            &adapter,
-            created,
-            true,
-            capabilities.clone(),
-            &mut request_sequence,
-            &mut lines,
-            &mut writer,
-        )?;
-        let created_output = materialize_local_web_handoff(
-            &adapter,
-            Some(MutationDetailLevel::Summary),
-            &capabilities,
-            created_output,
-        )?;
-        assert!(created_output.host_meta.is_some());
-        let exact_origin = created_output.structured_content["agent_workflow_result"].clone();
-        let after_create_counts = fixture.counts()?;
-        let after_create_storage: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(after_create_storage.0, 1);
-
-        let replayed = core.request_user_action(request, invocation())?;
-        assert!(replayed.replayed);
-        assert_eq!(replayed.operation_result_ref, created_operation_result_ref);
-        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
-        let mut writer = Vec::new();
-        let mut request_sequence = 1;
-        let replayed_output = user_action_tool_output(
-            &adapter,
-            replayed,
-            true,
-            capabilities.clone(),
-            &mut request_sequence,
-            &mut lines,
-            &mut writer,
-        )?;
-        let replayed_output = materialize_local_web_handoff(
-            &adapter,
-            Some(MutationDetailLevel::Summary),
-            &capabilities,
-            replayed_output,
-        )?;
-        assert!(replayed_output.host_meta.is_none());
-        assert!(replayed_output.deferred_local_web_handoff.is_none());
-        assert_eq!(
-            replayed_output.structured_content["agent_workflow_result_replayed"],
-            true
-        );
-        assert_eq!(
-            replayed_output.structured_content["agent_workflow_result"],
-            exact_origin
-        );
-        assert_eq!(fixture.counts()?, after_create_counts);
-        let after_replay_storage: (i64, String) = fixture.conn()?.query_row(
-            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        assert_eq!(after_replay_storage, after_create_storage);
-        Ok(())
-    }
-
-    #[test]
-    fn superseded_user_action_suppresses_elicitation_and_preserves_the_origin_effect(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new("mcp-elicited-record-race")?;
-        let core = CoreService::new(fixture.runtime_home_path());
-        let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
-        let intake = core.intake(
-            fixture.intake_request(
-                "req_mcp_elicited_record_race_intake",
-                "idem_mcp_elicited_record_race_intake",
+                "req_mcp_user_action_record_race_intake",
+                "idem_mcp_user_action_record_race_intake",
                 false,
                 Some(0),
             ),
@@ -5639,8 +3589,8 @@ mod mutation_output_tests {
             .expect("intake resolves a Task");
         let pending_response = core.request_user_action(
             fixture.user_action_request(UserActionFixture {
-                request_id: "req_mcp_elicited_record_race_pending",
-                idempotency_key: "idem_mcp_elicited_record_race_pending",
+                request_id: "req_mcp_user_action_record_race_pending",
+                idempotency_key: "idem_mcp_user_action_record_race_pending",
                 dry_run: false,
                 expected_state_version: Some(1),
                 task_id: task_id.as_str(),
@@ -5651,13 +3601,13 @@ mod mutation_output_tests {
         )?;
         core.update_scope(
             fixture.update_scope_request(UpdateScopeFixture {
-                request_id: "req_mcp_elicited_record_race_scope",
-                idempotency_key: "idem_mcp_elicited_record_race_scope",
+                request_id: "req_mcp_user_action_record_race_scope",
+                idempotency_key: "idem_mcp_user_action_record_race_scope",
                 dry_run: false,
                 expected_state_version: Some(2),
                 task_id: task_id.as_str(),
                 operation: ChangeUnitOperation::KeepCurrent,
-                scope_summary: "Advance state while host elicitation remains open.",
+                scope_summary: "Advance state while the user action remains pending.",
             }),
             workflow_invocation(),
         )?;
@@ -5665,18 +3615,7 @@ mod mutation_output_tests {
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
         let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
 
-        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
-        let mut elicitation_request = Vec::new();
-        let mut request_sequence = 1;
-        let output = user_action_tool_output(
-            &adapter,
-            pending_response,
-            true,
-            McpUserChannelCapabilities::new(true, false),
-            &mut request_sequence,
-            &mut lines,
-            &mut elicitation_request,
-        )?;
+        let output = user_action_tool_output(&adapter, pending_response)?;
         assert_eq!(output.post_effect_failure, None);
         assert_eq!(
             output.structured_content["agent_workflow_result"]["user_action_request_summary"]
@@ -5686,7 +3625,6 @@ mod mutation_output_tests {
         assert_eq!(output.structured_content["current_status"], "superseded");
         assert!(output.structured_content["user_channel_resolution"].is_null());
         assert_eq!(output.structured_content["derived_refs"], json!([]));
-        assert!(elicitation_request.is_empty());
         let output = finalize_mutation_output_with_refresh(
             REQUEST_USER_ACTION_TOOL_NAME,
             Some(MutationDetailLevel::Summary),
@@ -5694,15 +3632,10 @@ mod mutation_output_tests {
             |context| {
                 core.status(
                     fixture.status_request(
-                        "req_mcp_elicited_record_race_status",
+                        "req_mcp_user_action_record_race_status",
                         Some(context.task_id.as_str()),
                     ),
-                    InvocationContext::new(
-                        context.project_id.clone(),
-                        ActorSource::agent_connection(fixture.connection_id()),
-                        OperationCategory::Read,
-                        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-                    ),
+                    test_agent_invocation(&fixture, OperationCategory::Read),
                 )
                 .map_err(McpAdapterError::Core)
             },
@@ -5742,14 +3675,8 @@ mod mutation_output_tests {
     {
         let fixture = CoreFixture::new("mcp-noncanonical-pending-post-effect")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let workflow_invocation =
+            || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
             fixture.intake_request(
                 "req_mcp_noncanonical_pending_intake",
@@ -5781,23 +3708,9 @@ mod mutation_output_tests {
         let context =
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
         let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
-        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
-        let mut elicitation_request = Vec::new();
-        let mut request_sequence = 1;
-
-        let error = user_action_tool_output(
-            &adapter,
-            pending_response.clone(),
-            true,
-            McpUserChannelCapabilities::new(true, false),
-            &mut request_sequence,
-            &mut lines,
-            &mut elicitation_request,
-        )
-        .expect_err("mismatched public summary must fail before User Channel projection");
+        let error = user_action_tool_output(&adapter, pending_response.clone())
+            .expect_err("mismatched public summary must fail during current-state reread");
         assert!(matches!(error, McpAdapterError::Protocol(_)));
-        assert!(elicitation_request.is_empty());
-        assert_eq!(request_sequence, 1);
         assert_eq!(fixture.counts()?, before);
 
         let output = ToolCallOutput::from_pipeline_response(&pending_response)?
@@ -5812,12 +3725,7 @@ mod mutation_output_tests {
                         "req_mcp_noncanonical_pending_status",
                         Some(context.task_id.as_str()),
                     ),
-                    InvocationContext::new(
-                        context.project_id.clone(),
-                        ActorSource::agent_connection(fixture.connection_id()),
-                        OperationCategory::Read,
-                        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-                    ),
+                    test_agent_invocation(&fixture, OperationCategory::Read),
                 )
                 .map_err(McpAdapterError::Core)
             },
@@ -5852,14 +3760,7 @@ mod mutation_output_tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-post-effect-projection-failure")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
             fixture.intake_request(
                 "req_mcp_post_effect_projection_failure",
@@ -5878,12 +3779,7 @@ mod mutation_output_tests {
                 "req_mcp_post_effect_projection_failure_status",
                 Some(task_id.as_str()),
             ),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
         let mut output = ToolCallOutput::from_pipeline_response(&committed)?;
         output.structured_content["base"]["effect_kind"] = json!("invalid_projection_fixture");
@@ -5924,14 +3820,8 @@ mod mutation_output_tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-staging-refresh-failure")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let workflow_invocation =
+            || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
             fixture.intake_request(
                 "req_mcp_staging_refresh_failure",
@@ -6007,14 +3897,8 @@ mod mutation_output_tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-mutation-oversized-fresh-receipt")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let workflow_invocation =
+            || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
             fixture.intake_request(
                 "req_mcp_mutation_oversized_fresh_receipt",
@@ -6033,12 +3917,7 @@ mod mutation_output_tests {
                 "req_mcp_mutation_oversized_fresh_receipt_status",
                 Some(task_id.as_str()),
             ),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
         let mut blocker = refreshed.response_value["authority_receipt"]["close_blockers"]
             .as_array()
@@ -6616,14 +4495,8 @@ mod mutation_output_tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-stage-oversized-fresh-receipt")?;
         let core = CoreService::new(fixture.runtime_home_path());
-        let workflow_invocation = || {
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            )
-        };
+        let workflow_invocation =
+            || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
             fixture.intake_request(
                 "req_mcp_stage_oversized_intake",
@@ -6653,12 +4526,7 @@ mod mutation_output_tests {
         let expected_handle = staged.response_value["staged_artifact_handle"].clone();
         let mut refreshed = core.status(
             fixture.status_request("req_mcp_stage_oversized_status", Some(task_id.as_str())),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
         let mut blocker = refreshed.response_value["authority_receipt"]["close_blockers"]
             .as_array()

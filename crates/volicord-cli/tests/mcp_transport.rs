@@ -5,7 +5,7 @@ mod support;
 use std::{collections::BTreeSet, error::Error, fs, path::PathBuf, process::Command};
 
 use serde_json::{json, Value};
-use volicord_core::{CoreService, InvocationContext};
+use volicord_core::{validate_host_verification_receipt, CoreService, InvocationContext};
 use volicord_mcp::{
     ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
 };
@@ -16,12 +16,12 @@ use volicord_store::{
     },
     core_pipeline::StorageEffectCounts,
 };
-use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_test_support::{core_fixtures::CoreFixture, test_host_receipt_fixture};
 use volicord_types::{
     ActorSource, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME,
     PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME,
     REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
-    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 use support::{
@@ -31,10 +31,9 @@ use support::{
     },
     binary_fixture::{base_command, run_child, run_without_binding, ChildStdin},
     json::{
-        adapter_tool_response, initialize_request, initialize_request_with_capabilities,
-        initialized_notification, initialized_notification_with_params, json_lines,
-        json_rpc_values, notification, request, responses_by_id, tools_call, tools_list_messages,
-        volicord_response,
+        adapter_tool_response, initialize_request, initialized_notification,
+        initialized_notification_with_params, json_lines, notification, request, responses_by_id,
+        tools_call, tools_list_messages,
     },
 };
 
@@ -46,8 +45,9 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
 
     let help = run_without_binding(["--help"])?;
     assert_success(&help);
-    assert!(stdout(&help).contains("mcp --stdio --connection <connection_id>"));
-    assert!(stdout(&help).contains("mcp --stdio --discover-repository --host codex|claude-code"));
+    assert!(stdout(&help).contains("Usage: volicord mcp"));
+    assert!(stdout(&help).contains("--discover-repository"));
+    assert!(stdout(&help).contains("--connection <CONNECTION>"));
 
     let version = run_without_binding(["--version"])?;
     assert_success(&version);
@@ -62,11 +62,11 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
 
     let no_args = run_without_binding([])?;
     assert_eq!(no_args.status.code(), Some(2));
-    assert!(stderr(&no_args).contains("MCP mode is required"));
+    assert!(stderr(&no_args).contains("required arguments were not provided"));
 
     let check_without_connection = run_without_binding(["--check"])?;
     assert_eq!(check_without_connection.status.code(), Some(2));
-    assert!(stderr(&check_without_connection).contains("--connection is required"));
+    assert!(stderr(&check_without_connection).contains("--connection"));
 
     let before = fixture.counts()?;
     let connection_check = run_child(
@@ -88,18 +88,12 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
             "registry_read:",
             "project_state_read:",
             "project_state_write:",
-            "startup_observation:",
             "effective_tool_mode:",
             "tools_list_schema_validation:",
             "tool_naming_style:",
             "allowed_projects:",
             "available_projects:",
             "verification_scope:",
-            "watcher_status:",
-            "watcher_baseline_created_at:",
-            "watcher_coverage_start_at:",
-            "watcher_coverage_basis:",
-            "watcher_partial_coverage_warning:",
             "project[0].project_id:",
             "project[0].available:",
             "project[0].state_read:",
@@ -123,15 +117,12 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     assert_report_line(&report, "registry_read: passed");
     assert_report_line(&report, "project_state_read: passed");
     assert_report_line(&report, "project_state_write: passed");
-    assert_report_line(&report, "startup_observation: recordable");
     assert_report_line(&report, "effective_tool_mode: workflow");
     assert_report_line(&report, "tools_list_schema_validation: passed");
     assert_report_line(&report, "tool_naming_style: dotted_namespace");
     assert_report_line(&report, "allowed_projects: 1");
     assert_report_line(&report, "available_projects: 1");
     assert_report_line(&report, "verification_scope: startup_check_only");
-    assert_report_line(&report, "watcher_status: pending_mcp_start");
-    assert_report_line(&report, "watcher_coverage_basis: mcp_start");
     assert_report_line(
         &report,
         &format!("project[0].project_id: {}", fixture.project_id()),
@@ -139,7 +130,7 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     assert_report_line(&report, "project[0].available: true");
     assert_report_line(&report, "project[0].state_read: passed");
     assert_report_line(&report, "project[0].state_write: passed");
-    assert_report_line(&report, "project[0].unavailable_reason: ");
+    assert_report_line(&report, "project[0].unavailable_reason: not_applicable");
     assert_eq!(fixture.counts()?, before);
 
     let project_check = run_child(
@@ -169,16 +160,18 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
 
     let unknown = run_without_binding(["--not-a-real-option"])?;
     assert_eq!(unknown.status.code(), Some(2));
-    assert!(stderr(&unknown).contains("unknown option"));
+    assert!(stderr(&unknown).contains("unexpected argument"));
 
     Ok(())
 }
 
 #[test]
-fn repository_discovery_stdio_resolves_the_clone_local_binding() -> Result<(), Box<dyn Error>> {
+fn repository_discovery_stdio_rejects_unverified_managed_host_without_effects(
+) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-repository-discovery")?;
     let repo_root = fixture.repo_root();
     fs::create_dir(repo_root.join(".git"))?;
+    let before = fixture.counts()?;
     let mut command =
         fixture.connection_command(["--stdio", "--discover-repository", "--host", "codex"]);
     command.current_dir(&repo_root);
@@ -188,18 +181,18 @@ fn repository_discovery_stdio_resolves_the_clone_local_binding() -> Result<(), B
         ChildStdin::WriteAndClose(tools_list_messages(1, 2)?),
     )?;
 
-    assert_success_captured(&output);
-    assert_eq!(captured_stderr(&output), "");
-    let responses = responses_by_id(&output.stdout)?;
-    assert!(responses[&1]["result"]["serverInfo"]["name"].is_string());
-    assert!(responses[&2]["result"]["tools"].is_array());
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(captured_stdout(&output), "");
+    assert!(captured_stderr(&output).contains("managed_host_configuration_stale"));
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
+fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_host_receipt(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-stdio")?;
+    let before = fixture.counts()?;
     let first_messages = json_lines(&[
         initialize_request(1),
         initialized_notification(),
@@ -304,19 +297,8 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
     );
     assert_eq!(project_list["projects"][0]["available"], true);
 
-    assert_eq!(responses[&4]["result"]["isError"], json!(false));
-    let status = volicord_response(&responses[&4])?;
-    assert_eq!(status["base"]["response_kind"], "result");
-    assert_eq!(status["base"]["state_version"], 0);
-    assert_authority_disclosure(&status);
-
-    let intake = volicord_response(&responses[&5])?;
-    assert_eq!(intake["base"]["response_kind"], "result");
-    assert_eq!(intake["base"]["state_version"], 1);
-    let task_id = intake["task_ref"]["record_id"]
-        .as_str()
-        .expect("intake response should include a task ref")
-        .to_owned();
+    assert_host_receipt_missing(&responses[&4]);
+    assert_host_receipt_missing(&responses[&5]);
 
     for (id, path) in [(6, "/connection_id"), (7, "/unexpected")] {
         assert!(responses[&id].get("error").is_none());
@@ -337,6 +319,7 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
             .iter()
             .any(|issue| issue["path"] == path && issue["code"] == "MCP_ARGUMENT_UNKNOWN"));
     }
+    assert_eq!(fixture.counts()?, before);
 
     let reconnect_before_handshake = run_child(
         fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
@@ -374,102 +357,18 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
         reconnect_responses[&11]["result"]["protocolVersion"],
         "2025-11-25"
     );
-    let reconnect_status = volicord_response(&reconnect_responses[&12])?;
-    assert_eq!(reconnect_status["base"]["response_kind"], "result");
-    assert_eq!(reconnect_status["base"]["state_version"], 1);
-    assert_eq!(
-        reconnect_status["active_task"]["task_ref"]["record_id"],
-        task_id
-    );
+    assert_host_receipt_missing(&reconnect_responses[&12]);
+    assert_eq!(fixture.counts()?, before);
 
     Ok(())
 }
 
 #[test]
-fn volicord_mcp_subcommand_stdio_resolves_user_action_with_elicitation(
+fn volicord_mcp_subcommand_stdio_rejects_user_action_without_host_receipt_and_effects(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = McpFixture::new("mcp-bin-elicitation")?;
-    let (task_id, state_version) = fixture.create_task("elicitation")?;
-    let messages = json_lines(&[
-        initialize_request_with_capabilities(1, json!({ "elicitation": {} })),
-        initialized_notification(),
-        tools_call(
-            2,
-            "volicord.request_user_action",
-            request_user_action_arguments(&fixture, &task_id, state_version),
-        ),
-        json!({
-            "jsonrpc": "2.0",
-            "id": "elicit_user_action_1",
-            "result": {
-                "action": "accept",
-                "content": {
-                    "selected_option_id": "keep"
-                }
-            }
-        }),
-    ])?;
-
-    let output = run_child(
-        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
-        ChildStdin::WriteAndClose(messages),
-    )?;
-
-    assert_success_captured(&output);
-    assert_eq!(captured_stderr(&output), "");
-    let values = json_rpc_values(&output.stdout)?;
-    assert_eq!(values.len(), 3);
-    assert_eq!(values[1]["method"], "elicitation/create");
-    assert_eq!(values[1]["id"], "elicit_user_action_1");
-    let projection = volicord_response(&values[2])?;
-    let response = &projection["method_result"];
-    assert_agent_safe_pending_user_action_summary(response);
-    assert_model_visible_user_action_private_fields_absent(&values[2]["result"]);
-    assert!(response["user_channel_resolution_ref"].is_object());
-    let resolution = &response["user_channel_resolution"];
-    assert_eq!(resolution["action_kind"], "product_decision");
-    assert_eq!(resolution["channel_kind"], "mcp_elicitation");
-    assert_eq!(
-        resolution["resolution_summary"]["resolution_type"],
-        "choice"
-    );
-    assert_eq!(
-        resolution["resolution_summary"]["selected_option_id"],
-        "keep"
-    );
-    assert_eq!(
-        resolution["resolution_summary"]["selected_option_label"],
-        "Keep focused behavior"
-    );
-    assert_eq!(
-        resolution["resolution_summary"]["resolution_outcome"],
-        "accepted"
-    );
-    assert!(resolution.get("note").is_none());
-    assert!(resolution["resolution_summary"].get("summary").is_none());
-    let record = fixture.stored_user_action(&task_id, response)?;
-    assert_eq!(
-        record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.resolved_by_actor_source.as_str()),
-        Some("local_user")
-    );
-    assert_eq!(
-        record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.resolved_verification_basis.as_str()),
-        Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL)
-    );
-    Ok(())
-}
-
-#[test]
-fn volicord_mcp_subcommand_stdio_without_elicitation_returns_cli_recovery_fallback(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = McpFixture::new("mcp-bin-elicitation-fallback")?;
-    let (task_id, state_version) = fixture.create_task("elicitation_fallback")?;
+    let fixture = McpFixture::new("mcp-bin-cli-inbox-recovery")?;
+    let (task_id, state_version) = fixture.create_task("cli_inbox_recovery")?;
+    let before = fixture.counts()?;
     let messages = json_lines(&[
         initialize_request(1),
         initialized_notification(),
@@ -480,33 +379,15 @@ fn volicord_mcp_subcommand_stdio_without_elicitation_returns_cli_recovery_fallba
         ),
     ])?;
 
-    let mut command =
-        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]);
-    command.env("VOLICORD_LOCAL_WEB_CONSENT", "disabled");
+    let command = fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]);
     let output = run_child(command, ChildStdin::WriteAndClose(messages))?;
 
     assert_success_captured(&output);
     assert_eq!(captured_stderr(&output), "");
     let responses = responses_by_id(&output.stdout)?;
     assert_eq!(responses.len(), 2);
-    let projection = volicord_response(&responses[&2])?;
-    let response = &projection["method_result"];
-    assert_agent_safe_pending_user_action_summary(response);
-    assert_model_visible_user_action_private_fields_absent(&responses[&2]["result"]);
-    assert!(response["user_channel_resolution_ref"].is_null());
-    assert!(response["user_channel_resolution"].is_null());
-    let fallback = responses[&2]["result"]["content"][1]["text"]
-        .as_str()
-        .expect("fallback text should be present");
-    assert!(fallback.contains("pending UserAction requires the user"));
-    assert!(fallback.contains("`volicord inbox`"));
-    assert!(!fallback.contains("volicord inbox resolve"));
-    assert!(!fallback.contains("request.operation=resume"));
-    assert!(!fallback.contains("Volicord: resolve A-1"));
-
-    let record = fixture.stored_user_action(&task_id, response)?;
-    assert_eq!(record.status, volicord_types::UserActionStatus::Pending);
-    assert!(record.resolution.is_none());
+    assert_host_receipt_missing(&responses[&2]);
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -557,7 +438,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
 }
 
 #[test]
-fn volicord_mcp_subcommand_suppresses_malformed_notification_output_and_effects(
+fn volicord_mcp_subcommand_suppresses_notifications_and_rejects_core_without_host_receipt(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-notification-suppression")?;
     let before = fixture.counts()?;
@@ -608,9 +489,7 @@ fn volicord_mcp_subcommand_suppresses_malformed_notification_output_and_effects(
     );
     assert!(responses[&2]["result"]["tools"].is_array());
     assert!(responses[&3]["result"]["tools"].is_array());
-    let status = volicord_response(&responses[&4])?;
-    assert_eq!(status["base"]["response_kind"], "result");
-    assert_eq!(status["base"]["state_version"], 0);
+    assert_host_receipt_missing(&responses[&4]);
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -679,6 +558,10 @@ impl McpFixture {
     }
 
     fn create_task(&self, suffix: &str) -> Result<(String, u64), Box<dyn Error>> {
+        let host = test_host_receipt_fixture(self.project_id(), self.connection_id());
+        let receipt =
+            validate_host_verification_receipt(host.receipt, &host.current, &host.validation_time)
+                .expect("the typed MCP host-receipt fixture must validate");
         let response = CoreService::new(self.runtime_home_path()).intake(
             self.fixture.intake_request(
                 &format!("req_mcp_bin_{suffix}_task"),
@@ -690,8 +573,9 @@ impl McpFixture {
                 ProjectId::new(self.project_id()),
                 ActorSource::agent_connection(self.connection_id()),
                 OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            )
+            .with_validated_host_receipt(receipt),
         )?;
         let task_id = response.response_value["task_ref"]["record_id"]
             .as_str()
@@ -702,121 +586,13 @@ impl McpFixture {
             .expect("state version");
         Ok((task_id, state_version))
     }
-
-    fn stored_user_action(
-        &self,
-        task_id: &str,
-        response: &Value,
-    ) -> Result<volicord_store::core_pipeline::EffectiveUserActionRecord, Box<dyn Error>> {
-        let user_action_request_id = response
-            .pointer("/user_action_request_summary/user_action_request_id")
-            .or_else(|| {
-                response.pointer(
-                    "/agent_workflow_result/user_action_request_summary/user_action_request_id",
-                )
-            })
-            .and_then(Value::as_str)
-            .ok_or("response should include user_action_request_summary.user_action_request_id")?;
-        let store = volicord_store::core_pipeline::CoreProjectStore::open(
-            self.runtime_home_path(),
-            &ProjectId::new(self.project_id()),
-        )?;
-        let record = store
-            .user_action_records_for_task(
-                &volicord_types::TaskId::new(task_id),
-                &volicord_types::UtcTimestamp::parse("2026-12-01T00:00:00Z")?,
-            )?
-            .into_iter()
-            .find(|record| record.request.user_action_request_id == user_action_request_id)
-            .ok_or("stored user-action record should exist")?;
-        Ok(record)
-    }
 }
 
-fn assert_agent_safe_pending_user_action_summary(response: &Value) -> &str {
-    let agent_result = response["agent_workflow_result"]
-        .as_object()
-        .expect("request_user_action result should include agent_workflow_result");
-    let summary = agent_result
-        .get("user_action_request_summary")
-        .and_then(Value::as_object)
-        .expect("agent_workflow_result should include user_action_request_summary");
-    let actual_keys = summary.keys().map(String::as_str).collect::<BTreeSet<_>>();
-    let expected_keys = ["next_actor", "status", "user_action_request_id"]
-        .into_iter()
-        .collect::<BTreeSet<_>>();
-    assert_eq!(actual_keys, expected_keys);
-    assert_eq!(summary.get("status"), Some(&json!("pending")));
-    assert_eq!(summary.get("next_actor"), Some(&json!("user")));
-    summary
-        .get("user_action_request_id")
-        .and_then(Value::as_str)
-        .filter(|request_id| !request_id.is_empty())
-        .expect("safe pending summary should include a non-empty request id")
-}
-
-fn assert_model_visible_user_action_private_fields_absent(tool_result: &Value) {
-    let model_visible = json!({
-        "content": tool_result["content"].clone(),
-        "structuredContent": tool_result["structuredContent"].clone()
-    });
-    let mut forbidden_keys = BTreeSet::new();
-    collect_forbidden_user_action_keys(&model_visible, &mut forbidden_keys);
-    assert!(
-        forbidden_keys.is_empty(),
-        "model-visible UserAction projection exposed forbidden keys: {forbidden_keys:?}"
-    );
-    let rendered = serde_json::to_string(&model_visible)
-        .expect("model-visible UserAction projection should serialize");
-    let normalized = rendered.to_ascii_lowercase();
-    for forbidden in [
-        "http://",
-        "https://",
-        "/consent?",
-        "token=",
-        "choose the focused user channel outcome",
-        "user_action_request_ref",
-        "request_ref",
-    ] {
-        assert!(
-            !normalized.contains(forbidden),
-            "model-visible UserAction projection exposed forbidden text {forbidden:?}"
-        );
-    }
-}
-
-fn collect_forbidden_user_action_keys<'a>(value: &'a Value, found: &mut BTreeSet<&'a str>) {
-    const FORBIDDEN: &[&str] = &[
-        "user_action_request",
-        "user_action_request_ref",
-        "request_ref",
-        "inbox_item",
-        "question",
-        "options",
-        "form",
-        "preferred_capture_path",
-        "answer_path_availability",
-        "user_channel_availability",
-        "command",
-        "url",
-        "token",
-    ];
-    match value {
-        Value::Object(object) => {
-            for (key, child) in object {
-                if FORBIDDEN.contains(&key.as_str()) {
-                    found.insert(key.as_str());
-                }
-                collect_forbidden_user_action_keys(child, found);
-            }
-        }
-        Value::Array(values) => {
-            for child in values {
-                collect_forbidden_user_action_keys(child, found);
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-    }
+fn assert_host_receipt_missing(response: &Value) {
+    assert_eq!(response["error"]["code"], -32602);
+    assert!(response["error"]["data"]
+        .as_str()
+        .is_some_and(|data| data.contains("host_receipt_missing")));
 }
 
 fn status_arguments(project_selector: Option<&str>) -> Value {
@@ -1046,22 +822,4 @@ fn schema_definitions_contain(schema: &Value, name: &str) -> bool {
             .and_then(Value::as_object)
             .is_some_and(|definitions| definitions.contains_key(name))
     })
-}
-
-fn assert_authority_disclosure(value: &Value) {
-    let disclosure = &value["base"]["disclosure"];
-    assert_eq!(disclosure["guarantee_class"], "authority_record");
-    let values = disclosure["non_guarantees"]
-        .as_array()
-        .expect("authority disclosure should include non_guarantees");
-    for expected in [
-        "NotCorrectnessProof",
-        "NotTestSufficiencyProof",
-        "NotHumanReviewReplacement",
-    ] {
-        assert!(
-            values.iter().any(|value| value.as_str() == Some(expected)),
-            "missing non-guarantee {expected}: {disclosure}"
-        );
-    }
 }

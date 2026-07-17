@@ -1,17 +1,12 @@
-use serde_json::Value;
-
-#[cfg(test)]
-use std::path::Path;
-
 use crate::{
     guard_integration::{
         files::{
             apply_managed_file_retirement, ensure_generated_file_plan_fresh,
-            managed_block_conflict, managed_json_projection_merge, write_managed_file_if_fresh,
-            FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind,
+            managed_block_conflict, write_managed_file_if_fresh, FilePlanStatus, GeneratedFilePlan,
+            GeneratedFileWriteKind,
         },
         git_exclude::plan_git_excludes,
-        GuardIntegrationError, GuardIntegrationPlan, ManagedJsonProjection,
+        GuardIntegrationError, GuardIntegrationPlan,
     },
     host_integration::{ConnectionIntent, HostIntegrationFileKind},
     managed_block,
@@ -74,7 +69,6 @@ fn parse_connection_intent(value: &str) -> Result<ConnectionIntent, GuardIntegra
     match value {
         "personal" => Ok(ConnectionIntent::Personal),
         "shared" => Ok(ConnectionIntent::Shared),
-        "global" => Ok(ConnectionIntent::Global),
         _ => Err(GuardIntegrationError::runtime(
             "guard integration has an unsupported connection intent",
         )),
@@ -84,7 +78,6 @@ fn parse_connection_intent(value: &str) -> Result<ConnectionIntent, GuardIntegra
 fn parse_integration_profile(value: &str) -> Result<IntegrationProfile, GuardIntegrationError> {
     match value {
         "record" => Ok(IntegrationProfile::Record),
-        "detective" => Ok(IntegrationProfile::Detective),
         _ => Err(GuardIntegrationError::runtime(
             "guard integration has an unsupported profile",
         )),
@@ -127,9 +120,6 @@ pub(crate) fn apply_generated_file(
         GeneratedFileWriteKind::Json | GeneratedFileWriteKind::ExactJson => {
             (file.content.clone(), false)
         }
-        GeneratedFileWriteKind::JsonProjection { projection } => {
-            (render_json_projection(file, projection)?, false)
-        }
         GeneratedFileWriteKind::Script => (file.content.clone(), true),
     };
     write_managed_file_if_fresh(file, &content, executable)?;
@@ -144,55 +134,4 @@ pub(crate) fn apply_generated_file(
             )));
         }
     })
-}
-
-fn render_json_projection(
-    file: &GeneratedFilePlan,
-    projection: ManagedJsonProjection,
-) -> Result<String, GuardIntegrationError> {
-    let current = match file.target_snapshot.text() {
-        Some(text) => serde_json::from_str::<Value>(text).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "existing JSON configuration is not valid JSON: {} ({error})",
-                file.path.display()
-            ))
-        })?,
-        None => Value::Object(serde_json::Map::new()),
-    };
-    let merged = managed_json_projection_merge(&current, &file.policy_value()?, projection)?;
-    let mut text = serde_json::to_string_pretty(&merged)
-        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-    text.push('\n');
-    Ok(text)
-}
-
-#[cfg(all(test, unix))]
-pub(crate) fn set_script_executable(path: &Path) -> Result<(), GuardIntegrationError> {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)
-        .map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "failed to inspect {} permissions: {error}",
-                path.display()
-            ))
-        })?
-        .permissions();
-    let mode = permissions.mode();
-    if mode & 0o100 == 0 {
-        permissions.set_mode(mode | 0o755);
-        fs::set_permissions(path, permissions).map_err(|error| {
-            GuardIntegrationError::runtime(format!(
-                "failed to make {} executable: {error}",
-                path.display()
-            ))
-        })?;
-    }
-    Ok(())
-}
-
-#[cfg(all(test, not(unix)))]
-pub(crate) fn set_script_executable(_path: &Path) -> Result<(), GuardIntegrationError> {
-    Ok(())
 }

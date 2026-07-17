@@ -9,7 +9,7 @@ use volicord_store::{runtime_home::RuntimeHomeResolutionError, StoreError};
 
 use crate::setup_command::{
     output::{append_interactive_notes, render_setup_output},
-    workflow::{command_status, is_help_request, parse_setup_options, run_setup_workflow},
+    workflow::{command_status, run_setup_workflow, setup_options},
 };
 #[cfg(test)]
 use crate::shell_path::mcp_binary_name;
@@ -111,6 +111,18 @@ pub struct StdioSetupTerminal {
     stdout: io::Stdout,
 }
 
+/// Typed input for the reusable setup workflow.
+///
+/// The executable's supported `init` syntax is declared in [`crate::cli`].
+/// This type keeps the lower-level setup workflow free of command-line parsing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SetupWorkflowOptions {
+    pub runtime_home: Option<PathBuf>,
+    pub link_bin: Option<PathBuf>,
+    pub mcp_command: Option<PathBuf>,
+    pub json: bool,
+}
+
 impl StdioSetupTerminal {
     pub fn new() -> Self {
         Self {
@@ -167,40 +179,30 @@ where
     }
 }
 
-pub fn setup_usage() -> String {
-    "volicord init --host HOST --repo PATH [--shared] [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]\nvolicord doctor [--json] [--privacy-footprint]\n".to_owned()
-}
-
 pub fn run_setup_command(
-    args: &[String],
+    options: SetupWorkflowOptions,
     current_dir: &Path,
     process: &impl SetupProcess,
 ) -> Result<CommandOutcome, SetupCommandError> {
-    run_setup_command_inner(args, current_dir, process, None)
+    run_setup_command_inner(options, current_dir, process, None)
 }
 
 pub fn run_setup_command_interactive(
-    args: &[String],
+    options: SetupWorkflowOptions,
     current_dir: &Path,
     process: &impl SetupProcess,
     terminal: &mut dyn SetupTerminal,
 ) -> Result<CommandOutcome, SetupCommandError> {
-    run_setup_command_inner(args, current_dir, process, Some(terminal))
+    run_setup_command_inner(options, current_dir, process, Some(terminal))
 }
 
 fn run_setup_command_inner(
-    args: &[String],
+    options: SetupWorkflowOptions,
     current_dir: &Path,
     process: &impl SetupProcess,
     terminal: Option<&mut dyn SetupTerminal>,
 ) -> Result<CommandOutcome, SetupCommandError> {
-    if is_help_request(args) {
-        return Ok(CommandOutcome {
-            status: CommandStatus::Complete,
-            output: setup_usage(),
-        });
-    }
-    let parsed = parse_setup_options(args, current_dir)?;
+    let parsed = setup_options(options, current_dir);
     let outcome = run_setup_workflow(parsed, current_dir, process, terminal)?;
     let status = command_status(outcome.report.status);
     let output = append_interactive_notes(
@@ -291,6 +293,20 @@ mod tests {
 
         fn current_exe(&self) -> Result<PathBuf, String> {
             Ok(self.exe.clone())
+        }
+    }
+
+    fn workflow_options(
+        runtime_home: &Path,
+        mcp_command: Option<&Path>,
+        link_bin: Option<&Path>,
+        json: bool,
+    ) -> SetupWorkflowOptions {
+        SetupWorkflowOptions {
+            runtime_home: Some(runtime_home.to_path_buf()),
+            link_bin: link_bin.map(Path::to_path_buf),
+            mcp_command: mcp_command.map(Path::to_path_buf),
+            json,
         }
     }
 
@@ -715,7 +731,7 @@ mod tests {
             )]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -745,11 +761,7 @@ mod tests {
         let mut terminal = FakeTerminal::new(&[]);
 
         let outcome = run_setup_command_interactive(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), None, None, true),
             fixture.path(),
             &process,
             &mut terminal,
@@ -778,11 +790,7 @@ mod tests {
         };
 
         let outcome = run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), None, None, true),
             fixture.path(),
             &process,
         )?;
@@ -816,14 +824,7 @@ mod tests {
         let mut terminal = FakeTerminal::new(&[]);
 
         let outcome = run_setup_command_interactive(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--mcp-command".to_owned(),
-                path_text(&mcp),
-                "--link-bin".to_owned(),
-                path_text(&link_bin),
-            ],
+            workflow_options(fixture.path(), Some(&mcp), Some(&link_bin), false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -860,7 +861,7 @@ mod tests {
             FakeTerminalInput::line("y"),
         ]);
         let first = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut first_terminal,
@@ -883,7 +884,7 @@ mod tests {
             FakeTerminalInput::line("y"),
         ]);
         run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut second_terminal,
@@ -920,7 +921,7 @@ mod tests {
         ]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -961,7 +962,7 @@ mod tests {
             )]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -999,7 +1000,7 @@ mod tests {
             )]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -1050,7 +1051,7 @@ mod tests {
             )]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -1097,7 +1098,7 @@ mod tests {
             )]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -1145,7 +1146,7 @@ mod tests {
         ]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -1180,7 +1181,7 @@ mod tests {
         let mut terminal = FakeTerminal::new(&[]);
 
         let outcome = run_setup_command_interactive(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
             &mut terminal,
@@ -1205,13 +1206,7 @@ mod tests {
         };
 
         let outcome = run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--mcp-command".to_owned(),
-                path_text(&mcp),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), Some(&mcp), None, true),
             fixture.path(),
             &process,
         )?;
@@ -1257,7 +1252,7 @@ mod tests {
         };
 
         run_setup_command(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
         )?;
@@ -1281,7 +1276,7 @@ mod tests {
         };
 
         run_setup_command(
-            &["--home".to_owned(), path_text(fixture.path())],
+            workflow_options(fixture.path(), None, None, false),
             fixture.path(),
             &process,
         )?;
@@ -1303,11 +1298,7 @@ mod tests {
         };
 
         let outcome = run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), None, None, true),
             fixture.path(),
             &process,
         )?;
@@ -1338,15 +1329,7 @@ mod tests {
         };
 
         let outcome = run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--mcp-command".to_owned(),
-                path_text(&mcp),
-                "--link-bin".to_owned(),
-                path_text(&link_bin),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), Some(&mcp), Some(&link_bin), true),
             fixture.path(),
             &process,
         )?;
@@ -1388,15 +1371,7 @@ mod tests {
         };
 
         let outcome = run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--mcp-command".to_owned(),
-                path_text(&mcp),
-                "--link-bin".to_owned(),
-                path_text(&link_bin),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), Some(&mcp), Some(&link_bin), true),
             fixture.path(),
             &process,
         )?;
@@ -1432,15 +1407,7 @@ mod tests {
         };
 
         let outcome = run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--mcp-command".to_owned(),
-                path_text(&mcp),
-                "--link-bin".to_owned(),
-                path_text(&link_bin),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), Some(&mcp), Some(&link_bin), true),
             fixture.path(),
             &process,
         )?;
@@ -1502,15 +1469,7 @@ mod tests {
         };
 
         let outcome = run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--mcp-command".to_owned(),
-                path_text(&mcp),
-                "--link-bin".to_owned(),
-                path_text(&link_bin),
-                "--json".to_owned(),
-            ],
+            workflow_options(fixture.path(), Some(&mcp), Some(&link_bin), true),
             fixture.path(),
             &process,
         );
@@ -1593,12 +1552,7 @@ mod tests {
         };
 
         run_setup_command(
-            &[
-                "--home".to_owned(),
-                path_text(fixture.path()),
-                "--mcp-command".to_owned(),
-                path_text(&mcp),
-            ],
+            workflow_options(fixture.path(), Some(&mcp), None, false),
             fixture.path(),
             &process,
         )?;

@@ -113,7 +113,11 @@ pub(crate) fn responses_by_id(output: &[u8]) -> Result<BTreeMap<u64, Value>, Box
 }
 
 pub(crate) fn volicord_response(response: &Value) -> Result<Value, Box<dyn Error>> {
-    assert_eq!(response["result"]["isError"], json!(false));
+    assert_eq!(
+        response["result"]["isError"],
+        json!(false),
+        "expected a successful Volicord tool response: {response}"
+    );
     let structured = response["result"]
         .get("structuredContent")
         .filter(|value| value.is_object())
@@ -127,7 +131,11 @@ pub(crate) fn volicord_response(response: &Value) -> Result<Value, Box<dyn Error
 }
 
 pub(crate) fn adapter_tool_response(response: &Value) -> Result<Value, Box<dyn Error>> {
-    assert_eq!(response["result"]["isError"], json!(false));
+    assert_eq!(
+        response["result"]["isError"],
+        json!(false),
+        "expected a successful adapter tool response: {response}"
+    );
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .ok_or("adapter tools/call response should contain text content")?;

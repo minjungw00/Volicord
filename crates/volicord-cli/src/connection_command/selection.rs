@@ -5,18 +5,14 @@ use std::{
 
 use volicord_store::{
     agent_connections::{
-        list_agent_connections, list_connection_projects, AgentConnectionRecord,
-        ConnectionProjectRecord,
+        list_agent_connections, list_agent_connections_for_diagnostics, list_connection_projects,
+        list_connection_projects_for_diagnostics, AgentConnectionRecord, ConnectionProjectRecord,
     },
     bootstrap::project_record_by_repo_root,
 };
 
 use crate::host_integration::{
-    claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
-    codex::CodexAdapter,
-    format_supported_connection_intents,
-    generic::USER_MANAGED_CONFIGURATION_GUIDANCE,
-    supports_connection_intent, ConnectionIntent, HostAdapter, HostKind, HostScope,
+    codex::CodexAdapter, ConnectionIntent, HostAdapter, HostKind, HostScope,
 };
 
 use super::{
@@ -42,45 +38,12 @@ impl ConnectionSelector {
 }
 
 pub(super) fn host_scope_for_intent(
-    host_kind: HostKind,
+    _host_kind: HostKind,
     intent: ConnectionIntent,
 ) -> Result<HostScope, ConnectionCommandError> {
-    if !supports_connection_intent(host_kind, intent) {
-        return Err(ConnectionCommandError::usage(
-            unsupported_connection_intent_message(host_kind, intent),
-        ));
-    }
-    match (host_kind, intent) {
-        (HostKind::Codex, ConnectionIntent::Personal) => Ok(HostScope::User),
-        (HostKind::Codex, ConnectionIntent::Shared) => Ok(HostScope::Project),
-        (HostKind::ClaudeCode, ConnectionIntent::Personal) => Ok(HostScope::Local),
-        (HostKind::ClaudeCode, ConnectionIntent::Shared) => Ok(HostScope::Project),
-        (HostKind::ClaudeCode, ConnectionIntent::Global) => Ok(HostScope::User),
-        (HostKind::Generic, _) => Err(ConnectionCommandError::usage(
-            USER_MANAGED_CONFIGURATION_GUIDANCE,
-        )),
-        (HostKind::Codex, ConnectionIntent::Global) => unreachable!("validated above"),
-    }
-}
-
-fn unsupported_connection_intent_message(host_kind: HostKind, intent: ConnectionIntent) -> String {
-    let supported = format_supported_connection_intents(host_kind);
-    if host_kind == HostKind::Generic {
-        return format!("UNSUPPORTED_HOST: {USER_MANAGED_CONFIGURATION_GUIDANCE}; supported connection intents: {supported}");
-    }
-    format!(
-        "UNSUPPORTED_HOST_INTENT: {} does not support {}; supported connection intents: {}",
-        public_host_label(host_kind),
-        connection_intent_selector_text(intent),
-        supported
-    )
-}
-
-fn connection_intent_selector_text(intent: ConnectionIntent) -> &'static str {
     match intent {
-        ConnectionIntent::Personal => "personal",
-        ConnectionIntent::Shared => "--shared",
-        ConnectionIntent::Global => "--global",
+        ConnectionIntent::Personal => Ok(HostScope::User),
+        ConnectionIntent::Shared => Ok(HostScope::Project),
     }
 }
 
@@ -97,20 +60,15 @@ pub(super) fn resolve_connection_host(
             available.push(detection.host_kind);
         }
     }
-    if let Ok(detection) = ClaudeCodeAdapter::new(ProductionCommandRunner).detect() {
-        if detection.available {
-            available.push(detection.host_kind);
-        }
-    }
-    available.sort_by_key(|host| host.as_str());
+    available.sort_by(|left, right| left.as_str().cmp(right.as_str()));
     available.dedup();
     match available.as_slice() {
         [host_kind] => Ok(*host_kind),
         [] => Err(ConnectionCommandError::usage(
-            "HOST_NOT_DETECTED: host could not be identified; choose `codex` or `claude-code`",
+            "HOST_NOT_DETECTED: Codex could not be identified; pass `codex` after installing it",
         )),
         _ => Err(ConnectionCommandError::usage(
-            "HOST_AMBIGUOUS: host is ambiguous; choose `codex` or `claude-code`",
+            "HOST_AMBIGUOUS: multiple Codex host detections were returned",
         )),
     }
 }
@@ -121,7 +79,7 @@ pub(super) fn connection_selector(
     process: &impl ConnectionProcess,
 ) -> Result<ConnectionSelector, ConnectionCommandError> {
     let host_kind = resolve_connection_host(parsed.host_kind, process)?;
-    let intent = if parsed.shared || parsed.global {
+    let intent = if parsed.shared {
         Some(connection_intent_from_flags(parsed)?)
     } else {
         None
@@ -224,6 +182,21 @@ pub(super) fn select_connection(
     runtime_home: &Path,
     selector: &ConnectionSelector,
 ) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
+    select_connection_with_diagnostic_reads(runtime_home, selector, false)
+}
+
+pub(super) fn select_connection_for_diagnostics(
+    runtime_home: &Path,
+    selector: &ConnectionSelector,
+) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
+    select_connection_with_diagnostic_reads(runtime_home, selector, true)
+}
+
+fn select_connection_with_diagnostic_reads(
+    runtime_home: &Path,
+    selector: &ConnectionSelector,
+    diagnostic_reads: bool,
+) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
     if project_record_by_repo_root(runtime_home, &selector.repo_root)?.is_none() {
         return Err(ConnectionCommandError::runtime(format!(
             "PROJECT_NOT_REGISTERED: repository {} is not registered; run `{}` first",
@@ -233,7 +206,12 @@ pub(super) fn select_connection(
     }
     let mut matches = Vec::new();
     let mut same_host_connections = Vec::new();
-    for connection in list_agent_connections(runtime_home)? {
+    let connections = if diagnostic_reads {
+        list_agent_connections_for_diagnostics(runtime_home)?
+    } else {
+        list_agent_connections(runtime_home)?
+    };
+    for connection in connections {
         if connection.host_kind != selector.host_kind.as_str() {
             continue;
         }
@@ -249,7 +227,14 @@ pub(super) fn select_connection(
         {
             continue;
         }
-        let projects = list_connection_projects(runtime_home, &connection.connection_internal_id)?;
+        let projects = if diagnostic_reads {
+            list_connection_projects_for_diagnostics(
+                runtime_home,
+                &connection.connection_internal_id,
+            )?
+        } else {
+            list_connection_projects(runtime_home, &connection.connection_internal_id)?
+        };
         same_host_connections.push((connection.clone(), projects.clone()));
         if projects
             .iter()
@@ -297,7 +282,7 @@ fn selector_intent_text(selector: &ConnectionSelector) -> &'static str {
 
 fn selector_repair_command(selector: &ConnectionSelector) -> String {
     match selector.intent {
-        Some(intent @ (ConnectionIntent::Personal | ConnectionIntent::Global)) => format!(
+        Some(intent @ ConnectionIntent::Personal) => format!(
             "volicord connection add {}{} --repo {}",
             public_host_label(selector.host_kind),
             intent_flag_suffix(intent),

@@ -12,8 +12,8 @@ use crate::{
         public_host_label, GuardIntegrationError, HookWrapperResolutionStatus,
     },
     host_integration::{
-        HostIntegrationFileKind, HostKind, HostLifecyclePhase, MANAGED_PROCESS_BINDING_ENV,
-        MANAGED_PROCESS_BINDING_V1, REQUIRED_GUARD_PHASES,
+        HostIntegrationFileKind, HostKind, HostLifecyclePhase, MANAGED_WRAPPER_ENV,
+        MANAGED_WRAPPER_VALUE, REQUIRED_GUARD_PHASES,
     },
 };
 
@@ -41,34 +41,21 @@ pub(crate) struct HostHookCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostHookPurpose {
-    DetectiveGuard,
-    FinalOutputAuthorityDisclosure,
+    Guard,
 }
 
 impl HostHookPurpose {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::DetectiveGuard => "detective_guard",
-            Self::FinalOutputAuthorityDisclosure => "final_output_authority_disclosure",
+            Self::Guard => "guard",
         }
     }
 }
 
 impl HostHookCommand {
-    pub(crate) fn command_line(&self) -> String {
-        match &self.generated_command_shape {
-            HostHookCommandShape::ShellCommandString { command_text, .. } => command_text.clone(),
-            HostHookCommandShape::Exec { command, args } => guard_command_line(&GuardCommandSpec {
-                command: command.clone(),
-                args: args.clone(),
-            }),
-        }
-    }
-
     pub(crate) fn command_shape_name(&self) -> &'static str {
         match &self.generated_command_shape {
             HostHookCommandShape::ShellCommandString { .. } => "shell_command_string",
-            HostHookCommandShape::Exec { .. } => "exec_form",
         }
     }
 }
@@ -79,23 +66,17 @@ pub(crate) enum HostHookCommandShape {
         command_text: String,
         argv: Vec<String>,
     },
-    Exec {
-        command: String,
-        args: Vec<String>,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HookRootResolutionBasis {
     GitWorkTree,
-    ClaudeProjectDir,
 }
 
 impl HookRootResolutionBasis {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::GitWorkTree => "git_work_tree",
-            Self::ClaudeProjectDir => "claude_project_dir",
         }
     }
 }
@@ -103,14 +84,12 @@ impl HookRootResolutionBasis {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HookCommandPathBasis {
     GitRootRuntime,
-    ClaudeProjectDir,
 }
 
 impl HookCommandPathBasis {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::GitRootRuntime => "git_root_runtime",
-            Self::ClaudeProjectDir => "claude_project_dir",
         }
     }
 }
@@ -211,23 +190,12 @@ pub(crate) fn host_hook_command_spec(
     purpose: HostHookPurpose,
 ) -> Result<HostHookCommand, GuardIntegrationError> {
     let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
-    let relative = path_text(&relative_path);
     match host_kind {
         HostKind::Codex => {
             let dispatch_relative = codex_dispatch_wrapper_relative_path();
             let expected_phase_wrapper_path = repo_root.join(&relative_path);
-            let (expected_wrapper_path, script) = match purpose {
-                HostHookPurpose::DetectiveGuard => (
-                    repo_root.join(&dispatch_relative),
-                    codex_detective_hook_script(phase),
-                ),
-                HostHookPurpose::FinalOutputAuthorityDisclosure => (
-                    expected_phase_wrapper_path.clone(),
-                    format!(
-                        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{relative}\""
-                    ),
-                ),
-            };
+            let expected_wrapper_path = repo_root.join(&dispatch_relative);
+            let script = codex_guard_hook_script(phase);
             Ok(HostHookCommand {
                 host_kind,
                 phase,
@@ -249,32 +217,6 @@ pub(crate) fn host_hook_command_spec(
                 },
             })
         }
-        HostKind::ClaudeCode => {
-            let expected_wrapper_path = repo_root.join(&relative_path);
-            Ok(HostHookCommand {
-                host_kind,
-                phase,
-                purpose,
-                generated_command_shape: HostHookCommandShape::Exec {
-                    command: format!("${{CLAUDE_PROJECT_DIR}}/{relative}"),
-                    args: Vec::new(),
-                },
-                expected_wrapper_path,
-                expected_phase_wrapper_path: repo_root.join(&relative_path),
-                root_resolution_basis: HookRootResolutionBasis::ClaudeProjectDir,
-                hook_command_path_basis: HookCommandPathBasis::ClaudeProjectDir,
-                cwd_independent: true,
-                subdirectory_safe: true,
-                wrapper_resolution_status: HookWrapperResolutionStatus::Ok,
-                verification: HostHookCommandVerification {
-                    basis_verified_by: "verified_claude_project_dir_placeholder".to_owned(),
-                    host_contract_source: "claude_code_hook_exec_form".to_owned(),
-                },
-            })
-        }
-        HostKind::Generic => Err(GuardIntegrationError::runtime(
-            "generic host integrations do not define hook commands",
-        )),
     }
 }
 
@@ -308,20 +250,8 @@ pub(crate) fn guard_command_specs(
                 args.push("--policy-hash".to_owned());
                 args.push(policy_hash.to_owned());
             }
-            match (host_kind, profile) {
-                (HostKind::Codex, IntegrationProfile::Detective) => {
-                    args.push("--host-output".to_owned());
-                    args.push("codex".to_owned());
-                }
-                (HostKind::ClaudeCode, IntegrationProfile::Detective) => {
-                    args.push("--host-output".to_owned());
-                    args.push("claude-code".to_owned());
-                }
-                _ => {
-                    args.push("--output".to_owned());
-                    args.push("volicord-json".to_owned());
-                }
-            }
+            args.push("--host-output".to_owned());
+            args.push("codex".to_owned());
             (
                 phase.policy_key().to_owned(),
                 GuardCommandSpec {
@@ -330,55 +260,6 @@ pub(crate) fn guard_command_specs(
                 },
             )
         })
-        .collect()
-}
-
-pub(crate) fn final_output_command_specs(
-    volicord_command: &Path,
-    repo_root: &Path,
-    connection_id: &str,
-    guard_installation_id: &str,
-    host_kind: HostKind,
-    profile: IntegrationProfile,
-    policy_hash: &str,
-) -> BTreeMap<String, GuardCommandSpec> {
-    let host_output = match host_kind {
-        HostKind::Codex => "codex",
-        HostKind::ClaudeCode => "claude-code",
-        HostKind::Generic => "volicord-json",
-    };
-    let args = vec![
-        "_final-output".to_owned(),
-        "--repo".to_owned(),
-        path_text(repo_root),
-        "--connection".to_owned(),
-        connection_id.to_owned(),
-        "--guard-installation".to_owned(),
-        guard_installation_id.to_owned(),
-        "--host".to_owned(),
-        public_host_label(host_kind).to_owned(),
-        "--integration-profile".to_owned(),
-        profile.as_str().to_owned(),
-        "--policy-hash".to_owned(),
-        policy_hash.to_owned(),
-        "--host-output".to_owned(),
-        host_output.to_owned(),
-    ];
-    BTreeMap::from([(
-        HostLifecyclePhase::Stop.policy_key().to_owned(),
-        GuardCommandSpec {
-            command: path_text(volicord_command),
-            args,
-        },
-    )])
-}
-
-pub(crate) fn host_hook_command_lines(
-    commands: &BTreeMap<String, HostHookCommand>,
-) -> Vec<(String, String)> {
-    commands
-        .iter()
-        .map(|(phase, spec)| (phase.clone(), spec.command_line()))
         .collect()
 }
 
@@ -400,12 +281,9 @@ pub(crate) fn shell_word(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-pub(crate) fn observe_hook_root_unsupported_message(
-    host_kind: HostKind,
-    repo_root: &Path,
-) -> String {
+pub(crate) fn guard_hook_root_unsupported_message(host_kind: HostKind, repo_root: &Path) -> String {
     format!(
-        "DETECTIVE_HOOK_ROOT_UNSUPPORTED: {} detective init requires the selected adapter's host-hook configuration to resolve a Git work tree root, but no Git repository root was found from {}. Use --profile record for record-only setup, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
+        "GUARD_HOOK_ROOT_UNSUPPORTED: {} record init requires the selected adapter's host-hook configuration to resolve a Git work tree root, but no Git repository root was found from {}.",
         public_host_label(host_kind),
         repo_root.display()
     )
@@ -416,31 +294,16 @@ fn hook_root_unsupported_message(
     repo_root: &Path,
     purpose: HostHookPurpose,
 ) -> String {
-    match purpose {
-        HostHookPurpose::DetectiveGuard => {
-            observe_hook_root_unsupported_message(host_kind, repo_root)
-        }
-        HostHookPurpose::FinalOutputAuthorityDisclosure => format!(
-            "FINAL_OUTPUT_HOOK_ROOT_UNSUPPORTED: {} record init requires a Git work tree root for managed final-output disclosure, but no Git repository root was found from {}. Prepare the registered Product Repository as a Git work tree or use a host without a managed final-output adapter.",
-            public_host_label(host_kind),
-            repo_root.display()
-        ),
-    }
+    let _ = purpose;
+    guard_hook_root_unsupported_message(host_kind, repo_root)
 }
 
 fn hook_wrapper_relative_path(
     host_kind: HostKind,
     phase: HostLifecyclePhase,
 ) -> Result<PathBuf, GuardIntegrationError> {
-    let base = match host_kind {
-        HostKind::Codex => PathBuf::from(".codex").join("hooks"),
-        HostKind::ClaudeCode => PathBuf::from(".claude").join("hooks"),
-        HostKind::Generic => {
-            return Err(GuardIntegrationError::runtime(
-                "generic host integrations do not define hook wrapper paths",
-            ));
-        }
-    };
+    let _ = host_kind;
+    let base = PathBuf::from(".codex").join("hooks");
     Ok(base.join(format!("volicord-{}.sh", phase.command_name())))
 }
 
@@ -448,7 +311,7 @@ fn codex_dispatch_wrapper_relative_path() -> PathBuf {
     PathBuf::from(CODEX_DISPATCH_WRAPPER)
 }
 
-pub(crate) fn codex_detective_hook_script(phase: HostLifecyclePhase) -> String {
+pub(crate) fn codex_guard_hook_script(phase: HostLifecyclePhase) -> String {
     let dispatch_relative_text = path_text(&codex_dispatch_wrapper_relative_path());
     format!(
         "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{dispatch_relative_text}\" {}",
@@ -480,7 +343,7 @@ fn hook_wrapper_script_content(
     let host_output = arg_after(&guard_command.args, "--host-output").unwrap_or("none");
     let runtime_home = shell_word(&path_text(runtime_home));
     format!(
-        "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind={}\n# phase={}\n# purpose={purpose}\n# connection_id={connection_id}\n# guard_installation_id={guard_installation_id}\n# policy_hash={policy_hash}\n# host_output={host_output}\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME={runtime_home}\n{MANAGED_PROCESS_BINDING_ENV}={MANAGED_PROCESS_BINDING_V1}\nexport VOLICORD_HOME\nexport {MANAGED_PROCESS_BINDING_ENV}\nexec {command_line}\n",
+        "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind={}\n# phase={}\n# purpose={purpose}\n# connection_id={connection_id}\n# guard_installation_id={guard_installation_id}\n# policy_hash={policy_hash}\n# host_output={host_output}\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME={runtime_home}\n{MANAGED_WRAPPER_ENV}={MANAGED_WRAPPER_VALUE}\nexport VOLICORD_HOME\nexport {MANAGED_WRAPPER_ENV}\nexec {command_line}\n",
         public_host_label(host_kind),
         phase.policy_key(),
         purpose = purpose.as_str(),
@@ -501,7 +364,7 @@ fn codex_dispatch_wrapper_script_content() -> String {
             "fi\n",
             "phase=$1\n",
             "case \"$phase\" in\n",
-            "    session-start|pre-tool|post-tool|prompt-capture|stop) ;;\n",
+            "    pre-tool|post-tool|prompt-capture) ;;\n",
             "    *)\n",
             "        printf '%s\\n' \"volicord dispatch: unsupported host-hook phase: $phase\" >&2\n",
             "        exit 64\n",
@@ -541,87 +404,4 @@ fn arg_after<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{fs, process::Command};
-
-    #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
-
-    use volicord_test_support::TempRuntimeHome;
-
-    use super::*;
-
-    #[cfg(unix)]
-    #[test]
-    fn generated_hook_wrapper_overrides_ambient_runtime_home_with_selected_home(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = TempRuntimeHome::new("hook-runtime-home-binding")?;
-        let repo_root = fixture.create_product_repo("repo")?;
-        let selected_runtime_home = fixture.path().join("selected home's records");
-        let bin_dir = repo_root.join("bin");
-        let wrong_bin_dir = repo_root.join("wrong-bin");
-        let capture_path = repo_root.join("captured-runtime-home");
-        fs::create_dir_all(&bin_dir)?;
-        fs::create_dir_all(&wrong_bin_dir)?;
-
-        let fake_volicord = bin_dir.join("selected volicord's build");
-        fs::write(
-            &fake_volicord,
-            "#!/bin/sh\nprintf 'selected|%s' \"$VOLICORD_HOME\" > \"$VOLICORD_TEST_CAPTURE\"\n",
-        )?;
-        let mut fake_permissions = fs::metadata(&fake_volicord)?.permissions();
-        fake_permissions.set_mode(0o755);
-        fs::set_permissions(&fake_volicord, fake_permissions)?;
-        let wrong_volicord = wrong_bin_dir.join("volicord");
-        fs::write(
-            &wrong_volicord,
-            "#!/bin/sh\nprintf 'wrong|%s' \"$VOLICORD_HOME\" > \"$VOLICORD_TEST_CAPTURE\"\n",
-        )?;
-        let mut wrong_permissions = fs::metadata(&wrong_volicord)?.permissions();
-        wrong_permissions.set_mode(0o755);
-        fs::set_permissions(&wrong_volicord, wrong_permissions)?;
-
-        let command = GuardCommandSpec {
-            command: fake_volicord.display().to_string(),
-            args: vec![
-                "_hook".to_owned(),
-                "session-start".to_owned(),
-                "--connection".to_owned(),
-                "connection_alpha".to_owned(),
-                "--guard-installation".to_owned(),
-                "guard_alpha".to_owned(),
-            ],
-        };
-        let wrapper = repo_root.join("volicord-session-start.sh");
-        fs::write(
-            &wrapper,
-            hook_wrapper_script_content(
-                &selected_runtime_home,
-                HostKind::Codex,
-                HostLifecyclePhase::SessionStart,
-                HostHookPurpose::DetectiveGuard,
-                &command,
-            ),
-        )?;
-        let mut wrapper_permissions = fs::metadata(&wrapper)?.permissions();
-        wrapper_permissions.set_mode(0o755);
-        fs::set_permissions(&wrapper, wrapper_permissions)?;
-
-        let status = Command::new(&wrapper)
-            .env_clear()
-            .env("PATH", &wrong_bin_dir)
-            .env("VOLICORD_HOME", "/wrong/ambient/runtime-home")
-            .env("VOLICORD_TEST_CAPTURE", &capture_path)
-            .status()?;
-
-        assert!(status.success());
-        assert_eq!(
-            fs::read_to_string(capture_path)?,
-            format!("selected|{}", selected_runtime_home.display())
-        );
-        Ok(())
-    }
 }

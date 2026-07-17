@@ -1,9 +1,0 @@
-{
-  "session_id": "codex-session-001",
-  "transcript_path": "/tmp/volicord-fixtures/codex-session-001.jsonl",
-  "cwd": "/repo",
-  "hook_event_name": "SessionStart",
-  "model": "gpt-5.5",
-  "permission_mode": "default",
-  "source": "startup"
-}

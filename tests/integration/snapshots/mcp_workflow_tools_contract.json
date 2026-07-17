@@ -100,7 +100,6 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
@@ -114,18 +113,12 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
           "IntakeResult",
-          "IntegrationProfile",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_IntakeResult",
@@ -151,13 +144,9 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResponseKind",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -187,7 +176,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b9682c672e80de9ff5f83dab83b14f1c77050ceb2ca3dcd1d75e2f9056dadc26"
+        "sha256": "sha256:953859d75d34117c5e0275452fad56f6a9f4240cf824a3cf5a2b4bfe0949b5ad"
       }
     },
     {
@@ -254,7 +243,6 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
@@ -268,17 +256,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_UpdateScopeResult",
@@ -304,13 +286,9 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResponseKind",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -341,7 +319,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ebb7cd61239786ecd0f2b5646d449178cd2ef8e07b08a9de70cd7204f98cb2e4"
+        "sha256": "sha256:afbdb85d69dbf00b7649d8d82333eab5a4d3f663afd82683414adf71dade2ef4"
       }
     },
     {
@@ -354,15 +332,19 @@
       "description": "Read the current Core status view without creating Core authority state.",
       "input_schema": {
         "definitions": [
-          "StatusDetailLevel"
+          "ContinuityCursor",
+          "ContinuityPageRequest",
+          "StatusDetailLevel",
+          "UtcTimestamp"
         ],
         "root_properties": [
+          "continuity_page",
           "detail",
           "project_selector",
           "task_id"
         ],
         "root_required": [],
-        "sha256": "sha256:08f4a479ec598824063010b750a2a046904e4d0c25897890b21e05bee34aa6af"
+        "sha256": "sha256:07410d24243642557fa708e7647f55064546acd4ec9eed244e74039d49d7c6a9"
       },
       "name": "volicord.status",
       "output_schema": {
@@ -387,10 +369,8 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "ControlSurfaceSummary",
-          "CoverageHostHookState",
-          "CoverageSessionWatcherState",
-          "CoverageSummary",
+          "ContinuityCursor",
+          "ContinuityPageInfo",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
@@ -405,17 +385,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -430,19 +404,16 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "ProjectContinuityKind",
+          "ProjectContinuityPage",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -475,7 +446,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2969f7a6a7d2a89a69ec66d11f4b3ee891485da4181b2d1a90d856a40c03ebb4"
+        "sha256": "sha256:ef8957b9c040c53f038134faaf9aa3a6aa2392173af76282c5463ea2d1e544bb"
       }
     },
     {
@@ -508,6 +479,7 @@
           "EffectKind",
           "ErrorCode",
           "EventRef",
+          "FailureCategory",
           "GetOperationResultResult",
           "GuaranteeClass",
           "GuaranteeDisclosure",
@@ -536,7 +508,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7814fe86fcc57b0ae2bb10065b991d8c42109cd6d71c35118ffc4e802c77ce36"
+        "sha256": "sha256:bc2dc42233e3290f0429858857525acca7e4c009bee01fd847b12686cb756931"
       }
     },
     {
@@ -549,8 +521,6 @@
       "description": "Create a short-lived, current-basis intent for a registered evidence source. This does not execute the source or record Evidence.",
       "input_schema": {
         "definitions": [
-          "ConnectionObservationGuardEventKind",
-          "ConnectionObservationSourceSelector",
           "EvidenceTarget",
           "McpEvidenceCaptureSpec",
           "MutationDetailLevel"
@@ -571,7 +541,7 @@
           "target",
           "task_id"
         ],
-        "sha256": "sha256:7b7a29810adcbead1259deab59b1121dac4bdb94741928b5870edd77cbea6296"
+        "sha256": "sha256:59a60165e6ea459adcff13b9d7642e5a896a8bf0e2b0623e85c0747aad2a3cde"
       },
       "name": "volicord.prepare_evidence_capture",
       "output_schema": {
@@ -581,9 +551,6 @@
           "AuthorityReceipt",
           "CloseReadinessBlocker",
           "CloseReadinessBlockerCategory",
-          "ConnectionObservationGuardEventKind",
-          "ConnectionObservationSourceSelector",
-          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
@@ -593,9 +560,9 @@
           "EvidenceGateState",
           "EvidenceGateSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
-          "IntegrationProfile",
           "McpAuthoritativeRefreshFailure_for_McpPrepareEvidenceCaptureCompactResult",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_PrepareEvidenceCaptureResult",
@@ -635,7 +602,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:46b32c4075b2373284f511e21c15c5e22fd387701e7283713e44c49150bd1079"
+        "sha256": "sha256:3fdfb44e7cad34fd164d6d34447ff3fe5d19bb8e6f145fb1281a297b02e511bb"
       }
     },
     {
@@ -693,7 +660,6 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
@@ -707,17 +673,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "JudgmentKind",
           "JudgmentPresentation",
           "McpAuthoritativeRefreshFailure_for_McpPrepareWriteCompactResult",
@@ -748,14 +708,10 @@
           "PrepareWriteDecision",
           "PrepareWriteResult",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResponseKind",
           "SensitiveActionScope",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -795,7 +751,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e675b12ee05dc7cf1117cf326153481c804f8477a4a3fc63c884741babe598af"
+        "sha256": "sha256:71b2feb7d709f35abcd7d1be36b97a5ad0ae78d9a05cbb1b87a03b174c747487"
       }
     },
     {
@@ -840,7 +796,6 @@
           "AuthorityReceipt",
           "CloseReadinessBlocker",
           "CloseReadinessBlockerCategory",
-          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
@@ -848,9 +803,9 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
-          "IntegrationProfile",
           "McpAuthoritativeRefreshFailure_for_McpStageArtifactCompactResult",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_StageArtifactResult",
@@ -892,7 +847,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4461b640a56e20b5aadfb1970f5dcaffdacfe6f1fbcb3feb241d5d1e29f1f6eb"
+        "sha256": "sha256:c9ba316f803aa890ba2cca14d5de27fa83e582abdbbbe3faefce901754f820e2"
       }
     },
     {
@@ -962,7 +917,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:56308502fb236c6e66d2caee18b6cb2373cd1bd889c0676d9ac4b3972db3dc9f"
+        "sha256": "sha256:0d78e02bc51b5184d214b3ab72487cb198e16804796b46a94d9c909055beb90d"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -988,7 +943,6 @@
           "CloseReason",
           "CloseState",
           "CommandSource",
-          "ControlSurfaceSummary",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
@@ -1012,19 +966,13 @@
           "EvidenceSummary",
           "EvidenceTarget",
           "ExternalUriSource",
+          "FailureCategory",
           "GitCommitSource",
           "GitDiffSource",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpAuthoritativeRefreshFailure_for_McpRecordRunCompactResult",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_RecordRunResult",
@@ -1053,7 +1001,6 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RecordRunResult",
           "RedactionState",
           "RepositoryFileSource",
@@ -1063,9 +1010,6 @@
           "RunKind",
           "RunSummary",
           "SensitiveActionRequirement",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "SourceLineRange",
@@ -1098,7 +1042,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e78ecde9b6c6df916fe21e0f861b7c1df9c426a4e1cdc3c96c8ca4dab730f9bd"
+        "sha256": "sha256:22d4d498deb442e44d3c4b09d491ed3e511c08f2b8d03206db738ab8eb2f81d3"
       }
     },
     {
@@ -1108,7 +1052,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create one focused user action, or resume its original result by request ID, and capture only a still-pending action through an available verified User Channel.",
+      "description": "Create or resume one focused user action. MCP returns only a bounded pending summary; user-owned delivery and resolution use `volicord inbox`.",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",
@@ -1165,7 +1109,6 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
@@ -1180,17 +1123,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "JudgmentResolutionOutcome",
           "McpAuthoritativeRefreshFailure_for_McpRequestUserActionCompactResult",
           "McpMutationEffectSummary",
@@ -1220,14 +1157,10 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestUserActionResult",
           "RequestedControlLevel",
           "ResponseKind",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -1261,7 +1194,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1a54e617642bba1fbfee65568eadb967ebffec8264bc82afd56711e9808abe2e"
+        "sha256": "sha256:42970b062761825ec95c8722ff8bbb426573f1289366e27de63fbb0ede94b4c9"
       }
     },
     {
@@ -1312,7 +1245,6 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
@@ -1326,17 +1258,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpAuthoritativeRefreshFailure_for_McpReconcileChangesCompactResult",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_ReconcileChangesResult",
@@ -1363,14 +1289,10 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "ReconcileChangesResult",
           "RedactionState",
           "RequestedControlLevel",
           "ResponseKind",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -1407,7 +1329,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:62c30ca2c2698bbc717b34e1fb1131ed52ebe6a9d715631e891bdf541d429894"
+        "sha256": "sha256:09d64336f5512cc2ff1db14310121fc71ea8b50fe8128c4420d20aec8a219be5"
       }
     },
     {
@@ -1453,10 +1375,6 @@
           "CloseReason",
           "CloseState",
           "CloseTaskResult",
-          "ControlSurfaceSummary",
-          "CoverageHostHookState",
-          "CoverageSessionWatcherState",
-          "CoverageSummary",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
@@ -1471,17 +1389,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -1499,16 +1411,12 @@
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -1539,7 +1447,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:729ef2c0288da53f46a333297e0292fb9c5d4b5c86fff240d787d4ffd500c55d"
+        "sha256": "sha256:6a6cd52d81bc335c8679f85b6427f98ad0b73170a6ddd15631a088919e490174"
       }
     },
     {
@@ -1595,10 +1503,6 @@
           "CloseReason",
           "CloseState",
           "CloseTaskResult",
-          "ControlSurfaceSummary",
-          "CoverageHostHookState",
-          "CoverageSessionWatcherState",
-          "CoverageSummary",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
@@ -1613,17 +1517,11 @@
           "EvidenceStatus",
           "EvidenceSummary",
           "EvidenceTarget",
+          "FailureCategory",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
-          "GuardConfigurationStatus",
-          "GuardEffectiveStatus",
-          "GuardHealthSummary",
-          "GuardInstallationStatus",
-          "GuardObservationStatus",
-          "HostKind",
-          "IntegrationProfile",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_CloseTaskResult",
@@ -1652,16 +1550,12 @@
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
           "ProjectWorkflowPolicySummary",
-          "PromptCaptureStatus",
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
-          "SessionWatchCoverageBasis",
-          "SessionWatchScanSummary",
-          "SessionWatchStatus",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -1692,7 +1586,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:99b6ef2b6e4786f9897f1de5b49231d627c8d828c11de860b06175f32d6b4934"
+        "sha256": "sha256:af7c58f4933a3b0891818a22c7baaaf068b84f0efa1926b55d5a649ca5eaf2d7"
       }
     },
     {
@@ -1718,13 +1612,11 @@
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
-          "McpToolIssueCode",
-          "SessionWatchCoverageBasis",
-          "SessionWatchStatus"
+          "McpToolIssueCode"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9c90a9208e784a6efad0391f3a03671f658a630ba9afbf8aa620536d32e5d018"
+        "sha256": "sha256:92bf033bc411c070f0ee25c4dbcf767c881e673646456663844ad176630d6dec"
       }
     }
   ]

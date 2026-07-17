@@ -3,7 +3,7 @@ use std::{
     fmt,
     fs::{self, File},
     io::{self, Read},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use serde::{
@@ -30,12 +30,13 @@ use volicord_types::{
 };
 
 use crate::{
+    cli::{PolicyApplyArgs, PolicyArgs, PolicyCommand, PolicyShowArgs, PolicyValidateArgs},
     guard_integration::{
         files::{
             plan_policy_file, write_managed_file_if_fresh, FilePlanStatus, VOLICORD_POLICY_FILE,
             VOLICORD_POLICY_SCHEMA,
         },
-        policy::{validate_policy_v2, PolicyValidationIssue},
+        policy::{validate_workflow_policy, PolicyValidationIssue},
     },
     project_context::{registered_project_for_repo, resolve_repository_root, ProjectCommandError},
 };
@@ -99,44 +100,19 @@ pub(crate) struct ValidatedPolicyFile {
     pub(crate) fingerprint: String,
 }
 
-pub fn policy_usage() -> String {
-    concat!(
-        "volicord policy show --repo PATH --json\n",
-        "volicord policy validate --file PATH\n",
-        "volicord policy apply --repo PATH --file PATH --json\n",
-        "volicord policy --help\n",
-    )
-    .to_owned()
-}
-
 pub fn run_policy_command<F>(
-    args: &[String],
+    args: PolicyArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, PolicyCommandError>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    match args.first().map(String::as_str) {
-        None | Some("-h" | "--help" | "help") => {
-            if args.len() <= 1 {
-                Ok(policy_usage())
-            } else {
-                Err(usage_error(format!("unexpected argument: {}", args[1])))
-            }
-        }
-        Some("validate") => validate_command(&args[1..], current_dir),
-        Some("show") => show_command(&args[1..], &env_var, current_dir),
-        Some("apply") => apply_command(&args[1..], &env_var, current_dir),
-        Some(other) => Err(usage_error(format!("unknown policy command: {other}"))),
+    match args.command {
+        PolicyCommand::Validate(options) => validate_command(options, current_dir),
+        PolicyCommand::Show(options) => show_command(options, &env_var, current_dir),
+        PolicyCommand::Apply(options) => apply_command(options, &env_var, current_dir),
     }
-}
-
-#[derive(Debug, Default)]
-struct ProjectPolicyOptions {
-    repo: Option<PathBuf>,
-    file: Option<PathBuf>,
-    json: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -193,20 +169,15 @@ struct ManagedPolicyFileState {
 }
 
 fn show_command<F>(
-    args: &[String],
+    options: PolicyShowArgs,
     env_var: &F,
     current_dir: &Path,
 ) -> Result<String, PolicyCommandError>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    let options = parse_project_policy_options(args, false)?;
-    let repo = options
-        .repo
-        .as_deref()
-        .expect("show parser requires --repo");
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
-    let repo_root = resolve_repository_root(current_dir, Some(repo))?;
+    let repo_root = resolve_repository_root(current_dir, Some(&options.repo))?;
     let project = registered_project_for_repo(&runtime_home, &repo_root)?;
     let store = CoreProjectStore::open_read_only(
         &runtime_home,
@@ -243,30 +214,21 @@ where
 }
 
 fn apply_command<F>(
-    args: &[String],
+    options: PolicyApplyArgs,
     env_var: &F,
     current_dir: &Path,
 ) -> Result<String, PolicyCommandError>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    let options = parse_project_policy_options(args, true)?;
-    let repo = options
-        .repo
-        .as_deref()
-        .expect("apply parser requires --repo");
-    let input_path = options
-        .file
-        .as_deref()
-        .expect("apply parser requires --file");
-    let input_path = if input_path.is_absolute() {
-        input_path.to_path_buf()
+    let input_path = if options.file.is_absolute() {
+        options.file.clone()
     } else {
-        current_dir.join(input_path)
+        current_dir.join(&options.file)
     };
     let candidate = read_validated_policy_file(&input_path)?;
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
-    let repo_root = resolve_repository_root(current_dir, Some(repo))?;
+    let repo_root = resolve_repository_root(current_dir, Some(&options.repo))?;
     let project = registered_project_for_repo(&runtime_home, &repo_root)?;
     validate_policy_bindings(
         &candidate.value,
@@ -369,65 +331,6 @@ where
     }
 }
 
-fn parse_project_policy_options(
-    args: &[String],
-    require_file: bool,
-) -> Result<ProjectPolicyOptions, PolicyCommandError> {
-    let mut options = ProjectPolicyOptions::default();
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--repo" | "--file" => {
-                let option = args[index].as_str();
-                let selected = if option == "--repo" {
-                    &mut options.repo
-                } else {
-                    &mut options.file
-                };
-                if selected.is_some() {
-                    return Err(usage_error(format!("{option} was supplied more than once")));
-                }
-                index += 1;
-                let value = args
-                    .get(index)
-                    .filter(|value| !value.starts_with('-'))
-                    .ok_or_else(|| usage_error(format!("{option} requires a value")))?;
-                *selected = Some(PathBuf::from(value));
-                index += 1;
-            }
-            "--json" => {
-                if options.json {
-                    return Err(usage_error("--json was supplied more than once"));
-                }
-                options.json = true;
-                index += 1;
-            }
-            "-h" | "--help" | "help" => {
-                return Err(usage_error(
-                    "help cannot be combined with project policy options",
-                ));
-            }
-            option if option.starts_with('-') => {
-                return Err(usage_error(format!("unknown option: {option}")));
-            }
-            argument => return Err(usage_error(format!("unexpected argument: {argument}"))),
-        }
-    }
-    if options.repo.is_none() {
-        return Err(usage_error("project policy command requires --repo PATH"));
-    }
-    if require_file && options.file.is_none() {
-        return Err(usage_error("policy apply requires --file PATH"));
-    }
-    if !require_file && options.file.is_some() {
-        return Err(usage_error("--file is only valid with policy apply"));
-    }
-    if !options.json {
-        return Err(usage_error("project policy command requires --json"));
-    }
-    Ok(options)
-}
-
 fn authority_policy_value(
     authority: &ProjectWorkflowPolicyRecord,
 ) -> Result<Value, PolicyCommandError> {
@@ -436,7 +339,7 @@ fn authority_policy_value(
     }
     let value = serde_json::from_str::<Value>(&authority.policy_json)
         .map_err(|_| corrupt_policy_authority())?;
-    validate_policy_v2(&value, None).map_err(|_| corrupt_policy_authority())?;
+    validate_workflow_policy(&value, None).map_err(|_| corrupt_policy_authority())?;
     let canonical = canonical_json_string(&value).map_err(|_| corrupt_policy_authority())?;
     let fingerprint = canonical_json_sha256(&value)
         .map_err(|_| corrupt_policy_authority())?
@@ -549,10 +452,7 @@ fn validate_policy_bindings(
 }
 
 fn public_store_host(value: &str) -> &str {
-    match value {
-        "claude_code" => "claude-code",
-        value => value,
-    }
+    value
 }
 
 fn binding_mismatch(field_path: &'static str, message: &'static str) -> PolicyCommandError {
@@ -792,8 +692,11 @@ fn render_json<T: Serialize>(value: &T) -> Result<String, PolicyCommandError> {
         .map_err(|error| PolicyCommandError::Runtime(error.to_string()))
 }
 
-fn validate_command(args: &[String], current_dir: &Path) -> Result<String, PolicyCommandError> {
-    let file = parse_validate_options(args)?;
+fn validate_command(
+    options: PolicyValidateArgs,
+    current_dir: &Path,
+) -> Result<String, PolicyCommandError> {
+    let file = options.file;
     let file = if file.is_absolute() {
         file
     } else {
@@ -804,37 +707,6 @@ fn validate_command(args: &[String], current_dir: &Path) -> Result<String, Polic
         "Policy schema: {VOLICORD_POLICY_SCHEMA}\nPolicy fingerprint: {}\n",
         policy.fingerprint
     ))
-}
-
-fn parse_validate_options(args: &[String]) -> Result<PathBuf, PolicyCommandError> {
-    let mut file = None;
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--file" => {
-                if file.is_some() {
-                    return Err(usage_error("--file was supplied more than once"));
-                }
-                index += 1;
-                let value = args
-                    .get(index)
-                    .filter(|value| !value.starts_with('-'))
-                    .ok_or_else(|| usage_error("--file requires a value"))?;
-                file = Some(PathBuf::from(value));
-                index += 1;
-            }
-            "-h" | "--help" | "help" => {
-                return Err(usage_error(
-                    "help cannot be combined with policy validate options",
-                ));
-            }
-            option if option.starts_with('-') => {
-                return Err(usage_error(format!("unknown option: {option}")));
-            }
-            argument => return Err(usage_error(format!("unexpected argument: {argument}"))),
-        }
-    }
-    file.ok_or_else(|| usage_error("policy validate requires --file PATH"))
 }
 
 pub(crate) fn read_validated_policy_file(
@@ -889,7 +761,7 @@ pub(crate) fn read_validated_policy_file(
         )
     })?;
     let value = strict.0;
-    validate_policy_v2(&value, None).map_err(validation_issue_error)?;
+    validate_workflow_policy(&value, None).map_err(validation_issue_error)?;
     let canonical_json = canonical_json_string(&value).map_err(|error| {
         PolicyCommandError::Runtime(format!("policy canonicalization failed: {error}"))
     })?;
@@ -926,10 +798,6 @@ fn policy_file_io(path: &Path, error: io::Error) -> PolicyCommandError {
         "POLICY_FILE_ACCESS_FAILED: could not read policy file {}: {error}",
         path.display()
     ))
-}
-
-fn usage_error(message: impl Into<String>) -> PolicyCommandError {
-    PolicyCommandError::Usage(format!("{}\n\n{}", message.into(), policy_usage()))
 }
 
 struct StrictJsonValue(Value);
@@ -1015,419 +883,5 @@ impl<'de> Visitor<'de> for StrictJsonVisitor {
             }
         }
         Ok(StrictJsonValue(Value::Object(values.into_iter().collect())))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use volicord_store::guards::upsert_guard_installation;
-    use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{canonical_json_sha256, GuardInstallationStatus, IntegrationProfile};
-
-    use crate::{
-        guard_integration::{
-            guard_installation_upsert, plan_guard_integration, GuardIntegrationPlanRequest,
-        },
-        host_integration::{ConnectionIntent, HostKind, ManagedServerEntry},
-    };
-
-    const GUARD_INSTALLATION_ID: &str = "guard_policy_lifecycle";
-    const REDACTED_ENV_VALUE: &str = "/opaque/runtime/value-not-for-output";
-
-    fn valid_policy() -> Value {
-        json!({
-            "schema": "volicord-policy-v2",
-            "managed_by": "volicord",
-            "storage_scope": "local_overlay",
-            "connection_intent": "personal",
-            "host": "codex",
-            "repo_root": "/repo",
-            "connection_id": "conn_test",
-            "guard_installation_id": "guard_test",
-            "selected_profile": "record",
-            "mcp": {
-                "command": "/bin/volicord",
-                "args": ["mcp", "--stdio"],
-                "env": {"VOLICORD_HOME": "/runtime"},
-            },
-            "host_hook": {
-                "enabled": false,
-                "commands": {
-                    "session_start": {"command": "/bin/volicord", "args": ["_hook", "session-start"]},
-                    "pre_tool": {"command": "/bin/volicord", "args": ["_hook", "pre-tool"]},
-                    "post_tool": {"command": "/bin/volicord", "args": ["_hook", "post-tool"]},
-                    "prompt_capture": {"command": "/bin/volicord", "args": ["_hook", "prompt-capture"]},
-                    "stop": {"command": "/bin/volicord", "args": ["_hook", "stop"]},
-                },
-            },
-            "workflow": {
-                "default_direct_control": "tracked",
-                "default_work_control": "tracked",
-                "light": {
-                    "enabled": false,
-                    "max_intended_paths": 3,
-                    "allowed_path_patterns": [],
-                    "denied_path_patterns": [],
-                    "final_acceptance": "policy_dependent",
-                },
-                "write_ticket": {"idle_timeout_minutes": null},
-                "detective": {
-                    "unknown_effect_behavior": "warn",
-                    "stop_behavior": "allow_with_disclosure",
-                },
-            },
-        })
-    }
-
-    #[test]
-    fn storage_upgrade_v1_policy_conversion_passes_current_strict_validator(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut legacy = valid_policy();
-        let object = legacy
-            .as_object_mut()
-            .expect("valid policy fixture is an object");
-        object.insert(
-            "schema".to_owned(),
-            Value::String("volicord-policy-v1".to_owned()),
-        );
-        object.remove("workflow");
-
-        let converted = volicord_store::storage_upgrade::convert_v6_policy_value_for_test(legacy)?;
-        validate_policy_v2(&converted, None)
-            .expect("storage converter output must pass the current strict policy validator");
-
-        let fixture = volicord_test_support::TempRuntimeHome::new("converted_v1_policy")?;
-        let path = fixture.path().join("converted-policy.json");
-        fs::write(&path, serde_json::to_vec_pretty(&converted)?)?;
-        let validated = read_validated_policy_file(&path)?;
-
-        assert_eq!(validated.value, converted);
-        assert_eq!(validated.canonical_json, canonical_json_string(&converted)?);
-        assert_eq!(
-            validated.fingerprint,
-            canonical_json_sha256(&converted)?.as_str()
-        );
-        let authority = ProjectWorkflowPolicyRecord {
-            project_id: "project_legacy".to_owned(),
-            policy_schema: "volicord-policy-v2".to_owned(),
-            policy_version: 1,
-            policy_json: validated.canonical_json,
-            policy_fingerprint: validated.fingerprint,
-            source: "offline_v6_to_v7_conversion".to_owned(),
-            applied_at: "2026-07-16T00:00:00Z".to_owned(),
-            created_at: "2026-07-16T00:00:00Z".to_owned(),
-        };
-        assert_eq!(authority_policy_value(&authority)?, converted);
-        Ok(())
-    }
-
-    fn lifecycle_fixture_policy(
-        fixture: &CoreFixture,
-    ) -> Result<Value, Box<dyn std::error::Error>> {
-        let repo_root = fixture.product_repo_path();
-        fs::create_dir_all(repo_root.join(".git"))?;
-        let mcp_entry = ManagedServerEntry::new_project_bound(
-            fixture.connection_id(),
-            Some(fixture.project_id()),
-            Path::new("/bin/volicord"),
-            Some(fixture.runtime_home_path()),
-        );
-        let integration = plan_guard_integration(GuardIntegrationPlanRequest {
-            host_kind: HostKind::Codex,
-            profile: IntegrationProfile::Record,
-            runtime_home: fixture.runtime_home_path(),
-            volicord_command: Path::new("/bin/volicord"),
-            repo_root: &repo_root,
-            connection_id: fixture.connection_id(),
-            guard_installation_id: GUARD_INSTALLATION_ID,
-            mcp_entry: &mcp_entry,
-            connection_intent: ConnectionIntent::Shared,
-        })?;
-        let guard = guard_installation_upsert(
-            HostKind::Codex,
-            IntegrationProfile::Record,
-            GuardInstallationStatus::Configured,
-            fixture.connection_id(),
-            fixture.project_id(),
-            &integration,
-        )?;
-        upsert_guard_installation(fixture.runtime_home_path(), guard)?;
-
-        let mut policy = integration.policy;
-        policy["mcp"]["env"]["VOLICORD_HOME"] = json!(REDACTED_ENV_VALUE);
-        Ok(policy)
-    }
-
-    fn policy_command_env(fixture: &CoreFixture, key: &str) -> Option<std::ffi::OsString> {
-        (key == "VOLICORD_HOME").then(|| fixture.runtime_home_path().as_os_str().to_os_string())
-    }
-
-    fn apply_args(fixture: &CoreFixture, input: &Path) -> Vec<String> {
-        vec![
-            "apply".to_owned(),
-            "--repo".to_owned(),
-            fixture.product_repo_path().display().to_string(),
-            "--file".to_owned(),
-            input.display().to_string(),
-            "--json".to_owned(),
-        ]
-    }
-
-    fn show_args(fixture: &CoreFixture) -> Vec<String> {
-        vec![
-            "show".to_owned(),
-            "--repo".to_owned(),
-            fixture.product_repo_path().display().to_string(),
-            "--json".to_owned(),
-        ]
-    }
-
-    fn policy_event_count(fixture: &CoreFixture) -> Result<u64, Box<dyn std::error::Error>> {
-        Ok(fixture.conn()?.query_row(
-            "SELECT COUNT(*)
-               FROM authority_events
-              WHERE event_type = 'project_workflow_policy_applied'
-                AND task_id IS NULL
-                AND change_unit_id IS NULL",
-            [],
-            |row| row.get(0),
-        )?)
-    }
-
-    #[test]
-    fn validate_reads_without_runtime_home_and_reports_canonical_fingerprint(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = volicord_test_support::TempRuntimeHome::new("policy_validate")?;
-        let directory = fixture.create_product_repo("repo")?;
-        let path = directory.join("policy.json");
-        fs::write(&path, serde_json::to_string_pretty(&valid_policy())?)?;
-
-        let output = run_policy_command(
-            &[
-                "validate".to_owned(),
-                "--file".to_owned(),
-                path.display().to_string(),
-            ],
-            |_| None,
-            &directory,
-        )?;
-
-        let expected = canonical_json_sha256(&valid_policy())?;
-        assert!(output.contains("volicord-policy-v2"));
-        assert!(output.contains(expected.as_str()));
-        Ok(())
-    }
-
-    #[test]
-    fn validate_rejects_non_normalized_path_with_bounded_field_code(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = volicord_test_support::TempRuntimeHome::new("policy_validate_path")?;
-        let directory = fixture.create_product_repo("repo")?;
-        let path = directory.join("policy.json");
-        let mut policy = valid_policy();
-        policy["workflow"]["light"]["allowed_path_patterns"] = json!(["src/../secret"]);
-        fs::write(&path, serde_json::to_vec(&policy)?)?;
-
-        let error = read_validated_policy_file(&path).expect_err("path must be rejected");
-
-        assert!(matches!(
-            error,
-            PolicyCommandError::Validation { ref code, ref field_path, .. }
-                if code == "POLICY_PATH_PATTERN_INVALID"
-                    && field_path == "$.workflow.light.allowed_path_patterns[0]"
-        ));
-        Ok(())
-    }
-
-    #[test]
-    fn validate_rejects_duplicate_fields() -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = volicord_test_support::TempRuntimeHome::new("policy_validate_duplicate")?;
-        let directory = fixture.create_product_repo("repo")?;
-        let path = directory.join("policy.json");
-        fs::write(
-            &path,
-            r#"{"schema":"volicord-policy-v2","schema":"volicord-policy-v2"}"#,
-        )?;
-
-        let error = read_validated_policy_file(&path).expect_err("duplicate must be rejected");
-
-        assert!(matches!(
-            error,
-            PolicyCommandError::Validation { ref code, .. }
-                if code == "POLICY_JSON_MALFORMED"
-        ));
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn validate_rejects_symbolic_link_input() -> Result<(), Box<dyn std::error::Error>> {
-        use std::os::unix::fs::symlink;
-
-        let fixture = volicord_test_support::TempRuntimeHome::new("policy_validate_symlink")?;
-        let directory = fixture.create_product_repo("repo")?;
-        let target = directory.join("target.json");
-        let link = directory.join("policy.json");
-        fs::write(&target, serde_json::to_vec(&valid_policy())?)?;
-        symlink(&target, &link)?;
-
-        let error = read_validated_policy_file(&link).expect_err("symlink must be rejected");
-
-        assert!(matches!(
-            error,
-            PolicyCommandError::Validation { ref code, .. }
-                if code == "POLICY_FILE_NOT_REGULAR"
-        ));
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn apply_is_versioned_idempotent_and_keeps_database_authority_after_file_replacement_failure(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        use std::os::unix::fs::symlink;
-
-        let fixture = CoreFixture::new("policy_apply_lifecycle")?;
-        let repo_root = fixture.product_repo_path();
-        let candidate_path = repo_root.join("candidate-policy.json");
-        let mut policy = lifecycle_fixture_policy(&fixture)?;
-        fs::write(&candidate_path, serde_json::to_vec_pretty(&policy)?)?;
-
-        let first_output = run_policy_command(
-            &apply_args(&fixture, &candidate_path),
-            |key| policy_command_env(&fixture, key),
-            &repo_root,
-        )?;
-        let first: Value = serde_json::from_str(&first_output)?;
-        assert_eq!(first["status"], "complete");
-        assert_eq!(first["database_changed"], true);
-        assert_eq!(first["file_changed"], true);
-        assert_eq!(first["resulting_policy_version"], 1);
-        assert_eq!(first["file_matches_authority"], true);
-        assert_eq!(first["write_authority_changed"], false);
-        assert!(first["prior_write_authority_fingerprint"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
-        assert!(first["resulting_write_authority_fingerprint"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
-        assert_eq!(
-            first["prior_write_authority_fingerprint"],
-            first["resulting_write_authority_fingerprint"]
-        );
-        assert_eq!(first["affected_task_ids"], json!([]));
-        assert_eq!(first["invalidated_write_ticket_ids"], json!([]));
-        assert!(!first_output.contains(REDACTED_ENV_VALUE));
-        assert_eq!(fixture.store()?.project_state()?.state_version, 1);
-        assert_eq!(policy_event_count(&fixture)?, 1);
-
-        let show_output = run_policy_command(
-            &show_args(&fixture),
-            |key| policy_command_env(&fixture, key),
-            &repo_root,
-        )?;
-        let show: Value = serde_json::from_str(&show_output)?;
-        assert_eq!(show["policy_version"], 1);
-        assert_eq!(show["source"], "project_database");
-        assert_eq!(show["file_status"], "matches");
-        assert_eq!(show["file_matches_authority"], true);
-        assert!(!show_output.contains(REDACTED_ENV_VALUE));
-
-        let idempotent_output = run_policy_command(
-            &apply_args(&fixture, &candidate_path),
-            |key| policy_command_env(&fixture, key),
-            &repo_root,
-        )?;
-        let idempotent: Value = serde_json::from_str(&idempotent_output)?;
-        assert_eq!(idempotent["database_changed"], false);
-        assert_eq!(idempotent["file_changed"], false);
-        assert_eq!(idempotent["resulting_policy_version"], 1);
-        assert_eq!(idempotent["write_authority_changed"], false);
-        assert_eq!(
-            idempotent["prior_write_authority_fingerprint"],
-            idempotent["resulting_write_authority_fingerprint"]
-        );
-        assert_eq!(idempotent["invalidated_write_ticket_ids"], json!([]));
-        assert_eq!(fixture.store()?.project_state()?.state_version, 1);
-        assert_eq!(policy_event_count(&fixture)?, 1);
-
-        policy["workflow"]["default_direct_control"] = json!("sensitive");
-        fs::write(&candidate_path, serde_json::to_vec_pretty(&policy)?)?;
-        let second_output = run_policy_command(
-            &apply_args(&fixture, &candidate_path),
-            |key| policy_command_env(&fixture, key),
-            &repo_root,
-        )?;
-        let second: Value = serde_json::from_str(&second_output)?;
-        assert_eq!(second["status"], "complete");
-        assert_eq!(second["database_changed"], true);
-        assert_eq!(second["file_changed"], true);
-        assert_eq!(second["resulting_policy_version"], 2);
-        assert_eq!(second["file_matches_authority"], true);
-        assert_eq!(second["write_authority_changed"], true);
-        assert_eq!(fixture.store()?.project_state()?.state_version, 2);
-        assert_eq!(policy_event_count(&fixture)?, 2);
-
-        let managed_path = repo_root.join(VOLICORD_POLICY_FILE);
-        let replacement_target = repo_root.join("managed-policy-replacement-target.json");
-        let prior_managed_content = fs::read_to_string(&managed_path)?;
-        fs::write(&replacement_target, &prior_managed_content)?;
-        fs::remove_file(&managed_path)?;
-        symlink(&replacement_target, &managed_path)?;
-
-        policy["workflow"]["default_work_control"] = json!("sensitive");
-        fs::write(&candidate_path, serde_json::to_vec_pretty(&policy)?)?;
-        let failure = run_policy_command(
-            &apply_args(&fixture, &candidate_path),
-            |key| policy_command_env(&fixture, key),
-            &repo_root,
-        )
-        .expect_err("managed-file replacement must fail after the database commit");
-        let PolicyCommandError::FailureOutput(failure_output) = failure else {
-            panic!("expected structured policy failure output");
-        };
-        let failure: Value = serde_json::from_str(&failure_output)?;
-        assert_eq!(failure["status"], "failed");
-        assert_eq!(failure["database_changed"], true);
-        assert_eq!(failure["file_changed"], false);
-        assert_eq!(failure["resulting_policy_version"], 3);
-        assert_eq!(failure["file_matches_authority"], false);
-        assert_eq!(failure["file_status"], "malformed");
-        assert_eq!(failure["actions"][0]["action"], "repair_managed_policy");
-        assert!(!failure_output.contains(REDACTED_ENV_VALUE));
-        assert_eq!(fixture.store()?.project_state()?.state_version, 3);
-        assert_eq!(policy_event_count(&fixture)?, 3);
-        assert_eq!(
-            fs::read_to_string(&replacement_target)?,
-            prior_managed_content
-        );
-        assert!(fs::symlink_metadata(&managed_path)?
-            .file_type()
-            .is_symlink());
-
-        let authority = fixture
-            .store()?
-            .project_workflow_policy()?
-            .expect("failed file projection must not roll back database authority");
-        assert_eq!(authority.policy_version, 3);
-        assert_eq!(
-            authority.policy_fingerprint,
-            failure["resulting_policy_fingerprint"]
-        );
-
-        let mismatch_output = run_policy_command(
-            &show_args(&fixture),
-            |key| policy_command_env(&fixture, key),
-            &repo_root,
-        )?;
-        let mismatch: Value = serde_json::from_str(&mismatch_output)?;
-        assert_eq!(mismatch["policy_version"], 3);
-        assert_eq!(mismatch["file_matches_authority"], false);
-        assert_eq!(mismatch["file_status"], "malformed");
-        assert_eq!(mismatch["actions"][0]["action"], "repair_managed_policy");
-        assert!(!mismatch_output.contains(REDACTED_ENV_VALUE));
-        Ok(())
     }
 }

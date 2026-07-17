@@ -19,6 +19,8 @@ use volicord_store::{
     StoreError,
 };
 
+use crate::cli::{AuthorityBundleArgs, ExportArgs, ExportCommand};
+
 const AUTHORITY_BUNDLE_CREATED_BY: &str = "volicord export authority-bundle";
 const AUTHORITY_BUNDLE_MANIFEST: &str = "manifest.json";
 const AUTHORITY_BUNDLE_RECORDS: &str = "records.jsonl";
@@ -41,10 +43,6 @@ pub enum ExportCommandError {
 }
 
 impl ExportCommandError {
-    fn usage(message: impl Into<String>) -> Self {
-        Self::Usage(message.into())
-    }
-
     fn runtime(message: impl Into<String>) -> Self {
         Self::Runtime(message.into())
     }
@@ -90,70 +88,33 @@ enum OutputFormat {
     Json,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct AuthorityBundleOptions {
-    output: Option<PathBuf>,
-    repo: Option<PathBuf>,
-    json: bool,
-}
-
-pub fn export_usage() -> String {
-    "volicord export authority-bundle --output PATH [--repo PATH] [--json]\n".to_owned()
-}
-
 pub fn run_export_command<F>(
-    args: &[String],
+    args: ExportArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, ExportCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let Some(subcommand) = args.first().map(String::as_str) else {
-        return Ok(export_usage());
-    };
-    if matches!(subcommand, "-h" | "--help" | "help") {
-        if args.len() == 1 {
-            return Ok(export_usage());
+    match args.command {
+        ExportCommand::AuthorityBundle(options) => {
+            run_authority_bundle_export(options, env_var, current_dir)
         }
-        return Err(ExportCommandError::usage(format!(
-            "unexpected argument: {}\n\n{}",
-            args[1],
-            export_usage()
-        )));
-    }
-    match subcommand {
-        "authority-bundle" => run_authority_bundle_export(&args[1..], env_var, current_dir),
-        other => Err(ExportCommandError::usage(format!(
-            "unknown export command: {other}\n\n{}",
-            export_usage()
-        ))),
     }
 }
 
 fn run_authority_bundle_export<F>(
-    args: &[String],
+    options: AuthorityBundleArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<String, ExportCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    if matches!(
-        args.first().map(String::as_str),
-        Some("-h" | "--help" | "help")
-    ) {
-        return Ok(export_usage());
-    }
-    let options = parse_authority_bundle_options(args)?;
-    let output_path = options
-        .output
-        .as_deref()
-        .ok_or_else(|| ExportCommandError::usage("missing required option: --output".to_owned()))?;
     let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
     let repo_root = resolve_repository_root(current_dir, options.repo.as_deref())?;
     let snapshot = read_authority_bundle_snapshot(&runtime_home, &repo_root)?;
-    let output_path = absolute_path(current_dir, output_path.to_path_buf());
+    let output_path = absolute_path(current_dir, options.output);
     let bundle = write_authority_bundle(&runtime_home, &repo_root, &output_path, &snapshot)?;
 
     render_authority_bundle_output(
@@ -164,82 +125,6 @@ where
         },
         &bundle,
     )
-}
-
-fn parse_authority_bundle_options(
-    args: &[String],
-) -> Result<AuthorityBundleOptions, ExportCommandError> {
-    let mut options = AuthorityBundleOptions::default();
-    let mut seen = BTreeSet::new();
-    let mut index = 0;
-    while index < args.len() {
-        let token = &args[index];
-        if token == "-h" || token == "--help" || token == "help" {
-            return Err(ExportCommandError::usage(export_usage()));
-        }
-        if !token.starts_with("--") {
-            return Err(ExportCommandError::usage(format!(
-                "unexpected argument: {token}"
-            )));
-        }
-        let without_prefix = &token[2..];
-        let (name, value) = if let Some((name, value)) = without_prefix.split_once('=') {
-            (name.to_owned(), Some(value.to_owned()))
-        } else if without_prefix == "json" {
-            (without_prefix.to_owned(), None)
-        } else {
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(ExportCommandError::usage(format!(
-                    "missing value for --{without_prefix}"
-                )));
-            };
-            (without_prefix.to_owned(), Some(value.clone()))
-        };
-        if !matches!(name.as_str(), "output" | "repo" | "json") {
-            return Err(ExportCommandError::usage(format!(
-                "unknown option: --{name}"
-            )));
-        }
-        if !seen.insert(name.clone()) {
-            return Err(ExportCommandError::usage(format!(
-                "duplicate option: --{name}"
-            )));
-        }
-        match name.as_str() {
-            "output" => options.output = Some(value_path(&name, value.as_deref())?),
-            "repo" => options.repo = Some(value_path(&name, value.as_deref())?),
-            "json" => {
-                reject_boolean_value(&name, value.as_deref())?;
-                options.json = true;
-            }
-            _ => unreachable!("option name is checked before dispatch"),
-        }
-        index += 1;
-    }
-    Ok(options)
-}
-
-fn reject_boolean_value(name: &str, value: Option<&str>) -> Result<(), ExportCommandError> {
-    if value.is_some() {
-        Err(ExportCommandError::usage(format!(
-            "--{name} does not accept a value"
-        )))
-    } else {
-        Ok(())
-    }
-}
-
-fn value_path(name: &str, value: Option<&str>) -> Result<PathBuf, ExportCommandError> {
-    let value =
-        value.ok_or_else(|| ExportCommandError::usage(format!("missing value for --{name}")))?;
-    if value.trim().is_empty() {
-        Err(ExportCommandError::usage(format!(
-            "--{name} must not be empty"
-        )))
-    } else {
-        Ok(PathBuf::from(value))
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -777,26 +662,4 @@ fn relative_path_text(path: &Path) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn args(values: &[&str]) -> Vec<String> {
-        values.iter().map(|value| (*value).to_owned()).collect()
-    }
-
-    #[test]
-    fn export_dispatcher_exposes_authority_bundle() {
-        let current_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let help = run_export_command(
-            &args(&["authority-bundle", "--help"]),
-            |_| None,
-            current_dir,
-        )
-        .expect("authority bundle help should render");
-
-        assert!(help.contains("volicord export authority-bundle --output PATH"));
-    }
 }

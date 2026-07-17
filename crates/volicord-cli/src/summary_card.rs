@@ -3,7 +3,7 @@ use volicord_types::SummaryCard;
 
 use crate::disclosure::{
     does_not_prove_line, AUTHORITY_RECORD_NON_GUARANTEE_TEXT,
-    DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT, USER_CHANNEL_NON_GUARANTEE_TEXT,
+    DIAGNOSTIC_OBSERVATION_NON_GUARANTEE_TEXT, USER_CHANNEL_NON_GUARANTEE_TEXT,
 };
 
 pub(crate) const DIAGNOSTIC_SUMMARY_GUARANTEE: &str =
@@ -87,7 +87,7 @@ fn backticked_volicord_command(next: &str) -> Option<(String, String)> {
 
 fn summary_card_non_guarantees(card: &SummaryCard) -> &'static str {
     match card.guarantee.as_str() {
-        DIAGNOSTIC_SUMMARY_GUARANTEE => DETECTIVE_OBSERVATION_NON_GUARANTEE_TEXT,
+        DIAGNOSTIC_SUMMARY_GUARANTEE => DIAGNOSTIC_OBSERVATION_NON_GUARANTEE_TEXT,
         USER_CHANNEL_SUMMARY_GUARANTEE => USER_CHANNEL_NON_GUARANTEE_TEXT,
         _ => AUTHORITY_RECORD_NON_GUARANTEE_TEXT,
     }
@@ -113,107 +113,6 @@ fn top_level_array_count_text(value: &Value, field: &str) -> String {
         .unwrap_or_else(|| "not shown in this view".to_owned())
 }
 
-pub(crate) fn render_coverage_summary_text(value: &Value) -> Option<String> {
-    let coverage = value.get("coverage_summary")?;
-    let profile = coverage_text(coverage.get("active_profile"));
-    let host_hook = coverage_text(coverage.get("host_hook_state"));
-    let session_watcher = coverage_text(coverage.get("session_watcher_state"));
-    let started = coverage_text(coverage.get("coverage_started_at"));
-    let last_snapshot = coverage_text(coverage.get("last_snapshot_at"));
-    let unresolved = coverage
-        .get("unresolved_unrecorded_change_count")
-        .and_then(Value::as_u64)
-        .map(|count| count.to_string())
-        .unwrap_or_else(|| "unknown".to_owned());
-    let non_guarantees = coverage
-        .get("non_guarantees")
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .map(coverage_non_guarantee_text)
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "not listed".to_owned());
-    let watcher_scan = coverage
-        .get("watcher_scan_summary")
-        .and_then(watcher_scan_summary_text)
-        .unwrap_or_else(|| "watcher_scan=unavailable".to_owned());
-
-    Some(format!(
-        "Coverage: profile={profile}; host_hook={host_hook}; session_watcher={session_watcher}; started={started}; last_snapshot={last_snapshot}; unresolved_unrecorded_changes={unresolved}\nCoverage watcher scan: {watcher_scan}\nCoverage does not guarantee: {non_guarantees}\n"
-    ))
-}
-
-fn watcher_scan_summary_text(value: &Value) -> Option<String> {
-    if !value.is_object() {
-        return None;
-    }
-    let files_scanned = value.get("files_scanned").and_then(Value::as_u64)?;
-    let files_skipped = value.get("files_skipped").and_then(Value::as_u64)?;
-    let unreadable = value
-        .get("unreadable_paths_count")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    let degraded_reasons = value
-        .get("degraded_reasons")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
-    let degraded_reasons = if degraded_reasons.is_empty() {
-        "none".to_owned()
-    } else {
-        degraded_reasons.join(",")
-    };
-    let skipped_paths = value
-        .get("skipped_paths_sample")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
-    let skipped_paths = if skipped_paths.is_empty() {
-        "none".to_owned()
-    } else {
-        skipped_paths.join(",")
-    };
-    let monitoring_note = if value
-        .get("not_full_filesystem_monitoring")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        "not_full_filesystem_monitoring=yes"
-    } else {
-        "not_full_filesystem_monitoring=unknown"
-    };
-    Some(format!(
-        "files_scanned={files_scanned}; files_skipped={files_skipped}; unreadable_paths={unreadable}; degraded_reasons={degraded_reasons}; skipped_paths_sample={skipped_paths}; {monitoring_note}"
-    ))
-}
-
-fn coverage_text(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(text)) if !text.is_empty() => text.to_owned(),
-        Some(Value::Null) => "none".to_owned(),
-        Some(value) => value.to_string(),
-        None => "unknown".to_owned(),
-    }
-}
-
-fn coverage_non_guarantee_text(value: &str) -> &'static str {
-    match value {
-        "NotActorAttributionProof" => "actor identity proof",
-        "NotFullFilesystemMonitoring" => "full filesystem monitoring",
-        "NotFullWritePrevention" => "write prevention",
-        _ => "listed non-guarantee",
-    }
-}
-
 pub(crate) fn count_state_text(label: &str, count: usize) -> String {
     if count == 0 {
         "none".to_owned()
@@ -226,47 +125,6 @@ pub(crate) fn count_state_text(label: &str, count: usize) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn coverage_summary_text_reports_observation_limits() {
-        let value = json!({
-            "coverage_summary": {
-                "active_profile": "detective",
-                "host_hook_state": "observed",
-                "session_watcher_state": "degraded",
-                "coverage_started_at": "2026-06-30T00:03:00Z",
-                "last_snapshot_at": "2026-06-30T00:04:00Z",
-                "unresolved_unrecorded_change_count": 2,
-                "watcher_scan_summary": {
-                    "files_scanned": 12,
-                    "files_skipped": 3,
-                    "unreadable_paths_count": 1,
-                    "degraded_reasons": ["file_size_limit", "unreadable_path"],
-                    "skipped_paths_sample": ["large.bin", "private"],
-                    "not_full_filesystem_monitoring": true
-                },
-                "non_guarantees": [
-                    "NotActorAttributionProof",
-                    "NotFullFilesystemMonitoring",
-                    "NotFullWritePrevention"
-                ]
-            }
-        });
-
-        let text = render_coverage_summary_text(&value).expect("coverage line should render");
-
-        assert!(text.contains("profile=detective"));
-        assert!(text.contains("session_watcher=degraded"));
-        assert!(text.contains("unresolved_unrecorded_changes=2"));
-        assert!(text.contains("files_scanned=12"));
-        assert!(text.contains("files_skipped=3"));
-        assert!(text.contains("unreadable_paths=1"));
-        assert!(text.contains("file_size_limit,unreadable_path"));
-        assert!(text.contains("not_full_filesystem_monitoring=yes"));
-        assert!(text.contains("actor identity proof"));
-        assert!(text.contains("full filesystem monitoring"));
-        assert!(text.contains("write prevention"));
-    }
 
     #[test]
     fn summary_card_text_renders_embedded_volicord_command_as_standalone_line() {

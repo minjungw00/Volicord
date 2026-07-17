@@ -8,51 +8,32 @@ use std::{
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use volicord_mcp::RepositoryDiscoveryHost;
 use volicord_store::{
-    agent_connections::{
-        connection_metadata_contains_pending_host_cleanup_key,
-        connection_metadata_pending_host_cleanup_replacement, CONNECTION_MODE_READ_ONLY,
-        CONNECTION_MODE_WORKFLOW,
-    },
+    agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
     core_pipeline::CoreProjectStore,
     guards::{guard_observation_matches_current_capability, GuardObservationMatch},
-    host_runtime_probes::host_runtime_probe_snapshot_from_report,
     inspection::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
         InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    session_watch::{
-        default_watch_excluded_paths, latest_watch_baseline_for_connection,
-        watch_scan_summary_from_entries_json, DEFAULT_MAX_FILE_HASH_BYTES,
-        DEFAULT_MAX_SCAN_FILE_COUNT,
-    },
+    StoreError, StoreFailureRoute,
 };
 use volicord_types::{
     canonical_json_sha256, GuardInstallationStatus, IntegrationProfile, ProjectId, SummaryCard,
-    UtcTimestamp,
 };
 
 use crate::{
-    disclosure::detective_observation_disclosure_json,
+    cli::DoctorArgs,
     guard_integration::audit::{
         all_recorded_values_true, guard_file_findings_for_inspection,
         host_hook_capability_binding_valid_for_inspection,
         missing_required_hooks_from_capability_json, GuardFileFindings,
     },
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
+    guard_integration::host_hook_capability_has_exact_current_shape,
     guard_integration::policy::validate_policy_schema,
-    guard_integration::{host_hook_capability_has_exact_v2_shape, HOOK_WRAPPER_MARKER},
-    host_integration::{
-        capability_status::{
-            host_feature_support_json, host_feature_support_matrix_from_runtime_probes,
-            HostFeature, HostFeatureDiagnosticProjection,
-        },
-        codex::managed_entry_from_item_for_diagnostics,
-        is_legacy_repository_discovery_entry, is_volicord_managed_entry, managed_entry_from_json,
-        HostKind, ManagedServerEntry,
-    },
+    host_integration::HostKind,
     policy_command::read_validated_policy_file,
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
@@ -156,25 +137,51 @@ struct DiagnosticAction {
     command: Option<String>,
 }
 
-pub fn doctor_usage() -> String {
-    "volicord doctor [--json] [--privacy-footprint]\n".to_owned()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectPolicyAuthorityState {
+    Matches,
+    AuthorityMissing,
+    AuthorityCorrupt,
+    AuthorityUnavailable,
+    AuthorityUnsupportedContract,
+    ManagedFileMissing,
+    ManagedFileInvalid,
+    ManagedFileUnavailable,
+    ManagedFileStale,
+}
+
+impl ProjectPolicyAuthorityState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Matches => "matches",
+            Self::AuthorityMissing => "authority_missing",
+            Self::AuthorityCorrupt => "authority_corrupt",
+            Self::AuthorityUnavailable => "authority_unavailable",
+            Self::AuthorityUnsupportedContract => "authority_unsupported_contract",
+            Self::ManagedFileMissing => "managed_file_missing",
+            Self::ManagedFileInvalid => "managed_file_invalid",
+            Self::ManagedFileUnavailable => "managed_file_unavailable",
+            Self::ManagedFileStale => "managed_file_stale",
+        }
+    }
 }
 
 pub fn run_doctor_command<F>(
-    args: &[String],
+    args: DoctorArgs,
     env_var: F,
     current_dir: &Path,
 ) -> Result<CommandOutcome, DoctorCommandError>
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    if is_help_request(args) {
-        return Ok(CommandOutcome {
-            status: CommandStatus::Complete,
-            output: doctor_usage(),
-        });
-    }
-    let options = parse_doctor_options(args)?;
+    let options = DoctorOptions {
+        output: if args.json {
+            OutputFormat::Json
+        } else {
+            OutputFormat::Text
+        },
+        privacy_footprint: args.privacy_footprint,
+    };
     let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
     let inspection = inspect_runtime_home(&runtime_home);
     if options.privacy_footprint {
@@ -189,6 +196,8 @@ where
     inspect_build_identity(&mut checks);
     inspect_runtime_home_path(&runtime_home, &mut checks, &mut actions);
     let mut profile = None;
+    let mut absent_profile_state = "missing";
+    let mut absent_profile_summary = "installation profile is missing";
     let mut project_count = None;
     let mut connection_count = None;
     let mut guard_installation_count = None;
@@ -207,14 +216,15 @@ where
             project_count = Some(snapshot.projects.len());
             connection_count = Some(snapshot.agent_connections.len());
             guard_installation_count = Some(snapshot.guard_installations.len());
-            inspect_host_feature_support(snapshot, &mut checks);
             inspect_guard_installations(snapshot, &mut checks, &mut actions);
             inspect_personal_local_git_tracking(snapshot, &mut checks, &mut actions);
             inspect_integration_intent_drift(snapshot, &mut checks, &mut actions);
             inspect_project_policy_authority(&runtime_home, snapshot, &mut checks, &mut actions);
-            inspect_session_watch_baselines(&runtime_home, snapshot, &mut checks);
         }
         DatabaseInspection::Unsupported { path, detail } => {
+            absent_profile_state = "unsupported_contract";
+            absent_profile_summary =
+                "installation profile cannot be read from an unsupported registry";
             checks.push(
                 DiagnosticCheck::failed(
                     "registry",
@@ -227,12 +237,16 @@ where
             );
         }
         DatabaseInspection::Malformed { path, detail } => {
+            absent_profile_state = "corrupt";
+            absent_profile_summary = "installation profile cannot be read from a corrupt registry";
             checks.push(
                 DiagnosticCheck::failed("registry", "Runtime Home registry is malformed")
                     .with_details(json!({ "path": path_text(path), "detail": detail })),
             );
         }
         DatabaseInspection::Unreadable { path, detail } => {
+            absent_profile_state = "unavailable";
+            absent_profile_summary = "installation profile is currently unavailable";
             checks.push(
                 DiagnosticCheck::failed("registry", "Runtime Home registry is unreadable")
                     .with_details(json!({ "path": path_text(path), "detail": detail })),
@@ -244,10 +258,16 @@ where
         inspect_installation_profile(profile, &env_var, &mut checks, &mut actions);
     } else {
         checks.push(
-            DiagnosticCheck::failed("installation_profile", "installation profile is missing")
-                .with_details(json!({ "runtime_home": path_text(&runtime_home) })),
+            DiagnosticCheck::failed("installation_profile", absent_profile_summary).with_details(
+                json!({
+                    "state": absent_profile_state,
+                    "runtime_home": path_text(&runtime_home),
+                }),
+            ),
         );
-        if !actions.iter().any(|action| action.id == "run_init") {
+        if absent_profile_state == "missing"
+            && !actions.iter().any(|action| action.id == "run_init")
+        {
             actions.push(run_init_action());
         }
         checks.push(DiagnosticCheck::skipped(
@@ -287,42 +307,6 @@ where
     Ok(CommandOutcome {
         status,
         output: render_doctor_output(options.output, status, &runtime_home, &checks, &actions)?,
-    })
-}
-
-fn parse_doctor_options(args: &[String]) -> Result<DoctorOptions, DoctorCommandError> {
-    let mut output = OutputFormat::Text;
-    let mut privacy_footprint = false;
-    for token in args {
-        match token.as_str() {
-            "-h" | "--help" | "help" => return Err(DoctorCommandError::Usage(doctor_usage())),
-            "--json" => output = OutputFormat::Json,
-            "--privacy-footprint" => privacy_footprint = true,
-            option if option.starts_with("--json=") => {
-                return Err(DoctorCommandError::Usage(
-                    "--json does not accept a value".to_owned(),
-                ))
-            }
-            option if option.starts_with("--privacy-footprint=") => {
-                return Err(DoctorCommandError::Usage(
-                    "--privacy-footprint does not accept a value".to_owned(),
-                ))
-            }
-            option if option.starts_with('-') => {
-                return Err(DoctorCommandError::Usage(format!(
-                    "unknown option: {option}"
-                )))
-            }
-            argument => {
-                return Err(DoctorCommandError::Usage(format!(
-                    "unexpected argument: {argument}"
-                )))
-            }
-        }
-    }
-    Ok(DoctorOptions {
-        output,
-        privacy_footprint,
     })
 }
 
@@ -441,17 +425,15 @@ fn privacy_stores() -> Vec<&'static str> {
     vec![
         "Runtime Home identity, registry path, storage profile, installation profile, command paths, and setup metadata",
         "Product Repository registrations, project home paths, project state database paths, and Agent Connection records",
-        "detective host-hook installation records, capability metadata, policy hashes, hook observation timestamps, and prompt-capture availability state",
+        "Codex Record Guard installation records, capability metadata, policy hashes, hook observation timestamps, and prompt-capture availability state",
         "project state records for tasks, change units, write tickets, evidence metadata, close-readiness records, User Channel actions, and artifacts when those features are used",
-        "session-watch baselines and observations with relative paths, file hashes, file sizes, skip reasons, scan summaries, timestamps, and observation links",
         "bounded diagnostics.sqlite session, connection, project, transport, host, build, tool, categorical outcome, counter, byte-size, and latency observations when diagnostics are present",
     ]
 }
 
 fn privacy_does_not_store() -> Vec<&'static str> {
     vec![
-        "session-watch snapshots do not store Product Repository file contents",
-        "prompt-capture availability and verification-code records do not include raw prompt text by default",
+        "Guard prompt-capture observations do not include raw prompt text by default",
         "diagnostics.sqlite does not store prompt bodies, Product Repository paths or file contents, error bodies, secrets, or user-action question, choice, rationale, note, or observation-summary text",
         "doctor --privacy-footprint reports categories and counts, not stored row bodies",
     ]
@@ -860,17 +842,31 @@ fn inspect_integration_intent_drift(
             }
         };
         first_repair_command.get_or_insert_with(|| integration_repair_command(&policy, project));
-        let registry_host_kind = match policy.host.as_str() {
-            "claude-code" => "claude_code",
-            other => other,
-        };
+
+        if policy.host != HostKind::Codex.as_str()
+            || policy.selected_profile != IntegrationProfile::Record.as_str()
+        {
+            push_bounded_intent_finding(
+                &mut findings,
+                json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "kind": "policy_scope_mismatch",
+                    "policy_host": policy.host,
+                    "selected_profile": policy.selected_profile,
+                    "expected_host": HostKind::Codex.as_str(),
+                    "expected_profile": IntegrationProfile::Record.as_str(),
+                }),
+                &mut truncated,
+            );
+        }
 
         let attached = snapshot
             .agent_connections
             .iter()
             .filter(|connection| {
                 connection.enabled
-                    && matches!(connection.host_kind.as_str(), "codex" | "claude_code")
+                    && connection.host_kind == HostKind::Codex.as_str()
                     && matches!(connection.intent.as_str(), "personal" | "shared")
                     && connection_is_attached_to_project(snapshot, connection, project)
             })
@@ -892,7 +888,7 @@ fn inspect_integration_intent_drift(
                 }),
                 &mut truncated,
             ),
-            Some(connection) if connection.host_kind != registry_host_kind => {
+            Some(connection) if connection.host_kind != HostKind::Codex.as_str() => {
                 push_bounded_intent_finding(
                     &mut findings,
                     json!({
@@ -901,7 +897,7 @@ fn inspect_integration_intent_drift(
                         "kind": "policy_connection_host_mismatch",
                         "policy_connection_id": policy.connection_id,
                         "policy_host": policy.host,
-                        "recorded_host": public_connection_host(&connection.host_kind),
+                        "recorded_host": connection.host_kind,
                     }),
                     &mut truncated,
                 );
@@ -925,61 +921,19 @@ fn inspect_integration_intent_drift(
         }
         for connection in attached.iter().filter(|connection| {
             connection.connection_internal_id != policy.connection_id
-                || connection.host_kind != registry_host_kind
                 || connection.intent != policy.connection_intent
         }) {
-            let opposite_host = connection.host_kind != registry_host_kind;
             push_bounded_intent_finding(
                 &mut findings,
                 json!({
                     "project_id": project.project_id,
                     "repo_root": path_text(&project.repo_root),
-                    "kind": if opposite_host {
-                        "additional_active_host_projection"
-                    } else {
-                        "additional_active_intent_projection"
-                    },
+                    "kind": "additional_active_intent_projection",
                     "policy_connection_id": policy.connection_id,
                     "connection_id": connection.connection_internal_id,
                     "policy_intent": policy.connection_intent,
                     "recorded_intent": connection.intent,
-                    "host": policy.host,
-                    "policy_host": policy.host,
-                    "recorded_host": public_connection_host(&connection.host_kind),
-                }),
-                &mut truncated,
-            );
-        }
-        for connection in snapshot.agent_connections.iter().filter(|connection| {
-            !connection.enabled
-                && matches!(connection.host_kind.as_str(), "codex" | "claude_code")
-                && matches!(connection.intent.as_str(), "personal" | "shared")
-                && connection_is_attached_to_project(snapshot, connection, project)
-                && connection_metadata_contains_pending_host_cleanup_key(&connection.metadata_json)
-        }) {
-            let pending_replacement_connection_id =
-                connection_metadata_pending_host_cleanup_replacement(
-                    &connection.metadata_json,
-                    &project.project_id,
-                );
-            push_bounded_intent_finding(
-                &mut findings,
-                json!({
-                    "project_id": project.project_id,
-                    "repo_root": path_text(&project.repo_root),
-                    "kind": if pending_replacement_connection_id.is_some() {
-                        "pending_host_cleanup"
-                    } else {
-                        "invalid_pending_host_cleanup_marker"
-                    },
-                    "policy_connection_id": policy.connection_id,
-                    "pending_replacement_connection_id": pending_replacement_connection_id,
-                    "connection_id": connection.connection_internal_id,
-                    "policy_intent": policy.connection_intent,
-                    "recorded_intent": connection.intent,
-                    "host": policy.host,
-                    "policy_host": policy.host,
-                    "recorded_host": public_connection_host(&connection.host_kind),
+                    "host": HostKind::Codex.as_str(),
                 }),
                 &mut truncated,
             );
@@ -988,7 +942,7 @@ fn inspect_integration_intent_drift(
         let guard_matches = active_installations.iter().any(|installation| {
             installation.guard_installation_id == policy.guard_installation_id
                 && installation.connection_internal_id == policy.connection_id
-                && installation.guard_mode == policy.selected_profile
+                && installation.guard_mode == IntegrationProfile::Record.as_str()
                 && installation.project_internal_id.as_deref()
                     == Some(project.project_internal_id.as_str())
         });
@@ -1006,47 +960,8 @@ fn inspect_integration_intent_drift(
                 &mut truncated,
             );
         }
-
-        match stale_opposite_projection_paths(&project.repo_root, &policy) {
-            Ok(paths) => {
-                for projection in paths {
-                    let opposite_host = projection.host != policy.host;
-                    push_bounded_intent_finding(
-                        &mut findings,
-                        json!({
-                            "project_id": project.project_id,
-                            "repo_root": path_text(&project.repo_root),
-                            "kind": if opposite_host {
-                                "opposite_host_projection_present"
-                            } else {
-                                "opposite_intent_projection_present"
-                            },
-                            "path": projection.path,
-                            "projection_host": projection.host,
-                            "policy_intent": policy.connection_intent,
-                            "selected_profile": policy.selected_profile,
-                            "host": policy.host,
-                            "policy_host": policy.host,
-                        }),
-                        &mut truncated,
-                    );
-                }
-            }
-            Err(detail) => push_bounded_intent_finding(
-                &mut audit_errors,
-                json!({
-                    "project_id": project.project_id,
-                    "repo_root": path_text(&project.repo_root),
-                    "detail": detail,
-                }),
-                &mut truncated,
-            ),
-        }
     }
 
-    let has_invalid_pending_cleanup_marker = findings
-        .iter()
-        .any(|finding| finding["kind"].as_str() == Some("invalid_pending_host_cleanup_marker"));
     let has_warning = !findings.is_empty() || !audit_errors.is_empty() || truncated;
     let details = json!({
         "connected_project_count": connected_project_count,
@@ -1058,31 +973,19 @@ fn inspect_integration_intent_drift(
         "max_findings": MAX_INTENT_DRIFT_FINDINGS,
     });
     if has_warning {
-        if has_invalid_pending_cleanup_marker {
-            push_unique_diagnostic_action(
-                actions,
-                DiagnosticAction {
-                    id: "restore_invalid_pending_cleanup_registry".to_owned(),
-                    instruction: "The Store-owned pending cleanup marker is malformed, so init will not mutate it. Restore registry.sqlite from a known-good Runtime Home backup or obtain maintainer-assisted Registry repair before rerunning init."
-                        .to_owned(),
-                    command: None,
-                },
-            );
-        } else {
-            push_unique_diagnostic_action(
-                actions,
-                DiagnosticAction {
-                    id: "repair_integration_intent_drift".to_owned(),
-                    instruction: "Rerun init with the policy-selected host, intent, and profile so Volicord can safely retire only its owned stale host or intent projection."
-                        .to_owned(),
-                    command: first_repair_command,
-                },
-            );
-        }
+        push_unique_diagnostic_action(
+            actions,
+            DiagnosticAction {
+                id: "repair_integration_intent_drift".to_owned(),
+                instruction: "Rerun Codex Record init with the intended connection intent so the local policy and enabled inventory converge."
+                    .to_owned(),
+                command: first_repair_command,
+            },
+        );
         checks.push(
             DiagnosticCheck::warning(
                 "integration_intent_drift",
-                "one or more repository integrations have host, intent, or profile drift",
+                "one or more Codex Record repository integrations have intent or inventory drift",
             )
             .with_details(details),
         );
@@ -1090,7 +993,7 @@ fn inspect_integration_intent_drift(
         checks.push(
             DiagnosticCheck::passed(
                 "integration_intent_drift",
-                "repository integration intent and profile projections are converged",
+                "Codex Record repository integration intent and inventory are converged",
             )
             .with_details(details),
         );
@@ -1106,7 +1009,7 @@ fn connected_enabled_projects(
         .filter(|project| {
             snapshot.agent_connections.iter().any(|connection| {
                 connection.enabled
-                    && matches!(connection.host_kind.as_str(), "codex" | "claude_code")
+                    && connection.host_kind == HostKind::Codex.as_str()
                     && matches!(connection.intent.as_str(), "personal" | "shared")
                     && connection_is_attached_to_project(snapshot, connection, project)
             })
@@ -1128,46 +1031,21 @@ fn inspect_project_policy_authority(
     let mut findings = Vec::new();
     for project in projects {
         let file_path = project.repo_root.join(".volicord/policy.json");
-        let status = (|| {
-            let store = CoreProjectStore::open_read_only(
-                runtime_home,
-                &ProjectId::new(project.project_id.clone()),
-            )
-            .ok()?;
-            let authority = store.project_workflow_policy().ok()??;
-            if authority.policy_schema != "volicord-policy-v2"
-                || authority.source != "project_database"
-            {
-                return None;
-            }
-            let authority_value = serde_json::from_str::<Value>(&authority.policy_json).ok()?;
-            validate_policy_schema(
-                &authority_value,
-                authority_value.get("connection_intent")?.as_str()?,
-            )
-            .ok()?;
-            let authority_fingerprint = canonical_json_sha256(&authority_value).ok()?;
-            if authority_fingerprint.as_str() != authority.policy_fingerprint {
-                return None;
-            }
-            let managed = read_validated_policy_file(&file_path).ok()?;
-            (managed.fingerprint == authority.policy_fingerprint).then_some("matches")
-        })()
-        .unwrap_or("mismatch_or_unavailable");
-        if status != "matches" {
+        let state = project_policy_authority_state(runtime_home, project, &file_path);
+        if state != ProjectPolicyAuthorityState::Matches {
             truncated |= findings.len() >= MAX_INTENT_DRIFT_FINDINGS;
             if findings.len() < MAX_INTENT_DRIFT_FINDINGS {
                 findings.push(json!({
                     "project_id": project.project_id,
                     "repo_root": path_text(&project.repo_root),
-                    "status": status,
+                    "status": state.as_str(),
                 }));
             }
             push_unique_diagnostic_action(
                 actions,
                 DiagnosticAction {
                     id: "repair_project_policy".to_owned(),
-                    instruction: "Inspect the authoritative project policy and apply one validated v2 policy file to repair the database/file mismatch."
+                    instruction: "Inspect the authoritative project policy and apply one validated canonical policy file to repair the database/file mismatch."
                         .to_owned(),
                     command: Some(format!(
                         "volicord policy show --repo {} --json",
@@ -1181,23 +1059,118 @@ fn inspect_project_policy_authority(
         "project_count": project_count,
         "findings": findings,
         "truncated": truncated,
+        "scan_state": if truncated { "bounded_incomplete" } else { "complete" },
     });
-    if details["findings"].as_array().is_some_and(Vec::is_empty) {
-        checks.push(
+    let finding_count = details["findings"].as_array().map_or(0, Vec::len);
+    match project_policy_authority_result(finding_count, truncated) {
+        "passed" => checks.push(
             DiagnosticCheck::passed(
                 "project_policy_authority",
                 "managed project policies match authoritative database fingerprints",
             )
             .with_details(details),
-        );
-    } else {
-        checks.push(
+        ),
+        "warning" => checks.push(
+            DiagnosticCheck::warning(
+                "project_policy_authority",
+                "the bounded project-policy audit did not inspect every connected project",
+            )
+            .with_details(details),
+        ),
+        _ => checks.push(
             DiagnosticCheck::failed(
                 "project_policy_authority",
                 "one or more managed project policies do not match database authority",
             )
             .with_details(details),
-        );
+        ),
+    }
+}
+
+fn project_policy_authority_result(finding_count: usize, truncated: bool) -> &'static str {
+    if finding_count > 0 {
+        "failed"
+    } else if truncated {
+        "warning"
+    } else {
+        "passed"
+    }
+}
+
+fn project_policy_authority_state(
+    runtime_home: &Path,
+    project: &volicord_store::inspection::ProjectInspectionRecord,
+    file_path: &Path,
+) -> ProjectPolicyAuthorityState {
+    let store = match CoreProjectStore::open_read_only(
+        runtime_home,
+        &ProjectId::new(project.project_id.clone()),
+    ) {
+        Ok(store) => store,
+        Err(error) => return project_policy_store_failure_state(&error),
+    };
+    let authority = match store.project_workflow_policy() {
+        Ok(Some(authority)) => authority,
+        Ok(None) => return ProjectPolicyAuthorityState::AuthorityMissing,
+        Err(error) => return project_policy_store_failure_state(&error),
+    };
+    if authority.policy_schema != volicord_types::WORKFLOW_POLICY_CONTRACT_ID
+        || authority.source != "project_database"
+    {
+        return ProjectPolicyAuthorityState::AuthorityCorrupt;
+    }
+    let authority_value = match serde_json::from_str::<Value>(&authority.policy_json) {
+        Ok(value) => value,
+        Err(_) => return ProjectPolicyAuthorityState::AuthorityCorrupt,
+    };
+    let Some(connection_intent) = authority_value
+        .get("connection_intent")
+        .and_then(Value::as_str)
+    else {
+        return ProjectPolicyAuthorityState::AuthorityCorrupt;
+    };
+    if validate_policy_schema(&authority_value, connection_intent).is_err() {
+        return ProjectPolicyAuthorityState::AuthorityCorrupt;
+    }
+    let authority_fingerprint = match canonical_json_sha256(&authority_value) {
+        Ok(fingerprint) => fingerprint,
+        Err(_) => return ProjectPolicyAuthorityState::AuthorityCorrupt,
+    };
+    if authority_fingerprint.as_str() != authority.policy_fingerprint {
+        return ProjectPolicyAuthorityState::AuthorityCorrupt;
+    }
+
+    match fs::symlink_metadata(file_path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return ProjectPolicyAuthorityState::ManagedFileMissing;
+        }
+        Err(_) => return ProjectPolicyAuthorityState::ManagedFileUnavailable,
+        Ok(_) => {}
+    }
+    let managed = match read_validated_policy_file(file_path) {
+        Ok(managed) => managed,
+        Err(crate::policy_command::PolicyCommandError::Validation { .. }) => {
+            return ProjectPolicyAuthorityState::ManagedFileInvalid;
+        }
+        Err(_) => return ProjectPolicyAuthorityState::ManagedFileUnavailable,
+    };
+    if managed.fingerprint == authority.policy_fingerprint {
+        ProjectPolicyAuthorityState::Matches
+    } else {
+        ProjectPolicyAuthorityState::ManagedFileStale
+    }
+}
+
+fn project_policy_store_failure_state(error: &StoreError) -> ProjectPolicyAuthorityState {
+    match error.classification().route {
+        StoreFailureRoute::PersistedDataCorrupt => ProjectPolicyAuthorityState::AuthorityCorrupt,
+        StoreFailureRoute::UnsupportedContract => {
+            ProjectPolicyAuthorityState::AuthorityUnsupportedContract
+        }
+        StoreFailureRoute::OperationalUnavailable
+        | StoreFailureRoute::InvocationContextMismatch => {
+            ProjectPolicyAuthorityState::AuthorityUnavailable
+        }
     }
 }
 
@@ -1211,13 +1184,6 @@ fn connection_is_attached_to_project(
             membership.connection_internal_id == connection.connection_internal_id
                 && membership.project_internal_id == project.project_internal_id
         })
-}
-
-fn public_connection_host(host_kind: &str) -> &str {
-    match host_kind {
-        "claude_code" => "claude-code",
-        other => other,
-    }
 }
 
 fn active_guard_installations(
@@ -1248,429 +1214,6 @@ fn active_guard_installations(
         .collect()
 }
 
-fn inspect_host_feature_support(
-    snapshot: &RegistryInspectionSnapshot,
-    checks: &mut Vec<DiagnosticCheck>,
-) {
-    let (connections, unreadable_connection_count) = doctor_host_feature_support_rows(snapshot);
-    let check = if unreadable_connection_count > 0 {
-        DiagnosticCheck::warning(
-            "host_feature_support",
-            "one or more stored Agent Connections have an unreadable host kind",
-        )
-    } else if connections.is_empty() {
-        DiagnosticCheck::skipped(
-            "host_feature_support",
-            "no stored Agent Connection is available for host feature evaluation",
-        )
-    } else {
-        DiagnosticCheck::passed(
-            "host_feature_support",
-            "stored Agent Connections use the canonical host feature evaluator",
-        )
-    };
-    checks.push(check.with_details(json!({
-        "connections": connections,
-        "unreadable_connection_count": unreadable_connection_count,
-    })));
-}
-
-fn doctor_host_feature_support_rows(snapshot: &RegistryInspectionSnapshot) -> (Vec<Value>, usize) {
-    let mut connections = snapshot.agent_connections.iter().collect::<Vec<_>>();
-    connections.sort_by(|left, right| {
-        left.connection_internal_id
-            .cmp(&right.connection_internal_id)
-    });
-
-    let mut rows = Vec::with_capacity(connections.len());
-    let mut unreadable_connection_count = 0;
-    let now = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(
-        std::time::SystemTime::now(),
-    ));
-    for connection in connections {
-        let Some(host_kind) = doctor_host_kind(&connection.host_kind) else {
-            unreadable_connection_count += 1;
-            continue;
-        };
-        let installations = snapshot
-            .guard_installations
-            .iter()
-            .filter(|installation| {
-                installation.connection_internal_id == connection.connection_internal_id
-            })
-            .collect::<Vec<_>>();
-        let selected_profile = exact_connection_profile(&installations);
-        let probe_snapshot = match host_runtime_probe_snapshot_from_report(
-            &connection.last_verification_report_json,
-        ) {
-            Ok(snapshot) => snapshot,
-            Err(_) => {
-                unreadable_connection_count += 1;
-                continue;
-            }
-        };
-        let support = host_feature_support_matrix_from_runtime_probes(
-            &probe_snapshot,
-            host_kind,
-            &connection.managed_fingerprint,
-            selected_profile.unwrap_or(IntegrationProfile::Record),
-            &now,
-        );
-        let final_output_authority_disclosure = selected_profile.map(|profile| {
-            let mut findings = GuardFileFindings::default();
-            for installation in &installations {
-                findings.merge(guard_file_findings_for_inspection(
-                    installation,
-                    connection,
-                    &snapshot.projects,
-                ));
-            }
-            findings.sort_dedup();
-            HostFeatureDiagnosticProjection::from_matrix(
-                support,
-                profile,
-                findings.final_output_authority_disclosure_configured(),
-                findings.final_output_authority_disclosure_configuration_verified(),
-            )
-            .final_output_authority_disclosure_json()
-        });
-        rows.push(json!({
-            "connection_id": &connection.connection_internal_id,
-            "host_kind": host_kind.as_str(),
-            "selected_profile": selected_profile.map(IntegrationProfile::as_str),
-            "host_feature_support": host_feature_support_json(support),
-            "final_output_authority_disclosure": final_output_authority_disclosure,
-        }));
-    }
-    (rows, unreadable_connection_count)
-}
-
-fn doctor_host_kind(value: &str) -> Option<HostKind> {
-    match value {
-        "codex" => Some(HostKind::Codex),
-        "claude_code" => Some(HostKind::ClaudeCode),
-        "generic" => Some(HostKind::Generic),
-        _ => None,
-    }
-}
-
-fn exact_connection_profile(
-    installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
-) -> Option<IntegrationProfile> {
-    let mut selected = None;
-    for installation in installations {
-        let current = match installation.guard_mode.as_str() {
-            "record" => IntegrationProfile::Record,
-            "detective" => IntegrationProfile::Detective,
-            _ => return None,
-        };
-        if selected.is_some_and(|profile| profile != current) {
-            return None;
-        }
-        selected = Some(current);
-    }
-    selected
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct StaleProjectionPath {
-    path: String,
-    host: &'static str,
-}
-
-impl StaleProjectionPath {
-    fn new(path: impl Into<String>, host: &'static str) -> Self {
-        Self {
-            path: path.into(),
-            host,
-        }
-    }
-}
-
-const CODEX_MANAGED_WRAPPER_PATHS: &[&str] = &[
-    ".codex/hooks/volicord-dispatch.sh",
-    ".codex/hooks/volicord-session-start.sh",
-    ".codex/hooks/volicord-pre-tool.sh",
-    ".codex/hooks/volicord-post-tool.sh",
-    ".codex/hooks/volicord-prompt-capture.sh",
-    ".codex/hooks/volicord-stop.sh",
-];
-const CLAUDE_MANAGED_WRAPPER_PATHS: &[&str] = &[
-    ".claude/hooks/volicord-session-start.sh",
-    ".claude/hooks/volicord-pre-tool.sh",
-    ".claude/hooks/volicord-post-tool.sh",
-    ".claude/hooks/volicord-prompt-capture.sh",
-    ".claude/hooks/volicord-stop.sh",
-];
-
-fn stale_opposite_projection_paths(
-    repo_root: &Path,
-    policy: &LocalPolicyAudit,
-) -> Result<Vec<StaleProjectionPath>, String> {
-    let mut paths = Vec::new();
-    match policy.host.as_str() {
-        "claude-code" => {
-            let local_settings = ".claude/settings.local.json";
-            let shared_settings = ".claude/settings.json";
-            let local_has_hooks = managed_hooks_present(repo_root, local_settings)?;
-            let shared_has_hooks = managed_hooks_present(repo_root, shared_settings)?;
-            match (
-                policy.selected_profile.as_str(),
-                policy.connection_intent.as_str(),
-            ) {
-                ("detective", "personal") if shared_has_hooks => {
-                    paths.push(StaleProjectionPath::new(shared_settings, "claude-code"))
-                }
-                ("detective", "shared") if local_has_hooks => {
-                    paths.push(StaleProjectionPath::new(local_settings, "claude-code"))
-                }
-                ("record", _) => {
-                    if local_has_hooks {
-                        paths.push(StaleProjectionPath::new(local_settings, "claude-code"));
-                    }
-                    if shared_has_hooks {
-                        paths.push(StaleProjectionPath::new(shared_settings, "claude-code"));
-                    }
-                }
-                _ => {}
-            }
-            if policy.connection_intent == "personal"
-                && managed_mcp_projection_present(repo_root, ".mcp.json")?
-            {
-                paths.push(StaleProjectionPath::new(".mcp.json", "claude-code"));
-            }
-            if policy.selected_profile == "record"
-                && managed_marker_present(repo_root, ".claude/rules/volicord.md")?
-            {
-                paths.push(StaleProjectionPath::new(
-                    ".claude/rules/volicord.md",
-                    "claude-code",
-                ));
-            }
-            append_stale_codex_projection_paths(repo_root, &mut paths)?;
-        }
-        "codex" => {
-            if policy.connection_intent == "personal"
-                && managed_codex_mcp_projection_present(repo_root, ".codex/config.toml")?
-            {
-                paths.push(StaleProjectionPath::new(".codex/config.toml", "codex"));
-            }
-            if policy.selected_profile == "record" {
-                if managed_hooks_present(repo_root, ".codex/hooks.json")? {
-                    paths.push(StaleProjectionPath::new(".codex/hooks.json", "codex"));
-                }
-                if managed_marker_present(repo_root, ".codex/rules/volicord.rules")? {
-                    paths.push(StaleProjectionPath::new(
-                        ".codex/rules/volicord.rules",
-                        "codex",
-                    ));
-                }
-            }
-            append_stale_claude_projection_paths(repo_root, &mut paths)?;
-        }
-        _ => {}
-    }
-    Ok(paths)
-}
-
-fn append_stale_codex_projection_paths(
-    repo_root: &Path,
-    paths: &mut Vec<StaleProjectionPath>,
-) -> Result<(), String> {
-    if managed_codex_mcp_projection_present(repo_root, ".codex/config.toml")? {
-        paths.push(StaleProjectionPath::new(".codex/config.toml", "codex"));
-    }
-    if managed_hooks_present(repo_root, ".codex/hooks.json")? {
-        paths.push(StaleProjectionPath::new(".codex/hooks.json", "codex"));
-    }
-    if managed_marker_present(repo_root, ".codex/rules/volicord.rules")? {
-        paths.push(StaleProjectionPath::new(
-            ".codex/rules/volicord.rules",
-            "codex",
-        ));
-    }
-    append_stale_managed_wrappers(repo_root, CODEX_MANAGED_WRAPPER_PATHS, "codex", paths)
-}
-
-fn append_stale_claude_projection_paths(
-    repo_root: &Path,
-    paths: &mut Vec<StaleProjectionPath>,
-) -> Result<(), String> {
-    if managed_mcp_projection_present(repo_root, ".mcp.json")? {
-        paths.push(StaleProjectionPath::new(".mcp.json", "claude-code"));
-    }
-    for settings in [".claude/settings.local.json", ".claude/settings.json"] {
-        if managed_hooks_present(repo_root, settings)? {
-            paths.push(StaleProjectionPath::new(settings, "claude-code"));
-        }
-    }
-    if managed_marker_present(repo_root, ".claude/rules/volicord.md")? {
-        paths.push(StaleProjectionPath::new(
-            ".claude/rules/volicord.md",
-            "claude-code",
-        ));
-    }
-    append_stale_managed_wrappers(
-        repo_root,
-        CLAUDE_MANAGED_WRAPPER_PATHS,
-        "claude-code",
-        paths,
-    )
-}
-
-fn append_stale_managed_wrappers(
-    repo_root: &Path,
-    wrapper_paths: &[&str],
-    host: &'static str,
-    paths: &mut Vec<StaleProjectionPath>,
-) -> Result<(), String> {
-    for path in wrapper_paths {
-        if managed_hook_wrapper_present(repo_root, path)? {
-            paths.push(StaleProjectionPath::new(*path, host));
-        }
-    }
-    Ok(())
-}
-
-fn managed_hooks_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
-    let Some(text) = read_bounded_repo_text(repo_root, relative_path)? else {
-        return Ok(false);
-    };
-    let value = serde_json::from_str::<Value>(&text)
-        .map_err(|error| format!("{relative_path} is not valid JSON: {error}"))?;
-    Ok(value.get("hooks").is_some_and(json_value_contains_volicord))
-}
-
-fn managed_mcp_projection_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
-    let Some(text) = read_bounded_repo_text(repo_root, relative_path)? else {
-        return Ok(false);
-    };
-    let value = serde_json::from_str::<Value>(&text)
-        .map_err(|error| format!("{relative_path} is not valid JSON: {error}"))?;
-    Ok(value
-        .get("mcpServers")
-        .and_then(Value::as_object)
-        .and_then(|servers| servers.get("volicord"))
-        .and_then(managed_entry_from_json)
-        .is_some_and(|entry| {
-            managed_projection_entry_for_host(&entry, RepositoryDiscoveryHost::ClaudeCode)
-        }))
-}
-
-fn managed_codex_mcp_projection_present(
-    repo_root: &Path,
-    relative_path: &str,
-) -> Result<bool, String> {
-    let Some(text) = read_bounded_repo_text(repo_root, relative_path)? else {
-        return Ok(false);
-    };
-    let document = text
-        .parse::<toml_edit::DocumentMut>()
-        .map_err(|error| format!("{relative_path} is not valid TOML: {error}"))?;
-    Ok(document
-        .get("mcp_servers")
-        .and_then(toml_edit::Item::as_table)
-        .and_then(|servers| servers.get("volicord"))
-        .and_then(managed_entry_from_item_for_diagnostics)
-        .is_some_and(|entry| {
-            managed_projection_entry_for_host(&entry, RepositoryDiscoveryHost::Codex)
-        }))
-}
-
-fn managed_projection_entry_for_host(
-    entry: &ManagedServerEntry,
-    host: RepositoryDiscoveryHost,
-) -> bool {
-    if entry.validate_repository_discovery(host).is_ok()
-        || is_legacy_repository_discovery_entry(entry, host)
-    {
-        return true;
-    }
-    let belongs_to_other_discovery_host = [
-        RepositoryDiscoveryHost::Codex,
-        RepositoryDiscoveryHost::ClaudeCode,
-    ]
-    .into_iter()
-    .filter(|candidate| *candidate != host)
-    .any(|candidate| {
-        entry.validate_repository_discovery(candidate).is_ok()
-            || is_legacy_repository_discovery_entry(entry, candidate)
-    });
-    !belongs_to_other_discovery_host && is_volicord_managed_entry(entry)
-}
-
-fn managed_hook_wrapper_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
-    Ok(read_bounded_repo_text(repo_root, relative_path)?
-        .is_some_and(|text| text.contains(HOOK_WRAPPER_MARKER)))
-}
-
-fn managed_marker_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
-    Ok(read_bounded_repo_text(repo_root, relative_path)?
-        .is_some_and(|text| text.contains("VOLICORD MANAGED")))
-}
-
-fn json_value_contains_volicord(value: &Value) -> bool {
-    match value {
-        Value::String(value) => value.to_ascii_lowercase().contains("volicord"),
-        Value::Array(values) => values.iter().any(json_value_contains_volicord),
-        Value::Object(values) => values.values().any(json_value_contains_volicord),
-        Value::Null | Value::Bool(_) | Value::Number(_) => false,
-    }
-}
-
-fn read_bounded_repo_text(repo_root: &Path, relative_path: &str) -> Result<Option<String>, String> {
-    let relative = Path::new(relative_path);
-    if relative.is_absolute()
-        || relative
-            .components()
-            .any(|component| !matches!(component, std::path::Component::Normal(_)))
-    {
-        return Err(format!(
-            "unsafe repository-relative diagnostic path: {relative_path}"
-        ));
-    }
-    let mut parent = repo_root.to_path_buf();
-    if let Some(relative_parent) = relative.parent() {
-        for component in relative_parent.components() {
-            parent.push(component.as_os_str());
-            let metadata = match fs::symlink_metadata(&parent) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(error) => {
-                    return Err(format!("failed to inspect {}: {error}", path_text(&parent)))
-                }
-            };
-            if metadata.file_type().is_symlink() || !metadata.is_dir() {
-                return Err(format!(
-                    "repository integration parent is not a regular directory: {}",
-                    path_text(&parent)
-                ));
-            }
-        }
-    }
-    let path = repo_root.join(relative);
-    let metadata = match fs::symlink_metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("failed to inspect {}: {error}", path_text(&path))),
-    };
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(format!(
-            "repository integration target is not a regular file: {}",
-            path_text(&path)
-        ));
-    }
-    if metadata.len() > MAX_LOCAL_POLICY_BYTES {
-        return Err(format!(
-            "{} exceeds the {MAX_LOCAL_POLICY_BYTES}-byte audit limit",
-            path_text(&path)
-        ));
-    }
-    fs::read_to_string(&path)
-        .map(Some)
-        .map_err(|error| format!("failed to read {}: {error}", path_text(&path)))
-}
-
 fn integration_repair_command(
     policy: &LocalPolicyAudit,
     project: &volicord_store::inspection::ProjectInspectionRecord,
@@ -1681,11 +1224,9 @@ fn integration_repair_command(
         ""
     };
     format!(
-        "volicord init --host {} --repo {}{} --profile {}",
-        policy.host,
+        "volicord init --host codex --repo {}{} --profile record",
         doctor_shell_word(&path_text(&project.repo_root)),
         shared,
-        policy.selected_profile,
     )
 }
 
@@ -1762,26 +1303,30 @@ fn inspect_guard_installations(
 ) {
     let installations = active_guard_installations(snapshot);
     if installations.is_empty() {
-        checks.push(DiagnosticCheck::skipped(
-            "guard_files_installed",
-            "no detective installations are recorded",
-        ));
-        checks.push(DiagnosticCheck::skipped(
-            "guard_host_reload_required",
-            "no detective installation needs host reload",
-        ));
-        checks.push(DiagnosticCheck::skipped(
-            "guard_hook_observed",
-            "no detective host-hook observation is recorded",
-        ));
-        checks.push(DiagnosticCheck::skipped(
-            "guard_required_hooks_supported",
-            "no detective host-hook capability record is available",
-        ));
-        checks.push(DiagnosticCheck::skipped(
-            "guard_status_active",
-            "no detective installation status is recorded",
-        ));
+        for (id, summary) in [
+            (
+                "guard_files_installed",
+                "no Codex Record Guard installation is recorded",
+            ),
+            (
+                "guard_host_reload_required",
+                "no Guard installation needs host reload",
+            ),
+            (
+                "guard_hook_observed",
+                "no Guard hook observation is recorded",
+            ),
+            (
+                "guard_required_hooks_supported",
+                "no Guard capability record is available",
+            ),
+            (
+                "guard_status_active",
+                "no Guard installation status is recorded",
+            ),
+        ] {
+            checks.push(DiagnosticCheck::skipped(id, summary));
+        }
         checks.push(
             DiagnosticCheck::skipped("control_surface", "no integration profile is recorded")
                 .with_details(json!({
@@ -1789,7 +1334,6 @@ fn inspect_guard_installations(
                     "control_surface": {
                         "selected_profile": "not_checked",
                         "host_hooks_active": false,
-                        "session_watcher_active": false,
                         "cooperative_pre_tool_warning_available": false,
                         "cooperative_pre_tool_denial_available": false,
                         "unrecorded_changes_detectable": false,
@@ -1801,7 +1345,7 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::skipped(
                 "prompt_capture_available",
-                "no prompt capture availability is recorded",
+                "no Guard prompt-capture availability is recorded",
             )
             .with_details(json!({
                 "state": "not_recorded",
@@ -1812,13 +1356,15 @@ fn inspect_guard_installations(
         return;
     }
 
-    let observed_profile_installations = installations
+    let invalid_scope_count = installations
         .iter()
-        .filter(|installation| installation.guard_mode == IntegrationProfile::Detective.as_str())
-        .collect::<Vec<_>>();
-    let binding_valid_profile_installations = observed_profile_installations
+        .filter(|installation| {
+            installation.host_kind != HostKind::Codex.as_str()
+                || installation.guard_mode != IntegrationProfile::Record.as_str()
+        })
+        .count();
+    let binding_valid_installations = installations
         .iter()
-        .copied()
         .filter(|installation| {
             snapshot
                 .agent_connections
@@ -1835,8 +1381,8 @@ fn inspect_guard_installations(
                 })
         })
         .collect::<Vec<_>>();
-    let binding_invalid_count =
-        observed_profile_installations.len() - binding_valid_profile_installations.len();
+    let binding_invalid_count = installations.len() - binding_valid_installations.len();
+
     let mut file_findings = GuardFileFindings::default();
     for installation in &installations {
         let connection = snapshot
@@ -1845,7 +1391,7 @@ fn inspect_guard_installations(
             .find(|connection| {
                 connection.connection_internal_id == installation.connection_internal_id
             })
-            .expect("validated inspection snapshot retains owning connection");
+            .expect("validated inspection snapshot retains the Guard owner");
         file_findings.merge(guard_file_findings_for_inspection(
             installation,
             connection,
@@ -1853,117 +1399,103 @@ fn inspect_guard_installations(
         ));
     }
     file_findings.sort_dedup();
-    let mut detective_file_findings = GuardFileFindings::default();
-    for installation in &observed_profile_installations {
-        let connection = snapshot
-            .agent_connections
-            .iter()
-            .find(|connection| {
-                connection.connection_internal_id == installation.connection_internal_id
-            })
-            .expect("validated inspection snapshot retains owning connection");
-        detective_file_findings.merge(guard_file_findings_for_inspection(
-            installation,
-            connection,
-            &snapshot.projects,
-        ));
-    }
-    detective_file_findings.sort_dedup();
-    let selected_profile = doctor_selected_profile_state(&installations, &file_findings);
-    let missing_required_hooks = binding_valid_profile_installations
+
+    let missing_required_hooks = binding_valid_installations
         .iter()
         .flat_map(|installation| {
             missing_required_hooks_from_capability_json(&installation.host_capability_json)
         })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
-    let observed_count = binding_valid_profile_installations
+    let observed_count = binding_valid_installations
         .iter()
         .filter(|installation| guard_observation_current(installation))
         .count();
-    let control_surface = doctor_control_surface_summary(
-        &selected_profile,
-        &observed_profile_installations,
-        &file_findings,
-        observed_count,
-        binding_invalid_count == 0 && missing_required_hooks.is_empty(),
-    );
-    let control_surface_check = if selected_profile == "mixed" {
+    let host_hooks_active = invalid_scope_count == 0
+        && binding_invalid_count == 0
+        && missing_required_hooks.is_empty()
+        && observed_count == installations.len()
+        && installations.iter().all(guard_effective_active)
+        && file_findings.generated_config_verified()
+        && file_findings.direct_file_write_matcher_coverage();
+    let selected_profile = if invalid_scope_count == 0 {
+        IntegrationProfile::Record.as_str()
+    } else {
+        "invalid"
+    };
+    let control_check = if invalid_scope_count == 0 {
+        DiagnosticCheck::passed("control_surface", "selected integration profile is record")
+    } else {
         DiagnosticCheck::warning(
             "control_surface",
-            "detective installations record mixed integration profiles",
-        )
-    } else {
-        DiagnosticCheck::passed(
-            "control_surface",
-            format!("selected integration profile is {selected_profile}"),
+            "one or more Guard records are outside the Codex Record release scope",
         )
     };
-    checks.push(control_surface_check.with_details(json!({
+    checks.push(control_check.with_details(json!({
         "selected_profile": selected_profile,
-        "control_surface": control_surface,
+        "control_surface": {
+            "selected_profile": selected_profile,
+            "host_hooks_active": host_hooks_active,
+            "cooperative_pre_tool_warning_available": host_hooks_active,
+            "cooperative_pre_tool_denial_available": host_hooks_active,
+            "unrecorded_changes_detectable": host_hooks_active,
+            "actor_identity_provable": false,
+            "os_enforced": false,
+        },
     })));
-    let guard_file_problem = !detective_file_findings.missing_files.is_empty()
-        || !detective_file_findings.stale_files.is_empty()
-        || !detective_file_findings.broken_files.is_empty();
-    if observed_profile_installations.is_empty() {
-        checks.push(DiagnosticCheck::skipped(
-            "guard_files_installed",
-            "detective host-hook files are not applicable to record-profile installations",
-        ));
-    } else if !guard_file_problem {
-        checks.push(
-            DiagnosticCheck::passed(
-                "guard_files_installed",
-                "detective host-hook files are installed",
-            )
-            .with_details(doctor_guard_file_details(&detective_file_findings)),
-        );
-    } else {
-        checks.push(
-            DiagnosticCheck::warning(
-                "guard_files_installed",
-                "one or more detective host-hook files are missing, stale, or broken",
-            )
-            .with_details(doctor_guard_file_details(&detective_file_findings)),
-        );
+
+    let file_problem = !file_findings.missing_files.is_empty()
+        || !file_findings.stale_files.is_empty()
+        || !file_findings.broken_files.is_empty();
+    let file_check = if file_problem {
         push_unique_diagnostic_action(
             actions,
             DiagnosticAction {
                 id: "repair_guard_files".to_owned(),
-                instruction:
-                    "Reinstall or refresh detective host-hook files for affected detective-profile projects."
-                        .to_owned(),
-                command: Some("volicord init --host HOST --repo PATH".to_owned()),
+                instruction: "Reinstall the Codex Record Guard files for the affected repository."
+                    .to_owned(),
+                command: Some("volicord init --host codex --repo PATH --profile record".to_owned()),
             },
         );
-    }
-    if !observed_profile_installations.is_empty()
-        && detective_file_findings.hook_path_safety_state() != "ok"
-        && !matches!(
-            detective_file_findings.hook_path_safety_state().as_str(),
-            "not_recorded" | "not_checked" | "not_applicable"
+        DiagnosticCheck::warning(
+            "guard_files_installed",
+            "one or more Codex Record Guard files are missing, stale, or broken",
         )
-    {
+    } else {
+        DiagnosticCheck::passed(
+            "guard_files_installed",
+            "Codex Record Guard files are installed",
+        )
+    };
+    checks.push(file_check.with_details(doctor_guard_file_details(&file_findings)));
+
+    if !matches!(
+        file_findings.hook_path_safety_state().as_str(),
+        "ok" | "not_recorded" | "not_checked" | "not_applicable"
+    ) {
         push_unique_diagnostic_action(
             actions,
             DiagnosticAction {
                 id: "repair_guard_hook_path_safety".to_owned(),
                 instruction:
-                    "Regenerate cwd-independent hook commands for affected detective-profile projects."
+                    "Regenerate cwd-independent Codex Record Guard commands for the affected repository."
                         .to_owned(),
-                command: Some("volicord init --host HOST --repo PATH".to_owned()),
+                command: Some(
+                    "volicord init --host codex --repo PATH --profile record".to_owned(),
+                ),
             },
         );
     }
 
-    let reload_required = observed_profile_installations.iter().any(|installation| {
+    let reload_required = installations.iter().any(|installation| {
         installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
     });
     if reload_required {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_host_reload_required",
-                "one or more detective installations need host reload",
+                "one or more Guard installations need a Codex reload",
             )
             .with_details(json!({ "reload_required": true })),
         );
@@ -1972,7 +1504,7 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "reload_guard_host".to_owned(),
                 instruction:
-                    "Restart or reload affected agent hosts so they load the Volicord host hook configuration."
+                    "Restart or reload Codex so it loads the current Volicord Guard configuration."
                         .to_owned(),
                 command: None,
             },
@@ -1980,29 +1512,25 @@ fn inspect_guard_installations(
     } else {
         checks.push(DiagnosticCheck::passed(
             "guard_host_reload_required",
-            "no recorded detective installation requires host reload",
+            "no Guard installation requires a Codex reload",
         ));
     }
 
-    if observed_profile_installations.is_empty() {
-        checks.push(DiagnosticCheck::skipped(
-            "guard_required_hooks_supported",
-            "host hook capability is not applicable to record-profile installations",
-        ));
-    } else if binding_invalid_count == 0 && missing_required_hooks.is_empty() {
+    if invalid_scope_count == 0 && binding_invalid_count == 0 && missing_required_hooks.is_empty() {
         checks.push(DiagnosticCheck::passed(
             "guard_required_hooks_supported",
-            "required detective host-hook capabilities are recorded",
+            "required Codex Record Guard capabilities are recorded",
         ));
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_required_hooks_supported",
-                "one or more detective-profile installations are missing required hook capabilities",
+                "one or more Codex Record Guard capabilities are missing or invalid",
             )
             .with_details(json!({
                 "missing_required_hooks": missing_required_hooks,
                 "binding_invalid": binding_invalid_count,
+                "outside_release_scope": invalid_scope_count,
             })),
         );
         push_unique_diagnostic_action(
@@ -2010,74 +1538,53 @@ fn inspect_guard_installations(
             DiagnosticAction {
                 id: "repair_guard_required_hooks".to_owned(),
                 instruction:
-                    "Use a host adapter that supports every required detective host hook, or use the record profile."
+                    "Reinstall the managed Codex Record Guard configuration for the affected repository."
                         .to_owned(),
-                command: Some("volicord init --host HOST --repo PATH".to_owned()),
+                command: Some(
+                    "volicord init --host codex --repo PATH --profile record".to_owned(),
+                ),
             },
         );
     }
 
-    if observed_profile_installations.is_empty() {
-        checks.push(DiagnosticCheck::skipped(
-            "guard_hook_observed",
-            "detective host-hook observation is not applicable to record-profile installations",
-        ));
-    } else if observed_count == observed_profile_installations.len() {
+    if binding_invalid_count == 0 && observed_count == installations.len() {
         checks.push(
-            DiagnosticCheck::passed("guard_hook_observed", "detective host hooks have been observed")
-                .with_details(json!({ "observed": observed_count, "detective": observed_profile_installations.len() })),
+            DiagnosticCheck::passed(
+                "guard_hook_observed",
+                "Codex Record Guard hooks were observed",
+            )
+            .with_details(json!({
+                "observed": observed_count,
+                "installations": installations.len(),
+            })),
         );
     } else {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_hook_observed",
-                "one or more detective-profile installations have not been observed",
+                "one or more Codex Record Guard installations have no current observation",
             )
-            .with_details(json!({ "observed": observed_count, "detective": observed_profile_installations.len() })),
-        );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "detective_host_hook".to_owned(),
-                instruction:
-                    "Start, restart, or reload affected agent hosts so the Volicord detective host hook runs."
-                        .to_owned(),
-                command: None,
-            },
+            .with_details(json!({
+                "observed": observed_count,
+                "installations": installations.len(),
+                "binding_invalid": binding_invalid_count,
+            })),
         );
     }
 
-    let status_counts = guard_status_counts_for_refs(&observed_profile_installations);
-    let problem_status = ["broken", "stale", "degraded"].iter().find(|status| {
-        status_counts
-            .get(**status)
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-            > 0
+    let installation_refs = installations.iter().collect::<Vec<_>>();
+    let status_counts = guard_status_counts_for_refs(&installation_refs);
+    let unhealthy = installations.iter().any(|installation| {
+        matches!(
+            installation.installation_status.as_str(),
+            "broken" | "stale" | "degraded"
+        )
     });
-    if let Some(status) = problem_status {
+    if unhealthy || binding_invalid_count > 0 {
         checks.push(
             DiagnosticCheck::warning(
                 "guard_status_active",
-                format!("one or more detective installations are {status}"),
-            )
-            .with_details(json!({ "status_counts": status_counts })),
-        );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_guard_status".to_owned(),
-                instruction:
-                    "Repair or reinstall affected detective-profile integrations before relying on host-hook observation."
-                        .to_owned(),
-                command: Some("volicord init --host HOST --repo PATH".to_owned()),
-            },
-        );
-    } else if binding_invalid_count > 0 {
-        checks.push(
-            DiagnosticCheck::warning(
-                "guard_status_active",
-                "one or more detective installations have invalid capability owner bindings",
+                "one or more Codex Record Guard installations are unhealthy",
             )
             .with_details(json!({
                 "status_counts": status_counts,
@@ -2088,25 +1595,16 @@ fn inspect_guard_installations(
             actions,
             DiagnosticAction {
                 id: "repair_guard_status".to_owned(),
-                instruction:
-                    "Repair or reinstall affected detective-profile integrations before relying on host-hook observation."
-                        .to_owned(),
-                command: Some("volicord init --host HOST --repo PATH".to_owned()),
+                instruction: "Repair or reinstall the affected Codex Record Guard integration."
+                    .to_owned(),
+                command: Some("volicord init --host codex --repo PATH --profile record".to_owned()),
             },
         );
-    } else if observed_profile_installations.is_empty() {
-        checks.push(DiagnosticCheck::skipped(
-            "guard_status_active",
-            "detective signal active status is not applicable to record-profile installations",
-        ));
-    } else if observed_profile_installations
-        .iter()
-        .all(|installation| guard_effective_active(installation))
-    {
+    } else if installations.iter().all(guard_effective_active) {
         checks.push(
             DiagnosticCheck::passed(
                 "guard_status_active",
-                "effective detective signal status is active",
+                "effective Codex Record Guard status is active",
             )
             .with_details(json!({ "status_counts": status_counts })),
         );
@@ -2114,254 +1612,18 @@ fn inspect_guard_installations(
         checks.push(
             DiagnosticCheck::warning(
                 "guard_status_active",
-                "effective detective signal status is not active for one or more detective-profile installations",
+                "Codex Record Guard is configured but not currently observed",
             )
-            .with_details(json!({
-                "status_counts": status_counts,
-                "effective_active": observed_profile_installations.iter().filter(|installation| guard_effective_active(installation)).count(),
-                "detective": observed_profile_installations.len(),
-            })),
+            .with_details(json!({ "status_counts": status_counts })),
         );
     }
 
     inspect_prompt_capture_availability(
-        &observed_profile_installations,
-        &binding_valid_profile_installations,
+        &installations,
+        &binding_valid_installations,
         binding_invalid_count,
         checks,
     );
-}
-
-#[derive(Debug, Default)]
-struct DoctorWatcherScanAggregate {
-    baseline_count: u64,
-    missing_baseline_count: u64,
-    files_scanned: u64,
-    files_skipped: u64,
-    unreadable_paths_count: u64,
-    degraded_reason_counts: BTreeMap<String, u64>,
-    skipped_paths_sample: Vec<String>,
-    skipped_paths_truncated: bool,
-    baseline_status_counts: BTreeMap<String, u64>,
-    coverage_basis_values: BTreeSet<String>,
-    partial_coverage_warnings: BTreeSet<String>,
-    latest_baseline_created_at: Option<String>,
-    latest_coverage_start_at: Option<String>,
-    read_errors: Vec<String>,
-}
-
-fn inspect_session_watch_baselines(
-    runtime_home: &Path,
-    snapshot: &RegistryInspectionSnapshot,
-    checks: &mut Vec<DiagnosticCheck>,
-) {
-    let active_installations = active_guard_installations(snapshot);
-    let detective_installations = active_installations
-        .iter()
-        .filter(|installation| installation.guard_mode == IntegrationProfile::Detective.as_str())
-        .collect::<Vec<_>>();
-    if detective_installations.is_empty() {
-        checks.push(
-            DiagnosticCheck::skipped(
-                "watcher_scan_summary",
-                "no detective session-watch baseline is applicable",
-            )
-            .with_details(doctor_watcher_details_json(
-                "not_applicable",
-                &DoctorWatcherScanAggregate::default(),
-            )),
-        );
-        return;
-    }
-
-    let mut aggregate = DoctorWatcherScanAggregate::default();
-    for installation in detective_installations {
-        let Some(project_id) = installation.project_id.as_deref() else {
-            aggregate.read_errors.push(format!(
-                "{}: detective installation has no project id",
-                installation.guard_installation_id
-            ));
-            continue;
-        };
-        match latest_watch_baseline_for_connection(
-            runtime_home,
-            project_id,
-            &installation.connection_internal_id,
-        ) {
-            Ok(Some(baseline)) => {
-                if let Err(error) = doctor_merge_watcher_baseline(&mut aggregate, &baseline) {
-                    aggregate
-                        .read_errors
-                        .push(format!("{}: {error}", installation.guard_installation_id));
-                }
-            }
-            Ok(None) => aggregate.missing_baseline_count += 1,
-            Err(error) => aggregate
-                .read_errors
-                .push(format!("{}: {error}", installation.guard_installation_id)),
-        }
-    }
-
-    let watcher_status = doctor_watcher_status(&aggregate);
-    let details = doctor_watcher_details_json(&watcher_status, &aggregate);
-    let check = if !aggregate.read_errors.is_empty() {
-        DiagnosticCheck::warning(
-            "watcher_scan_summary",
-            "one or more session-watch baselines could not be read",
-        )
-    } else if aggregate.baseline_count == 0 {
-        DiagnosticCheck::warning(
-            "watcher_scan_summary",
-            "no session-watch baseline is recorded for detective installations",
-        )
-    } else if aggregate.files_skipped > 0 || !aggregate.degraded_reason_counts.is_empty() {
-        DiagnosticCheck::warning(
-            "watcher_scan_summary",
-            "session watcher scan recorded skipped or degraded coverage",
-        )
-    } else {
-        DiagnosticCheck::passed(
-            "watcher_scan_summary",
-            "session watcher scan summary is recorded",
-        )
-    };
-    checks.push(check.with_details(details));
-}
-
-fn doctor_merge_watcher_baseline(
-    aggregate: &mut DoctorWatcherScanAggregate,
-    baseline: &volicord_store::session_watch::WatchBaselineRecord,
-) -> Result<(), String> {
-    aggregate.baseline_count += 1;
-    *aggregate
-        .baseline_status_counts
-        .entry(baseline.status.clone())
-        .or_insert(0) += 1;
-    if aggregate
-        .latest_baseline_created_at
-        .as_deref()
-        .is_none_or(|current| baseline.created_at.as_str() > current)
-    {
-        aggregate.latest_baseline_created_at = Some(baseline.created_at.clone());
-    }
-
-    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json).unwrap_or(Value::Null);
-    if let Some(coverage_start_at) = metadata
-        .get("coverage_start_at")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-    {
-        if aggregate
-            .latest_coverage_start_at
-            .as_deref()
-            .is_none_or(|current| coverage_start_at > current)
-        {
-            aggregate.latest_coverage_start_at = Some(coverage_start_at.to_owned());
-        }
-    }
-    if let Some(coverage_basis) = metadata
-        .get("coverage_basis")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-    {
-        aggregate
-            .coverage_basis_values
-            .insert(coverage_basis.to_owned());
-    }
-    if let Some(warning) = metadata
-        .get("partial_coverage_warning")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-    {
-        aggregate
-            .partial_coverage_warnings
-            .insert(warning.to_owned());
-    }
-
-    let scan_summary = metadata
-        .get("scan_summary")
-        .and_then(|raw_summary| {
-            serde_json::from_value::<volicord_store::session_watch::WatchScanSummary>(
-                raw_summary.clone(),
-            )
-            .ok()
-        })
-        .map(Ok)
-        .unwrap_or_else(|| watch_scan_summary_from_entries_json(&baseline.snapshot_entries_json))
-        .map_err(|error| error.to_string())?;
-    aggregate.files_scanned += scan_summary.files_scanned;
-    aggregate.files_skipped += scan_summary.files_skipped;
-    aggregate.unreadable_paths_count += scan_summary.unreadable_paths_count;
-    for (reason, count) in scan_summary.degraded_reason_counts {
-        *aggregate.degraded_reason_counts.entry(reason).or_insert(0) += count;
-    }
-    for path in scan_summary.skipped_paths_sample {
-        if aggregate.skipped_paths_sample.len() < 20 {
-            aggregate.skipped_paths_sample.push(path);
-        } else {
-            aggregate.skipped_paths_truncated = true;
-            break;
-        }
-    }
-    aggregate.skipped_paths_truncated |= scan_summary.skipped_paths_truncated;
-    Ok(())
-}
-
-fn doctor_watcher_status(aggregate: &DoctorWatcherScanAggregate) -> String {
-    if aggregate.baseline_count == 0 {
-        return "not_started".to_owned();
-    }
-    if aggregate.baseline_status_counts.len() == 1 {
-        aggregate
-            .baseline_status_counts
-            .keys()
-            .next()
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_owned())
-    } else {
-        "mixed".to_owned()
-    }
-}
-
-fn doctor_watcher_details_json(status: &str, aggregate: &DoctorWatcherScanAggregate) -> Value {
-    let degraded_reasons = aggregate
-        .degraded_reason_counts
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>();
-    json!({
-        "watcher_status": status,
-        "baseline_count": aggregate.baseline_count,
-        "missing_baseline_count": aggregate.missing_baseline_count,
-        "baseline_status_counts": aggregate.baseline_status_counts,
-        "baseline_created_at": aggregate.latest_baseline_created_at,
-        "coverage_start_at": aggregate.latest_coverage_start_at,
-        "coverage_basis": doctor_single_or_list(&aggregate.coverage_basis_values),
-        "partial_coverage_warning": doctor_single_or_list(&aggregate.partial_coverage_warnings),
-        "scan_summary": {
-            "files_scanned": aggregate.files_scanned,
-            "files_skipped": aggregate.files_skipped,
-            "unreadable_paths_count": aggregate.unreadable_paths_count,
-            "degraded_reasons": degraded_reasons,
-            "degraded_reason_counts": aggregate.degraded_reason_counts,
-            "skipped_paths_sample": aggregate.skipped_paths_sample,
-            "skipped_paths_truncated": aggregate.skipped_paths_truncated,
-            "default_excluded_paths": default_watch_excluded_paths(),
-            "max_file_size_bytes": DEFAULT_MAX_FILE_HASH_BYTES,
-            "max_file_count": DEFAULT_MAX_SCAN_FILE_COUNT,
-            "follows_symlinks": false,
-            "not_full_filesystem_monitoring": true,
-        },
-        "read_errors": aggregate.read_errors,
-    })
-}
-
-fn doctor_single_or_list(values: &BTreeSet<String>) -> Value {
-    match values.len() {
-        0 => Value::Null,
-        1 => Value::String(values.iter().next().cloned().unwrap_or_default()),
-        _ => json!(values.iter().cloned().collect::<Vec<_>>()),
-    }
 }
 
 fn doctor_guard_file_details(findings: &GuardFileFindings) -> Value {
@@ -2372,12 +1634,10 @@ fn doctor_guard_file_details(findings: &GuardFileFindings) -> Value {
         "file_states": doctor_guard_file_states(findings),
         "selected_profiles": &findings.guard_profiles,
         "generated_config_verified": findings.generated_config_verified(),
-        "native_host_output_adapter_config_verified": findings.native_host_output_adapter_config_verified(),
         "hook_path_safety": findings.hook_path_safety_state(),
         "hook_commands_cwd_independent": all_recorded_values_true(&findings.hook_cwd_independent_values),
         "hook_commands_subdirectory_safe": all_recorded_values_true(&findings.hook_subdirectory_safe_values),
         "hook_path_safety_details": &findings.hook_path_safety_details,
-        "bash_shell_mutation_coverage": findings.bash_shell_mutation_coverage(),
         "direct_file_write_matcher_coverage": findings.direct_file_write_matcher_coverage(),
     })
 }
@@ -2403,68 +1663,10 @@ fn doctor_guard_file_states(findings: &GuardFileFindings) -> BTreeMap<String, St
     states
 }
 
-fn doctor_selected_profile_state(
-    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
-    _findings: &GuardFileFindings,
-) -> String {
-    match doctor_guard_mode_state(installations).as_str() {
-        "record" => "record",
-        "detective" => "detective",
-        _ => "mixed",
-    }
-    .to_owned()
-}
-
-fn doctor_control_surface_summary(
-    selected_profile: &str,
-    detective_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
-    findings: &GuardFileFindings,
-    observed_count: usize,
-    required_hooks_available: bool,
-) -> Value {
-    let host_hooks_active = selected_profile == IntegrationProfile::Detective.as_str()
-        && !detective_installations.is_empty()
-        && observed_count == detective_installations.len()
-        && detective_installations
-            .iter()
-            .all(|installation| guard_effective_active(installation))
-        && required_hooks_available
-        && findings.generated_config_verified()
-        && all_recorded_values_true(&findings.native_host_output_adapter_config_verified_values)
-        && all_recorded_values_true(&findings.bash_shell_mutation_coverage_values)
-        && all_recorded_values_true(&findings.direct_file_write_matcher_coverage_values);
-    json!({
-        "selected_profile": selected_profile,
-        "host_hooks_active": host_hooks_active,
-        "session_watcher_active": false,
-        "cooperative_pre_tool_warning_available": host_hooks_active,
-        "cooperative_pre_tool_denial_available": host_hooks_active,
-        "unrecorded_changes_detectable": false,
-        "actor_identity_provable": false,
-        "os_enforced": false,
-    })
-}
-
-fn doctor_guard_mode_state(
-    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
-) -> String {
-    let mut modes = installations
-        .iter()
-        .map(|installation| installation.guard_mode.as_str())
-        .collect::<Vec<_>>();
-    modes.sort_unstable();
-    modes.dedup();
-    if modes.len() == 1 {
-        modes[0].to_owned()
-    } else {
-        "mixed".to_owned()
-    }
-}
-
 fn current_host_capability(capability_json: &str) -> Option<Value> {
     serde_json::from_str::<Value>(capability_json)
         .ok()
-        .filter(host_hook_capability_has_exact_v2_shape)
+        .filter(host_hook_capability_has_exact_current_shape)
 }
 
 fn guard_observation_current(
@@ -2498,19 +1700,19 @@ fn guard_effective_active(
 }
 
 fn inspect_prompt_capture_availability(
-    detective_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
+    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
     binding_valid_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
     binding_invalid_count: usize,
     checks: &mut Vec<DiagnosticCheck>,
 ) {
-    if detective_installations.is_empty() {
+    if installations.is_empty() {
         checks.push(
             DiagnosticCheck::skipped(
                 "prompt_capture_available",
-                "prompt capture is not applicable to record-profile installations",
+                "no Guard prompt-capture installation is recorded",
             )
             .with_details(json!({
-                "state": "not_applicable",
+                "state": "not_recorded",
                 "configured": 0,
                 "observed": 0,
             })),
@@ -2538,7 +1740,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "prompt capture capability owner binding is invalid for one or more detective installations",
+                "Guard prompt-capture ownership is invalid for one or more installations",
             )
             .with_details(json!({
                 "state": "binding_invalid",
@@ -2552,7 +1754,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "host does not support prompt capture for recorded detective-profile installations",
+                "Codex does not report prompt-capture support for the recorded Guard installation",
             )
             .with_details(json!({
                 "state": "unsupported_by_host",
@@ -2575,7 +1777,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "prompt capture is configured but no detective host-hook observation is recorded",
+                "Guard prompt capture is configured but no current hook observation is recorded",
             )
             .with_details(json!({
                 "state": "configured_unobserved",
@@ -2588,7 +1790,7 @@ fn inspect_prompt_capture_availability(
         checks.push(
             DiagnosticCheck::warning(
                 "prompt_capture_available",
-                "prompt capture is not configured for recorded detective-profile installations",
+                "Guard prompt capture is not configured for one or more installations",
             )
             .with_details(json!({
                 "state": "not_configured",
@@ -2648,6 +1850,7 @@ fn inspect_installation_profile<F>(
         checks.push(
             DiagnosticCheck::passed("installation_profile", "installation profile is present")
                 .with_details(json!({
+                    "state": "present",
                     "installation_id": profile.installation_id,
                     "default_connection_mode": profile.default_connection_mode,
                     "bin_dir": path_text(&profile.bin_dir),
@@ -2660,6 +1863,7 @@ fn inspect_installation_profile<F>(
                 "installation profile has an unsupported default connection mode",
             )
             .with_details(json!({
+                "state": "invalid",
                 "installation_id": profile.installation_id,
                 "default_connection_mode": profile.default_connection_mode,
             })),
@@ -2720,12 +1924,12 @@ fn inspect_command_path(
         let (instruction, command) = if id == "volicord_command" {
             (
                 "Invoke a working Volicord executable and rerun init; init replaces an inaccessible, non-executable, or relative installation-profile volicord command with that running executable.",
-                "volicord init --host <host> --repo <path>",
+                "volicord init --host codex --repo <path>",
             )
         } else {
             (
                 "Select an executable MCP launch command, then rerun init with that command.",
-                "volicord init --host <host> --repo <path> --mcp-command PATH",
+                "volicord init --host codex --repo <path> --mcp-command PATH",
             )
         };
         actions.push(DiagnosticAction {
@@ -2906,7 +2110,7 @@ fn host_detection_check() -> DiagnosticCheck {
         "built-in host adapter detection is reported by init or connection verification",
     )
     .with_details(json!({
-        "accepted_host_values": ["codex", "claude-code"]
+        "accepted_host_values": [HostKind::Codex.as_str()]
     }))
 }
 
@@ -2936,7 +2140,15 @@ fn render_doctor_output(
                 "build_id": volicord_mcp::build_id(),
                 "build": volicord_mcp::build_info(),
                 "summary_card": &summary_card,
-                "disclosure": detective_observation_disclosure_json(),
+                "disclosure": {
+                    "guarantee_class": "diagnostic_observation",
+                    "non_guarantees": [
+                        "NotOsSandbox",
+                        "NotFullWritePrevention",
+                        "NotActorAttributionProof",
+                        "NotCorrectnessProof",
+                    ],
+                },
                 "runtime_home": path_text(runtime_home),
                 "states": doctor_states_json(runtime_home, checks, actions),
                 "checks": checks,
@@ -2995,7 +2207,6 @@ fn append_doctor_check_summary(
     for (label, value) in doctor_compact_check_rows(checks, actions) {
         output.push_str(&format!("  {label}: {}\n", display_state_text(&value)));
     }
-    append_doctor_host_feature_support(output, checks);
     let not_passed = checks
         .iter()
         .filter(|check| check.status != "passed")
@@ -3014,42 +2225,6 @@ fn append_doctor_check_summary(
     }
 }
 
-fn append_doctor_host_feature_support(output: &mut String, checks: &[DiagnosticCheck]) {
-    let rows = doctor_host_feature_support_by_connection_value(checks);
-    let Some(rows) = rows.as_array() else {
-        output.push_str("  Host feature support: unavailable\n");
-        return;
-    };
-    if rows.is_empty() {
-        output.push_str("  Host feature support: no stored connections\n");
-        return;
-    }
-    output.push_str("  Host feature support:\n");
-    for row in rows {
-        let connection_id = row
-            .get("connection_id")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        let host_kind = row
-            .get("host_kind")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        let profile = row
-            .get("selected_profile")
-            .and_then(Value::as_str)
-            .unwrap_or("profile_unavailable");
-        output.push_str(&format!("    {connection_id} ({host_kind}/{profile}):\n"));
-        for feature in HostFeature::ALL {
-            let status = row
-                .get("host_feature_support")
-                .and_then(|support| support.get(feature.as_str()))
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            output.push_str(&format!("      {}: {status}\n", feature.as_str()));
-        }
-    }
-}
-
 fn doctor_compact_check_rows(
     checks: &[DiagnosticCheck],
     actions: &[DiagnosticAction],
@@ -3059,7 +2234,10 @@ fn doctor_compact_check_rows(
             "Installation profile",
             doctor_installation_profile_state(checks).to_owned(),
         ),
-        ("Projects", doctor_count_state(checks, "projects", "registered")),
+        (
+            "Projects",
+            doctor_count_state(checks, "projects", "registered"),
+        ),
         (
             "Connections",
             doctor_count_state(checks, "connections", "stored"),
@@ -3067,7 +2245,7 @@ fn doctor_compact_check_rows(
         ("MCP configuration", doctor_mcp_config_state(checks)),
         ("Profile", doctor_selected_profile_from_checks(checks)),
         (
-            "Detective files",
+            "Guard files",
             doctor_check_state(checks, "guard_files_installed").to_owned(),
         ),
         (
@@ -3075,20 +2253,6 @@ fn doctor_compact_check_rows(
             doctor_check_state(checks, "guard_hook_observed").to_owned(),
         ),
         ("Prompt capture", doctor_prompt_capture_status(checks)),
-        (
-            "Watcher",
-            doctor_watcher_detail_text(checks, "watcher_status", "not_checked"),
-        ),
-        (
-            "Watcher scan",
-            format!(
-                "files scanned {}; files skipped {}; unreadable paths {}; not full filesystem monitoring {}",
-                doctor_watcher_scan_u64_text(checks, "files_scanned"),
-                doctor_watcher_scan_u64_text(checks, "files_skipped"),
-                doctor_watcher_scan_u64_text(checks, "unreadable_paths_count"),
-                yes_no(doctor_watcher_not_full_filesystem_monitoring(checks)),
-            ),
-        ),
         (
             "Host reload",
             yes_no(doctor_host_reload_required(checks, actions)).to_owned(),
@@ -3155,7 +2319,6 @@ fn doctor_states_json(
         "project_registration": doctor_count_state(checks, "projects", "registered"),
         "connection": doctor_count_state(checks, "connections", "stored"),
         "mcp_config": doctor_mcp_config_state(checks),
-        "host_feature_support_by_connection": doctor_host_feature_support_by_connection_value(checks),
         "guard_installation": doctor_count_state(checks, "guard_installations", "stored"),
         "selected_profile": doctor_selected_profile_from_checks(checks),
         "control_surface": doctor_control_surface_value(checks),
@@ -3164,7 +2327,6 @@ fn doctor_states_json(
         "post_tool_correlation_available": doctor_host_hook_guard_available(checks),
         "bypass_detection_active": false,
         "prompt_capture_available": doctor_prompt_capture_available(checks),
-        "local_web_consent_available": false,
         "guard_configuration": doctor_check_state(checks, "guard_required_hooks_supported"),
         "guard_observation": doctor_check_state(checks, "guard_hook_observed"),
         "guard_effective": doctor_check_state(checks, "guard_status_active"),
@@ -3179,12 +2341,6 @@ fn doctor_states_json(
         "guard_status": doctor_check_state(checks, "guard_status_active"),
         "prompt_capture": doctor_prompt_capture_health(checks),
         "prompt_capture_status": doctor_prompt_capture_status(checks),
-        "watcher_status": doctor_watcher_detail_value(checks, "watcher_status"),
-        "watcher_baseline_created_at": doctor_watcher_detail_value(checks, "baseline_created_at"),
-        "watcher_coverage_start_at": doctor_watcher_detail_value(checks, "coverage_start_at"),
-        "watcher_coverage_basis": doctor_watcher_detail_value(checks, "coverage_basis"),
-        "watcher_partial_coverage_warning": doctor_watcher_detail_value(checks, "partial_coverage_warning"),
-        "watcher_scan_summary": doctor_watcher_scan_summary_value(checks),
         "host_reload_required": doctor_host_reload_required(checks, actions),
     });
     if let Some(object) = states.as_object_mut() {
@@ -3205,80 +2361,11 @@ fn doctor_states_json(
             Value::Bool(doctor_hook_commands_subdirectory_safe(checks)),
         );
         object.insert(
-            "native_host_output_adapter_config_verified".to_owned(),
-            Value::Bool(doctor_native_host_output_adapter_config_verified(checks)),
-        );
-        object.insert(
-            "bash_shell_mutation_coverage".to_owned(),
-            Value::Bool(doctor_bash_shell_mutation_coverage(checks)),
-        );
-        object.insert(
             "direct_file_write_matcher_coverage".to_owned(),
             Value::Bool(doctor_direct_file_write_matcher_coverage(checks)),
         );
     }
     states
-}
-
-fn doctor_host_feature_support_by_connection_value(checks: &[DiagnosticCheck]) -> Value {
-    checks
-        .iter()
-        .find(|check| check.id == "host_feature_support")
-        .and_then(|check| check.details.as_ref())
-        .and_then(|details| details.get("connections"))
-        .cloned()
-        .unwrap_or_else(|| Value::Array(Vec::new()))
-}
-
-fn doctor_watcher_details(checks: &[DiagnosticCheck]) -> Option<&Value> {
-    checks
-        .iter()
-        .find(|check| check.id == "watcher_scan_summary")
-        .and_then(|check| check.details.as_ref())
-}
-
-fn doctor_watcher_detail_value(checks: &[DiagnosticCheck], key: &str) -> Value {
-    doctor_watcher_details(checks)
-        .and_then(|details| details.get(key))
-        .cloned()
-        .unwrap_or(Value::Null)
-}
-
-fn doctor_watcher_detail_text(checks: &[DiagnosticCheck], key: &str, fallback: &str) -> String {
-    match doctor_watcher_detail_value(checks, key) {
-        Value::String(value) if !value.trim().is_empty() => value,
-        Value::Array(values) if !values.is_empty() => values
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join(","),
-        Value::Null => fallback.to_owned(),
-        value => value.to_string(),
-    }
-}
-
-fn doctor_watcher_scan_summary_value(checks: &[DiagnosticCheck]) -> Value {
-    doctor_watcher_details(checks)
-        .and_then(|details| details.get("scan_summary"))
-        .cloned()
-        .unwrap_or(Value::Null)
-}
-
-fn doctor_watcher_scan_u64_text(checks: &[DiagnosticCheck], key: &str) -> String {
-    let summary = doctor_watcher_scan_summary_value(checks);
-    summary
-        .get(key)
-        .and_then(Value::as_u64)
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "unknown".to_owned())
-}
-
-fn doctor_watcher_not_full_filesystem_monitoring(checks: &[DiagnosticCheck]) -> bool {
-    let summary = doctor_watcher_scan_summary_value(checks);
-    summary
-        .get("not_full_filesystem_monitoring")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
 }
 
 fn doctor_runtime_home_state(runtime_home: &Path, checks: &[DiagnosticCheck]) -> String {
@@ -3293,10 +2380,30 @@ fn doctor_runtime_home_state(runtime_home: &Path, checks: &[DiagnosticCheck]) ->
 }
 
 fn doctor_installation_profile_state(checks: &[DiagnosticCheck]) -> &'static str {
-    match check_status(checks, "installation_profile") {
-        Some("passed") => "present",
-        Some("failed") => "missing_or_invalid",
-        Some("skipped") => "not_checked",
+    let Some(check) = checks
+        .iter()
+        .find(|check| check.id == "installation_profile")
+    else {
+        return "unknown";
+    };
+    if let Some(state) = check
+        .details
+        .as_ref()
+        .and_then(|details| details.get("state"))
+        .and_then(Value::as_str)
+    {
+        return match state {
+            "present" => "present",
+            "missing" => "missing",
+            "invalid" => "invalid",
+            "unavailable" => "unavailable",
+            "corrupt" => "corrupt",
+            "unsupported_contract" => "unsupported_contract",
+            _ => "unknown",
+        };
+    }
+    match check.status.as_str() {
+        "skipped" => "not_checked",
         _ => "unknown",
     }
 }
@@ -3386,14 +2493,6 @@ fn doctor_hook_commands_subdirectory_safe(checks: &[DiagnosticCheck]) -> bool {
     doctor_guard_file_bool_detail(checks, "hook_commands_subdirectory_safe")
 }
 
-fn doctor_native_host_output_adapter_config_verified(checks: &[DiagnosticCheck]) -> bool {
-    doctor_guard_file_bool_detail(checks, "native_host_output_adapter_config_verified")
-}
-
-fn doctor_bash_shell_mutation_coverage(checks: &[DiagnosticCheck]) -> bool {
-    doctor_guard_file_bool_detail(checks, "bash_shell_mutation_coverage")
-}
-
 fn doctor_direct_file_write_matcher_coverage(checks: &[DiagnosticCheck]) -> bool {
     doctor_guard_file_bool_detail(checks, "direct_file_write_matcher_coverage")
 }
@@ -3423,7 +2522,6 @@ fn doctor_control_surface_value(checks: &[DiagnosticCheck]) -> Value {
             json!({
                 "selected_profile": doctor_selected_profile_from_checks(checks),
                 "host_hooks_active": false,
-                "session_watcher_active": false,
                 "cooperative_pre_tool_warning_available": false,
                 "cooperative_pre_tool_denial_available": false,
                 "unrecorded_changes_detectable": false,
@@ -3604,9 +2702,8 @@ fn doctor_status_meaning(status: CommandStatus, checks: &[DiagnosticCheck]) -> &
 fn run_init_action() -> DiagnosticAction {
     DiagnosticAction {
         id: "run_init".to_owned(),
-        instruction: "Initialize the primary host connection from the Product Repository."
-            .to_owned(),
-        command: Some("volicord init --host <host> --repo <path>".to_owned()),
+        instruction: "Initialize the Codex connection from the Product Repository.".to_owned(),
+        command: Some("volicord init --host codex --repo <path>".to_owned()),
     }
 }
 
@@ -3637,812 +2734,112 @@ fn push_unique_diagnostic_action(actions: &mut Vec<DiagnosticAction>, action: Di
     }
 }
 
-fn is_help_request(args: &[String]) -> bool {
-    matches!(
-        args.first().map(String::as_str),
-        Some("-h" | "--help" | "help")
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering};
-
     use super::*;
-    use crate::{
-        guard_integration::{
-            apply::apply_guard_integration,
-            capability::host_hook_capability_json,
-            plan::{plan_guard_integration, GuardIntegrationPlanRequest},
-        },
-        host_integration::{ConnectionIntent, HostKind, ManagedServerEntry},
-    };
-    use volicord_store::inspection::{
-        AgentConnectionInspectionRecord, DatabaseInspection, GuardInstallationInspectionRecord,
-        InspectionSchemaState, ProjectInspectionRecord, RegistryInspectionSnapshot,
-        RuntimeHomeInspectionRecord,
-    };
-
-    static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(1);
-
-    struct TestDirectory {
-        path: PathBuf,
-    }
-
-    impl TestDirectory {
-        fn new(label: &str) -> Result<Self, Box<dyn std::error::Error>> {
-            let sequence = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "volicord-doctor-{label}-{}-{sequence}",
-                std::process::id()
-            ));
-            fs::create_dir_all(&path)?;
-            Ok(Self { path })
-        }
-    }
-
-    impl Drop for TestDirectory {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
 
     #[test]
-    fn relative_profile_command_is_not_reported_as_executable() {
-        let mut checks = Vec::new();
-        let mut actions = Vec::new();
-
-        inspect_command_path(
-            "volicord_command",
-            "volicord command",
-            Path::new("relative/volicord"),
-            &mut checks,
-            &mut actions,
+    fn host_detection_reports_codex_only() {
+        assert_eq!(
+            host_detection_check().details,
+            Some(json!({ "accepted_host_values": ["codex"] }))
         );
-
-        assert_eq!(checks.len(), 1);
-        assert_eq!(checks[0].status, "failed");
-        assert!(actions.iter().any(|action| {
-            action.id == "repair_volicord_command"
-                && action.command.as_deref() == Some("volicord init --host <host> --repo <path>")
-        }));
     }
 
     #[test]
-    fn host_detection_details_name_accepted_values_without_claiming_host_support() {
-        let check = serde_json::to_value(host_detection_check()).expect("serialize check");
+    fn blocking_checks_determine_doctor_status() {
+        assert_eq!(
+            doctor_status(&[DiagnosticCheck::failed("installation_profile", "missing")]),
+            CommandStatus::ActionRequired
+        );
+        assert_eq!(
+            doctor_status(&[DiagnosticCheck::failed(
+                "project_policy_authority",
+                "invalid"
+            )]),
+            CommandStatus::Failed
+        );
+        assert_eq!(
+            doctor_status(&[DiagnosticCheck::warning("path_or_shim", "not on PATH")]),
+            CommandStatus::Complete
+        );
+    }
+
+    #[test]
+    fn installation_profile_state_does_not_collapse_missing_and_invalid() {
+        let missing = DiagnosticCheck::failed("installation_profile", "missing")
+            .with_details(json!({ "state": "missing" }));
+        let invalid = DiagnosticCheck::failed("installation_profile", "invalid")
+            .with_details(json!({ "state": "invalid" }));
+        let unavailable = DiagnosticCheck::failed("installation_profile", "unavailable")
+            .with_details(json!({ "state": "unavailable" }));
+        let corrupt = DiagnosticCheck::failed("installation_profile", "corrupt")
+            .with_details(json!({ "state": "corrupt" }));
+        let unsupported = DiagnosticCheck::failed("installation_profile", "unsupported")
+            .with_details(json!({ "state": "unsupported_contract" }));
+        let unknown = DiagnosticCheck::failed("installation_profile", "unspecified");
+
+        assert_eq!(doctor_installation_profile_state(&[missing]), "missing");
+        assert_eq!(doctor_installation_profile_state(&[invalid]), "invalid");
+        assert_eq!(
+            doctor_installation_profile_state(&[unavailable]),
+            "unavailable"
+        );
+        assert_eq!(doctor_installation_profile_state(&[corrupt]), "corrupt");
+        assert_eq!(
+            doctor_installation_profile_state(&[unsupported]),
+            "unsupported_contract"
+        );
+        assert_eq!(doctor_installation_profile_state(&[unknown]), "unknown");
+    }
+
+    #[test]
+    fn policy_authority_store_failures_keep_corrupt_unsupported_and_unavailable_distinct() {
+        let corrupt = StoreError::corrupt_stored_json("project_state", "policy_json");
+        let unsupported = StoreError::UnsupportedExternalContract {
+            contract_id: "external.unknown".to_owned(),
+            reason: "unsupported_external_contract",
+        };
+        let unavailable = StoreError::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "denied",
+        ));
 
         assert_eq!(
-            check,
+            project_policy_store_failure_state(&corrupt),
+            ProjectPolicyAuthorityState::AuthorityCorrupt
+        );
+        assert_eq!(
+            project_policy_store_failure_state(&unsupported),
+            ProjectPolicyAuthorityState::AuthorityUnsupportedContract
+        );
+        assert_eq!(
+            project_policy_store_failure_state(&unavailable),
+            ProjectPolicyAuthorityState::AuthorityUnavailable
+        );
+    }
+
+    #[test]
+    fn truncated_policy_authority_scan_never_reports_passed() {
+        assert_eq!(project_policy_authority_result(0, false), "passed");
+        assert_eq!(project_policy_authority_result(0, true), "warning");
+        assert_eq!(project_policy_authority_result(1, false), "failed");
+        assert_eq!(project_policy_authority_result(1, true), "failed");
+    }
+
+    #[test]
+    fn default_control_surface_is_fail_closed() {
+        assert_eq!(
+            doctor_control_surface_value(&[]),
             json!({
-                "id": "host_detection",
-                "status": "skipped",
-                "summary": "built-in host adapter detection is reported by init or connection verification",
-                "details": {
-                    "accepted_host_values": ["codex", "claude-code"]
-                }
+                "selected_profile": "not_checked",
+                "host_hooks_active": false,
+                "cooperative_pre_tool_warning_available": false,
+                "cooperative_pre_tool_denial_available": false,
+                "unrecorded_changes_detectable": false,
+                "actor_identity_provable": false,
+                "os_enforced": false,
             })
         );
-        assert!(check["details"].get("supported_hosts").is_none());
-    }
-
-    #[test]
-    fn persisted_owner_binding_mismatch_fails_closed_across_doctor_guard_checks(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = TestDirectory::new("guard-binding-mismatch")?;
-        let mut snapshot = cross_host_snapshot(&repo.path);
-        let installation = &mut snapshot.guard_installations[0];
-        installation.guard_mode = IntegrationProfile::Detective.as_str().to_owned();
-        installation.host_capability_json =
-            serde_json::to_string(&detective_capability(&repo.path, "personal")?)?;
-        installation.installation_status = GuardInstallationStatus::Active.as_str().to_owned();
-        installation.last_seen_at = Some("2026-01-01T00:00:01Z".to_owned());
-        installation.last_seen_phase = Some("stop".to_owned());
-        installation.observed_host_kind = Some("codex".to_owned());
-        installation.observed_policy_hash = Some("policy-hash".to_owned());
-
-        let mut checks = Vec::new();
-        let mut actions = Vec::new();
-        inspect_guard_installations(&snapshot, &mut checks, &mut actions);
-
-        for id in [
-            "guard_files_installed",
-            "guard_required_hooks_supported",
-            "guard_hook_observed",
-            "guard_status_active",
-            "prompt_capture_available",
-        ] {
-            assert_eq!(
-                check_status(&checks, id),
-                Some("warning"),
-                "{id} must not pass a capability whose stored intent contradicts its owner"
-            );
-        }
-        let prompt_capture = checks
-            .iter()
-            .find(|check| check.id == "prompt_capture_available")
-            .expect("prompt-capture diagnostic");
-        assert_eq!(
-            prompt_capture
-                .details
-                .as_ref()
-                .and_then(|details| details["state"].as_str()),
-            Some("binding_invalid")
-        );
-        let control_surface = checks
-            .iter()
-            .find(|check| check.id == "control_surface")
-            .and_then(|check| check.details.as_ref())
-            .expect("control-surface details");
-        assert_eq!(
-            control_surface["control_surface"]["host_hooks_active"],
-            false
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn configured_installation_with_preserved_current_observation_is_effectively_active(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = TestDirectory::new("configured-observed-guard")?;
-        let mut snapshot = cross_host_snapshot(&repo.path);
-        let installation = &mut snapshot.guard_installations[0];
-        installation.guard_mode = IntegrationProfile::Detective.as_str().to_owned();
-        let capability = detective_capability(&repo.path, "shared")?;
-        let policy_hash = capability["policy_hash"]
-            .as_str()
-            .expect("generated capability policy hash")
-            .to_owned();
-        installation.host_capability_json = serde_json::to_string(&capability)?;
-        // A same-identity init repair can refresh capability inventory and set
-        // the stored lifecycle row back to configured while preserving a
-        // matching observation. Effective health remains active.
-        installation.installation_status = GuardInstallationStatus::Configured.as_str().to_owned();
-        installation.last_seen_at = Some("2026-01-01T00:00:01Z".to_owned());
-        installation.last_seen_phase = Some("stop".to_owned());
-        installation.observed_host_kind = Some("codex".to_owned());
-        installation.observed_policy_hash = Some(policy_hash);
-        assert!(guard_effective_active(installation));
-
-        let mut checks = Vec::new();
-        let mut actions = Vec::new();
-        inspect_guard_installations(&snapshot, &mut checks, &mut actions);
-
-        assert_eq!(check_status(&checks, "guard_hook_observed"), Some("passed"));
-        assert_eq!(check_status(&checks, "guard_status_active"), Some("passed"));
-
-        snapshot.guard_installations[0].observed_policy_hash =
-            Some("sha256:stale-policy".to_owned());
-        assert!(!guard_observation_current(&snapshot.guard_installations[0]));
-        let mut stale_checks = Vec::new();
-        let mut stale_actions = Vec::new();
-        inspect_guard_installations(&snapshot, &mut stale_checks, &mut stale_actions);
-        assert_eq!(
-            check_status(&stale_checks, "guard_hook_observed"),
-            Some("warning")
-        );
-        assert_eq!(
-            check_status(&stale_checks, "guard_status_active"),
-            Some("warning")
-        );
-        let prompt_capture = stale_checks
-            .iter()
-            .find(|check| check.id == "prompt_capture_available")
-            .and_then(|check| check.details.as_ref())
-            .expect("prompt-capture diagnostic details");
-        assert_eq!(prompt_capture["state"], "configured_unobserved");
-        let control_surface = stale_checks
-            .iter()
-            .find(|check| check.id == "control_surface")
-            .and_then(|check| check.details.as_ref())
-            .expect("control-surface diagnostic details");
-        assert_eq!(
-            control_surface["control_surface"]["host_hooks_active"],
-            false
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn host_feature_support_rows_are_complete_ordered_and_projection_equivalent(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = TestDirectory::new("host-feature-support")?;
-        let mut snapshot = cross_host_snapshot(&repo.path);
-        snapshot.agent_connections[1].enabled = false;
-        let mut checks = Vec::new();
-
-        inspect_host_feature_support(&snapshot, &mut checks);
-
-        let rows = doctor_host_feature_support_by_connection_value(&checks);
-        let rows = rows
-            .as_array()
-            .expect("Doctor support rows should be an array");
-        assert_eq!(
-            rows.len(),
-            2,
-            "disabled stored connections remain diagnostic rows"
-        );
-        assert_eq!(rows[0]["connection_id"], "conn-claude");
-        assert_eq!(rows[1]["connection_id"], "conn-codex");
-        for row in rows {
-            assert_eq!(
-                row.as_object().map(serde_json::Map::len),
-                Some(5),
-                "Doctor rows have the exact public shape"
-            );
-            let support = row["host_feature_support"]
-                .as_object()
-                .expect("support map should be an object");
-            assert_eq!(support.len(), HostFeature::ALL.len());
-            for feature in HostFeature::ALL {
-                assert!(support.contains_key(feature.as_str()));
-            }
-        }
-
-        assert!(rows[0]["selected_profile"].is_null());
-        assert!(rows[0]["final_output_authority_disclosure"].is_null());
-        assert_eq!(rows[1]["selected_profile"], "record");
-        assert_eq!(
-            rows[1]["host_feature_support"],
-            crate::host_integration::capability_status::default_host_feature_support_json(
-                HostKind::Codex,
-            ),
-            "Doctor and connection consumers use the same canonical map projection"
-        );
-        let final_output = &rows[1]["final_output_authority_disclosure"];
-        assert_eq!(final_output.as_object().map(serde_json::Map::len), Some(5));
-        assert_eq!(final_output["support_status"], "implemented_unverified");
-        assert_eq!(
-            final_output["required_subcapabilities"],
-            json!(["authority_display", "authenticated_exact_replay"])
-        );
-        assert!(final_output["subcapabilities"]
-            .get("block_finalization")
-            .is_none());
-        assert!(final_output.get("supported").is_none());
-        assert!(final_output.get("verified").is_none());
-        Ok(())
-    }
-
-    #[test]
-    fn doctor_consumes_current_probe_failures_before_missing_evidence(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = TestDirectory::new("host-feature-current-probes")?;
-        let mut snapshot = cross_host_snapshot(&repo.path);
-        let connection = snapshot
-            .agent_connections
-            .iter_mut()
-            .find(|connection| connection.connection_internal_id == "conn-codex")
-            .expect("Codex inspection connection");
-        let now = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(
-            std::time::SystemTime::now(),
-        ));
-        let observation =
-            |probe_id, outcome, failure_class| volicord_types::HostRuntimeProbeObservation {
-                probe_id,
-                outcome,
-                failure_class,
-                connection_internal_id: connection.connection_internal_id.clone(),
-                host_kind: connection.host_kind.clone(),
-                host_version: Some("99.0.0".to_owned()),
-                client_name: None,
-                client_version: None,
-                adapter_profile: IntegrationProfile::Record,
-                adapter_version: "doctor-test".to_owned(),
-                managed_fingerprint: connection.managed_fingerprint.clone(),
-                observed_at: now.clone(),
-                expires_at: now
-                    .checked_add(chrono::Duration::hours(1))
-                    .expect("test expiry"),
-            };
-        let probe_snapshot = volicord_types::HostRuntimeProbeSnapshot {
-            schema: volicord_types::HOST_RUNTIME_PROBE_SNAPSHOT_SCHEMA.to_owned(),
-            observations: vec![
-                observation(
-                    volicord_types::HostRuntimeProbeId::LifecycleHookDelivery,
-                    volicord_types::HostRuntimeProbeOutcome::Passed,
-                    volicord_types::HostRuntimeProbeFailureClass::None,
-                ),
-                observation(
-                    volicord_types::HostRuntimeProbeId::PostToolStructuredChangedPaths,
-                    volicord_types::HostRuntimeProbeOutcome::Failed,
-                    volicord_types::HostRuntimeProbeFailureClass::StructuredPathsMissing,
-                ),
-            ],
-        };
-        connection.last_verification_report_json = json!({
-            "host_runtime_probes": probe_snapshot,
-        })
-        .to_string();
-        let mut checks = Vec::new();
-        inspect_host_feature_support(&snapshot, &mut checks);
-        let rows = doctor_host_feature_support_by_connection_value(&checks);
-        let codex = rows
-            .as_array()
-            .and_then(|rows| rows.iter().find(|row| row["connection_id"] == "conn-codex"))
-            .expect("Codex Doctor support row");
-        assert_eq!(
-            codex["host_feature_support"]["verified_tool_producer"], "temporarily_unavailable",
-            "the current PostTool failure outranks the missing PreTool probe"
-        );
-        assert_eq!(
-            codex["host_feature_support"]["registered_connection_observation"],
-            "temporarily_unavailable"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn intent_drift_reports_enabled_and_projected_opposite_host(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = TestDirectory::new("cross-host-drift")?;
-        write_record_policy(&repo.path, "codex", "shared", "conn-codex", "guard-codex")?;
-        fs::write(
-            repo.path.join(".mcp.json"),
-            serde_json::to_string_pretty(&json!({
-                "mcpServers": {
-                    "volicord": {
-                        "command": "volicord",
-                        "args": [
-                            "mcp",
-                            "--stdio",
-                            "--discover-repository",
-                            "--host",
-                            "claude-code"
-                        ],
-                        "env": {
-                            "VOLICORD_HOME": "${VOLICORD_HOME}"
-                        }
-                    }
-                }
-            }))? + "\n",
-        )?;
-        let wrapper_path = repo.path.join(".claude/hooks/volicord-pre-tool.sh");
-        fs::create_dir_all(wrapper_path.parent().expect("wrapper parent"))?;
-        fs::write(
-            &wrapper_path,
-            format!("#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n"),
-        )?;
-
-        let mut snapshot = cross_host_snapshot(&repo.path);
-        let mut checks = Vec::new();
-        let mut actions = Vec::new();
-        inspect_integration_intent_drift(&snapshot, &mut checks, &mut actions);
-
-        let check = checks
-            .iter()
-            .find(|check| check.id == "integration_intent_drift")
-            .expect("intent drift check");
-        assert_eq!(check.status, "warning");
-        let findings = check
-            .details
-            .as_ref()
-            .and_then(|details| details.get("findings"))
-            .and_then(Value::as_array)
-            .expect("intent drift findings");
-        assert!(findings.iter().any(|finding| {
-            finding["kind"] == "additional_active_host_projection"
-                && finding["recorded_host"] == "claude-code"
-                && finding["connection_id"] == "conn-claude"
-        }));
-        assert!(findings.iter().any(|finding| {
-            finding["kind"] == "opposite_host_projection_present"
-                && finding["projection_host"] == "claude-code"
-                && finding["path"] == ".mcp.json"
-        }));
-        assert!(findings.iter().any(|finding| {
-            finding["kind"] == "opposite_host_projection_present"
-                && finding["projection_host"] == "claude-code"
-                && finding["path"] == ".claude/hooks/volicord-pre-tool.sh"
-        }));
-        assert!(actions
-            .iter()
-            .any(|action| action.id == "repair_integration_intent_drift"));
-
-        snapshot.agent_connections[1].metadata_json = "{}".to_owned();
-        snapshot.agent_connections[1].enabled = true;
-        snapshot.agent_connections[0].enabled = false;
-        snapshot.agent_connections[0].metadata_json = serde_json::to_string(&json!({
-            "pending_host_cleanup": {
-                "project_id": "project-public",
-                "replacement_connection_id": "conn-other",
-                "unexpected": true
-            }
-        }))?;
-        let mut current_policy_checks = Vec::new();
-        let mut current_policy_actions = Vec::new();
-        inspect_integration_intent_drift(
-            &snapshot,
-            &mut current_policy_checks,
-            &mut current_policy_actions,
-        );
-        let current_policy_check = current_policy_checks
-            .iter()
-            .find(|check| check.id == "integration_intent_drift")
-            .expect("current-policy invalid marker check");
-        assert!(current_policy_check
-            .details
-            .as_ref()
-            .and_then(|details| details["findings"].as_array())
-            .is_some_and(|findings| findings.iter().any(|finding| {
-                finding["kind"] == "invalid_pending_host_cleanup_marker"
-                    && finding["connection_id"] == "conn-codex"
-            })));
-        assert!(current_policy_actions
-            .iter()
-            .any(|action| action.id == "restore_invalid_pending_cleanup_registry"));
-        Ok(())
-    }
-
-    #[test]
-    fn intent_drift_reports_disabled_membership_as_pending_host_cleanup(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = TestDirectory::new("pending-host-cleanup")?;
-        write_record_policy(&repo.path, "codex", "shared", "conn-codex", "guard-codex")?;
-        let mut snapshot = cross_host_snapshot(&repo.path);
-        snapshot.agent_connections[1].enabled = false;
-        let mut unmarked_checks = Vec::new();
-        let mut unmarked_actions = Vec::new();
-        inspect_integration_intent_drift(&snapshot, &mut unmarked_checks, &mut unmarked_actions);
-        let unmarked = unmarked_checks
-            .iter()
-            .find(|check| check.id == "integration_intent_drift")
-            .expect("unmarked intent drift check");
-        assert_eq!(unmarked.status, "passed");
-        assert!(unmarked_actions.is_empty());
-
-        snapshot.agent_connections[1].metadata_json = serde_json::to_string(&json!({
-            "pending_host_cleanup": {
-                "project_id": "project-public",
-                "replacement_connection_id": "conn-older-request",
-                "unexpected": true
-            }
-        }))?;
-        let mut inexact_checks = Vec::new();
-        let mut inexact_actions = Vec::new();
-        inspect_integration_intent_drift(&snapshot, &mut inexact_checks, &mut inexact_actions);
-        let inexact = inexact_checks
-            .iter()
-            .find(|check| check.id == "integration_intent_drift")
-            .expect("inexact intent drift check");
-        assert_eq!(inexact.status, "warning");
-        assert!(inexact
-            .details
-            .as_ref()
-            .and_then(|details| details["findings"].as_array())
-            .is_some_and(|findings| findings.iter().any(|finding| {
-                finding["kind"] == "invalid_pending_host_cleanup_marker"
-                    && finding["connection_id"] == "conn-claude"
-            })));
-        assert!(inexact_actions.iter().any(|action| action.id
-            == "restore_invalid_pending_cleanup_registry"
-            && action.command.is_none()));
-        assert!(!inexact_actions
-            .iter()
-            .any(|action| action.id == "repair_integration_intent_drift"));
-
-        snapshot.agent_connections[1].metadata_json = serde_json::to_string(&json!({
-            "pending_host_cleanup": {
-                "project_id": "project-public",
-                "replacement_connection_id": "conn-older-request"
-            }
-        }))?;
-        let mut checks = Vec::new();
-        let mut actions = Vec::new();
-
-        inspect_integration_intent_drift(&snapshot, &mut checks, &mut actions);
-
-        let check = checks
-            .iter()
-            .find(|check| check.id == "integration_intent_drift")
-            .expect("intent drift check");
-        assert_eq!(check.status, "warning");
-        let findings = check
-            .details
-            .as_ref()
-            .and_then(|details| details.get("findings"))
-            .and_then(Value::as_array)
-            .expect("intent drift findings");
-        assert!(findings.iter().any(|finding| {
-            finding["kind"] == "pending_host_cleanup"
-                && finding["connection_id"] == "conn-claude"
-                && finding["recorded_host"] == "claude-code"
-                && finding["pending_replacement_connection_id"] == "conn-older-request"
-        }));
-        assert!(actions
-            .iter()
-            .any(|action| action.id == "repair_integration_intent_drift"));
-        Ok(())
-    }
-
-    #[test]
-    fn opposite_host_scan_recognizes_portable_codex_project_projection(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let repo = TestDirectory::new("stale-codex-projection")?;
-        let config_path = repo.path.join(".codex/config.toml");
-        fs::create_dir_all(config_path.parent().expect("config parent"))?;
-        fs::write(
-            &config_path,
-            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"VOLICORD_HOME\"]\n",
-        )?;
-        let policy = LocalPolicyAudit {
-            host: "claude-code".to_owned(),
-            connection_intent: "shared".to_owned(),
-            selected_profile: "record".to_owned(),
-            connection_id: "conn-claude".to_owned(),
-            guard_installation_id: "guard-claude".to_owned(),
-        };
-
-        let stale = stale_opposite_projection_paths(&repo.path, &policy)?;
-
-        assert!(stale.iter().any(|projection| {
-            projection.host == "codex" && projection.path == ".codex/config.toml"
-        }));
-        Ok(())
-    }
-
-    #[test]
-    fn opposite_host_scan_recognizes_only_exact_legacy_discovery_projections(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let codex_repo = TestDirectory::new("stale-legacy-codex-projection")?;
-        let codex_config = codex_repo.path.join(".codex/config.toml");
-        fs::create_dir_all(codex_config.parent().expect("config parent"))?;
-        fs::write(
-            &codex_config,
-            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\n",
-        )?;
-        let claude_policy = LocalPolicyAudit {
-            host: "claude-code".to_owned(),
-            connection_intent: "shared".to_owned(),
-            selected_profile: "record".to_owned(),
-            connection_id: "conn-claude".to_owned(),
-            guard_installation_id: "guard-claude".to_owned(),
-        };
-        assert!(
-            stale_opposite_projection_paths(&codex_repo.path, &claude_policy)?
-                .iter()
-                .any(|projection| projection.path == ".codex/config.toml")
-        );
-
-        fs::write(
-            &codex_config,
-            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"API_TOKEN\"]\n",
-        )?;
-        assert!(
-            !stale_opposite_projection_paths(&codex_repo.path, &claude_policy)?
-                .iter()
-                .any(|projection| projection.path == ".codex/config.toml")
-        );
-
-        fs::write(
-            &codex_config,
-            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"VOLICORD_HOME\"]\nurl = \"https://unmanaged.invalid\"\n",
-        )?;
-        assert!(
-            !stale_opposite_projection_paths(&codex_repo.path, &claude_policy)?
-                .iter()
-                .any(|projection| projection.path == ".codex/config.toml")
-        );
-
-        let claude_repo = TestDirectory::new("stale-legacy-claude-projection")?;
-        let claude_config = claude_repo.path.join(".mcp.json");
-        fs::write(
-            &claude_config,
-            serde_json::to_string_pretty(&json!({
-                "mcpServers": {
-                    "volicord": {
-                        "command": "volicord",
-                        "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"]
-                    }
-                }
-            }))? + "\n",
-        )?;
-        let codex_policy = LocalPolicyAudit {
-            host: "codex".to_owned(),
-            connection_intent: "shared".to_owned(),
-            selected_profile: "record".to_owned(),
-            connection_id: "conn-codex".to_owned(),
-            guard_installation_id: "guard-codex".to_owned(),
-        };
-        assert!(
-            stale_opposite_projection_paths(&claude_repo.path, &codex_policy)?
-                .iter()
-                .any(|projection| projection.path == ".mcp.json")
-        );
-
-        fs::write(
-            &claude_config,
-            serde_json::to_string_pretty(&json!({
-                "mcpServers": {
-                    "volicord": {
-                        "command": "volicord",
-                        "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"],
-                        "env": {"VOLICORD_HOME": "/tmp/injected"}
-                    }
-                }
-            }))? + "\n",
-        )?;
-        assert!(
-            !stale_opposite_projection_paths(&claude_repo.path, &codex_policy)?
-                .iter()
-                .any(|projection| projection.path == ".mcp.json")
-        );
-        Ok(())
-    }
-
-    fn write_record_policy(
-        repo_root: &Path,
-        host: &str,
-        intent: &str,
-        connection_id: &str,
-        guard_installation_id: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let commands = [
-            "session_start",
-            "pre_tool",
-            "post_tool",
-            "prompt_capture",
-            "stop",
-        ]
-        .into_iter()
-        .map(|phase| {
-            (
-                phase.to_owned(),
-                json!({ "command": "volicord", "args": ["_hook", phase] }),
-            )
-        })
-        .collect::<serde_json::Map<_, _>>();
-        let policy = json!({
-            "schema": "volicord-policy-v2",
-            "managed_by": "volicord",
-            "storage_scope": "local_overlay",
-            "connection_intent": intent,
-            "host": host,
-            "repo_root": path_text(repo_root),
-            "connection_id": connection_id,
-            "guard_installation_id": guard_installation_id,
-            "selected_profile": "record",
-            "mcp": {
-                "command": "volicord",
-                "args": ["mcp", "--stdio", "--discover-repository", "--host", host],
-                "env": {},
-            },
-            "host_hook": {
-                "enabled": false,
-                "commands": commands,
-            },
-            "workflow": crate::guard_integration::policy::default_workflow_policy_json(),
-        });
-        let policy_dir = repo_root.join(".volicord");
-        fs::create_dir_all(&policy_dir)?;
-        fs::write(
-            policy_dir.join("policy.json"),
-            serde_json::to_string_pretty(&policy)? + "\n",
-        )?;
-        Ok(())
-    }
-
-    fn cross_host_snapshot(repo_root: &Path) -> RegistryInspectionSnapshot {
-        let project_internal_id = "project-internal";
-        RegistryInspectionSnapshot {
-            path: repo_root.join("registry.sqlite"),
-            schema: InspectionSchemaState::Current,
-            runtime_home: RuntimeHomeInspectionRecord {
-                runtime_home_id: "runtime-home".to_owned(),
-                runtime_home_path: repo_root.join("runtime-home"),
-                registry_db_path: repo_root.join("registry.sqlite"),
-                storage_profile: "sqlite".to_owned(),
-                created_at: "2026-01-01T00:00:00Z".to_owned(),
-                updated_at: "2026-01-01T00:00:00Z".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-            installation_profile: None,
-            projects: vec![ProjectInspectionRecord {
-                project_internal_id: project_internal_id.to_owned(),
-                project_id: "project-public".to_owned(),
-                project_name: "Project".to_owned(),
-                project_alias: "project".to_owned(),
-                runtime_home_id: "runtime-home".to_owned(),
-                repo_root: repo_root.to_path_buf(),
-                project_home: repo_root.join("project-home"),
-                state_db_path: repo_root.join("state.sqlite"),
-                status: "active".to_owned(),
-                metadata_json: "{}".to_owned(),
-                project_state: DatabaseInspection::Missing {
-                    path: repo_root.join("state.sqlite"),
-                },
-            }],
-            agent_connections: vec![
-                inspection_connection("conn-codex", "codex", "shared", project_internal_id),
-                inspection_connection(
-                    "conn-claude",
-                    "claude_code",
-                    "personal",
-                    project_internal_id,
-                ),
-            ],
-            connection_projects: Vec::new(),
-            guard_installations: vec![GuardInstallationInspectionRecord {
-                guard_installation_id: "guard-codex".to_owned(),
-                connection_internal_id: "conn-codex".to_owned(),
-                project_internal_id: Some(project_internal_id.to_owned()),
-                project_id: Some("project-public".to_owned()),
-                host_kind: "codex".to_owned(),
-                guard_mode: "record".to_owned(),
-                host_capability_json: "{}".to_owned(),
-                installation_status: "installed".to_owned(),
-                installed_at: Some("2026-01-01T00:00:00Z".to_owned()),
-                last_checked_at: "2026-01-01T00:00:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-                created_at: "2026-01-01T00:00:00Z".to_owned(),
-                updated_at: "2026-01-01T00:00:00Z".to_owned(),
-            }],
-        }
-    }
-
-    fn detective_capability(
-        repo_root: &Path,
-        connection_intent: &str,
-    ) -> Result<Value, Box<dyn std::error::Error>> {
-        fs::create_dir_all(repo_root.join(".git"))?;
-        let runtime_home = repo_root.with_extension("runtime-home-fixture");
-        let mcp_entry = ManagedServerEntry::new("conn-codex", Path::new("volicord"), None);
-        let connection_intent = match connection_intent {
-            "personal" => ConnectionIntent::Personal,
-            "shared" => ConnectionIntent::Shared,
-            other => panic!("unsupported fixture intent {other}"),
-        };
-        let plan = plan_guard_integration(GuardIntegrationPlanRequest {
-            host_kind: HostKind::Codex,
-            profile: IntegrationProfile::Detective,
-            runtime_home: &runtime_home,
-            volicord_command: Path::new("/bin/volicord"),
-            repo_root,
-            connection_id: "conn-codex",
-            guard_installation_id: "guard-codex",
-            mcp_entry: &mcp_entry,
-            connection_intent,
-        })?;
-        let installed = apply_guard_integration(plan)?;
-        let capability = serde_json::from_str(&host_hook_capability_json(&installed)?)?;
-        let _ = fs::remove_dir_all(runtime_home);
-        Ok(capability)
-    }
-
-    fn inspection_connection(
-        connection_id: &str,
-        host_kind: &str,
-        intent: &str,
-        project_internal_id: &str,
-    ) -> AgentConnectionInspectionRecord {
-        AgentConnectionInspectionRecord {
-            connection_internal_id: connection_id.to_owned(),
-            host_kind: host_kind.to_owned(),
-            intent: intent.to_owned(),
-            host_scope: if intent == "shared" {
-                "project"
-            } else {
-                "local"
-            }
-            .to_owned(),
-            project_internal_id: Some(project_internal_id.to_owned()),
-            server_name: "volicord".to_owned(),
-            config_target: "test".to_owned(),
-            mode: "workflow".to_owned(),
-            enabled: true,
-            managed_fingerprint: format!("fingerprint-{connection_id}"),
-            last_verification_status: "complete".to_owned(),
-            last_verification_report_json: "{}".to_owned(),
-            last_user_actions_json: "[]".to_owned(),
-            created_at: "2026-01-01T00:00:00Z".to_owned(),
-            updated_at: "2026-01-01T00:00:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
-        }
     }
 }

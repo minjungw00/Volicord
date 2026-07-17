@@ -5,8 +5,6 @@ use self::pre_tool::ExpectedWriteCandidate;
 
 pub(super) mod post_tool;
 pub(super) mod pre_tool;
-pub(super) mod session_start;
-pub(super) mod stop;
 
 #[derive(Debug, Clone)]
 pub(super) struct GuardPhaseResult {

@@ -232,23 +232,17 @@ mod tests {
 
     #[test]
     fn maintained_post_tool_fixtures_read_tool_response_success_and_exit_code() {
-        for fixture in [
-            include_str!(
-                "../../tests/fixtures/host_contracts/codex/events/post_tool_bash_write.json"
-            ),
-            include_str!(
-                "../../tests/fixtures/host_contracts/claude_code/events/post_tool_bash_write.json"
-            ),
-        ] {
-            let event: Value = serde_json::from_str(fixture).expect("fixture JSON");
-            let observation = tool_observation(&event, Path::new("/repo"));
-            assert_eq!(observation.success, Some(true));
-            assert_eq!(observation.exit_code, Some(0));
-        }
+        let fixture = include_str!(
+            "../../tests/fixtures/host_contracts/codex/events/post_tool_bash_write.json"
+        );
+        let event: Value = serde_json::from_str(fixture).expect("fixture JSON");
+        let observation = tool_observation(&event, Path::new("/repo"));
+        assert_eq!(observation.success, Some(true));
+        assert_eq!(observation.exit_code, Some(0));
     }
 
     #[test]
-    fn generic_tools_honor_closed_structured_effects_only_with_known_paths() {
+    fn unknown_tools_honor_closed_structured_effects_only_with_known_paths() {
         let product = tool_observation(
             &serde_json::json!({
                 "tool_name": "custom_host_tool",
