@@ -1,8 +1,15 @@
 #![forbid(unsafe_code)]
 
-use std::{error::Error, path::Path, process::Command};
+mod support;
+
+use std::{error::Error, fs, path::Path, process::Command};
 
 use serde_json::Value;
+use support::binary_fixture::base_command;
+use volicord_test_support::TempRuntimeHome;
+
+const GENERATED_SHAPE_ERROR: &str =
+    "generated host-hook capability does not match the current exact shape";
 
 const ROOT_HELP: &str = "Local Volicord administration and managed stdio MCP
 
@@ -153,4 +160,96 @@ fn json_machine_output_is_one_stdout_document() -> Result<(), Box<dyn Error>> {
     assert_eq!(value["status"], "complete");
     assert!(value["privacy_footprint"].is_object());
     Ok(())
+}
+
+#[test]
+fn failed_init_is_one_stdout_document_and_exit_one() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-init-failed")?;
+    let output = fixture.run(false)?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(stderr(&output)?, "");
+    let text = stdout(&output)?;
+    assert!(!text.contains(GENERATED_SHAPE_ERROR));
+    let value: Value = serde_json::from_str(&text)?;
+    assert_eq!(value["status"], "failed");
+    assert_eq!(value["guard_installation"]["recorded"], true);
+    Ok(())
+}
+
+#[test]
+fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-init-dry-run")?;
+    let output = fixture.run(true)?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let text = stdout(&output)?;
+    assert!(!text.contains(GENERATED_SHAPE_ERROR));
+    let value: Value = serde_json::from_str(&text)?;
+    assert_eq!(value["status"], "dry_run");
+    Ok(())
+}
+
+struct IsolatedInitFixture {
+    _temporary_root: TempRuntimeHome,
+    runtime_home: std::path::PathBuf,
+    codex_home: std::path::PathBuf,
+    user_home: std::path::PathBuf,
+    empty_path: std::path::PathBuf,
+    repo_root: std::path::PathBuf,
+}
+
+impl IsolatedInitFixture {
+    fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+        let temporary_root = TempRuntimeHome::new(prefix)?;
+        let runtime_home = temporary_root.path().join("volicord-home");
+        let codex_home = temporary_root.path().join("codex-home");
+        let user_home = temporary_root.path().join("user-home");
+        let empty_path = temporary_root.path().join("empty-path");
+        let repo_root = temporary_root.path().join("product-repository");
+        for directory in [
+            &runtime_home,
+            &codex_home,
+            &user_home,
+            &empty_path,
+            &repo_root,
+        ] {
+            fs::create_dir_all(directory)?;
+        }
+        fs::create_dir(repo_root.join(".git"))?;
+        Ok(Self {
+            _temporary_root: temporary_root,
+            runtime_home,
+            codex_home,
+            user_home,
+            empty_path,
+            repo_root,
+        })
+    }
+
+    fn run(&self, dry_run: bool) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("init")
+            .arg("--host")
+            .arg("codex")
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--profile")
+            .arg("record")
+            .arg("--home")
+            .arg(&self.runtime_home)
+            .arg("--json")
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .env_remove("VOLICORD_CODEX_NATIVE_EXECUTABLE")
+            .current_dir(&self.repo_root);
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        Ok(command.output()?)
+    }
 }

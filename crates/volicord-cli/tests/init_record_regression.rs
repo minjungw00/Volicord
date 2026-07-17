@@ -17,7 +17,8 @@ use support::binary_fixture::create_git_repo;
 use volicord_cli::{
     cli::{CodexHost, InitArgs, PolicyArgs, PolicyCommand, PolicyValidateArgs, RecordProfile},
     connection_command::{
-        run_init_command, ConnectionProcess, ConnectionProcessOutput, McpLaunch, McpVerification,
+        run_init_command, ConnectionCommandError, ConnectionProcess, ConnectionProcessOutput,
+        McpLaunch, McpVerification,
     },
     policy_command::run_policy_command,
 };
@@ -236,14 +237,27 @@ fn run_record_init(
         process,
     );
     let output = match result {
-        Ok(output) => output,
-        Err(error) => {
-            let message = error.to_string();
+        Err(ConnectionCommandError::FailureOutput(output)) => output,
+        Ok(output) => {
+            assert!(
+                !output.contains(GENERATED_SHAPE_ERROR),
+                "init returned the generated exact-shape regression: {output}"
+            );
+            return Err("failed init unexpectedly used the success return channel".into());
+        }
+        Err(ConnectionCommandError::Usage(message)) => {
+            return Err(
+                format!("failed init unexpectedly returned a usage error: {message}").into(),
+            );
+        }
+        Err(ConnectionCommandError::Runtime(message)) => {
             assert!(
                 !message.contains(GENERATED_SHAPE_ERROR),
                 "init returned the generated exact-shape regression: {message}"
             );
-            return Err(message.into());
+            return Err(
+                format!("failed init unexpectedly returned a runtime error: {message}").into(),
+            );
         }
     };
     assert!(!output.contains(GENERATED_SHAPE_ERROR));

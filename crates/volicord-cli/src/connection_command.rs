@@ -202,9 +202,10 @@ pub fn run_init_command(
         },
         process,
     )?;
-    render_init_output(InitOutput {
+    let status = outcome.status;
+    let rendered_output = render_init_output(InitOutput {
         format: init_output_format(&parsed),
-        status: outcome.status,
+        status,
         host_kind: outcome.host_kind,
         init_mode: outcome.init_mode,
         intent: outcome.intent,
@@ -218,7 +219,19 @@ pub fn run_init_command(
         integration: &outcome.integration,
         guard_installation: outcome.guard_installation.as_ref(),
         profile_action: outcome.profile_action,
-    })
+    })?;
+    init_output_result(status, rendered_output)
+}
+
+fn init_output_result(
+    status: AgentResultStatus,
+    rendered_output: String,
+) -> Result<String, ConnectionCommandError> {
+    if status == AgentResultStatus::Failed {
+        Err(ConnectionCommandError::FailureOutput(rendered_output))
+    } else {
+        Ok(rendered_output)
+    }
 }
 
 pub fn run_connect_command(
@@ -2208,6 +2221,33 @@ fn codex_home(process: &impl ConnectionProcess) -> Result<PathBuf, ConnectionCom
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+#[cfg(test)]
+mod init_status_tests {
+    use super::*;
+
+    #[test]
+    fn failed_init_uses_failure_output_channel() {
+        let output = "rendered failed init".to_owned();
+
+        assert_eq!(
+            init_output_result(AgentResultStatus::Failed, output.clone()),
+            Err(ConnectionCommandError::FailureOutput(output))
+        );
+    }
+
+    #[test]
+    fn non_failure_init_statuses_use_success_channel() {
+        for status in [
+            AgentResultStatus::Complete,
+            AgentResultStatus::ActionRequired,
+            AgentResultStatus::DryRun,
+        ] {
+            let output = format!("rendered {} init", status.as_str());
+            assert_eq!(init_output_result(status, output.clone()), Ok(output));
+        }
+    }
 }
 
 #[cfg(test)]
