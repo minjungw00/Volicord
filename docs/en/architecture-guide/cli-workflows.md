@@ -74,7 +74,7 @@ diagnostic metadata are not parsed back into authority state.
 - No command starts a network transport.
 - No noninteractive command supplies user judgment.
 - Runtime lookup uses only the embedded support catalog. Release claims require
-  the separate exact four-platform evidence manifest to match that catalog.
+  the separate exact six-cell evidence manifest to match that catalog.
 
 ## Related Routes
 

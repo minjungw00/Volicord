@@ -13,18 +13,19 @@ use std::{
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use volicord_types::{
-    compute_codex_release_evidence_digest, CodexReleaseEvidenceEntry, CodexReleaseEvidenceManifest,
-    CodexReleasePlatformStatus, CodexReleaseScenarioStatus, CodexReleaseValidationEvidence,
+    compute_codex_release_evidence_digest, CodexReleaseCellStatus, CodexReleaseEvidenceEntry,
+    CodexReleaseEvidenceManifest, CodexReleaseScenarioStatus, CodexReleaseValidationEvidence,
     CodexReleaseValidationResult, CodexSupportCatalog, IntegrationProfile, PlatformEnvironment,
-    PlatformReleaseCoordinate, CODEX_RELEASE_PLATFORMS, FIRST_RELEASE_CODEX_CAPABILITIES,
+    PlatformReleaseCoordinate, ReleaseTargetTriple, FIRST_RELEASE_CODEX_CAPABILITIES,
     PINNED_WSL2_DISTRIBUTION_NAME,
 };
 
 use crate::{
     contracts::{
         embedded_codex_support_catalog, load_codex_release_evidence_manifest,
-        load_codex_support_catalog, CODEX_RELEASE_EVIDENCE_MANIFEST_PATH,
-        CODEX_SUPPORT_CATALOG_PATH,
+        load_codex_support_catalog, load_release_target_contract, ReleaseCell,
+        ReleaseTargetContract, CODEX_RELEASE_EVIDENCE_MANIFEST_PATH, CODEX_SUPPORT_CATALOG_PATH,
+        RELEASE_TARGETS_PATH,
     },
     error::{ValidationError, ValidationResult},
     io::{write_json_create_new, ValidationContext, MAX_MANIFEST_JSON_BYTES},
@@ -52,6 +53,7 @@ pub const CANDIDATE_CELL_PATH_ENV: &str = "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL
 /// Successful live-gate summary for one independently executed cell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GateReport {
+    pub target_triple: ReleaseTargetTriple,
     pub platform: PlatformEnvironment,
     pub codex_artifact_digest: String,
     pub volicord_artifact_digest: String,
@@ -62,6 +64,7 @@ pub struct GateReport {
 /// Summary for a newly written, external one-cell review candidate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureReport {
+    pub target_triple: ReleaseTargetTriple,
     pub platform: PlatformEnvironment,
     pub validation_result: CodexReleaseValidationResult,
     pub candidate_path: PathBuf,
@@ -84,34 +87,50 @@ pub(super) struct GateConfiguration {
     pub(super) wsl2_distribution: Option<String>,
 }
 
-/// Runs the blocking gate for one platform against the embedded support catalog
+/// Runs the blocking gate for one exact target/environment cell against the embedded support catalog
 /// and canonical checked-in external evidence manifest.
-pub fn run_checked_in_cell_gate(platform: PlatformEnvironment) -> ValidationResult<GateReport> {
+pub fn run_checked_in_cell_gate(
+    target_triple: ReleaseTargetTriple,
+    platform: PlatformEnvironment,
+) -> ValidationResult<GateReport> {
     validate_process_boundary(platform)?;
     let context = validation_context(platform)?;
-    let (_, evidence_manifest) = load_checked_in_contracts(&context)?;
+    let (targets, _, evidence_manifest) = load_checked_in_contracts(&context)?;
+    let cell = targets
+        .require_cell(target_triple, platform, IntegrationProfile::Record)
+        .map_err(ValidationError::new)?;
 
-    let Some(entry) = evidence_manifest
+    let mut matching_entries = evidence_manifest
         .entries()
         .iter()
-        .find(|entry| entry.platform_environment == platform)
-    else {
+        .filter(|entry| entry_matches_cell(entry, cell));
+    let Some(entry) = matching_entries.next() else {
         return Err(ValidationError::new(format!(
-            "Codex release platform {} has checked-in status not_run; an exact passing cell is required",
-            platform.as_str()
+            "Codex release cell {target_triple}/{} has checked-in status not_run; exact passing evidence is required",
+            platform.as_str(),
         )));
     };
+    if matching_entries.next().is_some() {
+        return Err(ValidationError::new(format!(
+            "Codex release cell {target_triple}/{} has multiple exact artifact identities",
+            platform.as_str()
+        )));
+    }
     if entry.validation_evidence.validation_result != CodexReleaseValidationResult::Passed {
         return Err(ValidationError::new(format!(
-            "Codex release platform {} has checked-in status {}; an exact passing cell is required",
+            "Codex release cell {target_triple}/{} has checked-in status {}; exact passing evidence is required",
             platform.as_str(),
-            release_status_name(evidence_manifest.platform_status(platform))
+            release_status_name(evidence_manifest.cell_status(
+                target_triple,
+                platform,
+                IntegrationProfile::Record
+            ))
         )));
     }
 
     let configuration = GateConfiguration::from_process(platform)?;
     validate_gate_paths(&context, platform, &configuration)?;
-    validate_actual_runner_coordinate(entry, platform, &configuration)?;
+    validate_actual_runner_coordinate(entry, target_triple, platform, &configuration)?;
 
     let codex_before = hash_artifact(
         &context,
@@ -166,6 +185,7 @@ pub fn run_checked_in_cell_gate(platform: PlatformEnvironment) -> ValidationResu
     }
 
     Ok(GateReport {
+        target_triple,
         platform,
         codex_artifact_digest: codex_after,
         volicord_artifact_digest: volicord_after,
@@ -179,16 +199,22 @@ pub fn run_checked_in_cell_gate(platform: PlatformEnvironment) -> ValidationResu
 /// This producer never edits or promotes either canonical contract. Release
 /// publication continues to require `run_checked_in_cell_gate` against reviewed
 /// external evidence that matches the embedded support catalog.
-pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult<CaptureReport> {
+pub fn capture_candidate_cell(
+    target_triple: ReleaseTargetTriple,
+    platform: PlatformEnvironment,
+) -> ValidationResult<CaptureReport> {
     validate_process_boundary(platform)?;
     let context = validation_context(platform)?;
     // Refuse to produce from a build whose embedded support policy and checkout
     // disagree, or whose checked-in external evidence is not policy-bound.
-    let (support_catalog, _) = load_checked_in_contracts(&context)?;
+    let (targets, support_catalog, _) = load_checked_in_contracts(&context)?;
+    targets
+        .require_cell(target_triple, platform, IntegrationProfile::Record)
+        .map_err(ValidationError::new)?;
 
     let configuration = GateConfiguration::from_process(platform)?;
     validate_gate_paths(&context, platform, &configuration)?;
-    let runner = collect_runner_coordinate(platform, &configuration)?;
+    let runner = collect_runner_coordinate(target_triple, platform, &configuration)?;
     let candidate_path = PathBuf::from(required_environment(CANDIDATE_CELL_PATH_ENV)?);
     context.validate_new_output(&candidate_path)?;
     if candidate_path.starts_with(&configuration.evidence_directory)
@@ -221,6 +247,7 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
     support_catalog
         .lookup_supported_entry(
             &codex_before,
+            target_triple,
             platform,
             &platform_release_coordinate,
             &FIRST_RELEASE_CODEX_CAPABILITIES,
@@ -235,6 +262,7 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
     probe_executable(platform, &configuration.volicord_path, &configuration)?;
     let scenario_results = capture_scenario_catalog(
         &context,
+        target_triple,
         platform,
         &codex_before,
         &volicord_before,
@@ -271,6 +299,7 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
     let mut evidence = CodexReleaseValidationEvidence {
         validation_result,
         codex_artifact_digest: codex_after.clone(),
+        target_triple,
         platform_environment: platform,
         observed_capabilities: capabilities.clone(),
         integration_profile: IntegrationProfile::Record,
@@ -286,6 +315,7 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
         })?;
     let entry = CodexReleaseEvidenceEntry {
         codex_artifact_digest: codex_after.clone(),
+        target_triple,
         platform_environment: platform,
         observed_capabilities: capabilities,
         integration_profile: IntegrationProfile::Record,
@@ -317,6 +347,7 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
     }
 
     Ok(CaptureReport {
+        target_triple,
         platform,
         validation_result,
         candidate_path,
@@ -383,11 +414,22 @@ fn validation_context(platform: PlatformEnvironment) -> ValidationResult<Validat
 
 fn load_checked_in_contracts(
     context: &ValidationContext,
-) -> ValidationResult<(CodexSupportCatalog, CodexReleaseEvidenceManifest)> {
+) -> ValidationResult<(
+    ReleaseTargetContract,
+    CodexSupportCatalog,
+    CodexReleaseEvidenceManifest,
+)> {
+    let release_targets_path = context.source_checkout().join(RELEASE_TARGETS_PATH);
     let support_catalog_path = context.source_checkout().join(CODEX_SUPPORT_CATALOG_PATH);
     let evidence_manifest_path = context
         .source_checkout()
         .join(CODEX_RELEASE_EVIDENCE_MANIFEST_PATH);
+    let release_targets = load_release_target_contract(&release_targets_path).map_err(|error| {
+        ValidationError::new(format!(
+            "release target contract is invalid at {}: {error}",
+            release_targets_path.display()
+        ))
+    })?;
     let embedded_support_catalog = embedded_codex_support_catalog().map_err(|error| {
         ValidationError::new(format!(
             "embedded Codex support catalog is invalid: {error}"
@@ -419,7 +461,56 @@ fn load_checked_in_contracts(
                 "external Codex release evidence is not supported by the embedded catalog: {error}"
             ))
         })?;
-    Ok((embedded_support_catalog, evidence_manifest))
+    validate_target_contract_bindings(
+        &release_targets,
+        &embedded_support_catalog,
+        &evidence_manifest,
+    )?;
+    Ok((release_targets, embedded_support_catalog, evidence_manifest))
+}
+
+fn validate_target_contract_bindings(
+    targets: &ReleaseTargetContract,
+    support_catalog: &CodexSupportCatalog,
+    evidence_manifest: &CodexReleaseEvidenceManifest,
+) -> ValidationResult<()> {
+    for entry in support_catalog.entries() {
+        targets
+            .require_cell(
+                entry.target_triple,
+                entry.platform_environment,
+                entry.integration_profile,
+            )
+            .map_err(|_| {
+                ValidationError::new(format!(
+                    "support-catalog entry {}/{} cannot map to an actual required release target cell",
+                    entry.target_triple,
+                    entry.platform_environment.as_str()
+                ))
+            })?;
+    }
+    for entry in evidence_manifest.entries() {
+        targets
+            .require_cell(
+                entry.target_triple,
+                entry.platform_environment,
+                entry.integration_profile,
+            )
+            .map_err(|_| {
+                ValidationError::new(format!(
+                    "release-evidence entry {}/{} is not a required release target cell",
+                    entry.target_triple,
+                    entry.platform_environment.as_str()
+                ))
+            })?;
+    }
+    Ok(())
+}
+
+fn entry_matches_cell(entry: &CodexReleaseEvidenceEntry, cell: ReleaseCell) -> bool {
+    entry.target_triple == cell.target_triple
+        && entry.platform_environment == cell.platform_environment
+        && entry.integration_profile == cell.integration_profile
 }
 
 impl GateConfiguration {
@@ -560,21 +651,34 @@ pub(super) fn run_bounded_status(
     }
 }
 
-fn release_status_name(status: CodexReleasePlatformStatus) -> &'static str {
+fn release_status_name(status: CodexReleaseCellStatus) -> &'static str {
     match status {
-        CodexReleasePlatformStatus::Passed => "passed",
-        CodexReleasePlatformStatus::Failed => "failed",
-        CodexReleasePlatformStatus::Unavailable => "unavailable",
-        CodexReleasePlatformStatus::NotRun => "not_run",
+        CodexReleaseCellStatus::Passed => "passed",
+        CodexReleaseCellStatus::Failed => "failed",
+        CodexReleaseCellStatus::Unavailable => "unavailable",
+        CodexReleaseCellStatus::NotRun => "not_run",
     }
 }
 
-/// Returns all independent platform statuses for honest preflight reporting.
-pub fn checked_in_platform_statuses(
-) -> ValidationResult<[(PlatformEnvironment, CodexReleasePlatformStatus); 4]> {
+/// Returns all exact required cell statuses for honest preflight reporting.
+pub fn checked_in_cell_statuses() -> ValidationResult<Vec<(ReleaseCell, CodexReleaseCellStatus)>> {
     let context = validation_context(PlatformEnvironment::Linux)?;
-    let (_, manifest) = load_checked_in_contracts(&context)?;
-    Ok(CODEX_RELEASE_PLATFORMS.map(|platform| (platform, manifest.platform_status(platform))))
+    let (targets, _, manifest) = load_checked_in_contracts(&context)?;
+    Ok(targets
+        .required_cells()
+        .iter()
+        .copied()
+        .map(|cell| {
+            (
+                cell,
+                manifest.cell_status(
+                    cell.target_triple,
+                    cell.platform_environment,
+                    cell.integration_profile,
+                ),
+            )
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -582,10 +686,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checked_in_gate_statuses_report_every_absent_cell_as_not_run() {
-        assert_eq!(
-            checked_in_platform_statuses().expect("checked-in statuses"),
-            CODEX_RELEASE_PLATFORMS.map(|platform| (platform, CodexReleasePlatformStatus::NotRun))
+    fn checked_in_gate_statuses_report_all_six_absent_cells_as_not_run() {
+        let statuses = checked_in_cell_statuses().expect("checked-in statuses");
+        assert_eq!(statuses.len(), 6);
+        assert!(statuses
+            .iter()
+            .all(|(_, status)| *status == CodexReleaseCellStatus::NotRun));
+    }
+
+    #[test]
+    fn support_entry_without_an_actual_required_cell_is_rejected() {
+        let mut document: serde_json::Value =
+            serde_json::from_slice(include_bytes!("../contracts/release-targets.json"))
+                .expect("release target JSON");
+        document["required_cells"]
+            .as_array_mut()
+            .expect("required cells")
+            .retain(|cell| {
+                cell["target_triple"] != "x86_64-unknown-linux-gnu"
+                    || cell["platform_environment"] != "linux"
+            });
+        let targets = crate::contracts::parse_release_target_contract(
+            &serde_json::to_vec(&document).expect("serialize contract"),
+        )
+        .expect("x86-64 target still has the WSL2 required cell");
+        let support = CodexSupportCatalog::from_entries(vec![volicord_types::CodexSupportEntry {
+            codex_artifact_digest: "1".repeat(64),
+            target_triple: ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            platform_environment: PlatformEnvironment::Linux,
+            platform_release_coordinate: PlatformReleaseCoordinate::native(),
+            integration_profile: IntegrationProfile::Record,
+            verified_capabilities: FIRST_RELEASE_CODEX_CAPABILITIES.to_vec(),
+        }])
+        .expect("valid standalone support entry");
+        let evidence = CodexReleaseEvidenceManifest::from_entries(Vec::new())
+            .expect("empty evidence manifest");
+        assert!(
+            validate_target_contract_bindings(&targets, &support, &evidence)
+                .expect_err("unmapped support entry")
+                .to_string()
+                .contains("cannot map")
         );
     }
 

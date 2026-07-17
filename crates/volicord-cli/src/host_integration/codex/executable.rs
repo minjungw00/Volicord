@@ -11,9 +11,11 @@ use crate::host_integration::process::{CommandInvocation, CommandRunner};
 use crate::host_integration::verification::{
     HostConfigurationStatus, HostExecutableStatus, HostGateStatus, Verification,
 };
-use volicord_types::{PlatformEnvironment, PlatformReleaseCoordinate, ProcessBinding};
+use volicord_types::{
+    PlatformEnvironment, PlatformReleaseCoordinate, ProcessBinding, ReleaseTargetTriple,
+};
 
-use crate::host_integration::process::detect_platform_environment;
+use crate::host_integration::process::detect_platform_boundary;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CodexExecutableAvailability {
@@ -22,6 +24,7 @@ pub(super) struct CodexExecutableAvailability {
     pub(super) details: String,
     pub(super) diagnostic: Option<String>,
     pub(super) process_binding: Option<ProcessBinding>,
+    pub(super) target_triple: Option<ReleaseTargetTriple>,
     pub(super) platform_environment: Option<PlatformEnvironment>,
     pub(super) platform_release_coordinate: Option<PlatformReleaseCoordinate>,
 }
@@ -31,6 +34,7 @@ impl CodexExecutableAvailability {
         host_version: String,
         details: String,
         process_binding: ProcessBinding,
+        target_triple: ReleaseTargetTriple,
         platform_environment: PlatformEnvironment,
         platform_release_coordinate: PlatformReleaseCoordinate,
     ) -> Self {
@@ -40,6 +44,7 @@ impl CodexExecutableAvailability {
             details,
             diagnostic: None,
             process_binding: Some(process_binding),
+            target_triple: Some(target_triple),
             platform_environment: Some(platform_environment),
             platform_release_coordinate: Some(platform_release_coordinate),
         }
@@ -52,6 +57,7 @@ impl CodexExecutableAvailability {
             details,
             diagnostic: Some(diagnostic.into()),
             process_binding: None,
+            target_triple: None,
             platform_environment: None,
             platform_release_coordinate: None,
         }
@@ -77,8 +83,8 @@ pub(super) fn codex_executable_availability<R: CommandRunner>(
             "Codex executable `codex` was not found on PATH",
         );
     };
-    let platform = match detect_platform_environment() {
-        Ok(platform) => platform,
+    let platform_boundary = match detect_platform_boundary() {
+        Ok(boundary) => boundary,
         Err(error) => {
             return CodexExecutableAvailability::unavailable(
                 format!("Codex native executable platform could not be resolved: {error}"),
@@ -86,10 +92,12 @@ pub(super) fn codex_executable_availability<R: CommandRunner>(
             )
         }
     };
+    let platform = platform_boundary.environment;
+    let target_triple = platform_boundary.target_triple;
     let executable = match native_executable
         .map(Path::to_path_buf)
         .map(Ok)
-        .unwrap_or_else(|| resolve_codex_native_executable(&launcher, platform))
+        .unwrap_or_else(|| resolve_codex_native_executable(&launcher, platform, target_triple))
         .and_then(|candidate| require_native_executable(candidate, platform))
     {
         Ok(executable) => executable,
@@ -128,6 +136,7 @@ pub(super) fn codex_executable_availability<R: CommandRunner>(
                     config_target.display()
                 ),
                 output.process_binding,
+                output.target_triple,
                 output.platform_environment,
                 output.platform_release_coordinate,
             )
@@ -156,6 +165,7 @@ pub(super) fn codex_executable_availability<R: CommandRunner>(
 fn resolve_codex_native_executable(
     launcher: &Path,
     platform: PlatformEnvironment,
+    target_triple: ReleaseTargetTriple,
 ) -> Result<PathBuf, String> {
     if native_executable_magic_matches(launcher, platform)? {
         return Ok(launcher.to_path_buf());
@@ -198,7 +208,7 @@ fn resolve_codex_native_executable(
             }
         }
     }
-    let (package, target, binary) = native_package_layout(platform)?;
+    let (package, target, binary) = native_package_layout(target_triple);
     let mut candidates = BTreeSet::new();
     for root in package_roots {
         let mut package_candidates = vec![
@@ -251,28 +261,24 @@ fn require_native_executable(
 }
 
 fn native_package_layout(
-    platform: PlatformEnvironment,
-) -> Result<(&'static str, &'static str, &'static str), String> {
-    match (platform, std::env::consts::ARCH) {
-        (PlatformEnvironment::Linux | PlatformEnvironment::Wsl2, "x86_64") => {
-            Ok(("codex-linux-x64", "x86_64-unknown-linux-musl", "codex"))
+    target_triple: ReleaseTargetTriple,
+) -> (&'static str, &'static str, &'static str) {
+    match target_triple {
+        ReleaseTargetTriple::X86_64UnknownLinuxGnu => {
+            ("codex-linux-x64", "x86_64-unknown-linux-musl", "codex")
         }
-        (PlatformEnvironment::Linux | PlatformEnvironment::Wsl2, "aarch64") => {
-            Ok(("codex-linux-arm64", "aarch64-unknown-linux-musl", "codex"))
+        ReleaseTargetTriple::Aarch64UnknownLinuxGnu => {
+            ("codex-linux-arm64", "aarch64-unknown-linux-musl", "codex")
         }
-        (PlatformEnvironment::Macos, "x86_64") => {
-            Ok(("codex-darwin-x64", "x86_64-apple-darwin", "codex"))
+        ReleaseTargetTriple::X86_64AppleDarwin => {
+            ("codex-darwin-x64", "x86_64-apple-darwin", "codex")
         }
-        (PlatformEnvironment::Macos, "aarch64") => {
-            Ok(("codex-darwin-arm64", "aarch64-apple-darwin", "codex"))
+        ReleaseTargetTriple::Aarch64AppleDarwin => {
+            ("codex-darwin-arm64", "aarch64-apple-darwin", "codex")
         }
-        (PlatformEnvironment::NativeWindows, "x86_64") => {
-            Ok(("codex-win32-x64", "x86_64-pc-windows-msvc", "codex.exe"))
+        ReleaseTargetTriple::X86_64PcWindowsMsvc => {
+            ("codex-win32-x64", "x86_64-pc-windows-msvc", "codex.exe")
         }
-        (PlatformEnvironment::NativeWindows, "aarch64") => {
-            Ok(("codex-win32-arm64", "aarch64-pc-windows-msvc", "codex.exe"))
-        }
-        _ => Err("unsupported_codex_native_architecture".to_owned()),
     }
 }
 
@@ -397,9 +403,9 @@ mod tests {
         fs::create_dir_all(launcher.parent().expect("launcher parent"))?;
         fs::write(&launcher, b"#!/bin/sh\n")?;
 
-        let platform = detect_platform_environment().map_err(io::Error::other)?;
-        let (package, target, binary) =
-            native_package_layout(platform).map_err(io::Error::other)?;
+        let boundary = detect_platform_boundary().map_err(io::Error::other)?;
+        let platform = boundary.environment;
+        let (package, target, binary) = native_package_layout(boundary.target_triple);
         let main_package = fixture
             .path()
             .join("pnpm/global/5/node_modules/@openai/codex");
@@ -415,10 +421,33 @@ mod tests {
         fs::create_dir_all(native.parent().expect("native binary parent"))?;
         fs::write(&native, native_magic(platform))?;
 
-        let resolved =
-            resolve_codex_native_executable(&launcher, platform).map_err(io::Error::other)?;
+        let resolved = resolve_codex_native_executable(&launcher, platform, boundary.target_triple)
+            .map_err(io::Error::other)?;
         assert_eq!(resolved, fs::canonicalize(native)?);
         Ok(())
+    }
+
+    #[test]
+    fn native_package_layout_covers_every_published_target() {
+        let layouts = [
+            (
+                ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+                "codex-linux-x64",
+            ),
+            (
+                ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
+                "codex-linux-arm64",
+            ),
+            (
+                ReleaseTargetTriple::Aarch64AppleDarwin,
+                "codex-darwin-arm64",
+            ),
+            (ReleaseTargetTriple::X86_64AppleDarwin, "codex-darwin-x64"),
+            (ReleaseTargetTriple::X86_64PcWindowsMsvc, "codex-win32-x64"),
+        ];
+        for (target, expected_package) in layouts {
+            assert_eq!(native_package_layout(target).0, expected_package);
+        }
     }
 
     fn native_magic(platform: PlatformEnvironment) -> &'static [u8] {

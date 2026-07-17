@@ -7,8 +7,8 @@ use volicord_types::{
     CodexCapability, ConfigurationTarget, EnvironmentForwarding, FailureCategory,
     GeneratedManagedArtifact, HostVerificationReceipt, HostVerificationResult, IntegrationProfile,
     ManagedCommand, ManagedCommandResolution, ManagedHostBinding, PlatformEnvironment,
-    PlatformReleaseCoordinate, ProjectId, UtcTimestamp, FIRST_RELEASE_CODEX_CAPABILITIES,
-    HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
+    PlatformReleaseCoordinate, ProjectId, ReleaseTargetTriple, UtcTimestamp,
+    FIRST_RELEASE_CODEX_CAPABILITIES, HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
 };
 
 use crate::host_integration::process::canonical_existing_platform_path;
@@ -20,6 +20,7 @@ pub(crate) trait CodexSupportCatalogPolicy {
     fn require_exact_supported_entry(
         &self,
         codex_artifact_digest: &str,
+        target_triple: ReleaseTargetTriple,
         platform: PlatformEnvironment,
         platform_release_coordinate: &PlatformReleaseCoordinate,
         capabilities: &[CodexCapability],
@@ -34,6 +35,7 @@ impl CodexSupportCatalogPolicy for EmbeddedCodexSupportCatalogPolicy {
     fn require_exact_supported_entry(
         &self,
         codex_artifact_digest: &str,
+        target_triple: ReleaseTargetTriple,
         platform: PlatformEnvironment,
         platform_release_coordinate: &PlatformReleaseCoordinate,
         capabilities: &[CodexCapability],
@@ -50,6 +52,7 @@ impl CodexSupportCatalogPolicy for EmbeddedCodexSupportCatalogPolicy {
             })?;
         lookup_embedded_codex_support_entry(
             codex_artifact_digest,
+            target_triple,
             platform,
             platform_release_coordinate,
             capabilities,
@@ -122,6 +125,12 @@ pub(crate) fn managed_host_evidence_for_plan(
             "the Codex process observation did not carry a platform environment",
         )
     })?;
+    let target_triple = executable.target_triple.ok_or_else(|| {
+        unavailable(
+            "target_triple_unavailable",
+            "the Codex process observation did not carry an exact target triple",
+        )
+    })?;
     let process_binding = executable.process_binding.clone().ok_or_else(|| {
         unavailable(
             "process_binding_unavailable",
@@ -163,6 +172,7 @@ pub(crate) fn managed_host_evidence_for_plan(
     managed_host_evidence_for_live_process(
         plan,
         process_binding,
+        target_triple,
         platform,
         platform_release_coordinate,
         vec![GeneratedManagedArtifact {
@@ -176,6 +186,7 @@ pub(crate) fn managed_host_evidence_for_plan(
 pub(crate) fn managed_host_evidence_for_live_process(
     plan: &HostPlan,
     process_binding: volicord_types::ProcessBinding,
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     platform_release_coordinate: PlatformReleaseCoordinate,
     generated_artifacts: Vec<GeneratedManagedArtifact>,
@@ -255,6 +266,7 @@ pub(crate) fn managed_host_evidence_for_live_process(
         })?;
     support_catalog.require_exact_supported_entry(
         &binding.process_binding.executable_digest,
+        target_triple,
         platform,
         &platform_release_coordinate,
         &binding.required_capabilities,

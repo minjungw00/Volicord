@@ -12,7 +12,7 @@ schemas, effects, security, and value sets.
 | [Observation confidence boundary](observation-confidence-boundary.md) | Separate deterministic path facts from uncertain observations. |
 | [External user judgment authority](external-user-judgment-authority.md) | Keep user answers outside the Agent Connection. |
 | [Static compact MCP tool list](static-compact-mcp-tool-list.md) | Keep the public tool registry closed and compact. |
-| [Host release evidence gate](host-release-evidence-gate.md) | Support exact finalized Codex artifacts through four independent platform cells. |
+| [Host release evidence gate](host-release-evidence-gate.md) | Support exact finalized Codex artifacts through six target/environment cells covering five published targets. |
 | [Durable operation-result retrieval](operation-result-retrieval.md) | Recover eligible immutable mutation results through bounded lookup. |
 | [Evidence-capture producer finalization](evidence-capture-producer-finalization.md) | Bind source receipts to an intent and finalize producer authority atomically. |
 | [Unified UserAction request and resolution](unified-user-action-request-resolution.md) | Separate agent request/resume from CLI-only immutable resolution. |

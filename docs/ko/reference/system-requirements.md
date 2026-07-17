@@ -11,27 +11,34 @@ Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 �
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-네 `PlatformEnvironment` 값, 정확한 최초 릴리스 WSL2 배포판/이미지 좌표,
+네 `PlatformEnvironment` 값, 게시 target triple 다섯 개, 필수 target/environment 셀
+여섯 개, 정확한 최초 릴리스 WSL2 배포판/이미지 좌표,
 WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제 조건, 중단 기준은 안정
 계약입니다. 그 밖의 runner 이미지, 패키지 관리자 명령, 실행 파일 위치와 진단
 문구는 다른 담당 문서가 안정으로 지정하지 않는 한 릴리스 또는 구현
 세부사항입니다.
 
+<a id="first-release-environment-matrix"></a>
 ## 최초 릴리스 환경 행렬
 
-Volicord에는 서로 독립적인 네 릴리스 대상 환경이 있습니다.
+Volicord는 binary target 다섯 개를 게시하며 서로 독립적인 릴리스 환경 셀 여섯
+개를 요구합니다.
 
-| `platform_environment` | 필수 경계 |
-|---|---|
-| `linux` | Volicord, Codex, Product Repository, Runtime Home이 네이티브 Linux에서 실행됩니다. |
-| `macos` | Volicord, Codex, Product Repository, Runtime Home이 네이티브 macOS에서 실행됩니다. |
-| `native_windows` | Volicord, Codex, Product Repository, Runtime Home이 네이티브 Windows 구성요소로 실행됩니다. WSL 경로, 프로세스, binding, 영수증은 사용할 수 없습니다. |
-| `wsl2` | 모든 구성요소가 아래 조건을 만족하는 같은 WSL2 배포판 내부에서 실행되고 그 Linux 파일 시스템을 사용합니다. |
+| `target_triple` | `platform_environment` | 필수 경계 |
+|---|---|---|
+| `x86_64-unknown-linux-gnu` | `linux` | 모든 구성요소가 native x86-64 Linux에서 실행됩니다. |
+| `aarch64-unknown-linux-gnu` | `linux` | 모든 구성요소가 native AArch64 Linux에서 실행됩니다. |
+| `aarch64-apple-darwin` | `macos` | 모든 구성요소가 native Apple Silicon macOS에서 실행됩니다. |
+| `x86_64-apple-darwin` | `macos` | 모든 구성요소가 native Intel x86-64 macOS에서 실행됩니다. |
+| `x86_64-pc-windows-msvc` | `native_windows` | 모든 구성요소가 native x86-64 Windows에서 실행됩니다. WSL 좌표는 사용할 수 없습니다. |
+| `x86_64-unknown-linux-gnu` | `wsl2` | 모든 구성요소가 아래 조건을 만족하는 같은 WSL2 배포판 내부에서 실행되고 그 Linux 파일 시스템을 사용합니다. |
 
 환경에 대한 릴리스 지원 주장은 정확한 내장 `CodexSupportEntry`에 실제 실행한
 Volicord digest와 `validation_evidence.validation_result=passed`를 담은 외부
 `CodexReleaseEvidenceEntry`가 정확히 대응할 때만 성립합니다. 한 행의 통과는 다른
-행을 성립시키지 않습니다. 저장소 테스트, 교차 컴파일, 패키징이나 비슷한 target
+행을 성립시키지 않습니다. 같은 x86-64 Linux binary를 검증하더라도 native Linux와
+WSL2는 별도 셀입니다. macOS 및 Linux의 한 architecture도 다른 architecture를
+대신할 수 없습니다. 저장소 테스트, 교차 컴파일, 패키징이나 비슷한 target
 triple은 실제 셀 실행을 대신하지 않습니다.
 
 모든 행의 최초 릴리스 제품 표면은 다음과 같습니다.
@@ -72,8 +79,9 @@ triple은 실제 셀 실행을 대신하지 않습니다.
 관찰합니다. 지원 카탈로그 이미지 값은 관찰한 배포판 사실에 등록된 정확한 좌표이며,
 다른 이미지의 entry는 이 좌표를 승인할 수 없습니다.
 
-WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인해야 합니다. 일반 Linux
-`target_os` 결과만으로는 부족합니다. `ManagedHostBinding`과
+WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인하고
+`target_triple=x86_64-unknown-linux-gnu`를 요구해야 합니다. 일반 Linux `target_os`
+결과만으로는 부족합니다. `ManagedHostBinding`과
 `HostVerificationReceipt`는 `platform_environment=wsl2`를 결속하며 `linux`나
 `native_windows`에서 재사용할 수 없습니다.
 
@@ -115,8 +123,8 @@ workspace 빌드와 테스트에는 저장소가 선언한 Rust 도구 체인이
 
 런타임 전제 조건은 다음과 같습니다.
 
-- 선택한 플랫폼 환경용으로 최종 확정된 Volicord 실행 파일
-- 현재 플랫폼 좌표, `record` profile, 필수 capability와 정확히 일치하는 내장 지원 카탈로그 entry에 등록된 Codex 실행 파일
+- 선택한 정확한 target 및 플랫폼 환경용으로 최종 확정된 Volicord 실행 파일
+- 현재 target triple, 플랫폼 좌표, `record` profile, 필수 capability와 정확히 일치하는 내장 지원 카탈로그 entry에 등록된 Codex 실행 파일
 - Volicord 빌드가 제공하는 SQLite 지원
 - 선택한 네이티브 플랫폼 또는 WSL2 adapter가 요구하는 파일 시스템 동작
 - 관리형 MCP 프로세스 경계를 보존하는 stdio pipe
@@ -129,7 +137,7 @@ workflow가 Git 객체 ID를 제공하거나 검증할 때, 또는 선택한 Pro
 
 관리 프로세스는 설정과 검증이 결속할 정확한 Codex 아티팩트를 찾아 실행할 수
 있어야 합니다. 명령 이름을 찾은 것만으로는 지원이 성립하지 않습니다. 검증은
-해석한 실행 파일을 hash하고, 현재 플랫폼의 정확한 내장 지원 카탈로그 entry와
+해석한 실행 파일을 hash하고, 현재 target 및 플랫폼의 정확한 내장 지원 카탈로그 entry와
 대조하며, binding이 요구하는 프로세스와 capability 관찰을 기록하고, 모든 adapter
 점검이 성공한 뒤에만 영수증을 발행합니다.
 
@@ -208,7 +216,9 @@ Repair는 탐지한 reason을 보고한 뒤 adapter가 소유한 설정과 복�
 
 - 호스트와 profile이 정확히 `codex`, `record`가 아닙니다.
 - 플랫폼 환경이 없거나 모호하거나 네 값 집합 밖입니다.
-- 정확한 Codex 아티팩트와 필수 capability가 현재 플랫폼의 통과 manifest 셀에 없습니다.
+- target triple이 없거나 알 수 없거나 플랫폼 환경과 일치하지 않습니다.
+- 정확한 Codex 아티팩트, target triple, 플랫폼 환경, profile, 필수 capability와 일치하는 내장 지원 카탈로그 entry가 없습니다.
+- 모든 필수 target/environment 셀에 현재 통과 증거가 없는 상태에서 릴리스 게시를 시도합니다.
 - 실행 파일, 프로세스, binding, 설정, project, connection, policy, capability 또는 최신성 좌표가 일치하지 않습니다.
 - 관리 설정이 손상되었거나 소유하지 않은 항목이거나 repair 가능한 담당 경계 밖으로 drift했습니다.
 - 저장된 typed 설정 행동이나 필요한 다른 담당 값이 손상되었습니다.

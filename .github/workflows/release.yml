@@ -64,8 +64,8 @@ jobs:
       - name: Validate checked-in manifest and static platform contracts
         run: cargo test --locked -p volicord-release-validation-tests --all-targets --all-features
 
-  codex-release-cell-linux:
-    name: Codex native Linux release cell
+  codex-release-cell-linux-x86-64:
+    name: Codex x86-64 native Linux release cell
     if: github.event_name != 'pull_request'
     needs: codex-release-contract
     runs-on: [self-hosted, volicord-release, linux, native-linux, x64]
@@ -82,7 +82,7 @@ jobs:
       - name: Create fresh external cell roots
         run: |
           set -eu
-          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux"
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-x86-64"
           test ! -e "$root"
           mkdir -p "$root/evidence" "$root/work"
           {
@@ -94,27 +94,76 @@ jobs:
       - name: Report checked-in platform statuses
         run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 
-      - name: Execute blocking native Linux cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
+      - name: Execute blocking x86-64 native Linux cell gate
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
 
       - name: Upload bounded Linux scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-linux-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux/evidence
+          name: codex-release-cell-linux-x86-64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-x86-64/evidence
           if-no-files-found: warn
 
       - name: Remove disposable Linux cell roots
         if: always()
         run: |
           set -eu
-          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux"
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-x86-64"
           test "$root" != "$RUNNER_TEMP"
           rm -rf -- "$root"
 
-  codex-release-cell-macos:
-    name: Codex native macOS release cell
+  codex-release-cell-linux-arm64:
+    name: Codex AArch64 native Linux release cell
+    if: github.event_name != 'pull_request'
+    needs: codex-release-contract
+    runs-on: [self-hosted, volicord-release, linux, native-linux, arm64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Rust toolchain
+        run: |
+          set -eu
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+
+      - name: Create fresh external cell roots
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-arm64"
+          test ! -e "$root"
+          mkdir -p "$root/evidence" "$root/work"
+          {
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
+            echo "VOLICORD_HOME=$root/work/runtime-home"
+          } >> "$GITHUB_ENV"
+
+      - name: Report checked-in platform statuses
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+
+      - name: Execute blocking AArch64 native Linux cell gate
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
+
+      - name: Upload bounded Linux AArch64 scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-release-cell-linux-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/evidence
+          if-no-files-found: warn
+
+      - name: Remove disposable Linux AArch64 cell roots
+        if: always()
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-arm64"
+          test "$root" != "$RUNNER_TEMP"
+          rm -rf -- "$root"
+
+  codex-release-cell-macos-arm64:
+    name: Codex Apple Silicon native macOS release cell
     if: github.event_name != 'pull_request'
     needs: codex-release-contract
     runs-on: [self-hosted, volicord-release, macos, native-macos, arm64]
@@ -131,7 +180,7 @@ jobs:
       - name: Create fresh external cell roots
         run: |
           set -eu
-          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos"
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos-arm64"
           test ! -e "$root"
           mkdir -p "$root/evidence" "$root/work"
           {
@@ -143,22 +192,71 @@ jobs:
       - name: Report checked-in platform statuses
         run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 
-      - name: Execute blocking native macOS cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
+      - name: Execute blocking Apple Silicon native macOS cell gate
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
 
       - name: Upload bounded macOS scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-macos-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos/evidence
+          name: codex-release-cell-macos-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-arm64/evidence
           if-no-files-found: warn
 
       - name: Remove disposable macOS cell roots
         if: always()
         run: |
           set -eu
-          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos"
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos-arm64"
+          test "$root" != "$RUNNER_TEMP"
+          rm -rf -- "$root"
+
+  codex-release-cell-macos-x86-64:
+    name: Codex Intel x86-64 native macOS release cell
+    if: github.event_name != 'pull_request'
+    needs: codex-release-contract
+    runs-on: [self-hosted, volicord-release, macos, native-macos, x64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Rust toolchain
+        run: |
+          set -eu
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+
+      - name: Create fresh external cell roots
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos-x86-64"
+          test ! -e "$root"
+          mkdir -p "$root/evidence" "$root/work"
+          {
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
+            echo "VOLICORD_HOME=$root/work/runtime-home"
+          } >> "$GITHUB_ENV"
+
+      - name: Report checked-in platform statuses
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+
+      - name: Execute blocking Intel x86-64 native macOS cell gate
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-apple-darwin --platform macos
+
+      - name: Upload bounded macOS x86-64 scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-release-cell-macos-x86-64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-x86-64/evidence
+          if-no-files-found: warn
+
+      - name: Remove disposable macOS x86-64 cell roots
+        if: always()
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos-x86-64"
           test "$root" != "$RUNNER_TEMP"
           rm -rf -- "$root"
 
@@ -195,7 +293,7 @@ jobs:
         run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 
       - name: Execute blocking native Windows cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-pc-windows-msvc --platform native_windows
 
       - name: Upload bounded native Windows scenario evidence
         if: always()
@@ -264,7 +362,7 @@ jobs:
         run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 
       - name: Execute blocking WSL2 cell gate through the native Windows supervisor
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform wsl2
 
       - name: Upload bounded WSL2 scenario evidence
         if: always()
@@ -605,8 +703,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs:
       - binary
-      - codex-release-cell-linux
-      - codex-release-cell-macos
+      - codex-release-cell-linux-x86-64
+      - codex-release-cell-linux-arm64
+      - codex-release-cell-macos-arm64
+      - codex-release-cell-macos-x86-64
       - codex-release-cell-native-windows
       - codex-release-cell-wsl2
       - windows-test

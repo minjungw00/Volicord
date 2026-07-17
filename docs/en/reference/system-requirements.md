@@ -14,27 +14,34 @@ managed binding and receipt semantics belong to
 <a id="surface-stability"></a>
 ## Surface Stability
 
-The four `PlatformEnvironment` values, the exact first-release WSL2
+The four `PlatformEnvironment` values, five published target triples, six
+required target/environment cells, the exact first-release WSL2
 distribution/image coordinate, WSL2 topology and ext4 boundary, managed stdio
 MCP prerequisite, and stop criteria are stable contracts. Other runner images,
 package-manager commands, executable locations, and diagnostic prose are
 release or implementation details unless another owner marks them stable.
 
+<a id="first-release-environment-matrix"></a>
 ## First-Release Environment Matrix
 
-Volicord has four independent eligible release environments:
+Volicord publishes five binary targets and requires six independent release
+environment cells:
 
-| `platform_environment` | Required boundary |
-|---|---|
-| `linux` | Volicord, Codex, the Product Repository, and the Runtime Home execute on native Linux. |
-| `macos` | Volicord, Codex, the Product Repository, and the Runtime Home execute on native macOS. |
-| `native_windows` | Volicord, Codex, the Product Repository, and the Runtime Home execute as native Windows components. WSL paths, processes, bindings, and receipts are ineligible. |
-| `wsl2` | Every component executes inside the same supported WSL2 distribution and uses its Linux filesystem as specified below. |
+| `target_triple` | `platform_environment` | Required boundary |
+|---|---|---|
+| `x86_64-unknown-linux-gnu` | `linux` | Every component executes on native x86-64 Linux. |
+| `aarch64-unknown-linux-gnu` | `linux` | Every component executes on native AArch64 Linux. |
+| `aarch64-apple-darwin` | `macos` | Every component executes on native Apple Silicon macOS. |
+| `x86_64-apple-darwin` | `macos` | Every component executes on native Intel x86-64 macOS. |
+| `x86_64-pc-windows-msvc` | `native_windows` | Every component executes as native x86-64 Windows components. WSL coordinates are ineligible. |
+| `x86_64-unknown-linux-gnu` | `wsl2` | Every component executes inside the same supported WSL2 distribution and uses its Linux filesystem as specified below. |
 
 An environment is eligible for a release claim only when its exact embedded
 `CodexSupportEntry` has a matching external `CodexReleaseEvidenceEntry` with
 `validation_evidence.validation_result=passed` and the exact exercised Volicord
-digest. A pass in one row does not establish another row. Repository tests,
+digest. A pass in one row does not establish another row. Native Linux and WSL2
+remain distinct even when they validate the same x86-64 Linux binary. Likewise,
+one macOS or Linux architecture cannot establish the other. Repository tests,
 cross-compilation, packaging, or a compatible-looking target triple do not
 substitute for an executed cell.
 
@@ -77,8 +84,9 @@ kernel boundary, and filesystem type. The support-catalog image value is the
 exact coordinate registered for those observed distribution facts; an entry
 for another image cannot authorize this coordinate.
 
-The WSL2 runtime boundary must establish WSL2 explicitly. An ordinary Linux
-`target_os` result is insufficient. Its `ManagedHostBinding` and
+The WSL2 runtime boundary must establish WSL2 explicitly and requires
+`target_triple=x86_64-unknown-linux-gnu`. An ordinary Linux `target_os` result
+is insufficient. Its `ManagedHostBinding` and
 `HostVerificationReceipt` bind `platform_environment=wsl2`; neither can be
 reused under `linux` or `native_windows`.
 
@@ -124,8 +132,8 @@ checking, linting, tests, and release-validation contract tests.
 
 Runtime prerequisites are:
 
-- a finalized Volicord executable for the selected platform environment;
-- an exact Codex executable whose artifact digest, platform coordinate, profile,
+- a finalized Volicord executable for the selected exact target and platform environment;
+- an exact Codex executable whose artifact digest, target triple, platform coordinate, profile,
   and required capabilities match an embedded support-catalog entry;
 - SQLite support supplied by the Volicord build;
 - filesystem operations required by the selected native platform or WSL2
@@ -141,7 +149,7 @@ ID spelling follows [External Contracts](external-contracts.md#shared-git-object
 The administrative process must resolve and execute the exact Codex artifact
 that setup and verification bind. Command-name discovery alone never
 establishes support. Verification hashes the resolved executable, matches the
-exact embedded support-catalog entry for the current platform, records the process and
+exact embedded support-catalog entry for the current target and platform, records the process and
 capability observations required by the binding, and emits a receipt only
 after all adapter checks succeed.
 
@@ -227,8 +235,11 @@ when any applicable condition is present:
 
 - the host or profile is not exact `codex` and `record`;
 - the platform environment is absent, ambiguous, or outside the four-value set;
-- the exact Codex artifact and required capabilities have no passing manifest
-  cell for the current platform;
+- the target triple is absent, unknown, or incompatible with the platform environment;
+- the exact Codex artifact, target triple, platform environment, profile, and
+  required capabilities have no exact embedded support-catalog entry;
+- release publication is attempted without a current passing evidence entry for
+  every required target/environment cell;
 - the executable, process, binding, configuration, project, connection,
   policy, capability, or freshness coordinates disagree;
 - managed configuration is malformed, unowned, or has drifted outside the

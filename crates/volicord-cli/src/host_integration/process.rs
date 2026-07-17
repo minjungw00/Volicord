@@ -11,7 +11,7 @@ use volicord_platform_fs::{
 };
 use volicord_types::{
     validate_canonical_platform_path, PlatformEnvironment, PlatformReleaseCoordinate,
-    ProcessBinding,
+    ProcessBinding, ReleaseTargetTriple,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +28,7 @@ pub struct CommandOutput {
     pub stdout: String,
     pub stderr: String,
     pub process_binding: ProcessBinding,
+    pub target_triple: ReleaseTargetTriple,
     pub platform_environment: PlatformEnvironment,
     pub platform_release_coordinate: PlatformReleaseCoordinate,
 }
@@ -93,6 +94,7 @@ impl CommandRunner for ProductionCommandRunner {
                 executable_path,
                 executable_digest,
             },
+            target_triple: platform_boundary.target_triple,
             platform_environment,
             platform_release_coordinate: platform_boundary.release_coordinate,
         })
@@ -102,10 +104,6 @@ impl CommandRunner for ProductionCommandRunner {
 fn terminate_failed_observation(child: &mut std::process::Child) {
     let _ = child.kill();
     let _ = child.wait();
-}
-
-pub(crate) fn detect_platform_environment() -> Result<PlatformEnvironment, String> {
-    detect_platform_boundary().map(|boundary| boundary.environment)
 }
 
 pub(crate) fn detect_platform_boundary() -> Result<LocalPlatformBoundary, String> {

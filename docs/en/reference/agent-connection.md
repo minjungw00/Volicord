@@ -131,6 +131,13 @@ substitutes one platform result for another. In particular, `wsl2` requires
 explicit WSL2 detection and the topology in
 [System Requirements](system-requirements.md#wsl2-topology).
 
+Runtime platform observation also derives the exact `ReleaseTargetTriple` for
+the executing Volicord binary. The closed published set and its allowed
+environment cells are owned by [System Requirements](system-requirements.md#first-release-environment-matrix).
+Support lookup uses this observed target directly; it never derives identity
+from an operating-system name alone. WSL2 is explicitly detected and maps only
+to `x86_64-unknown-linux-gnu` in the first release.
+
 <a id="platform-release-coordinate"></a>
 
 ## `PlatformReleaseCoordinate`
@@ -347,8 +354,9 @@ The Codex adapter owns all host-specific inspection and mutation:
 
 Discovery does not make an artifact supported. The adapter accepts only one
 embedded `CodexSupportEntry` whose `codex_artifact_digest` equals
-`process_binding.executable_digest`, whose `platform_environment` matches the
-current platform, whose `integration_profile` is `record`, and whose
+`process_binding.executable_digest`, whose `target_triple` and
+`platform_environment` match the observed Volicord target and current
+environment, whose `integration_profile` is `record`, and whose
 `verified_capabilities` exactly equals `required_capabilities`. Its exact
 `platform_release_coordinate` must also equal the binding coordinate. The
 current binding, receipt, and support entry must therefore agree on platform

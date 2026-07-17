@@ -242,7 +242,7 @@ fabricated completion claims.
 ## Codex Release-Validation Review
 
 Release validation is limited to the exact finalized Codex and Volicord artifacts and the
-four independent `linux`, `macos`, `native_windows`, and `wsl2` cells defined
+six exact target/environment cells across `linux`, `macos`, `native_windows`, and `wsl2` defined
 by [Host Release Evidence](../reference/host-release-evidence.md). A selected
 cell must run the owner-defined closed scenario catalog and publish the exact
 bounded evidence shape. Repository tests, configuration fixtures, another
@@ -258,7 +258,7 @@ or prerequisite as `unavailable`, and a cell with no qualifying attempt as
 
 The authoritative [`CodexSupportCatalog`](../reference/host-release-evidence.md#codex-support-catalog),
 [`CodexReleaseEvidenceManifest`](../reference/host-release-evidence.md#codex-release-evidence-manifest),
-exact-artifact rule, independent platform cells, required scenarios, and cell
+exact-artifact rule, independent target/environment cells, required scenarios, and cell
 status meanings belong to Host Release Evidence.
 Maintainers do not redefine those contracts in a runbook or infer a release
 claim from CLI text.
@@ -274,20 +274,22 @@ The test command validates separate contract parsing, explicit test-only
 descriptor separation, negative cases, exact runtime support lookup, the
 non-embedding boundary, and evidence-to-catalog cross-checking. It does not
 execute finalized artifacts and cannot make any platform cell `passed`. The
-status command reports the actual or derived external-evidence status of all
-four cells without executing them. With honest `entries: []` sources it reports
-all four as `not_run`.
+status command reports the actual or derived external-evidence status of all six
+cells without executing them. With honest `entries: []` sources it reports all
+six as `not_run`.
 
 The executable command and all exact input meanings are owned by the
 [executable release-cell gate](../reference/host-release-evidence.md#executable-release-cell-gate).
 Provision the following runner boundaries before a live invocation:
 
-| Cell | Release runner prerequisite |
+| Target/environment cell | Release runner prerequisite |
 |---|---|
-| `linux` | Self-hosted x86-64 native Linux runner labeled `self-hosted`, `volicord-release`, `linux`, `native-linux`, `x64`; neither WSL nor a container. |
-| `macos` | Self-hosted Apple-silicon native macOS runner labeled `self-hosted`, `volicord-release`, `macos`, `native-macos`, `arm64`. |
-| `native_windows` | Self-hosted x86-64 native Windows runner labeled `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64`. |
-| `wsl2` | Self-hosted x86-64 native Windows supervisor labeled `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64`, with the exact `Ubuntu-24.04` WSL2 distribution already installed. An Ubuntu GitHub runner is not this boundary. |
+| `x86_64-unknown-linux-gnu` / `linux` | Self-hosted x86-64 native Linux runner labeled `self-hosted`, `volicord-release`, `linux`, `native-linux`, `x64`; neither WSL nor a container. |
+| `aarch64-unknown-linux-gnu` / `linux` | Self-hosted AArch64 native Linux runner labeled `self-hosted`, `volicord-release`, `linux`, `native-linux`, `arm64`; neither WSL nor a container. |
+| `aarch64-apple-darwin` / `macos` | Self-hosted Apple Silicon native macOS runner labeled `self-hosted`, `volicord-release`, `macos`, `native-macos`, `arm64`. |
+| `x86_64-apple-darwin` / `macos` | Self-hosted Intel x86-64 native macOS runner labeled `self-hosted`, `volicord-release`, `macos`, `native-macos`, `x64`. |
+| `x86_64-pc-windows-msvc` / `native_windows` | Self-hosted x86-64 native Windows runner labeled `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64`. |
+| `x86_64-unknown-linux-gnu` / `wsl2` | Self-hosted x86-64 native Windows supervisor labeled `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64`, with the exact `Ubuntu-24.04` WSL2 distribution already installed. An Ubuntu GitHub runner is not this boundary. |
 
 Each runner service preprovisions the exact finalized Codex path, the exact
 Volicord path recorded by the cell, the platform scenario driver, and the
@@ -304,10 +306,12 @@ on each runner, then run exactly one matching producer command in each
 independent environment:
 
 ```sh
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate native_windows
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate wsl2
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-pc-windows-msvc --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform wsl2
 ```
 
 Capture requires the exact Codex coordinates to exist in the embedded support
@@ -320,9 +324,9 @@ leaves the attempt unrun; a missing artifact, driver, environment coordinate, or
 prerequisite prevents a qualifying capture. Report these outcomes exactly
 rather than rerouting a job to another runner.
 
-Review the four candidate manifests and replace the external evidence source
+Review the six candidate manifests and replace the external evidence source
 from the [canonical checked-in contracts](../reference/host-release-evidence.md#canonical-checked-in-contracts)
-as one release operation, in `linux`, `macos`, `native_windows`, `wsl2` order.
+as one release operation, in the canonical exact-identity order.
 Do not append historical entries, copy evidence between cells, edit a result
 into `passed`, load a test-only descriptor, or treat candidate output as
 checked-in evidence before review. Re-run the contract tests against the
@@ -331,10 +335,12 @@ reviewed manifest.
 Then run the blocking replay command once in each same independent environment:
 
 ```sh
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-pc-windows-msvc --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform wsl2
 ```
 
 The replay gate requires an exact embedded support entry and existing checked-in
@@ -347,11 +353,11 @@ sources fail closed for both candidate capture and blocking replay.
 
 Ordinary `.github/workflows/ci.yml` runs static contract tests only. Pull
 requests to `.github/workflows/release.yml` also skip live jobs. A tag push or
-manual workflow dispatch schedules the three native jobs and the independent
-Windows-supervised WSL2 job. `publish-release` depends on all four, so a queued,
+manual workflow dispatch schedules the five native jobs and the independent
+Windows-supervised WSL2 job. `publish-release` depends on all six, so a queued,
 skipped, unavailable, failed, or `not_run` cell blocks publication.
 
-For each platform, finalize that platform's Codex and Volicord executables after
+For each target/environment cell, finalize that cell's Codex and Volicord executables after
 every publisher-controlled byte change, calculate both SHA-256 digests, and run
 the same bytes in the matching
 [independent platform cell](../reference/host-release-evidence.md#independent-platform-cells).
@@ -360,18 +366,18 @@ Run the complete
 then reopen and rehash both executables. A rebuilt, copied, differently
 packaged, or other-platform executable cannot substitute for those bytes.
 
-Execute `linux`, `macos`, `native_windows`, and `wsl2` independently in their
-owner-defined environments. Record the actual
+Execute all six contract cells independently in their owner-defined environments. Record the actual
 [cell execution status](../reference/host-release-evidence.md#cell-execution-status).
 If the runner or another prerequisite is absent, report `unavailable`; if no
 qualifying attempt occurred, report `not_run`. Neither is a pass. Never copy a
 Linux result into WSL2, a native-Windows result into WSL2, or any artifact or
-capability result into another cell. A missing or non-passing cell blocks the
-four-platform release claim.
+capability result into another cell. Never substitute Linux x86-64 for Linux
+AArch64 or Intel macOS for Apple Silicon in either direction. A missing or
+non-passing cell blocks the complete release claim.
 
 Report the exact command and runner coordinates for each platform, the
 owner-defined cell coordinates and evidence digests, every required scenario
-outcome, and the actual status of all four cells. Report skipped or unavailable
+outcome, and the actual status of all six cells. Report skipped or unavailable
 execution with its reason; do not omit a cell or summarize `not_run` as
 `passed`. Repository tests and release working output are not production
 runtime trust inputs.

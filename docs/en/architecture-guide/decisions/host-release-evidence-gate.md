@@ -21,21 +21,23 @@ their exact SHA-256 digests, and execute the closed release scenario catalog
 independently on:
 
 ```text
-linux
-macos
-native_windows
-wsl2
+x86_64-unknown-linux-gnu / linux
+aarch64-unknown-linux-gnu / linux
+aarch64-apple-darwin / macos
+x86_64-apple-darwin / macos
+x86_64-pc-windows-msvc / native_windows
+x86_64-unknown-linux-gnu / wsl2
 ```
 
 Each external `CodexReleaseEvidenceEntry` binds both artifact digests, one
 `PlatformEnvironment`, the complete first-release `CodexCapability` set,
 `integration_profile=record`, exact target and runner coordinates, scenario
 results, and evidence digest. The matching `CodexSupportEntry` contains only
-the Codex digest, platform and release coordinate, profile, and verified
+the Codex digest, target triple, platform and release coordinate, profile, and verified
 capabilities.
 
 The external evidence manifest is an honest report, not a target-shaped
-placeholder. It may contain zero through four entries. A platform with no
+placeholder. It may contain zero through six entries. A required cell with no
 qualifying attempt has no entry. A passing result establishes release evidence
 only for its exact catalog coordinates and Volicord digest; results never
 propagate between cells or artifacts. Runtime lookup reads only the embedded
@@ -54,6 +56,7 @@ only owner-defined support policy and fails closed for
 - External release evidence is never an embedded resource, generated Rust
   constant, or build-script input.
 - WSL2 is independent from native Linux and native Windows.
+- Linux and macOS architectures are independent target identities.
 - Mock and parser fixtures remain non-release evidence.
 - Failed, unavailable, and not-run outcomes remain explicit and cannot be
   relabeled as passing.

@@ -79,7 +79,7 @@ Keep durable checks at the narrowest layer that owns the invariant:
 - unit tests beside pure parsing, encoding, and policy;
 - crate integration tests for adapter and Store boundaries;
 - workspace conformance tests for public cross-method behavior; and
-- four independent Codex release-validation cells for exact finalized artifact
+- six independent target/environment Codex release-validation cells for exact finalized artifact
   claims.
 
 See [Testing Strategy](testing-strategy.md) and

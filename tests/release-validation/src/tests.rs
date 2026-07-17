@@ -1,12 +1,13 @@
-use std::{fs, path::Path};
+use std::{collections::BTreeSet, fs, path::Path};
 
 use crate::{
     contracts::{
         embedded_codex_support_catalog, load_codex_release_evidence_manifest,
-        load_codex_support_catalog, parse_codex_release_evidence_manifest,
-        parse_codex_support_catalog, parse_test_only_codex_descriptor,
+        load_codex_support_catalog, load_release_target_contract,
+        parse_codex_release_evidence_manifest, parse_codex_support_catalog,
+        parse_release_target_contract, parse_test_only_codex_descriptor,
         serialize_codex_release_evidence_manifest, serialize_codex_support_catalog,
-        CODEX_RELEASE_EVIDENCE_MANIFEST_PATH, CODEX_SUPPORT_CATALOG_PATH,
+        CODEX_RELEASE_EVIDENCE_MANIFEST_PATH, CODEX_SUPPORT_CATALOG_PATH, RELEASE_TARGETS_PATH,
         UNSUPPORTED_HOST_ARTIFACT_REASON,
     },
     hosts::codex::FIRST_RELEASE_CODEX_CAPABILITIES,
@@ -15,13 +16,13 @@ use crate::{
 };
 use volicord_types::{
     compute_codex_release_evidence_digest, lookup_embedded_codex_support_entry,
-    CodexReleaseEvidenceEntry, CodexReleaseEvidenceManifest, CodexReleaseEvidenceRunner,
-    CodexReleasePlatformStatus, CodexReleaseRunnerArchitecture as RunnerArchitecture,
+    CodexReleaseCellStatus, CodexReleaseEvidenceEntry, CodexReleaseEvidenceManifest,
+    CodexReleaseEvidenceRunner, CodexReleaseRunnerArchitecture as RunnerArchitecture,
     CodexReleaseScenarioId, CodexReleaseScenarioResult,
     CodexReleaseScenarioStatus as ScenarioStatus, CodexReleaseValidationEvidence,
     CodexReleaseValidationResult, CodexSupportCatalog, CodexSupportEntry, ErrorCode,
     FailureCategory, IntegrationProfile, PlatformEnvironment, PlatformReleaseCoordinate,
-    RequiredNullable, CODEX_RELEASE_PLATFORMS,
+    ReleaseTargetTriple, RequiredNullable,
 };
 
 const CODEX_DIGEST: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -30,6 +31,7 @@ const OTHER_VOLICORD_DIGEST: &str =
     "4444444444444444444444444444444444444444444444444444444444444444";
 const SCENARIO_DIGEST: &str = "3333333333333333333333333333333333333333333333333333333333333333";
 const OBSERVED_AT: &str = "2026-07-17T00:00:00Z";
+const LINUX_X86: ReleaseTargetTriple = ReleaseTargetTriple::X86_64UnknownLinuxGnu;
 
 #[test]
 fn checked_in_contracts_are_empty_honest_and_separate() {
@@ -46,14 +48,21 @@ fn checked_in_contracts_are_empty_honest_and_separate() {
         load_codex_release_evidence_manifest(&root.join(CODEX_RELEASE_EVIDENCE_MANIFEST_PATH))
             .expect("external evidence manifest");
     assert!(evidence.entries().is_empty());
-    assert!(!evidence.has_four_passing_platforms());
     evidence
         .validate_against_support_catalog(&catalog)
         .expect("empty evidence is supported by empty policy");
-    for platform in CODEX_RELEASE_PLATFORMS {
+    let targets = load_release_target_contract(&root.join(RELEASE_TARGETS_PATH))
+        .expect("release target contract");
+    assert_eq!(targets.published_targets().len(), 5);
+    assert_eq!(targets.required_cells().len(), 6);
+    for cell in targets.required_cells() {
         assert_eq!(
-            evidence.platform_status(platform),
-            CodexReleasePlatformStatus::NotRun
+            evidence.cell_status(
+                cell.target_triple,
+                cell.platform_environment,
+                cell.integration_profile
+            ),
+            CodexReleaseCellStatus::NotRun
         );
     }
 }
@@ -61,6 +70,7 @@ fn checked_in_contracts_are_empty_honest_and_separate() {
 #[test]
 fn runtime_support_lookup_does_not_consume_release_evidence() {
     let evidence = evidence_manifest(vec![passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         VOLICORD_DIGEST.to_owned(),
@@ -69,6 +79,7 @@ fn runtime_support_lookup_does_not_consume_release_evidence() {
 
     let error = lookup_embedded_codex_support_entry(
         CODEX_DIGEST,
+        LINUX_X86,
         PlatformEnvironment::Linux,
         &PlatformReleaseCoordinate::native(),
         &FIRST_RELEASE_CODEX_CAPABILITIES,
@@ -86,17 +97,20 @@ fn runtime_support_lookup_does_not_consume_release_evidence() {
 #[test]
 fn release_evidence_volicord_digest_does_not_affect_catalog_identity() {
     let catalog = support_catalog(vec![support_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
     )]);
     let identity = catalog.identity_digest().expect("catalog identity");
 
     let first = passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         VOLICORD_DIGEST.to_owned(),
     );
     let second = passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         OTHER_VOLICORD_DIGEST.to_owned(),
@@ -114,12 +128,14 @@ fn release_evidence_volicord_digest_does_not_affect_catalog_identity() {
 #[test]
 fn support_entry_matches_without_a_volicord_binary_digest() {
     let catalog = support_catalog(vec![support_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
     )]);
     let matched = catalog
         .lookup_supported_entry(
             CODEX_DIGEST,
+            LINUX_X86,
             PlatformEnvironment::Linux,
             &PlatformReleaseCoordinate::native(),
             &FIRST_RELEASE_CODEX_CAPABILITIES,
@@ -141,6 +157,7 @@ fn support_entry_matches_without_a_volicord_binary_digest() {
 fn release_evidence_without_catalog_artifact_is_rejected() {
     let catalog = CodexSupportCatalog::from_entries(Vec::new()).expect("empty catalog");
     let evidence = evidence_manifest(vec![passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         VOLICORD_DIGEST.to_owned(),
@@ -156,8 +173,10 @@ fn release_evidence_without_catalog_artifact_is_rejected() {
 #[test]
 fn empty_support_catalog_fails_closed_for_every_artifact() {
     let catalog = support_catalog(Vec::new());
-    for platform in CODEX_RELEASE_PLATFORMS {
-        let coordinate = if platform == PlatformEnvironment::Wsl2 {
+    let targets = load_release_target_contract(&repository_root().join(RELEASE_TARGETS_PATH))
+        .expect("release target contract");
+    for cell in targets.required_cells() {
+        let coordinate = if cell.platform_environment == PlatformEnvironment::Wsl2 {
             PlatformReleaseCoordinate::first_release_wsl2()
         } else {
             PlatformReleaseCoordinate::native()
@@ -165,7 +184,8 @@ fn empty_support_catalog_fails_closed_for_every_artifact() {
         assert!(catalog
             .lookup_supported_entry(
                 CODEX_DIGEST,
-                platform,
+                cell.target_triple,
+                cell.platform_environment,
                 &coordinate,
                 &FIRST_RELEASE_CODEX_CAPABILITIES,
                 IntegrationProfile::Record,
@@ -194,7 +214,11 @@ fn production_runtime_sources_do_not_embed_external_release_evidence() {
 
 #[test]
 fn malformed_and_duplicate_support_entries_are_rejected_deterministically() {
-    let entry = support_entry(PlatformEnvironment::Linux, CODEX_DIGEST.to_owned());
+    let entry = support_entry(
+        LINUX_X86,
+        PlatformEnvironment::Linux,
+        CODEX_DIGEST.to_owned(),
+    );
     let first = CodexSupportCatalog::from_entries(vec![entry.clone(), entry.clone()])
         .expect_err("duplicate support entries");
     let second = CodexSupportCatalog::from_entries(vec![entry.clone(), entry])
@@ -211,6 +235,7 @@ fn malformed_and_duplicate_support_entries_are_rejected_deterministically() {
 #[test]
 fn malformed_and_duplicate_evidence_entries_are_rejected_deterministically() {
     let entry = passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         VOLICORD_DIGEST.to_owned(),
@@ -232,6 +257,7 @@ fn malformed_and_duplicate_evidence_entries_are_rejected_deterministically() {
 #[test]
 fn canonical_serialization_round_trips_and_evidence_digest_is_field_sensitive() {
     let catalog = support_catalog(vec![support_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
     )]);
@@ -242,6 +268,7 @@ fn canonical_serialization_round_trips_and_evidence_digest_is_field_sensitive() 
     );
 
     let entry = passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         VOLICORD_DIGEST.to_owned(),
@@ -261,6 +288,7 @@ fn canonical_serialization_round_trips_and_evidence_digest_is_field_sensitive() 
     );
 
     let changed = passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         OTHER_VOLICORD_DIGEST.to_owned(),
@@ -271,6 +299,7 @@ fn canonical_serialization_round_trips_and_evidence_digest_is_field_sensitive() 
 #[test]
 fn exact_support_lookup_never_widens_artifact_platform_or_capabilities() {
     let catalog = support_catalog(vec![support_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
     )]);
@@ -279,6 +308,7 @@ fn exact_support_lookup_never_widens_artifact_platform_or_capabilities() {
     for result in [
         catalog.lookup_supported_entry(
             &"8".repeat(64),
+            LINUX_X86,
             PlatformEnvironment::Linux,
             &PlatformReleaseCoordinate::native(),
             &FIRST_RELEASE_CODEX_CAPABILITIES,
@@ -286,6 +316,7 @@ fn exact_support_lookup_never_widens_artifact_platform_or_capabilities() {
         ),
         catalog.lookup_supported_entry(
             CODEX_DIGEST,
+            ReleaseTargetTriple::X86_64AppleDarwin,
             PlatformEnvironment::Macos,
             &PlatformReleaseCoordinate::native(),
             &FIRST_RELEASE_CODEX_CAPABILITIES,
@@ -293,6 +324,15 @@ fn exact_support_lookup_never_widens_artifact_platform_or_capabilities() {
         ),
         catalog.lookup_supported_entry(
             CODEX_DIGEST,
+            ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
+            PlatformEnvironment::Linux,
+            &PlatformReleaseCoordinate::native(),
+            &FIRST_RELEASE_CODEX_CAPABILITIES,
+            IntegrationProfile::Record,
+        ),
+        catalog.lookup_supported_entry(
+            CODEX_DIGEST,
+            LINUX_X86,
             PlatformEnvironment::Linux,
             &PlatformReleaseCoordinate::native(),
             &reversed,
@@ -300,6 +340,7 @@ fn exact_support_lookup_never_widens_artifact_platform_or_capabilities() {
         ),
         catalog.lookup_supported_entry(
             CODEX_DIGEST,
+            LINUX_X86,
             PlatformEnvironment::Linux,
             &PlatformReleaseCoordinate::native(),
             &FIRST_RELEASE_CODEX_CAPABILITIES[..3],
@@ -316,20 +357,26 @@ fn exact_support_lookup_never_widens_artifact_platform_or_capabilities() {
 #[test]
 fn strict_evidence_status_and_scenario_catalog_rules_are_enforced() {
     let mut failed = evidence_entry_with_result(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         VOLICORD_DIGEST.to_owned(),
         CodexReleaseValidationResult::Failed,
     );
     assert_eq!(
-        evidence_manifest(vec![failed.clone()]).platform_status(PlatformEnvironment::Linux),
-        CodexReleasePlatformStatus::Failed
+        evidence_manifest(vec![failed.clone()]).cell_status(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            IntegrationProfile::Record
+        ),
+        CodexReleaseCellStatus::Failed
     );
     failed.validation_evidence.validation_result = CodexReleaseValidationResult::Passed;
     refresh_evidence_digest(&mut failed);
     assert!(CodexReleaseEvidenceManifest::from_entries(vec![failed]).is_err());
 
     let mut missing = passed_evidence_entry(
+        LINUX_X86,
         PlatformEnvironment::Linux,
         CODEX_DIGEST.to_owned(),
         VOLICORD_DIGEST.to_owned(),
@@ -353,29 +400,41 @@ fn explicit_test_only_descriptor_stays_outside_both_contracts() {
 
 #[test]
 fn platform_contract_linux() {
-    let definition = platforms::linux::definition();
-    assert_eq!(definition.platform, PlatformEnvironment::Linux);
-    assert_eq!(
-        definition.runner_boundary,
-        PlatformRunnerBoundary::NativeLinux
-    );
-    assert_eq!(definition.scenarios, BASE_SCENARIOS);
+    for target in [
+        ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+        ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
+    ] {
+        let definition = platforms::linux::definition(target);
+        assert_eq!(definition.target_triple, target);
+        assert_eq!(definition.platform, PlatformEnvironment::Linux);
+        assert_eq!(
+            definition.runner_boundary,
+            PlatformRunnerBoundary::NativeLinux
+        );
+        assert_eq!(definition.scenarios, BASE_SCENARIOS);
+    }
 }
 
 #[test]
 fn platform_contract_macos() {
-    let definition = platforms::macos::definition();
-    assert_eq!(definition.platform, PlatformEnvironment::Macos);
-    assert_eq!(
-        definition.runner_boundary,
-        PlatformRunnerBoundary::NativeMacos
-    );
-    assert_eq!(definition.scenarios, BASE_SCENARIOS);
+    for target in [
+        ReleaseTargetTriple::Aarch64AppleDarwin,
+        ReleaseTargetTriple::X86_64AppleDarwin,
+    ] {
+        let definition = platforms::macos::definition(target);
+        assert_eq!(definition.target_triple, target);
+        assert_eq!(definition.platform, PlatformEnvironment::Macos);
+        assert_eq!(
+            definition.runner_boundary,
+            PlatformRunnerBoundary::NativeMacos
+        );
+        assert_eq!(definition.scenarios, BASE_SCENARIOS);
+    }
 }
 
 #[test]
 fn platform_contract_native_windows() {
-    let definition = platforms::windows::definition();
+    let definition = platforms::windows::definition(ReleaseTargetTriple::X86_64PcWindowsMsvc);
     assert_eq!(definition.platform, PlatformEnvironment::NativeWindows);
     assert_eq!(
         definition.runner_boundary,
@@ -386,7 +445,7 @@ fn platform_contract_native_windows() {
 
 #[test]
 fn platform_contract_wsl2() {
-    let definition = platforms::wsl2::definition();
+    let definition = platforms::wsl2::definition(LINUX_X86);
     assert_eq!(definition.platform, PlatformEnvironment::Wsl2);
     assert_eq!(
         definition.runner_boundary,
@@ -405,14 +464,321 @@ fn platform_contract_wsl2() {
 #[test]
 fn platform_definitions_are_independent_and_canonical() {
     let definitions = platforms::all();
-    assert_eq!(
-        definitions.each_ref().map(|definition| definition.platform),
-        CODEX_RELEASE_PLATFORMS
-    );
-    assert!(definitions[..3]
+    assert_eq!(definitions.len(), 6);
+    assert!(definitions[..5]
         .iter()
         .all(|definition| definition.scenarios == BASE_SCENARIOS));
-    assert_eq!(definitions[3].scenarios.len(), 21);
+    assert_eq!(definitions[5].scenarios.len(), 21);
+    assert_eq!(definitions[0].target_triple, LINUX_X86);
+    assert_eq!(
+        definitions[1].target_triple,
+        ReleaseTargetTriple::Aarch64UnknownLinuxGnu
+    );
+    assert_eq!(
+        definitions[2].target_triple,
+        ReleaseTargetTriple::Aarch64AppleDarwin
+    );
+    assert_eq!(
+        definitions[3].target_triple,
+        ReleaseTargetTriple::X86_64AppleDarwin
+    );
+    assert_eq!(
+        definitions[4].target_triple,
+        ReleaseTargetTriple::X86_64PcWindowsMsvc
+    );
+    assert_eq!(definitions[5].target_triple, LINUX_X86);
+    assert_ne!(definitions[0].platform, definitions[5].platform);
+}
+
+#[test]
+fn all_five_targets_and_six_environment_cells_accept_exact_evidence() {
+    let contract = load_release_target_contract(&repository_root().join(RELEASE_TARGETS_PATH))
+        .expect("release target contract");
+    let mut entries = contract
+        .required_cells()
+        .iter()
+        .map(|cell| {
+            passed_evidence_entry(
+                cell.target_triple,
+                cell.platform_environment,
+                CODEX_DIGEST.to_owned(),
+                VOLICORD_DIGEST.to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|entry| {
+        (
+            entry.codex_artifact_digest.clone(),
+            entry.target_triple,
+            entry.platform_environment,
+            entry.integration_profile,
+        )
+    });
+    let manifest = evidence_manifest(entries);
+    assert_eq!(manifest.entries().len(), 6);
+    for cell in contract.required_cells() {
+        assert_eq!(
+            manifest.cell_status(
+                cell.target_triple,
+                cell.platform_environment,
+                cell.integration_profile
+            ),
+            CodexReleaseCellStatus::Passed
+        );
+    }
+}
+
+#[test]
+fn evidence_rejects_architecture_and_target_mismatches() {
+    let mut architecture = passed_evidence_entry(
+        ReleaseTargetTriple::Aarch64AppleDarwin,
+        PlatformEnvironment::Macos,
+        CODEX_DIGEST.to_owned(),
+        VOLICORD_DIGEST.to_owned(),
+    );
+    architecture.validation_evidence.runner.architecture = RunnerArchitecture::X86_64;
+    refresh_evidence_digest(&mut architecture);
+    assert!(
+        CodexReleaseEvidenceManifest::from_entries(vec![architecture])
+            .expect_err("architecture mismatch")
+            .detail()
+            .contains("architecture")
+    );
+
+    let mut target = passed_evidence_entry(
+        ReleaseTargetTriple::X86_64AppleDarwin,
+        PlatformEnvironment::Macos,
+        CODEX_DIGEST.to_owned(),
+        VOLICORD_DIGEST.to_owned(),
+    );
+    target.validation_evidence.runner.target_triple = ReleaseTargetTriple::Aarch64AppleDarwin;
+    refresh_evidence_digest(&mut target);
+    assert!(CodexReleaseEvidenceManifest::from_entries(vec![target])
+        .expect_err("runner target mismatch")
+        .detail()
+        .contains("target_triple"));
+}
+
+#[test]
+fn native_linux_and_wsl2_support_are_never_interchangeable() {
+    let native = support_catalog(vec![support_entry(
+        LINUX_X86,
+        PlatformEnvironment::Linux,
+        CODEX_DIGEST.to_owned(),
+    )]);
+    assert!(native
+        .lookup_supported_entry(
+            CODEX_DIGEST,
+            LINUX_X86,
+            PlatformEnvironment::Wsl2,
+            &PlatformReleaseCoordinate::first_release_wsl2(),
+            &FIRST_RELEASE_CODEX_CAPABILITIES,
+            IntegrationProfile::Record,
+        )
+        .is_err());
+
+    let wsl2 = support_catalog(vec![support_entry(
+        LINUX_X86,
+        PlatformEnvironment::Wsl2,
+        CODEX_DIGEST.to_owned(),
+    )]);
+    assert!(wsl2
+        .lookup_supported_entry(
+            CODEX_DIGEST,
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            &PlatformReleaseCoordinate::native(),
+            &FIRST_RELEASE_CODEX_CAPABILITIES,
+            IntegrationProfile::Record,
+        )
+        .is_err());
+}
+
+#[test]
+fn release_target_contract_rejects_missing_duplicate_or_mismatched_cells() {
+    let path = repository_root().join(RELEASE_TARGETS_PATH);
+    let bytes = fs::read(path).expect("release target contract");
+    let canonical: serde_json::Value = serde_json::from_slice(&bytes).expect("contract JSON");
+
+    let mut missing = canonical.clone();
+    missing["required_cells"]
+        .as_array_mut()
+        .expect("cells")
+        .retain(|cell| cell["target_triple"] != "aarch64-unknown-linux-gnu");
+    assert!(
+        parse_release_target_contract(&serde_json::to_vec(&missing).unwrap())
+            .expect_err("published target without cell")
+            .contains("no corresponding required cell")
+    );
+
+    let mut duplicate = canonical.clone();
+    let first = duplicate["required_cells"][0].clone();
+    duplicate["required_cells"]
+        .as_array_mut()
+        .expect("cells")
+        .push(first);
+    assert!(
+        parse_release_target_contract(&serde_json::to_vec(&duplicate).unwrap())
+            .expect_err("duplicate cell")
+            .contains("duplicates")
+    );
+
+    let mut mismatch = canonical.clone();
+    mismatch["required_cells"][0]["target_triple"] =
+        serde_json::Value::String("aarch64-apple-darwin".to_owned());
+    assert!(
+        parse_release_target_contract(&serde_json::to_vec(&mismatch).unwrap())
+            .expect_err("target/environment mismatch")
+            .contains("does not match")
+    );
+
+    let mut unpublished = canonical.clone();
+    unpublished["published_targets"]
+        .as_array_mut()
+        .expect("targets")
+        .retain(|target| target != "x86_64-pc-windows-msvc");
+    assert!(
+        parse_release_target_contract(&serde_json::to_vec(&unpublished).unwrap())
+            .expect_err("required cell target is not published")
+            .contains("is not published")
+    );
+
+    let mut unknown = canonical;
+    unknown["published_targets"][0] =
+        serde_json::Value::String("x86_64-unknown-linux-musl".to_owned());
+    assert!(parse_release_target_contract(&serde_json::to_vec(&unknown).unwrap()).is_err());
+
+    let mut unknown_environment: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("contract JSON");
+    unknown_environment["required_cells"][0]["platform_environment"] =
+        serde_json::Value::String("ubuntu".to_owned());
+    assert!(
+        parse_release_target_contract(&serde_json::to_vec(&unknown_environment).unwrap()).is_err()
+    );
+}
+
+#[test]
+fn packaging_and_ci_matrices_match_the_release_target_contract() {
+    let root = repository_root();
+    let contract = load_release_target_contract(&root.join(RELEASE_TARGETS_PATH))
+        .expect("release target contract");
+    let release: serde_yaml::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join(".github/workflows/release.yml")).expect("release workflow"),
+    )
+    .expect("release workflow YAML");
+    let packaging_entries = release["jobs"]["binary"]["strategy"]["matrix"]["include"]
+        .as_sequence()
+        .expect("binary packaging matrix");
+    let packaging = packaging_entries
+        .iter()
+        .map(|entry| {
+            entry["target"]
+                .as_str()
+                .expect("packaging target")
+                .parse::<ReleaseTargetTriple>()
+                .expect("known packaging target")
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(packaging_entries.len(), packaging.len());
+    assert_eq!(
+        packaging,
+        contract
+            .published_targets()
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+    );
+
+    let release_cell_entries = release["jobs"]
+        .as_mapping()
+        .expect("release jobs")
+        .values()
+        .flat_map(|job| {
+            job["steps"]
+                .as_sequence()
+                .into_iter()
+                .flatten()
+                .filter_map(|step| step["run"].as_str())
+        })
+        .filter(|run| run.contains("codex-release-cell-gate -- --target"))
+        .map(release_cell_from_gate_command)
+        .collect::<Vec<_>>();
+    let release_cells = release_cell_entries
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(release_cell_entries.len(), release_cells.len());
+    let required_cells = contract
+        .required_cells()
+        .iter()
+        .map(|cell| {
+            (
+                cell.target_triple,
+                cell.platform_environment,
+                cell.integration_profile,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(release_cells, required_cells);
+    let gate_job_ids = release["jobs"]
+        .as_mapping()
+        .expect("release jobs")
+        .iter()
+        .filter_map(|(job_id, job)| {
+            let has_gate = job["steps"]
+                .as_sequence()
+                .into_iter()
+                .flatten()
+                .filter_map(|step| step["run"].as_str())
+                .any(|run| run.contains("codex-release-cell-gate -- --target"));
+            has_gate.then(|| job_id.as_str().expect("job id").to_owned())
+        })
+        .collect::<BTreeSet<_>>();
+    let publish_needs = release["jobs"]["publish-release"]["needs"]
+        .as_sequence()
+        .expect("publish needs")
+        .iter()
+        .map(|need| need.as_str().expect("need job id").to_owned())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(gate_job_ids.len(), 6);
+    assert!(gate_job_ids.is_subset(&publish_needs));
+
+    let ci: serde_yaml::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("CI workflow"),
+    )
+    .expect("CI workflow YAML");
+    let ci_entries = ci["jobs"]["codex-release-cell-contracts"]["strategy"]["matrix"]["include"]
+        .as_sequence()
+        .expect("CI release-cell matrix");
+    let cells = ci_entries
+        .iter()
+        .map(|entry| {
+            (
+                entry["target_triple"]
+                    .as_str()
+                    .expect("CI target")
+                    .parse::<ReleaseTargetTriple>()
+                    .expect("known CI target"),
+                parse_platform_value(entry["platform_environment"].as_str().expect("CI platform")),
+                IntegrationProfile::Record,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(ci_entries.len(), cells.len());
+    assert_eq!(
+        cells,
+        contract
+            .required_cells()
+            .iter()
+            .map(|cell| {
+                (
+                    cell.target_triple,
+                    cell.platform_environment,
+                    cell.integration_profile,
+                )
+            })
+            .collect::<BTreeSet<_>>()
+    );
 }
 
 #[test]
@@ -431,9 +797,14 @@ fn wsl2_static_scenarios_keep_ext4_and_rejection_boundaries_explicit() {
     );
 }
 
-fn support_entry(platform: PlatformEnvironment, digest: String) -> CodexSupportEntry {
+fn support_entry(
+    target_triple: ReleaseTargetTriple,
+    platform: PlatformEnvironment,
+    digest: String,
+) -> CodexSupportEntry {
     CodexSupportEntry {
         codex_artifact_digest: digest,
+        target_triple,
         platform_environment: platform,
         platform_release_coordinate: if platform == PlatformEnvironment::Wsl2 {
             PlatformReleaseCoordinate::first_release_wsl2()
@@ -454,11 +825,13 @@ fn evidence_manifest(entries: Vec<CodexReleaseEvidenceEntry>) -> CodexReleaseEvi
 }
 
 fn passed_evidence_entry(
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     codex_digest: String,
     volicord_digest: String,
 ) -> CodexReleaseEvidenceEntry {
     evidence_entry_with_result(
+        target_triple,
         platform,
         codex_digest,
         volicord_digest,
@@ -467,6 +840,7 @@ fn passed_evidence_entry(
 }
 
 fn evidence_entry_with_result(
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     codex_digest: String,
     volicord_digest: String,
@@ -497,14 +871,15 @@ fn evidence_entry_with_result(
     let mut validation_evidence = CodexReleaseValidationEvidence {
         validation_result,
         codex_artifact_digest: codex_digest.clone(),
+        target_triple,
         platform_environment: platform,
         observed_capabilities: FIRST_RELEASE_CODEX_CAPABILITIES.to_vec(),
         integration_profile: IntegrationProfile::Record,
         volicord_artifact_digest: volicord_digest,
         runner: CodexReleaseEvidenceRunner {
             runner_id: format!("runner-{}", platform.as_str()),
-            target_triple: target_triple(platform).to_owned(),
-            architecture: RunnerArchitecture::X86_64,
+            target_triple,
+            architecture: runner_architecture(target_triple),
             os_release: format!("{}-release", platform.as_str()),
             environment_image: environment_image(platform).to_owned(),
         },
@@ -517,6 +892,7 @@ fn evidence_entry_with_result(
             .expect("compute fixture evidence digest");
     CodexReleaseEvidenceEntry {
         codex_artifact_digest: codex_digest,
+        target_triple,
         platform_environment: platform,
         observed_capabilities: FIRST_RELEASE_CODEX_CAPABILITIES.to_vec(),
         integration_profile: IntegrationProfile::Record,
@@ -570,11 +946,11 @@ fn refresh_evidence_digest(entry: &mut CodexReleaseEvidenceEntry) {
             .expect("refresh evidence digest");
 }
 
-fn target_triple(platform: PlatformEnvironment) -> &'static str {
-    match platform {
-        PlatformEnvironment::Linux | PlatformEnvironment::Wsl2 => "x86_64-unknown-linux-gnu",
-        PlatformEnvironment::Macos => "x86_64-apple-darwin",
-        PlatformEnvironment::NativeWindows => "x86_64-pc-windows-msvc",
+fn runner_architecture(target_triple: ReleaseTargetTriple) -> RunnerArchitecture {
+    match target_triple.architecture() {
+        "x86_64" => RunnerArchitecture::X86_64,
+        "aarch64" => RunnerArchitecture::Aarch64,
+        _ => unreachable!("release target architecture is closed"),
     }
 }
 
@@ -585,6 +961,37 @@ fn environment_image(platform: PlatformEnvironment) -> &'static str {
         PlatformEnvironment::NativeWindows => "windows-2022",
         PlatformEnvironment::Wsl2 => "Ubuntu-24.04-LTS-WSL2",
     }
+}
+
+fn parse_platform_value(value: &str) -> PlatformEnvironment {
+    match value {
+        "linux" => PlatformEnvironment::Linux,
+        "macos" => PlatformEnvironment::Macos,
+        "native_windows" => PlatformEnvironment::NativeWindows,
+        "wsl2" => PlatformEnvironment::Wsl2,
+        _ => panic!("unknown platform environment {value}"),
+    }
+}
+
+fn release_cell_from_gate_command(
+    command: &str,
+) -> (ReleaseTargetTriple, PlatformEnvironment, IntegrationProfile) {
+    let tokens = command.split_whitespace().collect::<Vec<_>>();
+    let target_index = tokens
+        .iter()
+        .position(|token| *token == "--target")
+        .expect("release gate target flag");
+    let platform_index = tokens
+        .iter()
+        .position(|token| *token == "--platform")
+        .expect("release gate platform flag");
+    (
+        tokens[target_index + 1]
+            .parse()
+            .expect("known release gate target"),
+        parse_platform_value(tokens[platform_index + 1]),
+        IntegrationProfile::Record,
+    )
 }
 
 fn repository_root() -> std::path::PathBuf {

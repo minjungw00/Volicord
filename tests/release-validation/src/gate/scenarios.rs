@@ -3,8 +3,8 @@ use std::{collections::BTreeSet, fs, path::Path, process::Command, time::Duratio
 use serde::{Deserialize, Serialize};
 use volicord_types::{
     canonical_json_bare_sha256, CodexReleaseEvidenceEntry, CodexReleaseScenarioId,
-    CodexReleaseScenarioResult, CodexReleaseScenarioStatus, PlatformEnvironment, RequiredNullable,
-    UtcTimestamp, FIRST_RELEASE_CODEX_CAPABILITIES,
+    CodexReleaseScenarioResult, CodexReleaseScenarioStatus, PlatformEnvironment,
+    ReleaseTargetTriple, RequiredNullable, UtcTimestamp, FIRST_RELEASE_CODEX_CAPABILITIES,
 };
 
 use crate::{
@@ -120,6 +120,7 @@ struct CanonicalScenarioAdapterProjection {
 #[derive(Serialize)]
 struct ScenarioEvidenceEnvelope<'a> {
     scenario_id: CodexReleaseScenarioId,
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     codex_artifact_digest: &'a str,
     volicord_artifact_digest: &'a str,
@@ -133,6 +134,7 @@ struct ScenarioEvidenceEnvelope<'a> {
 }
 
 struct ScenarioDriverInvocation<'a> {
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     scenario: ScenarioDefinition,
     codex_artifact_digest: &'a str,
@@ -151,6 +153,7 @@ pub(super) fn run_checked_scenario_catalog(
 ) -> ValidationResult<()> {
     let actual = execute_scenario_catalog(
         context,
+        entry.target_triple,
         platform,
         &entry.codex_artifact_digest,
         &entry.validation_evidence.volicord_artifact_digest,
@@ -187,6 +190,7 @@ pub(super) fn run_checked_scenario_catalog(
 
 pub(super) fn capture_scenario_catalog(
     context: &ValidationContext,
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     codex_artifact_digest: &str,
     volicord_artifact_digest: &str,
@@ -194,6 +198,7 @@ pub(super) fn capture_scenario_catalog(
 ) -> ValidationResult<Vec<CodexReleaseScenarioResult>> {
     execute_scenario_catalog(
         context,
+        target_triple,
         platform,
         codex_artifact_digest,
         volicord_artifact_digest,
@@ -203,6 +208,7 @@ pub(super) fn capture_scenario_catalog(
 
 fn execute_scenario_catalog(
     context: &ValidationContext,
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     codex_artifact_digest: &str,
     volicord_artifact_digest: &str,
@@ -210,8 +216,10 @@ fn execute_scenario_catalog(
 ) -> ValidationResult<Vec<CodexReleaseScenarioResult>> {
     let definition = platforms::all()
         .into_iter()
-        .find(|definition| definition.platform == platform)
-        .expect("every closed platform has one definition");
+        .find(|definition| {
+            definition.target_triple == target_triple && definition.platform == platform
+        })
+        .expect("every required target/environment cell has one definition");
     let scenario_driver_digest =
         sha256_external_file(context, &configuration.scenario_driver, None)?;
 
@@ -238,6 +246,7 @@ fn execute_scenario_catalog(
         context.validate_new_output(&retained_payload_path)?;
 
         let mut command = ScenarioDriverInvocation {
+            target_triple,
             platform,
             scenario,
             codex_artifact_digest,
@@ -271,6 +280,7 @@ fn execute_scenario_catalog(
             expected_evidence_names.insert(format!("{stem}.evidence"));
             let envelope = ScenarioEvidenceEnvelope {
                 scenario_id,
+                target_triple,
                 platform,
                 codex_artifact_digest,
                 volicord_artifact_digest,
@@ -372,6 +382,10 @@ impl ScenarioDriverInvocation<'_> {
             .arg(self.payload_path)
             .arg("--outcome-output")
             .arg(self.outcome_path)
+            .env(
+                "VOLICORD_CODEX_RELEASE_TARGET_TRIPLE",
+                self.target_triple.as_str(),
+            )
             .env(
                 "VOLICORD_CODEX_RELEASE_CODEX_ARTIFACT_DIGEST",
                 self.codex_artifact_digest,

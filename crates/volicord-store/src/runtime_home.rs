@@ -793,7 +793,7 @@ mod tests {
     };
 
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::{PlatformEnvironment, PlatformReleaseCoordinate};
+    use volicord_types::{PlatformEnvironment, PlatformReleaseCoordinate, ReleaseTargetTriple};
 
     use super::{
         resolve_runtime_home, validate_runtime_home_product_repository,
@@ -822,6 +822,7 @@ mod tests {
     fn injected_wsl2_path_facts_require_ext4_for_both_product_roots() {
         let supported = RuntimeProductPlatformFacts {
             boundary: LocalPlatformBoundary {
+                target_triple: ReleaseTargetTriple::X86_64UnknownLinuxGnu,
                 environment: PlatformEnvironment::Wsl2,
                 release_coordinate: PlatformReleaseCoordinate::first_release_wsl2(),
             },
@@ -849,13 +850,23 @@ mod tests {
 
     #[test]
     fn injected_native_platform_facts_keep_native_filesystem_behavior() {
-        for environment in [
-            PlatformEnvironment::Linux,
-            PlatformEnvironment::Macos,
-            PlatformEnvironment::NativeWindows,
+        for (environment, target_triple) in [
+            (
+                PlatformEnvironment::Linux,
+                ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            ),
+            (
+                PlatformEnvironment::Macos,
+                ReleaseTargetTriple::Aarch64AppleDarwin,
+            ),
+            (
+                PlatformEnvironment::NativeWindows,
+                ReleaseTargetTriple::X86_64PcWindowsMsvc,
+            ),
         ] {
             validate_runtime_product_platform_facts(&RuntimeProductPlatformFacts {
                 boundary: LocalPlatformBoundary {
+                    target_triple,
                     environment,
                     release_coordinate: PlatformReleaseCoordinate::Native,
                 },

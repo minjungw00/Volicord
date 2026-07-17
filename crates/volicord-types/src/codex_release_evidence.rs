@@ -13,26 +13,19 @@ use crate::{
     },
     has_exact_first_release_codex_capabilities, is_canonical_sha256_hex, CodexCapability,
     CodexSupportCatalog, IntegrationProfile, PlatformEnvironment, PlatformReleaseCoordinate,
-    RequiredNullable, PINNED_WSL2_ENVIRONMENT_IMAGE,
+    ReleaseTargetTriple, RequiredNullable, PINNED_WSL2_ENVIRONMENT_IMAGE,
 };
 
 /// Contract identifier for the external release-evidence manifest.
 pub const CODEX_RELEASE_EVIDENCE_MANIFEST_CONTRACT_ID: &str =
     "volicord.codex-release-evidence-manifest";
 
-/// Independent platform cells in canonical evidence order.
-pub const CODEX_RELEASE_PLATFORMS: [PlatformEnvironment; 4] = [
-    PlatformEnvironment::Linux,
-    PlatformEnvironment::Macos,
-    PlatformEnvironment::NativeWindows,
-    PlatformEnvironment::Wsl2,
-];
-
 const MAX_RELEASE_EVIDENCE_BYTES: usize = 4 * 1024 * 1024;
 const EVIDENCE_DIGEST_DOMAIN: &[u8] = b"volicord.codex-release-validation-evidence\0";
 const MANIFEST_FIELDS: &[&str] = &["contract_id", "entries"];
 const ENTRY_FIELDS: &[&str] = &[
     "codex_artifact_digest",
+    "target_triple",
     "platform_environment",
     "observed_capabilities",
     "integration_profile",
@@ -41,6 +34,7 @@ const ENTRY_FIELDS: &[&str] = &[
 const EVIDENCE_FIELDS: &[&str] = &[
     "validation_result",
     "codex_artifact_digest",
+    "target_triple",
     "platform_environment",
     "observed_capabilities",
     "integration_profile",
@@ -228,7 +222,7 @@ impl CodexReleaseScenarioId {
 #[serde(deny_unknown_fields)]
 pub struct CodexReleaseEvidenceRunner {
     pub runner_id: String,
-    pub target_triple: String,
+    pub target_triple: ReleaseTargetTriple,
     pub architecture: CodexReleaseRunnerArchitecture,
     pub os_release: String,
     pub environment_image: String,
@@ -251,6 +245,7 @@ pub struct CodexReleaseScenarioResult {
 pub struct CodexReleaseValidationEvidence {
     pub validation_result: CodexReleaseValidationResult,
     pub codex_artifact_digest: String,
+    pub target_triple: ReleaseTargetTriple,
     pub platform_environment: PlatformEnvironment,
     pub observed_capabilities: Vec<CodexCapability>,
     pub integration_profile: IntegrationProfile,
@@ -266,6 +261,7 @@ pub struct CodexReleaseValidationEvidence {
 #[serde(deny_unknown_fields)]
 pub struct CodexReleaseEvidenceEntry {
     pub codex_artifact_digest: String,
+    pub target_triple: ReleaseTargetTriple,
     pub platform_environment: PlatformEnvironment,
     pub observed_capabilities: Vec<CodexCapability>,
     pub integration_profile: IntegrationProfile,
@@ -298,31 +294,31 @@ impl CodexReleaseEvidenceManifest {
         &self.contract_id
     }
 
-    /// Returns the zero-to-four reviewed evidence entries.
+    /// Returns the zero-to-six reviewed evidence entries.
     pub fn entries(&self) -> &[CodexReleaseEvidenceEntry] {
         &self.entries
     }
 
-    /// Returns the actual or derived result for one independent platform.
-    pub fn platform_status(&self, platform: PlatformEnvironment) -> CodexReleasePlatformStatus {
+    /// Returns the actual or derived result for one exact target/environment/profile cell.
+    pub fn cell_status(
+        &self,
+        target_triple: ReleaseTargetTriple,
+        platform_environment: PlatformEnvironment,
+        integration_profile: IntegrationProfile,
+    ) -> CodexReleaseCellStatus {
         self.entries
             .iter()
-            .find(|entry| entry.platform_environment == platform)
-            .map(|entry| match entry.validation_evidence.validation_result {
-                CodexReleaseValidationResult::Passed => CodexReleasePlatformStatus::Passed,
-                CodexReleaseValidationResult::Failed => CodexReleasePlatformStatus::Failed,
-                CodexReleaseValidationResult::Unavailable => {
-                    CodexReleasePlatformStatus::Unavailable
-                }
+            .find(|entry| {
+                entry.target_triple == target_triple
+                    && entry.platform_environment == platform_environment
+                    && entry.integration_profile == integration_profile
             })
-            .unwrap_or(CodexReleasePlatformStatus::NotRun)
-    }
-
-    /// Returns whether all independent platform evidence entries passed.
-    pub fn has_four_passing_platforms(&self) -> bool {
-        CODEX_RELEASE_PLATFORMS
-            .into_iter()
-            .all(|platform| self.platform_status(platform) == CodexReleasePlatformStatus::Passed)
+            .map(|entry| match entry.validation_evidence.validation_result {
+                CodexReleaseValidationResult::Passed => CodexReleaseCellStatus::Passed,
+                CodexReleaseValidationResult::Failed => CodexReleaseCellStatus::Failed,
+                CodexReleaseValidationResult::Unavailable => CodexReleaseCellStatus::Unavailable,
+            })
+            .unwrap_or(CodexReleaseCellStatus::NotRun)
     }
 
     /// Rejects any evidence entry whose exact Codex coordinates are absent from policy.
@@ -340,6 +336,7 @@ impl CodexReleaseEvidenceManifest {
             support_catalog
                 .lookup_supported_entry(
                     &entry.codex_artifact_digest,
+                    entry.target_triple,
                     entry.platform_environment,
                     &platform_release_coordinate,
                     &entry.observed_capabilities,
@@ -347,8 +344,9 @@ impl CodexReleaseEvidenceManifest {
                 )
                 .map_err(|_| {
                     CodexReleaseEvidenceError::new(format!(
-                        "release evidence for {} has no exact Codex support-catalog entry",
-                        entry.platform_environment.as_str()
+                        "release evidence for {}/{} has no exact Codex support-catalog entry",
+                        entry.target_triple,
+                        entry.platform_environment.as_str(),
                     ))
                 })?;
         }
@@ -356,9 +354,9 @@ impl CodexReleaseEvidenceManifest {
     }
 }
 
-/// Derived release-evidence status for one independent platform.
+/// Derived release-evidence status for one exact required cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CodexReleasePlatformStatus {
+pub enum CodexReleaseCellStatus {
     Passed,
     Failed,
     Unavailable,
@@ -458,7 +456,10 @@ pub fn compute_codex_release_evidence_digest(
 ) -> Result<String, CodexReleaseEvidenceError> {
     let runner = record(vec![
         ("runner_id", string(&evidence.runner.runner_id)?),
-        ("target_triple", string(&evidence.runner.target_triple)?),
+        (
+            "target_triple",
+            string(evidence.runner.target_triple.as_str())?,
+        ),
         (
             "architecture",
             string(evidence.runner.architecture.as_str())?,
@@ -488,6 +489,7 @@ pub fn compute_codex_release_evidence_digest(
             "codex_artifact_digest",
             string(&evidence.codex_artifact_digest)?,
         ),
+        ("target_triple", string(evidence.target_triple.as_str())?),
         (
             "platform_environment",
             string(evidence.platform_environment.as_str())?,
@@ -526,16 +528,16 @@ fn validate_manifest_json_shape(value: &OrderedJsonValue) -> Result<(), CodexRel
             &format!("CodexReleaseEvidenceManifest.entries[{index}]"),
         )?;
         let evidence_values = require_exact_fields(
-            entry_values[4],
+            entry_values[5],
             EVIDENCE_FIELDS,
             &format!("CodexReleaseEvidenceManifest.entries[{index}].validation_evidence"),
         )?;
         require_exact_fields(
-            evidence_values[6],
+            evidence_values[7],
             RUNNER_FIELDS,
             &format!("CodexReleaseEvidenceManifest.entries[{index}].validation_evidence.runner"),
         )?;
-        let OrderedJsonValue::Array(results) = evidence_values[7] else {
+        let OrderedJsonValue::Array(results) = evidence_values[8] else {
             return Err(CodexReleaseEvidenceError::new(format!(
                 "CodexReleaseEvidenceManifest.entries[{index}].validation_evidence.scenario_results must be an array"
             )));
@@ -561,24 +563,24 @@ fn validate_manifest(
             "CodexReleaseEvidenceManifest.contract_id is unknown",
         ));
     }
-    if manifest.entries.len() > CODEX_RELEASE_PLATFORMS.len() {
+    if manifest.entries.len() > 6 {
         return Err(CodexReleaseEvidenceError::new(
-            "Codex release-evidence manifest may contain at most four entries",
+            "Codex release-evidence manifest may contain at most six entries",
         ));
     }
-    let mut previous_platform_index = None;
+    let mut previous_identity = None;
     for entry in &manifest.entries {
         validate_entry(entry)?;
-        let platform_index = CODEX_RELEASE_PLATFORMS
-            .iter()
-            .position(|platform| platform == &entry.platform_environment)
-            .expect("PlatformEnvironment is closed");
-        if previous_platform_index.is_some_and(|previous| previous >= platform_index) {
+        let identity = evidence_identity(entry);
+        if previous_identity
+            .as_ref()
+            .is_some_and(|previous| previous >= &identity)
+        {
             return Err(CodexReleaseEvidenceError::new(
-                "Codex release-evidence entries must be unique and in linux, macos, native_windows, wsl2 order",
+                "Codex release-evidence entries must be unique and ordered by exact artifact/target/environment/profile identity",
             ));
         }
-        previous_platform_index = Some(platform_index);
+        previous_identity = Some(identity);
     }
     Ok(())
 }
@@ -588,6 +590,14 @@ fn validate_entry(entry: &CodexReleaseEvidenceEntry) -> Result<(), CodexReleaseE
         "CodexReleaseEvidenceEntry.codex_artifact_digest",
         &entry.codex_artifact_digest,
     )?;
+    if !entry
+        .target_triple
+        .supports_environment(entry.platform_environment)
+    {
+        return Err(CodexReleaseEvidenceError::new(
+            "CodexReleaseEvidenceEntry target and platform environment do not match",
+        ));
+    }
     if !has_exact_first_release_codex_capabilities(&entry.observed_capabilities) {
         return Err(CodexReleaseEvidenceError::new(
             "CodexReleaseEvidenceEntry.observed_capabilities must equal FirstReleaseCodexCapabilities",
@@ -600,6 +610,7 @@ fn validate_entry(entry: &CodexReleaseEvidenceEntry) -> Result<(), CodexReleaseE
     }
     let evidence = &entry.validation_evidence;
     if evidence.codex_artifact_digest != entry.codex_artifact_digest
+        || evidence.target_triple != entry.target_triple
         || evidence.platform_environment != entry.platform_environment
         || evidence.observed_capabilities != entry.observed_capabilities
         || evidence.integration_profile != entry.integration_profile
@@ -638,13 +649,35 @@ fn validate_evidence(
         ));
     }
     validate_bounded_runner_string("runner.runner_id", &evidence.runner.runner_id, 256)?;
-    validate_bounded_runner_string("runner.target_triple", &evidence.runner.target_triple, 256)?;
     validate_bounded_runner_string("runner.os_release", &evidence.runner.os_release, 512)?;
     validate_bounded_runner_string(
         "runner.environment_image",
         &evidence.runner.environment_image,
         512,
     )?;
+    if evidence.runner.target_triple != evidence.target_triple {
+        return Err(CodexReleaseEvidenceError::new(
+            "runner.target_triple must exactly match validation_evidence.target_triple",
+        ));
+    }
+    let expected_architecture = match evidence.target_triple.architecture() {
+        "x86_64" => CodexReleaseRunnerArchitecture::X86_64,
+        "aarch64" => CodexReleaseRunnerArchitecture::Aarch64,
+        _ => unreachable!("ReleaseTargetTriple has a closed architecture set"),
+    };
+    if evidence.runner.architecture != expected_architecture {
+        return Err(CodexReleaseEvidenceError::new(
+            "runner.architecture must match the exact target triple",
+        ));
+    }
+    if !evidence
+        .target_triple
+        .supports_environment(evidence.platform_environment)
+    {
+        return Err(CodexReleaseEvidenceError::new(
+            "validation evidence target and platform environment do not match",
+        ));
+    }
     if evidence.platform_environment == PlatformEnvironment::Wsl2
         && evidence.runner.environment_image != PINNED_WSL2_ENVIRONMENT_IMAGE
     {
@@ -686,6 +719,17 @@ fn expected_scenarios(platform: PlatformEnvironment) -> Vec<CodexReleaseScenario
     } else {
         CodexReleaseScenarioId::BASE.to_vec()
     }
+}
+
+fn evidence_identity(
+    entry: &CodexReleaseEvidenceEntry,
+) -> (&str, ReleaseTargetTriple, PlatformEnvironment, &str) {
+    (
+        &entry.codex_artifact_digest,
+        entry.target_triple,
+        entry.platform_environment,
+        entry.integration_profile.as_str(),
+    )
 }
 
 fn validate_scenario_result(

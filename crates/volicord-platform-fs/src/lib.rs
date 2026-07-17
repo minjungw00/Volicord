@@ -10,8 +10,8 @@ use std::{
 use sha2::{Digest, Sha256};
 use volicord_types::{
     validate_canonical_platform_path, PlatformEnvironment, PlatformReleaseCoordinate,
-    ProcessBinding, PINNED_WSL2_DISTRIBUTION_ID, PINNED_WSL2_DISTRIBUTION_NAME,
-    PINNED_WSL2_DISTRIBUTION_VERSION,
+    ProcessBinding, ReleaseTargetTriple, PINNED_WSL2_DISTRIBUTION_ID,
+    PINNED_WSL2_DISTRIBUTION_NAME, PINNED_WSL2_DISTRIBUTION_VERSION,
 };
 
 #[cfg(windows)]
@@ -24,6 +24,8 @@ const MAX_MOUNTINFO_BYTES: u64 = 4 * 1024 * 1024;
 /// One observed local process-platform boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalPlatformBoundary {
+    /// Exact Volicord binary target executing in this process.
+    pub target_triple: ReleaseTargetTriple,
     /// Exact independent release environment.
     pub environment: PlatformEnvironment,
     /// Exact native or pinned WSL2 release coordinate.
@@ -111,23 +113,29 @@ impl std::error::Error for PlatformBoundaryError {}
 /// Observes the current native or exact pinned WSL2 process boundary.
 #[cfg(target_os = "linux")]
 pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
+    let target_triple = current_release_target_triple()?;
     let kernel_release = read_platform_text("/proc/sys/kernel/osrelease")?;
     let wsl_distribution_name = std::env::var("WSL_DISTRO_NAME").ok();
-    classify_linux_platform_boundary(LinuxPlatformFacts {
-        kernel_release: &kernel_release,
-        wsl_distribution_name: wsl_distribution_name.as_deref(),
-        os_release: if kernel_release.to_ascii_lowercase().contains("microsoft") {
-            Some(read_platform_text("/etc/os-release")?)
-        } else {
-            None
+    classify_linux_platform_boundary(
+        target_triple,
+        LinuxPlatformFacts {
+            kernel_release: &kernel_release,
+            wsl_distribution_name: wsl_distribution_name.as_deref(),
+            os_release: if kernel_release.to_ascii_lowercase().contains("microsoft") {
+                Some(read_platform_text("/etc/os-release")?)
+            } else {
+                None
+            },
         },
-    })
+    )
 }
 
 /// Observes the current native or exact pinned WSL2 process boundary.
 #[cfg(target_os = "macos")]
 pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
+    let target_triple = current_release_target_triple()?;
     Ok(LocalPlatformBoundary {
+        target_triple,
         environment: PlatformEnvironment::Macos,
         release_coordinate: PlatformReleaseCoordinate::Native,
     })
@@ -136,7 +144,9 @@ pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, Platfo
 /// Observes the current native or exact pinned WSL2 process boundary.
 #[cfg(windows)]
 pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
+    let target_triple = current_release_target_triple()?;
     Ok(LocalPlatformBoundary {
+        target_triple,
         environment: PlatformEnvironment::NativeWindows,
         release_coordinate: PlatformReleaseCoordinate::Native,
     })
@@ -532,6 +542,7 @@ struct LinuxPlatformFacts<'a> {
 
 #[cfg(target_os = "linux")]
 fn classify_linux_platform_boundary(
+    target_triple: ReleaseTargetTriple,
     facts: LinuxPlatformFacts<'_>,
 ) -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
     let kernel = facts.kernel_release.trim().to_ascii_lowercase();
@@ -543,6 +554,7 @@ fn classify_linux_platform_boundary(
             ));
         }
         return Ok(LocalPlatformBoundary {
+            target_triple,
             environment: PlatformEnvironment::Linux,
             release_coordinate: PlatformReleaseCoordinate::Native,
         });
@@ -578,9 +590,46 @@ fn classify_linux_platform_boundary(
             ),
         ));
     }
+    if !target_triple.supports_environment(PlatformEnvironment::Wsl2) {
+        return Err(unsupported_platform(
+            "unsupported_wsl2_target",
+            format!("target {target_triple} has no WSL2 release cell"),
+        ));
+    }
     Ok(LocalPlatformBoundary {
+        target_triple,
         environment: PlatformEnvironment::Wsl2,
         release_coordinate: PlatformReleaseCoordinate::first_release_wsl2(),
+    })
+}
+
+fn current_release_target_triple() -> Result<ReleaseTargetTriple, PlatformBoundaryError> {
+    let target = if cfg!(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu"
+    )) {
+        Some(ReleaseTargetTriple::X86_64UnknownLinuxGnu)
+    } else if cfg!(all(
+        target_os = "linux",
+        target_arch = "aarch64",
+        target_env = "gnu"
+    )) {
+        Some(ReleaseTargetTriple::Aarch64UnknownLinuxGnu)
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Some(ReleaseTargetTriple::Aarch64AppleDarwin)
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        Some(ReleaseTargetTriple::X86_64AppleDarwin)
+    } else if cfg!(all(windows, target_arch = "x86_64", target_env = "msvc")) {
+        Some(ReleaseTargetTriple::X86_64PcWindowsMsvc)
+    } else {
+        None
+    };
+    target.ok_or_else(|| {
+        unsupported_platform(
+            "unsupported_release_target",
+            "this executable target is not a published Volicord binary target",
+        )
     })
 }
 
@@ -1375,11 +1424,14 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn injected_platform_facts_accept_only_the_pinned_wsl2_coordinate() {
-        let exact = classify_linux_platform_boundary(LinuxPlatformFacts {
-            kernel_release: "6.6.87.2-microsoft-standard-WSL2",
-            wsl_distribution_name: Some("Ubuntu-24.04"),
-            os_release: Some("ID=ubuntu\nVERSION_ID=\"24.04\"\n".to_owned()),
-        })
+        let exact = classify_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "6.6.87.2-microsoft-standard-WSL2",
+                wsl_distribution_name: Some("Ubuntu-24.04"),
+                os_release: Some("ID=ubuntu\nVERSION_ID=\"24.04\"\n".to_owned()),
+            },
+        )
         .expect("exact WSL2 facts should be supported");
         assert_eq!(exact.environment, PlatformEnvironment::Wsl2);
         assert_eq!(
@@ -1392,11 +1444,14 @@ mod tests {
             ("Debian", "debian", "12"),
             ("Ubuntu-24.04", "ubuntu", "24.10"),
         ] {
-            let error = classify_linux_platform_boundary(LinuxPlatformFacts {
-                kernel_release: "6.6.87.2-microsoft-standard-WSL2",
-                wsl_distribution_name: Some(name),
-                os_release: Some(format!("ID={id}\nVERSION_ID={version}\n")),
-            })
+            let error = classify_linux_platform_boundary(
+                ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+                LinuxPlatformFacts {
+                    kernel_release: "6.6.87.2-microsoft-standard-WSL2",
+                    wsl_distribution_name: Some(name),
+                    os_release: Some(format!("ID={id}\nVERSION_ID={version}\n")),
+                },
+            )
             .expect_err("neighboring distribution facts must fail closed");
             assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
             assert_eq!(error.reason(), "unsupported_wsl2_distribution");
@@ -1406,30 +1461,54 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn injected_platform_facts_reject_wsl1_and_cross_topology() {
-        let wsl1 = classify_linux_platform_boundary(LinuxPlatformFacts {
-            kernel_release: "4.4.0-19041-Microsoft",
-            wsl_distribution_name: Some("Ubuntu-24.04"),
-            os_release: Some("ID=ubuntu\nVERSION_ID=24.04\n".to_owned()),
-        })
+        let wsl1 = classify_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "4.4.0-19041-Microsoft",
+                wsl_distribution_name: Some("Ubuntu-24.04"),
+                os_release: Some("ID=ubuntu\nVERSION_ID=24.04\n".to_owned()),
+            },
+        )
         .expect_err("WSL1 must be unsupported");
         assert_eq!(wsl1.reason(), "unsupported_wsl1");
 
-        let cross = classify_linux_platform_boundary(LinuxPlatformFacts {
-            kernel_release: "6.8.0-generic",
-            wsl_distribution_name: Some("Ubuntu-24.04"),
-            os_release: None,
-        })
+        let cross = classify_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "6.8.0-generic",
+                wsl_distribution_name: Some("Ubuntu-24.04"),
+                os_release: None,
+            },
+        )
         .expect_err("WSL environment values outside WSL must fail closed");
         assert_eq!(cross.reason(), "unsupported_wsl_cross_topology");
 
-        let native = classify_linux_platform_boundary(LinuxPlatformFacts {
-            kernel_release: "6.8.0-generic",
-            wsl_distribution_name: None,
-            os_release: None,
-        })
+        let native = classify_linux_platform_boundary(
+            ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "6.8.0-generic",
+                wsl_distribution_name: None,
+                os_release: None,
+            },
+        )
         .expect("native Linux should remain supported");
         assert_eq!(native.environment, PlatformEnvironment::Linux);
+        assert_eq!(
+            native.target_triple,
+            ReleaseTargetTriple::Aarch64UnknownLinuxGnu
+        );
         assert_eq!(native.release_coordinate, PlatformReleaseCoordinate::Native);
+
+        let arm_wsl2 = classify_linux_platform_boundary(
+            ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "6.6.87.2-microsoft-standard-WSL2",
+                wsl_distribution_name: Some("Ubuntu-24.04"),
+                os_release: Some("ID=ubuntu\nVERSION_ID=24.04\n".to_owned()),
+            },
+        )
+        .expect_err("Linux AArch64 must not satisfy the x86-64 WSL2 cell");
+        assert_eq!(arm_wsl2.reason(), "unsupported_wsl2_target");
     }
 
     #[cfg(target_os = "linux")]

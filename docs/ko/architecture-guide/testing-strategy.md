@@ -34,13 +34,16 @@
 
 ## Codex Release 검증
 
-release 지원은 독립된 네 플랫폼 셀입니다.
+release 지원은 모든 게시 binary target을 포괄하는 독립된 target/environment 셀
+여섯 개입니다.
 
 ```text
-linux
-macos
-native_windows
-wsl2
+x86_64-unknown-linux-gnu / linux
+aarch64-unknown-linux-gnu / linux
+aarch64-apple-darwin / macos
+x86_64-apple-darwin / macos
+x86_64-pc-windows-msvc / native_windows
+x86_64-unknown-linux-gnu / wsl2
 ```
 
 각 셀은 정확히 최종 확정된 Codex와 Volicord 실행 파일 digest를 자기의 정확한
@@ -48,7 +51,7 @@ wsl2
 플랫폼을 대신하지 않습니다. 런타임 조회 테스트는 릴리스 증거 없이 내장
 `CodexSupportCatalog`를 검사합니다. 릴리스 검증 테스트는 외부
 `CodexReleaseEvidenceManifest`의 결정론적 parsing과 카탈로그 교차 대조를
-검사합니다. 증거 manifest에는 사실대로 entry를 0~4개 둘 수 있으며 실제 시도만
+검사합니다. 증거 manifest에는 사실대로 entry를 0~6개 둘 수 있으며 실제 시도만
 보고해야 합니다. `passed` 결과는 정확한 카탈로그 좌표와 Volicord digest의 릴리스
 증거만 성립시킵니다.
 

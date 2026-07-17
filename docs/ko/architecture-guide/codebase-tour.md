@@ -74,6 +74,6 @@ MCP는 그 form을 표시하거나 제출하지 않습니다. Guard prompt captu
 - 순수 파싱, 인코딩, 정책은 인접 unit test
 - 어댑터와 Store 경계는 crate integration test
 - 공개 교차 메서드 동작은 workspace conformance test
-- 정확한 최종 아티팩트 지원 주장은 독립된 Codex release-validation 네 셀
+- 정확한 최종 아티팩트 지원 주장은 독립된 Codex target/environment release-validation 셀 여섯 개
 
 [테스트 전략](testing-strategy.md)과 [검증](../maintain/validation.md)을 함께 봅니다.

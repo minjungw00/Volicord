@@ -516,7 +516,9 @@ impl fmt::Display for HostKindParseError {
 impl Error for HostKindParseError {}
 
 /// Public integration profile selected for host integration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum IntegrationProfile {
     Record,

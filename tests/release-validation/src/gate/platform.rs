@@ -7,7 +7,8 @@ use std::{
 
 use volicord_types::{
     CodexReleaseEvidenceEntry, CodexReleaseEvidenceRunner, CodexReleaseRunnerArchitecture,
-    PlatformEnvironment, PINNED_WSL2_DISTRIBUTION_ID, PINNED_WSL2_DISTRIBUTION_VERSION,
+    PlatformEnvironment, ReleaseTargetTriple, PINNED_WSL2_DISTRIBUTION_ID,
+    PINNED_WSL2_DISTRIBUTION_VERSION,
 };
 
 use crate::{
@@ -227,10 +228,11 @@ fn validate_native_runtime_home(work_root: &Path, runtime_home: &str) -> Validat
 
 pub(super) fn validate_actual_runner_coordinate(
     entry: &CodexReleaseEvidenceEntry,
+    target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     configuration: &GateConfiguration,
 ) -> ValidationResult<()> {
-    let actual = collect_runner_coordinate(platform, configuration)?;
+    let actual = collect_runner_coordinate(target_triple, platform, configuration)?;
     let expected = &entry.validation_evidence.runner;
     if expected.runner_id != actual.runner_id
         || expected.target_triple != actual.target_triple
@@ -247,6 +249,7 @@ pub(super) fn validate_actual_runner_coordinate(
 }
 
 pub(super) fn collect_runner_coordinate(
+    expected_target: ReleaseTargetTriple,
     platform: PlatformEnvironment,
     configuration: &GateConfiguration,
 ) -> ValidationResult<CodexReleaseEvidenceRunner> {
@@ -256,16 +259,21 @@ pub(super) fn collect_runner_coordinate(
             .as_deref()
             .expect("WSL2 configuration has a distribution");
         let architecture = parse_architecture(&wsl_text(distribution, "uname", &["-m"], 256)?)?;
-        let target = linux_target_triple(architecture).to_owned();
+        let target = linux_target_triple(architecture);
         let release = wsl_text(distribution, "cat", &["/proc/sys/kernel/osrelease"], 4096)?;
         (architecture, target, release)
     } else {
         let architecture = parse_architecture(env::consts::ARCH)?;
-        let target = native_target_triple(platform, architecture)?.to_owned();
+        let target = native_target_triple(platform, architecture)?;
         let release = native_os_release(platform)?;
         (architecture, target, release)
     };
-    validate_release_architecture(platform, architecture)?;
+    if target_triple != expected_target {
+        return Err(ValidationError::new(format!(
+            "actual runner target {target_triple} does not match required target {expected_target}"
+        )));
+    }
+    validate_release_architecture(expected_target, architecture)?;
     Ok(CodexReleaseEvidenceRunner {
         runner_id: configuration.runner_id.clone(),
         target_triple,
@@ -276,19 +284,18 @@ pub(super) fn collect_runner_coordinate(
 }
 
 fn validate_release_architecture(
-    platform: PlatformEnvironment,
+    target_triple: ReleaseTargetTriple,
     architecture: CodexReleaseRunnerArchitecture,
 ) -> ValidationResult<()> {
-    let expected = match platform {
-        PlatformEnvironment::Macos => CodexReleaseRunnerArchitecture::Aarch64,
-        PlatformEnvironment::Linux
-        | PlatformEnvironment::NativeWindows
-        | PlatformEnvironment::Wsl2 => CodexReleaseRunnerArchitecture::X86_64,
+    let expected = match target_triple.architecture() {
+        "x86_64" => CodexReleaseRunnerArchitecture::X86_64,
+        "aarch64" => CodexReleaseRunnerArchitecture::Aarch64,
+        _ => unreachable!("ReleaseTargetTriple has a closed architecture set"),
     };
     if architecture != expected {
         return Err(ValidationError::new(format!(
-            "the {} release cell requires {} architecture, not {}",
-            platform.as_str(),
+            "the {} release target requires {} architecture, not {}",
+            target_triple,
             expected.as_str(),
             architecture.as_str()
         )));
@@ -306,31 +313,31 @@ fn parse_architecture(value: &str) -> ValidationResult<CodexReleaseRunnerArchite
     }
 }
 
-fn linux_target_triple(architecture: CodexReleaseRunnerArchitecture) -> &'static str {
+fn linux_target_triple(architecture: CodexReleaseRunnerArchitecture) -> ReleaseTargetTriple {
     match architecture {
-        CodexReleaseRunnerArchitecture::X86_64 => "x86_64-unknown-linux-gnu",
-        CodexReleaseRunnerArchitecture::Aarch64 => "aarch64-unknown-linux-gnu",
+        CodexReleaseRunnerArchitecture::X86_64 => ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+        CodexReleaseRunnerArchitecture::Aarch64 => ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
     }
 }
 
 fn native_target_triple(
     platform: PlatformEnvironment,
     architecture: CodexReleaseRunnerArchitecture,
-) -> ValidationResult<&'static str> {
+) -> ValidationResult<ReleaseTargetTriple> {
     match (platform, architecture) {
         (PlatformEnvironment::Linux, architecture) => Ok(linux_target_triple(architecture)),
         (PlatformEnvironment::Macos, CodexReleaseRunnerArchitecture::X86_64) => {
-            Ok("x86_64-apple-darwin")
+            Ok(ReleaseTargetTriple::X86_64AppleDarwin)
         }
         (PlatformEnvironment::Macos, CodexReleaseRunnerArchitecture::Aarch64) => {
-            Ok("aarch64-apple-darwin")
+            Ok(ReleaseTargetTriple::Aarch64AppleDarwin)
         }
         (PlatformEnvironment::NativeWindows, CodexReleaseRunnerArchitecture::X86_64) => {
-            Ok("x86_64-pc-windows-msvc")
+            Ok(ReleaseTargetTriple::X86_64PcWindowsMsvc)
         }
-        (PlatformEnvironment::NativeWindows, CodexReleaseRunnerArchitecture::Aarch64) => {
-            Ok("aarch64-pc-windows-msvc")
-        }
+        (PlatformEnvironment::NativeWindows, CodexReleaseRunnerArchitecture::Aarch64) => Err(
+            ValidationError::new("native Windows AArch64 is not a published Volicord target"),
+        ),
         (PlatformEnvironment::Wsl2, _) => Err(ValidationError::new(
             "WSL2 target triples are collected through the Windows supervisor",
         )),
@@ -689,7 +696,7 @@ mod tests {
                 CodexReleaseRunnerArchitecture::X86_64
             )
             .unwrap(),
-            "x86_64-pc-windows-msvc"
+            ReleaseTargetTriple::X86_64PcWindowsMsvc
         );
         assert_eq!(
             native_target_triple(
@@ -697,7 +704,7 @@ mod tests {
                 CodexReleaseRunnerArchitecture::Aarch64
             )
             .unwrap(),
-            "aarch64-apple-darwin"
+            ReleaseTargetTriple::Aarch64AppleDarwin
         );
         assert!(native_target_triple(
             PlatformEnvironment::Wsl2,
@@ -706,12 +713,12 @@ mod tests {
         .is_err());
 
         assert!(validate_release_architecture(
-            PlatformEnvironment::Macos,
+            ReleaseTargetTriple::Aarch64AppleDarwin,
             CodexReleaseRunnerArchitecture::Aarch64
         )
         .is_ok());
         assert!(validate_release_architecture(
-            PlatformEnvironment::Macos,
+            ReleaseTargetTriple::Aarch64AppleDarwin,
             CodexReleaseRunnerArchitecture::X86_64
         )
         .is_err());

@@ -217,9 +217,8 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 ## Codex 릴리스 검증 검토
 
 릴리스 검증은 [호스트 릴리스 증거](../reference/host-release-evidence.md)가 정의하는
-정확한 최종 Codex 및 Volicord 아티팩트와 독립된 `linux`, `macos`,
-`native_windows`, `wsl2`
-셀 네 개로 제한됩니다. 선택한 셀은 담당 문서의 닫힌 시나리오 목록을 실행하고 정확히
+정확한 최종 Codex 및 Volicord 아티팩트와 `linux`, `macos`, `native_windows`,
+`wsl2`에 걸친 정확한 target/environment 셀 여섯 개로 제한됩니다. 선택한 셀은 담당 문서의 닫힌 시나리오 목록을 실행하고 정확히
 제한된 증거 형태를 게시해야 합니다. 저장소 테스트, 구성 fixture, 다른 플랫폼 결과,
 복사한 증거 항목은 셀을 통과시킬 수 없습니다.
 
@@ -232,7 +231,7 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 
 [`CodexSupportCatalog`](../reference/host-release-evidence.md#codex-support-catalog),
 [`CodexReleaseEvidenceManifest`](../reference/host-release-evidence.md#codex-release-evidence-manifest),
-정확한 아티팩트 규칙, 독립 플랫폼 셀, 필수 시나리오, 셀 상태 의미는 호스트 릴리스
+정확한 아티팩트 규칙, 독립 target/environment 셀, 필수 시나리오, 셀 상태 의미는 호스트 릴리스
 증거가 담당합니다. 유지관리자는 실행 절차에서 이 계약을 다시 정의하거나 CLI 텍스트로
 릴리스 주장을 추론하지 않습니다.
 
@@ -246,20 +245,22 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 테스트 명령은 분리된 계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례,
 정확한 런타임 지원 조회, 외부 증거 비포함 경계, 증거와 카탈로그의 교차 대조를
 검증합니다. 최종 확정 아티팩트를 실행하지 않으므로 어떤 플랫폼 셀도 `passed`로
-만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 네 셀의 실제 또는 파생 외부 증거
-상태를 보고합니다. 사실에 맞는 `entries: []` 원본에서는 네 셀 모두 `not_run`으로
+만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 여섯 셀의 실제 또는 파생 외부 증거
+상태를 보고합니다. 사실에 맞는 `entries: []` 원본에서는 여섯 셀 모두 `not_run`으로
 보고합니다.
 
 실행 명령과 모든 정확한 입력 의미는
 [실행 가능한 릴리스 셀 게이트](../reference/host-release-evidence.md#executable-release-cell-gate)가
 담당합니다. 실제 실행 전에 다음 runner 경계를 프로비저닝합니다.
 
-| 셀 | 릴리스 runner 전제 조건 |
+| Target/environment 셀 | 릴리스 runner 전제 조건 |
 |---|---|
-| `linux` | `self-hosted`, `volicord-release`, `linux`, `native-linux`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Linux runner입니다. WSL이나 container이면 안 됩니다. |
-| `macos` | `self-hosted`, `volicord-release`, `macos`, `native-macos`, `arm64` 라벨을 가진 자체 호스팅 Apple silicon native macOS runner입니다. |
-| `native_windows` | `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Windows runner입니다. |
-| `wsl2` | `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Windows supervisor이며 정확한 `Ubuntu-24.04` WSL2 배포판이 이미 설치되어 있어야 합니다. Ubuntu GitHub runner는 이 경계가 아닙니다. |
+| `x86_64-unknown-linux-gnu` / `linux` | `self-hosted`, `volicord-release`, `linux`, `native-linux`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Linux runner입니다. WSL이나 container이면 안 됩니다. |
+| `aarch64-unknown-linux-gnu` / `linux` | `self-hosted`, `volicord-release`, `linux`, `native-linux`, `arm64` 라벨을 가진 자체 호스팅 AArch64 native Linux runner입니다. WSL이나 container이면 안 됩니다. |
+| `aarch64-apple-darwin` / `macos` | `self-hosted`, `volicord-release`, `macos`, `native-macos`, `arm64` 라벨을 가진 자체 호스팅 Apple Silicon native macOS runner입니다. |
+| `x86_64-apple-darwin` / `macos` | `self-hosted`, `volicord-release`, `macos`, `native-macos`, `x64` 라벨을 가진 자체 호스팅 Intel x86-64 native macOS runner입니다. |
+| `x86_64-pc-windows-msvc` / `native_windows` | `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Windows runner입니다. |
+| `x86_64-unknown-linux-gnu` / `wsl2` | `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Windows supervisor이며 정확한 `Ubuntu-24.04` WSL2 배포판이 이미 설치되어 있어야 합니다. Ubuntu GitHub runner는 이 경계가 아닙니다. |
 
 각 runner service는 담당 문서가 정의한 환경 변수를 통해 정확히 최종 확정된 Codex
 경로, 셀에 기록된 정확한 Volicord 경로, 플랫폼 scenario driver, environment-image
@@ -275,10 +276,12 @@ coordinator입니다.
 일치하는 생성 명령 하나를 정확히 실행합니다.
 
 ```sh
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate native_windows
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate wsl2
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-pc-windows-msvc --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform wsl2
 ```
 
 후보 생성은 정확한 Codex 좌표가 내장 지원 카탈로그에 있기를 요구하지만 기존 통과
@@ -290,9 +293,9 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 없으면 자격을 갖춘 후보 생성을 시작할 수 없습니다. job을 다른 runner로 우회하지 말고
 이 결과를 정확히 보고합니다.
 
-후보 manifest 네 개를 검토하고 한 번의 릴리스 작업으로
+후보 manifest 여섯 개를 검토하고 한 번의 릴리스 작업으로
 [체크인하는 기준 계약](../reference/host-release-evidence.md#canonical-checked-in-contracts)의
-외부 증거 원본을 `linux`, `macos`, `native_windows`, `wsl2` 순서로 교체합니다.
+외부 증거 원본을 정규 exact-identity 순서로 교체합니다.
 과거 entry를 추가하거나,
 셀 사이에 증거를 복사하거나, 결과를 편집해 `passed`로 만들거나, 테스트 전용 설명자를
 불러오거나, 검토 전에 후보 출력을 체크인 증거로 취급하면 안 됩니다. 검토한 manifest를
@@ -301,10 +304,12 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 그런 다음 같은 각 독립 환경에서 차단 재실행 명령을 한 번씩 실행합니다.
 
 ```sh
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-apple-darwin --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-pc-windows-msvc --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform wsl2
 ```
 
 재실행 게이트는 전체 플랫폼 카탈로그를 driver에 위임하기 전에 정확한 내장 지원
@@ -316,26 +321,27 @@ closed로 동작합니다.
 
 일반 `.github/workflows/ci.yml`은 정적 계약 테스트만 실행합니다.
 `.github/workflows/release.yml`의 pull request도 실제 job을 건너뜁니다. tag push 또는
-수동 workflow dispatch는 native job 세 개와 Windows가 감독하는 독립 WSL2 job을
-예약합니다. `publish-release`는 네 job 모두에 의존하므로 대기, 건너뜀, 사용 불가,
+수동 workflow dispatch는 native job 다섯 개와 Windows가 감독하는 독립 WSL2 job을
+예약합니다. `publish-release`는 여섯 job 모두에 의존하므로 대기, 건너뜀, 사용 불가,
 실패, `not_run` 셀이 하나라도 있으면 게시를 막습니다.
 
-플랫폼별로 게시자가 제어하는 모든 byte 변경을 끝낸 Codex와 Volicord 실행 파일을
+각 target/environment 셀에서 게시자가 제어하는 모든 byte 변경을 끝낸 Codex와 Volicord 실행 파일을
 최종 확정하고 두 SHA-256 digest를 계산한 뒤, 같은 byte를 일치하는
 [독립 플랫폼 셀](../reference/host-release-evidence.md#independent-platform-cells)에서
 실행합니다. [필수 시나리오 집합](../reference/host-release-evidence.md#required-release-validation-scenarios)을
 모두 실행하고 두 실행 파일을 다시 열어 hash를 재확인합니다. 다시 빌드하거나 복사하거나 다른
 방식으로 패키징했거나 다른 플랫폼용인 실행 파일로 해당 byte를 대신할 수 없습니다.
 
-`linux`, `macos`, `native_windows`, `wsl2`를 각각 담당 환경에서 독립적으로 실행합니다.
+계약의 셀 여섯 개를 각각 담당 환경에서 독립적으로 실행합니다.
 실제 [셀 실행 상태](../reference/host-release-evidence.md#cell-execution-status)를 기록합니다.
 Runner나 다른 전제 조건을 사용할 수 없으면 `unavailable`, 자격을 갖춘 시도를 하지 않았으면
 `not_run`으로 보고합니다. 어느 값도 통과가 아닙니다. Linux 결과를 WSL2에, native Windows
-결과를 WSL2에, 어떤 아티팩트나 capability 결과를 다른 셀에 복사하면 안 됩니다. 셀이
-누락되거나 통과하지 못하면 네 플랫폼 릴리스 주장을 막습니다.
+결과를 WSL2에, 어떤 아티팩트나 capability 결과를 다른 셀에 복사하면 안 됩니다.
+Linux x86-64와 Linux AArch64, Intel macOS와 Apple Silicon도 어느 방향으로든 서로
+대신할 수 없습니다. 셀이 누락되거나 통과하지 못하면 전체 릴리스 주장을 막습니다.
 
 플랫폼별 정확한 명령과 runner 좌표, 담당 문서가 정의한 셀 좌표와 증거 digest, 모든 필수
-시나리오 결과, 네 셀의 실제 상태를 보고합니다. 건너뛰었거나 사용할 수 없는 실행은 이유와
+시나리오 결과, 여섯 셀의 실제 상태를 보고합니다. 건너뛰었거나 사용할 수 없는 실행은 이유와
 함께 보고합니다. 셀을 생략하거나 `not_run`을 `passed`로 요약하면 안 됩니다. 저장소 테스트와
 릴리스 작업 출력은 운영 런타임 신뢰 입력이 아닙니다.
 

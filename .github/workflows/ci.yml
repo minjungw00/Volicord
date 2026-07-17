@@ -80,22 +80,34 @@ jobs:
         run: cargo test --locked --workspace --all-targets --all-features
 
   codex-release-cell-contracts:
-    name: Codex ${{ matrix.platform }} definition (static only; never a cell pass)
+    name: Codex ${{ matrix.target_triple }} / ${{ matrix.platform_environment }} definition (static only; never a cell pass)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: linux
+          - target_triple: x86_64-unknown-linux-gnu
+            platform_environment: linux
             os: ubuntu-24.04
             test: platform_contract_linux
-          - platform: macos
+          - target_triple: aarch64-unknown-linux-gnu
+            platform_environment: linux
+            os: ubuntu-24.04-arm
+            test: platform_contract_linux
+          - target_triple: aarch64-apple-darwin
+            platform_environment: macos
             os: macos-15
             test: platform_contract_macos
-          - platform: native_windows
+          - target_triple: x86_64-apple-darwin
+            platform_environment: macos
+            os: macos-15-intel
+            test: platform_contract_macos
+          - target_triple: x86_64-pc-windows-msvc
+            platform_environment: native_windows
             os: windows-2022
             test: platform_contract_native_windows
-          - platform: wsl2
+          - target_triple: x86_64-unknown-linux-gnu
+            platform_environment: wsl2
             os: ubuntu-24.04
             test: platform_contract_wsl2
     steps:

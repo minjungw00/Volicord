@@ -2,7 +2,9 @@ use crate::{
     platforms::{PlatformCellDefinition, PlatformRunnerBoundary},
     scenarios::{scenarios_for_wsl2, ScenarioExpectation},
 };
-use volicord_types::{CodexReleaseScenarioId, PlatformEnvironment};
+use volicord_types::{
+    CodexReleaseScenarioId, IntegrationProfile, PlatformEnvironment, ReleaseTargetTriple,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WslGeneration {
@@ -87,9 +89,12 @@ pub const TOPOLOGY_SCENARIOS: [Wsl2TopologyScenario; 5] = [
     },
 ];
 
-pub fn definition() -> PlatformCellDefinition {
+pub fn definition(target_triple: ReleaseTargetTriple) -> PlatformCellDefinition {
+    assert_eq!(target_triple, ReleaseTargetTriple::X86_64UnknownLinuxGnu);
     PlatformCellDefinition {
+        target_triple,
         platform: PlatformEnvironment::Wsl2,
+        integration_profile: IntegrationProfile::Record,
         runner_boundary: PlatformRunnerBoundary::PinnedUbuntuLtsWsl2,
         scenarios: scenarios_for_wsl2(),
     }

@@ -66,7 +66,7 @@
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
-| `tests/release-validation/` | 정확한 최종 Codex 및 Volicord 아티팩트 검증과 외부 네 플랫폼 증거 manifest. |
+| `tests/release-validation/` | 정확한 최종 Codex 및 Volicord 아티팩트 검증, target 다섯 개/셀 여섯 개 계약, 외부 릴리스 증거 manifest. |
 | `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store, 요청 도우미. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를

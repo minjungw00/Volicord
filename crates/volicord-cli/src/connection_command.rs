@@ -1171,6 +1171,7 @@ fn prepare_project_managed_stdio_authority(
     let evidence = managed_host_evidence_for_live_process(
         &plan,
         authority.parent.clone(),
+        authority.platform.target_triple,
         authority.platform.environment,
         authority.platform.release_coordinate.clone(),
         artifacts,

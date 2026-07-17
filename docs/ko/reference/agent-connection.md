@@ -121,6 +121,13 @@ capability 집합은 Agent Connection 수신 경계가 요구하는 모든 capab
 플랫폼에 대입하지 않습니다. 특히 `wsl2`에는 명시적인 WSL2 탐지와
 [시스템 요구사항](system-requirements.md#wsl2-topology)의 배치가 필요합니다.
 
+런타임 플랫폼 관찰은 실행 중인 Volicord binary의 정확한 `ReleaseTargetTriple`도
+파생합니다. 닫힌 게시 target 집합과 허용 환경 셀은
+[시스템 요구사항](system-requirements.md#first-release-environment-matrix)이 담당합니다.
+지원 조회는 관찰한 target을 직접 사용하며 운영체제 이름만으로 identity를 만들지
+않습니다. 최초 릴리스에서 WSL2는 명시적으로 탐지하고
+`x86_64-unknown-linux-gnu`에만 대응합니다.
+
 <a id="platform-release-coordinate"></a>
 
 ## `PlatformReleaseCoordinate`
@@ -328,7 +335,7 @@ Codex 어댑터는 호스트별 조사와 변경을 모두 담당합니다.
 
 탐색만으로 아티팩트가 지원되는 것은 아닙니다. 어댑터는
 `codex_artifact_digest`가 `process_binding.executable_digest`와 같고,
-`platform_environment`가 현재 플랫폼과 일치하며,
+`target_triple` 및 `platform_environment`가 관찰한 Volicord target과 현재 환경에 일치하며,
 `integration_profile`이 `record`이고, `verified_capabilities`가
 `required_capabilities`와 정확히 같은 내장 `CodexSupportEntry` 하나만
 허용합니다. 정확한 `platform_release_coordinate`도 binding 좌표와 같아야 합니다.

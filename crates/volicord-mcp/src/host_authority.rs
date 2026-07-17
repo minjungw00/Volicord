@@ -189,6 +189,7 @@ pub(crate) fn validate_current_managed_host_authority(
 
     lookup_embedded_codex_support_entry(
         &parent.executable_digest,
+        platform.target_triple,
         platform.environment,
         &platform.release_coordinate,
         &authority.managed_host_binding.required_capabilities,

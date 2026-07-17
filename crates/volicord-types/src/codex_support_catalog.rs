@@ -12,6 +12,7 @@ use crate::{
     },
     has_exact_first_release_codex_capabilities, is_canonical_sha256_hex, CodexCapability,
     ErrorCode, FailureCategory, IntegrationProfile, PlatformEnvironment, PlatformReleaseCoordinate,
+    ReleaseTargetTriple,
 };
 
 /// Contract identifier for the embedded runtime support catalog.
@@ -31,6 +32,7 @@ const SUPPORT_CATALOG_DIGEST_DOMAIN: &[u8] = b"volicord.codex-support-catalog\0"
 const CATALOG_FIELDS: &[&str] = &["contract_id", "entries"];
 const ENTRY_FIELDS: &[&str] = &[
     "codex_artifact_digest",
+    "target_triple",
     "platform_environment",
     "platform_release_coordinate",
     "integration_profile",
@@ -48,6 +50,7 @@ const TEST_ONLY_DESCRIPTOR_FIELDS: &[&str] = &[
     "test_only",
     "fixture_id",
     "codex_artifact_digest",
+    "target_triple",
     "platform_environment",
     "observed_capabilities",
 ];
@@ -58,6 +61,8 @@ const TEST_ONLY_DESCRIPTOR_FIELDS: &[&str] = &[
 pub struct CodexSupportEntry {
     /// Raw SHA-256 digest of the exact finalized Codex executable.
     pub codex_artifact_digest: String,
+    /// Exact Volicord binary target supported by this coordinate.
+    pub target_triple: ReleaseTargetTriple,
     /// Supported platform environment.
     pub platform_environment: PlatformEnvironment,
     /// Exact supported native or WSL2 release coordinate.
@@ -92,7 +97,7 @@ impl CodexSupportCatalog {
         &self.contract_id
     }
 
-    /// Returns canonical zero-to-four runtime support entries.
+    /// Returns canonical zero-to-six runtime support entries.
     pub fn entries(&self) -> &[CodexSupportEntry] {
         &self.entries
     }
@@ -101,6 +106,7 @@ impl CodexSupportCatalog {
     pub fn lookup_supported_entry(
         &self,
         codex_artifact_digest: &str,
+        target_triple: ReleaseTargetTriple,
         platform_environment: PlatformEnvironment,
         platform_release_coordinate: &PlatformReleaseCoordinate,
         verified_capabilities: &[CodexCapability],
@@ -108,6 +114,7 @@ impl CodexSupportCatalog {
     ) -> Result<&CodexSupportEntry, UnsupportedHostArtifact> {
         if !is_canonical_sha256_hex(codex_artifact_digest)
             || !has_exact_first_release_codex_capabilities(verified_capabilities)
+            || !target_triple.supports_environment(platform_environment)
             || platform_release_coordinate
                 .validate_for(platform_environment)
                 .is_err()
@@ -119,6 +126,7 @@ impl CodexSupportCatalog {
             .iter()
             .find(|entry| {
                 entry.codex_artifact_digest == codex_artifact_digest
+                    && entry.target_triple == target_triple
                     && entry.platform_environment == platform_environment
                     && entry.platform_release_coordinate == *platform_release_coordinate
                     && entry.integration_profile == integration_profile
@@ -155,6 +163,8 @@ pub struct TestOnlyCodexDescriptor {
     pub fixture_id: String,
     /// Raw fixture digest.
     pub codex_artifact_digest: String,
+    /// Exact fixture target triple.
+    pub target_triple: ReleaseTargetTriple,
     /// Fixture platform coordinate.
     pub platform_environment: PlatformEnvironment,
     /// Closed capabilities exercised by the fixture.
@@ -243,6 +253,7 @@ pub fn embedded_codex_support_catalog() -> Result<CodexSupportCatalog, CodexSupp
 /// Performs production runtime lookup against only the embedded support catalog.
 pub fn lookup_embedded_codex_support_entry(
     codex_artifact_digest: &str,
+    target_triple: ReleaseTargetTriple,
     platform_environment: PlatformEnvironment,
     platform_release_coordinate: &PlatformReleaseCoordinate,
     verified_capabilities: &[CodexCapability],
@@ -252,6 +263,7 @@ pub fn lookup_embedded_codex_support_entry(
         .map_err(|_| UnsupportedHostArtifact)?
         .lookup_supported_entry(
             codex_artifact_digest,
+            target_triple,
             platform_environment,
             platform_release_coordinate,
             verified_capabilities,
@@ -322,6 +334,14 @@ pub fn parse_test_only_codex_descriptor(
         "TestOnlyCodexDescriptor.codex_artifact_digest",
         &descriptor.codex_artifact_digest,
     )?;
+    if !descriptor
+        .target_triple
+        .supports_environment(descriptor.platform_environment)
+    {
+        return Err(CodexSupportCatalogError::new(
+            "TestOnlyCodexDescriptor target and platform environment do not match",
+        ));
+    }
     let mut seen = BTreeSet::new();
     if descriptor
         .observed_capabilities
@@ -349,7 +369,7 @@ fn validate_catalog_json_shape(value: &OrderedJsonValue) -> Result<(), CodexSupp
             &format!("CodexSupportCatalog.entries[{index}]"),
         )?;
         validate_platform_release_coordinate_json(
-            entry_values[2],
+            entry_values[3],
             &format!("CodexSupportCatalog.entries[{index}].platform_release_coordinate"),
         )?;
     }
@@ -393,21 +413,24 @@ fn validate_catalog(catalog: &CodexSupportCatalog) -> Result<(), CodexSupportCat
             "CodexSupportCatalog.contract_id is unknown",
         ));
     }
-    if catalog.entries.len() > 4 {
+    if catalog.entries.len() > 6 {
         return Err(CodexSupportCatalogError::new(
-            "Codex support catalog may contain at most four entries",
+            "Codex support catalog may contain at most six entries",
         ));
     }
-    let mut previous_platform_index = None;
+    let mut previous_identity = None;
     for entry in &catalog.entries {
         validate_support_entry(entry)?;
-        let platform_index = platform_index(entry.platform_environment);
-        if previous_platform_index.is_some_and(|previous| previous >= platform_index) {
+        let identity = support_identity(entry);
+        if previous_identity
+            .as_ref()
+            .is_some_and(|previous| previous >= &identity)
+        {
             return Err(CodexSupportCatalogError::new(
-                "Codex support entries must be unique and in linux, macos, native_windows, wsl2 order",
+                "Codex support entries must be unique and ordered by exact artifact/target/environment/profile identity",
             ));
         }
-        previous_platform_index = Some(platform_index);
+        previous_identity = Some(identity);
     }
     Ok(())
 }
@@ -417,6 +440,14 @@ fn validate_support_entry(entry: &CodexSupportEntry) -> Result<(), CodexSupportC
         "CodexSupportEntry.codex_artifact_digest",
         &entry.codex_artifact_digest,
     )?;
+    if !entry
+        .target_triple
+        .supports_environment(entry.platform_environment)
+    {
+        return Err(CodexSupportCatalogError::new(
+            "CodexSupportEntry target and platform environment do not match",
+        ));
+    }
     entry
         .platform_release_coordinate
         .validate_for(entry.platform_environment)
@@ -449,6 +480,7 @@ fn encode_support_entry(entry: &CodexSupportEntry) -> Result<Vec<u8>, CodexSuppo
             "codex_artifact_digest",
             string(&entry.codex_artifact_digest)?,
         ),
+        ("target_triple", string(entry.target_triple.as_str())?),
         (
             "platform_environment",
             string(entry.platform_environment.as_str())?,
@@ -495,11 +527,13 @@ fn require_raw_sha256(name: &str, value: &str) -> Result<(), CodexSupportCatalog
     }
 }
 
-fn platform_index(platform: PlatformEnvironment) -> usize {
-    match platform {
-        PlatformEnvironment::Linux => 0,
-        PlatformEnvironment::Macos => 1,
-        PlatformEnvironment::NativeWindows => 2,
-        PlatformEnvironment::Wsl2 => 3,
-    }
+fn support_identity(
+    entry: &CodexSupportEntry,
+) -> (&str, ReleaseTargetTriple, PlatformEnvironment, &str) {
+    (
+        &entry.codex_artifact_digest,
+        entry.target_triple,
+        entry.platform_environment,
+        entry.integration_profile.as_str(),
+    )
 }

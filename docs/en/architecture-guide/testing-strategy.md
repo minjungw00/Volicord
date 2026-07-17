@@ -35,13 +35,16 @@ Durable tests should cover, as applicable:
 
 ## Codex Release Validation
 
-Release support is four independent platform cells:
+Release support is six independent target/environment cells covering every
+published binary target:
 
 ```text
-linux
-macos
-native_windows
-wsl2
+x86_64-unknown-linux-gnu / linux
+aarch64-unknown-linux-gnu / linux
+aarch64-apple-darwin / macos
+x86_64-apple-darwin / macos
+x86_64-pc-windows-msvc / native_windows
+x86_64-unknown-linux-gnu / wsl2
 ```
 
 Each cell executes the closed scenario catalog against exact finalized Codex
@@ -50,7 +53,7 @@ substitutes for another. Runtime lookup tests the embedded
 `CodexSupportCatalog` without release evidence. Release validation tests the
 external `CodexReleaseEvidenceManifest`, including deterministic parsing and
 cross-checking against the catalog. The evidence manifest may contain zero
-through four entries and must report only actual attempts. A `passed` result is
+through six entries and must report only actual attempts. A `passed` result is
 release evidence only for its exact catalog coordinates and Volicord digest.
 
 Mock, fixture, rebuilt, selected, or neighboring artifacts cannot replace the

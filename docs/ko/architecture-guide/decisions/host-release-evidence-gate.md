@@ -20,20 +20,22 @@ digest를 계산한 뒤 폐쇄 release scenario catalog를 다음 환경에서 �
 실행합니다.
 
 ```text
-linux
-macos
-native_windows
-wsl2
+x86_64-unknown-linux-gnu / linux
+aarch64-unknown-linux-gnu / linux
+aarch64-apple-darwin / macos
+x86_64-apple-darwin / macos
+x86_64-pc-windows-msvc / native_windows
+x86_64-unknown-linux-gnu / wsl2
 ```
 
 각 외부 `CodexReleaseEvidenceEntry`는 두 아티팩트 digest, 하나의
 `PlatformEnvironment`, 완전한 첫 release `CodexCapability` 집합,
 `integration_profile=record`, 정확한 target 및 runner 좌표, scenario 결과,
 evidence digest를 결속합니다. 대응하는 `CodexSupportEntry`에는 Codex digest,
-플랫폼 및 릴리스 좌표, profile, 검증된 capability만 둡니다.
+target triple, 플랫폼 및 릴리스 좌표, profile, 검증된 capability만 둡니다.
 
 외부 증거 manifest는 목표 형태 placeholder가 아니라 사실에 맞는 보고입니다.
-Entry를 0~4개 담을 수 있습니다. 적격 시도가 없는 플랫폼에는 entry가 없습니다.
+Entry를 0~6개 담을 수 있습니다. 적격 시도가 없는 필수 셀에는 entry가 없습니다.
 통과 결과는 정확한 카탈로그 좌표와 Volicord digest의 릴리스 증거만 성립시키며 다른
 셀이나 아티팩트로 전파되지 않습니다. 런타임 조회는 내장 카탈로그만 읽고 빈
 카탈로그에서는 fail closed로 동작합니다.
@@ -49,6 +51,7 @@ closed로 동작합니다. 릴리스 증거는 사용하지 않습니다.
 - 외부 릴리스 증거는 내장 resource, 생성 Rust 상수, build script 입력이 되지
   않습니다.
 - WSL2는 native Linux와 native Windows에서 독립적입니다.
+- Linux 및 macOS architecture는 서로 독립적인 target identity입니다.
 - mock과 parser fixture는 release evidence가 아닙니다.
 - failed, unavailable, not-run 결과는 명시적으로 남고 passing으로 바꿀 수 없습니다.
 - release 결과는 evidence이며 runtime identity나 사용자 인증이 아닙니다.

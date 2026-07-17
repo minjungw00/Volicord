@@ -11,7 +11,7 @@
 | [관찰 신뢰도 경계](observation-confidence-boundary.md) | 결정적 경로 사실과 불확실한 관찰 분리. |
 | [외부 사용자 판단 권한](external-user-judgment-authority.md) | 사용자 답변을 Agent Connection 밖에 유지. |
 | [정적 압축 MCP 도구 목록](static-compact-mcp-tool-list.md) | 공개 도구 registry를 폐쇄적이고 작게 유지. |
-| [Host release evidence gate](host-release-evidence-gate.md) | 독립된 네 플랫폼 셀로 정확한 최종 Codex 아티팩트 지원. |
+| [Host release evidence gate](host-release-evidence-gate.md) | 게시 target 다섯 개를 포괄하는 target/environment 셀 여섯 개로 정확한 최종 Codex 아티팩트 지원. |
 | [영속 operation-result 조회](operation-result-retrieval.md) | 적격 immutable mutation 결과를 bounded lookup으로 복구. |
 | [Evidence-capture producer finalization](evidence-capture-producer-finalization.md) | source receipt를 intent에 결속하고 producer authority를 원자적으로 확정. |
 | [통합 UserAction 요청과 해결](unified-user-action-request-resolution.md) | agent 요청/재개와 CLI-only immutable resolution 분리. |

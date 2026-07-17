@@ -1067,7 +1067,7 @@ documents:
   path_en: docs/en/architecture-guide/decisions/host-release-evidence-gate.md
   path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
   kind: explanation
-  summary: Architecture decision separating the embedded Codex runtime support catalog from exact finalized Codex and Volicord release evidence across four independent platform cells.
+  summary: Architecture decision separating the embedded Codex runtime support catalog from exact finalized Codex and Volicord release evidence across five published targets and six independent cells.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1429,8 +1429,7 @@ documents:
   path_en: docs/en/reference/system-requirements.md
   path_ko: docs/ko/reference/system-requirements.md
   kind: reference
-  summary: Reference contract for the four first-release platform environments, WSL2 topology,
-    executable and filesystem prerequisites, managed stdio, and fail-closed stop criteria.
+  summary: Reference contract for five published binary targets, six required cells across four platform environments, WSL2 topology, executable and filesystem prerequisites, managed stdio, and fail-closed stop criteria.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: onboarding
@@ -1450,6 +1449,7 @@ documents:
   - install
   - operate
   canonical_for:
+  - exact five-target and six-cell first-release environment matrix
   - exact `linux`, `macos`, `native_windows`, and `wsl2` platform-environment prerequisite boundaries
   - separation of eligible environment prerequisites from actually executed release-cell evidence
   - Rust, Cargo, Codex artifact, executable, process, filesystem, and stdio prerequisites
@@ -1474,8 +1474,7 @@ documents:
   path_en: docs/en/reference/host-release-evidence.md
   path_ko: docs/ko/reference/host-release-evidence.md
   kind: reference
-  summary: Separate embedded Codex runtime support policy and external exact Codex and Volicord
-    release evidence for independent Linux, macOS, native Windows, and WSL2 cells.
+  summary: Separate embedded target-aware Codex runtime support policy and external exact Codex and Volicord release evidence for five published targets and six independent environment cells.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1494,6 +1493,8 @@ documents:
   - implement
   - maintain
   canonical_for:
+  - machine-readable published-target and required-cell release contract
+  - exact artifact-digest, target-triple, platform-environment, and integration-profile identity
   - exact `CodexSupportCatalog` and `CodexSupportEntry` runtime-policy shapes and identity digest
   - runtime-policy prohibition on Volicord artifact digests and release-execution fields
   - exact external `CodexReleaseEvidenceManifest`, `CodexReleaseEvidenceEntry`, and validation-evidence shapes
@@ -1501,7 +1502,7 @@ documents:
   - non-embedding boundary for external release evidence
   - release-evidence cross-checking against the embedded support catalog
   - machine-readable `unsupported_host_artifact` result for unregistered exact artifacts
-  - independent Linux, macOS, native Windows, and WSL2 release cells without cross-cell inference
+  - five published binary targets and six independent release cells without cross-target or cross-environment inference
   - explicit test-only Codex descriptors that cannot establish runtime support
   - shared install, verify, drift, repair, uninstall, restart, move, write, suppression, and rejection scenarios
   - WSL2 Ubuntu LTS, ext4, all-inside topology, restart, DrvFS, and cross-topology validation
@@ -3123,7 +3124,7 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, separate Codex support policy and four-platform release evidence, Rust checks, and result reporting.
+  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, separate target-aware Codex support policy and six-cell release evidence, Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -3145,8 +3146,8 @@ documents:
   - contract-boundary and generated-source drift checks
   - durable repository-test and one-time audit reporting boundaries
   - representative-user Codex onboarding usability validation
-  - exact finalized artifact validation for independent Linux, macOS, native Windows, and WSL2 cells
-  - honest zero-to-four-entry external release-evidence review and unavailable-attempt reporting
+  - exact finalized artifact validation for five published targets and six independent environment cells
+  - honest zero-to-six-entry external release-evidence review and unavailable-attempt reporting
   - Rust formatting, lint, test, diff, repository-hygiene, and skipped-validation reporting
   depends_on:
   - maintain.documentation-policy
