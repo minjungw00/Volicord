@@ -359,6 +359,9 @@ fn verify_host_plan(
             "only Codex managed connections are supported",
         ));
     }
+    if let Some(verification) = process.verify_host_plan(plan) {
+        return verification.map_err(ConnectionCommandError::runtime);
+    }
     let mut adapter = CodexAdapter::new(codex_environment(process));
     adapter.verify(plan).map_err(Into::into)
 }
