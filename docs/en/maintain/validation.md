@@ -281,6 +281,11 @@ finalized artifacts, assess release completeness, or make any platform cell
 status of all six cells without executing them; every absent entry is reported
 as `not_run`.
 
+Canonical textual contracts use LF repository bytes. The root `.gitattributes`
+enforces identical LF checkout bytes across supported platforms independently of
+a runner's global `core.autocrlf` setting. A contract file containing CRLF is
+non-canonical and the exact-byte contract gate rejects it.
+
 The executable command and all exact input meanings are owned by the
 [executable release-cell gate](../reference/host-release-evidence.md#executable-release-cell-gate).
 Use this release sequence without substituting artifacts or hand-authoring a

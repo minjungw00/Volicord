@@ -1,0 +1,5 @@
+/.gitattributes text eol=lf
+/crates/volicord-types/contracts/*.json text eol=lf
+/tests/release-validation/contracts/*.json text eol=lf
+/tests/integration/snapshots/*.json text eol=lf
+/tests/agent-evaluation/fixtures/catalog.json text eol=lf

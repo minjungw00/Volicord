@@ -251,6 +251,11 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 여섯 셀의 실제 또는 파생 외부
 증거 상태를 보고하며, entry가 없는 셀은 각각 `not_run`으로 보고합니다.
 
+기준 텍스트 계약은 저장소 byte에 LF를 사용합니다. 루트 `.gitattributes`는 runner의
+전역 `core.autocrlf` 설정과 관계없이 지원 플랫폼에서 동일한 LF byte가 체크아웃되도록
+강제합니다. CRLF를 포함한 계약 파일은 비정규 형식이며 exact-byte 계약 게이트가
+거부합니다.
+
 실행 명령과 모든 정확한 입력 의미는
 [실행 가능한 릴리스 셀 게이트](../reference/host-release-evidence.md#executable-release-cell-gate)가
 담당합니다. 아티팩트를 바꾸거나 digest 또는 통과 결과를 손으로 작성하지 말고 다음

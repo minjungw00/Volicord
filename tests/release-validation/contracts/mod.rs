@@ -103,7 +103,11 @@ pub fn load_release_target_contract(path: &Path) -> Result<ReleaseTargetContract
     if metadata.len() > MAX_RELEASE_TARGETS_BYTES as u64 {
         return Err("release target contract exceeds its byte bound".to_owned());
     }
-    parse_release_target_contract(&fs::read(path).map_err(|error| error.to_string())?)
+    let checked_in = fs::read(path).map_err(|error| error.to_string())?;
+    let contract = parse_release_target_contract(&checked_in)?;
+    let canonical = serialize_release_target_contract(&contract)?;
+    require_canonical_checked_in_bytes("release target contract", &checked_in, &canonical)?;
+    Ok(contract)
 }
 
 /// Parses and validates one release target matrix.
@@ -115,6 +119,14 @@ pub fn parse_release_target_contract(bytes: &[u8]) -> Result<ReleaseTargetContra
         serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
     validate_release_target_contract(&contract)?;
     Ok(contract)
+}
+
+/// Serializes the validated release target matrix in its canonical checked-in form.
+pub fn serialize_release_target_contract(
+    contract: &ReleaseTargetContract,
+) -> Result<Vec<u8>, String> {
+    validate_release_target_contract(contract)?;
+    serde_json::to_vec_pretty(contract).map_err(|error| error.to_string())
 }
 
 /// Loads and statically validates the three canonical checked-in release contracts.
