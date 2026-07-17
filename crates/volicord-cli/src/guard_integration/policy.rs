@@ -10,7 +10,7 @@ use volicord_types::IntegrationProfile;
 use crate::{
     guard_integration::{
         files::{read_managed_text, VOLICORD_POLICY_FILE, VOLICORD_POLICY_SCHEMA},
-        hooks::GuardCommandSpec,
+        hooks::{guard_command_specs_json, GuardCommandSpec},
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
@@ -160,18 +160,7 @@ pub(crate) fn policy_json(
     guard_commands: &BTreeMap<String, GuardCommandSpec>,
 ) -> Result<Value, GuardIntegrationError> {
     validate_policy_mcp_environment(&mcp_entry.env)?;
-    let commands = guard_commands
-        .iter()
-        .map(|(phase, spec)| {
-            (
-                phase.clone(),
-                json!({
-                    "command": &spec.command,
-                    "args": &spec.args,
-                }),
-            )
-        })
-        .collect::<serde_json::Map<_, _>>();
+    let commands = guard_command_specs_json(guard_commands)?;
     let policy = json!({
         "schema": VOLICORD_POLICY_SCHEMA,
         "managed_by": "volicord",

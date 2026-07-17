@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use serde_json::Value;
 use volicord_store::agent_connections::agent_connection_record_read_only;
@@ -23,7 +26,10 @@ use crate::{
         git_exclude::{
             git_exclude_path, plan_git_excludes, plan_git_excludes_with_personal_protection,
         },
-        hooks::{guard_command_specs, host_hook_command_specs, HostHookCommand, HostHookPurpose},
+        hooks::{
+            guard_command_specs, host_hook_command_specs, GuardCommandSpec, HostHookCommand,
+            HostHookPurpose,
+        },
         hosts::{plan_host_generated_files, HostGeneratedFilesRequest},
         policy::{
             policy_json, recorded_local_policy, validate_workflow_policy, LocalPolicyContext,
@@ -46,6 +52,7 @@ pub(crate) struct GuardIntegrationPlan {
     pub(crate) retired_files: Vec<ManagedFileRetirementPlan>,
     pub(crate) migration_protection: Option<GeneratedFilePlan>,
     pub(crate) migration_protection_applied: bool,
+    pub(crate) guard_commands: BTreeMap<String, GuardCommandSpec>,
     pub(crate) host_hook_commands: Vec<HostHookCommand>,
     pub(crate) policy: Value,
     pub(crate) policy_hash: String,
@@ -134,7 +141,6 @@ pub(crate) fn plan_guard_integration(
         profile,
         Some(&policy_hash),
     );
-    let generated_host_commands = guard_commands.clone();
     let host_hook_commands = host_hook_command_specs(
         host_kind,
         repo_root,
@@ -163,7 +169,7 @@ pub(crate) fn plan_guard_integration(
         host_kind,
         runtime_home,
         repo_root,
-        commands: &generated_host_commands,
+        commands: &guard_commands,
         host_commands: &host_hook_commands,
         phases: &REQUIRED_GUARD_PHASES,
         purpose: HostHookPurpose::Guard,
@@ -203,6 +209,7 @@ pub(crate) fn plan_guard_integration(
         retired_files,
         migration_protection,
         migration_protection_applied: false,
+        guard_commands,
         host_hook_commands: host_hook_commands.into_values().collect(),
         policy,
         policy_hash,

@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde_json::{json, Value};
 use volicord_types::IntegrationProfile;
 
 use crate::{
@@ -261,6 +262,35 @@ pub(crate) fn guard_command_specs(
             )
         })
         .collect()
+}
+
+pub(crate) fn guard_command_specs_json(
+    commands: &BTreeMap<String, GuardCommandSpec>,
+) -> Result<Value, GuardIntegrationError> {
+    if commands.len() != REQUIRED_GUARD_PHASES.len() {
+        return Err(GuardIntegrationError::runtime(
+            "Guard command serialization requires the exact Guard phases",
+        ));
+    }
+    let commands = REQUIRED_GUARD_PHASES
+        .iter()
+        .map(|phase| {
+            let spec = commands.get(phase.policy_key()).ok_or_else(|| {
+                GuardIntegrationError::runtime(format!(
+                    "Guard command serialization requires {}",
+                    phase.policy_key()
+                ))
+            })?;
+            Ok((
+                phase.policy_key().to_owned(),
+                json!({
+                    "command": &spec.command,
+                    "args": &spec.args,
+                }),
+            ))
+        })
+        .collect::<Result<serde_json::Map<_, _>, GuardIntegrationError>>()?;
+    Ok(Value::Object(commands))
 }
 
 pub(crate) fn guard_command_line(spec: &GuardCommandSpec) -> String {

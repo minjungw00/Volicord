@@ -18,6 +18,7 @@ use crate::{
             FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind, ManagedFileRetirementPlan,
             RetirementPlanStatus, VOLICORD_POLICY_FILE,
         },
+        hooks::guard_command_specs_json,
         policy::required_guard_phase_names,
         GuardIntegrationError, GuardIntegrationPlan, HostHookCommand, HostHookCommandShape,
         HOOK_WRAPPER_MARKER,
@@ -98,7 +99,7 @@ pub(crate) fn host_hook_capability_json(
         "direct_file_write_matcher_coverage": plan.direct_file_write_matcher_coverage,
         "host_capabilities": capabilities,
         "files": generated_files_json(&plan.generated_files),
-        "commands": plan.policy["host_hook"]["commands"].clone(),
+        "commands": guard_command_specs_json(&plan.guard_commands)?,
     });
     if !host_hook_capability_has_exact_current_shape(&capability) {
         return Err(GuardIntegrationError::runtime(
@@ -324,4 +325,173 @@ fn script_executable_required() -> bool {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeSet, fs};
+
+    use serde_json::{json, Value};
+    use volicord_test_support::core_fixtures::CoreFixture;
+    use volicord_types::IntegrationProfile;
+
+    use super::{host_hook_capability_has_exact_current_shape, host_hook_capability_json};
+    use crate::{
+        guard_integration::{
+            audit::{hook_wrapper_comment_value, hook_wrapper_exec_command},
+            hooks::guard_command_line,
+            plan::{plan_guard_integration, GuardIntegrationPlanRequest},
+        },
+        host_integration::{
+            ConnectionIntent, HostIntegrationFileKind, HostKind, ManagedServerEntry,
+            REQUIRED_GUARD_PHASES,
+        },
+    };
+
+    #[test]
+    fn generated_capability_uses_the_exact_post_hash_wrapper_commands(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("guard-capability-post-hash")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let volicord_command = fixture.runtime_home_path().join("bin/volicord");
+        let mcp_entry = ManagedServerEntry::new_project_bound(
+            fixture.connection_id(),
+            Some(fixture.project_id()),
+            &volicord_command,
+        );
+        let guard_installation_id = "guard_post_hash";
+        let plan = plan_guard_integration(GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Record,
+            runtime_home: fixture.runtime_home_path(),
+            volicord_command: &volicord_command,
+            repo_root: &repo_root,
+            connection_id: fixture.connection_id(),
+            guard_installation_id,
+            mcp_entry: &mcp_entry,
+            connection_intent: ConnectionIntent::Shared,
+        })?;
+
+        let required_keys = BTreeSet::from(["post_tool", "pre_tool", "prompt_capture"]);
+        let policy_commands = plan.policy["host_hook"]["commands"]
+            .as_object()
+            .expect("policy commands object");
+        assert_eq!(
+            policy_commands
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            required_keys
+        );
+        for phase in REQUIRED_GUARD_PHASES {
+            let args = policy_commands[phase.policy_key()]["args"]
+                .as_array()
+                .expect("policy command args");
+            assert_eq!(args.len(), 14);
+            assert!(!args.iter().any(|arg| arg == "--policy-hash"));
+        }
+
+        let capability_text = host_hook_capability_json(&plan)?;
+        assert_eq!(capability_text, host_hook_capability_json(&plan)?);
+        let capability = serde_json::from_str::<Value>(&capability_text)?;
+        assert!(host_hook_capability_has_exact_current_shape(&capability));
+        let capability_commands = capability["commands"]
+            .as_object()
+            .expect("capability commands object");
+        assert_eq!(
+            capability_commands
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            required_keys
+        );
+
+        let repo_root_text = repo_root.to_str().expect("UTF-8 fixture path");
+        let volicord_command_text = volicord_command.to_str().expect("UTF-8 fixture path");
+        for phase in REQUIRED_GUARD_PHASES {
+            let command = plan
+                .guard_commands
+                .get(phase.policy_key())
+                .expect("typed Guard command");
+            let capability_command = &capability_commands[phase.policy_key()];
+            let capability_args = capability_command["args"]
+                .as_array()
+                .expect("capability command args");
+            assert_eq!(capability_args.len(), 16);
+            assert_eq!(capability_args[12], "--policy-hash");
+            assert_eq!(capability_args[13], capability["policy_hash"]);
+            assert_eq!(
+                capability_command["command"].as_str(),
+                Some(command.command.as_str())
+            );
+            assert!(capability_args
+                .iter()
+                .map(|arg| arg.as_str().expect("string command argument"))
+                .eq(command.args.iter().map(String::as_str)));
+            assert_eq!(command.command, volicord_command_text);
+            assert!(command.args.iter().map(String::as_str).eq([
+                "_hook",
+                phase.command_name(),
+                "--repo",
+                repo_root_text,
+                "--connection",
+                fixture.connection_id(),
+                "--guard-installation",
+                guard_installation_id,
+                "--host",
+                "codex",
+                "--integration-profile",
+                "record",
+                "--policy-hash",
+                plan.policy_hash.as_str(),
+                "--host-output",
+                "codex",
+            ]));
+
+            let wrapper = plan
+                .generated_files
+                .iter()
+                .find(|file| {
+                    file.kind == HostIntegrationFileKind::HostHookWrapper
+                        && hook_wrapper_comment_value(&file.content, "phase")
+                            == Some(phase.policy_key())
+                })
+                .expect("phase wrapper");
+            let expected_command_line = guard_command_line(command);
+            assert_eq!(
+                hook_wrapper_exec_command(&wrapper.content),
+                Some(expected_command_line.as_str())
+            );
+            for (key, expected) in [
+                ("host_kind", "codex"),
+                ("connection_id", fixture.connection_id()),
+                ("guard_installation_id", guard_installation_id),
+                ("policy_hash", plan.policy_hash.as_str()),
+                ("host_output", "codex"),
+            ] {
+                assert_eq!(
+                    hook_wrapper_comment_value(&wrapper.content, key),
+                    Some(expected)
+                );
+            }
+        }
+
+        let mut pre_hash_capability = capability.clone();
+        pre_hash_capability["commands"]["pre_tool"]["args"]
+            .as_array_mut()
+            .expect("pre-tool args")
+            .drain(12..14);
+        assert!(!host_hook_capability_has_exact_current_shape(
+            &pre_hash_capability
+        ));
+
+        let mut extra_phase_capability = capability;
+        extra_phase_capability["commands"]["removed_phase"] =
+            json!({"command": volicord_command_text, "args": []});
+        assert!(!host_hook_capability_has_exact_current_shape(
+            &extra_phase_capability
+        ));
+        Ok(())
+    }
 }
