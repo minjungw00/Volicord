@@ -47,7 +47,7 @@ pub const PINNED_WSL2_DISTRIBUTION_ID: &str = "ubuntu";
 /// Exact first-release WSL2 distribution version from `/etc/os-release`.
 pub const PINNED_WSL2_DISTRIBUTION_VERSION: &str = "24.04";
 
-/// Exact first-release WSL2 release-cell image coordinate.
+/// Exact first-release WSL2 support-policy image coordinate.
 pub const PINNED_WSL2_ENVIRONMENT_IMAGE: &str = "Ubuntu-24.04-LTS-WSL2";
 
 const MAX_BINDING_STRING_BYTES: usize = 4_096;
@@ -96,7 +96,7 @@ pub enum PlatformReleaseCoordinate {
         distribution_id: String,
         /// Exact `/etc/os-release` `VERSION_ID` value.
         distribution_version: String,
-        /// Exact matched release-cell environment-image coordinate.
+        /// Exact matched support-catalog environment-image coordinate.
         environment_image: String,
     },
 }
@@ -840,7 +840,7 @@ pub struct CurrentHostReceiptContext {
     pub binding_digest: String,
     /// Digest of the current generated managed artifacts.
     pub generated_artifacts_digest: String,
-    /// Digest of the current observed executable and passed release cell.
+    /// Digest of the current observed executable and matched support entry.
     pub executable_digest: String,
     /// Digest of the current canonical policy basis.
     pub policy_digest: String,

@@ -241,12 +241,12 @@ fabricated completion claims.
 
 ## Codex Release-Validation Review
 
-Release validation is limited to the exact finalized Codex artifact and the
+Release validation is limited to the exact finalized Codex and Volicord artifacts and the
 four independent `linux`, `macos`, `native_windows`, and `wsl2` cells defined
 by [Host Release Evidence](../reference/host-release-evidence.md). A selected
 cell must run the owner-defined closed scenario catalog and publish the exact
 bounded evidence shape. Repository tests, configuration fixtures, another
-platform's result, or a copied manifest entry cannot make a cell pass.
+platform's result, or a copied evidence entry cannot make a cell pass.
 
 Run live validation only in a disposable Product Repository, Runtime Home, and
 external result location. Keep credentials, prompts, transcripts, tokens,
@@ -256,9 +256,10 @@ or prerequisite as `unavailable`, and a cell with no qualifying attempt as
 
 ## Exact Host Release Evidence Gate
 
-The authoritative [`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell)
-shape, exact-artifact rule, checked-in manifest, independent platform cells,
-required scenarios, and cell-status meanings belong to Host Release Evidence.
+The authoritative [`CodexSupportCatalog`](../reference/host-release-evidence.md#codex-support-catalog),
+[`CodexReleaseEvidenceManifest`](../reference/host-release-evidence.md#codex-release-evidence-manifest),
+exact-artifact rule, independent platform cells, required scenarios, and cell
+status meanings belong to Host Release Evidence.
 Maintainers do not redefine those contracts in a runbook or infer a release
 claim from CLI text.
 
@@ -269,12 +270,13 @@ cargo test --locked -p volicord-release-validation-tests --all-targets --all-fea
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 ```
 
-The test command validates contract parsing, explicit test-only descriptor
-separation, negative cases, and exact support lookup. It does not execute a
-finalized Codex artifact and cannot make any platform cell `passed`. The status
-command reports the actual or derived status of all four cells without
-executing them. With the honest `[]` manifest it reports all four as
-`not_run`.
+The test command validates separate contract parsing, explicit test-only
+descriptor separation, negative cases, exact runtime support lookup, the
+non-embedding boundary, and evidence-to-catalog cross-checking. It does not
+execute finalized artifacts and cannot make any platform cell `passed`. The
+status command reports the actual or derived external-evidence status of all
+four cells without executing them. With honest `entries: []` sources it reports
+all four as `not_run`.
 
 The executable command and all exact input meanings are owned by the
 [executable release-cell gate](../reference/host-release-evidence.md#executable-release-cell-gate).
@@ -308,17 +310,18 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate wsl2
 ```
 
-Capture does not require a pre-existing passing manifest cell. It executes the
-complete platform catalog, records the exact runner and artifact coordinates,
-and writes only a create-new, external one-cell candidate array. It does not
-edit or promote the canonical manifest. A `failed` or `unavailable` candidate
+Capture requires the exact Codex coordinates to exist in the embedded support
+catalog, but it does not require pre-existing passing evidence. It executes the
+complete platform catalog, records the exact runner and both artifact
+coordinates, and writes only a create-new, external one-entry candidate
+manifest. It does not edit or promote either canonical contract. A `failed` or `unavailable` candidate
 is retained for review, but the producer exits unsuccessfully. A missing runner
 leaves the attempt unrun; a missing artifact, driver, environment coordinate, or topology
 prerequisite prevents a qualifying capture. Report these outcomes exactly
 rather than rerouting a job to another runner.
 
-Review the four candidate arrays and replace the
-[single checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)
+Review the four candidate manifests and replace the external evidence source
+from the [canonical checked-in contracts](../reference/host-release-evidence.md#canonical-checked-in-contracts)
 as one release operation, in `linux`, `macos`, `native_windows`, `wsl2` order.
 Do not append historical entries, copy evidence between cells, edit a result
 into `passed`, load a test-only descriptor, or treat candidate output as
@@ -334,12 +337,13 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
 ```
 
-The replay gate requires an exact existing checked-in passing cell before it
-delegates the full platform catalog. A missing cell fails as `not_run`; a
-non-passing checked-in cell, changed runner coordinate, changed artifact,
+The replay gate requires an exact embedded support entry and existing checked-in
+passing evidence before it delegates the full platform catalog. Missing
+evidence fails as `not_run`; non-passing evidence, a changed runner coordinate,
+changed Codex or Volicord artifact,
 changed scenario driver, mismatched scenario evidence, or topology mismatch
-fails the selected job. The current honest `[]` manifest therefore permits
-candidate capture but makes every blocking replay fail as `not_run`.
+fails the selected job. The current honest `entries: []` support and evidence
+sources fail closed for both candidate capture and blocking replay.
 
 Ordinary `.github/workflows/ci.yml` runs static contract tests only. Pull
 requests to `.github/workflows/release.yml` also skip live jobs. A tag push or
@@ -347,14 +351,14 @@ manual workflow dispatch schedules the three native jobs and the independent
 Windows-supervised WSL2 job. `publish-release` depends on all four, so a queued,
 skipped, unavailable, failed, or `not_run` cell blocks publication.
 
-For each platform, finalize that platform's Codex executable after every
-publisher-controlled byte change, calculate its SHA-256 digest, and run the
-same bytes in the matching
+For each platform, finalize that platform's Codex and Volicord executables after
+every publisher-controlled byte change, calculate both SHA-256 digests, and run
+the same bytes in the matching
 [independent platform cell](../reference/host-release-evidence.md#independent-platform-cells).
 Run the complete
 [required scenario set](../reference/host-release-evidence.md#required-release-validation-scenarios),
-then reopen and rehash the executable. A rebuilt, copied, differently packaged,
-or other-platform executable cannot substitute for those bytes.
+then reopen and rehash both executables. A rebuilt, copied, differently
+packaged, or other-platform executable cannot substitute for those bytes.
 
 Execute `linux`, `macos`, `native_windows`, and `wsl2` independently in their
 owner-defined environments. Record the actual

@@ -65,8 +65,8 @@ use crate::guard_integration::{
 use crate::host_integration::{
     codex::{
         issue_host_verification_receipt, managed_host_evidence_for_live_process,
-        managed_identity_evaluation_for_plan, CheckedInCodexReleaseCatalog, CodexAdapter,
-        CodexEnvironment, CodexExistingPlanRequest, HostVerificationReceiptIssue,
+        managed_identity_evaluation_for_plan, CodexAdapter, CodexEnvironment,
+        CodexExistingPlanRequest, EmbeddedCodexSupportCatalogPolicy, HostVerificationReceiptIssue,
     },
     process::canonical_existing_platform_path,
     verification::{
@@ -1174,7 +1174,7 @@ fn prepare_project_managed_stdio_authority(
         authority.platform.environment,
         authority.platform.release_coordinate.clone(),
         artifacts,
-        &CheckedInCodexReleaseCatalog,
+        &EmbeddedCodexSupportCatalogPolicy,
     )
     .map_err(|error| managed_authority_error(error.reason(), error.to_string()))?;
     let store =

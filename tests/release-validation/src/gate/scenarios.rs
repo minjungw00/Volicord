@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, fs, path::Path, process::Command, time::Duratio
 
 use serde::{Deserialize, Serialize};
 use volicord_types::{
-    canonical_json_bare_sha256, CodexReleaseCell, CodexReleaseScenarioId,
+    canonical_json_bare_sha256, CodexReleaseEvidenceEntry, CodexReleaseScenarioId,
     CodexReleaseScenarioResult, CodexReleaseScenarioStatus, PlatformEnvironment, RequiredNullable,
     UtcTimestamp, FIRST_RELEASE_CODEX_CAPABILITIES,
 };
@@ -121,7 +121,7 @@ struct CanonicalScenarioAdapterProjection {
 struct ScenarioEvidenceEnvelope<'a> {
     scenario_id: CodexReleaseScenarioId,
     platform: PlatformEnvironment,
-    artifact_digest: &'a str,
+    codex_artifact_digest: &'a str,
     volicord_artifact_digest: &'a str,
     scenario_driver_digest: &'a str,
     integration_profile: &'static str,
@@ -135,7 +135,7 @@ struct ScenarioEvidenceEnvelope<'a> {
 struct ScenarioDriverInvocation<'a> {
     platform: PlatformEnvironment,
     scenario: ScenarioDefinition,
-    artifact_digest: &'a str,
+    codex_artifact_digest: &'a str,
     volicord_artifact_digest: &'a str,
     scenario_driver_digest: &'a str,
     configuration: &'a GateConfiguration,
@@ -146,24 +146,24 @@ struct ScenarioDriverInvocation<'a> {
 pub(super) fn run_checked_scenario_catalog(
     context: &ValidationContext,
     platform: PlatformEnvironment,
-    cell: &CodexReleaseCell,
+    entry: &CodexReleaseEvidenceEntry,
     configuration: &GateConfiguration,
 ) -> ValidationResult<()> {
     let actual = execute_scenario_catalog(
         context,
         platform,
-        &cell.artifact_digest,
-        &cell.validation_evidence.volicord_artifact_digest,
+        &entry.codex_artifact_digest,
+        &entry.validation_evidence.volicord_artifact_digest,
         configuration,
     )?;
-    if actual.len() != cell.validation_evidence.scenario_results.len() {
+    if actual.len() != entry.validation_evidence.scenario_results.len() {
         return Err(ValidationError::new(
             "executed scenario catalog length differs from the checked-in cell",
         ));
     }
     for (actual, expected) in actual
         .iter()
-        .zip(&cell.validation_evidence.scenario_results)
+        .zip(&entry.validation_evidence.scenario_results)
     {
         if actual.scenario_id != expected.scenario_id
             || actual.status != CodexReleaseScenarioStatus::Passed
@@ -188,14 +188,14 @@ pub(super) fn run_checked_scenario_catalog(
 pub(super) fn capture_scenario_catalog(
     context: &ValidationContext,
     platform: PlatformEnvironment,
-    artifact_digest: &str,
+    codex_artifact_digest: &str,
     volicord_artifact_digest: &str,
     configuration: &GateConfiguration,
 ) -> ValidationResult<Vec<CodexReleaseScenarioResult>> {
     execute_scenario_catalog(
         context,
         platform,
-        artifact_digest,
+        codex_artifact_digest,
         volicord_artifact_digest,
         configuration,
     )
@@ -204,7 +204,7 @@ pub(super) fn capture_scenario_catalog(
 fn execute_scenario_catalog(
     context: &ValidationContext,
     platform: PlatformEnvironment,
-    artifact_digest: &str,
+    codex_artifact_digest: &str,
     volicord_artifact_digest: &str,
     configuration: &GateConfiguration,
 ) -> ValidationResult<Vec<CodexReleaseScenarioResult>> {
@@ -240,7 +240,7 @@ fn execute_scenario_catalog(
         let mut command = ScenarioDriverInvocation {
             platform,
             scenario,
-            artifact_digest,
+            codex_artifact_digest,
             volicord_artifact_digest,
             scenario_driver_digest: &scenario_driver_digest,
             configuration,
@@ -272,7 +272,7 @@ fn execute_scenario_catalog(
             let envelope = ScenarioEvidenceEnvelope {
                 scenario_id,
                 platform,
-                artifact_digest,
+                codex_artifact_digest,
                 volicord_artifact_digest,
                 scenario_driver_digest: &scenario_driver_digest,
                 integration_profile: "record",
@@ -373,8 +373,8 @@ impl ScenarioDriverInvocation<'_> {
             .arg("--outcome-output")
             .arg(self.outcome_path)
             .env(
-                "VOLICORD_CODEX_RELEASE_ARTIFACT_DIGEST",
-                self.artifact_digest,
+                "VOLICORD_CODEX_RELEASE_CODEX_ARTIFACT_DIGEST",
+                self.codex_artifact_digest,
             )
             .env(
                 "VOLICORD_CODEX_RELEASE_VOLICORD_DIGEST",

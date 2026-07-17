@@ -29,8 +29,8 @@ typed 검증 receipt만 받습니다.
 
 ## 연결 검증
 
-`connection verify`는 현재 adapter 검사, 정확한 artifact와 platform release cell
-일치, 완전한 binding 검증을 수행하고 성공할 때만 `HostVerificationReceipt`를
+`connection verify`는 현재 adapter 검사, 내장 지원 카탈로그의 정확한 artifact 및
+platform 일치, 완전한 binding 검증을 수행하고 성공할 때만 `HostVerificationReceipt`를
 발급합니다. CLI는 이어서 Core에 현재 저장 상태를 기준으로 receipt 검증을 요청합니다.
 진단 status는 빠진 증거를 승격하지 않습니다.
 
@@ -68,7 +68,8 @@ form 대신 영속 데이터 오류로 실패합니다.
 - Codex별 구성은 adapter에 남습니다.
 - 어떤 명령도 네트워크 전송을 시작하지 않습니다.
 - 비대화형 명령은 사용자 판단을 제출하지 않습니다.
-- 릴리스 주장은 정확한 checked-in 4플랫폼 manifest에서만 나옵니다.
+- 런타임 조회는 내장 지원 카탈로그만 사용합니다. 릴리스 주장은 별도의 정확한
+  4플랫폼 증거 manifest가 그 카탈로그와 일치할 때만 성립합니다.
 
 ## 관련 경로
 

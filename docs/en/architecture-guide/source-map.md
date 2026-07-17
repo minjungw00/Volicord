@@ -11,6 +11,8 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
+| `crates/volicord-types/src/codex_support_catalog.rs` and `contracts/codex-support-catalog.json` | Embedded exact Codex runtime support policy. |
+| `crates/volicord-types/src/codex_release_evidence.rs` | Strict external release-evidence types and parsing without evidence embedding. |
 | `crates/volicord-types/src/tool_names.rs` | Public MCP tool-name registry. |
 
 ## Store
@@ -64,7 +66,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
-| `tests/release-validation/` | Exact finalized Codex artifact validation and the checked-in four-platform manifest. |
+| `tests/release-validation/` | Exact finalized Codex and Volicord artifact validation plus the external four-platform evidence manifest. |
 | `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store, and request helpers. |
 
 Update this map when a durable responsibility moves. Do not list removed,

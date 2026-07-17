@@ -28,9 +28,10 @@ Volicord에는 서로 독립적인 네 릴리스 대상 환경이 있습니다.
 | `native_windows` | Volicord, Codex, Product Repository, Runtime Home이 네이티브 Windows 구성요소로 실행됩니다. WSL 경로, 프로세스, binding, 영수증은 사용할 수 없습니다. |
 | `wsl2` | 모든 구성요소가 아래 조건을 만족하는 같은 WSL2 배포판 내부에서 실행되고 그 Linux 파일 시스템을 사용합니다. |
 
-환경에 대한 릴리스 지원 주장은 정확히 일치하는 `CodexReleaseCell`의
-`validation_evidence.status=passed`일 때만 성립합니다. 한 행의 통과는 다른 행을
-성립시키지 않습니다. 저장소 테스트, 교차 컴파일, 패키징이나 비슷한 target
+환경에 대한 릴리스 지원 주장은 정확한 내장 `CodexSupportEntry`에 실제 실행한
+Volicord digest와 `validation_evidence.validation_result=passed`를 담은 외부
+`CodexReleaseEvidenceEntry`가 정확히 대응할 때만 성립합니다. 한 행의 통과는 다른
+행을 성립시키지 않습니다. 저장소 테스트, 교차 컴파일, 패키징이나 비슷한 target
 triple은 실제 셀 실행을 대신하지 않습니다.
 
 모든 행의 최초 릴리스 제품 표면은 다음과 같습니다.
@@ -65,16 +66,16 @@ triple은 실제 셀 실행을 대신하지 않습니다.
 | `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
-| 릴리스 셀 `environment_image` | `Ubuntu-24.04-LTS-WSL2` |
+| `platform_release_coordinate.environment_image` | `Ubuntu-24.04-LTS-WSL2` |
 
 제품은 배포판 이름, 운영체제 identity, WSL2 커널 경계, 파일 시스템 종류를
-관찰합니다. 릴리스 셀 이미지 값은 관찰한 배포판 사실에 등록된 정확한 좌표이며,
-다른 이미지의 셀은 이 좌표를 승인할 수 없습니다.
+관찰합니다. 지원 카탈로그 이미지 값은 관찰한 배포판 사실에 등록된 정확한 좌표이며,
+다른 이미지의 entry는 이 좌표를 승인할 수 없습니다.
 
-WSL2 릴리스 셀은 환경이 WSL2임을 명시적으로 확인해야 합니다. 일반 Linux
+WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인해야 합니다. 일반 Linux
 `target_os` 결과만으로는 부족합니다. `ManagedHostBinding`과
 `HostVerificationReceipt`는 `platform_environment=wsl2`를 결속하며 `linux`나
-`native_windows` 증거로 재사용할 수 없습니다.
+`native_windows`에서 재사용할 수 없습니다.
 
 Product Repository, Runtime Home, Codex 실행 파일, Volicord 실행 파일, 관리
 Codex 설정, 생성된 모든 관리 아티팩트는 해당 배포판의 Linux ext4 파일 시스템
@@ -90,7 +91,7 @@ unsupported-environment reason으로 실패해야 합니다.
 - Product Repository나 Runtime Home을 `/mnt/c`, `/mnt/d`, 다른 `/mnt/*` 경로 또는 DrvFS mount에 두는 구성
 - Windows와 Linux 경로, PID, 환경 값, process binding 또는 영수증을 변환하거나 서로 같다고 추정하는 동작
 - 네이티브 Windows 영수증을 WSL2에서 사용하거나 WSL2 영수증을 네이티브 Windows에서 사용하는 동작
-- 현재 WSL2 릴리스 셀이 명시하지 않은 배포판
+- 현재 WSL2 지원 entry가 명시하지 않은 배포판
 
 WSL 종료나 재시작은 살아 있는 프로세스 identity를 무효화합니다. 프로세스 또는
 최신성 좌표가 더 이상 맞지 않는 binding과 영수증은 stale로 거절해야 하며, 새
@@ -115,7 +116,7 @@ workspace 빌드와 테스트에는 저장소가 선언한 Rust 도구 체인이
 런타임 전제 조건은 다음과 같습니다.
 
 - 선택한 플랫폼 환경용으로 최종 확정된 Volicord 실행 파일
-- 현재 플랫폼, `record` profile, 필수 capability와 정확히 일치하는 통과 릴리스 셀에 등록된 Codex 실행 파일
+- 현재 플랫폼 좌표, `record` profile, 필수 capability와 정확히 일치하는 내장 지원 카탈로그 entry에 등록된 Codex 실행 파일
 - Volicord 빌드가 제공하는 SQLite 지원
 - 선택한 네이티브 플랫폼 또는 WSL2 adapter가 요구하는 파일 시스템 동작
 - 관리형 MCP 프로세스 경계를 보존하는 stdio pipe
@@ -128,7 +129,7 @@ workflow가 Git 객체 ID를 제공하거나 검증할 때, 또는 선택한 Pro
 
 관리 프로세스는 설정과 검증이 결속할 정확한 Codex 아티팩트를 찾아 실행할 수
 있어야 합니다. 명령 이름을 찾은 것만으로는 지원이 성립하지 않습니다. 검증은
-해석한 실행 파일을 hash하고, 현재 플랫폼의 정확한 릴리스 manifest 항목과
+해석한 실행 파일을 hash하고, 현재 플랫폼의 정확한 내장 지원 카탈로그 entry와
 대조하며, binding이 요구하는 프로세스와 capability 관찰을 기록하고, 모든 adapter
 점검이 성공한 뒤에만 영수증을 발행합니다.
 

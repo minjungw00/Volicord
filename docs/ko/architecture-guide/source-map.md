@@ -11,6 +11,8 @@
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
+| `crates/volicord-types/src/codex_support_catalog.rs`와 `contracts/codex-support-catalog.json` | 내장 exact Codex 런타임 지원 정책. |
+| `crates/volicord-types/src/codex_release_evidence.rs` | 증거를 포함하지 않는 엄격한 외부 릴리스 증거 타입과 parsing. |
 | `crates/volicord-types/src/tool_names.rs` | 공개 MCP 도구 이름 레지스트리. |
 
 ## Store
@@ -64,7 +66,7 @@
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
-| `tests/release-validation/` | 정확한 최종 Codex 아티팩트 검증과 체크인된 네 플랫폼 manifest. |
+| `tests/release-validation/` | 정확한 최종 Codex 및 Volicord 아티팩트 검증과 외부 네 플랫폼 증거 manifest. |
 | `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store, 요청 도우미. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를

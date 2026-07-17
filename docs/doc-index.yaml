@@ -686,8 +686,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -837,13 +837,13 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, and independent exact-artifact Codex release cells.
+  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, and the split between embedded Codex support policy and independent exact-artifact release evidence.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1067,13 +1067,13 @@ documents:
   path_en: docs/en/architecture-guide/decisions/host-release-evidence-gate.md
   path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
   kind: explanation
-  summary: Architecture decision for exact finalized Codex artifact validation through four independent platform cells and an honest zero-to-four-cell checked-in manifest.
+  summary: Architecture decision separating the embedded Codex runtime support catalog from exact finalized Codex and Volicord release evidence across four independent platform cells.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-14'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1324,8 +1324,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1456,7 +1456,7 @@ documents:
   - Runtime Home, Product Repository, and Codex configuration access prerequisites
   - independent WSL2 release-cell topology, ext4 boundary, platform identity, and unsupported
     Windows/WSL crossings
-  - exact first-release WSL2 Ubuntu distribution and release-cell image coordinate
+  - exact first-release WSL2 Ubuntu distribution and support-catalog image coordinate
   - exact Codex artifact eligibility without minimum-version or command-name inference
   - managed Codex binding, receipt, executable, process, and platform-environment prerequisites
   - managed stdio MCP launch-environment prerequisites
@@ -1474,8 +1474,8 @@ documents:
   path_en: docs/en/reference/host-release-evidence.md
   path_ko: docs/ko/reference/host-release-evidence.md
   kind: reference
-  summary: Exact finalized Codex artifact and capability manifest, independent Linux, macOS,
-    native Windows, and WSL2 release cells, shared scenarios, and honest cell execution status.
+  summary: Separate embedded Codex runtime support policy and external exact Codex and Volicord
+    release evidence for independent Linux, macOS, native Windows, and WSL2 cells.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1494,8 +1494,12 @@ documents:
   - implement
   - maintain
   canonical_for:
-  - exact `CodexReleaseCell` shape and artifact, platform, capability, profile, and evidence binding
-  - checked-in canonical Codex release manifest source and update procedure
+  - exact `CodexSupportCatalog` and `CodexSupportEntry` runtime-policy shapes and identity digest
+  - runtime-policy prohibition on Volicord artifact digests and release-execution fields
+  - exact external `CodexReleaseEvidenceManifest`, `CodexReleaseEvidenceEntry`, and validation-evidence shapes
+  - checked-in canonical support-catalog and release-evidence sources and update procedure
+  - non-embedding boundary for external release evidence
+  - release-evidence cross-checking against the embedded support catalog
   - machine-readable `unsupported_host_artifact` result for unregistered exact artifacts
   - independent Linux, macOS, native Windows, and WSL2 release cells without cross-cell inference
   - explicit test-only Codex descriptors that cannot establish runtime support
@@ -2771,7 +2775,7 @@ documents:
   - Codex discovery, install, verify, repair, uninstall, drift, executable, process, and artifact responsibilities
   - exact `HostVerificationReceipt` fields, freshness, project/connection/policy/binding/capability binding
   - Core receipt validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
-  - exact Codex release-manifest eligibility and `unsupported_host_artifact`
+  - exact embedded Codex support-catalog eligibility and `unsupported_host_artifact`
   - typed persisted host-setup `UserAction`, `persisted_user_actions_corrupt`, degraded projection, and repair
   - first-release managed-host threat model and non-signing boundary
   depends_on:
@@ -3119,7 +3123,7 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, independent four-platform Codex release cells, Rust checks, and result reporting.
+  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, separate Codex support policy and four-platform release evidence, Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -3142,7 +3146,7 @@ documents:
   - durable repository-test and one-time audit reporting boundaries
   - representative-user Codex onboarding usability validation
   - exact finalized artifact validation for independent Linux, macOS, native Windows, and WSL2 cells
-  - honest zero-to-four-cell manifest review and unavailable-attempt reporting
+  - honest zero-to-four-entry external release-evidence review and unavailable-attempt reporting
   - Rust formatting, lint, test, diff, repository-hygiene, and skipped-validation reporting
   depends_on:
   - maintain.documentation-policy

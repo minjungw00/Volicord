@@ -13,14 +13,19 @@ use std::{
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use volicord_types::{
-    compute_codex_release_evidence_digest, CodexReleaseCell, CodexReleaseScenarioStatus,
-    CodexReleaseValidationEvidence, CodexReleaseValidationStatus, IntegrationProfile,
-    PlatformEnvironment, PlatformReleaseStatus, CODEX_RELEASE_PLATFORMS,
-    FIRST_RELEASE_CODEX_CAPABILITIES, PINNED_WSL2_DISTRIBUTION_NAME,
+    compute_codex_release_evidence_digest, CodexReleaseEvidenceEntry, CodexReleaseEvidenceManifest,
+    CodexReleasePlatformStatus, CodexReleaseScenarioStatus, CodexReleaseValidationEvidence,
+    CodexReleaseValidationResult, CodexSupportCatalog, IntegrationProfile, PlatformEnvironment,
+    PlatformReleaseCoordinate, CODEX_RELEASE_PLATFORMS, FIRST_RELEASE_CODEX_CAPABILITIES,
+    PINNED_WSL2_DISTRIBUTION_NAME,
 };
 
 use crate::{
-    contracts::{checked_in_manifest, load_manifest, CHECKED_IN_CODEX_RELEASE_MANIFEST_PATH},
+    contracts::{
+        embedded_codex_support_catalog, load_codex_release_evidence_manifest,
+        load_codex_support_catalog, CODEX_RELEASE_EVIDENCE_MANIFEST_PATH,
+        CODEX_SUPPORT_CATALOG_PATH,
+    },
     error::{ValidationError, ValidationResult},
     io::{write_json_create_new, ValidationContext, MAX_MANIFEST_JSON_BYTES},
 };
@@ -48,7 +53,7 @@ pub const CANDIDATE_CELL_PATH_ENV: &str = "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GateReport {
     pub platform: PlatformEnvironment,
-    pub artifact_digest: String,
+    pub codex_artifact_digest: String,
     pub volicord_artifact_digest: String,
     pub evidence_digest: String,
     pub scenario_count: usize,
@@ -58,9 +63,9 @@ pub struct GateReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureReport {
     pub platform: PlatformEnvironment,
-    pub status: CodexReleaseValidationStatus,
+    pub validation_result: CodexReleaseValidationResult,
     pub candidate_path: PathBuf,
-    pub artifact_digest: String,
+    pub codex_artifact_digest: String,
     pub volicord_artifact_digest: String,
     pub evidence_digest: String,
     pub scenario_count: usize,
@@ -79,33 +84,34 @@ pub(super) struct GateConfiguration {
     pub(super) wsl2_distribution: Option<String>,
 }
 
-/// Runs the blocking gate for one platform against only the canonical checked-in manifest.
+/// Runs the blocking gate for one platform against the embedded support catalog
+/// and canonical checked-in external evidence manifest.
 pub fn run_checked_in_cell_gate(platform: PlatformEnvironment) -> ValidationResult<GateReport> {
     validate_process_boundary(platform)?;
     let context = validation_context(platform)?;
-    let embedded_manifest = load_matching_checked_in_manifest(&context)?;
+    let (_, evidence_manifest) = load_checked_in_contracts(&context)?;
 
-    let Some(cell) = embedded_manifest
-        .cells()
+    let Some(entry) = evidence_manifest
+        .entries()
         .iter()
-        .find(|cell| cell.platform == platform)
+        .find(|entry| entry.platform_environment == platform)
     else {
         return Err(ValidationError::new(format!(
             "Codex release platform {} has checked-in status not_run; an exact passing cell is required",
             platform.as_str()
         )));
     };
-    if cell.validation_evidence.status != CodexReleaseValidationStatus::Passed {
+    if entry.validation_evidence.validation_result != CodexReleaseValidationResult::Passed {
         return Err(ValidationError::new(format!(
             "Codex release platform {} has checked-in status {}; an exact passing cell is required",
             platform.as_str(),
-            release_status_name(embedded_manifest.platform_status(platform))
+            release_status_name(evidence_manifest.platform_status(platform))
         )));
     }
 
     let configuration = GateConfiguration::from_process(platform)?;
     validate_gate_paths(&context, platform, &configuration)?;
-    validate_actual_runner_coordinate(cell, platform, &configuration)?;
+    validate_actual_runner_coordinate(entry, platform, &configuration)?;
 
     let codex_before = hash_artifact(
         &context,
@@ -119,13 +125,13 @@ pub fn run_checked_in_cell_gate(platform: PlatformEnvironment) -> ValidationResu
         &configuration.volicord_path,
         &configuration,
     )?;
-    if codex_before != cell.artifact_digest {
+    if codex_before != entry.codex_artifact_digest {
         return Err(ValidationError::new(format!(
             "actual Codex executable digest does not match the exact checked-in {} cell",
             platform.as_str()
         )));
     }
-    if volicord_before != cell.validation_evidence.volicord_artifact_digest {
+    if volicord_before != entry.validation_evidence.volicord_artifact_digest {
         return Err(ValidationError::new(format!(
             "actual Volicord executable digest does not match the exact checked-in {} cell",
             platform.as_str()
@@ -134,7 +140,7 @@ pub fn run_checked_in_cell_gate(platform: PlatformEnvironment) -> ValidationResu
 
     probe_executable(platform, &configuration.codex_path, &configuration)?;
     probe_executable(platform, &configuration.volicord_path, &configuration)?;
-    run_checked_scenario_catalog(&context, platform, cell, &configuration)?;
+    run_checked_scenario_catalog(&context, platform, entry, &configuration)?;
 
     let codex_after = hash_artifact(
         &context,
@@ -161,23 +167,24 @@ pub fn run_checked_in_cell_gate(platform: PlatformEnvironment) -> ValidationResu
 
     Ok(GateReport {
         platform,
-        artifact_digest: codex_after,
+        codex_artifact_digest: codex_after,
         volicord_artifact_digest: volicord_after,
-        evidence_digest: cell.validation_evidence.evidence_digest.clone(),
-        scenario_count: cell.validation_evidence.scenario_results.len(),
+        evidence_digest: entry.validation_evidence.evidence_digest.clone(),
+        scenario_count: entry.validation_evidence.scenario_results.len(),
     })
 }
 
 /// Executes one qualifying platform attempt and writes a new external review candidate.
 ///
-/// This producer never edits or promotes the canonical checked-in manifest. Release
-/// publication continues to require `run_checked_in_cell_gate` against a reviewed cell.
+/// This producer never edits or promotes either canonical contract. Release
+/// publication continues to require `run_checked_in_cell_gate` against reviewed
+/// external evidence that matches the embedded support catalog.
 pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult<CaptureReport> {
     validate_process_boundary(platform)?;
     let context = validation_context(platform)?;
-    // Refuse to produce from a build whose embedded manifest and checkout disagree,
-    // even though capture itself does not require a pre-existing cell.
-    load_matching_checked_in_manifest(&context)?;
+    // Refuse to produce from a build whose embedded support policy and checkout
+    // disagree, or whose checked-in external evidence is not policy-bound.
+    let (support_catalog, _) = load_checked_in_contracts(&context)?;
 
     let configuration = GateConfiguration::from_process(platform)?;
     validate_gate_paths(&context, platform, &configuration)?;
@@ -206,6 +213,24 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
         &configuration.volicord_path,
         &configuration,
     )?;
+    let platform_release_coordinate = if platform == PlatformEnvironment::Wsl2 {
+        PlatformReleaseCoordinate::first_release_wsl2()
+    } else {
+        PlatformReleaseCoordinate::native()
+    };
+    support_catalog
+        .lookup_supported_entry(
+            &codex_before,
+            platform,
+            &platform_release_coordinate,
+            &FIRST_RELEASE_CODEX_CAPABILITIES,
+            IntegrationProfile::Record,
+        )
+        .map_err(|error| {
+            ValidationError::new(format!(
+                "candidate Codex artifact is absent from the embedded support catalog: {error}"
+            ))
+        })?;
     probe_executable(platform, &configuration.codex_path, &configuration)?;
     probe_executable(platform, &configuration.volicord_path, &configuration)?;
     let scenario_results = capture_scenario_catalog(
@@ -239,14 +264,14 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
         ));
     }
 
-    let status = aggregate_scenario_status(&scenario_results)?;
+    let validation_result = aggregate_scenario_status(&scenario_results)?;
     let observed_at =
         DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::AutoSi, true);
     let capabilities = FIRST_RELEASE_CODEX_CAPABILITIES.to_vec();
     let mut evidence = CodexReleaseValidationEvidence {
-        status,
-        artifact_digest: codex_after.clone(),
-        platform,
+        validation_result,
+        codex_artifact_digest: codex_after.clone(),
+        platform_environment: platform,
         observed_capabilities: capabilities.clone(),
         integration_profile: IntegrationProfile::Record,
         volicord_artifact_digest: volicord_after.clone(),
@@ -259,45 +284,52 @@ pub fn capture_candidate_cell(platform: PlatformEnvironment) -> ValidationResult
         compute_codex_release_evidence_digest(&evidence).map_err(|error| {
             ValidationError::new(format!("cannot digest candidate evidence: {error}"))
         })?;
-    let cell = CodexReleaseCell {
-        artifact_digest: codex_after.clone(),
-        platform,
+    let entry = CodexReleaseEvidenceEntry {
+        codex_artifact_digest: codex_after.clone(),
+        platform_environment: platform,
         observed_capabilities: capabilities,
         integration_profile: IntegrationProfile::Record,
         validation_evidence: evidence,
     };
+    let candidate_manifest = CodexReleaseEvidenceManifest::from_entries(vec![entry.clone()])
+        .map_err(|error| ValidationError::new(format!("invalid candidate evidence: {error}")))?;
+    candidate_manifest
+        .validate_against_support_catalog(&support_catalog)
+        .map_err(|error| {
+            ValidationError::new(format!("unsupported candidate evidence: {error}"))
+        })?;
     write_json_create_new(
         &context,
         &candidate_path,
-        &vec![cell.clone()],
+        &candidate_manifest,
         MAX_MANIFEST_JSON_BYTES,
     )?;
-    let verified = load_manifest(&candidate_path).map_err(|error| {
+    let verified = load_codex_release_evidence_manifest(&candidate_path).map_err(|error| {
         ValidationError::new(format!(
             "new candidate manifest failed strict verification at {}: {error}",
             candidate_path.display()
         ))
     })?;
-    if verified.cells() != std::slice::from_ref(&cell) {
+    if verified != candidate_manifest {
         return Err(ValidationError::new(
-            "new candidate manifest does not round-trip to its captured cell",
+            "new candidate evidence manifest does not round-trip to its captured entry",
         ));
     }
 
     Ok(CaptureReport {
         platform,
-        status,
+        validation_result,
         candidate_path,
-        artifact_digest: codex_after,
+        codex_artifact_digest: codex_after,
         volicord_artifact_digest: volicord_after,
-        evidence_digest: cell.validation_evidence.evidence_digest,
-        scenario_count: cell.validation_evidence.scenario_results.len(),
+        evidence_digest: entry.validation_evidence.evidence_digest,
+        scenario_count: entry.validation_evidence.scenario_results.len(),
     })
 }
 
 fn aggregate_scenario_status(
     results: &[volicord_types::CodexReleaseScenarioResult],
-) -> ValidationResult<CodexReleaseValidationStatus> {
+) -> ValidationResult<CodexReleaseValidationResult> {
     let mut earlier_terminal_outcome = false;
     for result in results {
         if result.status == CodexReleaseScenarioStatus::NotRun && !earlier_terminal_outcome {
@@ -314,19 +346,19 @@ fn aggregate_scenario_status(
         .iter()
         .any(|result| result.status == CodexReleaseScenarioStatus::Failed)
     {
-        return Ok(CodexReleaseValidationStatus::Failed);
+        return Ok(CodexReleaseValidationResult::Failed);
     }
     if results
         .iter()
         .any(|result| result.status == CodexReleaseScenarioStatus::Unavailable)
     {
-        return Ok(CodexReleaseValidationStatus::Unavailable);
+        return Ok(CodexReleaseValidationResult::Unavailable);
     }
     if results
         .iter()
         .all(|result| result.status == CodexReleaseScenarioStatus::Passed)
     {
-        return Ok(CodexReleaseValidationStatus::Passed);
+        return Ok(CodexReleaseValidationResult::Passed);
     }
     Err(ValidationError::new(
         "scenario catalog has no failed or unavailable result explaining not_run",
@@ -349,29 +381,45 @@ fn validation_context(platform: PlatformEnvironment) -> ValidationResult<Validat
     }
 }
 
-fn load_matching_checked_in_manifest(
+fn load_checked_in_contracts(
     context: &ValidationContext,
-) -> ValidationResult<volicord_types::CodexReleaseManifest> {
-    let manifest_path = context
+) -> ValidationResult<(CodexSupportCatalog, CodexReleaseEvidenceManifest)> {
+    let support_catalog_path = context.source_checkout().join(CODEX_SUPPORT_CATALOG_PATH);
+    let evidence_manifest_path = context
         .source_checkout()
-        .join(CHECKED_IN_CODEX_RELEASE_MANIFEST_PATH);
-    let embedded_manifest = checked_in_manifest().map_err(|error| {
+        .join(CODEX_RELEASE_EVIDENCE_MANIFEST_PATH);
+    let embedded_support_catalog = embedded_codex_support_catalog().map_err(|error| {
         ValidationError::new(format!(
-            "embedded Codex release manifest is invalid: {error}"
+            "embedded Codex support catalog is invalid: {error}"
         ))
     })?;
-    let disk_manifest = load_manifest(&manifest_path).map_err(|error| {
-        ValidationError::new(format!(
-            "checked-in Codex release manifest is invalid at {}: {error}",
-            manifest_path.display()
-        ))
-    })?;
-    if embedded_manifest != disk_manifest {
+    let disk_support_catalog =
+        load_codex_support_catalog(&support_catalog_path).map_err(|error| {
+            ValidationError::new(format!(
+                "on-disk Codex support catalog is invalid at {}: {error}",
+                support_catalog_path.display()
+            ))
+        })?;
+    if embedded_support_catalog != disk_support_catalog {
         return Err(ValidationError::new(
-            "compiled and on-disk checked-in Codex release manifests differ",
+            "embedded and on-disk Codex support catalogs differ",
         ));
     }
-    Ok(embedded_manifest)
+    let evidence_manifest =
+        load_codex_release_evidence_manifest(&evidence_manifest_path).map_err(|error| {
+            ValidationError::new(format!(
+                "external Codex release-evidence manifest is invalid at {}: {error}",
+                evidence_manifest_path.display()
+            ))
+        })?;
+    evidence_manifest
+        .validate_against_support_catalog(&embedded_support_catalog)
+        .map_err(|error| {
+            ValidationError::new(format!(
+                "external Codex release evidence is not supported by the embedded catalog: {error}"
+            ))
+        })?;
+    Ok((embedded_support_catalog, evidence_manifest))
 }
 
 impl GateConfiguration {
@@ -512,23 +560,20 @@ pub(super) fn run_bounded_status(
     }
 }
 
-fn release_status_name(status: PlatformReleaseStatus) -> &'static str {
+fn release_status_name(status: CodexReleasePlatformStatus) -> &'static str {
     match status {
-        PlatformReleaseStatus::Passed => "passed",
-        PlatformReleaseStatus::Failed => "failed",
-        PlatformReleaseStatus::Unavailable => "unavailable",
-        PlatformReleaseStatus::NotRun => "not_run",
+        CodexReleasePlatformStatus::Passed => "passed",
+        CodexReleasePlatformStatus::Failed => "failed",
+        CodexReleasePlatformStatus::Unavailable => "unavailable",
+        CodexReleasePlatformStatus::NotRun => "not_run",
     }
 }
 
 /// Returns all independent platform statuses for honest preflight reporting.
 pub fn checked_in_platform_statuses(
-) -> ValidationResult<[(PlatformEnvironment, PlatformReleaseStatus); 4]> {
-    let manifest = checked_in_manifest().map_err(|error| {
-        ValidationError::new(format!(
-            "embedded Codex release manifest is invalid: {error}"
-        ))
-    })?;
+) -> ValidationResult<[(PlatformEnvironment, CodexReleasePlatformStatus); 4]> {
+    let context = validation_context(PlatformEnvironment::Linux)?;
+    let (_, manifest) = load_checked_in_contracts(&context)?;
     Ok(CODEX_RELEASE_PLATFORMS.map(|platform| (platform, manifest.platform_status(platform))))
 }
 
@@ -540,7 +585,7 @@ mod tests {
     fn checked_in_gate_statuses_report_every_absent_cell_as_not_run() {
         assert_eq!(
             checked_in_platform_statuses().expect("checked-in statuses"),
-            CODEX_RELEASE_PLATFORMS.map(|platform| (platform, PlatformReleaseStatus::NotRun))
+            CODEX_RELEASE_PLATFORMS.map(|platform| (platform, CodexReleasePlatformStatus::NotRun))
         );
     }
 

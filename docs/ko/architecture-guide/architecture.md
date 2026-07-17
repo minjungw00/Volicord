@@ -62,7 +62,7 @@ flowchart LR
 
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시, 호스트 기능 구현 타입, 정적 매트릭스, 단일 기능 지원 상태 평가. |
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시, 호스트 기능 구현 타입과 내장 Codex 지원 카탈로그 parser, 외부 증거를 포함하지 않는 릴리스 증거 parser. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, 변경 불가능한 호스트 검증 영수증, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, 관리형 stdio MCP 프로세스 인계를 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
@@ -71,7 +71,7 @@ flowchart LR
 | `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
 | `tests/conformance` | Core 쪽 API와 공유 픽스처를 통한 기준 범위 교차 메서드 시나리오. |
 | `tests/integration` | MCP, Core, Store, Agent Connection 바인딩, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
-| `tests/release-validation` | 공유 릴리스 시나리오와 서로 독립적인 Linux, macOS, native Windows, WSL2 Codex 릴리스 셀. 운영 런타임 동작을 담당하지 않습니다. |
+| `tests/release-validation` | 외부 릴리스 증거 경로, 공유 릴리스 시나리오, 카탈로그 교차 점검, 서로 독립적인 Linux, macOS, native Windows, WSL2 Codex 릴리스 셀. 운영 런타임 동작을 담당하지 않습니다. |
 | `xtask` | 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처 밖에 있습니다. |
 
 ## 의존 경계

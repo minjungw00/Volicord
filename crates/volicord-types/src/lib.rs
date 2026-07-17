@@ -8,7 +8,9 @@
 //! adapter behavior.
 
 pub mod canonical;
-pub mod codex_release_manifest;
+mod codex_contract;
+pub mod codex_release_evidence;
+pub mod codex_support_catalog;
 pub mod external_contract;
 pub mod host_capability;
 pub mod host_setup_user_action;
@@ -23,7 +25,8 @@ pub mod tool_names;
 pub mod values;
 
 pub use canonical::*;
-pub use codex_release_manifest::*;
+pub use codex_release_evidence::*;
+pub use codex_support_catalog::*;
 pub use external_contract::*;
 pub use host_capability::*;
 pub use host_setup_user_action::*;

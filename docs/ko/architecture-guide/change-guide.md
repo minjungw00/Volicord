@@ -60,8 +60,9 @@ git diff --check
 ```
 
 release 지원 변경은 정확한 최종 아티팩트 workflow와 독립된 `linux`, `macos`,
-`native_windows`, `wsl2` 셀도 요구합니다. manifest에는 사실대로 0개부터 4개 셀이
-있을 수 있으며, 정확한 passing 셀만 자기 좌표를 지원합니다.
+`native_windows`, `wsl2` 셀도 요구합니다. 내장 런타임 정책과 외부 릴리스 증거를
+분리합니다. 증거 manifest에는 사실대로 entry를 0~4개 둘 수 있으며 지원
+카탈로그와 정확히 일치하는 통과 증거만 해당 릴리스 셀을 충족합니다.
 
 ## 인계
 

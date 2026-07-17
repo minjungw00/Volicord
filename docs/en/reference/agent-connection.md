@@ -156,17 +156,18 @@ environment_image: Ubuntu-24.04-LTS-WSL2
 Unknown fields, a `native` coordinate paired with `platform_environment=wsl2`,
 a WSL2 coordinate paired with a native environment, or any different WSL2
 value is invalid. The three distribution values are observed in the current
-WSL2 process. `environment_image` is the exact release-cell image registered
-for those facts. Exact support lookup compares it with the passing cell, so a
-cell for another distribution image cannot authorize the binding.
+WSL2 process. `environment_image` is the exact runtime support-policy image
+registered for those facts. Exact support lookup compares it with the embedded
+support entry, so an entry for another distribution image cannot authorize the
+binding.
 
 <a id="codex-capability"></a>
 
 ## `CodexCapability`
 
 This document owns the capability identifiers used by `ManagedHostBinding`,
-`HostVerificationReceipt`, and `CodexReleaseCell`. `CodexCapability` is the
-closed value set below:
+`HostVerificationReceipt`, `CodexSupportEntry`, and
+`CodexReleaseEvidenceEntry`. `CodexCapability` is the closed value set below:
 
 | Value | Required first-release behavior |
 |---|---|
@@ -176,8 +177,8 @@ closed value set below:
 | `shared_managed_binding` | The artifact supports the exact `shared` managed-binding lifecycle. |
 
 `FirstReleaseCodexCapabilities` is the set containing all four values. Every
-first-release binding, receipt, and passed release cell carries exactly that
-set, sorted by ascending UTF-8 bytes:
+first-release binding, receipt, support entry, and release-evidence entry
+carries exactly that set, sorted by ascending UTF-8 bytes:
 
 ```text
 managed_stdio_mcp
@@ -345,16 +346,16 @@ The Codex adapter owns all host-specific inspection and mutation:
 - uninstall only the matching Volicord-managed state.
 
 Discovery does not make an artifact supported. The adapter accepts only one
-`passed` release cell whose `artifact_digest` equals
-`process_binding.executable_digest`, whose `platform` equals
-`platform_environment`, whose `integration_profile` is `record`, and whose
-`observed_capabilities` exactly equals `required_capabilities`. For WSL2, the
-cell's `runner.environment_image` must also equal the binding's
-`platform_release_coordinate.environment_image`. The current binding, receipt,
-and cell must therefore agree on platform coordinate, executable digest,
-profile, and the exact canonical capability set. A recognizable command name,
-a reported version range, a nearby artifact, a partial capability match, or a
-cell for another platform is insufficient. Any absence or mismatch is
+embedded `CodexSupportEntry` whose `codex_artifact_digest` equals
+`process_binding.executable_digest`, whose `platform_environment` matches the
+current platform, whose `integration_profile` is `record`, and whose
+`verified_capabilities` exactly equals `required_capabilities`. Its exact
+`platform_release_coordinate` must also equal the binding coordinate. The
+current binding, receipt, and support entry must therefore agree on platform
+coordinate, executable digest, profile, and the exact canonical capability
+set. External release evidence is not read during this lookup. A recognizable
+command name, a reported version range, a nearby artifact, a partial capability
+match, or an entry for another platform is insufficient. Any absence or mismatch is
 `UnsupportedContract` with machine-readable reason
 `unsupported_host_artifact`.
 
@@ -410,8 +411,8 @@ therefore cannot be reused for another distribution or image even when its
 `binding_digest` has the canonical `sha256:<64-lowercase-hex>` form defined
 above. `executable_digest` is the raw 64-lowercase-hex SHA-256 of the observed
 Codex executable and exactly equals
-`process_binding.executable_digest` and the matched release cell's
-`artifact_digest`. `policy_digest` is the exact current canonical
+`process_binding.executable_digest` and the matched support entry's
+`codex_artifact_digest`. `policy_digest` is the exact current canonical
 `policy_fingerprint` in `sha256:<64-lowercase-hex>` form.
 `verifier_build_digest` is the raw 64-lowercase-hex SHA-256 of the exact
 Volicord verifier executable bytes.
@@ -451,17 +452,17 @@ receipt-dependent operation proceeds:
 - `connection_id` matches the resolved current Agent Connection;
 - `host_kind=codex` and `integration_profile=record` match the connection;
 - `platform_environment` matches the current connection, binding,
-  `process_binding`, and passed release cell exactly;
+  `process_binding`, and exact support entry;
 - `platform_release_coordinate` matches the current independently observed
-  coordinate, binding, receipt, and passed release-cell image exactly;
+  coordinate, binding, receipt, and support entry exactly;
 - `required_capabilities` and `verified_capabilities` exactly equal each other,
-  `FirstReleaseCodexCapabilities`, and the passed cell's
-  `observed_capabilities`;
+  `FirstReleaseCodexCapabilities`, and the support entry's
+  `verified_capabilities`;
 - `policy_digest` matches the current policy basis;
 - `binding_digest` and `generated_artifacts_digest` match the current stored
   binding and managed artifact identity;
-- `executable_digest` matches the current process binding and exact passed
-  release-cell `artifact_digest`;
+- `executable_digest` matches the current process binding and exact support-entry
+  `codex_artifact_digest`;
 - `verifier_build_digest` matches the currently accepted verifier build;
 - `contract_id=volicord.host-verification-receipt`,
   `result=verified`, and `observed_at <= current_time < expires_at`;

@@ -217,10 +217,11 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 ## Codex 릴리스 검증 검토
 
 릴리스 검증은 [호스트 릴리스 증거](../reference/host-release-evidence.md)가 정의하는
-정확한 최종 Codex 아티팩트와 독립된 `linux`, `macos`, `native_windows`, `wsl2`
+정확한 최종 Codex 및 Volicord 아티팩트와 독립된 `linux`, `macos`,
+`native_windows`, `wsl2`
 셀 네 개로 제한됩니다. 선택한 셀은 담당 문서의 닫힌 시나리오 목록을 실행하고 정확히
 제한된 증거 형태를 게시해야 합니다. 저장소 테스트, 구성 fixture, 다른 플랫폼 결과,
-복사한 manifest 항목은 셀을 통과시킬 수 없습니다.
+복사한 증거 항목은 셀을 통과시킬 수 없습니다.
 
 실제 검증에는 폐기 가능한 Product Repository, Runtime Home, 외부 결과 위치만
 사용합니다. 자격 증명, prompt, 대화 기록, token, 스크린샷, 런타임 데이터를 저장소
@@ -229,10 +230,11 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 
 ## 정확한 호스트 릴리스 증거 게이트
 
-[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell) 형태, 정확한
-아티팩트 규칙, 체크인된 manifest, 독립 플랫폼 셀, 필수 시나리오, 셀 상태 의미는 호스트
-릴리스 증거가 담당합니다. 유지관리자는 실행 절차에서 이 계약을 다시 정의하거나 CLI
-텍스트로 릴리스 주장을 추론하지 않습니다.
+[`CodexSupportCatalog`](../reference/host-release-evidence.md#codex-support-catalog),
+[`CodexReleaseEvidenceManifest`](../reference/host-release-evidence.md#codex-release-evidence-manifest),
+정확한 아티팩트 규칙, 독립 플랫폼 셀, 필수 시나리오, 셀 상태 의미는 호스트 릴리스
+증거가 담당합니다. 유지관리자는 실행 절차에서 이 계약을 다시 정의하거나 CLI 텍스트로
+릴리스 주장을 추론하지 않습니다.
 
 테스트 전용 `tests/release-validation` 패키지가 있으면 다음을 실행합니다.
 
@@ -241,10 +243,11 @@ cargo test --locked -p volicord-release-validation-tests --all-targets --all-fea
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 ```
 
-테스트 명령은 계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례, 정확한 지원
-조회를 검증합니다. 최종 확정 Codex 아티팩트를 실행하지 않으므로 어떤 플랫폼 셀도
-`passed`로 만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 네 셀의 실제 상태 또는
-파생 상태를 보고합니다. 정직한 `[]` manifest에서는 네 셀 모두 `not_run`으로
+테스트 명령은 분리된 계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례,
+정확한 런타임 지원 조회, 외부 증거 비포함 경계, 증거와 카탈로그의 교차 대조를
+검증합니다. 최종 확정 아티팩트를 실행하지 않으므로 어떤 플랫폼 셀도 `passed`로
+만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 네 셀의 실제 또는 파생 외부 증거
+상태를 보고합니다. 사실에 맞는 `entries: []` 원본에서는 네 셀 모두 `not_run`으로
 보고합니다.
 
 실행 명령과 모든 정확한 입력 의미는
@@ -278,17 +281,19 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate wsl2
 ```
 
-후보 생성은 기존 통과 manifest 셀을 요구하지 않습니다. 전체 플랫폼 카탈로그를
-실행하고 정확한 runner 및 아티팩트 좌표를 기록하며, create-new 방식의 외부 단일 셀
-후보 배열만 기록합니다. 기준 manifest를 편집하거나 승격하지 않습니다. `failed` 또는
+후보 생성은 정확한 Codex 좌표가 내장 지원 카탈로그에 있기를 요구하지만 기존 통과
+증거는 요구하지 않습니다. 전체 플랫폼 카탈로그를 실행하고 정확한 runner 및 두
+아티팩트 좌표를 기록하며, create-new 방식의 외부 단일 entry 후보 manifest만
+기록합니다. 두 기준 계약을 편집하거나 승격하지 않습니다. `failed` 또는
 `unavailable` 후보는 검토할 수 있도록 보존하지만 생성기는 실패로 종료합니다. runner가
 없으면 시도하지 않은 상태로 남고, 아티팩트, driver, 환경 좌표, 토폴로지 전제 조건이
 없으면 자격을 갖춘 후보 생성을 시작할 수 없습니다. job을 다른 runner로 우회하지 말고
 이 결과를 정확히 보고합니다.
 
-후보 배열 네 개를 검토하고 한 번의 릴리스 작업으로
-[체크인된 단일 manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)를
-`linux`, `macos`, `native_windows`, `wsl2` 순서로 교체합니다. 과거 entry를 추가하거나,
+후보 manifest 네 개를 검토하고 한 번의 릴리스 작업으로
+[체크인하는 기준 계약](../reference/host-release-evidence.md#canonical-checked-in-contracts)의
+외부 증거 원본을 `linux`, `macos`, `native_windows`, `wsl2` 순서로 교체합니다.
+과거 entry를 추가하거나,
 셀 사이에 증거를 복사하거나, 결과를 편집해 `passed`로 만들거나, 테스트 전용 설명자를
 불러오거나, 검토 전에 후보 출력을 체크인 증거로 취급하면 안 됩니다. 검토한 manifest를
 대상으로 계약 테스트를 다시 실행합니다.
@@ -302,11 +307,12 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
 ```
 
-재실행 게이트는 전체 플랫폼 카탈로그를 driver에 위임하기 전에 정확한 기존 체크인 통과
-셀을 요구합니다. 셀이 없으면 `not_run`으로 실패합니다. 체크인 셀이 통과 상태가 아니거나,
-runner 좌표, 아티팩트, scenario driver, 시나리오 증거, 토폴로지가 달라도 선택한 job이
-실패합니다. 따라서 현재의 정직한 `[]` manifest에서는 후보를 생성할 수 있지만 모든 차단
-재실행은 `not_run`으로 실패합니다.
+재실행 게이트는 전체 플랫폼 카탈로그를 driver에 위임하기 전에 정확한 내장 지원
+entry와 기존 체크인 통과 증거를 요구합니다. 증거가 없으면 `not_run`으로 실패합니다.
+증거가 통과 상태가 아니거나, runner 좌표, Codex 또는 Volicord 아티팩트, scenario
+driver, 시나리오 증거, 토폴로지가 달라도 선택한 job이 실패합니다. 따라서 현재의
+사실에 맞는 `entries: []` 지원 및 증거 원본은 후보 생성과 차단 재실행 모두에서 fail
+closed로 동작합니다.
 
 일반 `.github/workflows/ci.yml`은 정적 계약 테스트만 실행합니다.
 `.github/workflows/release.yml`의 pull request도 실제 job을 건너뜁니다. tag push 또는
@@ -314,11 +320,11 @@ runner 좌표, 아티팩트, scenario driver, 시나리오 증거, 토폴로지�
 예약합니다. `publish-release`는 네 job 모두에 의존하므로 대기, 건너뜀, 사용 불가,
 실패, `not_run` 셀이 하나라도 있으면 게시를 막습니다.
 
-플랫폼별로 게시자가 제어하는 모든 byte 변경을 끝낸 Codex 실행 파일을 최종 확정하고
-SHA-256 digest를 계산한 뒤, 같은 byte를 일치하는
+플랫폼별로 게시자가 제어하는 모든 byte 변경을 끝낸 Codex와 Volicord 실행 파일을
+최종 확정하고 두 SHA-256 digest를 계산한 뒤, 같은 byte를 일치하는
 [독립 플랫폼 셀](../reference/host-release-evidence.md#independent-platform-cells)에서
 실행합니다. [필수 시나리오 집합](../reference/host-release-evidence.md#required-release-validation-scenarios)을
-모두 실행하고 실행 파일을 다시 열어 hash를 재확인합니다. 다시 빌드하거나 복사하거나 다른
+모두 실행하고 두 실행 파일을 다시 열어 hash를 재확인합니다. 다시 빌드하거나 복사하거나 다른
 방식으로 패키징했거나 다른 플랫폼용인 실행 파일로 해당 byte를 대신할 수 없습니다.
 
 `linux`, `macos`, `native_windows`, `wsl2`를 각각 담당 환경에서 독립적으로 실행합니다.

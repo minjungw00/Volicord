@@ -44,11 +44,14 @@ native_windows
 wsl2
 ```
 
-Each cell executes the closed scenario catalog against the same exact finalized
-Codex executable digest and its own exact environment. No platform result
-substitutes for another. The checked-in manifest may contain zero through four
-cells and must report only actual attempts. A `passed` cell supports only its
-exact artifact, platform, Record profile, and complete capability coordinates.
+Each cell executes the closed scenario catalog against exact finalized Codex
+and Volicord executable digests in its own exact environment. No platform result
+substitutes for another. Runtime lookup tests the embedded
+`CodexSupportCatalog` without release evidence. Release validation tests the
+external `CodexReleaseEvidenceManifest`, including deterministic parsing and
+cross-checking against the catalog. The evidence manifest may contain zero
+through four entries and must report only actual attempts. A `passed` result is
+release evidence only for its exact catalog coordinates and Volicord digest.
 
 Mock, fixture, rebuilt, selected, or neighboring artifacts cannot replace the
 final bytes. Failed, unavailable, and not-run scenarios remain explicit in the

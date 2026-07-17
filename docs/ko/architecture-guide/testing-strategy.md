@@ -43,11 +43,14 @@ native_windows
 wsl2
 ```
 
-각 셀은 같은 정확한 최종 Codex 실행 파일 digest와 자기의 정확한 환경에서 폐쇄 scenario
-catalog를 실행합니다. 어느 플랫폼 결과도 다른 플랫폼을 대신하지 않습니다. 체크인한
-manifest에는 사실대로 0개부터 4개 셀이 있을 수 있으며 실제 시도만 보고해야 합니다.
-`passed` 셀은 정확한 아티팩트, 플랫폼, Record profile, 전체 capability 좌표만
-지원합니다.
+각 셀은 정확히 최종 확정된 Codex와 Volicord 실행 파일 digest를 자기의 정확한
+환경에서 사용해 닫힌 scenario catalog를 실행합니다. 어느 플랫폼 결과도 다른
+플랫폼을 대신하지 않습니다. 런타임 조회 테스트는 릴리스 증거 없이 내장
+`CodexSupportCatalog`를 검사합니다. 릴리스 검증 테스트는 외부
+`CodexReleaseEvidenceManifest`의 결정론적 parsing과 카탈로그 교차 대조를
+검사합니다. 증거 manifest에는 사실대로 entry를 0~4개 둘 수 있으며 실제 시도만
+보고해야 합니다. `passed` 결과는 정확한 카탈로그 좌표와 Volicord digest의 릴리스
+증거만 성립시킵니다.
 
 mock, fixture, 재빌드, 선택된 또는 인접 아티팩트는 최종 바이트를 대신할 수 없습니다.
 failed, unavailable, not-run scenario는

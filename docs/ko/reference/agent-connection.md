@@ -146,15 +146,16 @@ environment_image: Ubuntu-24.04-LTS-WSL2
 알 수 없는 필드, `platform_environment=wsl2`와 함께 쓴 `native` 좌표, 네이티브
 환경과 함께 쓴 WSL2 좌표, 다른 WSL2 값은 유효하지 않습니다. 배포판 값 세 개는
 현재 WSL2 프로세스에서 관찰합니다. `environment_image`는 이 배포판 사실에
-등록된 정확한 릴리스 셀 이미지입니다. 정확한 지원 조회는 이 값을 통과 셀과
-대조하므로 다른 배포판 이미지의 셀은 binding을 승인할 수 없습니다.
+등록된 정확한 런타임 지원 정책 이미지입니다. 정확한 지원 조회는 이 값을 내장 지원
+entry와 대조하므로 다른 배포판 이미지의 entry는 binding을 승인할 수 없습니다.
 
 <a id="codex-capability"></a>
 
 ## `CodexCapability`
 
 이 문서는 `ManagedHostBinding`, `HostVerificationReceipt`,
-`CodexReleaseCell`이 사용하는 capability 식별자를 담당합니다.
+`CodexSupportEntry`, `CodexReleaseEvidenceEntry`가 사용하는 capability 식별자를
+담당합니다.
 `CodexCapability`는 아래의 닫힌 값 집합입니다.
 
 | 값 | 첫 릴리스 필수 동작 |
@@ -165,8 +166,8 @@ environment_image: Ubuntu-24.04-LTS-WSL2
 | `shared_managed_binding` | 아티팩트가 정확한 `shared` 관리 binding 생명주기를 지원합니다. |
 
 `FirstReleaseCodexCapabilities`는 이 네 값을 모두 담는 집합입니다. 첫 릴리스의
-모든 binding, receipt, 통과 릴리스 셀은 UTF-8 바이트 오름차순으로 정렬한 다음의
-정확한 집합을 담습니다.
+모든 binding, receipt, 지원 entry, 릴리스 증거 entry는 UTF-8 바이트 오름차순으로
+정렬한 다음의 정확한 집합을 담습니다.
 
 ```text
 managed_stdio_mcp
@@ -326,16 +327,16 @@ Codex 어댑터는 호스트별 조사와 변경을 모두 담당합니다.
 - 일치하는 Volicord 관리 상태만 제거
 
 탐색만으로 아티팩트가 지원되는 것은 아닙니다. 어댑터는
-`artifact_digest`가 `process_binding.executable_digest`와 같고,
-`platform`이 `platform_environment`와 같으며,
-`integration_profile`이 `record`이고, `observed_capabilities`가
-`required_capabilities`와 정확히 같은 `passed` 릴리스 셀 하나만 허용합니다.
-WSL2에서는 셀의 `runner.environment_image`도 binding의
-`platform_release_coordinate.environment_image`와 같아야 합니다. 따라서 현재
-binding, receipt, 셀의 플랫폼 좌표, 실행 파일 digest, 프로필, 정확한 정규
-capability 집합이 모두 일치해야 합니다. 알아볼 수 있는 명령 이름, 보고된
-버전 범위, 비슷한 아티팩트, 일부 capability 일치, 다른 플랫폼 셀은 충분하지
-않습니다. 어떤 부재나 불일치도 machine-readable reason
+`codex_artifact_digest`가 `process_binding.executable_digest`와 같고,
+`platform_environment`가 현재 플랫폼과 일치하며,
+`integration_profile`이 `record`이고, `verified_capabilities`가
+`required_capabilities`와 정확히 같은 내장 `CodexSupportEntry` 하나만
+허용합니다. 정확한 `platform_release_coordinate`도 binding 좌표와 같아야 합니다.
+따라서 현재 binding, receipt, 지원 entry의 플랫폼 좌표, 실행 파일 digest, 프로필,
+정확한 정규 capability 집합이 모두 일치해야 합니다. 이 조회에서는 외부 릴리스 증거를
+읽지 않습니다. 알아볼 수 있는 명령 이름, 보고된 버전 범위, 비슷한 아티팩트, 일부
+capability 일치, 다른 플랫폼 entry는 충분하지 않습니다. 어떤 부재나 불일치도
+machine-readable reason
 `unsupported_host_artifact`를 가진 `UnsupportedContract`입니다.
 
 Repair는 정규 관리 상태와 호스트 설정 행동 데이터를 다시 생성합니다. 관련 없는 Codex
@@ -386,8 +387,8 @@ HostVerificationReceipt:
 
 `binding_digest`는 위에서 정의한 정규 `sha256:<64-lowercase-hex>` 형태입니다.
 `executable_digest`는 관찰한 Codex 실행 파일의 raw 64자 소문자 16진수
-SHA-256이며 `process_binding.executable_digest` 및 대조한 릴리스 셀의
-`artifact_digest`와 정확히 같습니다. `policy_digest`는
+SHA-256이며 `process_binding.executable_digest` 및 대조한 지원 entry의
+`codex_artifact_digest`와 정확히 같습니다. `policy_digest`는
 `sha256:<64-lowercase-hex>` 형태의 정확한 현재 정규 `policy_fingerprint`입니다.
 `verifier_build_digest`는 정확한 Volicord verifier 실행 파일 byte의 raw 64자
 소문자 16진수 SHA-256입니다.
@@ -425,18 +426,18 @@ Core는 typed 영수증만 소비하며 영수증에 의존하는 동작을 진�
 - `project_id`가 해석한 현재 프로젝트와 일치
 - `connection_id`가 해석한 현재 Agent Connection과 일치
 - `host_kind=codex`와 `integration_profile=record`가 연결과 일치
-- `platform_environment`가 현재 연결, binding, `process_binding`, 통과 릴리스
-  셀과 정확히 일치
+- `platform_environment`가 현재 연결, binding, `process_binding`, 정확한 지원
+  entry와 일치
 - `platform_release_coordinate`가 현재 독립적으로 관찰한 좌표, binding, receipt,
-  통과 릴리스 셀 이미지와 정확히 일치
+  지원 entry와 정확히 일치
 - `required_capabilities`와 `verified_capabilities`가 서로 같고,
-  `FirstReleaseCodexCapabilities` 및 통과 셀의 `observed_capabilities`와
+  `FirstReleaseCodexCapabilities` 및 지원 entry의 `verified_capabilities`와
   정확히 일치
 - `policy_digest`가 현재 policy 근거와 일치
 - `binding_digest`와 `generated_artifacts_digest`가 현재 저장된 결속 및 관리
   아티팩트 identity와 일치
-- `executable_digest`가 현재 process binding 및 정확한 통과 릴리스 셀의
-  `artifact_digest`와 일치
+- `executable_digest`가 현재 process binding 및 정확한 지원 entry의
+  `codex_artifact_digest`와 일치
 - `verifier_build_digest`가 현재 허용한 verifier build와 일치
 - `contract_id=volicord.host-verification-receipt`, `result=verified`이고
   `observed_at <= current_time < expires_at`

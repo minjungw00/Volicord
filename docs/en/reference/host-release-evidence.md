@@ -1,9 +1,10 @@
 # Host Release Evidence
 
-This document owns first-release support evidence for exact finalized Codex
-artifacts. It defines `CodexReleaseCell`, the checked-in support manifest,
-independent platform cells, required release-validation scenarios, and honest
-cell execution status.
+This document owns the strict separation between runtime Codex support policy
+and exact finalized-artifact release evidence. It defines the embedded
+`CodexSupportCatalog`, the external `CodexReleaseEvidenceManifest`, independent
+platform cells, required release-validation scenarios, and honest cell
+execution status.
 
 It does not define managed host configuration, receipt semantics, runtime trust,
 or operating-system prerequisites. Those contracts remain with their focused
@@ -15,39 +16,88 @@ they are never production runtime trust inputs.
 
 The labels below use the
 [surface-stability vocabulary](../maintain/documentation-policy.md#surface-stability-labels).
-The `CodexReleaseCell` shape, exact artifact-and-capability matching,
-`unsupported_host_artifact`, four independent platform cells, and cell status
-meanings are `stable`. Test runner modules and fixture layout below those
-boundaries are `internal`.
+The `CodexSupportCatalog`, `CodexReleaseEvidenceManifest`, exact
+artifact-and-capability matching, `unsupported_host_artifact`, four independent
+platform cells, and cell status meanings are `stable`. Test runner modules and
+fixture layout below those boundaries are `internal`.
 
-<a id="codex-release-cell"></a>
+<a id="codex-support-catalog"></a>
 
-## `CodexReleaseCell`
+## `CodexSupportCatalog`
 
-The first release records a strict cell with this exact closed shape:
+The executable embeds one strict runtime policy catalog with this exact closed
+shape and field order:
 
 ```yaml
-CodexReleaseCell:
-  artifact_digest: string
-  platform: PlatformEnvironment
+CodexSupportCatalog:
+  contract_id: volicord.codex-support-catalog
+  entries: CodexSupportEntry[]
+
+CodexSupportEntry:
+  codex_artifact_digest: string
+  platform_environment: PlatformEnvironment
+  platform_release_coordinate: PlatformReleaseCoordinate
+  integration_profile: record
+  verified_capabilities: CodexCapability[]
+```
+
+`codex_artifact_digest` is the raw 64-lowercase-hex SHA-256 of the exact
+finalized Codex executable bytes authorized by runtime policy. A first-release
+entry uses the exact platform and release coordinate owned by
+[Agent Connection](agent-connection.md#platform-environment), exactly
+`integration_profile=record`, and exactly `FirstReleaseCodexCapabilities` in
+canonical order. Entries are unique and appear in `linux`, `macos`,
+`native_windows`, `wsl2` order. The catalog may contain zero through four
+entries. An empty catalog rejects every Codex artifact.
+
+The catalog contains no Volicord executable digest, validation result, scenario
+status, evidence path, workflow run identifier, release-cell timestamp, or any
+other value derived from the final Volicord executable bytes. Unknown members,
+duplicate JSON keys, malformed digests, noncanonical field order, or values
+outside owned closed sets invalidate the catalog. Runtime lookup reads only this
+embedded catalog and requires an exact digest, platform, release coordinate,
+profile, and complete capability match. It never reads release evidence.
+
+The catalog identity is independent of release evidence. It uses the canonical
+`record` and `list` encodings declared below:
+
+```text
+support_catalog_identity_digest = lowercase_hex(sha256(
+  "volicord.codex-support-catalog\0"
+  || record(contract_id, entries)
+))
+```
+
+Each entry and nested platform release coordinate is encoded in its declared
+field order. Changing an external Volicord artifact digest, validation result,
+runner, scenario result, evidence path, workflow coordinate, or timestamp
+cannot change this identity.
+
+<a id="codex-release-evidence-manifest"></a>
+
+## `CodexReleaseEvidenceManifest`
+
+Release evidence remains external to the executable and uses this exact closed
+shape and field order:
+
+```yaml
+CodexReleaseEvidenceManifest:
+  contract_id: volicord.codex-release-evidence-manifest
+  entries: CodexReleaseEvidenceEntry[]
+
+CodexReleaseEvidenceEntry:
+  codex_artifact_digest: string
+  platform_environment: PlatformEnvironment
   observed_capabilities: CodexCapability[]
   integration_profile: record
   validation_evidence: CodexReleaseValidationEvidence
 ```
 
-`artifact_digest` is the raw 64-lowercase-hex SHA-256 of the exact finalized
-Codex executable bytes exercised by this cell. `platform` uses the closed
-`PlatformEnvironment` set, and `observed_capabilities` uses the closed
-`CodexCapability` set, both owned by
-[Agent Connection](agent-connection.md#platform-environment). A first-release
-cell carries exactly `FirstReleaseCodexCapabilities` in its required canonical
-order. `integration_profile` is exactly `record`.
-
-Every member is required. Unknown members, duplicate JSON keys, malformed
-digests, or a value outside an owned closed set invalidate the cell.
-`validation_evidence.artifact_digest`, `platform`,
-`observed_capabilities`, and `integration_profile` must exactly equal the
-owning cell coordinates. Evidence cannot widen or repair them.
+Every member is required. The outer coordinates bind the exact Codex artifact,
+platform environment, observed capability set, and profile exercised by the
+release cell. `validation_evidence.codex_artifact_digest`,
+`platform_environment`, `observed_capabilities`, and `integration_profile`
+must exactly equal the owning entry. Evidence cannot widen or repair them.
 
 <a id="codex-release-validation-evidence"></a>
 
@@ -58,18 +108,18 @@ field order:
 
 ```yaml
 CodexReleaseValidationEvidence:
-  status: passed | failed | unavailable
-  artifact_digest: string
-  platform: PlatformEnvironment
+  validation_result: passed | failed | unavailable
+  codex_artifact_digest: string
+  platform_environment: PlatformEnvironment
   observed_capabilities: CodexCapability[]
   integration_profile: record
   volicord_artifact_digest: string
-  runner: CodexReleaseRunnerCoordinate
+  runner: CodexReleaseEvidenceRunner
   scenario_results: CodexReleaseScenarioResult[]
   evidence_digest: string
   observed_at: string
 
-CodexReleaseRunnerCoordinate:
+CodexReleaseEvidenceRunner:
   runner_id: string
   target_triple: string
   architecture: x86_64 | aarch64
@@ -84,15 +134,16 @@ CodexReleaseScenarioResult:
   observed_at: string | null
 ```
 
-Every member is required, including nullable members; unknown members and
-duplicate JSON keys are invalid. `volicord_artifact_digest` and every non-null
-scenario `evidence_digest` are raw 64-lowercase-hex SHA-256 values.
+Every member is required, including nullable members; unknown members,
+duplicate JSON keys, and noncanonical field order are invalid.
+`codex_artifact_digest`, `volicord_artifact_digest`, and every non-null scenario
+`evidence_digest` are raw 64-lowercase-hex SHA-256 values.
 `evidence_digest` at the evidence-object level is also raw 64-lowercase-hex.
 All non-null timestamps are canonical RFC 3339 UTC. Runner strings are
 nonempty, control-free UTF-8: `runner_id` and `target_triple` are at most 256
 bytes, while `os_release` and `environment_image` are at most 512 bytes. The
-runner fields identify the exact execution environment; another cell's runner
-coordinates cannot be copied or inferred. The WSL2 cell's
+runner fields identify the target and exact execution environment; another
+cell's runner coordinates cannot be copied or inferred. The WSL2 cell's
 `environment_image` names its pinned Ubuntu LTS distribution image.
 
 `reason` is null for `passed` and otherwise a nonempty machine-readable code
@@ -102,19 +153,20 @@ and timestamp and may have a null digest only when no bounded evidence artifact
 could be produced. A `not_run` scenario has a non-null reason and null digest
 and timestamp.
 
-The evidence `status` is `passed` only when every required scenario is
+The evidence `validation_result` is `passed` only when every required scenario is
 `passed`. It is `failed` when at least one scenario is `failed`. It is
 `unavailable` only when no scenario failed, at least one scenario is
 `unavailable`, and a qualifying attempt could not complete. Later scenarios
 that could not run remain explicit `not_run` results. No top-level `not_run`
 evidence object exists: a platform with no qualifying attempt has no manifest
-cell.
+entry.
 
 <a id="codex-release-scenario-catalog"></a>
 
 ### Closed Scenario Catalog
 
-Every non-WSL2 cell contains each base scenario exactly once in this order:
+Every non-WSL2 evidence entry contains each base scenario exactly once in this
+order:
 
 ```text
 fresh_install
@@ -153,7 +205,7 @@ first-release connection intents.
 
 ### Evidence Digest
 
-Evidence uses the exact `u32be`, `u64be`, `blob`, `string`, `list`, and
+Evidence uses the exact `u32be`, `blob`, `string`, `list`, and
 `record` primitives from
 [Agent Connection](agent-connection.md#canonical-binding-encoding). Nullable
 values add this primitive:
@@ -179,107 +231,121 @@ The runner computes this digest after producing all scenario results. Review
 recomputes it; JSON serializer order, omitted nulls, default values, and
 hand-edited evidence are invalid.
 
-## Exact finalized artifact evidence
+## Exact policy matching and finalized-artifact evidence
 
-The cell hashes the executable after every publisher-controlled change to its
+The release cell hashes each executable after every publisher-controlled change to its
 bytes, including signing, stripping, packaging extraction, or other
-post-processing. Validation runs the exact bytes named by `artifact_digest`.
-Before and after the scenario suite, the runner reopens the executable and
-requires the same byte digest. A command name, path, version range, package
-label, build identifier, or separately rebuilt executable cannot substitute for
-the finalized bytes.
+post-processing. Validation runs the exact Codex bytes named by
+`codex_artifact_digest` and exact Volicord bytes named by
+`volicord_artifact_digest`. Before and after the scenario suite, the runner
+reopens both executables and requires the same byte digests. A command name,
+path, version range, package label, build identifier, or separately rebuilt
+executable cannot substitute for the finalized bytes.
 
-A support claim is valid only for the exact combination of:
-
-- `artifact_digest`
-- `platform`
-- `observed_capabilities=FirstReleaseCodexCapabilities`
-- `integration_profile=record`
-- `validation_evidence.status=passed`
+Runtime support requires only an exact `CodexSupportEntry` match. Release
+eligibility additionally requires one external evidence entry with the same
+Codex coordinates, the exact exercised Volicord digest, complete runner and
+scenario metadata, and `validation_result=passed`.
 
 Support never propagates from one artifact to another, from one capability to
 another, or from one platform to another. A capability observed for one cell
 does not become a general Codex capability claim.
 
-An artifact is registered for support only when one `passed` cell exactly
+An artifact is registered for runtime support only when one support-catalog
+entry exactly
 matches the current `ProcessBinding.executable_digest`,
-`PlatformEnvironment`, `integration_profile=record`, and complete canonical
-`CodexCapability` set. The receipt's `executable_digest`, platform, profile,
+`PlatformEnvironment`, `PlatformReleaseCoordinate`,
+`integration_profile=record`, and complete canonical `CodexCapability` set.
+The receipt's `executable_digest`, platform, release coordinate, profile,
 `required_capabilities`, and `verified_capabilities` must equal those same
-cell coordinates. An unknown digest, any platform/profile/capability mismatch,
-or a digest present only in a non-passing cell returns machine-readable reason
+policy coordinates. An unknown digest or any platform/release-coordinate/
+profile/capability mismatch returns machine-readable reason
 `unsupported_host_artifact`. The implementation must not infer support from a
 command name, broad version range, neighboring artifact, fixture, subset, or
 superset capability match.
 
-## Canonical checked-in manifest
+<a id="canonical-checked-in-contracts"></a>
 
-The single support source is:
+## Canonical checked-in contracts
+
+The runtime support-policy source is:
 
 ```text
-tests/release-validation/contracts/codex-release-manifest.json
+crates/volicord-types/contracts/codex-support-catalog.json
 ```
 
-It is a strict UTF-8 JSON array containing zero through four actually
-runner-generated and reviewed `CodexReleaseCell` objects. At most one cell may
-name each platform, and present cells appear in `linux`, `macos`,
-`native_windows`, `wsl2` order. A newly introduced or not-yet-executed source
-may therefore be `[]`. An absent platform has the derived release status
-`not_run`; the source must not fabricate a placeholder cell, digest, runner
-coordinate, or evidence object.
+Only this file is embedded. It must never gain release results, Volicord
+digests, runner metadata, evidence locations, workflow identifiers, or
+release-cell timestamps. No fixture, generated constant, documentation table,
+runtime database, or release-evidence file may act as a second runtime support
+list.
 
-Only an actual qualifying attempt can produce a `failed` or `unavailable`
-cell, and review must accept its generated evidence before it enters the
-source. Only `passed` cells participate in production support lookup. No other
-source file, fixture, generated constant, documentation table, or runtime
-database may carry a second support list. Runtime code may consume a build
-projection derived from this source, but the projection must be reproducibly
-checked against it and must not add an artifact, platform, status, or
-capability.
+The release-evidence source is external to every Volicord executable:
 
-Update one platform entry as one reviewed operation:
+```text
+tests/release-validation/contracts/codex-release-evidence-manifest.json
+```
 
-1. Finalize that platform's distributable Codex artifact and calculate
-   `artifact_digest` from the final bytes.
-2. Execute that platform's complete release-validation cell against those exact
-   bytes. The runner emits the cell and bounded evidence for every required
+It contains zero through four actually runner-generated and reviewed evidence
+entries. At most one entry names each platform, and entries appear in `linux`,
+`macos`, `native_windows`, `wsl2` order. A not-yet-executed source therefore has
+`entries: []`. An absent platform has derived status `not_run`; the source must
+not fabricate a placeholder entry, digest, runner coordinate, or evidence
+object. Only an actual qualifying attempt can produce `failed` or
+`unavailable` evidence.
+
+Production code must not embed this external manifest through `include_bytes!`,
+generated Rust, build-script environment variables, compiled constants, or an
+equivalent mechanism. Release validation reads it from its canonical on-disk
+path, strictly parses it, and cross-checks every evidence entry against the
+embedded support catalog. Evidence for a Codex artifact absent from the catalog
+is invalid even when its recorded result is `passed`.
+
+Update one platform as one reviewed operation:
+
+1. Finalize the platform's Codex artifact and calculate
+   `codex_artifact_digest` from its final bytes.
+2. Add or replace the exact runtime policy entry without any release result or
+   Volicord digest, then build and finalize the Volicord artifact that embeds
+   that catalog.
+3. Execute the complete release-validation cell against those exact Codex and
+   Volicord bytes. The runner emits bounded external evidence for every required
    scenario.
-3. Recheck the artifact digest and the exact platform, profile, capability,
-   runner, scenario, and evidence-digest bindings.
-4. Review the generated cell and replace the existing entry for that platform,
-   if any, while preserving canonical platform order. Do not hand-author an
-   unattempted cell, copy another platform's result, or retain a historical
+4. Recheck both artifact digests and the exact platform, profile, capability,
+   runner, target, scenario, and evidence-digest bindings.
+5. Review the generated evidence and replace the external entry for that
+   platform while preserving canonical order. Do not hand-author an unattempted
+   cell, copy another platform's result, relabel a result, or retain a historical
    compatibility entry.
-5. Re-evaluate the manifest. A four-platform release is eligible only when it
-   contains exactly one current `passed` cell for each of the four platforms,
-   all four cells carry `FirstReleaseCodexCapabilities`, and all refer to the
-   current release candidate artifacts.
+6. Re-evaluate the external manifest against the embedded catalog. A
+   four-platform release is eligible only when it contains one current passing
+   evidence entry for each platform and every entry exactly matches runtime
+   policy.
 
-Changing an artifact byte, platform coordinate, capability set, profile, or
-validation evidence requires a new run of that exact cell. Editing the manifest
-cannot promote evidence that the runner did not produce.
+Changing either artifact byte, platform coordinate, capability set, profile, or
+validation evidence requires a new run of that exact cell. Editing either
+contract cannot promote evidence that the runner did not produce.
 
 ## Explicit test-only descriptor
 
 Unit and integration tests that do not execute a finalized Codex artifact use
-an explicit descriptor separated from `CodexReleaseCell`:
+an explicit descriptor separated from both production contracts:
 
 ```yaml
 TestOnlyCodexDescriptor:
   test_only: true
   fixture_id: string
-  artifact_digest: string
-  platform: linux | macos | native_windows | wsl2
+  codex_artifact_digest: string
+  platform_environment: linux | macos | native_windows | wsl2
   observed_capabilities: CodexCapability[]
 ```
 
 The marker must be the exact boolean `true`. This descriptor may exercise
 parsing, routing, negative cases, and adapter projections in test builds. It is
-rejected by the checked-in manifest loader and every production support lookup,
-cannot produce `validation_evidence.status=passed`, and cannot register a host
-artifact or capability. A test fixture, test-only injection, copied manifest
-entry, or repository test pass is not runtime trust and is not finalized
-artifact evidence.
+rejected by both contract loaders and every production support lookup, cannot
+produce `validation_result=passed`, and cannot register a host artifact or
+capability. A test fixture, test-only injection, copied entry, or repository
+test pass is not runtime trust and is not finalized-artifact evidence.
 
 ## Independent platform cells
 
@@ -300,7 +366,8 @@ the four-platform release claim rather than being inferred from another cell.
 
 ### WSL2 cell boundary
 
-The WSL2 cell uses one Ubuntu LTS image pinned by the manifest evidence. Codex,
+The WSL2 cell uses one Ubuntu LTS image pinned by both runtime policy and the
+external evidence. Codex,
 Volicord, the Product Repository, and the Volicord Runtime Home all run inside
 the same WSL2 distribution. The Product Repository and Runtime Home use the
 distribution's Linux ext4 filesystem.
@@ -355,17 +422,18 @@ must not remove or weaken a shared scenario.
 
 ## Cell execution status
 
-`validation_evidence.status` is exactly one of:
+`validation_evidence.validation_result` is exactly one of:
 
 | Status | Meaning | Release effect |
 |---|---|---|
-| `passed` | The exact finalized artifact ran in the exact cell environment, every required scenario passed, evidence is complete, and all bindings remain exact. | Registers only this artifact, platform, profile, and observed capability set for support. |
-| `failed` | The cell ran far enough to classify at least one required assertion as failed, or an artifact/evidence integrity check failed. | Does not register support and blocks the four-platform release claim. |
-| `unavailable` | A required runner, host, credential, environment, or other execution prerequisite was unavailable, so the cell could not establish a pass or failure for the complete suite. | Does not register support and blocks the four-platform release claim. |
+| `passed` | The exact finalized Codex and Volicord artifacts ran in the exact cell environment, every required scenario passed, evidence is complete, and all bindings remain exact. | Satisfies release evidence only for this exact policy entry and Volicord digest. Runtime support still comes from the embedded catalog. |
+| `failed` | The cell ran far enough to classify at least one required assertion as failed, or an artifact/evidence integrity check failed. | Blocks the four-platform release claim and does not change runtime policy. |
+| `unavailable` | A required runner, host, credential, environment, or other execution prerequisite was unavailable, so the cell could not establish a pass or failure for the complete suite. | Blocks the four-platform release claim and does not change runtime policy. |
 
-`not_run` is the derived platform status when the manifest has no cell for that
-platform; it is not a `validation_evidence.status` value and does not authorize
-a placeholder cell. Scenario results may use `not_run` under the cross-field
+`not_run` is the derived platform status when the evidence manifest has no
+entry for that platform; it is not a
+`validation_evidence.validation_result` value and does not authorize a
+placeholder entry. Scenario results may use `not_run` under the cross-field
 rules above. `unavailable` and derived `not_run` are never reported,
 summarized, or counted as `passed`. A repository unit test, fixture result,
 another platform's pass, or an older artifact's evidence cannot change those
@@ -376,9 +444,16 @@ meanings.
 The maintained target structure is:
 
 ```text
+crates/volicord-types/
+  contracts/
+    codex-support-catalog.json
+  src/
+    codex_support_catalog.rs
+    codex_release_evidence.rs
+
 tests/release-validation/
   contracts/
-    codex-release-manifest.json
+    codex-release-evidence-manifest.json
   fixtures/
   scenarios/
   hosts/
@@ -390,7 +465,10 @@ tests/release-validation/
     wsl2/
 ```
 
-`contracts/` owns strict manifest parsing and exact support lookup.
+The shared types crate owns strict runtime-catalog parsing, embedding, exact
+support lookup, and strict external-evidence parsing without embedding the
+external source. The release-validation `contracts/` route owns the canonical
+external path and cross-contract validation.
 `fixtures/` contains only explicit test-only descriptors and bounded test
 inputs. `scenarios/` owns shared domain setup and canonical outcomes.
 `hosts/codex/` owns actual Codex launch and observation behavior. Each
@@ -403,9 +481,10 @@ whole release contract.
 
 The repository-native candidate producer and blocking gate are the
 `codex-release-cell-gate` binary in the `volicord-release-validation-tests`
-package. It has no manifest override. It loads both the build-embedded bytes
-and the on-disk bytes at the canonical manifest path and requires them to parse
-to the same strict manifest.
+package. It has no contract override. It requires the embedded support catalog
+to equal the on-disk support-catalog source, loads the release-evidence manifest
+only from its canonical external path, and cross-checks every evidence entry
+against runtime policy.
 
 ```sh
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
@@ -416,24 +495,26 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
 ```
 
-`--status` reports the four actual or derived manifest statuses and does not
+`--status` reports the four actual or derived external-evidence statuses and does not
 execute a cell. `--capture-candidate` executes one qualifying attempt and uses
-create-new semantics to write an external, strictly parsed, one-cell candidate
-array. It exits unsuccessfully after retaining a `failed` or `unavailable`
-candidate, and it never edits or promotes the canonical manifest. `--platform`
+create-new semantics to write an external, strictly parsed, one-entry candidate
+manifest. The candidate's Codex coordinates must already exist in the embedded
+support catalog. It exits unsuccessfully after retaining a `failed` or
+`unavailable` candidate, and it never edits or promotes either canonical
+contract. `--platform`
 is the blocking replay gate and succeeds only when that platform already has an
-exact checked-in `passed` cell. An absent entry fails as `not_run`; a checked-in
-`failed` or `unavailable` entry also fails. Therefore the honest current `[]`
-source can produce review candidates but cannot pass publication until all four
-candidates have been reviewed and checked in.
+exact checked-in `passed` evidence entry matching runtime policy. An absent
+entry fails as `not_run`; a checked-in `failed` or `unavailable` entry also
+fails. Therefore the honest current `entries: []` sources fail closed and cannot
+pass publication.
 
 The producer and gate perform these checks in order:
 
 1. It rejects a process outside the selected independent runner boundary.
 2. It derives the actual runner coordinate. Capture records it; blocking replay
-   requires it to exactly equal the cell's `runner` value.
+   requires it to exactly equal the evidence entry's `runner` value.
 3. It hashes the actual Codex and Volicord executable bytes. Blocking replay
-   requires the two digests recorded by the cell.
+   requires the two digests recorded by external evidence.
 4. It executes `--version` from both exact paths.
 5. It delegates every platform-owned scenario exactly once, in canonical
    order, to the provisioned scenario driver. A passing driver must emit the
@@ -477,10 +558,10 @@ or blocking replay:
 | `VOLICORD_CODEX_RELEASE_EVIDENCE_DIR` | Existing, empty, canonical host directory outside the source checkout, Cargo target directory, maintained docs, Product Repository, and Runtime Home. |
 | `VOLICORD_CODEX_RELEASE_WORK_ROOT` | Existing, empty work root outside repository-owned paths. For WSL2 it is an absolute ext4 directory inside the selected distribution. |
 | `VOLICORD_HOME` | Absent child of the cell work root, created only by the `runtime_home_creation` scenario. |
-| `VOLICORD_CODEX_RELEASE_ENVIRONMENT_IMAGE` | Exact environment-image coordinate recorded in the checked-in cell. |
+| `VOLICORD_CODEX_RELEASE_ENVIRONMENT_IMAGE` | Exact environment-image coordinate for the support entry during capture and the external evidence entry during blocking replay. |
 | `RUNNER_NAME` | Actual runner-service identity; it must equal `runner.runner_id`. |
 | `VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION` | WSL2 only; exactly `Ubuntu-24.04`. It is rejected for native cells. |
-| `VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH` | Capture only; an absent absolute path with an existing canonical parent outside repository-owned, evidence, work, and Runtime Home roots. The producer writes a strict one-cell JSON array with create-new semantics. Blocking replay does not read this variable. |
+| `VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH` | Capture only; an absent absolute path with an existing canonical parent outside repository-owned, evidence, work, and Runtime Home roots. The producer writes a strict one-entry evidence manifest with create-new semantics. Blocking replay does not read this variable. |
 
 The gate derives the architecture and target triple from the native process, or
 from `uname -m` inside the selected WSL2 distribution. It derives `os_release`
@@ -611,7 +692,7 @@ opaque success flag, an unknown field, a prefixed or stale digest, a broken
 digest link, or a driver-selected alternative fixture, boundary, projection,
 expectation, disposition, or outcome code cannot satisfy the gate.
 
-The runner supplies `VOLICORD_CODEX_RELEASE_ARTIFACT_DIGEST`,
+The runner supplies `VOLICORD_CODEX_RELEASE_CODEX_ARTIFACT_DIGEST`,
 `VOLICORD_CODEX_RELEASE_VOLICORD_DIGEST`,
 `VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER_DIGEST`,
 `VOLICORD_CODEX_RELEASE_CAPABILITIES`, and
@@ -633,12 +714,14 @@ workflow output.
 
 ## Trust and owner boundaries
 
-The checked-in manifest and its validation evidence support a release decision;
-they do not attest a user, sign a receipt, grant Core authority, prove host
-isolation, or become a runtime credential. Production runtime trust comes only
-from the current managed binding, current Store state, and the verification
-receipt contracts owned by their runtime owners. Release fixtures are never
-loaded as production trust inputs.
+The embedded support catalog governs exact runtime policy. The external
+release-evidence manifest supports a release decision and never becomes an
+executable input. Neither contract attests a user, signs a receipt, grants Core
+authority, proves host isolation, or becomes a runtime credential. Production
+runtime trust comes only from the current managed binding, current Store state,
+the embedded support policy, and the verification receipt contracts owned by
+their runtime owners. Release fixtures and evidence are never loaded as
+production trust inputs.
 
 Adjacent owners:
 

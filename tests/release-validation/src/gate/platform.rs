@@ -6,7 +6,7 @@ use std::{
 };
 
 use volicord_types::{
-    CodexReleaseCell, CodexReleaseRunnerArchitecture, CodexReleaseRunnerCoordinate,
+    CodexReleaseEvidenceEntry, CodexReleaseEvidenceRunner, CodexReleaseRunnerArchitecture,
     PlatformEnvironment, PINNED_WSL2_DISTRIBUTION_ID, PINNED_WSL2_DISTRIBUTION_VERSION,
 };
 
@@ -226,12 +226,12 @@ fn validate_native_runtime_home(work_root: &Path, runtime_home: &str) -> Validat
 }
 
 pub(super) fn validate_actual_runner_coordinate(
-    cell: &CodexReleaseCell,
+    entry: &CodexReleaseEvidenceEntry,
     platform: PlatformEnvironment,
     configuration: &GateConfiguration,
 ) -> ValidationResult<()> {
     let actual = collect_runner_coordinate(platform, configuration)?;
-    let expected = &cell.validation_evidence.runner;
+    let expected = &entry.validation_evidence.runner;
     if expected.runner_id != actual.runner_id
         || expected.target_triple != actual.target_triple
         || expected.architecture != actual.architecture
@@ -240,7 +240,7 @@ pub(super) fn validate_actual_runner_coordinate(
     {
         return Err(ValidationError::new(format!(
             "actual runner coordinate does not exactly match the checked-in {} cell",
-            cell.platform.as_str()
+            entry.platform_environment.as_str()
         )));
     }
     Ok(())
@@ -249,7 +249,7 @@ pub(super) fn validate_actual_runner_coordinate(
 pub(super) fn collect_runner_coordinate(
     platform: PlatformEnvironment,
     configuration: &GateConfiguration,
-) -> ValidationResult<CodexReleaseRunnerCoordinate> {
+) -> ValidationResult<CodexReleaseEvidenceRunner> {
     let (architecture, target_triple, os_release) = if platform == PlatformEnvironment::Wsl2 {
         let distribution = configuration
             .wsl2_distribution
@@ -266,7 +266,7 @@ pub(super) fn collect_runner_coordinate(
         (architecture, target, release)
     };
     validate_release_architecture(platform, architecture)?;
-    Ok(CodexReleaseRunnerCoordinate {
+    Ok(CodexReleaseEvidenceRunner {
         runner_id: configuration.runner_id.clone(),
         target_triple,
         architecture,

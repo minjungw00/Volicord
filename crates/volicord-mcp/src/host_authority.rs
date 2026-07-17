@@ -21,8 +21,8 @@ use volicord_store::{
     managed_host_authority::managed_host_authority_read_only,
 };
 use volicord_types::{
-    generated_managed_artifacts_digest, lookup_checked_in_supported_codex_release_cell,
-    AgentConnectionId, ConfigurationTargetOwner, CurrentHostReceiptContext, IntegrationProfile,
+    generated_managed_artifacts_digest, lookup_embedded_codex_support_entry, AgentConnectionId,
+    ConfigurationTargetOwner, CurrentHostReceiptContext, IntegrationProfile,
     ManagedConnectionScope, ProjectId, UtcTimestamp,
 };
 
@@ -187,7 +187,7 @@ pub(crate) fn validate_current_managed_host_authority(
         ));
     }
 
-    lookup_checked_in_supported_codex_release_cell(
+    lookup_embedded_codex_support_entry(
         &parent.executable_digest,
         platform.environment,
         &platform.release_coordinate,
@@ -197,7 +197,7 @@ pub(crate) fn validate_current_managed_host_authority(
     .map_err(|error| {
         authority_failure(
             error.reason(),
-            "no exact passing Codex release cell matches the current parent executable",
+            "no exact embedded Codex support-catalog entry matches the current parent executable",
         )
     })?;
 

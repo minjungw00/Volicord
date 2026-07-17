@@ -21,7 +21,7 @@ use crate::host_integration::{
 
 use super::{
     binding::{
-        managed_host_evidence_for_plan, CheckedInCodexReleaseCatalog, ManagedHostEvidenceError,
+        managed_host_evidence_for_plan, EmbeddedCodexSupportCatalogPolicy, ManagedHostEvidenceError,
     },
     capabilities,
     config::{document_from_snapshot, parse_document, upsert_server_table, validate_mcp_command},
@@ -49,7 +49,7 @@ pub struct CodexEnvironment {
 pub struct CodexAdapter<R = ProductionCommandRunner> {
     env: CodexEnvironment,
     runner: RefCell<R>,
-    release_catalog: CheckedInCodexReleaseCatalog,
+    support_catalog: EmbeddedCodexSupportCatalogPolicy,
 }
 
 impl CodexAdapter<ProductionCommandRunner> {
@@ -63,7 +63,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
         Self {
             env,
             runner: RefCell::new(runner),
-            release_catalog: CheckedInCodexReleaseCatalog,
+            support_catalog: EmbeddedCodexSupportCatalogPolicy,
         }
     }
 
@@ -324,7 +324,7 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             return Ok(verification.merge_user_actions(&plan.user_actions));
         }
         let _availability_evidence =
-            match managed_host_evidence_for_plan(plan, &executable, &self.release_catalog) {
+            match managed_host_evidence_for_plan(plan, &executable, &self.support_catalog) {
                 Ok(evidence) => evidence,
                 Err(error) => {
                     let mut verification =

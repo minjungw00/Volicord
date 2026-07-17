@@ -3,7 +3,7 @@ use std::{env, process::ExitCode};
 use volicord_release_validation_tests::gate::{
     capture_candidate_cell, checked_in_platform_statuses, run_checked_in_cell_gate,
 };
-use volicord_types::{PlatformEnvironment, PlatformReleaseStatus};
+use volicord_types::{CodexReleasePlatformStatus, PlatformEnvironment};
 
 fn main() -> ExitCode {
     match run() {
@@ -45,7 +45,7 @@ fn run() -> Result<(), String> {
             println!(
                 "platform={} status=passed codex_sha256={} volicord_sha256={} evidence_sha256={} scenarios={}",
                 report.platform.as_str(),
-                report.artifact_digest,
+                report.codex_artifact_digest,
                 report.volicord_artifact_digest,
                 report.evidence_digest,
                 report.scenario_count
@@ -56,17 +56,17 @@ fn run() -> Result<(), String> {
             println!(
                 "platform={} status={} candidate={} codex_sha256={} volicord_sha256={} evidence_sha256={} scenarios={}",
                 report.platform.as_str(),
-                report.status.as_str(),
+                report.validation_result.as_str(),
                 report.candidate_path.display(),
-                report.artifact_digest,
+                report.codex_artifact_digest,
                 report.volicord_artifact_digest,
                 report.evidence_digest,
                 report.scenario_count
             );
-            if report.status != volicord_types::CodexReleaseValidationStatus::Passed {
+            if report.validation_result != volicord_types::CodexReleaseValidationResult::Passed {
                 return Err(format!(
                     "captured candidate has non-passing status {}",
-                    report.status.as_str()
+                    report.validation_result.as_str()
                 ));
             }
         }
@@ -90,11 +90,11 @@ fn parse_platform(value: &str) -> Result<PlatformEnvironment, String> {
     }
 }
 
-fn status_name(status: PlatformReleaseStatus) -> &'static str {
+fn status_name(status: CodexReleasePlatformStatus) -> &'static str {
     match status {
-        PlatformReleaseStatus::Passed => "passed",
-        PlatformReleaseStatus::Failed => "failed",
-        PlatformReleaseStatus::Unavailable => "unavailable",
-        PlatformReleaseStatus::NotRun => "not_run",
+        CodexReleasePlatformStatus::Passed => "passed",
+        CodexReleasePlatformStatus::Failed => "failed",
+        CodexReleasePlatformStatus::Unavailable => "unavailable",
+        CodexReleasePlatformStatus::NotRun => "not_run",
     }
 }

@@ -3,12 +3,12 @@ use std::{fs, path::Path};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    generated_managed_artifacts_digest, lookup_checked_in_supported_codex_release_cell,
-    AgentConnectionId, CodexCapability, ConfigurationTarget, EnvironmentForwarding,
-    FailureCategory, GeneratedManagedArtifact, HostVerificationReceipt, HostVerificationResult,
-    IntegrationProfile, ManagedCommand, ManagedCommandResolution, ManagedHostBinding,
-    PlatformEnvironment, PlatformReleaseCoordinate, ProjectId, UtcTimestamp,
-    FIRST_RELEASE_CODEX_CAPABILITIES, HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
+    generated_managed_artifacts_digest, lookup_embedded_codex_support_entry, AgentConnectionId,
+    CodexCapability, ConfigurationTarget, EnvironmentForwarding, FailureCategory,
+    GeneratedManagedArtifact, HostVerificationReceipt, HostVerificationResult, IntegrationProfile,
+    ManagedCommand, ManagedCommandResolution, ManagedHostBinding, PlatformEnvironment,
+    PlatformReleaseCoordinate, ProjectId, UtcTimestamp, FIRST_RELEASE_CODEX_CAPABILITIES,
+    HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
 };
 
 use crate::host_integration::process::canonical_existing_platform_path;
@@ -16,10 +16,10 @@ use crate::host_integration::{HostKind, HostPlan, HostTarget};
 
 use super::executable::CodexExecutableAvailability;
 
-pub(crate) trait CodexReleaseCatalog {
-    fn require_exact_passed_cell(
+pub(crate) trait CodexSupportCatalogPolicy {
+    fn require_exact_supported_entry(
         &self,
-        artifact_digest: &str,
+        codex_artifact_digest: &str,
         platform: PlatformEnvironment,
         platform_release_coordinate: &PlatformReleaseCoordinate,
         capabilities: &[CodexCapability],
@@ -28,12 +28,12 @@ pub(crate) trait CodexReleaseCatalog {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct CheckedInCodexReleaseCatalog;
+pub(crate) struct EmbeddedCodexSupportCatalogPolicy;
 
-impl CodexReleaseCatalog for CheckedInCodexReleaseCatalog {
-    fn require_exact_passed_cell(
+impl CodexSupportCatalogPolicy for EmbeddedCodexSupportCatalogPolicy {
+    fn require_exact_supported_entry(
         &self,
-        artifact_digest: &str,
+        codex_artifact_digest: &str,
         platform: PlatformEnvironment,
         platform_release_coordinate: &PlatformReleaseCoordinate,
         capabilities: &[CodexCapability],
@@ -48,8 +48,8 @@ impl CodexReleaseCatalog for CheckedInCodexReleaseCatalog {
                     "the observed platform release coordinate is not supported",
                 )
             })?;
-        let cell = lookup_checked_in_supported_codex_release_cell(
-            artifact_digest,
+        lookup_embedded_codex_support_entry(
+            codex_artifact_digest,
             platform,
             platform_release_coordinate,
             capabilities,
@@ -59,19 +59,9 @@ impl CodexReleaseCatalog for CheckedInCodexReleaseCatalog {
             ManagedHostEvidenceError::new(
                 error.failure_category(),
                 error.reason(),
-                "the observed Codex artifact has no exact passing release cell",
+                "the observed Codex artifact has no exact embedded support-catalog entry",
             )
         })?;
-        if platform == PlatformEnvironment::Wsl2
-            && platform_release_coordinate.wsl2_environment_image()
-                != Some(cell.validation_evidence.runner.environment_image.as_str())
-        {
-            return Err(ManagedHostEvidenceError::new(
-                FailureCategory::UnsupportedContract,
-                "unsupported_wsl2_release_coordinate",
-                "the observed WSL2 distribution image differs from the passing release cell",
-            ));
-        }
         Ok(())
     }
 }
@@ -124,7 +114,7 @@ impl std::error::Error for ManagedHostEvidenceError {}
 pub(crate) fn managed_host_evidence_for_plan(
     plan: &HostPlan,
     executable: &CodexExecutableAvailability,
-    release_catalog: &impl CodexReleaseCatalog,
+    support_catalog: &impl CodexSupportCatalogPolicy,
 ) -> Result<ManagedHostEvidence, ManagedHostEvidenceError> {
     let platform = executable.platform_environment.ok_or_else(|| {
         unavailable(
@@ -179,7 +169,7 @@ pub(crate) fn managed_host_evidence_for_plan(
             path: configuration_target_path,
             digest: format!("{:x}", Sha256::digest(artifact_bytes)),
         }],
-        release_catalog,
+        support_catalog,
     )
 }
 
@@ -189,7 +179,7 @@ pub(crate) fn managed_host_evidence_for_live_process(
     platform: PlatformEnvironment,
     platform_release_coordinate: PlatformReleaseCoordinate,
     generated_artifacts: Vec<GeneratedManagedArtifact>,
-    release_catalog: &impl CodexReleaseCatalog,
+    support_catalog: &impl CodexSupportCatalogPolicy,
 ) -> Result<ManagedHostEvidence, ManagedHostEvidenceError> {
     if !plan.entry.env.is_empty() {
         return Err(rejected(
@@ -263,7 +253,7 @@ pub(crate) fn managed_host_evidence_for_live_process(
                 "the generated managed-artifact identity is not canonical",
             )
         })?;
-    release_catalog.require_exact_passed_cell(
+    support_catalog.require_exact_supported_entry(
         &binding.process_binding.executable_digest,
         platform,
         &platform_release_coordinate,

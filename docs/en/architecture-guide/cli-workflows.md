@@ -33,7 +33,8 @@ a typed verification receipt.
 ## Connection Verification
 
 `connection verify` performs current adapter inspection, matches the exact
-artifact and platform release cell, validates the complete binding, and issues
+artifact and platform against the embedded support catalog, validates the
+complete binding, and issues
 a `HostVerificationReceipt` only on success. The CLI then asks Core to validate
 the receipt against current stored state. Diagnostic status never promotes
 missing evidence.
@@ -72,7 +73,8 @@ diagnostic metadata are not parsed back into authority state.
 - Codex-specific configuration remains in the adapter.
 - No command starts a network transport.
 - No noninteractive command supplies user judgment.
-- Release claims come only from the exact checked-in four-platform manifest.
+- Runtime lookup uses only the embedded support catalog. Release claims require
+  the separate exact four-platform evidence manifest to match that catalog.
 
 ## Related Routes
 

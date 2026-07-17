@@ -66,7 +66,7 @@ the public method execution path.
 
 | Workspace member | Guide-level role |
 |---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, and host-feature implementation types, static matrix, and single-feature support-state evaluation. |
+| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, and host-feature implementation types, plus the embedded Codex support-catalog parser and non-embedding external release-evidence parser. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, artifact storage, inspection, immutable host-verification receipts, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, and managed stdio MCP process handoff. |
@@ -75,7 +75,7 @@ the public method execution path.
 | `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection binding, operation-category, and public schema snapshot tests. |
-| `tests/release-validation` | Shared release scenarios and independent Linux, macOS, native Windows, and WSL2 Codex release cells. It owns no production runtime behavior. |
+| `tests/release-validation` | External release-evidence path, shared release scenarios, catalog cross-checks, and independent Linux, macOS, native Windows, and WSL2 Codex release cells. It owns no production runtime behavior. |
 | `xtask` | Repository maintenance tooling for documentation validation; it is outside Volicord runtime architecture. |
 
 ## Dependency boundaries

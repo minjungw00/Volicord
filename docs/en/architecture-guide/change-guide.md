@@ -63,9 +63,10 @@ git diff --check
 ```
 
 Release-support changes also require the exact finalized artifact workflow and
-independent `linux`, `macos`, `native_windows`, and `wsl2` cells. A
-manifest may honestly contain zero through four cells; only exact passing cells
-support their own coordinates.
+independent `linux`, `macos`, `native_windows`, and `wsl2` cells. Keep embedded
+runtime policy separate from external release evidence. The evidence manifest
+may honestly contain zero through four entries; only exact passing evidence
+matching the support catalog satisfies its release cell.
 
 ## Handoff
 

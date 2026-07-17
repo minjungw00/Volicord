@@ -24,7 +24,7 @@ pub const MANAGED_HOST_BINDING_EXTERNAL_CONTRACT_ID: &str = "volicord.managed-ho
 
 /// Exact structural digest of the current canonical managed-host binding payload.
 pub const MANAGED_HOST_BINDING_EXTERNAL_SCHEMA_DIGEST: &str =
-    "sha256:812bd6665f7f1b1f61a6e79a96a251f356e7ddc64848207e4d82dfc595025fd8";
+    "sha256:c21ddd87aa848e56363f46b427b84d7f89d761e1762fec680e2dbb46dd38f15d";
 
 /// Domain separator for the current managed-host external schema identity.
 pub const MANAGED_HOST_BINDING_EXTERNAL_SCHEMA_DOMAIN: &[u8] =

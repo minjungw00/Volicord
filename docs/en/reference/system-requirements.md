@@ -31,10 +31,12 @@ Volicord has four independent eligible release environments:
 | `native_windows` | Volicord, Codex, the Product Repository, and the Runtime Home execute as native Windows components. WSL paths, processes, bindings, and receipts are ineligible. |
 | `wsl2` | Every component executes inside the same supported WSL2 distribution and uses its Linux filesystem as specified below. |
 
-An environment is eligible for a release claim only when its exact
-`CodexReleaseCell` has `validation_evidence.status=passed`. A pass in one row
-does not establish another row. Repository tests, cross-compilation, packaging,
-or a compatible-looking target triple do not substitute for an executed cell.
+An environment is eligible for a release claim only when its exact embedded
+`CodexSupportEntry` has a matching external `CodexReleaseEvidenceEntry` with
+`validation_evidence.validation_result=passed` and the exact exercised Volicord
+digest. A pass in one row does not establish another row. Repository tests,
+cross-compilation, packaging, or a compatible-looking target triple do not
+substitute for an executed cell.
 
 The first-release product surface in every row is:
 
@@ -68,17 +70,17 @@ The exact first-release WSL2 coordinate is:
 | `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
-| release-cell `environment_image` | `Ubuntu-24.04-LTS-WSL2` |
+| `platform_release_coordinate.environment_image` | `Ubuntu-24.04-LTS-WSL2` |
 
 The product observes the distribution name, operating-system identity, WSL2
-kernel boundary, and filesystem type. The release-cell image value is the
-exact coordinate registered for those observed distribution facts; a cell for
-another image cannot authorize this coordinate.
+kernel boundary, and filesystem type. The support-catalog image value is the
+exact coordinate registered for those observed distribution facts; an entry
+for another image cannot authorize this coordinate.
 
-The WSL2 release cell must establish WSL2 explicitly. An ordinary Linux
+The WSL2 runtime boundary must establish WSL2 explicitly. An ordinary Linux
 `target_os` result is insufficient. Its `ManagedHostBinding` and
 `HostVerificationReceipt` bind `platform_environment=wsl2`; neither can be
-reused as `linux` or `native_windows` evidence.
+reused under `linux` or `native_windows`.
 
 The Product Repository, Runtime Home, Codex executable, Volicord executable,
 managed Codex configuration, and every generated managed artifact must resolve
@@ -98,7 +100,7 @@ use:
 - conversion or inference between Windows and Linux paths, PIDs, environment
   values, process bindings, or receipts
 - reuse of a native Windows receipt in WSL2 or a WSL2 receipt on native Windows
-- a distribution not named by the current WSL2 release cell
+- a distribution not named by the current WSL2 support entry
 
 A WSL shutdown or restart invalidates live process identity. A binding or
 receipt whose process or freshness coordinates no longer match is stale and
@@ -123,8 +125,8 @@ checking, linting, tests, and release-validation contract tests.
 Runtime prerequisites are:
 
 - a finalized Volicord executable for the selected platform environment;
-- an exact Codex executable whose artifact digest, platform, profile, and
-  required capabilities match a passing checked-in release cell;
+- an exact Codex executable whose artifact digest, platform coordinate, profile,
+  and required capabilities match an embedded support-catalog entry;
 - SQLite support supplied by the Volicord build;
 - filesystem operations required by the selected native platform or WSL2
   adapter; and
@@ -139,7 +141,7 @@ ID spelling follows [External Contracts](external-contracts.md#shared-git-object
 The administrative process must resolve and execute the exact Codex artifact
 that setup and verification bind. Command-name discovery alone never
 establishes support. Verification hashes the resolved executable, matches the
-exact release manifest entry for the current platform, records the process and
+exact embedded support-catalog entry for the current platform, records the process and
 capability observations required by the binding, and emits a receipt only
 after all adapter checks succeed.
 
