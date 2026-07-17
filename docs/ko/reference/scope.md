@@ -57,7 +57,8 @@
 | 자연어 접수와 `Task` 생성 | 지원되는 접수 경로로 사용자의 자연어 의도에서 로컬 `Task`를 시작할 수 있습니다. | [접수 메서드](api/method-intake.md), [Core 모델](core-model.md) |
 | 범위 업데이트 | 지원되는 범위 업데이트 경로로 `Task`와 Change Unit 범위를 갱신할 수 있습니다. | [범위 업데이트 메서드](api/method-update-scope.md), [Core 모델](core-model.md) |
 | 상태와 닫기 준비 상태 확인 | 지원되는 읽기 경로로 상태, 증거 충분성, 알려진 차단 사유, 닫기 준비 상태를 읽을 수 있습니다. | [상태 메서드](api/method-status.md), [닫기 메서드](api/method-close-task.md), [API 상태 스키마](api/schema-state.md), [Core 모델](core-model.md) |
-| 관리되는 최종 출력 권한 고지 | Volicord는 현재 상태를 새로 읽고, 검증된 기준 `AuthorityReceipt` 전체 또는 크기가 제한된 Task별 `volicord status` 대체 경로를 호스트 소유 고정 UI에 표시할 수 있는 최선형 읽기 전용 projection을 구현합니다. 호스트·프로필 지원 또는 릴리스 주장에는 `support_status=verified`가 필요하며 설정이나 우연히 실행된 표시는 충분하지 않습니다. Codex와 Claude Code는 호스트 종류 기준으로 Record와 Detective 최종 출력을 모두 구현합니다. 현재 일치하는 probe 증거가 없으면 `implemented_unverified`, 명시적인 capability 부재이면 `unsupported_by_host`, 현재 probe 또는 전제 조건이 실패하거나 내려가 있으면 `temporarily_unavailable`이며 필요한 현재 probe가 모두 검증된 경우에만 `verified`입니다. 호스트 버전은 표시 및 검증 좌표일 뿐 구현 gate가 아닙니다. 이 상태 보기는 Core 상태를 바꾸지 않으며 모델이 작성한 최종 산문과 Detective 닫기 관문 양쪽과 구분됩니다. | [관리 CLI](admin-cli.md#managed-final-output-authority-disclosure), [Agent Connection](agent-connection.md#host-feature-support-state), [상태 보기 권한 참조](projection-and-templates.md#managed-final-output-authority-disclosure) |
+| 최초 릴리스 Agent Connection | 최초 릴리스의 `host_kind`는 `codex`이고 통합 프로필은 `record`입니다. 연결 의도는 `personal` 또는 `shared`, 전송은 관리형 stdio MCP이며 사용자 소유 행동은 CLI 받은 편지함으로 전달합니다. 정확한 Codex 아티팩트의 릴리스 적격성은 Linux, macOS, native Windows, WSL2 셀에서 각각 평가합니다. | [Agent Connection](agent-connection.md), [MCP 전송](mcp-transport.md), [관리 CLI](admin-cli.md), [시스템 요구사항](system-requirements.md), [호스트 릴리스 증거](host-release-evidence.md) |
+| 기준 SQLite 저장소 | 최초 릴리스는 현재 `StorageManifest`가 식별하는 기준 SQLite 계약 하나만 만들고 엽니다. migration, upgrade, importer, converter와 과거 형식 decoder는 없습니다. | [저장소 버전 관리](storage-versioning.md), [저장소 DDL](storage-ddl.md), [외부 계약](external-contracts.md) |
 | 정확한 과거 동작 결과 조회 | `volicord.get_operation_result`는 조회할 수 있는 변경 불가능한 `operation_category=agent_workflow` Core 변경 응답을 크기가 제한된 UTF-8 페이지로 읽을 수 있습니다. 접근하려면 원래 호출을 수행한 Agent Connection이 현재 활성 상태이고 선택 프로젝트가 허용되어 있으며 현재 행위자가 저장된 행위자와 같아야 합니다. 결과는 현재 권한이 아닌 과거 기록이며 `operation_category=user_only` 사용자 행동 응답은 제외합니다. | [동작 결과 조회 메서드](api/method-get-operation-result.md), [보안](security.md#historical-operation-result-access), [저장소 버전 관리](storage-versioning.md#exact-operation-result-retrieval) |
 | 쓰기 티켓 | `volicord.prepare_write`는 호환되는 제안 제품 파일 변경 하나 또는 유효 `sensitive` 통제 아래의 정확한 승인 결속 비제품 동작 하나에 쓰기 티켓을 발급할 수 있습니다. | [쓰기 준비 메서드](api/method-prepare-write.md), [저장 효과](storage-effects.md), [보안](security.md) |
 | Agent Connection 맥락 | 등록된 Agent Connection은 범위 확인에 쓸 기록된 출처, 모드, 명시적인 프로젝트 허용 목록을 제공합니다. | [Agent Connection 참조](agent-connection.md), [보안](security.md) |
@@ -104,6 +105,14 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 
 제외된 기능:
 
+- Claude Code와 그 밖의 모든 로컬 LLM 호스트 어댑터
+- generic host, custom host, 호스트 자동 탐지 휴리스틱
+- `record` 이외의 통합 프로필
+- 관리되는 최종 출력 권한 상태 보기, 호스트 hook, session watcher
+- 풍부한 local-web User Channel 전달, 프로덕션 local-web 적격성, local-web 동의 및 handoff 경로
+- 공개 local HTTP 전송
+- 저장소 마이그레이션, 저장소 업그레이드, 개발 데이터 가져오기, 과거 host fingerprint 판독
+- 제외 기능을 위한 deprecated 호환 API, alias, placeholder, feature flag
 - 호스트 애플리케이션의 자체 아티팩트 캡처
 - 지속 저장되는 상태 보기 작업, 상태 보기 조정, 생성된 상태 보기 파일, 관리되는 상태 보기 복구
 - 확장 또는 추가 증거 수집 흐름
@@ -139,7 +148,7 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 <a id="reserved-and-profile-gated-values"></a>
 ## 예약된 값과 프로필 조건부 값
 
-일부 값 이름은 예약된 값이나 프로필 조건부 값으로 존재할 수 있지만, 그것만으로 사용자에게 보이는 지원 기능이 되지는 않습니다.
+일부 값 이름은 외부 표준이나 문서 메타데이터에 존재할 수 있지만, 그것만으로 사용자에게 보이는 지원 기능이 되지는 않습니다. 최초 릴리스의 호스트와 프로필 선택자는 닫혀 있으며 제품 코드와 공개 CLI는 Codex와 `record`만 받아들입니다.
 
 예약된 값:
 
@@ -148,13 +157,13 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 
 프로필 조건부 값:
 
-- 프로필 조건부 값은 관련 프로필이나 게이트가 담당 문서에 정의되고 이 범위 참조가 그 결과 기능을 포함할 때만 사용할 수 있습니다.
+- 프로필 조건부 값은 관련 프로필이나 게이트가 담당 문서에 정의되고 이 범위 참조가 그 결과 기능을 포함할 때만 사용할 수 있습니다. 최초 릴리스에는 추가 통합 프로필이 정의되어 있지 않습니다.
 - 프로필/게이트나 기능 담당 문서 중 하나라도 없으면 그 값은 지원되는 기준 범위 동작이 아닙니다.
 
 사용 지점 규칙:
 
 - 예약된 값과 프로필 조건부 값은 나타나는 자리에서 그렇게 표시합니다.
-- 예약된 값이나 프로필 조건부 값은 이 문서와 의미 담당 문서가 모두 그 동작을 정의할 때만 기본값, 필수값, 지원됨, 강제됨, 수락됨, 검증됨, 닫기 준비 상태, 탐지형, 샌드박싱, 더 강한 격리 동작처럼 설명할 수 있습니다.
+- 예약된 값이나 프로필 조건부 값은 이 문서와 의미 담당 문서가 모두 그 동작을 정의할 때만 기본값, 필수값, 지원됨, 강제됨, 수락됨, 검증됨, 닫기 준비 상태, 샌드박싱, 더 강한 격리 동작처럼 설명할 수 있습니다.
 - 그렇지 않으면 그 값을 위 라벨로 설명하지 않습니다.
 
 담당 문서 링크:
@@ -198,7 +207,7 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 
 담당 문서 링크:
 
-- 보장 의미, 탐지형 표현, 보안 비주장: [보안](security.md).
+- 보장 의미와 보안 비주장: [보안](security.md).
 - 보장 라벨 값 항목: [API 값 집합](api/schema-value-sets.md).
 - 메서드 동작: [쓰기 준비 메서드](api/method-prepare-write.md), [API 메서드](api/methods.md)의 안내.
 - Core 의미: [Core 모델](core-model.md).

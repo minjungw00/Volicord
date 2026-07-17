@@ -31,7 +31,7 @@
 | 명시적으로 실행하는 실제 Judgment 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_user_action_round_trip_is_opt_in` 테스트. | 인증된 환경에서 사람이 참여해 호스트 고유 Judgment 선택과 그 결과 권한 기록을 확인할 때. | 최종 출력 매트릭스 증거. Judgment elicitation과 최종 출력 고지는 서로 다른 검증 관심사입니다. |
 | 명시적으로 실행하는 실제 증거 관찰 로컬 웹 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_evidence_observation_round_trip_is_opt_in` 테스트. | 설치된 호스트가 정확한 모델 비가시적 capability를 협상하고, 모델 맥락 밖의 host 전용 `_meta` handoff를 표시하며, 모델 가시 projection은 summary로만 유지한 채 사람이 정규 루프백 `local_web_consent` form을 제출하는 과정을 확인할 때. | 호스트 고유 Judgment elicitation, CLI 복구, 최종 출력 매트릭스 증거, 또는 호스트가 모델 비가시적 표면을 증명하지 못한 상태의 통과. 각 항목은 서로 다른 릴리스 검증 셀입니다. |
 | 명시적으로 실행하는 실제 CLI 대체 경로 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_cli_fallback_round_trip_is_opt_in` 테스트. | 사람이 선택한 답을 실제 CLI User Channel로 제출하고, 정확한 CLI 재시도와 같은 Agent Connection의 설치된 호스트 재개를 확인할 때. | 호스트 고유 Judgment elicitation, 증거 관찰 로컬 웹, 최종 출력 매트릭스 증거. 모든 릴리스 검증 표면은 서로 분리됩니다. |
-| 정확한 호스트 릴리스 게이트 | `tests/release-validation`, Cargo 패키지 `volicord-release-validation-tests`. | [호스트 릴리스 증거](../reference/host-release-evidence.md)에 따라 이미 외부에 배치한 정확한 최종 후보 하나의 create-new 설명자 생산, 협력적 lease를 사용하는 고정 12개 셀의 append-only 게시, 주장 상태와 독립적인 정규 도출, 새 manifest, 별도 프로세스 재계산 audit을 검증할 때. | 최종 후보 빌드 또는 변경, 운영 런타임 신뢰, Core 증거, host attestation, 희소 행렬, 여러 호스트 버전 집계, CLI 출력을 정규 평가기로 사용하는 것. |
+| Codex 릴리스 검증 셀 | `tests/release-validation`, Cargo 패키지 `volicord-release-validation-tests`. | [체크인된 manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)의 엄격한 parsing과 정확한 조회, 명시적인 테스트 전용 설명자 거절, 공유 필수 시나리오, 서로 독립적인 `linux`, `macos`, `native_windows`, `wsl2` 셀을 검증할 때. | fixture, 저장소 테스트, 한 플랫폼 결과, 다시 빌드한 실행 파일을 최종 확정 아티팩트 증거, 운영 런타임 신뢰, Core 증거, host attestation, 다른 셀의 지원 근거로 사용하는 것. |
 | MCP 통합 테스트 | `volicord-integration-tests` 패키지의 `mcp_connection` 대상인 [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs). | MCP, Core, Store, Agent Connection 바인딩, 작업 범주 파생, 도구 노출, 재실행 맥락 바인딩, MCP에서 보이는 저장소 효과 없음 분기. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 공개 계약 스냅샷 테스트 | `volicord-integration-tests` 패키지의 `public_contract_snapshots` 대상인 [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs). | 생성된 API 요청 스키마와 MCP 도구 계약 스냅샷이 현재 소스에서 생성한 계약과 어긋나는지 점검합니다. | 생성 스냅샷 직접 편집, 의미 기준 참조 검토, 공개 계약이 올바르다는 증명. |
 | 적합성 구현 테스트 | `volicord-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 티켓, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
@@ -41,24 +41,20 @@
 
 ## 픽스처와 지원 구조
 
-릴리스 검증 패키지는 비공개 테스트 배치를 계약으로 만들지 않고 담당 문서의 불변조건
-계열을 소비해야 합니다. 필수 셀이 없거나 형식이 잘못되면 manifest 생성을 막는 구조
-오류입니다. 존재하는 구현 셀이 ignored, running, 오래됨, 불일치이면 오래 유지되는
-하향 조정 사례이며 정적 `unsupported_by_host`와 구분합니다. 후보, 셀, manifest,
-audit fixture는 파싱과 도출을 보호할 수 있지만 요청한 검증됨 릴리스 주장은 정확한
-외부 실제 실행만 충족할 수 있습니다.
+릴리스 검증 패키지는 비공개 도우미 구조를 계약으로 만들지 않고 현재
+[목표 배치](../reference/host-release-evidence.md#release-validation-target-layout)를
+따릅니다. 계약 테스트는 알 수 없거나 중복된 필드, 잘못된 digest, 정렬되지 않았거나
+중복된 capability, `record`가 아닌 프로필, 유효하지 않은 플랫폼 값, 일치하지 않는 증거
+결속, 릴리스 셀로 제시된 테스트 전용 설명자를 거절합니다. 정확한 지원 조회 테스트는
+등록되지 않았거나 플랫폼이 일치하지 않는 digest에 `unsupported_host_artifact`를 반환하고,
+지원이 아티팩트, capability, 플랫폼 셀 사이로 전파되지 않는지 검증합니다.
 
-오래 유지되는 게시 테스트는 호스트 시작 전 lease 경쟁, 기존 최종 이름 거부, 경쟁 최종
-항목을 보존하는 no-replace, 셀을 게시하지 않는 증거 stage 실패, 증거 게시 뒤에도 생산자
-셀이 없는 실패, 정적 미지원 셀만의 게시, 증거 뒤에만 셀이 보이는 순서, 누락 셀 또는 셀
-디렉터리의 추가 stage에 대한 게이트와 audit 거부, 참조되지 않은 증거의 비채택, 새 result
-root에서만 성공하는 복구, 비-clean 상태 아래의 완전한 최종 이름 집합 거부, 커밋 전
-중단된 시도 뒤 동기화된 `active` 상태, 보이는 잔여물이 없어도 같은 root의 재획득을
-거부하는 동작을 다룹니다. 정확한 `clean`을 관찰 가능한 상태 커밋 표식으로 검사하며,
-실패한 파일시스템 동기화 호출이 durable해졌는지는 추론하지 않습니다. 이 테스트는 비공개
-정리 순서가 아니라
-[append-only 실제 셀 게시 불변조건](../reference/host-release-evidence.md#append-only-live-cell-publication)을
-검증합니다.
+Fixture는 parsing, routing, 부정 사례만 실행합니다. 공유 시나리오 module은 하나의 기준
+도메인 설정과 결과를 정의하고, 플랫폼 module은 플랫폼별 파일 시스템, 프로세스,
+projection assertion만 제공합니다. 일치하는
+[독립 플랫폼 셀](../reference/host-release-evidence.md#independent-platform-cells)에서 정확히
+최종 확정된 아티팩트를 실행한 경우에만 `validation_evidence.status=passed`가 될 수 있습니다.
+Fixture나 저장소 테스트로 기준 manifest에 지원을 등록할 수 없습니다.
 
 공유 픽스처 구조는 테스트 전략에 속합니다. `volicord-test-support`는 Core,
 적합성, 통합 테스트가 사용하는 폐기 가능한 Runtime Home 픽스처, 등록된 프로젝트와
@@ -206,7 +202,6 @@ Detective profile의 결정 증거는 `allow`와 `block`을 모두 다룹니다.
 이 호스트·프로필 경로를 릴리스 지원 범위로 주장하기 전에는 대응하는
 [실제 호스트 최종 출력 릴리스 검증 체크리스트](../maintain/validation.md#live-host-final-output-release-validation)를
 따릅니다. 정확한 최종 출력, receipt, 재생, 대체 안내 동작은
-[Agent Connection](../reference/agent-connection.md#managed-final-output-authority-disclosure)과
 [관리 CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure)를 포함한 적용
 참조 담당 문서에 남습니다.
 
@@ -265,21 +260,14 @@ Stop 이벤트가 정확히 하나 생겨야 합니다. 저장된 Stop 결정, �
 하지만 호출 맥락에서 파생되는 닫기 필드는 같을 필요가 없습니다. LocalUser의 `ready` 및
 차단 사유 없음 영수증은 깨끗한 픽스처의 정상성 전제일 뿐 호스트 고유 검증 단언의 출처가
 아닙니다. 하네스는 영속 GuardEvent에서 완전한 정규 Stop 영수증을 직접 읽고 검증하며
-최종 출력 UI 영수증을 요구하거나 증거로 인정하지 않습니다. 크기가 제한된
-JSON 요약을 출력합니다. 인증된
-12개 셀 생산자는 모두
-[append-only 실제 셀 게시 계약](../reference/host-release-evidence.md#append-only-live-cell-publication)에
-설명된 외부 `RESULT_ROOT/cells` 디렉터리 바로 아래의 존재하지 않는 경로를
-`VOLICORD_LIVE_HOST_RESULT_PATH`로 지정해야 합니다. 하네스는 폐기 가능한 Runtime Home을
-결속하고 다시 검사한 뒤 협력적 result-root lease를 획득하며, 기존 최종 이름이 있으면
-거부하고 비공개 시도 상태를 `active`로 동기화한 뒤 호스트를 시작합니다. 임시 `running`
-셀은 만들지 않습니다. 성공한 구현 셀 게시는
-동기화된 증거를 먼저 설치하고 셀을 마지막에 설치하며, 정적 미지원 게시는 셀만
-설치합니다. 최종 게시 뒤에만 하네스가 `active`를 정확한 `clean` 레코드로 바꾸기 시작하며,
-생산자의 동기화 반환이 불확정이어도 후속 exact-clean 관찰이 권위 있습니다. 게시 실패는
-담당 문서가 허용하는 크기 제한 stage 또는 설치된 최종 이름 prefix를 남길 수 있고 하네스는
-이를 삭제하거나 재사용하지 않습니다. 결과에는 검증 사실만 들어가며 대화 기록, 자격 증명,
-비밀값, 전체 프롬프트는 들어가지 않습니다.
+최종 출력 UI 영수증을 요구하거나 증거로 인정하지 않습니다. 크기가 제한된 JSON 요약을
+출력합니다. 이 독립 실행 결과는 진단용 테스트 증거일 뿐
+[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell)이나 두 번째 지원
+목록이 아닙니다. 현재 릴리스 runner가 일치하는 플랫폼 셀에서 정확히 최종 확정된
+아티팩트를 실행하고 아티팩트, 플랫폼, capability 집합, `record` 프로필을 결속할 때만
+`validation_evidence`에 기여할 수 있습니다. 검토된 `passed` 셀이
+[체크인된 단일 기준 manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)에
+있을 때만 지원을 등록합니다.
 
 영속 Task 결속 Stop 이벤트는 Judgment 이후 권한 관찰에 필요한 증거이지 Detective 닫기
 상태가 `ready`라는 증거가 아닙니다. 유지하는 정확한 일부 관찰 범위 미완료 고지만 호스트 고유

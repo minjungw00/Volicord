@@ -32,7 +32,7 @@ policy.
 | Opt-in live Judgment round trips | The Codex and Claude Code `*_live_user_action_round_trip_is_opt_in` tests in `live_host_smoke`. | Authenticated, human-in-the-loop host-native Judgment selection and its resulting authority records. | Final-output matrix evidence; Judgment elicitation and final-output disclosure are separate validation concerns. |
 | Opt-in live evidence-observation local-web round trips | The Codex and Claude Code `*_live_evidence_observation_round_trip_is_opt_in` tests in `live_host_smoke`. | An installed host negotiates the exact model-invisible capability, presents the host-only `_meta` handoff outside model context, and lets a human submit the canonical loopback `local_web_consent` form while model-visible projections remain summary-only. | Native Judgment elicitation, CLI recovery, final-output matrix evidence, or a pass when the host cannot prove the model-invisible surface; each remains a separate release-validation cell. |
 | Opt-in live CLI-fallback round trips | The Codex and Claude Code `*_live_cli_fallback_round_trip_is_opt_in` tests in `live_host_smoke`. | A human-selected choice submitted by the actual CLI User Channel, exact CLI retry, and same-Agent-Connection host resume through the installed host. | Native Judgment elicitation, evidence-observation local-web, or final-output matrix evidence; all release-validation surfaces remain separate. |
-| Exact host release gate | `tests/release-validation`, Cargo package `volicord-release-validation-tests`. | Create-new descriptor production for one already staged external exact-final candidate, cooperatively leased append-only publication of a fixed twelve-cell matrix, claimed-status-independent canonical derivation, create-new manifest, and separate-process recalculating audit under [Host Release Evidence](../reference/host-release-evidence.md). | Building or mutating the final candidate, production runtime trust, Core evidence, host attestation, a sparse matrix, cross-host-version aggregation, or CLI output as the canonical evaluator. |
+| Codex release-validation cells | `tests/release-validation`, Cargo package `volicord-release-validation-tests`. | Strict parsing and exact lookup for the [checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest), explicit test-only descriptor rejection, shared required scenarios, and independent `linux`, `macos`, `native_windows`, and `wsl2` cells. | Treating a fixture, repository test, one platform result, or rebuilt executable as finalized-artifact evidence, production runtime trust, Core evidence, host attestation, or support for another cell. |
 | MCP integration tests | [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs), target `mcp_connection`, package `volicord-integration-tests`. | Cross-layer MCP, Core, Store, connection binding, `operation_category` derivation, tool exposure, replay-context binding, and storage no-effect checks visible through MCP. | A replacement for focused method tests or Reference owners. |
 | Public contract snapshot tests | [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs), target `public_contract_snapshots`, package `volicord-integration-tests`. | Generated API request-schema and MCP tool-contract snapshot drift against the current source projection. | Hand-edited generated snapshots, semantic Reference review, or proof that the public contract is correct. |
 | Conformance implementation tests | [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs), target `baseline`, package `volicord-conformance-tests`. | Baseline cross-method scenarios through Core-facing APIs, including replay, write tickets, artifacts, judgments, close readiness, error routing, and corruption handling. | Product acceptance, security proof, close readiness, or the sole source of a product rule. |
@@ -42,28 +42,23 @@ policy.
 
 ## Fixture and support structure
 
-The release-validation package must consume the owner-defined invariant
-families without making private test layout a contract. A missing or malformed
-required cell is a structural error that prevents manifest creation. A present
-implemented cell that is ignored, running, stale, or mismatched is a durable
-downgrade case; static `unsupported_by_host` remains distinct. Candidate, cell,
-manifest, and audit fixtures may protect parsing and derivation, but only the
-exact external live run can satisfy a requested verified release claim.
+The release-validation package follows the current
+[target layout](../reference/host-release-evidence.md#release-validation-target-layout)
+without making private helper structure a contract. Contract tests reject
+unknown or duplicate fields, malformed digests, unsorted or duplicate
+capabilities, non-`record` profiles, invalid platform values, mismatched
+evidence bindings, and test-only descriptors presented as release cells. Exact
+support-lookup tests return `unsupported_host_artifact` for an unregistered or
+platform-mismatched digest and prove that support never propagates across
+artifacts, capabilities, or platform cells.
 
-Durable publication tests cover lease contention before host launch, existing
-final-name rejection, no-replace preservation of a competing final entry,
-evidence-stage failure with no cell, failure after evidence publication with no
-producer cell, static unsupported cell-only publication, evidence-before-cell
-visibility, gate and audit rejection of a missing cell or extra cell-directory
-stage, non-adoption of unreferenced evidence, rejection of an otherwise complete
-final-name set under non-clean state, synchronized `active` state after an
-interrupted pre-commit attempt, same-root reacquisition rejection even without
-a visible remnant, and successful recovery only in a fresh result root. Exact
-`clean` is tested as the observable state-commit marker; tests do not infer
-whether a failed filesystem synchronization call became durable. These tests
-verify the
-[append-only live-cell publication invariant](../reference/host-release-evidence.md#append-only-live-cell-publication),
-not a private cleanup sequence.
+Fixtures exercise parsing, routing, and negative cases only. Shared scenario
+modules define one canonical domain setup and outcome, while platform modules
+supply platform-specific filesystem, process, and projection assertions. Only
+an exact finalized-artifact run in the matching
+[independent platform cell](../reference/host-release-evidence.md#independent-platform-cells)
+can produce `validation_evidence.status=passed`; a fixture or repository test
+cannot register support in the canonical manifest.
 
 Shared fixture structure is part of test strategy. `volicord-test-support`
 owns disposable Runtime Home fixtures, registered project and Agent Connection
@@ -228,8 +223,8 @@ cannot be used. Such a run remains `incomplete` and is reported as `SKIP` or
 Use the paired [live-host final-output release-validation checklist](../maintain/validation.md#live-host-final-output-release-validation)
 before a release claim covers these host/profile paths. Exact final-output,
 receipt, replay, and fallback behavior remains in the applicable Reference
-owners, including [Agent Connection](../reference/agent-connection.md#managed-final-output-authority-disclosure)
-and [Administrative CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure).
+owners, including
+[Administrative CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure).
 
 ### Judgment round trips
 
@@ -294,23 +289,15 @@ latest-Run coordinates, but their context-derived close fields need not match.
 The LocalUser ready/blocker-free receipt is a clean-fixture sanity precondition,
 not the native assertion source. The harness reads and validates the complete
 canonical Stop receipt directly from the persisted GuardEvent; no final-output
-UI receipt is required or credited. A bounded JSON summary is printed. Every
-authenticated twelve-cell
-producer requires `VOLICORD_LIVE_HOST_RESULT_PATH` to name an absent direct
-child of the precreated external `RESULT_ROOT/cells` directory described by
-the [append-only live-cell publication contract](../reference/host-release-evidence.md#append-only-live-cell-publication).
-The harness binds and revalidates its disposable Runtime Home, obtains the
-cooperative result-root lease, rejects an existing final name, and synchronizes
-the private attempt state to `active` before host launch. It creates no
-provisional `running` cell. A successful implemented
-publication installs synchronized evidence first and the cell last; a static
-unsupported publication installs only the cell. Only after final publication
-does the harness begin replacing `active` with the exact `clean` record; a
-later exact-clean observation is authoritative even when the producer's
-synchronization return was indeterminate. A publication failure may leave the
-bounded stages or installed final-name prefix allowed by the owner, which the
-harness never deletes or reuses. The record contains validation facts, not a
-transcript, credential, secret, or full prompt.
+UI receipt is required or credited. A bounded JSON summary is printed. This
+standalone result is diagnostic test evidence, not a
+[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell) and
+not a second support list. It can contribute to `validation_evidence` only when
+the current release runner executes the exact finalized artifact in the
+matching platform cell and binds the artifact, platform, capability set, and
+`record` profile. Only a reviewed `passed` cell in the
+[canonical checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)
+registers support.
 
 The persisted Task-bound Stop event is the required evidence of the
 post-Judgment authority observation, not evidence that Detective close is

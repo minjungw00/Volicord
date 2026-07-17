@@ -25,6 +25,8 @@ Adjacent owners:
 - Committed result storage effects; see [Storage Effects](../storage-effects.md).
 - Storage replay rows and state clocks; see [Storage Versioning](../storage-versioning.md).
 - Display wording only; see [Template Bodies](../template-bodies.md).
+- Product-wide category selection boundaries; see the
+  [Failure Model](../failure-model.md).
 
 <a id="canonical-error-blocker-decision-flow"></a>
 
@@ -36,10 +38,10 @@ Use this flow before applying [primary error-code precedence](#primary-error-cod
 |---:|---|---|---|---|
 | 1 | Transport, JSON-RPC, or adapter message shape fails before a public Volicord request exists. | Transport or adapter layer, before Core execution. | JSON-RPC `error`, process exit diagnostic, or transport-owned failure shape. No Volicord `ErrorCode` is selected. | Route to [MCP transport](../mcp-transport.md) or the owning transport or adapter. Do not translate this into `ToolRejectedResponse.errors[]` after the request failed before Core. |
 | 2 | A known MCP tool call is rejected by the MCP adapter before Core execution. This includes Agent Connection mode rejection, project-selection failure, project allowlist failure, caller-owned invocation fields, or known-tool argument decoding/schema rejection. | MCP adapter layer, before Core execution. | MCP `CallToolResult` with `isError: true` and text content, unless the condition is a JSON-RPC protocol or parameter error owned by [MCP transport](../mcp-transport.md). | This is not a Volicord method result and has no `ToolRejectedResponse.errors[]`. Fix the MCP call, connection mode, or project selector before retrying. |
-| 3 | A typed Volicord request reaches Core and request validation, Core preflight, invocation compatibility, task lookup, freshness, or idempotency fails before the method-owned result branch. | Inside Core, before committed method execution. | `ToolRejectedResponse.errors[]` with public `ErrorCode` values. | Use [API error routing](error-routing.md) for the rejected branch and this document's precedence table for `errors[0]`. No committed operation proceeds. |
+| 3 | A typed Volicord request reaches Core and request validation, exact-contract selection, persisted owner-data validation, Core preflight, invocation compatibility, task lookup, freshness, or idempotency fails before the method-owned result branch. | Inside Core, before committed method execution. | `ToolRejectedResponse.errors[]` with required `FailureCategory` and public `ErrorCode` values. | Use [API error routing](error-routing.md) for the rejected branch and this document's precedence table for `errors[0]`. No committed operation proceeds. Known corruption and unsupported contracts keep their distinct category and code. |
 | 4 | A valid `dry_run` request reaches a preview branch after preflight. | Inside Core, after validation and preflight, before commit. | `ToolDryRunResponse` with `DryRunSummary.would_errors[]` or `DryRunSummary.would_blockers[]` when the method defines them. | Route preview branch behavior to [API error routing](error-routing.md#dry-run-behavior). Preview blockers are `PlannedBlocker`, not stored `CloseReadinessBlocker` objects. |
-| 5 | A valid method evaluation returns a blocked result without selecting a committed blocked effect. | Inside Core, after method-owned evaluation. | Method-specific `MethodResult` fields, such as `CloseTaskResult(close_state=blocked)` or method-owned decision fields. No `errors[]` branch is present. | Route branch selection to [API error routing](error-routing.md#blocked-result-behavior), close-readiness blocker boundaries to [API blocker routing](blocker-routing.md), and method details to the method owner. This is not a transport or schema error. |
-| 6 | A valid method evaluation selects a committed blocker-shaped or non-allow result. | Inside Core, on a method-owned committed branch. | Method-specific `MethodResult` with committed effects when allowed by the method and storage-effect owners, such as committed `PrepareWriteResult` non-allow decisions. | This can be durable state rather than a failed transport call. Route exact storage effects to [Storage Effects](../storage-effects.md) and exact result fields to the method owner. Public error precedence does not apply because there is no `ToolRejectedResponse.errors[]` branch. |
+| 5 | A valid method evaluation reaches `NotAllowed` and returns a method-defined non-allow result without selecting a committed effect. | Inside Core, after method-owned policy evaluation. | Method-specific `MethodResult` fields, such as `CloseTaskResult(close_state=blocked)` or method-owned decision fields. No `errors[]` branch is present. | When the method owner defines this result, route it through [API error routing](error-routing.md#blocked-result-behavior), close-readiness blocker boundaries through [API blocker routing](blocker-routing.md), and method details through the method owner. This is not structural `Rejected`. |
+| 6 | A valid method evaluation reaches `NotAllowed` and selects a committed blocker-shaped or non-allow result. | Inside Core, on a method-owned committed branch. | Method-specific `MethodResult` with committed effects only when allowed by the method and storage-effect owners, such as committed `PrepareWriteResult` non-allow decisions. | This can be durable state rather than a failed transport call. Route exact storage effects to [Storage Effects](../storage-effects.md) and exact result fields to the method owner. Public error precedence does not apply because there is no `ToolRejectedResponse.errors[]` branch. The category alone never authorizes the commit. |
 
 For MCP `tools/call`, successful MCP transport wraps a Volicord response with `isError: false`, including a Volicord domain-level `ToolRejectedResponse`. A caller must parse `result.content[0].text` as JSON to inspect `base.response_kind`, `errors`, or method result fields.
 
@@ -47,35 +49,44 @@ For MCP `tools/call`, successful MCP transport wraps a Volicord response with `i
 
 ## Error precedence
 
-When an error-bearing branch has non-empty `errors`, `errors[0]` is the primary public code selected by this order unless a method owner defines a stricter method-specific order. This table defines order only; public code meanings stay in [API error codes](error-codes.md).
+When an error-bearing branch has non-empty `errors`, first select each
+`ToolError.category` from the [Failure Model](../failure-model.md), then select
+`errors[0]` by this order unless a method owner defines a stricter
+method-specific order. Known `Corrupt` data is not reclassified as
+`Unavailable`, and `UnsupportedContract` is not reclassified as `Rejected`
+request validation. A continued core operation with a `Degraded` diagnostic
+does not enter this table. Public code meanings stay in
+[API error codes](error-codes.md).
 
 | Precedence | Primary `ErrorCode` | Meaning owner |
 |---:|---|---|
 | <a id="precedence-validation-failed"></a>1 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](error-codes.md#errorcode-validation-failed) |
-| 2 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](error-codes.md#errorcode-state-version-conflict) |
-| <a id="precedence-mcp-unavailable"></a>3 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](error-codes.md#errorcode-mcp-unavailable) |
-| <a id="precedence-invocation-context-mismatch"></a>4 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](error-codes.md#errorcode-invocation-context-mismatch) |
-| <a id="precedence-no-active-task"></a>5 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](error-codes.md#errorcode-no-active-task) |
-| <a id="precedence-no-active-change-unit"></a>6 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](error-codes.md#errorcode-no-active-change-unit) |
-| <a id="precedence-baseline-stale"></a>7 | `BASELINE_STALE` | [`BASELINE_STALE`](error-codes.md#errorcode-baseline-stale) |
-| <a id="precedence-scope-required"></a>8 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](error-codes.md#errorcode-scope-required) |
-| <a id="precedence-scope-violation"></a>9 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](error-codes.md#errorcode-scope-violation) |
-| <a id="precedence-write-ticket-required"></a>10 | `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](error-codes.md#errorcode-write-ticket-required) |
-| <a id="precedence-write-ticket-invalid"></a>11 | `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](error-codes.md#errorcode-write-ticket-invalid) |
-| <a id="precedence-approval-denied"></a>12 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](error-codes.md#errorcode-approval-denied) |
-| <a id="precedence-approval-expired"></a>13 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](error-codes.md#errorcode-approval-expired) |
-| <a id="precedence-approval-required"></a>14 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](error-codes.md#errorcode-approval-required) |
-| <a id="precedence-decision-unresolved"></a>15 | `DECISION_UNRESOLVED` | [`DECISION_UNRESOLVED`](error-codes.md#errorcode-decision-unresolved) |
-| <a id="precedence-autonomy-boundary-exceeded"></a>16 | `AUTONOMY_BOUNDARY_EXCEEDED` | [`AUTONOMY_BOUNDARY_EXCEEDED`](error-codes.md#errorcode-autonomy-boundary-exceeded) |
-| <a id="precedence-decision-required"></a>17 | `DECISION_REQUIRED` | [`DECISION_REQUIRED`](error-codes.md#errorcode-decision-required) |
-| <a id="precedence-capability-insufficient"></a>18 | `CAPABILITY_INSUFFICIENT` | [`CAPABILITY_INSUFFICIENT`](error-codes.md#errorcode-capability-insufficient) |
-| <a id="precedence-evidence-insufficient"></a>19 | `EVIDENCE_INSUFFICIENT` | [`EVIDENCE_INSUFFICIENT`](error-codes.md#errorcode-evidence-insufficient) |
-| <a id="precedence-residual-risk-not-visible"></a>20 | `RESIDUAL_RISK_NOT_VISIBLE` | [`RESIDUAL_RISK_NOT_VISIBLE`](error-codes.md#errorcode-residual-risk-not-visible) |
-| <a id="precedence-acceptance-required"></a>21 | `ACCEPTANCE_REQUIRED` | [`ACCEPTANCE_REQUIRED`](error-codes.md#errorcode-acceptance-required) |
-| <a id="precedence-projection-stale"></a>22 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
-| <a id="precedence-artifact-missing"></a>23 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
-| <a id="precedence-validator-failed"></a>24 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
-| <a id="precedence-operation-result-unavailable"></a>25 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
+| <a id="precedence-unsupported-contract"></a>2 | `UNSUPPORTED_CONTRACT` | [`UNSUPPORTED_CONTRACT`](error-codes.md#errorcode-unsupported-contract) |
+| <a id="precedence-persisted-data-corrupt"></a>3 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](error-codes.md#errorcode-persisted-data-corrupt) |
+| 4 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](error-codes.md#errorcode-state-version-conflict) |
+| <a id="precedence-mcp-unavailable"></a>5 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](error-codes.md#errorcode-mcp-unavailable) |
+| <a id="precedence-invocation-context-mismatch"></a>6 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](error-codes.md#errorcode-invocation-context-mismatch) |
+| <a id="precedence-no-active-task"></a>7 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](error-codes.md#errorcode-no-active-task) |
+| <a id="precedence-no-active-change-unit"></a>8 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](error-codes.md#errorcode-no-active-change-unit) |
+| <a id="precedence-baseline-stale"></a>9 | `BASELINE_STALE` | [`BASELINE_STALE`](error-codes.md#errorcode-baseline-stale) |
+| <a id="precedence-scope-required"></a>10 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](error-codes.md#errorcode-scope-required) |
+| <a id="precedence-scope-violation"></a>11 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](error-codes.md#errorcode-scope-violation) |
+| <a id="precedence-write-ticket-required"></a>12 | `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](error-codes.md#errorcode-write-ticket-required) |
+| <a id="precedence-write-ticket-invalid"></a>13 | `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](error-codes.md#errorcode-write-ticket-invalid) |
+| <a id="precedence-approval-denied"></a>14 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](error-codes.md#errorcode-approval-denied) |
+| <a id="precedence-approval-expired"></a>15 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](error-codes.md#errorcode-approval-expired) |
+| <a id="precedence-approval-required"></a>16 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](error-codes.md#errorcode-approval-required) |
+| <a id="precedence-decision-unresolved"></a>17 | `DECISION_UNRESOLVED` | [`DECISION_UNRESOLVED`](error-codes.md#errorcode-decision-unresolved) |
+| <a id="precedence-autonomy-boundary-exceeded"></a>18 | `AUTONOMY_BOUNDARY_EXCEEDED` | [`AUTONOMY_BOUNDARY_EXCEEDED`](error-codes.md#errorcode-autonomy-boundary-exceeded) |
+| <a id="precedence-decision-required"></a>19 | `DECISION_REQUIRED` | [`DECISION_REQUIRED`](error-codes.md#errorcode-decision-required) |
+| <a id="precedence-capability-insufficient"></a>20 | `CAPABILITY_INSUFFICIENT` | [`CAPABILITY_INSUFFICIENT`](error-codes.md#errorcode-capability-insufficient) |
+| <a id="precedence-evidence-insufficient"></a>21 | `EVIDENCE_INSUFFICIENT` | [`EVIDENCE_INSUFFICIENT`](error-codes.md#errorcode-evidence-insufficient) |
+| <a id="precedence-residual-risk-not-visible"></a>22 | `RESIDUAL_RISK_NOT_VISIBLE` | [`RESIDUAL_RISK_NOT_VISIBLE`](error-codes.md#errorcode-residual-risk-not-visible) |
+| <a id="precedence-acceptance-required"></a>23 | `ACCEPTANCE_REQUIRED` | [`ACCEPTANCE_REQUIRED`](error-codes.md#errorcode-acceptance-required) |
+| <a id="precedence-projection-stale"></a>24 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
+| <a id="precedence-artifact-missing"></a>25 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
+| <a id="precedence-validator-failed"></a>26 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
+| <a id="precedence-operation-result-unavailable"></a>27 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
 
 For `volicord.get_operation_result`, an access-context mismatch selects
 `INVOCATION_CONTEXT_MISMATCH` before the method-local unavailable-result branch.

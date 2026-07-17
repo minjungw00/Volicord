@@ -179,9 +179,10 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-Exact input methods and command behavior belong to
-[Agent Connection](../reference/agent-connection.md#user-channel-and-agent-connections)
-and [Administrative CLI](../reference/admin-cli.md#user-channel-commands).
+The first-release CLI-inbox delivery boundary belongs to
+[Agent Connection](../reference/agent-connection.md#first-release-surface), and
+exact command behavior belongs to
+[Administrative CLI](../reference/admin-cli.md#user-channel-commands).
 
 <a id="check-before-writes"></a>
 

@@ -21,6 +21,8 @@ Adjacent owners:
 - Close-readiness blocker/API response boundary and the public-code-to-blocker boundary; see [API blocker routing](blocker-routing.md).
 - Method-specific behavior; see [`volicord.close_task`](method-close-task.md) and other method owners.
 - Display wording only; see [Template Bodies](../template-bodies.md).
+- Product-wide failure-category meanings and selection boundaries; see the
+  [Failure Model](../failure-model.md).
 
 ## Error vs blocker
 
@@ -32,7 +34,8 @@ Adjacent owners:
 
 <a id="error-vs-blocker-rejected-response"></a>
 Rejected response:
-- Public shape: `ToolRejectedResponse.errors[]` with `ToolError.code: ErrorCode`.
+- Public shape: `ToolRejectedResponse.errors[]` with required
+  `ToolError.category: FailureCategory` and `ToolError.code: ErrorCode`.
 - Meaning: The method did not proceed to the committed operation.
 - Condition: A typed Volicord request reached Core and failed request validation, freshness, invocation context, `actor_source`, `operation_category`, or another precondition before the method-owned result branch.
 - State effect: No committed operation and no state change.
@@ -56,6 +59,21 @@ Dry-run preview:
 
 Display wording belongs to [Template Bodies](../template-bodies.md) only. It does not define API error or blocker semantics and must not be used as `ErrorCode` values, blocker-code values, or machine-readable `ToolError.details` keys.
 
+### Failure-category branch boundary
+
+| `FailureCategory` | API branch rule |
+|---|---|
+| `rejected` | A structural request or required-context failure before policy evaluation uses `ToolRejectedResponse`. |
+| `not_allowed` | When a method owner defines a non-allow result after policy evaluation, use that method-specific result rather than `ToolRejectedResponse` for the same condition. The method and storage-effect owners decide whether it commits. |
+| `unavailable` | If the required operation or read cannot continue, use `ToolRejectedResponse` with the applicable unavailable public code. |
+| `degraded` | If the core operation truthfully continues, expose the incomplete auxiliary component in the successful method result's owner-defined diagnostic. Do not reject that same operation with a `ToolError(category=degraded)`. |
+| `corrupt` | A dependent operation uses `ToolRejectedResponse` with `PERSISTED_DATA_CORRUPT` and fails closed before policy or effects. |
+| `unsupported_contract` | A dependent operation uses `ToolRejectedResponse` with `UNSUPPORTED_CONTRACT`; no fallback contract or artifact is selected. |
+
+The category is required machine-readable classification. It does not replace
+the public code or domain `details.reason` owned by
+[API error details](error-details.md#reason).
+
 <a id="blocked-and-dry-run-behavior"></a>
 
 ## Rejected response behavior
@@ -63,6 +81,7 @@ Display wording belongs to [Template Bodies](../template-bodies.md) only. It doe
 | Condition | Detail section |
 |---|---|
 | request validation fails before proceed | [Request validation failure](#rejected-request-validation-failure) |
+| persisted owner data is corrupt or an exact contract is unsupported | [Precondition failure](#rejected-precondition-failure) |
 | precondition fails before commit | [Precondition failure](#rejected-precondition-failure) |
 | state or idempotency conflict | [State or idempotency conflict](#rejected-state-or-idempotency-conflict) |
 | `dry_run=true` pre-preview failure | [`dry_run=true` pre-preview failure](#rejected-dry-run-pre-preview-failure) |
@@ -72,6 +91,11 @@ Display wording belongs to [Template Bodies](../template-bodies.md) only. It doe
 
 Condition:
 - Request shape, schema, profile, or staged-handle validation fails before the method can proceed.
+
+Boundary:
+- This is malformed untrusted input with `category=rejected`. Persisted trusted
+  owner-data corruption and unsupported exact contracts use their distinct
+  categories and codes instead.
 
 Route:
 - `ToolRejectedResponse.errors[]`.
@@ -87,7 +111,10 @@ Result boundary:
 ### Precondition failure
 
 Condition:
-- Core, MCP, invocation context, `actor_source`/`operation_category` compatibility, state lookup, Task identity, or a required precondition fails before commit.
+- Core, MCP, invocation context, `actor_source`/`operation_category`
+  compatibility, state lookup, Task identity, persisted owner-data validation,
+  exact-contract selection, or another required precondition fails before
+  commit.
 
 Route:
 - `ToolRejectedResponse.errors[]`.
@@ -147,6 +174,13 @@ Rejected response means the method did not proceed to the committed operation. I
 
 Condition:
 - `PrepareWriteResult` has `decision=blocked`, `decision=approval_required`, or `decision=decision_required`.
+
+Failure category boundary:
+- This method-defined post-policy non-allow result is `NotAllowed`; it is not
+  the structural `Rejected` branch. Missing current Change Unit remains the
+  earlier `ToolRejectedResponse` with `category=rejected`,
+  `code=NO_ACTIVE_CHANGE_UNIT`, and
+  `details.reason=current_change_unit_required`.
 
 Route:
 - `write_decision_reasons: WriteDecisionReason[]`.

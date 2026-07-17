@@ -49,8 +49,9 @@ Volicord 권한 기록입니다. 비제품 민감 티켓은
 `product_file_write_intended=false`이며 이름 붙은 동작, 빈 제품 경로 집합, 기준선,
 Change Unit, 범위 리비전, 사용자 소유 승인 근거를 결속하고 일치하는 민감 Run만
 소비합니다. 파일시스템 집행, OS 권한, 셸 권한, 효과가 실제로 일어났다는 증명이
-아닙니다. 확인이 허용되지 않으면 관련 없는 호환 티켓을 무효화하지 않고 티켓 경로를
-거부하거나 미룹니다.
+아닙니다. 현재 적용 Change Unit 선행조건을 만족한 뒤 정책 확인이 허용되지 않으면
+관련 없는 호환 티켓을 무효화하지 않고 티켓 경로를 거부하거나 미룹니다. 현재 적용
+Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어가지 않습니다.
 
 모든 요청은 현재 정책에 따라 다시 평가됩니다. 정책 변경은 제안된 쓰기를
 `sensitive`로 만들거나 새로운 사용자 소유 승인을 요구할 수 있으며, 호환되지 않는
@@ -90,11 +91,44 @@ PrepareWriteRequest:
 - `intended_paths` 항목은 `Product Repository` API 제품 경로입니다. `Product Repository` 경로 정규화는 [런타임 경계](../runtime-boundaries.md#product-repository-api-path-normalization)가 담당합니다. 이 메서드는 경로 수준 `WriteTicketScope`와 호환성 저장 범위를 만들고 비교할 때 정규화된 저장소 상대 경로를 사용합니다.
 - `sensitive_categories` 항목은 이 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 범주 분류 문자열입니다.
 
+## 평가 순서와 현재 적용 Change Unit 선행조건
+
+쓰기 준비는 아래 순서를 따릅니다.
+
+1. 요청 형태를 검증합니다.
+2. 요청이 지정한 Task 또는 현재 Task를 해석합니다.
+3. 그 Task의 현재 적용 Change Unit을 해석합니다.
+4. 현재 적용 Change Unit이 없으면 `errors[].category=rejected`,
+   `errors[].code=NO_ACTIVE_CHANGE_UNIT`, 메서드별
+   `errors[].details.reason=current_change_unit_required`를 담은
+   `ToolRejectedResponse`를 반환합니다.
+5. 구체적인 `TaskId`와 `ChangeUnitId`를 담은 정규 해석 맥락을 만듭니다.
+6. 현재 정책과 쓰기 호환성을 평가합니다.
+7. 결정이 허용일 때만 티켓 발급 또는 재사용을 계획합니다.
+
+현재 적용 Change Unit 확인은 정책 결정이 아니라 구조적 선행조건입니다.
+`dry_run=false`와 `dry_run=true`에 똑같이 적용됩니다. 이 거절은 `WriteTicket`을
+생성, 재사용, 무효화하지 않고, `WriteDecision`이나 권한 이벤트를 만들지 않으며,
+재실행 행이나 호출 행을 만들지 않고, `project_state.state_version`을 올리지
+않습니다. 크기가 제한된 진단에는 메서드, reason
+`current_change_unit_required`, 프로젝트와
+해석된 Task 식별자, 관찰 시각을 기록할 수 있습니다. 이 진단은 추가 전용 거절
+스트림이나 Core 권한 상태가 아닙니다.
+
+해석된 Task에 현재 적용 Change Unit이 계속 없는 동안 반복 호출은
+`NO_ACTIVE_CHANGE_UNIT`와 reason `current_change_unit_required`로 결정적으로
+거절되며 위 효과를 만들지 않습니다.
+이 선행조건 뒤에 만들어지는 `WriteTicketAttemptScope`나
+`WriteTicketValidityBasis`는 실제 해석된 `ChangeUnitId`를 담습니다. 두 구조 모두
+`null`, 선택적 값, 자리표시 Change Unit을 사용하지 않습니다.
+
 ## 접근 요구사항
 
 요구사항:
 
 - `operation_category=agent_workflow`인 확인된 호출 맥락
+- 요청한 Task에 대해 해석된 현재 적용 Change Unit. 없으면 정책 평가 전에 위의
+  구조적 거절을 따릅니다.
 - 모드가 `direct` 또는 `work`이고 `work_phase=implementation`인 현재 Task. `advisor`와 shaping은 쓰기 준비와 호환되지 않습니다.
 - 현재 유효 통제 수준. `observe`는 제품 파일 쓰기와 호환되지 않습니다. 유효
   `sensitive` Task는 제품 파일 쓰기가 없는 Run에도 정확한 티켓 결속 동작 근거가
@@ -187,7 +221,7 @@ PrepareWriteRequest:
   `reused`입니다.
 - `write_ticket.path_patterns.allowed`와 최상위 `allowed_path_patterns`는 이 티켓에 허용된 정규화 저장소 상대 `intended_paths`를 담습니다.
 - `write_ticket.path_patterns.denied`와 최상위 `denied_path_patterns`는 허용 결과에서 `[]`입니다.
-- `write_ticket.observed_paths`는 기준 범위에서 `[]`입니다. `detective` 호스트 훅과 감시자 관찰은 별도의 호스트 관찰 및 미기록 변경 기록을 사용합니다.
+- `write_ticket.observed_paths`는 관찰 경로가 티켓에 포함되지 않을 때 `[]`입니다.
 - `control_surface`와 `write_ticket.control_surface`는 기준 비집행 모델에서 `os_enforced=false`를 포함해 현재 Volicord 제어 표면을 공개합니다.
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.
 - 재실행을 사용하려면 현재 검증된 호출이 원래 재실행 행에 포착된 선택적 Git 작업 공간 맥락을 정확히 유지해야 합니다. 맥락이 달라지거나 새로 없어지거나 생기면 저장된 허용 응답이나 그 쓰기 티켓을 노출하지 않고 `INVOCATION_CONTEXT_MISMATCH`를 반환합니다.
@@ -224,7 +258,7 @@ PrepareWriteRequest:
 - `volicord.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
 - 각 항목은 `WriteDecisionReason`입니다.
 - `category`는 제어되는 `WriteDecisionReason.category` 값 집합을 사용합니다.
-- `code`는 아래에 있는 이 메서드의 로컬 v1 코드 목록을 사용합니다.
+- `code`는 아래에 있는 이 메서드의 닫힌 현재 코드 목록을 사용합니다.
 - `message`는 자유 형식 표시 문자열입니다.
 - `related_refs`는 `StateRecordRef[]`를 사용합니다. 관련 참조가 없으면 `[]`를 사용합니다.
 
@@ -244,7 +278,6 @@ PrepareWriteRequest:
 | `effect_contract_effect_not_allowed` | `effect_contract` | 현재 적용 Change Unit 효과 계약의 비어 있지 않은 허용 효과 목록에 `product_file_write`가 없습니다. |
 | `effect_contract_path_not_allowed` | `effect_contract` | 하나 이상의 `intended_paths`가 현재 적용 Change Unit 효과 계약의 `allowed_paths` 밖에 있습니다. |
 | `product_write_flag_mismatch` | `write_compatibility` | `product_file_write_intended`가 의도한 동작 또는 경로와 맞지 않습니다. |
-| `no_current_change_unit` | `scope` | 쓰기 준비 결정에 사용할 현재 적용 Change Unit을 확인할 수 없습니다. |
 
 비주장:
 
@@ -264,7 +297,10 @@ PrepareWriteRequest:
 - 오래된 `expected_state_version`
 - 멱등 요청 해시 충돌
 - 요청 검증 실패
-- 현재 `Task` 또는 현재 적용 Change Unit 없음
+- 현재 Task 없음
+- Task 해석 뒤 현재 적용 Change Unit 없음. 이 경우 공개 코드
+  `NO_ACTIVE_CHANGE_UNIT`, 실패 범주 `rejected`, 메서드별 details reason
+  `current_change_unit_required`를 사용하며 정책 평가 전에 거절합니다.
 - 행위자 출처 또는 작업 범주 불일치
 - Core 사용 불가
 - 오래된 기준선
@@ -277,6 +313,12 @@ PrepareWriteRequest:
 
 advisor 모드 거절은 쓰기 결정, 쓰기 티켓, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.
 
+`NO_ACTIVE_CHANGE_UNIT`와 reason `current_change_unit_required` 분기는
+`WriteTicket`, `WriteDecision`, 권한 이벤트,
+재실행 행, 호출 행, 상태 버전 효과를 만들지 않습니다. 일반 요청과 `dry_run` 요청
+모두에서 같은 거절 결과를 내며, 반복 호출이 이 거절을 커밋 결과나 재실행 결과로
+바꾸지 않습니다.
+
 ## `dry_run` 동작
 
 `dry_run=true`에서 유효한 미리보기:
@@ -287,6 +329,10 @@ advisor 모드 거절은 쓰기 결정, 쓰기 티켓, 이벤트, 재실행 행,
 - 호환되는 활성 티켓이 있으면 계획된 효과를 `would_reuse`로 설명할 수 있습니다.
   이는 미리보기 문구이지 커밋된 `WriteTicketEffect`가 아닙니다.
 - 쓰기 결정 상태를 지속하지 않습니다.
+
+현재 적용 Change Unit이 없는 요청은 유효한 미리보기가 아닙니다. 위에서 설명한
+`NO_ACTIVE_CHANGE_UNIT`와 reason `current_change_unit_required`의 동일한
+`ToolRejectedResponse`를 반환하며 계획된 티켓 효과도 만들지 않습니다.
 
 ## 저장 효과
 
@@ -483,11 +529,6 @@ write_ticket:
   idle_expires_at: null
   control_surface:
     selected_profile: record
-    host_hooks_active: false
-    session_watcher_active: false
-    cooperative_pre_tool_warning_available: false
-    cooperative_pre_tool_denial_available: false
-    unrecorded_changes_detectable: false
     actor_identity_provable: false
     os_enforced: false
   guarantee_display:
@@ -501,11 +542,6 @@ allowed_path_patterns:
 denied_path_patterns: []
 control_surface:
   selected_profile: record
-  host_hooks_active: false
-  session_watcher_active: false
-  cooperative_pre_tool_warning_available: false
-  cooperative_pre_tool_denial_available: false
-  unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
 active_user_action_refs:
@@ -546,11 +582,6 @@ allowed_path_patterns:
 denied_path_patterns: []
 control_surface:
   selected_profile: record
-  host_hooks_active: false
-  session_watcher_active: false
-  cooperative_pre_tool_warning_available: false
-  cooperative_pre_tool_denial_available: false
-  unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
 write_decision_reasons:

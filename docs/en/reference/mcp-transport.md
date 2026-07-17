@@ -469,8 +469,9 @@ reads a Connection ID or project ID from repository files.
 
 Startup validation does not grant host trust and does not record user-owned
 judgments. Project availability, project status, path separation, repository
-root matching, and mode compatibility are verified per call as defined by
-[Agent Connection](agent-connection.md#current-connection-context).
+root matching, and mode compatibility are verified per call together with the
+current connection and receipt facts defined by
+[Agent Connection](agent-connection.md#core-receipt-validation).
 
 A stored Agent Connection can remain after it reaches zero connected projects.
 That persistence is not startup eligibility: a new stdio process and startup
@@ -491,21 +492,9 @@ alone does not bind a managed session. The canonical installed-host coordinate
 is `0.144.4`, parsed from the exact probe envelope `codex-cli 0.144.4`.
 These exact versions are preserved validation and release-evidence coordinates,
 not runtime feature gates. A different valid version is retained as observed;
-feature availability comes from the current capability probes owned by
-[Agent Connection](agent-connection.md#host-feature-support), not equality to
-this reviewed coordinate.
-
-An actual successful managed local-web handoff, after current capability,
-listener, binding, response-budget, and token-creation checks, records
-`model_separated_user_action_ui=passed` and
-`mcp_capability_advertised_and_exercised=passed` for both managed profiles. An
-`initialize` response, capability advertisement, configured listener, or token
-candidate alone does not pass either probe. Current listener, binding, or
-configuration failure records a bounded failed or unavailable observation.
-Explicit advertised-capability absence records only
-`mcp_capability_advertised_and_exercised=unsupported`; it does not relabel the
-separate native user-action surface. These observations remain bound to the
-current Agent Connection fingerprint and actual client coordinates.
+exact artifact eligibility comes from the current binding and strict receipt
+defined by [Agent Connection](agent-connection.md#host-verification-receipt),
+not equality to this reviewed coordinate.
 
 When a managed binding materializes its `session_watch_baselines` row, the
 baseline's `metadata_json` retains only the exact bounded initialize identity as
@@ -1243,8 +1232,9 @@ may omit otherwise reportable issues to satisfy that final byte limit.
 
 Input validation precedes adapter preconditions. After valid input decoding, a
 public method-tool call performs deterministic repository-root project selection
-and per-project validation owned by
-[Agent Connection](agent-connection.md#current-connection-context). Ambiguous or
+and per-project validation together with the current connection and receipt
+checks owned by
+[Agent Connection](agent-connection.md#core-receipt-validation). Ambiguous or
 unavailable project selection is rejected before Core execution and its message
 must name the `volicord project use` or `volicord connection add` command needed
 to repair the state when applicable.

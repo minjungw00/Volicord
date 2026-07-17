@@ -131,7 +131,6 @@ staging을 만들므로 `OperationResultRef`가 없습니다. Core는 staging �
 
 - [MCP 전송](../mcp-transport.md#mutation-authority-receipt-projection)
 - [보안](../security.md#historical-operation-result-access)
-- [Agent Connection](../agent-connection.md#operation-result-retrieval)
 - [저장 기록](../storage-records.md)
 - [저장 효과](../storage-effects.md)
 - [저장 버전 관리](../storage-versioning.md#exact-operation-result-retrieval)

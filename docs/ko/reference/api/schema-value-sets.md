@@ -10,6 +10,7 @@
 - 지원되는 행위자 출처 값
 - 지원되는 다음 행동 값
 - API `response_kind`와 `effect_kind` 값
+- 지원되는 `FailureCategory` 식별자
 - 지원되는 작업 범주(`operation_category`) 값
 - 공유 상태 참조에서 쓰는 기록/참조 판별 값
 - 지원되는 생명주기, 닫기 상태, 증거 관찰 출처와 보장 수준, 쓰기 결정 범주, 판단 종류, 표시 형식, 필요 판단 위치, 판단 결과, 아티팩트 가림 처리, 아티팩트 무결성, 아티팩트 가용성 표시, `ValidatorResult.status`, `ValidatorResult.severity`, 보장 표시 등 API 값 집합
@@ -44,7 +45,7 @@
 
 | 값 계열 | 시작할 절 |
 |---|---|
-| 메서드, 행위자 출처, 다음 행동, 응답 분기, 작업 범주 | [메서드 이름 값](#method-name-values), [행위자 출처 값](#actor-source-values), [다음 행동 값](#next-action-values), [응답과 효과 값](#response-and-effect-values), [작업 범주 값](#operation-category-values) |
+| 메서드, 행위자 출처, 다음 행동, 응답 분기, 실패 범주, 작업 범주 | [메서드 이름 값](#method-name-values), [행위자 출처 값](#actor-source-values), [다음 행동 값](#next-action-values), [응답과 효과 값](#response-and-effect-values), [실패 범주 값](#failure-category-values), [작업 범주 값](#operation-category-values) |
 | 기록 참조, 프로젝트 연속성, `Task` 생명주기 | [기록과 참조 값](#record-and-reference-values), [프로젝트 연속성 값](#project-continuity-values), [`Task` 생명주기 값](#task-lifecycle-values) |
 | 메서드별 요청과 결과 값 | [메서드 내부 값](#method-local-values) |
 | 관찰 상태, 증거 상태, 차단 사유 범주 | [상태와 차단 사유 값](#state-and-blocker-values) |
@@ -139,6 +140,29 @@ no_effect
 ```
 
 `response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 공통 분기 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당하고, 메서드별 효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는 [API 오류 코드](error-codes.md)와 [API 오류 처리 경로](error-routing.md)가 담당합니다.
+
+<a id="failure-category-values"></a>
+## 실패 범주 값
+
+`FailureCategory`는 아래 machine-readable identifier만 정확히 사용합니다.
+
+```text
+rejected
+not_allowed
+unavailable
+degraded
+corrupt
+unsupported_contract
+```
+
+이 식별자는 각각 정확히 `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`,
+`Corrupt`, `UnsupportedContract`에 대응합니다. 의미 경계는
+[실패 모델](../failure-model.md)이 담당합니다.
+
+`ToolError.category`는 이 값 집합을 사용하는 필수 제어 필드입니다. 실패 범주는
+`ToolError.code`, 도메인별 `ToolError.details.reason`, 응답 분기 선택을 대신하지
+않습니다. 동작을 계속하는 `degraded` 진단과 메서드가 담당하는 `not_allowed` 결과를
+포함한 API 분기 처리는 [API 오류 처리 경로](error-routing.md)가 담당합니다.
 
 <a id="opaque-and-method-scoped-string-fields"></a>
 ## 불투명 문자열과 메서드 범위 문자열 필드
@@ -533,8 +557,7 @@ temporarily_unavailable
 `unsupported_by_host`는 현재 호스트 표면이 필요한 호스트 소유 역량의 부재를 명시적으로
 보고한다는 뜻입니다. 호스트 버전 동등성이나 버전 검토 부재만으로는 이 값을 만들 수
 없습니다. `temporarily_unavailable`은 정확한 증거는 현재 유효하지만 지금의 런타임 전제
-조건이 내려가 있다는 뜻입니다. 우선순위와 기준 호스트 매트릭스는
-[Agent Connection](../agent-connection.md#host-feature-support-state)이 담당합니다.
+조건이 내려가 있다는 뜻입니다.
 
 대응하는 기능 식별자는 정확히 다음과 같습니다.
 
@@ -580,9 +603,6 @@ capability_not_advertised
 capability_not_exercised
 probe_not_run
 ```
-
-outcome과 실패 종류의 조합 및 기능과 probe의 매핑은
-[Agent Connection](../agent-connection.md#host-feature-support-state)이 담당합니다.
 
 최종 출력 `required_subcapabilities`와 `subcapabilities` 키는
 `authority_display`, `authenticated_exact_replay`, `block_finalization`만 사용합니다.

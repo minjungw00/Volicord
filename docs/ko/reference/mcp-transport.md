@@ -403,8 +403,8 @@ Home을 이름 붙이고 해당 `volicord init --shared`, `connection verify`, �
 
 시작 검증은 호스트 신뢰를 부여하지 않고 사용자 소유 판단을 기록하지 않습니다. 프로젝트
 가용성, 프로젝트 상태, 경로 분리, 저장소 루트 대조, 모드 호환성은
-[Agent Connection](agent-connection.md#current-connection-context)이 정의한 대로 호출마다
-검증합니다.
+[Agent Connection](agent-connection.md#core-receipt-validation)이 정의한 현재 연결 및 영수증
+정보와 함께 호출마다 검증합니다.
 
 Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에도 저장된 채 남을 수
 있습니다. 이 지속 상태는 시작 가능성을 뜻하지 않습니다. 연결 프로젝트가 없으면 새 stdio
@@ -424,20 +424,9 @@ Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에
 설치 호스트의 정규 좌표는 정확한 probe 외피 `codex-cli 0.144.4`에서 해석한
 `0.144.4`입니다.
 이 정확한 버전은 검증과 릴리스 Evidence 좌표로 보존할 뿐 런타임 기능 gate로 사용하지
-않습니다. 다른 유효한 버전은 관찰한 그대로 보존합니다. 기능 가용성은 이 검토 좌표와의
-동등성이 아니라 [Agent Connection](agent-connection.md#host-feature-support)이 담당하는 현재
-capability probe 결과에서 나옵니다.
-
-현재 capability, listener, 결속, 응답 크기, token 생성 점검을 모두 통과한 실제 관리
-local-web handoff만 `record`와 `detective` 두 관리 프로필에
-`model_separated_user_action_ui=passed` 및
-`mcp_capability_advertised_and_exercised=passed`를 기록합니다. `initialize` 응답,
-capability 광고, 설정된 listener, token 후보만으로는 어느 probe도 통과하지 않습니다.
-현재 listener·결속·설정 실패는 크기가 제한된 `failed` 또는 `unavailable` 관찰을
-기록합니다. 광고한 capability의 명시적 부재는
-`mcp_capability_advertised_and_exercised=unsupported`만 기록하며 별도 native 사용자 행동
-표면을 다시 분류하지 않습니다. 이 관찰은 현재 Agent Connection 지문과 실제 client
-좌표에 계속 결속됩니다.
+않습니다. 다른 유효한 버전은 관찰한 그대로 보존합니다. 정확한 아티팩트 적격성은 이 검토
+좌표와의 동등성이 아니라 [Agent Connection](agent-connection.md#host-verification-receipt)이
+정의한 현재 결속과 엄격한 영수증에서 나옵니다.
 
 관리 결속이 `session_watch_baselines` 행을 구체화할 때 기준선 `metadata_json`은 기존의
 크기가 제한된 감시 메타데이터와 함께 성공한 initialize의 정확한 정체성만 최상위
@@ -1084,8 +1073,9 @@ Schema 키워드는 타입 디코더나 이후 담당 계층에 맡기며, 사�
 바이트 상한을 지키기 위해 원래 보고할 수 있던 `issues` 항목을 생략할 수 있습니다.
 
 입력 검증은 어댑터 전제조건 검사보다 먼저 수행합니다. 유효한 입력을 디코딩한 다음 공개
-메서드 도구 호출은 [Agent Connection](agent-connection.md#current-connection-context)이
-담당하는 결정적 저장소 루트 프로젝트 선택과 프로젝트별 검증을 수행합니다. 모호하거나
+메서드 도구 호출은 [Agent Connection](agent-connection.md#core-receipt-validation)이
+담당하는 현재 연결 및 영수증 점검과 함께 결정적 저장소 루트 프로젝트 선택과 프로젝트별
+검증을 수행합니다. 모호하거나
 사용할 수 없는 프로젝트 선택은 Core 실행 전에 거절하며, 해당될 때 메시지는 상태를 고칠
 `volicord project use` 또는 `volicord connection add` 명령을 이름 붙여야 합니다.
 

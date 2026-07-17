@@ -121,7 +121,7 @@ Document: [Quickstart](../user-guide/quickstart.md)
 - Should own: A focused success path, minimal commands, setup prompt or
   action-required handoff at first-run depth, expected success checks, and a
   clear route to the next guide if setup fails. It must keep setup success
-  separate from feature-specific support.
+  separate from exact binding and receipt validation.
 - Should not own: Full host matrices, all setup and removal variants, complete
   CLI flag behavior, complete troubleshooting catalogs, MCP transport
   contracts, or API method references.
@@ -134,37 +134,34 @@ Document: [Quickstart](../user-guide/quickstart.md)
   exact command or process behavior to [Administrative CLI](../reference/admin-cli.md)
   and [MCP Transport](../reference/mcp-transport.md). Send environment and setup
   applicability to [System Requirements](../reference/system-requirements.md),
-  and connection readiness and feature evaluation to
-  [Agent Connection](../reference/agent-connection.md#host-feature-support-state).
+  and canonical connection binding and receipt validation to
+  [Agent Connection](../reference/agent-connection.md#host-verification-receipt).
 
 ## Agent Host Setup Guide
 
 Document: [Agent Host Setup](../user-guide/agent-host-setup.md)
 
 - Primary goal: Explain how to prepare, verify, operate, and remove the managed
-  Codex and Claude Code setup paths and user-managed generic MCP
-  configuration.
-- Intended reader: Operators, agent integrators, and agents working with Codex,
-  Claude Code, or user-managed generic MCP host configuration.
+  Codex record setup path.
+- Intended reader: Operators, agent integrators, and agents working with the
+  managed Codex record setup.
 - Should own: Operator choices, managed setup paths, guide-level preflight
   checks, configuration and connection-readiness status flows, the guide-level
-  separation between setup success and feature-specific support, managed
-  guidance boundaries, and safe removal flow.
+  separation between setup success and receipt validation, managed guidance
+  boundaries, and safe removal flow.
 - Should not own: Exact CLI output contracts, full troubleshooting catalogs,
   MCP protocol line lists, host-internal trust behavior, full environment
-  applicability rules, exact feature-status values or release-evidence
-  contracts, storage DDL, or API schema meaning.
+  applicability rules, exact receipt or release-evidence contracts, storage
+  DDL, or API schema meaning.
 - Acceptable diagrams: Host setup flow diagrams, configuration boundary maps,
   and verification path diagrams that stay at guide level.
 - Link deeper by: Sending command detail to [Administrative CLI](../reference/admin-cli.md),
   local MCP process detail to [MCP Transport](../reference/mcp-transport.md),
   location and repository boundaries to
   [Runtime Boundaries](../reference/runtime-boundaries.md), connection concepts
-  and feature evaluation to
-  [Agent Connection](../reference/agent-connection.md#host-feature-support-state),
-  API surfaces to [API Methods](../reference/api/methods.md), exact feature
-  status values to
-  [API Value Sets](../reference/api/schema-value-sets.md#state-and-blocker-values),
+  and receipt validation to
+  [Agent Connection](../reference/agent-connection.md#host-verification-receipt),
+  API surfaces to [API Methods](../reference/api/methods.md),
   release-claim evidence to
   [Host Release Evidence](../reference/host-release-evidence.md), environment
   applicability to [System Requirements](../reference/system-requirements.md),

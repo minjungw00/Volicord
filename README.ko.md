@@ -75,11 +75,10 @@ volicord connection verify codex --shared --repo /path/to/your-product-repo
 없습니다. 현재 호스트에서 `volicord.list_projects`와 `volicord.status`를 사용할 수
 있는지도 확인합니다.
 
-`complete` 결과는 이 설정 경로의 준비 상태만 성립시키며 호스트 기능 전반의 지원을
-뜻하지 않습니다. JSON 상태의 `states.host_feature_support`는 각 기능을 `verified`,
-`implemented_unverified`, `unsupported_by_host`, `temporarily_unavailable` 중 하나로
-보고합니다. 현재 기능 지원을 주장할 수 있는 상태는 `verified`뿐입니다. 정확한 계약은
-[호스트 기능 지원 상태](docs/ko/reference/agent-connection.md#host-feature-support-state)를
+`complete` 결과는 이 설정 경로의 준비 상태만 성립시킵니다. 정확한 Codex record 연결은
+현재 프로젝트, 연결, 플랫폼, 아티팩트, 실행 파일, policy, capability 요구사항에 결속된
+정규 결속과 엄격한 검증 영수증으로 나타냅니다. 정확한 계약은
+[`HostVerificationReceipt` 계약](docs/ko/reference/agent-connection.md#host-verification-receipt)을
 보세요.
 
 ### 3. 에이전트를 통해 작업

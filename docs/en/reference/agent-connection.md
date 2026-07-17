@@ -1,1078 +1,501 @@
 # Agent Connection Reference
 
-This document defines Agent Connection and current connection context boundaries
-for local MCP host integrations. It defines how an Agent Connection, its
-connection intent, connected projects, connection mode, `actor_source`, and
-`operation_category` are interpreted before a request enters Core.
+This document defines the first-release Agent Connection contract. It owns the
+exact `host_kind=codex` record connection surface, the canonical managed host
+binding, host verification receipts, and the boundary between the Codex adapter
+and Core.
+
+<a id="owns-and-does-not-own"></a>
 
 ## Owns / Does Not Own
 
 This document owns:
 
-- Agent Connection meaning and Connection Projects membership rules
-- connection intent meaning: `personal`, `shared`, and `global`
-- current connection context boundaries for MCP-host calls
-- `actor_source` and `operation_category` provenance boundaries
-- User Channel versus Agent Connection boundaries for authority-bearing
-  user-action resolutions
-- repository-root project selection and project availability boundaries at the
-  Agent Connection layer
-- agent context transfer rules between owner results and an Agent Connection
-- managed final-output authority-disclosure capability and connection boundary
-- canonical six-feature `HostFeatureSupportStatus` evaluator, seven probe
-  areas, precedence, exact-version evidence coordinates, replay, and freshness
-  boundaries
-- managed-host session binding use across managed MCP and host-hook observations
-- fallback display when the selected Agent Connection or current connection
-  context is unavailable, mismatched, stale, or insufficient
+- the accepted exact `host_kind`, integration profile, connection intents,
+  transport, user-action delivery path, and platform-environment values;
+- `ManagedHostBinding` fields, canonical encoding, and digest meaning;
+- `HostVerificationReceipt` fields and the checks Core performs before
+  consuming a receipt;
+- Codex adapter discovery, installation, verification, repair, and uninstall
+  responsibilities;
+- exact Codex artifact eligibility at the Agent Connection boundary; and
+- typed handling of persisted host-setup `UserAction` values.
 
 This document does not own:
 
-- API request envelopes, response branches, schema shapes, or operation-category
-  value names; see [API Schema Core](api/schema-core.md),
-  [API Methods](api/methods.md), method owners, and
-  [API Value Sets](api/schema-value-sets.md)
-- `volicord mcp --stdio` startup, process environment, stdio framing,
-  startup validation, response wrapping, or shutdown; see
-  [MCP Transport](mcp-transport.md)
-- administrative setup, connection, status, verification, mode, remove,
-  project, and authority-bundle export commands; see
-  [Administrative CLI](admin-cli.md)
-- storage layout, artifact lifecycle, or staged-handle validation; see storage
-  and artifact owners through [Reference Index](README.md)
-- security guarantee meanings or access-boundary wording; see
-  [Security](security.md)
-- authority versus projected display rules; see
-  [Projection and template display boundaries](projection-and-templates.md)
-- rendered body wording, public display labels, or template phrasing; see
-  [Template Bodies](template-bodies.md)
-- release candidate, cell, manifest, audit, and native-session hashing schemas;
-  see [Host Release Evidence](host-release-evidence.md)
+- stdio framing, MCP initialization, tool routing, or shutdown; see
+  [MCP Transport](mcp-transport.md);
+- administrative command syntax, output, or exit codes; see
+  [Administrative CLI](admin-cli.md);
+- exact database tables or storage effects; see
+  [Storage Records](storage-records.md) and
+  [Storage Effects](storage-effects.md);
+- release-cell execution and artifact evidence; see
+  [Host Release Evidence](host-release-evidence.md);
+- operating-system topology and filesystem prerequisites; see
+  [System Requirements](system-requirements.md);
+- Core `UserActionRequest` and `UserActionResolution` schemas; see
+  [API User Action Schemas](api/schema-user-action.md); or
+- product-wide failure-category and security meanings; see
+  [Failure Model](failure-model.md) and [Security](security.md).
 
 <a id="surface-stability"></a>
+
 ## Surface Stability
 
 Labels follow the canonical vocabulary in
 [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
 
-| Surface | Stability | Notes |
+| Surface | Stability | Contract |
 |---|---|---|
-| Agent Connection meaning, connection intents, Connection Projects membership, connection modes, and current connection context boundaries | `stable` | These are local integration contracts, not OS permissions or user authority. |
-| Managed host lifecycle and verification observations | `beta` | The observations are supported but remain host- and capability-dependent. |
-| Managed final-output authority projection and support-state evaluation | `beta` | Managed adapters may run a best-effort fixed-UI projection. Support remains feature- and evidence-specific, and only `support_status=verified` establishes a current support claim. |
-| Stored identities, process-binding values, host configuration keys, and derived invocation metadata | `internal` | Public MCP inputs must not expose these details as caller-owned authority. |
-| Human-readable status, verification, fallback, and guidance text | `diagnostic` | Exact fields are stable only where a focused owner explicitly defines them. |
+| First-release value sets, `PlatformEnvironment`, `ManagedHostBinding` fields and digest, and `HostVerificationReceipt` fields | `stable` | These are exact boundary contracts. |
+| Codex discovery, managed installation, verification, repair, uninstall, and drift result semantics | `stable` | Implementations may change without changing the observable contract. |
+| Adapter modules, filesystem helpers, encoders, and Store query helpers | `internal` | They must preserve the stable boundary but are not public surfaces. |
+| Human-readable verification, degraded-state, and repair guidance | `diagnostic` | Machine-readable categories, reasons, and typed fields remain authoritative. |
 
-## Agent Connection
+<a id="first-release-surface"></a>
 
-An Agent Connection is a local MCP host connection unit stored under the
-`Volicord Runtime Home` with `connection_internal_id`. Generated MCP startup
-uses the `connection_id` process-argument spelling, but ordinary text-mode user
-flows select the connection by host, connection intent, and repository root
-through the commands owned by [Administrative CLI](admin-cli.md).
+## First-Release Surface
 
-One `volicord mcp --stdio` process is bound to one Agent Connection. Generated
-host configuration may contain a `connection_id` process-binding value derived
-from the stored `connection_internal_id` so the host can start that process, but
-that value is not a user authority token and is not required as a normal command
-input.
+The first release accepts only this Agent Connection surface:
 
-The registry stores the connection's internal identity, host and intent,
-configuration target, mode, enabled state, managed fingerprint, configuration
-verification state, append-only host-capability verification history, and
-related metadata. Exact record fields belong to
-[Storage Records](storage-records.md) and [Storage DDL](storage-ddl.md). The
-internal host configuration key `server_name` defaults to `volicord`.
-
-<a id="lifecycle-and-state-boundaries"></a>
-## Lifecycle And State Boundaries
-
-An Agent Connection lifecycle spans several state surfaces. A command can change
-one surface without changing the others.
-
-- Installation profile: Runtime Home registry installation records store the
-  selected Runtime Home identity and MCP command location. `volicord init`
-  creates or reuses this required local configuration. It is not host trust, a
-  user judgment, or a public API method.
-- Agent Connection registry state: `agent_connections` stores management state.
-  Init and connection commands create, update, verify, change, or remove it.
-  Registry state is not the host configuration and does not prove that an
-  external host loaded, trusted, approved, or exposed the MCP server.
-- Connection Projects membership: `connection_projects` stores the explicit
-  project allowlist. Init and connection add can add or validate membership;
-  removal can delete it. `volicord project use` registers a project but does not
-  add membership. Membership changes do not delete project or Core state.
-- Host configuration: `config_target`, or a user-managed generic target, names
-  the external host surface. Init and connection add install managed content;
-  removal deletes only safely matched managed content. This configuration starts
-  `volicord mcp --stdio` but is not registry state.
-- Verification state: `last_verification_status` and the output owned by
-  [Administrative CLI](admin-cli.md#agent-connection-result-states) record the
-  latest checks. Host configuration, hook safety, MCP startup, initialization,
-  and `tools/list` checks remain distinct from managed lifecycle observation and
-  active-session tool exposure.
-- Host-capability verification history: a bounded external live-host result may
-  create an immutable verification row for one exact connection, capability,
-  built-in host/client version, adapter profile, Volicord build, exact source
-  revision, target, executable digest, managed fingerprint, evidence digest,
-  and half-open validity interval. A later immutable row with
-  `outcome=revoked` can become current and invalidate an
-  earlier pass without changing history. Configuration verification does not
-  create this history and cannot substitute for it.
-  `verification_internal_id`, `connection_internal_id`, `host_version`,
-  `adapter_version`, `managed_fingerprint`, `volicord_build_id`,
-  `source_revision`, and `target_triple` are each 1 through 1,024 UTF-8 bytes,
-  contain at least one non-whitespace character and no control character, and
-  are preserved exactly without trimming, truncation, or substitution.
-  `client_name` and `client_version` use the shared managed MCP client identity
-  rule: 1 through 256 UTF-8 bytes with the same content and exact-preservation
-  requirements. Fixed values, lowercase hexadecimal digests, the passing-row
-  source-revision rule, canonical timestamps, and exact `{}` metadata retain
-  their stricter shapes.
-  Every interval must satisfy
-  `observed_at <= created_at` and
-  `observed_at < expires_at <= observed_at + 86,400 seconds`; a pass also
-  requires `created_at < expires_at`. Twenty-four hours is the maximum freshness
-  window, not a default lifetime or attestation period; a publisher may choose
-  a shorter expiry.
-  For a passing built-in stdio row, `host_version` and `client_version` are not
-  independent observations: both must equal the exact runtime
-  `clientInfo.version` and the live artifact's installed-host version. The
-  `source_revision` must be exact lowercase 40- or 64-hex; `unknown` cannot
-  pass. If either equality cannot be proved, the result is not passing.
-  An exact same-ID/same-content publication is idempotent and never moves a
-  newer current pointer backward; same ID with different content conflicts.
-- Invocation eligibility: the MCP adapter derives it at startup and for each
-  public tool call. `enabled`, project availability, `connection.mode`, and
-  `operation_category` affect it. Registry or project changes can make a call
-  ineligible without rewriting host configuration.
-- Removal: `volicord connection remove` can remove managed host content,
-  membership, and sometimes the Agent Connection. It must not delete a Product
-  Repository, project registration or state, Core records, Runtime Home,
-  artifact storage, or unrelated host configuration.
-
-Volicord-managed host configuration means Volicord owns and fingerprints
-specific generated host configuration content. It is not the same as
-the internal host-hook distribution state recorded by a host contract. That
-state describes a verified source for hook-related implementation records; it
-is not a public integration mode or security boundary.
-
-Agent Connection verification keeps these layers distinct:
-
-- host managed config identity: the managed server name, command, args,
-  environment, scope, and fingerprint expected for the selected connection
-- host trust, approval, or pending state: host-owned gates such as trust,
-  project MCP approval, OAuth, pending approval, or rejection
-- host policy overlay: host-owned approval or permission settings layered onto
-  managed configuration without becoming Volicord configuration drift when the
-  managed identity still matches
-- CLI MCP preflight and handshake: terminal-side startup and protocol checks
-  for the Volicord MCP server
-- managed host startup: lifecycle evidence that a managed host process started
-  the Volicord MCP server for the selected connection
-- managed host `tools/list`: lifecycle evidence that the managed host process
-  reached MCP tool discovery
-- managed host tool call: lifecycle evidence that the managed host process
-  called a Volicord tool
-- active tool exposure: evidence that the active host session can see
-  Volicord tools through a current host tool list, tool search, or another
-  explicitly reliable source
-- storage capability: whether the selected process binding can read registry
-  and project state and, for workflow tools, write project state
-
-CLI-side MCP preflight, `volicord mcp --check`, or a direct MCP handshake is a
-process startup and protocol diagnostic. It is not, by itself, proof that
-Codex, Claude Code, or another external host loaded, trusted, approved,
-initialized, or exposed the project configuration.
-
-For Codex project-scoped MCP configuration, the Volicord-managed identity is
-the `volicord` server name and this exact portable process descriptor:
-`command="volicord"`, arguments
-`mcp --stdio --discover-repository --host codex`, and
-`env_vars = ["VOLICORD_HOME"]`. The forwarding directive is part of the exact
-managed identity but embeds no Runtime Home path. Connection IDs, project IDs,
-an absolute command, Runtime Home literal paths, and every other environment
-key are invalid in that repository-visible managed entry. The launching host
-must provide the clone's init-selected nonempty, absolute `VOLICORD_HOME`;
-repository discovery rejects an absent, empty, or relative value before
-platform-default substitution. Codex
-user-scoped configuration remains a local binding and can carry the selected
-connection and project IDs plus managed-launch environment markers such as
-`VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
-`VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
-`VOLICORD_MCP_PROJECT_ID=<project_id>` when a project binding is present.
-Codex-owned tool approval subtables under that server entry are host policy
-overlay, not Volicord-managed identity. Preserving an accepted
-`tools.<tool>.approval_mode` overlay does not prove host trust, active tool
-exposure, running-session approval, correctness, test sufficiency, human
-review completion, sandboxing, or actor identity. A missing or changed
-forwarding directive, any other deviation from the exact project descriptor,
-or command, argument, or managed-marker drift in a local binding is
-configuration drift.
-
-Rules:
-
-- An Agent Connection is agent-facing and cannot act as the local
-  `User Channel`.
-- A connection can be enabled, disabled, removed, or changed in mode without
-  treating host configuration text as authority.
-- Registering a connection does not automatically grant every project in the
-  `Volicord Runtime Home`.
-- A connection can address only projects explicitly present in its Connection
-  Projects records or selected through an owner-defined repository-root
-  registration path.
-- `connection.mode=workflow` is the default Agent Connection mode. It exposes
-  agent workflow operations as well as read/project discovery operations. It
-  does not expose user-only User Action resolution.
-- `connection.mode=read_only` exposes read/project discovery operations. It is
-  not a workflow-write capability.
-- `connection_internal_id`, a `connection_id` process binding, connection mode,
-  connection intent, host configuration, or MCP server instructions are not OS
-  permissions, host trust, secret isolation, filesystem ACLs, network policy, or
-  user authority.
-
-Storage record families and DDL belong to [Storage Records](storage-records.md)
-and [Storage DDL](storage-ddl.md). Administrative creation, update,
-verification, mode, and removal commands belong to
-[Administrative CLI](admin-cli.md).
-
-## Managed-Host Session Binding
-
-Managed Codex and Claude Code observations use the single opaque
-`managed_host_session_id` mapping defined by
-[Host Release Evidence](host-release-evidence.md).
-For Codex, a managed descriptor establishes launch provenance only. The
-connection remains pending and creates no durable managed-session state until
-the first valid known `tools/call` supplies the exact per-call metadata and
-client identity required by [MCP Transport](mcp-transport.md#managed-host-session-input).
-That call binds the mapped root session and a domain-separated in-memory thread
-digest; later calls must match both while a new turn may change `turn_id`.
-The managed MCP path and host-hook path must present the same mapped value for
-one observed session. Raw `native_session_id` values are validation-and-hash
-inputs only and must not enter connection state, logs, diagnostics, evidence,
-or release artifacts; the same prohibition applies to raw native event,
-tool-call, capture, turn, and invocation identifiers. The `mhs_` namespace is
-reserved, and a mapping cannot change its host or registered connection.
-Missing, invalid, or mismatched binding cannot produce Strong Evidence, must
-create no durable state for an invalid marker, and must not be repaired by
-silently minting another session identifier. This correlation is not user
-identity, host attestation, or authority.
-
-## Connection Intents
-
-Connection intent describes where the host configuration is meant to be used. It
-is not a security level and not an authority grant.
-
-| Intent | Meaning | Must not infer |
-|---|---|---|
-| `personal` | User-owned host configuration for the current user's ordinary local flow. | It does not prove host trust, user identity, or access to every local project. |
-| `shared` | Project-owned or project-shared primary host configuration stored as an explicit integration file in a selected `Product Repository`. | It is not Volicord runtime state, and it does not authorize arbitrary product-file edits. |
-| `global` | User-wide configuration for an accepted managed-host target, with project access still constrained by repository-root registration and Connection Projects. | It does not connect every repository and does not bypass project or host trust. |
-
-For `volicord init`, `personal` is the default and `--shared` explicitly
-selects `shared`; init does not create a `global` connection. Connection
-intent classifies the primary managed host target. Repository-local guidance,
-local policy, and profile-dependent hook integration files applied by init
-remain a separate administrative integration surface and do not change the
-stored connection intent or host scope. In particular,
-`.volicord/policy.json` is an intent-independent `local_overlay`, and generated
-hook wrappers remain local even for `shared`.
-
-For one Product Repository, `volicord init` keeps only one selected built-in
-host adapter and one active repository-local `personal` or `shared` integration.
-Selecting a different accepted host value or the opposite intent migrates the
-managed host and hook projections and retires the prior Connection Project from
-active use; it does not silently activate multiple host integrations or intents
-against the singleton local policy.
-
-For a host or intent migration that selects a different connection, the
-requested project membership remains inactive while external host and guard
-projections are applied. A newly registered requested connection is disabled;
-an already-enabled requested connection can continue serving its other
-projects but does not gain this project membership yet. A prior connection that
-was eligible when migration began remains eligible until those projection
-steps succeed; an explicitly disabled prior remains disabled. One Registry
-transaction then adds the requested project membership, retires the
-superseded project membership when that connection has other projects, enables
-the requested connection, and records the requested guard installation. For a
-superseded connection's last project, the transaction disables that connection
-but retains its project membership as durable pending host-cleanup inventory. A
-cleanup path revalidates that disabled marker in a short transaction, releases
-the Registry write lock for host retirement, and then uses a final transaction
-to revalidate the marker and remove the membership. Generic Agent Connection
-and Connection Projects mutation APIs cannot forge or mutate this Store-owned
-marker. If an external projection step fails before the switch,
-the requested project membership remains inactive; a later cleanup failure
-leaves the requested connection eligible and the superseded connection disabled
-and discoverable for retry. Init reports either case as a partial-application
-migration result with a stable migration ID and rerun arguments. The eligibility
-switch is atomic; host-file retirement is not rolled back with cleanup storage,
-and the surrounding multi-file and external-host migration is convergent rather
-than one filesystem transaction.
-
-A new host or intent migration includes older valid pending-cleanup markers for
-the same project and rebinds them to its requested replacement before cleanup;
-it does not strand an earlier failed migration. The connection named by the
-validated prior local policy remains part of the superseded inventory even if
-an operator disabled it, while unrelated disabled alternatives are preserved.
-
-The durable marker is the exact `metadata_json.pending_host_cleanup` object on
-the disabled superseded connection, with `project_id` and
-`replacement_connection_id`. A disabled connection that retains membership but
-does not carry a valid marker for that project is an ordinary disabled
-connection and must not enter cleanup-resume or Doctor pending-cleanup
-handling. Doctor reports an older valid replacement marker so a chained or
-interrupted migration remains visible; init rebinds it before cleanup.
-
-A `shared` primary host file contains a typed repository-discovery descriptor:
-`volicord mcp --stdio --discover-repository --host codex` for Codex, or the
-same command with `--host claude-code` for Claude Code. It also contains exactly
-one host-native Runtime Home forwarding form: Codex uses
-`env_vars = ["VOLICORD_HOME"]`, and Claude Code uses
-`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`. It must not contain
-`connection_id`, `project_id`, an absolute executable, a literal Runtime Home
-path, or another environment entry. The descriptor bytes can therefore be
-reused by another clone, but Agent Connection and project identities remain
-local to each Runtime Home.
-
-At repository-discovery startup, the MCP adapter requires forwarded
-`VOLICORD_HOME` to be present, nonempty, and absolute and rejects any other
-shape before platform-default Runtime Home selection. It then finds the
-canonical Git worktree root from the host process current directory, looks up
-that exact registered repository root, and requires exactly one enabled
-`shared`, project-scoped Agent Connection for the descriptor host whose
-Connection Projects include that project. It then narrows the session to that
-one project.
-An unregistered clone, no matching connection, or more than one matching
-connection fails closed with an actionable init, verify, list, or duplicate
-removal instruction. Repository metadata never supplies or derives an internal
-ID.
-
-Local policy and host overlays may retain connection/project IDs, absolute
-commands, Runtime Home selection, and allowlisted local environment values;
-they must not be treated as shareable MCP descriptors. A previously generated
-shared entry with explicit local bindings is recognized only when its stored
-managed fingerprint authorizes a safe migration. Re-running init replaces it
-once with the portable descriptor, preserves unrelated host content, and is a
-no-op after convergence. New shared projections never emit the legacy binding
-shape.
-
-The baseline directly managed host kinds are `codex` and `claude_code`.
-Host-neutral MCP configuration is user-managed. User-managed configuration can
-use internal registry state needed to start `volicord mcp --stdio` only for an
-enabled Agent Connection. The launched process must still pass the startup
-validation owned by [MCP Transport](mcp-transport.md), and this is not a normal
-connection intent for direct host installation.
-
-## Connection Projects
-
-Connection Projects are the explicit registry relationship between an Agent
-Connection and registered projects. User-facing commands select projects by
-repository root or project name; registry storage keeps `project_internal_id`
-values for referential integrity and provenance.
-
-Membership fields:
-
-- `connection_internal_id`
-- `project_internal_id`
-- creation timestamp
-- a composite primary key over `connection_internal_id` and
-  `project_internal_id`
-
-Rules:
-
-- Project membership does not bypass project status, path separation, storage
-  executability, Agent Connection mode, or method-owned invocation requirements.
-- Invalid current project registrations must be rejected by Connection Projects
-  listing and access resolution instead of returned as connected project
-  records.
-- Inactive or otherwise execution-ineligible valid projects remain unavailable
-  at execution time even if membership exists.
-- Removing a Connection Project or disabling the Agent Connection must take
-  effect without requiring host configuration to be rewritten.
-- An Agent Connection with no connected projects may remain stored, and host
-  configuration may also remain on disk. That stored state does not mean a new
-  `volicord mcp --stdio` process can start successfully.
-- New MCP stdio startup and startup checks fail when the Agent Connection has
-  zero connected projects.
-- A `volicord mcp --stdio` process that already started while at least one project was
-  connected can observe later membership changes without host configuration
-  being rewritten. After the last membership is removed, project discovery may
-  report no available projects, and project-routed public tools cannot proceed
-  normally.
-- The Agent Connection is executable again only after a project is connected and
-  the startup or per-call project checks can validate the required project
-  state.
-
-## Host Configuration Inventory
-
-A stored Agent Connection is management inventory for Volicord-managed host
-configuration and verification state. The host configuration file remains the
-operational source of truth for the external host. The registry record is
-management inventory and last-known verification state, not a substitute for
-the host configuration.
-
-Rules:
-
-- The registry stores `host_kind`, `connection_intent`, internal server name,
-  configuration target, mode, enabled state, managed fingerprint, and last
-  verification status.
-- Host trust, project trust, project MCP approval, OAuth, or any comparable
-  host-controlled approval cannot be bypassed by Volicord.
-- A host configuration write can be successful as a file operation while the
-  result state remains `action_required` because the host has not yet trusted,
-  approved, loaded, initialized, or exposed the server.
-- For Codex project-scoped configuration, project trust, host runtime
-  observation, active-session Volicord tool exposure, and host MCP command
-  launchability remain separate diagnostics. A Codex project can be `trusted`
-  while Volicord still has not observed the Codex host process start the MCP
-  server, and a PATH-resolved command such as `volicord` must be launchable in
-  the environment that starts the MCP server.
-- Codex can know the MCP server entry or log startup completion while the
-  active session still has no cached tool snapshot or listed `volicord.*`
-  tools. CLI-side MCP preflight, direct handshake, managed startup observation,
-  manual or elevated probes, and managed `tools/list` observation do not replace
-  managed tool-call evidence or another explicitly reliable
-  active-tool-exposure source.
-- Claude Code managed verification can inspect a project `.mcp.json` entry and
-  `claude mcp get` output for matching command, args, environment, and scope,
-  and can report connected, pending approval, rejected, missing, changed,
-  unavailable, or unknown host state. Current Claude Code verification does not
-  by itself prove active Claude Code session tool exposure, managed lifecycle
-  startup, managed `tools/list`, managed tool-call evidence, or storage
-  capability in a running Claude Code session.
-- A host process may need a full restart, reload, resume, or new session after
-  MCP configuration changes. The terminal that launched the host can have a
-  different PATH or configuration snapshot than a terminal opened later inside
-  the host.
-- Human text status and verification output is a diagnostic summary for
-  interactive users. For `volicord connection status` and
-  `volicord connection verify`, read `Status`, `Checks`, `Next`, and
-  `Diagnostics` first. Automation and full diagnostic inspection use the
-  `--json` output owned by [Administrative CLI](admin-cli.md#setup-output).
-- `last_verification_status=complete` may be stored only for an administrative
-  verification result that satisfied the operational gates owned by
-  [Administrative CLI](admin-cli.md#agent-connection-result-states). A direct
-  Volicord-spawned MCP handshake is not enough by itself.
-- `last_verification_status=action_required` is the expected state when Volicord can
-  manage the selected adapter's configuration but a host-owned trust, approval, OAuth,
-  reload, restart, command-link repair, or installation-profile repair remains.
-- Rejected, missing, changed, unavailable, and unknown host states are not
-  `complete` Agent Connection states.
-- Product Repository guidance, including Volicord-managed `AGENTS.md` blocks,
-  generated host instructions, host rule files, and MCP server instructions can
-  improve tool selection, but they are not enforcement mechanisms and cannot
-  guarantee that a model will choose Volicord tools.
-
-<a id="host-feature-support"></a>
-<a id="host-feature-support-state"></a>
-## Host feature support state
-
-`HostFeatureSupportStatus` is the canonical support state for these six exact
-managed-host features:
-
-```text
-native_user_action
-local_web_user_channel
-verified_tool_producer
-registered_connection_observation
-record_final_output
-detective_final_output
-```
-
-Its values are exactly `verified`, `implemented_unverified`,
-`unsupported_by_host`, and `temporarily_unavailable`. Configuration and file
-checks are orthogonal facts: `configured=true` or
-`configuration_verified=true` never promotes a feature to `verified`.
-
-The centralized evaluator is capability-probe-first. A managed adapter records
-separate bounded probe results for these seven areas when they apply:
-
-1. configured lifecycle hooks are actually called;
-2. PreTool events provide structured target paths;
-3. PostTool events provide structured changed paths;
-4. a user-action UI is host-owned and separated from model context;
-5. Stop delivery and replay behavior is observable, including whether the host
-   attempts a second Stop;
-6. final authority disclosure is rendered in the required fixed UI surface;
-7. the running MCP client advertises and exercises the required capability.
-
-The two structured-path probes apply only when the named surface is exercised.
-`pre_tool_structured_target_paths` evaluates a direct file-write tool event: it
-passes when that event supplies structured target paths and fails with
-`structured_paths_missing` when it does not. `post_tool_structured_changed_paths`
-evaluates a direct file-write event that reports a successful write: it passes
-when the event supplies non-empty structured changed paths and fails with
-`structured_paths_missing` when the successful event omits them. General shell
-events, read-only commands such as `git status`, direct-write failures, and an
-explicit empty changed-path set that reports no change do not exercise these
-probes and must not overwrite their last applicable result.
-
-The seven probe identifiers are closed and exactly:
-
-```text
-lifecycle_hook_delivery
-pre_tool_structured_target_paths
-post_tool_structured_changed_paths
-model_separated_user_action_ui
-stop_delivery_and_replay
-fixed_ui_authority_disclosure
-mcp_capability_advertised_and_exercised
-```
-
-Probe outcomes are exactly `passed`, `failed`, `unavailable`, and
-`unsupported`. Failure classes are exactly `none`,
-`explicit_capability_absent`, `configuration_unavailable`,
-`binding_mismatch`, `approval_required`, `listener_unavailable`,
-`event_delivery_failed`, `structured_paths_missing`,
-`model_separation_unconfirmed`, `replay_failed`, `second_stop_requested`,
-`fixed_ui_unconfirmed`, `capability_not_advertised`,
-`capability_not_exercised`, and `probe_not_run`. `passed` pairs only with
-`none`; `unsupported` pairs only with `explicit_capability_absent`;
-`unavailable` pairs with `probe_not_run` when the named surface was not
-observed. Other `failed` and `unavailable` results require a non-`none`,
-non-`explicit_capability_absent`, non-`probe_not_run` failure class.
-
-The requirement mapping is deterministic:
-
-| Feature or final-output subcapability | Required probe identifiers |
+| Dimension | Exact value |
 |---|---|
-| `native_user_action` | `model_separated_user_action_ui` |
-| `local_web_user_channel` | `model_separated_user_action_ui`, `mcp_capability_advertised_and_exercised` |
-| `verified_tool_producer` | `lifecycle_hook_delivery`, `pre_tool_structured_target_paths`, `post_tool_structured_changed_paths` |
-| `registered_connection_observation` | `lifecycle_hook_delivery`, `post_tool_structured_changed_paths` |
-| `record_final_output`, `detective_final_output` | `fixed_ui_authority_disclosure`, `stop_delivery_and_replay` |
-| `authority_display` | `fixed_ui_authority_disclosure` |
-| `authenticated_exact_replay`, `block_finalization` | `stop_delivery_and_replay` |
+| Host | `host_kind=codex` |
+| Integration profile | `integration_profile=record` |
+| Connection intent | `personal` or `shared` |
+| Transport | Volicord-managed stdio MCP started with `volicord mcp --stdio` |
+| User-owned action delivery | CLI inbox |
+| Platform environment | `linux`, `macos`, `native_windows`, or `wsl2` |
 
-Each probe result identifies the capability, observed status, observation time,
-bounded failure class, and the exact host/client/adapter evidence coordinates
-when known. It stores no prompt, model output, command, path, file content, user
-answer, or raw host event. A probe must test the named surface; a generated file,
-self-reported version, configured flag, or fixture alone is not a successful
-runtime probe.
+The `connection_scope` field in a canonical binding carries the selected
+connection intent and therefore accepts only `personal` or `shared`. A
+`personal` connection installs user-owned local Codex configuration. A
+`shared` connection installs the supported project-owned Codex configuration
+inside the selected `Product Repository`. Both remain bound to the selected
+project, connection, Runtime Home, platform environment, and exact managed
+configuration.
 
-Producing host-native JSON does not prove that the host displayed its fixed UI.
-Without a bounded host-owned acknowledgement, the Guard publisher records
-`fixed_ui_authority_disclosure` as `unavailable/probe_not_run`; the evaluator
-treats that pair as missing evidence and keeps an implemented surface
-`implemented_unverified`. Likewise, the first Stop delivery cannot establish
-that the host will not retry. It records
-`stop_delivery_and_replay=unavailable/probe_not_run`. A later same-session Stop
-delivery, an exact repeated delivery, or a host `stop_hook_active=true`
-observation records `failed/second_stop_requested`. Only a newer bounded
-host-owned observation made after the relevant delivery window may record
-`passed/none`; producer-side rendering or the first Stop alone may not do so.
+An Agent Connection is a stored local integration record in the
+`Volicord Runtime Home`. It names one connection and its allowed projects; it
+does not grant operating-system permission, establish user identity, or prove
+that Codex loaded the managed entry. One managed stdio MCP process is bound to
+one current Agent Connection.
 
-The evaluator applies this order to a feature and all required probes and
-subcapabilities:
+User-owned actions are delivered through the CLI inbox. An agent-facing MCP
+connection may request an owner-defined action, but it cannot act as the local
+user channel or resolve that action on the user's behalf.
 
-1. `unsupported_by_host` is used only when an explicit capability response or
-   owner-reviewed host surface says the required capability is absent. An
-   unknown or newer valid host version is not absence.
-2. A failed current probe, or a previously evidenced capability whose current
-   configuration, binding, approval, listener, or event delivery is down, is
-   `temporarily_unavailable`.
-3. An implemented built-in surface with no fresh matching probe evidence,
-   including an explicit `unavailable/probe_not_run` result, is
-   `implemented_unverified`, including a new version that has not yet acquired
-   release evidence.
-4. Only matching fresh final-artifact evidence, successful required probes, and
-   ready runtime prerequisites yield `verified`.
+<a id="external-contract-linkage"></a>
 
-Aggregation uses the same capability facts. Explicit required-capability
-absence yields `unsupported_by_host`; otherwise a current failed prerequisite
-or probe yields `temporarily_unavailable`; otherwise missing exact evidence
-yields `implemented_unverified`; only an all-evidenced, all-probed, ready set is
-`verified`. `degraded` is a diagnostic summary or reason only and is never a
-`HostFeatureSupportStatus`. Exact replay re-evaluates current probes, evidence
-freshness, host identity, final Volicord artifact, and runtime prerequisites; it
-cannot inherit an earlier `verified` result.
+## External Contract Linkage
 
-Codex, Claude Code, and another implemented built-in adapter therefore default
-to `implemented_unverified` for a capability they implement until probes and
-fresh evidence establish more. Generic or user-managed connections are
-`unsupported_by_host` only for surfaces they explicitly do not provide. The
-reviewed Codex `host_version=0.144.4`, probe envelope
-`codex-cli 0.144.4`, and retained `clientInfo.version=0.144.4` remain exact
-validation and release-evidence coordinates; they do not gate runtime feature
-availability. A different canonical version is preserved as observed and
-evaluated from its actual capability probes.
-
-An installed-host version probe establishes a non-null availability coordinate
-only after the process exits successfully. Invalid UTF-8, timeout, non-zero
-exit, stderr output, a missing or extra LF-delimited line, CR, leading or
-trailing whitespace, a control character, or an otherwise invalid bounded
-identity rejects the probe without trimming, merging streams, substituting a
-line, or retaining a coordinate. The Codex row's stricter named envelope and
-version extraction continue to apply instead of the Claude Code line rule.
-
-`volicord connection status`, `volicord doctor`, and the release feature matrix
-consume this one evaluator. They must not independently reinterpret
-configuration findings, fixtures, direct-wrapper results, ignored tests, or
-historical live results as feature support.
-
-A command that performs capability probes, including init and `volicord
-connection verify`, passes their fresh structured results and observed
-`host_version` to the evaluator for that command and stores the bounded probe
-facts for freshness-aware diagnostics. The version retained in
-`last_verification_report_json` is diagnostic history, not proof of the
-currently installed host. `volicord connection status` and `volicord doctor`
-do not launch host probes; they evaluate readable probe observations subject to
-their freshness and binding, and otherwise use `implemented_unverified` for an
-implemented surface. They never promote or reclassify support from a historical
-version coordinate alone. Release cells use only the exact version and probes
-observed and bound by that cell.
-
-<a id="managed-final-output-authority-disclosure"></a>
-## Managed final-output authority disclosure
-
-The final-output-only authority-disclosure display may operate best-effort when
-its `authority_display` implementation and configuration are available, but a
-support or release claim requires the profile feature to have
-`support_status=verified`. Record support requires `authority_display` and
-`authenticated_exact_replay`. Detective support requires
-`authority_display`, `authenticated_exact_replay`, and the currently named
-`block_finalization` diagnostic subcapability. That retained name means the host
-can present `completion_claim_allowed=false` distinctly while still allowing
-the session to terminate; it never permits a Stop denial, a forced retry, or a
-second Stop request. Replay remains required because every owner-defined
-delivery, including Detective replay, refreshes current authority. An
-unsupported replay or completion-disclosure surface keeps the aggregate
-unverified even if the display runs. Only
-profile-applicable subcapabilities are emitted, and best-effort output never
-promotes their typed state. The display belongs to the host adapter, not to
-model-authored final prose, and uses a host-owned fixed UI surface separate
-from MCP tool context.
-
-Before refreshing status, the adapter must read-only verify the enabled Agent
-Connection, its selected-project membership, the pinned Product Repository,
-host kind, and installed profile. Event text, model text, copied
-`connection_id` values, and generated configuration cannot supply or repair that
-binding. An eligible binding permits the current read-only status lookup; it
-does not grant user authority or create a new authority record.
-The adapter derives the controlled internal verification basis
-`registered_host_stop_hook_connection_binding` only after those checks. That
-value is not a public request field or a User Channel verification basis.
-An unverified or directly invoked Detective Stop event may use the internal
-`unregistered_host_hook_event` provenance only for a defensive read-only Stop
-assessment. That provenance is not a managed binding, is never eligible for
-the fixed-UI receipt projection, and cannot replace any check above.
-
-Profile boundaries:
-
-- `record` installs only the managed final-output handler needed for this
-  disclosure. It does not install the other Detective lifecycle handlers, run a
-  session watcher, activate Detective state, record a guard event, or gate the
-  final output. The Codex handler uses Git work-tree root resolution; in a
-  non-Git Product Repository, Codex `record` remains available but does not
-  install or claim this managed disclosure capability and instead reports the
-  applicable `volicord status` fallback. Claude Code does not have this Git-root
-  prerequisite.
-- `detective` uses the same disclosure projection in addition to its separate
-  Stop observation and completion-eligibility path. Stop always allows host
-  termination; blockers and refresh failure set
-  `completion_claim_allowed=false` in the content-free receipt rather than
-  denying or repeating Stop. The persisted historical Stop result is not the
-  source of a displayed receipt.
-
-Every delivery, including an exact replay, performs a new read-only status
-refresh and uses the complete-receipt-or-fallback projection owned by
-[Projection and template display boundaries](projection-and-templates.md#managed-final-output-authority-disclosure).
-`generic`, user-managed, unsupported, missing, inactive, or degraded adapters do
-not claim this managed display capability. Their diagnostic output must expose
-the limitation and route an identified Task to
-`volicord status --task TASK_ID --json`, or a no-active-Task case to
-`volicord status --json`.
-
-Writing or verifying generated adapter configuration proves only the managed
-configuration state. It does not prove that the external host loaded the
-adapter, delivered a final-output event, or showed the fixed UI disclosure.
-
-<a id="current-connection-context"></a>
-## Current Connection Context
-
-Current connection context is the local invocation context derived for one MCP
-tool call. It is derived by the local adapter from the bound Agent Connection,
-the selected project, the method being called, and adapter-owned invocation
-facts. It is not a public request payload.
-
-An MCP session is bound at adapter startup to exactly one `connection_id`
-process-binding value that names the stored `connection_internal_id`. Project
-selection is resolved from the Agent Connection's registered repository roots
-and host-provided project context where available. Public MCP tool input schemas
-must not expose internal request envelopes, protocol metadata, `connection_id`,
-`project_id`, `actor_source`, `operation_category`, or verification-basis fields
-as caller-owned inputs.
-
-Project selection for public MCP method calls is deterministic:
-
-1. Use the project already bound by the selected Agent Connection when exactly
-   one available project is eligible.
-2. When the connection can see a host-provided repository root, match that root
-   to one connected registered project.
-3. Otherwise reject the call as ambiguous or unavailable with actionable text
-   that names the repository-root setup or connection command needed to repair
-   the state.
-
-When explicit selection is needed, the MCP-visible selector is the
-`project_selector` value returned by `volicord.list_projects`, not a caller-owned
-Core envelope field.
-
-The adapter must not guess a project from folder names, arbitrary process
-current working directory values, host labels, or the first row returned by
-storage. Host roots may be used only as host-provided repository-root evidence;
-they do not bypass registration, Connection Projects, or path-separation
-checks.
-
-Before a public tool call enters Core, the MCP adapter must verify:
-
-- the Agent Connection exists and is enabled
-- the selected project is explicitly connected to that Agent Connection
-- the selected project is active and executable
-- the connection mode allows the method's `operation_category`
-
-Connection modes and operation categories:
-
-| Agent Connection mode | Allowed operation categories through MCP | MCP-visible public method tools |
-|---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
-| `read_only` | `read` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` |
-
-The adapter-owned `volicord.list_projects` utility is visible in both
-`workflow` and `read_only` modes. `volicord.check_close` is the read-only MCP
-close-readiness tool mapped to the first-class Core read method.
-`volicord.close_task` is the workflow-only MCP mutation tool and must not
-appear in `read_only` tool discovery.
-
-`volicord.prepare_evidence_capture` is likewise workflow-only and creates only
-an intent. Receipt fulfillment is deliberately absent from MCP: the registered
-local command runner, guard-event correlator, or session-watcher source must
-fulfill the intent through the administrative source path, after which
-`volicord.record_run` can finalize the producer. Connection registration and
-source correlation remain cooperative local integration; they are not host or
-local-principal attestation, actor-identity proof, or anti-forgery protection
-against the same local principal.
-
-The table above is the mode-based allowlist. Actual MCP `tools/list` output is
-also constrained by the selected projects' readable and writable storage
-capability; [MCP Transport](mcp-transport.md#tool-discovery-and-toolscall-response-wrapping)
-owns the transport-level discovery and read-only-storage degradation rules.
-
-<a id="operation-result-retrieval"></a>
-
-`volicord.get_operation_result` is a read-only MCP tool in both connection
-modes when the selected allowed project is readable. It pages the immutable
-historical Core mutation response named by an `OperationResultRef`; it does not
-replay the mutation or refresh current authority. The adapter and Core recheck
-the enabled connection, Connection Projects membership, selected project, and
-stored `actor_source` on every page. References and cursors are non-bearer
-locators and never broaden connection access. Agent Connections cannot use the
-tool to retrieve `user_only` results, including an exact
-`volicord.resolve_user_action` response or private user text. Callers must
-read `volicord.status` separately before treating historical facts as current.
-The exact method and response contract is owned by
-[`volicord.get_operation_result`](api/method-get-operation-result.md#volicordget_operation_result).
-
-A read-only connectivity check combines administrative verification with
-active MCP read calls: `volicord connection verify` from the terminal, then
-`volicord.list_projects` and `volicord.status` from the active host session.
-That path verifies configuration, project discovery, active read-tool exposure,
-and readable project state. It must not require creating a `Task`.
-
-A workflow write-path smoke check uses Agent Connection workflow tools and can
-create Volicord state. A minimal path can include `volicord.intake`,
-`volicord.update_scope`, `volicord.record_run`,
-`volicord.request_user_action` when final acceptance is required for close,
-and `volicord.check_close`. The resulting task can remain blocked by
-`missing_final_acceptance` until the user records the required final judgment
-through a supported `User Channel`.
-
-The opt-in live Judgment harness in
-[Testing Strategy](../architecture-guide/testing-strategy.md) exercises a
-smaller connection round trip with an installed host: marker Task creation,
-product-decision Judgment creation, a human answer through the host-native MCP
-User Channel, consumption of the selected option from the default compact
-result, a choice-mapped no-write Run, and the resulting Task-state refresh. It
-requires the stored resolution basis `mcp_elicitation_user_channel`, the stored
-`selected_option_id`, and the latest Run marker to agree. A pending CLI inbox
-fallback is actionable recovery but is not counted as a successful native round
-trip. The harness is ignored by default and is not a portable host-conformance
-or security test.
-
-`volicord.resolve_user_action` has `operation_category=user_only`. It is the
-public Core API method for every User Channel resolution, including judgments
-and target-bound evidence observation, but it is not exposed by Agent
-Connections. The supported local fallback is the common `volicord inbox`
-command group owned by [Administrative CLI](admin-cli.md#user-channel-commands).
-An Agent Connection cannot substitute an ordinary `record_run` claim, staged
-artifact, tool metadata, raw guard payload, or relayed text for a resolution.
-
-Internal actor shape, not a public API schema:
+The canonical host-binding payload is a Volicord-owned external format. Before
+it reaches the canonical Agent Connection model, its boundary adapter is
+selected by the exact descriptor owned by
+[External Contracts](external-contracts.md):
 
 ```yaml
-InvocationContext:
-  actor_source: local_user | system | agent_connection:<connection_id>
-  operation_category: read | agent_workflow | user_only | admin_local | local_recovery
-  verification_basis: string
-  assurance_level: string
+ExternalContractDescriptor:
+  contract_id: string
+  schema_digest: string
+  capabilities: string[]
 ```
 
-Baseline `assurance_level` means cooperative local provenance, not
-cryptographic human identity. Authority-bearing user-action resolution
-requires `actor_source=local_user`, `operation_category=user_only`, compatible
-User Channel provenance, and method-owned compatibility. An Agent Connection
-cannot gain user authority by submitting copied user text or generated guidance.
+The adapter registry key is the exact `contract_id + schema_digest` pair. The
+descriptor capability set must contain every capability required by the
+receiving Agent Connection boundary. Missing descriptor fields, an unknown
+pair, an omitted capability, or a decode failure is not repaired by probing
+another format or filling a default.
 
-Conditions:
+The current pre-1.0 release accepts only its current descriptor. The selected
+descriptor decodes to one canonical `ManagedHostBinding` before Core or Store
+is called. Core and Store do not branch on descriptor generations, host
+configuration syntax, or payload characteristics.
 
-- A public API request has exactly one derived `InvocationContext`.
-- Internal project selection is constrained by the Agent Connection's connected
-  projects. It is not caller authority and cannot grant access to an unlisted,
-  inactive, or invalid project.
-- MCP-visible public tool schemas do not expose `actor_source`,
-  `operation_category`, `connection_id`, `project_id`, request metadata, or
-  protocol envelope fields. If raw MCP arguments include those fields, the
-  adapter rejects the call before Core execution.
-- Nested payloads such as `ArtifactInput` or `StagedArtifactHandle` do not add
-  a second invocation context.
-- Authority-provenance fields for resolved authority-bearing user actions come
-  from the derived `InvocationContext`, not caller text, labels, answer
-  payloads, copied refs, generated Markdown, or Product Repository guidance.
-- Protected reads, mutations, and artifact operations can rely on an invocation
-  only when the method owner accepts the derived context.
+<a id="platform-environment"></a>
 
-Agent may:
+## `PlatformEnvironment`
 
-- preserve derived invocation context when displaying or passing owner-result
-  context
-- expose absent or incompatible context as unavailable, mismatched, stale, or
-  insufficient Agent Connection state
+`PlatformEnvironment` is a closed value set:
 
-Agent must not:
+| Value | Meaning |
+|---|---|
+| `linux` | The native Linux release cell. |
+| `macos` | The native macOS release cell. |
+| `native_windows` | The native Windows release cell. |
+| `wsl2` | The independent WSL2 release cell. It is not inferred from `linux`. |
 
-- submit `InvocationContext` as a request payload
-- assert `verified=true`
-- submit `actor_source=local_user` or `operation_category=user_only` from an
-  Agent Connection to satisfy user authority
-- submit arbitrary verification-basis text as public request authority
-- fabricate staged artifact provenance
-- use copied identifiers, generated Markdown, chat text, projection text, or
-  agent memory as substitutes for current connection context
+The binding and receipt must carry the same exact value. Verification never
+substitutes one platform result for another. In particular, `wsl2` requires
+explicit WSL2 detection and the topology in
+[System Requirements](system-requirements.md#wsl2-topology).
 
-Owner links:
+<a id="codex-capability"></a>
 
-- Exact request envelopes and response shapes belong to
-  [API Schema Core](api/schema-core.md), [API Methods](api/methods.md), and
-  method owners.
-- `operation_category` value names belong to
-  [API Value Sets](api/schema-value-sets.md).
-- `volicord mcp --stdio` startup, connection binding, environment variables, stdio
-  framing, startup validation, response wrapping, and shutdown belong to
+## `CodexCapability`
+
+This document owns the capability identifiers used by `ManagedHostBinding`,
+`HostVerificationReceipt`, and `CodexReleaseCell`. `CodexCapability` is the
+closed value set below:
+
+| Value | Required first-release behavior |
+|---|---|
+| `managed_stdio_mcp` | The artifact can launch and retain the managed stdio MCP boundary. |
+| `record_workflow` | The artifact can complete the first-release Record-profile workflow. |
+| `personal_managed_binding` | The artifact supports the exact `personal` managed-binding lifecycle. |
+| `shared_managed_binding` | The artifact supports the exact `shared` managed-binding lifecycle. |
+
+`FirstReleaseCodexCapabilities` is the set containing all four values. Every
+first-release binding, receipt, and passed release cell carries exactly that
+set, sorted by ascending UTF-8 bytes:
+
+```text
+managed_stdio_mcp
+personal_managed_binding
+record_workflow
+shared_managed_binding
+```
+
+Unknown values, duplicate values, a different order, or a strict subset are
+invalid. The capability set describes the exact artifact's verified behavior;
+it is not inferred from `connection_scope`, a command name, or the selected
+platform.
+
+<a id="managed-host-binding"></a>
+
+## `ManagedHostBinding`
+
+The canonical binding and its nested records have these exact closed shapes.
+The written field order is also the canonical record order:
+
+```yaml
+ManagedHostBinding:
+  host_kind: codex
+  connection_scope: personal | shared
+  command: ManagedCommand
+  arguments: string[]
+  forwarded_environment: EnvironmentForwarding[]
+  configuration_target: ConfigurationTarget
+  process_binding: ProcessBinding
+  required_capabilities: CodexCapability[]
+  platform_environment: PlatformEnvironment
+
+ManagedCommand:
+  resolution: path_lookup | absolute_path
+  program: string
+
+EnvironmentForwarding:
+  source_name: string
+  target_name: string
+
+ConfigurationTarget:
+  owner: user | project
+  path: string
+
+ProcessBinding:
+  process_id: u64
+  process_start_token: string
+  platform_instance_token: string
+  executable_path: string
+  executable_digest: string
+```
+
+Every shown member is required, and unknown members are invalid. JSON decoding
+also rejects duplicate keys. `host_kind` is exactly `codex`;
+`connection_scope` matches the stored connection intent;
+`required_capabilities` is exactly `FirstReleaseCodexCapabilities`; and
+`platform_environment` is the exact detected platform.
+
+`ManagedCommand.resolution=path_lookup` requires `program` to be one nonempty
+basename with no path separator. `absolute_path` requires the normalized
+absolute path form below. `arguments` is required and preserves every item and
+its order; an empty list and an empty argument are identity-bearing values, not
+missing data. Each string is valid UTF-8, contains no NUL, and is at most 4,096
+bytes.
+
+`forwarded_environment` contains declarations, not ambient values. Each name
+matches `[A-Z_][A-Z0-9_]*`, entries are sorted by
+`target_name` then `source_name` UTF-8 bytes, and duplicate `target_name`
+values are invalid. An empty list is encoded explicitly and is valid only when
+the selected managed configuration requires no forwarding.
+
+`ConfigurationTarget.owner` is `user` for `personal` and `project` for
+`shared`. Its `path` identifies the exact managed Codex configuration file.
+`ProcessBinding.process_id` is nonzero. The two token fields are opaque
+adapter observations of 1 through 256 UTF-8 bytes, contain no control
+characters, and together distinguish PID reuse and platform-instance restart.
+`executable_path` is the resolved canonical path of the currently observed
+Codex executable. `executable_digest` is exactly 64 lowercase hexadecimal
+characters containing the SHA-256 of those executable bytes.
+
+Linux, macOS, and WSL2 canonical paths start with `/`, use `/` separators,
+and contain no `.` or `..` segment, repeated separator, or non-root trailing
+separator. Native Windows canonical paths use an uppercase drive prefix and
+forward slashes, such as `C:/...`; UNC, device, relative, DrvFS, and
+Windows-to-WSL converted spellings are invalid. Component spelling after the
+drive prefix is preserved. Runtime containment rules remain with
+[Runtime Boundaries](runtime-boundaries.md).
+
+A managed configuration may be installed before Codex starts, but it does not
+become a complete `ManagedHostBinding` until the adapter observes and validates
+the live `ProcessBinding`. Missing fields and disallowed empty strings are
+invalid; no field is optional or synthesized.
+
+<a id="canonical-binding-encoding"></a>
+
+### Canonical Encoding And Digest
+
+The binding codec is independent of JSON, YAML, Serde map order, and host
+endianness. It uses the following primitives:
+
+```text
+u32be(n)     = n as exactly four unsigned big-endian bytes
+u64be(n)     = n as exactly eight unsigned big-endian bytes
+blob(b)      = u32be(byte_length(b)) || b
+string(s)    = blob(UTF8(s))
+list(items)  = u32be(item_count) || blob(item_1_encoding) || ...
+record(fields in declared order)
+              = u32be(field_count)
+                || string(field_1_name) || blob(field_1_encoding)
+                || ...
+```
+
+An enum uses `string` with its exact literal spelling; `process_id` uses
+`u64be`; strings use `string`; arrays use `list`; and nested objects use
+`record` recursively. `canonical_binding_bytes` is the `record` encoding of
+`ManagedHostBinding` in the order shown above. Nested records use their shown
+order. `arguments` preserves its order; environment declarations and
+capabilities use their required canonical order. Field names are encoded, so an
+allowed empty string or list still has a present named field and cannot collide
+with absence.
+
+All counts and byte lengths must fit `u32`. Validation and path normalization
+happen before encoding. The encoder performs no trimming, case folding, path
+conversion, default insertion, omission, or map iteration.
+
+```text
+binding_digest = "sha256:" || lowercase_hex(sha256(
+  "volicord.managed-host-binding\0"
+  || canonical_binding_bytes
+))
+```
+
+`binding_digest` is therefore exactly `sha256:` followed by 64 lowercase
+hexadecimal characters. It identifies the exact verified binding content and
+is not a format-version number. Content characteristics must never select
+another codec.
+
+<a id="codex-adapter-responsibilities"></a>
+
+## Codex Adapter Responsibilities
+
+The Codex adapter owns all host-specific inspection and mutation:
+
+- discover the Codex installation referenced by the current binding, its
+  configuration target, and the current platform environment;
+- install only the managed entry represented by the canonical binding;
+- construct `ManagedHostBinding` and its digest;
+- calculate the digest of every generated managed artifact;
+- inspect exact Codex artifact and executable identity;
+- validate current process binding;
+- detect missing, modified, or extra managed configuration as configuration
+  drift;
+- verify the complete binding and issue a typed
+  `HostVerificationReceipt`;
+- repair owner-defined managed state from current canonical inputs; and
+- uninstall only the matching Volicord-managed state.
+
+Discovery does not make an artifact supported. The adapter accepts only one
+`passed` release cell whose `artifact_digest` equals
+`process_binding.executable_digest`, whose `platform` equals
+`platform_environment`, whose `integration_profile` is `record`, and whose
+`observed_capabilities` exactly equals `required_capabilities`. The current
+binding, receipt, and cell must therefore agree on platform, executable digest,
+profile, and the exact canonical capability set. A recognizable command name,
+a reported version range, a nearby artifact, a partial capability match, or a
+cell for another platform is insufficient. Any absence or mismatch is
+`UnsupportedContract` with machine-readable reason
+`unsupported_host_artifact`.
+
+Repair regenerates canonical managed state and host-setup action data; it does
+not overwrite unrelated Codex configuration or silently change the selected
+project, connection, intent, profile, or platform environment. Uninstall
+removes only content whose current identity still matches Volicord ownership.
+
+Core does not parse Codex configuration, shell syntax, generated files, command
+strings, filesystem placement rules, or process syntax. It receives only the
+canonical binding identity and typed receipt.
+
+<a id="host-verification-receipt"></a>
+
+## `HostVerificationReceipt`
+
+The adapter issues a receipt only after every verification check succeeds. Its
+closed shape is:
+
+```yaml
+HostVerificationReceipt:
+  contract_id: volicord.host-verification-receipt
+  project_id: string
+  connection_id: string
+  host_kind: codex
+  integration_profile: record
+  platform_environment: PlatformEnvironment
+  required_capabilities: CodexCapability[]
+  verified_capabilities: CodexCapability[]
+  binding_digest: string
+  generated_artifacts_digest: string
+  executable_digest: string
+  policy_digest: string
+  verifier_build_digest: string
+  observed_at: string
+  expires_at: string
+  result: verified
+```
+
+Every member is required, unknown members and duplicate JSON keys are invalid,
+and no value is defaulted. `project_id` and `connection_id` are the exact
+current Store identifiers: each is 1 through 1,024 UTF-8 bytes, contains a
+non-whitespace character and no control character, and is preserved without
+trimming. Both capability arrays exactly equal
+`FirstReleaseCodexCapabilities`.
+
+`binding_digest` has the canonical `sha256:<64-lowercase-hex>` form defined
+above. `executable_digest` is the raw 64-lowercase-hex SHA-256 of the observed
+Codex executable and exactly equals
+`process_binding.executable_digest` and the matched release cell's
+`artifact_digest`. `policy_digest` is the exact current canonical
+`policy_fingerprint` in `sha256:<64-lowercase-hex>` form.
+`verifier_build_digest` is the raw 64-lowercase-hex SHA-256 of the exact
+Volicord verifier executable bytes.
+
+`generated_artifacts_digest` uses the binding codec's `string`, `list`, and
+`record` primitives. Each generated artifact entry is the two-field record
+`path` then `digest`, where `path` is its normalized absolute platform path
+and `digest` is the raw 64-lowercase-hex SHA-256 of its bytes. Entries are
+sorted by `path` UTF-8 bytes after duplicate-path rejection:
+
+```text
+generated_artifacts_digest =
+  "sha256:" || lowercase_hex(sha256(
+    "volicord.generated-managed-artifacts\0"
+    || list(generated_artifact_entry_records)
+  ))
+```
+
+`observed_at` and `expires_at` are canonical RFC 3339 UTC timestamps and must
+satisfy `observed_at < expires_at`. `result` is exactly `verified`. A failed,
+unavailable, degraded, corrupt, or unsupported verification returns the
+applicable Failure Model result and does not issue a receipt with another
+`result` value.
+
+A receipt is immutable after issuance. It is evidence for one exact binding,
+not a bearer token, user identity, host attestation, or independent source of
+Core authority.
+
+<a id="core-receipt-validation"></a>
+
+## Core Receipt Validation
+
+Core consumes only a typed receipt and validates all of the following before a
+receipt-dependent operation proceeds:
+
+- `project_id` matches the resolved current project;
+- `connection_id` matches the resolved current Agent Connection;
+- `host_kind=codex` and `integration_profile=record` match the connection;
+- `platform_environment` matches the current connection, binding,
+  `process_binding`, and passed release cell exactly;
+- `required_capabilities` and `verified_capabilities` exactly equal each other,
+  `FirstReleaseCodexCapabilities`, and the passed cell's
+  `observed_capabilities`;
+- `policy_digest` matches the current policy basis;
+- `binding_digest` and `generated_artifacts_digest` match the current stored
+  binding and managed artifact identity;
+- `executable_digest` matches the current process binding and exact passed
+  release-cell `artifact_digest`;
+- `verifier_build_digest` matches the currently accepted verifier build;
+- `contract_id=volicord.host-verification-receipt`,
+  `result=verified`, and `observed_at <= current_time < expires_at`;
+- the receipt is bound to the current Store records, including the current
+  project, connection, binding, policy, and capability requirements.
+
+A Store change that invalidates any compared fact makes the receipt stale even
+before `expires_at`. A platform lifecycle change that invalidates
+`process_binding` also makes it stale; WSL2 restart behavior is defined by
+[System Requirements](system-requirements.md#wsl2-topology). Core
+does not re-inspect host files or the executable to compensate for an invalid
+receipt.
+
+<a id="persisted-host-setup-user-actions"></a>
+
+## Persisted Host-Setup `UserAction` Values
+
+Host setup may persist a typed array of setup actions for connection status and
+repair guidance. This array is diagnostic connection state; it is not a Core
+`UserActionRequest`, `UserActionResolution`, policy decision, or authority
+record.
+
+The complete closed `UserAction` type is validated both before write and after
+read:
+
+- a valid `[]` means there are no current host-setup actions;
+- syntax failure, a non-array value, an unknown action variant, a missing
+  required field, or an invalid payload is not converted to `[]`;
+- reads never synthesize host-specific default actions;
+- when a default action is required, the adapter computes and validates it
+  before persistence;
+- corrupt persisted data is reported with category `corrupt` and
+  machine-readable reason `persisted_user_actions_corrupt`;
+- when the connection's core managed binding remains usable, its status is
+  machine-readably `degraded` and identifies the unavailable setup guidance;
+- any operation that depends on the corrupt action data fails closed; and
+- an explicit verify or repair flow may regenerate the current typed value.
+
+Ordinary reads do not repair, migrate, guess, or replace the value. The
+[Failure Model](failure-model.md) owns the distinction between `Corrupt` and a
+`Degraded` connection projection.
+
+<a id="threat-model"></a>
+
+## Threat Model
+
+Trusted:
+
+- the same operating-system user account;
+- the `Volicord Runtime Home` owned by that account; and
+- that account's Store write access.
+
+Untrusted:
+
+- external host input;
+- a stale receipt;
+- a receipt for another project or connection;
+- manually modified configuration;
+- a modified executable or generated artifact; and
+- a Codex artifact absent from the supported manifest.
+
+Tampering with Runtime Home by a malicious process running with the same user
+permissions is outside the first-release threat model. This contract does not
+add receipt signing, an operating-system keystore, key rotation, or revocation.
+
+<a id="adjacent-owners"></a>
+
+## Adjacent Owners
+
+- External descriptor selection:
+  [External Contracts](external-contracts.md).
+- Canonical failure categories:
+  [Failure Model](failure-model.md).
+- Managed stdio MCP behavior:
   [MCP Transport](mcp-transport.md).
-
-## User Channel And Agent Connections
-
-Agent Connections are agent-facing connections. They are not the
-`User Channel`, even when the model is relaying a user's words.
-
-Conditions:
-
-- The supported local CLI path for a human user to inspect pending user actions
-  and submit the stored action-specific form is the `volicord inbox` command group
-  owned by [Administrative CLI](admin-cli.md#user-channel-commands).
-- When the initialized MCP client declares `capabilities.elicitation`,
-  `volicord mcp --stdio` may use server-initiated elicitation as a User Channel
-  path for a pending request created by `volicord.request_user_action`; the
-  wire behavior is owned by [MCP Transport](mcp-transport.md#user-action-elicitation).
-- A User Channel credential, bearer token, credential-bearing URL, complete
-  request body, or `UserActionInboxForm` must never cross Agent Connection MCP
-  `content`, `structuredContent`, compatibility or diagnostic text, full-detail
-  output, resume replay, or operation-result bytes. An Agent Connection receives
-  only the pending request ID, `status=pending`, and `next_actor=user` for the
-  request itself.
-- The exact boolean `true` at
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`
-  is only the initialized client's cooperative delivery declaration. It does
-  not grant local-web eligibility by itself.
-- Local web is available only when one evaluator confirms all of the following:
-  the current transport is the managed stdio host path; a loopback listener is
-  ready; the exact declaration is `true`; and one
-  `host_capability_verifications` row with `outcome=passed` is current at
-  `observed_at <= now < expires_at` and exactly matches the Agent Connection,
-  non-generic host kind, `clientInfo.name`, `clientInfo.version`, adapter
-  profile and version, Volicord build, exact lowercase 40- or 64-hex source
-  revision, target and executable digest, managed fingerprint, and live-host
-  evidence digest. The evaluator must obtain the expected
-  `evidence_artifact_sha256` from a separately verified exact-final-artifact
-  release evidence manifest or receipt outside the executable. That manifest
-  must bind the same capability, host/client, adapter, build, source, target,
-  and executable digest, and the row's digest must exactly match its expected
-  value. Missing, unknown, malformed, unverified, or mismatched manifest input
-  is unavailable. The row's own digest and the build descriptor cannot supply
-  the expected value. The row must also have
-  `host_version == client_version == clientInfo.version`, with that same
-  version bound as the artifact's installed-host version. Missing, false,
-  wrong-typed, wrong-namespace, malformed, expired, revoked, ambiguous, corrupt, or
-  mismatched input is unavailable and must not issue a token.
-  An over-bound publication or expectation is invalid input before replay or
-  storage effects. An over-bound persisted history or current-pointer value is
-  corrupt state; evaluation fails closed to CLI inbox without a token, `_meta`,
-  or project-time effect.
-- The current adapter has no trusted acquisition path for that external
-  manifest or receipt. Production local-web eligibility therefore remains
-  fail-closed and uses CLI inbox; test-only injection of an expected value does
-  not establish production availability.
-- Manual stdio, CLI verification probes, Local HTTP transport, generic host
-  connections, and unknown or invalid managed-launch markers are never
-  eligible for this handoff. They use CLI inbox recovery even when the client
-  declares the exact capability and a listener exists.
-- A matching row records bounded evidence that the named host/profile delivered
-  this handoff during a specific validation run. It is not host attestation,
-  proof of host isolation, proof of current user identity, or a guarantee that
-  a later external host preserves model invisibility. The host must still keep
-  the namespaced tool-result `_meta` handoff outside model context and render it
-  on a user-owned surface.
-- The local-web URL may appear only in that model-invisible `_meta` handoff.
-  It must not be copied into fallback text for the agent to relay. The consent
-  page identifies the pending request, stored candidates, and non-guarantees;
-  possession of its bearer credential is what opens that user-only page.
-- When native elicitation and a negotiated model-invisible local-web surface
-  are unavailable, agent-visible fallback identifies the pending request and
-  routes the human user to the `volicord inbox` CLI path. Prompt-submit capture
-  remains a separately verified User Channel integration; fallback text must
-  not expose its complete form or a resolution credential.
-- Public Agent status and close results use only the exact three-field pending
-  summaries; they return no User Channel availability or capture-path facts. A
-  complete `UserActionInboxItem` and its credential-free availability categories
-  are fetched only through the separate internal Core projection used by a
-  verified User Channel renderer. Unavailable host prompt input must not hide
-  another available answer path, and the CLI inbox remains available when
-  applicable. These projections do not let an Agent Connection resolve the
-  action.
-- A rich path is available for a particular action only on a User Channel
-  surface and when its complete,
-  untruncated request-bound presentation fits the transport or host-render
-  budget owned by MCP Transport or Administrative CLI. A presentation-budget
-  failure makes that path unavailable and must continue to the next compatible
-  User Channel path.
-- Every user-action resolution requires `actor_source=local_user`,
-  `operation_category=user_only`, and compatible User Channel provenance.
-- `actor_source=agent_connection:<connection_id>` cannot become `local_user`
-  provenance by relaying text from a user.
-
-Agent may:
-
-- request a missing user action when a method owner supports that path
-- display only the agent-safe pending request summary and current safe
-  resolution projection
-- route the human user to the supported `User Channel`
-
-Agent must not:
-
-- resolve any user action from an Agent Connection
-- obtain, relay, open, or submit a User Channel bearer credential or complete
-  user-only capture form from Agent Connection output
-- treat Agent Connection tool arguments as MCP elicitation responses
-- treat a natural-language approval, chat reply, generated Markdown status, or
-  rendered projection as User Channel provenance
-- broaden one selected option into final acceptance, residual-risk acceptance,
-  sensitive-action approval, scope acceptance, or another judgment kind
-- create evidence sufficiency, acceptance, residual-risk acceptance, close
-  readiness, or security authority from displayed judgment text
-
-Owner links:
-
-- [Core Model](core-model.md) owns the authority meaning of user-owned
-  judgments, final acceptance, residual-risk acceptance, evidence, and close
-  readiness.
-- [Resolve-user-action method](api/method-resolve-user-action.md) owns public
-  method behavior for resolving one pending user action.
-- [Projection and template display boundaries](projection-and-templates.md)
-  owns generated display and projection authority boundaries.
-
-## Agent Behavior Guidance
-
-Agent behavior guidance has two layers:
-
-- MCP server instructions are always supplied by the server during MCP
-  initialization.
-- Optional `Product Repository` guidance is installed only with explicit user
-  authorization when an administrative command supports it.
-
-Rules:
-
-- MCP server instructions may describe cross-tool workflows, project selection
-  rules, and limitations that apply across Volicord tools.
-- Optional repository guidance may add a Volicord-managed `AGENTS.md` block or
-  host-specific rule file inside a `Product Repository` only under the boundary
-  owned by
-  [Runtime Boundaries](runtime-boundaries.md#explicit-integration-files-in-product-repositories).
-- Guidance can improve tool selection, but it is not authority, access control,
-  user judgment, security enforcement, or proof that a model will choose
-  Volicord tools.
-
-## Agent Context Transfer
-
-Agent context transfer gives the agent enough owner context for the next action
-without turning the packet into an authority record.
-
-Conditions:
-
-- Agent context should contain only owner results needed for the next action and
-  current connection-context limits that affect that action.
-- A context packet is support context, not Core state, storage state, evidence,
-  acceptance, residual-risk acceptance, or close output.
-
-Agent may:
-
-- pass compact context containing the current Task summary, current scope,
-  `state_version`, pending user-owned actions, blockers, next safe action,
-  evidence and artifact summaries, close-readiness and residual-risk summaries,
-  owner-supported guarantee display, and source or limitation notes
-- retrieve exact owner sections only when the next action needs them
-- include both language versions for the same `doc_id` when bilingual
-  maintenance requires semantic-parity review
-
-Agent must not:
-
-- inject full schemas, DDL, historical logs, artifact bodies, unrelated contract
-  material, out-of-scope catalogs, exact template bodies, or both language
-  versions for the same `doc_id` by default
-- treat a stale or copied context packet as newer authority than the owner
-  result or underlying record
-
-Owner links:
-
-- [Template Bodies](template-bodies.md) owns agent context packet wording.
-- [Reference Index](README.md) routes exact owner sections.
-- [Translation Policy](../maintain/translation-policy.md) owns bilingual
-  semantic-parity review guidance.
-
-## Fallback Boundary
-
-Fallback display applies when current connection context or a required
-connection mode is unavailable, mismatched, stale, or insufficient for the
-requested operation.
-
-Agent may:
-
-- move to a suitable connection mode or a different connected project
-- narrow the operation
-- request the missing user-owned judgment
-- continue outside Volicord only when the user explicitly chooses that mode
-
-Agent must:
-
-- expose the limitation in support or display text
-- route machine-readable failure meanings to
-  [API error codes](api/error-codes.md) and
-  [API error details](api/error-details.md)
-- route user-facing wording to [Template Bodies](template-bodies.md)
-
-Agent must not:
-
-- fabricate authority
-- hide unavailable, mismatched, stale, or insufficient context states inside
-  ordinary success text
-- continue outside Volicord without the user's explicit choice
+- Install, verify, repair, and uninstall commands:
+  [Administrative CLI](admin-cli.md).
+- Platform cells and WSL2 topology:
+  [System Requirements](system-requirements.md).
+- Exact Codex release artifacts and capabilities:
+  [Host Release Evidence](host-release-evidence.md).
+- Runtime and repository path boundaries:
+  [Runtime Boundaries](runtime-boundaries.md).
+- Security guarantees and non-guarantees:
+  [Security](security.md).

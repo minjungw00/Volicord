@@ -21,6 +21,7 @@
 - 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md).
 - 표시 문구만: [템플릿 본문](../template-bodies.md).
 - 저장 효과: [저장 효과](../storage-effects.md).
+- 제품 전체 실패 범주 의미: [실패 모델](../failure-model.md).
 
 <a id="machine-readable-error-details"></a>
 
@@ -60,7 +61,8 @@
 
 ## 담당 상태 손상 세부 필드
 
-타입이 지정된 담당 상태 손상을 구조화 저장소/런타임 사용 불가 거절로 보고할 때 세부사항은 아래 항목을 식별할 수 있습니다.
+타입이 지정된 담당 상태 손상을 `code=PERSISTED_DATA_CORRUPT`,
+`category=corrupt`로 보고할 때 세부사항은 아래 항목을 식별할 수 있습니다.
 
 - `owner_state_error.table`
 - `owner_state_error.record_ref`
@@ -72,6 +74,25 @@
 <a id="error-detail-helper-values"></a>
 
 ## 오류 세부사항 보조 값
+
+<a id="reason"></a>
+
+### `reason`
+
+`ToolError.details.reason`은 정확한 도메인별 식별자입니다. 아래 코드와 도메인 조합은
+표시된 값을 사용해야 합니다.
+
+| 공개 코드와 도메인 | `ToolError.category` | `details.reason` | 의미 담당 문서 |
+|---|---|---|---|
+| `volicord.prepare_write`의 `NO_ACTIVE_CHANGE_UNIT` | `rejected` | `current_change_unit_required` | [`volicord.prepare_write`](method-prepare-write.md) |
+| 영속 호스트 설정 `UserAction` 데이터의 `PERSISTED_DATA_CORRUPT` | `corrupt` | `persisted_user_actions_corrupt` | [Agent Connection](../agent-connection.md#persisted-host-setup-user-actions) |
+| 알 수 없는 외부 설명자 또는 경계 계약의 `UNSUPPORTED_CONTRACT` | `unsupported_contract` | `unsupported_external_contract` | [외부 계약](../external-contracts.md) |
+| 적격하지 않은 정확한 Codex 호스트 아티팩트의 `UNSUPPORTED_CONTRACT` | `unsupported_contract` | `unsupported_host_artifact` | [Agent Connection](../agent-connection.md#codex-adapter-responsibilities), [호스트 릴리스 증거](../host-release-evidence.md) |
+
+사유는 도메인 원인을 좁힐 뿐 필수 실패 범주나 공개 코드를 대신하거나 바꾸지 않습니다.
+이 값들은 표시 텍스트, fallback 선택자, alias, 다른 계약을 decode할 권한이 아닙니다.
+다른 세부사항 계열은 이 필드에 의미를 겹쳐 넣지 않고 `write_ticket_reason`,
+`artifact_input_error.reason`처럼 이름 붙은 중첩 필드를 사용합니다.
 
 <a id="authorization-reason"></a>
 

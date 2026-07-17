@@ -1,25 +1,31 @@
 # Storage DDL
 
-This document owns the baseline SQLite DDL contract for the storage layout described by [Storage Records](storage-records.md). It makes the baseline `registry.sqlite` and project `state.sqlite` layouts implementable without moving method effects, artifact lifecycle rules, state-version meaning, API schemas, or security guarantees into this document.
-
-The current DDL profile is `baseline_sqlite_v7`.
+This document owns the physical SQLite DDL contract for the one canonical
+storage layout described by [Storage Records](storage-records.md). It makes
+`registry.sqlite`, project `state.sqlite`, and the physical `StorageManifest`
+placement implementable without moving manifest identity, database-open
+classification, method effects, artifact lifecycle rules, state-version
+meaning, API schemas, or security guarantees into this document.
 
 ## Owner Boundaries
 
 This document owns:
 
-- baseline SQLite table shape for `registry.sqlite` and project `state.sqlite`
-- baseline indexes, foreign keys, and physical constraints
+- canonical SQLite table shape for `registry.sqlite` and project `state.sqlite`
+- canonical indexes, foreign keys, views, and physical constraints
+- the physical `StorageManifest` carrier columns and their strict persisted representation
 - SQLite constraints for `project_state.state_version`, replay rows, current Change Unit uniqueness, write-ticket basis versions, staged artifact provenance, and host-observation records
 - the DDL-level split between Runtime Home registration data and project-local Core state
-- parity between the documented canonical SQL blocks and the canonical SQL source files
+- the canonical SQL inputs from which `GeneratedSchemaMetadata` and the documentation projection are derived
 
 This document does not own:
 
 - record-family purpose, storage locations, storage-owned values, or JSON placement categories; see [Storage Records](storage-records.md)
 - method branch storage effects; see [Storage Effects](storage-effects.md)
 - artifact staging, promotion, linking, body reads, retention, or integrity lifecycle; see [Artifact Storage](storage-artifacts.md)
-- state-version, idempotency, event, lock, or incompatible-storage handling; see [Storage Versioning](storage-versioning.md)
+- `StorageManifest` semantic identity, digest construction, capability meaning,
+  exact-open comparison, failure classification, state-version, idempotency,
+  event, or lock behavior; see [Storage Versioning](storage-versioning.md)
 - API request or response schemas; see the API schema owners routed from [API Schema Core](api/schema-core.md)
 - runtime location boundaries; see [Runtime Boundaries](runtime-boundaries.md)
 - security guarantee levels; see [Security](security.md)
@@ -31,7 +37,7 @@ For canonical vocabulary, see [Documentation Policy](../maintain/documentation-p
 
 | Surface | Stability | Notes |
 |---|---|---|
-| Baseline SQLite DDL, canonical SQL blocks, table constraints, indexes, foreign keys, `project_state.state_version` as the public baseline state clock, and `project_state.updated_at` as the physical canonical-UTC floor | `stable` | This is the implementable storage DDL contract for the current baseline profile. The UTC floor is not a second public state-version field. |
+| Canonical SQLite DDL, manifest carrier columns, canonical SQL blocks, table constraints, indexes, views, foreign keys, `project_state.state_version` as the public state clock, and `project_state.updated_at` as the physical canonical-UTC floor | `stable` | This is the implementable storage DDL contract for the one accepted manifest. The UTC floor is not a second public state-version field. |
 | Physical table names, column names, internal IDs, generated host-observation rows, and `_json` representation columns | `internal` | These make the storage layout implementable; they are not ordinary user-facing selectors or public API arguments unless another focused owner exposes them. |
 | Safe storage or corruption diagnostics that identify table, record reference, logical column, or corruption category | `diagnostic` | Diagnostics must not expose raw stored JSON, secrets, SQL text, or sensitive absolute paths. |
 
@@ -47,13 +53,13 @@ Mutating transactions must use `BEGIN IMMEDIATE` or an equivalent serialized
 write boundary before reading freshness, write-ticket compatibility rows,
 staging, replay rows, or the persisted canonical-UTC floor for a commit.
 
-Baseline authority rows remain addressable unless an owning storage contract defines a repair or retention path. The registry may cascade-delete non-authority alias rows that are owned by a forgotten project registration; it must not use alias cleanup to imply deletion of project-local Core authority records.
+Authority rows remain addressable unless an owning storage contract defines a repair or retention path. The registry may cascade-delete non-authority alias rows that are owned by a forgotten project registration; it must not use alias cleanup to imply deletion of project-local Core authority records.
 
 SQLite `TEXT` columns ending in `_json` store JSON as a representation choice. JSON used for authority, lifecycle, scope, evidence, completion, close readiness, or write compatibility is typed owner state. Typed Core code must parse and validate those columns before commit against the applicable API schema owner, storage owner, or artifact owner. Failure to decode typed owner state is corruption and must never be converted to an empty object, empty array, false value, default enum, or "no requirement" interpretation. SQL `NULL` may mean absence only when the owning schema explicitly marks the field optional; malformed JSON in an optional column is corruption, not absence. Open-ended display metadata may remain untyped only when it is not used for authority or close decisions. Safe diagnostics may identify the table, record reference, logical column, and corruption category, but must not expose raw stored JSON, secrets, SQL text, or sensitive absolute paths. SQLite defaults such as `'{}'` and `'[]'` do not make API fields optional.
 
-`project_state.state_version` is the only public baseline state clock.
+`project_state.state_version` is the only public state clock.
 `project_state.updated_at` is a distinct physical floor for the canonical Core
-UTC clock, not a public conflict version or schema version. Baseline SQLite DDL
+UTC clock, not a public conflict version or schema version. Canonical SQLite DDL
 must not create `tasks.state_version`, storage `schema_version` columns, or a
 migration ledger table.
 
@@ -64,11 +70,58 @@ compatibility state; they are not OS permissions, filesystem ACLs, sandboxing,
 network policy, secret isolation, global filesystem interception, or proof that
 an effect occurred.
 
+<a id="physical-storage-manifest-placement"></a>
+## Physical `StorageManifest` Placement
+
+The canonical SQL has no separate manifest table and no numeric schema-version
+column. The complete manifest occupies the two existing carrier columns below:
+
+| Database | Owning row | Carrier column | Exact DDL shape |
+|---|---|---|---|
+| `registry.sqlite` | the `runtime_home` row selected by `singleton_id=1` | `runtime_home.storage_profile` | `TEXT NOT NULL` with no SQL default |
+| project `state.sqlite` | the `project_state` row for that database's `project_id` | `project_state.storage_profile` | `TEXT NOT NULL` with no SQL default |
+
+Despite its physical name, `storage_profile` is not a profile selector,
+numeric revision, migration key, or compatibility alias. It stores the one
+deterministic canonical UTF-8 JSON encoding of the complete current
+`StorageManifest`. The object
+has exactly `contract_id`, `canonical_ddl_digest`,
+`integrity_constraints_digest`, and `enabled_capabilities`; missing, unknown,
+or duplicate members are invalid. The capability array must preserve the
+complete sorted, duplicate-free set owned by
+[Storage Versioning](storage-versioning.md).
+
+Fresh initialization writes the same current manifest value into the registry
+carrier and every newly created project carrier. Store strict-decodes each
+carrier independently before reading authority or policy records. It requires
+the persisted value to equal the current built-in manifest and requires a
+selected project's manifest to equal the registry manifest. It does not parse
+an integer, compare versions, inspect field presence to select a decoder, or
+try another profile. The exact open result and failure category remain with
+[Storage Versioning](storage-versioning.md).
+
 ## Canonical SQL Sources
 
-The executable canonical SQL sources are [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies these sources to empty SQLite databases. Normal opening rejects incompatible profiles. The separately invoked offline read-only v6-to-fresh-v7 copy path is owned by [Storage Versioning](storage-versioning.md); it never performs in-place conversion.
+The only executable DDL sources are
+[`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and
+[`project.sql`](../../../crates/volicord-store/src/schema/project.sql), in that
+fixed source order. Fresh initialization applies them only to empty SQLite
+databases. There is no migration, conversion, upgrade, importer, historical SQL
+bundle, numeric profile dispatch, or alternate database opener.
 
-`docs-check` validates that the canonical SQL blocks below match those source files exactly. The focused `storage_ddl_contract` test validates the executable schema semantics.
+A deterministic extractor derives the tables, columns, indexes, constraints,
+and both schema digests from those files for the single shared
+`GeneratedSchemaMetadata`. Runtime validation, manifest construction, Store
+query projections, fixtures, the DDL contract test, and the documentation
+inventory consume that generated artifact. None keeps a second authoritative
+inventory.
+
+The canonical SQL blocks below are a checked documentation projection, not a
+second DDL source. `docs-check` requires them to match the source files exactly,
+and the focused `storage_ddl_contract` test validates the executable schema
+semantics. Any table, column, index, view, foreign key, `CHECK`, `UNIQUE`,
+default, or other physical SQLite object absent from the canonical SQL is not
+part of the accepted layout.
 
 ## `registry.sqlite`
 
@@ -355,12 +408,12 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 
 Registry constraints:
 
-- `runtime_home` is a singleton table. It stores Runtime Home identity, the Runtime Home path, the registry database path, storage profile, metadata, and timestamps. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
+- `runtime_home` is a singleton table. Its `storage_profile` column is the required manifest carrier and stores the complete current `StorageManifest`; the row also stores Runtime Home identity, the Runtime Home path, the registry database path, metadata, and timestamps. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
 - `installation_profile` stores the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps for the Runtime Home. It may be established by `volicord init`. It is not host trust, user authority, or public API state.
 - `projects.project_internal_id` is the storage primary key for project records. `projects.project_name` is the display name. `projects.project_alias` is the CLI selection aid. `projects.repo_root` is the repository-root lookup key. `projects.project_alias`, `projects.repo_root`, `projects.project_home`, and `projects.state_db_path` are unique.
 - `project_aliases` maps aliases to `project_internal_id` values. Alias rows are registry selection aids, not project-local Core authority records.
-- `projects.state_db_path` is retained as a stored column. Store application-level current-registration validation must confirm it equals `project_home/state.sqlite` before operational `ProjectRecord` lookup or listing, writable project-state open, Agent Connection project routing, Core execution, profile reuse, or MCP project availability.
-- `projects.status` is storage-owned and baseline-valid only as `active`.
+- `projects.state_db_path` is retained as a stored column. Store application-level current-registration validation must confirm it equals `project_home/state.sqlite` before operational `ProjectRecord` lookup or listing, writable project-state open, Agent Connection project routing, Core execution, project-store reuse, or MCP project availability.
+- `projects.status` is storage-owned and valid only as `active`.
 - `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps.
 - `agent_connections.intent` is constrained to `personal`, `shared`, or `global`.
 - `agent_connections.host_scope` is constrained with `host_kind`: Codex supports `user` and `project`; Claude Code supports `local`, `project`, and `user`; generic records are limited to `export`.
@@ -1570,7 +1623,8 @@ CREATE TABLE session_end_receipts (
 
 Project-state constraints:
 
-- `project_state.state_version` is the only public baseline state clock and must advance monotonically according to [Storage Versioning](storage-versioning.md). It is a Core state clock, not a schema version.
+- `project_state.storage_profile` is the required project manifest carrier. It stores the same complete current `StorageManifest` as `runtime_home.storage_profile`; strict application validation rejects a missing, malformed, non-current, or registry-mismatched manifest rather than selecting another format.
+- `project_state.state_version` is the only public state clock and must advance monotonically according to [Storage Versioning](storage-versioning.md). It is a Core state clock, not a schema version.
 - `project_state.updated_at` is the non-decreasing persisted floor of the
   canonical Core UTC clock. Store application validation must strict-parse it
   as canonical UTC owner state and fail closed on malformed values. A normal
@@ -1687,8 +1741,10 @@ Project-state constraints:
 
 - [Storage Records](storage-records.md) defines persisted record families, placement, relationship layout, storage-owned values, and JSON placement.
 - [Storage Effects](storage-effects.md) defines which method branches create, update, observe, or leave records untouched.
-- [Storage Versioning](storage-versioning.md) defines the
-  `project_state.state_version` clock, canonical Core UTC clock and persisted
-  floor, idempotency, replay, events, locks, and incompatible-storage handling.
+- [Storage Versioning](storage-versioning.md) defines `StorageManifest`
+  identity and digests, enabled capabilities, exact-open comparison and failure
+  classification, generated schema metadata, the `project_state.state_version`
+  clock, canonical Core UTC clock and persisted floor, idempotency, replay,
+  events, and locks.
 - [Agent Connection](agent-connection.md) defines Agent Connection, Connection Projects, current connection context, mode gating, and Agent Connection versus User Channel boundaries.
 - [Security](security.md) defines security boundaries and guarantee levels.

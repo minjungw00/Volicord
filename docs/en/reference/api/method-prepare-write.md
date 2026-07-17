@@ -52,8 +52,10 @@ the current Task and Change Unit. A non-product sensitive ticket has
 product-path set, baseline, Change Unit, scope revision, and user-owned approval
 basis, and is consumed only by the matching sensitive Run. It is not filesystem
 enforcement, OS permission, shell permission, or proof that an effect occurred.
-When the check is not allowed, the method denies or defers the ticket path
-without invalidating an unrelated compatible ticket.
+After the current Change Unit precondition has been satisfied, a policy check
+that is not allowed denies or defers the ticket path without invalidating an
+unrelated compatible ticket. A missing current Change Unit is not a policy
+decision and does not enter this path.
 
 Every request is reevaluated under the current policy. A policy change can make
 the proposed write `sensitive` or otherwise require a new user-owned approval;
@@ -94,11 +96,44 @@ Field notes:
 - `intended_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization); this method uses normalized repo-relative paths when forming and comparing the path-level `WriteTicketScope` and compatibility storage scope.
 - `sensitive_categories` entries are opaque sensitive-category classification strings unless this method or a profile owner publishes a narrower local list.
 
+## Evaluation order and current Change Unit precondition
+
+Write preparation uses this order:
+
+1. Validate the request shape.
+2. Resolve the addressed or current Task.
+3. Resolve the current Change Unit for that Task.
+4. If no current Change Unit exists, return `ToolRejectedResponse` with
+   `errors[].category=rejected`, `errors[].code=NO_ACTIVE_CHANGE_UNIT`, and the method-specific
+   `errors[].details.reason=current_change_unit_required`.
+5. Build the canonical resolved context with the concrete `TaskId` and
+   `ChangeUnitId`.
+6. Evaluate current policy and write compatibility.
+7. Plan ticket issuance or reuse only when the decision is allowed.
+
+The current Change Unit check is a structural precondition, not a policy
+decision. It applies identically to `dry_run=false` and `dry_run=true`. This
+rejection creates, reuses, or invalidates no `WriteTicket`; creates no
+`WriteDecision` or authority event; creates no replay or invocation row; and
+does not increment `project_state.state_version`. A bounded diagnostic may
+record the method, reason `current_change_unit_required`, the project and resolved
+Task identifiers, and the observation time. That diagnostic is not an
+append-only rejection stream or Core authority state.
+
+While the resolved Task still has no current Change Unit, repeated calls reject
+deterministically with `NO_ACTIVE_CHANGE_UNIT` and reason
+`current_change_unit_required`, and repeat none of those effects. Any
+`WriteTicketAttemptScope` or `WriteTicketValidityBasis` formed
+after this precondition carries the actual resolved `ChangeUnitId`; neither
+structure uses a null, optional, or placeholder Change Unit.
+
 ## Access requirements
 
 Requires:
 
 - verified invocation context with `operation_category=agent_workflow`
+- a current Change Unit resolved for the addressed Task; absence follows the
+  structural rejection above before policy evaluation
 - a current Task whose mode is `direct` or `work` and whose `work_phase` is `implementation`; `advisor` and shaping are incompatible with write preparation
 - a current effective control level. `observe` is incompatible with product
   writes. An effective `sensitive` Task also requires an exact ticket-backed
@@ -199,7 +234,7 @@ For `decision=allowed`:
   existing compatible active ticket is selected
 - `write_ticket.path_patterns.allowed` and top-level `allowed_path_patterns` contain the normalized repo-relative `intended_paths` allowed for this ticket
 - `write_ticket.path_patterns.denied` and top-level `denied_path_patterns` are `[]` for an allowed result
-- `write_ticket.observed_paths` is `[]` in the baseline; detective host-hook and watcher observations use separate host-observation and unrecorded-change records
+- `write_ticket.observed_paths` is `[]` when no observed path is part of the ticket
 - `control_surface` and `write_ticket.control_surface` disclose the current Volicord control surface, including `os_enforced=false` in the baseline non-enforcement model
 - idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect
 - replay eligibility requires the current verified invocation to retain the exact optional Git workspace context captured with the original replay row; a changed, newly absent, or newly present workspace context returns `INVOCATION_CONTEXT_MISMATCH` without exposing the stored allowed response or its write ticket
@@ -238,7 +273,7 @@ Result data:
 - `volicord.status` is not required to expose historical non-allow decisions.
 - Each entry is a `WriteDecisionReason`.
 - `category` uses the controlled `WriteDecisionReason.category` value set.
-- `code` uses this method's local v1 code list below.
+- `code` uses this method's closed current code list below.
 - `message` is a free-form display string.
 - `related_refs` uses `StateRecordRef[]`; use `[]` when no related refs apply.
 
@@ -258,7 +293,6 @@ The production meanings below apply only when this method reaches a committed no
 | `effect_contract_effect_not_allowed` | `effect_contract` | The current Change Unit effect contract has a non-empty allowed-effect list that does not include `product_file_write`. |
 | `effect_contract_path_not_allowed` | `effect_contract` | One or more `intended_paths` are outside the current Change Unit effect contract `allowed_paths`. |
 | `product_write_flag_mismatch` | `write_compatibility` | `product_file_write_intended` does not match the intended operation or paths. |
-| `no_current_change_unit` | `scope` | No current Change Unit can be resolved for the write-preparation decision. |
 
 Non-claims:
 
@@ -278,7 +312,10 @@ Returns `ToolRejectedResponse` for failures before decision evaluation or commit
 - stale `expected_state_version`
 - idempotency request-hash conflict
 - request validation failure
-- missing current Task or currently applied Change Unit
+- missing current Task
+- no current Change Unit after Task resolution; this uses public code
+  `NO_ACTIVE_CHANGE_UNIT`, failure category `rejected`, and method-specific details reason
+  `current_change_unit_required`, and occurs before policy evaluation
 - actor-source or operation-category mismatch
 - Core unavailability
 - stale baseline
@@ -291,6 +328,13 @@ Public error code meaning, precedence, and rejected-response routing are owned b
 
 Advisor-mode rejection creates no write decision, write ticket, event, replay row, or state-version increment.
 
+The `NO_ACTIVE_CHANGE_UNIT` branch with reason `current_change_unit_required`
+creates no `WriteTicket`,
+`WriteDecision`, authority event, replay row, invocation row, or state-version
+effect. It has the same result for otherwise identical normal and dry-run
+requests, and repeated calls do not turn the rejection into a committed or
+replayed result.
+
 ## Dry-run behavior
 
 For `dry_run=true`, a valid preview:
@@ -301,6 +345,11 @@ For `dry_run=true`, a valid preview:
 - may describe `would_reuse` as a planned effect when a compatible active
   ticket exists; this is preview text, not a committed `WriteTicketEffect`
 - persists no write-decision state
+
+A request without a current Change Unit is not a valid preview. It returns the
+same `ToolRejectedResponse` with `NO_ACTIVE_CHANGE_UNIT` and reason
+`current_change_unit_required` described above and produces no planned ticket
+effect.
 
 ## Storage effect
 
@@ -499,11 +548,6 @@ write_ticket:
   idle_expires_at: null
   control_surface:
     selected_profile: record
-    host_hooks_active: false
-    session_watcher_active: false
-    cooperative_pre_tool_warning_available: false
-    cooperative_pre_tool_denial_available: false
-    unrecorded_changes_detectable: false
     actor_identity_provable: false
     os_enforced: false
   guarantee_display:
@@ -517,11 +561,6 @@ allowed_path_patterns:
 denied_path_patterns: []
 control_surface:
   selected_profile: record
-  host_hooks_active: false
-  session_watcher_active: false
-  cooperative_pre_tool_warning_available: false
-  cooperative_pre_tool_denial_available: false
-  unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
 active_user_action_refs:
@@ -562,11 +601,6 @@ allowed_path_patterns:
 denied_path_patterns: []
 control_surface:
   selected_profile: record
-  host_hooks_active: false
-  session_watcher_active: false
-  cooperative_pre_tool_warning_available: false
-  cooperative_pre_tool_denial_available: false
-  unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
 write_decision_reasons:

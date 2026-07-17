@@ -67,8 +67,8 @@
 ## 관리되는 최종 출력 권한 고지
 
 관리되는 최종 출력 권한 고지는 새 `volicord.status` 결과에서 만든 읽기 전용
-`Projection`입니다. [Agent Connection](agent-connection.md#managed-final-output-authority-disclosure)이
-담당하는 읽기 전용 바인딩 점검을 거쳐 진행하는 내장 관리 어댑터의 모든 최종 출력 전달에서는,
+`Projection`입니다. [Agent Connection](agent-connection.md#core-receipt-validation)이
+담당하는 정규 결속과 영수증 점검을 거쳐 진행하는 내장 관리 어댑터의 모든 최종 출력 전달에서는,
 정확히 같은 호스트 이벤트를 재생하거나 기능 지원 상태가 `verified`가 아닌 최선형 전달인
 경우까지 포함해 어댑터가 매번 새 상태 결과를 가져와 검증해야 합니다. 최선형 동작은 지원 주장을
 성립시키거나 이 freshness 규칙을 완화하지 않으며, 그런 주장에는 여전히
@@ -89,8 +89,9 @@ Stop은 항상 호스트 종료를 허용하고 retry를 요구하지 않으며 
 억제합니다. 이 별도 기록 때문에 최종 출력 상태 보기가 권한 기록이 되지는 않습니다. 모델이 작성한 최종 산문과 호스트 이벤트
 텍스트는 상태 보기 입력으로 사용하지 않습니다.
 
-호스트 기능 지원 상태, 관리 설정, 재생, 대체 경로는 [관리 CLI](admin-cli.md#managed-final-output-authority-disclosure)와
-[Agent Connection](agent-connection.md#managed-final-output-authority-disclosure)이 담당합니다.
+관리 어댑터 재생과 대체 경로는
+[관리 CLI](admin-cli.md#managed-final-output-authority-disclosure)가 담당합니다. 정규 결속과
+영수증 검증은 [Agent Connection](agent-connection.md#core-receipt-validation)이 담당합니다.
 
 ## 템플릿과 라벨 경계
 

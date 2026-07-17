@@ -78,13 +78,11 @@ command. A terminal-side MCP check does not by itself prove that the active host
 session exposes Volicord tools. In the active host, confirm that
 `volicord.list_projects` and `volicord.status` are available.
 
-A `complete` result establishes readiness for this setup path only; it is not a
-blanket host-feature support claim. JSON status reports each feature in
-`states.host_feature_support` as `verified`, `implemented_unverified`,
-`unsupported_by_host`, or `temporarily_unavailable`. Only `verified` supports a
-current feature claim. See the
-[host feature support state](docs/en/reference/agent-connection.md#host-feature-support-state)
-for the exact contract.
+A `complete` result establishes readiness for this setup path only. The exact
+Codex record connection is represented by a canonical binding and a strict
+verification receipt bound to the current project, connection, platform,
+artifacts, executable, policy, and capability requirements. See the
+[`HostVerificationReceipt` contract](docs/en/reference/agent-connection.md#host-verification-receipt).
 
 ### 3. Work Through The Agent
 

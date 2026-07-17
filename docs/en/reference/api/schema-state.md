@@ -322,11 +322,9 @@ DoctorHostFeatureSupportRow:
 
 Record emits exactly `authority_display` and `authenticated_exact_replay` in
 both `required_subcapabilities` and `subcapabilities`. Detective emits those
-two plus `block_finalization`. No non-applicable key is emitted. The aggregate
-`support_status` uses the precedence owned by
-[Agent Connection](../agent-connection.md#host-feature-support-state).
-`configured` and `configuration_verified` are independent configuration facts
-and never imply `verified`.
+two plus `block_finalization`. No non-applicable key is emitted. `configured`
+and `configuration_verified` are independent configuration facts and never
+imply `verified`.
 
 The machine-readable projections are exact:
 
@@ -604,6 +602,24 @@ ProjectContinuitySummary:
   source_task_ref: StateRecordRef
   source_change_unit_ref: StateRecordRef | null
   review_triggers: string[]
+
+ContinuityPageRequest:
+  page_size: integer
+  cursor: ContinuityCursor | null
+
+ContinuityCursor:
+  updated_at: string
+  continuity_record_id: string
+
+ProjectContinuityPage:
+  items: ProjectContinuitySummary[]
+  page_info: ContinuityPageInfo
+
+ContinuityPageInfo:
+  total_count: integer
+  returned_count: integer
+  truncated: boolean
+  next_cursor: ContinuityCursor | null
 ```
 
 Meaning:
@@ -611,6 +627,17 @@ Meaning:
 - `source_task_id` and `source_change_unit_id` identify where the record originated. They do not make the source Task or Change Unit current again.
 - `applies_to_paths`, `applies_to_refs`, `source_refs`, `artifact_refs`, `supersedes_refs`, and `review_triggers` are bounded context for later review. Empty arrays mean the record has no entries for that field.
 - `ProjectContinuitySummary` is selected by method owners as a read view; it is not the full persisted record.
+- `ContinuityPageRequest.page_size` is an integer from 1 through 64.
+  `ContinuityCursor` is a closed ordering object, not a record lookup or
+  authority reference. Both members are required, use the exact canonical
+  stored values, and identify an exclusive position in `updated_at DESC,
+  continuity_record_id DESC` order.
+- `ProjectContinuityPage.items` contains at most the requested page size.
+  `total_count` counts every active record in the selected project before the
+  cursor, `returned_count` equals `items.len`, and `truncated` is true exactly
+  when a later item exists. `next_cursor` is non-null exactly when `truncated`
+  is true and copies the last item's stored `updated_at` and
+  `continuity_record_id`.
 
 Does not imply:
 - A project continuity record is not current Task authority, evidence, write ticket, final acceptance, close readiness, residual-risk acceptance for a future close basis, or a blocker waiver.

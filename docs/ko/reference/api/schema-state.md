@@ -317,10 +317,9 @@ DoctorHostFeatureSupportRow:
 
 Record는 `required_subcapabilities`와 `subcapabilities`에
 `authority_display`, `authenticated_exact_replay`만 정확히 출력합니다. Detective는 두
-항목과 `block_finalization`을 출력합니다. 적용되지 않는 키는 출력하지 않습니다. 집계
-`support_status`는 [Agent Connection](../agent-connection.md#host-feature-support-state)이
-담당하는 우선순위를 사용합니다. `configured`와 `configuration_verified`는 별도 설정
-사실이며 `verified`를 뜻하지 않습니다.
+항목과 `block_finalization`을 출력합니다. 적용되지 않는 키는 출력하지 않습니다.
+`configured`와 `configuration_verified`는 별도 설정 사실이며 `verified`를 뜻하지
+않습니다.
 
 기계 판독 projection은 다음과 같이 정확히 배치합니다.
 
@@ -596,6 +595,24 @@ ProjectContinuitySummary:
   source_task_ref: StateRecordRef
   source_change_unit_ref: StateRecordRef | null
   review_triggers: string[]
+
+ContinuityPageRequest:
+  page_size: integer
+  cursor: ContinuityCursor | null
+
+ContinuityCursor:
+  updated_at: string
+  continuity_record_id: string
+
+ProjectContinuityPage:
+  items: ProjectContinuitySummary[]
+  page_info: ContinuityPageInfo
+
+ContinuityPageInfo:
+  total_count: integer
+  returned_count: integer
+  truncated: boolean
+  next_cursor: ContinuityCursor | null
 ```
 
 의미:
@@ -603,6 +620,15 @@ ProjectContinuitySummary:
 - `source_task_id`와 `source_change_unit_id`는 기록이 어디에서 비롯되었는지를 식별합니다. 원천 `Task`나 Change Unit을 다시 현재 상태로 만들지는 않습니다.
 - `applies_to_paths`, `applies_to_refs`, `source_refs`, `artifact_refs`, `supersedes_refs`, `review_triggers`는 이후 검토를 위한 제한된 맥락입니다. 빈 배열은 그 필드에 항목이 없다는 뜻입니다.
 - `ProjectContinuitySummary`는 메서드 담당 문서가 선택하는 읽기 보기이며, 전체 지속 기록이 아닙니다.
+- `ContinuityPageRequest.page_size`는 1 이상 64 이하의 정수입니다.
+  `ContinuityCursor`는 닫힌 정렬 객체이며 기록 조회나 권한 참조가 아닙니다. 두
+  멤버는 모두 필수이고 정확한 정규 저장 값을 사용하며 `updated_at DESC,
+  continuity_record_id DESC` 순서의 배타적 위치를 식별합니다.
+- `ProjectContinuityPage.items`는 요청 page size 이하의 항목을 담습니다.
+  `total_count`는 cursor 적용 전 선택 프로젝트의 전체 활성 기록 수이고,
+  `returned_count`는 `items.len`과 같으며, `truncated`는 뒤에 항목이 더 있을 때만
+  true입니다. `next_cursor`는 `truncated=true`일 때만 null이 아니며 마지막 항목의
+  저장된 `updated_at`과 `continuity_record_id`를 복사합니다.
 
 의미하지 않는 것:
 - 프로젝트 연속성 기록은 현재 `Task` 권한, 증거, 쓰기 티켓, 최종 수락, 닫기 준비 상태, 미래 닫기 근거의 잔여 위험 수락, 차단 사유 면제가 아닙니다.

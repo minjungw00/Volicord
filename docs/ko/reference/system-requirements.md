@@ -1,349 +1,205 @@
 # 시스템 요구사항
 
-이 문서는 Volicord 실행 파일을 설치하거나 MCP 호스트를 연결하기 전에 독자가 확인해야 하는 환경 적용 가능성과 전제 조건을 담당합니다. 이 저장소에서 확인할 수 있는 증거를 기준으로 운영 환경, 셸, 도구 체인, 실행 파일 배치, 파일시스템 접근, Runtime Home, Product Repository, MCP 호스트 전제 조건을 분류합니다.
+이 문서는 Volicord 최초 릴리스의 운영 환경 전제 조건을 담당합니다. 사용할 수
+있는 플랫폼 환경, WSL2 토폴로지, 실행 파일과 파일 시스템 전제 조건, Runtime
+Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 조건을 정의합니다.
 
-이 문서는 관리 명령 동작, MCP stdio 동작, 저장 효과, 호스트 신뢰, 공개 API 동작, 스키마, 보안 보장을 정의하지 않습니다. 정확한 동작은 [관리 CLI](admin-cli.md), [MCP 전송](mcp-transport.md), [런타임 경계](runtime-boundaries.md), [Agent Connection](agent-connection.md)이 계속 담당합니다.
+이 문서는 릴리스 셀이 실제로 실행되거나 통과했다고 주장하지 않습니다. 정확히
+최종 확정된 아티팩트의 결과는 [호스트 릴리스 증거](host-release-evidence.md)가,
+관리형 binding과 영수증 의미는 [Agent Connection](agent-connection.md)이 담당합니다.
 
-## 상태 용어
+<a id="surface-stability"></a>
+## 표면 안정성
 
-| 상태 | 이 문서에서의 의미 |
+네 `PlatformEnvironment` 값, WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제
+조건, 중단 기준은 안정 계약입니다. 특정 runner 이미지, 패키지 관리자 명령,
+실행 파일 위치와 진단 문구는 다른 담당 문서가 안정으로 지정하지 않는 한 릴리스
+또는 구현 세부사항입니다.
+
+## 최초 릴리스 환경 행렬
+
+Volicord에는 서로 독립적인 네 릴리스 대상 환경이 있습니다.
+
+| `platform_environment` | 필수 경계 |
 |---|---|
-| 지원됨 | 관련 담당 문서가 기준 경로를 문서화했고 설치 전에 확인할 수 있습니다. 지원은 명시된 요구사항으로 제한되며, 이 문서가 따로 말하지 않는 한 운영체제 지원 약속이 아닙니다. |
-| 검증됨 | 워크스페이스 메타데이터, 유지되는 예시, 소스 점검, 테스트, 저장소에 포함된 검증 도구처럼 해당 문장을 뒷받침하는 직접 증거가 있습니다. |
-| 미검증 | 동작할 수는 있지만, 이 저장소에는 지원 또는 검증 상태로 문서화할 만큼 충분한 증거가 없습니다. |
-| 지원 범위 밖 | 유지되는 기준 범위에 포함되지 않거나, 담당 문서가 명시적으로 거부하거나, 이 저장소에 없는 절차 설명이 필요합니다. |
+| `linux` | Volicord, Codex, Product Repository, Runtime Home이 네이티브 Linux에서 실행됩니다. |
+| `macos` | Volicord, Codex, Product Repository, Runtime Home이 네이티브 macOS에서 실행됩니다. |
+| `native_windows` | Volicord, Codex, Product Repository, Runtime Home이 네이티브 Windows 구성요소로 실행됩니다. WSL 경로, 프로세스, binding, 영수증은 사용할 수 없습니다. |
+| `wsl2` | 모든 구성요소가 아래 조건을 만족하는 같은 WSL2 배포판 내부에서 실행되고 그 Linux 파일 시스템을 사용합니다. |
 
-Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이트가 원칙적으로 이식 가능하다는 사실은 이 저장소가 특정 운영체제, 셸, 패키지 관리자, 컨테이너 이미지, 원격 호스트, 에이전트 호스트 버전을 검증한다는 증거가 아닙니다.
+환경에 대한 릴리스 지원 주장은 정확히 일치하는 `CodexReleaseCell`의
+`validation_evidence.status=passed`일 때만 성립합니다. 한 행의 통과는 다른 행을
+성립시키지 않습니다. 저장소 테스트, 교차 컴파일, 패키징이나 비슷한 target
+triple은 실제 셀 실행을 대신하지 않습니다.
 
-## 적용 가능성 표
+모든 행의 최초 릴리스 제품 표면은 다음과 같습니다.
 
-| 영역 | 상태 | 저장소 증거 | 계속하기 전에 |
-|---|---|---|---|
-| 릴리스 바이너리 패키징과 설치 | **지원됨, 검증됨.** 이 상태는 표에 나온 대상 트리플에 적용됩니다. 실제 설치에는 서로 맞는 게시 자산 세트도 필요합니다. | `.github/workflows/release.yml`은 대상 이름의 릴리스 압축 파일을 빌드하고, 각 바이너리에 스모크 테스트를 실행하며, `.sha256` 파일을 생성합니다. POSIX 대상은 `volicord` 하나만 담은 `.tar.gz`이고, 네이티브 Windows 대상은 `volicord.exe` 하나만 담은 `.zip`입니다. 내려받은 `install.sh`와 `install.ps1`이 이 대상 이름을 선택합니다. | 선택한 릴리스 저장소, 태그, 미러가 설치 스크립트, 대상 압축 파일, 체크섬을 제공하는지 확인합니다. 그렇지 않으면 소스 빌드, 로컬 Docker 빌드, 기존에 설치한 실행 파일을 사용합니다. |
-| 릴리스 버전과 빌드 설명자 정렬 | 체크인된 태그 릴리스 작업 흐름에서 **지원되고 검증되었습니다.** | `.github/workflows/release.yml`은 모든 릴리스 빌드 작업보다 먼저 `cargo run --locked -p xtask -- release-version-check`를 실행합니다. 태그 실행에서는 `--tag`도 전달해 태그가 `v`와 루트 `[workspace.package].version`을 합친 값과 정확히 같은지 확인하며, 점검기는 모든 워크스페이스 멤버 패키지가 `version.workspace=true`를 사용하는지 확인합니다. 각 릴리스 행렬 작업은 checkout이 clean이고 `HEAD`가 `GITHUB_SHA`와 같은지 확인한 뒤 `VOLICORD_BUILD_GIT_COMMIT`, `VOLICORD_BUILD_GIT_DIRTY=false`, `VOLICORD_BUILD_PROFILE=release`를 제공하고, 빌드된 바이너리의 Git, 작업 트리, 메타데이터 출처, 타깃, 정확한 프로필 필드를 점검합니다. CLI와 MCP 전송 테스트는 `volicord --version`과 MCP initialize의 `serverInfo.version`이 상속된 패키지 SemVer를 유지하는지 검증합니다. 별도 `build_id`는 빌드 시각 없이 소스와 컴파일 차원을 기록하는 운영 설명자이며, 바이너리 다이제스트나 dirty 작업 트리의 정확한 내용을 식별하는 값이 아닙니다. Git 자동 탐지는 워크스페이스 루트가 실제 작업 트리 최상위 경로일 때만 사용합니다. 자체 Git 작업 트리가 없는 소스 아카이브는 `git=unknown`, `tree=unknown`, `metadata_source=unknown`을 사용합니다. 빌더는 Git 커밋과 dirty 값을 유효한 쌍으로만 제공할 수 있으며 잘못되거나 일부만 있는 값은 빌드를 실패시킵니다. `VOLICORD_BUILD_PROFILE`은 정확한 프로필 이름을 제공합니다. 이 값이 없으면 Cargo의 근사 `debug`/`release` `profile_class`만 기록하고 `profile_exact=false`로 둡니다. | 태그를 게시하기 전에 변경 묶음 단위 SemVer 평가를 마치고, 필요에 따라 루트 워크스페이스 패키지 버전과 잠금 파일을 갱신한 뒤, 정확히 일치하는 `vX.Y.Z` 태그를 사용합니다. 의도한 clean 커밋에서 빌드하고 운영 시험 결과와 함께 표시된 `build_id`를 보존합니다. 환경으로 제공한 메타데이터는 암호학적 증명이 아니라 빌더가 주장한 값으로 다룹니다. |
-| 호스트 릴리스 증거 게이트 | 외부 계약과 `tests/release-validation` 구현은 **존재하며 저장소 테스트를 거쳤습니다.** 이 테스트는 게이트 동작만 검증하고 실제 호스트 기능 지원은 검증하지 않습니다. 운영 local-web manifest 획득은 계속 **사용할 수 없습니다.** | [호스트 릴리스 증거](host-release-evidence.md)가 버전이 붙은 네 스키마, 정확한 외부 후보 결속, 고정 12개 셀, 정규 평가기, 반개구간 최신성 규칙, 새로 만드는 manifest, 별도 프로세스 audit을 담당합니다. `volicord-release-validation-tests` 패키지는 이 스키마, 경로, 평가, 게시, audit 동작을 구현하고 테스트합니다. 이 아티팩트는 최종 실행 파일 뒤에 생성하며 바이너리와 Runtime Home 밖에 둡니다. 현재 운영 어댑터에는 신뢰할 수 있는 획득 경로가 없고 외부 릴리스 아티팩트는 런타임 신뢰 입력이 아닙니다. | 게이트나 외부에서 제공된 정확한 실제 셀을 평가할 때 담당 문서가 정의한 패키지 명령을 실행합니다. 저장소 테스트 통과는 어떤 호스트 기능도 `verified`로 만들지 않습니다. Manifest, `build_id`, 영속 행, 복사한 다이제스트, fixture로 credential을 포함한 local-web 가용성을 주장하지 않습니다. 운영 fallback으로 CLI inbox를 사용합니다. |
-| Linux x86_64 | 릴리스 대상 `x86_64-unknown-linux-gnu`로 **지원되고 검증되었습니다.** | 릴리스 워크플로는 `ubuntu-24.04`에서 빌드하고 `volicord-x86_64-unknown-linux-gnu.tar.gz`를 패키징합니다. | Linux x86_64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| Linux aarch64 | 릴리스 대상 `aarch64-unknown-linux-gnu`로 **지원되고 검증되었습니다.** | 릴리스 워크플로는 네이티브 `ubuntu-24.04-arm` 실행 환경에서 빌드하고 `volicord-aarch64-unknown-linux-gnu.tar.gz`를 패키징합니다. | Linux aarch64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| WSL2 | `uname`이 `Linux`를 보고하고 아키텍처가 `x86_64` 또는 `aarch64`이면 Linux 환경으로 **지원됩니다.** | POSIX 설치 스크립트는 관찰되는 플랫폼이 Linux 사용자 공간이므로 WSL2를 Linux로 처리합니다. 네이티브 Windows는 별도 PowerShell 설치 스크립트와 Windows 대상을 사용합니다. | WSL2와 대응 Linux 아키텍처를 사용합니다. WSL 경로를 네이티브 Windows Volicord 프로세스에 전달하지 않습니다. |
-| macOS arm64 | 릴리스 대상 `aarch64-apple-darwin`으로 **지원되고 검증되었습니다.** | 릴리스 워크플로는 macOS arm64 실행 환경에서 빌드하고 `volicord-aarch64-apple-darwin.tar.gz`를 패키징합니다. | macOS arm64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| macOS x86_64 | 릴리스 대상 `x86_64-apple-darwin`으로 **지원되고 검증되었습니다.** | 릴리스 워크플로는 macOS Intel 실행 환경에서 빌드하고 `volicord-x86_64-apple-darwin.tar.gz`를 패키징합니다. | macOS x86_64 환경에서 POSIX 스타일 셸과 아래 설치 스크립트 도구를 사용합니다. |
-| Docker | 체크인된 `Dockerfile`을 쓰는 로컬 런타임 선택지로 **지원되고 검증되었습니다.** 외부 이미지 레지스트리는 주장하지 않습니다. | `Dockerfile`은 릴리스 CLI를 Debian 런타임 이미지에 빌드합니다. 릴리스 워크플로는 이미지를 빌드하고 `volicord --help`와 `volicord serve --help` 스모크 테스트를 실행합니다. 설치 문서는 로컬 `docker build`와 호스트 루프백 `docker run` 사용을 설명합니다. | 이 저장소 또는 신뢰하는 소스 사본에서 이미지를 빌드합니다. 유지되는 기준 범위에는 레지스트리 이미지가 없습니다. |
-| 네이티브 Windows x86_64 바이너리, 설치, Record 설정 | 릴리스 대상 `x86_64-pc-windows-msvc`의 패키징, PowerShell 설치, `record` 설정 경로에 한해서만 **지원되고 검증되었습니다.** 이 행은 어떤 `HostFeatureSupportStatus` 값도 성립시키지 않습니다. `volicord evidence capture-command`와 관리되는 최종 출력별 고정 UI 권한 고지는 명시적 예외이며 네이티브 Windows에서 사용할 수 없습니다. 기준 `volicord status` 대체 경로는 계속 사용할 수 있습니다. | 릴리스 워크플로는 `windows-2022`에서 빌드하고, `target/x86_64-pc-windows-msvc/release/volicord.exe`를 스모크 테스트하며, `volicord-x86_64-pc-windows-msvc.zip`과 `.sha256`을 만듭니다. 네이티브 Windows에서 `cargo test --workspace --all-targets --all-features`도 실행합니다. 내려받은 `install.ps1`은 기본적으로 사용자 로컬 디렉터리에 해당 바이너리를 설치합니다. 크기가 제한된 command process-group 종료와 생성 최종 출력 래퍼 구현은 Linux와 macOS에서만 사용할 수 있으며, 구현 가용성은 typed 호스트 지원 주장이 아닙니다. | 네이티브 Windows x86_64에서 PowerShell을 사용합니다. 설정에는 `volicord init --host HOST --repo PATH --profile record`를 사용합니다. Command evidence capture나 관리 고정 UI 최종 출력 고지는 WSL2, Linux, macOS에서 실행합니다. 네이티브 Windows에서는 `volicord status --task TASK_ID --json`으로 현재 권한을 확인하고 현재 Task가 없으면 `volicord status --json`을 사용합니다. |
-| 네이티브 Windows Detective profile | **지원 범위 밖입니다.** | Detective 설정은 내장 어댑터에 POSIX `sh` 훅 래퍼를 씁니다. CLI는 네이티브 Windows의 `volicord init --profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. | 네이티브 Windows에서는 `--profile record`를 사용합니다. 또는 담당 문서가 정의한 호스트 훅 및 감시기 설정 전제 조건을 충족하는 WSL2, Linux, macOS에서 Volicord를 실행합니다. |
-| 소스 빌드 도구 체인 | Cargo가 포함된 Rust 1.85 이상으로 **지원되고 검증되었습니다.** | 워크스페이스 루트 `Cargo.toml`이 `rust-version = "1.85"`를 설정하고 모든 워크스페이스 패키지가 이 값을 상속합니다. 설치 문서는 소스 빌드 경로를 설명합니다. | 소스 빌드 경로를 사용할 때 Cargo가 포함된 Rust 1.85 이상을 설치하거나 선택합니다. |
-| 셸 문법 | Linux, WSL2, macOS의 유지되는 POSIX 스타일 예시와 네이티브 Windows의 PowerShell 예시는 **지원됩니다.** 다른 셸은 이 예시에 대해 **미검증입니다.** | POSIX 설치 예시는 `sh` 호환 환경 변수 지정, 임시 설치 스크립트 경로, `~/.local/bin`을 사용합니다. 네이티브 Windows 설치 예시는 내려받은 `install.ps1`, PowerShell 매개변수 또는 환경 변수, `%LOCALAPPDATA%\Volicord\bin`을 사용합니다. CLI 통합 테스트는 `#[cfg(unix)]` 아래에서 `#!/bin/sh` 가짜 실행 파일을 만들며, 릴리스 워크플로는 Windows에서 PowerShell 스모크 테스트를 실행합니다. | 선택한 운영 환경에 맞는 셸 문법을 사용하고, 설치된 명령을 확인한 뒤 계속합니다. |
-| 실행 파일 역할 이름 | **지원되고 검증되었습니다.** | 참조 담당 문서는 `volicord`를 관리 CLI 명령과 로컬 MCP stdio 어댑터가 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일로 정의합니다. | `volicord`를 빌드하거나 설치합니다. 호스트 설정은 MCP를 `volicord mcp --stdio ...`로 시작해야 합니다. |
-| 패키지 관리자 설치 | **지원 범위 밖입니다.** | 이 저장소는 Homebrew 탭이나 포뮬러, Linux 패키지 관리자 패키지, 외부 패키지 레지스트리를 제공한다고 주장하지 않습니다. | 소스 빌드, 로컬 Docker 빌드, 기존 `volicord` 실행 파일, 또는 검증된 게시 자산 세트가 뒷받침하는 릴리스 설치 스크립트를 사용합니다. |
-| Codex와 Claude Code 호스트 버전 호환성 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 정확한 검토 호환성은 버전별입니다. 현재 Codex 릴리스 행렬은 probe 출력 `codex-cli 0.144.4`를 정규 `host_version=0.144.4`로 인식합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행하며 해당 새 검증 결과 안에서 원본 probe 외피와 별도로 해석한 정규 좌표를 보존합니다. 저장된 검증 보고서는 진단 이력이며 연결 상태나 Doctor가 현재 설치 호스트 좌표로 재사용하지 않습니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. `0.144.4` 검토를 최소 버전 약속이나 다른 호스트 버전으로 일반화하지 않습니다. |
-| Codex 관리 최종 출력 루트 해석 | Linux와 macOS의 로컬 Git 작업 트리에서 최선형 표시에 쓰는 **구현된 설정 전제 조건**입니다. 그 자체로 `record_final_output`이나 `detective_final_output` 지원을 성립시키지는 않습니다. 현재 일치하는 probe가 없으면 구현된 집계는 `implemented_unverified`, 명시적인 capability 부재이면 `unsupported_by_host`, 현재 probe 또는 전제 조건이 실패하거나 내려가 있으면 `temporarily_unavailable`입니다. Git 저장소가 아닌 Codex `record` 설치에서는 관리 고정 UI 표시를 사용할 수 없습니다. | 생성된 Codex 최종 출력 명령은 Volicord 관리 래퍼를 호출하기 전에 `git rev-parse --show-toplevel`로 Git 작업 트리 루트를 찾습니다. Git 저장소가 아닌 Codex `record` 초기화는 해당 처리기를 생성하지 않고 성공하며 표시 설정을 사용할 수 없다고 보고합니다. 루트 해석은 인증된 정확 재생이나 안전한 block 전용 최종화를 증명하지 않습니다. 집계는 호스트 버전 동등성이 아니라 현재 고정 UI 및 Stop/replay probe 관찰로 결정합니다. | 최선형 Codex 관리 최종 출력 표시가 필요하면 로컬 Git 작업 트리를 사용합니다. Git 저장소가 아닌 Codex `record` 저장소에서는 `volicord status --task TASK_ID --json`으로 현재 권한을 확인하고 현재 Task가 없으면 `volicord status --json`을 사용합니다. Claude Code 처리기에는 Git 루트가 필요하지 않습니다. |
-| Codex Detective profile의 호스트 훅 루트 결정 | 로컬 Git 작업 트리를 위한 **구현되고 저장소에서 검증된 설정 전제 조건**입니다. 이 전제 조건 상태는 호스트 기능 지원을 성립시키거나 `registered_connection_observation`을 승격하지 않습니다. | 생성된 Codex 탐지형 호스트 훅 명령은 Volicord 관리 래퍼를 호출하기 전에 `git rev-parse --show-toplevel`로 Git 작업 트리 루트를 찾습니다. 초기화는 이 방법을 충족할 수 없으면 Detective profile 설정을 거부합니다. 이 점검은 루트 결정만 다룹니다. | Codex Detective profile에는 `.git` 작업 트리 루트가 있는 Product Repository를 사용합니다. Codex 훅 환경은 저장소 하위 디렉터리에서도 `git`을 실행할 수 있어야 합니다. 이 전제 조건이 없으면 `--profile record`를 사용합니다. |
-| Git 작업공간 좌표의 참조 저장 방식 | loose ref, `packed-refs`, 일반 작업 트리, linked worktree에 대해 Git `files` 참조 백엔드는 **지원되고 검증되었습니다.** Git `reftable` 참조 저장 방식은 **지원 범위 밖입니다.** | 작업공간 좌표 캡처는 Git을 실행하지 않고 크기가 제한된 Git 제어 파일을 읽습니다. 명시적인 `extensions.refStorage` 값이 `files`가 아니면 기존 브랜치를 unborn으로 오인하지 않고 실패 폐쇄합니다. | 작업공간 좌표에 의존하는 Git 기반 Product Repository의 Change Unit/write-ticket 경로에는 `files` 참조 백엔드를 사용합니다. 지원하지 않는 저장소는 해당 경로를 사용하기 전에 변환합니다. |
+- `host_kind=codex`
+- `integration_profile=record`
+- `connection_scope=personal` 또는 `connection_scope=shared`
+- 관리형 stdio MCP
+- 사용자 행동을 위한 CLI inbox
+
+다른 호스트, profile, transport와 User Channel은 이 릴리스 범위 밖입니다.
+
+<a id="wsl2-topology"></a>
+## WSL2 토폴로지
+
+지원하는 WSL2 토폴로지는 하나의 완결된 환경입니다.
+
+```text
+고정된 Ubuntu LTS WSL2 배포판 하나
+  ├─ Codex 프로세스
+  ├─ Volicord 프로세스
+  ├─ 배포판 ext4 파일 시스템의 Product Repository
+  └─ 배포판 ext4 파일 시스템의 Volicord Runtime Home
+```
+
+WSL2 릴리스 셀은 환경이 WSL2임을 명시적으로 확인해야 합니다. 일반 Linux
+`target_os` 결과만으로는 부족합니다. `ManagedHostBinding`과
+`HostVerificationReceipt`는 `platform_environment=wsl2`를 결속하며 `linux`나
+`native_windows` 증거로 재사용할 수 없습니다.
+
+현재 WSL2 셀은 릴리스 증거에 고정된 Ubuntu LTS 이미지 한 종류만 사용합니다.
+다른 배포판이나 이미지를 동등하다고 추정하지 않습니다. Product Repository와
+Runtime Home은 배포판 Linux ext4 파일 시스템 내부로 해석되어야 합니다.
+
+다음 WSL 토폴로지는 지원하지 않으며 설치 또는 영수증 사용 전에 machine-readable
+unsupported-environment reason으로 실패해야 합니다.
+
+- WSL1
+- Codex는 Windows에서, Volicord·저장소·Runtime Home 중 하나는 WSL2에서 실행하는 구성
+- Codex는 WSL2에서, Volicord 프로세스·저장소·Runtime Home 중 하나는 네이티브 Windows에 두는 구성
+- Product Repository나 Runtime Home을 `/mnt/c`, `/mnt/d`, 다른 `/mnt/*` 경로 또는 DrvFS mount에 두는 구성
+- Windows와 Linux 경로, PID, 환경 값, process binding 또는 영수증을 변환하거나 서로 같다고 추정하는 동작
+- 네이티브 Windows 영수증을 WSL2에서 사용하거나 WSL2 영수증을 네이티브 Windows에서 사용하는 동작
+- 현재 WSL2 릴리스 셀이 명시하지 않은 배포판
+
+WSL 종료나 재시작은 살아 있는 프로세스 identity를 무효화합니다. 프로세스 또는
+최신성 좌표가 더 이상 맞지 않는 binding과 영수증은 stale로 거절해야 하며, 새
+verify 흐름을 통해 새 영수증을 만들어야 합니다.
 
 <a id="toolchain-requirements"></a>
-
 ## 도구 체인 요구사항
 
-게시된 자산에서 릴리스를 설치할 때는 Rust나 Cargo가 필요하지 않습니다.
+workspace 빌드와 테스트에는 저장소가 선언한 Rust 도구 체인이 필요합니다. 현재
+유지되는 workspace는 Rust 1.85 이상 호환 stable Rust를 대상으로 합니다. 포맷,
+검사, lint, 테스트와 릴리스 검증 계약 테스트에는 같은 도구 체인의 Cargo를
+사용합니다.
 
-소스 빌드 경로에는 아래가 필요합니다.
+런타임 전제 조건은 다음과 같습니다.
 
-- Rust 1.85 이상
-- 선택한 Rust 도구 체인의 Cargo
-- 이 저장소의 로컬 체크아웃
-- Cargo가 워크스페이스 의존성을 해석할 수 있게 하는 네트워크 또는 로컬 의존성 가용성
+- 선택한 플랫폼 환경용으로 최종 확정된 Volicord 실행 파일
+- 현재 플랫폼, `record` profile, 필수 capability와 정확히 일치하는 통과 릴리스 셀에 등록된 Codex 실행 파일
+- Volicord 빌드가 제공하는 SQLite 지원
+- 선택한 네이티브 플랫폼 또는 WSL2 adapter가 요구하는 파일 시스템 동작
+- 관리형 MCP 프로세스 경계를 보존하는 stdio pipe
 
-Rust 1.85는 이 워크스페이스의 컴파일러 요구사항입니다. 게시된 릴리스 자산에서
-설치할 때는 필요하지 않으며 운영체제 지원 주장이 아닙니다.
+workflow가 Git 객체 ID를 제공하거나 검증할 때, 또는 선택한 Product Repository
+동작이 Git을 명시적으로 요구할 때 Git이 필요합니다. Git 객체 ID 표기는
+[외부 계약](external-contracts.md#shared-git-object-id-contract)을 따릅니다.
 
-이 요구사항을 읽거나 사용하는 것만으로 Rust 구현 검증이 필요한 것은 아닙니다. Rust 소스, Cargo 매니페스트, 테스트, 픽스처, 빌드 설정을 편집하는 유지보수자는 저장소 작업 규칙의 Rust 검증 정책을 따릅니다.
+## 실행 파일과 프로세스 요구사항
 
-## 셸과 경로 요구사항
+관리 프로세스는 설정과 검증이 결속할 정확한 Codex 아티팩트를 찾아 실행할 수
+있어야 합니다. 명령 이름을 찾은 것만으로는 지원이 성립하지 않습니다. 검증은
+해석한 실행 파일을 hash하고, 현재 플랫폼의 정확한 릴리스 manifest 항목과
+대조하며, binding이 요구하는 프로세스와 capability 관찰을 기록하고, 모든 adapter
+점검이 성공한 뒤에만 영수증을 발행합니다.
 
-Linux, WSL2, macOS 릴리스 설치 예시는 아래를 제공하는 POSIX 스타일 셸을 가정합니다.
+관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야
+합니다. adapter는 정규 `ManagedHostBinding`을 통해 정확한 command, arguments,
+forwarded environment, configuration target, process binding, required capabilities와
+platform environment를 검증합니다. 비어 있는 환경 값과 없는 환경 값은 다릅니다.
 
-- `VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"` 같은 명령 앞 환경 변수 지정
-- 설치 스크립트 자산을 임시 경로로 내려받기 위한 `curl`
-- 설치 스크립트가 관리하는 릴리스 자산 다운로드를 위한 `curl` 또는 `wget`
-- 임시 설치 스크립트 경로를 만들기 위한 `mktemp`
-- 대상 이름의 릴리스 압축 파일을 풀기 위한 `tar`
-- 체크섬과 압축 파일 형태를 확인하기 위한 `awk`, `wc`, `tr`, `sed`
-- 체크섬을 검증할 수 있을 때 사용할 `sha256sum` 또는 `shasum`
-- 설정 과정에서 셸 명령을 출력했을 때의 현재 세션 `PATH` 갱신
-- `~/.local/bin` 같은 홈 기준 경로
-- `PATH`를 통한 명령 찾기
-- 예시의 슬래시 경로
-
-네이티브 Windows 릴리스 설치 예시는 아래를 제공하는 PowerShell을 가정합니다.
-
-- 임시 경로에서 실행하는 내려받은 `install.ps1` 릴리스 자산
-- 설치 스크립트와 릴리스 자산 다운로드를 위한 `Invoke-WebRequest`
-- 대상 이름의 `.zip`을 풀기 위한 `Expand-Archive`
-- 체크섬을 검증할 수 있을 때 사용할 `Get-FileHash -Algorithm SHA256`
-- `-UpdateUserPath`를 명시적으로 요청했을 때만 수행되는 사용자 수준 `PATH` 갱신
-- Runtime Home과 Product Repository 위치에 사용할 로컬 드라이브 문자 경로
-
-설치 스크립트는 내려받은 `.sha256` 체크섬 파일을 사용할 수 있을 때 이를
-검증합니다. 체크섬 파일이 있지만 검증할 수 없으면 스크립트는 실패합니다. 체크섬
-파일을 사용할 수 없으면 경고하고 계속 진행합니다. 이때 `VOLICORD_REQUIRE_CHECKSUM=1`이
-설정되어 있으면 실패합니다.
-
-현재 세션 `PATH` 예시는 실행한 셸에만 영향을 줍니다. 이후 셸이나 MCP 호스트에
-명령을 지속적으로 설치하지 않습니다.
-
-네이티브 Windows에서는 내려받은 PowerShell 설치 스크립트에 `-UpdateUserPath`를 사용하면
-설치 디렉터리가 아직 없을 때 사용자 수준 `PATH` 값에만 그 디렉터리를 추가합니다. 이
-스크립트는 시스템 수준 `PATH`를 바꾸지 않습니다. `-UpdateUserPath`를 사용하지 않으면
-현재 세션용 `PATH` 명령과 설치된 실행 파일 경로를 출력합니다.
-
-CLI는 부모 셸의 `PATH`를 영구적으로 수정할 수 없습니다. 설정 중 Volicord는 명령
-링크, 안전할 때 없는 `~/.local/bin` 같은 관례적 사용자 명령 디렉터리 만들기, 출력된
-셸 명령, 지원되는 셸에서 명시적으로 사용자가 확인한 관리 셸 시작 블록 같은 안전한 선택지를
-제공해 명령을 `PATH`에서 사용할 수 있도록 도울 수 있습니다. 설정은 명령 링크를
-놓기 전에 쓰기 가능 여부를 확인합니다. 기존 셸과 MCP 호스트는 변경된 시작 파일이나
-명령 링크 디렉터리를 보려면 재시작하거나 다시 로드해야 할 수 있습니다.
-
-`VOLICORD_HOME`은 다릅니다. `VOLICORD_HOME`은 담당 문서가 정의한 `volicord` 관리 명령과 `volicord mcp --stdio` 프로세스 시작의 실제 Runtime Home 선택 입력입니다.
-
-<a id="executable-layout-and-discovery"></a>
-
-## 실행 파일 배치와 찾기
-
-설치된 실행 파일을 사용하려면 선택한 실행 파일 위치에서 아래 명령을 제공해야 합니다.
-
-- `volicord`
-
-POSIX 릴리스 tar 압축 파일은 아래 하나만 담아야 합니다.
-
-- `volicord`
-
-네이티브 Windows 릴리스 zip 압축 파일은 아래 하나만 담아야 합니다.
-
-- `volicord.exe`
-
-설치 스크립트는 그 실행 파일 하나만 설치합니다. 소스 빌드에서는 디버그 실행
-파일이 `target/debug` 아래에, 릴리스 실행 파일이 `target/release` 아래에 있어야 합니다.
-별도로 설치된 실행 파일을 사용할 때는 명시적 설정 옵션이나 `PATH`를 통해 설정 과정이
-`volicord`를 찾을 수 있는 설치 배치를 선택합니다.
-
-릴리스 바이너리나 다른 설치 명령 디렉터리에서 첫 연결을 하기 전에는 같은 셸에서 설치된
-실행 파일을 확인합니다.
-
-```sh
-volicord --version
-volicord --help
-volicord mcp --help
-volicord init --help
-volicord status --help
-volicord connection --help
-volicord inbox --help
-volicord serve --help
-```
-
-설치 가이드가 설명하는 릴리스 모드 소스 빌드에서 첫 연결을 하기 전에는 같은 셸에서
-빌드된 실행 파일을 확인합니다.
-
-```sh
-./target/release/volicord --version
-./target/release/volicord --help
-./target/release/volicord mcp --help
-```
-
-`init` 또는 프로필 복구 안내로 명령이 보이게 된 뒤에는 일반 명령 찾기를 확인합니다.
-
-```sh
-volicord --version
-volicord init --help
-volicord status --help
-volicord connection add --help
-volicord mcp --version
-volicord mcp --help
-```
-
-호스트 설정은 보통 `volicord init`이 마련한 MCP 명령 정보를 사용합니다. 정확한
-`--mcp-command`, 찾기 순서, 연결, 일반 MCP 호스트 설정 동작은 [관리
-CLI](admin-cli.md#runtime-home-selection)를 사용합니다.
-
-요구사항 요약:
-
-- 설치는 찾을 수 있는 `volicord` 명령을 식별해야 합니다.
-- 개인·로컬 바인딩을 로드하는 호스트 프로세스는 설정된 `volicord` 명령을
-  `mcp --stdio --connection <connection_id>` 인자와 함께 시작할 수 있어야 합니다.
-- 공유 Codex와 Claude Code 프로젝트 설정은 정확한 `PATH` 해석형
-  `volicord mcp --stdio --discover-repository --host <host>` 기술 정보를 사용해야 하며,
-  로컬 ID, 절대 명령, Runtime Home의 리터럴 경로, 관련 없는 로컬 전용 환경 항목을
-  포함하면 안 됩니다. Codex의 `env_vars = ["VOLICORD_HOME"]` 또는 Claude Code의
-  `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}` 중 정확히 하나의 호스트 고유 전달
-  형태를 포함해야 합니다.
-- 사용자가 관리하는 일반 MCP 호스트 설정에는 호스트별로 관찰 가능한 로드 가능 여부
-  점검이 없습니다.
+실행 파일 identity, 설정 identity, 프로세스 identity와 영수증 최신성은 서로
+독립된 점검입니다. 하나의 일치가 다른 점검을 대신하지 않습니다.
 
 ## Runtime Home 요구사항
 
-사용 가능한 `Volicord Runtime Home`은 요청한 관리 또는 MCP 작업이 런타임 기록을 필요로 할 때 선택한 프로세스가 만들고, 읽고, 쓸 수 있는 로컬 파일시스템 위치여야 합니다.
+해당 런타임 담당자가 허용하는 경우 `VOLICORD_HOME`이 Volicord Runtime Home을
+선택합니다. 결과 경로는 비어 있지 않고 선택한 플랫폼의 경로 규칙에 따라
+절대 경로여야 하며, 초기화와 관리 repair에 쓸 수 있고 관리형 Volicord 프로세스가
+접근할 수 있어야 합니다.
 
-설치 전에 아래를 확인합니다.
+Runtime Home은 하나의 플랫폼 환경 안에 있어야 합니다. 네이티브 Windows와 WSL2
+경로를 변환하거나 공유하지 않습니다. WSL2에서는 배포판 ext4 파일 시스템에 두고
+`/mnt/*` 아래에 두지 않습니다.
 
-- Runtime Home은 `Product Repository`가 아니어야 하며, `Product Repository` 안이나 위에 있지 않아야 합니다.
-- 네이티브 Windows에서는 로컬 드라이브 문자 Runtime Home 경로를 선택합니다. UNC 경로,
-  `\\wsl$\...` 같은 WSL UNC 경로, `/mnt/c/...` 같은 WSL 마운트 경로는 네이티브
-  Windows Runtime Home 경로로 지원되지 않습니다.
-- 선택한 사용자가 `volicord init`, `volicord project use`, `volicord connection add`, `volicord connection verify`를 실행할 때 디렉터리를 만들거나 그 안에 쓸 수 있어야 합니다.
-- 공유 저장소 발견을 시작하는 호스트 프로세스는 의도한 위치가 `$HOME/.volicord`인
-  경우에도 항상 비어 있지 않은 절대 `VOLICORD_HOME`으로 Runtime Home을 명시적으로
-  받아야 합니다. `shared` 프로젝트 호스트 설정은 개인 Runtime Home 경로를 담으면 안
-  되므로 각 사용자는 자신의 로컬 init과 호스트 환경으로 값을 제공합니다. 그 밖의 명시적
-  바인딩 방식은 담당 문서가 정의한 일반 Runtime Home 선택 규칙을 유지합니다.
-
-Runtime Home 선택과 정확한 생성 동작은 [관리 CLI](admin-cli.md)와 [MCP 전송](mcp-transport.md)이 담당합니다. 런타임 위치와 분리 규칙은 [런타임 경계](runtime-boundaries.md)가 담당합니다.
+새 개발 데이터는 현재 기준 SQLite 계약으로 만듭니다. 다른 manifest를 가진 기존
+데이터베이스를 upgrade, import 또는 재해석하지 않습니다. 새 Runtime Home이나
+명시적으로 비어 있는 새 대상을 사용합니다.
 
 ## Product Repository 요구사항
 
-`Product Repository`는 프로젝트 등록, 프로젝트 선택, `shared` 연결 의도의 호스트 설정에 쓰이는 기존 로컬 디렉터리여야 합니다. `Volicord Runtime Home`과 분리되어 있어야 합니다. 네이티브 Windows에서는 Product Repository에 로컬 드라이브 문자 경로를 사용합니다. UNC 경로와 WSL 경로는 네이티브 Windows 프로젝트 등록에 지원되지 않습니다.
+personal connection은 명시적인 Product Repository 하나를 결속합니다. shared
+connection은 저장소에 이식 가능한 관리 Codex 설정을 설치하고, 공유 파일에 개발자
+로컬 project ID나 Runtime Home 경로를 넣지 않은 채 현재 clone을 해석합니다.
 
-Volicord가 등록된 프로젝트를 검증하거나 사용할 때는 읽기 접근이 필요합니다. `Product Repository` 쓰기 접근은 담당 문서가 정의한 제품 파일 쓰기나 명시적으로 요청한 통합 파일에만 필요합니다. 여기에는 아래가 포함됩니다.
+저장소 경로는 다음 조건을 만족해야 합니다.
 
-- 프로젝트 범위 Codex `.codex/config.toml`
-- 프로젝트 범위 Claude Code `.mcp.json`
-- Volicord 관리 `AGENTS.md` 지침 블록
-- `.volicord/policy.json` 로컬 관리 `volicord-policy-v2` 사본
-- Codex `.codex/hooks.json` 훅 설정과 `.codex/hooks/` 아래의 Volicord 관리 래퍼 스크립트
-- `.claude/settings.json` 안의 Volicord 관리 Claude Code 훅 항목
-- `.claude/hooks/` 아래의 Volicord 관리 Claude Code 훅 래퍼 스크립트
-- `.claude/rules/` 아래의 Volicord 관리 Claude Code 규칙 파일
+- 비어 있지 않고 현재 플랫폼의 정규 경로 규칙으로 해석됩니다.
+- 관리 binding 및 영수증이 사용하는 같은 저장소를 식별합니다.
+- 요청한 install, repair 또는 uninstall 동작에 필요한 쓰기만 허용합니다.
+- Codex, Volicord와 Runtime Home과 같은 플랫폼 환경에 있습니다.
+- WSL2에서는 `/mnt/*` 밖의 배포판 ext4 파일 시스템으로 해석됩니다.
 
-이 목록의 생성된 `guard` 통합 파일을 적용하려면 선택한 파일시스템과 프로세스가 같은
-디렉터리의 조건부 커밋도 지원해야 합니다. 이 요구사항은 관리 지침, 정책, 호스트 훅,
-래퍼, 규칙 파일에 적용됩니다. 프로젝트 범위 MCP 설정은 해당 호스트 어댑터를 통해
-적용되며 이 `guard` 통합 커밋 보장을 그대로 적용하지 않습니다.
+저장소 이동, 정규 identity 변경 또는 connection scope 변경은 이전 binding이나
+영수증을 불일치 상태로 만듭니다. 다시 검증해야 하며 호출자가 이전 좌표를
+암묵적으로 고쳐 쓰면 안 됩니다.
 
-- 해석된 Product Repository 경로와 대상의 부모 경로 연결은 심볼릭 링크를 따라가지
-  않고 열 수 있는 디렉터리로 유지되어야 합니다. 기존 대상은 일반 파일이어야 하며,
-  대상 디렉터리에서 전용 스테이징 항목을 만들고 제거할 수 있어야 합니다.
-- Linux와 macOS에서 기존 파일을 갱신하려면 같은 디렉터리에서 기존 대상을 덮어쓰지
-  않는 생성 연산과 맞바꾸기 연산을 운영체제가 제공해야 합니다. 프로세스는 이전
-  파일의 POSIX 모드, 사용자 ID, 그룹 ID, 플랫폼 인터페이스가 노출하는 모든 확장
-  속성을 읽고, 다시 적용하고, 검증할 수 있어야 합니다.
-- 네이티브 Windows에서 생성에는 기존 대상을 덮어쓰지 않는 `MoveFileExW` 이동 권한이
-  필요합니다. 기존 파일 갱신에는 같은 볼륨의 하드 링크를 지원하는 로컬 NTFS 볼륨,
-  이전 파일에 대한 새 쓰기 공유를 차단할 수 있는 권한, 미리 예약한 백업 항목을 사용하는
-  `ReplaceFileW` 교체 권한도 필요합니다. 속성과 ACL 병합은 Windows 고유 동작을
-  사용합니다. ReFS와 네트워크 파일시스템은 이 기존 파일 갱신 경로에서 지원하지 않으며,
-  보존 하드 링크를 만들 수 없으면 갱신에 실패합니다.
-- 지원되는 운영체제 대상이라고 해서 모든 네트워크, 가상, 사용자 공간, 마운트
-  파일시스템이 이런 이름 공간과 메타데이터 의미를 제공하는 것은 아닙니다. 그런
-  파일시스템에서 관리 파일 갱신은 미검증입니다. 필요한 연산이나 메타데이터 재현을
-  사용할 수 없으면 CLI는 관리 갱신이 성공했다고 보고하지 않고 쓰기에 실패합니다.
+## Codex 설정 요구사항
 
-Codex Detective profile을 사용하려면 선택한 Product Repository가 Git 작업 트리여야
-합니다. 생성된 훅이 호스트 세션의 현재 작업 디렉터리에 의존하지 않고 프로젝트 루트를
-찾기 위해서입니다. 이 Git 루트 요구사항은 Codex 탐지형 호스트 훅의 경로 안전성에만
-적용됩니다. 통합 파일을 Volicord 런타임 상태로 만들거나 OS 수준 샌드박싱을 추가하지
-않습니다. Record profile은 Codex 탐지형 호스트 훅 설치를 요구하지 않습니다. 네이티브
-Windows의 Record 경로는 바이너리 설치와 연결 설정만 다루며 어떤 호스트 기능 지원
-상태도 성립시키지 않습니다. Windows 호스트 훅과 감시기 동작을 사용할 수 없으므로
-Detective profile은 거부됩니다.
+Codex adapter는 관리 항목의 탐색, 엄격한 parsing, 정규 projection, 원자적 적용,
+검증, drift 탐지, repair와 안전한 uninstall을 담당합니다. 설정은 관련 없는 사용자
+설정을 보존하고, 소유하지 않은 충돌을 덮어쓰지 않고 거절해야 합니다.
 
-비대화형 `shared` 연결 의도 호스트 설정 또는 지침 쓰기에는 [관리 CLI](admin-cli.md#noninteractive-approval-behavior)가 정의한 명시적 `--shared` 명령 경로가 필요합니다. 런타임 기록, SQLite 데이터베이스, 생성 기록, 로그, 상태 보기, QA 결과, 수락 기록, 닫기 준비 상태, 잔여 위험 기록은 `Product Repository`에 속하지 않습니다.
+personal 및 shared 설정 위치는 adapter가 담당하는 세부사항입니다. Core와 Store는
+정규 binding 데이터와 typed 검증 영수증만 받습니다. Codex 설정 파일을 읽거나,
+셸 명령을 tokenization하거나, wrapper marker를 검사하거나, 플랫폼 경로를 추정하지
+않습니다.
 
-<a id="host-configuration-requirements"></a>
-## 호스트 설정 요구사항
+Repair는 탐지한 reason을 보고한 뒤 adapter가 소유한 설정과 복구 가능한 typed
+값만 다시 만들 수 있습니다. Uninstall은 정확히 현재 소유한 항목만 제거하며,
+변경되었거나 소유하지 않은 항목은 거절합니다.
 
-직접 호스트 설정을 구성할 때는 선택한 호스트와 연결 의도가 필요로 할 때 관리 프로세스가 대상 호스트 설정을 조사하고 관리 설정을 쓸 수 있어야 합니다.
+## 관리형 MCP 환경 요구사항
 
-기준 호스트와 연결 의도 요구사항:
+관리 프로세스의 공개 MCP transport는 stdio뿐입니다. 현재 관리 launch 계약이
+요구하는 정확한 project, connection, Runtime Home, host, profile, binding과 플랫폼
+좌표를 받아야 합니다. 필수 좌표가 없거나, 비었거나, 중복되거나, 충돌하거나,
+알 수 없으면 거절합니다. 현재 디렉터리, 이웃 설정이나 다른 connection에서
+추정하지 않습니다.
 
-| 호스트 | 연결 의도 | 환경 전제 조건 |
-|---|---|---|
-| Codex | `personal` | `CODEX_HOME` 또는 `HOME`이 사용자 Codex 설정 위치를 식별해야 합니다. 가용성 점검을 위해 `codex`가 `PATH`에서 사용 가능해야 합니다. |
-| Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Codex 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host codex`를 시작하며 init이 선택한 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 제공해야 합니다. 공유 항목에는 로컬 ID나 Runtime Home의 리터럴 경로가 없으며 `env_vars = ["VOLICORD_HOME"]`으로 호스트 값을 전달합니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
-| Claude Code | `personal`, `global` | Volicord가 `claude mcp` 명령을 사용할 수 있도록 관리 프로세스가 `claude` 실행 파일을 시작할 수 있어야 합니다. |
-| Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Claude Code 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host claude-code`를 시작하며 init이 선택한 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 제공해야 합니다. 공유 항목에는 로컬 ID나 Runtime Home의 리터럴 경로가 없으며 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`로 호스트 값을 전달합니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
-| 일반 MCP 호스트 | 사용자 관리 | Volicord는 일반 MCP 호스트 설정을 쓰지 않습니다. 외부 호스트를 수동으로 설정하려면 먼저 활성 Agent Connection이 있어야 하며, 그 결과로 시작한 프로세스는 MCP 시작 검증을 여전히 통과해야 합니다. 외부 호스트는 호스트별 방식으로 로드되고 점검되기 전까지 사용자 관리 상태이며 미검증입니다. |
+비밀과 관련 없는 ambient 환경 값은 관리 설정에 복사하지 않습니다. 진단은 token,
+전체 민감 payload 또는 가리지 않은 민감 절대 경로를 출력하면 안 됩니다.
 
-호스트 설정을 썼다는 사실은 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. `managed host configuration state`의 의미와 호스트 신뢰 경계는 [Agent Connection](agent-connection.md)이 담당합니다.
+## 중단 기준
 
-Codex 프로젝트 신뢰와 관리되지 않는 command hook 신뢰는 서로 다른 호스트 소유 전제
-조건입니다. 프로젝트 신뢰는 프로젝트 `.codex/` 계층을 로드 대상이 되게 할 뿐입니다.
-Detective 훅에 의존하기 전에 운영자는 Codex에서 현재 Volicord 훅 정의 각각을 정확히
-검토하고 신뢰해야 하며, 정의가 바뀌면 다시 검토해야 합니다. 프로젝트 신뢰, 관리 연결의
-`complete` 결과, `hook_path_safety=ok`, exact-owned 생성 파일, 성공한 설정 audit만으로는
-command hook 신뢰, 이벤트 전달, 실행을 증명하지 못합니다.
+다음 조건 중 적용되는 것이 있으면 설치, 검증, repair, 관리 launch 또는 영수증
+사용을 중단해야 합니다.
 
-호스트 기능 적용 가능성은 설치 적용 가능성과 구분하며 capability probe를 우선합니다. 관리
-검증은 적용될 때 실제 훅 호출, 구조화된 대상 경로, 구조화된 변경 경로, 모델과 분리된 사용자
-행동 UI, Stop 전달·replay 동작, 고정 UI 권한 표시, 광고한 MCP capability를 probe합니다.
-구현된 내장 표면은 알 수 없는 더 새 호스트 버전을 포함해 일치하는 최신 Evidence가 없으면
-`implemented_unverified`입니다. 현재 probe 실패나 현재 전제 조건 장애는
-`temporarily_unavailable`이고 `unsupported_by_host`에는 capability의 명시적 부재가
-필요합니다. `degraded`는 진단일 뿐입니다. 정확한 의미와 우선순위는
-[호스트 기능 지원 상태](agent-connection.md#host-feature-support-state)가 담당합니다.
+- 호스트와 profile이 정확히 `codex`, `record`가 아닙니다.
+- 플랫폼 환경이 없거나 모호하거나 네 값 집합 밖입니다.
+- 정확한 Codex 아티팩트와 필수 capability가 현재 플랫폼의 통과 manifest 셀에 없습니다.
+- 실행 파일, 프로세스, binding, 설정, project, connection, policy, capability 또는 최신성 좌표가 일치하지 않습니다.
+- 관리 설정이 손상되었거나 소유하지 않은 항목이거나 repair 가능한 담당 경계 밖으로 drift했습니다.
+- 저장된 typed 설정 행동이나 필요한 다른 담당 값이 손상되었습니다.
+- 네이티브 Windows/WSL2 교차, WSL1, `/mnt/*`, DrvFS 또는 지원하지 않는 WSL 배포판이 관찰됩니다.
+- Runtime Home이나 Product Repository를 안전하게 해석하거나 접근할 수 없습니다.
+- 관리형 stdio를 구성할 수 없습니다.
+- 필수 읽기나 플랫폼 primitive를 사용할 수 없습니다.
 
-검토된 Codex `0.144.4` 좌표와 정확한 Claude Code 버전은 검증·regression·릴리스 Evidence
-좌표로 남습니다. 관찰한 그대로 보존하되 주 런타임 활성 gate로 쓰거나 최소 버전 약속으로
-일반화하면 안 됩니다. 다른 유효한 버전은 실제 probe와 Evidence로 평가합니다.
+결과는 해당 `Rejected`, `Unavailable`, `Corrupt` 또는 `UnsupportedContract` 범주와
+도메인 reason을 보존해야 합니다. 기본 binding, 합성 영수증, fallback 호스트,
+추정 플랫폼 또는 부분 성공을 만들면 안 됩니다.
 
-## MCP 호스트 환경 요구사항
+## 인접 담당 문서
 
-기준 MCP 호스트 환경은 다음 허용된 로컬 자식 프로세스 형태 중 하나를 시작하고
-`stdin`/`stdout`으로 통신할 수 있어야 합니다.
-
-- 개인·로컬 바인딩: `volicord mcp --stdio --connection <connection_id>
-  [--project <project_id>]`
-- 공유 저장소 기술 정보: `volicord mcp --stdio --discover-repository --host
-  codex|claude-code`
-
-로컬 바인딩 형태에서 ID는 저장된 내부 레코드를 이름 붙이며 공개 MCP 도구 인자가
-아닙니다. 발견 형태에서는 프로세스 현재 디렉터리가 의도한 Git 복제본 안에 있어야 하고,
-그 정규화된 저장소가 선택한 Runtime Home에 등록되어 있어야 하며, 선택된 호스트의 활성
-공유 연결 정확히 하나가 이를 포함해야 합니다. 이는 네트워크 리스너 요구사항이 아닙니다.
-
-호스트 프로세스 환경은 아래를 제공해야 합니다.
-
-- 설정된 명령 경로나 `PATH`에 따른 실행 가능한 `volicord` 명령
-- 의도한 Runtime Home이 기본 홈에서 유도되는 위치가 아닐 때의 `VOLICORD_HOME`입니다.
-  개인·로컬 설정은 이 값을 담을 수 있습니다.
-- 모든 공유 저장소 발견 시작에서 init이 선택한 Runtime Home과 일치하는, 존재하고 비어
-  있지 않은 절대 경로 `VOLICORD_HOME`입니다. 이식 가능한 호스트 항목은 경로를 내장하지
-  않고 이 값을 전달하며 시작은 플랫폼 기본값으로 대체하지 않습니다.
-- Runtime Home과 명시적으로 허용된 각 `Product Repository`에 대한 로컬 파일시스템 접근
-
-검토된 Codex `0.144.4` 관리 경로에서 시작 기술 정보는 출처만 확립합니다. 처음으로 알려진
-도구 호출이 관리 root 세션과 프로세스 로컬 thread 다이제스트를 결속하려면 정확한
-`clientInfo.name=codex-mcp-client`, `clientInfo.version=0.144.4`, 엄격한 요청측
-`_meta.threadId`, `_meta["x-codex-turn-metadata"]` 세션·thread·turn 메타데이터가
-필요합니다. 시작 대기 상태는 관리 효과를 만들지 않습니다. `CODEX_THREAD_ID`, PID, cwd,
-프로세스 조상 관계, 시각, 훅 이벤트와의 근접성은 대체 입력이 아닙니다. 정확한 동작은
-[MCP 전송](mcp-transport.md#managed-host-session-input)이 담당합니다.
-
-`volicord mcp --check --connection <connection_id>`는 그 프로세스 바인딩에 대한 시작
-검증 점검입니다. 전체 호스트 통합 검증이 아닙니다. 전체 호스트 검증에는 [관리
-CLI](admin-cli.md)가 정의한 관리 결과 기준이 필요합니다.
-
-## 중지 기준
-
-아래 조건 중 하나라도 해당하면 설치 전에 멈춥니다.
-
-- 소스 빌드 경로를 사용하는데 Cargo가 포함된 Rust 1.85 이상을 사용할 수 없습니다.
-- 선택한 릴리스 출처가 문서화된 릴리스 경로에 필요한 설치 스크립트, 맞는 대상 압축 파일, 체크섬을 제공하지 않습니다.
-- 게시된 릴리스 자산을 사용하는데 운영체제와 CPU 아키텍처에 맞는 지원 대상이 없습니다.
-- 설치 스크립트가 지원되지 않는 플랫폼 또는 지원되지 않는 CPU 아키텍처를 보고합니다.
-- 로컬에서 체크섬 검증을 요구하지만 체크섬 파일을 내려받거나 검증할 수 없습니다.
-- 선택한 환경에 맞는 유지되는 셸 예시를 실행하거나 안정적으로 맞춰 쓸 수 없습니다.
-- `volicord`가 없거나, 선택한 사용자가 실행할 수 없거나, 도움말과 버전 출력을 낼 수 없습니다.
-- 선택한 Runtime Home을 필요한 프로세스가 만들고, 읽고, 쓸 수 없습니다.
-- Runtime Home과 Product Repository가 같은 경로이거나 한쪽이 다른 한쪽을 포함합니다.
-- 네이티브 Windows 설정에서 Runtime Home 또는 Product Repository에 UNC 경로, WSL UNC 경로,
-  WSL 마운트 경로를 사용합니다.
-- Product Repository가 없거나, 디렉터리가 아니거나, 요청한 프로젝트 범위 설정 또는 지침 쓰기에 필요한 쓰기가 불가능합니다.
-- 요청된 `guard` 통합 관리 파일 쓰기가 심볼릭 링크를 따라가지 않고 대상을 안전하게
-  순회할 수 없거나, 필요한 같은 디렉터리 이름 공간 연산을 사용할 수 없거나, 필요한
-  기존 파일 메타데이터를 재현할 수 없습니다.
-- `shared` 연결 의도 호스트 설정이 호스트 환경의 `PATH`에서 `volicord mcp --stdio`를 시작할 수 없습니다.
-- 공유 저장소 발견 호스트 환경이 init이 선택한 `VOLICORD_HOME`을 존재하고 비어 있지 않은
-  절대 경로 값으로 제공할 수 없습니다.
-- 선택한 호스트 경로에 Codex 또는 Claude Code가 필요한데 관리 호환성 점검이 호스트를 시작하거나 해석할 수 없습니다.
-- 네이티브 Windows 설정에서 `--profile detective`를 요청합니다.
-- 필요한 호스트 신뢰, 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, 다시 로드, 재시작, 또는 비슷한 호스트 소유 동작이 남아 있고 운영자가 이를 완료할 수 없습니다.
-- 선택한 환경이 이 저장소가 문서화하지 않는 패키지 관리자, Homebrew 탭, 게시된 Docker 레지스트리 이미지, 원격 호스트, 네트워크 리스너, 호스트 버전 약속에 의존합니다.
-
-저장소 증거가 충분하지 않다면 그 환경을 미검증으로 분류하고, 그 환경에 의존하기 전에 담당 문서가 정의한 검증 명령을 사용합니다.
+- 최초 릴리스 포함 및 제외 표면: [범위](scope.md)
+- binding, 영수증, 저장된 설정 행동 및 adapter/Core 경계: [Agent Connection](agent-connection.md)
+- 정확한 아티팩트 및 플랫폼 증거: [호스트 릴리스 증거](host-release-evidence.md)
+- 런타임 경로 및 저장소 경계: [런타임 경계](runtime-boundaries.md)
+- SQLite 형식 수용: [저장소 버전 관리](storage-versioning.md)
+- 제품 전체 실패 의미: [실패 모델](failure-model.md)
+- 위협 모델 및 비보장: [보안](security.md)

@@ -1,25 +1,29 @@
 # 저장소 DDL
 
-이 문서는 [저장소 기록](storage-records.md)이 설명하는 저장소 배치를 위한 기준 SQLite DDL 계약을 담당합니다. 기준 `registry.sqlite`와 프로젝트 `state.sqlite` 배치를 구현할 수 있게 하되, 메서드 효과, 아티팩트 생명주기 규칙, 상태 버전 의미, API 스키마, 보안 보장을 이 문서로 옮기지 않습니다.
-
-현재 DDL 프로필은 `baseline_sqlite_v7`입니다.
+이 문서는 [저장소 기록](storage-records.md)이 설명하는 단일 기준 저장소 배치의 물리
+SQLite DDL 계약을 담당합니다. `registry.sqlite`, 프로젝트 `state.sqlite`, 물리
+`StorageManifest` 배치를 구현할 수 있게 하되, manifest 정체성, 데이터베이스 열기 분류,
+메서드 효과, 아티팩트 생명주기 규칙, 상태 버전 의미, API 스키마, 보안 보장을 이 문서로
+옮기지 않습니다.
 
 ## 담당 경계
 
 이 문서가 담당합니다.
 
 - `registry.sqlite`와 프로젝트 `state.sqlite`의 기준 SQLite 테이블 형태
-- 기준 인덱스, 외래 키, 물리 제약
+- 기준 인덱스, 외래 키, view, 물리 제약
+- 물리 `StorageManifest` 운반 열과 엄격한 영속 표현
 - `project_state.state_version`, 재실행 행, 현재 적용 Change Unit 고유성, 쓰기 티켓 기준 버전, 스테이징된 아티팩트 출처, 호스트 관찰 기록에 대한 SQLite 제약
 - Runtime Home 등록 데이터와 프로젝트별 Core 상태 사이의 DDL 수준 분리
-- 문서화된 기준 SQL 블록과 기준 SQL 원본 파일 사이의 일치
+- `GeneratedSchemaMetadata`와 문서 projection을 파생하는 기준 SQL 입력
 
 이 문서는 담당하지 않습니다.
 
 - 기록 계열 목적, 저장 위치, 저장소 소유 값, JSON 배치 범주: [저장소 기록](storage-records.md)
 - 메서드 분기별 저장 효과: [저장 효과](storage-effects.md)
 - 아티팩트 스테이징, 승격, 연결, 본문 읽기, 보존, 무결성 생명주기: [아티팩트 저장소](storage-artifacts.md)
-- 상태 버전, 멱등성, 이벤트, 잠금, 호환되지 않는 저장소 처리: [저장소 버전 관리](storage-versioning.md)
+- `StorageManifest` 의미적 정체성, digest 생성, capability 의미, 정확한 열기 비교,
+  실패 분류, 상태 버전, 멱등성, 이벤트, 잠금 동작: [저장소 버전 관리](storage-versioning.md)
 - API 요청 또는 응답 스키마: [API 코어 스키마](api/schema-core.md)가 안내하는 API 스키마 담당 문서
 - 런타임 위치 경계: [런타임 경계](runtime-boundaries.md)
 - 보안 보장 수준: [보안](security.md)
@@ -31,7 +35,7 @@
 
 | 표면 | 안정성 | 비고 |
 |---|---|---|
-| 기준 SQLite DDL, 기준 SQL 블록, 테이블 제약, 인덱스, 외래 키, 공개 기준 상태 시계인 `project_state.state_version`, 물리 정규 UTC 하한인 `project_state.updated_at` | `stable` | 현재 기준 프로필을 위한 구현 가능한 저장소 DDL 계약입니다. UTC 하한은 두 번째 공개 상태 버전 필드가 아닙니다. |
+| 기준 SQLite DDL, manifest 운반 열, 기준 SQL 블록, 테이블 제약, 인덱스, view, 외래 키, 공개 상태 시계인 `project_state.state_version`, 물리 정규 UTC 하한인 `project_state.updated_at` | `stable` | 받아들이는 manifest 하나를 위한 구현 가능한 저장소 DDL 계약입니다. UTC 하한은 두 번째 공개 상태 버전 필드가 아닙니다. |
 | 물리 테이블 이름, 열 이름, 내부 ID, 생성된 호스트 관찰 행, `_json` 표현 열 | `internal` | 저장소 배치를 구현 가능하게 하는 세부사항입니다. 다른 집중 담당 문서가 노출하지 않는 한 일반 사용자 대상 선택자나 공개 API 인자가 아닙니다. |
 | 테이블, 기록 참조, 논리 열, 손상 범주를 식별하는 안전한 저장소 또는 손상 진단 | `diagnostic` | 진단은 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하면 안 됩니다. |
 
@@ -51,7 +55,7 @@ PRAGMA foreign_keys = ON;
 
 `_json`으로 끝나는 SQLite `TEXT` 열은 JSON을 저장하는 표현 선택입니다. 권한, 생명주기, 범위, 증거, 완료, 닫기 준비 상태, 쓰기 호환성에 쓰이는 JSON은 타입이 지정된 담당 상태입니다. 타입을 아는 Core 코드는 커밋 전에 해당 API 스키마 담당 문서, 저장소 담당 문서, 또는 아티팩트 담당 문서에 맞게 이 열을 파싱하고 검증해야 합니다. 타입이 지정된 담당 상태를 디코드하지 못하는 경우는 손상이며 빈 객체, 빈 배열, `false` 값, 기본 열거형 값, 또는 "요구사항 없음" 해석으로 바꾸면 안 됩니다. SQL `NULL`은 담당 스키마가 그 필드를 명시적으로 선택 필드라고 표시할 때만 부재를 뜻할 수 있습니다. 선택 열의 형식이 잘못된 JSON도 부재가 아니라 손상입니다. 열린 표시 메타데이터는 권한이나 닫기 판단에 쓰이지 않을 때만 타입을 지정하지 않은 채로 둘 수 있습니다. 안전한 진단은 테이블, 기록 참조, 논리 열, 손상 범주를 식별할 수 있지만 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하면 안 됩니다. `'{}'`, `'[]'` 같은 SQLite 기본값은 API 필드를 선택 필드로 만들지 않습니다.
 
-`project_state.state_version`은 기준 범위의 유일한 공개 상태 시계입니다.
+`project_state.state_version`은 유일한 공개 상태 시계입니다.
 `project_state.updated_at`은 정규 Core UTC 시계를 위한 별도의 물리 하한이며 공개 충돌
 버전이나 스키마 버전이 아닙니다. 기준 SQLite DDL은 `tasks.state_version`, 저장소
 `schema_version` 열, 마이그레이션 이력 테이블을 만들면 안 됩니다.
@@ -62,11 +66,50 @@ PRAGMA foreign_keys = ON;
 샌드박싱, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 효과가 실제로
 일어났다는 증명이 아닙니다.
 
+<a id="physical-storage-manifest-placement"></a>
+## 물리 `StorageManifest` 배치
+
+기준 SQL에는 별도 manifest 테이블이나 숫자 스키마 버전 열이 없습니다. 전체 manifest는
+아래 두 기존 운반 열에 둡니다.
+
+| 데이터베이스 | 소유 행 | 운반 열 | 정확한 DDL 형태 |
+|---|---|---|---|
+| `registry.sqlite` | `singleton_id=1`로 선택하는 `runtime_home` 행 | `runtime_home.storage_profile` | SQL 기본값이 없는 `TEXT NOT NULL` |
+| 프로젝트 `state.sqlite` | 해당 데이터베이스의 `project_id`에 대한 `project_state` 행 | `project_state.storage_profile` | SQL 기본값이 없는 `TEXT NOT NULL` |
+
+물리 이름과 달리 `storage_profile`은 프로필 선택자, 숫자 revision, 마이그레이션 키,
+호환성 별칭이 아닙니다. 완전한 현재 `StorageManifest`의 결정적인 단일 정규 UTF-8 JSON
+인코딩을 저장합니다. 객체에는 `contract_id`, `canonical_ddl_digest`,
+`integrity_constraints_digest`, `enabled_capabilities`만 정확히 있어야 합니다. 필드가
+누락되거나 알 수 없는 필드 또는 중복 필드가 있으면 유효하지 않습니다. Capability 배열은
+[저장소 버전 관리](storage-versioning.md)가 담당하는 완전하고 정렬되었으며
+중복이 없는 집합을 보존해야 합니다.
+
+새 초기화는 레지스트리 운반 열과 새로 만드는 모든 프로젝트 운반 열에 같은 현재 manifest
+값을 씁니다. Store는 권한 또는 정책 기록을 읽기 전에 각 운반 열을 독립적으로 엄격하게
+디코드합니다. 영속 값이 현재 내장 manifest와 같고, 선택한 프로젝트 manifest가 레지스트리
+manifest와 같아야 합니다. 정수를 파싱하거나, 버전을 비교하거나, 필드 존재 여부로 decoder를
+고르거나, 다른 프로필을 시도하지 않습니다. 정확한 열기 결과와 실패 범주는
+[저장소 버전 관리](storage-versioning.md)가 담당합니다.
+
 ## 기준 SQL 원본
 
-실행 가능한 기준 SQL 원본은 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)입니다. Runtime Home 초기화는 비어 있는 SQLite 데이터베이스에 이 원본을 적용합니다. 일반 open은 호환되지 않는 프로필을 거절합니다. 별도로 실행하는 오프라인 읽기 전용 v6-to-fresh-v7 복사 경로는 [저장소 버전 관리](storage-versioning.md)가 담당하며 in-place 변환을 수행하지 않습니다.
+실행 가능한 DDL 원본은 고정된 순서의
+[`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과
+[`project.sql`](../../../crates/volicord-store/src/schema/project.sql)뿐입니다. 새 초기화는 비어
+있는 SQLite 데이터베이스에만 이 원본을 적용합니다. 마이그레이션, 변환, 업그레이드,
+가져오기 도구, 과거 SQL 묶음, 숫자 프로필 분기, 대체 데이터베이스 열기 경로는 없습니다.
 
-`docs-check`는 아래 기준 SQL 블록이 해당 원본 파일과 정확히 일치하는지 검증합니다. 집중 `storage_ddl_contract` 테스트는 실행 가능한 스키마 의미를 검증합니다.
+결정적 추출기는 이 파일에서 테이블, 열, 인덱스, 제약, 두 스키마 digest를 파생해 하나의
+공유 `GeneratedSchemaMetadata`를 만듭니다. 런타임 검증, manifest 생성, Store query
+projection, fixture, DDL 계약 테스트, 문서 목록은 이 생성 아티팩트를 사용합니다. 어느
+소비자도 두 번째 권위 있는 목록을 유지하지 않습니다.
+
+아래 기준 SQL 블록은 점검되는 문서 projection이며 두 번째 DDL 원본이 아닙니다.
+`docs-check`는 블록이 원본 파일과 정확히 같은지 요구하고, 집중 `storage_ddl_contract`
+테스트는 실행 가능한 스키마 의미를 검증합니다. 기준 SQL에 없는 테이블, 열, 인덱스, view,
+외래 키, `CHECK`, `UNIQUE`, 기본값, 그 밖의 물리 SQLite 객체는 받아들이는 배치에 포함되지
+않습니다.
 
 ## `registry.sqlite`
 
@@ -353,12 +396,12 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 
 레지스트리 제약:
 
-- `runtime_home`은 단일 행 테이블입니다. Runtime Home 식별 정보, Runtime Home 경로, 레지스트리 데이터베이스 경로, 저장소 프로필, 메타데이터, 타임스탬프를 저장합니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
+- `runtime_home`은 단일 행 테이블입니다. `storage_profile` 열은 필수 manifest 운반 열이며 완전한 현재 `StorageManifest`를 저장합니다. 이 행은 Runtime Home 식별 정보, Runtime Home 경로, 레지스트리 데이터베이스 경로, 메타데이터, 타임스탬프도 저장합니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
 - `installation_profile`은 Runtime Home에 대해 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프를 저장합니다. `volicord init`이 이를 마련할 수 있습니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다.
 - `projects.project_internal_id`는 프로젝트 기록의 저장 기본 키입니다. `projects.project_name`은 표시 이름입니다. `projects.project_alias`는 CLI 선택 보조 값입니다. `projects.repo_root`는 저장소 루트 조회 키입니다. `projects.project_alias`, `projects.repo_root`, `projects.project_home`, `projects.state_db_path`는 고유합니다.
 - `project_aliases`는 별칭을 `project_internal_id` 값에 매핑합니다. 별칭 행은 레지스트리 선택 보조 값이지 프로젝트별 Core 권한 기록이 아닙니다.
-- `projects.state_db_path`는 저장 열로 유지됩니다. Store의 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 쓰기 가능한 프로젝트 상태 열기, Agent Connection 프로젝트 처리 경로, Core 실행, 프로필 재사용, MCP 프로젝트 가용성 확인 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
-- `projects.status`는 저장소 소유 값이며 기준 범위에서 유효한 값은 `active`뿐입니다.
+- `projects.state_db_path`는 저장 열로 유지됩니다. Store의 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 쓰기 가능한 프로젝트 상태 열기, Agent Connection 프로젝트 처리 경로, Core 실행, 프로젝트 Store 재사용, MCP 프로젝트 가용성 확인 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
+- `projects.status`는 저장소 소유 값이며 유효한 값은 `active`뿐입니다.
 - `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프를 저장합니다.
 - `agent_connections.intent`는 `personal`, `shared`, `global`로 제한됩니다.
 - `agent_connections.host_scope`는 `host_kind`와 함께 제한됩니다. Codex는 `user`와 `project`를 지원하고, Claude Code는 `local`, `project`, `user`를 지원하며, `generic` 기록은 `export`로 제한됩니다.
@@ -1563,7 +1606,8 @@ CREATE TABLE session_end_receipts (
 
 프로젝트 상태 제약:
 
-- `project_state.state_version`은 기준 범위의 유일한 공개 상태 시계이며 [저장소 버전 관리](storage-versioning.md)에 따라 단조롭게 진행해야 합니다. 이것은 Core 상태 시계이지 스키마 버전이 아닙니다.
+- `project_state.storage_profile`은 필수 프로젝트 manifest 운반 열입니다. `runtime_home.storage_profile`과 같은 완전한 현재 `StorageManifest`를 저장합니다. 엄격한 애플리케이션 검증은 다른 형식을 고르는 대신 누락되었거나, 형식이 잘못되었거나, 현재와 다르거나, 레지스트리와 불일치하는 manifest를 거절합니다.
+- `project_state.state_version`은 유일한 공개 상태 시계이며 [저장소 버전 관리](storage-versioning.md)에 따라 단조롭게 진행해야 합니다. 이것은 Core 상태 시계이지 스키마 버전이 아닙니다.
 - `project_state.updated_at`은 정규 Core UTC 시계의 감소하지 않는 영속 하한입니다.
   Store application validation은 이 값을 정규 UTC 담당 상태로 strict parse하고 형식이
   잘못되면 닫힌 상태로 실패해야 합니다. 일반 Core 커밋은 정확히 하나의
@@ -1669,8 +1713,9 @@ CREATE TABLE session_end_receipts (
 
 - [저장소 기록](storage-records.md): 영속 기록 계열, 배치, 관계 배치, 저장소 소유 값, JSON 배치를 정의합니다.
 - [저장 효과](storage-effects.md): 어떤 메서드 분기가 기록을 만들거나, 바꾸거나, 관찰하거나, 건드리지 않는지 정의합니다.
-- [저장소 버전 관리](storage-versioning.md): `project_state.state_version` 시계, 정규
-  Core UTC 시계와 영속 하한, 멱등성, 재실행, 이벤트, 잠금, 호환되지 않는 저장소
-  처리를 정의합니다.
+- [저장소 버전 관리](storage-versioning.md): `StorageManifest` 정체성과 digest, 활성화된
+  capability, 정확한 열기 비교와 실패 분류, 생성된 스키마 메타데이터,
+  `project_state.state_version` 시계, 정규 Core UTC 시계와 영속 하한, 멱등성, 재실행,
+  이벤트, 잠금을 정의합니다.
 - [Agent Connection](agent-connection.md): Agent Connection, Connection Projects, 현재 연결 맥락, 모드 제한, Agent Connection과 User Channel의 경계를 정의합니다.
 - [보안](security.md): 보안 경계와 보장 수준을 정의합니다.

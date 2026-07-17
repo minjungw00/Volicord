@@ -48,10 +48,17 @@ Task가 선택되면 성공한 모든 결과는 선택적 `include` 필드와 �
 StatusRequest:
   envelope: ToolEnvelope
   include: object
+  continuity_page?: ContinuityPageRequest | null
 ```
 
 필드 참고:
 - `include`는 상태 조회 요약을 고르는 메서드 내부 플래그 객체이며, 최소 유효 요청 예시에 표시되어 있습니다.
+- `continuity_page`는 선택 필드이며 `include.continuity=true`일 때만 적용됩니다.
+  생략하거나 `null`이면 `page_size=8`, `cursor=null`을 선택합니다. null이 아닌
+  객체는 1 이상 64 이하의 `page_size`와, 첫 페이지이면 `null`, 다음 페이지이면
+  앞선 페이지가 반환한 정확한 `next_cursor`인 `cursor`를 모두 제공합니다.
+  `include.continuity=false`인데 null이 아닌 객체를 제공하면 사용하지 않는 모호한
+  입력으로 거절합니다.
 
 ## 접근 요구사항
 
@@ -109,7 +116,9 @@ StatusRequest:
 - `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 호스트 훅 경로 안전성을 포함한 `GuardHealthSummary` 상태 정보, 도출된 `CoverageSummary`, 관련 다음 행동, 동일한 기준 `evidence_gate`를 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
 - 증거나 닫기 세부사항이 선택되면 `summary_card.evidence`는 정확히 `evidence_gate.state`입니다. `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, `blocked` 중 하나를 사용하며 증거 첨부 표시 상태에서 두 번째 gate를 파생하지 않습니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 호출 맥락, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.
-- `include.continuity`는 오래 유지하는 프로젝트 수준 맥락의 활성 `ProjectContinuitySummary[]` 항목을 반환합니다.
+- `include.continuity`는 오래 유지하는 프로젝트 수준 맥락의 활성
+  `ProjectContinuitySummary` 항목과 명시적인 페이지 정보를 담은
+  `ProjectContinuityPage`를 반환합니다.
 - `include.continuity`는 선택한 Task의 연결된 predecessor component인
   `task_flow`도 반환합니다. 정규 lineage edge로 연결된 branch를 포함합니다.
 - `summary_card`는 성공한 `StatusResult` 응답에서 항상 반환됩니다. 담당 문서가 선택한 보기를 공개 표시 용어와, 알 수 있을 때 선택된 다음 행동 하나인 `next`로 요약합니다. 요약하는 구조화 필드 너머의 권한을 추가하지 않습니다.
@@ -121,6 +130,19 @@ StatusRequest:
   생략해도 전체 blocker 집합을 담습니다.
 - `include.guarantees=false`는 보장 표시를 파생하지도 반환하지도 않는다는 뜻입니다.
 - `include.continuity=false`는 프로젝트 연속성 요약을 읽거나 반환하지 않는다는 뜻입니다.
+
+연속성 페이지 정렬은 정확히 `updated_at DESC, continuity_record_id DESC`입니다.
+Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤에서 시작합니다.
+따라서 timestamp가 같아도 Store row 순서가 아니라 ID tie-breaker로 정렬됩니다.
+프로젝트와 요청이 바뀌지 않으면 반복 읽기는 같은 페이지를 반환합니다.
+
+`page_info.total_count`는 이 status 읽기 시점에 활성인 전체 프로젝트 연속성 기록
+수이며 cursor 적용 전 값입니다. `returned_count`는 `items.len`입니다.
+`truncated=true`는 반환 페이지 뒤에 항목이 하나 이상 더 있을 때만 사용하며, 이때만
+`next_cursor`가 마지막 반환 항목의 정렬 pair가 됩니다. 일치 기록이 정확히
+`page_size`개이면 `truncated=false`, `next_cursor=null`이고, 더 많으면
+`truncated=true`입니다. 최대 64는 transport payload를 제한하기 위한 값이며 숨은
+제품 잘림 규칙이 아닙니다.
 
 정직한 상태 보기 규칙:
 - `authority_receipt.latest_run_ref`는 오래 유지되는 `run_recorded` 권한 이벤트 커밋
@@ -173,14 +195,14 @@ StatusRequest:
 | `guard_health` | 닫기 상태 조회 보기에 선택된 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `coverage_summary` | 닫기 상태 조회 보기에 선택된 `CoverageSummary | null`입니다. 형태와 값 의미는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. `record` 권한 기록과 `detective` 관찰을 구분하고 관찰 범위의 비보장을 보고합니다. |
 | `guarantee_display` | 현재 상태 조회 보기에 대한 `GuaranteeDisplay | null`입니다. |
-| `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuitySummary[]`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
+| `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuityPage`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 빈 페이지를 포함해 항상 `items`와 완전한 `page_info`를 보고합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 | `task_flow` | `include.continuity=true`이고 Task를 선택했을 때의 `TaskFlowItem[]`이며 그 밖에는 생략합니다. 연결된 lineage projection이지 승계된 현재 권한이 아닙니다. |
 | `authority_receipt` | Task를 선택했을 때 새로 계산한 `AuthorityReceipt`이며 Task가 없으면 `null`입니다. 같은 관찰 `state_version`에서 전체 close blocker, 최신 기록 Run, product-write 관찰, Evidence gate, 다음 actor/action, 도출된 `completion_claim_allowed`를 담습니다. 형태는 [API 상태 스키마](schema-state.md#task-lineage-workspace-and-authority-receipt)가 담당합니다. |
 
 중첩된 `AgentSafeUserActionRequestSummary` 형태는 [API 사용자 행동
 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. 중첩된
 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`,
-`EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`,
+`EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuityPage`,
 `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`,
 `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는
 [API 상태 스키마](schema-state.md)가 담당합니다.
@@ -202,6 +224,8 @@ StatusRequest:
 - 상태 보기 기반 응답을 요청했지만 상태 보기가 오래되었거나 사용 불가
 - 선택적 최상위 projection을 요청하지 않았더라도 정규 authority receipt를
   만드는 데 필요한 Task, close basis, Evidence 또는 다른 owner state가 손상됨
+- 1 이상 64 이하가 아닌 연속성 page size, 손상된 cursor 또는 연속성을 선택하지
+  않았는데 null이 아닌 `continuity_page`를 제공함
 
 공개 오류 코드 의미, 우선순위, 거절 응답 처리 경로는 아래 오류 담당 문서가 담당합니다.
 

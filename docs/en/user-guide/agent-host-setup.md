@@ -77,21 +77,15 @@ Use `--json` for full diagnostics or automation. Scripts must not parse the
 compact text.
 
 CLI MCP success does not prove active host exposure. Confirm tool availability
-inside the current Codex or Claude Code session. If tools are absent, follow
+inside the current Codex session. If tools are absent, follow
 [Agent Host Troubleshooting](agent-host-troubleshooting.md) before rewriting
 configuration by hand.
 
-JSON connection status also includes `states.host_feature_support`, with all
-six host features reported independently. Read `implemented_unverified` as
-“the adapter path exists but exact current live-host evidence is absent,” not
-as a failure of generated configuration. Read `unsupported_by_host` as a known
-missing host-owned surface, and `temporarily_unavailable` only as a current
-verified path whose runtime prerequisite is down. Only `verified` supports a
-current feature claim. `configured` and `configuration_verified` in the
-separate final-output detail do not change those states. See
-[Host Feature Support Is Not Verified](agent-host-troubleshooting.md#host-feature-support-is-not-verified)
-for recovery and the [Agent Connection](../reference/agent-connection.md#host-feature-support-state)
-for the exact contract.
+Verification must produce a strict receipt for the exact current Codex record
+binding. A missing, stale, mismatched, expired, or unsuccessful receipt cannot
+be replaced by configuration presence or a terminal-side MCP check. See
+[`HostVerificationReceipt`](../reference/agent-connection.md#host-verification-receipt)
+for the exact boundary.
 
 ## Codex
 

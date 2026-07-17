@@ -376,8 +376,8 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 
 - [관리 CLI](admin-cli.md#managed-final-output-authority-disclosure): 관리 어댑터 동작과
   대체 경로.
-- [Agent Connection](agent-connection.md#managed-final-output-authority-disclosure): 호스트
-  기능과 연결 경계.
+- [Agent Connection](agent-connection.md#core-receipt-validation): 정규 결속과 영수증
+  검증 경계.
 - [보안](security.md#generated-displays-and-text): 표시의 비권한 경계.
 
 <a id="status-card-body"></a>

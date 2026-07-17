@@ -22,6 +22,7 @@
 - 공통 응답 분기 형태: [API 코어 스키마](schema-core.md).
 - 표시 문구만: [템플릿 본문](../template-bodies.md).
 - 저장 효과: [저장 효과](../storage-effects.md).
+- 제품 전체 실패 범주 의미: [실패 모델](../failure-model.md).
 
 <a id="error-taxonomy"></a>
 ## 공개 `ErrorCode` 요약
@@ -29,6 +30,8 @@
 | 공개 `ErrorCode` | 세부 항목 |
 |---|---|
 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
+| `UNSUPPORTED_CONTRACT` | [`UNSUPPORTED_CONTRACT`](#errorcode-unsupported-contract) |
+| `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
@@ -71,6 +74,52 @@
 조건:
 - 요청 본문 형태, enum 값, 적용 규칙, 프로필 검증, 아티팩트 입력 형태가 유효하지 않습니다.
 
+필수 실패 범주:
+- `rejected`
+
+경계:
+- 형식이 잘못된 신뢰할 수 없는 요청 데이터는 이 코드를 사용합니다. 지원되는 영속 담당
+  계약의 저장 데이터가 유효하지 않으면 `PERSISTED_DATA_CORRUPT`, 정확한 외부 계약이나
+  호스트 아티팩트를 지원하지 않으면 `UNSUPPORTED_CONTRACT`를 사용합니다.
+
+<a id="errorcode-unsupported-contract"></a>
+### `UNSUPPORTED_CONTRACT`
+
+사용 위치:
+- `ToolRejectedResponse.errors[]`
+
+조건:
+- 정확한 외부 계약 설명자, 호스트 아티팩트, 그 밖의 경계 형식이 정확히 등록된 지원
+  계약이 아닙니다. fallback 어댑터, decoder, 아티팩트, 버전, 가장 가까운 알려진
+  형식을 선택하지 않습니다.
+
+필수 실패 범주:
+- `unsupported_contract`
+
+필수 세부사항:
+- 해당 도메인에는 [API 오류 세부사항](error-details.md#reason)의
+  `ToolError.details.reason` 값을 사용합니다. 외부 계약과 호스트 아티팩트 도메인은 각각
+  `unsupported_external_contract`, `unsupported_host_artifact`를 사용합니다.
+
+<a id="errorcode-persisted-data-corrupt"></a>
+### `PERSISTED_DATA_CORRUPT`
+
+사용 위치:
+- `ToolRejectedResponse.errors[]`
+
+조건:
+- 영속 또는 신뢰 담당 데이터가 지원되는 계약을 따른다고 표시하지만 그 스키마, type,
+  canonical encoding, 필드 간 invariant를 위반합니다. 종속 동작은 권한 도출, 정책 평가,
+  성공 효과, 종속 상태 변경 전에 닫힌 실패로 중단합니다.
+
+필수 실패 범주:
+- `corrupt`
+
+필수 세부사항:
+- 해당 도메인에는 [API 오류 세부사항](error-details.md#reason)의
+  `ToolError.details.reason` 값을 사용합니다. 영속 호스트 설정 `UserAction` decode 또는
+  검증 실패는 `persisted_user_actions_corrupt`를 사용합니다.
+
 <a id="errorcode-state-version-conflict"></a>
 ### `STATE_VERSION_CONFLICT`
 
@@ -90,7 +139,15 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 필요한 Core, MCP, 저장소, 타입이 지정된 담당 상태, 또는 Agent Connection에 접근할 수 없습니다. 여기에는 공개 메서드가 권한, 생명주기, 범위, 증거, 완료, 닫기 준비 상태, 쓰기 호환성을 평가하는 데 필요한 지속 저장된 담당 상태가 손상되었거나 읽을 수 없는 경우가 포함됩니다.
+- 필요한 Core, MCP, Store, 담당 상태 조회, Agent Connection에 현재 접근할 수 없고,
+  사용할 수 있는 데이터가 영속 데이터 손상이나 미지원 계약을 확정하지 않습니다.
+
+필수 실패 범주:
+- `unavailable`
+
+경계:
+- 알려진 영속 데이터 손상은 `PERSISTED_DATA_CORRUPT`, 알 수 없는 정확한 경계 계약은
+  `UNSUPPORTED_CONTRACT`를 사용합니다.
 
 <a id="errorcode-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`
@@ -109,13 +166,17 @@
 
 조건:
 - 그 밖에는 유효한 `OperationResultRef`와 cursor가 선택한 정확한 과거 작업 결과가
-  없거나, 조회 대상이 아니거나, ref 또는 저장 byte 무결성 확인에 실패했거나, 크기가
-  제한된 조회에 사용할 수 없습니다.
+  없거나, 조회 대상이 아니거나, 영속 데이터 손상 증거 없이 크기가 제한된 조회에 사용할
+  수 없습니다.
+
+필수 실패 범주:
+- `unavailable`
 
 참고:
 - 접근 맥락 비호환은 계속 `INVOCATION_CONTEXT_MISMATCH`이며 이 코드보다 먼저
   선택합니다. 따라서 결과 없음 분기는 접근을 허용하거나 접근 정보를 설명하지 않습니다.
-- Store 접근 불가나 손상된 타입 지정 담당 상태는 계속 `MCP_UNAVAILABLE`입니다.
+- Store 접근 불가는 계속 `MCP_UNAVAILABLE`이고, 알려진 타입 지정 담당 상태 손상이나
+  저장 byte 무결성 실패는 `PERSISTED_DATA_CORRUPT`를 사용합니다.
 
 <a id="errorcode-no-active-task"></a>
 ### `NO_ACTIVE_TASK`
@@ -135,6 +196,14 @@
 
 조건:
 - 쓰기 가능하거나 닫기와 관련된 동작에 범위가 지정된 현재 적용 Change Unit이 없습니다.
+
+구조적 거부 응답 경로의 필수 실패 범주:
+- `rejected`
+
+메서드별 세부사항:
+- `volicord.prepare_write`는 이 공개 코드를 보존하고 정책 평가 전에
+  `ToolError.details.reason=current_change_unit_required`를 사용합니다. 이를
+  `VALIDATION_FAILED`나 합성 Change Unit으로 바꾸지 않습니다.
 
 <a id="errorcode-baseline-stale"></a>
 ### `BASELINE_STALE`

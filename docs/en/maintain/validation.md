@@ -123,15 +123,14 @@ exact product behavior, API behavior, storage effects, schemas, security
 guarantees, and Core authority semantics still route to their Reference owners.
 
 For managed-host claims, classify each statement separately as environment
-applicability, setup or configuration state, Agent Connection readiness,
-feature-specific support, or release evidence. Check those layers against
+applicability, setup or configuration state, canonical binding, verification
+receipt, or release evidence. Check those layers against
 [System Requirements](../reference/system-requirements.md),
-[Agent Connection](../reference/agent-connection.md#host-feature-support-state),
-[API Value Sets](../reference/api/schema-value-sets.md#state-and-blocker-values),
-and [Host Release Evidence](../reference/host-release-evidence.md),
-respectively. A setup, configuration, `complete`, implementation, fixture, or
-test fact does not establish feature-specific `verified`, and a feature status
-does not replace exact-final-artifact release evidence.
+[Agent Connection](../reference/agent-connection.md#host-verification-receipt),
+and [Host Release Evidence](../reference/host-release-evidence.md). A setup,
+configuration, implementation, fixture, or test fact does not establish a
+strict current receipt, and a receipt does not replace exact-final-artifact
+release evidence.
 
 For API and Reference examples, check method-local consistency, request and
 response shape, field names, required fields, nullability, enum-like values,
@@ -363,50 +362,30 @@ result root.
 Failure to establish or verify the initial foreground owner, controller
 readiness or liveness, exact host group membership, disabled `TOSTOP`, foreground transfer,
 foreground restoration, terminal-attribute restoration or exact verification,
-or controller reap is a structural publication
-failure. The recorder must forbid terminal publication, leave the result root
-poisoned, and apply fresh-root recovery; do not convert the failure into
-`unavailable`, `completed`, or another non-passing cell. The exact invariant is
-owned by [Host Release Evidence](../reference/host-release-evidence.md#append-only-live-cell-publication).
+or controller reap prevents the exact platform cell from passing. Record
+`failed` when a required assertion ran and failed, or `unavailable` when the
+missing execution prerequisite prevented the complete suite from establishing
+a result. Never translate either outcome into `passed`; the exact meanings stay
+with [cell execution status](../reference/host-release-evidence.md#cell-execution-status).
 
 <a id="live-cell-result-root"></a>
 ## Live-Cell Result-Root Setup And Recovery
 
-For one twelve-cell matrix, create one new approved external `RESULT_ROOT`,
-then precreate real, canonical, symlink-free `RESULT_ROOT/cells` and
-`RESULT_ROOT/evidence` directories. `CELL_DIR` is exactly
-`RESULT_ROOT/cells`. Every matrix `VOLICORD_LIVE_HOST_RESULT_PATH` is a unique
-absent direct child of that directory; the maintained producer derives the
-corresponding implemented-cell sidecar under the sibling `evidence` directory.
-Run one producer at a time. The producer creates or reopens a stable private
-coordination entry in the result root, holds its cooperative lease, and
-synchronizes `active` before host launch. After synchronizing the final cell and
-its directory, it writes the exact `clean` state, whose complete record is the
-observable publication commit marker; that entry is not release evidence.
-Exact publication behavior belongs to the
-[append-only live-cell publication contract](../reference/host-release-evidence.md#append-only-live-cell-publication).
+A platform runner may use a new disposable `RESULT_ROOT` for bounded working
+output. Put it outside maintained documentation, the Product Repository, and
+the Volicord Runtime Home. Resolve it to one canonical symlink-free location,
+use a distinct absent child for each attempt, and do not store credentials,
+secrets, prompts, transcripts, screenshots, or recordings there.
 
-If any producer reports a publication error, terminates abnormally, leaves a
-non-clean state, or leaves a private stage, orphan evidence, or installed final
-name without acknowledged completion, stop the matrix. A post-write
-synchronization error can leave exact `clean`; even then the maintained
-operator procedure conservatively abandons the root. Do not delete a final
-name, clean the root, retry a cell there, copy prior cells, or run the gate.
-Preserve and report the failed root as appropriate, create a fresh result root
-with both child directories precreated, and rerun all twelve cells. The gate
-and audit do not perform recovery. This rule applies to the twelve release
-cells, not to the separate auxiliary CLI-fallback result under `auxiliary/`.
-
-A selected feature or host-child failure that is classified after child reap,
-after-turn baseline capture, and retained-integrity revalidation, and is then
-successfully published as a strict non-passing cell with exact `clean`, is not a
-publication error or abnormal producer termination. Keep that cell, do not
-retry or replace it in the same root, and continue the matrix; the gate will
-derive `implemented_unverified` and fail any still-requested verified claim.
-Fresh-root recovery applies when child finalization or retained-integrity
-revalidation is incomplete, or terminal publication itself is missing,
-uncommitted, or reported failed. Do not convert those structural failures into
-a non-passing cell.
+Working output is neither a
+[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell) nor
+the support manifest. If execution is interrupted, output is incomplete, or
+the executable digest changes, abandon the working output and rerun that exact
+platform cell from finalized bytes. Do not edit, copy, or reuse a prior result
+to claim a pass. Only bounded evidence produced by a complete exact-cell run
+may enter `validation_evidence`; the reviewed four-cell set is then replaced in
+the [single checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)
+as one release operation.
 
 <a id="live-host-final-output-release-validation"></a>
 ## Live-Host Final-Output Release Validation
@@ -416,9 +395,9 @@ authority disclosure for Codex or Claude Code in the Record or Detective
 profile. This is authenticated, human-in-the-loop validation against the exact
 release candidate. Host-configuration fixtures, direct generated-wrapper
 output, ordinary workspace tests, and Judgment round trips cannot replace it.
-Exact product behavior remains with [Agent Connection](../reference/agent-connection.md#managed-final-output-authority-disclosure),
-[Administrative CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure),
-and their focused dependencies; this checklist owns release-validation
+Exact product behavior remains with
+[Administrative CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure)
+and its focused dependencies; this checklist owns release-validation
 execution and evidence separation only.
 
 Use the [precreated result root above](#live-cell-result-root), and record the
@@ -530,14 +509,12 @@ upgrade it from fixture, direct-wire, or another matrix cell. All four cells
 must be present and each must pass to support the corresponding four-cell
 claim.
 
-On ordinary completion or unwind, the recorder attempts one append-only
-terminal publication. When it succeeds, a cell has its evidence installed
-first and its bounded cell installed last. Publication I/O or abnormal
-termination may instead leave
-no producer cell and only the bounded remnants allowed by the owner; apply
-fresh-root recovery. An existing final destination is never overwritten.
-Treat `result=incomplete` or every other non-passing terminal result as
-incomplete evidence, never as a pass.
+The recorder writes one bounded terminal result to a new working path and never
+overwrites an existing name. This standalone output is scenario evidence only;
+it is not a `CodexReleaseCell` and cannot update the support manifest. Treat
+`result=incomplete` or every other non-passing terminal result as incomplete
+evidence, never as a pass. A platform runner may incorporate the result only
+while executing and binding the exact finalized artifact for that cell.
 Keep the bounded results and release approver's checklist in that approved
 external release-record location. Do not commit result files, Runtime Homes, screenshots,
 transcripts, recordings, credentials, secrets, full prompts, or private
@@ -657,13 +634,12 @@ trust/approval surface, or native selector is `SKIP` or `FAIL`, never `PASS`.
 Both host-specific validations must pass for a release claim that covers both
 maintained hosts.
 
-The harness requires a new external result path and creates no provisional
-`running` cell. On ordinary completion or unwind, the recorder attempts one
-append-only terminal publication. When it succeeds, an implemented cell has
-its evidence installed first and its bounded cell installed last. Publication
-I/O or abnormal termination may instead leave no producer cell and only the
-bounded remnants allowed by the owner; apply fresh-root recovery. An existing
-final destination is never overwritten.
+The harness requires a new working-result path and never overwrites an existing
+name. Its bounded JSON is scenario evidence only, not a `CodexReleaseCell` or a
+support-manifest entry. A current platform runner may incorporate it only while
+executing the exact finalized artifact and binding the same artifact,
+platform, capability set, and `record` profile. Incomplete output cannot be
+promoted or repaired into a pass.
 
 Keep each bounded JSON result and the release approver's checklist record in
 that approved external release-record location. Do not commit result
@@ -783,12 +759,9 @@ For each cell, confirm all of these observations against the release candidate:
    raw summary, prompt or transcript content, screenshots or recordings,
    credentials, secrets, or private operator input.
 
-On ordinary completion or unwind, the recorder attempts one append-only
-terminal publication. When it succeeds, a cell has its evidence installed
-first and its bounded cell installed last. Publication I/O or abnormal
-termination may instead leave
-no producer cell and only the bounded remnants allowed by the owner; apply
-fresh-root recovery. A missing host executable, non-interactive TTY, omitted or malformed exact capability,
+The recorder writes one bounded terminal result to a new working path and never
+overwrites an existing name. This output remains scenario evidence and cannot
+register support or become a manifest entry by itself. A missing host executable, non-interactive TTY, omitted or malformed exact capability,
 missing host-only presentation surface, or inability to distinguish host-only
 `_meta` from model-visible result data is recorded as `result=unavailable`.
 Fixture setup failure, abnormal termination of a selected host, or a stored
@@ -929,15 +902,16 @@ Exact CLI and resume behavior remains with [Administrative CLI](../reference/adm
 [`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md);
 this checklist owns release-validation execution and evidence separation only.
 
-Prepare an approved release-record location that satisfies the
-[canonical external release-path policy](../reference/host-release-evidence.md#external-release-path-policy),
-and record the exact release-candidate and installed-host identities. Precreate
-one canonical symlink-free `RESULT_ROOT` and its exact `auxiliary/` child. Each
-result path must be a different absent direct child of
-`RESULT_ROOT/auxiliary`. The producer obtains the cooperative exclusive
-result-root lease before host launch and requires exact `clean` state, but an
-auxiliary run does not change the matrix publication state to `active`. Run
-both ignored cells separately:
+Use a new disposable working-output location outside maintained documentation,
+the Product Repository, and the Volicord Runtime Home, and record the exact
+release-candidate and installed-host identities. Precreate one canonical
+symlink-free `RESULT_ROOT` and its exact `auxiliary/` child. Each result path
+must be a different absent direct child of `RESULT_ROOT/auxiliary`. These
+auxiliary files are not
+[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell)
+objects and cannot update the
+[checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest).
+Run both ignored checks separately:
 
 ```sh
 VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
@@ -986,15 +960,12 @@ For each host, confirm all of these observations against the release candidate:
    confirmation. Its evidence scope explicitly identifies this CLI-fallback
    cell and excludes native Judgment and final-output matrix cells.
 
-The result path is mandatory. On successful append-only publication, the
-recorder installs exactly one bounded terminal or `failed_before_completion`
-record through a private create-new stage and atomic no-replace rename. It
-never overwrites or deletes an existing name. A publication failure can leave
-a bounded private stage or an already installed final name without successful
-command completion. Do not clean or retry the same destination; use a new
-absent auxiliary path, and use a fresh result root if its coordination state is
-not exact `clean`. This auxiliary recovery does not require rerunning the
-twelve-cell matrix. Treat any non-`passed` result, an unavailable executable,
+The result path is mandatory. The recorder installs exactly one bounded
+terminal or `failed_before_completion` record at a new name and never
+overwrites or deletes an existing result. If writing fails or command
+completion is uncertain, abandon that working path and use a new absent
+auxiliary path. This auxiliary output is not a platform-cell result and does
+not affect the canonical manifest. Treat any non-`passed` result, an unavailable executable,
 authentication environment,
 interactive TTY, same-connection resume path, Task-bound Stop, or complete
 receipt UI as `SKIP` or `FAIL`, never as a pass. Both host-specific cells must
@@ -1010,101 +981,52 @@ readiness, or a general correctness claim.
 
 ## Exact Host Release Evidence Gate
 
-The authoritative schemas, matrix, evaluator, freshness, verdict, audit, and
-managed-session rules belong to
-[Host Release Evidence](../reference/host-release-evidence.md). Maintainers do
-not redefine those contracts in a runbook or infer a release claim from CLI
-text.
+The authoritative [`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell)
+shape, exact-artifact rule, checked-in manifest, independent platform cells,
+required scenarios, and cell-status meanings belong to Host Release Evidence.
+Maintainers do not redefine those contracts in a runbook or infer a release
+claim from CLI text.
 
 When the test-only `tests/release-validation` package is present, run:
 
 ```sh
 cargo test -p volicord-release-validation-tests
-cargo run --locked -p volicord-release-validation-tests --bin host-release-candidate -- --candidate-id CANDIDATE_ID --candidate-path CANDIDATE_BINARY --candidate-out CANDIDATE.json
-cargo run --locked -p volicord-release-validation-tests --bin host-release-gate -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest-out MANIFEST.json
-cargo run --locked -p volicord-release-validation-tests --bin host-release-audit -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest MANIFEST.json --audit-out AUDIT.json
 ```
 
-Build the exact-profile candidate once from a clean source revision and stage
-it at the external absolute `CANDIDATE_BINARY` path. Without changing the
-runner or Git, Rust, or Cargo toolchain environment that performed the build,
-run `host-release-candidate` once to create the absent external
-`CANDIDATE.json`. The command validates and records the staged binary but does
-not build the candidate or stage, replace, or mutate the executable at the
-external final path; it does make an ephemeral private verification copy. It
-refuses an existing output. If the command reports an error, preserve any
-created output, revalidate the source and binary, and use a different absent
-descriptor path instead of deleting, adopting, or retrying the same path.
+That command validates contract parsing, explicit test-only descriptor
+separation, negative cases, and exact support lookup. It does not execute a
+finalized Codex artifact and cannot make any platform cell `passed`.
 
-Use the binary named by that descriptor for all twelve cells. Every matrix
-command must name the descriptor through
-`VOLICORD_RELEASE_CANDIDATE_PATH`, choose the claim explicitly through
-`VOLICORD_RELEASE_REQUEST_VERIFIED=0|1`, and use a unique new cell path under
-`CELL_DIR=RESULT_ROOT/cells`. Each live-cell producer derives evidence sidecars
-under the sibling `RESULT_ROOT/evidence` directory. The cell directory contains
-exactly twelve final `.json` cell files and no other entries. Any publication failure
-abandons that result root under the [fresh-root recovery rule](#live-cell-result-root).
+For each platform, finalize that platform's Codex executable after every
+publisher-controlled byte change, calculate its SHA-256 digest, and run the
+same bytes in the matching
+[independent platform cell](../reference/host-release-evidence.md#independent-platform-cells).
+Run the complete
+[required scenario set](../reference/host-release-evidence.md#required-release-validation-scenarios),
+then reopen and rehash the executable. A rebuilt, copied, differently packaged,
+or other-platform executable cannot substitute for those bytes.
 
-An installed host version and executable digest must agree across all six
-cells for that host. The top-level/environment client name/version quartet is a
-separate all-string or all-null group. Every non-null pair must be the exact
-validated `clientInfo.name` and `clientInfo.version` from that cell's successful
-managed MCP initialize, and all non-null cells for a host use one pair. Static
-unsupported cells may keep that client group null even when the host coordinate
-is non-null. If a host is unavailable, still run or otherwise invoke each
-maintained cell producer so it creates a present null-host, null-client cell: an
-implemented cell is `ignored` with evidence and a static unsupported cell is
-`not_applicable` with null evidence. Use `requested_verified=1` when the claim
-remains required, causing honest absence to fail; use `0` only for an explicit
-reported exclusion, yielding a downgrade. Do not fabricate a host or client
-coordinate, and do not synthesize a missing file.
+Execute `linux`, `macos`, `native_windows`, and `wsl2` independently in their
+owner-defined environments. Record the actual
+[cell execution status](../reference/host-release-evidence.md#cell-execution-status).
+If the runner or another prerequisite is absent, report `unavailable`; if no
+qualifying attempt occurred, report `not_run`. Neither is a pass. Never copy a
+Linux result into WSL2, a native-Windows result into WSL2, or any artifact or
+capability result into another cell. A missing or non-passing cell blocks the
+four-platform release claim.
 
-For installed Codex `0.144.4`, the exact probe envelope is
-`codex-cli 0.144.4` and every cell stores bare canonical
-`host_version=0.144.4`; the probe envelope itself is invalid in that field.
-Every non-null Codex host version must pass the shared bare-version parser. The
-v3 evaluator derives implementation disposition from host kind; a missing or
-unreviewed version never changes that disposition. An exact-live cell requires
-`client_version == host_version`, and reviewed Codex `0.144.4` additionally
-requires `client_name=codex-mcp-client` and `client_version=0.144.4`.
+After all four exact runs, review and replace the four-cell array in the
+[single checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)
+as one release operation. Do not append historical entries, copy evidence
+between cells, edit a result into `passed`, or load a test-only descriptor into
+the manifest. Re-run the contract tests against the reviewed manifest.
 
-Read client identity only from the managed session baseline's top-level
-`metadata_json.client_name` and `metadata_json.client_version`, which preserve
-the successful initialize values. Do not infer it from host kind, executable or
-probe text, environment, configuration, protocol version, constants, later
-tool metadata, or another cell, and do not retain raw initialize or
-protocol/session/thread/turn payload. An implemented null client group reports
-`client_identity_missing`; a version, duplicate-copy, host-wide identity, or
-reviewed Codex mismatch reports `client_identity_mismatch`. Either condition is
-`implemented_unverified`. Static unsupported cells may use null client identity
-without that downgrade.
-
-The gate output and audit output are create-new bounded external files. End the
-gate process before starting the audit so the audit independently strict-reads
-the original twelve cell files and reopens and recalculates the manifest,
-candidate, cell artifacts, invariants, findings, exclusions, statuses, and
-verdict in a separate process. A missing or malformed cell or evidence file is
-a structural command failure with no manifest, not a downgrade.
-
-The gate and audit acquire the result root's cooperative shared lease and
-never clean or adopt publication remnants. An active producer; an `active`,
-empty, partial, or malformed coordination state; an extra private stage in
-`CELL_DIR`; or a missing final cell is a structural failure.
-An unreferenced evidence stage or orphan final evidence file does not enter the
-input set and cannot repair the matrix.
-
-Report the candidate/source/binary coordinates, both host availability
-coordinates, each host's single non-null client identity when present, each
-derived cell status, requested verified claims, downgrades, gate verdict,
-manifest SHA-256, audit cell-input SHA-256, audit verdict, and every finding or
-exclusion. Do not combine host versions or omit ignored, running, stale, or
-mismatched cells; a structurally missing cell must be reported as a failed
-gate invocation.
-Until the package exists and all required claims pass, report implementation
-validation as unavailable or failed rather than treating the owner contract as
-an executed result. Production local-web acquisition remains unavailable;
-external release artifacts are not runtime trust inputs, and CLI fallback is
-auxiliary only.
+Report the exact command and runner coordinates for each platform, the
+owner-defined cell coordinates and evidence digests, every required scenario
+outcome, and the actual status of all four cells. Report skipped or unavailable
+execution with its reason; do not omit a cell or summarize `not_run` as
+`passed`. Repository tests and release working output are not production
+runtime trust inputs.
 
 ## Rust Implementation Validation
 

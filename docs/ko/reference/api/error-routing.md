@@ -21,6 +21,7 @@
 - 닫기 차단 사유와 API 응답 사이의 경계, 공개 오류 코드가 차단 사유로 표현되는 경우의 경계: [API 차단 사유 처리 경로](blocker-routing.md).
 - 메서드별 동작: [`volicord.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
 - 표시 문구만: [템플릿 본문](../template-bodies.md).
+- 제품 전체 실패 범주 의미와 선택 경계: [실패 모델](../failure-model.md).
 
 ## 오류와 차단 사유
 
@@ -32,7 +33,8 @@
 
 <a id="error-vs-blocker-rejected-response"></a>
 거부 응답:
-- 공개 형태: `ToolRejectedResponse.errors[]`와 `ToolError.code: ErrorCode`.
+- 공개 형태: 필수 `ToolError.category: FailureCategory`와
+  `ToolError.code: ErrorCode`를 담은 `ToolRejectedResponse.errors[]`입니다.
 - 의미: 메서드가 커밋되는 동작으로 진행하지 않았다는 뜻입니다.
 - 조건: 타입이 정해진 Volicord 요청이 Core에 도달했고, 메서드가 담당하는 결과 분기 전에 요청 검증, 최신성, 호출 맥락, `actor_source`, `operation_category`, 그 밖의 선행조건이 실패한 경우입니다.
 - 상태 영향: 커밋된 동작이 없고 상태 변경도 없습니다.
@@ -56,6 +58,21 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 
 표시 문구는 [템플릿 본문](../template-bodies.md)만 담당합니다. API 오류 의미나 차단 사유 의미를 정의하지 않으며, 이 값을 `ErrorCode`, 차단 사유 코드 값, 기계 판독용 `ToolError.details` 키로 사용하면 안 됩니다.
 
+### 실패 범주 분기 경계
+
+| `FailureCategory` | API 분기 규칙 |
+|---|---|
+| `rejected` | 정책 평가 전의 구조적 요청 또는 필수 맥락 실패는 `ToolRejectedResponse`를 사용합니다. |
+| `not_allowed` | 메서드 담당자가 정책 평가 뒤 비허용 결과를 정의하면 같은 조건을 `ToolRejectedResponse`로 만들지 않고 그 메서드별 결과를 사용합니다. 커밋 여부는 메서드와 저장 효과 담당자가 정합니다. |
+| `unavailable` | 필수 동작이나 조회를 계속할 수 없으면 적용되는 사용 불가 공개 코드와 함께 `ToolRejectedResponse`를 사용합니다. |
+| `degraded` | 핵심 동작을 진실하게 계속하면 성공 메서드 결과에서 담당자가 정의한 진단으로 불완전한 보조 구성 요소를 드러냅니다. 같은 동작을 `ToolError(category=degraded)`로 거절하지 않습니다. |
+| `corrupt` | 종속 동작은 `PERSISTED_DATA_CORRUPT`를 담은 `ToolRejectedResponse`를 사용하고 정책이나 효과 전에 닫힌 실패로 중단합니다. |
+| `unsupported_contract` | 종속 동작은 `UNSUPPORTED_CONTRACT`를 담은 `ToolRejectedResponse`를 사용하며 fallback 계약이나 아티팩트를 선택하지 않습니다. |
+
+범주는 필수 기계 판독 분류입니다. 공개 코드나
+[API 오류 세부사항](error-details.md#reason)이 담당하는 도메인 `details.reason`을 대신하지
+않습니다.
+
 <a id="blocked-and-dry-run-behavior"></a>
 
 ## 거부 응답 동작
@@ -63,6 +80,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 | 조건 | 세부 항목 |
 |---|---|
 | 요청 검증이 진행 전에 실패 | [요청 검증 실패](#rejected-request-validation-failure) |
+| 영속 담당 데이터 손상 또는 정확한 계약 미지원 | [선행조건 실패](#rejected-precondition-failure) |
 | 선행조건이 커밋 전에 실패 | [선행조건 실패](#rejected-precondition-failure) |
 | 상태 또는 멱등성 충돌 | [상태 또는 멱등성 충돌](#rejected-state-or-idempotency-conflict) |
 | `dry_run=true` 미리보기 전 실패 | [`dry_run=true` 미리보기 전 실패](#rejected-dry-run-pre-preview-failure) |
@@ -72,6 +90,10 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 
 조건:
 - 메서드가 진행되기 전에 요청 형태, 스키마, 프로필, 스테이징된 아티팩트 핸들 검증이 실패합니다.
+
+경계:
+- 신뢰할 수 없는 입력의 형태가 잘못된 `category=rejected` 조건입니다. 영속 신뢰 담당
+  데이터 손상과 미지원 정확한 계약은 서로 다른 범주와 코드를 사용합니다.
 
 응답 경로:
 - `ToolRejectedResponse.errors[]`.
@@ -87,7 +109,9 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 ### 선행조건 실패
 
 조건:
-- 커밋 전에 Core, MCP, 호출 맥락, `actor_source`/`operation_category` 호환성, 상태 조회, `Task` 식별자, 필요한 선행조건이 실패합니다.
+- 커밋 전에 Core, MCP, 호출 맥락, `actor_source`/`operation_category` 호환성, 상태 조회,
+  `Task` 식별자, 영속 담당 데이터 검증, 정확한 계약 선택, 그 밖의 필수 선행조건이
+  실패합니다.
 
 응답 경로:
 - `ToolRejectedResponse.errors[]`.
@@ -147,6 +171,12 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 
 조건:
 - `PrepareWriteResult`가 `decision=blocked`, `decision=approval_required`, `decision=decision_required` 중 하나입니다.
+
+실패 범주 경계:
+- 이 메서드 정의 정책 평가 뒤 비허용 결과는 `NotAllowed`이며 구조적 `Rejected` 분기가
+  아닙니다. 현재 적용 Change Unit이 없으면 더 앞선 `ToolRejectedResponse`에서
+  `category=rejected`, `code=NO_ACTIVE_CHANGE_UNIT`,
+  `details.reason=current_change_unit_required`를 사용합니다.
 
 응답 경로:
 - `write_decision_reasons: WriteDecisionReason[]`.

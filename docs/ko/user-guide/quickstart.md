@@ -56,8 +56,6 @@ volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
 
-Claude Code는 `codex` 대신 `claude-code`를 사용합니다.
-
 사람이 읽는 출력에서는 `Status`, `Checks`, `Next`, `Diagnostics`를 확인합니다.
 
 - `complete`: 이 설정 경로가 요구하는 점검이 준비되었습니다.
@@ -65,11 +63,9 @@ Claude Code는 `codex` 대신 `claude-code`를 사용합니다.
   완료하고 검증을 다시 실행합니다.
 - `failed`: 필수 점검이 성공하지 않았습니다.
 
-`complete` 결과는 이 설정 경로의 준비 상태만 성립시키며 모든 호스트 기능의 지원을
-뜻하지 않습니다. JSON의 `states.host_feature_support`는 여섯 기능을 각각 `verified`,
-`implemented_unverified`, `unsupported_by_host`, `temporarily_unavailable` 중 하나로
-보고합니다. 현재 기능 지원을 주장할 수 있는 상태는 `verified`뿐입니다. 정확한 계약은
-[호스트 기능 지원 상태](../reference/agent-connection.md#host-feature-support-state)를
+`complete` 결과는 이 설정 경로의 준비 상태만 성립시킵니다. 정확한 Codex record 연결은
+정규 결속과 엄격한 검증 영수증으로 나타냅니다. 정확한 계약은
+[`HostVerificationReceipt` 계약](../reference/agent-connection.md#host-verification-receipt)을
 보세요.
 
 자동화나 전체 진단에는 `--json`을 사용합니다. 간결한 사람용 출력을 파싱하지

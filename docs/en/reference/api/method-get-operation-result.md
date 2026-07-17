@@ -142,7 +142,6 @@ are created.
 
 - [MCP Transport](../mcp-transport.md#mutation-authority-receipt-projection)
 - [Security](../security.md#historical-operation-result-access)
-- [Agent Connection](../agent-connection.md#operation-result-retrieval)
 - [Storage Records](../storage-records.md)
 - [Storage Effects](../storage-effects.md)
 - [Storage Versioning](../storage-versioning.md#exact-operation-result-retrieval)

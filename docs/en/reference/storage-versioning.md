@@ -1,382 +1,320 @@
 # Storage Versioning
 
-This document owns baseline storage-versioning rules for current Volicord SQLite storage, including the single supported offline v6-to-v7 copy conversion. It does not define public API behavior, Core authority meaning, security guarantees, administrative command syntax, policy-file discovery, or host integration.
+This document owns the current Volicord SQLite storage contract: manifest
+identity, exact database-open validation, canonical schema metadata,
+project-state clocks, atomic mutation boundaries, idempotency, and exact
+replay.
 
-## Storage Profile
+It does not own physical table or column definitions, public API behavior,
+record-family meaning, method-specific storage effects, artifact lifecycle,
+Runtime Home placement, or security guarantees. Exact SQLite DDL remains with
+[Storage DDL](storage-ddl.md).
 
-The current baseline storage profile is `baseline_sqlite_v7`.
+<a id="surface-stability"></a>
+## Surface Stability
 
-Baseline storage uses the canonical SQL sources [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies those sources to empty SQLite databases. Baseline storage does not create `schema_migrations`, `schema_version`, `migration_version`, `storage_version`, or equivalent storage-version fields.
+For the stability vocabulary, see
+[Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
 
-A database is usable only when its table shape, columns, indexes, foreign keys, constraints, and stored `storage_profile` match the current baseline. These conditions make storage or runtime unavailable:
+| Surface | Stability | Contract |
+|---|---|---|
+| `StorageManifest`, canonical SQL identity, exact-open validation, and `GeneratedSchemaMetadata` | `stable` | These identify the only SQLite format accepted by the first release. |
+| `project_state.state_version`, the canonical Core UTC clock, atomic authority commits, and exact replay | `stable` | These remain authority, freshness, and idempotency contracts within the accepted format. |
+| Manifest placement, generated Rust modules, metadata extraction helpers, and query implementation | `internal` | Implementations may change while preserving the exact generated facts and open behavior. |
+| Bounded storage-open and corruption diagnostics | `diagnostic` | Diagnostic text is not a compatibility identity and must not expose raw owner data, SQL text, secrets, or sensitive absolute paths. |
 
-- an unknown table that represents an old schema ledger
-- a missing required table
-- a forbidden storage-version column
-- a storage-profile mismatch
-- a malformed required record
+## One Canonical SQLite Contract
 
-Normal Store opening must not guess record meaning, silently rewrite data, or convert unsupported storage. It rejects v6 as incompatible with v7. The explicitly invoked offline copy conversion below is the only exception and never opens the v6 source for mutation.
+The first release supports exactly one SQLite storage format. Its sources of
+truth are the current canonical SQL files:
 
-Baseline registry storage includes Runtime Home identity, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, `connection_projects`, immutable host-capability verification history, current host-capability pointers, and `guard_installations`. Baseline project-state storage includes Core state projection records, `authority_events`, replay rows, staged artifacts, persistent artifacts, evidence, evidence-capture intents, receipts, exclusive source claims, immutable evidence producers, user-action requests, immutable user-action resolutions, request-bound local channel tokens, runs, blockers, `write_tickets`, host-observation records, and session-watch records.
+- [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)
+- [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)
 
-`baseline_sqlite_v7` adds requested/effective control fields, the authoritative
-`volicord-policy-v2` database copy and fingerprint, reusable state-bound write
-tickets with stable invalidation reasons and optional idle timeout, unrecorded-
-change confidence, and session-end authority receipts with
-`completion_claim_allowed`. Privacy-bounded workflow metrics remain in the
-separate non-authority diagnostics schema and are not project storage-profile
-authority.
+New storage is created only from these sources. `project_state.state_version`
+is a Core authority-state clock; it is not a schema version, migration version,
+storage-format selector, or compatibility identifier.
 
-`baseline_sqlite_v6` adds `host_capability_verifications` and
-`host_capability_state` to the Registry so credential-delivery eligibility can
-depend on immutable, expiring, exact-profile live-host evidence instead of a
-client declaration or mutable configuration-verification JSON. The baseline
-provides no in-place conversion from `baseline_sqlite_v5`. A v5 Runtime Home is
-an incompatible shape and must be recreated; Store must not relabel it, infer a
-passing verification from existing connection state, or synthesize history.
-The v6/0.9.0 host-capability shape includes its exact UTF-8 byte constraints:
-general free-text history and current-pointer coordinates are 1 through 1,024
-bytes, and managed MCP `client_name` and `client_version` are 1 through 256
-bytes. Completing those constraints within the v6 batch does not create a v7
-transition. A database labeled v6 but lacking the canonical constraints is
-incompatible and must be recreated; Store must not trim, truncate, repair, or
-legacy-decode its values.
+The product contains no storage migration, upgrade path, importer, converter,
+numeric schema dispatch, historical format decoder, compatibility alias, or
+fallback database opener. It also contains no development-stage diagnostics
+database migration. Ordinary open never relabels, repairs, rewrites, or infers
+an existing database shape.
 
-The earlier `baseline_sqlite_v5` profile replaced the v4 judgment and direct user-observation
-families with `user_action_requests`, immutable one-to-one
-`user_action_resolutions` carrying closed tagged observation-resolution detail,
-and request-bound local channel tokens. The baseline provides no in-place
-conversion from `baseline_sqlite_v4`. A v4 Runtime Home is an incompatible
-shape and must be recreated; Store must not relabel or guess-convert it.
-`project_state.state_version` remains a Core state clock and is not the
-storage-profile version.
+Development data is recreated in a fresh location from the canonical SQL and
+the current manifest. Recreation is not conversion and does not preserve or
+reinterpret records from another shape. Persisted authority data is never
+silently discarded or recreated by ordinary open.
 
-The pre-major v5 contract stored a registered-connection capture's
-closed source selector and Core-derived canonical selector digest in the intent.
-Concrete event/watcher-observation identity, observation time, and raw-event or
-snapshot/selection digest are receipt-owned facts. This correction changes no
-canonical SQL table, column, index, foreign key, or constraint and is completed
-inside the `baseline_sqlite_v5` / `0.8.0` batch. It therefore did not
-create another storage-profile or package-version transition. Store does not
-decode the removed caller-supplied future-observation-digest capture shape as a
-legacy alias or fallback; a malformed required record fails closed.
+## `StorageManifest`
+
+The supported storage contract is identified by this exact manifest:
+
+```yaml
+StorageManifest:
+  contract_id: string
+  canonical_ddl_digest: string
+  integrity_constraints_digest: string
+  enabled_capabilities: string[]
+```
+
+Field meanings:
+
+| Field | Contract |
+|---|---|
+| `contract_id` | The semantic identity of the SQLite storage contract. It is compared exactly and is not a numeric revision. |
+| `canonical_ddl_digest` | The digest of the deterministic canonical encoding of the complete generated DDL metadata. |
+| `integrity_constraints_digest` | The independent digest of the deterministic canonical encoding of all generated integrity constraints. |
+| `enabled_capabilities` | The complete, sorted, duplicate-free capability set enabled by the format. Missing capabilities are not inferred. |
+
+The manifest uses the descriptor principles owned by
+[External Contracts](external-contracts.md): identity is exact, capability
+absence is meaningful, and format selection does not use numeric comparison,
+field-presence inference, decoder probing, or fallback. The physical manifest
+representation and its SQLite placement belong to [Storage DDL](storage-ddl.md).
+
+Only the manifest generated from the current canonical SQL is supported. A
+producer emits one deterministic canonical manifest encoding. Map or set
+iteration order, host path spelling, SQLite row order, and display formatting
+must not affect either digest.
+
+## Exact Database-Open Contract
+
+Store accepts a database only after all of these checks succeed:
+
+1. Read and strictly decode its complete `StorageManifest`.
+2. Compare `contract_id`, both digests, and the complete capability set with
+   the current built-in manifest.
+3. Inspect the actual SQLite objects and constraints.
+4. Derive the actual schema inventory using the same canonical metadata rules
+   used to build the manifest.
+5. Require an exact match among the persisted manifest, generated metadata,
+   canonical SQL, and actual database.
+6. Enable and verify foreign-key enforcement before exposing a Store handle.
+
+The comparison rejects missing and unexpected tables, columns, indexes, and
+constraints. It also rejects any other SQLite object or schema fact that the
+canonical SQL does not authorize. Validation completes before authority or
+policy records are read and before any mutation is possible.
+
+Failure classification follows [Failure Model](failure-model.md):
+
+- A missing, unknown, previous, or otherwise non-current well-formed storage
+  contract is `UnsupportedContract` (`unsupported_contract`) with the
+  machine-readable reason `unsupported_external_contract`.
+- A database that declares the current manifest but whose manifest encoding,
+  schema objects, constraints, digests, or typed owner state violate that
+  contract is `Corrupt` (`corrupt`).
+- An I/O, locking, or environmental failure that prevents the checks without
+  establishing either condition is `Unavailable` (`unavailable`).
+
+These failures are fail-closed. Store does not try another manifest, decoder,
+profile, or SQL inventory; fill missing fields; ignore extra objects; or open a
+partially validated database. Repeating open against unchanged bytes produces
+the same classification.
+
+Fresh initialization is a distinct operation on an empty destination. It
+applies the canonical SQL, records the current manifest, enables foreign keys,
+and validates the resulting database before publishing it for use. Failure
+leaves no destination that can be accepted as initialized.
+
+## Canonical SQL And Generated Metadata
+
+Canonical SQL is the single source of truth. A deterministic build-time or
+test-time extraction produces exactly this metadata:
+
+```yaml
+GeneratedSchemaMetadata:
+  tables: GeneratedTable[]
+  columns: GeneratedColumn[]
+  indexes: GeneratedIndex[]
+  constraints: GeneratedConstraint[]
+  canonical_ddl_digest: string
+  integrity_constraints_digest: string
+```
+
+The extraction uses a fixed source order and deterministic ordering within
+every collection. The digest inputs exclude the digest fields themselves.
+Both digests are computed from the applicable canonical inventory encoding
+consumed by validation; they are not copied from a separate hand-maintained
+list.
+
+The same generated artifact is shared by:
+
+- runtime exact-schema validation
+- executable DDL contract tests
+- `StorageManifest` construction
+- the maintained documentation schema inventory
+- Store schema projections needed by queries and row decoders
+- storage fixtures
+
+No consumer keeps a separate authoritative table, column, index, or constraint
+inventory. A fixture or documentation table can project generated facts, but
+cannot redefine them. Exact SQL text and physical constraint definitions remain
+with [Storage DDL](storage-ddl.md).
+
+## Fail-Closed Connections And Atomic Mutations
+
+Every accepted SQLite connection enables:
+
+```sql
+PRAGMA foreign_keys = ON;
+```
+
+An authority mutation uses `BEGIN IMMEDIATE` or an equivalent serialized write
+boundary before it reads freshness, ticket compatibility, replay identity, or
+the persisted canonical-UTC floor. Within that one transaction, Store
+revalidates every fact on which the planned mutation depends.
+
+A successful authority mutation atomically commits its current projections,
+immutable authority event or owner-defined event batch, state-version advance,
+canonical UTC floor update, and optional replay row. Any associated write-ticket,
+artifact, evidence, user-action, lifecycle, or close-state effect owned by the
+method commits in that same boundary. A failed transaction leaves none of
+those effects partially visible.
+
+Typed persisted owner data is decoded into its complete current type and
+validated before use. Malformed JSON, missing required fields, unknown closed
+variants, forbidden extra fields, and violated cross-field invariants are
+`Corrupt`; they do not become empty values, defaults, absent state, or a
+different storage contract.
 
 <a id="canonical-core-utc-clock"></a>
 ## Canonical Core UTC Clock
 
-The canonical Core UTC clock is the project-scoped, non-decreasing UTC clock
-used for temporal-authority decisions. `project_state.updated_at` is the
-persisted floor for that clock. Despite its physical column name, this value is
-not merely display metadata on the `project_state` row.
+The canonical Core UTC clock is project-scoped and non-decreasing.
+`project_state.updated_at` is its persisted floor, not display-only metadata or
+a second public state version.
 
-A current project-time sample must be no earlier than all of these values:
+After common preflight, a prepared public Core operation takes one
+`operation_now` sample and reuses it for all current-time decisions and public
+operation timestamps. Checked timestamp arithmetic must remain representable
+in the canonical RFC 3339 UTC form; overflow or an unrepresentable result is a
+no-effect validation rejection.
 
-- the configured live-time candidate, which is SQLite current UTC for
-  `SystemClock`
-- the persisted `project_state.updated_at` floor
-- any later project-time sample already accepted by the current Store handle
+A normal Core commit selects one `committed_at` inside its immediate write
+transaction. With the production clock, it is the maximum of `operation_now`,
+SQLite current UTC sampled in the transaction, the persisted floor, and any
+later sample already accepted by the current Store handle. With an injected
+clock, the injected live candidate replaces SQLite current UTC but cannot
+replace the persisted or same-handle floor.
 
-The default `SystemClock` uses SQLite current UTC as its live-time source. An
-injected or custom Clock may replace that live source for controlled execution
-or tests, but it cannot replace the persisted floor or the same-handle accepted
-sample. The `CoreService` clock boundary composes every such candidate with
-those lower bounds by taking their maximum before exposing canonical project
-time. This composition never rewrites a stored row timestamp to current time. A
-future-valued row fails closed only where its timestamp owner defines that
-value as invalid; the clock does not normalize it or add a new rejection rule
-for other owners.
+The transaction writes the same `committed_at` to
+`project_state.updated_at`, every authority event in the commit, an optional
+replay row, and transaction metadata generated for that commit. Semantic
+operation or observation timestamps retain their owner-defined source and are
+not overwritten merely to equal `committed_at`.
 
-The persisted floor and every timestamp compared with it use the canonical UTC
-timestamp form owned by [Storage Records](storage-records.md). A malformed
-persisted floor is corrupt owner state. Store must fail closed rather than
-repairing, replacing, or rewinding it.
+The UTC floor and `project_state.state_version` are separate clocks. An
+owner-defined floor-only storage effect must update the floor atomically with
+the rows whose timestamps it preserves. Exact replay, rejected requests,
+`dry_run=true` planning, read-only results, database-open validation, and failed
+transactions do not update the floor.
 
-After common preflight, each prepared public Core operation takes exactly one
-`operation_now` sample. Planning must reuse that sample for every current-time
-decision and public operation timestamp in the operation. This includes expiry
-and effective-status checks, derived-expiry calculation, and UserAction
-`created_at`, `requested_at`, or `resolved_at` values. Planning must not take
-another clock sample that could change the result within the same operation.
+## Project State Version And Write-Ticket Ordering
 
-Every owner-defined TTL or derived expiry uses checked timestamp addition and
-must remain representable in the canonical RFC 3339 UTC form. Arithmetic
-overflow or an unrepresentable result is a controlled validation rejection
-before commit and has no storage effect. Store revalidates canonical timestamp
-columns before writing them; a typed timestamp supplied by Core or an adapter
-does not bypass that storage boundary.
+`project_state.state_version` orders committed Core authority-state changes and
+provides the public conflict and freshness basis. It advances exactly once only
+when a complete owner-allowed authority mutation commits. It does not advance
+for rejected requests, dry-run responses, exact replay, read-only results,
+initialization, database-open validation, lock acquisition, or failed
+transactions.
 
-A new normal Core commit chooses one `committed_at` under its immediate write
-transaction. Its candidate set follows the configured Clock:
+Each new committed authority mutation appends at least one immutable
+`authority_events` row in the same transaction as its projections. An
+owner-defined event batch shares the single resulting state version. UTC
+timestamps do not replace this ordering.
 
-- With the production `SystemClock`, `committed_at` is the maximum of
-  `operation_now`, SQLite current UTC sampled inside that transaction, the
-  persisted project floor, and any later project-time sample already accepted
-  by the current Store handle.
-- With an injected or custom Clock, `committed_at` is the maximum of
-  `operation_now`, that Clock's injected live-time candidate, the persisted
-  project floor, and any later same-handle accepted sample. The injected
-  candidate replaces the transaction's SQLite live-time candidate; SQLite
-  current UTC is not added as a second live candidate.
+`write_tickets.basis_state_version` records audit order only. It is not a
+ticket-validity coordinate, and unrelated state-version advances do not
+invalidate a ticket. Ticket compatibility and consumption are validated by
+Core before planning and by Store again inside the committing transaction.
+Rejected, dry-run, and replay-only branches issue, reuse, invalidate, or consume
+no ticket.
 
-Neither branch can bypass the persisted or same-handle floor. The transaction
-writes that exact same `committed_at` value to:
+## Idempotency And Exact Replay
 
-- `project_state.updated_at`
-- every `authority_events.created_at` row in the committed event or event batch
-- `tool_invocations.created_at` when the commit creates a replay row
-- every Store transaction-metadata timestamp that mutation application itself
-  generates for that commit, including applicable `created_at`, `updated_at`,
-  `retired_at`, and `promoted_at` values
+`tool_invocations` stores replay data only for committed `dry_run=false` Core
+`MethodResult` responses whose method owner defines a replay row. Its unique
+key is exactly `(project_id, tool_name, idempotency_key)`, and `request_hash`
+distinguishes the Core-owned canonical request identity.
 
-`committed_at` can be later than `operation_now`; public method timestamps that
-the method owner derives from the prepared sample remain `operation_now`.
-Multiple state versions may share a timestamp when the selected UTC value is
-equal. The clock is non-decreasing, not required to increase strictly for every
-commit. UTC values express temporal boundaries and owner-defined times; they
-must not be used as a surrogate for authority commit order or latest-record
-selection.
+Replay eligibility requires the current verified invocation context to match
+the complete stored replay context exactly: `actor_source`,
+`operation_category`, the exact optional `verification_basis`, and the exact
+optional canonical Git workspace context. Optional coordinates preserve both
+presence or absence and value. Invocation context is not silently absorbed
+into `request_hash`; Core checks context compatibility before request-hash
+compatibility:
 
-Semantic operation times and input- or observation-owned facts are not
-automatic Store transaction metadata. Owner-defined `requested_at`,
-`resolved_at`, `closed_at`, `recorded_at`, and `consumed_at` values preserve the
-single prepared `operation_now` or an owner-verified observation time, as the
-method owner specifies. Likewise, `observed_at` and `started_at` preserve when
-the source says the observation or activity occurred. A Core commit must not
-overwrite these values merely to equal `committed_at`.
+- compatible context, the same key, and the same hash returns the stored
+  original committed response exactly
+- compatible context and the same key with a different hash returns
+  `STATE_VERSION_CONFLICT`
+- incompatible context returns `INVOCATION_CONTEXT_MISMATCH` without exposing
+  the stored response
 
-`project_state.state_version` and the persisted UTC floor are separate clocks:
+Before any replay path returns bytes, the immutable stored JSON must have no
+duplicate decoded member at any depth and must strict-decode directly as the
+current closed `MethodResult` selected by its stored method name. Its response
+kind, effect kind, dry-run flag, and committed state version must match the
+replay row. A malformed, non-current, wrong-method, or coordinate-mismatched
+row is `Corrupt` and unavailable for replay. Store does not rewrite, redact,
+upgrade, or pass it through another decoder.
 
-- `state_version` orders committed authority-state transitions and supplies the
-  public conflict and freshness basis.
-- the UTC floor prevents later temporal-authority decisions from observing a
-  project time earlier than time the project has already accepted.
-
-Neither clock substitutes for the other. A normal Core authority commit
-advances `state_version` and updates the floor atomically. The following
-storage-owned effects update the floor to at least their own `created_at`
-without incrementing `state_version` or creating an authority event or replay
-row:
-
-- issuing a request-bound local User Channel token
-- creating an artifact-staging row
-- fulfilling an evidence-capture receipt and its staging and source-claim rows
-
-Those floor-only effects must be atomic with the row or row set whose timestamp
-they preserve. Exact replay, rejected requests, `dry_run=true` planning,
-read-only results, and failed transactions do not update the persisted floor.
-A read may observe a later current project time without persisting it.
-
-New project registration initializes `project_state.created_at` and
-`project_state.updated_at` from the storage engine's current UTC time.
-Re-registering an existing project must validate and preserve its exact
-`updated_at` value while updating only owner-allowed registration metadata. It
-must not reset the floor to host time or storage time, including when the
-persisted value is later than the current live sample.
-
-## Project State Version
-
-`project_state.state_version` is the project-wide Core state clock for committed authority state changes. It is not a schema version, migration version, storage version, or compatibility marker.
-
-It increments only when a complete owner-allowed state-changing transaction commits. It does not increment for rejected requests, dry-run responses, read-only results, startup checks, host verification, schema initialization, storage-profile validation, lock acquisition, status projection, rendered reports, or failed transactions.
-
-Every newly committed authority mutation appends at least one durable `authority_events` row in the same transaction as the current projection updates. A normal committed mutation appends exactly one authority event. If an owner explicitly defines an event batch, all rows in that batch share the single resulting `project_state.state_version` for that committed state transition.
-
-A changed project workflow-policy fingerprint is one normal administrative
-authority mutation. The transaction replaces the policy row, advances the
-state version and persisted UTC floor, appends one project-scoped
-`project_workflow_policy_applied` event, and derives the normalized
-write-authority fingerprint. When that derived fingerprint changes, it marks
-the active Task for reevaluation even when no level must rise and invalidates
-with `explicit_revoke` all active tickets with a missing or different binding
-plus every active ticket for the marked Task, all inside the same transaction.
-Reapplying the same canonical policy fingerprint is a no-effect
-database operation. A changed policy whose normalized write authority is
-unchanged performs no ticket invalidation solely because policy apply ran.
-
-`tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is invalid storage shape and must not be used as a conflict, freshness, lock, or write-ticket basis.
-
-Related fields:
-
-- `write_tickets.basis_state_version` stores audit ordering for issue or reuse. It is not unique and is never a validity coordinate. Ticket validity uses the explicit Task, Change Unit, scope revision, baseline, workspace, normalized project write-authority fingerprint, approval basis, consumption/revocation state, and optional idle timeout.
-- `evidence_summaries.produced_at_state_version` stores the resulting
-  `project_state.state_version` of the commit that most recently inserted or
-  updated that summary. Current Evidence Summary selection orders this field
-  descending and never uses a timestamp or opaque record ID as a tie-break or
-  substitute.
-- `tool_invocations.basis_state_version` stores the project-wide state version observed before the committed mutation.
-- `authority_events.state_version` stores the resulting project-wide version after the committed authority event or event batch.
-
-## Write Tickets
-
-A write ticket is reusable-until-consumed Volicord authority for compatible authorized product-file write intent or one exact approval-bound non-product action under effective `sensitive` control. It is not OS permission, OS sandboxing, a filesystem ACL, network policy, secret isolation, global filesystem interception, or proof that an effect occurred.
-
-Write-ticket issuance and compatibility consumption follow normal state-version rules:
-
-- issuance can commit only through an owner-defined method branch
-- prepare-write may reuse an active unconsumed ticket when every validity coordinate, including the non-null current write-authority fingerprint, matches, the existing allowed prefixes cover the requested prefixes, denied prefixes remain effective, and sensitive authority is equal or stronger; sensitive reuse also requires the exact normalized operation and matching approval-resolution identity
-- consumption can commit only for the compatible intended product-file write or exact approval-bound non-product sensitive action when the row is active, unconsumed, not revoked or invalidated, bound to the current write authority, and within an optional configured idle boundary; Core validates before planning and Store revalidates inside the consumption transaction
-- unrelated state-version increments do not invalidate tickets; explicit invalidation reasons are `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`, and `explicit_revoke`
-- issuance or consumption never occurs on rejected, dry-run, or replay-only branches
-
-The binding uses `write_tickets.validity_basis_json`, so this change preserves
-`baseline_sqlite_v7`; it adds no table, column, index, trigger, or offline-copy
-upgrade. An active historical ticket whose JSON lacks the binding is stale and
-must be reissued. Missing bindings on consumed historical tickets remain
-decodable and inspectable.
-
-## Idempotency And Replay
-
-`tool_invocations` stores exact replay only for committed `dry_run=false` Core `MethodResult` responses whose method owner creates a replay row.
-
-The storage unique key is exactly `(project_id, tool_name, idempotency_key)`.
-`request_hash` is the conflict discriminator for the Core-owned canonical
-request identity. This is ordinarily the public request payload. A token-bearing
-local-web `volicord.resolve_user_action` additionally binds a domain-separated
-token digest, the expected Agent Connection, and typed canonical completion
-metadata before hashing. The raw token and that internal binding object are not
-stored in `tool_invocations`; only the resulting request hash and response are
-durable. Other invocation context such as `actor_source`, `operation_category`,
-or `verification_basis` is not silently absorbed into this hash. The expected
-connection in the local-web binding is deliberate method-owned credential
-context and does not replace the separate verified replay-context checks.
-
-New replay rows store `actor_source`, `operation_category`, the exact optional
-`verification_basis`, and the exact optional canonical Git workspace context
-from the verified invocation. The latter two coordinates preserve presence or
-absence as well as value. A current replay row is eligible only when all four
-stored coordinates exactly match the current verified replay context. Missing
-required replay identity is invalid stored state, not a compatibility
-projection.
-
-Replay eligibility:
-
-- a stored response must never be returned before the current invocation has a verified invocation context
-- Core checks invocation-context compatibility before request-hash compatibility
-- incompatible context, including a changed or newly absent/present
-  `verification_basis` or Git workspace context, returns
-  `INVOCATION_CONTEXT_MISMATCH` and must not expose the stored response
-- compatible context plus the same `idempotency_key` and same `request_hash` returns the stored original committed response exactly
-- compatible context plus the same `idempotency_key` and a different `request_hash` returns `STATE_VERSION_CONFLICT`
-
-Every stored public-method result has an additional whole-response eligibility
-check before preflight replay, replay discovered inside the commit transaction,
-or MCP resume. The immutable raw JSON must contain no duplicate decoded object
-member at any nesting level, including escape-equivalent names, and must
-strict-decode directly as the current concrete,
-closed `MethodResult` type selected by its stored `method_name` before any
-generic JSON-tree normalization. Its base must use `response_kind=result`,
-`effect_kind=core_committed`, `dry_run=false`, and the exact
-`state_version=tool_invocations.committed_state_version`. Methods that never
-create a replay row are categorically ineligible. This check includes every
-nested `StateSummary`. A request result must contain exactly one closed three-field
-`AgentSafeUserActionRequestSummary`; a close result must contain the current
-`pending_user_action_summaries` field and must not contain the legacy
-`pending_user_action_inbox_items` field. A missing or malformed required field,
-duplicate member, legacy full-form field, unknown extra field, generic rejected
-or dry-run branch, wrong method shape, commit-coordinate mismatch, or mixed old
-and new shape makes the row unavailable. Every replay path then fails closed at
-the typed owner-state boundary as `MCP_UNAVAILABLE`; no stored bytes are
-returned. Core never rewrites, redacts, or upgrades an existing replay row.
-
-Replay uses the stored response body. It does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field. Replay does not append events, promote or link artifacts, issue or consume write tickets, create another replay row, or change state again.
+Replay returns the stored response body. It does not recompute a field, append
+an event, create another replay row, change state, promote or link an artifact,
+or issue, invalidate, reuse, or consume a write ticket.
 
 <a id="exact-operation-result-retrieval"></a>
 ### Exact operation-result retrieval
 
 Every eligible `operation_category=agent_workflow` Core commit and exact replay
-exposes an `OperationResultRef` for the immutable
-`tool_invocations.response_json` already stored by the original commit.
-`volicord.get_operation_result` reads that value in contiguous UTF-8-safe pages.
-Concatenating the pages in cursor order must
-reproduce the stored response byte-for-byte; retrieval must not recompute,
-normalize, reserialize, or reclassify any field.
+exposes an `OperationResultRef` for the immutable stored response. The retrieval
+method reads contiguous UTF-8-safe pages; concatenating them in cursor order
+must reproduce the stored response byte-for-byte. Retrieval never recomputes,
+normalizes, reserializes, or reclassifies a field.
 
-Before returning any page, Store loads the exact stored bytes and computes their
-byte length and SHA-256; Core compares those facts with the reference. The
-current verified actor and project access are checked separately under the
-security and method owners; the reference is not a bearer credential.
-Core also applies the corresponding raw whole-response committed-result
-eligibility check after access-context validation and before the first page for
-every stored method. An ineligible duplicate-member, non-result, legacy,
-wrong-method, commit-coordinate-mismatched, or mixed-shape row returns
-`OPERATION_RESULT_UNAVAILABLE`, and no partial page is returned.
-`operation_category=user_only` rows, including
-`volicord.resolve_user_action`, are not eligible for Agent Connection
-retrieval. The retrieved response is historical and does not replace a current
-`volicord.status` read.
+Before returning the first page, Store loads the exact bytes and computes their
+length and SHA-256, and Core compares those facts with the reference after
+verifying current actor and project access. The same strict committed-result
+eligibility check used by replay applies. Any integrity, shape, method, access,
+or coordinate failure returns no partial page. Retrieval is read-only and
+creates no replay row, event, state transition, or state-version advance. Rows
+outside `operation_category=agent_workflow` are not eligible for this Agent
+Connection retrieval path.
 
-This path reuses the existing replay row and immutable `response_json`. It adds
-no table, column, replay form, schema ledger, storage profile, or migration.
-Retrieval itself is read-only and creates no replay row, event, lock-visible
-state transition, or `project_state.state_version` increment.
+`volicord.stage_artifact` remains outside the Core replay transaction. It
+creates no replay row or `OperationResultRef`, and its complete serialized
+result must satisfy the supported prospective size bound before any staging
+effect occurs.
 
-`volicord.stage_artifact` remains outside the Core replay transaction: it creates
-no replay row and exposes no `OperationResultRef`. Its complete serialized result
-must satisfy the supported prospective size bound before any staging side effect
-occurs.
+## Failure, Retry, And Development Data
 
-## Offline v6-to-v7 copy conversion
+Pre-commit and transaction failures have no partial storage effect. A retry
+addresses the reported cause; it does not select a different storage contract
+or mutate the failed database during open.
 
-Normal v7 open rejects v6. The offline converter opens the v6 Runtime Home and
-every source database read-only, validates the complete v6 shape and typed
-owner state, creates a separate empty v7 destination from canonical DDL, and
-copies transformed records in transactions. It never relabels or alters the
-source, never updates tables in place, and never activates the destination as
-part of conversion.
-
-The transform preserves project, Task, Change Unit, Run, judgment, evidence,
-artifact, blocker, event, and replay identifiers; user authority; residual-risk
-decisions; canonical evidence and judgment hashes; and durable relationships.
-Legacy `advisor` maps to `observe`; `direct` and `work` map conservatively to
-`tracked`. Existing acceptance outcomes remain preserved. The initial v2 policy
-copy uses a conservative tracked default while retaining the existing managed
-host, profile, connection, guard, MCP, and hook binding, including its source
-Runtime Home. Conversion does not reinterpret that binding as a destination
-binding. The administrator must explicitly rebind it to the destination Runtime
-Home during the separate activation step. Observation-derived confidence is
-transformed in two distinct domains: a copied `unrecorded_changes` row uses
-`UnrecordedChangeConfidence::Confirmed` only when v6 facts deterministically
-establish the product change and otherwise uses `Suspected`; a copied legacy
-Detective assessment in `guard_events.result_json` uses
-`ObservationConfidence::Confirmed` or `Structured` only when its v6 source
-facts prove that level and otherwise is annotated `Heuristic`. Neither domain
-borrows the other's value set. Every active, expired, or stale v6 write ticket is
-copied as revoked with `invalidation_reason=explicit_revoke`; consumed ticket/Run
-links remain intact. A legacy fixed `expires_at` never becomes the semantically
-different v7 `idle_expires_at`: the latter is `null`, while the exact legacy
-timestamp remains conversion provenance in ticket metadata.
-
-Before reporting success, the converter verifies foreign keys, table and
-eligible-row counts, identifier preservation, canonical JSON, policy and
-record fingerprints, evidence/judgment hashes, ticket transformations, and
-source immutability, and emits a bounded conversion report. Any failure leaves
-the source untouched and the destination unaccepted; partial output is never a
-successful v7 store. Activation is a separate administrative operation that
-explicitly rebinds the destination Runtime Home before switching use to it.
-
-## Failure And Retry
-
-Pre-commit failures have no storage effect. Transaction failures must leave no partial state-version increment, canonical-floor update, event, replay row, write-ticket change, artifact effect, evidence update, user-action request or resolution effect, close effect, lifecycle effect, or staged-handle consumption.
-
-Examples:
-
-- stale `expected_state_version`
-- invalid or state-bound incompatible write ticket on a consuming attempt
-- validation failure
-- malformed request
-- corrupt typed owner state
-- idempotency request-hash conflict
-- invocation-context mismatch
-- incompatible existing storage shape
-
-Retry follows the rejected reason: refresh state for stale version conflicts, fix invalid input for validation failures, use the User Channel for pending user actions, use the required write-ticket flow when write compatibility is still needed, or recreate the Runtime Home when storage is incompatible.
+An unsupported storage contract requires a fresh Runtime Home or project store
+created from the current canonical SQL. Corrupt persisted authority data
+requires an explicit owner-defined recovery decision; ordinary reads and writes
+do not repair it. Development-only databases may be deleted and recreated from
+the current sources. No records are migrated, converted, or imported during
+that recreation.
 
 ## Owner Links
 
-- Record-family overview and storage-owned values: [Storage Records](storage-records.md)
-- SQLite DDL, constraints, indexes, and foreign keys: [Storage DDL](storage-ddl.md)
-- Method storage effects: [Storage Effects](storage-effects.md)
-- Public conflict behavior: [API error precedence](api/error-precedence.md#state-conflict-behavior)
-- Public invocation-context mismatch code: [API error codes](api/error-codes.md#errorcode-invocation-context-mismatch)
-- Runtime Home separation: [Runtime Boundaries](runtime-boundaries.md)
+- External descriptor and exact contract-selection rules:
+  [External Contracts](external-contracts.md)
+- Cross-surface failure categories and no-default rules:
+  [Failure Model](failure-model.md)
+- Exact SQLite tables, columns, indexes, foreign keys, and constraints:
+  [Storage DDL](storage-ddl.md)
+- Persisted record-family meanings: [Storage Records](storage-records.md)
+- Method-specific effects and no-effect branches:
+  [Storage Effects](storage-effects.md)
+- Public state conflict and invocation-context errors:
+  [API error precedence](api/error-precedence.md#state-conflict-behavior) and
+  [API error codes](api/error-codes.md#errorcode-invocation-context-mismatch)
+- Runtime Home placement and separation:
+  [Runtime Boundaries](runtime-boundaries.md)

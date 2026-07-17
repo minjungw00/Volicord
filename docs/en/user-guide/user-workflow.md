@@ -123,15 +123,14 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 Choose only an option displayed for that pending judgment. One answer resolves
-only that judgment. The Agent Connection shows only the request ID,
-`status=pending`, and `next_actor=user`; the exact question and options appear
-only on the verified User Channel host surface or in `volicord inbox`. The Agent
-does not receive the canonical form or record the user's answer.
+only that judgment. The exact question and options appear in `volicord inbox`;
+the agent-facing MCP connection cannot act as the local user channel or resolve
+the action on the user's behalf.
 
 Exact command behavior belongs to
-[Administrative CLI](../reference/admin-cli.md#user-channel-commands). Exact
-input-method and provenance boundaries belong to
-[Agent Connection](../reference/agent-connection.md#user-channel-and-agent-connections).
+[Administrative CLI](../reference/admin-cli.md#user-channel-commands). The
+first-release CLI-inbox delivery boundary belongs to
+[Agent Connection](../reference/agent-connection.md#first-release-surface).
 
 ## Separate Write Approval From A Write Ticket
 

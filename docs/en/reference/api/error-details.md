@@ -21,6 +21,8 @@ Adjacent owners:
 - Close-readiness blocker routing; see [API blocker routing](blocker-routing.md).
 - Display wording only; see [Template Bodies](../template-bodies.md).
 - Storage effects; see [Storage Effects](../storage-effects.md).
+- Product-wide failure-category meanings; see the
+  [Failure Model](../failure-model.md).
 
 <a id="machine-readable-error-details"></a>
 
@@ -60,7 +62,8 @@ Idempotency request-hash conflict details:
 
 ## Owner-state corruption detail fields
 
-When corrupt typed owner state is reported through the structured store/runtime-unavailability rejection, details may identify:
+When corrupt typed owner state is reported with
+`code=PERSISTED_DATA_CORRUPT` and `category=corrupt`, details may identify:
 
 - `owner_state_error.table`
 - `owner_state_error.record_ref`
@@ -72,6 +75,26 @@ These diagnostics must not include raw stored JSON, secrets, SQL text, or sensit
 <a id="error-detail-helper-values"></a>
 
 ## Error detail helper values
+
+<a id="reason"></a>
+
+### `reason`
+
+`ToolError.details.reason` is an exact domain-specific identifier. The
+following code and domain combinations require the listed value:
+
+| Public code and domain | `ToolError.category` | `details.reason` | Meaning owner |
+|---|---|---|---|
+| `NO_ACTIVE_CHANGE_UNIT` from `volicord.prepare_write` | `rejected` | `current_change_unit_required` | [`volicord.prepare_write`](method-prepare-write.md) |
+| `PERSISTED_DATA_CORRUPT` for persisted host-setup `UserAction` data | `corrupt` | `persisted_user_actions_corrupt` | [Agent Connection](../agent-connection.md#persisted-host-setup-user-actions) |
+| `UNSUPPORTED_CONTRACT` for an unknown external descriptor or boundary contract | `unsupported_contract` | `unsupported_external_contract` | [External Contracts](../external-contracts.md) |
+| `UNSUPPORTED_CONTRACT` for an ineligible exact Codex host artifact | `unsupported_contract` | `unsupported_host_artifact` | [Agent Connection](../agent-connection.md#codex-adapter-responsibilities) and [Host Release Evidence](../host-release-evidence.md) |
+
+The reason narrows the domain cause; it does not replace or change the required
+failure category or public code. These values are not display text, fallback
+selectors, aliases, or permission to decode a different contract. Other detail
+families use their named nested fields, such as `write_ticket_reason` and
+`artifact_input_error.reason`, rather than overloading this field.
 
 <a id="authorization-reason"></a>
 

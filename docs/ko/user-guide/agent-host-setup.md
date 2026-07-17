@@ -70,19 +70,14 @@ Claude Code는 `codex` 대신 `claude-code`를 사용합니다.
 자동화에는 `--json`을 사용합니다. 스크립트에서 간결한 사람용 출력을 파싱하면 안
 됩니다.
 
-CLI MCP 성공은 현재 호스트의 도구 노출을 증명하지 않습니다. 현재 Codex나 Claude
-Code 세션 안에서 도구 가용성을 확인합니다. 도구가 없으면 설정을 직접 고치기 전에
+CLI MCP 성공은 현재 호스트의 도구 노출을 증명하지 않습니다. 현재 Codex 세션 안에서
+도구 가용성을 확인합니다. 도구가 없으면 설정을 직접 고치기 전에
 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)을 따릅니다.
 
-JSON 연결 상태에는 여섯 호스트 기능을 각각 보고하는
-`states.host_feature_support`도 있습니다. `implemented_unverified`는 생성 설정 실패가
-아니라 “어댑터 경로는 구현됐지만 정확한 현재 실제 호스트 증거가 없음”으로 읽습니다.
-`unsupported_by_host`는 호스트 소유 표면이 없는 것으로 알려진 상태이고,
-`temporarily_unavailable`은 현재 검증된 경로의 런타임 전제 조건이 중단된 경우에만
-사용합니다. 현재 기능을 지원한다고 주장할 수 있는 상태는 `verified`뿐입니다. 별도 최종
-출력 세부정보의 `configured`와 `configuration_verified`는 이 상태를 바꾸지 않습니다.
-복구 방법은 [호스트 기능 지원이 검증되지 않음](agent-host-troubleshooting.md#host-feature-support-is-not-verified),
-정확한 계약은 [Agent Connection](../reference/agent-connection.md#host-feature-support-state)을
+검증은 정확한 현재 Codex record 결속에 대한 엄격한 영수증을 만들어야 합니다. 영수증이
+없거나, 오래됐거나, 일치하지 않거나, 만료됐거나, 성공하지 않았다면 설정 파일의 존재나
+터미널 쪽 MCP 점검으로 대신할 수 없습니다. 정확한 경계는
+[`HostVerificationReceipt`](../reference/agent-connection.md#host-verification-receipt)를
 봅니다.
 
 ## Codex

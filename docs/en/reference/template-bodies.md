@@ -386,8 +386,8 @@ command on the same bounded surface.
 
 - [Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure)
   owns managed adapter behavior and fallback routing.
-- [Agent Connection](agent-connection.md#managed-final-output-authority-disclosure)
-  owns host capability and connection boundaries.
+- [Agent Connection](agent-connection.md#core-receipt-validation) owns canonical
+  binding and receipt-validation boundaries.
 - [Security](security.md#generated-displays-and-text) owns the display
   non-authority boundary.
 

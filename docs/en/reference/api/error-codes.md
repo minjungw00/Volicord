@@ -22,6 +22,8 @@ Adjacent owners:
 - Common response branch shapes; see [API Schema Core](schema-core.md).
 - Display wording only; see [Template Bodies](../template-bodies.md).
 - Storage effects; see [Storage Effects](../storage-effects.md).
+- Product-wide failure-category meanings; see the
+  [Failure Model](../failure-model.md).
 
 <a id="error-taxonomy"></a>
 
@@ -30,6 +32,8 @@ Adjacent owners:
 | Public `ErrorCode` | Detail section |
 |---|---|
 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
+| `UNSUPPORTED_CONTRACT` | [`UNSUPPORTED_CONTRACT`](#errorcode-unsupported-contract) |
+| `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
@@ -72,6 +76,56 @@ Used in:
 Condition:
 - Invalid payload shape, enum value, activation rule, profile validation, or artifact input shape.
 
+Required failure category:
+- `rejected`
+
+Boundary:
+- Malformed untrusted request data uses this code. A supported persisted owner
+  contract whose stored data is invalid uses `PERSISTED_DATA_CORRUPT`; an exact
+  external contract or host artifact that is not supported uses
+  `UNSUPPORTED_CONTRACT`.
+
+<a id="errorcode-unsupported-contract"></a>
+### `UNSUPPORTED_CONTRACT`
+
+Used in:
+- `ToolRejectedResponse.errors[]`
+
+Condition:
+- An exact external contract descriptor, host artifact, or other boundary
+  format is not an exact registered supported contract. No fallback adapter,
+  decoder, artifact, version, or closest-known format is selected.
+
+Required failure category:
+- `unsupported_contract`
+
+Required details:
+- Use the applicable `ToolError.details.reason` value from
+  [API error details](error-details.md#reason), including
+  `unsupported_external_contract` or `unsupported_host_artifact` for those
+  domains.
+
+<a id="errorcode-persisted-data-corrupt"></a>
+### `PERSISTED_DATA_CORRUPT`
+
+Used in:
+- `ToolRejectedResponse.errors[]`
+
+Condition:
+- Persisted or trusted owner data claims a supported contract but violates its
+  schema, type, canonical encoding, or cross-field invariants. A dependent
+  operation fails closed before authority derivation, policy evaluation,
+  successful effects, or dependent state mutation.
+
+Required failure category:
+- `corrupt`
+
+Required details:
+- Use the applicable `ToolError.details.reason` value from
+  [API error details](error-details.md#reason). Persisted host-setup
+  `UserAction` decode or validation failure uses
+  `persisted_user_actions_corrupt`.
+
 <a id="errorcode-state-version-conflict"></a>
 ### `STATE_VERSION_CONFLICT`
 
@@ -91,7 +145,16 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- Required Core, MCP, store, typed owner state, or Agent Connection reachability is unavailable. This includes corrupt or unreadable persisted typed owner state that a public method needs in order to evaluate authority, lifecycle, scope, evidence, completion, close readiness, or write compatibility.
+- Required Core, MCP, Store, owner-state read, or Agent Connection reachability
+  is currently unavailable, and the available data does not establish corrupt
+  persisted data or an unsupported contract.
+
+Required failure category:
+- `unavailable`
+
+Boundary:
+- Known persisted-data corruption uses `PERSISTED_DATA_CORRUPT`. An unknown
+  exact boundary contract uses `UNSUPPORTED_CONTRACT`.
 
 <a id="errorcode-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`
@@ -110,15 +173,19 @@ Used in:
 
 Condition:
 - The exact historical operation result selected by an otherwise valid
-  `OperationResultRef` and cursor is missing, ineligible, fails reference or
-  stored-byte integrity validation, or is otherwise unavailable for bounded
-  retrieval.
+  `OperationResultRef` and cursor is missing, ineligible, or otherwise
+  unavailable for bounded retrieval without evidence of persisted-data
+  corruption.
+
+Required failure category:
+- `unavailable`
 
 Notes:
 - Access-context incompatibility remains `INVOCATION_CONTEXT_MISMATCH` and is
   selected before this code so the unavailable-result branch does not grant or
   describe access.
-- Store reachability or corrupt typed owner state remains `MCP_UNAVAILABLE`.
+- Store reachability remains `MCP_UNAVAILABLE`; known corrupt typed owner state
+  or stored-byte integrity failure uses `PERSISTED_DATA_CORRUPT`.
 
 <a id="errorcode-no-active-task"></a>
 ### `NO_ACTIVE_TASK`
@@ -138,6 +205,15 @@ Used in:
 
 Condition:
 - A write-capable or close-relevant operation lacks a current Change Unit with scope.
+
+Required failure category for the structural rejected-response path:
+- `rejected`
+
+Method-specific detail:
+- `volicord.prepare_write` preserves this public code and uses
+  `ToolError.details.reason=current_change_unit_required` before policy
+  evaluation. It is not converted to `VALIDATION_FAILED` or a synthetic Change
+  Unit.
 
 <a id="errorcode-baseline-stale"></a>
 ### `BASELINE_STALE`

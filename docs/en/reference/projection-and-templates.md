@@ -71,8 +71,8 @@ Display output must:
 
 The managed final-output authority disclosure is a read-only `Projection` of a
 fresh `volicord.status` result. On every built-in managed-adapter final-output
-delivery that proceeds after the read-only binding checks owned by
-[Agent Connection](agent-connection.md#managed-final-output-authority-disclosure),
+delivery that proceeds after the canonical binding and receipt checks owned by
+[Agent Connection](agent-connection.md#core-receipt-validation),
 including an exact host-event replay and a best-effort delivery whose typed
 feature state is not `verified`, the adapter must obtain and validate a new
 status result. Best-effort operation does not establish a support claim or
@@ -98,9 +98,10 @@ completion claim instead. That separate record does not make the final-output
 projection authoritative.
 Model-authored final prose and host event text are never projection inputs.
 
-Host-feature support state, managed setup, replay, and fallback routing belong to
-[Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure) and
-[Agent Connection](agent-connection.md#managed-final-output-authority-disclosure).
+Managed-adapter replay and fallback routing belong to
+[Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure).
+Canonical binding and receipt validation belong to
+[Agent Connection](agent-connection.md#core-receipt-validation).
 
 ## Template and label boundary
 

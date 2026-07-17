@@ -57,7 +57,8 @@ Supported does not mean:
 | Plain-language intake and `Task` creation | A local `Task` can be started from plain-language user intent through the supported intake path. | [Intake method](api/method-intake.md), [Core Model](core-model.md) |
 | Scope updates | `Task` and Change Unit scope can be updated through the supported scope-update path. | [Update-scope method](api/method-update-scope.md), [Core Model](core-model.md) |
 | Status and close-readiness review | Status, evidence sufficiency, known blockers, and close-readiness state can be read through supported read paths. | [Status method](api/method-status.md), [Close method](api/method-close-task.md), [API State Schemas](api/schema-state.md), [Core Model](core-model.md) |
-| Managed final-output authority disclosure | Volicord implements a best-effort read-only projection that can refresh current status and show either the complete validated canonical `AuthorityReceipt` or a bounded, task-specific `volicord status` fallback in host-owned fixed UI. A host/profile support or release claim requires `support_status=verified`; configuration and a display that happened to run are insufficient. Codex and Claude Code implement both Record and Detective final output by host kind. Without current matching probe evidence they are `implemented_unverified`; explicit capability absence is `unsupported_by_host`, a current failed or down prerequisite is `temporarily_unavailable`, and only all required current verified probes establish `verified`. The host version is a display and verification coordinate, never an implementation gate. This projection does not change Core state and is distinct from model-authored final prose and Detective close gating. | [Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure), [Agent Connection](agent-connection.md#host-feature-support-state), [Projection Authority Reference](projection-and-templates.md#managed-final-output-authority-disclosure) |
+| First-release Agent Connection | The first-release `host_kind` is `codex`, the integration profile is `record`, connection intent is `personal` or `shared`, transport is managed stdio MCP, and user-owned actions are delivered through the CLI inbox. Release eligibility is evaluated for exact Codex artifacts in independent Linux, macOS, native Windows, and WSL2 cells. | [Agent Connection](agent-connection.md), [MCP Transport](mcp-transport.md), [Administrative CLI](admin-cli.md), [System Requirements](system-requirements.md), [Host Release Evidence](host-release-evidence.md) |
+| Canonical SQLite storage | The first release creates and opens exactly one canonical SQLite contract identified by the current `StorageManifest`; it has no migration, upgrade, importer, converter, or historical format decoder. | [Storage Versioning](storage-versioning.md), [Storage DDL](storage-ddl.md), [External Contracts](external-contracts.md) |
 | Exact historical operation-result retrieval | `volicord.get_operation_result` can read an eligible immutable `operation_category=agent_workflow` Core mutation response in bounded UTF-8 pages. Access requires the currently enabled originating Agent Connection, an allowed selected project, and the same stored actor. The result is historical rather than current authority, and `operation_category=user_only` user-action responses are excluded. | [Get-operation-result method](api/method-get-operation-result.md), [Security](security.md#historical-operation-result-access), [Storage Versioning](storage-versioning.md#exact-operation-result-retrieval) |
 | Write ticket | `volicord.prepare_write` can issue a write ticket for one compatible proposed product-file change or one exact approval-bound non-product action under effective `sensitive` control. | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
 | Agent Connection context | Registered Agent Connections provide recorded provenance, mode, and an explicit project allowlist for scope checks. | [Agent Connection Reference](agent-connection.md), [Security](security.md) |
@@ -104,6 +105,14 @@ Volicord may record, route, summarize, or display owner-defined state around AI-
 
 Excluded capabilities:
 
+- Claude Code and every other local LLM host adapter
+- generic hosts, custom hosts, and host auto-detection heuristics
+- integration profiles other than `record`
+- managed final-output authority projection, host hooks, and session watching
+- rich local-web User Channel delivery, production local-web eligibility, and local-web consent or handoff paths
+- public local HTTP transport
+- storage migration, storage upgrade, development-data import, and historical host-fingerprint decoding
+- deprecated compatibility APIs, aliases, placeholders, and feature flags for excluded capabilities
 - native artifact capture from host applications
 - persistent projection jobs, projection reconciliation, generated projection files, and managed projection repair
 - expanded or additional evidence collection workflows
@@ -139,7 +148,7 @@ Owner routing:
 <a id="reserved-and-profile-gated-values"></a>
 ## Reserved and profile-gated values
 
-Some value names may exist as reserved values or profile-gated values without being supported user-visible capabilities.
+Some value names may exist in external standards or documentation metadata without being supported user-visible capabilities. The first-release host and profile selectors are closed: only Codex and `record` are accepted by product code and public CLI.
 
 Reserved value:
 
@@ -148,13 +157,13 @@ Reserved value:
 
 Profile-gated value:
 
-- A profile-gated value is available only when the relevant profile or gate is defined by the owner documents and this Scope reference includes the resulting capability.
+- A profile-gated value is available only when the relevant profile or gate is defined by the owner documents and this Scope reference includes the resulting capability. No additional integration profile is defined for the first release.
 - If either the profile/gate or the capability owner is missing, the value is not supported baseline behavior.
 
 Point-of-use rule:
 
 - Mark reserved and profile-gated values where they appear.
-- Describe reserved and profile-gated values as default, required, supported, enforced, accepted, verified, close-ready, detective, sandboxed, or stronger-isolation behavior only when this page and the semantic owner both define that behavior.
+- Describe reserved and profile-gated values as default, required, supported, enforced, accepted, verified, close-ready, sandboxed, or stronger-isolation behavior only when this page and the semantic owner both define that behavior.
 - Otherwise, do not use those labels for the value.
 
 Owner links:
@@ -198,7 +207,7 @@ Not included:
 
 Owner links:
 
-- Guarantee semantics, detective wording, and security boundaries: [Security](security.md).
+- Guarantee semantics and security boundaries: [Security](security.md).
 - Guarantee label value entries: [API Value Sets](api/schema-value-sets.md).
 - Method behavior: [Prepare-write method](api/method-prepare-write.md), routed from [API Methods](api/methods.md).
 - Core meaning: [Core Model](core-model.md).

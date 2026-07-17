@@ -10,6 +10,7 @@ This document owns:
 - supported actor-source values
 - supported next-action values
 - API `response_kind` and `effect_kind` values
+- supported `FailureCategory` identifiers
 - supported operation-category values
 - record/reference discriminator values used by shared state references
 - supported lifecycle, close-state, evidence observation source and assurance, write-decision category, judgment-kind, presentation, required-for, judgment resolution outcome, artifact redaction, artifact integrity, artifact availability display, `ValidatorResult.status`, `ValidatorResult.severity`, guarantee-display, and similar API value sets
@@ -44,7 +45,7 @@ Only values listed as supported in this document are supported API values.
 
 | Value family | Start here |
 |---|---|
-| Methods, actor provenance, next actions, response branches, and operation categories | [Method name values](#method-name-values), [Actor source values](#actor-source-values), [Next-action values](#next-action-values), [Response and effect values](#response-and-effect-values), and [Operation category values](#operation-category-values) |
+| Methods, actor provenance, next actions, response branches, failure categories, and operation categories | [Method name values](#method-name-values), [Actor source values](#actor-source-values), [Next-action values](#next-action-values), [Response and effect values](#response-and-effect-values), [Failure category values](#failure-category-values), and [Operation category values](#operation-category-values) |
 | Record references, project continuity, and Task lifecycle | [Record and reference values](#record-and-reference-values), [Project continuity values](#project-continuity-values), and [Task lifecycle values](#task-lifecycle-values) |
 | Method-specific request and result values | [Method-local values](#method-local-values) |
 | Observation health, evidence state, and blocker categories | [State and blocker values](#state-and-blocker-values) |
@@ -135,6 +136,30 @@ no_effect
 ```
 
 `response_kind` and `effect_kind` are branch metadata values. Common branch shape is owned by [API Schema Core](schema-core.md#common-response), method-specific effects are owned by method owner documents, and public error semantics for rejected branches are owned by [API error codes](error-codes.md) and [API error routing](error-routing.md).
+
+<a id="failure-category-values"></a>
+## Failure category values
+
+`FailureCategory` uses exactly these machine-readable identifiers:
+
+```text
+rejected
+not_allowed
+unavailable
+degraded
+corrupt
+unsupported_contract
+```
+
+These identifiers correspond exactly to `Rejected`, `NotAllowed`,
+`Unavailable`, `Degraded`, `Corrupt`, and `UnsupportedContract`. Their semantic
+boundaries are owned by the [Failure Model](../failure-model.md).
+
+`ToolError.category` is a required controlled field with this value set. A
+category does not replace `ToolError.code`, a domain-specific
+`ToolError.details.reason`, or response-branch selection. API branch routing,
+including continued-operation `degraded` diagnostics and method-owned
+`not_allowed` results, is owned by [API error routing](error-routing.md).
 
 <a id="opaque-and-method-scoped-string-fields"></a>
 ## Opaque and method-scoped string fields
@@ -525,8 +550,7 @@ the current host surface explicitly reports that a required host-owned
 capability is absent; host-version equality or a missing version review cannot
 produce this value.
 `temporarily_unavailable` means exact evidence is current but a present-time
-runtime prerequisite is down. The precedence and baseline host matrix are
-owned by [Agent Connection](../agent-connection.md#host-feature-support-state).
+runtime prerequisite is down.
 
 The corresponding feature identifiers are exactly:
 
@@ -571,9 +595,6 @@ capability_not_advertised
 capability_not_exercised
 probe_not_run
 ```
-
-The outcome/failure pair and feature-to-probe mapping are owned by
-[Agent Connection](../agent-connection.md#host-feature-support-state).
 
 Final-output `required_subcapabilities` and `subcapabilities` keys use only
 `authority_display`, `authenticated_exact_replay`, and `block_finalization`.

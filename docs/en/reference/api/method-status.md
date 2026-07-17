@@ -49,10 +49,17 @@ All fields shown in this method-owned request block are required members of `par
 StatusRequest:
   envelope: ToolEnvelope
   include: object
+  continuity_page?: ContinuityPageRequest | null
 ```
 
 Field notes:
 - `include` is the method-local flag object selecting status summaries, as shown in the minimal valid request example.
+- `continuity_page` is optional and applies only when `include.continuity=true`.
+  Omitted or `null` selects `page_size=8` and `cursor=null`. A non-null object
+  supplies both a `page_size` from 1 through 64 and a `cursor` that is either
+  `null` for the first page or the exact `next_cursor` returned by an earlier
+  page. Supplying a non-null object while `include.continuity=false` is
+  rejected as unused ambiguous input.
 
 ## Access requirements
 
@@ -111,7 +118,9 @@ Include projection contract:
 - `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, the derived `CoverageSummary`, relevant next actions, and the same canonical `evidence_gate`. The blockers use the same close-readiness calculation as `volicord.check_close`.
 - When evidence or close details are selected, `summary_card.evidence` is exactly `evidence_gate.state`. It uses `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, or `blocked`; it does not derive a second gate from evidence attachment display state.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
-- `include.continuity` returns active `ProjectContinuitySummary[]` entries for durable project-level context.
+- `include.continuity` returns a `ProjectContinuityPage` containing active
+  `ProjectContinuitySummary` entries and explicit page information for durable
+  project-level context.
 - `include.continuity` also returns `task_flow`, the connected predecessor
   component for the selected Task, including branches joined by canonical
   lineage edges.
@@ -125,6 +134,21 @@ Include projection contract:
   optional top-level fields are omitted.
 - `include.guarantees=false` means guarantee display is not derived and not returned.
 - `include.continuity=false` means project continuity summaries are not read or returned.
+
+Continuity pagination is ordered exactly by `updated_at DESC,
+continuity_record_id DESC`. A cursor is exclusive: the next page starts after
+the cursor's complete ordering pair. Equal timestamps are therefore ordered by
+the ID tie-breaker rather than Store row order. For an unchanged project and
+request, repeated reads return the same page.
+
+`page_info.total_count` is the full number of active project continuity records
+at this status read, before applying the cursor. `returned_count` is
+`items.len`. `truncated=true` only when at least one later item exists after
+the returned page, and only then is `next_cursor` the ordering pair of the last
+returned item. Exactly `page_size` total matching records yields
+`truncated=false` and `next_cursor=null`; more than `page_size` yields
+`truncated=true`. The maximum of 64 bounds the transport payload and is not a
+hidden product truncation rule.
 
 Truthful projection rules:
 - `authority_receipt.latest_run_ref` uses durable `run_recorded` authority-event
@@ -178,14 +202,14 @@ Truthful projection rules:
 | `guard_health` | `GuardHealthSummary | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `coverage_summary` | `CoverageSummary | null` selected into the close status view. Shape and value meanings are owned by [API State Schemas](schema-state.md#guard-health-summary). It distinguishes record authority from detective observation and reports coverage non-guarantees. |
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
-| `continuity_summary` | `ProjectContinuitySummary[]` when `include.continuity=true`; omitted when the projection is not selected. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
+| `continuity_summary` | `ProjectContinuityPage` when `include.continuity=true`; omitted when the projection is not selected. It always reports `items` and complete `page_info`, including an empty page. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `task_flow` | `TaskFlowItem[]` when `include.continuity=true` and a Task is selected; omitted otherwise. It is the connected lineage projection, not inherited current authority. |
 | `authority_receipt` | Fresh `AuthorityReceipt` whenever a Task is selected, otherwise `null`. It uses the same observed `state_version` and carries the complete close-blocker set, latest recorded Run, product-write observation, evidence gate, next actor/action, and derived `completion_claim_allowed`. Shape is owned by [API State Schemas](schema-state.md#task-lineage-workspace-and-authority-receipt). |
 
 The nested `AgentSafeUserActionRequestSummary` shape is owned by
 [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). Nested
 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`,
-`EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`,
+`EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuityPage`,
 `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`,
 `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and
 `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
@@ -208,6 +232,8 @@ Returns `ToolRejectedResponse` only when the read cannot be safely served, such 
 - corrupt Task, close-basis, evidence, or other owner state required to build
   the canonical authority receipt, even when its optional top-level projection
   was not requested
+- a continuity page size outside 1 through 64, a malformed cursor, or a
+  non-null `continuity_page` when continuity was not selected
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
 

@@ -25,8 +25,12 @@ This document does not own:
 - state and current-position schemas; see [API State Schemas](schema-state.md)
 - artifact schemas; see [API Artifact Schemas](schema-artifacts.md)
 - user-owned judgment schemas; see [API Judgment Schemas](schema-judgment.md)
-- supported method names, `response_kind` values, `effect_kind` values, operation categories, or other enum-like values; see [API Value Sets](schema-value-sets.md)
+- supported method names, `response_kind` values, `effect_kind` values,
+  `FailureCategory` values, operation categories, or other enum-like values;
+  see [API Value Sets](schema-value-sets.md)
 - public error codes, precedence, or error semantics; see [API error codes](error-codes.md) and [API error precedence](error-precedence.md)
+- product-wide failure-category meanings; see the
+  [Failure Model](../failure-model.md)
 - storage records or effects; see [Storage Records](../storage-records.md) and [Storage Effects](../storage-effects.md)
 
 ## Schema notation
@@ -205,7 +209,8 @@ Owner links:
 
 ```yaml
 ToolError:
-  code: string
+  category: FailureCategory
+  code: ErrorCode
   message: string
   retryable: boolean
   details: object | null
@@ -225,6 +230,11 @@ OperationResultRef:
 
 Meaning:
 - `ToolError` is the shape used by `ToolRejectedResponse.errors` and previewable `DryRunSummary.would_errors`.
+- Every field shown for `ToolError` is required. `details` must be present and
+  may be null.
+- `ToolError.category` is a supported `FailureCategory` identifier. It
+  classifies the failure independently of the narrower public code and domain
+  reason.
 - `ToolError.code` is a public `ErrorCode` value.
 - `ToolError.message` is a free-form display string.
 - `EventRef.event_id` is an opaque event identifier.
@@ -250,6 +260,8 @@ Meaning:
   current.
 
 Owner links:
+- `FailureCategory` values: [failure category values](schema-value-sets.md#failure-category-values)
+- failure-category meanings and selection boundaries: [Failure Model](../failure-model.md)
 - public error code set: [API error codes](error-codes.md)
 - error details semantics: [API error details](error-details.md)
 - primary-error precedence: [API error precedence](error-precedence.md)

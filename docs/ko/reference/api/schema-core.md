@@ -25,8 +25,11 @@
 - 상태와 현재 위치 스키마: [API 상태 스키마](schema-state.md)
 - 아티팩트 스키마: [API 아티팩트 스키마](schema-artifacts.md)
 - 사용자 소유 판단 스키마: [API 판단 스키마](schema-judgment.md)
-- 지원되는 메서드 이름, `response_kind` 값, `effect_kind` 값, 작업 범주(`operation_category`) 값, 그 밖의 enum 형태 값: [API 값 집합](schema-value-sets.md)
+- 지원되는 메서드 이름, `response_kind` 값, `effect_kind` 값,
+  `FailureCategory` 값, 작업 범주(`operation_category`) 값, 그 밖의 enum 형태 값:
+  [API 값 집합](schema-value-sets.md)
 - 공개 오류 코드, 우선순위, 오류 의미: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md)
+- 제품 전체 실패 범주 의미: [실패 모델](../failure-model.md)
 - 저장소 기록과 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
 
 ## 스키마 표기 규칙
@@ -204,7 +207,8 @@ PlannedBlocker:
 
 ```yaml
 ToolError:
-  code: string
+  category: FailureCategory
+  code: ErrorCode
   message: string
   retryable: boolean
   details: object | null
@@ -224,6 +228,10 @@ OperationResultRef:
 
 의미:
 - `ToolError`는 `ToolRejectedResponse.errors`와 미리보기 가능한 `DryRunSummary.would_errors`가 사용하는 형태입니다.
+- 표시된 모든 `ToolError` 필드는 필수입니다. `details`는 반드시 있어야 하며 null일
+  수 있습니다.
+- `ToolError.category`는 지원되는 `FailureCategory` 식별자입니다. 더 좁은 공개 코드와
+  도메인 사유와 독립적으로 실패를 분류합니다.
 - `ToolError.code`는 공개 `ErrorCode` 값입니다.
 - `ToolError.message`는 자유 형식 표시 문자열입니다.
 - `EventRef.event_id`는 불투명 이벤트 식별자입니다.
@@ -248,6 +256,8 @@ OperationResultRef:
   state version이 현재 값이라고 주장하지 않습니다.
 
 담당 문서 링크:
+- `FailureCategory` 값: [실패 범주 값](schema-value-sets.md#failure-category-values)
+- 실패 범주 의미와 선택 경계: [실패 모델](../failure-model.md)
 - 공개 오류 코드 집합: [API 오류 코드](error-codes.md)
 - 오류 세부사항 의미: [API 오류 세부사항](error-details.md)
 - 주 오류 우선순위: [API 오류 우선순위](error-precedence.md)

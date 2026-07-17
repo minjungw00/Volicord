@@ -59,8 +59,6 @@ volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
 
-Use `claude-code` instead of `codex` for Claude Code.
-
 Read `Status`, `Checks`, `Next`, and `Diagnostics` in the text output:
 
 - `complete` means the checks required by this setup path are ready.
@@ -68,14 +66,10 @@ Read `Status`, `Checks`, `Next`, and `Diagnostics` in the text output:
   rerun verification.
 - `failed` means a required check did not succeed.
 
-A `complete` result establishes readiness for this setup path only; it does not
-establish support for every host feature. In JSON,
-`states.host_feature_support` reports each of the six features independently as
-`verified`, `implemented_unverified`, `unsupported_by_host`, or
-`temporarily_unavailable`. Only `verified` supports a current feature claim.
-See the
-[host feature support state](../reference/agent-connection.md#host-feature-support-state)
-for the exact contract.
+A `complete` result establishes readiness for this setup path only. The exact
+Codex record connection is represented by a canonical binding and a strict
+verification receipt. See the
+[`HostVerificationReceipt` contract](../reference/agent-connection.md#host-verification-receipt).
 
 Use `--json` for automation or full diagnostics. Do not parse the compact human
 text. Exact result-state meanings belong to

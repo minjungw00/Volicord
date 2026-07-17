@@ -7,6 +7,7 @@ owners.
 It routes to owners for:
 
 - Public `ErrorCode` meaning, error precedence, and API response branch routing.
+- Product-wide failure-category meaning and public `FailureCategory` values.
 - Close-readiness blocker/API boundaries and `ToolError.details`.
 - Method-specific behavior, schema data shapes, storage effects, and display wording.
 
@@ -14,6 +15,8 @@ It routes to owners for:
 
 | Question | Owner |
 |---|---|
+| What a failure category means | [Failure Model](../failure-model.md) |
+| Which exact `FailureCategory` identifiers the API accepts | [API Value Sets](schema-value-sets.md#failure-category-values) |
 | What a public `ErrorCode` means | [API Error Codes](error-codes.md) |
 | Which public error is selected | [API Error Precedence](error-precedence.md) |
 | Which API response branch is used | [API Error Routing](error-routing.md) |
@@ -24,7 +27,7 @@ It routes to owners for:
 ## Nearby Routes
 
 - Method behavior: [API Methods](methods.md), then the linked method owner.
-- Shared response and error envelope shapes: [API Schema Core](schema-core.md).
+- Shared response and required `ToolError.category` envelope shape: [API Schema Core](schema-core.md).
 - State and blocker shapes: [API State Schemas](schema-state.md) and [API Value Sets](schema-value-sets.md).
 - Core concepts that an error may reference: [Core Model](../core-model.md).
 - Storage concerns: [Storage](../storage.md).
