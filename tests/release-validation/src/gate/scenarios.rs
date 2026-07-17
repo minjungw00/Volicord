@@ -449,6 +449,154 @@ pub(crate) fn verify_retained_scenario_evidence(
     validate_evidence_directory(directory, &expected_names)
 }
 
+#[cfg(test)]
+pub(crate) fn write_synthetic_retained_scenario_evidence(
+    context: &ValidationContext,
+    directory: &Path,
+    scenario_driver_path: &Path,
+    entry: &mut CodexReleaseEvidenceEntry,
+) -> ValidationResult<()> {
+    context.validate_existing_directory(directory)?;
+    let scenario_driver_digest = sha256_external_file(context, scenario_driver_path, None)?;
+    for (index, result) in entry
+        .validation_evidence
+        .scenario_results
+        .iter_mut()
+        .enumerate()
+    {
+        if result.status != CodexReleaseScenarioStatus::Passed || result.reason.is_some() {
+            return Err(ValidationError::new(
+                "synthetic retained evidence helper requires passing scenarios",
+            ));
+        }
+        let stem = format!("{:02}-{}", index + 1, result.scenario_id.as_str());
+        let driver_path = directory.join(format!("{stem}.driver-evidence"));
+        let driver_evidence =
+            synthetic_driver_evidence(result.scenario_id, entry.platform_environment);
+        write_json_create_new(context, &driver_path, &driver_evidence, MAX_EVIDENCE_BYTES)?;
+        let retained_driver: DriverScenarioEvidence =
+            read_strict_json(context, &driver_path, MAX_EVIDENCE_BYTES)?;
+        let driver_payload_digest = canonical_json_bare_sha256(&retained_driver)?;
+
+        let envelope_path = directory.join(format!("{stem}.evidence"));
+        let envelope = ScenarioEvidenceEnvelope {
+            scenario_id: result.scenario_id,
+            target_triple: entry.target_triple,
+            platform: entry.platform_environment,
+            codex_artifact_digest: &entry.codex_artifact_digest,
+            volicord_artifact_digest: &entry.validation_evidence.volicord_artifact_digest,
+            scenario_driver_digest: &scenario_driver_digest,
+            integration_profile: "record",
+            observed_capabilities: FIRST_RELEASE_CODEX_CAPABILITIES
+                .map(|capability| capability.as_str())
+                .to_vec(),
+            scenario_definition: scenario_definition(result.scenario_id),
+            outcome_status: result.status,
+            outcome_reason: &result.reason,
+            driver_payload_digest: RequiredNullable::some(driver_payload_digest),
+        };
+        write_json_create_new(context, &envelope_path, &envelope, MAX_EVIDENCE_BYTES)?;
+        result.evidence_digest = RequiredNullable::some(sha256_external_file(
+            context,
+            &envelope_path,
+            Some(MAX_EVIDENCE_BYTES),
+        )?);
+    }
+    entry.validation_evidence.evidence_digest =
+        volicord_types::compute_codex_release_evidence_digest(&entry.validation_evidence).map_err(
+            |error| {
+                ValidationError::new(format!("cannot digest synthetic release evidence: {error}"))
+            },
+        )?;
+    Ok(())
+}
+
+#[cfg(test)]
+fn synthetic_driver_evidence(
+    scenario_id: CodexReleaseScenarioId,
+    platform: PlatformEnvironment,
+) -> DriverScenarioEvidence {
+    let definition = scenario_definition(scenario_id);
+    let mut evidence = DriverScenarioEvidence {
+        contract: SCENARIO_EVIDENCE_CONTRACT.to_owned(),
+        scenario_id,
+        platform,
+        state_setup: ScenarioStateSetup {
+            canonical_project_state: CanonicalScenarioProjectState {
+                fixture_id: scenario_id,
+                fixture: definition.fixture,
+                platform,
+            },
+            canonical_project_state_digest: String::new(),
+            validated: true,
+        },
+        boundary_execution: ScenarioBoundaryExecution {
+            canonical_invocation: CanonicalScenarioInvocation {
+                scenario_id,
+                platform,
+                boundary: definition.boundary,
+                canonical_project_state_digest: String::new(),
+            },
+            invocation_digest: String::new(),
+            completed: true,
+        },
+        domain_outcome: ScenarioDomainOutcome {
+            canonical_outcome: CanonicalScenarioDomainOutcome {
+                scenario_id,
+                expectation: definition.expectation,
+                disposition: definition.disposition,
+                outcome_code: definition.outcome_code,
+                invocation_digest: String::new(),
+                observed_paths_preserved: RequiredNullable::new(
+                    definition.observed_paths_preserved,
+                ),
+            },
+            canonical_outcome_digest: String::new(),
+            validated: true,
+        },
+        adapter_projection: ScenarioAdapterProjection {
+            canonical_projection: CanonicalScenarioAdapterProjection {
+                scenario_id,
+                projection: definition.projection,
+                outcome_code: definition.outcome_code,
+                canonical_outcome_digest: String::new(),
+            },
+            canonical_projection_digest: String::new(),
+            validated: true,
+        },
+        cleanup_complete: true,
+    };
+    refresh_synthetic_linked_digests(&mut evidence);
+    evidence
+}
+
+#[cfg(test)]
+fn refresh_synthetic_linked_digests(evidence: &mut DriverScenarioEvidence) {
+    evidence.state_setup.canonical_project_state_digest =
+        canonical_json_bare_sha256(&evidence.state_setup.canonical_project_state)
+            .expect("canonical project-state digest");
+    evidence
+        .boundary_execution
+        .canonical_invocation
+        .canonical_project_state_digest =
+        evidence.state_setup.canonical_project_state_digest.clone();
+    evidence.boundary_execution.invocation_digest =
+        canonical_json_bare_sha256(&evidence.boundary_execution.canonical_invocation)
+            .expect("canonical invocation digest");
+    evidence.domain_outcome.canonical_outcome.invocation_digest =
+        evidence.boundary_execution.invocation_digest.clone();
+    evidence.domain_outcome.canonical_outcome_digest =
+        canonical_json_bare_sha256(&evidence.domain_outcome.canonical_outcome)
+            .expect("canonical outcome digest");
+    evidence
+        .adapter_projection
+        .canonical_projection
+        .canonical_outcome_digest = evidence.domain_outcome.canonical_outcome_digest.clone();
+    evidence.adapter_projection.canonical_projection_digest =
+        canonical_json_bare_sha256(&evidence.adapter_projection.canonical_projection)
+            .expect("canonical projection digest");
+}
+
 impl ScenarioDriverInvocation<'_> {
     fn command(&self) -> Command {
         let mut command = Command::new(&self.configuration.scenario_driver);

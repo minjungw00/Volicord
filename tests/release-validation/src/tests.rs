@@ -31,6 +31,7 @@ const OTHER_VOLICORD_DIGEST: &str =
     "4444444444444444444444444444444444444444444444444444444444444444";
 const SCENARIO_DIGEST: &str = "3333333333333333333333333333333333333333333333333333333333333333";
 const OBSERVED_AT: &str = "2026-07-17T00:00:00Z";
+const SOURCE_REVISION: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const LINUX_X86: ReleaseTargetTriple = ReleaseTargetTriple::X86_64UnknownLinuxGnu;
 
 #[test]
@@ -206,6 +207,11 @@ fn production_runtime_sources_do_not_embed_external_release_evidence() {
             assert!(
                 !source.contains("codex-release-evidence-manifest.json"),
                 "production source references external release evidence: {}",
+                path.display()
+            );
+            assert!(
+                !source.contains("verified-release-index"),
+                "production source references the external verified release index: {}",
                 path.display()
             );
         }
@@ -666,6 +672,10 @@ fn release_workflow_builds_once_and_publishes_only_validated_raw_artifacts() {
         &fs::read_to_string(root.join(".github/workflows/release.yml")).expect("release workflow"),
     )
     .expect("release workflow YAML");
+    assert_eq!(
+        release["env"]["VOLICORD_CODEX_RELEASE_SOURCE_REVISION"].as_str(),
+        Some("${{ github.sha }}")
+    );
     let build_job = &release["jobs"]["build-binaries"];
     let packaging_entries = build_job["strategy"]["matrix"]["include"]
         .as_sequence()
@@ -836,14 +846,39 @@ fn release_workflow_builds_once_and_publishes_only_validated_raw_artifacts() {
             && !run.contains("-p volicord-cli")
             && !run.contains("--bin volicord ")
     }));
-    assert!(publish_runs
-        .iter()
-        .any(|run| run.contains("--verify-publish-evidence")));
+    assert!(publish_runs.iter().any(|run| {
+        run.contains("--verify-publish-evidence")
+            && run.contains("--verified-index-output")
+            && run.contains("verified-release-index.json")
+    }));
     assert!(publish_runs
         .iter()
         .any(|run| run.contains("scripts/package-release-artifacts.sh")));
     assert!(publish_runs.iter().all(|run| !run.contains("--clobber")));
     let publish_steps = publish_job["steps"].as_sequence().expect("publish steps");
+    let final_gate_step = publish_steps
+        .iter()
+        .position(|step| {
+            step["run"]
+                .as_str()
+                .is_some_and(|run| run.contains("--verify-publish-evidence"))
+        })
+        .expect("final publication integrity gate");
+    let packaging_step = publish_steps
+        .iter()
+        .position(|step| {
+            step["run"]
+                .as_str()
+                .is_some_and(|run| run.contains("scripts/package-release-artifacts.sh"))
+        })
+        .expect("release packaging step");
+    assert_eq!(packaging_step, final_gate_step + 1);
+    assert!(publish_steps.iter().any(|step| {
+        step["run"].as_str().is_some_and(|run| {
+            run.contains("verified-release-index.json")
+                && run.contains("dist/verified-release-index.json")
+        })
+    }));
     assert!(publish_steps.iter().any(|step| {
         step["uses"].as_str() == Some("actions/download-artifact@v4")
             && step["with"]["pattern"]
@@ -999,6 +1034,7 @@ fn evidence_entry_with_result(
         observed_capabilities: FIRST_RELEASE_CODEX_CAPABILITIES.to_vec(),
         integration_profile: IntegrationProfile::Record,
         volicord_artifact_digest: volicord_digest,
+        source_revision: SOURCE_REVISION.to_owned(),
         runner: CodexReleaseEvidenceRunner {
             runner_id: format!("runner-{}", platform.as_str()),
             target_triple,

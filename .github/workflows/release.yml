@@ -27,6 +27,7 @@ permissions:
 
 env:
   RUST_VERSION: "1.85.0"
+  VOLICORD_CODEX_RELEASE_SOURCE_REVISION: ${{ github.sha }}
 
 jobs:
   version-alignment:
@@ -989,6 +990,7 @@ jobs:
           --source-revision "${{ github.sha }}"
           --run-id "${{ github.run_id }}"
           --run-attempt "${{ github.run_attempt }}"
+          --verified-index-output "${{ runner.temp }}/volicord-release-inputs/verified-release-index.json"
 
       - name: Package the verified raw binaries and verify archive contents
         run: >-
@@ -997,6 +999,9 @@ jobs:
           dist
           "${{ github.run_id }}"
           "${{ github.run_attempt }}"
+
+      - name: Stage the verified external release index
+        run: cp "${{ runner.temp }}/volicord-release-inputs/verified-release-index.json" dist/verified-release-index.json
 
       - name: Add stamped install scripts and aggregate checksums
         run: |

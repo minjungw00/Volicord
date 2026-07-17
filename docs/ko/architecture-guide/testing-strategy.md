@@ -59,8 +59,13 @@ x86_64-unknown-linux-gnu / wsl2
 개와 셀 여섯 개 계약에 맞는지 교차 대조합니다. Raw 빌드 matrix 하나, 각 셀의 정확한
 빌드 아티팩트 다운로드, native Linux와 WSL2의 공통 Linux x86-64 출처, 게시 단계의
 모든 필수 셀 의존성, 게시 단계의 Volicord 재빌드 금지, digest에 결속된 완전한 증거,
-archive 구성원 재hash를 요구합니다. 릴리스 무결성 게이트는 변경된 raw binary, 빌드
-metadata 불일치, 불완전한 셀 증거, 검증되지 않은 게시 입력을 별도로 거부합니다.
+패키징 직전의 최종 verifier, 외부 verified index 준비, archive 구성원 재hash를
+요구합니다. 합성 전체 bundle 테스트는 실제 임시 Codex와 Volicord 파일을 만들고
+그 digest를 계산합니다. 결정론적 카탈로그 생성과 verified index, 비어 있는 운영
+카탈로그, 불완전한 증거와 `not_run`, 중복 증거, source revision 및 아티팩트 digest
+불일치, 누락된 target 또는 환경 셀을 다룹니다. 릴리스 무결성 게이트는 변경된 raw
+binary, 빌드 metadata 불일치, 사용되지 않거나 모호한 카탈로그 entry, 불완전한 셀
+증거, 검증되지 않은 게시 입력을 별도로 거부합니다.
 
 mock, fixture, 재빌드, 선택된 또는 인접 아티팩트는 최종 바이트를 대신할 수 없습니다.
 failed, unavailable, not-run scenario는

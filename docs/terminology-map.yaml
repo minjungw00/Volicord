@@ -2297,6 +2297,9 @@ terms:
       - "CodexReleaseEvidenceEntry"
       - "CodexReleaseValidationEvidence"
       - "CodexReleaseEvidenceRunner"
+      - "VerifiedReleaseIndex"
+      - "VerifiedPublishedArtifact"
+      - "VerifiedReleaseEvidenceReference"
       - "ReleaseTargetTriple"
       - "CodexReleaseScenarioResult"
       - "PlatformEnvironment"
@@ -2311,6 +2314,8 @@ terms:
       - "binary_sha256"
       - "validation_result"
       - "evidence_digest"
+      - "evidence_manifest_sha256"
+      - "support_catalog_identity_digest"
       - "unsupported_host_artifact"
     primary_owner:
       en: "docs/en/reference/host-release-evidence.md"
@@ -3441,6 +3446,7 @@ terms:
       - "integration_profile"
       - "validation_result"
       - "validation_evidence"
+      - "source_revision"
     primary_owner:
       en: "docs/en/reference/host-release-evidence.md"
       ko: "docs/ko/reference/host-release-evidence.md"
@@ -3450,6 +3456,49 @@ terms:
     notes:
       - "This external manifest is never embedded into a Volicord executable or consumed by runtime support lookup."
       - "One target/environment evidence result never establishes another cell, and missing evidence is not_run rather than a pass."
+  verified_release_index:
+    category: "technical_concept"
+    en: "VerifiedReleaseIndex"
+    visibility: "architecture"
+    allowed_document_layers:
+      - "reference"
+      - "architecture_guide"
+      - "maintain"
+      - "implementation_output"
+    preserve_identifier: true
+    ko_reference: "`VerifiedReleaseIndex`"
+    ko_user: "검증된 릴리스 index"
+    ko_explanation: "완전한 릴리스 증거 bundle 검증이 통과한 뒤 정확한 게시 binary digest, source revision, target, 사용한 외부 증거를 결정론적으로 가리키는 외부 index"
+    preserve_as_identifier:
+      - "VerifiedReleaseIndex"
+      - "VerifiedPublishedArtifact"
+      - "VerifiedReleaseEvidenceReference"
+      - "volicord.verified-release-index"
+      - "source_revision"
+      - "support_catalog_identity_digest"
+      - "published_artifacts"
+      - "release_evidence"
+      - "target_triple"
+      - "binary_name"
+      - "binary_sha256"
+      - "build_artifact"
+      - "platform_environment"
+      - "integration_profile"
+      - "codex_artifact_digest"
+      - "observed_capabilities"
+      - "volicord_artifact_digest"
+      - "evidence_digest"
+      - "evidence_manifest_sha256"
+      - "evidence_artifact"
+    primary_owner:
+      en: "docs/en/reference/host-release-evidence.md"
+      ko: "docs/ko/reference/host-release-evidence.md"
+    related_references:
+      - en: "docs/en/maintain/validation.md"
+        ko: "docs/ko/maintain/validation.md"
+    notes:
+      - "The verified release index is an external release attachment and is never embedded in a Volicord binary or consumed as a runtime support catalog."
+      - "It is created only after complete production verification and references the exact build and evidence artifacts used for approval."
   failure_category:
     category: "technical_concept"
     en: "failure category"

@@ -123,6 +123,7 @@ CodexReleaseValidationEvidence:
   observed_capabilities: CodexCapability[]
   integration_profile: record
   volicord_artifact_digest: string
+  source_revision: string
   runner: CodexReleaseEvidenceRunner
   scenario_results: CodexReleaseScenarioResult[]
   evidence_digest: string
@@ -146,7 +147,9 @@ CodexReleaseScenarioResult:
 Every member is required, including nullable members; unknown members,
 duplicate JSON keys, and noncanonical field order are invalid.
 `codex_artifact_digest`, `volicord_artifact_digest`, and every non-null scenario
-`evidence_digest` are raw 64-lowercase-hex SHA-256 values.
+`evidence_digest` are raw 64-lowercase-hex SHA-256 values. `source_revision`
+is the raw lowercase 40- or 64-hex Git object ID from which the exact Volicord
+artifact was built.
 `evidence_digest` at the evidence-object level is also raw 64-lowercase-hex.
 All non-null timestamps are canonical RFC 3339 UTC. Runner strings are
 nonempty, control-free UTF-8: `runner_id` is at most 256 bytes, while
@@ -248,7 +251,9 @@ The build job completes every publisher-controlled executable-byte operation,
 including any signing, stripping, or other post-processing, before calculating
 the digest and uploading the raw executable. Validation runs the exact Codex bytes named by
 `codex_artifact_digest` and exact Volicord bytes named by
-`volicord_artifact_digest`. Before and after the scenario suite, the runner
+`volicord_artifact_digest`. The evidence `source_revision` must equal the
+source revision in that Volicord artifact's build metadata. Before and after
+the scenario suite, the runner
 reopens both executables and requires the same byte digests. A command name,
 path, version range, package label, build identifier, or separately rebuilt
 executable cannot substitute for the finalized bytes.
@@ -388,30 +393,80 @@ path, strictly parses it, and cross-checks every evidence entry against the
 embedded support catalog. Evidence for a Codex artifact absent from the catalog
 is invalid even when its recorded result is `passed`.
 
-Update one exact target/environment cell as one reviewed operation:
+Maintain and release the support set in this exact operator order:
 
-1. Finalize the cell's Codex artifact and calculate
-   `codex_artifact_digest` from its final bytes.
-2. Add or replace the exact runtime policy entry without any release result or
-   Volicord digest, then build and finalize the Volicord artifact that embeds
-   that catalog.
-3. Execute the complete release-validation cell against those exact Codex and
-   Volicord bytes. The runner emits bounded external evidence for every required
-   scenario.
-4. Recheck both artifact digests and the exact target triple, platform
-   environment, profile, capability, runner, scenario, and evidence-digest bindings.
-5. Review the generated evidence and replace the external entry for that
-   target/environment cell while preserving canonical order. Do not hand-author an unattempted
-   cell, copy another cell's result, relabel a result, or retain a historical
-   compatibility entry.
-6. Re-evaluate the external manifest against the embedded catalog. A
-   release is eligible only when it contains one current passing evidence entry
-   for each of the six required cells and every entry exactly matches runtime
-   policy.
+1. Obtain the exact finalized Codex artifacts intended for support.
+2. Generate deterministic proposed support-catalog entries from those actual
+   files. The generator hashes the supplied bytes, normalizes closed target and
+   capability values, and emits an entry without a release result or Volicord
+   digest.
+3. Review and commit the canonical support catalog.
+4. Build each published Volicord target once from one source revision after the
+   catalog is embedded, and retain each exact raw executable plus digest metadata.
+5. Run every required release cell against those exact Codex and Volicord
+   binaries. The runner emits bounded external evidence for every required
+   scenario and binds the source revision.
+6. Verify the complete bundle of catalog, release-target contract, build
+   artifacts, digest metadata, manifests, and retained evidence. The verifier
+   emits the external verified release index only after every required cell
+   passes and every exact binding is unambiguous.
+7. Publish the same validated binary bytes together with the verified external
+   release index. Packaging may wrap those bytes but must not replace or process
+   the executable.
+
+Review generated entries and evidence rather than hand-authoring digests or
+passing results. Do not fabricate an unattempted cell, copy another cell's
+result, relabel a result, or retain a historical compatibility entry.
 
 Changing either artifact byte, platform coordinate, capability set, profile, or
 validation evidence requires a new run of that exact cell. Editing either
 contract cannot promote evidence that the runner did not produce.
+
+<a id="verified-release-index"></a>
+## `VerifiedReleaseIndex`
+
+The complete-bundle verifier emits one external canonical JSON index with this
+exact closed shape and field order:
+
+```yaml
+VerifiedReleaseIndex:
+  contract_id: volicord.verified-release-index
+  source_revision: string
+  support_catalog_identity_digest: string
+  published_artifacts: VerifiedPublishedArtifact[]
+  release_evidence: VerifiedReleaseEvidenceReference[]
+
+VerifiedPublishedArtifact:
+  target_triple: ReleaseTargetTriple
+  binary_name: volicord | volicord.exe
+  binary_sha256: string
+  build_artifact: string
+
+VerifiedReleaseEvidenceReference:
+  target_triple: ReleaseTargetTriple
+  platform_environment: PlatformEnvironment
+  integration_profile: record
+  codex_artifact_digest: string
+  observed_capabilities: CodexCapability[]
+  volicord_artifact_digest: string
+  evidence_digest: string
+  evidence_manifest_sha256: string
+  evidence_artifact: string
+```
+
+`source_revision` uses the same Git object-ID rule as build and cell evidence.
+Every digest is the raw lowercase SHA-256 of the named bytes or canonical
+record. `published_artifacts` follows `published_targets` order and
+`release_evidence` follows `required_cells` order from the verified release-target
+contract. Artifact names include the exact workflow run and attempt. The
+manifest digest and canonical evidence digest together reference the exact
+external evidence used for approval.
+
+The verifier serializes the index deterministically for identical inputs and
+uses create-new output semantics. The index is suitable for attachment to a
+release but remains external to Volicord executables. Production code must not
+embed or consume it as a `CodexSupportCatalog`, runtime support input, receipt,
+credential, or Core authority record.
 
 ## Explicit test-only descriptor
 
@@ -583,10 +638,11 @@ cross-checks every support and evidence entry against an actual required cell.
 
 ```sh
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --generate-support-entry --codex-path CODEX_PATH --target TARGET --platform PLATFORM --profile record --capabilities managed_stdio_mcp,personal_managed_binding,record_workflow,shared_managed_binding
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate TARGET --platform PLATFORM
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-build-artifact --build-artifact-dir BUILD_DIR --source-revision REVISION --target TARGET
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-cell-evidence --build-artifact-dir BUILD_DIR --evidence-artifact-dir EVIDENCE_DIR --source-revision REVISION --target TARGET --platform PLATFORM
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-publish-evidence --build-root BUILD_ROOT --evidence-root EVIDENCE_ROOT --source-revision REVISION --run-id RUN_ID --run-attempt RUN_ATTEMPT
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-publish-evidence --build-root BUILD_ROOT --evidence-root EVIDENCE_ROOT --source-revision REVISION --run-id RUN_ID --run-attempt RUN_ATTEMPT --verified-index-output NEW_INDEX_PATH
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
@@ -596,7 +652,11 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 ```
 
 `--status` reports the six actual or derived external-evidence statuses and does not
-execute a cell. `--capture-candidate` executes one qualifying attempt and uses
+execute a cell. `--generate-support-entry` hashes the actual file at `CODEX_PATH`,
+normalizes and validates the closed target, environment, Record profile, and
+capability values, and writes one compact canonical JSON entry to standard
+output. It contains no release result or Volicord digest and does not edit the
+catalog. `--capture-candidate` executes one qualifying attempt and uses
 create-new semantics to write an external, strictly parsed, one-entry candidate
 manifest. The candidate's Codex coordinates must already exist in the embedded
 support catalog. It exits unsuccessfully after retaining a `failed` or
@@ -610,9 +670,14 @@ than replaying the scenario catalog a second time. `--verify-build-artifact`
 checks the downloaded raw executable before that capture;
 `--verify-cell-evidence` rehashes it and verifies the complete retained cell
 evidence afterward. `--verify-publish-evidence` requires the exact five builds
-and six passing cell artifacts from one workflow attempt. The honest current
-empty support catalog blocks capture; an empty checked-in evidence source still
-blocks checked-in replay.
+and six passing cell artifacts from one workflow attempt and uses create-new
+semantics to write `NEW_INDEX_PATH` only after the complete bundle passes. In
+production it rejects an empty support catalog, missing or duplicate evidence,
+source or digest mismatches, and every support entry that cannot map to and be
+used by exactly one required release cell. The current contract has no
+supported non-release-environment marker, so such an entry is invalid. The
+honest current empty support catalog blocks capture and publication; an empty
+checked-in evidence source still blocks checked-in replay.
 
 The producer and gate perform these checks in order:
 
@@ -658,6 +723,7 @@ or blocking replay:
 
 | Variable | Required value |
 |---|---|
+| `VOLICORD_CODEX_RELEASE_SOURCE_REVISION` | Raw lowercase 40- or 64-hex Git object ID for the exact source revision that produced the Volicord build. Capture records it and verification requires it to match build metadata. |
 | `VOLICORD_CODEX_RELEASE_CODEX_PATH` | Canonical symlink-free path of the exact finalized Codex executable. It is a host path for native cells and an absolute Linux ext4 path inside the selected distribution for WSL2. |
 | `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` | Canonical symlink-free path of the exact Volicord executable named by `volicord_artifact_digest`, using the same native-or-WSL2 path rule. In the release workflow this is set only to the downloaded raw build artifact, or to its digest-identical WSL2 ext4 copy. A runner-installed Volicord executable is not eligible. |
 | `VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER` | Canonical host path of the platform-provisioned scenario driver. For WSL2 it is a native Windows coordinator capable of surviving and verifying a distribution shutdown and restart. |

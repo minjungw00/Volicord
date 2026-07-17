@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 
+pub mod catalog;
 #[path = "../contracts/mod.rs"]
 pub mod contracts;
 pub mod error;
@@ -13,5 +14,7 @@ pub mod platforms;
 #[path = "../scenarios/mod.rs"]
 pub mod scenarios;
 
+#[cfg(test)]
+mod pipeline_tests;
 #[cfg(test)]
 mod tests;

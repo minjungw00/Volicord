@@ -115,6 +115,7 @@ CodexReleaseValidationEvidence:
   observed_capabilities: CodexCapability[]
   integration_profile: record
   volicord_artifact_digest: string
+  source_revision: string
   runner: CodexReleaseEvidenceRunner
   scenario_results: CodexReleaseScenarioResult[]
   evidence_digest: string
@@ -139,7 +140,9 @@ Nullable 구성원을 포함해 모든 구성원은 필수이며 알 수 없는 
 key, 비정규 필드 순서는 유효하지 않습니다. `codex_artifact_digest`,
 `volicord_artifact_digest`, null이 아닌 시나리오 `evidence_digest`, 증거 객체
 수준의 `evidence_digest`는 모두 raw 64자 소문자
-16진수 SHA-256입니다. Null이 아닌 timestamp는 정규 RFC 3339 UTC입니다. Runner
+16진수 SHA-256입니다. `source_revision`은 정확한 Volicord 아티팩트를
+빌드한 raw 소문자 40자 또는 64자 16진수 Git 객체 ID입니다. Null이 아닌
+timestamp는 정규 RFC 3339 UTC입니다. Runner
 문자열은 비어 있지 않고 제어 문자가 없는 UTF-8입니다. `runner_id`는 최대
 256바이트, `os_release`와 `environment_image`는 최대 512바이트입니다. 바깥 entry,
 중첩 증거, runner의 `target_triple`은 같은 닫힌 정확한 target이어야 하며 runner
@@ -238,6 +241,8 @@ JSON serializer 순서, 생략한 null, 기본값, 수작업으로 편집한 증
 실행 파일 byte 작업을 끝낸 뒤 digest를 계산하고 raw 실행 파일을 업로드합니다. 검증은
 `codex_artifact_digest`가 이름 붙인 정확한 Codex byte와
 `volicord_artifact_digest`가 이름 붙인 정확한 Volicord byte를 실행합니다.
+증거의 `source_revision`은 해당 Volicord 아티팩트 build metadata의 source
+revision과 정확히 같아야 합니다.
 시나리오 모음 실행 전과 후에 runner가 두 실행 파일을 다시 열고 같은 byte
 digest인지 확인해야 합니다. 명령 이름, 경로, 버전 범위, 패키지 라벨, 빌드
 식별자, 별도로 다시 빌드한 실행 파일은 최종 확정 byte를 대신할 수 없습니다.
@@ -363,26 +368,76 @@ Entry가 없는 필수 셀의 파생 상태는
 카탈로그와 교차 대조합니다. 카탈로그에 없는 Codex 아티팩트의 증거는 기록된 결과가
 `passed`여도 유효하지 않습니다.
 
-정확한 target/environment 셀 하나를 하나의 review 작업으로 갱신합니다.
+지원 범위를 유지하고 릴리스할 때는 다음 운영자 순서를 정확히 따릅니다.
 
-1. 해당 셀의 Codex 아티팩트를 최종 확정하고 최종 byte에서
-   `codex_artifact_digest`를 계산합니다.
-2. 릴리스 결과나 Volicord digest 없이 정확한 런타임 정책 entry를 추가하거나
-   교체한 뒤 그 카탈로그를 포함하는 Volicord 아티팩트를 빌드하고 최종 확정합니다.
-3. 그 정확한 Codex 및 Volicord byte로 전체 릴리스 검증 셀을 실행합니다. Runner는
-   모든 필수 시나리오의 크기가 제한된 외부 증거를 생성합니다.
-4. 두 아티팩트 digest와 정확한 target triple, 플랫폼 환경, profile, capability, runner,
-   시나리오, 증거 digest 결속을 다시 확인합니다.
-5. 생성 증거를 review한 뒤 정규 순서를 보존하면서 해당 target/environment 셀의 외부 entry를
-   교체합니다. 실행하지 않은 셀을 수작업으로 만들거나, 다른 셀 결과를
-   복사하거나, 결과 라벨을 바꾸거나, 과거 호환성 entry를 남기면 안 됩니다.
-6. 내장 카탈로그를 기준으로 외부 manifest를 다시 평가합니다. 릴리스는 필수 셀
-   여섯 개마다 현재 통과 증거 entry가 하나씩 있고 모든 entry가 런타임 정책과
-   정확히 일치할 때만 자격이 있습니다.
+1. 지원하려는 정확히 최종 확정된 Codex 아티팩트를 확보합니다.
+2. 그 실제 파일에서 결정론적인 지원 카탈로그 제안 entry를 생성합니다.
+   생성기는 제공받은 byte를 hash하고 닫힌 target과 capability 값을 정규화하며,
+   릴리스 결과나 Volicord digest를 출력하지 않습니다.
+3. 정규 지원 카탈로그를 review하고 commit합니다.
+4. 카탈로그를 내장한 뒤 하나의 source revision에서 게시 target별 Volicord를
+   한 번씩 빌드하고 정확한 raw 실행 파일과 digest metadata를 보존합니다.
+5. 그 정확한 Codex와 Volicord binary로 모든 필수 릴리스 셀을 실행합니다.
+   Runner는 모든 필수 시나리오의 크기가 제한된 외부 증거를 생성하고
+   source revision을 결속합니다.
+6. 카탈로그, 릴리스 target 계약, 빌드 아티팩트, digest metadata, manifest,
+   보존 증거로 이루어진 전체 묶음을 검증합니다. 검증기는 모든 필수 셀이
+   통과하고 모든 정확한 결속에 모호함이 없을 때만 외부 검증 릴리스 색인을
+   생성합니다.
+7. 검증한 동일한 binary byte와 외부 검증 릴리스 색인을 함께 게시합니다.
+   패키징은 byte를 감쌀 수는 있지만 실행 파일을 교체하거나 처리하면 안 됩니다.
+
+Digest나 통과 결과를 수작업으로 만들지 말고 생성된 entry와 증거를 review합니다.
+실행하지 않은 셀을 꾸며 내거나, 다른 셀 결과를 복사하거나, 결과 라벨을
+바꾸거나, 과거 호환성 entry를 남기면 안 됩니다.
 
 어느 아티팩트든 byte, 플랫폼 좌표, capability 집합, profile, 검증 증거가 바뀌면
 해당 정확한 셀을 새로 실행해야 합니다. 어느 계약을 편집하더라도 runner가 만들지
 않은 증거를 승격할 수 없습니다.
+
+<a id="verified-release-index"></a>
+## `VerifiedReleaseIndex`
+
+전체 묶음 검증기는 다음의 정확한 닫힌 형태와 필드 순서를 가진 외부 정규
+JSON 색인 하나를 출력합니다.
+
+```yaml
+VerifiedReleaseIndex:
+  contract_id: volicord.verified-release-index
+  source_revision: string
+  support_catalog_identity_digest: string
+  published_artifacts: VerifiedPublishedArtifact[]
+  release_evidence: VerifiedReleaseEvidenceReference[]
+
+VerifiedPublishedArtifact:
+  target_triple: ReleaseTargetTriple
+  binary_name: volicord | volicord.exe
+  binary_sha256: string
+  build_artifact: string
+
+VerifiedReleaseEvidenceReference:
+  target_triple: ReleaseTargetTriple
+  platform_environment: PlatformEnvironment
+  integration_profile: record
+  codex_artifact_digest: string
+  observed_capabilities: CodexCapability[]
+  volicord_artifact_digest: string
+  evidence_digest: string
+  evidence_manifest_sha256: string
+  evidence_artifact: string
+```
+
+`source_revision`은 build 및 셀 증거와 같은 Git 객체 ID 규칙을 사용합니다. 모든
+digest는 이름 붙은 byte 또는 정규 record의 raw 소문자 SHA-256입니다.
+`published_artifacts`는 검증한 릴리스 target 계약의 `published_targets` 순서를,
+`release_evidence`는 `required_cells` 순서를 따릅니다. 아티팩트 이름은 정확한
+workflow run과 attempt를 포함합니다. Manifest digest와 정규 증거 digest가 승인에
+사용한 정확한 외부 증거를 함께 참조합니다.
+
+검증기는 같은 입력에 대해 결정론적으로 색인을 serialize하고 create-new 출력
+방식을 사용합니다. 색인은 릴리스에 첨부할 수 있지만 Volicord 실행 파일 밖에
+남습니다. 운영 코드는 이를 `CodexSupportCatalog`, 런타임 지원 입력, receipt,
+credential, Core 권한 record로 내장하거나 사용하면 안 됩니다.
 
 <a id="explicit-test-only-descriptor"></a>
 ## 명시적인 테스트 전용 설명자
@@ -552,10 +607,11 @@ Codex 실행과 관찰 동작을 담당합니다. 각 `platforms/` module은 자
 
 ```sh
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --generate-support-entry --codex-path CODEX_PATH --target TARGET --platform PLATFORM --profile record --capabilities managed_stdio_mcp,personal_managed_binding,record_workflow,shared_managed_binding
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate TARGET --platform PLATFORM
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-build-artifact --build-artifact-dir BUILD_DIR --source-revision REVISION --target TARGET
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-cell-evidence --build-artifact-dir BUILD_DIR --evidence-artifact-dir EVIDENCE_DIR --source-revision REVISION --target TARGET --platform PLATFORM
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-publish-evidence --build-root BUILD_ROOT --evidence-root EVIDENCE_ROOT --source-revision REVISION --run-id RUN_ID --run-attempt RUN_ATTEMPT
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-publish-evidence --build-root BUILD_ROOT --evidence-root EVIDENCE_ROOT --source-revision REVISION --run-id RUN_ID --run-attempt RUN_ATTEMPT --verified-index-output NEW_INDEX_PATH
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
@@ -565,7 +621,10 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 ```
 
 `--status`는 외부 증거의 실제 상태 또는 파생 상태 여섯 개를 보고하며 셀을 실행하지
-않습니다. `--capture-candidate`는 자격을 갖춘 시도 하나를 실행하고 create-new
+않습니다. `--generate-support-entry`는 `CODEX_PATH`의 실제 파일을 hash하고 닫힌
+target, 환경, Record profile, capability 값을 정규화하고 검증한 뒤 compact 기준 JSON
+entry 하나를 표준 출력에 기록합니다. 릴리스 결과나 Volicord digest는 포함하지 않으며
+카탈로그를 편집하지도 않습니다. `--capture-candidate`는 자격을 갖춘 시도 하나를 실행하고 create-new
 방식으로 외부 경로에 엄격하게 parse되는 단일 entry 후보 manifest를 기록합니다.
 후보의 Codex 좌표는 내장 지원 카탈로그에 이미 있어야 합니다. 상태가 `failed` 또는
 `unavailable`인 후보는 보존한 뒤 실패로 종료하며 두 기준 계약을 편집하거나
@@ -578,8 +637,13 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 `--verify-build-artifact`는 capture 전에 다운로드한 raw 실행 파일을 확인하고,
 `--verify-cell-evidence`는 실행 뒤 다시 hash하여 보존된 셀 증거 전체를 검증합니다.
 `--verify-publish-evidence`는 한 workflow attempt의 정확한 빌드 다섯 개와 통과한 셀
-아티팩트 여섯 개를 요구합니다. 현재의 비어 있는 지원 카탈로그는 capture를
-차단하며, 비어 있는 체크인 증거 원본은 계속 체크인 재실행을 차단합니다.
+아티팩트 여섯 개를 요구하며 전체 bundle이 통과한 뒤에만 create-new 방식으로
+`NEW_INDEX_PATH`를 기록합니다. 운영 모드에서는 비어 있는 지원 카탈로그, 누락되거나
+중복된 증거, source 또는 digest 불일치, 필수 릴리스 셀 하나에 정확히 대응되어
+사용될 수 없는 지원 entry를 모두 거부합니다. 현재 계약에는 지원되는 비릴리스 환경
+표시가 없으므로 그런 entry도 유효하지 않습니다. 현재의 비어 있는 지원 카탈로그는
+capture와 게시를 차단하며, 비어 있는 체크인 증거 원본은 계속 체크인 재실행을
+차단합니다.
 
 후보 생성기와 게이트는 다음 순서로 점검합니다.
 
@@ -621,6 +685,7 @@ Windows supervisor에서 게이트와 scenario coordinator를 실행합니다. �
 
 | 변수 | 필수 값 |
 |---|---|
+| `VOLICORD_CODEX_RELEASE_SOURCE_REVISION` | Volicord 빌드를 만든 정확한 source revision의 raw 소문자 40자 또는 64자 16진수 Git object ID입니다. 후보 생성은 이를 기록하고 검증은 빌드 metadata와 같은지 요구합니다. |
 | `VOLICORD_CODEX_RELEASE_CODEX_PATH` | 정확히 최종 확정된 Codex 실행 파일의 symlink 없는 기준 경로입니다. native 셀에서는 host 경로이고 WSL2에서는 선택한 배포판 안의 절대 Linux ext4 경로입니다. |
 | `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` | `volicord_artifact_digest`가 이름 붙인 정확한 Volicord 실행 파일의 symlink 없는 기준 경로입니다. 같은 native 또는 WSL2 경로 규칙을 적용합니다. 릴리스 workflow에서는 다운로드한 raw 빌드 아티팩트 또는 digest가 같은 WSL2 ext4 사본으로만 설정합니다. Runner에 설치된 Volicord 실행 파일은 사용할 수 없습니다. |
 | `VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER` | 플랫폼에 프로비저닝된 scenario driver의 기준 host 경로입니다. WSL2에서는 배포판 종료와 재시작 중에도 살아남아 이를 검증할 수 있는 native Windows coordinator입니다. |

@@ -47,6 +47,7 @@ pub const EVIDENCE_DIRECTORY_ENV: &str = "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR";
 pub const WORK_ROOT_ENV: &str = "VOLICORD_CODEX_RELEASE_WORK_ROOT";
 pub const RUNTIME_HOME_ENV: &str = "VOLICORD_HOME";
 pub const ENVIRONMENT_IMAGE_ENV: &str = "VOLICORD_CODEX_RELEASE_ENVIRONMENT_IMAGE";
+pub const SOURCE_REVISION_ENV: &str = "VOLICORD_CODEX_RELEASE_SOURCE_REVISION";
 pub const WSL2_DISTRIBUTION_ENV: &str = "VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION";
 pub const CANDIDATE_CELL_PATH_ENV: &str = "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH";
 
@@ -125,6 +126,14 @@ pub fn run_checked_in_cell_gate(
                 platform,
                 IntegrationProfile::Record
             ))
+        )));
+    }
+    let source_revision = required_environment(SOURCE_REVISION_ENV)?;
+    validate_source_revision(&source_revision)?;
+    if entry.validation_evidence.source_revision != source_revision {
+        return Err(ValidationError::new(format!(
+            "Codex release cell {target_triple}/{} evidence belongs to another source revision",
+            platform.as_str()
         )));
     }
 
@@ -294,6 +303,8 @@ pub fn capture_candidate_cell(
     }
 
     let validation_result = aggregate_scenario_status(&scenario_results)?;
+    let source_revision = required_environment(SOURCE_REVISION_ENV)?;
+    validate_source_revision(&source_revision)?;
     let observed_at =
         DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::AutoSi, true);
     let capabilities = FIRST_RELEASE_CODEX_CAPABILITIES.to_vec();
@@ -305,6 +316,7 @@ pub fn capture_candidate_cell(
         observed_capabilities: capabilities.clone(),
         integration_profile: IntegrationProfile::Record,
         volicord_artifact_digest: volicord_after.clone(),
+        source_revision,
         runner,
         scenario_results,
         evidence_digest: String::new(),
@@ -395,6 +407,20 @@ fn aggregate_scenario_status(
     Err(ValidationError::new(
         "scenario catalog has no failed or unavailable result explaining not_run",
     ))
+}
+
+fn validate_source_revision(value: &str) -> ValidationResult<()> {
+    if matches!(value.len(), 40 | 64)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Ok(())
+    } else {
+        Err(ValidationError::new(
+            "release source revision must be a raw lowercase 40- or 64-hex Git object ID",
+        ))
+    }
 }
 
 fn validation_context(platform: PlatformEnvironment) -> ValidationResult<ValidationContext> {

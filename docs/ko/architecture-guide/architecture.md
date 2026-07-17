@@ -71,7 +71,7 @@ flowchart LR
 | `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
 | `tests/conformance` | Core 쪽 API와 공유 픽스처를 통한 기준 범위 교차 메서드 시나리오. |
 | `tests/integration` | MCP, Core, Store, Agent Connection 바인딩, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
-| `tests/release-validation` | 기준 target 다섯 개/셀 여섯 개 릴리스 계약, 변경 불가능한 빌드 아티팩트와 게시 입력의 연속성 점검, 외부 릴리스 증거 경로, 공유 릴리스 시나리오, 카탈로그 교차 점검, 정확한 target/environment Codex 릴리스 셀. 운영 런타임 동작을 담당하지 않습니다. |
+| `tests/release-validation` | 기준 target 다섯 개/셀 여섯 개 릴리스 계약, 실제 파일 기반 Codex 지원 entry 생성, 변경 불가능한 빌드 아티팩트와 전체 게시 입력의 연속성 점검, 결정론적 외부 verified release index 생성, 외부 릴리스 증거 경로, 공유 릴리스 시나리오, 카탈로그 교차 점검, 정확한 target/environment Codex 릴리스 셀. 운영 런타임 동작을 담당하지 않습니다. |
 | `xtask` | 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처 밖에 있습니다. |
 
 ## 의존 경계

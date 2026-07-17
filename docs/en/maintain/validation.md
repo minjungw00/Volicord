@@ -280,6 +280,27 @@ six as `not_run`.
 
 The executable command and all exact input meanings are owned by the
 [executable release-cell gate](../reference/host-release-evidence.md#executable-release-cell-gate).
+Use this release sequence without substituting artifacts or hand-authoring a
+digest or passing result:
+
+1. Obtain the exact Codex executable for every environment intended for support.
+2. For each file, run `codex-release-cell-gate --generate-support-entry` with
+   its exact target, environment, `record` profile, and declared capabilities.
+3. Review the deterministic output and commit the canonical support catalog.
+4. Build every published Volicord target once from that catalog and source revision.
+5. Run every required release cell against those exact Codex and downloaded
+   Volicord binary bytes.
+6. Run `--verify-publish-evidence` over the complete build and evidence roots to
+   create a new external `verified-release-index.json`.
+7. Publish the same validated binary bytes and attach that verified index.
+
+For example, the proposed-entry command has this shape and prints the JSON
+entry without editing the catalog:
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --generate-support-entry --codex-path CODEX_PATH --target TARGET --platform PLATFORM --profile record --capabilities managed_stdio_mcp,personal_managed_binding,record_workflow,shared_managed_binding
+```
+
 Provision the following runner boundaries before a live invocation:
 
 | Target/environment cell | Release runner prerequisite |
@@ -294,7 +315,8 @@ Provision the following runner boundaries before a live invocation:
 Each runner service preprovisions the exact finalized Codex path, platform
 scenario driver, and environment-image coordinate through the owner-defined
 environment variables. It does not select the Volicord release candidate.
-`RUNNER_NAME` comes from the runner service. The workflow downloads the
+`RUNNER_NAME` comes from the runner service, while
+`VOLICORD_CODEX_RELEASE_SOURCE_REVISION` names the exact build revision. The workflow downloads the
 target-specific immutable raw build artifact, verifies its revision and digest,
 and sets `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` to that path. It also creates
 fresh external evidence and work roots and an absent `VOLICORD_HOME` below the
@@ -366,7 +388,10 @@ dispatch schedules the five native jobs and the independent Windows-supervised
 WSL2 job against those artifacts. `publish-release` depends on all six cells
 and the build matrix. It strictly verifies all five builds, all six passing
 manifests, and all retained scenario evidence before packaging the raw binaries
-and rehashing each extracted archive member. A queued, skipped, unavailable,
+and rehashing each extracted archive member. Immediately before packaging, the
+same final verifier writes the external verified release index; the workflow
+stages that index as a release asset and never embeds it in a Volicord binary.
+A queued, skipped, unavailable,
 failed, or `not_run` cell, missing evidence, or digest mismatch blocks
 publication.
 

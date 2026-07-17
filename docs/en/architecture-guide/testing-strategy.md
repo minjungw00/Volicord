@@ -61,8 +61,14 @@ cross-check it against the five-target/six-cell contract. They require one raw
 build matrix, exact build-artifact downloads in every cell, shared Linux x86-64
 provenance for native Linux and WSL2, all required cell dependencies at
 publication, no Volicord rebuild in publication, complete digest-bound evidence,
-and archive-member rehashing. The release integrity gate separately rejects
-changed raw binaries, build metadata mismatches, incomplete cell evidence, and
+the final verifier immediately before packaging, external verified-index
+staging, and archive-member rehashing. Synthetic complete-bundle tests create
+real temporary Codex and Volicord files and calculate their digests. They cover
+deterministic catalog generation and verified indexing plus empty production
+catalogs, incomplete and `not_run` evidence, duplicate evidence, source-revision
+and artifact-digest mismatches, and missing target or environment cells. The
+release integrity gate separately rejects changed raw binaries, build metadata
+mismatches, unused or ambiguous catalog entries, incomplete cell evidence, and
 unvalidated publish inputs.
 
 Mock, fixture, rebuilt, selected, or neighboring artifacts cannot replace the

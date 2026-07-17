@@ -251,7 +251,27 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 
 실행 명령과 모든 정확한 입력 의미는
 [실행 가능한 릴리스 셀 게이트](../reference/host-release-evidence.md#executable-release-cell-gate)가
-담당합니다. 실제 실행 전에 다음 runner 경계를 프로비저닝합니다.
+담당합니다. 아티팩트를 바꾸거나 digest 또는 통과 결과를 손으로 작성하지 말고 다음
+릴리스 순서를 사용합니다.
+
+1. 지원하려는 각 환경의 정확한 Codex 실행 파일을 확보합니다.
+2. 각 파일에 정확한 target, 환경, `record` profile, 선언 capability를 지정해
+   `codex-release-cell-gate --generate-support-entry`를 실행합니다.
+3. 결정론적 출력을 검토하고 기준 지원 카탈로그를 commit합니다.
+4. 그 카탈로그와 source revision에서 게시할 Volicord target을 각각 한 번 빌드합니다.
+5. 정확히 그 Codex 파일과 다운로드한 Volicord binary byte로 모든 필수 릴리스 셀을 실행합니다.
+6. 전체 build 및 evidence root를 대상으로 `--verify-publish-evidence`를 실행해 새로운
+   외부 `verified-release-index.json`을 만듭니다.
+7. 검증한 동일 binary byte를 게시하고 그 검증 index를 함께 첨부합니다.
+
+예를 들어 제안 entry 명령은 다음 형태이며 카탈로그를 편집하지 않고 JSON entry를
+출력합니다.
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --generate-support-entry --codex-path CODEX_PATH --target TARGET --platform PLATFORM --profile record --capabilities managed_stdio_mcp,personal_managed_binding,record_workflow,shared_managed_binding
+```
+
+실제 실행 전에 다음 runner 경계를 프로비저닝합니다.
 
 | Target/environment 셀 | 릴리스 runner 전제 조건 |
 |---|---|
@@ -265,7 +285,8 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 각 runner service는 담당 문서가 정의한 환경 변수를 통해 정확히 최종 확정된 Codex
 경로, 플랫폼 scenario driver, environment-image 좌표를 미리 프로비저닝합니다.
 Volicord 릴리스 후보는 runner service가 선택하지 않습니다. `RUNNER_NAME`은 runner
-service에서 가져옵니다. Workflow는 target별 변경 불가능한 raw 빌드 아티팩트를
+service에서 가져오며 `VOLICORD_CODEX_RELEASE_SOURCE_REVISION`은 정확한 빌드
+revision을 지정합니다. Workflow는 target별 변경 불가능한 raw 빌드 아티팩트를
 다운로드하고 revision과 digest를 검증한 뒤 그 경로를
 `VOLICORD_CODEX_RELEASE_VOLICORD_PATH`로 설정합니다. 또한 새로운 외부 증거 및 work
 root와 work root 아래의 존재하지 않는 `VOLICORD_HOME`을 만듭니다. WSL2 supervisor는
@@ -331,7 +352,9 @@ revision, digest metadata를 업로드합니다. Tag push 또는 수동 workflow
 아티팩트를 대상으로 native job 다섯 개와 Windows가 감독하는 독립 WSL2 job을
 예약합니다. `publish-release`는 셀 여섯 개와 빌드 matrix 모두에 의존합니다. Raw
 binary를 패키징하기 전에 빌드 다섯 개, 통과 manifest 여섯 개, 보존된 시나리오 증거
-전체를 엄격히 검증하고 archive에서 추출한 각 실행 파일을 다시 hash합니다. 대기,
+전체를 엄격히 검증하고 archive에서 추출한 각 실행 파일을 다시 hash합니다. 패키징
+직전에 같은 최종 verifier가 외부 verified release index를 기록하며 workflow는 그
+index를 릴리스 asset으로 준비하고 Volicord binary에 내장하지 않습니다. 대기,
 건너뜀, 사용 불가, 실패, `not_run` 셀, 빠진 증거, digest 불일치는 게시를 막습니다.
 
 각 target에서 게시자가 제어하는 모든 byte 변경을 끝낸 Codex 실행 파일과 하나의 raw

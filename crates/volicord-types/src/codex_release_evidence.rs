@@ -39,6 +39,7 @@ const EVIDENCE_FIELDS: &[&str] = &[
     "observed_capabilities",
     "integration_profile",
     "volicord_artifact_digest",
+    "source_revision",
     "runner",
     "scenario_results",
     "evidence_digest",
@@ -250,6 +251,7 @@ pub struct CodexReleaseValidationEvidence {
     pub observed_capabilities: Vec<CodexCapability>,
     pub integration_profile: IntegrationProfile,
     pub volicord_artifact_digest: String,
+    pub source_revision: String,
     pub runner: CodexReleaseEvidenceRunner,
     pub scenario_results: Vec<CodexReleaseScenarioResult>,
     pub evidence_digest: String,
@@ -503,6 +505,7 @@ pub fn compute_codex_release_evidence_digest(
             "volicord_artifact_digest",
             string(&evidence.volicord_artifact_digest)?,
         ),
+        ("source_revision", string(&evidence.source_revision)?),
         ("runner", runner),
         ("scenario_results", list(scenario_results)?),
         ("observed_at", string(&evidence.observed_at)?),
@@ -533,11 +536,11 @@ fn validate_manifest_json_shape(value: &OrderedJsonValue) -> Result<(), CodexRel
             &format!("CodexReleaseEvidenceManifest.entries[{index}].validation_evidence"),
         )?;
         require_exact_fields(
-            evidence_values[7],
+            evidence_values[8],
             RUNNER_FIELDS,
             &format!("CodexReleaseEvidenceManifest.entries[{index}].validation_evidence.runner"),
         )?;
-        let OrderedJsonValue::Array(results) = evidence_values[8] else {
+        let OrderedJsonValue::Array(results) = evidence_values[9] else {
             return Err(CodexReleaseEvidenceError::new(format!(
                 "CodexReleaseEvidenceManifest.entries[{index}].validation_evidence.scenario_results must be an array"
             )));
@@ -637,6 +640,7 @@ fn validate_evidence(
         "validation_evidence.evidence_digest",
         &evidence.evidence_digest,
     )?;
+    validate_source_revision(&evidence.source_revision)?;
     validate_canonical_utc_timestamp("validation_evidence.observed_at", &evidence.observed_at)?;
     if !has_exact_first_release_codex_capabilities(&evidence.observed_capabilities) {
         return Err(CodexReleaseEvidenceError::new(
@@ -816,6 +820,20 @@ fn require_raw_sha256(name: &str, value: &str) -> Result<(), CodexReleaseEvidenc
         Err(CodexReleaseEvidenceError::new(format!(
             "{name} must be raw lowercase SHA-256"
         )))
+    }
+}
+
+fn validate_source_revision(value: &str) -> Result<(), CodexReleaseEvidenceError> {
+    if matches!(value.len(), 40 | 64)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Ok(())
+    } else {
+        Err(CodexReleaseEvidenceError::new(
+            "validation_evidence.source_revision must be a raw lowercase 40- or 64-hex Git object ID",
+        ))
     }
 }
 

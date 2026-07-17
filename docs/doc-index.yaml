@@ -837,7 +837,7 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, build-once workflow integrity, and the split between embedded Codex support policy and independent exact-artifact release evidence.
+  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, build-once workflow integrity, actual-file Codex catalog generation, complete release-bundle verification, and deterministic external release indexing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1359,7 +1359,7 @@ documents:
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
   summary: Concise top-level implementation architecture overview for workspace shape, dependency
-    direction, operational paths, durable boundaries, and detail routes.
+    direction, operational paths, durable boundaries, release-integrity tooling, and detail routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1474,7 +1474,7 @@ documents:
   path_en: docs/en/reference/host-release-evidence.md
   path_ko: docs/ko/reference/host-release-evidence.md
   kind: reference
-  summary: Separate embedded target-aware Codex runtime support policy from build-once external exact Codex and Volicord release evidence and same-bytes publication across five targets and six independent cells.
+  summary: Separate embedded target-aware Codex runtime support policy from build-once external exact Codex and Volicord release evidence, complete-bundle verification, deterministic external release indexing, and same-bytes publication across five targets and six independent cells.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1499,6 +1499,9 @@ documents:
   - exact `CodexSupportCatalog` and `CodexSupportEntry` runtime-policy shapes and identity digest
   - runtime-policy prohibition on Volicord artifact digests and release-execution fields
   - exact external `CodexReleaseEvidenceManifest`, `CodexReleaseEvidenceEntry`, and validation-evidence shapes
+  - deterministic actual-file `CodexSupportEntry` generation without release results or Volicord digests
+  - complete production release-bundle verification and empty-catalog rejection
+  - exact external `VerifiedReleaseIndex` shape, deterministic ordering, create-new output, and runtime non-consumption
   - checked-in canonical support-catalog and release-evidence sources and update procedure
   - non-embedding boundary for external release evidence
   - release-evidence cross-checking against the embedded support catalog
@@ -3125,7 +3128,7 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, build-once six-cell release evidence, Rust checks, and result reporting.
+  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, actual-file support-catalog generation, build-once six-cell release verification and indexing, Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -3149,6 +3152,7 @@ documents:
   - representative-user Codex onboarding usability validation
   - exact finalized artifact validation for five published targets and six independent environment cells
   - build-once raw-artifact provenance, complete release-cell evidence, and same-bytes package verification
+  - operator sequence for deterministic support-entry generation, complete-bundle verification, and external verified-index publication
   - honest zero-to-six-entry external release-evidence review and unavailable-attempt reporting
   - Rust formatting, lint, test, diff, repository-hygiene, and skipped-validation reporting
   depends_on:
