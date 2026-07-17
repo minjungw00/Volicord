@@ -1,14 +1,204 @@
-use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
-use volicord_types::{HostFeature, HostFeatureSupportStatus};
+use serde::{Deserialize, Serialize};
 
-pub const CANDIDATE_SCHEMA: &str = "volicord-release-candidate-v1";
-pub const CELL_SCHEMA: &str = "volicord-host-release-cell-v3";
-pub const MANIFEST_SCHEMA: &str = "volicord-host-release-manifest-v3";
-pub const AUDIT_SCHEMA: &str = "volicord-host-release-audit-v3";
-pub const SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
-pub const CELL_INPUTS_DIGEST_DOMAIN: &[u8] = b"volicord-host-release-cell-inputs-v3\0";
-pub(crate) const MAX_FINDING_CODES: usize = 64;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlatformEnvironment {
+    Linux,
+    Macos,
+    NativeWindows,
+    Wsl2,
+}
+
+impl PlatformEnvironment {
+    pub const ALL: [Self; 4] = [Self::Linux, Self::Macos, Self::NativeWindows, Self::Wsl2];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Linux => "linux",
+            Self::Macos => "macos",
+            Self::NativeWindows => "native_windows",
+            Self::Wsl2 => "wsl2",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexCapability {
+    ManagedStdioMcp,
+    RecordWorkflow,
+    PersonalManagedBinding,
+    SharedManagedBinding,
+}
+
+impl CodexCapability {
+    pub const FIRST_RELEASE: [Self; 4] = [
+        Self::ManagedStdioMcp,
+        Self::PersonalManagedBinding,
+        Self::RecordWorkflow,
+        Self::SharedManagedBinding,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ManagedStdioMcp => "managed_stdio_mcp",
+            Self::RecordWorkflow => "record_workflow",
+            Self::PersonalManagedBinding => "personal_managed_binding",
+            Self::SharedManagedBinding => "shared_managed_binding",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationProfile {
+    Record,
+}
+
+impl IntegrationProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Record => "record",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationEvidenceStatus {
+    Passed,
+    Failed,
+    Unavailable,
+}
+
+impl ValidationEvidenceStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScenarioStatus {
+    Passed,
+    Failed,
+    Unavailable,
+    NotRun,
+}
+
+impl ScenarioStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+            Self::Unavailable => "unavailable",
+            Self::NotRun => "not_run",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunnerArchitecture {
+    X86_64,
+    Aarch64,
+}
+
+impl RunnerArchitecture {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::X86_64 => "x86_64",
+            Self::Aarch64 => "aarch64",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexReleaseScenarioId {
+    FreshInstall,
+    RuntimeHomeCreation,
+    PersonalManagedBinding,
+    SharedManagedBinding,
+    ReceiptCreateAndValidate,
+    ConfigurationDriftDetection,
+    RepairAfterDrift,
+    SafeUninstall,
+    SymlinkAndCanonicalPath,
+    CodexRestart,
+    ProjectMove,
+    RecordWriteWorkflow,
+    SuppressionUnavailable,
+    UnsupportedHost,
+    UnsupportedHostArtifact,
+    WslShutdownRestart,
+    Wsl2Ext4Project,
+    Wsl2DrvfsRejection,
+    Wsl2CrossTopologyRejection,
+    Wsl1Rejection,
+    Wsl2NativeWindowsReceiptReuseRejection,
+}
+
+impl CodexReleaseScenarioId {
+    pub const BASE: [Self; 15] = [
+        Self::FreshInstall,
+        Self::RuntimeHomeCreation,
+        Self::PersonalManagedBinding,
+        Self::SharedManagedBinding,
+        Self::ReceiptCreateAndValidate,
+        Self::ConfigurationDriftDetection,
+        Self::RepairAfterDrift,
+        Self::SafeUninstall,
+        Self::SymlinkAndCanonicalPath,
+        Self::CodexRestart,
+        Self::ProjectMove,
+        Self::RecordWriteWorkflow,
+        Self::SuppressionUnavailable,
+        Self::UnsupportedHost,
+        Self::UnsupportedHostArtifact,
+    ];
+
+    pub const WSL2_ADDITIONAL: [Self; 6] = [
+        Self::WslShutdownRestart,
+        Self::Wsl2Ext4Project,
+        Self::Wsl2DrvfsRejection,
+        Self::Wsl2CrossTopologyRejection,
+        Self::Wsl1Rejection,
+        Self::Wsl2NativeWindowsReceiptReuseRejection,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FreshInstall => "fresh_install",
+            Self::RuntimeHomeCreation => "runtime_home_creation",
+            Self::PersonalManagedBinding => "personal_managed_binding",
+            Self::SharedManagedBinding => "shared_managed_binding",
+            Self::ReceiptCreateAndValidate => "receipt_create_and_validate",
+            Self::ConfigurationDriftDetection => "configuration_drift_detection",
+            Self::RepairAfterDrift => "repair_after_drift",
+            Self::SafeUninstall => "safe_uninstall",
+            Self::SymlinkAndCanonicalPath => "symlink_and_canonical_path",
+            Self::CodexRestart => "codex_restart",
+            Self::ProjectMove => "project_move",
+            Self::RecordWriteWorkflow => "record_write_workflow",
+            Self::SuppressionUnavailable => "suppression_unavailable",
+            Self::UnsupportedHost => "unsupported_host",
+            Self::UnsupportedHostArtifact => "unsupported_host_artifact",
+            Self::WslShutdownRestart => "wsl_shutdown_restart",
+            Self::Wsl2Ext4Project => "wsl2_ext4_project",
+            Self::Wsl2DrvfsRejection => "wsl2_drvfs_rejection",
+            Self::Wsl2CrossTopologyRejection => "wsl2_cross_topology_rejection",
+            Self::Wsl1Rejection => "wsl1_rejection",
+            Self::Wsl2NativeWindowsReceiptReuseRejection => {
+                "wsl2_native_windows_receipt_reuse_rejection"
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -30,372 +220,55 @@ impl<T> RequiredNullable<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CandidateBuildEnvironment {
-    pub runner_os: String,
-    pub runner_os_version: String,
-    pub runner_arch: String,
-    pub git_version: String,
-    pub rustc_version: String,
-    pub cargo_version: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Candidate {
-    pub schema: String,
-    pub candidate_id: String,
-    pub candidate_path: String,
-    pub source_revision: String,
-    pub source_clean: bool,
-    pub source_archive_algorithm: String,
-    pub source_archive_sha256: String,
+pub struct CodexReleaseRunnerCoordinate {
+    pub runner_id: String,
     pub target_triple: String,
-    pub release_profile: String,
-    pub binary_sha256: String,
-    pub build_environment: CandidateBuildEnvironment,
-    pub recorded_at: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostKind {
-    Codex,
-    ClaudeCode,
-}
-
-impl HostKind {
-    pub const ALL: [Self; 2] = [Self::Codex, Self::ClaudeCode];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::ClaudeCode => "claude_code",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ImplementationDisposition {
-    Implemented,
-    UnsupportedByHost,
-}
-
-impl ImplementationDisposition {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Implemented => "implemented",
-            Self::UnsupportedByHost => "unsupported_by_host",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RunState {
-    Completed,
-    Running,
-    Ignored,
-    NotApplicable,
-}
-
-impl RunState {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Completed => "completed",
-            Self::Running => "running",
-            Self::Ignored => "ignored",
-            Self::NotApplicable => "not_applicable",
-        }
-    }
+    pub architecture: RunnerArchitecture,
+    pub os_release: String,
+    pub environment_image: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CellEnvironment {
-    pub runner_os: String,
-    pub runner_os_version: String,
-    pub runner_arch: String,
-    pub host_executable_sha256: RequiredNullable<String>,
-    pub host_kind: HostKind,
-    pub host_version: RequiredNullable<String>,
-    pub client_name: RequiredNullable<String>,
-    pub client_version: RequiredNullable<String>,
-    pub adapter_profile: String,
-    pub adapter_version: String,
+pub struct CodexReleaseScenarioResult {
+    pub scenario_id: CodexReleaseScenarioId,
+    pub status: ScenarioStatus,
+    pub reason: RequiredNullable<String>,
+    pub evidence_digest: RequiredNullable<String>,
+    pub observed_at: RequiredNullable<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CellAssertion {
-    pub assertion_id: String,
-    pub passed: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finding_codes: Option<Vec<String>>,
+pub struct CodexReleaseValidationEvidence {
+    pub status: ValidationEvidenceStatus,
+    pub artifact_digest: String,
+    pub platform: PlatformEnvironment,
+    pub observed_capabilities: Vec<CodexCapability>,
+    pub integration_profile: IntegrationProfile,
+    pub volicord_artifact_digest: String,
+    pub runner: CodexReleaseRunnerCoordinate,
+    pub scenario_results: Vec<CodexReleaseScenarioResult>,
+    pub evidence_digest: String,
+    pub observed_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Cell {
-    pub schema: String,
-    pub candidate_id: String,
-    pub binary_sha256: String,
-    pub source_revision: String,
-    pub target_triple: String,
-    pub release_profile: String,
-    pub host_kind: HostKind,
-    pub host_version: RequiredNullable<String>,
-    pub client_name: RequiredNullable<String>,
-    pub client_version: RequiredNullable<String>,
-    pub adapter_profile: String,
-    pub adapter_version: String,
-    pub feature: HostFeature,
-    pub implementation_disposition: ImplementationDisposition,
-    pub requested_verified: bool,
-    pub claimed_status: HostFeatureSupportStatus,
-    pub run_state: RunState,
-    pub started_at: String,
-    pub recorded_at: String,
-    pub environment: CellEnvironment,
-    pub assertions: Vec<CellAssertion>,
-    pub evidence_artifact_path: RequiredNullable<String>,
-    pub evidence_artifact_sha256: RequiredNullable<String>,
-}
-
-impl Cell {
-    pub fn key(&self) -> String {
-        format!(
-            "{}/{}/{}",
-            self.host_kind.as_str(),
-            self.host_version
-                .as_ref()
-                .map(String::as_str)
-                .unwrap_or("unavailable"),
-            self.feature.as_str()
-        )
-    }
-
-    pub fn matrix_key(&self) -> String {
-        format!("{}/{}", self.host_kind.as_str(), self.feature.as_str())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ManifestCell {
-    pub raw: Cell,
-    pub derived_status: HostFeatureSupportStatus,
-    pub finding_codes: Vec<String>,
-}
-
-impl Serialize for ManifestCell {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut value = serde_json::to_value(&self.raw).map_err(serde::ser::Error::custom)?;
-        let object = value
-            .as_object_mut()
-            .expect("Cell always serializes as an object");
-        object.insert(
-            "derived_status".to_owned(),
-            serde_json::to_value(self.derived_status).map_err(serde::ser::Error::custom)?,
-        );
-        object.insert(
-            "finding_codes".to_owned(),
-            serde_json::to_value(&self.finding_codes).map_err(serde::ser::Error::custom)?,
-        );
-        value.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ManifestCell {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let mut value = Value::deserialize(deserializer)?;
-        let object = value
-            .as_object_mut()
-            .ok_or_else(|| D::Error::custom("manifest cell must be an object"))?;
-        let derived_status = object
-            .remove("derived_status")
-            .ok_or_else(|| D::Error::missing_field("derived_status"))?;
-        let finding_codes = object
-            .remove("finding_codes")
-            .ok_or_else(|| D::Error::missing_field("finding_codes"))?;
-        let raw = serde_json::from_value(value).map_err(D::Error::custom)?;
-        let derived_status = serde_json::from_value(derived_status).map_err(D::Error::custom)?;
-        let finding_codes = serde_json::from_value(finding_codes).map_err(D::Error::custom)?;
-        Ok(Self {
-            raw,
-            derived_status,
-            finding_codes,
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GateVerdict {
-    Pass,
-    PassWithDowngrades,
-    Fail,
-}
-
-impl GateVerdict {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pass => "pass",
-            Self::PassWithDowngrades => "pass_with_downgrades",
-            Self::Fail => "fail",
-        }
-    }
+pub struct CodexReleaseCell {
+    pub artifact_digest: String,
+    pub platform: PlatformEnvironment,
+    pub observed_capabilities: Vec<CodexCapability>,
+    pub integration_profile: IntegrationProfile,
+    pub validation_evidence: CodexReleaseValidationEvidence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ReleaseManifest {
-    pub schema: String,
-    pub candidate: Candidate,
-    pub evaluated_at: String,
-    pub cells: Vec<ManifestCell>,
-    pub requested_verified_claims: Vec<String>,
-    pub downgrades: Vec<String>,
-    pub invariant_findings: Vec<String>,
-    pub verdict: GateVerdict,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AuditInvariantResult {
-    pub invariant_id: String,
-    pub passed: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RecalculatedCell {
-    pub host_kind: HostKind,
-    pub host_version: RequiredNullable<String>,
-    pub client_name: RequiredNullable<String>,
-    pub client_version: RequiredNullable<String>,
-    pub feature: HostFeature,
-    pub derived_status: HostFeatureSupportStatus,
-    pub finding_codes: Vec<String>,
-}
-
-impl From<&ManifestCell> for RecalculatedCell {
-    fn from(cell: &ManifestCell) -> Self {
-        Self {
-            host_kind: cell.raw.host_kind,
-            host_version: cell.raw.host_version.clone(),
-            client_name: cell.raw.client_name.clone(),
-            client_version: cell.raw.client_version.clone(),
-            feature: cell.raw.feature,
-            derived_status: cell.derived_status,
-            finding_codes: cell.finding_codes.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AuditExclusion {
-    pub check_id: String,
-    pub reason: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AuditVerdict {
-    Pass,
-    Fail,
-}
-
-impl AuditVerdict {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pass => "pass",
-            Self::Fail => "fail",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReleaseAudit {
-    pub schema: String,
-    pub manifest_path: String,
-    pub manifest_sha256: String,
-    pub cell_directory: String,
-    pub cell_inputs_sha256: String,
-    pub candidate_path: String,
-    pub candidate_sha256: String,
-    pub started_at: String,
-    pub evaluated_at: String,
-    pub invariant_results: Vec<AuditInvariantResult>,
-    pub recalculated_cells: Vec<RecalculatedCell>,
-    pub findings: Vec<String>,
-    pub exclusions: Vec<AuditExclusion>,
-    pub recalculated_verdict: GateVerdict,
-    pub audit_verdict: AuditVerdict,
-}
-
-pub fn expected_assertion_ids(
-    disposition: ImplementationDisposition,
-    feature: HostFeature,
-) -> Vec<&'static str> {
-    let mut ids = if disposition == ImplementationDisposition::UnsupportedByHost {
-        vec!["static_unsupported_by_host"]
-    } else {
-        match feature {
-            HostFeature::NativeUserAction => vec![
-                "actual_host_session",
-                "native_user_selector_observed",
-                "operator_choice_confirmed",
-                "same_connection_resume",
-                "authority_receipt_observed",
-            ],
-            HostFeature::LocalWebUserChannel => vec![
-                "actual_host_session",
-                "trusted_capability_current",
-                "host_owned_surface_observed",
-                "model_visible_payload_absence_observed",
-                "browser_submission_observed",
-                "same_connection_resume",
-                "strong_evidence_close_chain",
-            ],
-            HostFeature::VerifiedToolProducer => vec![
-                "actual_host_tool_event",
-                "intent_precedes_source",
-                "exact_session_connection_actor_scope_baseline",
-                "capture_receipt_bound",
-                "strong_producer_chain",
-                "criterion_coverage_projected",
-                "negative_rejections_zero_effect",
-            ],
-            HostFeature::RegisteredConnectionObservation => vec![
-                "actual_host_connection_event",
-                "intent_precedes_source",
-                "exact_session_connection_actor_scope_baseline",
-                "capture_receipt_bound",
-                "strong_producer_chain",
-                "criterion_coverage_projected",
-                "negative_rejections_zero_effect",
-            ],
-            HostFeature::RecordFinalOutput => vec![
-                "actual_host_session",
-                "authority_display_observed",
-                "authenticated_exact_replay_observed",
-            ],
-            HostFeature::DetectiveFinalOutput => vec![
-                "actual_host_session",
-                "authority_display_observed",
-                "authenticated_exact_replay_observed",
-                "block_finalization_observed",
-            ],
-        }
-    };
-    ids.sort_unstable();
-    ids
+pub struct TestOnlyCodexDescriptor {
+    pub test_only: bool,
+    pub fixture_id: String,
+    pub artifact_digest: String,
+    pub platform: PlatformEnvironment,
+    pub observed_capabilities: Vec<CodexCapability>,
 }

@@ -1,0 +1,12 @@
+{
+  "test_only": true,
+  "fixture_id": "contract-parser-fixture",
+  "artifact_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "platform": "linux",
+  "observed_capabilities": [
+    "managed_stdio_mcp",
+    "personal_managed_binding",
+    "record_workflow",
+    "shared_managed_binding"
+  ]
+}

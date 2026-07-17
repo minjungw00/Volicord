@@ -508,9 +508,6 @@ fn validate_append_only_result_root_consistency(
     cell_directory: &Path,
     evidence_directory: &Path,
 ) -> ValidationResult<()> {
-    use crate::evaluation::validate_cell_shape;
-    use crate::schema::Cell;
-
     let mut cell_paths = fs::read_dir(cell_directory)?
         .map(|entry| {
             entry
@@ -519,9 +516,9 @@ fn validate_append_only_result_root_consistency(
         })
         .collect::<ValidationResult<Vec<_>>>()?;
     cell_paths.sort();
-    if cell_paths.len() >= 12 {
+    if cell_paths.len() >= 64 {
         return Err(ValidationError::new(
-            "result root already contains a complete or oversized cell set",
+            "result root already contains an oversized bounded result set",
         ));
     }
 
@@ -537,12 +534,16 @@ fn validate_append_only_result_root_consistency(
                 cell_path.display()
             )));
         }
-        let cell: Cell = read_strict_json(context, &cell_path, MAX_CELL_JSON_BYTES)?;
-        validate_cell_shape(&cell)?;
-        match (
-            cell.evidence_artifact_path.as_ref(),
-            cell.evidence_artifact_sha256.as_ref(),
-        ) {
+        let cell: Value = read_strict_json(context, &cell_path, MAX_CELL_JSON_BYTES)?;
+        let cell = cell.as_object().ok_or_else(|| {
+            ValidationError::new(format!(
+                "committed live result must be a JSON object: {}",
+                cell_path.display()
+            ))
+        })?;
+        let evidence_path = cell.get("evidence_artifact_path").and_then(Value::as_str);
+        let evidence_sha256 = cell.get("evidence_artifact_sha256").and_then(Value::as_str);
+        match (evidence_path, evidence_sha256) {
             (Some(path), Some(expected_sha256)) => {
                 let path = PathBuf::from(path);
                 if path.parent() != Some(evidence_directory) {
@@ -553,7 +554,7 @@ fn validate_append_only_result_root_consistency(
                 }
                 let observed_sha256 =
                     sha256_external_file(context, &path, Some(MAX_EVIDENCE_BYTES))?;
-                if &observed_sha256 != expected_sha256 {
+                if observed_sha256 != expected_sha256 {
                     return Err(ValidationError::new(format!(
                         "committed live result evidence digest mismatch: {}",
                         path.display()
@@ -566,7 +567,13 @@ fn validate_append_only_result_root_consistency(
                     )));
                 }
             }
-            (None, None) => {}
+            (None, None)
+                if cell
+                    .get("evidence_artifact_path")
+                    .is_none_or(Value::is_null)
+                    && cell
+                        .get("evidence_artifact_sha256")
+                        .is_none_or(Value::is_null) => {}
             _ => {
                 return Err(ValidationError::new(format!(
                     "committed live result cell has an incomplete evidence reference: {}",

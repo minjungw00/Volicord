@@ -6,7 +6,6 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-volicord-types = { path = "../../crates/volicord-types" }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -22,15 +21,3 @@ windows-sys = { version = "0.61", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
 ] }
-
-[[bin]]
-name = "host-release-gate"
-path = "src/bin/host-release-gate.rs"
-
-[[bin]]
-name = "host-release-audit"
-path = "src/bin/host-release-audit.rs"
-
-[[bin]]
-name = "host-release-candidate"
-path = "src/bin/host-release-candidate.rs"

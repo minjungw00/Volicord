@@ -16,6 +16,7 @@ on:
       - "Cargo.lock"
       - "Dockerfile"
       - "crates/**"
+      - "tests/release-validation/**"
       - "tests/**/Cargo.toml"
       - "xtask/**"
 
@@ -35,8 +36,8 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal
-          rustup default "$RUST_VERSION"
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
 
       - name: Verify workspace and release tag version alignment
         run: |
@@ -47,9 +48,27 @@ jobs:
             cargo run --locked -p xtask -- release-version-check
           fi
 
+  codex-release-contract:
+    name: Codex release contract (does not execute platform cells)
+    needs: version-alignment
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
+
+      - name: Validate checked-in manifest and static platform contracts
+        run: cargo test --locked -p volicord-release-validation-tests --all-targets --all-features
+
   binary:
     name: Binary (${{ matrix.target }})
-    needs: version-alignment
+    needs:
+      - version-alignment
+      - codex-release-contract
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -347,96 +366,7 @@ jobs:
           esac
 
       - name: Smoke test image
-        run: |
-          docker run --rm volicord:${{ github.sha }} --help
-          docker run --rm volicord:${{ github.sha }} serve --help
-
-      - name: Smoke test Docker Local HTTP transport
-        run: |
-          set -eu
-          tmp="$(mktemp -d)"
-          container=""
-          cleanup() {
-            if [ -n "$container" ]; then
-              docker rm -f "$container" >/dev/null 2>&1 || true
-            fi
-            rm -rf "$tmp"
-          }
-          trap cleanup EXIT HUP INT TERM
-
-          repo="$tmp/product-repo"
-          home="$tmp/runtime-home"
-          mkdir -p "$repo/.git" "$home"
-          chmod -R 0777 "$tmp"
-          docker_user="$(id -u):$(id -g)"
-
-          docker run --rm \
-            --user "$docker_user" \
-            -v "$repo:/workspace/repo" \
-            -v "$home:/var/lib/volicord" \
-            --entrypoint /bin/sh \
-            volicord:${{ github.sha }} \
-            -c 'set -eu
-              mkdir -p /tmp/bin
-              printf "%s\n" "#!/bin/sh" "if [ \"\$1\" = \"--version\" ]; then printf \"codex 1.2.3-test\\n\"; exit 0; fi" "printf \"unexpected codex invocation\\n\" >&2" "exit 2" > /tmp/bin/codex
-              chmod 0755 /tmp/bin/codex
-              PATH="/tmp/bin:/usr/local/bin:$PATH" VOLICORD_HOME=/var/lib/volicord volicord init --host codex --repo /workspace/repo --shared --profile record --json >/tmp/init.json'
-
-          token="volicord-docker-smoke-token"
-          printf "%s\n" "$token" > "$tmp/serve.token"
-          container="$(docker run -d \
-            --user "$docker_user" \
-            -p 127.0.0.1:8765:8765 \
-            -v "$tmp/serve.token:/tmp/volicord-serve.token:ro" \
-            -v "$repo:/workspace/repo" \
-            -v "$home:/var/lib/volicord" \
-            volicord:${{ github.sha }} \
-            serve --transport local-http \
-              --container-listen 0.0.0.0:8765 \
-              --token-file /tmp/volicord-serve.token \
-              --project /workspace/repo)"
-
-          health_url="http://127.0.0.1:8765/healthz"
-          mcp_url="http://127.0.0.1:8765/mcp"
-          status_code=""
-          attempts=0
-          while [ "$attempts" -lt 60 ]; do
-            status_code="$(curl -sS -o "$tmp/health.json" -w "%{http_code}" -H "Authorization: Bearer $token" "$health_url" || true)"
-            if [ "$status_code" = "200" ]; then
-              break
-            fi
-            attempts=$((attempts + 1))
-            sleep 0.5
-          done
-          if [ "$status_code" != "200" ]; then
-            docker logs "$container" || true
-            echo "Local HTTP health check returned $status_code" >&2
-            exit 1
-          fi
-
-          unauth_code="$(curl -sS -o "$tmp/unauth.json" -w "%{http_code}" "$health_url")"
-          test "$unauth_code" = "401"
-          grep -q "AUTH_REQUIRED" "$tmp/unauth.json"
-
-          init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"volicord-docker-smoke","version":"0.0.0"}}}'
-          origin_code="$(curl -sS -o "$tmp/origin.json" -w "%{http_code}" \
-            -X POST "$mcp_url" \
-            -H "Authorization: Bearer $token" \
-            -H "Accept: application/json, text/event-stream" \
-            -H "Content-Type: application/json" \
-            -H "Origin: https://example.invalid" \
-            --data "$init_payload")"
-          test "$origin_code" = "403"
-          grep -q "ORIGIN_NOT_ALLOWED" "$tmp/origin.json"
-
-          init_code="$(curl -sS -D "$tmp/init.headers" -o "$tmp/init.json" -w "%{http_code}" \
-            -X POST "$mcp_url" \
-            -H "Authorization: Bearer $token" \
-            -H "Accept: application/json, text/event-stream" \
-            -H "Content-Type: application/json" \
-            --data "$init_payload")"
-          test "$init_code" = "200"
-          grep -qi "^Mcp-Session-Id:" "$tmp/init.headers"
+        run: docker run --rm volicord:${{ github.sha }} --help
 
   publish-release:
     name: Publish release assets

@@ -1,11 +1,15 @@
 #![deny(unsafe_code)]
 
-pub mod audit;
-pub mod candidate;
+#[path = "../contracts/mod.rs"]
+pub mod contracts;
 pub mod error;
-pub mod evaluation;
-pub mod gate;
+#[path = "../hosts/mod.rs"]
+pub mod hosts;
 pub mod io;
+#[path = "../platforms/mod.rs"]
+pub mod platforms;
+#[path = "../scenarios/mod.rs"]
+pub mod scenarios;
 pub mod schema;
 
 #[cfg(test)]
