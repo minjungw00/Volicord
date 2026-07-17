@@ -1,8 +1,8 @@
 use crate::{
     platforms::{PlatformCellDefinition, PlatformRunnerBoundary},
     scenarios::{scenarios_for_wsl2, ScenarioExpectation},
-    schema::{CodexReleaseScenarioId, PlatformEnvironment},
 };
+use volicord_types::{CodexReleaseScenarioId, PlatformEnvironment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WslGeneration {

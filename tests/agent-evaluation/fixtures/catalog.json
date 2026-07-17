@@ -1,5 +1,5 @@
 {
-  "schema": "volicord.agent_evaluation.fixture_catalog.v1",
+  "schema": "volicord.agent_evaluation.fixture_catalog",
   "scenarios": [
     {
       "scenario_id": "readonly-config-investigation",

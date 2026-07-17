@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-pub const FIXTURE_CATALOG_SCHEMA: &str = "volicord.agent_evaluation.fixture_catalog.v1";
-pub const LIVE_CONFIG_SCHEMA: &str = "volicord.agent_evaluation.live_config.v1";
-pub const DRIVER_REQUEST_SCHEMA: &str = "volicord.agent_evaluation.driver_request.v1";
-pub const DRIVER_OBSERVATION_SCHEMA: &str = "volicord.agent_evaluation.driver_observation.v1";
-pub const RESULT_SCHEMA: &str = "volicord.agent_evaluation.result.v1";
+pub const FIXTURE_CATALOG_SCHEMA: &str = "volicord.agent_evaluation.fixture_catalog";
+pub const LIVE_CONFIG_SCHEMA: &str = "volicord.agent_evaluation.live_config";
+pub const DRIVER_REQUEST_SCHEMA: &str = "volicord.agent_evaluation.driver_request";
+pub const DRIVER_OBSERVATION_SCHEMA: &str = "volicord.agent_evaluation.driver_observation";
+pub const RESULT_SCHEMA: &str = "volicord.agent_evaluation.result";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

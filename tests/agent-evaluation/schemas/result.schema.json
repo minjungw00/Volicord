@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://volicord.local/schemas/agent-evaluation-result-v1.json",
+  "$id": "https://volicord.local/schemas/agent-evaluation-result.json",
   "title": "Volicord deterministic agent evaluation result",
   "type": "object",
   "additionalProperties": false,
@@ -21,7 +21,7 @@
   ],
   "properties": {
     "schema": {
-      "const": "volicord.agent_evaluation.result.v1"
+      "const": "volicord.agent_evaluation.result"
     },
     "run_kind": {
       "enum": ["fixture_validation", "live"]
@@ -185,7 +185,7 @@
       ],
       "properties": {
         "schema": {
-          "const": "volicord.agent_evaluation.driver_observation.v1"
+          "const": "volicord.agent_evaluation.driver_observation"
         },
         "trial_id": {"type": "string", "pattern": "^trial-[0-9]{6}$"},
         "condition": {"$ref": "#/$defs/condition"},

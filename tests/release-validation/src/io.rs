@@ -27,8 +27,8 @@ pub const MAX_EVIDENCE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_VERSION_OUTPUT_BYTES: u64 = 16 * 1024;
 const CANDIDATE_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) const RELEASE_RESULT_ROOT_LOCK_NAME: &str = ".volicord-live-publication.lock";
-const RELEASE_RESULT_ROOT_CLEAN_STATE: &[u8] = b"volicord-live-publication-v1 clean\n";
-pub(crate) const RELEASE_RESULT_ROOT_ACTIVE_STATE: &[u8] = b"volicord-live-publication-v1 active\n";
+const RELEASE_RESULT_ROOT_CLEAN_STATE: &[u8] = b"volicord-live-publication clean\n";
+pub(crate) const RELEASE_RESULT_ROOT_ACTIVE_STATE: &[u8] = b"volicord-live-publication active\n";
 const MAX_RELEASE_RESULT_ROOT_STATE_BYTES: u64 = 128;
 #[cfg(unix)]
 const RESULT_ROOT_LEASE_RETRY_TIMEOUT: Duration = Duration::from_millis(250);

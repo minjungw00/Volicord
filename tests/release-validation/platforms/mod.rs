@@ -3,7 +3,7 @@ pub mod macos;
 pub mod windows;
 pub mod wsl2;
 
-use crate::schema::{CodexReleaseScenarioId, PlatformEnvironment};
+use volicord_types::{CodexReleaseScenarioId, PlatformEnvironment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformRunnerBoundary {

@@ -1,5 +1,5 @@
 {
-  "schema": "volicord.agent_evaluation.live_config.v1",
+  "schema": "volicord.agent_evaluation.live_config",
   "enabled": false,
   "model_id": "replace-me",
   "host_kind": "replace-me",

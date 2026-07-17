@@ -64,6 +64,238 @@ jobs:
       - name: Validate checked-in manifest and static platform contracts
         run: cargo test --locked -p volicord-release-validation-tests --all-targets --all-features
 
+  codex-release-cell-linux:
+    name: Codex native Linux release cell
+    if: github.event_name != 'pull_request'
+    needs: codex-release-contract
+    runs-on: [self-hosted, volicord-release, linux, native-linux, x64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Rust toolchain
+        run: |
+          set -eu
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+
+      - name: Create fresh external cell roots
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux"
+          test ! -e "$root"
+          mkdir -p "$root/evidence" "$root/work"
+          {
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
+            echo "VOLICORD_HOME=$root/work/runtime-home"
+          } >> "$GITHUB_ENV"
+
+      - name: Report checked-in platform statuses
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+
+      - name: Execute blocking native Linux cell gate
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
+
+      - name: Upload bounded Linux scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-release-cell-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux/evidence
+          if-no-files-found: warn
+
+      - name: Remove disposable Linux cell roots
+        if: always()
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux"
+          test "$root" != "$RUNNER_TEMP"
+          rm -rf -- "$root"
+
+  codex-release-cell-macos:
+    name: Codex native macOS release cell
+    if: github.event_name != 'pull_request'
+    needs: codex-release-contract
+    runs-on: [self-hosted, volicord-release, macos, native-macos, arm64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Rust toolchain
+        run: |
+          set -eu
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+
+      - name: Create fresh external cell roots
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos"
+          test ! -e "$root"
+          mkdir -p "$root/evidence" "$root/work"
+          {
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
+            echo "VOLICORD_HOME=$root/work/runtime-home"
+          } >> "$GITHUB_ENV"
+
+      - name: Report checked-in platform statuses
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+
+      - name: Execute blocking native macOS cell gate
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
+
+      - name: Upload bounded macOS scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-release-cell-macos-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos/evidence
+          if-no-files-found: warn
+
+      - name: Remove disposable macOS cell roots
+        if: always()
+        run: |
+          set -eu
+          root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos"
+          test "$root" != "$RUNNER_TEMP"
+          rm -rf -- "$root"
+
+  codex-release-cell-native-windows:
+    name: Codex native Windows release cell
+    if: github.event_name != 'pull_request'
+    needs: codex-release-contract
+    runs-on: [self-hosted, volicord-release, windows, native-windows, x64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          rustup default $env:RUST_VERSION
+
+      - name: Create fresh external cell roots
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "volicord-codex-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-native-windows"
+          if (Test-Path -LiteralPath $root) {
+            throw "fresh release-cell root already exists: $root"
+          }
+          $evidence = Join-Path $root "evidence"
+          $work = Join-Path $root "work"
+          New-Item -ItemType Directory -Path $evidence, $work | Out-Null
+          "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_CODEX_RELEASE_WORK_ROOT=$work" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_HOME=$(Join-Path $work 'runtime-home')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Report checked-in platform statuses
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+
+      - name: Execute blocking native Windows cell gate
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
+
+      - name: Upload bounded native Windows scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-release-cell-native-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-native-windows/evidence
+          if-no-files-found: warn
+
+      - name: Remove disposable native Windows cell roots
+        if: always()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "volicord-codex-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-native-windows"
+          if ($root -eq $env:RUNNER_TEMP) {
+            throw "refusing to remove the runner temp root"
+          }
+          if (Test-Path -LiteralPath $root) {
+            Remove-Item -LiteralPath $root -Recurse -Force
+          }
+
+  codex-release-cell-wsl2:
+    name: Codex WSL2 release cell (native Windows supervisor)
+    if: github.event_name != 'pull_request'
+    needs: codex-release-contract
+    runs-on: [self-hosted, volicord-release, windows, wsl2, ubuntu-24.04, x64]
+    steps:
+      - name: Check out repository on the native Windows supervisor
+        uses: actions/checkout@v4
+
+      - name: Select Windows-side Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          rustup default $env:RUST_VERSION
+
+      - name: Create fresh Windows evidence and WSL2 ext4 work roots
+        shell: pwsh
+        run: |
+          $distribution = "Ubuntu-24.04"
+          $hostRoot = Join-Path $env:RUNNER_TEMP "volicord-codex-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-wsl2"
+          if (Test-Path -LiteralPath $hostRoot) {
+            throw "fresh release-cell root already exists: $hostRoot"
+          }
+          $evidence = Join-Path $hostRoot "evidence"
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $wslHome = (& wsl.exe --distribution $distribution --exec printenv HOME | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $wslHome.StartsWith("/")) {
+            throw "cannot resolve the WSL2 distribution home"
+          }
+          $work = "$wslHome/volicord-release-cells/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          & wsl.exe --distribution $distribution --exec test '!' -e $work
+          if ($LASTEXITCODE -ne 0) {
+            throw "fresh WSL2 ext4 work root already exists: $work"
+          }
+          & wsl.exe --distribution $distribution --exec mkdir -p $work
+          if ($LASTEXITCODE -ne 0) {
+            throw "cannot create WSL2 ext4 work root: $work"
+          }
+          "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_CODEX_RELEASE_WORK_ROOT=$work" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_HOME=$work/runtime-home" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION=$distribution" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Report checked-in platform statuses
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+
+      - name: Execute blocking WSL2 cell gate through the native Windows supervisor
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+
+      - name: Upload bounded WSL2 scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-release-cell-wsl2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-wsl2/evidence
+          if-no-files-found: warn
+
+      - name: Remove disposable Windows and WSL2 cell roots
+        if: always()
+        shell: pwsh
+        run: |
+          $distribution = "Ubuntu-24.04"
+          $hostRoot = Join-Path $env:RUNNER_TEMP "volicord-codex-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-wsl2"
+          if ($hostRoot -eq $env:RUNNER_TEMP) {
+            throw "refusing to remove the runner temp root"
+          }
+          if (Test-Path -LiteralPath $hostRoot) {
+            Remove-Item -LiteralPath $hostRoot -Recurse -Force
+          }
+          $wslHome = (& wsl.exe --distribution $distribution --exec printenv HOME | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $wslHome.StartsWith("/")) {
+            throw "cannot resolve the WSL2 distribution home"
+          }
+          $work = "$wslHome/volicord-release-cells/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          & wsl.exe --distribution $distribution --exec rm -rf -- $work
+          if ($LASTEXITCODE -ne 0) {
+            throw "cannot remove disposable WSL2 cell root: $work"
+          }
+
   binary:
     name: Binary (${{ matrix.target }})
     needs:
@@ -373,6 +605,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs:
       - binary
+      - codex-release-cell-linux
+      - codex-release-cell-macos
+      - codex-release-cell-native-windows
+      - codex-release-cell-wsl2
       - windows-test
       - docker-image
     runs-on: ubuntu-24.04

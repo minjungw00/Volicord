@@ -10,12 +10,15 @@ use crate::{
     hosts::codex::FIRST_RELEASE_CODEX_CAPABILITIES,
     platforms::{self, PlatformRunnerBoundary},
     scenarios::{definition, ScenarioExpectation, BASE_SCENARIOS, WSL2_ADDITIONAL_SCENARIOS},
-    schema::{
-        CodexReleaseCell, CodexReleaseRunnerCoordinate, CodexReleaseScenarioId,
-        CodexReleaseScenarioResult, CodexReleaseValidationEvidence, IntegrationProfile,
-        PlatformEnvironment, RequiredNullable, RunnerArchitecture, ScenarioStatus,
-        ValidationEvidenceStatus,
-    },
+};
+use volicord_types::{
+    lookup_checked_in_supported_codex_release_cell, CodexReleaseCell, CodexReleaseManifest,
+    CodexReleaseManifestError, CodexReleaseRunnerArchitecture as RunnerArchitecture,
+    CodexReleaseRunnerCoordinate, CodexReleaseScenarioId, CodexReleaseScenarioResult,
+    CodexReleaseScenarioStatus as ScenarioStatus, CodexReleaseValidationEvidence,
+    CodexReleaseValidationStatus as ValidationEvidenceStatus, ErrorCode, FailureCategory,
+    IntegrationProfile, PlatformEnvironment, PlatformReleaseCoordinate, RequiredNullable,
+    CODEX_RELEASE_PLATFORMS,
 };
 
 const CODEX_DIGEST: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -28,12 +31,27 @@ fn checked_in_manifest_is_honest_and_absent_cells_are_not_run() {
     let manifest = checked_in_manifest().expect("checked-in manifest");
     assert!(manifest.cells().is_empty());
     assert!(!manifest.has_four_passing_platforms());
-    for platform in PlatformEnvironment::ALL {
+    for platform in CODEX_RELEASE_PLATFORMS {
         assert_eq!(
             manifest.platform_status(platform),
             PlatformReleaseStatus::NotRun
         );
     }
+
+    let error = lookup_checked_in_supported_codex_release_cell(
+        CODEX_DIGEST,
+        PlatformEnvironment::Linux,
+        &PlatformReleaseCoordinate::Native,
+        &FIRST_RELEASE_CODEX_CAPABILITIES,
+        IntegrationProfile::Record,
+    )
+    .expect_err("an absent checked-in cell must not register support");
+    assert_eq!(error.error_code(), ErrorCode::UnsupportedContract);
+    assert_eq!(
+        error.failure_category(),
+        FailureCategory::UnsupportedContract
+    );
+    assert_eq!(error.reason(), UNSUPPORTED_HOST_ARTIFACT_REASON);
 }
 
 #[test]
@@ -112,7 +130,7 @@ fn platform_definitions_are_independent_and_canonical() {
     let definitions = platforms::all();
     assert_eq!(
         definitions.each_ref().map(|definition| definition.platform),
-        PlatformEnvironment::ALL
+        CODEX_RELEASE_PLATFORMS
     );
     assert!(definitions[..3]
         .iter()
@@ -138,7 +156,7 @@ fn wsl2_static_scenarios_keep_ext4_and_rejection_boundaries_explicit() {
 
 #[test]
 fn strict_manifest_accepts_current_cell_shapes_and_canonical_platform_order() {
-    let cells = PlatformEnvironment::ALL
+    let cells = CODEX_RELEASE_PLATFORMS
         .into_iter()
         .enumerate()
         .map(|(index, platform)| passed_cell(platform, digit_digest(index + 1)))
@@ -297,10 +315,15 @@ fn digests_timestamps_reasons_and_runner_strings_are_validated() {
     runner.validation_evidence.runner.runner_id = "\n".to_owned();
     refresh_evidence_digest(&mut runner);
     assert!(parse_cells(&[runner]).is_err());
+
+    let mut wsl2_image = passed_cell(PlatformEnvironment::Wsl2, digit_digest(4));
+    wsl2_image.validation_evidence.runner.environment_image = "Ubuntu-22.04-LTS-WSL2".to_owned();
+    refresh_evidence_digest(&mut wsl2_image);
+    assert!(parse_cells(&[wsl2_image]).is_err());
 }
 
 #[test]
-fn exact_support_lookup_never_widens_artifact_platform_capabilities_or_profile() {
+fn exact_support_lookup_never_widens_artifact_platform_or_capabilities() {
     let passed = passed_cell(PlatformEnvironment::Linux, CODEX_DIGEST.to_owned());
     let unavailable = unavailable_cell(PlatformEnvironment::Wsl2, digit_digest(4));
     let manifest = parse_cells(&[passed, unavailable]).expect("mixed manifest");
@@ -309,43 +332,50 @@ fn exact_support_lookup_never_widens_artifact_platform_capabilities_or_profile()
         .lookup_supported_cell(
             CODEX_DIGEST,
             PlatformEnvironment::Linux,
+            &PlatformReleaseCoordinate::Native,
             &FIRST_RELEASE_CODEX_CAPABILITIES,
-            "record",
+            IntegrationProfile::Record,
         )
         .is_ok());
 
     let mut reversed = FIRST_RELEASE_CODEX_CAPABILITIES;
     reversed.reverse();
+    let partial = &FIRST_RELEASE_CODEX_CAPABILITIES[..3];
     for result in [
         manifest.lookup_supported_cell(
             &digit_digest(8),
             PlatformEnvironment::Linux,
+            &PlatformReleaseCoordinate::Native,
             &FIRST_RELEASE_CODEX_CAPABILITIES,
-            "record",
+            IntegrationProfile::Record,
         ),
         manifest.lookup_supported_cell(
             CODEX_DIGEST,
             PlatformEnvironment::Macos,
+            &PlatformReleaseCoordinate::Native,
             &FIRST_RELEASE_CODEX_CAPABILITIES,
-            "record",
+            IntegrationProfile::Record,
         ),
         manifest.lookup_supported_cell(
             CODEX_DIGEST,
             PlatformEnvironment::Linux,
+            &PlatformReleaseCoordinate::Native,
             &reversed,
-            "record",
+            IntegrationProfile::Record,
         ),
         manifest.lookup_supported_cell(
             CODEX_DIGEST,
             PlatformEnvironment::Linux,
-            &FIRST_RELEASE_CODEX_CAPABILITIES,
-            "detective",
+            &PlatformReleaseCoordinate::Native,
+            partial,
+            IntegrationProfile::Record,
         ),
         manifest.lookup_supported_cell(
             &digit_digest(4),
             PlatformEnvironment::Wsl2,
+            &PlatformReleaseCoordinate::first_release_wsl2(),
             &FIRST_RELEASE_CODEX_CAPABILITIES,
-            "record",
+            IntegrationProfile::Record,
         ),
     ] {
         assert_eq!(
@@ -406,7 +436,7 @@ fn evidence_digest_encoding_is_deterministic_and_field_sensitive() {
 
 fn parse_cells(
     cells: &[CodexReleaseCell],
-) -> crate::error::ValidationResult<crate::contracts::CodexReleaseManifest> {
+) -> Result<CodexReleaseManifest, CodexReleaseManifestError> {
     parse_manifest(&serialize_cells(cells))
 }
 

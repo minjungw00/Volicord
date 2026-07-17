@@ -80,7 +80,7 @@ jobs:
         run: cargo test --locked --workspace --all-targets --all-features
 
   codex-release-cell-contracts:
-    name: Codex ${{ matrix.platform }} static contract only (no live evidence)
+    name: Codex ${{ matrix.platform }} definition (static only; never a cell pass)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -107,5 +107,5 @@ jobs:
           rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
           rustup default "${{ env.RUST_VERSION }}"
 
-      - name: Validate static cell definition without recording release evidence
+      - name: Validate the static definition without executing or recording a platform cell
         run: cargo test --locked -p volicord-release-validation-tests --lib "tests::${{ matrix.test }}" -- --exact

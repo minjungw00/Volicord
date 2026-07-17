@@ -1,0 +1,178 @@
+{
+  "entries": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "needle": "actions/checkout@v4",
+      "classification": "third_party_api",
+      "reason": "GitHub Actions owns the checkout action release identifier."
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "needle": "actions/checkout@v4",
+      "classification": "third_party_api",
+      "reason": "GitHub Actions owns the checkout action release identifier."
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "needle": "actions/upload-artifact@v4",
+      "classification": "third_party_api",
+      "reason": "GitHub Actions owns the artifact action release identifier."
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "needle": "actions/download-artifact@v4",
+      "classification": "third_party_api",
+      "reason": "GitHub Actions owns the artifact action release identifier."
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "needle": "--porcelain=v1",
+      "classification": "external_standard",
+      "reason": "Git owns the porcelain output format identifier."
+    },
+    {
+      "path": "crates/volicord-cli/src/guard_command/phase/post_tool.rs",
+      "needle": "--porcelain=v1",
+      "classification": "external_standard",
+      "reason": "Git owns the porcelain output format identifier."
+    },
+    {
+      "path": "crates/volicord-cli/src/host_integration/process.rs",
+      "needle": "WindowsPowerShell/v1.0/powershell.exe",
+      "classification": "external_standard",
+      "reason": "Windows owns the installed Windows PowerShell path."
+    },
+    {
+      "path": "crates/volicord-mcp/build.rs",
+      "needle": "--porcelain=v1",
+      "classification": "external_standard",
+      "reason": "Git owns the porcelain output format identifier."
+    },
+    {
+      "path": "crates/volicord-types/src/external_contract.rs",
+      "needle": "contract-v1",
+      "classification": "negative_test",
+      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
+    },
+    {
+      "path": "crates/volicord-types/src/external_contract.rs",
+      "needle": "contract-v2",
+      "classification": "negative_test",
+      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
+    },
+    {
+      "path": "crates/volicord-types/src/external_contract.rs",
+      "needle": "contract-v01",
+      "classification": "negative_test",
+      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
+    },
+    {
+      "path": "crates/volicord-types/src/external_contract.rs",
+      "needle": "contract-v0",
+      "classification": "negative_test",
+      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
+    },
+    {
+      "path": "crates/volicord-types/src/ids.rs",
+      "needle": "uuid_v4",
+      "classification": "external_standard",
+      "reason": "UUID version 4 is an externally standardized identifier algorithm."
+    },
+    {
+      "path": "crates/volicord-core/src/methods/tests/operation_result.rs",
+      "needle": "v1.{cursor}",
+      "classification": "negative_test",
+      "reason": "The cursor test verifies rejection of the removed version-prefixed form."
+    },
+    {
+      "path": "docs/doc-index.yaml",
+      "needle": "doc_index_schema_v3",
+      "classification": "maintenance_metadata",
+      "reason": "The documentation-maintenance catalog, not a product compatibility contract, owns this schema key."
+    },
+    {
+      "path": "docs/doc-index.yaml",
+      "needle": "terminology_map_v1",
+      "classification": "maintenance_metadata",
+      "reason": "The documentation-maintenance catalog, not a product compatibility contract, owns this schema key."
+    },
+    {
+      "path": "docs/en/reference/external-contracts.md",
+      "needle": "-v1",
+      "classification": "negative_documentation_example",
+      "reason": "The canonical contract owner explicitly prohibits this suffix."
+    },
+    {
+      "path": "docs/en/reference/external-contracts.md",
+      "needle": "-v2",
+      "classification": "negative_documentation_example",
+      "reason": "The canonical contract owner explicitly prohibits this suffix."
+    },
+    {
+      "path": "docs/ko/reference/external-contracts.md",
+      "needle": "-v1",
+      "classification": "negative_documentation_example",
+      "reason": "The canonical contract owner explicitly prohibits this suffix."
+    },
+    {
+      "path": "docs/ko/reference/external-contracts.md",
+      "needle": "-v2",
+      "classification": "negative_documentation_example",
+      "reason": "The canonical contract owner explicitly prohibits this suffix."
+    },
+    {
+      "path": "docs/en/user-guide/installation.md",
+      "needle": "v0.8.0",
+      "classification": "release_tag_example",
+      "reason": "The installer example uses the repository's externally visible release-tag syntax."
+    },
+    {
+      "path": "docs/ko/user-guide/installation.md",
+      "needle": "v0.8.0",
+      "classification": "release_tag_example",
+      "reason": "The installer example uses the repository's externally visible release-tag syntax."
+    },
+    {
+      "path": "tests/release-validation/src/io.rs",
+      "needle": "--porcelain=v1",
+      "classification": "external_standard",
+      "reason": "Git owns the porcelain output format identifier."
+    },
+    {
+      "path": "xtask/tests/docs_check.rs",
+      "needle": "doc_index_schema_v3",
+      "classification": "maintenance_metadata",
+      "reason": "The fixture exercises documentation-maintenance metadata."
+    },
+    {
+      "path": "xtask/tests/docs_check.rs",
+      "needle": "Documentation index schema v3",
+      "classification": "maintenance_metadata",
+      "reason": "The fixture describes documentation-maintenance metadata."
+    },
+    {
+      "path": "xtask/tests/docs_check.rs",
+      "needle": "terminology_map_v1",
+      "classification": "maintenance_metadata",
+      "reason": "The fixture exercises documentation-maintenance metadata."
+    },
+    {
+      "path": "xtask/tests/docs_check.rs",
+      "needle": "Terminology map v1",
+      "classification": "maintenance_metadata",
+      "reason": "The fixture describes documentation-maintenance metadata."
+    },
+    {
+      "path": "xtask/tests/release_version_check.rs",
+      "needle": "v1.2.3",
+      "classification": "release_tag_example",
+      "reason": "The release-version checker fixture exercises the public Git tag syntax."
+    },
+    {
+      "path": "xtask/tests/release_version_check.rs",
+      "needle": "v1.2.4",
+      "classification": "release_tag_example",
+      "reason": "The release-version checker fixture exercises a mismatched public Git tag."
+    }
+  ]
+}

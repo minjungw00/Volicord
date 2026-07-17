@@ -1,8 +1,8 @@
 use crate::{
     platforms::{PlatformCellDefinition, PlatformRunnerBoundary},
     scenarios::BASE_SCENARIOS,
-    schema::PlatformEnvironment,
 };
+use volicord_types::PlatformEnvironment;
 
 pub fn definition() -> PlatformCellDefinition {
     PlatformCellDefinition {

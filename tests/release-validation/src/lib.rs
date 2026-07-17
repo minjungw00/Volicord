@@ -3,6 +3,7 @@
 #[path = "../contracts/mod.rs"]
 pub mod contracts;
 pub mod error;
+pub mod gate;
 #[path = "../hosts/mod.rs"]
 pub mod hosts;
 pub mod io;
@@ -10,7 +11,6 @@ pub mod io;
 pub mod platforms;
 #[path = "../scenarios/mod.rs"]
 pub mod scenarios;
-pub mod schema;
 
 #[cfg(test)]
 mod tests;
