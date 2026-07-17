@@ -55,6 +55,13 @@ x86_64-unknown-linux-gnu / wsl2
 보고해야 합니다. `passed` 결과는 정확한 카탈로그 좌표와 Volicord digest의 릴리스
 증거만 성립시킵니다.
 
+저장소의 workflow 테스트는 `.github/workflows/release.yml`을 parse하고 target 다섯
+개와 셀 여섯 개 계약에 맞는지 교차 대조합니다. Raw 빌드 matrix 하나, 각 셀의 정확한
+빌드 아티팩트 다운로드, native Linux와 WSL2의 공통 Linux x86-64 출처, 게시 단계의
+모든 필수 셀 의존성, 게시 단계의 Volicord 재빌드 금지, digest에 결속된 완전한 증거,
+archive 구성원 재hash를 요구합니다. 릴리스 무결성 게이트는 변경된 raw binary, 빌드
+metadata 불일치, 불완전한 셀 증거, 검증되지 않은 게시 입력을 별도로 거부합니다.
+
 mock, fixture, 재빌드, 선택된 또는 인접 아티팩트는 최종 바이트를 대신할 수 없습니다.
 failed, unavailable, not-run scenario는
 [Host Release Evidence](../reference/host-release-evidence.md)가 소유한 evidence 규칙에

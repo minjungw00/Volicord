@@ -7,6 +7,7 @@ pub mod gate;
 #[path = "../hosts/mod.rs"]
 pub mod hosts;
 pub mod io;
+pub mod pipeline;
 #[path = "../platforms/mod.rs"]
 pub mod platforms;
 #[path = "../scenarios/mod.rs"]

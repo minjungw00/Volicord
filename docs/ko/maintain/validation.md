@@ -263,13 +263,15 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 | `x86_64-unknown-linux-gnu` / `wsl2` | `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Windows supervisor이며 정확한 `Ubuntu-24.04` WSL2 배포판이 이미 설치되어 있어야 합니다. Ubuntu GitHub runner는 이 경계가 아닙니다. |
 
 각 runner service는 담당 문서가 정의한 환경 변수를 통해 정확히 최종 확정된 Codex
-경로, 셀에 기록된 정확한 Volicord 경로, 플랫폼 scenario driver, environment-image
-좌표를 미리 프로비저닝합니다. `RUNNER_NAME`은 runner service에서 가져옵니다.
-workflow는 새로운 외부 증거 및 work root와 work root 아래의 존재하지 않는
-`VOLICORD_HOME`을 만듭니다. WSL2 runner는 Codex, Volicord, Product Repository work
-root, Runtime Home을 `Ubuntu-24.04` 안의 ext4에 두며, scenario driver는
-`wsl_shutdown_restart` 중에도 살아남아 이를 검증할 수 있는 native Windows
-coordinator입니다.
+경로, 플랫폼 scenario driver, environment-image 좌표를 미리 프로비저닝합니다.
+Volicord 릴리스 후보는 runner service가 선택하지 않습니다. `RUNNER_NAME`은 runner
+service에서 가져옵니다. Workflow는 target별 변경 불가능한 raw 빌드 아티팩트를
+다운로드하고 revision과 digest를 검증한 뒤 그 경로를
+`VOLICORD_CODEX_RELEASE_VOLICORD_PATH`로 설정합니다. 또한 새로운 외부 증거 및 work
+root와 work root 아래의 존재하지 않는 `VOLICORD_HOME`을 만듭니다. WSL2 supervisor는
+다운로드한 Linux x86-64 byte를 `Ubuntu-24.04` 내부의 별도 ext4 경로로 옮기고 WSL2
+안에서 digest를 검증합니다. Scenario driver는 `wsl_shutdown_restart` 중에도 살아남아
+이를 검증할 수 있는 native Windows coordinator입니다.
 
 첫 자격 시도 또는 재수집에서는 각 runner의 서로 다른 외부 미존재 경로를
 `VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH`로 설정한 뒤, 각 독립 환경에서
@@ -293,7 +295,8 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 없으면 자격을 갖춘 후보 생성을 시작할 수 없습니다. job을 다른 runner로 우회하지 말고
 이 결과를 정확히 보고합니다.
 
-후보 manifest 여섯 개를 검토하고 한 번의 릴리스 작업으로
+체크인 재실행이나 독립 audit을 수행할 때는 후보 manifest 여섯 개를 검토하고 한
+번의 릴리스 작업으로
 [체크인하는 기준 계약](../reference/host-release-evidence.md#canonical-checked-in-contracts)의
 외부 증거 원본을 정규 exact-identity 순서로 교체합니다.
 과거 entry를 추가하거나,
@@ -301,7 +304,9 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 불러오거나, 검토 전에 후보 출력을 체크인 증거로 취급하면 안 됩니다. 검토한 manifest를
 대상으로 계약 테스트를 다시 실행합니다.
 
-그런 다음 같은 각 독립 환경에서 차단 재실행 명령을 한 번씩 실행합니다.
+그런 다음 같은 각 독립 환경에서 차단 재실행 명령을 한 번씩 실행합니다. 이 수동
+재실행 경로는 다운로드한 각 빌드를 한 번만 검증하고 시나리오 카탈로그를 두 번째로
+실행하지 않은 채 새 증거를 확인하는 운영 릴리스 workflow와 구분됩니다.
 
 ```sh
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
@@ -320,17 +325,24 @@ driver, 시나리오 증거, 토폴로지가 달라도 선택한 job이 실패�
 closed로 동작합니다.
 
 일반 `.github/workflows/ci.yml`은 정적 계약 테스트만 실행합니다.
-`.github/workflows/release.yml`의 pull request도 실제 job을 건너뜁니다. tag push 또는
-수동 workflow dispatch는 native job 다섯 개와 Windows가 감독하는 독립 WSL2 job을
-예약합니다. `publish-release`는 여섯 job 모두에 의존하므로 대기, 건너뜀, 사용 불가,
-실패, `not_run` 셀이 하나라도 있으면 게시를 막습니다.
+`.github/workflows/release.yml`의 pull request도 실제 job을 건너뜁니다. 릴리스
+workflow는 target 다섯 개를 각각 한 번 빌드하고 raw 실행 파일, target, source
+revision, digest metadata를 업로드합니다. Tag push 또는 수동 workflow dispatch는 그
+아티팩트를 대상으로 native job 다섯 개와 Windows가 감독하는 독립 WSL2 job을
+예약합니다. `publish-release`는 셀 여섯 개와 빌드 matrix 모두에 의존합니다. Raw
+binary를 패키징하기 전에 빌드 다섯 개, 통과 manifest 여섯 개, 보존된 시나리오 증거
+전체를 엄격히 검증하고 archive에서 추출한 각 실행 파일을 다시 hash합니다. 대기,
+건너뜀, 사용 불가, 실패, `not_run` 셀, 빠진 증거, digest 불일치는 게시를 막습니다.
 
-각 target/environment 셀에서 게시자가 제어하는 모든 byte 변경을 끝낸 Codex와 Volicord 실행 파일을
-최종 확정하고 두 SHA-256 digest를 계산한 뒤, 같은 byte를 일치하는
+각 target에서 게시자가 제어하는 모든 byte 변경을 끝낸 Codex 실행 파일과 하나의 raw
+Volicord 빌드 아티팩트를 최종 확정하고 두 SHA-256 digest를 계산한 뒤, 다운로드한
+Volicord byte를 일치하는 모든
 [독립 플랫폼 셀](../reference/host-release-evidence.md#independent-platform-cells)에서
 실행합니다. [필수 시나리오 집합](../reference/host-release-evidence.md#required-release-validation-scenarios)을
-모두 실행하고 두 실행 파일을 다시 열어 hash를 재확인합니다. 다시 빌드하거나 복사하거나 다른
-방식으로 패키징했거나 다른 플랫폼용인 실행 파일로 해당 byte를 대신할 수 없습니다.
+모두 실행하고 두 실행 파일을 다시 열어 hash를 재확인합니다. Digest를 검증한 WSL2
+ext4 사본만 후보 위치를 바꿀 수 있습니다. 다시 빌드하거나 검증하지 않은 사본,
+다르게 처리한 실행 파일, 다른 플랫폼용 실행 파일로 해당 byte를 대신할 수 없습니다.
+패키징은 검증한 binary를 감쌀 수 있지만 archive 구성원의 digest는 그대로여야 합니다.
 
 계약의 셀 여섯 개를 각각 담당 환경에서 독립적으로 실행합니다.
 실제 [셀 실행 상태](../reference/host-release-evidence.md#cell-execution-status)를 기록합니다.

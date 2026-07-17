@@ -29,6 +29,15 @@ x86_64-pc-windows-msvc / native_windows
 x86_64-unknown-linux-gnu / wsl2
 ```
 
+Build each published Volicord target once. The build job records the target,
+source revision, executable name, and raw executable SHA-256, then uploads the
+raw bytes as an immutable workflow artifact. Every matching cell downloads that
+artifact; WSL2 transfers the same Linux x86-64 bytes to ext4 and verifies the
+digest there. Each cell validates once and emits fresh external evidence for
+that digest. Publication requires all six passing cells, downloads the same
+five build artifacts, packages without rebuilding, and verifies each extracted
+archive member against the validated raw digest.
+
 Each external `CodexReleaseEvidenceEntry` binds both artifact digests, one
 `PlatformEnvironment`, the complete first-release `CodexCapability` set,
 `integration_profile=record`, exact target and runner coordinates, scenario
@@ -49,13 +58,18 @@ only owner-defined support policy and fails closed for
 
 ## Consequences
 
-- Signing, stripping, packaging, or any byte change requires validation of the
-  new digest.
+- Signing, stripping, or any executable-byte change requires a new build
+  artifact and validation of the new digest. Packaging may change only the
+  surrounding archive and metadata.
 - A Volicord digest can appear in external evidence without changing the
   embedded support-catalog identity.
 - External release evidence is never an embedded resource, generated Rust
   constant, or build-script input.
 - WSL2 is independent from native Linux and native Windows.
+- Native Linux and WSL2 produce distinct evidence for the same Linux x86-64
+  build artifact.
+- A missing build, runner, Codex artifact, evidence entry, or WSL2 execution
+  blocks publication.
 - Linux and macOS architectures are independent target identities.
 - Mock and parser fixtures remain non-release evidence.
 - Failed, unavailable, and not-run outcomes remain explicit and cannot be

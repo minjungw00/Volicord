@@ -3,8 +3,9 @@
 This document owns the strict separation between runtime Codex support policy
 and exact finalized-artifact release evidence. It defines the embedded
 `CodexSupportCatalog`, the external `CodexReleaseEvidenceManifest`, exact
-target/environment cells, required release-validation scenarios, and honest cell
-execution status.
+target/environment cells, immutable raw Volicord build artifacts, required
+release-validation scenarios, honest cell execution status, and the
+build-once publication boundary.
 
 It does not define managed host configuration, receipt semantics, runtime trust,
 or operating-system prerequisites. Those contracts remain with their focused
@@ -18,8 +19,9 @@ The labels below use the
 [surface-stability vocabulary](../maintain/documentation-policy.md#surface-stability-labels).
 The `CodexSupportCatalog`, `CodexReleaseEvidenceManifest`, exact
 artifact-and-capability matching, `unsupported_host_artifact`, five published
-targets, six independent target/environment cells, and cell status meanings are `stable`. Test runner modules and
-fixture layout below those boundaries are `internal`.
+targets, six independent target/environment cells, build-artifact metadata,
+same-bytes publication rule, and cell status meanings are `stable`. Test runner
+modules and fixture layout below those boundaries are `internal`.
 
 <a id="codex-support-catalog"></a>
 
@@ -241,14 +243,22 @@ hand-edited evidence are invalid.
 
 ## Exact policy matching and finalized-artifact evidence
 
-The release cell hashes each executable after every publisher-controlled change to its
-bytes, including signing, stripping, packaging extraction, or other
-post-processing. Validation runs the exact Codex bytes named by
+Each published Volicord target is built exactly once for one source revision.
+The build job completes every publisher-controlled executable-byte operation,
+including any signing, stripping, or other post-processing, before calculating
+the digest and uploading the raw executable. Validation runs the exact Codex bytes named by
 `codex_artifact_digest` and exact Volicord bytes named by
 `volicord_artifact_digest`. Before and after the scenario suite, the runner
 reopens both executables and requires the same byte digests. A command name,
 path, version range, package label, build identifier, or separately rebuilt
 executable cannot substitute for the finalized bytes.
+
+Packaging occurs only after validation and may change archive, checksum, and
+metadata bytes, but it must not process or replace the executable. After
+creating each archive, publication extracts it and requires the contained
+executable SHA-256 to equal the validated raw-binary digest. Any executable-byte
+change requires a new build artifact and new validation; it cannot be repaired
+by editing metadata or evidence.
 
 Runtime support requires only an exact `CodexSupportEntry` match. Release
 eligibility additionally requires one external evidence entry with the same
@@ -258,6 +268,59 @@ scenario metadata, and `validation_result=passed`.
 Support never propagates from one artifact to another, from one capability to
 another, or from one platform to another. A capability observed for one cell
 does not become a general Codex capability claim.
+
+<a id="release-build-artifact-flow"></a>
+
+## Release build artifact and publication flow
+
+For each published target, the build matrix uploads exactly one immutable
+artifact named
+`volicord-build-TARGET-RUN_ID-RUN_ATTEMPT`. It contains only the raw
+`volicord` or `volicord.exe`, `volicord.sha256`, and
+`build-metadata.json`. The metadata has this exact closed shape:
+
+```yaml
+contract_id: volicord.release-build-artifact
+target_triple: ReleaseTargetTriple
+source_revision: string
+binary_name: volicord | volicord.exe
+binary_sha256: string
+```
+
+`source_revision` is the raw lowercase 40- or 64-hex Git object ID checked out
+by the workflow. `binary_sha256` is the raw lowercase SHA-256 of the named
+executable. `volicord.sha256` contains the same digest and binary name. Unknown
+fields, an unexpected file, a mismatched target, revision, binary name, digest
+record, or executable digest invalidate the artifact.
+
+Every required release-cell job downloads the exact artifact for its target,
+verifies the metadata and executable digest before execution, sets
+`VOLICORD_CODEX_RELEASE_VOLICORD_PATH` to that downloaded executable, and runs
+one qualifying capture. The compatibility variable must not select a
+runner-installed or independently built Volicord executable. Native Linux and
+WSL2 both consume the same `x86_64-unknown-linux-gnu` build artifact. The WSL2
+supervisor copies those bytes from the downloaded artifact to a distinct ext4
+path inside `Ubuntu-24.04`, verifies the digest inside WSL2 before and after the
+cell, and produces a distinct WSL2 manifest.
+
+Each successful cell uploads one artifact named
+`volicord-release-evidence-TARGET-PLATFORM-RUN_ID-RUN_ATTEMPT`. It contains
+exactly `release-evidence.json` and `scenario-evidence/`. The manifest contains
+one exact `passed` entry whose `volicord_artifact_digest` equals the raw build
+digest. The scenario directory contains every deterministic scenario envelope
+and retained driver payload required by that entry. Publication recomputes the
+manifest evidence digest, each scenario-envelope digest, each retained canonical
+driver-payload digest, and the raw executable digest.
+
+The production publish job depends on all six required cells and the five-target
+build matrix. It downloads only artifacts from the same workflow attempt,
+rejects missing or extra targets or cells, and requires every cell to be
+`passed` for the corresponding raw build digest. It then packages the raw files
+without invoking a Volicord build and verifies the extracted archive member
+against the same digest before upload. Existing release assets are not replaced
+by a rerun. A skipped or queued self-hosted job, missing Codex artifact, missing
+or incomplete evidence, unavailable WSL2 execution, digest drift, or absent
+target blocks publication.
 
 An artifact is registered for runtime support only when one support-catalog
 entry exactly
@@ -521,6 +584,9 @@ cross-checks every support and evidence entry against an actual required cell.
 ```sh
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate TARGET --platform PLATFORM
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-build-artifact --build-artifact-dir BUILD_DIR --source-revision REVISION --target TARGET
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-cell-evidence --build-artifact-dir BUILD_DIR --evidence-artifact-dir EVIDENCE_DIR --source-revision REVISION --target TARGET --platform PLATFORM
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --verify-publish-evidence --build-root BUILD_ROOT --evidence-root EVIDENCE_ROOT --source-revision REVISION --run-id RUN_ID --run-attempt RUN_ATTEMPT
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
@@ -539,8 +605,14 @@ contract. `--target TARGET --platform PLATFORM` is the blocking replay gate and
 succeeds only when that exact required cell already has an
 exact checked-in `passed` evidence entry matching runtime policy. An absent
 entry fails as `not_run`; a checked-in `failed` or `unavailable` entry also
-fails. Therefore the honest current `entries: []` sources fail closed and cannot
-pass publication.
+fails. The release workflow uses one capture per current build artifact rather
+than replaying the scenario catalog a second time. `--verify-build-artifact`
+checks the downloaded raw executable before that capture;
+`--verify-cell-evidence` rehashes it and verifies the complete retained cell
+evidence afterward. `--verify-publish-evidence` requires the exact five builds
+and six passing cell artifacts from one workflow attempt. The honest current
+empty support catalog blocks capture; an empty checked-in evidence source still
+blocks checked-in replay.
 
 The producer and gate perform these checks in order:
 
@@ -587,7 +659,7 @@ or blocking replay:
 | Variable | Required value |
 |---|---|
 | `VOLICORD_CODEX_RELEASE_CODEX_PATH` | Canonical symlink-free path of the exact finalized Codex executable. It is a host path for native cells and an absolute Linux ext4 path inside the selected distribution for WSL2. |
-| `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` | Canonical symlink-free path of the exact Volicord executable named by `volicord_artifact_digest`, using the same native-or-WSL2 path rule. |
+| `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` | Canonical symlink-free path of the exact Volicord executable named by `volicord_artifact_digest`, using the same native-or-WSL2 path rule. In the release workflow this is set only to the downloaded raw build artifact, or to its digest-identical WSL2 ext4 copy. A runner-installed Volicord executable is not eligible. |
 | `VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER` | Canonical host path of the platform-provisioned scenario driver. For WSL2 it is a native Windows coordinator capable of surviving and verifying a distribution shutdown and restart. |
 | `VOLICORD_CODEX_RELEASE_EVIDENCE_DIR` | Existing, empty, canonical host directory outside the source checkout, Cargo target directory, maintained docs, Product Repository, and Runtime Home. |
 | `VOLICORD_CODEX_RELEASE_WORK_ROOT` | Existing, empty work root outside repository-owned paths. For WSL2 it is an absolute ext4 directory inside the selected distribution. |

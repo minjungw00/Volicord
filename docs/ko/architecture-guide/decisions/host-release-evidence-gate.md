@@ -28,6 +28,14 @@ x86_64-pc-windows-msvc / native_windows
 x86_64-unknown-linux-gnu / wsl2
 ```
 
+게시하는 각 Volicord target을 한 번만 빌드합니다. 빌드 job은 target, source revision,
+실행 파일 이름, raw 실행 파일 SHA-256을 기록하고 raw byte를 변경 불가능한 workflow
+아티팩트로 업로드합니다. 일치하는 모든 셀은 그 아티팩트를 다운로드합니다. WSL2는
+같은 Linux x86-64 byte를 ext4로 옮기고 그 안에서 digest를 검증합니다. 각 셀은 한
+번 검증하고 그 digest를 결속한 새 외부 증거를 생성합니다. 게시 단계는 통과한 셀
+여섯 개를 모두 요구하고 같은 빌드 아티팩트 다섯 개를 다운로드하며, 다시 빌드하지
+않고 패키징한 뒤 archive에서 추출한 각 실행 파일을 검증한 raw digest와 대조합니다.
+
 각 외부 `CodexReleaseEvidenceEntry`는 두 아티팩트 digest, 하나의
 `PlatformEnvironment`, 완전한 첫 release `CodexCapability` 집합,
 `integration_profile=record`, 정확한 target 및 runner 좌표, scenario 결과,
@@ -46,11 +54,16 @@ closed로 동작합니다. 릴리스 증거는 사용하지 않습니다.
 
 ## 결과
 
-- signing, stripping, packaging 또는 어떤 바이트 변경도 새 digest 검증을 요구합니다.
+- signing, stripping 또는 실행 파일 byte 변경은 새 빌드 아티팩트와 새 digest 검증을
+  요구합니다. 패키징은 실행 파일을 둘러싼 archive와 metadata만 바꿀 수 있습니다.
 - 외부 증거의 Volicord digest는 내장 지원 카탈로그 identity를 바꾸지 않습니다.
 - 외부 릴리스 증거는 내장 resource, 생성 Rust 상수, build script 입력이 되지
   않습니다.
 - WSL2는 native Linux와 native Windows에서 독립적입니다.
+- Native Linux와 WSL2는 같은 Linux x86-64 빌드 아티팩트에 대해 서로 다른 증거를
+  생성합니다.
+- 빌드, runner, Codex 아티팩트, 증거 entry, WSL2 실행 중 하나라도 없으면 게시를
+  차단합니다.
 - Linux 및 macOS architecture는 서로 독립적인 target identity입니다.
 - mock과 parser fixture는 release evidence가 아닙니다.
 - failed, unavailable, not-run 결과는 명시적으로 남고 passing으로 바꿀 수 없습니다.

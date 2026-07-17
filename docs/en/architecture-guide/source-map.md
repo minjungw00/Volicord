@@ -66,7 +66,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
-| `tests/release-validation/` | Exact finalized Codex and Volicord artifact validation, the five-target/six-cell contract, and the external release-evidence manifest. |
+| `tests/release-validation/` | Exact finalized Codex and Volicord artifact validation, the five-target/six-cell contract, immutable raw-build and publication continuity, and the external release-evidence manifest. `src/pipeline.rs` verifies build metadata, cell evidence artifacts, and the complete publish input set. |
 | `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store, and request helpers. |
 
 Update this map when a durable responsibility moves. Do not list removed,

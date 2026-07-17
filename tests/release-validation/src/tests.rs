@@ -658,7 +658,7 @@ fn release_target_contract_rejects_missing_duplicate_or_mismatched_cells() {
 }
 
 #[test]
-fn packaging_and_ci_matrices_match_the_release_target_contract() {
+fn release_workflow_builds_once_and_publishes_only_validated_raw_artifacts() {
     let root = repository_root();
     let contract = load_release_target_contract(&root.join(RELEASE_TARGETS_PATH))
         .expect("release target contract");
@@ -666,9 +666,10 @@ fn packaging_and_ci_matrices_match_the_release_target_contract() {
         &fs::read_to_string(root.join(".github/workflows/release.yml")).expect("release workflow"),
     )
     .expect("release workflow YAML");
-    let packaging_entries = release["jobs"]["binary"]["strategy"]["matrix"]["include"]
+    let build_job = &release["jobs"]["build-binaries"];
+    let packaging_entries = build_job["strategy"]["matrix"]["include"]
         .as_sequence()
-        .expect("binary packaging matrix");
+        .expect("raw binary build matrix");
     let packaging = packaging_entries
         .iter()
         .map(|entry| {
@@ -688,26 +689,60 @@ fn packaging_and_ci_matrices_match_the_release_target_contract() {
             .copied()
             .collect::<BTreeSet<_>>()
     );
-
-    let release_cell_entries = release["jobs"]
+    let all_release_runs = release["jobs"]
         .as_mapping()
         .expect("release jobs")
         .values()
-        .flat_map(|job| {
-            job["steps"]
-                .as_sequence()
-                .into_iter()
-                .flatten()
-                .filter_map(|step| step["run"].as_str())
-        })
-        .filter(|run| run.contains("codex-release-cell-gate -- --target"))
-        .map(release_cell_from_gate_command)
+        .flat_map(workflow_job_runs)
         .collect::<Vec<_>>();
-    let release_cells = release_cell_entries
+    let volicord_build_commands = all_release_runs
         .iter()
-        .copied()
+        .filter(|run| {
+            run.contains("cargo build")
+                && run.contains("-p volicord-cli")
+                && run.contains("--bin volicord")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(volicord_build_commands.len(), 1);
+    assert!(workflow_job_runs(build_job).any(|run| {
+        run.contains("volicord.release-build-artifact")
+            && run.contains("source_revision")
+            && run.contains("binary_sha256")
+    }));
+    assert!(build_job["steps"]
+        .as_sequence()
+        .expect("build steps")
+        .iter()
+        .any(|step| {
+            step["uses"].as_str() == Some("actions/upload-artifact@v4")
+                && step["with"]["name"].as_str()
+                    == Some(
+                        "volicord-build-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}",
+                    )
+                && step["with"]["if-no-files-found"].as_str() == Some("error")
+        }));
+
+    let release_cell_jobs = release["jobs"]
+        .as_mapping()
+        .expect("release jobs")
+        .iter()
+        .filter_map(|(job_id, job)| {
+            workflow_job_runs(job)
+                .find(|run| run.contains("codex-release-cell-gate -- --capture-candidate"))
+                .map(|command| {
+                    (
+                        job_id.as_str().expect("release-cell job ID"),
+                        job,
+                        release_cell_from_gate_command(command),
+                    )
+                })
+        })
+        .collect::<Vec<_>>();
+    let release_cells = release_cell_jobs
+        .iter()
+        .map(|(_, _, cell)| *cell)
         .collect::<BTreeSet<_>>();
-    assert_eq!(release_cell_entries.len(), release_cells.len());
+    assert_eq!(release_cell_jobs.len(), release_cells.len());
     let required_cells = contract
         .required_cells()
         .iter()
@@ -720,19 +755,69 @@ fn packaging_and_ci_matrices_match_the_release_target_contract() {
         })
         .collect::<BTreeSet<_>>();
     assert_eq!(release_cells, required_cells);
-    let gate_job_ids = release["jobs"]
-        .as_mapping()
-        .expect("release jobs")
+
+    let artifact_suffix = "${{ github.run_id }}-${{ github.run_attempt }}";
+    for (_, job, (target, platform, _)) in &release_cell_jobs {
+        let needs = job["needs"].as_sequence().expect("release-cell needs");
+        assert!(needs
+            .iter()
+            .any(|need| need.as_str() == Some("build-binaries")));
+        let expected_build_name = format!("volicord-build-{target}-{artifact_suffix}");
+        let expected_evidence_name = format!(
+            "volicord-release-evidence-{target}-{}-{artifact_suffix}",
+            platform.as_str()
+        );
+        let steps = job["steps"].as_sequence().expect("release-cell steps");
+        assert!(steps.iter().any(|step| {
+            step["uses"].as_str() == Some("actions/download-artifact@v4")
+                && step["with"]["name"].as_str() == Some(expected_build_name.as_str())
+        }));
+        assert!(steps.iter().any(|step| {
+            step["uses"].as_str() == Some("actions/upload-artifact@v4")
+                && step["with"]["name"].as_str() == Some(expected_evidence_name.as_str())
+                && step["with"]["if-no-files-found"].as_str() == Some("error")
+        }));
+        let runs = workflow_job_runs(job).collect::<Vec<_>>();
+        assert!(runs
+            .iter()
+            .any(|run| run.contains("--verify-build-artifact")));
+        assert!(runs
+            .iter()
+            .any(|run| run.contains("--verify-cell-evidence")));
+        assert!(runs.iter().any(|run| {
+            run.contains("VOLICORD_CODEX_RELEASE_VOLICORD_PATH=")
+                && (run.contains("/build/volicord")
+                    || run.contains("build/volicord.exe")
+                    || *platform == PlatformEnvironment::Wsl2)
+        }));
+    }
+
+    let linux_x86_job = release_cell_jobs
         .iter()
-        .filter_map(|(job_id, job)| {
-            let has_gate = job["steps"]
-                .as_sequence()
-                .into_iter()
-                .flatten()
-                .filter_map(|step| step["run"].as_str())
-                .any(|run| run.contains("codex-release-cell-gate -- --target"));
-            has_gate.then(|| job_id.as_str().expect("job id").to_owned())
+        .find(|(_, _, cell)| {
+            cell.0 == ReleaseTargetTriple::X86_64UnknownLinuxGnu
+                && cell.1 == PlatformEnvironment::Linux
         })
+        .expect("native Linux x86-64 cell")
+        .1;
+    let wsl2_job = release_cell_jobs
+        .iter()
+        .find(|(_, _, cell)| cell.1 == PlatformEnvironment::Wsl2)
+        .expect("WSL2 cell")
+        .1;
+    let linux_download = downloaded_artifact_name(linux_x86_job);
+    let wsl2_download = downloaded_artifact_name(wsl2_job);
+    assert_eq!(linux_download, wsl2_download);
+    assert!(workflow_job_runs(wsl2_job).any(|run| {
+        run.contains("wsl.exe")
+            && run.contains("cp --")
+            && run.contains("sha256sum --")
+            && run.contains("VOLICORD_CODEX_RELEASE_VOLICORD_PATH")
+    }));
+
+    let gate_job_ids = release_cell_jobs
+        .iter()
+        .map(|(job_id, _, _)| (*job_id).to_owned())
         .collect::<BTreeSet<_>>();
     let publish_needs = release["jobs"]["publish-release"]["needs"]
         .as_sequence()
@@ -742,6 +827,44 @@ fn packaging_and_ci_matrices_match_the_release_target_contract() {
         .collect::<BTreeSet<_>>();
     assert_eq!(gate_job_ids.len(), 6);
     assert!(gate_job_ids.is_subset(&publish_needs));
+    assert!(publish_needs.contains("build-binaries"));
+
+    let publish_job = &release["jobs"]["publish-release"];
+    let publish_runs = workflow_job_runs(publish_job).collect::<Vec<_>>();
+    assert!(publish_runs.iter().all(|run| {
+        !run.contains("cargo build")
+            && !run.contains("-p volicord-cli")
+            && !run.contains("--bin volicord ")
+    }));
+    assert!(publish_runs
+        .iter()
+        .any(|run| run.contains("--verify-publish-evidence")));
+    assert!(publish_runs
+        .iter()
+        .any(|run| run.contains("scripts/package-release-artifacts.sh")));
+    assert!(publish_runs.iter().all(|run| !run.contains("--clobber")));
+    let publish_steps = publish_job["steps"].as_sequence().expect("publish steps");
+    assert!(publish_steps.iter().any(|step| {
+        step["uses"].as_str() == Some("actions/download-artifact@v4")
+            && step["with"]["pattern"]
+                .as_str()
+                .is_some_and(|pattern| pattern.starts_with("volicord-build-*"))
+    }));
+    assert!(publish_steps.iter().any(|step| {
+        step["uses"].as_str() == Some("actions/download-artifact@v4")
+            && step["with"]["pattern"]
+                .as_str()
+                .is_some_and(|pattern| pattern.starts_with("volicord-release-evidence-*"))
+    }));
+
+    let package_script = fs::read_to_string(root.join("scripts/package-release-artifacts.sh"))
+        .expect("release packaging script");
+    assert!(!package_script.contains("cargo"));
+    assert!(package_script.contains("source_binary=\"$artifact/$binary_name\""));
+    assert!(package_script.contains("sha256_file \"$verification/$binary_name\""));
+    for target in contract.published_targets() {
+        assert!(package_script.contains(target.as_str()));
+    }
 
     let ci: serde_yaml::Value = serde_yaml::from_str(
         &fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("CI workflow"),
@@ -973,14 +1096,32 @@ fn parse_platform_value(value: &str) -> PlatformEnvironment {
     }
 }
 
+fn workflow_job_runs(job: &serde_yaml::Value) -> impl Iterator<Item = &str> {
+    job["steps"]
+        .as_sequence()
+        .into_iter()
+        .flatten()
+        .filter_map(|step| step["run"].as_str())
+}
+
+fn downloaded_artifact_name(job: &serde_yaml::Value) -> &str {
+    job["steps"]
+        .as_sequence()
+        .expect("workflow job steps")
+        .iter()
+        .find(|step| step["uses"].as_str() == Some("actions/download-artifact@v4"))
+        .and_then(|step| step["with"]["name"].as_str())
+        .expect("exact downloaded artifact name")
+}
+
 fn release_cell_from_gate_command(
     command: &str,
 ) -> (ReleaseTargetTriple, PlatformEnvironment, IntegrationProfile) {
     let tokens = command.split_whitespace().collect::<Vec<_>>();
     let target_index = tokens
         .iter()
-        .position(|token| *token == "--target")
-        .expect("release gate target flag");
+        .position(|token| *token == "--capture-candidate")
+        .expect("release capture target flag");
     let platform_index = tokens
         .iter()
         .position(|token| *token == "--platform")

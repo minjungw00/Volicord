@@ -75,7 +75,7 @@ the public method execution path.
 | `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection binding, operation-category, and public schema snapshot tests. |
-| `tests/release-validation` | Canonical five-target/six-cell release contract, external release-evidence path, shared release scenarios, catalog cross-checks, and exact target/environment Codex release cells. It owns no production runtime behavior. |
+| `tests/release-validation` | Canonical five-target/six-cell release contract, immutable build-artifact and publish-input continuity checks, external release-evidence path, shared release scenarios, catalog cross-checks, and exact target/environment Codex release cells. It owns no production runtime behavior. |
 | `xtask` | Repository maintenance tooling for documentation validation; it is outside Volicord runtime architecture. |
 
 ## Dependency boundaries

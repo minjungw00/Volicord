@@ -1,7 +1,7 @@
 //! Executable producer and blocking gate for exact Codex release cells.
 
 mod platform;
-mod scenarios;
+pub(crate) mod scenarios;
 
 use std::{
     env, fs,
@@ -196,9 +196,10 @@ pub fn run_checked_in_cell_gate(
 
 /// Executes one qualifying platform attempt and writes a new external review candidate.
 ///
-/// This producer never edits or promotes either canonical contract. Release
-/// publication continues to require `run_checked_in_cell_gate` against reviewed
-/// external evidence that matches the embedded support catalog.
+/// This producer never edits or promotes either canonical contract. A release
+/// workflow may publish only after the pipeline gate verifies the fresh complete
+/// evidence for every required cell against the same immutable build artifacts.
+/// `run_checked_in_cell_gate` remains the separate reviewed-evidence replay route.
 pub fn capture_candidate_cell(
     target_triple: ReleaseTargetTriple,
     platform: PlatformEnvironment,

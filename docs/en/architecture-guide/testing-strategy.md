@@ -56,6 +56,15 @@ cross-checking against the catalog. The evidence manifest may contain zero
 through six entries and must report only actual attempts. A `passed` result is
 release evidence only for its exact catalog coordinates and Volicord digest.
 
+Repository-native workflow tests parse `.github/workflows/release.yml` and
+cross-check it against the five-target/six-cell contract. They require one raw
+build matrix, exact build-artifact downloads in every cell, shared Linux x86-64
+provenance for native Linux and WSL2, all required cell dependencies at
+publication, no Volicord rebuild in publication, complete digest-bound evidence,
+and archive-member rehashing. The release integrity gate separately rejects
+changed raw binaries, build metadata mismatches, incomplete cell evidence, and
+unvalidated publish inputs.
+
 Mock, fixture, rebuilt, selected, or neighboring artifacts cannot replace the
 final bytes. Failed, unavailable, and not-run scenarios remain explicit in the
 evidence rules owned by

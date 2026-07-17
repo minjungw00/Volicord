@@ -12,9 +12,11 @@ on:
       - "scripts/install.ps1"
       - "scripts/smoke-test-binary.sh"
       - "scripts/smoke-test-binary.ps1"
+      - "scripts/package-release-artifacts.sh"
       - "Cargo.toml"
       - "Cargo.lock"
       - "Dockerfile"
+      - "Dockerfile.release"
       - "crates/**"
       - "tests/release-validation/**"
       - "tests/**/Cargo.toml"
@@ -67,7 +69,9 @@ jobs:
   codex-release-cell-linux-x86-64:
     name: Codex x86-64 native Linux release cell
     if: github.event_name != 'pull_request'
-    needs: codex-release-contract
+    needs:
+      - codex-release-contract
+      - build-binaries
     runs-on: [self-hosted, volicord-release, linux, native-linux, x64]
     steps:
       - name: Check out repository
@@ -84,26 +88,52 @@ jobs:
           set -eu
           root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-x86-64"
           test ! -e "$root"
-          mkdir -p "$root/evidence" "$root/work"
+          mkdir -p "$root/release-evidence-artifact/scenario-evidence" "$root/work"
           {
-            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/release-evidence-artifact/scenario-evidence"
+            echo "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH=$root/release-evidence-artifact/release-evidence.json"
+            echo "VOLICORD_CODEX_RELEASE_VOLICORD_PATH=$root/build/volicord"
             echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
             echo "VOLICORD_HOME=$root/work/runtime-home"
           } >> "$GITHUB_ENV"
 
-      - name: Report checked-in platform statuses
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+      - name: Download the immutable Linux x86-64 build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: volicord-build-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-x86-64/build
 
-      - name: Execute blocking x86-64 native Linux cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
+      - name: Restore executable mode without changing candidate bytes
+        run: chmod 0755 "$VOLICORD_CODEX_RELEASE_VOLICORD_PATH"
+
+      - name: Verify the downloaded binary and build metadata before execution
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-build-artifact
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-x86-64/build"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-unknown-linux-gnu
+
+      - name: Validate the downloaded x86-64 native Linux binary once and capture evidence
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform linux
+
+      - name: Rehash the binary and verify complete passing cell evidence
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-cell-evidence
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-x86-64/build"
+          --evidence-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-x86-64/release-evidence-artifact"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-unknown-linux-gnu
+          --platform linux
 
       - name: Upload bounded Linux scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-linux-x86-64-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-x86-64/evidence
-          if-no-files-found: warn
+          name: volicord-release-evidence-x86_64-unknown-linux-gnu-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-x86-64/release-evidence-artifact
+          if-no-files-found: error
 
       - name: Remove disposable Linux cell roots
         if: always()
@@ -116,7 +146,9 @@ jobs:
   codex-release-cell-linux-arm64:
     name: Codex AArch64 native Linux release cell
     if: github.event_name != 'pull_request'
-    needs: codex-release-contract
+    needs:
+      - codex-release-contract
+      - build-binaries
     runs-on: [self-hosted, volicord-release, linux, native-linux, arm64]
     steps:
       - name: Check out repository
@@ -133,26 +165,52 @@ jobs:
           set -eu
           root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-linux-arm64"
           test ! -e "$root"
-          mkdir -p "$root/evidence" "$root/work"
+          mkdir -p "$root/release-evidence-artifact/scenario-evidence" "$root/work"
           {
-            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/release-evidence-artifact/scenario-evidence"
+            echo "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH=$root/release-evidence-artifact/release-evidence.json"
+            echo "VOLICORD_CODEX_RELEASE_VOLICORD_PATH=$root/build/volicord"
             echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
             echo "VOLICORD_HOME=$root/work/runtime-home"
           } >> "$GITHUB_ENV"
 
-      - name: Report checked-in platform statuses
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+      - name: Download the immutable Linux AArch64 build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: volicord-build-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/build
 
-      - name: Execute blocking AArch64 native Linux cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
+      - name: Restore executable mode without changing candidate bytes
+        run: chmod 0755 "$VOLICORD_CODEX_RELEASE_VOLICORD_PATH"
+
+      - name: Verify the downloaded binary and build metadata before execution
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-build-artifact
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/build"
+          --source-revision "${{ github.sha }}"
+          --target aarch64-unknown-linux-gnu
+
+      - name: Validate the downloaded AArch64 native Linux binary once and capture evidence
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-unknown-linux-gnu --platform linux
+
+      - name: Rehash the binary and verify complete passing cell evidence
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-cell-evidence
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/build"
+          --evidence-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/release-evidence-artifact"
+          --source-revision "${{ github.sha }}"
+          --target aarch64-unknown-linux-gnu
+          --platform linux
 
       - name: Upload bounded Linux AArch64 scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-linux-arm64-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/evidence
-          if-no-files-found: warn
+          name: volicord-release-evidence-aarch64-unknown-linux-gnu-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-linux-arm64/release-evidence-artifact
+          if-no-files-found: error
 
       - name: Remove disposable Linux AArch64 cell roots
         if: always()
@@ -165,7 +223,9 @@ jobs:
   codex-release-cell-macos-arm64:
     name: Codex Apple Silicon native macOS release cell
     if: github.event_name != 'pull_request'
-    needs: codex-release-contract
+    needs:
+      - codex-release-contract
+      - build-binaries
     runs-on: [self-hosted, volicord-release, macos, native-macos, arm64]
     steps:
       - name: Check out repository
@@ -182,26 +242,52 @@ jobs:
           set -eu
           root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos-arm64"
           test ! -e "$root"
-          mkdir -p "$root/evidence" "$root/work"
+          mkdir -p "$root/release-evidence-artifact/scenario-evidence" "$root/work"
           {
-            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/release-evidence-artifact/scenario-evidence"
+            echo "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH=$root/release-evidence-artifact/release-evidence.json"
+            echo "VOLICORD_CODEX_RELEASE_VOLICORD_PATH=$root/build/volicord"
             echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
             echo "VOLICORD_HOME=$root/work/runtime-home"
           } >> "$GITHUB_ENV"
 
-      - name: Report checked-in platform statuses
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+      - name: Download the immutable Apple Silicon build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: volicord-build-aarch64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-arm64/build
 
-      - name: Execute blocking Apple Silicon native macOS cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
+      - name: Restore executable mode without changing candidate bytes
+        run: chmod 0755 "$VOLICORD_CODEX_RELEASE_VOLICORD_PATH"
+
+      - name: Verify the downloaded binary and build metadata before execution
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-build-artifact
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-arm64/build"
+          --source-revision "${{ github.sha }}"
+          --target aarch64-apple-darwin
+
+      - name: Validate the downloaded Apple Silicon binary once and capture evidence
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-apple-darwin --platform macos
+
+      - name: Rehash the binary and verify complete passing cell evidence
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-cell-evidence
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-arm64/build"
+          --evidence-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-arm64/release-evidence-artifact"
+          --source-revision "${{ github.sha }}"
+          --target aarch64-apple-darwin
+          --platform macos
 
       - name: Upload bounded macOS scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-macos-arm64-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-arm64/evidence
-          if-no-files-found: warn
+          name: volicord-release-evidence-aarch64-apple-darwin-macos-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-arm64/release-evidence-artifact
+          if-no-files-found: error
 
       - name: Remove disposable macOS cell roots
         if: always()
@@ -214,7 +300,9 @@ jobs:
   codex-release-cell-macos-x86-64:
     name: Codex Intel x86-64 native macOS release cell
     if: github.event_name != 'pull_request'
-    needs: codex-release-contract
+    needs:
+      - codex-release-contract
+      - build-binaries
     runs-on: [self-hosted, volicord-release, macos, native-macos, x64]
     steps:
       - name: Check out repository
@@ -231,26 +319,52 @@ jobs:
           set -eu
           root="$RUNNER_TEMP/volicord-codex-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-macos-x86-64"
           test ! -e "$root"
-          mkdir -p "$root/evidence" "$root/work"
+          mkdir -p "$root/release-evidence-artifact/scenario-evidence" "$root/work"
           {
-            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/evidence"
+            echo "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$root/release-evidence-artifact/scenario-evidence"
+            echo "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH=$root/release-evidence-artifact/release-evidence.json"
+            echo "VOLICORD_CODEX_RELEASE_VOLICORD_PATH=$root/build/volicord"
             echo "VOLICORD_CODEX_RELEASE_WORK_ROOT=$root/work"
             echo "VOLICORD_HOME=$root/work/runtime-home"
           } >> "$GITHUB_ENV"
 
-      - name: Report checked-in platform statuses
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+      - name: Download the immutable Intel macOS build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: volicord-build-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-x86-64/build
 
-      - name: Execute blocking Intel x86-64 native macOS cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-apple-darwin --platform macos
+      - name: Restore executable mode without changing candidate bytes
+        run: chmod 0755 "$VOLICORD_CODEX_RELEASE_VOLICORD_PATH"
+
+      - name: Verify the downloaded binary and build metadata before execution
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-build-artifact
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-x86-64/build"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-apple-darwin
+
+      - name: Validate the downloaded Intel x86-64 binary once and capture evidence
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-apple-darwin --platform macos
+
+      - name: Rehash the binary and verify complete passing cell evidence
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-cell-evidence
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-x86-64/build"
+          --evidence-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-x86-64/release-evidence-artifact"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-apple-darwin
+          --platform macos
 
       - name: Upload bounded macOS x86-64 scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-macos-x86-64-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-x86-64/evidence
-          if-no-files-found: warn
+          name: volicord-release-evidence-x86_64-apple-darwin-macos-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-macos-x86-64/release-evidence-artifact
+          if-no-files-found: error
 
       - name: Remove disposable macOS x86-64 cell roots
         if: always()
@@ -263,7 +377,9 @@ jobs:
   codex-release-cell-native-windows:
     name: Codex native Windows release cell
     if: github.event_name != 'pull_request'
-    needs: codex-release-contract
+    needs:
+      - codex-release-contract
+      - build-binaries
     runs-on: [self-hosted, volicord-release, windows, native-windows, x64]
     steps:
       - name: Check out repository
@@ -282,26 +398,50 @@ jobs:
           if (Test-Path -LiteralPath $root) {
             throw "fresh release-cell root already exists: $root"
           }
-          $evidence = Join-Path $root "evidence"
+          $evidenceArtifact = Join-Path $root "release-evidence-artifact"
+          $evidence = Join-Path $evidenceArtifact "scenario-evidence"
           $work = Join-Path $root "work"
           New-Item -ItemType Directory -Path $evidence, $work | Out-Null
           "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH=$(Join-Path $evidenceArtifact 'release-evidence.json')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_CODEX_RELEASE_VOLICORD_PATH=$(Join-Path $root 'build/volicord.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "VOLICORD_CODEX_RELEASE_WORK_ROOT=$work" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "VOLICORD_HOME=$(Join-Path $work 'runtime-home')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Report checked-in platform statuses
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+      - name: Download the immutable native Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: volicord-build-x86_64-pc-windows-msvc-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-native-windows/build
 
-      - name: Execute blocking native Windows cell gate
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-pc-windows-msvc --platform native_windows
+      - name: Verify the downloaded binary and build metadata before execution
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-build-artifact
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-native-windows/build"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-pc-windows-msvc
+
+      - name: Validate the downloaded native Windows binary once and capture evidence
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-pc-windows-msvc --platform native_windows
+
+      - name: Rehash the binary and verify complete passing cell evidence
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-cell-evidence
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-native-windows/build"
+          --evidence-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-native-windows/release-evidence-artifact"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-pc-windows-msvc
+          --platform native_windows
 
       - name: Upload bounded native Windows scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-native-windows-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-native-windows/evidence
-          if-no-files-found: warn
+          name: volicord-release-evidence-x86_64-pc-windows-msvc-native_windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-native-windows/release-evidence-artifact
+          if-no-files-found: error
 
       - name: Remove disposable native Windows cell roots
         if: always()
@@ -318,7 +458,9 @@ jobs:
   codex-release-cell-wsl2:
     name: Codex WSL2 release cell (native Windows supervisor)
     if: github.event_name != 'pull_request'
-    needs: codex-release-contract
+    needs:
+      - codex-release-contract
+      - build-binaries
     runs-on: [self-hosted, volicord-release, windows, wsl2, ubuntu-24.04, x64]
     steps:
       - name: Check out repository on the native Windows supervisor
@@ -338,39 +480,111 @@ jobs:
           if (Test-Path -LiteralPath $hostRoot) {
             throw "fresh release-cell root already exists: $hostRoot"
           }
-          $evidence = Join-Path $hostRoot "evidence"
+          $evidenceArtifact = Join-Path $hostRoot "release-evidence-artifact"
+          $evidence = Join-Path $evidenceArtifact "scenario-evidence"
           New-Item -ItemType Directory -Path $evidence | Out-Null
           $wslHome = (& wsl.exe --distribution $distribution --exec printenv HOME | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or -not $wslHome.StartsWith("/")) {
             throw "cannot resolve the WSL2 distribution home"
           }
-          $work = "$wslHome/volicord-release-cells/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          & wsl.exe --distribution $distribution --exec test '!' -e $work
+          $base = "$wslHome/volicord-release-cells/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $work = "$base/work"
+          $candidateDirectory = "$base/candidate"
+          & wsl.exe --distribution $distribution --exec test '!' -e $base
           if ($LASTEXITCODE -ne 0) {
-            throw "fresh WSL2 ext4 work root already exists: $work"
+            throw "fresh WSL2 ext4 cell root already exists: $base"
           }
-          & wsl.exe --distribution $distribution --exec mkdir -p $work
+          & wsl.exe --distribution $distribution --exec mkdir -p $work $candidateDirectory
           if ($LASTEXITCODE -ne 0) {
-            throw "cannot create WSL2 ext4 work root: $work"
+            throw "cannot create WSL2 ext4 cell roots: $base"
           }
           "VOLICORD_CODEX_RELEASE_EVIDENCE_DIR=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH=$(Join-Path $evidenceArtifact 'release-evidence.json')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VOLICORD_CODEX_RELEASE_VOLICORD_PATH=$candidateDirectory/volicord" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "VOLICORD_CODEX_RELEASE_WORK_ROOT=$work" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "VOLICORD_HOME=$work/runtime-home" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION=$distribution" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Report checked-in platform statuses
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+      - name: Download the same immutable Linux x86-64 build artifact used by native Linux
+        uses: actions/download-artifact@v4
+        with:
+          name: volicord-build-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-wsl2/build
 
-      - name: Execute blocking WSL2 cell gate through the native Windows supervisor
-        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform wsl2
+      - name: Verify the downloaded Linux binary and build metadata before transfer
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-build-artifact
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-wsl2/build"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-unknown-linux-gnu
+
+      - name: Copy the exact Linux bytes into WSL2 ext4 and verify the digest inside WSL2
+        shell: pwsh
+        run: |
+          $distribution = $env:VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION
+          $hostCandidate = Join-Path $env:RUNNER_TEMP "volicord-codex-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-wsl2/build/volicord"
+          $metadataPath = Join-Path (Split-Path -Parent $hostCandidate) "build-metadata.json"
+          $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+          $hostDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $hostCandidate).Hash.ToLowerInvariant()
+          if ($hostDigest -ne $metadata.binary_sha256) {
+            throw "downloaded Linux binary digest changed before WSL2 transfer"
+          }
+          $wslSource = (& wsl.exe --distribution $distribution --exec wslpath -u $hostCandidate | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $wslSource.StartsWith("/mnt/")) {
+            throw "cannot translate the downloaded candidate path for WSL2 transfer"
+          }
+          & wsl.exe --distribution $distribution --exec cp -- $wslSource $env:VOLICORD_CODEX_RELEASE_VOLICORD_PATH
+          if ($LASTEXITCODE -ne 0) {
+            throw "cannot copy the downloaded Linux binary into the WSL2 ext4 candidate path"
+          }
+          & wsl.exe --distribution $distribution --exec chmod 0755 $env:VOLICORD_CODEX_RELEASE_VOLICORD_PATH
+          if ($LASTEXITCODE -ne 0) {
+            throw "cannot make the WSL2 candidate executable"
+          }
+          $wslDigestLine = (& wsl.exe --distribution $distribution --exec sha256sum -- $env:VOLICORD_CODEX_RELEASE_VOLICORD_PATH | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "cannot hash the transferred candidate inside WSL2"
+          }
+          $wslDigest = ($wslDigestLine -split '\s+')[0]
+          if ($wslDigest -ne $metadata.binary_sha256) {
+            throw "WSL2 ext4 candidate digest differs from the downloaded Linux binary"
+          }
+
+      - name: Validate the transferred Linux x86-64 binary once in WSL2 and capture evidence
+        run: cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform wsl2
+
+      - name: Verify the candidate digest inside WSL2 after validation
+        shell: pwsh
+        run: |
+          $metadataPath = Join-Path $env:RUNNER_TEMP "volicord-codex-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-wsl2/build/build-metadata.json"
+          $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+          $digestLine = (& wsl.exe --distribution $env:VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION --exec sha256sum -- $env:VOLICORD_CODEX_RELEASE_VOLICORD_PATH | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "cannot hash the WSL2 candidate after validation"
+          }
+          $digest = ($digestLine -split '\s+')[0]
+          if ($digest -ne $metadata.binary_sha256) {
+            throw "WSL2 candidate bytes changed during release validation"
+          }
+
+      - name: Verify complete passing WSL2 evidence against the same raw build artifact
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-cell-evidence
+          --build-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-wsl2/build"
+          --evidence-artifact-dir "${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-wsl2/release-evidence-artifact"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-unknown-linux-gnu
+          --platform wsl2
 
       - name: Upload bounded WSL2 scenario evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-release-cell-wsl2-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-wsl2/evidence
-          if-no-files-found: warn
+          name: volicord-release-evidence-x86_64-unknown-linux-gnu-wsl2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-codex-release-${{ github.run_id }}-${{ github.run_attempt }}-wsl2/release-evidence-artifact
+          if-no-files-found: error
 
       - name: Remove disposable Windows and WSL2 cell roots
         if: always()
@@ -388,14 +602,14 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $wslHome.StartsWith("/")) {
             throw "cannot resolve the WSL2 distribution home"
           }
-          $work = "$wslHome/volicord-release-cells/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          & wsl.exe --distribution $distribution --exec rm -rf -- $work
+          $base = "$wslHome/volicord-release-cells/$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          & wsl.exe --distribution $distribution --exec rm -rf -- $base
           if ($LASTEXITCODE -ne 0) {
-            throw "cannot remove disposable WSL2 cell root: $work"
+            throw "cannot remove disposable WSL2 cell root: $base"
           }
 
-  binary:
-    name: Binary (${{ matrix.target }})
+  build-binaries:
+    name: Build raw binary once (${{ matrix.target }})
     needs:
       - version-alignment
       - codex-release-contract
@@ -584,50 +798,72 @@ jobs:
         shell: pwsh
         run: ./scripts/smoke-test-binary.ps1 -Bin "target/${{ matrix.target }}/release/volicord.exe"
 
-      - name: Package artifact
+      - name: Stage immutable raw build artifact
         if: runner.os != 'Windows'
         env:
           TARGET: ${{ matrix.target }}
         run: |
           set -eu
           binary="target/$TARGET/release/volicord"
-          package="volicord-$TARGET"
-          dist="dist"
-          staging="$dist/$package"
-          mkdir -p "$staging"
-          cp "$binary" "$staging/volicord"
-          chmod 0755 "$staging/volicord"
-          tar -C "$staging" -czf "$dist/$package.tar.gz" volicord
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$dist/$package.tar.gz" > "$dist/$package.tar.gz.sha256"
+            digest="$(sha256sum "$binary" | awk '{print $1}')"
           else
-            shasum -a 256 "$dist/$package.tar.gz" > "$dist/$package.tar.gz.sha256"
+            digest="$(shasum -a 256 "$binary" | awk '{print $1}')"
           fi
-          rm -rf "$staging"
+          artifact="$RUNNER_TEMP/volicord-build-$TARGET-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$artifact"
+          mkdir -p "$artifact"
+          cp "$binary" "$artifact/volicord"
+          chmod 0755 "$artifact/volicord"
+          if command -v sha256sum >/dev/null 2>&1; then
+            staged_digest="$(sha256sum "$artifact/volicord" | awk '{print $1}')"
+          else
+            staged_digest="$(shasum -a 256 "$artifact/volicord" | awk '{print $1}')"
+          fi
+          test "$staged_digest" = "$digest"
+          printf '%s  volicord\n' "$digest" > "$artifact/volicord.sha256"
+          printf '{"contract_id":"volicord.release-build-artifact","target_triple":"%s","source_revision":"%s","binary_name":"volicord","binary_sha256":"%s"}\n' \
+            "$TARGET" "$GITHUB_SHA" "$digest" > "$artifact/build-metadata.json"
 
-      - name: Package artifact (Windows)
+      - name: Stage immutable raw build artifact (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $target = "${{ matrix.target }}"
           $binary = "target/$target/release/volicord.exe"
-          $package = "volicord-$target"
-          $dist = "dist"
-          $staging = Join-Path $dist $package
-          New-Item -ItemType Directory -Force -Path $staging | Out-Null
-          Copy-Item -LiteralPath $binary -Destination (Join-Path $staging "volicord.exe") -Force
-          Compress-Archive -Path (Join-Path $staging "volicord.exe") -DestinationPath "$dist/$package.zip" -Force
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "$dist/$package.zip").Hash.ToLowerInvariant()
-          Set-Content -LiteralPath "$dist/$package.zip.sha256" -Value "$hash  $package.zip" -Encoding ascii
-          Remove-Item -LiteralPath $staging -Recurse -Force
+          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash.ToLowerInvariant()
+          $artifact = Join-Path $env:RUNNER_TEMP "volicord-build-$target-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if (Test-Path -LiteralPath $artifact) {
+            throw "raw build artifact path already exists: $artifact"
+          }
+          New-Item -ItemType Directory -Path $artifact | Out-Null
+          $candidate = Join-Path $artifact "volicord.exe"
+          Copy-Item -LiteralPath $binary -Destination $candidate
+          $stagedDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidate).Hash.ToLowerInvariant()
+          if ($stagedDigest -ne $digest) {
+            throw "staged raw binary digest differs from the built binary"
+          }
+          [System.IO.File]::WriteAllText(
+            (Join-Path $artifact "volicord.sha256"),
+            "$digest  volicord.exe`n",
+            [System.Text.Encoding]::ASCII
+          )
+          $metadata = [ordered]@{
+            contract_id = "volicord.release-build-artifact"
+            target_triple = $target
+            source_revision = $env:GITHUB_SHA
+            binary_name = "volicord.exe"
+            binary_sha256 = $digest
+          }
+          $metadata | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $artifact "build-metadata.json") -Encoding ascii
 
-      - name: Upload artifact
+      - name: Upload immutable raw binary and digest metadata
         uses: actions/upload-artifact@v4
         with:
-          name: volicord-${{ matrix.target }}
-          path: |
-            dist/volicord-${{ matrix.target }}.*
+          name: volicord-build-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-build-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: error
+          compression-level: 0
 
   windows-test:
     name: Windows cargo test
@@ -647,43 +883,52 @@ jobs:
         run: cargo test --locked --workspace --all-targets --all-features
 
   docker-image:
-    name: Docker image
-    needs: version-alignment
+    name: Docker image from the raw Linux x86-64 build
+    needs:
+      - version-alignment
+      - build-binaries
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Prepare exact container build identity
+      - name: Install Rust
+        run: |
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
+
+      - name: Download the immutable Linux x86-64 build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: volicord-build-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-docker-build-input
+
+      - name: Verify the raw binary before container packaging
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-build-artifact
+          --build-artifact-dir "${{ runner.temp }}/volicord-docker-build-input"
+          --source-revision "${{ github.sha }}"
+          --target x86_64-unknown-linux-gnu
+
+      - name: Package the same raw binary into the image
         run: |
           set -eu
-          git_status="$(git status --porcelain=v1 --untracked-files=normal)"
-          if [ -n "$git_status" ]; then
-            echo "refusing to stamp a clean container build from a dirty checkout:" >&2
-            printf '%s\n' "$git_status" >&2
-            exit 1
-          fi
-          git_commit="$(git rev-parse --verify HEAD | tr '[:upper:]' '[:lower:]')"
-          if [ "$git_commit" != "$GITHUB_SHA" ]; then
-            echo "checkout HEAD does not match GITHUB_SHA" >&2
-            printf 'checkout HEAD: %s\n' "$git_commit" >&2
-            printf 'GITHUB_SHA:   %s\n' "$GITHUB_SHA" >&2
-            exit 1
-          fi
+          context="$RUNNER_TEMP/volicord-docker-context"
+          test ! -e "$context"
+          mkdir -p "$context"
+          cp "$RUNNER_TEMP/volicord-docker-build-input/volicord" "$context/volicord"
+          cp Dockerfile.release "$context/Dockerfile"
+          docker build -t "volicord:${{ github.sha }}" "$context"
 
-      - name: Build image
-        run: |
-          docker build \
-            --build-arg "VOLICORD_BUILD_GIT_COMMIT=${{ github.sha }}" \
-            --build-arg "VOLICORD_BUILD_GIT_DIRTY=false" \
-            -t volicord:${{ github.sha }} \
-            .
-
-      - name: Verify exact container build identity
+      - name: Verify exact binary bytes and build identity inside the image
         run: |
           set -eu
+          expected="$(awk '{print $1}' "$RUNNER_TEMP/volicord-docker-build-input/volicord.sha256")"
+          actual_digest="$(docker run --rm --entrypoint sha256sum "volicord:${{ github.sha }}" /usr/local/bin/volicord | awk '{print $1}')"
+          test "$actual_digest" = "$expected"
           target="x86_64-unknown-linux-gnu"
-          actual="$(docker run --rm volicord:${{ github.sha }} --version)"
+          actual="$(docker run --rm "volicord:${{ github.sha }}" --version)"
           required=";git=$GITHUB_SHA;tree=clean;metadata_source=environment;target=$target;profile=release;profile_class=release;profile_exact=true;"
           case "$actual" in
             "volicord "*" (build_id="*"$required"*")") ;;
@@ -696,13 +941,13 @@ jobs:
           esac
 
       - name: Smoke test image
-        run: docker run --rm volicord:${{ github.sha }} --help
+        run: docker run --rm "volicord:${{ github.sha }}" --help
 
   publish-release:
     name: Publish release assets
     if: startsWith(github.ref, 'refs/tags/')
     needs:
-      - binary
+      - build-binaries
       - codex-release-cell-linux-x86-64
       - codex-release-cell-linux-arm64
       - codex-release-cell-macos-arm64
@@ -718,12 +963,40 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download packaged artifacts
+      - name: Install Rust for the publication integrity gate
+        run: |
+          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
+          rustup default "${{ env.RUST_VERSION }}"
+
+      - name: Download the same immutable raw build artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: volicord-*
-          path: dist
-          merge-multiple: true
+          pattern: volicord-build-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-release-inputs/builds
+
+      - name: Download all six exact release-cell evidence artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: volicord-release-evidence-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/volicord-release-inputs/evidence
+
+      - name: Verify all build digests and complete passing release evidence
+        run: >-
+          cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate --
+          --verify-publish-evidence
+          --build-root "${{ runner.temp }}/volicord-release-inputs/builds"
+          --evidence-root "${{ runner.temp }}/volicord-release-inputs/evidence"
+          --source-revision "${{ github.sha }}"
+          --run-id "${{ github.run_id }}"
+          --run-attempt "${{ github.run_attempt }}"
+
+      - name: Package the verified raw binaries and verify archive contents
+        run: >-
+          sh scripts/package-release-artifacts.sh
+          "${{ runner.temp }}/volicord-release-inputs/builds"
+          dist
+          "${{ github.run_id }}"
+          "${{ github.run_attempt }}"
 
       - name: Add stamped install scripts and aggregate checksums
         run: |
@@ -770,4 +1043,4 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --title "$tag" --notes "Volicord $tag"
           fi
-          gh release upload "$tag" dist/* --clobber
+          gh release upload "$tag" dist/*

@@ -291,14 +291,17 @@ Provision the following runner boundaries before a live invocation:
 | `x86_64-pc-windows-msvc` / `native_windows` | Self-hosted x86-64 native Windows runner labeled `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64`. |
 | `x86_64-unknown-linux-gnu` / `wsl2` | Self-hosted x86-64 native Windows supervisor labeled `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64`, with the exact `Ubuntu-24.04` WSL2 distribution already installed. An Ubuntu GitHub runner is not this boundary. |
 
-Each runner service preprovisions the exact finalized Codex path, the exact
-Volicord path recorded by the cell, the platform scenario driver, and the
-environment-image coordinate through the owner-defined environment variables.
-`RUNNER_NAME` comes from the runner service. The workflow creates fresh
-external evidence and work roots and an absent `VOLICORD_HOME` below the work
-root. The WSL2 runner keeps Codex, Volicord, the Product Repository work root,
-and Runtime Home on ext4 inside `Ubuntu-24.04`; its scenario driver is a native
-Windows coordinator that can survive and verify `wsl_shutdown_restart`.
+Each runner service preprovisions the exact finalized Codex path, platform
+scenario driver, and environment-image coordinate through the owner-defined
+environment variables. It does not select the Volicord release candidate.
+`RUNNER_NAME` comes from the runner service. The workflow downloads the
+target-specific immutable raw build artifact, verifies its revision and digest,
+and sets `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` to that path. It also creates
+fresh external evidence and work roots and an absent `VOLICORD_HOME` below the
+work root. The WSL2 supervisor transfers the downloaded Linux x86-64 bytes to a
+distinct ext4 path inside `Ubuntu-24.04`, verifies the digest inside WSL2, and
+uses a native Windows scenario coordinator that can survive and verify
+`wsl_shutdown_restart`.
 
 For the first qualifying attempt or any recapture, set
 `VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH` to a distinct absent external path
@@ -324,7 +327,8 @@ leaves the attempt unrun; a missing artifact, driver, environment coordinate, or
 prerequisite prevents a qualifying capture. Report these outcomes exactly
 rather than rerouting a job to another runner.
 
-Review the six candidate manifests and replace the external evidence source
+For checked-in replay or an independent audit, review the six candidate
+manifests and replace the external evidence source
 from the [canonical checked-in contracts](../reference/host-release-evidence.md#canonical-checked-in-contracts)
 as one release operation, in the canonical exact-identity order.
 Do not append historical entries, copy evidence between cells, edit a result
@@ -332,7 +336,10 @@ into `passed`, load a test-only descriptor, or treat candidate output as
 checked-in evidence before review. Re-run the contract tests against the
 reviewed manifest.
 
-Then run the blocking replay command once in each same independent environment:
+Then run the blocking replay command once in each same independent environment.
+This manual replay route is separate from the production release workflow,
+which validates each downloaded build once and verifies the fresh evidence
+without executing the scenario catalog a second time:
 
 ```sh
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
@@ -352,19 +359,27 @@ fails the selected job. The current honest `entries: []` support and evidence
 sources fail closed for both candidate capture and blocking replay.
 
 Ordinary `.github/workflows/ci.yml` runs static contract tests only. Pull
-requests to `.github/workflows/release.yml` also skip live jobs. A tag push or
-manual workflow dispatch schedules the five native jobs and the independent
-Windows-supervised WSL2 job. `publish-release` depends on all six, so a queued,
-skipped, unavailable, failed, or `not_run` cell blocks publication.
+requests to `.github/workflows/release.yml` also skip live jobs. The release
+workflow builds each of the five targets once and uploads the raw executable,
+target, source revision, and digest metadata. A tag push or manual workflow
+dispatch schedules the five native jobs and the independent Windows-supervised
+WSL2 job against those artifacts. `publish-release` depends on all six cells
+and the build matrix. It strictly verifies all five builds, all six passing
+manifests, and all retained scenario evidence before packaging the raw binaries
+and rehashing each extracted archive member. A queued, skipped, unavailable,
+failed, or `not_run` cell, missing evidence, or digest mismatch blocks
+publication.
 
-For each target/environment cell, finalize that cell's Codex and Volicord executables after
-every publisher-controlled byte change, calculate both SHA-256 digests, and run
-the same bytes in the matching
+For each target, finalize the Codex executable and the single raw Volicord build
+artifact after every publisher-controlled byte change, calculate both SHA-256
+digests, and run the downloaded Volicord bytes in every matching
 [independent platform cell](../reference/host-release-evidence.md#independent-platform-cells).
 Run the complete
 [required scenario set](../reference/host-release-evidence.md#required-release-validation-scenarios),
-then reopen and rehash both executables. A rebuilt, copied, differently
-packaged, or other-platform executable cannot substitute for those bytes.
+then reopen and rehash both executables. Only the digest-verified WSL2 ext4 copy
+may relocate a candidate. A rebuilt, unverified copy, differently processed,
+or other-platform executable cannot substitute for those bytes. Packaging may
+wrap the validated binary, but the archive member must retain its digest.
 
 Execute all six contract cells independently in their owner-defined environments. Record the actual
 [cell execution status](../reference/host-release-evidence.md#cell-execution-status).

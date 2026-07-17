@@ -1,0 +1,5 @@
+FROM ubuntu:24.04
+
+COPY --chmod=0755 volicord /usr/local/bin/volicord
+
+ENTRYPOINT ["/usr/local/bin/volicord"]

@@ -32,7 +32,7 @@ canonical_for:
   - "Terminology routing for compact MCP runtime schemas and owner-method-bearing `next_action` projections."
   - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and write ticket."
   - "Terminology routing for exact Codex managed bindings, verification receipts, and embedded support entries."
-  - "Terminology routing that separates embedded target-aware Codex runtime support catalogs from external exact-final-artifact release evidence across five published targets and six independent release cells."
+  - "Terminology routing that separates embedded target-aware Codex runtime support catalogs from build-once external exact-final-artifact release evidence and same-bytes publication across five published targets and six independent release cells."
   - "Terminology routing for `ExternalContractDescriptor`, exact external-contract registry identity, `unsupported_external_contract`, and shared Git object-ID wording."
   - "Terminology routing for the product-wide `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`, `Corrupt`, and `UnsupportedContract` failure categories."
   - "Preferred verification criteria wording for user-visible criteria used to check work."
@@ -2306,6 +2306,9 @@ terms:
       - "platform_environment"
       - "integration_profile"
       - "volicord_artifact_digest"
+      - "source_revision"
+      - "binary_name"
+      - "binary_sha256"
       - "validation_result"
       - "evidence_digest"
       - "unsupported_host_artifact"
@@ -2322,6 +2325,7 @@ terms:
     notes:
       - "Use for the strict separation between embedded target-aware exact Codex runtime support policy and external finalized Codex and Volicord artifact evidence across five published targets and six independent environment cells."
       - "An external evidence manifest may honestly contain zero through six cells; only an exact passed evidence entry that matches the artifact digest, target triple, platform environment, integration profile, and support catalog establishes release eligibility for its own coordinates."
+      - "Every published Volicord target is built once; each required cell consumes that raw build artifact, and publication packages the same executable bytes after complete passing evidence is verified."
       - "Runtime support comes only from the embedded support catalog and never from external release evidence."
       - "Release evidence is not Core authority, runtime identity, user identity, or host attestation."
   record_profile:

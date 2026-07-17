@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, fs, path::Path, process::Command, time::Duratio
 
 use serde::{Deserialize, Serialize};
 use volicord_types::{
-    canonical_json_bare_sha256, CodexReleaseEvidenceEntry, CodexReleaseScenarioId,
+    canonical_json_bare_sha256, CodexCapability, CodexReleaseEvidenceEntry, CodexReleaseScenarioId,
     CodexReleaseScenarioResult, CodexReleaseScenarioStatus, PlatformEnvironment,
     ReleaseTargetTriple, RequiredNullable, UtcTimestamp, FIRST_RELEASE_CODEX_CAPABILITIES,
 };
@@ -130,6 +130,23 @@ struct ScenarioEvidenceEnvelope<'a> {
     scenario_definition: ScenarioDefinition,
     outcome_status: CodexReleaseScenarioStatus,
     outcome_reason: &'a RequiredNullable<String>,
+    driver_payload_digest: RequiredNullable<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetainedScenarioEvidenceEnvelope {
+    scenario_id: CodexReleaseScenarioId,
+    target_triple: ReleaseTargetTriple,
+    platform: PlatformEnvironment,
+    codex_artifact_digest: String,
+    volicord_artifact_digest: String,
+    scenario_driver_digest: String,
+    integration_profile: String,
+    observed_capabilities: Vec<CodexCapability>,
+    scenario_definition: ScenarioDefinition,
+    outcome_status: CodexReleaseScenarioStatus,
+    outcome_reason: RequiredNullable<String>,
     driver_payload_digest: RequiredNullable<String>,
 }
 
@@ -352,6 +369,84 @@ fn validate_evidence_directory(
         ));
     }
     Ok(())
+}
+
+pub(crate) fn verify_retained_scenario_evidence(
+    context: &ValidationContext,
+    directory: &Path,
+    entry: &CodexReleaseEvidenceEntry,
+) -> ValidationResult<()> {
+    context.validate_existing_directory(directory)?;
+    let mut expected_names = BTreeSet::new();
+    for (index, result) in entry
+        .validation_evidence
+        .scenario_results
+        .iter()
+        .enumerate()
+    {
+        if result.status != CodexReleaseScenarioStatus::Passed {
+            return Err(ValidationError::new(format!(
+                "release publication requires scenario {} to be passed",
+                result.scenario_id.as_str()
+            )));
+        }
+        let stem = format!("{:02}-{}", index + 1, result.scenario_id.as_str());
+        let envelope_name = format!("{stem}.evidence");
+        let driver_name = format!("{stem}.driver-evidence");
+        expected_names.insert(envelope_name.clone());
+        expected_names.insert(driver_name.clone());
+
+        let envelope_path = directory.join(envelope_name);
+        let envelope: RetainedScenarioEvidenceEnvelope =
+            read_strict_json(context, &envelope_path, MAX_EVIDENCE_BYTES)?;
+        let definition = scenario_definition(result.scenario_id);
+        if envelope.scenario_id != result.scenario_id
+            || envelope.target_triple != entry.target_triple
+            || envelope.platform != entry.platform_environment
+            || envelope.codex_artifact_digest != entry.codex_artifact_digest
+            || envelope.volicord_artifact_digest
+                != entry.validation_evidence.volicord_artifact_digest
+            || !volicord_types::is_canonical_sha256_hex(&envelope.scenario_driver_digest)
+            || envelope.integration_profile != "record"
+            || envelope.observed_capabilities != FIRST_RELEASE_CODEX_CAPABILITIES
+            || envelope.scenario_definition != definition
+            || envelope.outcome_status != CodexReleaseScenarioStatus::Passed
+            || envelope.outcome_reason.is_some()
+        {
+            return Err(ValidationError::new(format!(
+                "retained scenario evidence does not match the passing {} release cell",
+                result.scenario_id.as_str()
+            )));
+        }
+        let expected_envelope_digest = result.evidence_digest.as_ref().ok_or_else(|| {
+            ValidationError::new("passed scenario is missing its evidence digest")
+        })?;
+        let actual_envelope_digest =
+            sha256_external_file(context, &envelope_path, Some(MAX_EVIDENCE_BYTES))?;
+        if &actual_envelope_digest != expected_envelope_digest {
+            return Err(ValidationError::new(format!(
+                "retained scenario envelope digest changed for {}",
+                result.scenario_id.as_str()
+            )));
+        }
+
+        let driver_path = directory.join(driver_name);
+        let driver_evidence: DriverScenarioEvidence =
+            read_strict_json(context, &driver_path, MAX_EVIDENCE_BYTES)?;
+        validate_driver_evidence(
+            entry.platform_environment,
+            result.scenario_id,
+            &driver_evidence,
+        )?;
+        let actual_driver_digest = canonical_json_bare_sha256(&driver_evidence)?;
+        if envelope.driver_payload_digest.as_ref() != Some(&actual_driver_digest) {
+            return Err(ValidationError::new(format!(
+                "retained scenario driver evidence digest changed for {}",
+                result.scenario_id.as_str()
+            )));
+        }
+    }
+    validate_evidence_directory(directory, &expected_names)
 }
 
 impl ScenarioDriverInvocation<'_> {
