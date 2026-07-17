@@ -66,49 +66,11 @@ Display output must:
 - link back to the relevant owner when a reader needs the authority record
 - treat hand-edited or stale display as display to discard or recompute, not as Core repair input
 
-<a id="managed-final-output-authority-disclosure"></a>
-## Managed final-output authority disclosure
-
-The managed final-output authority disclosure is a read-only `Projection` of a
-fresh `volicord.status` result. On every built-in managed-adapter final-output
-delivery that proceeds after the canonical binding and receipt checks owned by
-[Agent Connection](agent-connection.md#core-receipt-validation),
-including an exact host-event replay and a best-effort delivery whose typed
-feature state is not `verified`, the adapter must obtain and validate a new
-status result. Best-effort operation does not establish a support claim or
-relax this freshness rule; such a claim still requires
-`support_status=verified`. The adapter must not reuse a receipt cached in model
-prose, a mutation response, a prior Stop result, a persisted guard event, or an
-earlier display.
-
-The projection must validate the result/read-only/non-dry-run branch and the
-receipt's project, Task, Task reference version, `state_version`, scope revision,
-current Change Unit, evidence gate, close state, complete close-blocker set, and
-next action against the refreshed status source. It either displays that complete
-canonical receipt or displays the bounded fallback owned by
-[Template Bodies](template-bodies.md#final-output-authority-disclosure-body). It
-must never truncate, splice, summarize, or partially emit receipt JSON.
-
-The final-output refresh and projection do not mutate Core state, advance a
-version, append an event, create a replay row, or record a host observation.
-Detective separately records its owner-defined Stop observation,
-completion-claim eligibility, and content-free termination receipt. Stop always
-allows host termination and never requires a retry; blockers suppress the
-completion claim instead. That separate record does not make the final-output
-projection authoritative.
-Model-authored final prose and host event text are never projection inputs.
-
-Managed-adapter replay and fallback routing belong to
-[Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure).
-Canonical binding and receipt validation belong to
-[Agent Connection](agent-connection.md#core-receipt-validation).
-
 ## Template and label boundary
 
 [Template Bodies](template-bodies.md) owns current rendered body guidance for
-status cards, judgment requests, run/evidence summaries, close results,
-final-output authority disclosure, the managed `AGENTS.md` guidance block,
-content-free Stop termination receipts, agent context packets, and public-error
+status cards, judgment requests, run/evidence summaries, close results, the
+managed `AGENTS.md` guidance block, agent context packets, and public-error
 display labels. Generated guidance and receipts are operational displays, not
 Core authority or permission to edit Product Repository files.
 

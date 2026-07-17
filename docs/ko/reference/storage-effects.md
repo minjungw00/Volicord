@@ -39,7 +39,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 
 | 효과 범주 | 응답 또는 분기 | 지속 저장 결과 | 세부사항 |
 |---|---|---|---|
-| 읽기 전용 | 읽기 전용 `MethodResult` | Core 권한 상태 변경은 없습니다. 메서드가 허용한 세션 감시 진단 기록을 제외하면 응답 데이터만 반환합니다. 재실행 행, 권한 이벤트, 아티팩트 효과, 쓰기 티켓 효과, 닫기 상태 변경, `project_state.state_version` 증가는 없습니다. | [읽기 전용 결과](#read-only-result) |
+| 읽기 전용 | 읽기 전용 `MethodResult` | Core 권한 상태 변경은 없습니다. 응답 데이터만 반환합니다. 재실행 행, 권한 이벤트, 아티팩트 효과, 쓰기 티켓 효과, 닫기 상태 변경, `project_state.state_version` 증가는 없습니다. | [읽기 전용 결과](#read-only-result) |
 | 효과 없음 | `ToolRejectedResponse` 또는 `effect_kind=no_effect`인 유효한 `MethodResult` | 요청된 일반 변이가 없고 Core 커밋도 없습니다. 응답이 오류나 차단 사유형 데이터를 담을 수 있지만, 이 분기는 그 값을 지속하지 않습니다. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [효과가 없는 분기](#no-effect-branches) |
 | `dry_run` | 유효한 `ToolDryRunResponse` | 미리보기만 반환합니다. 영속 참조, 재실행 행, 이벤트, 스테이징 핸들, 아티팩트 효과, `project_state.state_version` 증가는 없습니다. | [유효한 `dry_run` 미리보기](#valid-dry-run-preview) |
 | 스테이징 생성 | `effect_kind=staging_created`인 `StageArtifactResult` | 저장소 소유 임시 스테이징과 영속 정규 UTC 하한의 원자적이고 감소하지 않는 전진만 만듭니다. 일반 Core 커밋 트랜잭션이 아닙니다. | [스테이징 생성 아티팩트 결과](#staging-created-artifact-result) |
@@ -57,7 +57,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 저장 효과:
 
 - Core 권한 상태 저장 효과가 없습니다.
-- 메서드가 허용한 세션 감시 진단 기록을 제외하면 응답 데이터만 반환합니다.
+- 응답 데이터만 반환합니다.
 
 허용되지 않는 효과:
 
@@ -222,11 +222,8 @@ mutation application이 생성하는 적용 가능한 Store transaction metadata
 
 ## 읽기 전용 효과
 
-읽기 전용 결과에는 Core 권한 상태 저장 효과가 없고 재실행 행도 아닙니다. 아래
-메서드 절이 세션에 연결된 Agent Connection의 세션 감시 진단 기록을 명시적으로
-허용하지 않는 한, 읽기 전용 결과는 응답으로만 반환됩니다. 허용된 진단 기록은
-Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
-`project_state.state_version` 변경이 아닙니다.
+읽기 전용 결과에는 Core 권한 상태 저장 효과가 없고 재실행 행도 아니며 응답으로만
+반환됩니다.
 
 응답 계산을 위해 `volicord.status`와 `volicord.check_close`는 메서드 담당 문서가 그 상태 보기를 선택할 때 `CurrentCloseBasis`, 닫기 상태, 위험 수락 범위, 차단 사유, `CloseReadinessBlocker[]`, 증거 요약, 아티팩트 참조, 프로젝트 연속성 요약, 진단, 다음 행동을 계산할 수 있습니다.
 
@@ -248,13 +245,6 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - `project_state.state_version` 증가
 
 `volicord.check_close`의 응답 분기는 [`volicord.check_close`](api/method-close-task.md#volicordcheck_close)가 담당합니다. 이 저장 효과 문서는 `dry_run=true`이거나 `blockers: CloseReadinessBlocker[]`를 포함하더라도 그 점검이 Core 권한 상태와 `project_state.state_version`에 대해 읽기 전용이라는 점을 담당합니다.
-
-세션 감시 진단 기록은 [저장소 기록](storage-records.md)이 설명하는 제한된
-스냅샷 메타데이터만 저장합니다. 원본 파일 내용, 민감한 프롬프트 텍스트, 파일
-변경에서 추론한 행위자 식별 정보, Volicord가 파일시스템 쓰기를 막았다는 주장을
-저장하면 안 됩니다. 읽기 또는 점검 경계가 첫 감시기 기준선을 만들면 기준선
-메타데이터는 감시 시작 시각과 `method_boundary` 감시 근거를 부분 감시 경고와
-함께 기록합니다. 그 경계 전의 Product Repository 변경은 감시 범위 밖에 있습니다.
 
 ## 커밋된 차단 결과의 저장 효과
 
@@ -307,7 +297,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - `CloseReadinessBlocker[]`.
 - 닫기 차단 사유 기록.
 
-프로젝트 정책 적용은 권위 있는 `project_workflow_policies` v2 복사본, 단조 증가
+프로젝트 정책 적용은 권위 있는 `project_workflow_policies` 정규 복사본, 단조 증가
 버전, 기준 JSON, 지문, source를 원자적으로 쓰고 정규화된 쓰기 권한 fingerprint도
 파생합니다. 이 fingerprint가 바뀌면 같은 트랜잭션에서 저장 결속이 없거나 다른 모든
 활성 티켓을 `explicit_revoke`로 무효화하고, 현재 통제 수준과 수락 수준이 이미 새
@@ -318,10 +308,8 @@ fingerprint가 같으면 정책 적용을 실행했다는 이유만으로 티켓
 정확한 명령, 파일, host 동작은 관리 담당 문서의 관심사입니다.
 
 Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범주형
-outcome만 저장합니다. Session-end 기록은 크기가 제한된 권한 receipt를 저장합니다.
-Refresh 실패, 활성 Task 없음, 닫기 blocker 존재 시
-`completion_claim_allowed=0`이어야 하며 요약 문자열로 덮어쓸 수 없습니다. 이 기록은
-prompt, file, answer, command 본문을 저장하지 않습니다.
+outcome만 저장합니다. 이 기록은 prompt, file, answer, command 본문을 저장하지
+않습니다.
 
 <a id="method-effects"></a>
 ## 메서드 저장 효과 요약
@@ -332,7 +320,7 @@ prompt, file, answer, command 본문을 저장하지 않습니다.
 |---|---|---|
 | `volicord.intake` | `Task`와 구체화 기록 생성 | [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | 현재 적용 범위 기록 갱신 | [`volicord.update_scope`](#volicordupdate_scope) |
-| `volicord.status` | 선택적 세션 감시 초기화를 포함하는 읽기형 응답 | [`volicord.status`](#volicordstatus) |
+| `volicord.status` | 읽기형 응답 | [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | 저장 효과 없이 변경 불가능한 과거 재실행 바이트 조회 | [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | 쓰기 판단 효과 기록 | [`volicord.prepare_write`](#volicordprepare_write) |
 | `volicord.prepare_evidence_capture` | 만료되는 불변 capture intent 하나 생성 | [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
@@ -340,8 +328,8 @@ prompt, file, answer, command 본문을 저장하지 않습니다.
 | `volicord.record_run` | 실행, 현재 닫기 근거, 증거, 증거 관찰 효과 기록 | [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_action` | 대기 사용자 행동 요청과 canonical 캡처 폼 하나 생성 | [`volicord.request_user_action`](#volicordrequest_user_action) |
 | `volicord.resolve_user_action` | 변경 불가능한 User Channel 해결 하나 삽입 | [`volicord.resolve_user_action`](#volicordresolve_user_action) |
-| `volicord.reconcile_changes` | 미기록 변경 해결, 대기 사용자 행동 생성, 선택적 세션 감시 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
-| `volicord.check_close` | 선택적 세션 감시 진단을 포함하는 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
+| `volicord.reconcile_changes` | 미기록 변경 해결과 대기 사용자 행동 생성 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
+| `volicord.check_close` | 읽기 전용 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | 성공한 `complete` 종료 효과를 영속 저장하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | 성공한 취소 종료 효과를 영속 저장하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
 | `volicord.close_task intent=supersede` | 성공한 대체 종료 효과를 영속 저장하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
@@ -420,15 +408,6 @@ prompt, file, answer, command 본문을 저장하지 않습니다.
 - Core 상태를 변경하지 않습니다.
 - `project_state.state_version`을 증가시키지 않습니다.
 
-세션에 연결된 Agent Connection의 경우 `volicord.status`는 세션 감시 진단
-맥락을 초기화하기 위해 `agent_sessions` 행을 만들 수 있고, 제한된 기준선
-스냅샷을 사용할 수 있으면 `session_watch_baselines` 행을 만들 수 있습니다.
-감시 비교를 실행하거나, `session_watch_observations`를 만들거나,
-`unrecorded_changes`를 만들거나, 권한 이벤트를 추가하거나, 재실행 행을
-만들거나, 닫기 상태를 변경하거나, `project_state.state_version`을 증가시키지는
-않습니다. 이 상태 조회 경계에서 처음 만들어진 기준선은 `method_boundary` 감시
-메타데이터를 사용하고 부분 감시를 보고합니다.
-
 `dry_run=true`도 `ToolDryRunResponse`가 아니라 `effect_kind=read_only`인 `StatusResult`로 유지됩니다.
 
 효과가 없는 분기:
@@ -452,7 +431,6 @@ prompt, file, answer, command 본문을 저장하지 않습니다.
 - `authority_events` 또는 Core 현재 행
 - Task, Change Unit, 사용자 행동, 차단 사유, 연속성 상태
 - 스테이징, 아티팩트, 증거, 쓰기 티켓 상태
-- 세션 감시 진단 행
 - `project_state.state_version`
 
 접근 거절, 잘못된 `cursor`, 사용할 수 없는 행, 무결성 실패에도 같은 무효과
@@ -484,7 +462,7 @@ prompt, file, answer, command 본문을 저장하지 않습니다.
 활성 티켓을 원자적으로
 `status=invalidated,invalidation_reason=explicit_revoke`로 바꿉니다. 허용 판단은 새
 현재 티켓을 발급하기 전에 무효화하고, 커밋된 비허용 판단은 교체 티켓을 발급하지 않은 채
-무효화를 영속합니다. 거절 및 dry-run 경로는 과거 행을 바꾸지 않으며 그 행은 동적으로
+무효화를 영속합니다. 거절 및 dry-run 경로는 해당 무효 행을 바꾸지 않으며 그 행은 동적으로
 사용할 수 없는 상태로 남습니다.
 
 멱등 재실행은 [저장소 버전 관리](storage-versioning.md)에 따라 저장된 원래 응답을 반환하며, 이러한 효과를 반복하지 않습니다.
@@ -715,29 +693,8 @@ idle timeout을 사용합니다.
 `(project_id, source_idempotency_key)`는 고유합니다. MCP
 `request.operation=resume` 분기는 같은 Agent Connection 접근 범위에서 그 행과 불변 원래
 replay 응답 전체가 현재의 닫힌 agent-safe 결과 형태로 strict decode된 뒤에만 읽습니다.
-기존 또는 혼합 full-form replay 행은 다시 쓰지 않고 `MCP_UNAVAILABLE`로 닫힌 상태로
-실패합니다. Resume은 요청, event, replay 행, token, resolution, prompt,
-blocker 갱신, state version을 만들지 않고 영속 정규 UTC 하한도 갱신하지 않습니다.
-
-MCP가 새로 생성한 대기 요청에 로컬 web fallback을 사용할 때 token 발급은 별도의
-저장소 소유 transaction입니다. Hash-only `user_action_channel_tokens` 행을 삽입하고
-원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다.
-발급은 추가 권한 이벤트나 재실행 행을 만들지 않고 `state_version`도 증가시키지
-않습니다.
-Token 행은 현재 adapter evaluator가 준비된 listener와 client의 정확한 모델 비가시 표면
-capability를 모두 확인한 뒤에만 만듭니다. 공유 listener 상태는 accept loop가 저하되면
-unavailable로 바뀌며, 응답 예산 검증 뒤 같은 evaluator는 원자적 token transaction이 끝날
-때까지 준비된 listener의 공유 발급 lease를 획득합니다. Listener 무효화는 배타 lease를
-획득합니다. 무효화가 먼저 순서화되거나 시작에 실패하면 token 행, `_meta`, project 시간
-하한 전진, authority event, replay 행, state version 변경 없이 일반 CLI fallback을
-선택합니다. 발급이 먼저 순서화되면 이미 발급된 token이므로 이후 listener 실패로 rollback하지
-않습니다. 폐쇄형 생성
-metadata는 정확히
-`{fallback_kind=local_web_consent,
-delivery_surface=model_invisible_user_surface, endpoint=/consent,
-form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못되거나 일치하지 않으면 그
-행은 수정된 코드에서 영구적으로 사용할 수 없으며 GET, POST, 소비, resolution은 아무
-효과도 만들지 않습니다. 가용성 계산이나 보고만을 위해 token을 발급하지 않습니다.
+그 계약을 위반하는 저장 replay 행은 다시 쓰지 않고
+`PERSISTED_DATA_CORRUPT`로 닫힌 상태로 실패합니다. Resume은 요청, event, replay 행, resolution, blocker 갱신, state version을 만들지 않고 영속 정규 UTC 하한도 갱신하지 않습니다.
 
 효과가 없는 분기:
 
@@ -766,7 +723,6 @@ form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못
 
 - 변경 불가능한 일대일 `user_action_resolutions` 행 하나를 삽입해 Core 유효 상태 evaluator가 `resolved`를 반환하게 합니다.
 - 일치하는 폐쇄형 resolution 본문, channel kind와 submission ID, 파생 local-user 출처, verification basis, assurance level, Core 캡처 시각을 저장합니다. 본문은 선택지에서 도출한 choice 사실 또는 전체 Evidence 관찰 detail을 담습니다.
-- 로컬 web 캡처에서는 일치하는 `user_action_channel_tokens` 행을 같은 프로젝트 상태 커밋에서 `status='consumed'`로 바꿉니다.
 - 메서드 담당 문서가 선택할 때 수락된 제품, 기술, 범위 결정과 수락된 현재 잔여 위험에 대한 `project_continuity_records`를 생성합니다.
 - 종속 차단 사유 또는 다음 행동을 갱신합니다.
 - 이벤트를 추가합니다.
@@ -778,9 +734,8 @@ form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못
 - 유효한 `dry_run` 미리보기
 - 거절된 시도
 
-검증 실패, 잘못된 binding, 만료, 상태 race, 해결 쓰기 실패를 포함한 거절된 채널
-시도는 token을 소비하거나 해결을 삽입하면 안 되며 영속 정규 UTC 하한도 갱신하면
-안 됩니다.
+검증 실패, 잘못된 binding, 만료, 상태 race, 해결 쓰기 실패를 포함한 거절된 CLI
+시도는 resolution을 삽입하거나 영속 정규 UTC 하한을 갱신하면 안 됩니다.
 
 유효한 `dry_run` 미리보기는 아래 항목을 만들지 않습니다.
 
@@ -810,11 +765,6 @@ form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 세션에 연결된 Agent Connection에 대해 제한된 세션 감시 점검을 먼저 실행하고,
-  Product Repository 변경이 예상 쓰기 또는 `active` 쓰기 티켓 상관관계로
-  결정적으로 포함되지 않을 때
-  `agent_sessions`, `session_watch_baselines`, `session_watch_observations`,
-  감시기가 만든 `unrecorded_changes`를 만들거나 갱신할 수 있습니다.
 - 미해결 `unrecorded_changes` 행을 `status='resolved'`로 설정합니다.
 - 해결 근거, 캡처 근거, 해결 메서드, 선택적 연결 사용자 행동 참조를 이름 붙이는 해결 JSON을 저장합니다.
 - `resolved_at`과 `resolved_by_actor_source`를 저장합니다.
@@ -825,9 +775,8 @@ form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못
 
 읽기 전용 분기:
 
-- 위에서 허용한 세션 감시 진단 효과가 발생한 뒤에도, 계획된 해결이나 대기
-  사용자 행동 생성이 없는 유효한 호출은 응답 데이터만 반환하고 조정 효과를 만들지
-  않습니다.
+- 계획된 해결이나 대기 사용자 행동 생성이 없는 유효한 호출은 응답 데이터만
+  반환하고 조정 효과를 만들지 않습니다.
 
 효과가 없는 분기:
 
@@ -857,17 +806,6 @@ form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못
 - 아티팩트나 증거를 바꾸지 않습니다.
 - `project_state.state_version`을 증가시키지 않습니다.
 
-세션에 연결된 Agent Connection이고 `dry_run=false`이면, 이 점검은 제한된 세션
-감시 점검을 먼저 실행하고 Product Repository 변경이 예상 쓰기 또는 `active`
-쓰기 티켓 상관 관계로 결정적으로 포함되지 않을 때 `agent_sessions`, `session_watch_baselines`,
-`session_watch_observations`, 감시기가 만든 `unrecorded_changes`를 만들거나
-갱신할 수 있습니다. 이러한 진단 효과는 Core 권한 상태 저장 효과가 아닙니다.
-권한 이벤트를 추가하거나, 차단 사유 행을 만들거나, 닫기 상태를 변경하거나,
-아티팩트 또는 증거를 건드리거나, `project_state.state_version`을 증가시키지
-않습니다. 이 점검이 첫 감시기 기준선을 만들면 감시 근거는
-`method_boundary`이며 더 이른 Product Repository 변경은 감시 범위 밖에
-있습니다.
-
 `dry_run=true`도 `effect_kind=read_only`인 `CloseTaskResult`로 유지됩니다.
 
 효과가 없는 분기:
@@ -883,9 +821,6 @@ form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 세션에 연결된 Agent Connection에 대해 제한된 세션 감시 점검을 먼저 실행하고
-  `volicord.check_close`에서 허용한 것과 같은 세션 감시 진단 기록을
-  만들거나 갱신할 수 있습니다.
 - 메서드가 선택한 완료 종료 효과를 영속 저장합니다.
 - 메서드가 선택한 완료 효과가 성공하면 `tasks.close_basis_json`과 별개인 종료 닫기 요약을 영속 저장할 수 있습니다.
 - 메서드가 선택한 완료 효과가 성공하면 보이지만 잔여 위험 수락이 필요하지 않은 현재 닫기 근거 잔여 위험에 대해 `kind='known_limit'`인 `project_continuity_records`를 생성합니다.
@@ -901,7 +836,7 @@ form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못
 
 유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다. 사전 확인 실패는 효과가 없는 `ToolRejectedResponse`입니다.
 
-응답 전용으로 차단된 `complete` 결과는 `base.effect_kind=no_effect`를 사용하고 닫기 차단 사유 행, 권한 이벤트, 재실행 행, 종료 상태 변경, 상태 버전 증가를 영속 저장하지 않습니다. 닫기 준비 상태 평가 전에 만든 세션 감시 진단 기록은 차단된 닫기 결과와 별개입니다.
+응답 전용으로 차단된 `complete` 결과는 `base.effect_kind=no_effect`를 사용하고 닫기 차단 사유 행, 권한 이벤트, 재실행 행, 종료 상태 변경, 상태 버전 증가를 영속 저장하지 않습니다.
 
 담당 문서:
 

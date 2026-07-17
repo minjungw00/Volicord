@@ -7,9 +7,7 @@ This document owns display-facing wording and presentation packet/body shape for
 - judgment requests
 - run/evidence summaries
 - close results
-- final-output authority disclosures
 - managed `AGENTS.md` guidance blocks
-- content-free Stop termination receipts
 - agent context packets
 
 It owns only rendered body guidance, user-facing labels, and display phrasing.
@@ -21,9 +19,7 @@ Authority, storage records, API error semantics, and close-readiness blocker sem
 This document owns display presentation only:
 
 - rendered template body guidance and presentation packet/body shape for current status and support displays
-- complete-receipt and bounded-fallback body guidance for managed final-output authority disclosure
-- the exact generated managed `AGENTS.md` guidance body and the bounded
-  content-free Stop termination-receipt body
+- the exact generated managed `AGENTS.md` guidance body
 - user-facing labels, display phrasing, localized labels, and recovery cues for those bodies
 - public-error display labels as display text
 - links from body placeholders to schema and authority owners
@@ -317,81 +313,6 @@ The block is generated repository guidance, not Core state, a write ticket,
 user authority, proof that an Agent followed it, or permission to edit product
 files.
 
-<a id="stop-termination-receipt-body"></a>
-## Stop termination receipt body
-
-The host-facing result always shows an allow/continue termination decision and
-separately shows the active Task when present, Task state, bounded incomplete
-reason codes, next actor, `completion_claim_allowed`, and
-`authoritative_refresh_succeeded`. It may include a validated fresh authority
-receipt after a successful refresh. A failed refresh shows only a safe failure
-class and valid public error codes.
-
-The persisted receipt contains only the managed session coordinate, optional
-active Task coordinate, Task state, blocker codes, next actor, completion flag,
-refresh-success flag, and observation time. It must not contain model final
-prose, prompts, commands, file paths or contents, user answers, raw host events,
-or error bodies. Exact replay returns the same result and never asks the host to
-issue a second Stop.
-
-<a id="final-output-authority-disclosure-body"></a>
-## Final-output authority disclosure body
-
-### Input state
-
-- A freshly read `volicord.status` result validated under
-  [Projection and template display boundaries](projection-and-templates.md#managed-final-output-authority-disclosure).
-- The managed host kind and the active project and Task coordinates, when
-  available.
-- The final serialized host-native response, including JSON escaping and its
-  terminating LF.
-
-### Must show
-
-- In the receipt branch, the complete deterministic whitespace-free canonical
-  JSON for the validated `AuthorityReceipt`.
-- In the fallback branch for an identified Task, the project, Task, and
-  `state_version` coordinates that were safely available and the exact command
-  `volicord status --task TASK_ID --json`.
-- When there is no active Task, that no active Task is available and the exact
-  command `volicord status --json`.
-- A fallback instead of a receipt whenever refresh, validation, adapter
-  availability, or complete receipt rendering fails.
-
-The complete serialized host-native response, after outer JSON escaping and
-including its terminating LF, must be at most 8 KiB (8,192 bytes). The renderer
-first attempts the whole-receipt branch, measures that final wire form, and uses
-the bounded fallback branch if it would exceed the limit. The fallback itself
-must also fit the same limit.
-
-### Must not show or imply
-
-- Partial, truncated, summarized, spliced, or cached receipt JSON.
-- Core error messages, error details, request or response bodies, model-authored
-  final prose, or raw host event text.
-- That generated configuration proves the host displayed the disclosure.
-- That the disclosure creates authority, changes Core state, records a host
-  observation, blocks host termination, or replaces Detective completion-claim
-  disclosure.
-
-### User-facing wording
-
-Use a concise fixed-UI label that distinguishes the canonical receipt from
-model-authored prose. The receipt branch may use `Volicord authority receipt:`
-followed by the complete canonical JSON. A fallback names the safe failure class
-without copying private error text, then presents the applicable exact status
-command on the same bounded surface.
-
-### Owner links
-
-- [Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure)
-  owns managed adapter behavior and fallback routing.
-- [Agent Connection](agent-connection.md#core-receipt-validation) owns canonical
-  binding and receipt-validation boundaries.
-- [Security](security.md#generated-displays-and-text) owns the display
-  non-authority boundary.
-
-<a id="status-card-body"></a>
 ## Status card body
 
 ### Input state

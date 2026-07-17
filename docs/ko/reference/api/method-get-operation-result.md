@@ -54,30 +54,20 @@ GetOperationResultRequest:
 agent-workflow 호출과 일치해야 합니다. Ref나 cursor를 가지고 있다는 사실만으로는
 접근 권한이 생기지 않습니다.
 
-정확한 `volicord.resolve_user_action` 본문, 사용자의 자유 형식 note, Evidence 관찰
-summary를 포함한 user-only 결과는 Agent Connection에 노출하지 않습니다. Host가
-중개한 사용자 행동 흐름은 최초 agent 소유 `volicord.request_user_action` ref를 유지합니다.
-저장된 원문 응답 전체가 현재의 구체적이고 닫힌 `RequestUserActionResult`로 decode되고
-정확한 세 필드 `AgentSafeUserActionRequestSummary`를 담을 때만 조회할 수 있습니다. 어떤
-중첩 단계의 중복 JSON object member, 일반 rejected 또는 dry-run 분기, commit 좌표 불일치,
-기존 `user_action_request` 또는 `inbox_item` 필드, 누락되거나 잘못된 summary, 알 수 없는
-추가 필드, 이전·새 필드가 섞인 응답은 조회할 수 없으며 `OPERATION_RESULT_UNAVAILABLE`을
-반환합니다. 이 메서드는 첫 page를 반환하기 전에 전체 응답을 검증하며 기존 byte를 다시
-쓰거나 일부 조각을 반환하지 않습니다. 별도 담당 MCP 결과 상태 보기는 선택 결과의 안전한
-식별자와 파생 ref를 보고할 수 있지만 user-only ref로 바꾸거나 사용자 note, Evidence 관찰
-summary, 정확한 user-only 응답 본문을 노출하지 않습니다.
+정확한 `volicord.resolve_user_action` 본문, 사용자 자유 형식 note, Evidence 관찰
+summary를 포함한 user-only 결과는 Agent Connection에 노출하지 않습니다. Agent 소유
+`volicord.request_user_action` 결과는 저장 원문 응답 전체가 현재의 닫힌
+`RequestUserActionResult`로 strict decode되고 정확한 세 필드
+`AgentSafeUserActionRequestSummary`를 담을 때만 적격입니다. 중복 member, 잘못된 응답
+branch, commit 좌표 불일치, 잘못된 summary, 알 수 없는 필드, 그 밖의 현재 계약 위반은
+`PERSISTED_DATA_CORRUPT`를 반환합니다.
 
-저장된 `volicord.close_task` 결과는 전체 응답이 현재의 닫힌
-`CloseTaskResponse`로 strict decode되고 기존 `pending_user_action_inbox_items` 필드 없이
-`pending_user_action_summaries`를 사용할 때만 조회할 수 있습니다. 기존·혼합 형태 또는
-그 밖의 잘못된 닫기 응답도 `OPERATION_RESULT_UNAVAILABLE`이며 일부 page를 반환하거나
-저장 byte를 다시 쓰지 않습니다.
-
-첫 page를 반환하기 전의 같은 원문 committed-result 검사는 모든 source 메서드에
-적용합니다. 특히 폐기된 `StateSummary` 대기 행동 형태를 담은 기존
-`volicord.intake`, `volicord.update_scope`, `volicord.prepare_write`,
-`volicord.record_run`, `volicord.reconcile_changes` 결과는 이 메서드를 통해
-정확히 replay되지 않고 사용 불가 결과가 됩니다.
+저장된 `volicord.close_task` 결과와 모든 다른 source-method 결과도 선택된 현재 폐쇄
+응답 타입으로 직접 strict decode되어야 합니다. 잘못되었거나 현재 계약과 호환되지 않는
+저장 결과는 `PERSISTED_DATA_CORRUPT`를 반환합니다. 메서드는 첫 page를 반환하기 전에
+전체 응답을 검증하며 저장 byte를 다시 쓰거나 일부 조각을 반환하지 않습니다. MCP 결과
+projection은 안전한 선택 식별자와 파생 ref를 보고할 수 있지만 user-only ref를 대신하거나
+비공개 UserAction 내용을 노출할 수 없습니다.
 
 ## 결과
 
@@ -101,11 +91,12 @@ code point를 나누지 않습니다. 첫 page는 `start_offset_bytes=0`이며 �
 `operation_result_ref.response_size_bytes`에 도달했을 때만 `complete=true`입니다.
 
 메서드는 어떤 page도 반환하기 전에 저장 byte 길이와 SHA-256을 ref와 비교합니다.
-결과 없음, 무결성 불일치, ref에 묶이지 않은 cursor, 사용할 수 없는 행은
-`OPERATION_RESULT_UNAVAILABLE`을 반환합니다. Actor 또는 프로젝트 맥락 불일치는
-`INVOCATION_CONTEXT_MISMATCH`, 잘못된 요청이나 cursor 문법은
-`VALIDATION_FAILED`를 반환합니다. Store 접근 불가나 손상된 담당 상태는 일반
-`MCP_UNAVAILABLE` 경계를 따릅니다. 실패 응답은 과거 응답 일부를 노출하지 않습니다.
+결과 없음이나 비적격 결과, ref에 묶이지 않은 cursor, 사용할 수 없는 적격 행은
+`OPERATION_RESULT_UNAVAILABLE`을 반환합니다. 저장 byte 무결성 실패 또는 현재 계약을
+위반하는 typed owner state는 `PERSISTED_DATA_CORRUPT`를 반환합니다. Actor 또는
+project context 불일치는 `INVOCATION_CONTEXT_MISMATCH`, 잘못된 요청이나 cursor 문법은
+`VALIDATION_FAILED`를 반환합니다. Store 접근 불가는 `MCP_UNAVAILABLE`로 유지됩니다.
+실패 응답은 과거 응답 일부를 노출하지 않습니다.
 
 ## 상태와 권한 효과
 

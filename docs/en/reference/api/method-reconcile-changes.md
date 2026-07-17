@@ -17,23 +17,23 @@ This document owns baseline method behavior for `volicord.reconcile_changes`:
 This document does not own:
 
 - common request envelope, response branch, dry-run, or rejected-response schema bodies
-- `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, `GuardHealthSummary`, or `NextActionSummary` field definitions
+- `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, or `NextActionSummary` field definitions
 - storage table layout, SQLite constraints, public error code meaning, public error precedence, or shared response-branch routing
 - proof of correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security guarantees
 
 ## Purpose
 
-`volicord.reconcile_changes` is the public recovery path for Unrecorded Changes created by detective host hooks or session watch.
+`volicord.reconcile_changes` is the public recovery path for persisted Unrecorded Changes.
 
 For the selected Task, the method:
 
 - lists unresolved Unrecorded Changes
-- resolves changes that Core can verify from stored Core, host-hook, expected-write, or session-watch records
+- resolves changes that Core can verify from stored Core, Run, expected-write, or write-ticket records
 - creates a pending `UserActionRequest` when a remaining change needs user acceptance
 
 The method never silently dismisses a bypass. An Agent Connection cannot mark an Unrecorded Change as accepted without a compatible resolved User Channel judgment.
 
-Resolving an Unrecorded Change removes it from the unresolved host-hook health count and the `unresolved_unrecorded_changes` close-blocker calculation. Resolution does not prove that the changed product files are correct, reviewed, tested, accepted for close, or acceptable as residual risk.
+Resolving an Unrecorded Change removes it from the `unresolved_unrecorded_changes` close-blocker calculation. Resolution does not prove that the changed product files are correct, reviewed, tested, accepted for close, or acceptable as residual risk.
 
 Every finding carries `confidence=confirmed|suspected`. A confirmed unresolved
 Product Repository change contributes `unresolved_unrecorded_changes` and must
@@ -102,11 +102,8 @@ A committed non-dry-run result that has planned storage effects:
 
 A valid call with no storage mutations returns a read-only result and does not create a replay row, event, or state-version increment.
 
-At a session-bound method boundary, the runtime may run a bounded session-watch check before reconciliation planning. That diagnostic check can link an observation to one deterministic expected-write or active write-ticket match. It creates a new unresolved Unrecorded Change when a Product Repository snapshot change is unmatched, outside ticket scope, or ambiguous.
-
-Deterministically observed path or content changes are `confirmed`. Incomplete,
-heuristic, or ambiguous watcher signals may be stored as `suspected` until a
-later comparison establishes or dismisses the change. Reconciliation changes
+Reconciliation plans from persisted Unrecorded Change records and does not
+create new observations. Reconciliation changes
 do not consume or invalidate a write ticket unless a separate operation changes
 one of that ticket's explicit validity coordinates; their state-version
 increments alone are irrelevant to ticket validity.
@@ -128,7 +125,6 @@ Returns `ReconcileChangesResult` with:
 - `rejected_resolution_requests`
 - current `state`
 - projected `close_blockers`
-- projected `guard_health`
 - `next_actions`
 
 ## Method result fields
@@ -144,7 +140,6 @@ Returns `ReconcileChangesResult` with:
 | `rejected_resolution_requests` | Caller-supplied resolution requests that Core refused. These are structured rejections inside a successful method result, not public `ToolRejectedResponse` errors. |
 | `state` | Current `StateSummary` after the reconciliation projection or commit. |
 | `close_blockers` | Projected close blockers after planned reconciliation effects. |
-| `guard_health` | Projected `GuardHealthSummary` hook-state facts when available for the verified connection. |
 | `next_actions` | Next safe steps, such as a `user_only` action for the user to resolve the created user action or an `agent_workflow`/`local_recovery` action to rerun reconciliation. A non-empty list has exactly one primary presentation action. |
 
 The result disclosure is not correctness proof, test sufficiency proof, human review replacement, OS sandboxing, network isolation, malware defense, full write prevention, or actor attribution proof.
@@ -155,31 +150,21 @@ Core-owned deterministic bases:
 
 - `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
 - `not_product_change`: stored observation data contains no Product Repository path to reconcile.
-- `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers watcher-observed Product Repository paths.
+- `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers those paths.
 - `covered_by_write_ticket`: one compatible consumed write ticket or one current active, unconsumed, state-bound valid write ticket for the same Task deterministically covers the observed Product Repository paths. Optional idle-timeout validity is checked when configured; there is no fixed ticket lifetime.
-- `reverted`: a watcher-created Unrecorded Change is linked to a session-watch observation and the current Product Repository snapshot matches the stored watch baseline again.
 
 User-owned basis:
 
 - `accepted_by_user`: a compatible resolved `product_decision` user action linked to the Unrecorded Change records that the local user accepts the observed change as intentional for the Task.
 
-`superseded_by_new_observation` is reserved and is not produced by the baseline method. A caller cannot select Core-owned bases as an agent dismissal. This method does not perform filesystem reversion or an extra filesystem probe to manufacture a resolution basis.
+`reverted` and `superseded_by_new_observation` are reserved and are not produced by the baseline method. A caller cannot select Core-owned bases as an agent dismissal. This method does not perform filesystem reversion or an extra filesystem probe to manufacture a resolution basis.
 
 For Unrecorded Changes that still require acceptance, Core creates pending
 `UserActionRequest` rows rather than accepting them. The method result exposes
 only `AgentSafeUserActionRequestSummary` entries and generic User Channel
 continuation; it does not return a form, command, URL, credential, or request
-ref and does not issue a token merely to project the result. Separately verified
-User Channel paths can resolve those user actions:
-
-- host prompt input when that exact path is available to the initialized client
-- chat command capture when command capture is `configured`, `observed`, or
-  `active`
-- a loopback local consent surface only when its listener is ready and the
-  initialized client sent exact boolean `true` at
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`;
-  its URL is delivered only through host-owned model-invisible `_meta`
-- local `volicord inbox` commands
+ref and does not issue a token merely to project the result. The local user
+resolves those actions only through `volicord inbox`.
 
 After the user-owned action is resolved, `volicord.reconcile_changes` can
 resolve the linked Unrecorded Change with `accepted_by_user`.

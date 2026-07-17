@@ -21,7 +21,7 @@ README:
 - Product orientation: [English](en/user-guide/overview.md) / [Korean](ko/user-guide/overview.md)
 - Environment applicability: [English](en/reference/system-requirements.md) / [Korean](ko/reference/system-requirements.md)
 - Install and verify executables: [English](en/user-guide/installation.md) / [Korean](ko/user-guide/installation.md)
-- Choose the Codex or Claude Code setup path: [English](en/user-guide/quickstart.md) / [Korean](ko/user-guide/quickstart.md)
+- Choose the Codex setup path: [English](en/user-guide/quickstart.md) / [Korean](ko/user-guide/quickstart.md)
 - Complete host setup and recovery: [English setup](en/user-guide/agent-host-setup.md) / [Korean setup](ko/user-guide/agent-host-setup.md) / [English troubleshooting](en/user-guide/agent-host-troubleshooting.md) / [Korean troubleshooting](ko/user-guide/agent-host-troubleshooting.md)
 - Multi-repository operation: [English](en/user-guide/multi-repository-agent-setup.md) / [Korean](ko/user-guide/multi-repository-agent-setup.md)
 - Exact CLI and API contracts: [English CLI](en/reference/admin-cli.md) / [Korean CLI](ko/reference/admin-cli.md) / [English API](en/reference/api/methods.md) / [Korean API](ko/reference/api/methods.md)

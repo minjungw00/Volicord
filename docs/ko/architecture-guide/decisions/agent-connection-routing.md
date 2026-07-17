@@ -1,174 +1,33 @@
-# Agent Connection과 호스트 처리 경로
+# Agent Connection routing
 
 ## 맥락
 
-Volicord는 Codex와 Claude Code의 설정을 관리하고, 일반 MCP 호스트에는 사용자가
-직접 설정할 수 있는 안내를 제공해야 합니다. 하나의 런타임 홈에 여러
-`Product Repository`(제품 저장소)가 등록될 수도 있습니다. MCP 루트와 시작
-디렉터리는 호스트가 제공하는 힌트일 뿐입니다. Volicord 권한이 아니므로 그
-정보만으로 프로젝트를 안전하게 선택할 수 없습니다.
+첫 release는 관리 stdio에서 `host_kind=codex`와
+`integration_profile=record`만 받습니다. 연결은 한 사용자
+또는 선택한 한 project에 설치할 수 있지만, Core 요청은 여전히 명시적으로 허용된 Product
+Repository를 해석해야 합니다.
 
 ## 결정
 
-Volicord는 로컬 MCP 호스트 연결 하나를 나타내는 영속 레지스트리 식별 단위로
-`Agent Connection`(에이전트 연결)을 사용합니다. `volicord mcp --stdio`
-프로세스는 `--connection <connection_id>`로 시작합니다. 생성된 호스트 항목이
-연결 프로젝트 하나에 안전하게 묶이면 `--project <project_id>`도 사용할 수
-있습니다. 여러 프로젝트를 다루는 연결은 프로세스 시작 때 프로젝트를 고정하지
-않습니다. 도구를 호출할 때마다 프로젝트를 선택하고 검증합니다.
+정확한 `host_kind=codex`, `integration_profile=record`,
+`connection_scope=personal|shared`를 가진 Agent Connection 하나를 저장합니다. 그
+연결의 명시적 project membership을 유지합니다. 각 관리 stdio 프로세스는 선택한 연결
+하나와 허용된 project 하나로 시작합니다.
 
-이 설계는 아래 책임을 분리합니다.
+어댑터는 요청을 받기 전에 binding, receipt, Runtime Home, StorageManifest, project
+선택을 검증합니다. connection과 project context는 로컬에서 파생하며 공개 도구 인수가
+선택하거나 덮어쓸 수 없습니다.
 
-- 레지스트리는 Agent Connection 식별자, 호스트 종류와 범위, 대상 메타데이터,
-  연결 모드, 활성 상태, 검증 상태, 명시적인 `Connection Projects`(연결 프로젝트)
-  멤버십을 저장합니다.
-- `volicord mcp --stdio`는 시작할 때 Agent Connection을 검증하고 현재 연결
-  맥락을 파생합니다. 연결 모드에 맞는 MCP 도구를 노출하고,
-  `volicord.list_projects`를 제공하며, 모호한 프로젝트 선택을 거부합니다.
-- 관리 CLI는 허용되는 호스트 값의 관리 연결 설정을 만들고, 검증하고, 갱신하고,
-  제거합니다.
-- 호스트 신뢰와 프로젝트 승인, OAuth, 다시 불러오기, 재시작, 모델 동작은 외부
-  호스트와 사용자가 담당합니다.
-
-검토된 Codex `0.144.4`에서 생성 기술 정보나 로컬 marker 집합은 시작 출처일 뿐입니다.
-정확한 `clientInfo`와 엄격한 호출별 `_meta`가 root 세션과 변경 불가능한 프로세스 로컬
-thread 다이제스트를 결속할 때까지 관리 프로세스는 관리 효과가 전혀 없는 대기 상태로
-남습니다. 환경 변수, PID, cwd, 프로세스 조상 관계, 시각, 훅 이벤트 rendezvous는 이
-결속을 대신하지 못합니다. 자세한 근거는
-[관리 호스트 세션·thread 결속과 호출별 turn 검증](managed-host-session-turn-binding.md)을 봅니다.
-
-init이 선택한 Runtime Home은 우연히 정해지는 플랫폼 기본값이 아니라 관리 프로세스
-바인딩의 일부입니다. 생성되는 모든 관리 MCP 또는 훅 자식 프로세스는 해당 Runtime Home을
-사용해야 합니다. 개인·로컬 MCP 항목은 선택한 절대 경로를 직접 고정합니다. 공유 저장소
-항목은 복제본에서 그대로 쓸 수 있어야 하므로 경로를 내장하지 않습니다. Codex
-`.codex/config.toml`은 `env_vars = ["VOLICORD_HOME"]`으로 전달을 허용하고, Claude Code
-`.mcp.json`은 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다. 저장소 발견
-시작은 전달된 값이 존재하고 비어 있지 않은 절대 경로일 것을 요구하며 값 누락, 빈 값,
-상대 경로를 플랫폼 기본값으로 대체하기 전에 거부합니다. 생성된 로컬 생명주기 및 최종 출력 래퍼는 선택한 절대 `VOLICORD_HOME`을
-내보내고 설치 프로필의 절대 `volicord_command`를 실행하며 버전이 지정된 관리 프로세스
-바인딩 marker도 내보냅니다. 관리되는 숨겨진 `_hook`과 `_final-output` 실행은 명시적 절대
-Runtime Home, 해당 marker, 실행 중인 실행 파일과 설치 프로필 명령의 일치를 검증하며 호스트
-환경의 기존 기본값이나 `PATH`로 해석되는 단순 명령을 신뢰하지 않습니다. init은 바인딩을
-생성하기 전에 선택한 Runtime Home을 절대 경로로 정규화합니다.
-
-관리되는 호스트 훅 설정은 렌더링된 명령 text와 실제 실행 argv를 모두 보존하는
-하나의 검증된 명령 형태에서 파생합니다. Codex Detective 훅에서 생성된 래퍼는 정확히
-`sh -c <generated-hook-script>` 형태로 실행됩니다. 따라서 함께 생성하는 프롬프트 규칙은
-`sh`, `-c`, 그리고 다섯 필수 단계인 `session-start`, `pre-tool`, `post-tool`,
-`prompt-capture`, `stop` 중 하나의 정확한 생성 스크립트로 이루어진 닫힌 선택이라는 세
-토큰 argv 접두사를 일치시킵니다. 설정을 쓰기 전에 같은 명령 형태에서 파생한 규칙의
-positive·negative 예시를 검증합니다.
-
-Codex prompt 규칙은 `.codex hooks` 설정 위치가 아니라 호스트가 실행하는 argv와 일치해야
-합니다. 위치 기반 접두사는 훅을 하나도 실행하기 전에 거부될 수 있습니다. 정확한 규칙은
-생성되는 관리 호스트 설정이며 공개 API, 저장 레코드, DDL, 저장소 프로필 계약을 추가하지
-않습니다. 관리 파일은 일반 소유권 및 fingerprint 점검을 거쳐 교체하고 비관리 파일을
-임의로 채택하지 않습니다. Volicord는 안정적인 최소 Codex 버전을 정의하지 않으므로
-체크인된 parser fixture만으로는 충분하지 않습니다. 릴리스 검증에서는 적용 가능한 실제
-Codex parser로 생성 규칙을 불러오고 검사해야 합니다.
-
-관리 호스트 상태 보기는 필수인 정확한 Runtime Home 전달 또는 로컬 프로세스 바인딩을
-포함할 때만 유효합니다. init은 현재 지문이 저장된 관리 지문과 일치하는 정확한 Volicord
-소유 상태 보기를 조건부로 다시 생성하며, 비관리 또는 수정된 유사 파일은 계속 충돌로
-취급합니다. 플랫폼 기본 Runtime Home이나 `PATH`의 단순 명령을 조용히 채택하는 대체 경로는
-없습니다. 이 상태 보기 규칙은 Registry 스키마나 프로젝트·Core 권한 기록을 바꾸지
-않습니다. 호스트 적용이 성공하면 init은 갱신된 관리 지문과 상태 보기 메타데이터를
-Agent Connection Registry 기록에 게시합니다. 이 동작에는 DDL, 저장소 프로필, 데이터
-마이그레이션이 필요하지 않습니다.
+personal 연결은 사용자 소유 Codex 구성을 변경합니다. shared 연결은 지원되는 project
+소유 Codex 구성을 변경합니다. 둘 다 같은 Core와 stdio 경계를 사용합니다.
 
 ## 결과
 
-- 사용자 범위 호스트 설정은 등록된 모든 프로젝트를 허용하지 않고도 명시적으로
-  연결된 여러 프로젝트를 다룰 수 있습니다.
-- 여러 프로젝트를 다루는 MCP 명령이 이미 같은 `connection_id`를 가리킨다면,
-  연결 프로젝트를 추가하거나 제거할 때 명령을 다시 쓸 필요가 없습니다. 프로젝트
-  바인딩이 바뀌면 프로젝트에 묶인 생성 항목은 다시 생성될 수 있습니다.
-- 프로젝트 선택이 없거나 모호하면 어댑터가 일관된 오류를 보고합니다. 에이전트는
-  연결 프로젝트 목록을 확인하라는 안내를 받을 수 있습니다.
-- 일반 프로젝트 결속 시작은 도구 처리 전에 `session-watch` 기준 상태를 만들 수 있습니다.
-  관리 Codex 시작은 처음으로 정확히 호출이 결속될 때까지 대기하고 관찰 범위는 그때
-  시작하며 명시적으로 부분 범위입니다. 여러 프로젝트 시작도 프로젝트가 명시적으로
-  선택될 때까지 대기합니다.
-- 호스트 설정 상태는 호스트의 후속 작업을 기다리는 상태와 검증이 끝난 상태를
-  구분할 수 있습니다.
-- 프로젝트 범위의 생성 설정에는
-  `volicord mcp --stdio --connection <connection_id> --project <project_id>`를
-  우선 사용합니다. 연결 맥락이나 행위자 출처를 전달하는 환경 변수는 필요하지
-  않습니다. 여러 연결 프로젝트를 의도적으로 다루는 흐름에서는 프로젝트를
-  지정하지 않은 연결 전용 항목을 사용합니다.
-- 공유 저장소 항목은 복제본에서 그대로 쓸 수 있지만, 시작 호스트가 해당 복제본을
-  초기화할 때 선택한 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 제공해야 합니다. init은 부모
-  호스트 프로세스의 환경을 바꿀 수 없습니다.
-- 로컬 생성 래퍼는 선택한 Runtime Home과 실행 파일 경로를 모두 고정하므로 의도적으로
-  추적하지 않는 프로세스 바인딩 파일입니다.
+- 한 프로세스가 connection이나 project 경계를 묵시적으로 넘을 수 없습니다.
+- project 이동 또는 교체에는 owner-defined 검증이나 repair가 필요합니다.
+- 연결 레코드는 운영체제 권한을 부여하거나 사용자 신원을 증명하지 않습니다.
+- CLI 받은 편지함만 UserAction을 해결합니다.
 
-## 비목표
-
-- 이 결정은 공개 Volicord API 메서드를 추가하지 않습니다.
-- CLI 명령을 공개 API 메서드로 만들지 않습니다.
-- MCP 루트, 현재 작업 디렉터리, 호스트 라벨, 복사된 `connection_id` 값을
-  Volicord 권한으로 만들지 않습니다.
-- 사용자 범위 연결에 등록된 모든 프로젝트를 부여하지 않습니다.
-- 저장소 안내, MCP 서버 지침, 호스트 규칙 파일이 모델 동작을 강제한다고
-  정의하지 않습니다.
-- Volicord 런타임 상태, SQLite 데이터베이스, 생성 로그, QA 결과, 수락 기록,
-  닫기 준비 상태, 잔여 위험 기록을 `Product Repository`에 둘 수 있게 하지 않습니다.
-
-## 거부한 대안
-
-- `.codex hooks` 접두사를 유지하는 방안은 생성 훅 프로세스의 argv를 나타내지 못하므로
-  거부했습니다.
-- `sh -c`만 일치시키는 방안은 닫힌 Volicord 훅 집합이 아니라 관련 없는 셸 명령까지
-  프롬프트하므로 거부했습니다.
-- 추가 스크립트나 단계 또는 두 번째 canonical 프롬프트 규칙을 허용하는 방안은 생성
-  규칙이 필수 훅 명령 집합에서 정확히 파생되지 않게 하므로 거부했습니다.
-- fixture 검증을 호스트 호환성의 증명으로 취급하는 방안은 외부 Codex parser와 load-time
-  점검이 계속 호스트 소유이므로 거부했습니다.
-- `CODEX_THREAD_ID`, PID, cwd, 프로세스 조상 관계, 시각, 가장 가까운 훅 이벤트에서 관리
-  Codex 세션을 추론하는 방안은 동시 root 세션과 thread 하나를 정확히 결속하지 못하므로
-  거부했습니다.
-- 공유 저장소 항목에 절대 Runtime Home을 넣는 방안은 그 값이 복제본마다 다르고 항목을
-  이식할 수 없게 만들기 때문에 거부했습니다.
-- 저장소 발견이 플랫폼 기본 Runtime Home으로 대체하도록 허용하는 방안은 init이 선택한
-  레지스트리 대신 서로 다르거나 호환되지 않는 로컬 레지스트리를 조용히 열 수 있으므로
-  거부했습니다.
-- 관리 훅에서 호스트 환경의 기존 값을 신뢰하거나 `PATH`로 해석되는 단순 `volicord`를
-  실행하는 방안은 훅 자식 프로세스를 관리 설치와 다른 Runtime Home 또는 실행 파일에
-  묶을 수 있으므로 거부했습니다.
-- 호환 대체 경로로 이전 관리 상태 보기를 유지하는 방안은 init 재실행이 저장소
-  마이그레이션 없이 소유 파일을 안전하게 갱신할 수 있고, 대체 경로는 모호한 바인딩을
-  보존하기 때문에 거부했습니다.
-
-## 관련 구현 영역
-
-- [`crates/volicord-mcp`](../../../../crates/volicord-mcp): 연결에 묶인 시작,
-  MCP 초기화, 도구 탐색, 프로젝트 선택, Core 호출 전 어댑터 검증.
-- [`crates/volicord-cli`](../../../../crates/volicord-cli): 공개 `volicord mcp`
-  프로세스 진입점, 호스트 설정 명령 생성, 연결·상태·검증·제거 관리 흐름.
-- [`crates/volicord-store`](../../../../crates/volicord-store): 레지스트리 스키마
-  초기화와 검증, Agent Connection 기록, 연결 프로젝트 멤버십, Runtime Home 접근.
-- 위 크레이트가 저장 값 집합과 기계 판독용 관리 출력에 사용하는 공유 타입.
-
-## 관련 테스트와 참조 담당 문서
-
-이 설계의 테스트는 시작 검증, 프로젝트 선택, 멤버십 취소, 호스트 설정 상태,
-프로젝트 범위의 저장소 쓰기 승인, 관리 마커 교체, 지원하지 않는 시작 형태의
-거부, 정확한 Codex 훅 argv 대안 다섯 개, 관련 없는 명령 negative, 적용 가능한 실제
-Codex parser의 load-time 점검을 다뤄야 합니다. 정확한 공유 호스트 전달 형태,
-플랫폼 기본값 해석보다 먼저 발생하는 누락·빈 값·상대 경로 저장소 발견 `VOLICORD_HOME` 실패,
-충돌하는 호스트 환경 값이 있어도 선택한 절대 Runtime Home과 `volicord_command`에 묶이는 로컬 래퍼도
-검증해야 합니다. 관리 Codex 테스트는 대기 상태의 효과 없음, 정확한 클라이언트 및 호출
-메타데이터, 변경 불가능한 root 세션·thread 결속, 이후 turn 허용, 영속 상태 없는 불일치
-거부도 다뤄야 합니다.
-
-참조 담당 문서:
-
-- [Agent Connection](../../reference/agent-connection.md)
-- [MCP 전송](../../reference/mcp-transport.md)
-- [관리 CLI](../../reference/admin-cli.md)
-- [런타임 경계](../../reference/runtime-boundaries.md)
-- [저장소 기록](../../reference/storage-records.md)
-- [저장소 DDL](../../reference/storage-ddl.md)
-- [저장소 버전 관리](../../reference/storage-versioning.md)
-- [보안](../../reference/security.md)
-- [관리 호스트 세션·thread 결속과 호출별 turn 검증](managed-host-session-turn-binding.md)
+정확한 필드와 명령은 [Agent Connection](../../reference/agent-connection.md),
+[Administrative CLI](../../reference/admin-cli.md),
+[MCP Transport](../../reference/mcp-transport.md)가 소유합니다.

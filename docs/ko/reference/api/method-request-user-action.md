@@ -101,18 +101,16 @@ byte 단위로 정확한 원래 agent-safe Agent Workflow 응답을 재생합니
 담지 않습니다. 요청, event, replay 행, prompt, token, resolution, state-version 증가를
 만들지 않습니다. 다른 connection 또는 `volicord.reconcile_changes`가 만든 요청은 이
 분기에서 사용할 수 없습니다. 이후 관계없는 Git 변경이나 authority 상태 변경도 과거
-결과를 다시 쓰거나 무효화하지 않습니다. 폐기된 전체 폼 결과 형태를 사용하는 저장
-응답, 어떤 중첩 단계의 중복 JSON object member, non-result 분기, commit 좌표 불일치는
-재생하지 않고 unavailable로 처리합니다. Resume은 직접 replay와 같은 원문
-committed-result gate를 적용하며 gate가 실패하면 저장 byte 없이 `MCP_UNAVAILABLE`을
-반환합니다.
+결과를 다시 쓰거나 무효화하지 않습니다. 어떤 중첩 단계의 중복 JSON object member, non-result branch, commit 좌표 불일치,
+그 밖의 현재 폐쇄 result 계약 위반을 담은 저장 응답은 재생하지 않고 corrupt로
+처리합니다. Resume은 직접 replay와 같은 원문 committed-result gate를 적용하며 gate가
+실패하면 저장 byte 없이 `PERSISTED_DATA_CORRUPT`를 반환합니다.
 
 create 또는 resume 뒤 어댑터는 Core에 별도 현재 agent-safe projection을 요청합니다.
 Core는 상태, 선택적 안전 resolution, 정확한 과거 resolution 파생 ref, 관찰 anchor를 한
-SQLite 읽기 snapshot에서 읽습니다. 어댑터는 create 뒤 이 projection이 계속
-`pending`일 때만 host prompt를 열고, 그렇지 않으면 prompt 없이 projection을 반환합니다.
-Resume은 projection이 계속 `pending`이어도 prompt를 열거나 User Channel fallback을
-실행하지 않습니다. 정확한 결과는 resume일 때만
+SQLite 읽기 snapshot에서 읽습니다. 어댑터는 별도의 입력 표면을 열지 않고 이
+projection을 반환합니다. 대기 중인 행동은 `volicord inbox`에서만 전달하고
+해결합니다. 정확한 결과는 resume일 때만
 `agent_workflow_result_replayed=true`로 표시됩니다.
 `current_projection_observed_at`은 그 읽기 snapshot의 정규 Core 시각 샘플이며
 projection을 읽었다는 이유만으로 영속화하지 않습니다.

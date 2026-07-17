@@ -117,8 +117,7 @@ evaluator가 현재 근거 호환성, 불변 resolution 존재 여부, expiry, �
 
 Choice 요청은 호출자의 명시적인 nullable `expires_at`을 보존합니다. `null`은 시간
 deadline이 없다는 뜻이며 근거 무효화는 계속 적용됩니다. Evidence 관찰 요청은 호출자
-deadline을 받지 않고 Core가 15분 만료를 부여합니다. 요청 결합 로컬 채널 token은 요청
-deadline과 token 생성 후 10분 중 먼저 오는 시각에 만료됩니다.
+deadline을 받지 않고 Core가 15분 만료를 부여합니다.
 
 ### 정규 시각 샘플링
 
@@ -136,11 +135,6 @@ Core UTC 시계의 샘플입니다. 각 요청 또는 해결 동작은 공통 pr
   거부됩니다.
 - 해결은 해결 동작 샘플 하나로 유효 상태를 파생하고 요청과 채널을 검증하며
   `UserActionResolution.resolved_at`을 기록합니다.
-- 로컬 web token 발급은 자체 저장소 transaction입니다. Token `created_at`은 그
-  transaction의 정규 현재 프로젝트 시각 샘플이며 token은 반열린 구간
-  `created_at <= now < expires_at`에서만 사용할 수 있습니다. `created_at`보다 이른
-  샘플은 유효하지 않고 `expires_at` 이상인 샘플은 만료입니다. 제한된 TTL 계산에도
-  같은 checked 덧셈과 표현 가능성 규칙을 적용합니다.
 - `current_projection_observed_at`은 projection이 이름 붙인 읽기 snapshot 하나의 정규
   Core 시각 샘플입니다. 이 값을 관찰하는 것만으로 더 늦은 프로젝트 시각 하한을
   영속화하지 않습니다.
@@ -215,7 +209,7 @@ UserActionResolution:
   resolved_by_actor_source: local_user
   resolved_verification_basis: string
   resolved_assurance_level: string
-  channel_kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  channel_kind: cli
   channel_submission_id: string
   resolved_at: string
 ```
@@ -242,7 +236,7 @@ visible-ASCII 형태를 표현하고, Core는 replay 조회나 커밋 전에 정
 검증합니다.
 
 <a id="inbox-and-capture-form"></a>
-## Inbox와 캡처 폼
+## Inbox와 CLI 폼
 
 ```yaml
 AgentSafeUserActionRequestSummary:
@@ -257,7 +251,7 @@ UserChannelAvailability:
   recommendation: string | null
 
 UserChannelPathAvailability:
-  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  kind: cli
   label: string
   available: boolean
   status: available | unavailable
@@ -297,14 +291,12 @@ UserActionInboxForm:
   relevance_options: [supported, contradicted]
   summary_max_chars: integer
 
-UserActionCapturePath:  # 내부/User Channel projection 전용
-  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+UserActionCapturePath:  # 로컬 CLI projection 전용
+  kind: cli
   label: string
   available: boolean
   command: string | null
-  url: string | null
   capture_basis: string | null
-  expires_at: string | null
   detail: string | null
 ```
 
@@ -320,32 +312,20 @@ UserActionCapturePath:  # 내부/User Channel projection 전용
 추가되거나, 타입이나 literal 값이 잘못되면 일반 출력, replay, resume,
 operation-result eligibility에서 유효하지 않습니다.
 
-공개 `UserChannelAvailability`는 credential이 없는 닫힌 capability 요약입니다. Label,
-detail, recommendation에는 일반적인 User Channel 또는 CLI 안내만 담을 수 있습니다.
-영속 요청의 질문이나 맥락, 후보나 form 데이터, 캡처 명령, URL, token, 그 밖의 credential은
-담지 않습니다. 선택적 `command`와 `url`을 가진 `UserActionCapturePath`는 별도 내부/User
-Channel 전용 projection이며 Agent Connection 결과에 중첩되지 않습니다. 가용성만으로는
-token을 발급하지 않으며 host가 해당 표면을 모델에 노출하지 않았음을 증명하지도 않습니다.
+공개 `UserChannelAvailability`는 유일한 `cli` 경로를 나타내는 credential 없는 닫힌
+요약입니다. Label, detail, recommendation에는 일반 CLI 안내만 담을 수 있고 영속 질문,
+context, 후보, 비공개 form, note, submission identity, credential은 담을 수 없습니다.
+`UserActionCapturePath`는 로컬 CLI projection이며 Agent Connection 결과에 중첩되지
+않습니다.
 
-Core는 검증된 User Channel projection을 위해 저장 요청에서 완전한
-`UserActionInboxItem`과 캡처 폼 하나를 도출합니다. Agent-workflow 메서드 결과, Agent
-Connection 상태·닫기 projection, 정확한 replay, operation-result 조회에는 이 항목이
-들어가지 않습니다. 채널 어댑터는 chat, 요청 인자, 어댑터 로컬 상태에서 후보를 다시
-만들면 안 됩니다. 지원 경로 종류는 `mcp_elicitation`, `prompt_capture`,
-`local_web_consent`, `cli`이며 가용성은 행동과 capability별로 정합니다. 풍부한 폼을
-지원하지 못하는 경로도 사용자 소유 표면에서는 unavailable로 보여야 하며 다른 사용
-가능한 경로를 숨기면 안 됩니다. 로컬 프로젝트 상태에 쓸 수 있을 때 CLI가 일반
-fallback입니다.
 
-내부 projection은 호출자가 `operation_category=read`와 정확히 지원되는 User Channel
-binding을 사용하지 않으면 fail closed합니다. 로컬 CLI 접근에는
-`actor_source=local_user`와 `cli_direct_user_channel`이 필요합니다. Agent 매개
-renderer에는 같은 project와 Agent Connection에 속한 비어 있지 않은 활성 session과
-`user_prompt_submit_hook` 또는 해당 MCP connection binding 중 하나가 필요합니다.
-Agent 매개 projection은 같은 Agent Connection이 생성한 pending 요청만 포함합니다.
-누락되거나 종료된 session, project나 connection 불일치, 잘못된 basis 또는 operation
-context에는 projection을 반환하지 않으며, adapter는 이 거부를 직접 Store read로
-대체하면 안 됩니다.
+Core는 엄격한 저장 요청에서 로컬 CLI User Channel 전용
+`UserActionInboxItem`과 form 하나를 도출합니다. Agent 대상 메서드 결과, status와
+close projection, replay, operation-result 조회에는 이 항목이 들어가지 않습니다. CLI는
+인자, 산문, adapter 로컬 상태에서 후보를 다시 만들면 안 됩니다. MCP는 요청을 만들거나
+재개하고 안전한 현재 projection을 관찰할 수 있지만 해결 form을 표시하거나 제출할 수
+없습니다.
+
 
 ## MCP 복합 projection
 
@@ -375,7 +355,7 @@ AgentSafeUserActionResolution:
   user_action_resolution_id: string
   user_action_request_id: string
   action_kind: string
-  channel_kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  channel_kind: cli
   resolved_at: string
   resolution_summary: McpUserActionResolutionSummary
 

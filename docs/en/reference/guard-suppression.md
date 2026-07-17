@@ -5,7 +5,7 @@ already recorded product-file changes can be removed from a later observed-path
 set. It defines the exact `SuppressionOutcome` variants, scan budget, failure
 reasons, conservative fallback, diagnostics, and non-blocking Guard projection.
 
-This logic is independent of a host hook or session watcher. An adapter may
+This logic is independent of the source that observed the paths. An adapter may
 provide an observed path set, but the suppression service receives canonical
 project paths and canonical correlation records only.
 

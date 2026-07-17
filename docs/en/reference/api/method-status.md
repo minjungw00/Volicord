@@ -25,7 +25,7 @@ This document does not own:
 
 - the current Task and Change Unit
 - blockers, pending user actions, available User Channel resolution paths, and write-ticket state
-- evidence and close-readiness observations, including `GuardHealthSummary` and `CoverageSummary`
+- evidence and close-readiness observations
 - project continuity, guarantee display, and next safe actions
 - requested and effective control, the project-policy basis, and whether the
   current authority permits a completion claim
@@ -115,7 +115,7 @@ Include projection contract:
 - `include.write_ticket` returns active, invalidated, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`. An invalidated summary exposes its stable invalidation reason and validity basis; an optional project idle timeout is represented by `idle_timeout`, not by a fixed lifetime.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available, plus the canonical `evidence_gate` projection.
-- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, the derived `CoverageSummary`, relevant next actions, and the same canonical `evidence_gate`. The blockers use the same close-readiness calculation as `volicord.check_close`.
+- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, relevant next actions, and the same canonical `evidence_gate`. The blockers use the same close-readiness calculation as `volicord.check_close`.
 - When evidence or close details are selected, `summary_card.evidence` is exactly `evidence_gate.state`. It uses `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, or `blocked`; it does not derive a second gate from evidence attachment display state.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
 - `include.continuity` returns a `ProjectContinuityPage` containing active
@@ -127,8 +127,7 @@ Include projection contract:
 - `summary_card` is always returned on successful `StatusResult` responses. It summarizes the owner-selected view with public display terminology and one selected `next` action when knowable. It does not add authority beyond the structured fields it summarizes.
 - `include.evidence=false` omits `evidence_summary`; `evidence_gate` is still returned when `include.close=true`.
 - `include.close=false` omits `CurrentCloseBasis`, optional close-state and
-  blocker projections, `GuardHealthSummary` hook-state facts,
-  `CoverageSummary`, residual-risk coverage, and close-only top-level actions.
+  blocker projections, residual-risk coverage, and close-only top-level actions.
   Core still evaluates the same read-only close basis for the mandatory
   `authority_receipt`; the receipt carries the full blocker set even when those
   optional top-level fields are omitted.
@@ -174,10 +173,10 @@ Truthful projection rules:
   the Agent's next action before generic workflow suggestions.
 - Uncomputed or unselected optional projections are omitted where the schema permits. Fixed-shape top-level fields remain `null` or empty when their corresponding `include` flag is false; interpret those values together with the request's `include` object.
 - When a projection is selected, `null` means it was computed but no value is available, and an empty array, including empty close blockers, means it was computed and no entries were found.
-- Capability declarations alone do not create guarantees. A cooperative-only deployment must not claim `detective`.
+- Capability declarations alone do not create guarantees.
 - `GuaranteeDisplay.capability_refs` should identify invocation binding, Agent Connection, or observation facts when those refs are available.
 
-`include.evidence=true` or `include.close=true` and [`volicord.check_close`](method-close-task.md#volicordcheck_close) use the same close-readiness evidence-gate calculation. Therefore an evidence-only status result and check-close result at the same state version return the same `evidence_gate`; selecting close controls exposure of close fields, not a second gate calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment. When called through a session-bound Agent Connection, the runtime may initialize session-watch diagnostic records so later method-boundary checks can compare Product Repository snapshots.
+`include.evidence=true` or `include.close=true` and [`volicord.check_close`](method-close-task.md#volicordcheck_close) use the same close-readiness evidence-gate calculation. Therefore an evidence-only status result and check-close result at the same state version return the same `evidence_gate`; selecting close controls exposure of close fields, not a second gate calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment.
 
 ## Method result fields
 
@@ -199,8 +198,6 @@ Truthful projection rules:
 | `current_close_basis` | `CurrentCloseBasis | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `close_blockers` | Read-only `CloseReadinessBlocker[]` observations for the current view. They are not stored close results. |
-| `guard_health` | `GuardHealthSummary | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
-| `coverage_summary` | `CoverageSummary | null` selected into the close status view. Shape and value meanings are owned by [API State Schemas](schema-state.md#guard-health-summary). It distinguishes record authority from detective observation and reports coverage non-guarantees. |
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
 | `continuity_summary` | `ProjectContinuityPage` when `include.continuity=true`; omitted when the projection is not selected. It always reports `items` and complete `page_info`, including an empty page. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `task_flow` | `TaskFlowItem[]` when `include.continuity=true` and a Task is selected; omitted otherwise. It is the connected lineage projection, not inherited current authority. |
@@ -211,7 +208,7 @@ The nested `AgentSafeUserActionRequestSummary` shape is owned by
 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`,
 `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuityPage`,
 `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`,
-`GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and
+`GuaranteeDisplay`, and
 `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
 
 ## Blocked result
@@ -248,7 +245,7 @@ A valid request returns the same `StatusResult` shape with:
 
 ## Storage effect
 
-This method does not persist Core state changes, events, replay rows, close mutations, or state-version increments. When invoked through a session-bound Agent Connection, runtime session-watch diagnostic records may be initialized as described above. Exact persistence semantics are owned by the storage documents linked below.
+This method does not persist Core state changes, events, replay rows, close mutations, or state-version increments. Exact persistence semantics are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative
 response is the public agent-safe status projection. A verified User Channel
@@ -339,8 +336,6 @@ active_task:
     - category: pending_user_action
       code: pending_user_action
       message: "A user-owned action is pending."
-      can_resolve_in_chat: false
-      outside_chat_action_required: false
       related_refs: []
       next_actions:
         - presentation_role: primary
@@ -379,8 +374,6 @@ close_blockers:
   - category: pending_user_action
     code: pending_user_action
     message: "A user-owned action is pending."
-    can_resolve_in_chat: false
-    outside_chat_action_required: false
     related_refs: []
     next_actions:
       - presentation_role: primary

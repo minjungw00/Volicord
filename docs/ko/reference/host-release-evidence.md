@@ -385,6 +385,227 @@ Codex 실행과 관찰 동작을 담당합니다. 각 `platforms/` module은 자
 환경과 어댑터별 assertion만 담당합니다. 단일 플랫폼 module, fixture, 실제
 호스트 테스트 파일 하나가 전체 릴리스 계약을 담당하면 안 됩니다.
 
+<a id="executable-release-cell-gate"></a>
+## 실행 가능한 릴리스 셀 게이트
+
+저장소 기준 후보 생성기와 차단 게이트는 `volicord-release-validation-tests` 패키지의
+`codex-release-cell-gate` binary입니다. manifest 우회 경로는 없습니다. 빌드에
+포함된 byte와 기준 manifest 경로의 디스크 byte를 모두 불러오고, 두 값이 같은
+엄격한 manifest로 parse되는지 요구합니다.
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate PLATFORM
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+```
+
+`--status`는 manifest의 실제 상태 또는 파생 상태 네 개를 보고하며 셀을 실행하지
+않습니다. `--capture-candidate`는 자격을 갖춘 시도 하나를 실행하고 create-new
+방식으로 외부 경로에 엄격하게 parse되는 단일 셀 후보 배열을 기록합니다. 상태가
+`failed` 또는 `unavailable`인 후보는 보존한 뒤 실패로 종료하며, 기준 manifest를
+편집하거나 승격하지 않습니다. `--platform`은 차단 재실행 게이트이며 해당
+플랫폼에 정확한 체크인 `passed` 셀이 이미 있을 때만 성공합니다. 항목이 없으면
+`not_run`으로 실패하고 체크인 상태가 `failed` 또는 `unavailable`이어도 실패합니다.
+따라서 현재의 정직한 `[]` 원본에서도 검토 후보를 만들 수 있지만, 네 후보를 모두
+검토해 체크인하기 전에는 게시 게이트를 통과할 수 없습니다.
+
+후보 생성기와 게이트는 다음 순서로 점검합니다.
+
+1. 선택한 독립 runner 경계가 아닌 process를 거부합니다.
+2. 실제 runner 좌표를 파생합니다. 후보 생성 시에는 그 값을 기록하고, 차단 재실행
+   시에는 셀의 `runner` 값과 정확히 같은지 요구합니다.
+3. 실제 Codex와 Volicord 실행 파일 byte를 hash합니다. 차단 재실행 시에는 셀에
+   기록된 두 digest를 요구합니다.
+4. 두 정확한 경로에서 각각 `--version`을 실행합니다.
+5. 플랫폼 담당 시나리오를 기준 순서대로 정확히 한 번씩 프로비저닝된 scenario
+   driver에 위임합니다. 통과한 driver는 아래의 엄격한 의미 증거 문서를 생성해야
+   합니다. runner는 기준 fixture 구성, 저장소가 선택한 boundary 실행, 저장소가 정한
+   domain 결과, boundary와 일치하는 adapter projection, 제한된 정리를 검증한 뒤 그
+   증거를 감쌉니다. 네 기준 payload digest를 각각 다시 계산하고 네 record 사이의
+   digest 결속도 확인합니다. 결정론적 wrapper는 시나리오 정의, 두 아티팩트 digest,
+   플랫폼, driver digest, capability, Record profile을 결합합니다. 증거가 빠지거나,
+   추가되거나, 이름이나 catalog 순서가 다르거나, 불투명하거나, driver가 임의로
+   선택했거나, 서로 맞지 않으면 실패합니다.
+6. 전체 카탈로그 뒤에 두 실행 파일 경로를 다시 열고 hash하여 byte가 바뀌지
+   않았는지 요구합니다.
+7. 후보 생성은 기준 셀 증거 digest를 계산하고 새로운 외부 후보 경로에만 기록합니다.
+   차단 재실행은 모든 현재 시나리오가 통과하고 각 결정론적 증거 digest가 검토된
+   체크인 결과와 같은지 요구합니다.
+
+native Linux 경계는 WSL과 container process 경계를 거부합니다. macOS와 native
+Windows 경계는 각각 대응하는 native process를 요구합니다. WSL2 경계는
+`wsl_shutdown_restart` 중에도 coordinator가 살아남을 수 있도록 의도적으로 native
+Windows supervisor에서 게이트와 scenario coordinator를 실행합니다. 선택한 제품
+환경은 정확히 `Ubuntu-24.04`입니다. 게이트는 WSL2 kernel, `ID=ubuntu`,
+`VERSION_ID=24.04`, 일치하는 `WSL_DISTRO_NAME`을 확인합니다. Codex, Volicord,
+셀 work root, 그 아래에서 만드는 Product Repository, `VOLICORD_HOME`은 모두 그
+하나의 배포판 안에서 ext4를 사용합니다. Windows supervisor는 테스트 하네스
+인프라이며 native Windows 제품 구성 요소를 대신하지 않습니다.
+
+### 후보 생성기와 게이트 입력
+
+릴리스 runner는 후보 생성 또는 차단 재실행 전에 다음 환경 변수를 정확히
+프로비저닝합니다.
+
+| 변수 | 필수 값 |
+|---|---|
+| `VOLICORD_CODEX_RELEASE_CODEX_PATH` | 정확히 최종 확정된 Codex 실행 파일의 symlink 없는 기준 경로입니다. native 셀에서는 host 경로이고 WSL2에서는 선택한 배포판 안의 절대 Linux ext4 경로입니다. |
+| `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` | `volicord_artifact_digest`가 이름 붙인 정확한 Volicord 실행 파일의 symlink 없는 기준 경로입니다. 같은 native 또는 WSL2 경로 규칙을 적용합니다. |
+| `VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER` | 플랫폼에 프로비저닝된 scenario driver의 기준 host 경로입니다. WSL2에서는 배포판 종료와 재시작 중에도 살아남아 이를 검증할 수 있는 native Windows coordinator입니다. |
+| `VOLICORD_CODEX_RELEASE_EVIDENCE_DIR` | source checkout, Cargo target directory, 유지 문서, Product Repository, Runtime Home 밖에 있는 기존의 비어 있고 기준 경로인 host directory입니다. |
+| `VOLICORD_CODEX_RELEASE_WORK_ROOT` | 저장소 담당 경로 밖에 있는 기존의 비어 있는 work root입니다. WSL2에서는 선택한 배포판 안의 절대 ext4 directory입니다. |
+| `VOLICORD_HOME` | 셀 work root의 존재하지 않는 하위 경로이며 `runtime_home_creation` 시나리오만 생성합니다. |
+| `VOLICORD_CODEX_RELEASE_ENVIRONMENT_IMAGE` | 체크인 셀에 기록된 정확한 environment-image 좌표입니다. |
+| `RUNNER_NAME` | 실제 runner service 식별자이며 `runner.runner_id`와 같아야 합니다. |
+| `VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION` | WSL2 전용이며 정확히 `Ubuntu-24.04`입니다. native 셀에서는 거부합니다. |
+| `VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH` | 후보 생성 전용입니다. 저장소 담당 경로, 증거, work root, Runtime Home 밖에서 기존 기준 부모를 가진 존재하지 않는 절대 경로입니다. 생성기는 create-new 방식으로 엄격한 단일 셀 JSON 배열을 기록합니다. 차단 재실행은 이 변수를 읽지 않습니다. |
+
+게이트는 native process에서 architecture와 target triple을 파생합니다. WSL2에서는
+선택한 배포판 안의 `uname -m`을 사용합니다. `os_release`는 Linux와 WSL2에서
+`/proc/sys/kernel/osrelease`, macOS에서 `sw_vers -productVersion`, native
+Windows에서 `cmd.exe /D /C ver`로 파생합니다. 이 파생 값과 프로비저닝된
+environment-image 좌표는 체크인 runner 좌표와 정확히 같아야 합니다.
+
+각 시나리오에서 driver는 정확한 시나리오, 플랫폼, 실행 파일, work root, Runtime
+Home, 새 출력 경로 두 개를 받습니다. 명령 형태는 다음과 같습니다.
+
+```text
+SCENARIO_DRIVER
+  --scenario SCENARIO_ID
+  --fixture FIXTURE
+  --boundary BOUNDARY
+  --projection PROJECTION
+  --expected-outcome OUTCOME_CODE
+  --platform PLATFORM
+  --codex CODEX_PATH
+  --volicord VOLICORD_PATH
+  --work-root WORK_ROOT
+  --runtime-home RUNTIME_HOME
+  --evidence-output NEW_DRIVER_EVIDENCE_PATH
+  --outcome-output NEW_OUTCOME_JSON_PATH
+  [--wsl2-distribution Ubuntu-24.04]
+```
+
+결과 문서는 정확히 `scenario_id`, `status`, `reason`, `observed_at`을 가집니다.
+`status`는 `passed`, `failed`, `unavailable`, `not_run` 중 하나입니다. `passed`는
+null 사유와 기준 UTC 관찰 시각, `failed`와 `unavailable`은 기계 판독 사유와 시각,
+`not_run`은 사유와 null 시각을 요구합니다. 통과와 실패 결과에는 크기가 제한된
+driver 증거 파일이 필수이고, `not_run`은 이를 금지하며, `unavailable`은 포함할 수
+있습니다.
+
+`passed` 증거 파일은 정확히 다음 형태의 엄격한 JSON입니다.
+
+```json
+{
+  "contract": "volicord.release_scenario_evidence",
+  "scenario_id": "fresh_install",
+  "platform": "linux",
+  "state_setup": {
+    "canonical_project_state": {
+      "fixture_id": "fresh_install",
+      "fixture": "no_installation",
+      "platform": "linux"
+    },
+    "canonical_project_state_digest": "0412001a986fb601aaec49e5ca491f034735eae9d2b79fc3a1f172ac73268725",
+    "validated": true
+  },
+  "boundary_execution": {
+    "canonical_invocation": {
+      "scenario_id": "fresh_install",
+      "platform": "linux",
+      "boundary": "cli",
+      "canonical_project_state_digest": "0412001a986fb601aaec49e5ca491f034735eae9d2b79fc3a1f172ac73268725"
+    },
+    "invocation_digest": "e123ca5a50d1b8362a8bc8a9a6366692f3901a09184e014da44eaa1e3a1d9fde",
+    "completed": true
+  },
+  "domain_outcome": {
+    "canonical_outcome": {
+      "scenario_id": "fresh_install",
+      "expectation": "complete_successfully",
+      "disposition": "completed",
+      "outcome_code": "installation_completed",
+      "invocation_digest": "e123ca5a50d1b8362a8bc8a9a6366692f3901a09184e014da44eaa1e3a1d9fde",
+      "observed_paths_preserved": null
+    },
+    "canonical_outcome_digest": "9690aa98449e2944b9477d3ffb6496a918556a15432173cdc48b4a432cee19af",
+    "validated": true
+  },
+  "adapter_projection": {
+    "canonical_projection": {
+      "scenario_id": "fresh_install",
+      "projection": "cli_json",
+      "outcome_code": "installation_completed",
+      "canonical_outcome_digest": "9690aa98449e2944b9477d3ffb6496a918556a15432173cdc48b4a432cee19af"
+    },
+    "canonical_projection_digest": "ca3f422db0290cd0bdd328afd8ca794bca9e7f1eee0a509382e1ddff2dfd0a48",
+    "validated": true
+  },
+  "cleanup_complete": true
+}
+```
+
+중첩된 네 `canonical_*` 객체는 보존되는 변동 없는 기준 payload입니다. 각 객체와
+나란히 있는 digest는 그 객체의 기준 JSON에 대한 접두사 없는 소문자 SHA-256입니다.
+호출 record는 다시 계산한 프로젝트 상태 digest를, domain 결과 record는 다시 계산한
+호출 digest를, projection record는 다시 계산한 domain 결과 digest를 담습니다.
+게이트는 네 digest와 결속을 모두 다시 계산한 뒤 각 payload를 선택한 저장소 정의와
+정확히 비교합니다. `validated`, `completed`, `cleanup_complete`는 true여야 하지만,
+이 flag가 payload, digest, 결속, 의미 검사를 대신하지 않습니다.
+
+저장소는 다음 시나리오 대조표를 정확히 담당합니다.
+
+| 시나리오 | Fixture | Boundary / projection | Outcome code | Expectation / disposition |
+|---|---|---|---|---|
+| `fresh_install` | `no_installation` | `cli` / `cli_json` | `installation_completed` | `complete_successfully` / `completed` |
+| `runtime_home_creation` | `runtime_home_absent` | `cli` / `cli_json` | `runtime_home_created` | `complete_successfully` / `completed` |
+| `personal_managed_binding` | `personal_binding_absent` | `cli` / `cli_json` | `personal_managed_binding_installed` | `complete_successfully` / `completed` |
+| `shared_managed_binding` | `shared_binding_absent` | `cli` / `cli_json` | `shared_managed_binding_installed` | `complete_successfully` / `completed` |
+| `receipt_create_and_validate` | `current_managed_binding` | `managed_host` / `managed_host_state` | `receipt_current` | `complete_successfully` / `completed` |
+| `configuration_drift_detection` | `drifted_managed_configuration` | `managed_host` / `managed_host_state` | `configuration_drift_detected` | `complete_successfully` / `completed` |
+| `repair_after_drift` | `repairable_managed_configuration_drift` | `cli` / `cli_json` | `configuration_repaired` | `complete_successfully` / `completed` |
+| `safe_uninstall` | `installed_managed_binding` | `cli` / `cli_json` | `managed_binding_removed` | `complete_successfully` / `completed` |
+| `symlink_and_canonical_path` | `symlinked_managed_path` | `platform` / `platform_result` | `canonical_path_rules_enforced` | `complete_successfully` / `completed` |
+| `codex_restart` | `restarted_codex_process` | `managed_host` / `managed_host_state` | `stale_receipt_rejected` | `complete_successfully` / `completed` |
+| `project_move` | `moved_product_repository` | `managed_host` / `managed_host_state` | `moved_project_binding_rejected` | `complete_successfully` / `completed` |
+| `record_write_workflow` | `record_workflow_ready` | `mcp_stdio` / `mcp_structured_content` | `record_write_completed` | `complete_successfully` / `completed` |
+| `suppression_unavailable` | `suppression_provider_unavailable` | `core` / `core_response` | `observed_paths_preserved` | `preserve_observed_paths_when_suppression_unavailable` / `warning` |
+| `unsupported_host` | `unsupported_host_selected` | `cli` / `cli_json` | `unsupported_host_rejected` | `reject_unsupported_host` / `rejected` |
+| `unsupported_host_artifact` | `unregistered_host_artifact` | `managed_host` / `managed_host_state` | `unsupported_host_artifact_rejected` | `reject_unsupported_host_artifact` / `rejected` |
+| `wsl_shutdown_restart` | `stale_wsl2_process_and_receipt` | `platform` / `platform_result` | `stale_wsl2_process_and_receipt_rejected` | `reject_stale_wsl2_process_and_receipt` / `rejected` |
+| `wsl2_ext4_project` | `wsl2_ext4_topology` | `platform` / `platform_result` | `wsl2_ext4_accepted` | `accept_wsl2_ext4` / `completed` |
+| `wsl2_drvfs_rejection` | `wsl2_drvfs_topology` | `platform` / `platform_result` | `wsl2_drvfs_rejected` | `reject_wsl2_drvfs` / `rejected` |
+| `wsl2_cross_topology_rejection` | `wsl2_cross_topology` | `platform` / `platform_result` | `wsl2_cross_topology_rejected` | `reject_wsl2_cross_topology` / `rejected` |
+| `wsl1_rejection` | `wsl1_environment` | `platform` / `platform_result` | `wsl1_rejected` | `reject_wsl1` / `rejected` |
+| `wsl2_native_windows_receipt_reuse_rejection` | `native_windows_receipt_in_wsl2` | `managed_host` / `managed_host_state` | `native_windows_receipt_reuse_rejected` | `reject_native_windows_receipt_reuse` / `rejected` |
+
+`suppression_unavailable`만 `observed_paths_preserved: true`를 가지며 다른 모든
+시나리오는 null이어야 합니다. 불투명한 성공 flag, 알 수 없는 필드, 접두사가
+붙었거나 오래된 digest, 끊어진 digest 결속, driver가 임의로 선택한 fixture,
+boundary, projection, expectation, disposition, outcome code는 게이트를 충족할 수
+없습니다.
+
+Runner는 `VOLICORD_CODEX_RELEASE_ARTIFACT_DIGEST`,
+`VOLICORD_CODEX_RELEASE_VOLICORD_DIGEST`,
+`VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER_DIGEST`,
+`VOLICORD_CODEX_RELEASE_CAPABILITIES`,
+`VOLICORD_CODEX_RELEASE_INTEGRATION_PROFILE=record`를 제공합니다. 저장소의
+scenario catalog가 정확한 fixture, boundary, projection, expectation, disposition,
+outcome code를 담당합니다. driver는 그 선택된 boundary를 통한 실행, adapter별 관찰,
+제한된 정리를 담당하며 보존되는 기준 record를 닫힌 증거 schema로 보고합니다.
+runner는 엄격한 결과 및 증거 parsing, 기준 digest 재계산, digest 결속 검증, catalog
+대조 의미 검증, catalog 완전성, 새롭고 정확한 출력 배치, 결정론적 증거 wrapping,
+크기가 제한된 각 driver 파일 보존, timeout, 실행 파일 및 driver 안정성을
+담당합니다. 관찰
+시각은 후보 결과에 기록하지만
+결정론적 시나리오별 envelope에서는 제외하므로, 이후 차단 재실행에서도 새로운 시각을
+기록하면서 검토된 digest를 재현할 수 있습니다. driver가 성공으로 종료해도 protocol을
+완전하게 충족하는 출력이 없으면 실패합니다. prompt, 대화 기록, 자격 증명, token이
+workflow 출력이 되지 않도록 driver stdout과 stderr를 숨깁니다.
+
 <a id="trust-and-owner-boundaries"></a>
 ## 신뢰 및 담당 경계
 

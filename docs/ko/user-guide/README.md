@@ -22,7 +22,7 @@ Volicord로 무언가를 해야 할 때 사용자 가이드에서 시작합니�
 ## 계층 경계
 
 정확한 제품 계약은 [참조 색인](../reference/README.md), 명령 동작은
-[관리 CLI](../reference/admin-cli.md), stdio와 Local HTTP 전송 동작은
+[관리 CLI](../reference/admin-cli.md), 관리 stdio 전송 동작은
 [MCP 전송](../reference/mcp-transport.md), 보장과 비보장은
 [보안](../reference/security.md)을 사용합니다. 구현 구조나 근거가 필요할 때만
 [아키텍처 가이드](../architecture-guide/README.md)를 사용합니다.

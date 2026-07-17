@@ -1,306 +1,102 @@
 # Agent Host Setup
 
-Use this guide to configure, verify, change, or remove a Codex or Claude Code
-Agent Connection. For the shortest first setup, start with
-[Quickstart](quickstart.md).
+Use this guide to install, verify, repair, or remove the managed Codex Agent
+Connection. The exact command contract belongs to
+[Administrative CLI](../reference/admin-cli.md), and exact binding and receipt
+shapes belong to [Agent Connection](../reference/agent-connection.md).
 
-Exact command behavior belongs to
-[Administrative CLI](../reference/admin-cli.md). Exact Agent Connection and
-runtime boundaries belong to
-[Agent Connection](../reference/agent-connection.md) and
-[Runtime Boundaries](../reference/runtime-boundaries.md).
+## Supported Setup
 
-## Ordinary Setup
+The first release has one managed host and one profile:
 
-Install `volicord`, then initialize the Product Repository connection:
+- `host_kind=codex`
+- `profile=record`
+- `scope=personal` or `scope=shared`
+- managed `volicord mcp --stdio` transport
 
-```sh
-volicord init --shared --host codex --repo "<repo>" --profile record
-```
-
-Use `--host claude-code` for Claude Code. `<repo>` is the Git repository where
-the agent will work.
-
-The command creates or reuses the Runtime Home and installation profile,
-registers the repository, creates the Agent Connection, and writes
-project-scoped MCP configuration and guidance. Generated configuration starts
-`volicord mcp --stdio` for the selected connection.
-
-This ordinary path uses shared repository configuration. Start the selected
-host with the same nonempty, absolute `VOLICORD_HOME` selected by init. The
-generated entry forwards that host value and does not embed a machine-local
-Runtime Home path.
-
-Setup also writes files inside the Product Repository. Review them under the
-repository's normal configuration policy:
-
-| Host | Typical project files |
-|---|---|
-| Codex | `.codex/config.toml`, `.volicord/policy.json`, and a managed Volicord block in `AGENTS.md` |
-| Claude Code | `.mcp.json`; Detective setup may also add `.claude/settings.json`, `.claude/rules/volicord.md`, and `.claude/hooks/` |
-
-Commit these files only when the setup should be shared with other contributors
-or automation. Product Repository configuration is separate from operational
-data stored in the Volicord Runtime Home.
-
-After init, complete the host-owned step named in `Next`:
-
-- restart or reload the host
-- trust the Codex project when asked
-- approve the Claude Code project MCP entry when asked
-- repair `PATH` or command availability when named
-
-Then verify the connection:
-
-```sh
-volicord connection verify codex --shared --repo "<repo>"
-volicord connection status codex --shared --repo "<repo>"
-```
-
-Use `claude-code` instead of `codex` for Claude Code.
-
-## What Verification Can Show
-
-Connection verification has several layers. Do not infer a later layer from an
-earlier one.
-
-| Layer | Question it answers |
-|---|---|
-| Managed configuration | Does the selected host configuration match the connection Volicord manages? |
-| Host trust or approval | Has the host reported a trust, approval, pending, or rejection state that the user controls? |
-| CLI MCP check | Can the verification process start and communicate with the MCP process? |
-| Active host exposure | Can the current host session see and call Volicord tools? |
-| Storage capability | Can that MCP process read the registry and project state, and write project state when workflow tools need it? |
-
-Read `Status`, `Checks`, `Next`, and `Diagnostics` in the default text output.
-Use `--json` for full diagnostics or automation. Scripts must not parse the
-compact text.
-
-CLI MCP success does not prove active host exposure. Confirm tool availability
-inside the current Codex session. If tools are absent, follow
-[Agent Host Troubleshooting](agent-host-troubleshooting.md) before rewriting
-configuration by hand.
-
-Verification must produce a strict receipt for the exact current Codex record
-binding. A missing, stale, mismatched, expired, or unsuccessful receipt cannot
-be replaced by configuration presence or a terminal-side MCP check. See
-[`HostVerificationReceipt`](../reference/agent-connection.md#host-verification-receipt)
-for the exact boundary.
-
-## Codex
-
-The ordinary project-scoped path is:
+Create or repair a shared setup:
 
 ```sh
 volicord init --shared --host codex --repo "<repo>" --profile record
-volicord connection verify codex --shared --repo "<repo>"
 ```
 
-After init:
+For a personal setup, omit `--shared`. Keep the same selector on later status,
+verify, repair, and removal commands.
 
-1. Open or restart Codex in the Product Repository.
-2. Complete any project trust prompt.
-3. Confirm that the current session exposes `volicord.*` tools.
-4. Ask the host to call `volicord.list_projects`, then `volicord.status`.
+## Review Managed Changes
 
-If the terminal-side checks pass but the tools are missing, check the
-environment that launched Codex, not only a terminal opened later:
+Before accepting setup, review the structured result and every managed file.
+Project-owned configuration may include `.codex/config.toml`,
+`.volicord/policy.json`, and a Volicord-managed `AGENTS.md` block. Setup must
+not overwrite unrelated user content.
 
-```sh
-command -v volicord
-```
-
-For an IDE, remote executor, or non-interactive run, inspect that host's MCP
-startup environment and logs. See the
-[Codex troubleshooting path](agent-host-troubleshooting.md#trusted-codex-project-but-host-runtime-is-not-observed).
-
-Codex-owned tool approval settings can coexist with Volicord-managed MCP
-configuration. Do not delete an approval overlay merely because it appears
-under the `volicord` server entry. Use the
-[configuration-drift troubleshooting path](agent-host-troubleshooting.md#codex-approval-overlay-reported-as-mcp-configuration-changed)
-when verification reports a mismatch.
-
-## Claude Code
-
-The ordinary project-scoped path is:
-
-```sh
-volicord init --shared --host claude-code --repo "<repo>" --profile record
-volicord connection verify claude-code --shared --repo "<repo>"
-```
-
-After init:
-
-1. Open or restart Claude Code in the Product Repository.
-2. Complete any project MCP approval.
-3. Check the host's connection view:
-
-   ```sh
-   claude mcp list
-   claude mcp get volicord
-   ```
-
-4. Check `/mcp` in the active Claude Code session.
-5. Ask the host to call `volicord.list_projects`, then `volicord.status`.
-
-Matching `.mcp.json` or `claude mcp get` output does not by itself prove active
-tool exposure. Use the
-[Claude Code troubleshooting path](agent-host-troubleshooting.md#claude-code-configuration-exists-but-tools-are-not-exposed)
-when the current session still has no Volicord tools.
-
-<a id="integration-profiles"></a>
-## Integration Profiles
-
-| Profile | Use it when | What it adds |
-|---|---|---|
-| Record profile (`record`) | You want the ordinary MCP workflow without host lifecycle hooks or a session watcher. | Cooperative workflow recording and project guidance. |
-| Detective profile (`detective`) | The selected host, platform, and repository meet every owner-defined hook and watcher setup prerequisite. | Configured host-hook and watcher observation paths, including Unrecorded Change signals. |
-
-Configuring or enabling these paths does not by itself establish current feature
-support. Use `states.host_feature_support`; only `verified` supports a current
-feature claim.
-
-Neither profile provides an OS sandbox, network isolation, actor proof,
-correctness proof, or full write prevention. Detective observations are signals;
-they do not turn Write Tickets into filesystem enforcement.
-
-On native Windows, use `--profile record`. Detective host-hook wrappers and the
-session watcher are not supported there. Exact profile behavior and failure
-conditions belong to
-[Administrative CLI](../reference/admin-cli.md#agent-host-setup-and-init).
-
-If Detective setup reports an unsafe or missing hook path, rerun Detective init
-for the same host and repository rather than hand-editing generated wrappers:
-
-```sh
-volicord init --shared --host codex --repo "<repo>" --profile detective
-```
-
-Then complete any host restart, trust, or approval step and rerun verification.
-For each diagnostic value, use
-[Hook Path Or Wrapper Is Unsafe](agent-host-troubleshooting.md#guard-hook-path-or-wrapper-is-unsafe).
-
-## Lower-Level Connection Choices
-
-`volicord init` is the primary first-run path. Use `volicord connection add`
-when you need to choose connection intent or mode directly.
-
-### Connection Intent
-
-| Intent | Command shape | Use |
-|---|---|---|
-| `personal` | `volicord connection add codex --repo "<repo>"` | Current-user host configuration. |
-| `shared` | `volicord connection add codex --shared --repo "<repo>"` | Project-shared configuration in the Product Repository. |
-| `global` | `volicord connection add claude-code --global --repo "<repo>"` | User-wide Claude Code configuration with explicit connected projects. |
-
-Codex supports personal and shared intent. Claude Code supports personal,
-shared, and global intent. `--shared` and `--global` cannot be combined.
-
-For one host-level connection serving multiple repositories, use
-[Multi-Repository Agent Setup](multi-repository-agent-setup.md).
-
-### Connection Mode
-
-Workflow mode is the default. Use read-only mode when the host should inspect
-projects and status without workflow mutation tools:
-
-```sh
-volicord connection add codex --repo "<repo>" --read-only
-volicord connection mode codex read-only --repo "<repo>"
-volicord connection mode codex workflow --repo "<repo>"
-```
-
-A workflow connection can expose only read-compatible tools when the MCP host
-can read project state but cannot write it. That is a storage-capability issue,
-not a new connection mode. Use
-[Read-Only Host Storage](agent-host-troubleshooting.md#read-only-host-storage)
-for diagnosis.
-
-## Preview And Inspect Changes
-
-Preview managed configuration changes before applying them:
+Use dry run for lower-level connection changes:
 
 ```sh
 volicord connection add codex --repo "<repo>" --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
 ```
 
-Inspect existing connections with:
+## Verify
+
+After Codex has loaded the configuration and completed any trust action:
 
 ```sh
+volicord connection verify codex --shared --repo "<repo>"
+volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
-volicord connection status codex --repo "<repo>"
-volicord connection verify codex --repo "<repo>"
 ```
 
-If more than one connection matches the host and repository, add the intent
-flag used when it was created, such as `--shared` or `--global`.
+`verify` validates the selected managed binding and records the owner-defined
+receipt only when all required facts are current. `status` is diagnostic and
+does not upgrade missing evidence.
 
-## Smoke Checks
+For a direct process preflight, use the exact stored identifiers:
 
-Use a read-only smoke check before creating workflow state:
-
-1. Run `volicord connection verify` for the selected host and repository.
-2. In the active host, call `volicord.list_projects`.
-3. Call `volicord.status` for the intended project.
-
-This checks configuration, tool visibility, project selection, and readable
-project state. It should not create a `Task`.
-
-Use workflow mutation calls only when creating Volicord state is appropriate.
-Exact public method sequences belong to the [API Methods](../reference/api/methods.md)
-and their focused owners.
-
-## Generic MCP Hosts
-
-For a host Volicord does not manage, first create and enable an Agent Connection
-for an accepted `HOST` value. Then configure the external host through its own
-settings to start:
-
-```text
-volicord mcp --stdio --connection <connection_id> [--project <project_id>]
+```sh
+volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
-The external configuration remains user-managed, and the resulting process must
-still pass MCP startup validation. Volicord does not claim that an arbitrary
-host loaded or approved it. Exact process and project-selection
-behavior belongs to [MCP Transport](../reference/mcp-transport.md).
+Normal managed operation starts `volicord mcp --stdio` with the binding supplied
+by the generated Codex configuration. Do not infer a binding from cwd or scan
+for a nearby repository.
 
-## User Channel Boundary
+## UserAction Boundary
 
-An Agent Connection may create a focused user action but displays only its
-request ID, `status=pending`, and `next_actor=user`. It neither receives the
-canonical form nor records the user's resolution. Use the separately verified
-User Channel host surface when one is shown; the stable CLI path lists the
-stored form and then resolves it. For a choice form:
+An MCP agent may call `volicord.request_user_action` to create a pending request
+or use its read-only resume operation. The human resolves it only through the
+CLI inbox:
 
 ```sh
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-Evidence-observation forms instead use the displayed criterion or claim,
-artifact IDs, summary, and optional contradicted flag. See
-[User Workflow](user-workflow.md#use-evidence-without-replacing-judgment).
+Guard prompt-related observations are diagnostic input only. They do not create
+a UserAction resolution and never substitute for the explicit CLI command.
 
-## Removal
+## Repair
 
-Preview and remove the selected repository membership:
+Run `volicord doctor`, then rerun the same `init` command for the exact
+connection intent. Review the diff again and restart or reload Codex when
+reported. Repair must preserve unrelated configuration and product data.
+
+## Remove
+
+Preview first, then remove the same intent:
 
 ```sh
-volicord connection remove codex --repo "<repo>" --dry-run
-volicord connection remove codex --repo "<repo>"
+volicord connection remove codex --shared --repo "<repo>" --dry-run
+volicord connection remove codex --shared --repo "<repo>"
 ```
 
-Removal deletes only matching managed host configuration when ownership and
-safety checks allow it. It does not delete the Product Repository, project
-state, Volicord records, Evidence attachments, or unrelated host configuration.
+Removal deletes only Volicord-managed integration material named by the result.
+It does not delete the Product Repository, Runtime Home authority records, or
+unrelated Codex configuration.
 
-## Troubleshooting Routes
+## Related Guides
 
-| Symptom | Read |
-|---|---|
-| Executable or installation profile is missing | [Installation](installation.md) |
-| Setup reports `action_required` or `failed` | [Agent Host Troubleshooting](agent-host-troubleshooting.md) |
-| Exact command behavior is unclear | [Administrative CLI](../reference/admin-cli.md) |
-| Runtime Home and Product Repository separation matters | [Runtime Boundaries](../reference/runtime-boundaries.md) |
+- [Quickstart](quickstart.md)
+- [Agent Host Troubleshooting](agent-host-troubleshooting.md)
+- [Multi-Repository Agent Setup](multi-repository-agent-setup.md)
+- [System Requirements](../reference/system-requirements.md)

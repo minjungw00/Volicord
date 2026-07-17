@@ -90,7 +90,7 @@ Mutation conditions:
 Close condition:
 
 - `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their artifact and Run compatibility rules, and no close blocker remains.
-- `intent=check` and `intent=complete` close readiness block when a write ticket for the Task remains active and unconsumed. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows remain visible as stale authority state but do not block close by themselves. A confirmed unresolved host-hook or watcher observation, including an out-of-scope Product Repository path, remains a separate blocker. There is no fixed ticket expiry.
+- `intent=check` and `intent=complete` close readiness block when a write ticket for the Task remains active and unconsumed. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows remain visible as stale authority state but do not block close by themselves. A confirmed unresolved Unrecorded Change, including an out-of-scope Product Repository path, remains a separate blocker. There is no fixed ticket expiry.
 - A valid `effective_control_level=observe` Task has no write ticket or product-file write path. Its close-readiness result does not recommend `volicord.prepare_write`; missing current result or close-basis work routes to the compatible `volicord.record_run` path instead.
 - Final acceptance follows the effective control and authoritative project policy. `sensitive` and `tracked` require compatible final acceptance. `observe` uses `not_required`. `light` is `policy_dependent` and may use `not_required` only when the current project policy explicitly permits it and all policy conditions remain satisfied, including no sensitive action, no unresolved user requirement, no residual-risk acceptance requirement, no required evidence gap, and no confirmed unrecorded Product Repository change. Policy strengthening raises the effective control before this decision and never lowers it. No policy waives evidence, sensitive approval, risk acceptance, or another blocker.
 - Effective `sensitive` control also requires a ticket-backed exact sensitive-action
@@ -98,14 +98,10 @@ Close condition:
   replace either one. If the exact basis was never recorded, close reports
   `missing_sensitive_action_basis`; if the basis exists but its approval is no
   longer current, close reports `missing_sensitive_approval`.
-- In `detective` profile, close readiness also checks `GuardHealthSummary` host-hook and observation-state facts, including hook path safety, prompt-capture availability facts, confirmed unresolved unrecorded Product Repository changes, hook-detected write-ticket issues, and session-watch availability. The result reports derived `CoverageSummary` coverage facts when guard health is selected. In `record` profile, host hooks are not required; confirmed unresolved unrecorded Product Repository changes still block close until reconciliation resolves them. Suspected changes remain warnings or verification requests and do not produce `unresolved_unrecorded_changes` unless promoted to `confirmed`.
-- `GuardHealthSummary.native_host_output_adapter_config_verified` participates
-  only in Detective generated-configuration close gating. `false` can
-  contribute the applicable `guard_*` configuration blocker; `true` satisfies
-  only that configuration prerequisite. It does not establish managed final-
-  output support, exact live-host delivery, replay, block finalization, or a
-  `verified` `HostFeatureSupportStatus`.
-- Host hook and session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only support cooperative detection and correlation to expected-write or write-ticket records.
+- Confirmed unresolved Unrecorded Changes block close until reconciliation
+  resolves them. Suspected changes remain warnings or verification requests
+  and do not produce `unresolved_unrecorded_changes` unless promoted to
+  `confirmed`.
 - Only current acceptance criteria with `evidence_requirement=required` create
   evidence close requirements. Each must have current target-matching evidence
   observation provenance. Optional, `not_required`, supplemental, and retired
@@ -194,7 +190,7 @@ Implementations evaluate `volicord.check_close` in this order:
 
 1. Validate the envelope, method fields, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the invocation context, operation category, and actor source.
-3. Run any selected deterministic session-watch check, compute current close readiness and the canonical `EvidenceGateSummary`, including selected host-hook health facts, with the same calculation used by [`volicord.status`](method-status.md) when evidence or close is selected, and return `CloseTaskResult`. The top-level gate, `state.evidence_gate`, and `summary_card.evidence` reuse this one result.
+3. Compute current close readiness and the canonical `EvidenceGateSummary` with the same calculation used by [`volicord.status`](method-status.md) when evidence or close is selected, and return `CloseTaskResult`. The top-level gate, `state.evidence_gate`, and `summary_card.evidence` reuse this one result.
 
 Implementations evaluate `volicord.close_task` in this order:
 
@@ -210,7 +206,7 @@ Implementations evaluate `volicord.close_task` in this order:
 
 | Case | State-version effect |
 |---|---|
-| `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. For `dry_run=false`, a session-bound watcher may record bounded diagnostic session-watch observations or watcher-created Unrecorded Changes before returning the readiness observation. |
+| `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. |
 | Successful terminal mutation | Increments `project_state.state_version` exactly once. |
 | Blocked result for a mutating intent | Never increments `project_state.state_version`; it returns `base.effect_kind=no_effect` without a terminal mutation, event, or replay row. |
 | Preflight rejection or valid `dry_run` preview | Increments nothing. |
@@ -250,8 +246,6 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | `continuity_summary` | `ProjectContinuitySummary[]` for project continuity records made relevant by this close result. For successful `intent=complete`, this includes continuity records Core carries forward for close-basis known limits that do not require residual-risk acceptance. Empty means the computation ran and found no carry-forward records for this result. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `blockers` | `CloseReadinessBlocker[]` returned when the requested path has close or terminal blockers. Shape and nesting are owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); `category` values are owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). |
 | `pending_user_action_summaries` | `AgentSafeUserActionRequestSummary[]` for the exact required effectively pending requests selected by current user-action blockers in this close-readiness result. Each item contains only request ID, `status=pending`, and `next_actor=user`. Shape is owned by [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). |
-| `guard_health` | `GuardHealthSummary | null` for hook-state facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
-| `coverage_summary` | `CoverageSummary | null` for the derived active profile, host-hook coverage state, session-watcher coverage state, tracked timestamps, unresolved unrecorded-change count, and coverage non-guarantees. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. When the current close basis references the selected summary, `evidence_summary.evidence_state` is `accepted_for_close`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `evidence_gate` | Required `EvidenceGateSummary` derived by the same close evaluation that produced `blockers`. `state.evidence_gate` and `summary_card.evidence` copy it. Its values are owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). |
 | `artifact_refs` | `ArtifactRef[]` for close-relevant artifacts selected into the result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref). |
@@ -285,18 +279,7 @@ The production meanings below apply only after the method reaches close-readines
 | `stale_cancellation_authority` | `user_action` | A cancellation `UserActionResolution` exists, but its Task, scope revision, Change Unit, or effective user-action basis is no longer current. |
 | `open_write_ticket` | `write_compatibility` | A write ticket for the selected Task remains open and unresolved. |
 | `baseline_stale` | `baseline` | The close-relevant baseline basis is stale on a blocker-producing path. |
-| `guard_not_installed` | `connection_capability` | A detective close path has no usable detective host-hook installation record for the verified connection. |
-| `guard_reload_required` | `connection_capability` | Detective host hook files are installed, but the host must restart or reload before Volicord has observed the configured hooks. |
-| `guard_not_observed` | `connection_capability` | A detective close path has configured detective host-hook files, but no matching host-hook observation is recorded. |
-| `guard_stale` | `connection_capability` | A detective close path has an internal host-hook installation record whose status is `stale`. |
-| `guard_broken` | `connection_capability` | A detective close path has an internal host-hook installation record whose status is `broken`. |
-| `guard_required_hooks_missing` | `connection_capability` | A detective close path has an internal host-hook installation record with missing required host-hook phases. The blocker reports the missing phases, host kind, `outside_chat_action_required`, `can_resolve_in_chat`, and `next_actions`. |
-| `guard_degraded` | `connection_capability` | A detective close path has degraded host-hook configuration or observation-state health not covered by a more specific `guard_*` blocker, and the current detective host hook-health policy blocks close on degraded health. |
-| `guard_connection_unhealthy` | `connection_capability` | A detective close path has an Agent Connection health fact that is not healthy. |
-| `session_watch_unavailable` | `connection_capability` | A detective close path requires Product Repository session-watch coverage, but the selected watcher state is `disabled`, `degraded`, `unavailable`, or active with a partial-coverage warning. Repair or retry requires action outside chat, so `outside_chat_action_required=true`. |
-| `unresolved_unrecorded_changes` | `connection_capability` | Detective control-surface health reports confirmed unresolved unrecorded Product Repository changes that must be reconciled before close. Suspected changes warn and request verification without producing this blocker. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`, and `can_resolve_in_chat` reports whether the current path can proceed through a chat-mediated user path. |
-| `guard_write_ticket_missing_or_stale` | `write_compatibility` | Host-hook events detected missing, indeterminate, ambiguous, or stale write-ticket readiness for the close path. |
-| `guard_write_ticket_path_scope_violation` | `write_compatibility` | Host-hook events observed a Product Repository path outside the active write-ticket scope. |
+| `unresolved_unrecorded_changes` | `connection_capability` | Confirmed unresolved Product Repository changes must be reconciled before close. Suspected changes warn and request verification without producing this blocker. The blocker includes `next_actions` with `owner_method=volicord.reconcile_changes`. |
 | `evidence_claim_unsupported` | `evidence_claim` | A required close claim lacks supported evidence coverage. |
 | `evidence_claim_missing` | `evidence_claim` | A required close claim has no current evidence coverage record. |
 | `evidence_provenance_insufficient` | `evidence_provenance` | Required close evidence exists but lacks sufficient current source and assurance provenance. |
@@ -312,7 +295,7 @@ The production meanings below apply only after the method reaches close-readines
 
 These codes are method-local `CloseReadinessBlocker.code` values. They are not public `ErrorCode` values, not `WriteDecisionReason.code` values, and not global value-set entries.
 
-For `pending_user_action`, blocker next actions may identify the User Channel as the next actor, while `pending_user_action_summaries` carries only the exact agent-safe pending summaries. The public close result never carries the canonical form, capture command, local consent URL, or User Channel credential. A verified User Channel renderer obtains the complete inbox item through its separate internal Core boundary; ordinary local fallback is generic `volicord inbox` guidance. The blocker does not authorize an Agent Connection to resolve the user-owned action.
+For `pending_user_action`, blocker next actions may identify the User Channel as the next actor, while `pending_user_action_summaries` carries only the exact agent-safe pending summaries. The public close result never carries the canonical form, capture command, or User Channel credential. The CLI inbox renderer obtains the complete inbox item through its separate internal Core boundary. The blocker does not authorize an Agent Connection to resolve the user-owned action.
 
 `missing_final_acceptance` with no pending final-acceptance request is a supported two-step state, not an authority shortcut. A read-only check or a blocked close attempt does not create a request or resolution record. Its `request_user_action` action has `allowed_operation_categories=[agent_workflow]`; the Agent Connection creates the current request using the displayed question. After that commit, the public `pending_user_action` blocker exposes only a generic `resolve_user_action` action with `allowed_operation_categories=[user_only]`. A separately verified User Channel projection supplies any available input path to the user. The Agent Connection must not perform the second action.
 
@@ -328,25 +311,21 @@ Result:
 
 - The method may return `CloseTaskResult(close_state=blocked)` with `blockers: CloseReadinessBlocker[]`.
 - `volicord.check_close` returns blockers as response observation data and never creates blocker rows.
-  Session-watch diagnostic storage effects, when present, are separate from
-  blocker-row persistence and are owned by [Storage Effects](../storage-effects.md).
 - A `dry_run=false` mutating intent with blockers returns a response-only result with `base.effect_kind=no_effect`. It does not persist close blocker rows, append an authority event, create a replay row, mutate terminal state, or increment `project_state.state_version`.
-- For `intent=complete`, bounded session-watch diagnostic records created before close-readiness evaluation are separate from the blocked close result and remain governed by [Storage Effects](../storage-effects.md).
 
 Method-specific blocker branches:
 
 | Branch | Production rule |
 |---|---|
 | `volicord.check_close` | Returns current close readiness blockers as response observation data. |
-| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes active unconsumed write tickets, unresolved Unrecorded Changes, host-hook health, session-watch, and host-hook-detected write-ticket blockers. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows do not block by themselves. For `detective`, an inactive, degraded, unavailable, disabled, or partially covered watcher produces `session_watch_unavailable`. For `record`, absence of watcher coverage is reported as non-coverage and is not a close blocker by itself. |
+| `intent=complete` | Produces close readiness blockers when the completion path reaches close readiness evaluation and owner-defined close requirements remain unresolved. This includes active unconsumed write tickets and confirmed unresolved Unrecorded Changes. Invalidated, revoked, and effective idle-timeout-invalidated ticket rows do not block by themselves. |
 | `intent=cancel` | Produces blockers only for cancellation-specific terminal constraints, including missing or incompatible cancellation authority. Completion-only evidence, final acceptance, or residual-risk gaps do not block cancellation by themselves. |
 | `intent=supersede` | Produces blockers only for supersession-specific terminal constraints. Completion-only evidence, final acceptance, or residual-risk gaps do not block supersession by themselves. |
 
-Close-readiness coverage rules:
+Close-readiness Unrecorded Change rules:
 
-- `record` profile does not require host hooks or a session watcher for close readiness. Unresolved unrecorded Product Repository changes still remain visible and block close when the current close semantics report them.
-- `detective` profile reports watcher unsupported, inactive, degraded, unavailable, or partially covered states as non-coverage through `coverage_summary` and `guard_health`; those states must not be interpreted as full coverage.
-- `coverage_summary.non_guarantees` reports that detective observation is not actor identity proof, full filesystem monitoring, or write prevention.
+- Confirmed unresolved Product Repository changes remain visible and block close.
+  Suspected changes remain non-blocking warnings or verification requests.
 
 Non-claims:
 
@@ -355,7 +334,8 @@ Non-claims:
 - `STATE_VERSION_CONFLICT` is a rejected-response `ErrorCode`, not a method-local blocker or decision code.
 - A blocker category does not create the underlying user judgment, approval, evidence, artifact availability, final acceptance, residual-risk acceptance, or recovery state.
 - Close readiness is not correctness proof, test sufficiency proof, or human review replacement. `CloseTaskResult.base.disclosure.non_guarantees` must include `NotCorrectnessProof`, `NotTestSufficiencyProof`, and `NotHumanReviewReplacement`.
-- Host-hook and watcher blockers do not claim full write prevention, full filesystem monitoring, actor attribution, OS sandboxing, or OS-level filesystem enforcement.
+- An Unrecorded Change does not establish actor attribution, intent, correctness,
+  review completion, or test sufficiency.
 - Unverified claims, provenance-missing evidence, stale observation provenance, and cooperative agent reports may be recorded as evidence history, but they do not satisfy required close evidence when the close path requires stronger provenance.
 - Rejected, deferred, stale, superseded, expired, invalid-basis, agent-recorded, provenance-missing, or outcome-absent cancellation judgments do not permit cancellation.
 
@@ -398,13 +378,7 @@ when it returns blockers or uses `dry_run=true`. It does not create replay
 rows, append events, persist close blocker rows, mutate close state, touch
 artifacts or evidence, or increment `project_state.state_version`.
 
-For a session-bound Agent Connection and `dry_run=false`,
-`volicord.check_close` may create or update bounded session-watch diagnostic
-records as described by [Storage Effects](../storage-effects.md#volicordcheck_close).
-Those records are separate from close blocker persistence and Core
-authority-state mutation.
-
-Committed `dry_run=false` mutating intents persist only successful terminal outcomes. A blocked mutating intent returns a response-only `base.effect_kind=no_effect` result and leaves terminal state unchanged. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, project continuity persistence, and the separate session-watch diagnostic boundary are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
+Committed `dry_run=false` mutating intents persist only successful terminal outcomes. A blocked mutating intent returns a response-only `base.effect_kind=no_effect` result and leaves terminal state unchanged. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, and project continuity persistence are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).
 
 Every returned authority receipt derives `completion_claim_allowed`; callers
 must treat `false` as an authority boundary and must not emit a completion claim
@@ -485,8 +459,6 @@ state:
     - category: final_acceptance
       code: missing_final_acceptance
       message: "Final acceptance is still required before this Task can close."
-      can_resolve_in_chat: false
-      outside_chat_action_required: false
       related_refs: []
       next_actions:
         - presentation_role: primary
@@ -507,8 +479,6 @@ blockers:
   - category: final_acceptance
     code: missing_final_acceptance
     message: "Final acceptance is still required before this Task can close."
-    can_resolve_in_chat: false
-    outside_chat_action_required: false
     related_refs: []
     next_actions:
       - presentation_role: primary

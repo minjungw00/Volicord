@@ -172,9 +172,9 @@ CREATE INDEX idx_project_aliases_project
 
 CREATE TABLE agent_connections (
   connection_internal_id TEXT PRIMARY KEY,
-  host_kind TEXT NOT NULL CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
-  intent TEXT NOT NULL CHECK (intent IN ('personal', 'shared', 'global')),
-  host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project', 'local', 'export')),
+  host_kind TEXT NOT NULL CHECK (host_kind = 'codex'),
+  intent TEXT NOT NULL CHECK (intent IN ('personal', 'shared')),
+  host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project')),
   project_internal_id TEXT,
   server_name TEXT NOT NULL,
   config_target TEXT NOT NULL,
@@ -189,11 +189,7 @@ CREATE TABLE agent_connections (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT,
-  CHECK (
-    (host_kind = 'codex' AND host_scope IN ('user', 'project'))
-    OR (host_kind = 'claude_code' AND host_scope IN ('local', 'project', 'user'))
-    OR (host_kind = 'generic' AND host_scope = 'export')
-  )
+  CHECK (host_kind = 'codex' AND host_scope IN ('user', 'project'))
 );
 
 CREATE TABLE connection_projects (
@@ -224,7 +220,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_project
     server_name
   )
   WHERE project_internal_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_agent_connections_target_global
+CREATE UNIQUE INDEX idx_agent_connections_target_unscoped
   ON agent_connections (
     host_kind,
     intent,
@@ -234,114 +230,35 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   )
   WHERE project_internal_id IS NULL;
 
-CREATE TABLE host_capability_verifications (
-  verification_internal_id TEXT NOT NULL PRIMARY KEY CHECK (
-    length(trim(verification_internal_id)) > 0
-    AND length(CAST(verification_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  connection_internal_id TEXT NOT NULL CHECK (
-    length(trim(connection_internal_id)) > 0
-    AND length(CAST(connection_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  capability TEXT NOT NULL
-    CHECK (capability = 'model_invisible_user_surface'),
-  outcome TEXT NOT NULL
-    CHECK (outcome IN ('passed', 'failed', 'unavailable', 'revoked')),
-  host_kind TEXT NOT NULL
-    CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
-  host_version TEXT NOT NULL CHECK (
-    length(trim(host_version)) > 0
-    AND length(CAST(host_version AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  client_name TEXT NOT NULL CHECK (
-    length(trim(client_name)) > 0
-    AND length(CAST(client_name AS BLOB)) BETWEEN 1 AND 256
-  ),
-  client_version TEXT NOT NULL CHECK (
-    length(trim(client_version)) > 0
-    AND length(CAST(client_version AS BLOB)) BETWEEN 1 AND 256
-  ),
-  adapter_profile TEXT NOT NULL
-    CHECK (adapter_profile = 'mcp_user_channel_local_web_v1'),
-  adapter_version TEXT NOT NULL CHECK (
-    length(trim(adapter_version)) > 0
-    AND length(CAST(adapter_version AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  managed_fingerprint TEXT NOT NULL CHECK (
-    length(trim(managed_fingerprint)) > 0
-    AND length(CAST(managed_fingerprint AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  volicord_build_id TEXT NOT NULL CHECK (
-    length(trim(volicord_build_id)) > 0
-    AND length(CAST(volicord_build_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  source_revision TEXT NOT NULL CHECK (
-    length(trim(source_revision)) > 0
-    AND length(CAST(source_revision AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  target_triple TEXT NOT NULL CHECK (
-    length(trim(target_triple)) > 0
-    AND length(CAST(target_triple AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  executable_sha256 TEXT NOT NULL
-    CHECK (length(executable_sha256) = 64 AND executable_sha256 NOT GLOB '*[^0-9a-f]*'),
-  evidence_artifact_sha256 TEXT NOT NULL
-    CHECK (
-      length(evidence_artifact_sha256) = 64
-      AND evidence_artifact_sha256 NOT GLOB '*[^0-9a-f]*'
-    ),
+CREATE TABLE managed_host_authority (
+  connection_internal_id TEXT NOT NULL,
+  project_internal_id TEXT NOT NULL,
+  external_contract_descriptor_json TEXT NOT NULL,
+  managed_host_binding_json TEXT NOT NULL,
+  binding_digest TEXT NOT NULL
+    CHECK (length(binding_digest) = 71 AND substr(binding_digest, 1, 7) = 'sha256:'),
+  generated_artifacts_json TEXT NOT NULL,
+  generated_artifacts_digest TEXT NOT NULL
+    CHECK (length(generated_artifacts_digest) = 71 AND substr(generated_artifacts_digest, 1, 7) = 'sha256:'),
+  host_verification_receipt_json TEXT NOT NULL,
   observed_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
-  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (metadata_json = '{}'),
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (connection_internal_id)
-    REFERENCES agent_connections (connection_internal_id)
-    ON DELETE CASCADE,
-  UNIQUE (connection_internal_id, capability, verification_internal_id),
-  CHECK (outcome != 'passed' OR host_kind IN ('codex', 'claude_code')),
-  CHECK (outcome != 'passed' OR host_version = client_version),
-  CHECK (
-    outcome != 'passed'
-    OR (
-      length(source_revision) IN (40, 64)
-      AND source_revision NOT GLOB '*[^0-9a-f]*'
-    )
-  )
-);
-
-CREATE TABLE host_capability_state (
-  connection_internal_id TEXT NOT NULL CHECK (
-    length(trim(connection_internal_id)) > 0
-    AND length(CAST(connection_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  capability TEXT NOT NULL
-    CHECK (capability = 'model_invisible_user_surface'),
-  current_verification_internal_id TEXT NOT NULL CHECK (
-    length(trim(current_verification_internal_id)) > 0
-    AND length(CAST(current_verification_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
   updated_at TEXT NOT NULL,
-  PRIMARY KEY (connection_internal_id, capability),
+  PRIMARY KEY (connection_internal_id, project_internal_id),
   FOREIGN KEY (connection_internal_id)
     REFERENCES agent_connections (connection_internal_id)
-    ON DELETE CASCADE,
-  FOREIGN KEY (
-    connection_internal_id,
-    capability,
-    current_verification_internal_id
-  ) REFERENCES host_capability_verifications (
-    connection_internal_id,
-    capability,
-    verification_internal_id
-  ) ON DELETE CASCADE
+    ON DELETE RESTRICT,
+  FOREIGN KEY (project_internal_id)
+    REFERENCES projects (project_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id, project_internal_id)
+    REFERENCES connection_projects (connection_internal_id, project_internal_id)
+    ON DELETE RESTRICT,
+  CHECK (observed_at < expires_at)
 );
 
-CREATE INDEX idx_host_capability_verifications_connection
-  ON host_capability_verifications (connection_internal_id, capability, observed_at);
-CREATE INDEX idx_host_capability_verifications_outcome_expiry
-  ON host_capability_verifications (outcome, expires_at);
-CREATE INDEX idx_host_capability_state_current
-  ON host_capability_state (current_verification_internal_id);
+CREATE INDEX idx_managed_host_authority_expiry
+  ON managed_host_authority (expires_at);
 
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
@@ -349,7 +266,7 @@ CREATE TABLE guard_installations (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
   host_capability_json TEXT NOT NULL DEFAULT '{}',
   installation_status TEXT NOT NULL
     CHECK (installation_status IN (
@@ -403,36 +320,12 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 - `projects.state_db_path`는 저장 열로 유지됩니다. Store의 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 쓰기 가능한 프로젝트 상태 열기, Agent Connection 프로젝트 처리 경로, Core 실행, 프로젝트 Store 재사용, MCP 프로젝트 가용성 확인 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
 - `projects.status`는 저장소 소유 값이며 유효한 값은 `active`뿐입니다.
 - `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프를 저장합니다.
-- `agent_connections.intent`는 `personal`, `shared`, `global`로 제한됩니다.
-- `agent_connections.host_scope`는 `host_kind`와 함께 제한됩니다. Codex는 `user`와 `project`를 지원하고, Claude Code는 `local`, `project`, `user`를 지원하며, `generic` 기록은 `export`로 제한됩니다.
+- `agent_connections.intent`는 현재 `host_kind=codex` 계약에서 `personal` 또는 `shared`로 제한됩니다.
+- 현재 Codex connection 계약은 `host_kind=codex`를 사용하고 connection intent에 따라 `host_scope`로 `user` 또는 `project`를 사용합니다.
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
-- `host_capability_verifications`는 정확한 호스트 역량 관찰 하나에 대해 애플리케이션에서
-  추가만 하는 이력입니다. `outcome`은 `passed`, `failed`, `unavailable`, `revoked`이며,
-  `codex` 또는 `claude_code`의 `passed`만 credential 전달 자격에 기여할 수 있습니다. 각
-  행은 정확한 연결, 호스트·클라이언트 버전, 어댑터 프로필, 관리 지문, Volicord
-  빌드·source·target·실행 파일 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트,
-  관찰·만료 반개구간에 결속됩니다. 애플리케이션 검증은 정규 UTC 값과
-  `observed_at <= created_at`,
-  `observed_at < expires_at <= observed_at + 86,400 seconds`를 요구하고,
-  `outcome=passed`이면 `created_at < expires_at`도 요구합니다. 24시간은
-  기본값이나 attestation 기간이 아니라 최대 최신성 구간입니다. Bearer URL, token,
-  prompt, transcript, screenshot, 원문 호스트 아티팩트는 저장하지 않습니다. `passed`
-  행의 `source_revision`은 정확한 소문자 40자리 또는 64자리 16진수 revision이어야 하며
-  `unknown`은 통과할 수 없습니다. 내장 stdio 어댑터에서 `passed`는
-  `host_version = client_version`도 요구합니다. 애플리케이션의 게시와 평가는 그 단일
-  버전을 실제 아티팩트의 설치 호스트 버전, 정확한 런타임 `clientInfo.version`에
-  결속합니다.
-  v1에서 `metadata_json`은 엄격한 정규 `{}`만 허용합니다. 허용되는 모든 증거 좌표에는
-  전용 열이 있으므로 임의 또는 추가 메타데이터는 유효하지 않습니다.
-- `host_capability_state`는 연결과 역량마다 변경 불가능한 이력 행 하나를 정확히 가리킵니다.
-  더 새로운 failed, unavailable, revoked 행을 게시하면 이 포인터를 원자적으로 교체하므로
-  과거 passed 행이 fallback으로 다시 현재가 되지 않습니다. 소유 Agent Connection을
-  삭제하면 그 연결의 역량 상태와 이력만 연쇄 삭제합니다. 정확히 같은 검증 ID와 내용을
-  다시 게시하는 것은 멱등이며, 이미 더 새로운 행으로 전진한 포인터를 옮기지 않습니다.
-  같은 ID를 다른 내용으로 재사용하면 충돌합니다.
-- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 호스트 훅 설정 생명주기 상태와 호스트 역량을 저장합니다. 내부 `guard_mode` 값은 `record`, `detective`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 이 행은 호스트 관찰을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
+- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 project 범위에 대한 Codex Record Guard 설정 생명주기 상태와 구성 metadata를 저장합니다. 내부 `guard_mode`는 정확히 `record`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 이 행은 expected-write 상관관계와 reconciliation을 지원하지만 공개 Core Guard health projection, OS 수준 집행 증명, 쓰기 방지 증명은 아닙니다.
 
 ## 프로젝트 `state.sqlite`
 
@@ -485,7 +378,7 @@ CREATE TABLE tasks (
   scope_revision INTEGER NOT NULL DEFAULT 0 CHECK (scope_revision >= 0),
   close_basis_revision INTEGER NOT NULL DEFAULT 0 CHECK (close_basis_revision >= 0),
   close_basis_json TEXT,
-  close_summary_json TEXT NOT NULL DEFAULT '{}',
+  close_summary_json TEXT NOT NULL DEFAULT '{"close_reason":"none"}',
   current_change_unit_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -547,7 +440,7 @@ CREATE TABLE change_units (
   task_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('proposed', 'active', 'replaced', 'closed')),
   is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
-  basis_state_version INTEGER CHECK (basis_state_version >= 0),
+  basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   scope_summary_json TEXT NOT NULL DEFAULT '{}',
   bounded_paths_json TEXT NOT NULL DEFAULT '[]',
   write_basis_json TEXT NOT NULL DEFAULT '{}',
@@ -577,8 +470,7 @@ CREATE TABLE evidence_capture_intents (
   capture_kind TEXT NOT NULL CHECK (
     capture_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   capture_spec_json TEXT NOT NULL,
@@ -656,9 +548,7 @@ CREATE TABLE user_action_resolutions (
       'evidence_observation'
     )
   ),
-  channel_kind TEXT NOT NULL CHECK (
-    channel_kind IN ('mcp_elicitation', 'prompt_capture', 'local_web_consent', 'cli')
-  ),
+  channel_kind TEXT NOT NULL CHECK (channel_kind = 'cli'),
   channel_submission_id TEXT NOT NULL CHECK (
     length(CAST(channel_submission_id AS BLOB)) BETWEEN 1 AND 256
     AND length(channel_submission_id) = length(CAST(channel_submission_id AS BLOB))
@@ -710,7 +600,7 @@ CREATE TABLE write_tickets (
   project_id TEXT NOT NULL,
   write_ticket_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
-  change_unit_id TEXT,
+  change_unit_id TEXT NOT NULL,
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version > 0),
   status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'invalidated', 'revoked')),
   validity_basis_json TEXT NOT NULL,
@@ -819,8 +709,7 @@ CREATE TABLE evidence_capture_receipts (
   capture_kind TEXT NOT NULL CHECK (
     capture_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   input_sha256 TEXT NOT NULL CHECK (
@@ -862,11 +751,7 @@ CREATE TABLE evidence_capture_receipts (
 CREATE TABLE evidence_capture_source_claims (
   project_id TEXT NOT NULL,
   source_claim_kind TEXT NOT NULL CHECK (
-    source_claim_kind IN (
-      'host_invocation',
-      'guard_event',
-      'session_watch_observation'
-    )
+    source_claim_kind = 'host_invocation'
   ),
   source_claim_id TEXT NOT NULL CHECK (length(trim(source_claim_id)) > 0),
   evidence_capture_intent_id TEXT NOT NULL,
@@ -874,8 +759,7 @@ CREATE TABLE evidence_capture_source_claims (
   capture_kind TEXT NOT NULL CHECK (
     capture_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   claimed_at TEXT NOT NULL,
@@ -1051,8 +935,7 @@ CREATE TABLE evidence_producers (
   producer_kind TEXT NOT NULL CHECK (
     producer_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   canonical_producer_json TEXT NOT NULL,
@@ -1138,20 +1021,6 @@ CREATE TABLE authority_events (
     REFERENCES authority_events (project_id, event_hash)
     DEFERRABLE INITIALLY DEFERRED
 );
-
-CREATE VIEW task_events AS
-SELECT
-  project_id,
-  event_seq,
-  event_id,
-  task_id,
-  change_unit_id,
-  state_version,
-  event_type AS event_kind,
-  payload_json AS event_payload_json,
-  created_at
-FROM authority_events
-WHERE task_id IS NOT NULL;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -1276,9 +1145,8 @@ CREATE TABLE agent_sessions (
   connection_internal_id TEXT NOT NULL,
   guard_installation_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
   started_at TEXT NOT NULL,
-  ended_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, session_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
@@ -1354,9 +1222,6 @@ CREATE TABLE unrecorded_changes (
 
 CREATE INDEX idx_agent_sessions_connection
   ON agent_sessions (project_id, connection_internal_id);
-CREATE INDEX idx_agent_sessions_open
-  ON agent_sessions (project_id, connection_internal_id)
-  WHERE ended_at IS NULL;
 CREATE INDEX idx_guard_events_session
   ON guard_events (project_id, session_id, occurred_at);
 CREATE INDEX idx_guard_events_connection
@@ -1386,7 +1251,7 @@ CREATE TABLE expected_writes (
   path_policy TEXT NOT NULL CHECK (path_policy IN ('exact_paths')),
   expected_paths_json TEXT NOT NULL DEFAULT '[]',
   task_id TEXT NOT NULL,
-  change_unit_id TEXT,
+  change_unit_id TEXT NOT NULL,
   write_ticket_ids_json TEXT NOT NULL DEFAULT '[]',
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   status TEXT NOT NULL CHECK (status IN ('pending', 'matched')),
@@ -1425,130 +1290,9 @@ CREATE INDEX idx_expected_writes_host_invocation
   WHERE host_invocation_id IS NOT NULL;
 CREATE INDEX idx_expected_writes_task
   ON expected_writes (project_id, task_id, status);
-CREATE TABLE session_watch_baselines (
-  project_id TEXT NOT NULL,
-  watch_baseline_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  guard_installation_id TEXT,
-  status TEXT NOT NULL CHECK (status IN ('disabled', 'active', 'degraded', 'unavailable')),
-  scope_kind TEXT NOT NULL CHECK (scope_kind IN ('repository', 'path_set')),
-  repo_root TEXT NOT NULL CHECK (length(trim(repo_root)) > 0),
-  watched_paths_json TEXT NOT NULL DEFAULT '[]',
-  exclusions_json TEXT NOT NULL DEFAULT '[]',
-  snapshot_algorithm TEXT NOT NULL CHECK (length(trim(snapshot_algorithm)) > 0),
-  snapshot_digest TEXT NOT NULL CHECK (length(trim(snapshot_digest)) > 0),
-  snapshot_entries_json TEXT NOT NULL DEFAULT '[]',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, watch_baseline_id),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id)
-);
-
-CREATE TABLE session_watch_observations (
-  project_id TEXT NOT NULL,
-  watch_observation_id TEXT NOT NULL,
-  watch_baseline_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  expected_write_id TEXT,
-  unrecorded_change_id TEXT,
-  observation_status TEXT NOT NULL CHECK (observation_status IN ('unresolved', 'linked')),
-  observed_paths_json TEXT NOT NULL DEFAULT '[]',
-  change_summary_json TEXT NOT NULL DEFAULT '{}',
-  snapshot_algorithm TEXT NOT NULL CHECK (length(trim(snapshot_algorithm)) > 0),
-  snapshot_digest TEXT NOT NULL CHECK (length(trim(snapshot_digest)) > 0),
-  snapshot_entries_json TEXT NOT NULL DEFAULT '[]',
-  observed_at TEXT NOT NULL,
-  linked_at TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, watch_observation_id),
-  CHECK (
-    (
-      observation_status = 'unresolved'
-      AND unrecorded_change_id IS NULL
-      AND linked_at IS NULL
-    )
-    OR (
-      observation_status = 'linked'
-      AND unrecorded_change_id IS NOT NULL
-      AND linked_at IS NOT NULL
-    )
-  ),
-  FOREIGN KEY (project_id, watch_baseline_id)
-    REFERENCES session_watch_baselines (project_id, watch_baseline_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
-  FOREIGN KEY (project_id, expected_write_id)
-    REFERENCES expected_writes (project_id, expected_write_id),
-  FOREIGN KEY (project_id, unrecorded_change_id)
-    REFERENCES unrecorded_changes (project_id, unrecorded_change_id)
-);
-
-CREATE INDEX idx_session_watch_baselines_session
-  ON session_watch_baselines (project_id, session_id, status);
-CREATE INDEX idx_session_watch_baselines_status
-  ON session_watch_baselines (project_id, status, updated_at);
-CREATE INDEX idx_session_watch_observations_unresolved
-  ON session_watch_observations (project_id, session_id, observation_status, observed_at);
-CREATE INDEX idx_session_watch_observations_baseline
-  ON session_watch_observations (project_id, watch_baseline_id, observed_at);
-CREATE INDEX idx_session_watch_observations_expected_write
-  ON session_watch_observations (project_id, expected_write_id)
-  WHERE expected_write_id IS NOT NULL;
-CREATE INDEX idx_session_watch_observations_unrecorded_change
-  ON session_watch_observations (project_id, unrecorded_change_id)
-  WHERE unrecorded_change_id IS NOT NULL;
-CREATE TABLE user_action_channel_tokens (
-  project_id TEXT NOT NULL,
-  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
-  channel_kind TEXT NOT NULL CHECK (channel_kind = 'local_web_consent'),
-  connection_internal_id TEXT NOT NULL,
-  user_action_request_id TEXT NOT NULL,
-  capture_basis TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'consumed', 'expired')),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT,
-  completed_at TEXT,
-  created_metadata_json TEXT NOT NULL DEFAULT '{}',
-  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, token_hash),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
-  FOREIGN KEY (project_id, user_action_request_id)
-    REFERENCES user_action_requests (project_id, user_action_request_id)
-    ON DELETE RESTRICT,
-  CHECK (
-    (
-      status = 'pending'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-    OR (
-      status = 'consumed'
-      AND consumed_at IS NOT NULL
-      AND completed_at IS NOT NULL
-    )
-    OR (
-      status = 'expired'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-  )
-);
-
-CREATE INDEX idx_user_action_channel_tokens_request
-  ON user_action_channel_tokens (project_id, user_action_request_id, status);
-CREATE INDEX idx_user_action_channel_tokens_connection
-  ON user_action_channel_tokens (project_id, connection_internal_id, channel_kind, status, expires_at);
-CREATE INDEX idx_user_action_channel_tokens_expiry
-  ON user_action_channel_tokens (project_id, status, expires_at);
-
 CREATE TABLE project_workflow_policies (
   project_id TEXT PRIMARY KEY,
-  policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord-policy-v2'),
+  policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord.workflow_policy'),
   policy_version INTEGER NOT NULL CHECK (policy_version > 0),
   policy_json TEXT NOT NULL,
   policy_fingerprint TEXT NOT NULL CHECK (
@@ -1562,45 +1306,6 @@ CREATE TABLE project_workflow_policies (
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
-CREATE TABLE session_end_receipts (
-  project_id TEXT NOT NULL,
-  session_end_receipt_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  active_task_id TEXT,
-  task_state TEXT NOT NULL CHECK (
-    task_state IN (
-      'none', 'ready', 'blocked', 'closed', 'cancelled', 'superseded',
-      'authority_unknown'
-    )
-  ),
-  close_blocker_codes_json TEXT NOT NULL DEFAULT '[]',
-  next_actor TEXT NOT NULL CHECK (next_actor IN ('agent', 'user', 'none')),
-  completion_claim_allowed INTEGER NOT NULL CHECK (completion_claim_allowed IN (0, 1)),
-  authority_refresh_succeeded INTEGER NOT NULL CHECK (authority_refresh_succeeded IN (0, 1)),
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (project_id, session_end_receipt_id),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
-  FOREIGN KEY (project_id, active_task_id) REFERENCES tasks (project_id, task_id),
-  CHECK (
-    (authority_refresh_succeeded = 0 AND task_state = 'authority_unknown')
-    OR (authority_refresh_succeeded = 1 AND task_state <> 'authority_unknown')
-  ),
-  CHECK (
-    (task_state = 'none' AND active_task_id IS NULL)
-    OR (task_state = 'authority_unknown')
-    OR (task_state NOT IN ('none', 'authority_unknown') AND active_task_id IS NOT NULL)
-  ),
-  CHECK (
-    completion_claim_allowed = 0
-    OR (
-      authority_refresh_succeeded = 1
-      AND task_state = 'ready'
-      AND active_task_id IS NOT NULL
-      AND close_blocker_codes_json = '[]'
-    )
-  )
-);
 ```
 <!-- canonical-storage-sql: project end -->
 
@@ -1623,14 +1328,13 @@ CREATE TABLE session_end_receipts (
   상태로 strict validation합니다. TTL 파생 값은 checked 덧셈과 표현 가능성을 요구하며
   overflow 또는 표현 불가능한 값은 행, 하한, event, replay, state-version 효과 전에
   거부합니다.
-- 최신 Agent Session, guard event, session-watch baseline, session-watch observation을
-  도출하는 Store 조회는 적용되는 RFC 3339 timestamp를 strict parse하고 정규화한 뒤 UTC
+- 최신 Agent Session 또는 Guard event를 도출하는 Store 조회는 적용되는 RFC 3339
+  timestamp를 strict parse하고 정규화한 뒤 UTC
   instant를 nanosecond 정밀도로 비교합니다. SQLite `julianday()`, timestamp 텍스트 순서,
   행 순서, 불투명 ID가 권한 순서를 정하면 안 됩니다. 같은 최대 instant는 함께 최신인
-  집합입니다. 닫기 및 보안 관련 guard issue predicate는 함께 최신인 모든 guard event의
-  보수적 합집합입니다. 조회가 session 또는 watch record 하나를 요구하는데 서로 다른
-  후보 여러 개가 함께 최신이면 ID를 tie-breaker로 사용하지 않고 사용할 수 없는 담당
-  상태로 닫힌 상태에서 실패합니다.
+  집합입니다. 조회가 session 또는 Guard event 하나를 요구하는데 서로 다른 후보 여러
+  개가 함께 최신이면 ID를 tie-breaker로 사용하지 않고 사용할 수 없는 담당 상태로 닫힌
+  상태에서 실패합니다.
 - `tasks.work_phase`와 `tasks.acceptance_policy`는 필수 제어 값이고 policy
   reason은 비어 있지 않습니다. Predecessor ID, lineage relation, 비어 있지
   않은 lineage reason은 모두 null이거나 모두 존재하고 외래 키로 같은
@@ -1638,7 +1342,7 @@ CREATE TABLE session_end_receipts (
 - `tasks.carry_forward_json`은 타입이 지정된 carry-forward disposition을
   저장합니다. 저장되어 있다는 사실만으로 predecessor 행, 판단, Evidence 집합,
   baseline, 쓰기 티켓을 현재 상태로 만들지 않습니다.
-- `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다. `task_id`는 정확한 프로젝트 범위 `project_workflow_policy_applied` 이벤트를 제외하면 필수이고, 이 예외 이벤트는 `change_unit_id`도 null이어야 합니다. `task_events` 호환 view에는 Task 범위 행만 포함됩니다.
+- `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다. `task_id`는 정확한 프로젝트 범위 `project_workflow_policy_applied` 이벤트를 제외하면 필수이고, 이 예외 이벤트는 `change_unit_id`도 null이어야 합니다. Task 범위 조회는 `task_id`가 null이 아닌 `authority_events` 행을 선택합니다.
 - `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_action_requests.requested_by_actor_source`, `user_action_resolutions.resolved_by_actor_source`, `evidence_capture_intents.requested_by_actor_source`, `evidence_capture_receipts.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
 - `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
 - `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
@@ -1649,34 +1353,27 @@ CREATE TABLE session_end_receipts (
   모든 byte를 거부합니다. Core도 replay 조회나 mutation 계획 전에 같은 상한을
   적용합니다.
 - Store application validation은 요청, 근거, resolution JSON을 strict decode하고 저장 요청에서 캡처 폼을 도출하며 폐쇄형 tag와 파생 `action_kind` 일치를 요구합니다. 대상과 아티팩트 후보는 각각 32개, note 성격 텍스트는 Unicode scalar value 1,000개, 관찰 summary는 4,000개, canonical 직렬화 폼은 32 KiB로 제한하며 초과 값을 자르지 않고 거부합니다.
-- `user_action_channel_tokens`는 대기 사용자 행동의 해시된 일회성 로컬 웹 User Channel token을 저장합니다. raw token은 저장하지 않습니다. `created_metadata_json`은 정확히 `{fallback_kind, delivery_surface, endpoint, form_digest}`로 strict decode되어야 하며 `fallback_kind=local_web_consent`, `delivery_surface=model_invisible_user_surface`, `endpoint=/consent`, 저장된 닫힌 요청에서 도출한 canonical form과 일치하는 digest를 사용해야 합니다. Metadata가 누락됐거나 추가됐거나, 타입이 잘못됐거나, 값이 일치하지 않으면 사용할 수 없습니다. 특히 `delivery_surface`가 없는 기존 행은 수정된 코드에서 영구적으로 사용할 수 없습니다. 발급 창을 도출하고 검증하는 네 저장 timestamp인 `user_action_requests.requested_at`, 선택적 `user_action_requests.expires_at`, token `created_at`, token `expires_at`은 각 instant의 canonical RFC 3339 UTC 문자열이어야 합니다. Store application validation은 token `created_at >= user_action_requests.requested_at`을 요구합니다. 요청에 expiry가 있으면 token `expires_at`은 정확히 `min(user_action_requests.expires_at, created_at + 600 seconds)`여야 하고, 요청 expiry가 없으면 정확히 `created_at + 600 seconds`여야 합니다. Token은 반열린 구간 `created_at <= now < expires_at`에서만 유효합니다. 잘못된 생성 metadata, noncanonical 발급 창 timestamp, 더 이르거나 늦은 token expiry, 그 밖의 창 불일치는 손상된 저장 상태입니다. 이때 token 검증, 로컬 웹 GET·POST, expiry 정리, token 소비는 form을 표시하지 않고 닫힌 상태로 실패하며 token status, 프로젝트 상태나 UTC 하한, 사용자 행동 resolution 상태를 변경하지 않습니다. 발급은 token 삽입과 원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다. token 소비와 변경 불가능한 resolution 삽입은 함께 커밋합니다. 이 행은 일시적인 캡처 metadata이며 그 자체로 Core 사용자 권한이 아닙니다.
 - `write_tickets`는 소비 전까지 재사용 가능하고 상태에 묶인 호환성을 기록합니다. `basis_state_version`은 감사 순서이며 고유하거나 유효성 좌표가 아닙니다. 유효성은 `validity_basis_json`, status, 안정된 무효화 사유, 선택적 `idle_expires_at`에서 나옵니다. 고유 소비 인덱스는 소비 하나가 여러 Run으로 갈라지는 것을 계속 막습니다. Prefix 배열은 엄격하게 정규화된 repository-relative exact-or-descendant prefix이며 glob 문법 없음, 절대/빈 값/`..`/모호한 항목 거절, denied 우선, allowed 빈 배열은 product-file 쓰기 없음 규칙을 적용합니다.
-- `project_workflow_policies`는 권위 있는 v2 데이터베이스 복사본과 `sha256:<64자리 소문자 16진수>` 지문만 저장하며 관리 파일/CLI/host 동작은 이 담당 문서 밖입니다. 변경된 fingerprint는 정확한 트랜잭션 `committed_at`, 한 번의 상태 버전 전진, 프로젝트 범위 정책 이벤트 하나와 함께 기록됩니다. 정규화된 쓰기 권한 fingerprint가 바뀌면 같은 트랜잭션에서 같은 수준의 권한 변경을 포함해 활성 Task 재평가 metadata 표시를 만들거나 갱신하고, 저장 결속이 없거나 다른 모든 활성 티켓과 표시된 Task의 모든 활성 티켓을 `explicit_revoke`로 무효화합니다. 개인정보를 제한한 workflow metric은 이 권한 데이터베이스가 아니라 별도의 비권한 `diagnostics.sqlite` 저장소에만 둡니다. `session_end_receipts`에는 관리 세션, 닫힌 Task 상태와 다음 actor 값, blocker ref가 아닌 blocker code, 조건부 완전성이 필요합니다. Refresh 실패는 `authority_unknown`, 활성 Task 없음은 `none`을 사용하고 완료 주장은 새로 고친 blocker 없는 `ready` Task에서만 허용합니다.
+- `project_workflow_policies`는 권위 있는 정규 데이터베이스 복사본과 `sha256:<64자리 소문자 16진수>` 지문만 저장하며 관리 파일/CLI/host 동작은 이 담당 문서 밖입니다. 변경된 fingerprint는 정확한 트랜잭션 `committed_at`, 한 번의 상태 버전 전진, 프로젝트 범위 정책 이벤트 하나와 함께 기록됩니다. 정규화된 쓰기 권한 fingerprint가 바뀌면 같은 트랜잭션에서 같은 수준의 권한 변경을 포함해 활성 Task 재평가 metadata 표시를 만들거나 갱신하고, 저장 결속이 없거나 다른 모든 활성 티켓과 표시된 Task의 모든 활성 티켓을 `explicit_revoke`로 무효화합니다. 개인정보를 제한한 workflow metric은 이 권한 데이터베이스가 아니라 별도의 비권한 `diagnostics.sqlite` 저장소에만 둡니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
-- `evidence_capture_intents`는 만료되는 요청 하나를 정확한 현재 근거, command/tool
-  source input 또는 Core가 도출한 connection-source selector, connection/actor,
-  workspace fact에 결합합니다. Connection intent는 미래 source identifier,
-  timestamp, raw-event digest, snapshot digest, selection digest를 결합하지 않으며, 이
-  사실은 source 소유 receipt가 확정합니다. `evidence_capture_receipts`는 intent당
+- `evidence_capture_intents`는 만료되는 요청 하나를 정확한 현재 근거,
+  verified-command 또는 verified-tool source input, connection/actor, workspace fact에
+  결합합니다. `evidence_capture_receipts`는 intent당
   완전하고 content-bound된 안전한 receipt 및 staging handle을 정확히 하나만
-  허용합니다. `evidence_capture_source_claims`는 해당 receipt의 정규화된 host
-  invocation, guard event, session-watch observation 원천 사실을 모두 같은
-  트랜잭션에서 claim합니다. 프로젝트 범위 기본 키는 같은 원천 사실이 다른 intent나
-  producer class를 충족하지 못하게 합니다. Host invocation claim id는 connection,
-  session, installation, invocation 좌표를 정규화한 digest이므로 정확한 맥락이 다른
+  허용합니다. `evidence_capture_source_claims`는 해당 receipt가 사용한 정규화된 각 host
+  invocation을 같은 트랜잭션에서 claim합니다. 프로젝트 범위 기본 키는 같은 원천 사실이 다른 intent나
+  producer class를 충족하지 못하게 합니다. Host invocation claim ID는 정확한 connection과
+  invocation 좌표를 정규화한 digest이므로 정확한 맥락이 다른
   host-local id가 충돌하지 않습니다. `evidence_producers`는 intent, receipt,
   observation, artifact의 일대일 finalization을 강제하고, 복합 외래 키로 intent가
   다른 receipt와 교차 결합되는 것을 막으며, producer를 Run 하나에 연결합니다. 이
   제약은 Core의 freshness, relevance, byte-integrity 검증을 대신하지 않습니다.
-- Store 애플리케이션 검증은 capture class별로 누락되거나 추가된 source 좌표를
-  거부합니다. Command receipt는 host invocation 하나를 요구하고 claim합니다. Tool
-  receipt는 정확한 session과 installation, 서로 다른 guard event 두 개, host
-  invocation 하나를 요구하며 세 원천 사실을 모두 claim합니다. Guard connection
-  receipt는 intent selector와 kind가 일치하는 guard event 하나만 claim하고 watcher
-  receipt는 intent에 결합된 connection과 session의 유일한 현재 active baseline에 속한
-  session-watch observation 하나만 claim합니다. 선택 source는 intent 뒤에 생성되고
-  complete이며 nondegraded여야 하고, receipt가 확정한 identifier, timestamp, digest는
-  모두 해당 source와 일치해야 합니다. Receipt staging, receipt 삽입, 모든 claim은 함께
+- Store 애플리케이션 검증은 모든 command 또는 tool receipt와 producer에 정확한
+  `connection_id`와 nullable `host_invocation_id`가 있는지 요구합니다. Null이 아닌
+  invocation ID에는 정확히 하나의 일치하는 배타적 host-invocation claim이 필요하고,
+  null이면 invocation claim을 만들지 않습니다. 선택한 invocation은 intent 뒤에 생성되어야
+  하며 receipt가 확정한 identifier, timestamp, digest는 모두 해당 source와 일치해야
+  합니다. Receipt staging, receipt 삽입, 모든 claim은 함께
   commit되거나 rollback됩니다.
 - Store application validation은
   `intent.created_at <= receipt.observed_at < intent.expires_at`, observation
@@ -1685,7 +1382,7 @@ CREATE TABLE session_end_receipts (
   표현할 수 없습니다.
 - Store application validation은 일반 staging을 만드는 transaction에서
   `project_state.updated_at`을 `artifact_staging.created_at` 이상으로 전진시킵니다.
-  등록된 evidence-capture fulfillment도 receipt, staging 행, source claim을 만드는
+  Evidence-capture fulfillment도 receipt, staging 행, source claim을 만드는
   transaction에서 receipt `created_at`을 기준으로 같은 효과를 적용합니다. 이러한 하한
   전용 효과는 `state_version`을 증가시키거나 이벤트 또는 재실행 행을 만들지 않습니다.
 - `evidence_summaries.produced_at_state_version`은 삽입 또는 가장 최근 갱신의 결과
@@ -1702,12 +1399,10 @@ CREATE TABLE session_end_receipts (
   선택적 정규 `git_workspace_context_json`을 포함해 재실행 행을 저장합니다. 재실행
   행은 호출자 권한이 아니며 현재 연결, Git 작업 공간, User Channel 요구사항을
   우회하지 않습니다.
-- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 호스트 관찰 및 세션 감시 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
+- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`는 프로젝트별 Codex Record Guard 및 조정 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
 - `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 호스트 판단 요청을 기록하며 OS 수준 집행 증명이 아닙니다.
-- `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 일치한 행은 일치한 도구 실행 후 호스트 훅 이벤트, 일치 경로 JSON, `matched_at`을 가져야 하고, 대기 행은 이 일치 필드를 가지면 안 됩니다.
+- `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 일치한 행은 일치한 Guard 관찰 이벤트, 일치 경로 JSON, `matched_at`을 가져야 하고, 대기 행은 이 일치 필드를 가지면 안 됩니다.
 - `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 해결 JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다.
-- `session_watch_baselines.status`는 `disabled`, `active`, `degraded`, `unavailable`로 제한되고, `scope_kind`는 `repository` 또는 `path_set`으로 제한됩니다.
-- `session_watch_observations.observation_status`는 `unresolved` 또는 `linked`로 제한됩니다. 연결된 행은 `unrecorded_change_id`와 `linked_at`을 가져야 하고, 미해결 행은 이 연결 필드를 가지면 안 됩니다.
 
 ## 관련 담당 문서
 

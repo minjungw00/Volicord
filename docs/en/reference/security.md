@@ -1,541 +1,113 @@
 # Security
 
-This document owns Volicord security guarantee wording, local connection assumptions, sensitive-action approval boundaries, `operation_category` security meaning, and explicit security non-guarantees.
+This document owns supported security guarantees and explicit non-guarantees
+for the first-release local Codex workflow. It does not define method schemas,
+storage effects, Codex configuration syntax, or operating-system policy.
 
-## Owns / does not own
+## Boundary Summary
 
-| This document owns | This document does not own |
-|---|---|
-| Supported guarantee semantics for `cooperative` and connection-observation `detective` wording. | API method request/response schemas or method-specific behavior. |
-| The boundary that no baseline preventive guarantee is supported. | Storage record layout, artifact lifecycle detail, locks, hashes, or schema initialization. |
-| Local connection assumptions, `operation_category` non-claims, and access-boundary non-claims. | Connector implementation or host-specific operating recipes. |
-| Sensitive-action approval as a security-adjacent user-owned judgment boundary. | OS permissions, deployment controls, arbitrary-tool sandboxing, or host policy. |
-| Close Status, review, deployment, QA, and risk non-guarantees. | Close-task method behavior or state-schema shapes. |
-| Local HTTP transport non-guarantees for public-network, SaaS, multi-user, and security-boundary claims. | HTTP wire behavior; see [MCP Transport](mcp-transport.md). |
-| Non-authority rules for local files, generated displays, copied identifiers, chat text, and agent memory. | Runtime location definitions; see [Runtime Boundaries](runtime-boundaries.md). |
-| Host trust, host approval, and guidance non-guarantees for Agent Connections. | Codex or Claude Code host configuration syntax; see [Administrative CLI](admin-cli.md). |
+Volicord is a cooperative local authority record. It validates and records
+owner-defined workflow state, but it is not a sandbox, access-control system,
+host attestation service, malware defense, network isolation layer, or proof
+that a model followed instructions.
 
-## Boundary summary
+## Supported Guarantees
 
-Volicord security wording describes authorization and evidence records plus
-policy boundaries inside documented Volicord paths. It does not describe an
-operating-system sandbox, filesystem permission system, tamper-proof audit log,
-correctness proof, malware scanner, network isolation layer, full host-trust
-enforcement system, or general host policy engine.
+Within the owner-defined local boundary, Volicord guarantees:
 
-| Surface | Supported security meaning | Non-guarantee |
-|---|---|---|
-| `Volicord Runtime Home` | Storage/runtime owners define which Volicord operational records live there and how they are validated. | Runtime Home placement is not OS sandboxing, tamper-proof isolation, host trust, network isolation, malware scanning, or secret scanning. |
-| `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-action, and write-ticket paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
-| Agent Connections and host configuration | Agent Connections provide documented connection context, `actor_source` provenance, connection intent, mode, and Connection Projects allowlists when the current invocation matches the registered connection. | Connection configuration is not OS permission, host trust, user identity, or proof that an external host loaded or exposed `volicord mcp --stdio`. |
-| `volicord mcp --stdio` | The adapter routes MCP calls through Agent Connection checks, Runtime Home state, Core, and Store. | The process does not itself grant arbitrary product-file edit authority, record authority-bearing user-action resolutions, enforce host trust, block commands, block networks, or isolate tools. |
-| Local HTTP transport | `volicord serve --transport local-http` can expose the documented local MCP-over-HTTP subset for localhost and Docker host-loopback use with bearer-token and Origin checks. The bearer token is a local secret for the serve process. The local web consent route can expose a loopback User Channel capture page with a one-time token for one pending user action. | Local HTTP transport and local web consent are not a public network API, SaaS endpoint, multi-user server, security boundary, public host-interface listener, remote service, authentication service, authorization service, or full MCP Streamable HTTP implementation. |
-| `volicord` CLI | Administrative commands manage setup, registry state, and managed host-integration state. | The CLI is not a public API security boundary, host trust controller, OS permission mechanism, or blanket write approval. |
+- strict typed validation before Core or Store commits;
+- explicit Task, scope, Change Unit, Write Ticket, evidence, UserAction, and
+  close-state transitions;
+- no-effect behavior for owner-defined rejection branches;
+- canonical digests and exact receipt comparison where their owners require it;
+- Runtime Home and Product Repository separation;
+- CLI-only UserAction resolution with `resolved_by_actor_source=local_user`;
+- managed stdio MCP without a network listener; and
+- machine-readable failure categories instead of permissive fallback.
 
-## Supported security guarantees
+These guarantees apply only to Volicord processing. They do not control what
+Codex, the shell, tools, the filesystem, or external systems do outside that
+processing boundary.
 
-<a id="honest-guarantee-display"></a>
-Volicord may describe a guarantee only when [Scope](scope.md) and this security owner both support the guarantee level. Guarantee display is derived from the current `operation_category`, current Agent Connection or `User Channel` provenance where relevant, recorded observation facts, and supported baseline scope. If the claim depends on an observed connection result, the relevant observation must be recorded for the named connection or evidence source and observed scope.
+## Sensitive Actions And User Judgment
 
-Guarantee display must stay scoped to the connection, operation, or evidence observation that justifies it. A cooperative Run report or cooperative `agent_report` observation is not a `detective` or externally observed fact unless a separate supported observation or external result is recorded and cited.
+A Write Ticket is Core authority state, not filesystem permission. Sensitive
+approval, final acceptance, residual-risk acceptance, cancellation, and other
+user-owned judgments cannot be supplied by an Agent Connection. An MCP agent
+may create a pending request, but the user resolves it only through the local
+CLI inbox.
 
-The supported guarantee display labels are `cooperative` and `detective`; the value names are owned by [API Value Sets](api/schema-value-sets.md).
+Guard prompt-related observations do not become user answers. A stored
+resolution is authoritative only when the strict typed request, selected stored
+option or evidence candidates, CLI provenance, submission identity, and current
+basis all validate.
 
-### `cooperative`
+## Local Connection Assumptions
 
-`cooperative` is the default baseline security guarantee.
+The managed Codex process and `volicord` run under the local user's operating-
+system account. Volicord does not authenticate that OS user or turn process
+identity into human identity. Connection verification proves only the exact
+owner-defined binding checks represented by a current
+`HostVerificationReceipt`.
 
-Conditions:
-- The caller, Agent Connection, User Channel, local admin path, or connector follows the documented Volicord paths.
-- The claim stays inside documented Core, API, storage, runtime, and user-action boundaries.
+The supported MCP process uses stdin/stdout and opens no network transport
+listener. This is a process topology fact, not network sandboxing: Codex or
+tools may use the network independently.
 
-May claim:
-- Volicord records, write compatibility, evidence summaries, user-owned judgments, and close-readiness results are governed by their owner contracts.
-- Volicord may reject, block, or require a focused user-owned judgment when the relevant owner contract says the current state is not compatible.
+## Authority Boundaries
 
-Must not claim:
-- `cooperative` blocks arbitrary tool behavior, host commands, network access, secret access, or product-file edits outside Volicord-owned paths.
-- `cooperative` provides OS permission enforcement, sandboxing, tamper-proof isolation, or full security isolation.
+Product Repository files are user product data. Runtime Home rows are Volicord
+authority records. Managed Codex configuration starts a process but is not
+authority, approval, a Write Ticket, or proof that Codex loaded it.
 
-### Connection-observation `detective`
-
-`detective` is supported only as a limited, observation-backed claim.
-
-Conditions:
-- The claim names the Agent Connection, User Channel, external evidence source, or other owner-supported observation source.
-- The relevant `operation_category` and owner-supported observation path support the claim.
-- The relevant observation or enforcement check has passed and produced supported facts for the observed operation.
-- The observed scope is documented.
-- Changed-path wording is used only when the recorded observation reports changed paths for the relevant operation.
-
-May claim:
-- The checked observation source supports limited observation or mismatch reporting inside the documented observed scope.
-- Observed changed paths support a limited changed-path detection claim when the reporting condition is met.
-- Missing or insufficient observation support routes to documented error behavior when the relevant owner defines that behavior.
-
-Must not claim:
-- A copied `connection_id`, `operation_category`, connector description, `Projection`, generated display, chat message, or agent memory proves capability or observation.
-- Connection declarations alone raise a guarantee above `cooperative`.
-- A cooperative Run report, cooperative `agent_report`, or unverified claim raises a display above `cooperative` without a supporting observed fact.
-- `detective` wording becomes prevention, sandboxing, OS permission enforcement, full monitoring, or tamper-proof storage.
-
-Session-watcher detective wording is limited to bounded `Product Repository`
-snapshot comparison after the recorded coverage start. The watcher skips
-default policy paths such as `.git/`, `.volicord/`, `target/`,
-`node_modules/`, `dist/`, `build/`, `coverage/`, and `vendor/`, keeps the
-selected `Volicord Runtime Home` outside the scanned repository through the
-Runtime Home/Product Repository separation rule, and does not follow symlinks
-by default. Status-like output must surface skipped or degraded coverage when
-known, including file-count limit, file-size limit, unreadable path,
-skipped-by-policy path, and symlink skipped reasons. These facts are not full
-filesystem monitoring, actor attribution, write prevention, tamper-proof
-audit, OS enforcement, or security isolation.
-
-### Preventive guarantees
-
-The baseline contract does not define a supported preventive guarantee.
-
-Must not claim:
-- Volicord prevents arbitrary tool execution.
-- Volicord provides universal pre-tool blocking.
-- Volicord observes or blocks command, network, or secret access by default.
-- Volicord provides OS sandboxing, host permission enforcement, or stronger isolation.
-
-## Sensitive-action approval boundary
-
-Sensitive-action approval is a user-owned judgment for a named sensitive step inside a bounded `SensitiveActionScope`.
-
-May claim:
-- Sensitive-action approval can be required before write compatibility, Run recording, or close when the relevant owner defines that requirement.
-- The approved sensitive step remains scoped to the prompt, `SensitiveActionScope`, affected object, and visible consequence that the user was asked to judge.
-
-Must not claim:
-- Sensitive-action approval is a write ticket, `WriteTicketScope`, OS permission, shell permission, command approval, deployment approval, final acceptance, residual-risk acceptance, or product correctness.
-- Sensitive-action approval authorizes product-file writes, commands, hosts, networks, secrets, destructive operations, or unbounded activity.
-- Broad approval substitutes for a required sensitive-action approval, final acceptance, residual-risk acceptance, scope decision, or write ticket.
-- Final acceptance recorded after a write substitutes for a required pre-write
-  sensitive-action approval or retroactively authorizes the write.
-- Exact equality between a caller-reported `performed_operation` and a ticket's
-  `intended_operation` proves that the external action occurred, proves its
-  effect, or attributes that action to an actor. It is only a compatibility
-  check on caller-supplied coordinates.
-
-Owner links:
-- [Core Model](core-model.md) owns user-owned judgment and non-substitution rules.
-- [API Judgment Schemas](api/schema-judgment.md) owns `SensitiveActionScope` shape.
-- [Prepare-write method](api/method-prepare-write.md) owns `volicord.prepare_write` behavior.
-
-## Local connection assumptions
-
-Volicord security claims assume local actors use the documented Volicord contracts for Volicord state, records, artifacts, write compatibility, and user-owned actions.
-
-May claim:
-- Local product files can be inputs to Volicord checks or user-owned actions.
-- Local runtime data location can be defined by storage/runtime owners.
-- Agent Connections can provide `actor_source=agent_connection:<connection_id>` provenance when [Agent Connection Reference](agent-connection.md), method owners, and this security owner allow the claim. The `connection_id` segment is the process-binding/provenance spelling in that string, not a user-facing authority token or storage-field name.
-- The `User Channel` can provide `actor_source=local_user` provenance for authority-bearing user-action resolutions, including judgments and evidence observations, when Core and method owners require it.
-- Connection Projects define the explicit `project_internal_id` allowlist for an Agent Connection. User-facing commands select projects by repository root, project name, alias, or a `project_selector` returned by Volicord.
-- `operation_category` classifies an operation as `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
-- Baseline actor provenance is cooperative local provenance, not cryptographic human identity.
-
-The Core-derived durable user-action request/body/basis, complete inbox item,
-canonical capture form, capture paths, and credentials are returned only to a
-verified User Channel renderer. An Agent may already know draft text that it
-authored; this rule is non-disclosure of the authoritative stored projection,
-not a claim that the Agent never saw its own input. Agent Connection results
-carry only the canonical pending request summary and safe current-resolution
-projection. This is a projection boundary, not content redaction: the complete
-form is never written into the agent result, exact replay, or operation-result
-bytes in the first place. User-only surfaces still display the complete
-canonical form. Presentation-safety classification may additionally decline a
-rich host input path, but it is not general secret scanning, content isolation,
-malware detection, host enforcement, or proof that arbitrary secret material
-was found or excluded.
-
-Must not claim:
-- Local filesystem access proves Volicord authority.
-- A local path, directory name, copied identifier, displayed non-credential
-  identifier, or ordinary rendered text is a security token. The raw local-web
-  token and the complete URL containing it are bearer credentials and are not
-  covered by this non-claim.
-- Direct local modification outside those documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, a write ticket, or artifact authority.
-- `Volicord Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
-- A caller-supplied `verified` flag, requested `operation_category`, copied `actor_source`, public request field, or environment variable supplies trusted provenance.
-- `actor_source=agent_connection:<connection_id>` proves human identity or supplies user authority.
-- Host configuration installation proves that a host has trusted, approved, loaded, initialized, or exposed the MCP server.
-- Repository guidance, MCP server instructions, or host rule files enforce model behavior or guarantee that an agent will choose Volicord tools.
-
-## Authority boundaries
-
-### Volicord records
-
-Volicord records carry authority only through the owner contracts that create, validate, or update them.
-
-Must not claim:
-- Local file contents are tamper-proof because they describe or store Volicord data.
-- Product text, generated text, or copied record-looking text directly mutates Volicord records.
-
-### `Product Repository` files
-
-[Runtime Boundaries](runtime-boundaries.md) defines `Product Repository` as the product-file boundary. This section owns only security claims and non-claims about that boundary.
-
-May claim:
-- Product files can be inspected as inputs.
-- Compatible product-file writes can be governed by current scope, current Change Unit compatibility, user-owned judgments, and write tickets when the write owner requires them.
-
-Must not claim:
-- Product files are Volicord state.
-- Product files prove Volicord authority.
-- Product files become Volicord records because Volicord metadata is nearby.
-
-### `Volicord Runtime Home`
-
-For security wording, treat `Volicord Runtime Home` as the runtime/storage-owned operational data location.
-
-Runtime location is defined by [Runtime Boundaries](runtime-boundaries.md). This section owns only the security non-claims for that location.
-
-May claim:
-- Storage/runtime owners define which Volicord operational data belongs there and how it is validated.
-- Administrative diagnostics can summarize the Runtime Home privacy footprint
-  as categories and counts, including registry, project state, artifact, User
-  Channel, guard, and session-watch metadata, without printing stored row
-  bodies.
-
-Must not claim:
-- `Volicord Runtime Home` is the `Product Repository`.
-- `Volicord Runtime Home` is automatically a security boundary.
-- Placing data under `Volicord Runtime Home` proves security authority or isolation.
-- Runtime Home records prove actor attribution, write prevention,
-  tamper-proof audit, full filesystem monitoring, OS enforcement, correctness,
-  test sufficiency, review completion, final acceptance, or residual-risk
-  acceptance.
-
-### Agent Connections, User Channel, and operation categories
-
-Connection identity, user-channel provenance, and operation categories limit what may be claimed.
-
-May claim:
-- Internal connection identity, connection intent, `connection.mode`, Connection Projects, `operation_category`, and `actor_source` can be used according to the runtime, Core, method, and security owners after the current invocation matches the documented connection context.
-- `actor_source` can supply durable provenance only when the Core and method owners accept the value for the current authority-resolution operation.
-- `actor_source=local_user` through the `User Channel` is required for authority-bearing user-action resolutions, including judgments and evidence observations.
-- No raw User Channel bearer token or credential-bearing URL may enter an
-  Agent-visible/model-context or public output projection, including `content`,
-  `structuredContent`, compatibility/diagnostic text, exact replay, and
-  operation-result bytes.
-  Local-web delivery requires a managed non-generic stdio host, a ready
-  loopback listener, exact boolean `true` at
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`,
-  and current exact-match persisted host-capability state whose immutable
-  result is `outcome=passed`, unexpired, and bounded by
-  `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`.
-  Its `evidence_artifact_sha256` would require trusted production acquisition
-  of the external `volicord-host-release-manifest-v3` defined by
-  [Host Release Evidence](host-release-evidence.md). That manifest must bind the same capability,
-  host/client, adapter, build, source, target, and executable digest. A missing,
-  unknown, malformed, unverified, or mismatched manifest fails closed; neither
-  the persisted row nor build metadata can self-assert the expected value. The
-  current adapter has no trusted manifest acquisition path, and the release
-  artifact is not itself a runtime trust input, so production
-  local-web eligibility remains unavailable and uses CLI inbox.
-  Twenty-four hours
-  is only the maximum freshness window, not a default lifetime, identity proof,
-  or attestation period. V1 verification `metadata_json` is strict canonical
-  `{}` only; arbitrary metadata cannot become another trust input or carry a
-  token, prompt, transcript, raw host artifact, or private operator data. The
-  sole host-only exception is the
-  namespaced top-level tool-result `_meta` handoff outside `outputSchema` and
-  model context. Any absent, non-passing, expired, revoked, corrupt, or
-  mismatched input issues no token and leaves CLI inbox recovery.
-- A workflow Agent Connection can create a current evidence-capture intent.
-  Only a registered local source can fulfill it, and only `record_run` can
-  finalize the receipt as a producer and observation. There is no MCP receipt-
-  fulfillment tool.
-
-Must not claim:
-- `connection_id` alone is an authority token.
-- A copied internal connection identifier proves capability or user authority.
-- `connection.mode=workflow` is OS permission or broad authority.
-- A `personal`, `shared`, or `global` connection intent is OS permission, host trust, or broad authority.
-- `operation_category` is OS permission, host trust, or broad authority.
-- `actor_source` copied from text is a caller authority token.
-- Environment-controlled labels, public request fields, or arbitrary caller text are trusted authority, audit facts, or verification-basis inputs.
-- A self-declared capability, `clientInfo` name or version, environment marker,
-  process argument, connection `complete` result, copied evidence digest, or
-  fixture result creates credential-delivery eligibility. These values are
-  matching inputs only where the focused owner requires them.
-- A release evidence digest embedded in the executable is a valid trust root.
-  Live-host evidence is generated after the final executable exists; rebuilding
-  to embed that digest changes the executable digest and creates a recursive
-  binding.
-- A host-capability verification is cryptographic host attestation, current
-  user identity, host isolation, or proof that a later host run kept `_meta`
-  outside model context. One host, version, target, adapter profile, connection,
-  fingerprint, build, or validity interval must not be generalized to another.
-- A registered guard event, session-watcher observation, or Volicord command
-  runner is a cryptographic host signature, local-principal attestation,
-  anti-forgery boundary, or actor-identity proof. These sources are cooperative
-  local integration even when their exact digests and completeness are checked.
-
-Managed-host session correlation uses only the domain-separated opaque
-`managed_host_session_id` defined by
-[Host Release Evidence](host-release-evidence.md).
-For reviewed Codex `0.144.4`, a managed descriptor is launch provenance only.
-Exact `clientInfo` plus strict per-call `_meta.threadId` and
-`_meta["x-codex-turn-metadata"]` bind the root session and an immutable
-process-local thread digest. Pending state has no managed durable, Core,
-token, or local-web effects. `CODEX_THREAD_ID`, PID, cwd, process ancestry,
-timing, and hook-event proximity cannot establish or repair this binding.
-When binding materializes a managed session-watch baseline, only the validated
-1-through-256-byte exact initialize `client_name` and `client_version` strings
-may be retained as top-level metadata for release recording. They remain
-cooperative matching coordinates, not identity proof, and cannot be inferred
-from host, probe, configuration, protocol, constants, or another session.
-Raw native session, event, tool-call, capture, turn, and invocation identifiers
-and raw initialize or protocol/session/thread/turn payload must not be
-persisted, logged, diagnosed, or attached to evidence. The `mhs_`
-namespace is reserved and bound immutably to one host and registered
-connection; invalid or conflicting markers fail without durable state. The
-mapped value is correlation metadata, not user identity, host attestation, or
-authority; missing or mismatched binding cannot produce Strong Evidence.
-This exact correlation does not promote `local_web_user_channel`. The feature
-still requires every separate credential-delivery condition and its current
-model-separation and advertised-and-exercised probes. The reviewed Codex
-`0.144.4` coordinate neither proves support nor produces
-`unsupported_by_host`; only current explicit capability absence does that.
+Release cells and verification receipts are exact artifact evidence. They do
+not grant Core authority, identify a user, or prove all future executions.
 
 <a id="historical-operation-result-access"></a>
-### Historical operation-result access
+## Historical Operation-Result Access
 
-`OperationResultRef` is a non-bearer lookup locator for an eligible immutable
-historical Core mutation response. Possessing or copying a reference or page
-cursor does not authorize retrieval, replay the mutation, or confer current
-authority.
-
-Every `volicord.get_operation_result` page requires a currently enabled Agent
-Connection, current Connection Projects membership for the selected project,
-and a verified `actor_source` that exactly matches the actor stored with the
-original `operation_category=agent_workflow` invocation. These checks are
-repeated for every page;
-a disabled connection, removed project membership, different project, or
-different actor must not expose historical response bytes.
-
-`operation_category=user_only` results are outside this Agent Connection
-retrieval path. In particular, the exact `volicord.resolve_user_action`
-response, any free-form user `note`, and any evidence-observation `summary`
-must not be returned through `volicord.get_operation_result`. A host-mediated
-user-action flow may expose only the MCP-transport-owned agent projection for
-the agent-owned request. Compact, full, resume, and paged historical forms all
-contain only the request ID, historical `pending` status, and
-`next_actor=user` for the pending request; they omit the complete request,
-inbox form, private `note`, evidence-observation `summary`, User Channel
-credential, user-only operation reference, and exact user-only response body.
-A pre-correction stored result that fails this safe shape is unavailable rather
-than partially returned.
-
-Retrieved bytes describe a historical result. They are not an
-`AuthorityReceipt`, current status, evidence, a write ticket, or proof that the
-historical state remains current. The caller must read `volicord.status`
-separately before making a current-authority claim.
-
-### Host trust and guidance
-
-Host trust and approval decisions belong to the external host and the user. Volicord can install supported configuration and report whether further user action appears required, but it does not control the host trust decision.
-
-May claim:
-- managed host configuration state verification can distinguish `complete` from `action_required` and `failed` when the administrative CLI can observe the required checks.
-- `action_required` can name installation-profile repair, command-link repair, host trust, approval, restart, reload, or comparable user-controlled actions when those actions are the remaining observable blocker.
-- Hook path safety diagnostics can report whether generated host hook commands are cwd-independent, subdirectory-safe, and pointed at expected Volicord-managed wrappers.
-- MCP server instructions and optional repository guidance can describe how an agent should select projects and tools.
-
-Must not claim:
-- Installing Codex or Claude Code configuration bypasses project trust, project MCP approval, OAuth, restart, reload, or comparable host-controlled actions.
-- `action_required` is a failed installation when configuration was installed but the host still requires user-controlled trust or approval.
-- Cwd-independent hook paths, wrapper verification, or `hook_path_safety=ok` provide OS sandboxing, global filesystem interception, broad command blocking, network blocking, secret blocking, or proof that no write can occur outside implemented host hooks.
-- Agent instructions, `AGENTS.md` blocks, `CLAUDE.md`, `.claude/rules/` files, or MCP server instructions are access control, security enforcement, user judgment, a write ticket, or proof that a model will follow them.
-- A written or verified final-output adapter configuration proves that the host loaded the adapter, delivered the event, or displayed its fixed UI output.
+`volicord.get_operation_result` returns only the exact eligible immutable
+response bytes selected by its owner-defined identity and pagination rules.
+Access never widens merely because the caller knows an ID. Cross-project,
+cross-connection, ineligible, corrupt, or unavailable records fail without
+revealing private content.
 
 <a id="generated-displays-and-text"></a>
-### Generated displays and text
+## Generated Displays And Text
 
-Generated displays, rendered templates, chat text, connector prose, and agent memory can help readers understand source records.
+Generated guidance, CLI prose, MCP text content, status summaries, and templates
+are displays, not separate authority records. They must derive from current
+typed state, omit secrets and private UserAction content, and preserve the
+structured result's guarantee boundary. A stale display cannot authorize work.
 
-Must not claim:
-- A rendered display, `Projection`, status card, template output, chat message, connector description, or agent memory is a new authority source.
-- Displayed `ArtifactRef`, `UserActionRequest`, `UserActionResolution`, write-ticket identifier, or `connection_id` text creates the authority named by those identifiers.
-- A final-output `AuthorityReceipt` projection is a second authority record, a Core mutation, a host observation, or proof that model-authored final prose used current authority.
+## Guard And Unrecorded Changes
 
-<a id="detective-observation-confidence"></a>
-### Detective observation confidence and termination
+Guard and reconciliation records are bounded observations. They do not prove
+who changed a file, malicious intent, complete monitoring, or prevention.
+Suppression may remove only exact owner-defined matching paths. An
+`Unavailable` suppression outcome remains visible and cannot be treated as a
+successful empty suppression.
 
-Detective may hard-deny only a deterministic, host-structured direct Product
-Repository write whose concrete normalized paths are confirmed and whose
-current Task, exactly one matching active ticket bound to the current normalized
-project write authority, ticket scope, or required sensitive approval is
-missing. A deterministic confirmed known-path write covered only by a ticket
-with a missing or stale policy binding is hard-denied for policy refresh; it is
-not an uncertain shell-effect warning. Shell text, a broad command name,
-missing watcher data, an ambiguous target, or a heuristic inference is
-uncertain and can produce a warning, not a hard security claim or ordinary-work
-denial.
-
-Guard excludes a ticket with a missing or mismatched policy binding from
-`current_write_ticket_ids` and `active_write_tickets` and reports it through
-`stale_write_ticket_ids`. If such a stale ticket is the only ticket covering an
-otherwise deterministic direct product write, the decision uses
-`write_ticket_backing.status=policy_authority_stale`, `ticket_backed=false`,
-and denial reason `write_ticket_policy_changed`. This cooperative Guard layer
-is not the only check: [`volicord.record_run`](api/method-record-run.md)
-independently reloads and validates the current policy binding before creating
-a Run, and the Store rechecks it inside ticket consumption. Bypassing Guard
-therefore does not make a stale ticket usable; the method owner defines the
-exact rejection behavior.
-
-PostTool observation uses structured changed paths first, then a watcher
-before/after comparison, then a bounded safe Git diff, then heuristic signals.
-A known-path change with trustworthy before/after evidence is `confirmed`; an
-unavailable watcher or heuristic-only signal is `suspected`. Only a confirmed
-unrecorded or out-of-scope change can create the corresponding close blocker.
-A suspected change remains a warning until later observation promotes it or
-resolves it as no change. Neither classification proves actor identity,
-malicious intent, complete filesystem interception, or prevention.
-
-Stop always allows host-session termination. Pending user action, confirmed
-unrecorded change, missing Evidence or another close requirement, and failed
-authoritative refresh set `completion_claim_allowed=false`; they do not justify
-a Stop denial or forced retry. The persisted termination receipt is content
-free: no model prose, prompt, command, path, file content, user answer, raw
-event, or error body.
-
-Workflow metrics have the same privacy boundary. They may store bounded
-aggregate counts, durations, byte sizes, and categorical outcomes, but never
-prompts, answers, commands, paths, file contents, model output, or raw host
-events. Metrics and exact/self-declared host or client versions are diagnostic
-or evidence coordinates only; they do not grant authority, establish identity,
-gate runtime capability by equality, prove prevention, or establish close
-readiness.
-
-## Explicit non-guarantees
-
-### Operating system and isolation
+## Explicit Non-Guarantees
 
 Volicord does not guarantee:
 
-- OS-level sandboxing.
-- OS permission enforcement.
-- Network isolation.
-- Tamper-proof isolation.
-- Full security isolation.
-- Isolation between local users, processes, tools, or hosts.
+- filesystem, process, shell, command, network, credential, or secret isolation;
+- that Codex honors guidance, tool descriptions, or managed instructions;
+- actor attribution from process, path, timing, prompt, or observation data;
+- complete detection or prevention of Product Repository changes;
+- correctness, test sufficiency, QA, deployment readiness, or human review;
+- that Close Status replaces final user acceptance where acceptance is required;
+- that configuration presence proves active tool exposure;
+- that a release result from one platform applies to another platform; or
+- recovery, decoding, or automatic conversion of unsupported stored or external
+  contract formats.
 
-### Monitoring and prevention
+## Related Owners
 
-Volicord does not guarantee:
-
-- Full filesystem monitoring.
-- Command monitoring by default.
-- Network monitoring by default.
-- Network blocking by default.
-- Secret-access monitoring by default.
-- Malware scanning.
-- Secret scanning.
-- Universal pre-tool blocking.
-- Prevention of malicious agent behavior outside Volicord-owned paths.
-
-### Host trust and integration
-
-Volicord does not guarantee:
-
-- Full host trust enforcement.
-- That an external host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`.
-- That host instructions, repository guidance, or MCP server instructions force model or tool behavior.
-
-### Storage and artifact authority
-
-Volicord does not guarantee:
-
-- Tamper-proof storage.
-- That an authority bundle, manifest, or SHA-256 checksum proves the
-  `Volicord Runtime Home` was never modified before export.
-- Native evidence-receipt fulfillment through MCP or arbitrary Agent Connection
-  payloads. The supported source path is local registered fulfillment followed
-  by Core finalization.
-- Artifact authority from displayed identifiers alone.
-- Validation or acceptance from copied artifact, run, evidence, or judgment text.
-- Correctness, test sufficiency, review completion, deployment success, final
-  acceptance, or residual-risk acceptance from an authority bundle.
-
-### Close Status, QA, deployment, and review
-
-Volicord does not guarantee:
-
-- Product correctness from Close Status.
-- Test sufficiency from Close Status.
-- QA completion.
-- Deployment success.
-- Human review completion or replacement.
-- Risk-free completion.
-- That final acceptance or residual-risk acceptance supplies missing required
-  evidence.
-
-### Local HTTP transport
-
-Volicord Local HTTP transport does not guarantee:
-
-- A public network API.
-- A SaaS endpoint.
-- A multi-user server.
-- A security boundary.
-- An authentication service or authorization service.
-- A public host-interface listener or remote service.
-- Full MCP Streamable HTTP compatibility.
-- That a local web consent URL, page, or recorded answer proves correctness,
-  test sufficiency, deployment success, review completion, security
-  enforcement, or close readiness.
-
-Bearer-token and Origin checks are transport-bound checks for the local HTTP
-process. They do not make the endpoint suitable for public exposure; keep it on
-host loopback or the intended Docker host-loopback publishing boundary.
-Every local-web `POST /consent` is protected by the required same-origin
-`Origin` gate, while `GET /consent` does not require `Origin`. Exact header
-cardinality, validation, HTTP rejection, and precedence belong to
-[MCP Transport](mcp-transport.md#local-web-consent-fallback). This is defense in
-depth against browser cross-origin submission, not user authentication or proof
-of user intent.
-
-The one-time local-web consent token remains a transient bearer secret. Durable
-state stores its domain-separated hash and digest-only submission/replay
-identities, not the raw token. Core binds the submitted identity to the exact
-project, request, expected Agent Connection, and closed completion context and
-revalidates it before replay or commit. These checks prevent a different local
-credential or context from opening that replay; they do not attest a human
-identity or turn the listener into an authentication or authorization service.
-The raw token is issued only for a negotiated model-invisible host surface and
-must not enter Agent-visible/model-context or public output. A token created
-under the superseded delivery contract lacks the required delivery-surface
-marker and is permanently unusable under corrected code: GET and POST fail
-closed without rendering or effects. The row is never upgraded; the pending
-action remains resolvable through another valid User Channel such as CLI.
-
-### Broad authority inference
-
-Volicord does not allow readers or agents to infer authority from:
-
-- Broad approval.
-- Local path names.
-- Copied `connection_id` process-binding values.
-- Displayed `ArtifactRef` values.
-- Rendered `Projection` output.
-- `Product Repository` text.
-- Connector prose.
-- Chat text or agent memory.
-
-## Related owners
-
-- [Scope](scope.md): baseline inclusion, exclusions, and supported guarantee boundary.
-- [Agent Connection Reference](agent-connection.md): Agent Connection, Connection Projects, current connection context, and Agent Connection/User Channel authority boundaries.
-- [Runtime Boundaries](runtime-boundaries.md): User Channel location, Volicord source repository/installation files, executable processes, `Product Repository`, `Volicord Runtime Home`, and external MCP host configuration boundaries.
-- [API Value Sets](api/schema-value-sets.md): `GuaranteeDisplay.level`, `operation_category`, and other value names.
-- [API error routing](api/error-routing.md): public error routing.
-- [Core Model](core-model.md): user-owned judgment, write ticket, acceptance, residual risk, and non-substitution rules.
-- [API Judgment Schemas](api/schema-judgment.md): `SensitiveActionScope` and user-owned judgment schema shapes.
-- [Storage Effects](storage-effects.md), [Storage Records](storage-records.md), and [Artifact Storage](storage-artifacts.md): storage effects, record layout, and artifact authority details.
+- [Scope](scope.md)
+- [Agent Connection](agent-connection.md)
+- [MCP Transport](mcp-transport.md)
+- [Failure Model](failure-model.md)
+- [Runtime Boundaries](runtime-boundaries.md)
+- [API User-Action Schemas](api/schema-user-action.md)

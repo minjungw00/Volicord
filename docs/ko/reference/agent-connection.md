@@ -121,6 +121,34 @@ capability 집합은 Agent Connection 수신 경계가 요구하는 모든 capab
 플랫폼에 대입하지 않습니다. 특히 `wsl2`에는 명시적인 WSL2 탐지와
 [시스템 요구사항](system-requirements.md#wsl2-topology)의 배치가 필요합니다.
 
+<a id="platform-release-coordinate"></a>
+
+## `PlatformReleaseCoordinate`
+
+모든 binding과 receipt는 필수인 닫힌 `platform_release_coordinate` 객체 하나를
+담습니다. 네이티브 Linux, macOS, 네이티브 Windows는 정확히 다음 형태를
+사용합니다.
+
+```yaml
+kind: native
+```
+
+WSL2는 정확히 다음 형태를 사용합니다.
+
+```yaml
+kind: wsl2
+distribution_name: Ubuntu-24.04
+distribution_id: ubuntu
+distribution_version: "24.04"
+environment_image: Ubuntu-24.04-LTS-WSL2
+```
+
+알 수 없는 필드, `platform_environment=wsl2`와 함께 쓴 `native` 좌표, 네이티브
+환경과 함께 쓴 WSL2 좌표, 다른 WSL2 값은 유효하지 않습니다. 배포판 값 세 개는
+현재 WSL2 프로세스에서 관찰합니다. `environment_image`는 이 배포판 사실에
+등록된 정확한 릴리스 셀 이미지입니다. 정확한 지원 조회는 이 값을 통과 셀과
+대조하므로 다른 배포판 이미지의 셀은 binding을 승인할 수 없습니다.
+
 <a id="codex-capability"></a>
 
 ## `CodexCapability`
@@ -169,6 +197,7 @@ ManagedHostBinding:
   process_binding: ProcessBinding
   required_capabilities: CodexCapability[]
   platform_environment: PlatformEnvironment
+  platform_release_coordinate: PlatformReleaseCoordinate
 
 ManagedCommand:
   resolution: path_lookup | absolute_path
@@ -195,6 +224,8 @@ decoding은 중복 key도 거절합니다. `host_kind`는 정확히 `codex`이�
 `connection_scope`는 저장된 연결 의도와 일치합니다.
 `required_capabilities`는 정확히 `FirstReleaseCodexCapabilities`이며
 `platform_environment`는 정확히 탐지한 플랫폼입니다.
+`platform_release_coordinate`는 위에서 정의한 정확한 네이티브 또는 WSL2
+좌표와 일치합니다.
 
 `ManagedCommand.resolution=path_lookup`일 때 `program`은 경로 구분자가 없는
 비어 있지 않은 basename 하나여야 합니다. `absolute_path`일 때는 아래의
@@ -256,6 +287,11 @@ Enum은 정확한 literal 표기의 `string`, `process_id`는 `u64be`, 문자열
 인코딩하므로 허용되는 빈 문자열이나 목록도 이름 붙은 현재 필드로 남고 값 부재와
 충돌하지 않습니다.
 
+`PlatformReleaseCoordinate`는 중첩 record입니다. 네이티브 record에는
+`kind=native`만 들어갑니다. WSL2 record에는 `kind=wsl2`,
+`distribution_name`, `distribution_id`, `distribution_version`,
+`environment_image`가 이 순서로 들어갑니다.
+
 모든 개수와 바이트 길이는 `u32`에 들어가야 합니다. 검증과 경로 정규화는
 인코딩 전에 수행합니다. Encoder는 trim, 대소문자 접기, 경로 변환, 기본값 삽입,
 생략, map 순회를 수행하지 않습니다.
@@ -280,6 +316,7 @@ Codex 어댑터는 호스트별 조사와 변경을 모두 담당합니다.
 - 현재 결속이 가리키는 Codex 설치, 설정 대상, 현재 플랫폼 환경 탐색
 - 정규 결속이 나타내는 관리 항목만 설치
 - `ManagedHostBinding`과 그 digest 구성
+- 정확한 `PlatformReleaseCoordinate` 관찰 및 결속
 - 생성한 모든 관리 아티팩트의 digest 계산
 - 정확한 Codex 아티팩트와 실행 파일 identity 검사
 - 현재 프로세스 결속 검증
@@ -293,10 +330,12 @@ Codex 어댑터는 호스트별 조사와 변경을 모두 담당합니다.
 `platform`이 `platform_environment`와 같으며,
 `integration_profile`이 `record`이고, `observed_capabilities`가
 `required_capabilities`와 정확히 같은 `passed` 릴리스 셀 하나만 허용합니다.
-따라서 현재 binding, receipt, 셀의 플랫폼, 실행 파일 digest, 프로필, 정확한
-정규 capability 집합이 모두 일치해야 합니다. 알아볼 수 있는 명령 이름, 보고된
+WSL2에서는 셀의 `runner.environment_image`도 binding의
+`platform_release_coordinate.environment_image`와 같아야 합니다. 따라서 현재
+binding, receipt, 셀의 플랫폼 좌표, 실행 파일 digest, 프로필, 정확한 정규
+capability 집합이 모두 일치해야 합니다. 알아볼 수 있는 명령 이름, 보고된
 버전 범위, 비슷한 아티팩트, 일부 capability 일치, 다른 플랫폼 셀은 충분하지
-않습니다. 항목이 없거나 하나라도 일치하지 않으면 machine-readable reason
+않습니다. 어떤 부재나 불일치도 machine-readable reason
 `unsupported_host_artifact`를 가진 `UnsupportedContract`입니다.
 
 Repair는 정규 관리 상태와 호스트 설정 행동 데이터를 다시 생성합니다. 관련 없는 Codex
@@ -322,6 +361,7 @@ HostVerificationReceipt:
   host_kind: codex
   integration_profile: record
   platform_environment: PlatformEnvironment
+  platform_release_coordinate: PlatformReleaseCoordinate
   required_capabilities: CodexCapability[]
   verified_capabilities: CodexCapability[]
   binding_digest: string
@@ -339,6 +379,10 @@ HostVerificationReceipt:
 식별자입니다. 각각 1~1,024바이트 UTF-8이고 공백이 아닌 문자를 하나 이상
 포함하며 제어 문자가 없어야 하고 trim하지 않고 보존합니다. 두 capability 배열은
 `FirstReleaseCodexCapabilities`와 정확히 같습니다.
+
+`platform_release_coordinate`는 정규 binding의 좌표 및 현재 독립적으로 관찰한
+플랫폼 사실과 정확히 일치합니다. 따라서 `platform_environment`가 여전히
+`wsl2`이더라도 WSL2 receipt를 다른 배포판이나 이미지에 재사용할 수 없습니다.
 
 `binding_digest`는 위에서 정의한 정규 `sha256:<64-lowercase-hex>` 형태입니다.
 `executable_digest`는 관찰한 Codex 실행 파일의 raw 64자 소문자 16진수
@@ -383,6 +427,8 @@ Core는 typed 영수증만 소비하며 영수증에 의존하는 동작을 진�
 - `host_kind=codex`와 `integration_profile=record`가 연결과 일치
 - `platform_environment`가 현재 연결, binding, `process_binding`, 통과 릴리스
   셀과 정확히 일치
+- `platform_release_coordinate`가 현재 독립적으로 관찰한 좌표, binding, receipt,
+  통과 릴리스 셀 이미지와 정확히 일치
 - `required_capabilities`와 `verified_capabilities`가 서로 같고,
   `FirstReleaseCodexCapabilities` 및 통과 셀의 `observed_capabilities`와
   정확히 일치

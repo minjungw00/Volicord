@@ -217,767 +217,42 @@ hint is not a CI failure by itself.
 
 ## Onboarding Usability Validation
 
-Use representative-user usability validation when maintained onboarding,
-installation, agent-host setup, troubleshooting, or owner-routing documentation
-is added or materially changed. This is human usability testing with actual
-participants. It is separate from automated `docs-check`, Rust implementation
-tests, conformance checks, human semantic review, and an agent-performed desk
-review. An agent desk review may find documentation-maintenance blockers, but it
-is not evidence that first-time human readers can complete the flow.
-
-The participant set must include at least:
-
-- two technically capable users with no prior Volicord experience
-- one MCP host operator with no prior Volicord experience
-- one implementer who needs to navigate API or schema Reference material
-
-The tasks must cover whether participants can:
-
-1. Determine whether their environment is documented as suitable.
-2. Build or select the executables.
-3. Verify executable readiness.
-4. Choose and follow one Codex or Claude Code setup path.
-5. Interpret `action_required` and identify the required next action.
-6. Recover from an unavailable or incorrectly selected executable.
-7. Interpret a state with no allowed project or ambiguous project selection.
-8. Explain what remains after safe removal.
-9. Find the detailed schema owner for `StateRecordRef` or `EvidenceSummary`.
-10. Distinguish an Agent Connection `complete` result from the four
-    `HostFeatureSupportStatus` values (`verified`, `implemented_unverified`,
-    `unsupported_by_host`, and `temporarily_unavailable`) and explain why only
-    feature-specific `verified` can support a current feature claim.
-
-Record observations needed to improve the maintained documentation, including
-where participants stop, questions they ask without prompting, incorrect state
-interpretations, unsafe write or deletion attempts, whether success was
-self-verified, whether recovery completed, the number and type of document
-transitions, and search terms that failed.
-
-Passing usability validation requires first-time users to complete executable
-preparation and one host path without author explanation, identify documented
-success independently, keep connection `complete` distinct from
-feature-specific `verified`, avoid treating `action_required` as an unexplained
-fatal failure, recover without deleting unrelated user configuration or product
-data, and find the detailed schema owner without author assistance. Critical
-blockers include any issue that prevents task completion, causes an unsafe
-write or deletion attempt, produces a wrong success interpretation, or breaks
-an owner route. Correct critical blockers in the applicable maintained owner
-documents, keep paired English and Korean meaning aligned when a paired
-document changes, rerun matching automated and manual maintenance checks, and
-retest the affected task with the relevant participant profile before treating
-the blocker as resolved.
-
-Report usability validation results in the conversation or another
-repository-approved durable research location, not as individual test records in
-maintained documentation. Do not commit participant notes, screenshots,
-recordings, session logs, work logs, fabricated completion rates, fabricated
-quotations, or private participant data to maintained docs. Do not claim
-representative-user testing occurred unless actual representative participants
-performed the tasks and their participation is verifiable. Automated validation
-proves only the machine-checkable properties it owns, Rust tests prove only
-implementation checks, and an agent desk review proves only that a maintainer
-reviewed the documents for objective blockers.
-
-<a id="live-host-connection-readiness-sequence"></a>
-## Live-Host Connection-Readiness Sequence
-
-Apply this sequence before every task-bound live-host checklist below. For a
-Codex Detective fixture, finish writing the fixture and activate its publication
-domain first, then run the maintained no-prompt interactive hook-trust preflight
-before the read-only connection observation. In that exact disposable
-repository, accept project trust, open `/hooks`, inspect every active hook
-source, and review and trust the exact current Volicord project-hook
-definitions. A missing, skipped, changed, or untrusted required hook, or an
-unexpected active source that the operator cannot review, is `SKIP` or `FAIL`,
-never evidence of a product `Stop` failure. Exit the preflight only after that
-review, then give the harness its exact `hooks:reviewed` confirmation. The
-confirmation is not event evidence; the later task-bound run must still produce
-the required persisted `Stop` event.
-
-Before any authenticated host entry point, bind the exact Agent Connection ID
-from the fixture's initialization result to the release-cell recorder. The
-harness must reject a missing, malformed, or conflicting binding before login
-or host launch, poison terminal publication for that cell, and preserve the
-result root for fresh-root recovery. Rebinding the same exact ID is harmless.
-Static unsupported and unavailable-host paths that launch no host do not need
-this binding. The exact contract remains with
-[Host Release Evidence](../reference/host-release-evidence.md).
-
-The maintained preflight reuses the runner's normal `CODEX_HOME` so it can use
-stored ChatGPT authentication without copying credentials. That home can also
-contribute other active hook sources. Therefore the maintained harness does not
-use `--dangerously-bypass-hook-trust`: the one-invocation option would bypass
-persisted trust for every enabled hook source, not only the Volicord fixture.
-If a future isolated harness can enumerate and vet every active source, such a
-one-invocation bypass may prove event delivery only; it still cannot prove
-persisted hook trust or production readiness.
-
-After the applicable Codex preflight, start the installed host on the exact
-prepared Agent Connection while the selected Product Repository has no active
-`Task`, and observe a read-only `volicord.status` call. After that host exits,
-run administrative
-`volicord connection verify ... --json` for the same connection and require the
-owner-defined `complete` result. Only then create or activate the workflow
-`Task` and start the task-bound host run. The first observation does not replace
-administrative verification. Here `complete` establishes only the
-owner-defined connection-readiness checkpoint for this sequence. It is not a
-`HostFeatureSupportStatus` value and does not establish
-`support_status=verified` for any feature.
-
-Exact connection-verification behavior and state meaning remain with
-[Agent Connection](../reference/agent-connection.md) and
-[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states);
-this section owns release-validation order only.
-
-<a id="live-host-controlling-terminal-foreground"></a>
-## Live-Host Controlling-Terminal Foreground Control
-
-Apply this procedure to every maintained interactive selected-host turn. An
-interactive stdin/stdout check alone is insufficient: a child in a dedicated
-background process group can be stopped when it reads from the controlling
-terminal. The runner's original process group must first be the terminal
-foreground group. Before the host can read, the maintained harness starts a
-bounded foreground controller in the dedicated operating-system process group,
-waits for its bounded readiness signal, transfers the controlling-terminal
-foreground to that exact group, starts the selected host in the same group,
-verifies group membership, retains the turn ownership marker, and keeps the
-complete pre-transfer terminal-attribute snapshot.
-
-After the selected host exits and the direct child is reaped, the bounded
-controller must restore the terminal foreground to the original runner process
-group and itself be reaped. Only after exact foreground restoration may the
-harness signal the dedicated group. Complete group and marker-boundary
-quiescence, then reapply the complete pre-transfer terminal attributes and
-require an exact read-back match. Bound controller readiness, restoration, and
-reap waits. Complete quiescence and attribute restoration before after-turn
-baseline capture, result classification, or terminal publication. Continue to
-use both the dedicated group and the marker-retaining process check for
-cooperative containment. This procedure neither creates nor
-claims a pseudo-terminal (PTY); invoke the live producer from an environment
-that already supplies a controlling terminal. Require `TOSTOP` to be disabled
-before transfer. Do not suspend the foreground host turn with job-control keys
-such as `Ctrl-Z`; abandon an interrupted or later-resumed turn and use a fresh
-result root.
-
-Failure to establish or verify the initial foreground owner, controller
-readiness or liveness, exact host group membership, disabled `TOSTOP`, foreground transfer,
-foreground restoration, terminal-attribute restoration or exact verification,
-or controller reap prevents the exact platform cell from passing. Record
-`failed` when a required assertion ran and failed, or `unavailable` when the
-missing execution prerequisite prevented the complete suite from establishing
-a result. Never translate either outcome into `passed`; the exact meanings stay
-with [cell execution status](../reference/host-release-evidence.md#cell-execution-status).
-
-<a id="live-cell-result-root"></a>
-## Live-Cell Result-Root Setup And Recovery
-
-A platform runner may use a new disposable `RESULT_ROOT` for bounded working
-output. Put it outside maintained documentation, the Product Repository, and
-the Volicord Runtime Home. Resolve it to one canonical symlink-free location,
-use a distinct absent child for each attempt, and do not store credentials,
-secrets, prompts, transcripts, screenshots, or recordings there.
-
-Working output is neither a
-[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell) nor
-the support manifest. If execution is interrupted, output is incomplete, or
-the executable digest changes, abandon the working output and rerun that exact
-platform cell from finalized bytes. Do not edit, copy, or reuse a prior result
-to claim a pass. Only bounded evidence produced by a complete exact-cell run
-may enter `validation_evidence`; the reviewed four-cell set is then replaced in
-the [single checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)
-as one release operation.
-
-<a id="live-host-final-output-release-validation"></a>
-## Live-Host Final-Output Release Validation
-
-Use this checklist before publishing a release that claims managed final-output
-authority disclosure for Codex or Claude Code in the Record or Detective
-profile. This is authenticated, human-in-the-loop validation against the exact
-release candidate. Host-configuration fixtures, direct generated-wrapper
-output, ordinary workspace tests, and Judgment round trips cannot replace it.
-Exact product behavior remains with
-[Administrative CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure)
-and its focused dependencies; this checklist owns release-validation
-execution and evidence separation only.
-
-Use the [precreated result root above](#live-cell-result-root), and record the
-release-candidate identity and installed host identities. Every
-`VOLICORD_LIVE_HOST_RESULT_PATH` final cell name must be absent. Invoke all four
-maintained host/profile cell producers separately. All four host-kind cells are
-implemented and proceed to authenticated, interactive host validation:
-
-| Host | Record profile | Detective profile |
-|---|---|---|
-| Codex | `codex_record_live_final_output_is_opt_in` | `codex_detective_live_final_output_is_opt_in` |
-| Claude Code | `claude_code_record_live_final_output_is_opt_in` | `claude_code_detective_live_final_output_is_opt_in` |
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-record-final-output.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-detective-final-output.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-record-final-output.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
-```
-
-Codex and Claude Code implement both final-output features by host kind. The
-host version, including canonical Codex `host_version=0.144.4`, is a display
-and verification coordinate and never changes
-`implementation_disposition=implemented`. The commands above use
-`VOLICORD_RELEASE_REQUEST_VERIFIED=1`; this retains the release claim when an
-installed host or required surface is unavailable and therefore makes the gate
-fail. Use `0` only for an intentional, reported exclusion, never as a version
-fallback.
-
-For each implemented cell that executes the host path, inspect a bounded result
-with the matching `host` and `profile`. It must keep these evidence fields
-separate; no field can be inferred from or replaced by another:
-
-1. `config_fixture` identifies the managed host configuration checked for that
-   profile. A passing fixture does not show that the installed host loaded the
-   configuration.
-2. `generated_wrapper_direct_wire.status_fallback` and
-   `generated_wrapper_direct_wire.authority_receipt` check the exact generated
-   wrapper through direct invocation and keep the two complete bounded response
-   branches separate. Both must be `verified`, but neither shows that the
-   installed host delivered an event or displayed UI.
-3. `actual_host_event.status_fallback_event` and
-   `actual_host_event.authority_receipt_event` separately record actual host
-   delivery to the handler for both branches.
-   Record intentionally creates no persistent Guard observation, so its event
-   entries cite the authenticated host-owned managed-UI delivery while the
-   direct-wrapper count check proves that the final-output handler itself adds
-   no Guard event or Agent Session. An actual managed host turn separately
-   starts one or more MCP stdio lifecycles when the host retries or restarts its
-   managed server. A Codex descriptor supplies launch provenance only; the
-   lifecycle remains pending until exact client identity and strict per-call
-   metadata bind its root session and process-local thread digest. The Record
-   event entry must report the bounded positive AgentSession set in
-   `managed_mcp_observation`, bind every new row to the same Agent Connection,
-   `guard_mode=record`, and exact managed-session binding, and require at least
-   one bound initialize/tools-list/tool-call lifecycle with explicitly partial
-   watcher coverage from the binding point.
-   Across that set the first turn must contain exactly one received and
-   completed `volicord.status` call and no other tool call, while the second
-   no-tool turn must contain none. The surrounding count and rowid-window check
-   requires no Guard-event increase and attributes every new MCP AgentSession to
-   its managed lifecycle rather than to final-output delivery. This remains
-   delivery evidence, not an invented durable final-output observation.
-   `actual_host_fixed_ui.authority_receipt` separately records the complete
-   active-Task receipt on the host-owned fixed UI, distinct from model prose,
-   and binds its Project, Task, `state_version`, latest Run, close state, and
-   blocker count. `actual_host_fixed_ui.status_fallback` independently records
-   the no-active-Task fixed-UI confirmation. Both nested statuses must be
-   `verified` for the cell.
-4. `detective_decision` is `not_applicable` for Record only when the result also
-   confirms `non_observing` and `non_gating` and finds no Guard event or
-   decision. For Detective it must cover both `allow` and `block`; an `allow`
-   result cannot stand in for `block`.
-5. The top-level `status_fallback` separately binds the no-active-Task UI
-   confirmation to the generated `volicord status --json` command and absence
-   of a task-bound command. Direct-wrapper fallback wire does not establish the
-   UI observation. The operator copies the complete taskless message from the
-   managed UI, and the harness requires exact equality so a task-bound variant
-   cannot be confirmed by a command-only token. Each cell must verify this
-   evidence and both branches under
-   `actual_host_fixed_ui`; none replaces another.
-6. `exact_replay.generated_wrapper_identical_payload` records identical-payload
-   replay through the generated wrapper, while
-   `exact_replay.actual_host_replay` records replay through an actual host entry
-   point. For Record, repeated delivery remains non-observing and non-gating
-   while refreshing the read-only display. For Detective, actual replay leaves
-   the immutable historical Guard event and decision unchanged while the
-   separate UI reads current authority again. The generated-wrapper check
-   advances Task authority between identical deliveries and requires a newer
-   current receipt while the stored historical event remains byte-for-byte
-   unchanged.
-
-Evidence statuses inside a live cell are `verified`, `unavailable`,
-`not_applicable`, or `failed`. These are validation-harness facts rather than
-product response fields. A cell passes only when every applicable
-evidence item is `verified`; within that live-evidence shape the Record-only
-Detective decision is the sole expected nested `not_applicable` case. If the installed
-host has no safe `block` entry, no actual-host replay entry point, no active-Task
-receipt UI, or no no-active-Task fallback UI, record the corresponding evidence
-as `unavailable` and keep the overall `result=incomplete`. Generated-wrapper
-identical-payload replay cannot replace actual-host replay.
-
-An unavailable executable, authentication environment, interactive TTY,
-event-delivery surface, active-Task receipt UI, no-active-Task fallback UI, safe
-Detective `block` entry, or actual-host replay entry is never a pass. Preserve
-the structured `unavailable` or `incomplete` result where the harness can write
-one, then report the release-validation outcome as `SKIP` or `FAIL`. Do not
-upgrade it from fixture, direct-wire, or another matrix cell. All four cells
-must be present and each must pass to support the corresponding four-cell
-claim.
-
-The recorder writes one bounded terminal result to a new working path and never
-overwrites an existing name. This standalone output is scenario evidence only;
-it is not a `CodexReleaseCell` and cannot update the support manifest. Treat
-`result=incomplete` or every other non-passing terminal result as incomplete
-evidence, never as a pass. A platform runner may incorporate the result only
-while executing and binding the exact finalized artifact for that cell.
-Keep the bounded results and release approver's checklist in that approved
-external release-record location. Do not commit result files, Runtime Homes, screenshots,
-transcripts, recordings, credentials, secrets, full prompts, or private
-operator input. The evidence applies only to the observed host, profile,
-release candidate, and environment; it is not portable host conformance, a
-security proof, product acceptance, close readiness, or a general correctness
-claim.
-
-<a id="live-host-judgment-release-validation"></a>
-## Live-Host Judgment Release Validation
-
-Use this checklist before publishing a release that claims the maintained Codex
-or Claude Code Judgment path. This is an authenticated, human-in-the-loop release
-validation against the exact release candidate. It is not replaced by schema
-checks, fixtures, ordinary workspace tests, or a live test reported as ignored.
-It is also separate from the four-cell final-output checklist above: evidence
-from either checklist cannot satisfy the other.
-Exact status and receipt behavior remains with the [status method](../reference/api/method-status.md)
-and [API State Schemas](../reference/api/schema-state.md); this checklist owns
-release-validation execution and evidence handling only.
-The exact native assertion and accepted Stop-outcome set remains with
-[Host Release Evidence](../reference/host-release-evidence.md), hidden Stop
-event behavior with [Administrative CLI](../reference/admin-cli.md#guard-hook-commands),
-and blocker meaning with [`close_task`](../reference/api/method-close-task.md).
-
-Use the [precreated result root above](#live-cell-result-root), then record the
-exact release-candidate identity and both host identities. Each final cell path
-below must be an absent direct child of `RESULT_ROOT/cells`; leased
-prevalidation rejects an existing path so a stale `result=passed` cannot be
-attributed to a later run.
-
-```sh
-/absolute/candidate_path/from/CANDIDATE.json --version
-codex --version
-claude --version
-```
-
-The candidate descriptor and digest are authoritative. Do not substitute a
-PATH-resolved `volicord`; its revision can differ from `candidate_path`.
-
-Run both ignored Judgment tests separately. Give each test a different absolute
-result path in the approved external location:
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
-```
-
-For each host, confirm all of these observations against the release candidate:
-
-1. The host-native Judgment selector is visibly presented, and the human
-   operator—not the Agent—selects one offered option. After the host exits, the
-   operator enters `choice:route_alpha` or `choice:route_beta`; the harness
-   requires that confirmation to equal the stored `selected_option_id`.
-2. The Agent creates an `advisor` Task, creates its current Change Unit and
-   baseline with `volicord.update_scope`, consumes the default compact result's
-   selected option, and records the option-mapped no-write `shaping_update` Run
-   with a non-null minimal close assessment.
-3. Fresh LocalUser CLI status reports `close_state=ready`, no close blockers,
-   and an `AuthorityReceipt.latest_run_ref`. This is the LocalUser projection,
-   and the harness follows that ref to the exact Run rather than choosing a row
-   by timestamp or ID ordering. It does not substitute this receipt for the
-   connection-scoped Stop receipt.
-4. The matching `user_action_requested`, `user_action_resolved`, and
-   `run_recorded` authority-event payloads preserve the request, resolution,
-   selected option, Run, kind, and no-write fact, and their event sequences prove
-   that the selected resolution was recorded before that Run.
-5. Exactly one new Task- and exact-session-bound Detective Stop event appears
-   after the run's pre-host cursor. Its stored decision, `allowed` value,
-   reasons, close state, complete blocker set, and receipt must be internally
-   consistent. An exact session with full `mcp_start` coverage, no
-   partial-coverage warning, and no other blocker records ready `allow`; an
-   active exact session with partial coverage records `allow`,
-   `completion_claim_allowed=false`, `close_readiness_blocked`, blocked close
-   state, and the exact `session_watch_unavailable` blocker only when its
-   warning-bearing basis is `first_project_selection` or `method_boundary`.
-   The Stop receipt and the
-   LocalUser receipt must match on Project, Task, `state_version`, and latest Run, but
-   their context-derived close fields are not required to match. LocalUser
-   ready/blocker-free status is a clean-fixture precondition, not the native
-   assertion source. The harness reads the complete canonical Stop receipt from
-   the persisted GuardEvent; it neither requests nor credits a final-output UI
-   copy. The first managed Stop must allow session termination and the host
-   must not retry it; process exit does not synthesize a later Stop.
-6. The bounded JSON result reports a unique validation `run_id`, start and
-   record times, host version, Volicord `build_id`, exact Agent Connection ID,
-   operator-confirmed and stored choice, authority-event order, consumed Run,
-   and final `result=passed` without including a transcript or prompt body. The
-   external cell is created only as a bounded terminal file and an existing
-   destination is never replaced.
-
-The persisted Task-bound Stop event in item 5 is the required post-Judgment
-authority-observation evidence for this test; it does not assert that Detective
-close is ready. Only the exact maintained partial-coverage incomplete
-disclosure remains eligible native UserAction incompleteness evidence. This
-observation still does not
-fill any evidence item in
-the four-cell final-output matrix, whose host/profile, no-active-Task fallback,
-Record behavior, block behavior, and replay checks remain separate. Other
-final-output observations made during the Judgment test are diagnostic only
-for that run.
-
-If native elicitation is unavailable, the test must verify that the pending item
-is visible in `volicord inbox` and that the current `volicord inbox resolve`
-command shape is available. It emits bounded command templates without the
-fixture's temporary paths or IDs, writes `result=failed_native_elicitation`, and
-fails. The disposable Runtime Home is deleted after the test, so those templates
-are not runnable recovery commands. Preserve that failed result for diagnosis,
-but do not count the CLI fallback as a successful native round trip. This
-Judgment inbox fallback is User Channel recovery evidence, not final-output
-`status_fallback` evidence. Executable CLI recovery is owned by the separate
-[live-host CLI-fallback checklist](#live-host-cli-fallback-release-validation)
-below and cannot upgrade this native cell.
-
-An unavailable executable, authentication environment, interactive TTY,
-trust/approval surface, or native selector is `SKIP` or `FAIL`, never `PASS`.
-Both host-specific validations must pass for a release claim that covers both
-maintained hosts.
-
-The harness requires a new working-result path and never overwrites an existing
-name. Its bounded JSON is scenario evidence only, not a `CodexReleaseCell` or a
-support-manifest entry. A current platform runner may incorporate it only while
-executing the exact finalized artifact and binding the same artifact,
-platform, capability set, and `record` profile. Incomplete output cannot be
-promoted or repaired into a pass.
-
-Keep each bounded JSON result and the release approver's checklist record in
-that approved external release-record location. Do not commit result
-files, Runtime Homes, screenshots, transcripts, recordings, credentials,
-secrets, full prompts, or private operator input to maintained documentation or
-the source repository. The structured result is release-validation evidence for
-the observed host and environment only; it is not portable host conformance, a
-security proof, product acceptance, close readiness, or a general correctness
-claim.
-
-<a id="live-host-evidence-observation-release-validation"></a>
-## Live-Host Evidence-Observation Release Validation
-
-Use this checklist before publishing a release that claims the maintained
-Codex or Claude Code evidence-observation path through local web consent. This
-is authenticated, human-in-the-loop validation against the exact release
-candidate. It requires an actual installed host to create and resume the
-request, negotiate the exact model-invisible capability, present the host-only
-handoff outside model context, and let a human submit the canonical form in a
-local browser. An ignored test, fixture-only check, ordinary workspace test,
-direct MCP-adapter test, native Judgment result, CLI-fallback result, or final-
-output result cannot replace it.
-
-Exact request and resume behavior remains with
-[`volicord.request_user_action`](../reference/api/method-request-user-action.md),
-resolution authority remains with
-[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md),
-common request and resolution fields remain with
-[API User Action Schemas](../reference/api/schema-user-action.md),
-Run and evidence effects remain with
-[`volicord.record_run`](../reference/api/method-record-run.md), and local-web
-routing remains with [MCP Transport](../reference/mcp-transport.md#local-web-consent-fallback).
-Exact status and receipt behavior remains with the
-[status method](../reference/api/method-status.md) and
-[API State Schemas](../reference/api/schema-state.md). This checklist owns only
-release-validation execution, evidence separation, and safe result retention.
-
-Use the [precreated result root above](#live-cell-result-root), and record the
-exact release-candidate and installed-host identities. A local browser must be
-able to reach the loopback consent listener. Each final cell path must be an
-absent direct child of `RESULT_ROOT/cells`; leased prevalidation rejects an
-existing path. Invoke both maintained cell producers separately. Both
-host-kind cells are implemented and require an interactive TTY in the ordinary
-authenticated host environment:
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
-```
-
-Both maintained host kinds implement the local-web user channel. The host
-version is only a display and verification coordinate and never changes that
-implementation disposition. Each cell must acquire the capability through the
-actual managed-host initialization exchange and exercise the host-owned
-handoff. Fixture capability data or browser success on an untrusted path cannot
-promote the result.
-
-For each cell, confirm all of these observations against the release candidate:
-
-1. Store inspection observes no `UserActionRequest` before host launch and,
-   afterward, exactly one request created by the installed host on the prepared
-   Agent Connection. Its target, artifact candidate, and `required_for` facts
-   match the fixture and the request and schema owners linked above.
-2. The captured initialization exchange contains exact boolean `true` at
-   `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
-   The create response contains the closed local-web handoff only at
-   `CallToolResult._meta["io.volicord/user-channel"]`, and the installed host
-   visibly presents that handoff on a host-owned surface outside model context.
-   The human operator—not the Agent or harness—uses that surface to open the
-   loopback form and submit the prepared target and artifact, `supported`, and a
-   bounded non-secret summary. This assertion covers exact capability
-   negotiation, selected path, and human participation, not secret detection or
-   native elicitation.
-3. Store inspection observes one immutable resolution and compares it with the
-   focused resolution and schema owners. The persisted fields are
-   `resolved_by_actor_source=local_user`,
-   `channel_kind=local_web_consent`, and a
-   `resolved_verification_basis` equal to the recognized local-web basis supplied
-   by the User Channel adapter. This checklist does not establish a new stable
-   basis value. The stored body matches the prepared target and `ArtifactRef`,
-   `supported`, and the operator's bounded summary. Operator re-entry after the
-   host exits confirms exact equality with the stored summary.
-4. Same-connection diagnostics and Store inspection observe one resume for the
-   exact request, `agent_workflow_result_replayed=true`, no second request or
-   resolution, and later consumption of the exact resolution ref. A bounded
-   exchange observer checks the actual create and resume model-visible
-   projections, including MCP `content`, `structuredContent`, compatibility and
-   diagnostic text, and the replayed Agent Workflow body. The historical
-   pending request is exactly
-   `{user_action_request_id, status=pending, next_actor=user}`, and the complete
-   request, question, options, context, form, capture path, command, raw URL,
-   bearer token, user note, and evidence summary are absent.
-5. Store inspection compares the consuming Run, one evidence observation,
-   producer and relevance anchors, exact artifact, Core-derived observation
-   time, required-criterion coverage, and request-resolution-Run event order
-   with the `record_run` and state-schema owners linked above. These are
-   observed owner-conformance assertions, not definitions supplied by this
-   checklist.
-6. While the request is pending, the cell also observes one status result, one
-   blocked close result, and the first exact operation-result page. Their model-
-   visible pending projection is the same exact three-field summary, all
-   forbidden fields from item 4 are absent, and the operation-result page is
-   withheld unless the entire stored response satisfies the current closed
-   shape. After resolution, fresh status follows
-   `AuthorityReceipt.latest_run_ref` to the consuming Run and the cell compares
-   the observed ready state and empty blocker set with the status and state
-   owners. It also requires one new Task-bound Detective Stop `allow` event
-   after the pre-host cursor and exact equality among the stored Stop receipt,
-   fresh status receipt, and the complete receipt copied from the separate host-
-   owned managed UI.
-7. The closed, bounded external JSON records
-   `kind=live_host_evidence_observation_release_validation`, safe validation
-   coordinates, owner-comparison results, model-invisible capability and host-
-   presentation Booleans, per-projection safe-shape Booleans and digests, and
-   only an exact-match Boolean and bounded character count for the operator
-   summary. It must not contain the consent URL, bearer token, raw tool body,
-   raw summary, prompt or transcript content, screenshots or recordings,
-   credentials, secrets, or private operator input.
-
-The recorder writes one bounded terminal result to a new working path and never
-overwrites an existing name. This output remains scenario evidence and cannot
-register support or become a manifest entry by itself. A missing host executable, non-interactive TTY, omitted or malformed exact capability,
-missing host-only presentation surface, or inability to distinguish host-only
-`_meta` from model-visible result data is recorded as `result=unavailable`.
-Fixture setup failure, abnormal termination of a selected host, or a stored
-state, Stop, receipt, or result-validator invariant failure is recorded as
-`result=failed` with only a safe stage identifier. Authentication and browser
-failures cannot always be classified before host launch; if they cause the
-selected host run to fail, the result is `failed`, not `unavailable`. An
-unexpected unwind creates `result=failed_before_completion`. Treat every
-non-`passed` result, a test merely reported as ignored, or a run without its
-opt-in variable as not passed.
-
-Each host-specific cell must pass before a release claim covers that host.
-Codex `0.144.4` is an exact evidence coordinate and does not change the
-host-kind implementation disposition. This cell proves only the observed
-evidence-observation local-web path. It does not satisfy, and cannot be satisfied by, the native
-Judgment, executable CLI-fallback, host-configuration, or final-output cells.
-Keep the bounded results and release approver's checklist in that approved
-external release-record location. Do not commit them or any Runtime Home. The evidence applies only
-to the observed host, release candidate, and environment; it is not portable
-host conformance, a security proof, native elicitation evidence, product
-acceptance, close readiness, or a general correctness claim.
-
-<a id="live-host-evidence-producer-release-validation"></a>
-## Live-Host Evidence-Producer Release Validation
-
-Run the two producer features once for each installed maintained host. Each
-command binds the cell to the exact candidate descriptor and uses a different
-new path under the twelve-cell directory:
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-verified-tool-producer.json VOLICORD_RUN_CODEX_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-verified-tool-producer.json VOLICORD_RUN_CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-registered-connection-observation.json VOLICORD_RUN_CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-registered-connection-observation.json VOLICORD_RUN_CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
-```
-
-For each selected cell, verify all seven required assertion families. The
-actual authenticated host first commits one exact
-`volicord.prepare_evidence_capture` intent and then, in the same opaque managed
-session, emits either the exact benign Bash pre/post event pair or one actual
-post-intent Stop event. The harness must reject a deliberately mismatched
-capture with zero durable effects before accepting the exact capture. A second
-actual-host turn on the same registered connection must finalize exactly one
-receipt-linked producer, artifact, Strong Evidence observation, criterion
-coverage, Run, current status receipt, and close result.
-
-Monitor the interactive source child and the bound Runtime Home concurrently.
-For `verified_tool_producer`, the source-observation barrier is the persisted
-complete `post_tool` matched to the post-intent exact `pre_tool` whose decision
-was not `deny`; do not request or wait for a Stop event. For
-`registered_connection_observation`, it is the persisted exact post-intent Stop
-event, regardless of allow or deny. Immediately after the applicable barrier,
-run the mismatched zero-effect check and exact receipt capture before the
-15-minute intent expires. Receipt capture is the distinct source-fulfillment
-transaction. Do not wait for model-response, turn, or process completion first.
-End and reap the direct source child after capture, terminate every remaining
-member of the dedicated process group and, where the runner supports discovery,
-every out-of-group process that retains the turn's ownership marker. Require
-that cooperative containment boundary to be quiescent before taking the
-after-turn managed-baseline snapshot or starting producer finalization. This is
-not an adversarial sandbox: a host adapter that both leaves the assigned group
-and removes the inherited marker is outside the validated runner profile. If
-the runner cannot establish the dedicated process group and its quiescence, or
-the reviewed host profile is known to violate that precondition, it must stop
-the selected live cell as a structural no-cell failure rather than infer
-quiescence. A bounded wait that
-ends without the exact barrier is a failed selected attempt, not permission to
-use session/time correlation or extend the intent window.
-
-The harness takes a bounded snapshot of exact managed-baseline identities and
-metadata digests in the bound clean disposable Runtime Home before the
-authenticated cell host turn, then takes the same snapshot before recording the
-cell. Client identity may come only from the exact opaque managed session rows
-for that turn that are new or whose metadata digest changed between the two
-snapshots. Preseed an unchanged historical baseline for the same connection as
-a negative case: it must not supply client identity when the current turn has
-no successful managed initialize. Zero qualifying rows records a null client
-group and therefore cannot verify an implemented cell; partial, malformed,
-ambiguous, or divergent qualifying rows stop recording.
-
-Retain each qualifying key and its exact after-snapshot metadata digest until
-terminal recording. Exercise an unchanged repeated turn and a later captured
-turn that advances the same key: the latter may replace the expected digest
-only when its before snapshot exactly matches the prior expected digest.
-Mutate the same qualifying baseline after the final snapshot as a negative
-case and require terminal recording to fail before the recorder publishes
-either final name. Deletion, same-key replacement, or a mismatched repeated-
-turn before snapshot has the same fail-closed result; the recorder neither
-removes a concurrently present name nor converts the failure into an honest
-null-identity downgrade.
-
-For a Codex `0.144.4` cell, the harness also proves exact
-`clientInfo.name=codex-mcp-client`, canonical client/host version `0.144.4`,
-flat/nested thread equality, one root-session mapping, and one immutable
-process-local thread digest. Missing or mismatched session/thread metadata must
-produce zero managed, diagnostic, tool-invocation, Core, token, and local-web
-effects; a later valid `turn_id` on the same bindings is allowed. Environment,
-PID, cwd, timing, and hook proximity cannot satisfy these assertions.
-
-The bounded evidence sidecar records only identifiers, counts, digests, and
-owner-conformance booleans. It must not retain the prompt, transcript, raw tool
-input or output, native session or invocation identifier, URL, token,
-credential, or authentication cache. A missing host is represented by a
-present null-identity ignored cell. Keep `VOLICORD_RELEASE_REQUEST_VERIFIED=1`
-when the claim is required, which makes that absence fail the gate; choose `0`
-before the run only for an intentional reported exclusion.
-
-If an installed host was bound but a classifiable source-observation, capture,
-or producer-chain attempt fails, finish and reap the direct source child,
-establish quiescence for the cooperative process-group and marker-retaining
-boundary defined above, capture the
-after-turn baseline, and revalidate retained identity, candidate integrity, and
-the publication domain. Only after those checks succeed, publish a strict
-bounded terminal result while the disposable Runtime Home is still available.
-The cell uses `run_state=completed`, claims `implemented_unverified`, and marks
-every unproven required assertion false with bounded finding codes. Safe
-failure evidence may retain only a stable stage/code and bounded aggregate
-facts such as exact-pair candidate count, event-kind ordering class, pre-event
-decision class, and invocation-identity equality; it must not retain the
-underlying raw values. Return the live validation as `FAIL`, but keep a
-successfully committed clean cell as matrix input. Failure to reap the direct
-child, establish that cooperative-boundary quiescence, capture the after-turn baseline,
-preserve retained integrity, or publish those
-terminal bytes is a structural publication failure and triggers fresh-root
-recovery without a final cell.
-
-<a id="live-host-cli-fallback-release-validation"></a>
-## Live-Host CLI-Fallback Release Validation
-
-Use this checklist before publishing a release that claims executable CLI User
-Channel recovery for the maintained Codex or Claude Code host path. This is an
-authenticated, human-in-the-loop release validation against the exact release
-candidate. It is separate from both the native Judgment cells and the four-cell
-final-output matrix. A command template, ordinary CLI integration test, native
-elicitation result, or final-output result cannot satisfy this checklist.
-Exact CLI and resume behavior remains with [Administrative CLI](../reference/admin-cli.md#user-channel-commands),
-[Agent Connection](../reference/agent-connection.md), and
-[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md);
-this checklist owns release-validation execution and evidence separation only.
-
-Use a new disposable working-output location outside maintained documentation,
-the Product Repository, and the Volicord Runtime Home, and record the exact
-release-candidate and installed-host identities. Precreate one canonical
-symlink-free `RESULT_ROOT` and its exact `auxiliary/` child. Each result path
-must be a different absent direct child of `RESULT_ROOT/auxiliary`. These
-auxiliary files are not
-[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell)
-objects and cannot update the
-[checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest).
-Run both ignored checks separately:
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
-```
-
-For each host, confirm all of these observations against the release candidate:
-
-1. The harness prepares one current pending two-option product-decision request
-   for an `advisor` Task, current Change Unit, baseline, and the exact Detective
-   Agent Connection that the installed host will use. The human operator—not
-   the Agent—chooses `route_alpha` or `route_beta`.
-2. The actual `volicord inbox --json` result shows that exact request once. The
-   harness submits the human choice through the actual
-   `volicord inbox resolve ... --choice ... --json` command, then runs the exact
-   same command and arguments again. The two JSON byte sequences must be
-   identical, the first resolution must advance state once, and the retry plus
-   fresh status must preserve the committed `state_version`.
-3. The stored resolution has one resolution ID,
-   `resolved_by_actor_source=local_user`, `channel_kind=cli`, and a
-   `resolved_verification_basis` recognized for the actual CLI User Channel
-   path by the resolution owner. Its selected option must equal the operator
-   choice. A path-free command template or `--help` result does not meet this
-   item.
-4. The installed host starts on the prepared Agent Connection and calls
-   `volicord.request_user_action` with `request.operation=resume` for the exact
-   request ID. Same-connection diagnostics must observe replay of the
-   originating result, and the Task must still contain exactly one
-   product-decision request. The host then records exactly one option-mapped
-   no-product-write `shaping_update` Run whose `created_by_actor_source` names
-   that Agent Connection.
-5. Matching `user_action_requested`, `user_action_resolved`, and `run_recorded`
-   authority events bind the request, resolution, CLI channel, exact Run, kind,
-   and no-write fact in request-before-resolution-before-Run order. Fresh status
-   must follow its `AuthorityReceipt.latest_run_ref` to that Run and report
-   `close_state=ready` with no blockers.
-6. Exactly one new Task-bound Detective Stop event after the pre-host cursor
-   records `allow` with no reasons or close blockers and stores the same complete
-   receipt as fresh status. The operator copies the complete canonical receipt
-   from the separate host-owned managed UI, and the harness requires exact
-   equality rather than a state-version-only token.
-7. The bounded JSON result has
-   `kind=live_host_cli_fallback_release_validation`, `result=passed`, the CLI
-   basis and exact-retry facts, same-connection resume evidence, mapped Run and
-   event order, Stop coordinates, receipt coordinates, and complete managed-UI
-   confirmation. Its evidence scope explicitly identifies this CLI-fallback
-   cell and excludes native Judgment and final-output matrix cells.
-
-The result path is mandatory. The recorder installs exactly one bounded
-terminal or `failed_before_completion` record at a new name and never
-overwrites or deletes an existing result. If writing fails or command
-completion is uncertain, abandon that working path and use a new absent
-auxiliary path. This auxiliary output is not a platform-cell result and does
-not affect the canonical manifest. Treat any non-`passed` result, an unavailable executable,
-authentication environment,
-interactive TTY, same-connection resume path, Task-bound Stop, or complete
-receipt UI as `SKIP` or `FAIL`, never as a pass. Both host-specific cells must
-pass before a release claim covers both maintained hosts.
-
-Keep the bounded results and release approver's checklist in that approved
-external release-record location. Do not commit result files, Runtime Homes, screenshots, transcripts,
-recordings, credentials, secrets, full prompts, or private operator input. This
-evidence applies only to the observed host, release candidate, and environment;
-it is not portable host conformance, a security proof, native Judgment
-elicitation evidence, final-output matrix evidence, product acceptance, close
-readiness, or a general correctness claim.
+Use representative-user usability validation when onboarding, installation,
+Codex setup, troubleshooting, or owner routing changes materially. This is
+human usability testing; automated checks and an agent desk review do not
+substitute for actual participants.
+
+Confirm that a first-time operator can:
+
+1. determine whether the documented platform and repository topology are
+   supported;
+2. install or select the exact `volicord` and Codex executables;
+3. provision a `codex` Agent Connection with the `record` profile at
+   `personal` or `shared` scope;
+4. verify the connection and interpret each non-success result;
+5. find a pending `UserActionRequest` with `volicord inbox`, resolve it with
+   `volicord inbox resolve`, and resume agent work;
+6. repair or remove only Volicord-managed configuration; and
+7. find the focused schema or storage owner for an exact contract.
+
+Record results outside maintained documentation. Do not commit participant
+notes, screenshots, recordings, credentials, transcripts, Runtime Homes, or
+fabricated completion claims.
+
+## Codex Release-Validation Review
+
+Release validation is limited to the exact finalized Codex artifact and the
+four independent `linux`, `macos`, `native_windows`, and `wsl2` cells defined
+by [Host Release Evidence](../reference/host-release-evidence.md). A selected
+cell must run the owner-defined closed scenario catalog and publish the exact
+bounded evidence shape. Repository tests, configuration fixtures, another
+platform's result, or a copied manifest entry cannot make a cell pass.
+
+Run live validation only in a disposable Product Repository, Runtime Home, and
+external result location. Keep credentials, prompts, transcripts, tokens,
+screenshots, and runtime data out of the repository. Report a missing runner
+or prerequisite as `unavailable`, and a cell with no qualifying attempt as
+`not_run`.
 
 ## Exact Host Release Evidence Gate
 
@@ -990,12 +265,87 @@ claim from CLI text.
 When the test-only `tests/release-validation` package is present, run:
 
 ```sh
-cargo test -p volicord-release-validation-tests
+cargo test --locked -p volicord-release-validation-tests --all-targets --all-features
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 ```
 
-That command validates contract parsing, explicit test-only descriptor
+The test command validates contract parsing, explicit test-only descriptor
 separation, negative cases, and exact support lookup. It does not execute a
-finalized Codex artifact and cannot make any platform cell `passed`.
+finalized Codex artifact and cannot make any platform cell `passed`. The status
+command reports the actual or derived status of all four cells without
+executing them. With the honest `[]` manifest it reports all four as
+`not_run`.
+
+The executable command and all exact input meanings are owned by the
+[executable release-cell gate](../reference/host-release-evidence.md#executable-release-cell-gate).
+Provision the following runner boundaries before a live invocation:
+
+| Cell | Release runner prerequisite |
+|---|---|
+| `linux` | Self-hosted x86-64 native Linux runner labeled `self-hosted`, `volicord-release`, `linux`, `native-linux`, `x64`; neither WSL nor a container. |
+| `macos` | Self-hosted Apple-silicon native macOS runner labeled `self-hosted`, `volicord-release`, `macos`, `native-macos`, `arm64`. |
+| `native_windows` | Self-hosted x86-64 native Windows runner labeled `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64`. |
+| `wsl2` | Self-hosted x86-64 native Windows supervisor labeled `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64`, with the exact `Ubuntu-24.04` WSL2 distribution already installed. An Ubuntu GitHub runner is not this boundary. |
+
+Each runner service preprovisions the exact finalized Codex path, the exact
+Volicord path recorded by the cell, the platform scenario driver, and the
+environment-image coordinate through the owner-defined environment variables.
+`RUNNER_NAME` comes from the runner service. The workflow creates fresh
+external evidence and work roots and an absent `VOLICORD_HOME` below the work
+root. The WSL2 runner keeps Codex, Volicord, the Product Repository work root,
+and Runtime Home on ext4 inside `Ubuntu-24.04`; its scenario driver is a native
+Windows coordinator that can survive and verify `wsl_shutdown_restart`.
+
+For the first qualifying attempt or any recapture, set
+`VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH` to a distinct absent external path
+on each runner, then run exactly one matching producer command in each
+independent environment:
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate wsl2
+```
+
+Capture does not require a pre-existing passing manifest cell. It executes the
+complete platform catalog, records the exact runner and artifact coordinates,
+and writes only a create-new, external one-cell candidate array. It does not
+edit or promote the canonical manifest. A `failed` or `unavailable` candidate
+is retained for review, but the producer exits unsuccessfully. A missing runner
+leaves the attempt unrun; a missing artifact, driver, environment coordinate, or topology
+prerequisite prevents a qualifying capture. Report these outcomes exactly
+rather than rerouting a job to another runner.
+
+Review the four candidate arrays and replace the
+[single checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)
+as one release operation, in `linux`, `macos`, `native_windows`, `wsl2` order.
+Do not append historical entries, copy evidence between cells, edit a result
+into `passed`, load a test-only descriptor, or treat candidate output as
+checked-in evidence before review. Re-run the contract tests against the
+reviewed manifest.
+
+Then run the blocking replay command once in each same independent environment:
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+```
+
+The replay gate requires an exact existing checked-in passing cell before it
+delegates the full platform catalog. A missing cell fails as `not_run`; a
+non-passing checked-in cell, changed runner coordinate, changed artifact,
+changed scenario driver, mismatched scenario evidence, or topology mismatch
+fails the selected job. The current honest `[]` manifest therefore permits
+candidate capture but makes every blocking replay fail as `not_run`.
+
+Ordinary `.github/workflows/ci.yml` runs static contract tests only. Pull
+requests to `.github/workflows/release.yml` also skip live jobs. A tag push or
+manual workflow dispatch schedules the three native jobs and the independent
+Windows-supervised WSL2 job. `publish-release` depends on all four, so a queued,
+skipped, unavailable, failed, or `not_run` cell blocks publication.
 
 For each platform, finalize that platform's Codex executable after every
 publisher-controlled byte change, calculate its SHA-256 digest, and run the
@@ -1014,12 +364,6 @@ qualifying attempt occurred, report `not_run`. Neither is a pass. Never copy a
 Linux result into WSL2, a native-Windows result into WSL2, or any artifact or
 capability result into another cell. A missing or non-passing cell blocks the
 four-platform release claim.
-
-After all four exact runs, review and replace the four-cell array in the
-[single checked-in manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)
-as one release operation. Do not append historical entries, copy evidence
-between cells, edit a result into `passed`, or load a test-only descriptor into
-the manifest. Re-run the contract tests against the reviewed manifest.
 
 Report the exact command and runner coordinates for each platform, the
 owner-defined cell coordinates and evidence digests, every required scenario

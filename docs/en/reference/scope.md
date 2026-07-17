@@ -105,13 +105,12 @@ Volicord may record, route, summarize, or display owner-defined state around AI-
 
 Excluded capabilities:
 
-- Claude Code and every other local LLM host adapter
-- generic hosts, custom hosts, and host auto-detection heuristics
+- every non-Codex host adapter and host auto-detection heuristic
 - integration profiles other than `record`
-- managed final-output authority projection, host hooks, and session watching
-- rich local-web User Channel delivery, production local-web eligibility, and local-web consent or handoff paths
-- public local HTTP transport
-- storage migration, storage upgrade, development-data import, and historical host-fingerprint decoding
+- additional managed host lifecycle, observation, or authority-display surfaces
+- UserAction resolution channels other than the local CLI inbox
+- network MCP transports
+- noncurrent storage formats, development-data import, conversion, and historical host-fingerprint decoding
 - deprecated compatibility APIs, aliases, placeholders, and feature flags for excluded capabilities
 - native artifact capture from host applications
 - persistent projection jobs, projection reconciliation, generated projection files, and managed projection repair

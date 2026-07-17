@@ -151,7 +151,7 @@ PrepareWriteRequest:
 별도 민감 동작 승인은 그 사용자 행동이 현재 상태이고, `resolved_by_actor_source=local_user`와 호환 User Channel 출처로 해결되었으며, `resolution_outcome=accepted`인 선택지를 골랐고, 그 `UserActionBasis`가 현재 `scope_revision`, 현재 Change Unit, 의도한 동작, 정규화된 `intended_paths`, 민감 범주, `baseline_ref`와 계속 호환될 때만 이 메서드를 만족합니다. 근거 상태가 유효하지 않거나 오래됨, 대체됨, 만료됨, 거절, 연기, 필요한 해결 권한 정보 누락, 비호환인 사용자 행동은 민감 동작 승인을 만족할 수 없습니다. 호출자는 승인을 호환되게 만들기 위한 리비전 필드를 제출하지 않습니다.
 
 티켓 선택에는 현재 정규화 쓰기 권한 fingerprint와 같은 `null`이 아닌
-`WriteTicketValidityBasis.write_authority_fingerprint`도 필요합니다. 결속이 없는 레거시
+`WriteTicketValidityBasis.write_authority_fingerprint`도 필요합니다. 결속이 없는
 활성 티켓과 결속이 다른 활성 티켓은 모두 닫힌 실패로 처리되며 현재 정책에 따른 재발급이
 필요합니다. 커밋되는 `dry_run`이 아닌 허용 또는 비허용 평가에서 Core는 선택된 오래된
 활성 티켓을 각각 `invalidation_reason=explicit_revoke`로 내구성 있게 무효화합니다.
@@ -197,13 +197,12 @@ PrepareWriteRequest:
 | `write_ticket_effect` | `issued`는 이 커밋이 티켓을 만들었다는 뜻이고 `reused`는 기존 호환 활성 티켓을 선택했다는 뜻이며 `none`은 티켓을 선택하지 않았다는 뜻입니다. `would_issue`는 미리보기 전용입니다. |
 | `allowed_path_patterns` | 티켓 결정에서 허용으로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 허용 결과에서는 티켓의 허용 경로 패턴 목록입니다. |
 | `denied_path_patterns` | 티켓 결정에서 거부로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 경로 수준 거부가 없으면 `[]`입니다. |
-| `control_surface` | 현재 Volicord 제어 표면을 공개하는 `ControlSurfaceSummary | null`입니다. `os_enforced=false`는 티켓이 OS 수준 집행이 아니라는 뜻입니다. |
 | `active_user_action_refs` | 쓰기 준비 결정에 적용된 현재 `accepted` 결과의 사용자 소유 판단에 대한 `StateRecordRef[]`입니다. 일치하는 `sensitive_approval` 판단이 있으면 그 판단도 포함합니다. |
 | `write_decision_reasons` | 비허용 결정을 설명하는 `WriteDecisionReason[]`입니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `user_action_draft` | 메서드가 쓰기 티켓을 발급하지 않고 집중된 choice 행동을 제안할 때의 `UserActionDraft | null`입니다. 그 밖의 경우에는 `null`입니다. 이후 `volicord.request_user_action` 호출을 위한 제안이지 영속 요청은 아닙니다. 형태는 [API 사용자 행동 스키마](schema-user-action.md)가 담당합니다. |
 | `guarantee_display` | 메서드의 호환성 표시를 위한 `GuaranteeDisplay | null`입니다. 표시 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당하고, 보안 보장 의미는 [보안](../security.md)이 담당합니다. |
 
-중첩된 `StateRecordRef`, `StateSummary`, `WriteTicket`, `WriteTicketStateSummary`, `ControlSurfaceSummary`, `WriteDecisionReason`, `UserActionDraft`, `GuaranteeDisplay` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다.
+중첩된 `StateRecordRef`, `StateSummary`, `WriteTicket`, `WriteTicketStateSummary`, `WriteDecisionReason`, `UserActionDraft`, `GuaranteeDisplay` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다.
 
 ## 성공 결과
 
@@ -222,7 +221,7 @@ PrepareWriteRequest:
 - `write_ticket.path_patterns.allowed`와 최상위 `allowed_path_patterns`는 이 티켓에 허용된 정규화 저장소 상대 `intended_paths`를 담습니다.
 - `write_ticket.path_patterns.denied`와 최상위 `denied_path_patterns`는 허용 결과에서 `[]`입니다.
 - `write_ticket.observed_paths`는 관찰 경로가 티켓에 포함되지 않을 때 `[]`입니다.
-- `control_surface`와 `write_ticket.control_surface`는 기준 비집행 모델에서 `os_enforced=false`를 포함해 현재 Volicord 제어 표면을 공개합니다.
+- 최상위와 티켓 내부 `guarantee_display`는 협력적 권한 기록 경계를 공개하며 OS 수준 집행을 주장하지 않습니다.
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.
 - 재실행을 사용하려면 현재 검증된 호출이 원래 재실행 행에 포착된 선택적 Git 작업 공간 맥락을 정확히 유지해야 합니다. 맥락이 달라지거나 새로 없어지거나 생기면 저장된 허용 응답이나 그 쓰기 티켓을 노출하지 않고 `INVOCATION_CONTEXT_MISMATCH`를 반환합니다.
 - 쓰기 티켓은 정규화된 저장소 상대 `intended_paths`를 사용하는 `WriteTicketScope`에 묶입니다.
@@ -406,7 +405,7 @@ state:
   effective_control_level: sensitive
   control_level_reason: "현재 정책은 이 계정 환경설정 갱신을 sensitive로 분류합니다."
   project_policy:
-    policy_schema: volicord-policy-v2
+    policy_schema: volicord.workflow_policy
     policy_version: 4
     policy_fingerprint: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     source: project_database
@@ -527,10 +526,6 @@ write_ticket:
         produced_at_state_version: 19
   invalidation_reason: null
   idle_expires_at: null
-  control_surface:
-    selected_profile: record
-    actor_identity_provable: false
-    os_enforced: false
   guarantee_display:
     level: cooperative
     basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
@@ -540,10 +535,6 @@ allowed_path_patterns:
   - src/preferences/profile-save.ts
   - src/preferences/profile-save.test.ts
 denied_path_patterns: []
-control_surface:
-  selected_profile: record
-  actor_identity_provable: false
-  os_enforced: false
 active_user_action_refs:
   - record_kind: user_action_resolution
     record_id: uj_sensitive_pref_001
@@ -580,10 +571,6 @@ allowed_path_patterns:
   - src/preferences/profile-save.ts
   - src/preferences/profile-save.test.ts
 denied_path_patterns: []
-control_surface:
-  selected_profile: record
-  actor_identity_provable: false
-  os_enforced: false
 write_decision_reasons:
   - category: sensitive_approval
     code: sensitive_approval_missing

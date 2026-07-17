@@ -23,8 +23,8 @@ Volicord is useful when you want an agent to keep these boundaries visible:
 - which decisions still belong to the user
 - what must be resolved before the work can close
 
-It is designed for local Product Repositories used with an agent host such as
-Codex or Claude Code. It is not an OS sandbox, a file-permission system, a
+The first release is designed for local Product Repositories used with an exact
+validated Codex build. It is not an OS sandbox, a file-permission system, a
 correctness oracle, a tamper-proof audit log, or a centralized multi-user
 service.
 
@@ -55,8 +55,8 @@ the executable-discovery guidance in [Installation](docs/en/user-guide/installat
 volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Use `--host claude-code` for Claude Code. The example path is the repository
-where the agent will work, not the Volicord source repository.
+The example path is the repository where Codex will work, not the Volicord
+source repository.
 
 The command prepares local Volicord state and writes project-scoped host setup
 files. Follow the `Next` steps it prints. The host may still require a restart,
@@ -128,7 +128,7 @@ For a guided first run and host-specific checks, continue with
 |---|---|
 | `Task` | The unit of work being shaped, performed, blocked, or closed. |
 | Task control level | The Core-recorded amount of workflow control currently applied to one Task. It is separate from the host integration profile. |
-| Integration profile | The Record or Detective host-setup choice. It selects integration and observation paths, not the risk level of a Task. |
+| Integration profile | The first release uses the Record host-setup profile. It is separate from the risk level of a Task. |
 | Write Ticket | A Volicord record that one proposed product-file change was checked against the current work boundary and normalized project write authority. It is not OS permission or proof that a write occurred. |
 | Evidence | Recorded support for a specific claim. It is not user acceptance or proof of correctness. |
 | User Judgment | A decision that belongs to the user, such as product direction, material technical direction, scope, final acceptance, or residual-risk acceptance. |
@@ -147,7 +147,7 @@ host-specific configuration.
 ```mermaid
 flowchart LR
   user["User"]
-  host["Agent host<br/>Codex or Claude Code"]
+  host["Agent host<br/>Codex"]
   mcp["volicord mcp --stdio<br/>local MCP tools"]
   record["Volicord<br/>work records"]
   runtime["Volicord Runtime Home<br/>local runtime data"]
@@ -187,21 +187,12 @@ flowchart TD
   close -- no --> finish
 ```
 
-## Integration Profiles And Task Control
+## Record Profile And Task Control
 
-Use the Record profile (`--profile record`) for the ordinary first setup. It
-supports cooperative workflow recording through MCP without requiring host
-lifecycle hooks or a session watcher.
-
-Use the Detective profile (`--profile detective`) only when the selected host,
-platform, and repository meet its prerequisites. It configures and enables the
-owner-defined host-hook and watcher observation paths. That setup does not by
-itself establish current feature support. The resulting observations can reveal
-Unrecorded Changes, but they do not provide OS-level enforcement or prove who
-changed a file.
-
-Record and Detective are integration profiles, not Task-risk grades. Each Task
-also has a separate control level derived by Core from the request,
+The first release uses the Record profile (`--profile record`). It supports
+cooperative workflow recording through managed stdio MCP. Record is an
+integration profile, not a Task-risk grade. Each Task also has a separate
+control level derived by Core from the request,
 project-owned policy, current scope, and relevant risk facts. The agent can
 request a level, but it cannot use that request to weaken project policy. See
 the [Agent Guide](docs/en/user-guide/agent-workflow.md) for representative

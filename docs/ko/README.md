@@ -8,7 +8,7 @@ Volicord(볼리코드) 한국어 문서의 진입점입니다. 하려는 일에 
 - 제품 이해하기: [사용자 가이드 개요](user-guide/overview.md)
 - 이 환경에서 Volicord 실행 파일을 실행할 수 있는지 확인하기: [시스템 요구사항](reference/system-requirements.md)
 - 실행 파일 설치와 검증: [설치](user-guide/installation.md)
-- Codex 또는 Claude Code 설정 경로 고르기: [빠른 시작](user-guide/quickstart.md)
+- Codex 설정 경로 고르기: [빠른 시작](user-guide/quickstart.md)
 - 전체 호스트 운영 또는 멈춘 설정 복구: [에이전트 호스트 설정](user-guide/agent-host-setup.md), 이후 [에이전트 호스트 문제 해결](user-guide/agent-host-troubleshooting.md)
 - 여러 명시적으로 허용된 저장소 처리하기: [다중 저장소 에이전트 설정](user-guide/multi-repository-agent-setup.md)
 - 정확한 CLI 또는 API 계약 찾기: [관리 CLI](reference/admin-cli.md), [API 메서드](reference/api/methods.md), [참조 색인](reference/README.md)

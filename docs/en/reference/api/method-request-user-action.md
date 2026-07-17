@@ -111,20 +111,18 @@ capture form, capture path, or User Channel credential. It creates no request,
 event, replay row, prompt, token, resolution, or state-version increment. A
 request created by another connection or by `volicord.reconcile_changes` is
 unavailable through this branch. An unrelated later Git or authority-state
-change does not rewrite or invalidate the historical result. A stored response
-using the superseded full-form result shape, a duplicate JSON object member at
-any nesting level, a non-result branch, or a commit-coordinate mismatch is
-unavailable instead of being replayed. Resume applies the same raw committed-
-result gate as direct replay and returns `MCP_UNAVAILABLE` without any stored
-bytes when that gate fails.
+change does not rewrite or invalidate the historical result. A stored response with a duplicate JSON object member at any nesting level, a
+non-result branch, a commit-coordinate mismatch, or any other current closed
+result-contract violation is corrupt instead of being replayed. Resume applies
+the same raw committed-result gate as direct replay and returns
+`PERSISTED_DATA_CORRUPT` without any stored bytes when that gate fails.
 
 After create or resume, the adapter asks Core for a separate current,
 agent-safe projection. Core reads its status, optional safe resolution, exact
 historical resolution-derived refs, and observation anchors from one SQLite
-read snapshot. The adapter may open a host prompt only after create and only if
-that projection remains `pending`; otherwise it returns the projection without
-prompting. Resume never opens a prompt or runs a User Channel fallback, even
-when the projection remains `pending`. The exact result is marked
+read snapshot. The adapter returns that projection without opening another
+input surface. A pending action is delivered and resolved only through
+`volicord inbox`. The exact result is marked
 `agent_workflow_result_replayed=true` only for resume.
 Its `current_projection_observed_at` is the canonical Core-time sample for that
 read snapshot and is not persisted merely because the projection was read.

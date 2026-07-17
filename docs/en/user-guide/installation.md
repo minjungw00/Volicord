@@ -189,25 +189,12 @@ volicord init --help
 ```
 
 For the ordinary first repository connection, continue with
-`volicord init --shared --host HOST --repo PATH --profile record` in the
-[Quickstart](quickstart.md). `volicord init` can initialize the Runtime Home and
-installation profile while it connects the selected Product Repository, writes
-project-scoped MCP configuration, and records integration status.
-Detective setup follows the owner-defined host-hook and session-watcher setup
-prerequisites described in the
-[Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init).
-On native Windows, use `--profile record`; `--profile detective` fails with an
-unsupported-platform diagnostic because Windows host hooks and watcher
-behavior are unavailable.
+`volicord init --shared --host codex --repo PATH --profile record` in the
+[Quickstart](quickstart.md). `volicord init` creates or reuses the selected
+Runtime Home, connects the Product Repository, writes the managed Codex stdio
+configuration, and records integration status. `action_required` can remain
+until the named Codex trust, reload, or verification step is complete.
 
-`volicord init` creates or reuses the selected `Volicord Runtime Home` and saves
-the installation profile while connecting a repository. It discovers the running
-`volicord` executable, stores the MCP launch command, and checks whether the
-selected command is available on `PATH` for future terminals and agent hosts.
-Exact Runtime Home selection, MCP launch command behavior, and output behavior
-belong to [Administrative CLI Reference](../reference/admin-cli.md#runtime-home-selection).
-Its status answers whether setup still needs a named user or host action, so
-`action_required` can appear even after durable local state has been saved.
 
 Ensure the installed `volicord` binary is available on `PATH` before running
 host setup. Shell startup file changes are never implicit. If you update `PATH`
@@ -254,72 +241,22 @@ connection add` commands use the saved installation profile.
 
 ## Docker Image
 
-Docker support is for local container layouts and localhost MCP access. Build
-the image from the Volicord source repository:
+The repository Dockerfile can build the same `volicord` executable for
+development and CI. Mount a disposable Runtime Home and the intended Product
+Repository, then run administrative checks or the bound stdio process. The
+container image does not add a separate public transport or broaden supported
+host and platform claims.
 
 ```sh
 docker build -t volicord:local .
-```
-
-Use a Runtime Home volume and mount the Product Repository at the same container
-path whenever you run `init`, `project`, `connection`, `doctor`,
-`connection verify`, and `serve` commands.
-Project registrations store repository roots, so a Runtime Home prepared for
-one path layout should not be reused with a different container workspace path.
-
-For example, create or reuse a record-profile installation for the mounted
-repository:
-
-```sh
-docker run --rm -it \
-  -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local init --host codex --repo /workspace --profile record
-```
-
-Inspect the same Docker installation profile and verify the selected Agent
-Connection with the same mounts:
-
-```sh
 docker run --rm -it \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
   volicord:local doctor
-
-docker run --rm -it \
-  -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local connection verify codex --repo /workspace
 ```
 
-Detective Docker setup has the same owner-defined host-hook and session-watcher
-setup prerequisites as non-container setup. After the Runtime Home contains the
-project registration and Agent Connection you want to serve, for example from
-that matching `init` run or a lower-level `connection add` run, start the local
-HTTP MCP endpoint with an operator-provided token file:
-
-```sh
-umask 077
-VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
-openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
-docker run --rm \
-  -p 127.0.0.1:8765:8765 \
-  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
-  -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local serve --transport local-http \
-    --container-listen 0.0.0.0:8765 \
-    --token-file /tmp/volicord-http-token \
-    --project /workspace
-```
-
-The `-p 127.0.0.1:8765:8765` mapping publishes the container port only on the
-host loopback interface. `--container-listen 0.0.0.0:8765` is for this Docker
-publishing shape; native local runs should use the default loopback `--listen`
-behavior instead. Do not publish the container port on `0.0.0.0`, a public host
-interface, or a remote host, and do not store the token file in repository
-files. Treat this as local/Docker transport only, not a public
-network API, SaaS endpoint, multi-user server, or security boundary.
+Use the same mounts for `init`, connection verification, and managed stdio so
+the process sees the same Runtime Home and Product Repository.
 
 ## What Installation Does Not Do
 
@@ -342,10 +279,9 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want the agent to work. Use `--profile detective` only when the selected host,
-platform, and repository configuration satisfy the owner-defined Detective
-setup prerequisites; native Windows uses `--profile record` because Detective
-setup is not available there.
+you want Codex to work. The first release uses the `record` profile on every
+supported platform.
+
 
 This shared setup requires the host launch environment to provide the same
 nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible

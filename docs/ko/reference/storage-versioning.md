@@ -43,6 +43,12 @@ SQL 파일입니다.
 만들기는 conversion이 아니며 다른 형태의 기록을 보존하거나 재해석하지 않습니다.
 일반 열기는 영속 권한 데이터를 암묵적으로 버리거나 다시 만들지 않습니다.
 
+별도 비권한 `diagnostics.sqlite` 데이터베이스도 자체 의미적
+`volicord.sqlite.diagnostics` 매니페스트와 SQL inventory에서 파생한 canonical schema
+digest를 통해 같은 단일 현재 계약 규칙을 따릅니다. 경로가 없을 때만 만들며 숫자
+`PRAGMA user_version` dispatch, migration, importer, 추론한 형식, 부분 schema를 받지
+않습니다. 이 매니페스트는 권한 `StorageManifest`가 아닙니다.
+
 ## `StorageManifest`
 
 지원되는 저장소 계약은 아래의 정확한 매니페스트로 식별합니다.
@@ -54,6 +60,25 @@ StorageManifest:
   integrity_constraints_digest: string
   enabled_capabilities: string[]
 ```
+
+현재 상수는 다음과 같이 정확합니다.
+
+```yaml
+contract_id: volicord.sqlite.canonical
+enabled_capabilities:
+  - artifact_storage
+  - authority_event_chain
+  - exact_operation_result
+  - guard_reconciliation
+  - managed_codex_connection
+  - project_continuity
+  - user_action_cli_resolution
+```
+
+`enabled_capabilities`는 UTF-8 byte 오름차순의 이 완전한 목록이며 직렬화 순서가
+달라질 수 있는 집합이 아닙니다. 알 수 없거나 누락된 `contract_id`, 알 수 없거나
+누락·중복·재정렬된 capability 목록, strict subset, 현재가 아닌 값은 유효하지
+않습니다. Store는 default, alias, conversion, capability 추론을 제공하지 않습니다.
 
 필드 의미:
 

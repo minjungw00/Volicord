@@ -533,80 +533,6 @@ The Task-mode compatibility matrix above is exhaustive. These values have no com
 
 The `CloseReadinessBlocker` object shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). This section owns the supported `CloseReadinessBlocker.category` values and neighboring state/blocker values.
 
-`HostFeatureSupportStatus` uses exactly:
-
-```text
-verified
-implemented_unverified
-unsupported_by_host
-temporarily_unavailable
-```
-
-`verified` requires exact fresh evidence bound to the current final Volicord
-artifact and installed host plus ready runtime prerequisites.
-`implemented_unverified` means the implementation exists but that evidence is
-missing, stale, expired, malformed, or mismatched. `unsupported_by_host` means
-the current host surface explicitly reports that a required host-owned
-capability is absent; host-version equality or a missing version review cannot
-produce this value.
-`temporarily_unavailable` means exact evidence is current but a present-time
-runtime prerequisite is down.
-
-The corresponding feature identifiers are exactly:
-
-```text
-native_user_action
-local_web_user_channel
-verified_tool_producer
-registered_connection_observation
-record_final_output
-detective_final_output
-```
-
-`HostRuntimeProbeId` uses exactly:
-
-```text
-lifecycle_hook_delivery
-pre_tool_structured_target_paths
-post_tool_structured_changed_paths
-model_separated_user_action_ui
-stop_delivery_and_replay
-fixed_ui_authority_disclosure
-mcp_capability_advertised_and_exercised
-```
-
-`HostRuntimeProbeOutcome` uses exactly `passed`, `failed`, `unavailable`, and
-`unsupported`. `HostRuntimeProbeFailureClass` uses exactly:
-
-```text
-none
-explicit_capability_absent
-configuration_unavailable
-binding_mismatch
-approval_required
-listener_unavailable
-event_delivery_failed
-structured_paths_missing
-model_separation_unconfirmed
-replay_failed
-second_stop_requested
-fixed_ui_unconfirmed
-capability_not_advertised
-capability_not_exercised
-probe_not_run
-```
-
-Final-output `required_subcapabilities` and `subcapabilities` keys use only
-`authority_display`, `authenticated_exact_replay`, and `block_finalization`.
-The selected profile emits only its applicable keys; there is no product
-`not_applicable` support status.
-
-`block_finalization` means suppression of an unauthorized completion claim when
-the current authority receipt has `completion_claim_allowed=false`. It never
-means denying, delaying, or preventing Stop, session termination, connection
-shutdown, or the user's ability to leave. Stop still records the bounded
-session-end receipt when available.
-
 `PlannedBlocker.source_kind` uses:
 
 ```text
@@ -614,180 +540,11 @@ write_decision
 close_readiness
 ```
 
-`IntegrationProfile` and `GuardHealthSummary.selected_profile` use:
+`IntegrationProfile` uses exactly `record`. It selects the managed Codex
+workflow configuration and is not a Task risk grade or a guarantee label.
 
-| Value | Meaning |
-|---|---|
-| `record` | Records authority state and exposes the MCP tool workflow without requiring host hooks or session-watcher observation. This includes Core-issued authority write tickets. |
-| `detective` | Enables adapter-configured host hooks and session-watcher observation that can be correlated to write-ticket scope. Current support for each managed feature is reported independently through `HostFeatureSupportStatus`. The profile may return cooperative host warnings or denials and detect unrecorded Product Repository changes after watcher coverage starts. It does not prove actor identity, provide OS enforcement, isolate the network, or sandbox tools. |
-
-`GuardHealthSummary.hook_path_safety` uses:
-
-```text
-ok
-not_recorded
-metadata_missing
-authority_mismatch
-policy_hash_mismatch
-host_output_mismatch
-relative_path_unsafe
-absolute_path_stale
-placeholder_unsupported
-dispatch_missing
-wrapper_missing
-wrapper_not_executable
-```
-
-`ok` means every required host hook command is recorded as cwd-independent and
-subdirectory-safe and resolves to the expected managed wrapper path. Failure
-values report the primary reason that condition is not met: relative commands
-that depend on the session cwd, stale absolute project roots, unsupported
-placeholders, missing dispatch or wrapper scripts, non-executable wrapper
-scripts on supported Unix-like platforms, generated wrapper metadata mismatch,
-or missing verification metadata.
-
-`relative_path_unsafe` includes bare `.codex/hooks/...`,
-`./.codex/hooks/...`, `.claude/hooks/...`, or `./.claude/hooks/...` commands
-that would resolve against the host session cwd. A non-`ok`
-`hook_path_safety` value keeps detective host hooks inactive.
-
-`GuardHealthSummary.guard_installation_status` uses:
-
-```text
-absent
-configured
-reload_required
-active
-degraded
-stale
-broken
-```
-
-`GuardHealthSummary.guard_configuration_status` uses:
-
-```text
-absent
-configured
-reload_required
-degraded
-stale
-broken
-```
-
-`GuardHealthSummary.guard_observation_status` uses:
-
-```text
-not_observed
-observed
-stale_observation
-```
-
-`GuardHealthSummary.effective_guard_status` uses:
-
-```text
-inactive
-action_required
-active
-degraded
-broken
-```
-
-`GuardHealthSummary.prompt_capture_status` uses:
-
-```text
-unavailable
-unsupported_by_host
-not_configured
-reload_required
-configured
-observed
-active
-degraded
-```
-
-`GuardHealthSummary.session_watch_status` uses:
-
-```text
-disabled
-active
-degraded
-unavailable
-pending_project_selection
-```
-
-`GuardHealthSummary.session_watch_coverage_basis` uses:
-
-```text
-mcp_start
-first_project_selection
-method_boundary
-```
-
-`CoverageSummary.host_hook_state` uses:
-
-```text
-observed
-not_observed
-unsupported
-degraded
-```
-
-`CoverageSummary.session_watcher_state` uses:
-
-```text
-active
-inactive
-unsupported
-degraded
-```
-
-These fields separate detective host-hook configuration, observation, and
-effective close-readiness health:
-
-- `guard_installation_status` is the stored installation lifecycle value.
-- `guard_configuration_status` derives file and required-hook completeness.
-- `guard_observation_status` reports whether the current installation has a matching hook observation.
-- `effective_guard_status` is the close-readiness health used for `detective` paths. `active` requires a `detective` profile, complete required-hook configuration, a non-stale and non-broken installation, a current matching observation, and matching host and policy identity.
-
-`prompt_capture_status` reports whether user-owned action chat commands are
-available:
-
-- `unsupported_by_host`: the host capability is absent.
-- `not_configured`: the prompt-capture phase is not configured for the selected connection.
-- `reload_required`: installed configuration or policy identity must be reloaded before use.
-- `configured`: verification-code chat commands may be shown before a prompt-capture observation.
-- `observed`: a matching host hook has been observed.
-- `active`: a matching prompt-capture hook observation is recorded.
-- `degraded`: degraded `detective` host-hook health blocks prompt capture.
-
-`session_watch_status` reports `detective` watcher availability:
-
-- `disabled`: no selected session-watch baseline is available.
-- `active`: bounded snapshot comparison is available.
-- `degraded`: watcher output is partial or needs operator attention.
-- `unavailable`: the watcher could not perform the selected snapshot check.
-
-`CoverageSummary.host_hook_state` and
-`CoverageSummary.session_watcher_state` are concise derived states for human
-status and close-readiness output. They do not replace the detailed
-`GuardHealthSummary` fields.
-
-These values do not prove product correctness, test sufficiency, OS
-enforcement, sandboxing, security isolation, final acceptance, residual-risk
-acceptance, actor attribution, full filesystem monitoring, or full write
-prevention. The `record` profile remains cooperative. Unresolved Unrecorded
-Changes still block close when close readiness reports them.
-
-Coverage timing values mean:
-
-- `pending_project_selection`: an MCP session has more than one available project and has not selected one explicitly enough to create a session-watch baseline.
-- `mcp_start`: watcher coverage starts before MCP tool handling for a project-bound startup or HTTP session initialization.
-- `first_project_selection`: coverage starts when a multi-project session first names an explicit `project_selector`.
-- `method_boundary`: coverage starts at the Core method-boundary fallback.
-
-`first_project_selection` and `method_boundary` are partial coverage bases.
-Product Repository changes before the recorded coverage start are outside
-watcher coverage.
+Guard prompt-related data, when present, is an observation only. It cannot
+resolve a UserAction, create user authority, or substitute for the CLI inbox.
 
 `UnrecordedChangeFinding.status` uses:
 
@@ -1034,17 +791,11 @@ finalization path. `user_channel_observation` and recursively validated
 `reused_evidence` retain their existing authority-owned paths. Caller input,
 raw guard payloads, and artifact bytes alone cannot create any of these anchors.
 
-`ConnectionObservationSourceSelector.source_kind` uses:
+`ConnectionObservationSourceSelector.source_kind` uses exactly:
 
 ```text
 guard_event
-session_watcher
 ```
-
-These discriminator values select the registered source-selector branch for
-`registered_connection_observation`; they do not form a standalone public
-value-set type and do not by themselves prove source completeness, host
-identity, or evidence relevance.
 
 `ConnectionObservationGuardEventKind` uses:
 
@@ -1052,15 +803,10 @@ identity, or evidence relevance.
 pre_tool
 post_tool
 prompt_capture
-stop
 ```
 
-The `guard_event` source-selector branch requires exactly one of these values.
-The `session_watcher` branch accepts none of them. The selector binds the
-planned registered source class; the concrete guard-event or watcher-observation
-identity, observation time, and source digest remain receipt-owned facts.
-`session_start` is not in this set because the exact intent-bound session starts
-before intent creation and cannot yield a post-intent source observation.
+`prompt_capture` identifies only an observed Guard event. It is not a UserAction
+resolution channel, user answer, or verification basis.
 
 `EvidenceRelevanceAssessment.status` and
 the evidence-observation resolution body use `unassessed`, `supported`, and
@@ -1114,29 +860,22 @@ blocking
 
 This baseline value-set owner does not publish a supported stable `ValidatorResult.validator_id` set. A `validator_id` string is a reporting label, not a stable controlled value.
 
-`GuaranteeDisplay.level` uses baseline values:
+`GuaranteeDisplay.level` uses exactly:
 
 ```text
 cooperative
-detective
 ```
-
-`cooperative` is the baseline fallback. `detective` may be displayed only when the security owner supports the claim and project enforcement facts, verified Agent Connection or User Channel provenance, enabled enforcement mechanism, and observed-scope facts support it. Declared connection capability alone cannot raise the displayed guarantee.
 
 `GuaranteeDisclosure.guarantee_class` uses:
 
 ```text
 authority_record
-cooperative_host_decision
-detective_observation
 user_action_resolution
 ```
 
-Value meanings:
-- `authority_record` means the result reports Core authority state, response branch metadata, and method-owned result fields within the documented method contract.
-- `cooperative_host_decision` means the result reports a decision returned to a cooperative host hook for an observed host event.
-- `detective_observation` means the result reports local diagnostic, verification, observation, or transport-status facts that Volicord could inspect.
-- `user_action_resolution` means the result records an immutable user-owned resolution received through a supported `User Channel` path.
+`authority_record` reports Core authority state within the method contract.
+`user_action_resolution` reports an immutable local-user resolution received
+through the CLI User Channel.
 
 `GuaranteeDisclosure.non_guarantees` uses:
 

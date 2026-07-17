@@ -398,6 +398,239 @@ inputs. `scenarios/` owns shared domain setup and canonical outcomes.
 assertions. No single platform module, fixture, or live-host test file owns the
 whole release contract.
 
+<a id="executable-release-cell-gate"></a>
+## Executable release-cell gate
+
+The repository-native candidate producer and blocking gate are the
+`codex-release-cell-gate` binary in the `volicord-release-validation-tests`
+package. It has no manifest override. It loads both the build-embedded bytes
+and the on-disk bytes at the canonical manifest path and requires them to parse
+to the same strict manifest.
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate PLATFORM
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+```
+
+`--status` reports the four actual or derived manifest statuses and does not
+execute a cell. `--capture-candidate` executes one qualifying attempt and uses
+create-new semantics to write an external, strictly parsed, one-cell candidate
+array. It exits unsuccessfully after retaining a `failed` or `unavailable`
+candidate, and it never edits or promotes the canonical manifest. `--platform`
+is the blocking replay gate and succeeds only when that platform already has an
+exact checked-in `passed` cell. An absent entry fails as `not_run`; a checked-in
+`failed` or `unavailable` entry also fails. Therefore the honest current `[]`
+source can produce review candidates but cannot pass publication until all four
+candidates have been reviewed and checked in.
+
+The producer and gate perform these checks in order:
+
+1. It rejects a process outside the selected independent runner boundary.
+2. It derives the actual runner coordinate. Capture records it; blocking replay
+   requires it to exactly equal the cell's `runner` value.
+3. It hashes the actual Codex and Volicord executable bytes. Blocking replay
+   requires the two digests recorded by the cell.
+4. It executes `--version` from both exact paths.
+5. It delegates every platform-owned scenario exactly once, in canonical
+   order, to the provisioned scenario driver. A passing driver must emit the
+   strict semantic evidence document below. The runner validates its canonical
+   fixture setup, repository-selected boundary execution, repository-owned
+   domain outcome, matching adapter projection, and bounded cleanup before it
+   wraps that evidence. It independently recomputes every canonical payload
+   digest and verifies the digest links between the four records. The
+   deterministic wrapper binds the scenario definition, both artifact digests,
+   platform, driver digest, capabilities, and Record profile. Missing,
+   additional, renamed, catalog-reordered, opaque, self-selected, or mismatched
+   evidence fails.
+6. It reopens and rehashes both executable paths after the complete catalog and
+   requires their bytes to be unchanged.
+7. Capture computes the canonical cell evidence digest and writes only the new
+   external candidate path. Blocking replay requires every current scenario to
+   pass and each deterministic evidence digest to equal the reviewed checked-in
+   result.
+
+The native Linux boundary rejects WSL and container process boundaries. The
+macOS and native Windows boundaries require their corresponding native process.
+The WSL2 boundary deliberately runs the gate and scenario coordinator on a
+native Windows supervisor so that the coordinator can survive
+`wsl_shutdown_restart`. The selected product environment is exactly
+`Ubuntu-24.04`; the gate verifies a WSL2 kernel, `ID=ubuntu`,
+`VERSION_ID=24.04`, and the matching `WSL_DISTRO_NAME`. Codex, Volicord, the
+cell work root, the Product Repositories created below it, and `VOLICORD_HOME`
+remain inside that one distribution on ext4. The Windows supervisor is test
+harness infrastructure, not a substitute native-Windows product component.
+
+### Producer and gate inputs
+
+The release runner provisions these exact environment variables before capture
+or blocking replay:
+
+| Variable | Required value |
+|---|---|
+| `VOLICORD_CODEX_RELEASE_CODEX_PATH` | Canonical symlink-free path of the exact finalized Codex executable. It is a host path for native cells and an absolute Linux ext4 path inside the selected distribution for WSL2. |
+| `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` | Canonical symlink-free path of the exact Volicord executable named by `volicord_artifact_digest`, using the same native-or-WSL2 path rule. |
+| `VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER` | Canonical host path of the platform-provisioned scenario driver. For WSL2 it is a native Windows coordinator capable of surviving and verifying a distribution shutdown and restart. |
+| `VOLICORD_CODEX_RELEASE_EVIDENCE_DIR` | Existing, empty, canonical host directory outside the source checkout, Cargo target directory, maintained docs, Product Repository, and Runtime Home. |
+| `VOLICORD_CODEX_RELEASE_WORK_ROOT` | Existing, empty work root outside repository-owned paths. For WSL2 it is an absolute ext4 directory inside the selected distribution. |
+| `VOLICORD_HOME` | Absent child of the cell work root, created only by the `runtime_home_creation` scenario. |
+| `VOLICORD_CODEX_RELEASE_ENVIRONMENT_IMAGE` | Exact environment-image coordinate recorded in the checked-in cell. |
+| `RUNNER_NAME` | Actual runner-service identity; it must equal `runner.runner_id`. |
+| `VOLICORD_CODEX_RELEASE_WSL2_DISTRIBUTION` | WSL2 only; exactly `Ubuntu-24.04`. It is rejected for native cells. |
+| `VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH` | Capture only; an absent absolute path with an existing canonical parent outside repository-owned, evidence, work, and Runtime Home roots. The producer writes a strict one-cell JSON array with create-new semantics. Blocking replay does not read this variable. |
+
+The gate derives the architecture and target triple from the native process, or
+from `uname -m` inside the selected WSL2 distribution. It derives `os_release`
+from `/proc/sys/kernel/osrelease` on Linux and WSL2,
+`sw_vers -productVersion` on macOS, and `cmd.exe /D /C ver` on native Windows.
+Those derived values and the provisioned environment-image coordinate must
+exactly equal the checked-in runner coordinate.
+
+For every scenario, the driver receives the exact scenario, platform,
+executables, work root, Runtime Home, and two fresh output paths. Its command
+shape is:
+
+```text
+SCENARIO_DRIVER
+  --scenario SCENARIO_ID
+  --fixture FIXTURE
+  --boundary BOUNDARY
+  --projection PROJECTION
+  --expected-outcome OUTCOME_CODE
+  --platform PLATFORM
+  --codex CODEX_PATH
+  --volicord VOLICORD_PATH
+  --work-root WORK_ROOT
+  --runtime-home RUNTIME_HOME
+  --evidence-output NEW_DRIVER_EVIDENCE_PATH
+  --outcome-output NEW_OUTCOME_JSON_PATH
+  [--wsl2-distribution Ubuntu-24.04]
+```
+
+The outcome document has exactly `scenario_id`, `status`, `reason`, and
+`observed_at`. `status` is `passed`, `failed`, `unavailable`, or `not_run`.
+`passed` requires a null reason and a canonical UTC observation time;
+`failed` and `unavailable` require a machine-readable reason and time;
+`not_run` requires a reason and null time. Passed and failed outcomes require a
+bounded driver evidence file, `not_run` forbids one, and unavailable may
+include one.
+
+A `passed` evidence file is strict JSON with exactly this shape:
+
+```json
+{
+  "contract": "volicord.release_scenario_evidence",
+  "scenario_id": "fresh_install",
+  "platform": "linux",
+  "state_setup": {
+    "canonical_project_state": {
+      "fixture_id": "fresh_install",
+      "fixture": "no_installation",
+      "platform": "linux"
+    },
+    "canonical_project_state_digest": "0412001a986fb601aaec49e5ca491f034735eae9d2b79fc3a1f172ac73268725",
+    "validated": true
+  },
+  "boundary_execution": {
+    "canonical_invocation": {
+      "scenario_id": "fresh_install",
+      "platform": "linux",
+      "boundary": "cli",
+      "canonical_project_state_digest": "0412001a986fb601aaec49e5ca491f034735eae9d2b79fc3a1f172ac73268725"
+    },
+    "invocation_digest": "e123ca5a50d1b8362a8bc8a9a6366692f3901a09184e014da44eaa1e3a1d9fde",
+    "completed": true
+  },
+  "domain_outcome": {
+    "canonical_outcome": {
+      "scenario_id": "fresh_install",
+      "expectation": "complete_successfully",
+      "disposition": "completed",
+      "outcome_code": "installation_completed",
+      "invocation_digest": "e123ca5a50d1b8362a8bc8a9a6366692f3901a09184e014da44eaa1e3a1d9fde",
+      "observed_paths_preserved": null
+    },
+    "canonical_outcome_digest": "9690aa98449e2944b9477d3ffb6496a918556a15432173cdc48b4a432cee19af",
+    "validated": true
+  },
+  "adapter_projection": {
+    "canonical_projection": {
+      "scenario_id": "fresh_install",
+      "projection": "cli_json",
+      "outcome_code": "installation_completed",
+      "canonical_outcome_digest": "9690aa98449e2944b9477d3ffb6496a918556a15432173cdc48b4a432cee19af"
+    },
+    "canonical_projection_digest": "ca3f422db0290cd0bdd328afd8ca794bca9e7f1eee0a509382e1ddff2dfd0a48",
+    "validated": true
+  },
+  "cleanup_complete": true
+}
+```
+
+The four nested `canonical_*` objects are retained canonical, nonvolatile
+payloads. Each adjacent digest is the bare lowercase SHA-256 of that object's
+canonical JSON. The invocation embeds the recomputed project-state digest, the
+domain outcome embeds the recomputed invocation digest, and the projection
+embeds the recomputed domain-outcome digest. The gate recomputes all four
+digests and links before comparing every payload to the selected repository
+definition. `validated`, `completed`, and `cleanup_complete` must be true, but
+those flags do not replace the payload, digest, link, or semantic checks.
+
+The repository owns this exact scenario mapping:
+
+| Scenario | Fixture | Boundary / projection | Outcome code | Expectation / disposition |
+|---|---|---|---|---|
+| `fresh_install` | `no_installation` | `cli` / `cli_json` | `installation_completed` | `complete_successfully` / `completed` |
+| `runtime_home_creation` | `runtime_home_absent` | `cli` / `cli_json` | `runtime_home_created` | `complete_successfully` / `completed` |
+| `personal_managed_binding` | `personal_binding_absent` | `cli` / `cli_json` | `personal_managed_binding_installed` | `complete_successfully` / `completed` |
+| `shared_managed_binding` | `shared_binding_absent` | `cli` / `cli_json` | `shared_managed_binding_installed` | `complete_successfully` / `completed` |
+| `receipt_create_and_validate` | `current_managed_binding` | `managed_host` / `managed_host_state` | `receipt_current` | `complete_successfully` / `completed` |
+| `configuration_drift_detection` | `drifted_managed_configuration` | `managed_host` / `managed_host_state` | `configuration_drift_detected` | `complete_successfully` / `completed` |
+| `repair_after_drift` | `repairable_managed_configuration_drift` | `cli` / `cli_json` | `configuration_repaired` | `complete_successfully` / `completed` |
+| `safe_uninstall` | `installed_managed_binding` | `cli` / `cli_json` | `managed_binding_removed` | `complete_successfully` / `completed` |
+| `symlink_and_canonical_path` | `symlinked_managed_path` | `platform` / `platform_result` | `canonical_path_rules_enforced` | `complete_successfully` / `completed` |
+| `codex_restart` | `restarted_codex_process` | `managed_host` / `managed_host_state` | `stale_receipt_rejected` | `complete_successfully` / `completed` |
+| `project_move` | `moved_product_repository` | `managed_host` / `managed_host_state` | `moved_project_binding_rejected` | `complete_successfully` / `completed` |
+| `record_write_workflow` | `record_workflow_ready` | `mcp_stdio` / `mcp_structured_content` | `record_write_completed` | `complete_successfully` / `completed` |
+| `suppression_unavailable` | `suppression_provider_unavailable` | `core` / `core_response` | `observed_paths_preserved` | `preserve_observed_paths_when_suppression_unavailable` / `warning` |
+| `unsupported_host` | `unsupported_host_selected` | `cli` / `cli_json` | `unsupported_host_rejected` | `reject_unsupported_host` / `rejected` |
+| `unsupported_host_artifact` | `unregistered_host_artifact` | `managed_host` / `managed_host_state` | `unsupported_host_artifact_rejected` | `reject_unsupported_host_artifact` / `rejected` |
+| `wsl_shutdown_restart` | `stale_wsl2_process_and_receipt` | `platform` / `platform_result` | `stale_wsl2_process_and_receipt_rejected` | `reject_stale_wsl2_process_and_receipt` / `rejected` |
+| `wsl2_ext4_project` | `wsl2_ext4_topology` | `platform` / `platform_result` | `wsl2_ext4_accepted` | `accept_wsl2_ext4` / `completed` |
+| `wsl2_drvfs_rejection` | `wsl2_drvfs_topology` | `platform` / `platform_result` | `wsl2_drvfs_rejected` | `reject_wsl2_drvfs` / `rejected` |
+| `wsl2_cross_topology_rejection` | `wsl2_cross_topology` | `platform` / `platform_result` | `wsl2_cross_topology_rejected` | `reject_wsl2_cross_topology` / `rejected` |
+| `wsl1_rejection` | `wsl1_environment` | `platform` / `platform_result` | `wsl1_rejected` | `reject_wsl1` / `rejected` |
+| `wsl2_native_windows_receipt_reuse_rejection` | `native_windows_receipt_in_wsl2` | `managed_host` / `managed_host_state` | `native_windows_receipt_reuse_rejected` | `reject_native_windows_receipt_reuse` / `rejected` |
+
+Only `suppression_unavailable` has
+`observed_paths_preserved: true`; every other scenario requires null. An
+opaque success flag, an unknown field, a prefixed or stale digest, a broken
+digest link, or a driver-selected alternative fixture, boundary, projection,
+expectation, disposition, or outcome code cannot satisfy the gate.
+
+The runner supplies `VOLICORD_CODEX_RELEASE_ARTIFACT_DIGEST`,
+`VOLICORD_CODEX_RELEASE_VOLICORD_DIGEST`,
+`VOLICORD_CODEX_RELEASE_SCENARIO_DRIVER_DIGEST`,
+`VOLICORD_CODEX_RELEASE_CAPABILITIES`, and
+`VOLICORD_CODEX_RELEASE_INTEGRATION_PROFILE=record`. The repository scenario
+catalog owns the exact fixture, boundary, projection, expectation,
+disposition, and outcome code. The driver owns execution through that selected
+boundary, adapter-specific observation, and bounded cleanup; it reports the
+retained canonical records through the closed evidence schema. The runner owns
+strict outcome and evidence parsing, canonical digest recomputation, digest-link
+validation, semantic comparison with the catalog, catalog completeness, fresh
+and exact output placement, deterministic evidence wrapping, retention of each
+bounded driver file, timeout, and executable and driver stability. The
+observation time is recorded in the candidate result but excluded from the
+deterministic per-scenario envelope, so a later blocking replay can reproduce
+the reviewed digest while still recording a fresh time. A successful driver
+exit without protocol-complete output is a failure. Driver stdout and stderr are
+suppressed so prompts, transcripts, credentials, and tokens do not become
+workflow output.
+
 ## Trust and owner boundaries
 
 The checked-in manifest and its validation evidence support a release decision;

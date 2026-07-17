@@ -5,9 +5,8 @@
 `SuppressionOutcome` variant와 필드, scan budget, 실패 reason, 보수적 fallback,
 진단 및 비차단 Guard projection을 정의합니다.
 
-이 로직은 호스트 hook이나 session watcher와 독립적입니다. adapter가 관찰 경로
-집합을 제공할 수 있지만, 억제 서비스는 정규 프로젝트 경로와 정규 correlation
-기록만 받습니다.
+이 로직은 경로를 관찰한 출처와 독립적입니다. adapter가 관찰 경로 집합을 제공할 수
+있지만, 억제 서비스는 정규 프로젝트 경로와 정규 correlation 기록만 받습니다.
 
 ## 표면 안정성
 

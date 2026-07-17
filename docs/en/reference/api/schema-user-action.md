@@ -123,8 +123,7 @@ be `expired`. Expiry uses `created_at <= now < expires_at`, so
 Choice requests preserve the explicit nullable caller `expires_at`; `null`
 means no time deadline while basis invalidation still applies.
 Evidence-observation requests do not accept a caller deadline; Core assigns a
-15-minute expiry. A request-bound local channel token expires at the earlier of
-the request deadline and 10 minutes after token creation.
+15-minute expiry.
 
 ### Canonical time sampling
 
@@ -145,12 +144,6 @@ operation.
 - Resolution derives effective status, validates the request and channel, and
   records `UserActionResolution.resolved_at` from one resolution-operation
   sample.
-- Local-web token issuance is its own storage transaction. Token `created_at`
-  is its canonical current-project-time sample, and the token is usable only in
-  the half-open interval `created_at <= now < expires_at`. A sample before
-  `created_at` is invalid; a sample at or after `expires_at` is expired. Its
-  bounded TTL calculation uses the same checked-addition and representability
-  rule.
 - `current_projection_observed_at` is the canonical Core-time sample for the
   one read snapshot named by the projection. Observing it does not by itself
   persist a later project-time floor.
@@ -230,7 +223,7 @@ UserActionResolution:
   resolved_by_actor_source: local_user
   resolved_verification_basis: string
   resolved_assurance_level: string
-  channel_kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  channel_kind: cli
   channel_submission_id: string
   resolved_at: string
 ```
@@ -260,7 +253,7 @@ length, visible-ASCII shape, and Core validates the exact byte bound before
 replay lookup or commit.
 
 <a id="inbox-and-capture-form"></a>
-## Inbox and capture form
+## Inbox and CLI form
 
 ```yaml
 AgentSafeUserActionRequestSummary:
@@ -275,7 +268,7 @@ UserChannelAvailability:
   recommendation: string | null
 
 UserChannelPathAvailability:
-  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  kind: cli
   label: string
   available: boolean
   status: available | unavailable
@@ -315,14 +308,12 @@ UserActionInboxForm:
   relevance_options: [supported, contradicted]
   summary_max_chars: integer
 
-UserActionCapturePath:  # internal/User Channel projection only
-  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+UserActionCapturePath:  # local CLI projection only
+  kind: cli
   label: string
   available: boolean
   command: string | null
-  url: string | null
   capture_basis: string | null
-  expires_at: string | null
   detail: string | null
 ```
 
@@ -340,34 +331,20 @@ identifier contract, while `status` and `next_actor` are the literal values
 `pending` and `user`. A missing, additional, wrong-typed, or wrong-literal field
 is invalid in ordinary output, replay, resume, and operation-result eligibility.
 
-The public `UserChannelAvailability` is a closed, credential-free capability
-summary. Its labels, detail, and recommendation may give only generic User
-Channel or CLI guidance. They never contain the durable request question or
-context, candidate or form data, a capture command, URL, token, or other
-credential. `UserActionCapturePath`, including its optional `command` and
-`url`, is a separate internal/User Channel-only projection and is never nested
-in an Agent Connection result. Availability alone neither issues a token nor
-proves that a host kept a surface invisible to the model.
+The public `UserChannelAvailability` is a closed, credential-free summary of
+the one `cli` path. Its label, detail, and recommendation may provide generic
+CLI guidance, but never the durable question, context, candidates, private
+form, note, submission identity, or credential. `UserActionCapturePath` is a
+local CLI projection and is never nested in an Agent Connection result.
 
-Core derives one complete `UserActionInboxItem` and capture form from the stored
-request for a verified User Channel projection. Agent-workflow method results,
-Agent Connection status and close projections, exact replay, and operation-
-result retrieval never contain that item. Channel adapters must not reconstruct
-candidates from chat, request arguments, or adapter-local state. Supported path
-kinds are `mcp_elicitation`, `prompt_capture`, `local_web_consent`, and `cli`;
-availability is action- and capability-specific. An unavailable rich path
-remains visible on a user-owned surface and must not hide another available
-path. CLI is the ordinary fallback when local project state is writable.
 
-The internal projection fails closed unless the caller uses `operation_category=read`
-and an exact supported User Channel binding. Local CLI access requires
-`actor_source=local_user` with `cli_direct_user_channel`. Agent-mediated
-renderers require a non-empty active session for the same project and Agent
-Connection, plus either `user_prompt_submit_hook` or the applicable MCP
-connection binding. An Agent-mediated projection contains only pending requests
-created by that same Agent Connection. Missing, ended, cross-project,
-cross-connection, wrong-basis, or wrong-operation context returns no projection;
-the adapter must not replace that denial with a direct Store read.
+Core derives one complete `UserActionInboxItem` and form from the strict stored
+request only for the local CLI User Channel. Agent-facing method results, status
+and close projections, replay, and operation-result retrieval never contain
+that item. The CLI must not reconstruct candidates from arguments, prose, or
+adapter-local state. MCP may create or resume the request and observe its safe
+current projection, but it cannot render or submit the resolving form.
+
 
 ## MCP compound projection
 
@@ -397,7 +374,7 @@ AgentSafeUserActionResolution:
   user_action_resolution_id: string
   user_action_request_id: string
   action_kind: string
-  channel_kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  channel_kind: cli
   resolved_at: string
   resolution_summary: McpUserActionResolutionSummary
 

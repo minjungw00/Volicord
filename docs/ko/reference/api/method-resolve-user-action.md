@@ -40,28 +40,19 @@ required-nullable envelope 필드이므로 생략은 유효하지 않습니다. 
 
 `channel_submission_id`는 1~256 bytes의 불투명 채널 identity입니다. 모든 byte가
 visible ASCII `0x21..=0x7e`여야 하며 공백, NUL, non-ASCII, 빈 값, 더 긴 값은
-거부됩니다. Envelope의 `idempotency_key`는 이 값과 정확히 같아야 합니다. 일반 User
-Channel에서는 채널 어댑터가 identity를 만듭니다. 같은 요청, 채널, actor context,
+거부됩니다. Envelope의 `idempotency_key`는 이 값과 정확히 같아야 합니다. 로컬 CLI 어댑터가 identity를 만듭니다. 같은 요청, 채널, actor context,
 submission ID, canonical 해결의 replay는 원래 커밋 응답을 반환합니다. 다른 해결로
 재사용하면 거부합니다. 동시에 들어온 서로 다른 제출도 두 번째 해결을 만들 수
 없습니다.
 
-Local-web consent에는 더 엄격한 규칙이 적용됩니다. Token을 전달하는 local-web 경계만
-Core에 진입할 수 있습니다. Core는 정확한 프로젝트, 사용자 행동 요청, 원문 bearer-token
-credential, 예상 Agent Connection, 타입이 지정된 canonical 완료 metadata를 묶은 유일한
-digest-only `local_web:<sha256>` submission identity를 도출한 뒤 독립적으로 다시
-검증합니다. Mutation replay identity는 별도로 그 token의 domain-separated digest, 예상
-connection, 같은 폐쇄형 metadata를 결속합니다. 손으로 만든 identity나 서로 다른 token,
-connection, 완료 맥락으로는 저장 replay를 열 수 없습니다. 원문 token은 일시적인 검증
-입력일 뿐이며 공개 요청, resolution 행, replay 행, 응답에는 들어가지 않습니다.
+로컬 CLI 어댑터만 이 메서드에 진입할 수 있습니다. Agent Connection, MCP 어댑터,
+Guard 관찰, 직접 Store 호출자는 resolution을 제출할 수 없습니다.
 
 ### 동작 시각
 
 Core는 공통 preflight 뒤 해결 동작을 위해 프로젝트의 정규 Core UTC 시계를 정확히 한
-번 샘플링합니다. 이 `operation_now`를 유효 요청 상태 파생, 요청 expiry 확인, 로컬 web
-token 검증, 공개 및 저장 `resolved_at` 설정에 다시 사용합니다. 로컬 web token은
-`token.created_at <= operation_now < token.expires_at`일 때만 유효합니다. 생성 전 값은
-유효하지 않고 expiry 시각의 값은 만료입니다.
+번 샘플링합니다. 이 `operation_now`를 유효 요청 상태 파생, 요청 expiry 확인, 공개 및 저장
+`resolved_at` 설정에 다시 사용합니다.
 
 Core transaction은 더 늦은 정규 커밋 timestamp를 선택할 수 있지만 의미 있는
 `resolved_at` 샘플을 바꾸면 안 됩니다. Transaction timestamp와 영속 하한 규칙은
@@ -83,8 +74,7 @@ ResolveUserActionResult:
 
 커밋은 적용되는 선택 또는 증거 관찰 본문을 닫힌 `resolution_json`에 담은 변경 불가능한
 `user_action_resolutions` 행 하나를 삽입하여 공통 유효 상태 evaluator가 `resolved`를
-반환하게 하며, 있을 때 일치하는
-채널 token을 소비하고, 의존 blocker와 Task lifecycle을 갱신하고, authority event
+반환하게 하고, 의존 blocker와 Task lifecycle을 갱신하고, authority event
 하나와 user-only replay 결과를 저장하고, `state_version`을 한 번 증가시키는 작업을
 원자적으로 수행합니다. 판단 해결은 담당자가 선택한 continuity record를 만들 수
 있습니다. 증거 관찰 해결은 증거 coverage나 Run을 만들지 않습니다. 이후
@@ -101,9 +91,8 @@ Core는 바깥 resolution에 resolution 캡처 시각 하나를 제공합니다.
 
 Dry run, 잘못되거나 혼합된 payload, Agent Connection actor, stale 또는 superseded
 근거, `now >= expires_at`, 바뀐 후보나 bytes, replay 충돌, 잘못된 채널 binding은
-요청, 해결, token 소비, event, replay, blocker, lifecycle, state version 효과 없이
-거부됩니다. deadline 점검은 이미 도출되는 token `expired` 상태를 저장할 수 있지만,
-거부된 시도를 소비로 바꾸지는 않습니다. 정확한 replay, dry run, 거부, expiry 상태
+요청, 해결, event, replay, blocker, lifecycle, state version 효과 없이
+거부됩니다. 정확한 replay, dry run, 거부, expiry 상태
 갱신은 영속 정규 UTC 하한을 갱신하지 않습니다.
 
 ## 관련 담당 문서

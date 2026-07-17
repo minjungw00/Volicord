@@ -182,7 +182,7 @@ Every `Task` also records `requested_control_level`, `effective_control_level`,
 and `control_level_reason`. `requested_control_level` is one of `auto`,
 `observe`, `light`, `tracked`, or `sensitive`; the effective value is one of
 `observe`, `light`, `tracked`, or `sensitive`. These values are distinct from
-the Record and Detective installation profiles.
+the Record integration profile used by Agent Connections.
 
 Core resolves control as follows:
 
@@ -216,8 +216,8 @@ Core resolves control as follows:
   It is not a second policy authority or permission to write. When normalized
   write authority changes, the policy commit atomically invalidates with
   `explicit_revoke` every active ticket with a missing or different binding and
-  every active ticket for the marked Task; Guard and Core treat any remaining
-  legacy active ticket as unusable and require `volicord.prepare_write`.
+  every active ticket for the marked Task; Core treats any remaining active
+  ticket with a missing binding as unusable and requires `volicord.prepare_write`.
   A normalized-equivalent write authority preserves compatible tickets.
   Status, Intake resume, UpdateScope, RecordRun, and CloseTask resolve the
   strongest persisted, current-policy, and marked requirements consistently.
@@ -561,7 +561,7 @@ It has these compatibility properties:
   makes an active ticket unusable without hiding consumed history.
 - Policy-bound: the fingerprint is the `sha256:`-prefixed canonical-JSON SHA-256
   of exactly
-  `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
+  `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
   The two pattern arrays are sorted and deduplicated first. This normalized
   fingerprint is narrower than the whole canonical-policy
   `policy_fingerprint`; every other policy field is excluded.
@@ -692,7 +692,7 @@ Evidence authority:
   its immutable durable source-fact receipt and transient staged bytes; and only `volicord.record_run` can promote
   the receipt and atomically create the immutable producer and its one-to-one
   observation. Agent input cannot create or replace the receipt or producer.
-  Raw guard payloads, descriptive tool fields, artifact integrity, and
+  Raw source payloads, descriptive tool fields, artifact integrity, and
   `SourceRef` remain insufficient anchors by themselves.
 - Producer provenance and claim relevance are separate authority axes. A
   producer is current only when its intent and receipt agree on project,
@@ -706,9 +706,9 @@ Evidence authority:
   rather than downgraded. Unanchored external-tool and connection claims
   continue to downgrade to cooperative reports.
 - The verified command runner establishes only that Volicord executed and
-  captured the digest-bound invocation. Registered hooks establish cooperative
-  host consistency, not cryptographic attestation, actor proof, OS isolation,
-  command approval, sandboxing, test sufficiency, or broad correctness.
+  captured the digest-bound invocation. Registered source observations do not
+  establish cryptographic attestation, actor proof, OS isolation, command
+  approval, sandboxing, test sufficiency, or broad correctness.
 - Reused strong evidence must retain exactly one original observation identity
   and remain compatible with the target, Task, Change Unit, source Run, scope
   revision, baseline, inherited assurance, exact outputs, producer anchor, and

@@ -131,6 +131,35 @@ substitutes one platform result for another. In particular, `wsl2` requires
 explicit WSL2 detection and the topology in
 [System Requirements](system-requirements.md#wsl2-topology).
 
+<a id="platform-release-coordinate"></a>
+
+## `PlatformReleaseCoordinate`
+
+Every binding and receipt carries one required closed
+`platform_release_coordinate` object. Native Linux, macOS, and native Windows
+use exactly:
+
+```yaml
+kind: native
+```
+
+WSL2 uses exactly:
+
+```yaml
+kind: wsl2
+distribution_name: Ubuntu-24.04
+distribution_id: ubuntu
+distribution_version: "24.04"
+environment_image: Ubuntu-24.04-LTS-WSL2
+```
+
+Unknown fields, a `native` coordinate paired with `platform_environment=wsl2`,
+a WSL2 coordinate paired with a native environment, or any different WSL2
+value is invalid. The three distribution values are observed in the current
+WSL2 process. `environment_image` is the exact release-cell image registered
+for those facts. Exact support lookup compares it with the passing cell, so a
+cell for another distribution image cannot authorize the binding.
+
 <a id="codex-capability"></a>
 
 ## `CodexCapability`
@@ -180,6 +209,7 @@ ManagedHostBinding:
   process_binding: ProcessBinding
   required_capabilities: CodexCapability[]
   platform_environment: PlatformEnvironment
+  platform_release_coordinate: PlatformReleaseCoordinate
 
 ManagedCommand:
   resolution: path_lookup | absolute_path
@@ -206,6 +236,8 @@ also rejects duplicate keys. `host_kind` is exactly `codex`;
 `connection_scope` matches the stored connection intent;
 `required_capabilities` is exactly `FirstReleaseCodexCapabilities`; and
 `platform_environment` is the exact detected platform.
+`platform_release_coordinate` is the matching exact native or WSL2 coordinate
+defined above.
 
 `ManagedCommand.resolution=path_lookup` requires `program` to be one nonempty
 basename with no path separator. `absolute_path` requires the normalized
@@ -270,6 +302,11 @@ capabilities use their required canonical order. Field names are encoded, so an
 allowed empty string or list still has a present named field and cannot collide
 with absence.
 
+`PlatformReleaseCoordinate` is a nested record. The native record contains
+only `kind=native`. The WSL2 record contains `kind=wsl2`,
+`distribution_name`, `distribution_id`, `distribution_version`, and
+`environment_image` in that order.
+
 All counts and byte lengths must fit `u32`. Validation and path normalization
 happen before encoding. The encoder performs no trimming, case folding, path
 conversion, default insertion, omission, or map iteration.
@@ -296,6 +333,7 @@ The Codex adapter owns all host-specific inspection and mutation:
   configuration target, and the current platform environment;
 - install only the managed entry represented by the canonical binding;
 - construct `ManagedHostBinding` and its digest;
+- observe and bind the exact `PlatformReleaseCoordinate`;
 - calculate the digest of every generated managed artifact;
 - inspect exact Codex artifact and executable identity;
 - validate current process binding;
@@ -310,8 +348,10 @@ Discovery does not make an artifact supported. The adapter accepts only one
 `passed` release cell whose `artifact_digest` equals
 `process_binding.executable_digest`, whose `platform` equals
 `platform_environment`, whose `integration_profile` is `record`, and whose
-`observed_capabilities` exactly equals `required_capabilities`. The current
-binding, receipt, and cell must therefore agree on platform, executable digest,
+`observed_capabilities` exactly equals `required_capabilities`. For WSL2, the
+cell's `runner.environment_image` must also equal the binding's
+`platform_release_coordinate.environment_image`. The current binding, receipt,
+and cell must therefore agree on platform coordinate, executable digest,
 profile, and the exact canonical capability set. A recognizable command name,
 a reported version range, a nearby artifact, a partial capability match, or a
 cell for another platform is insufficient. Any absence or mismatch is
@@ -342,6 +382,7 @@ HostVerificationReceipt:
   host_kind: codex
   integration_profile: record
   platform_environment: PlatformEnvironment
+  platform_release_coordinate: PlatformReleaseCoordinate
   required_capabilities: CodexCapability[]
   verified_capabilities: CodexCapability[]
   binding_digest: string
@@ -360,6 +401,11 @@ current Store identifiers: each is 1 through 1,024 UTF-8 bytes, contains a
 non-whitespace character and no control character, and is preserved without
 trimming. Both capability arrays exactly equal
 `FirstReleaseCodexCapabilities`.
+
+`platform_release_coordinate` exactly matches the coordinate in the canonical
+binding and the current independently observed platform facts. A WSL2 receipt
+therefore cannot be reused for another distribution or image even when its
+`platform_environment` value is still `wsl2`.
 
 `binding_digest` has the canonical `sha256:<64-lowercase-hex>` form defined
 above. `executable_digest` is the raw 64-lowercase-hex SHA-256 of the observed
@@ -406,6 +452,8 @@ receipt-dependent operation proceeds:
 - `host_kind=codex` and `integration_profile=record` match the connection;
 - `platform_environment` matches the current connection, binding,
   `process_binding`, and passed release cell exactly;
+- `platform_release_coordinate` matches the current independently observed
+  coordinate, binding, receipt, and passed release-cell image exactly;
 - `required_capabilities` and `verified_capabilities` exactly equal each other,
   `FirstReleaseCodexCapabilities`, and the passed cell's
   `observed_capabilities`;

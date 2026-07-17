@@ -111,9 +111,7 @@ authority boundaries belong to [Core Model](../reference/core-model.md).
 <a id="record-a-core-user-judgment"></a>
 ## Record A User Judgment
 
-When a decision must become Volicord state, use the User Channel path Volicord
-shows. Depending on the host and current setup, that may be a host prompt, a
-verified chat command, a local consent page, or the CLI inbox.
+When a decision must become Volicord state, use the CLI inbox.
 
 The stable manual path is:
 
@@ -169,10 +167,8 @@ more Evidence or narrow the claim when the support is insufficient. Do not ask
 the agent to expose secrets, tokens, or full sensitive logs.
 
 Volicord may ask you to record a focused Evidence observation for one stored
-acceptance criterion or supplemental claim. The host prompt, verified chat
-command, local consent page, and CLI inbox all use the same stored target and
-artifact candidates. Select only candidates shown in that form. The stable CLI
-fallback is:
+acceptance criterion or supplemental claim. Select only the stored target and
+artifact candidates shown in the CLI inbox:
 
 ```sh
 volicord inbox --repo "<repo>"
@@ -197,8 +193,8 @@ Exact Evidence meaning belongs to [Core Model](../reference/core-model.md).
 
 ## Reconcile Unrecorded Changes
 
-The Detective profile can report a Product Repository change that does not
-match recorded work. Treat it as an Unrecorded Change, not as proof of malicious
+Volicord can report a Product Repository change that does not match
+recorded work. Treat it as an Unrecorded Change, not as proof of malicious
 behavior or proof of who changed the file.
 
 Ask the agent to run `volicord.reconcile_changes` when available. The CLI

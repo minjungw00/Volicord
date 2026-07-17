@@ -8,7 +8,7 @@ This is the English entry point for the Volicord documentation set. Start with t
 - Understand the product: [User Guide Overview](user-guide/overview.md)
 - Check whether this environment can run the Volicord executables: [System Requirements](reference/system-requirements.md)
 - Install and verify the executables: [Installation](user-guide/installation.md)
-- Choose the Codex or Claude Code setup path: [Quickstart](user-guide/quickstart.md)
+- Choose the Codex setup path: [Quickstart](user-guide/quickstart.md)
 - Complete host operations or recover a stalled setup: [Agent Host Setup](user-guide/agent-host-setup.md), then [Agent Host Troubleshooting](user-guide/agent-host-troubleshooting.md)
 - Serve multiple explicitly allowed repositories: [Multi-Repository Agent Setup](user-guide/multi-repository-agent-setup.md)
 - Find exact CLI or API contracts: [Administrative CLI](reference/admin-cli.md), [API Methods](reference/api/methods.md), and [Reference Index](reference/README.md)

@@ -105,13 +105,12 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 
 제외된 기능:
 
-- Claude Code와 그 밖의 모든 로컬 LLM 호스트 어댑터
-- generic host, custom host, 호스트 자동 탐지 휴리스틱
+- Codex 이외의 모든 호스트 어댑터와 호스트 자동 탐지 휴리스틱
 - `record` 이외의 통합 프로필
-- 관리되는 최종 출력 권한 상태 보기, 호스트 hook, session watcher
-- 풍부한 local-web User Channel 전달, 프로덕션 local-web 적격성, local-web 동의 및 handoff 경로
-- 공개 local HTTP 전송
-- 저장소 마이그레이션, 저장소 업그레이드, 개발 데이터 가져오기, 과거 host fingerprint 판독
+- 추가 관리 호스트 lifecycle, 관찰, 권한 표시 표면
+- 로컬 CLI inbox 이외의 UserAction 해결 채널
+- 네트워크 MCP 전송
+- 현재 형식이 아닌 저장소, 개발 데이터 가져오기, 변환, 과거 host fingerprint 판독
 - 제외 기능을 위한 deprecated 호환 API, alias, placeholder, feature flag
 - 호스트 애플리케이션의 자체 아티팩트 캡처
 - 지속 저장되는 상태 보기 작업, 상태 보기 조정, 생성된 상태 보기 파일, 관리되는 상태 보기 복구

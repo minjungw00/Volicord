@@ -35,8 +35,8 @@ recorded state transitions, and honest Close Status checks. Features should
 make those boundaries easier for users and agents to see, not hide them behind
 a polished summary.
 
-Host integrations and observation surfaces are cooperative and detective unless a
-focused Reference owner defines a stronger guarantee. Product language,
+Codex integration and observation surfaces are cooperative unless a focused
+Reference owner defines a stronger guarantee. Product language,
 implementation comments, tests, CLI help, generated guidance, and examples must
 not imply stronger protection than the relevant Reference owner supports.
 

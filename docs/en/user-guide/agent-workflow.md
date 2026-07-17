@@ -28,8 +28,8 @@ For each returned handoff:
    handoff calls for it.
 6. Report the primary blocker, what is known, what is missing, the next actor,
    and one next safe action.
-7. Keep Evidence, final acceptance, residual risk, session Stop, and Task
-   completion separate.
+7. Keep Evidence, final acceptance, residual risk, and Task completion
+   separate.
 
 The returned handoff can legitimately say to inspect, write, record, ask the
 user, wait, reconcile, or close. A later response can choose a different route
@@ -79,21 +79,15 @@ Representative flows are intentionally not exact API sequences:
 | Waiting on the user or another blocker | Report the blocker and next actor. The session may end, but do not claim that the Task is complete. |
 | Sensitive or newly expanded work | Stop before the affected action and follow the projected policy, scope, and User Channel handoff. Do not self-approve or silently keep a lighter path. |
 
-## Keep Integration Profile And Task Control Separate
+## Keep Connection Setup And Task Control Separate
 
-Record and Detective are integration profiles. They select host setup,
-observation, and diagnostic paths. They are not Task-risk grades.
-
-Each Task has a separate requested and effective control level with an
+The Codex `record` profile selects connection setup; it is not a Task-risk
+grade. Each Task has a separate requested and effective control level with an
 owner-provided reason. Treat the effective level and project-owned policy as
-authoritative for the current Task. Do not infer a lower level from the Record
-profile, a higher level from the Detective profile, or a policy waiver from the
-agent's own request. If the work reveals scope, sensitivity, external effects,
-or other escalation facts, follow the returned next action instead of
-downgrading or continuing from stale chat context.
+authoritative, and follow returned escalation actions when scope, sensitivity,
+or external effects change.
 
-Exact values and derivation rules belong to
-[Core Model](../reference/core-model.md),
+Exact values and derivation rules belong to [Core Model](../reference/core-model.md),
 [Intake](../reference/api/method-intake.md), and the public schema owners.
 
 <a id="project-selection"></a>
@@ -235,7 +229,7 @@ belongs to [Artifact Schemas](../reference/api/schema-artifacts.md) and
 
 ## Reconcile Unrecorded Changes
 
-When the Detective profile reports an Unrecorded Change, treat it as a bounded
+When Volicord reports an Unrecorded Change, treat it as a bounded
 observation. It does not prove who changed a file or that the change was
 malicious.
 
@@ -274,11 +268,8 @@ alone, broad acceptance language, a generated view, or stale status. Final
 acceptance and residual-risk acceptance do not replace missing required
 Evidence.
 
-A host Stop ends a session; it does not close the Task. A session can end while
-the next actor is the user or another Close Status blocker remains. In that
-case disclose the blocker and do not claim completion. If authority refresh is
-unavailable, disclose that Volicord state was not verified rather than
-inventing a terminal result.
+If authority refresh is unavailable, disclose that Volicord state was not
+verified rather than inventing a terminal result.
 
 Exact close meaning belongs to [Core Model](../reference/core-model.md). Exact
 method behavior belongs to [Close-task](../reference/api/method-close-task.md).
@@ -290,7 +281,7 @@ method behavior belongs to [Close-task](../reference/api/method-close-task.md).
 
 Volicord guidance can steer tool choice, but it is not access control or proof
 that a model followed instructions. A Write Ticket is not filesystem
-permission. Detective observations are not OS enforcement or actor proof.
+permission. Unrecorded-change observations are not OS enforcement or actor proof.
 Evidence and Close Status are not correctness, QA, deployment, or human-review
 proof.
 

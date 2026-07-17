@@ -183,22 +183,11 @@ volicord init --help
 ```
 
 일반적인 첫 저장소 연결은 [빠른 시작](quickstart.md)의
-`volicord init --shared --host HOST --repo PATH --profile record`로 이어갑니다. `volicord init`은
-선택한 Product Repository를 연결하고, 프로젝트 범위 MCP 설정을 쓰며, 통합 상태를
-기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Detective 설정에는
-[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)의 담당 문서가 정의한
-호스트 훅 및 세션 감시기 설정 전제 조건이 적용됩니다.
-Windows 네이티브 환경에서는 `--profile record`를 사용합니다. Windows 호스트 훅과
-감시기 동작을 사용할 수 없으므로 `--profile detective`는 `unsupported-platform` 진단으로
-실패합니다.
+`volicord init --shared --host codex --repo PATH --profile record`로 이어갑니다.
+`volicord init`은 선택한 Runtime Home을 만들거나 재사용하고 Product Repository를
+연결하며 관리 Codex stdio 구성을 쓰고 통합 상태를 기록합니다. 이름 붙은 Codex 신뢰,
+다시 불러오기, 검증 단계가 끝날 때까지 `action_required`가 남을 수 있습니다.
 
-`volicord init`은 선택된 `Volicord Runtime Home`을 만들거나 검증하고 설치 프로필을
-저장하면서 저장소를 연결합니다. 실행 중인 `volicord` 실행 파일을 발견하고 MCP 시작
-명령을 저장하며, 이후 터미널과 에이전트 호스트에서 선택된 명령을 `PATH`로 사용할 수
-있는지 확인합니다. 정확한 Runtime Home 선택, MCP 시작 명령 동작, 출력 동작은
-[관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)를 보세요. 이 상태는
-setup에 이름 붙은 사용자 또는 호스트 동작이 아직 필요한지를 답하므로, 오래 유지되는
-로컬 상태가 저장된 뒤에도 `action_required`가 나타날 수 있습니다.
 
 호스트 설정을 실행하기 전에 설치된 `volicord` 바이너리가 `PATH`에 있어야 합니다.
 셸 시작 파일 변경은 암시적으로 이루어지지 않습니다. 셸 시작 파일을 통해 `PATH`를
@@ -243,68 +232,21 @@ volicord doctor
 
 ## Docker 이미지
 
-Docker 지원은 로컬 컨테이너 배치와 localhost MCP 접근을 위한 것입니다. Volicord 소스
-저장소에서 이미지를 빌드합니다.
+저장소 Dockerfile은 개발과 CI에서 같은 `volicord` 실행 파일을 빌드할 수 있습니다.
+폐기 가능한 Runtime Home과 의도한 Product Repository를 마운트한 뒤 관리 점검 또는
+결속된 stdio 프로세스를 실행합니다. 컨테이너 이미지는 별도 공개 transport를 추가하거나
+`host_kind=codex` 및 네 platform-cell 계약을 넓히지 않습니다.
 
 ```sh
 docker build -t volicord:local .
-```
-
-`init`, `project`, `connection`, `doctor`, `connection verify`, `serve` 명령을 실행할
-때는 Runtime Home 볼륨을 사용하고 Product Repository를 같은 컨테이너 경로에 마운트합니다.
-프로젝트 등록은 저장소 루트를 저장하므로, 한 경로 배치에서 준비한 Runtime Home을 다른
-컨테이너 workspace 경로와 함께 재사용하면 안 됩니다.
-
-예를 들어 마운트한 저장소에 대한 record 프로필 설치를 만들거나 재사용합니다.
-
-```sh
-docker run --rm -it \
-  -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local init --host codex --repo /workspace --profile record
-```
-
-같은 마운트로 Docker 설치 프로필을 점검하고 선택한 에이전트 연결을 검증합니다.
-
-```sh
 docker run --rm -it \
   -v volicord-home:/var/lib/volicord \
   -v "$PWD:/workspace" \
   volicord:local doctor
-
-docker run --rm -it \
-  -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local connection verify codex --repo /workspace
 ```
 
-Docker에서 탐지 프로필을 설정할 때도 컨테이너 외부와 마찬가지로 담당 문서가 정의한
-호스트 훅 및 세션 감시기 설정 전제 조건이 적용됩니다. 런타임 홈에 제공할 프로젝트 등록과
-에이전트 연결을
-만든 뒤, 예를 들어 일치하는 `init`이나 낮은 수준의 `connection add`를 실행한 뒤,
-운영자가 제공한 토큰 파일로 로컬 HTTP MCP 엔드포인트를 시작합니다.
-
-```sh
-umask 077
-VOLICORD_HTTP_TOKEN_FILE="$(mktemp)"
-openssl rand -hex 32 > "$VOLICORD_HTTP_TOKEN_FILE"
-docker run --rm \
-  -p 127.0.0.1:8765:8765 \
-  -v "$VOLICORD_HTTP_TOKEN_FILE:/tmp/volicord-http-token:ro" \
-  -v volicord-home:/var/lib/volicord \
-  -v "$PWD:/workspace" \
-  volicord:local serve --transport local-http \
-    --container-listen 0.0.0.0:8765 \
-    --token-file /tmp/volicord-http-token \
-    --project /workspace
-```
-
-`-p 127.0.0.1:8765:8765`는 컨테이너 포트를 호스트 루프백 인터페이스에만 노출합니다.
-`--container-listen 0.0.0.0:8765`는 이 Docker 노출 형태를 위한 옵션입니다. 네이티브 로컬
-실행은 대신 기본 루프백 `--listen` 동작을 사용해야 합니다. 컨테이너 포트를 `0.0.0.0`,
-공개 호스트 인터페이스, 원격 호스트에 노출하지 말고, 토큰 파일을 저장소 파일에 저장하지
-마세요. 이것은 로컬/Docker 전송일 뿐 공개 네트워크 API, SaaS 엔드포인트, 다중
-사용자 서버, 보안 경계가 아닙니다.
+`init`, 연결 검증, 관리 stdio에도 같은 mount를 사용해 프로세스가 같은 Runtime Home과
+Product Repository를 보게 합니다.
 
 ## 설치가 하지 않는 일
 
@@ -325,10 +267,9 @@ Product Repository에 호스트를 연결합니다.
 volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-`/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. 선택한 호스트, 플랫폼, 저장소 설정이 담당 문서가 정의한 탐지 프로필 설정
-전제 조건을 만족할 때만 `--profile detective`를 사용합니다. Windows 네이티브 환경에서는
-탐지 프로필 설정을 사용할 수 없으므로 `--profile record`를 사용합니다.
+`/path/to/your-product-repo`는 Codex가 작업할 Product Repository의 예시 경로입니다.
+최초 릴리스는 모든 지원 플랫폼에서 `record` 프로필을 사용합니다.
+
 
 이 공유 설정에서는 init이 선택한 것과 같은 비어 있지 않은 절대 경로
 `VOLICORD_HOME`을 호스트 시작 환경이 제공해야 합니다. 저장소에서 보이는 설정은 그

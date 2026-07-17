@@ -52,9 +52,8 @@ flowchart LR
 ```
 
 The `volicord-mcp` adapter library may use Store directly for startup
-inspection, session validation, Agent Connection context, current
-host-capability evaluation, and request-time project routing. That direct Store
-use is not an alternate implementation of
+inspection, Agent Connection context, binding validation, and request-time
+project routing. That direct Store use is not an alternate implementation of
 public Volicord method semantics; public method execution routes through Core.
 
 `Product Repository` remains a separate product-file boundary. Public Volicord
@@ -156,7 +155,6 @@ Focused decision consequences and non-goals live in the decision records:
 | Boundary | Focused decision |
 |---|---|
 | Agent Connection, host routing, and explicit Connection Project membership | [Agent Connection and host routing](decisions/agent-connection-routing.md) |
-| Static host-feature implementation facts shared by adapters, diagnostics, and release validation | [Host feature support-state evaluation](decisions/host-feature-support-state-evaluation.md) |
 | External exact-final-artifact host release gate and independent audit | [External host release evidence gate](decisions/host-release-evidence-gate.md) |
 | Core independence from MCP and CLI adapters | [Core and adapter dependency boundary](decisions/core-adapter-boundary.md) |
 | Method planning before normal committed Store mutation | [Planning before atomic mutation commit](decisions/plan-and-atomic-commit.md) |

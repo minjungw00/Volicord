@@ -48,31 +48,20 @@ evaluator rather than an adapter-supplied version.
 `channel_submission_id` is an opaque channel identity of 1 through 256 bytes.
 Every byte must be visible ASCII `0x21..=0x7e`; whitespace, NUL, non-ASCII, an
 empty value, and a longer value reject. The envelope `idempotency_key` must
-exactly equal it. For ordinary User Channels the channel adapter generates the
-identity. Replay under the same request, channel, actor context, submission id,
+exactly equal it. The local CLI adapter generates the identity. Replay under the same request, channel, actor context, submission id,
 and canonical resolution returns the original committed response. Reuse with a
 different resolution rejects. Concurrent distinct submissions cannot create a
 second resolution.
 
-Local-web consent is stricter. It can enter Core only through the token-bearing
-local-web boundary. Core derives and then independently revalidates the one
-accepted digest-only `local_web:<sha256>` submission identity over the exact
-project, user-action request, raw bearer-token credential, expected Agent
-Connection, and typed canonical completion metadata. The mutation replay
-identity separately binds a domain-separated digest of that token, the expected
-connection, and the same closed metadata. A hand-crafted identity or a changed
-token, connection, or completion context cannot open the stored replay. The raw
-token is transient validation input: it is absent from the public request,
-resolution row, replay row, and response.
+Only the local CLI adapter may enter this method. An Agent Connection, MCP
+adapter, Guard observation, or direct Store caller cannot supply a resolution.
 
 ### Operation time
 
 After common preflight, Core samples the project's canonical Core UTC clock
 exactly once for the resolution operation. That `operation_now` is reused to
-derive effective request status, check request expiry, validate any local-web
-token, and set the public and stored `resolved_at`. A local-web token is valid
-only when `token.created_at <= operation_now < token.expires_at`; a value before
-creation is invalid and a value at expiry is expired.
+derive effective request status, check request expiry, and set the public and
+stored `resolved_at`.
 
 The Core transaction may choose a later canonical commit timestamp, but it must
 not replace the semantic `resolved_at` sample. The transaction timestamp and
@@ -95,8 +84,7 @@ ResolveUserActionResult:
 
 Commit atomically inserts one immutable `user_action_resolutions` row whose
 closed `resolution_json` contains the applicable choice or evidence-observation
-body, causing the common effective-status evaluator to return `resolved`. It consumes the matching channel token when present, updates dependent
-blockers and Task lifecycle, appends one authority event, stores the user-only
+body, causing the common effective-status evaluator to return `resolved`. It updates dependent blockers and Task lifecycle, appends one authority event, stores the user-only
 replay result, and increments `state_version` once. A judgment resolution may
 create owner-selected continuity records. An evidence-observation resolution
 does not update evidence coverage or create a Run; a later `record_run` must
@@ -115,10 +103,7 @@ never final acceptance or another judgment.
 
 Dry run, malformed or mixed payloads, an Agent Connection actor, stale or
 superseded basis, `now >= expires_at`, changed candidates or bytes, replay
-conflict, and wrong channel binding reject with no request, resolution, token
-consumption, event, replay, blocker, lifecycle, or state-version effect. A
-deadline check may persist the already-derived `expired` token status; it never
-turns a rejected attempt into consumption. Exact replay, dry run, rejection,
+conflict, and wrong channel binding reject with no request, resolution, event, replay, blocker, lifecycle, or state-version effect. Exact replay, dry run, rejection,
 and an expiry-status update do not update the persisted canonical-UTC floor.
 
 ## Related owners

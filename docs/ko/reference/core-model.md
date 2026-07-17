@@ -185,8 +185,8 @@ predecessor 하나, 관계와 생성 이유, 명시적 carry-forward disposition
 모든 `Task`는 `requested_control_level`, `effective_control_level`,
 `control_level_reason`도 기록합니다. `requested_control_level`은 `auto`,
 `observe`, `light`, `tracked`, `sensitive` 중 하나이고 유효 값은 `observe`,
-`light`, `tracked`, `sensitive` 중 하나입니다. 이 값들은 Record profile과
-Detective profile 설치 프로필과 구분됩니다.
+`light`, `tracked`, `sensitive` 중 하나입니다. 이 값들은 Agent Connection이
+사용하는 Record integration profile과 구분됩니다.
 
 Core는 다음 규칙으로 통제 수준을 결정합니다.
 
@@ -216,7 +216,7 @@ Core는 다음 규칙으로 통제 수준을 결정합니다.
   현재 정책을 다시 평가하고 표시된 통제 수준과 수락 정책을 모두 충족할 때만 이 표시를
   지웁니다. 이 표시는 별도의 정책 권한이나 쓰기 허가가 아닙니다. 정규화된 쓰기 권한이
   바뀌면 정책 커밋은 결속이 없거나 다른 모든 활성 티켓과 표시된 Task의 모든 활성 티켓을
-  같은 트랜잭션에서 `explicit_revoke`로 무효화합니다. Guard와 Core는 남은 기존 활성
+  같은 트랜잭션에서 `explicit_revoke`로 무효화합니다. Core는 결속 없이 남아 있는 활성
   티켓도 사용할 수 없는 것으로 처리하고 `volicord.prepare_write`를 요구합니다.
   정규화된 쓰기 권한이 같으면 호환 티켓을 보존합니다. Status, Intake resume, UpdateScope, RecordRun, CloseTask는 영속 값, 현재 정책,
   표시된 요구사항 중 가장 강한 값을 일관되게 해석합니다.
@@ -565,7 +565,7 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
   사용합니다. 결속이 없거나 다르면 활성 티켓을 사용할 수 없지만 소비된 과거 기록은
   숨기지 않습니다.
 - 정책 결속: fingerprint는 정확한
-  `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
+  `{schema:"volicord.write_authority",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
   canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 두 패턴 배열은
   먼저 정렬하고 중복을 제거합니다. 이 정규화 fingerprint는 전체 canonical 정책
   `policy_fingerprint`보다 좁으며 그 밖의 모든 정책 필드는 제외합니다.
@@ -689,7 +689,7 @@ flowchart LR
   `EvidenceCaptureIntent`를 만들고, 등록된 source만 불변 영속 source-fact receipt와 transient staged bytes를
   만들 수 있으며, `volicord.record_run`만 receipt를 승격하고 불변 producer와 그
   1:1 observation을 원자적으로 만들 수 있습니다. Agent 입력은 receipt나
-  producer를 만들거나 대체할 수 없습니다. Raw guard payload, 설명용 tool 필드,
+  producer를 만들거나 대체할 수 없습니다. Raw source payload, 설명용 tool 필드,
   artifact integrity, `SourceRef`만으로는 여전히 충분한 anchor가 아닙니다.
 - Producer provenance와 claim relevance는 서로 다른 권한 축입니다. Producer는
   intent와 receipt가 project, Task, 현재 Change Unit, scope revision,
@@ -702,9 +702,9 @@ flowchart LR
   다르거나 재사용됐다면 강등하지 않고 거부합니다. Anchor가 없는 외부 tool과
   connection 주장은 계속 협력적 보고로 강등합니다.
 - Verified command runner는 Volicord가 digest에 결합된 호출을 실행하고 캡처했다는
-  사실만 세웁니다. 등록 hook은 협력적 host consistency를 세울 뿐 암호학적
-  attestation, actor 증명, OS 격리, 명령 승인, sandboxing, test sufficiency, 넓은
-  correctness를 세우지 않습니다.
+  사실만 세웁니다. 등록된 source 관찰은 암호학적 attestation, actor 증명, OS
+  격리, 명령 승인, sandboxing, test sufficiency, 넓은 correctness를 세우지
+  않습니다.
 - 재사용하는 강한 증거는 원래 관찰 identity 하나를 보존하고 대상, `Task`, Change
   Unit, 출처 실행 기록, 범위 리비전, 기준선, 승계한 보장 수준, 정확한 출력,
   producer 앵커, 분리된 relevance 평가와 계속 호환되어야 합니다. 닫기와 재사용

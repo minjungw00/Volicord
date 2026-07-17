@@ -1,193 +1,74 @@
-# Implementation guide
+# Change Guide
 
-This guide gives a practical workflow for making a narrow implementation
-change in the Rust workspace. Product meaning remains in the focused Reference
-owners. This guide does not define or override baseline scope, API behavior,
-schemas, storage effects, security guarantees, runtime boundaries, error
-behavior, close-readiness rules, connector behavior, conformance authority, or
-Core authority semantics.
+Use this guide to route implementation work. Product behavior is defined by the
+focused Reference owner, not by current code or this guide.
 
-Use [Architecture Guide](README.md) when learning the source, the
-[Codebase Tour](codebase-tour.md) for first files and symbols, the
-[Source Map](source-map.md) for exact source paths and module responsibilities,
-[Request Lifecycle](request-lifecycle.md) for representative method traces,
-[Implementation Design Patterns](design-patterns.md) for recurring structures,
-[Storage and Transactions](storage-and-transactions.md) for Store boundaries,
-and [Testing Strategy](testing-strategy.md) for test-layer choice. Use
-[`docs/doc-index.yaml`](../../doc-index.yaml) for machine-readable owner
-routing and the [Reference Index](../reference/README.md) for reader-facing
-owner navigation.
+## Before Editing
 
-Volicord is the local work authority record for AI-assisted product
-work. Core is the local authority record for Volicord state.
+1. Read the repository and nearest scoped `AGENTS.md`.
+2. Use [`docs/doc-index.yaml`](../../doc-index.yaml) to find the focused
+   English/Korean owner pair.
+3. Read [Architecture](architecture.md) and this guide before changing durable
+   Rust structure.
+4. Inspect the worktree and preserve unrelated user changes.
+5. If an owner does not define required behavior, update that owner first or
+   report the gap.
 
-## Practical sequence
+## Route By Change Type
 
-1. Classify the requested change.
-
-   Decide whether the change touches shared types, platform filesystem
-   primitives, Store behavior, Core method behavior, MCP adapter behavior,
-   setup workflow, connection provisioning, guard hook lifecycle, guard
-   integration files, host adapters, test fixtures, or Architecture Guide only.
-   If it crosses more than one boundary, keep the questions separate.
-
-2. Locate the current implementation path.
-
-   Use [Implementation Architecture](architecture.md) for top-level workspace
-   boundaries and [Source Map](source-map.md) for exact source paths. Then open
-   the closest source and tests from the routing table below. Confirm the named
-   symbols still exist before editing.
-
-3. Identify the exact Reference owner.
-
-   Use the [Reference Index](../reference/README.md) or
-   [`docs/doc-index.yaml`](../../doc-index.yaml). Method behavior starts at
-   [API Methods](../reference/api/methods.md); storage questions start at
-   [Storage](../reference/storage.md); runtime-location questions start at
-   [Runtime Boundaries](../reference/runtime-boundaries.md).
-
-4. Implement the narrow change.
-
-   Change the crate or module that owns the implementation responsibility. Keep
-   Core-facing code independent of CLI and MCP adapter crates. Do not encode
-   new API behavior, schema meaning, storage effects, security guarantees, or
-   Core authority semantics only in code, tests, fixtures, examples, generated
-   output, or comments.
-
-5. Choose the appropriate test layer.
-
-   Use [Testing Strategy](testing-strategy.md) to pick the smallest layer that
-   protects the changed behavior, then add broader tests only when the change
-   crosses layers.
-
-6. Update affected Architecture Guide explanation.
-
-   If the durable source shape, dependency direction, execution flow, or Store
-   boundary changed, update the relevant Architecture Guide page in both
-   languages. If test topology or validation responsibility changed, update
-   [Testing Strategy](testing-strategy.md). If change routing, owner routing, or
-   validation-command routing changed, update this guide. Keep exact product
-   contracts in Reference owners.
-
-7. Assess the release version once per completed public-change batch.
-
-   When one related batch changes supported public contracts or deployment
-   behavior, assess the SemVer impact of the completed batch as a whole and
-   update `[workspace.package].version` in the root `Cargo.toml` once for that
-   batch. Do not increment the version for every commit in the batch. All
-   workspace packages continue to inherit that one version. Before tagging,
-   run `cargo run --locked -p xtask -- release-version-check --tag vX.Y.Z`;
-   without a tag, use `cargo run --locked -p xtask -- release-version-check`
-   to check workspace inheritance. The existing `volicord --version` and MCP
-   initialize `serverInfo.version` surfaces derive from the inherited package
-   version. The separate operational `build_id` records source and compilation
-   dimensions, with unknown and approximate values labeled explicitly. It is
-   not a second SemVer, tag source, binary digest, exact fingerprint of a dirty
-   tree, or cryptographic attestation, and it does not include a build
-   timestamp. Release builds provide and verify their clean source commit and
-   exact profile through the checked-in workflow.
-
-   For host-capability release evidence, keep that build descriptor as a
-   matching coordinate only. Evidence is observed after the final executable
-   exists, so the expected evidence digest belongs in a separately verified
-   exact-final-artifact manifest or receipt outside the executable, bound to
-   the capability, host/client, adapter, build, source, target, and final
-   executable digest. Do not rebuild to embed that post-finalization digest;
-   doing so changes the executable digest and creates a recursive binding. The
-   current adapter has no trusted acquisition path for this manifest, so route
-   concrete schema and acquisition work through the focused Reference owners
-   before claiming production local-web eligibility.
-
-8. Run validation.
-
-   For Rust implementation edits, default to `cargo fmt`,
-   `cargo clippy --all-targets --all-features`, and
-   `cargo test --all-targets --all-features`. For documentation edits, run the
-   applicable Maintain checks for structure, links/indexes, language parity,
-   and terminology. Report any skipped command with a reason.
-
-9. Report owner gaps instead of inventing behavior.
-
-   If the implementation needs behavior that no owner defines, stop the product
-   meaning change and report the owner gap or update the proper Reference owner
-   first. Do not fill the gap in a README, guide, test, fixture, adapter,
-   generated output, or implementation comment.
-
-## Change-type routing
-
-| Change type | First implementation path | First Reference owner route | Useful test layer | Architecture Guide explanation to check |
-|---|---|---|---|---|
-| Shared request or value type | `crates/volicord-types/src/methods.rs`, `schema.rs`, `values.rs`, `ids.rs`, or `canonical.rs` | API schema owners and [Value Sets](../reference/api/schema-value-sets.md); method owner for method-specific meaning | `volicord-types` unit tests; Core or MCP tests when the shape affects method planning or adapter exposure | [Codebase Tour](codebase-tour.md), [Design Patterns](design-patterns.md), and [Testing Strategy](testing-strategy.md) |
-| Platform filesystem primitive or adapter-managed conditional file replacement | `crates/volicord-platform-fs/src/lib.rs` for the safe platform facade and the calling adapter, such as `crates/volicord-cli/src/guard_integration/files.rs`, for planning, target verification, cleanup, recovery, and diagnostics | [Administrative CLI](../reference/admin-cli.md) for exact command behavior, [Runtime Boundaries](../reference/runtime-boundaries.md) for Product Repository file placement, and [System Requirements](../reference/system-requirements.md) for environment prerequisites | `volicord-platform-fs` unit tests and caller-module tests; `binary_admin` when behavior is binary-visible; target-specific compile or test coverage when a native path changes | [Implementation Architecture](architecture.md), [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), and [Testing Strategy](testing-strategy.md) |
-| Store behavior | `crates/volicord-store/src/core_pipeline.rs`, `core_pipeline/mutation_apply.rs`, `schema.rs`, `schema/*.sql`, `sqlite.rs`, `bootstrap.rs`, or `artifacts.rs` | [Storage](../reference/storage.md), [Storage Effects](../reference/storage-effects.md), [Storage Records](../reference/storage-records.md), [Storage DDL](../reference/storage-ddl.md), [Artifact Storage](../reference/storage-artifacts.md), [Storage Versioning](../reference/storage-versioning.md) | Store unit tests; Core method tests for public effects; conformance or MCP integration when cross-layer behavior changes | [Storage and Transactions](storage-and-transactions.md), [Implementation Architecture](architecture.md), and decision records |
-| Core method behavior | `crates/volicord-core/src/methods/`, `pipeline.rs`, and `policy/` | [API Methods](../reference/api/methods.md), then the linked method owner; add schema, error, storage, Core model, or security owners as touched | The matching file under `crates/volicord-core/src/methods/tests/`; pipeline tests; conformance for cross-method baseline scenarios | [Request Lifecycle](request-lifecycle.md), [Design Patterns](design-patterns.md), and [Storage and Transactions](storage-and-transactions.md) |
-| MCP adapter behavior | `crates/volicord-mcp/src/lib.rs`, `adapter.rs`, `routing.rs`, `tool_registry.rs`, `stdio.rs`, `local_http.rs`, `local_web_consent.rs`, and the `volicord mcp` or `volicord serve` dispatch in `crates/volicord-cli/src/main.rs` | [MCP Transport](../reference/mcp-transport.md); [Agent Connection](../reference/agent-connection.md) for verified connection context; [API Methods](../reference/api/methods.md) for public tool set | `crates/volicord-mcp/src/tests.rs`, `mcp_transport`, `serve_transport`, `tests/integration/mcp_connection.rs`, and `public_contract_snapshots` when generated API or MCP tool projections change | [Request Lifecycle](request-lifecycle.md), [Architecture Decisions](decisions/README.md), and [Testing Strategy](testing-strategy.md) |
-| Runtime Home or Product Repository boundary behavior | `crates/volicord-store/src/runtime_home.rs`, `crates/volicord-store/src/bootstrap.rs`, `crates/volicord-cli/src/project_context.rs`, and path-related helpers in `crates/volicord-core/src/policy/` | [Runtime Boundaries](../reference/runtime-boundaries.md), with [Storage](../reference/storage.md), [Administrative CLI](../reference/admin-cli.md), and [Security](../reference/security.md) for adjacent persistence, command, and non-guarantee boundaries | Store and CLI module tests; `binary_admin` when the boundary is visible through the binary; Core method or conformance tests when owner-defined public method behavior changes | [Implementation Architecture](architecture.md), [Source Map](source-map.md), and [Runtime Home and Product Repository separation](decisions/runtime-home-and-product-repository.md) |
-| Setup workflow and output | `crates/volicord-cli/src/setup_command.rs`, `setup_command/workflow.rs`, `setup_command/discovery.rs`, `setup_command/linking.rs`, `setup_command/shell_startup.rs`, `setup_command/interactive.rs`, `setup_command/output.rs`, and `doctor_command.rs` when diagnostics share setup facts | [Administrative CLI](../reference/admin-cli.md), with [Runtime Boundaries](../reference/runtime-boundaries.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md) for adjacent process, location, and non-guarantee boundaries | Setup module tests and `binary_admin`; Store setup tests when bootstrap, registry, inspection, or schema initialization behavior changes | [Implementation Architecture](architecture.md), [Codebase Tour](codebase-tour.md), and [Testing Strategy](testing-strategy.md) |
-| Connection provisioning, status, and output | `crates/volicord-cli/src/connection_command.rs`, `connection_command/service.rs`, `selection.rs`, `verification.rs`, `mcp_process.rs`, `connection_command/output/`, `crates/volicord-store/src/bootstrap.rs`, and `agent_connections.rs` | [Administrative CLI](../reference/admin-cli.md), with [Agent Connection](../reference/agent-connection.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [MCP Transport](../reference/mcp-transport.md) for adjacent concerns | CLI module tests and `binary_admin`; `mcp_transport` or `mcp_connection` when preflight or MCP-visible behavior must be observed | [Implementation Architecture](architecture.md) and [Runtime Home and Product Repository separation](decisions/runtime-home-and-product-repository.md) |
-| Guard integration files, capability records, and audit facts | `crates/volicord-cli/src/guard_integration/`, `connection_command/service.rs` for application and recording, `connection_command/output/` for status rendering, and `doctor_command.rs` for diagnostic consumption | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), with [Runtime Boundaries](../reference/runtime-boundaries.md), [Storage Records](../reference/storage-records.md), [MCP Transport](../reference/mcp-transport.md), and [Security](../reference/security.md) for diagnostic and non-guarantee boundaries | `binary_admin` guarded init/status tests, colocated guard integration tests, and doctor tests; avoid treating audit output as a security proof or approval record | [Implementation Architecture](architecture.md), [Codebase Tour](codebase-tour.md), and [Testing Strategy](testing-strategy.md) |
-| Guard hook lifecycle behavior and host-native rendering | `crates/volicord-cli/src/guard_command.rs`, `guard_command/envelope.rs`, `tool_observation.rs`, `mutation.rs`, `prompt_command.rs`, `prompt_capture.rs`, `write_ticket.rs`, `render.rs`, and `guard_command/phase/` | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), with [Storage Records](../reference/storage-records.md), [Core Model](../reference/core-model.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md) for adjacent facts | `guard_command` tests; Core method or conformance tests when a hook path depends on owner-defined Core behavior | [Implementation Architecture](architecture.md), [Codebase Tour](codebase-tour.md), and [Testing Strategy](testing-strategy.md) |
-| Host adapters and host-feature support state | `crates/volicord-types/src/host_feature_support.rs` for static host-kind implementation facts and version-coordinate parsing; `crates/volicord-cli/src/host_integration/`, especially `capability_status.rs`, for dynamic diagnostic aggregation; `crates/volicord-mcp/src/adapter.rs` for MCP delivery eligibility; and `tests/release-validation` for exact-artifact claim evaluation. Add the CLI host-specific, configuration, verification, or guard paths when those facts change. | [Agent Connection](../reference/agent-connection.md) for evaluation and exact evidence, [API Value Sets](../reference/api/schema-value-sets.md) and [API State Schemas](../reference/api/schema-state.md) for typed values and diagnostic shape, [Administrative CLI](../reference/admin-cli.md) for command projection, [MCP Transport](../reference/mcp-transport.md) for adapter delivery, [System Requirements](../reference/system-requirements.md) for prerequisites, [Storage Records](../reference/storage-records.md) for stored capability JSON, and [Host Release Evidence](../reference/host-release-evidence.md) for release claims | Table-driven shared static-evaluator tests and CLI aggregation tests; exact Codex negative MCP coverage; `binary_admin` for connection status and Doctor projections; all four live final-output cells for release evidence; `guard_command` when its path changes. Configuration fixtures must never stand in for exact-host evidence. | [Implementation Architecture](architecture.md), [Source Map](source-map.md), [Testing Strategy](testing-strategy.md), and [Host feature support-state evaluation](decisions/host-feature-support-state-evaluation.md) |
-| Exact host release evidence gate | `tests/release-validation`; do not place it in a production crate | [Host Release Evidence](../reference/host-release-evidence.md) | Package tests, create-new exact-candidate descriptor production, fixed twelve-cell gate, then separate-process audit using the exact owner commands | [External host release evidence gate](decisions/host-release-evidence-gate.md), [Testing Strategy](testing-strategy.md), and [Validation](../maintain/validation.md) |
-| Test fixture behavior | `crates/volicord-test-support/src/lib.rs`, `tests/conformance/`, `tests/integration/`, `crates/volicord-cli/tests/support/`, or colocated test helpers | The owner of each asserted fact; [Conformance](../reference/conformance.md) only for conformance scenario meaning and assertion routing | The consuming package's tests plus focused fixture tests | [Testing Strategy](testing-strategy.md) and [Codebase Tour](codebase-tour.md) |
-| CLI integration test support | `crates/volicord-cli/tests/support/assertions.rs`, `binary_fixture.rs`, `fake_hosts.rs`, `fake_mcp.rs`, `guard_fixture.rs`, and `json.rs` | The owner of each asserted setup, connection, guard, MCP, or host-adapter fact | `binary_admin`, `guard_command`, `mcp_transport`, or the consuming CLI test target that uses the helper | [Testing Strategy](testing-strategy.md) and [Codebase Tour](codebase-tour.md) |
-| Architecture Guide only | `docs/en/architecture-guide/`, `docs/ko/architecture-guide/`, and route metadata | The Architecture Guide page's `doc-index.yaml` owner scope; Reference owners only when exact behavior is being changed | Documentation checks; Cargo commands only when requested or needed for source verification | The paired page, [Architecture Guide](README.md), and `docs/doc-index.yaml` |
-
-## Validation command routes
-
-Use these commands as routing defaults after selecting the affected change
-area. They identify the likely first validation command; they are not a rule
-that every small edit must run every adjacent command. For Rust implementation
-edits, the workspace default remains `cargo fmt`,
-`cargo clippy --all-targets --all-features`, and
-`cargo test --all-targets --all-features`.
-
-| Change area | First command route | Add when |
+| Change | Start in implementation | Required owner review |
 |---|---|---|
-| Architecture Guide, documentation routes, links, or metadata | `cargo run -p xtask -- docs-check` | `cargo test -p xtask` when docs-check behavior changes. |
-| Release version or tag-release workflow | `cargo run --locked -p xtask -- release-version-check`; add `--tag vX.Y.Z` for a proposed release tag | `cargo test -p xtask --test release_version_check` when the checker changes; review `.github/workflows/release.yml` when tag gating or job dependencies change. |
-| External exact-final-artifact host release validation | `cargo test -p volicord-release-validation-tests`; then the exact `host-release-candidate`, `host-release-gate`, and separate `host-release-audit` commands in [Host Release Evidence](../reference/host-release-evidence.md) | Report any missing binary, cell evidence, external host, or requested claim as unavailable or failed rather than silently omitting it. |
-| Shared types, public schemas, value sets, identifiers, request hashing, or generated public API/MCP projections | `cargo test -p volicord-types`; `cargo test -p volicord-integration-tests --test public_contract_snapshots` when projections or snapshots are affected | Core method tests when planning changes; MCP integration when adapter-visible behavior changes; docs-check when maintained docs change. |
-| Platform filesystem primitives or adapter-managed conditional file replacement | `cargo test -p volicord-platform-fs`; caller-module tests such as `cargo test -p volicord-cli --lib guard_integration` | A target-specific `cargo check` or test when native code changes; `binary_admin` when the administrative result is binary-visible; docs-check when owner or Architecture Guide documents change. |
-| Core method or shared pipeline behavior | `cargo test -p volicord-core` | `cargo test -p volicord-conformance-tests --test baseline` for cross-method baseline scenarios; `cargo test -p volicord-integration-tests --test mcp_connection` for MCP-visible context. |
-| Store, Storage DDL, transaction, Runtime Home, or artifact storage behavior | `cargo test -p volicord-store`; `cargo test -p volicord-store --test storage_ddl_contract` for DDL or canonical SQL changes | Core, conformance, or MCP integration tests when public-method-visible storage effects change. |
-| MCP stdio or local HTTP transport, tool listing, startup, or project routing | `cargo test -p volicord-mcp`; `cargo test -p volicord-cli --test mcp_transport` or `cargo test -p volicord-cli --test serve_transport` for the affected process path | `cargo test -p volicord-integration-tests --test mcp_connection` for Core/Store behavior observed through MCP; `cargo test -p volicord-integration-tests --test public_contract_snapshots` for generated tool projection drift. |
-| Setup workflow, connection provisioning, status, verification, host adapters, or administrative CLI output | `cargo test -p volicord-cli`; `cargo test -p volicord-cli --test binary_admin` when binary-visible behavior changes | Store tests for bootstrap or registry changes; MCP transport tests for launch or preflight changes. |
-| Guard integration files, capability records, audit facts, guard hook lifecycle, or host-native guard rendering | `cargo test -p volicord-cli --test binary_admin`; `cargo test -p volicord-cli --test guard_command` | Core, Store, conformance, or MCP tests when the hook path depends on owner-defined behavior outside the CLI. |
-| Conformance, cross-layer integration, or shared fixture behavior | `cargo test -p volicord-test-support`; the consuming package test target such as `cargo test -p volicord-conformance-tests --test baseline` or `cargo test -p volicord-integration-tests --test mcp_connection` | Additional package tests when fixture behavior changes what another layer observes. |
+| Public method, request, response, error, or value | `volicord-types`, then Core | API method/schema and Failure Model |
+| Planning, policy, replay, or authority | `volicord-core` | focused API, Core Model, Storage Effects |
+| DDL, strict stored record, or transaction effect | `volicord-store` | Storage DDL, Records, Effects, Versioning |
+| MCP lifecycle, decoding, tool list, or projection | `volicord-mcp` | MCP Transport and API owners |
+| Administrative command or CLI inbox | `volicord-cli` | Administrative CLI and User Action owners |
+| Codex setup or verification | Codex adapter and connection command | Agent Connection, Security, System Requirements |
+| Release support claim | `tests/release-validation` | Host Release Evidence |
+| Documentation route or terminology | `docs/doc-index.yaml`, paired docs | documentation and translation policies |
 
-## Disagreement handling
+The first-release adapter surface is Codex Record profile with `personal` and
+`shared` managed stdio connections. Do not add another adapter, profile,
+transport, or user-action resolution channel without an explicit owner change.
 
-When implementation and documentation appear to disagree, classify the
-disagreement before editing:
+## Keep Boundaries Intact
 
-- If guide-level source-structure description differs from stable code, update
-  the Architecture Guide page that owns that explanation.
-- If code differs from API, schema, storage, security, error, scope, runtime, or
-  Core authority owners, do not treat code as the new contract.
-- If tests, fixtures, examples, or conformance scenario prose are the only
-  place a behavior is expressed, treat that as an owner gap.
-- If no owner can be identified, report the owner gap rather than placing the
-  product rule in this guide.
+- CLI and MCP adapters may call Core-facing interfaces; Core must not depend on
+  adapter internals.
+- Store validates strict persisted owner records before use and applies
+  owner-defined effects atomically.
+- Public adapters reject hidden invocation context; server-owned context is
+  derived locally.
+- MCP may create or resume a UserAction request. Only the CLI inbox resolves it.
+- Guard prompt capture is observation only.
+- Generated documentation changes through its source and generator.
 
-Do not infer a product decision from a mismatch. The owner route identifies
-where the decision belongs.
+## Validation
 
-## Completion check
+For Rust changes, run from the workspace unless the task clearly supports a
+narrower crate command:
 
-Use this as an implementation and documentation-maintenance check. It is not
-product acceptance, runtime conformance, close readiness, QA completion,
-security proof, or residual-risk acceptance.
+```sh
+cargo fmt
+cargo clippy --all-targets --all-features
+cargo test --all-targets --all-features
+```
 
-- Each changed behavior has a focused owner or an owner-gap report.
-- The implementation path and boundary were identified before editing.
-- Tests were selected for the changed layer.
-- A completed public-contract or deployment batch received one SemVer impact
-  assessment, and the shared workspace version was updated once when required.
-- The relevant Architecture Guide owner was updated when durable source
-  structure, execution flow, storage boundary, test strategy, or change
-  workflow changed.
-- Paired English and Korean documentation stayed aligned when maintained
-  documents changed.
-- No scratch notes, generated reports, runtime homes, SQLite files, fixture
-  output, logs, or other transient artifacts remain in maintained documentation.
+For documentation changes, run the checks in
+[Validation](../maintain/validation.md), including:
+
+```sh
+cargo run -p xtask -- docs-check
+git diff --check
+```
+
+Release-support changes also require the exact finalized artifact workflow and
+independent `linux`, `macos`, `native_windows`, and `wsl2` cells. A
+manifest may honestly contain zero through four cells; only exact passing cells
+support their own coordinates.
+
+## Handoff
+
+Report changed files, validation and results, skipped checks with reasons, and
+remaining risks or out-of-scope findings. Do not write work logs or validation
+output into maintained documentation.

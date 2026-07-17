@@ -271,8 +271,6 @@ shared_documents:
   - write ticket, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
   - actor_source and operation_category terminology distinctions
-  - HostFeatureSupportStatus identifier preservation and separation from environment, setup, connection-readiness,
-    implementation, fixture, and test facts
   - Korean mixed-language expressions to avoid
 documents:
 - doc_id: readme.root
@@ -526,8 +524,7 @@ documents:
   path_en: docs/en/user-guide/agent-host-setup.md
   path_ko: docs/ko/user-guide/agent-host-setup.md
   kind: how_to
-  summary: How-to guidance for installing, verifying, guiding, and removing Codex, Claude Code, and generic
-    agent host integrations.
+  summary: How-to guidance for installing, verifying, repairing, and removing personal or shared Codex Record connections.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -556,8 +553,7 @@ documents:
   path_en: docs/en/user-guide/agent-host-troubleshooting.md
   path_ko: docs/ko/user-guide/agent-host-troubleshooting.md
   kind: how_to
-  summary: Symptom-oriented recovery guidance for Codex, Claude Code, and generic agent host integration
-    failures.
+  summary: Symptom-oriented recovery guidance for supported Codex Record connection and managed stdio failures.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -704,7 +700,6 @@ documents:
   depends_on:
   - architecture-guide.architecture
   - architecture-guide.decision.host-release-evidence-gate
-  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.codebase-tour
   - architecture-guide.cli-workflows
   - architecture-guide.request-lifecycle
@@ -716,8 +711,7 @@ documents:
   path_en: docs/en/architecture-guide/cli-workflows.md
   path_ko: docs/ko/architecture-guide/cli-workflows.md
   kind: explanation
-  summary: Administrative CLI workflow boundary explanation for local setup, connection provisioning,
-    verification, diagnostics, policy-aware Guard integration, and final-output authority disclosure.
+  summary: Administrative CLI workflow boundaries for Runtime Home setup, personal or shared Codex connections, diagnostics, Guard observations, the CLI inbox, and managed stdio launch.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -738,10 +732,7 @@ documents:
   depends_on:
   - architecture-guide.architecture
   - architecture-guide.source-map
-  - architecture-guide.decision.final-output-authority-disclosure
-  - architecture-guide.decision.host-capability-verification
   - architecture-guide.decision.host-release-evidence-gate
-  - architecture-guide.decision.host-feature-support-state-evaluation
   - reference.admin-cli
   - reference.agent-connection
   - reference.mcp-transport
@@ -846,10 +837,7 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Explanation of test-layer selection, fixture and support structure, generated-output
-    drift checks, durable contract-test authoring, verified-manifest and exact-pass negative-test
-    boundaries, live-host local-web evidence-observation, append-only release-cell publication,
-    release-cell separation, and validation responsibilities.
+  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, and independent exact-artifact Codex release cells.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -871,9 +859,7 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.architecture
   - architecture-guide.change-guide
-  - architecture-guide.decision.host-capability-verification
   - architecture-guide.decision.host-release-evidence-gate
-  - architecture-guide.decision.host-feature-support-state-evaluation
   - reference.index
   - reference.conformance
   - reference.system-requirements
@@ -911,17 +897,11 @@ documents:
   depends_on:
   - architecture-guide.decision.agent-connection-routing
   - architecture-guide.decision.core-adapter-boundary
-  - architecture-guide.decision.task-control-levels-vs-integration-profiles
   - architecture-guide.decision.state-bound-write-ticket-validity
-  - architecture-guide.decision.stop-completion-separation
   - architecture-guide.decision.observation-confidence-boundary
   - architecture-guide.decision.external-user-judgment-authority
   - architecture-guide.decision.static-compact-mcp-tool-list
-  - architecture-guide.decision.final-output-authority-disclosure
-  - architecture-guide.decision.host-capability-verification
-  - architecture-guide.decision.managed-host-session-turn-binding
   - architecture-guide.decision.host-release-evidence-gate
-  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decision.evidence-capture-producer-finalization
   - architecture-guide.decision.operation-result-retrieval
   - architecture-guide.decision.unified-user-action-request-resolution
@@ -932,37 +912,6 @@ documents:
   - architecture-guide.source-map
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
-- doc_id: architecture-guide.decision.task-control-levels-vs-integration-profiles
-  path_en: docs/en/architecture-guide/decisions/task-control-levels-vs-integration-profiles.md
-  path_ko: docs/ko/architecture-guide/decisions/task-control-levels-vs-integration-profiles.md
-  kind: explanation
-  summary: Architecture decision separating host integration profiles from Core-owned per-Task
-    control levels and normalized write authority constrained by project-owned workflow policy.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: architecture_guide
-  created_on: '2026-07-16'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - agent integrators
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - reference.core-model
-  - reference.api.method-intake
-  - reference.api.schema-state
-  - reference.api.schema-value-sets
-  - reference.admin-cli
-  - reference.storage-records
-  - reference.storage-ddl
-  - reference.storage-versioning
 - doc_id: architecture-guide.decision.state-bound-write-ticket-validity
   path_en: docs/en/architecture-guide/decisions/state-bound-write-ticket-validity.md
   path_ko: docs/ko/architecture-guide/decisions/state-bound-write-ticket-validity.md
@@ -994,37 +943,6 @@ documents:
   - reference.storage-ddl
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.decision.stop-completion-separation
-  path_en: docs/en/architecture-guide/decisions/stop-completion-separation.md
-  path_ko: docs/ko/architecture-guide/decisions/stop-completion-separation.md
-  kind: explanation
-  summary: Architecture decision separating host session Stop permission from Core-owned Task close
-    state and completion-claim disclosure.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: architecture_guide
-  created_on: '2026-07-16'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - agent integrators
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - architecture-guide.decision.final-output-authority-disclosure
-  - reference.core-model
-  - reference.admin-cli
-  - reference.agent-connection
-  - reference.api.method-close-task
-  - reference.api.schema-state
-  - reference.storage-records
-  - reference.security
 - doc_id: architecture-guide.decision.observation-confidence-boundary
   path_en: docs/en/architecture-guide/decisions/observation-confidence-boundary.md
   path_ko: docs/ko/architecture-guide/decisions/observation-confidence-boundary.md
@@ -1145,112 +1063,11 @@ documents:
   - reference.mcp-transport
   - reference.admin-cli
   - reference.agent-connection
-- doc_id: architecture-guide.decision.final-output-authority-disclosure
-  path_en: docs/en/architecture-guide/decisions/final-output-authority-disclosure.md
-  path_ko: docs/ko/architecture-guide/decisions/final-output-authority-disclosure.md
-  kind: explanation
-  summary: Architecture decision explaining fresh profile-independent final-output authority disclosure separated from Detective Stop enforcement.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: architecture_guide
-  created_on: '2026-07-13'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - agent integrators
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - architecture-guide.decision.core-adapter-boundary
-  - reference.scope
-  - reference.api.method-status
-  - reference.api.schema-state
-  - reference.projection-and-templates
-  - reference.template-bodies
-  - reference.agent-connection
-  - reference.admin-cli
-  - reference.security
-  - reference.system-requirements
-  - reference.conformance
-- doc_id: architecture-guide.decision.host-capability-verification
-  path_en: docs/en/architecture-guide/decisions/host-capability-verification.md
-  path_ko: docs/ko/architecture-guide/decisions/host-capability-verification.md
-  kind: explanation
-  summary: Architecture decision explaining bounded exact expiring host-capability verification and
-    external exact-final-artifact release evidence binding before credential delivery.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: architecture_guide
-  created_on: '2026-07-14'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  - mcp_protocol_2025_11_25
-  primary_audience:
-  - implementers
-  - agent integrators
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - architecture-guide.decision.agent-connection-routing
-  - architecture-guide.decision.core-adapter-boundary
-  - reference.agent-connection
-  - reference.mcp-transport
-  - reference.admin-cli
-  - reference.security
-  - reference.system-requirements
-  - reference.host-release-evidence
-  - reference.storage-records
-  - reference.storage-ddl
-  - reference.storage-versioning
-- doc_id: architecture-guide.decision.managed-host-session-turn-binding
-  path_en: docs/en/architecture-guide/decisions/managed-host-session-turn-binding.md
-  path_ko: docs/ko/architecture-guide/decisions/managed-host-session-turn-binding.md
-  kind: explanation
-  summary: Architecture decision explaining pending managed-launch provenance, exact per-call Codex session and thread binding, and turn validation.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: architecture_guide
-  created_on: '2026-07-15'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  - mcp_protocol_2025_11_25
-  primary_audience:
-  - implementers
-  - agent integrators
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - architecture-guide.decision.agent-connection-routing
-  - architecture-guide.decision.host-capability-verification
-  - reference.agent-connection
-  - reference.mcp-transport
-  - reference.host-release-evidence
-  - reference.security
 - doc_id: architecture-guide.decision.host-release-evidence-gate
   path_en: docs/en/architecture-guide/decisions/host-release-evidence-gate.md
   path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
   kind: explanation
-  summary: Architecture decision for build-once exact-final-artifact host release validation,
-    create-new candidate descriptor production, actual managed-initialize client identity, canonical
-    twelve-cell evaluation, shared external-path enforcement, cooperatively leased append-only
-    cell/evidence publication, bounded controlling-terminal foreground transfer and restoration,
-    create-new manifests, and separate-process audit.
+  summary: Architecture decision for exact finalized Codex artifact validation through four independent platform cells and an honest zero-to-four-cell checked-in manifest.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1268,8 +1085,6 @@ documents:
   - implement
   - maintain
   depends_on:
-  - architecture-guide.decision.host-capability-verification
-  - architecture-guide.decision.host-feature-support-state-evaluation
   - reference.host-release-evidence
   - reference.system-requirements
   - reference.agent-connection
@@ -1277,37 +1092,6 @@ documents:
   - reference.security
   - reference.storage-records
   - maintain.validation
-- doc_id: architecture-guide.decision.host-feature-support-state-evaluation
-  path_en: docs/en/architecture-guide/decisions/host-feature-support-state-evaluation.md
-  path_ko: docs/ko/architecture-guide/decisions/host-feature-support-state-evaluation.md
-  kind: explanation
-  summary: Architecture decision explaining centralized typed host-feature support-state evaluation and pre-major diagnostic compatibility.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: architecture_guide
-  created_on: '2026-07-14'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  - mcp_protocol_2025_11_25
-  primary_audience:
-  - implementers
-  - agent integrators
-  - reviewers
-  journeys:
-  - learn
-  - implement
-  depends_on:
-  - architecture-guide.decision.final-output-authority-disclosure
-  - architecture-guide.decision.host-capability-verification
-  - reference.agent-connection
-  - reference.admin-cli
-  - reference.system-requirements
-  - reference.storage-records
-  - reference.api.schema-state
-  - reference.api.schema-value-sets
 - doc_id: architecture-guide.decision.operation-result-retrieval
   path_en: docs/en/architecture-guide/decisions/operation-result-retrieval.md
   path_ko: docs/ko/architecture-guide/decisions/operation-result-retrieval.md
@@ -1559,9 +1343,7 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
-  - architecture-guide.decision.host-capability-verification
   - architecture-guide.decision.host-release-evidence-gate
-  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decisions.index
   - architecture-guide.architecture
   - reference.index
@@ -1603,7 +1385,6 @@ documents:
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
   - architecture-guide.decision.host-release-evidence-gate
-  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decisions.index
   - architecture-guide.change-guide
   - reference.runtime-boundaries
@@ -1675,6 +1456,7 @@ documents:
   - Runtime Home, Product Repository, and Codex configuration access prerequisites
   - independent WSL2 release-cell topology, ext4 boundary, platform identity, and unsupported
     Windows/WSL crossings
+  - exact first-release WSL2 Ubuntu distribution and release-cell image coordinate
   - exact Codex artifact eligibility without minimum-version or command-name inference
   - managed Codex binding, receipt, executable, process, and platform-environment prerequisites
   - managed stdio MCP launch-environment prerequisites
@@ -1927,6 +1709,8 @@ documents:
   - clone-portable shared host configuration Runtime Home forwarding boundary
   - ordinary MCP server term versus Volicord product, implementation, CLI, and adapter labels
   - explicit integration files allowed in Product Repositories
+  - fail-closed WSL2 filesystem observation for Runtime Home, Product Repository, executables,
+    managed configuration, and generated managed artifacts
 - doc_id: reference.admin-cli
   path_en: docs/en/reference/admin-cli.md
   path_ko: docs/ko/reference/admin-cli.md
@@ -1949,36 +1733,14 @@ documents:
   - operate
   - implement
   canonical_for:
-  - local `volicord` administrative and bootstrap CLI command contract
-  - '`volicord` command-line arguments, defaults, stdout and stderr routing, and exit codes'
-  - local `volicord inbox` judgment listing and answer command behavior
-  - Runtime Home path selection rules for `volicord` administrative commands
-  - generated managed MCP and host-hook Runtime Home and executable binding
-  - administrative project registration command behavior
-  - administrative Agent Connection and User Channel registration command behavior
-  - agent connection connect, connections, status, verify, mode, and remove commands
-  - local `volicord host-hook` lifecycle hook command behavior
-  - managed final-output authority-disclosure handler setup, refresh, rendering, byte-budget,
-    and fallback behavior
-  - host-reported `occurred_at` observation-only boundary from canonical Core time
-  - local `volicord serve` command-line startup and safety-gate behavior
-  - Codex and Claude Code host setup intent support, user-managed generic MCP configuration
-    boundaries, and public authority bundle export
-  - managed host configuration state setup result states and verification reporting
-  - administrative dry-run, machine output, and noninteractive approval behavior
-  - Product Repository guidance boundary
-  - unsupported `volicord setup` command-family rejection behavior
-  - 'Agent Connection mode and project routing'
+  - local `volicord` administrative and bootstrap command contract
+  - command arguments, defaults, output routing, exit codes, and noninteractive behavior
+  - Runtime Home selection and project registration commands
+  - personal and shared Codex Record connection setup, verification, mode, repair, and removal
+  - managed stdio MCP launch and preflight commands
+  - CLI inbox listing and CLI-only UserAction resolution
+  - policy, diagnostics, authority-bundle export, and change-reconciliation commands
   - administrative command boundary from public Volicord API methods
-  - read-only host-capability verification diagnostics and exact local-web selection boundary
-  - CLI and doctor build-descriptor fields and their non-equivalence to an external release evidence manifest
-  - administrative host-feature support diagnostics, profile-specific final-output subcapabilities, and configuration-only facts
-  - exact six-key host_feature_support map and Doctor per-connection row projection
-  - auxiliary CLI and Doctor projection boundary from the canonical host release evidence gate and audit
-  - exact Codex version normalization and session-bound managed lifecycle diagnostic meaning
-  - project workflow policy show, validation, atomic application, active-Task reevaluation, and
-    incompatible active Write Ticket invalidation commands and result fields
-  - privacy-bounded workflow-metrics diagnostics command
   depends_on:
   - reference.runtime-boundaries
   - reference.agent-connection
@@ -1990,13 +1752,13 @@ documents:
   path_en: docs/en/reference/mcp-transport.md
   path_ko: docs/ko/reference/mcp-transport.md
   kind: reference
-  summary: Reference contract for MCP transport startup, framing, HTTP serve handling, and response wrapping.
+  summary: Reference contract for managed stdio startup, JSON-RPC framing, compact tool discovery, public argument projection, response wrapping, UserAction request boundaries, and shutdown.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -2008,30 +1770,14 @@ documents:
   - operate
   - implement
   canonical_for:
-  - local `volicord mcp --stdio` process command contract
-  - local/Docker `volicord serve --transport local-http` process command contract
-  - MCP stdio process startup and exit behavior
-  - MCP local HTTP serve startup and transport-bound authentication and Origin checks
-  - MCP local web consent fallback endpoint
-  - static runtime-compact tool schemas, documentation schema projection, and 35000-byte tool-list bound
-  - capability-first host eligibility with exact versions retained as evidence coordinates
-  - local web consent token half-open canonical-time validity interval
-  - MCP process environment variables and integration-bound startup
-  - MCP startup validation and integration process binding
-  - MCP Runtime Home environment resolution
-  - repository-discovery explicit Runtime Home forwarding and no-default startup boundary
-  - per-call MCP project selection and validation
-  - MCP public tool input and output schema surfaces without internal protocol envelope fields
-  - MCP tool behavior annotations
-  - MCP known-tool argument and adapter-precondition error shapes
-  - line-delimited JSON-RPC over stdio
-  - MCP supported request method set
-  - '`tools/call` Volicord structured-content and compatibility-text response wrapping'
-  - MCP process shutdown and reconnection behavior
-  - centralized exact host-capability evaluation, external exact-final-artifact release evidence
-    manifest requirement, and credential-bearing local-web handoff eligibility
-  - pending managed Codex launch provenance, exact per-call session and thread binding, and turn validation before persistence or diagnostics
-  - bounded actual initialize client identity validation, single-pair managed session-watch baseline retention and conflict handling, without raw initialize or protocol payload
+  - '`volicord mcp --stdio` process command and preflight contract'
+  - managed stdio startup, binding validation, lifecycle, framing, and shutdown
+  - static runtime-compact tool schemas and public tool list
+  - MCP public input and output projections without hidden Core context
+  - known-tool argument, lifecycle, and adapter-precondition failure shapes
+  - '`tools/call` structured-content and compatibility-text wrapping'
+  - MCP creation or resume of UserAction requests without resolution authority
+  - Runtime Home forwarding, connection binding, project selection, and repository discovery
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -2041,7 +1787,6 @@ documents:
   - reference.storage
   - reference.storage-records
   - reference.host-release-evidence
-  - architecture-guide.decision.managed-host-session-turn-binding
 - doc_id: reference.security
   path_en: docs/en/reference/security.md
   path_ko: docs/ko/reference/security.md
@@ -2064,17 +1809,12 @@ documents:
   - operate
   - implement
   canonical_for:
-  - security guarantee wording
-  - access-boundary non-claims
-  - guarantee semantics
-  - operation_category security meaning and non-claims
-  - Agent Connection and actor_source authority non-inference
-  - host trust, host approval, and guidance non-guarantees
-  - generated final-output display and model-authored text non-authority boundary
-  - cooperative Guard policy-authority check and independent `record_run` enforcement boundary
-  - host-capability evidence, external release-manifest trust boundary, credential-delivery trust
-    boundary, and non-attestation wording
-  - managed native host session privacy, pending zero-effect state, strict per-call opaque correlation, bounded actual initialize client coordinate retention, and non-authority boundary
+  - supported local cooperative security guarantees and explicit non-guarantees
+  - Core authority, Write Ticket, UserAction, Guard observation, and display boundaries
+  - Agent Connection, process, actor source, and user-identity non-inference
+  - managed stdio process topology without a network-listener guarantee
+  - exact artifact release evidence and verification-receipt non-attestation boundary
+  - historical operation-result access and private-content boundary
   depends_on:
   - reference.host-release-evidence
   - reference.storage-records
@@ -2478,7 +2218,6 @@ documents:
   - method-specific close-readiness evaluation order
   - method-specific blocker-producing branches
   - method-specific `CloseReadinessBlocker.code` production behavior
-  - native_host_output_adapter_config_verified configuration-only close gating
   - close-task examples
 - doc_id: reference.api.schema-core
   path_en: docs/en/reference/api/schema-core.md
@@ -2637,16 +2376,11 @@ documents:
   - implement
   - operate
   canonical_for:
-  - public API value sets
-  - blocker category values
-  - method-name values
-  - operation category values
-  - '`FailureCategory` identifiers'
-  - '`CloseReadinessBlocker.category` values'
-  - enum-like API vocabulary
-  - '`HostFeatureSupportStatus` and managed-host feature identifier values'
-  - final-output subcapability identifier values
-  - Write Ticket invalidation reason values and policy-authority mismatch distinction
+  - public API closed value sets
+  - '`FailureCategory` and `CloseReadinessBlocker.category` identifiers'
+  - method-name and operation-category values
+  - Codex Record profile and supported observation-source values
+  - Write Ticket invalidation reasons and policy-authority distinctions
   depends_on:
   - reference.failure-model
   - reference.api.error-routing
@@ -2856,6 +2590,7 @@ documents:
   - storage family routing
   - storage owner reading order
   - human-readable storage owner navigation
+  - reader-visible repetition of the exact current StorageManifest contract identifier and ordered capabilities
 - doc_id: reference.storage-records
   path_en: docs/en/reference/storage-records.md
   path_ko: docs/ko/reference/storage-records.md
@@ -2876,20 +2611,13 @@ documents:
   - implement
   - operate
   canonical_for:
-  - canonical persisted record families
-  - storage location and record-family overview
-  - table overview
-  - storage-owned record values
-  - storage-owned JSON placement
-  - persisted canonical-time-floor record placement and commit timestamp relationships
-  - Agent Connection, Connection Projects, managed host configuration state, and host-observation record families
-  - guard_installations host_capability_json v2 shape, v1 rejection, and init-only repair boundary
-  - immutable host-capability verification history, current-pointer record families, and exact UTF-8 byte bounds
-  - evidence-capture intent, receipt, exclusive source-claim, and producer record relationships
-  - local web consent token record family
-  - opaque managed-host session identifier persistence and raw native session identifier exclusion
-  - session_watch_baselines metadata_json bounded single-pair actual initialize client_name and client_version placement, idempotent exact replay, binding-conflict handling, and raw initialize payload exclusion
-  - project workflow policy, state-bound write-ticket, observation-confidence, session-end receipt, and non-authority workflow-metric records
+  - canonical persisted record families and storage locations
+  - strict stored owner values and JSON placement
+  - canonical project time-floor and commit timestamp relationships
+  - Agent Connection, project membership, and Codex binding records
+  - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
+  - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
+  - strict UserAction request and immutable CLI resolution records
   depends_on:
   - reference.host-release-evidence
   - reference.mcp-transport
@@ -2920,9 +2648,8 @@ documents:
   - canonical SQL source ownership and the `GeneratedSchemaMetadata` documentation projection
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
-  - Agent Connection, Connection Projects, managed host configuration state, and host-observation tables
-  - host-capability verification history, current-pointer tables, indexes, and exact UTF-8 byte constraints
-  - evidence-capture receipt pairing and project-scoped exclusive source-claim constraints
+  - Agent Connection, Connection Projects, Codex Record Guard configuration state, and retained observation tables
+  - verified-command and verified-tool receipt pairing and project-scoped exclusive host-invocation source-claim constraints
   - canonical SQLite indexes, views, foreign keys, and constraints
   - physical canonical-time-floor and cross-row commit timestamp constraints
   - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, write-ticket
@@ -3001,7 +2728,7 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`StorageManifest` shape, exact identity, and enabled capabilities'
+  - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and ordered seven-value enabled-capability list'
   - one canonical SQLite format and fail-closed exact-open validation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - unsupported-contract, corruption, unavailable, and fresh-recreation storage boundaries
@@ -3039,6 +2766,7 @@ documents:
   canonical_for:
   - Codex `record`, personal/shared, managed stdio MCP, and CLI inbox first-release connection surface
   - exact `PlatformEnvironment` value set and independent WSL2 identity
+  - exact `PlatformReleaseCoordinate` shape and pinned WSL2 distribution/image binding
   - '`ManagedHostBinding` fields, deterministic canonical encoding, and domain-separated digest'
   - Codex discovery, install, verify, repair, uninstall, drift, executable, process, and artifact responsibilities
   - exact `HostVerificationReceipt` fields, freshness, project/connection/policy/binding/capability binding
@@ -3076,11 +2804,9 @@ documents:
   - implement
   canonical_for:
   - Projection authority boundaries
-  - Core authoritative records vs projected/status/template views
-  - derived display boundaries
-  - display labels are not canonical schema values
-  - managed final-output authority-disclosure freshness, validation, complete-receipt, and
-    non-mutating Projection boundaries
+  - Core authoritative records versus projected status and template views
+  - derived display and non-authority boundaries
+  - display labels versus canonical schema values
 - doc_id: reference.template-bodies
   path_en: docs/en/reference/template-bodies.md
   path_ko: docs/ko/reference/template-bodies.md
@@ -3103,12 +2829,9 @@ documents:
   - implement
   canonical_for:
   - rendered template body guidance
-  - user-facing label wording
-  - display phrasing
+  - user-facing label and display wording
   - public-error display labels
-  - final-output authority-disclosure receipt and bounded fallback body
-  - display wording versus Core authority record boundary
-  - display wording versus API error semantics boundary
+  - display wording versus Core authority and API error semantics
 - doc_id: reference.conformance
   path_en: docs/en/reference/conformance.md
   path_ko: docs/ko/reference/conformance.md
@@ -3133,8 +2856,7 @@ documents:
   - conformance terminology
   - documentation-level conformance criteria
   - assertion authority boundaries
-  - managed final-output current-authority refresh and bounded status-fallback representative
-    conformance criteria
+  - representative current public method, failure, replay, effect, and projection criteria
 - doc_id: reference.design-quality
   path_en: docs/en/reference/design-quality.md
   path_ko: docs/ko/reference/design-quality.md
@@ -3397,11 +3119,7 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structural checks including current workspace version consistency,
-    root README pair validation, ambiguous whole-host support wording, durable test and audit boundaries, human semantic review, onboarding usability validation, live-host
-    native Judgment, local-web evidence-observation, CLI-fallback, and final-output replay release
-    validation, pre-launch Agent Connection binding, controlling-terminal foreground restoration,
-    twelve-cell append-only result-root recovery, Rust validation, and result reporting.
+  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, independent four-platform Codex release cells, Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -3419,28 +3137,13 @@ documents:
   journeys:
   - maintain
   canonical_for:
-  - Documentation metadata, current workspace version, path, link, terminology, bilingual root README pair,
-    contract-boundary, API example, surface-stability label, and reporting validation policy.
-  - Static and semantic validation that keeps whole-host wording, connection readiness, feature status,
-    and release evidence distinct.
-  - Durable repository-test and one-time audit boundary guidance for documentation validation and
-    implementation-check reporting.
-  - Representative-user onboarding usability validation policy and reporting boundaries.
-  - Release-candidate live Codex and Claude Code native Judgment, local-web evidence-observation,
-    executable CLI-fallback, historical Stop decision, fresh final-output replay UI validation,
-    external result retention, and unavailable-host reporting boundaries.
-  - Exact `tests/release-validation` package, create-new candidate descriptor producer, fixed host
-    release gate, separate-process audit, and unavailable-implementation reporting command routes.
-  - Twelve-cell external result-root preparation, append-only publication runbook, failure reporting, and fresh-root recovery.
-  - Validation order for exact Agent Connection binding before authenticated host login or launch.
-  - Validation procedures for the live source-observation barrier and clean non-pass versus structural
-    publication-failure boundary owned by `reference.host-release-evidence`.
-  - Validation procedures for transferring a controlling terminal to each interactive dedicated process group, bounded restoration to the runner group, exact terminal-attribute restoration, and fresh-root recovery after controller or terminal failure.
-  - Validation procedures for exact fulfillment timing owned by
-    `reference.api.method-prepare-evidence-capture` and rejected-transaction effects owned by
-    `reference.storage-effects`.
-  - Exact bounded managed initialize client identity plus Codex session/thread binding assertions for v3 live-host release cells.
-  - Rust validation routing for documentation work that also changes implementation files.
+  - documentation metadata, path, link, terminology, parity, example, stability-label, and reporting validation
+  - contract-boundary and generated-source drift checks
+  - durable repository-test and one-time audit reporting boundaries
+  - representative-user Codex onboarding usability validation
+  - exact finalized artifact validation for independent Linux, macOS, native Windows, and WSL2 cells
+  - honest zero-to-four-cell manifest review and unavailable-attempt reporting
+  - Rust formatting, lint, test, diff, repository-hygiene, and skipped-validation reporting
   depends_on:
   - maintain.documentation-policy
   - maintain.translation-policy

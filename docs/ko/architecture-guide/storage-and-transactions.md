@@ -279,17 +279,12 @@ Core 파이프라인 테스트가 있습니다.
 
 ## 그 밖의 저장소 소유 시계 하한 writer
 
-등록된 evidence-capture fulfillment와 로컬 web User Channel token 발급도 일반 Core
-변이 커밋 밖에서 실행됩니다.
+등록된 evidence-capture fulfillment는 일반 Core mutation commit 밖에서 실행됩니다.
+receipt 하나, 일시적 staging 행과 bytes, 모든 source claim을 원자적으로 삽입하면서
+하한을 receipt `created_at` 이상으로 전진시킵니다.
 
-- Receipt fulfillment는 receipt 하나, 일시적 staging 행과 bytes, 모든 source claim을
-  원자적으로 삽입하면서 하한을 receipt `created_at` 이상으로 전진시킵니다.
-- Token 발급은 정규 현재 프로젝트 시각을 token `created_at`으로 샘플링하고
-  `expires_at`을 파생하며 hash-only token을 삽입하고 하한을 `created_at` 이상으로 한
-  transaction에서 전진시킵니다. 검증은 `created_at <= now < expires_at`만 허용합니다.
-
-두 경로 모두 `state_version`을 증가시키거나 권한 event 또는 replay 행을 만들지
-않습니다. Transaction이 실패하면 담당 행과 하한 갱신이 함께 rollback됩니다.
+이 경로는 `state_version`을 증가시키거나 authority event 또는 replay 행을 만들지
+않습니다. Transaction이 실패하면 소유 행과 하한 갱신이 함께 rollback됩니다.
 
 ## 실패 경계
 

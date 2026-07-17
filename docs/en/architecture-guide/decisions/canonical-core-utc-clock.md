@@ -72,7 +72,7 @@ does not reset future-valued valid time.
   transitions and do not manufacture events or state versions.
 - Host clock skew and delayed observations cannot rewind or advance current
   Core authority boundaries.
-- A corrupt persisted floor is unavailable owner state, not a value to repair
+- A corrupt persisted floor is corrupt owner state, not a value to repair
   heuristically.
 - Test clocks remain useful without gaining authority to bypass stored project
   time, and TTL overflow is a controlled no-effect rejection.
@@ -99,9 +99,8 @@ does not reset future-valued valid time.
   project-time sampling and canonical transaction-time selection.
 - [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):
   transaction-metadata application.
-- [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs),
-  [`evidence_capture.rs`](../../../../crates/volicord-store/src/evidence_capture.rs),
-  and [`user_action_channel.rs`](../../../../crates/volicord-store/src/user_action_channel.rs):
+- [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs)
+  and [`evidence_capture.rs`](../../../../crates/volicord-store/src/evidence_capture.rs):
   storage-owned floor writers.
 - [`crates/volicord-store/src/bootstrap.rs`](../../../../crates/volicord-store/src/bootstrap.rs):
   floor initialization, preservation, and validation.

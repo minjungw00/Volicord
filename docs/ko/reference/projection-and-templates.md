@@ -63,42 +63,12 @@
 - 독자가 권한 기록을 확인해야 하면 관련 담당 문서로 연결합니다.
 - 사람이 고쳤거나 오래된 표시는 버리거나 다시 계산할 표시로 다루며, Core 복구 입력으로 쓰지 않습니다.
 
-<a id="managed-final-output-authority-disclosure"></a>
-## 관리되는 최종 출력 권한 고지
-
-관리되는 최종 출력 권한 고지는 새 `volicord.status` 결과에서 만든 읽기 전용
-`Projection`입니다. [Agent Connection](agent-connection.md#core-receipt-validation)이
-담당하는 정규 결속과 영수증 점검을 거쳐 진행하는 내장 관리 어댑터의 모든 최종 출력 전달에서는,
-정확히 같은 호스트 이벤트를 재생하거나 기능 지원 상태가 `verified`가 아닌 최선형 전달인
-경우까지 포함해 어댑터가 매번 새 상태 결과를 가져와 검증해야 합니다. 최선형 동작은 지원 주장을
-성립시키거나 이 freshness 규칙을 완화하지 않으며, 그런 주장에는 여전히
-`support_status=verified`가 필요합니다. 모델 산문, 변경 응답, 이전 Stop 결과, 영속 guard
-이벤트, 앞서 표시한 보기에 캐시된 receipt를 다시 사용하면 안 됩니다.
-
-이 상태 보기는 새 상태 원천을 기준으로 result/read-only/non-dry-run 분기와 receipt의
-프로젝트, Task, Task 참조 버전, `state_version`, 범위 revision, 현재 Change Unit,
-증거 gate, 닫기 상태, 전체 닫기 차단 사유 집합, 다음 행동을 검증해야 합니다. 검증한
-기준 receipt 전체를 표시하거나 [템플릿 본문](template-bodies.md#final-output-authority-disclosure-body)이
-담당하는 크기 제한 대체 안내를 표시합니다. receipt JSON을 자르거나, 이어 붙이거나,
-요약하거나, 일부만 내보내면 안 됩니다.
-
-최종 출력 갱신과 상태 보기는 Core 상태를 변경하거나, 버전을 올리거나, 이벤트를
-추가하거나, 재생 행을 만들거나, 호스트 관찰을 기록하지 않습니다. Detective는 담당
-계약에 따른 Stop 관찰, 완료 주장 적격성, 내용 없는 종료 receipt를 별도로 기록합니다.
-Stop은 항상 호스트 종료를 허용하고 retry를 요구하지 않으며 차단 사유는 대신 완료 주장을
-억제합니다. 이 별도 기록 때문에 최종 출력 상태 보기가 권한 기록이 되지는 않습니다. 모델이 작성한 최종 산문과 호스트 이벤트
-텍스트는 상태 보기 입력으로 사용하지 않습니다.
-
-관리 어댑터 재생과 대체 경로는
-[관리 CLI](admin-cli.md#managed-final-output-authority-disclosure)가 담당합니다. 정규 결속과
-영수증 검증은 [Agent Connection](agent-connection.md#core-receipt-validation)이 담당합니다.
-
 ## 템플릿과 라벨 경계
 
 [템플릿 본문](template-bodies.md)은 상태 카드, 판단 요청, 실행/증거 요약, 닫기 결과,
-최종 출력 권한 고지, 관리 `AGENTS.md` 안내 블록, 내용 없는 Stop 종료 receipt, 에이전트
-맥락 패킷, 공개 오류 표시 라벨의 현재 렌더링 본문 지침을 담당합니다. 생성 안내와
-receipt는 운영 표시일 뿐 Core 권한이나 Product Repository 파일 편집 허가가 아닙니다.
+관리 `AGENTS.md` 안내 블록, 에이전트 맥락 패킷, 공개 오류 표시 라벨의 현재 렌더링
+본문 지침을 담당합니다. 생성 안내는 운영 표시일 뿐 Core 권한이나 Product Repository
+파일 편집 허가가 아닙니다.
 
 이 문서는 보기를 권한 또는 표시로 분류할 수 있습니다. 보기의 정확한 문구, 본문
 섹션, 지역화 라벨은 정의하지 않습니다.

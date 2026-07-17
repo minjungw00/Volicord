@@ -56,34 +56,21 @@ reference or cursor alone grants no access.
 
 User-only results, including the exact `volicord.resolve_user_action` body,
 free-form user note, and evidence-observation summary, are not exposed to an
-Agent Connection. A host-mediated user-action flow keeps the original
-agent-owned `volicord.request_user_action` reference. That exact stored response
-is eligible only when the raw whole response decodes as the current concrete
+Agent Connection. An agent-owned `volicord.request_user_action` result is
+eligible only when its whole stored raw response strict-decodes as the current
 closed `RequestUserActionResult` and contains the exact three-field
-`AgentSafeUserActionRequestSummary`. A response with a duplicate JSON object
-member at any nesting level, a generic rejected or dry-run branch, a commit-
-coordinate mismatch, the legacy `user_action_request` or `inbox_item` field, a
-missing or malformed summary, an unknown extra field, or mixed old and new
-fields is ineligible and returns
-`OPERATION_RESULT_UNAVAILABLE`. The method validates the complete response
-before returning the first page and never rewrites legacy bytes or returns a
-partial fragment. The separately owned MCP outcome projection may report safe
-selected identifiers and derived refs, but it never substitutes the user-only
-reference or exposes the user note, evidence-observation summary, or exact
-user-only response body.
+`AgentSafeUserActionRequestSummary`. Duplicate members, a wrong response
+branch, a commit-coordinate mismatch, a malformed summary, an unknown field, or
+any other current-contract violation returns `PERSISTED_DATA_CORRUPT`.
 
-Stored `volicord.close_task` results are eligible only when the whole response
-strict-decodes as the current closed `CloseTaskResponse` and uses
-`pending_user_action_summaries` without the legacy
-`pending_user_action_inbox_items` field. A legacy, mixed, or otherwise malformed
-close response is also `OPERATION_RESULT_UNAVAILABLE`; no partial page is
-returned and stored bytes are not rewritten.
-
-The same raw committed-result check applies to every source method before any
-page is returned. In particular, legacy results from `volicord.intake`,
-`volicord.update_scope`, `volicord.prepare_write`, `volicord.record_run`, or
-`volicord.reconcile_changes` that embed the superseded `StateSummary` pending-
-action shape are unavailable rather than exact-replayed through this method.
+Stored `volicord.close_task` results and every other source-method result must
+likewise strict-decode directly as their selected current closed response type.
+A malformed or current-contract-incompatible stored result returns
+`PERSISTED_DATA_CORRUPT`. The method validates the complete response before
+returning the first page, never rewrites stored bytes, and never returns a
+partial fragment. The MCP outcome projection may report safe selected
+identifiers and derived refs, but it cannot substitute a user-only reference or
+expose private UserAction content.
 
 ## Result
 
@@ -109,12 +96,14 @@ Successful pages use `base.response_kind=result`,
 `operation_result_ref.response_size_bytes`.
 
 The method verifies the stored byte length and SHA-256 value against the
-reference before returning any page. A missing result, integrity mismatch,
-invalid bound cursor, or unavailable eligible row returns
-`OPERATION_RESULT_UNAVAILABLE`. Actor or project-context incompatibility returns
+reference before returning any page. A missing or ineligible result, an invalid
+bound cursor, or an unavailable eligible row returns
+`OPERATION_RESULT_UNAVAILABLE`. A stored-byte integrity failure or typed owner
+state that violates its current contract returns `PERSISTED_DATA_CORRUPT`.
+Actor or project-context incompatibility returns
 `INVOCATION_CONTEXT_MISMATCH`. Malformed request or cursor syntax returns
-`VALIDATION_FAILED`. Store reachability or corrupt owner state follows the
-normal `MCP_UNAVAILABLE` boundary. No failure returns partial historical bytes.
+`VALIDATION_FAILED`. Store reachability remains `MCP_UNAVAILABLE`. No failure
+returns partial historical bytes.
 
 ## State and authority effects
 

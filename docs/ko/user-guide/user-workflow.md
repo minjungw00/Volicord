@@ -108,9 +108,7 @@ API 이름이나 내부 모드를 알 필요는 없습니다. 원하는 결과, 
 <a id="record-a-core-user-judgment"></a>
 ## 사용자 판단 기록하기
 
-판단이 Volicord 상태가 되어야 하면 Volicord가 보여 주는 사용자 채널 경로를
-사용합니다. 호스트와 현재 설정에 따라 호스트 프롬프트, 검증된 채팅 명령, 로컬 동의
-페이지, CLI inbox 중 하나일 수 있습니다.
+판단이 Volicord 상태가 되어야 하면 CLI inbox를 사용합니다.
 
 안정적인 수동 경로는 다음과 같습니다.
 
@@ -158,9 +156,7 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 좁힙니다. 에이전트에게 비밀값, 토큰, 전체 민감 로그를 노출하게 하면 안 됩니다.
 
 Volicord는 저장된 수락 기준 또는 보충 주장 하나에 대해 집중된 Evidence 관찰 기록을
-요청할 수 있습니다. 호스트 프롬프트, 검증된 채팅 명령, 로컬 consent 페이지, CLI
-받은편지함은 모두 저장된 동일 대상 후보와 아티팩트 후보를 사용합니다. 그 양식에 표시된
-후보만 선택합니다. 안정적인 CLI 대체 경로는 다음과 같습니다.
+요청할 수 있습니다. CLI inbox에 표시된 저장 대상 후보와 아티팩트 후보만 선택합니다.
 
 ```sh
 volicord inbox --repo "<repo>"

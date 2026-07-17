@@ -25,7 +25,6 @@ Reference owners.
 
 Use the [Reference Index](../reference/README.md) for exact product contracts,
 [Administrative CLI](../reference/admin-cli.md) for command behavior,
-[MCP Transport](../reference/mcp-transport.md) for stdio and Local HTTP
-transport behavior, and [Security](../reference/security.md) for guarantees and
+[MCP Transport](../reference/mcp-transport.md) for managed stdio transport behavior, and [Security](../reference/security.md) for guarantees and
 non-guarantees. Use the [Architecture Guide](../architecture-guide/README.md)
 only when you need implementation structure or rationale.

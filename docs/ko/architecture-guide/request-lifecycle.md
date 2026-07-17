@@ -1,544 +1,92 @@
-# 요청 생명주기
+# 요청 Lifecycle
 
-이 가이드는 현재 Rust 구현에서 네 가지 대표 공개 메서드 호출을 따라갑니다.
+이 가이드는 관리 stdio 요청이 adapter 검증, Core planning, Store 접근, commit, 응답
+projection을 거치는 흐름을 설명합니다.
 
-- 읽기 전용 경로인 `volicord.status`
-- 커밋된 상태 변경 경로인 `volicord.intake`
-- 정책과 쓰기 티켓에 민감한 경로인 `volicord.prepare_write`
-- 티켓 소비를 독립적으로 방어하는 경로인 `volicord.record_run`
+## 전체 흐름
 
-개발자가 코드를 따라갈 수 있도록 소스 파일과 심볼을 이름으로 가리킵니다.
-정확한 공개 메서드 동작, 요청이나 응답 스키마, 저장 효과, 보안 보장,
-런타임 경계, 오류 의미, Core 권한 의미는 정의하지 않습니다. 정확한 동작은
-각 절에 연결된 참조 담당 문서가 담당합니다.
-
-아키텍처 가이드 안에서 이 문서는 어댑터 또는 전송 입력에서 Core 메서드 처리,
-Store 상호작용, 응답 또는 오류 형태 구성으로 이어지는 대표 흐름을 담당합니다.
-Store 트랜잭션 순서, `dry-run` 저장소 경계, 아티팩트 스테이징, 커밋 실패 경계는
-[저장소와 트랜잭션](storage-and-transactions.md)에서 설명합니다.
-
-## MCP에서 Core까지의 공통 형태
-
-이 순서도는 공개 MCP `tools/call`이 Volicord 응답을 반환하기까지의 대표 호출
-순서를 보여 줍니다. 화살표는 공유 경로의 구현 순서와 반환 흐름을 나타냅니다.
-온보딩 단계, 정확한 공개 메서드 계약, 저장 효과 정의가 아닙니다. 구현 구조는
-아래의 `volicord-mcp`, `volicord-core`, 메서드 모듈, `volicord-store` 코드 영역에서
-확인합니다. 정확한 제품 동작은 연결된 참조 담당 문서가 정의합니다.
-
-표준 입출력 MCP 경로에서 `volicord mcp --stdio`는 먼저 Runtime Home과 Agent Connection
-프로세스 맥락을 해석하고, 시작 검사는 표준 입출력이 시작되기 전에 필요한 사실을
-검증합니다. 로컬 HTTP 경로는 `volicord serve --transport local-http`로 시작하며,
-묶인 연결 맥락을 해석하고 전송 계층의 프로젝트 허용 목록을 적용한 뒤 HTTP MCP
-요청을 같은 어댑터로 보냅니다. 전송 계층이 요청을 넘기면 공개 `tools/call`은 허용된
-프로젝트를 선택하고, 형식화된 요청을 디코딩하고, 어댑터가 생성한 요청 사실을
-채우고, 로컬 Core 호출 사실을 파생한 뒤 해당 `CoreService` 메서드를 호출합니다.
-
-```mermaid
-sequenceDiagram
-  participant Host as MCP 호스트
-  participant MCP as volicord-mcp
-  participant Core as volicord-core
-  participant Method as 메서드 모듈
-  participant Store as volicord-store
-
-  Host->>MCP: JSON-RPC tools/call
-  MCP->>MCP: call_tool_result_with_elicitation이 name과 arguments 추출
-  MCP->>MCP: McpAdapter::call_tool이 도구 처리 경로 선택
-  MCP->>MCP: prepare_mcp_arguments가 프로젝트 선택
-  MCP->>MCP: decode_params가 형식화된 요청 디코딩
-  MCP->>MCP: generated_envelope가 어댑터 생성 요청 래퍼 필드 채움
-  MCP->>MCP: McpDerivedInvocationContext::core_invocation이 InvocationContext 파생
-  MCP->>Core: CoreService method(request, invocation)
-  Core->>Core: prepare_or_response -> CoreService::prepare_request
-  Core->>Store: CoreProjectStore::open과 공유 읽기
-  Core->>Method: 메서드별 계획
-  Method-->>Core: OwnerPipelineBranch
-  Core->>Store: 커밋된 변경 분기에서만 커밋
-  Core-->>MCP: PipelineResponse
-  MCP-->>Host: Volicord JSON을 담은 tools/call content 텍스트
+```text
+Codex -> stdio MCP -> public argument DTO -> Core request -> plan
+      -> Store read/validation -> optional atomic commit -> public result
+      -> MCP projection -> Codex
 ```
 
-공유 어댑터 경로는 `volicord-mcp` 모듈들에 나뉘어 있습니다.
+1. stdio 프로세스가 정확한 외부 descriptor, 관리 binding, 연결, 프로젝트 선택,
+   StorageManifest, 저장 읽기 가능성을 검증합니다.
+2. JSON-RPC가 lifecycle, method 이름, 공개 argument 객체를 검증합니다.
+3. MCP adapter가 숨긴 envelope 또는 invocation 필드를 거부하고 서버 소유 context에서
+   완전한 Core 요청을 만듭니다.
+4. Core 공통 preflight가 actor, operation category, project, replay identity,
+   expected state, 현재 Task context, 구조 입력을 검증합니다.
+5. 메서드 planner가 일관된 snapshot 하나를 읽고 typed outcome과 정확한 제안 효과를
+   만듭니다.
+6. 읽기 전용 분기는 변경 없이 반환합니다. Mutation 분기는 commit 전제 조건을 다시
+   검증하고 Store transaction 하나를 원자적으로 적용합니다.
+7. 공개 응답을 한 번 직렬화하고 MCP가 권한 의미를 바꾸지 않은 채 담당 문서의 detail을
+   projection합니다.
 
-- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
-  `run_stdio`가 줄 단위 JSON-RPC를 읽고,
-  `handle_json_rpc_request`가 `initialize`, `ping`, `tools/list`,
-  `tools/call`을 디스패치하며, `call_tool_result_with_elicitation`이
-  `params.name`과 `params.arguments`를 추출하고 `McpAdapter`를 호출한 뒤
-  `PipelineResponse.response_json`을 MCP 텍스트 `content`에 담습니다.
-- [`crates/volicord-mcp/src/local_http.rs`](../../../crates/volicord-mcp/src/local_http.rs):
-  `run_local_http_server`가 연결된 어댑터 맥락을 해석하고 전송 계층의
-  프로젝트 허용 목록을 적용한 뒤 로컬 HTTP 세션과 MCP 요청을
-  `McpAdapter`로 보냅니다.
-- [`crates/volicord-mcp/src/tool_registry.rs`](../../../crates/volicord-mcp/src/tool_registry.rs):
-  `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, 도구 목록 메타데이터.
-- [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
-  `McpAdapter::call_tool`이 도구 이름에 맞는 분기를 고르고, 메서드별 도우미가
-  형식화된 Core 요청을 구성합니다. `prepare_mcp_arguments<T>`는 내부 전용 필드를
-  거부하고 허용된 프로젝트를 선택하고 `decode_params<T>`로 인자를
-  디코딩합니다. `generated_envelope`는 어댑터가 생성하는 요청 래퍼 필드를
-  채우고, `call_core_request`는 `CoreService`를 호출하기 전에 로컬 호출
-  사실을 파생합니다.
-- [`crates/volicord-mcp/src/routing.rs`](../../../crates/volicord-mcp/src/routing.rs):
-  시작 검사, `McpConnectionContext`, 연결 모드 파싱, 프로젝트 허용 목록
-  점검, 프로젝트 가용성 도우미.
-- 프로젝트를 선택한 뒤 `call_core_request`는 `derive_invocation_context`를
-  사용해 선택된 프로젝트, 묶인 Agent Connection의 행위자 출처, 요청
-  `operation_category`, 어댑터 바인딩 근거를 담은
-  `McpDerivedInvocationContext`를 만듭니다.
-- `McpDerivedInvocationContext::core_invocation`은 Core `InvocationContext`를
-  만듭니다.
+Core 전 실패는 Core 또는 Store 효과가 없습니다. Commit 뒤 실패는 operation-result
+복구 좌표를 보존하고 mutation을 암시적으로 다시 시도하지 않습니다.
 
-시작과 세션 검증도 `volicord-mcp`에 있으며, 특히
-`McpConnectionStartupInspection::resolve`가 핵심입니다. 이 시작 경로는
-Runtime Home 초기화, 설치 프로필, Agent Connection 식별자, 활성화 여부,
-메타데이터 객체 형태, 모드, Connection Projects 멤버십, 프로젝트 가용성을
-검증하기 위해 Store를 직접 읽습니다. 시작 검사는 `actor_source`를 파생하거나
-모든 호출에 쓸 프로젝트 하나를 선택하지 않습니다. 요청 시점의 어댑터 코드가
-프로젝트 선택 뒤 묶인 Agent Connection에서 `actor_source`를 파생합니다. 시작
-검사는 공개 메서드 동작을 구현하는 다른 경로가 아니며, 공개 메서드 실행은
-`volicord-core`를 통과합니다.
+## 읽기 전용 요청
 
-공유 Core 경로는 주로
-[`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)와
-[`crates/volicord-core/src/methods/mod.rs`](../../../crates/volicord-core/src/methods/mod.rs)에
-있습니다.
+`volicord.status`, `volicord.check_close`, 적격
+`volicord.get_operation_result`는 일관된 read snapshot을 사용합니다. Replay row,
+authority event, current pointer, state-version 증가를 만들지 않습니다. Typed pagination
+cursor는 lookup 전에 검증합니다.
 
-- 메서드 파일은 `prepare_or_response`를 호출하고, 이 도우미는
-  `CoreService::prepare_request`로 위임합니다.
-- `MethodPolicy`는 필요한 `OperationCategory`, `TaskRequirement`,
-  `ReplayPolicy`, `FreshnessPolicy`, `MethodEffectPolicy`를 고릅니다.
-- `CoreService::prepare_request`는 요청 래퍼를 검증하고, 어댑터 바인딩
-  불일치를 거부하고, 커밋 효과 요청 래퍼 요구사항을 검증하고,
-  `canonical_request_hash`를 계산하고, `CoreProjectStore`를 열고,
-  `project_state`를 읽고, `VerifiedInvocationContext`를 파생하고, 재실행 사전
-  점검을 처리하고, Task를 해석하고, 상태 버전 최신성을 점검하고, 메서드
-  접근을 점검한 뒤 `PreparedRequest`를 만듭니다.
-- `PreparedRequest`까지 진행한 요청은 공통 preflight 뒤 프로젝트의 정규 Core UTC
-  시계를 정확히 한 번 샘플링합니다. `PreparedRequest.operation_now`는 메서드 계획이
-  해당 동작에 사용하는 유일한 현재 시각 샘플입니다.
-- `SystemClock`은 Store의 SQLite 실시간 시각과 영속 하한을 합성한 샘플을 사용합니다.
-  Custom Clock은 실시간 원천만 대신할 수 있습니다. `CoreService`는 계속 영속 하한과 같은
-  handle이 받아들인 샘플을 포함한 최댓값을 취하고 시계 정규화를 이유로 저장 담당
-  timestamp를 다시 쓰지 않습니다.
-- 계획 코드의 TTL 파생은 checked 덧셈과 정규 RFC 3339 UTC 표현 가능성을 사용합니다.
-  Overflow는 제어된 커밋 전 거부를 반환합니다.
-- `CoreService::execute_prepared_request`는 `OwnerPipelineBranch`를 읽기 전용,
-  효과 없음, `dry-run` 미리보기, 커밋된 변경의 응답 구성 경로 중 하나로 보냅니다.
+## 구조적 거부
 
-Store 커밋 경로는
-[`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)와
-[`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)에
-있습니다.
+구조 입력 검증은 policy와 저장 mutation보다 먼저입니다. 특히
+`volicord.prepare_write`는 현재 Change Unit이 없으면 ticket lookup, invalidation,
+policy 평가, 그 밖의 효과 전에 `NO_ACTIVE_CHANGE_UNIT`과
+`details.reason=current_change_unit_required`로 거부합니다. 이는 policy
+`NotAllowed` 결정이 아니라 `Rejected`입니다.
 
-- Core는 `commit_input`으로 `CommitMutationInput`을 만들고 `operation_now`를 커밋
-  시계 하한으로 전달합니다.
-- `CoreProjectStore::commit_mutation`은 재실행 조회, 오래된 상태 점검,
-  `project_state.state_version` 증가, 메서드가 제공한 `CoreStorageMutation`
-  값을 트랜잭션 범위 SQL 도우미로 적용, 권한 이벤트 삽입, 응답 JSON 구성,
-  선택적 재실행 행 삽입, 정규 커밋 시각 선택, 트랜잭션 커밋을 수행합니다.
-- `MutationCommitOutcome`은 커밋, 재실행, 재실행 맥락 불일치, 멱등성 충돌,
-  오래된 상태 결과를 Core로 돌려보냅니다.
+## Mutation planning과 commit
 
-응답과 오류 형태 구성도 같은 계층 분리를 따릅니다. 어댑터나 처리 경로의 오류는
-Core 계획 전에 반환될 수 있습니다. Core는 준비된 공개 메서드 호출에 대해 거부,
-읽기 전용, 효과 없음, `dry-run` 미리보기, 커밋, 재실행, 충돌 결과를 포함하는
-`PipelineResponse`를 반환합니다. MCP는 `PipelineResponse.response_json`을
-`tools/call`의 텍스트 `content`에 담습니다. 정확한 공개 오류 우선순위, 응답 스키마,
-MCP 전송 래핑 규칙은 [API 오류](../reference/api/errors.md),
-[API 코어 스키마](../reference/api/schema-core.md),
-[MCP 전송](../reference/mcp-transport.md)이 담당합니다.
+Planner는 닫힌 outcome과 정확한 commit input을 반환합니다. Store는 transaction 안에서
+담당 문서의 최종 검증을 수행하고 immutable row 삽입, current pointer 갱신, 해당할 때
+authority event와 replay 추가, `state_version` 정확히 한 번 증가를 수행합니다.
 
-## 분기 차이
+Rejected, dry-run, unavailable, corrupt, unsupported-contract, conflict 분기는
+[저장 효과](../reference/storage-effects.md)를 따릅니다. 가까운 성공 분기의 효과를
+빌려오지 않습니다.
 
-`OwnerPipelineBranch`는 공통 사전 점검과 메서드별 계획 뒤에 선택되는
-Core 쪽 분기입니다. 정확한 저장 효과 계약은
-[저장 효과](../reference/storage-effects.md)가 담당합니다. 이 표는 소스를 따라갈
-때 쓰는 구현 중심 지도입니다.
+## 쓰기 티켓 흐름
 
-| 분기 또는 응답 경로 | 읽을 위치 | 가이드 수준 영속 저장 결과 |
-|---|---|---|
-| MCP 디코딩 또는 사전 점검의 거부 응답 | `McpAdapter::call_tool`, `CoreService::prepare_request`, `validation_rejected` | Core 커밋 없이 거부 응답 또는 JSON-RPC 오류를 반환합니다. `state_version` 증가, 권한 이벤트, 재실행 행, 아티팩트 효과, 쓰기 티켓 효과, 영속 정규 UTC 하한 갱신을 만들지 않습니다. |
-| `OwnerPipelineBranch::ReadOnly` | `CoreService::execute_prepared_request` | 현재 읽기 결과에서 `EffectKind::ReadOnly` 결과를 만들고 `CoreProjectStore::commit_mutation`을 호출하지 않습니다. 응답에 계산된 닫기 차단 사유, 아티팩트 관찰, 현재 프로젝트 시각 샘플이 있더라도 읽는 시점의 데이터이며 시계 하한을 영속화하지 않습니다. |
-| `OwnerPipelineBranch::NoEffectResult` | `CoreService::execute_prepared_request`; 현재는 `close_task`의 차단된 결과 경로에서 사용 | `EffectKind::NoEffect`인 유효한 결과를 만들고 `CoreProjectStore::commit_mutation`을 호출하지 않습니다. 이 경로의 차단 사유형 결과는 응답 데이터이며 커밋된 차단 사유 행이 아닙니다. |
-| `OwnerPipelineBranch::DryRunPreview` | `CoreService::execute_prepared_request` | `ToolDryRunResponse` 미리보기 데이터를 만들지만 생성된 영속 참조, 권한 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, `state_version` 변경, 더 늦은 시계 하한은 저장하지 않습니다. |
-| `OwnerPipelineBranch::CommitMutation` | `CoreService::execute_prepared_request`, Core `commit_mutation`, Store `CoreProjectStore::commit_mutation` | Store 커밋 트랜잭션을 실행합니다. 이 트랜잭션은 `project_state.state_version`을 증가시키고, 정규 `committed_at >= operation_now` 하나를 선택하고, 권한 이벤트를 최소 하나 추가하고, 커밋 호출이 멱등이면 재실행 행을 저장하며, 메서드가 제공한 `CoreStorageMutation` 값을 적용합니다. `project_state.updated_at`, event/replay 생성 시각, Store 생성 transaction metadata는 정확한 `committed_at`을 사용하고 담당자가 정의한 의미 있는 동작·관찰 시각은 준비된 값이나 검증된 원천 값을 보존합니다. |
-| `volicord.stage_artifact` 스테이징 경로 | `crates/volicord-core/src/methods/stage_artifact.rs`, Store 아티팩트 스테이징 도우미 | `EffectKind::StagingCreated`인 `StageArtifactResult`를 반환하고 저장소 소유 임시 스테이징과 안전한 바이트를 만들 수 있습니다. `project_state.updated_at`을 staging `created_at` 이상으로 원자적으로 전진시키지만 일반 Core 커밋 트랜잭션을 사용하지 않고, 권한 이벤트나 재실행 행을 추가하지 않으며, `project_state.state_version`을 증가시키지 않고, 영속 `ArtifactRef`를 만들지 않습니다. [아티팩트 저장소](../reference/storage-artifacts.md)를 봅니다. |
+`prepare_write`는 현재 Task, Change Unit, scope, baseline, policy, 민감 승인, 정규
+path, 현재 write-authority fingerprint를 평가합니다. 기존 ticket은 담당 문서의 모든
+좌표가 계속 유효할 때만 재사용할 수 있습니다. `record_run`은 ticket을 다시 검증하고
+Run과 같은 commit 안에서 정확히 일치하는 효과만 소비합니다.
 
-차단된 것처럼 보이는 모든 결과를 같은 구현 경로로 다루면 안 됩니다. 예를
-들어 `volicord.prepare_write`는 커밋 전 거부되어 효과가 없을 수 있고,
-`dry-run` 미리보기로 효과가 없을 수 있고, 쓰기 티켓을 발급하지
-않는 비허용 결정 이벤트를 커밋할 수 있으며, 허용 결정에서는
-쓰기 티켓 호환성 행을 삽입할 수 있습니다. `volicord.check_close`는 읽기 전용
-확인에서 닫기 차단 사유를 반환할 수 있고, `volicord.close_task`는 기준 효과 없음
-차단 경로에서 닫기 차단 사유를 반환할 수 있습니다.
-API 오류는 거부 응답으로 남으며 닫기 차단 사유가 아닙니다. 차단
-사유와 API 사이의 정확한 경계는 [API 차단 사유 처리 경로](../reference/api/blocker-routing.md)가
-담당합니다.
+## UserAction 분리
 
-## `volicord.status`: 읽기 전용 경로
+`volicord.request_user_action`은 strict pending request를 만들거나 명시적인 read-only
+resume 분기를 사용합니다. MCP adapter는 agent-safe summary와 현재 projection만
+반환하며 해결 form을 표시하거나 제출하지 않습니다.
 
-참조 담당 문서:
+로컬 CLI inbox가 strict stored form을 읽고 local-user provenance로
+`volicord.resolve_user_action`을 호출합니다. Resolution은 별도 user-only mutation이며
+원래 요청 결과를 대신하지 않습니다. Guard prompt 관찰은 계속 관찰입니다.
 
-- [상태 메서드 담당 문서](../reference/api/method-status.md)
+## Guard suppression
 
-주요 소스 경로:
+조정은 제한된 suppression service를 호출합니다. `Applied`는 정확한 remaining path와
+suppression record를 담습니다. `Unavailable`은 모든 observed path, reason, scan budget,
+observed count를 보존합니다. Store 실패나 손상 correlation이 빈 성공이 되지 않습니다.
 
-1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)는
-   `StatusRequest`, `StatusInclude`, `StatusResult`, 그리고
-   `OperationCategory::Read`를 반환하는 `MethodOperationCategory` 구현을 정의합니다.
-2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
-   `McpAdapter::call_tool`에서 `"volicord.status"` 처리 경로를 선택하고,
-   형식화된 `status` 인자를 준비합니다. 어댑터 생성 요청 래퍼를 만들고
-   로컬 호출 사실과
-   `InvocationContext`를 파생한 뒤 `CoreService::status`를 호출합니다.
-3. [`crates/volicord-core/src/methods/status.rs`](../../../crates/volicord-core/src/methods/status.rs)는
-   `CoreService::status`, `status_task`, `status_result_fields`를 구현합니다.
-4. [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)는
-   공통 사전 점검과 `OwnerPipelineBranch::ReadOnly` 응답 경로를 실행합니다.
-5. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)는
-   `project_state`, Task 읽기, Change Unit 읽기, 쓰기 권한 읽기, 증거 읽기,
-   닫기 준비 상태 입력 읽기, 프로젝트 연속성 읽기 같은 `CoreProjectStore` 읽기를 제공합니다.
+## 응답 projection
 
-생명주기:
+공개 메서드 결과가 권한을 담는 응답으로 남습니다. MCP structured content는 광고한
+schema를 만족하고 text는 제한된 사람용 rendering입니다. Compact schema와 summary
+view는 표시 detail을 생략할 수 있지만 필요한 권한 좌표를 빼거나 server validation을
+느슨하게 할 수 없습니다.
 
-1. MCP 호스트가 `name="volicord.status"`로 `tools/call`을 보냅니다.
-2. `call_tool_result_with_elicitation`이 도구 이름과 인자를 추출합니다.
-3. `McpAdapter::call_tool`이 호출을 `status` 분기로 보냅니다.
-4. `prepare_mcp_arguments`는 `McpConnectionContext`에서 허용된 프로젝트를
-   선택하고 형식화된 `status` 인자를 디코딩합니다. `generated_envelope`는
-   `status`의 `operation_category`에 맞는 어댑터 생성 요청 래퍼 필드를 채우며,
-   `call_core_request`는 로컬 호출 사실에서 Core `InvocationContext`를 만듭니다.
-5. `CoreService::status`는 형식화된 요청을 요청 JSON으로 직렬화하고,
-   `MethodPolicy::exact`, `TaskRequirement::Optional`, `ReplayPolicy::None`,
-   `FreshnessPolicy::None`, `MethodEffectPolicy::ReadOnly`로
-   `prepare_or_response`를 호출합니다.
-6. `CoreService::prepare_request`가 공통 사전 점검을 실행합니다. 사전 점검이
-   응답을 반환하면 메서드는 메서드별 결과 구성 없이 그 응답을 반환합니다.
-7. `status_task`는 요청 래퍼에 Task가 있으면 그 Task를, 없으면 현재 적용
-   Task를 선택합니다.
-8. `status_result_fields`는 Store 읽기와 요청된 `StatusInclude` 플래그에서
-   결과 필드를 만듭니다. `include.close=true`이면 `CloseIntent::Check`와 함께
-   `close_task::plan_close_task`를 재사용해 읽기 전용 닫기 보기를 계산합니다.
-   `include.continuity=true`이면 저장소를 변경하지 않고 현재 프로젝트
-   연속성 요약을 읽습니다.
-9. `CoreService::execute_prepared_request`는 `OwnerPipelineBranch::ReadOnly`를
-   받아 `EffectKind::ReadOnly` 결과를 만들고 `PipelineResponse`를 반환합니다.
-10. `call_tool_result_with_elicitation`은 `PipelineResponse.response_json`을 MCP
-    `content[0].text`에 담습니다.
+## 관련 담당 문서
 
-일어나지 않는 일:
-
-- `CoreProjectStore::commit_mutation` 호출 없음.
-- 상태 버전 증가 없음.
-- 권한 이벤트 없음.
-- 재실행 행 없음.
-- 쓰기 티켓 변경 없음.
-- 프로젝트 연속성 기록 생성 없음.
-
-대표 테스트:
-
-- [`crates/volicord-core/src/methods/tests/status.rs`](../../../crates/volicord-core/src/methods/tests/status.rs)의
-  `status_is_read_only_including_dry_run`,
-  `status_include_false_omits_optional_sections_without_effect`
-- [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
-  `mcp_status_succeeds_with_readonly_storage`,
-  `mcp_status_does_not_advance_state_version`
-- [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
-  `status_projection_matches_public_close_check_and_stays_read_only`
-
-정확한 동작 질문:
-
-- 메서드 동작: [상태 메서드 담당 문서](../reference/api/method-status.md)
-- 공통 응답 형태: [API 코어 스키마](../reference/api/schema-core.md)
-- 상태와 닫기 준비 상태 표시 형태:
-  [상태 스키마](../reference/api/schema-state.md)
-- 저장 효과: [저장 효과](../reference/storage-effects.md)
-
-## `volicord.intake`: 커밋된 변경 경로
-
-참조 담당 문서:
-
-- [접수 메서드 담당 문서](../reference/api/method-intake.md)
-
-주요 소스 경로:
-
-1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)는
-   `IntakeRequest`, `InitialScope`, `IntakeResult`, 그리고
-   `OperationCategory::AgentWorkflow`을 반환하는 `MethodOperationCategory` 구현을 정의합니다.
-2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
-   `McpAdapter::call_tool`에서 `"volicord.intake"` 처리 경로를 선택하고,
-   형식화된 `intake` 인자를 준비합니다. 어댑터 생성 요청 래퍼를 만들고
-   로컬 호출 사실과
-   `InvocationContext`를 파생한 뒤 `CoreService::intake`를 호출합니다.
-3. [`crates/volicord-core/src/methods/intake.rs`](../../../crates/volicord-core/src/methods/intake.rs)는
-   `CoreService::intake`와 `plan_intake`를 구현합니다.
-4. [`crates/volicord-core/src/methods/mod.rs`](../../../crates/volicord-core/src/methods/mod.rs)는
-   `mutation_method_policy`, `prepare_or_response`, 공통 메서드 계획 도우미,
-   응답 도우미를 제공합니다.
-5. [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)는
-   `OwnerPipelineBranch::DryRunPreview` 또는
-   `OwnerPipelineBranch::CommitMutation`을 실행합니다.
-6. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)는
-   커밋 트랜잭션을 열고 이벤트와 재실행 행을 커밋하며,
-   [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
-   그 트랜잭션 안에서 `CoreStorageMutation` 값을 적용합니다.
-
-생명주기:
-
-1. MCP 호스트가 `name="volicord.intake"`로 `tools/call`을 보냅니다.
-2. `McpAdapter::call_tool`이 형식화된 `intake` 인자를 준비하고, 어댑터 생성
-   요청 래퍼를 만들고, 로컬 호출 사실과 `InvocationContext`를 파생한 뒤
-   `CoreService::intake`를 호출합니다.
-3. `CoreService::intake`는 `TaskRequirement::None`과 함께
-   `mutation_method_policy`를 고릅니다. `dry-run`이면 정책은
-   `MethodEffectPolicy::DryRunPreview`와 `ReplayPolicy::None`을 사용합니다.
-   커밋 호출이면 `MethodEffectPolicy::CoreMutation`과
-   `ReplayPolicy::Committed`를 사용합니다.
-4. `prepare_or_response`는 공통 사전 점검을 위해
-   `CoreService::prepare_request`로 위임합니다. 커밋 호출은 공유 커밋 효과
-   요청 래퍼 점검, 재실행 사전 점검, 최신성 정책, 접근 점검을 사용합니다.
-   계획까지 진행하는 호출은 `operation_now` 샘플을 정확히 하나 받습니다.
-5. 현재 프로젝트 상태에 현재 적용 Task가 있는데
-   `ResumePolicy::RejectIfActive`이면 메서드는 거부합니다.
-6. `plan_intake`는 새 Task를 만들지, 현재 적용 Task를 재개할지, 현재 적용
-   Task를 대체할지 해석합니다. 생성된 `TaskId`를 할당할 수 있고,
-   `TaskRecord`를 만들고, 재개된 Task의 현재 적용 Change Unit을 선택하고,
-   예상 `StateSummary`를 계산하고, `CoreStorageMutation` 값을 만듭니다.
-7. `request.envelope.dry_run`이 `true`이면 Core는
-   `OwnerPipelineBranch::DryRunPreview`를 실행하고 Store 커밋 없는 `dry-run`
-   응답을 반환합니다.
-8. 그렇지 않으면 Core는 `event_kind="task_intake"`, 메서드 결과 필드, 선택된
-   `task_id`, 계획된 저장소 변이를 담은 `OwnerPipelineBranch::CommitMutation`을
-   실행합니다.
-9. Core 내부 `commit_mutation` 도우미는 정규화된 요청 해시, 재실행 맥락,
-   예상 상태 버전, `PendingTaskEvent`, 시계 하한인 `operation_now`를 담은
-   `CommitMutationInput`을 만듭니다.
-10. `CoreProjectStore::commit_mutation`은 하나의 즉시 트랜잭션을 열고,
-    재실행과 최신성을 다시 점검하고, `project_state.state_version`을 증가시키고,
-    `CoreStorageMutation` 값을 적용하고, 권한 이벤트를 삽입하고, 응답 JSON을
-    만들고 검증하고, 멱등성 키가 있는 커밋 호출의 재실행 행을 삽입한 뒤
-    프로젝트 하한, event, replay 행, Store 생성 transaction metadata에 정규 커밋
-    timestamp 하나를 쓰고 커밋합니다.
-11. 커밋된 응답은 `PipelineResponse`로 돌아오고 MCP는 이를 `tools/call`의
-    텍스트 `content`에 담습니다.
-
-분기별 차이:
-
-- `dry-run` 접수는 `OwnerPipelineBranch::DryRunPreview`를 사용합니다. Task,
-  이벤트, 재실행 행, 상태 버전 증가는 만들어지지 않습니다.
-- 사전 점검 또는 검증 거부는 Core 커밋 없이 거부 응답을 반환합니다.
-- 커밋된 접수는 `OwnerPipelineBranch::CommitMutation`을 사용합니다. 상태
-  버전을 증가시키고, `task_intake` 이벤트를 추가하고, 멱등성 키가
-  있으면 재실행 행을 저장하고, 메서드가 계획한 변이를 적용합니다.
-
-대표 테스트:
-
-- [`crates/volicord-core/src/methods/tests/intake.rs`](../../../crates/volicord-core/src/methods/tests/intake.rs)의
-  `intake_commits_once_and_replays_without_effect`,
-  `intake_dry_run_has_no_storage_effect`
-- [`crates/volicord-mcp/src/tests.rs`](../../../crates/volicord-mcp/src/tests.rs)의
-  `adapter_auto_selects_single_project_and_injects_connection_invocation`
-- [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
-  `connection_invocation_is_injected_and_single_project_is_auto_selected`
-- [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
-  `no_effect_branches_state_version_and_idempotency_are_stable`
-
-정확한 동작 질문:
-
-- 메서드 동작: [접수 메서드 담당 문서](../reference/api/method-intake.md)
-- 공통 요청 래퍼와 응답 분기:
-  [API 코어 스키마](../reference/api/schema-core.md)
-- Task와 상태 형태: [상태 스키마](../reference/api/schema-state.md)
-- 저장 효과: [저장 효과](../reference/storage-effects.md)
-- 재실행과 오류 동작: [API 오류](../reference/api/errors.md)와 메서드 담당 문서
-
-## `volicord.prepare_write`: 정책과 쓰기 티켓 경로
-
-참조 담당 문서:
-
-- [쓰기 준비 메서드 담당 문서](../reference/api/method-prepare-write.md)
-
-주요 소스 경로:
-
-1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)는
-   `PrepareWriteRequest`, `PrepareWriteResult`, 그리고
-   `OperationCategory::AgentWorkflow`을 반환하는 `MethodOperationCategory` 구현을
-   정의합니다.
-2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
-   `McpAdapter::call_tool`에서 `"volicord.prepare_write"` 처리 경로를 선택하고,
-   형식화된 쓰기 준비 인자를 준비합니다. 어댑터 생성 요청 래퍼를 만들고 로컬
-   호출 사실과 `InvocationContext`를 파생한 뒤 `CoreService::prepare_write`를
-   호출합니다.
-3. [`crates/volicord-core/src/methods/prepare_write.rs`](../../../crates/volicord-core/src/methods/prepare_write.rs)는
-   `CoreService::prepare_write`, `prepare_write_policy`,
-   `plan_prepare_write`를 구현합니다.
-4. [`crates/volicord-core/src/policy/write_ticket.rs`](../../../crates/volicord-core/src/policy/write_ticket.rs)는
-   `prepare_write_decision`, `prepare_write_dry_run_summary`,
-   쓰기 티켓 호환성 도우미, `write_decision_reason`을 제공합니다.
-5. [`crates/volicord-core/src/policy/path.rs`](../../../crates/volicord-core/src/policy/path.rs)는
-   `Product Repository` 경로 정규화 도우미를 제공합니다.
-6. [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../crates/volicord-core/src/policy/user_action_relevance.rs)는
-   계획기가 사용하는 사용자 행동 관련성 점검을 제공합니다.
-7. [`crates/volicord-core/src/policy/workflow.rs`](../../../crates/volicord-core/src/policy/workflow.rs)는
-   권위 프로젝트 정책을 불러오고, 현재 Task 통제를 해석하고, 정규화된 쓰기 권한
-   fingerprint를 제공합니다.
-8. [`crates/volicord-store/src/workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs)는
-   그 fingerprint를 파생하고 정책 적용 재평가와 활성 티켓 무효화를 담당합니다.
-9. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
-   커밋된 허용 분기가 쓰기 티켓을 발급할 때 Store 커밋 트랜잭션 안에서
-   `CoreStorageMutation::InsertWriteTicket`을 적용합니다.
-
-생명주기:
-
-1. MCP 호스트가 `name="volicord.prepare_write"`로 `tools/call`을 보냅니다.
-2. `McpAdapter::call_tool`이 형식화된 쓰기 준비 인자를 준비하고, 어댑터
-   생성 요청 래퍼를 만들고, 로컬 호출 사실과 `InvocationContext`를 파생한 뒤
-   `CoreService::prepare_write`를 호출합니다.
-3. `CoreService::prepare_write`는 먼저 `envelope.task_id`가 있을 때
-   `PrepareWriteRequest.task_id`와 일치하는지 확인합니다.
-4. `prepare_write_policy`는 요청 또는 요청 래퍼가 Task ID를 제공하면
-   `TaskRequirement::Exact`를, 그렇지 않으면 `TaskRequirement::Required`를
-   고릅니다. `dry-run`은 `MethodEffectPolicy::DryRunPreview`와
-   `ReplayPolicy::None`을 사용하고, 커밋 호출은
-   `MethodEffectPolicy::CoreMutation`과 `ReplayPolicy::Committed`를 사용합니다.
-5. `prepare_or_response`는 공통 사전 점검으로 위임합니다. 접근 불일치,
-   오래된 상태, 누락된 커밋 효과 요청 래퍼 필드, 재실행 불일치, Store 사용
-   불가가 메서드별 계획 전에 응답을 반환할 수 있습니다.
-6. `plan_prepare_write`는 권위 프로젝트 작업 흐름 정책을 다시 읽고 현재 Task 통제를
-   해석한 뒤 `intended_operation`, `sensitive_categories`, `Product Repository`
-   경로를 정규화합니다. 저장된 통제 수준과 최종 수락이 높아지지 않았더라도 정책
-   재평가 표시가 있는 Task를 다시 평가합니다. 현재 경로에 따라 `light` 작업을
-   `tracked` 또는 `sensitive`로 높일 수 있으며, `sensitive` 작업은 티켓 발급 전에
-   일치하는 사용자 승인이 필요합니다.
-7. 계획기는 현재 Change Unit을 해석하고 제품 파일 쓰기 의도, baseline, 경로 범위,
-   대기 중인 사용자 소유 판단, 민감 동작 승인, 검증된 `operation_category`, 연결
-   역량을 비교합니다. 필요한 유효성 근거에는 현재 정규화된
-   `write_authority_fingerprint`가 들어갑니다.
-8. `prepare_write_decision`은 모인 `WriteDecisionReason` 값을 분류합니다.
-   이유가 없으면 허용 계획이고, 있으면 비허용 결정입니다.
-9. 요청이 `dry-run`이면 `CoreService::execute_prepared_request`는
-   `prepare_write_dry_run_summary`가 담긴 `OwnerPipelineBranch::DryRunPreview`를
-   받습니다. 쓰기 티켓 ID는 할당되지 않고 Store 커밋은 실행되지
-   않습니다.
-10. 커밋된 허용 계획이면 현재 호환되는 활성 티켓을 재사용합니다. 그런 티켓이 없으면
-    현재 정책 결속을 담은 `CoreStorageMutation::InsertWriteTicket`을 커밋합니다.
-    결속이 없거나 다른 활성 티켓은 재사용 후보에서 제외하고 같은 커밋에서
-    `explicit_revoke`로 무효화합니다. Event kind는 `write_ticket_reused` 또는
-    `write_ticket_issued`입니다.
-11. 커밋된 비허용 계획이면 `OwnerPipelineBranch::CommitMutation`은
-    `event_kind="write_decision_recorded"`를 운반하고
-    `InsertWriteTicket` 변이는 없습니다. 그래도 Store 트랜잭션은 결정
-    이벤트를 기록하고, 상태 버전을 전진시키며, 커밋 호출이 멱등이면
-    재실행 데이터를 저장합니다. 티켓 선택에서 정책 결속이 없거나 일치하지 않는 활성
-    티켓을 찾았다면 같은 커밋이 그 티켓을 `explicit_revoke`로 무효화한 뒤 비허용
-    결정을 반환합니다.
-12. `CoreProjectStore::commit_mutation`은 트랜잭션을 실행하고
-    `MutationCommitOutcome`을 반환합니다. Core는 그 결과를
-    `PipelineResponse`로 만들고, MCP는 응답 JSON을 `tools/call`의 텍스트
-    `content`에 담습니다.
-
-분기별 차이:
-
-- 사전 점검 또는 초기 검증 거부는 Core 커밋이 없고 쓰기 티켓을
-  발급하지 않습니다.
-- `dry-run`은 `ToolDryRunResponse`를 반환하고, Core 커밋이 없으며, 영속
-  쓰기 티켓 ID를 할당하지 않습니다.
-- 커밋된 비허용 결정은 결정 이벤트를 커밋하지만 소비 가능한
-  쓰기 티켓을 만들지 않습니다. 선택된 활성 티켓의 정책 결속이 오래된 경우에는 같은
-  커밋에서 그 티켓을 무효화합니다.
-- 커밋된 허용 결정은 호환되는 티켓 하나를 재사용하거나 이벤트와
-  `CoreStorageMutation::InsertWriteTicket`을 커밋합니다. 결속이 없거나 일치하지 않는
-  이전 활성 티켓은 닫힌 방식으로 실패하고 재사용하지 않으며 새 티켓으로 대체합니다.
-- 정규화 결과가 같은 쓰기 권한을 다시 적용해도 그 밖에 호환되는 티켓을 오래된 것으로
-  만들지 않습니다.
-- 멱등 재실행은 다른 쓰기 티켓을 만들지 않고 재실행 처리에서 저장된
-  원래 응답을 반환합니다.
-
-대표 테스트:
-
-- [`crates/volicord-core/src/methods/tests/prepare_write.rs`](../../../crates/volicord-core/src/methods/tests/prepare_write.rs)의
-  `prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis`,
-  `prepare_write_replaces_active_ticket_missing_write_authority_binding`,
-  `prepare_write_replaces_active_ticket_with_mismatched_write_authority_binding`,
-  `prepare_write_blocked_path_issues_no_write_ticket`,
-  `prepare_write_dry_run_has_no_write_ticket_effect`,
-  `prepare_write_user_only_category_is_invocation_context_rejection`
-- [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)의
-  `read_only_mode_rejects_agent_workflow_methods_before_core`
-- [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
-  `committed_non_allow_prepare_write_audit_and_replay_are_exact` 및
-  `prepare_write_issues_write_ticket_only_on_committed_allowed_effect`
-
-정확한 동작 질문:
-
-- 메서드 동작과 결정 분기:
-  [쓰기 준비 메서드 담당 문서](../reference/api/method-prepare-write.md)
-- 쓰기 티켓, 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험
-  수락 같은 Core 권한 용어: [Core 모델](../reference/core-model.md)
-- `Product Repository` 경로 정규화:
-  [런타임 경계](../reference/runtime-boundaries.md)
-- 공통 응답 분기: [API 코어 스키마](../reference/api/schema-core.md)
-- 판단 형태: [판단 스키마](../reference/api/schema-judgment.md)
-- 저장 효과: [저장 효과](../reference/storage-effects.md)
-- 보안 보장 의미: [보안](../reference/security.md)
-
-## `volicord.record_run`: 티켓 소비 방어
-
-참조 담당 문서:
-
-- [실행 기록 메서드 담당 문서](../reference/api/method-record-run.md)
-
-주요 소스 경로:
-
-1. [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)는
-   요청, 관찰된 변경 입력, 결과 형태를 정의합니다.
-2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)는
-   공유 형식 어댑터 경로로 `"volicord.record_run"`을 전달합니다.
-3. [`crates/volicord-core/src/methods/record_run.rs`](../../../crates/volicord-core/src/methods/record_run.rs)는
-   현재 정책을 읽고, 티켓을 검증하고, Run과 티켓 소비를 계획합니다.
-4. [`crates/volicord-core/src/policy/workflow.rs`](../../../crates/volicord-core/src/policy/workflow.rs)는
-   현재 Task 통제와 정규화된 쓰기 권한을 해석합니다.
-5. [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs)는
-   소비 트랜잭션 안에서 티켓과 정책 권한을 다시 확인합니다.
-
-생명주기:
-
-1. MCP 디코딩과 공통 Core 사전 점검은 정확한 Task와 커밋 변경 정책을 사용해 공유
-   경로를 따릅니다.
-2. `plan_record_run`은 변경 경로와 민감 범주를 정규화하고, 현재 프로젝트 정책을
-   불러오고, 현재 Task 통제를 해석합니다.
-3. 제품 파일 쓰기나 유효 통제가 `sensitive`인 Task에는 쓰기 티켓이 필요합니다. 정책
-   통제 재평가가 대기 중이면 기존 티켓을 소비하기 전에 새 `prepare_write`가 필요합니다.
-4. Core는 티켓이 활성 상태이고 현재 Task, Change Unit, 범위, baseline, workspace,
-   경로, 범주, 승인 근거, 유휴 제한, `write_authority_fingerprint`와 호환되는지
-   확인합니다. 결속이 없는 이전 티켓이나 결속이 다른 티켓은
-   `policy_authority_mismatch`가 담긴 `WRITE_TICKET_INVALID`를 반환하고 Run을 만들지
-   않습니다.
-5. Core는 예상 근거 상태 버전과 현재 fingerprint를 담은 `ConsumeWriteTicket`을 새
-   Run과 같은 변경 계획에 넣습니다. 필요한 민감 동작 승인은 이 계획 전에 확인하며,
-   이후의 최종 수락은 그 사전 쓰기 승인을 대신할 수 없습니다.
-6. Store는 트랜잭션 안에서 티켓과 현재 프로젝트 정책을 다시 읽습니다. 상태, 근거
-   버전, 저장된 결속, 현재 권한 중 하나라도 바뀌면 충돌로 전체 변경을 rollback합니다.
-7. 커밋에 성공하면 Run을 기록하고 티켓을 정확히 한 번 소비합니다. 소비된 티켓 기록은
-   계속 조회할 수 있습니다.
-
-Guard는 협력형 `pre-tool` 경로에서 정책 결속이 오래된 티켓을 먼저 거부할 수 있지만,
-Guard를 우회해도 Core와 Store의 독립 점검을 거칩니다. 이 기록은 OS 샌드박스,
-파일시스템 권한 경계, 변조 방지 감사 로그, 정확성 증명이 아닙니다.
-
-대표 테스트:
-
-- [`crates/volicord-core/src/methods/tests/record_run.rs`](../../../crates/volicord-core/src/methods/tests/record_run.rs)의
-  `record_run_rejects_missing_write_authority_binding_without_consumption`,
-  `record_run_rejects_mismatched_write_authority_binding_without_consumption`
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)의
-  `write_ticket_consumption_revalidates_policy_authority_inside_transaction`
-
-정확한 동작 질문:
-
-- 메서드 동작: [실행 기록 메서드 담당 문서](../reference/api/method-record-run.md)
-- 티켓과 승인 권한: [Core 모델](../reference/core-model.md)
-- 영속 효과와 과거 기록: [저장 효과](../reference/storage-effects.md),
-  [저장소 기록](../reference/storage-records.md)
-- 협력형 Guard와 비보장: [보안](../reference/security.md)
+- [MCP 전송](../reference/mcp-transport.md)
+- [API 메서드](../reference/api/methods.md)
+- [저장 효과](../reference/storage-effects.md)
+- [실패 모델](../reference/failure-model.md)
+- [Guard suppression](../reference/guard-suppression.md)

@@ -47,8 +47,8 @@ flowchart LR
   host -. 공개 API 밖의 제품 파일 도구 .-> product
 ```
 
-`volicord-mcp` 어댑터 라이브러리는 시작 검사, 세션 검증, Agent Connection 맥락, 현재
-호스트 역량 평가, 요청 시점 프로젝트 라우팅을 위해 Store를 직접 사용할 수 있습니다.
+`volicord-mcp` 어댑터 라이브러리는 시작 검사, Agent Connection 맥락, binding 검증,
+요청 시점 project routing을 위해 Store를 직접 사용할 수 있습니다.
 이 직접 Store
 사용은 공개 Volicord 메서드 의미를 구현하는 다른 경로가 아닙니다. 공개 메서드
 실행은 Core를 통과합니다.
@@ -146,7 +146,6 @@ digest가 현재 릴리스 계약과 일치하는 데이터베이스만 엽니�
 | 경계 | 집중 결정 |
 |---|---|
 | Agent Connection, 호스트 처리 경로, 명시적 Connection Project 멤버십 | [Agent Connection과 호스트 라우팅](decisions/agent-connection-routing.md) |
-| 어댑터, 진단, 릴리스 검증이 공유하는 정적 호스트 기능 구현 사실 | [호스트 기능 지원 상태 평가](decisions/host-feature-support-state-evaluation.md) |
 | 외부 정확한 최종 아티팩트 호스트 릴리스 게이트와 독립 audit | [외부 호스트 릴리스 증거 게이트](decisions/host-release-evidence-gate.md) |
 | Core가 MCP와 CLI 어댑터에서 독립적임 | [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md) |
 | 정상 커밋된 Store 변이 전 메서드 계획 | [원자적 변이 커밋 전 계획](decisions/plan-and-atomic-commit.md) |

@@ -542,257 +542,18 @@ direct
 
 이 절은 차단 사유 범주 값인 `CloseReadinessBlocker.category`와 인접 상태/차단 사유 값을 담당합니다.
 
-`HostFeatureSupportStatus`는 정확히 다음 값을 사용합니다.
-
-```text
-verified
-implemented_unverified
-unsupported_by_host
-temporarily_unavailable
-```
-
-`verified`에는 현재 최종 Volicord 아티팩트와 설치 호스트에 결속된 정확한 최신 증거와
-준비된 런타임 전제 조건이 필요합니다. `implemented_unverified`는 구현은 있지만 그 증거가
-없거나, 오래됐거나, 만료됐거나, 형식이 잘못됐거나, 일치하지 않는다는 뜻입니다.
-`unsupported_by_host`는 현재 호스트 표면이 필요한 호스트 소유 역량의 부재를 명시적으로
-보고한다는 뜻입니다. 호스트 버전 동등성이나 버전 검토 부재만으로는 이 값을 만들 수
-없습니다. `temporarily_unavailable`은 정확한 증거는 현재 유효하지만 지금의 런타임 전제
-조건이 내려가 있다는 뜻입니다.
-
-대응하는 기능 식별자는 정확히 다음과 같습니다.
-
-```text
-native_user_action
-local_web_user_channel
-verified_tool_producer
-registered_connection_observation
-record_final_output
-detective_final_output
-```
-
-`HostRuntimeProbeId`는 정확히 다음 값을 사용합니다.
-
-```text
-lifecycle_hook_delivery
-pre_tool_structured_target_paths
-post_tool_structured_changed_paths
-model_separated_user_action_ui
-stop_delivery_and_replay
-fixed_ui_authority_disclosure
-mcp_capability_advertised_and_exercised
-```
-
-`HostRuntimeProbeOutcome`은 정확히 `passed`, `failed`, `unavailable`,
-`unsupported`를 사용합니다. `HostRuntimeProbeFailureClass`는 정확히 다음 값을
-사용합니다.
-
-```text
-none
-explicit_capability_absent
-configuration_unavailable
-binding_mismatch
-approval_required
-listener_unavailable
-event_delivery_failed
-structured_paths_missing
-model_separation_unconfirmed
-replay_failed
-second_stop_requested
-fixed_ui_unconfirmed
-capability_not_advertised
-capability_not_exercised
-probe_not_run
-```
-
-최종 출력 `required_subcapabilities`와 `subcapabilities` 키는
-`authority_display`, `authenticated_exact_replay`, `block_finalization`만 사용합니다.
-선택한 프로필에 적용되는 키만 출력하며 제품 지원 상태에는 `not_applicable`이 없습니다.
-
-`block_finalization`은 현재 authority receipt의
-`completion_claim_allowed=false`일 때 권한 없는 완료 주장을 억제한다는 뜻입니다.
-Stop, session 종료, connection shutdown, 사용자가 나가는 동작을 거부, 지연, 방지한다는
-뜻이 아닙니다. 사용할 수 있으면 Stop은 크기가 제한된 session-end receipt를 계속
-기록합니다.
-
-`PlannedBlocker.source_kind`는 아래 값을 사용합니다.
+`PlannedBlocker.source_kind`는 다음 값을 사용합니다.
 
 ```text
 write_decision
 close_readiness
 ```
 
-`IntegrationProfile`과 `GuardHealthSummary.selected_profile`은 아래 값을 사용합니다.
+`IntegrationProfile`은 정확히 `record`만 사용합니다. 관리 Codex workflow 구성을
+선택하며 Task 위험 등급이나 보장 라벨이 아닙니다.
 
-| 값 | 의미 |
-|---|---|
-| `record` | 호스트 훅이나 세션 감시기 관찰을 요구하지 않고 권한 상태를 기록하며 MCP 도구 작업 흐름을 노출합니다. Core가 발급한 권한 쓰기 티켓도 포함합니다. |
-| `detective` | 쓰기 티켓 범위와 연결할 수 있도록 어댑터가 구성한 호스트 훅과 세션 감시기 관찰을 활성화합니다. 각 관리 기능의 현재 지원 상태는 `HostFeatureSupportStatus`로 독립적으로 보고합니다. 이 프로필은 협력형 호스트 경고나 거부를 반환하고, 감시 범위가 시작된 뒤의 미기록 Product Repository 변경을 탐지할 수 있습니다. 행위자 신원을 증명하거나, OS 강제를 제공하거나, 네트워크를 격리하거나, 도구를 샌드박스에 격리하지는 않습니다. |
-
-`GuardHealthSummary.hook_path_safety`는 아래 값을 사용합니다.
-
-```text
-ok
-not_recorded
-metadata_missing
-authority_mismatch
-policy_hash_mismatch
-host_output_mismatch
-relative_path_unsafe
-absolute_path_stale
-placeholder_unsupported
-dispatch_missing
-wrapper_missing
-wrapper_not_executable
-```
-
-`ok`는 모든 필수 호스트 훅 명령이 현재 작업 디렉터리와 무관하고 하위
-디렉터리에서도 안전하게 기록되어 있으며, 예상한 관리 래퍼 경로로 해석된다는
-뜻입니다. 실패 값은 이 조건을 만족하지 못한 주된 이유를 보고합니다. 여기에는
-세션의 현재 작업 디렉터리에 의존하는 상대 명령, 오래된 절대 프로젝트 루트,
-지원되지 않는 자리표시자, 누락된 디스패치 또는 래퍼 스크립트, 지원되는 Unix 계열
-플랫폼에서 실행할 수 없는 래퍼 스크립트, 생성된 래퍼 메타데이터 불일치, 누락된
-검증 메타데이터가 포함됩니다.
-
-`relative_path_unsafe`에는 호스트 세션의 현재 작업 디렉터리를 기준으로 해석되는
-`.codex/hooks/...`, `./.codex/hooks/...`, `.claude/hooks/...`,
-`./.claude/hooks/...` 명령이 포함됩니다. `ok`가 아닌 `hook_path_safety` 값은
-`detective` 호스트 훅을 `inactive`로 유지합니다.
-
-`GuardHealthSummary.guard_installation_status`는 아래 값을 사용합니다.
-
-```text
-absent
-configured
-reload_required
-active
-degraded
-stale
-broken
-```
-
-`GuardHealthSummary.guard_configuration_status`는 아래 값을 사용합니다.
-
-```text
-absent
-configured
-reload_required
-degraded
-stale
-broken
-```
-
-`GuardHealthSummary.guard_observation_status`는 아래 값을 사용합니다.
-
-```text
-not_observed
-observed
-stale_observation
-```
-
-`GuardHealthSummary.effective_guard_status`는 아래 값을 사용합니다.
-
-```text
-inactive
-action_required
-active
-degraded
-broken
-```
-
-`GuardHealthSummary.prompt_capture_status`는 아래 값을 사용합니다.
-
-```text
-unavailable
-unsupported_by_host
-not_configured
-reload_required
-configured
-observed
-active
-degraded
-```
-
-`GuardHealthSummary.session_watch_status`는 아래 값을 사용합니다.
-
-```text
-disabled
-active
-degraded
-unavailable
-pending_project_selection
-```
-
-`GuardHealthSummary.session_watch_coverage_basis`는 아래 값을 사용합니다.
-
-```text
-mcp_start
-first_project_selection
-method_boundary
-```
-
-`CoverageSummary.host_hook_state`는 아래 값을 사용합니다.
-
-```text
-observed
-not_observed
-unsupported
-degraded
-```
-
-`CoverageSummary.session_watcher_state`는 아래 값을 사용합니다.
-
-```text
-active
-inactive
-unsupported
-degraded
-```
-
-아래 필드는 `detective` 호스트 훅의 설정, 관찰, 유효한 닫기 준비 상태를
-구분합니다.
-
-- `guard_installation_status`는 저장된 설치 생명주기 값입니다.
-- `guard_configuration_status`는 파일과 필수 훅 설정이 완전한지를 나타냅니다.
-- `guard_observation_status`는 현재 설치에 일치하는 훅 관찰이 있는지를 나타냅니다.
-- `effective_guard_status`는 `detective` 경로의 닫기 준비 상태에 쓰는 값입니다. `active`가 되려면 `detective` 프로필, 완전한 필수 훅 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 정책 식별 정보가 필요합니다.
-
-`prompt_capture_status`는 사용자 소유 행동 채팅 명령을 사용할 수 있는지를
-보고합니다.
-
-- `unsupported_by_host`: 호스트 기능이 없습니다.
-- `not_configured`: 선택된 연결에 프롬프트 캡처 단계가 설정되지 않았습니다.
-- `reload_required`: 사용 전에 설치 설정이나 정책 식별 정보를 다시 읽어야 합니다.
-- `configured`: 프롬프트 캡처 관찰 전에도 검증 코드 채팅 명령을 표시할 수 있습니다.
-- `observed`: 일치하는 호스트 훅이 관찰되었습니다.
-- `active`: 일치하는 프롬프트 캡처 훅 관찰이 기록되었습니다.
-- `degraded`: 저하된 `detective` 호스트 훅 상태 때문에 프롬프트 캡처가 차단됩니다.
-
-`session_watch_status`는 `detective` 세션 감시기의 사용 가능 상태를 보고합니다.
-
-- `disabled`: 선택된 세션 감시 기준선을 사용할 수 없습니다.
-- `active`: 한정된 스냅샷 비교를 사용할 수 있습니다.
-- `degraded`: 감시 결과가 부분적이거나 운영자 조치가 필요합니다.
-- `unavailable`: 감시기가 선택된 스냅샷 확인을 수행할 수 없었습니다.
-
-`CoverageSummary.host_hook_state`와
-`CoverageSummary.session_watcher_state`는 사람이 읽는 상태 조회와 닫기 준비 상태
-출력을 위한 간결한 파생 상태입니다. 자세한 `GuardHealthSummary` 필드를 대신하지
-않습니다.
-
-이 값들은 제품 정확성, 테스트 충분성, OS 강제, 샌드박싱, 보안 격리, 최종 수락,
-잔여 위험 수락, 행위자 귀속, 전체 파일시스템 감시, 완전한 쓰기 방지를 증명하지
-않습니다. `record` 프로필은 협력형입니다. 닫기 준비 상태가 해결되지 않은 미기록
-변경을 보고하면 그 변경은 닫기를 막습니다.
-
-관찰 범위 시점 값의 의미는 다음과 같습니다.
-
-- `pending_project_selection`: MCP 세션에 사용할 수 있는 프로젝트가 둘 이상이고, 세션 감시 기준선을 만들 만큼 프로젝트를 명시적으로 선택하지 않은 상태입니다.
-- `mcp_start`: 프로젝트에 연결된 시작 또는 HTTP 세션 초기화에서 MCP 도구 처리 전에 감시 범위가 시작됩니다.
-- `first_project_selection`: 여러 프로젝트를 다루는 세션이 명시적인 `project_selector`를 처음 지정할 때 감시 범위가 시작됩니다.
-- `method_boundary`: Core 메서드 경계의 대체 지점에서 감시 범위가 시작됩니다.
-
-`first_project_selection`과 `method_boundary`는 부분 관찰 범위 근거입니다. 기록된
-관찰 시작 전의 Product Repository 변경은 감시 범위 밖에 있습니다.
+Guard의 prompt 관련 데이터가 있다면 관찰일 뿐입니다. UserAction을 해결하거나 사용자
+권한을 만들거나 CLI inbox를 대신할 수 없습니다.
 
 `UnrecordedChangeFinding.status`는 아래 값을 사용합니다.
 
@@ -1040,16 +801,11 @@ reused_evidence
 경로를 유지합니다. 호출자 입력, raw guard payload, 아티팩트 바이트만으로는 이
 앵커를 만들 수 없습니다.
 
-`ConnectionObservationSourceSelector.source_kind`는 아래 값을 사용합니다.
+`ConnectionObservationSourceSelector.source_kind`는 정확히 다음 값을 사용합니다.
 
 ```text
 guard_event
-session_watcher
 ```
-
-이 discriminator 값은 `registered_connection_observation`의 등록 source-selector
-branch를 선택합니다. 별도의 공개 value-set type을 구성하지 않으며, 값 자체가 source
-완전성, host identity, 증거 relevance를 증명하지는 않습니다.
 
 `ConnectionObservationGuardEventKind`는 다음 값을 사용합니다.
 
@@ -1057,15 +813,10 @@ branch를 선택합니다. 별도의 공개 value-set type을 구성하지 않�
 pre_tool
 post_tool
 prompt_capture
-stop
 ```
 
-`guard_event` source-selector branch는 이 값 중 하나를 정확히 요구합니다.
-`session_watcher` branch는 이 값을 받지 않습니다. Selector는 계획한 등록
-source class를 결합하며, 구체적인 guard-event 또는 watcher-observation identity,
-observation 시각, source digest는 receipt 소유 사실로 남습니다.
-`session_start`는 정확한 intent-bound session이 intent 생성 전에 시작하므로 intent
-이후 source observation을 만들 수 없어 이 집합에 포함하지 않습니다.
+`prompt_capture`는 관찰된 Guard event만 식별합니다. UserAction 해결 채널,
+사용자 답, verification basis가 아닙니다.
 
 `EvidenceRelevanceAssessment.status`와
 evidence-observation 해결 본문은 `unassessed`, `supported`, `contradicted`를
@@ -1117,32 +868,22 @@ blocking
 
 이 기준 범위 값 집합 담당 문서는 지원되는 안정 `ValidatorResult.validator_id` 집합을 공개하지 않습니다. `validator_id` 문자열은 보고용 라벨이며 안정된 제어 값이 아닙니다.
 
-`GuaranteeDisplay.level`은 기준 범위 지원 값으로 아래를 사용합니다.
+`GuaranteeDisplay.level`은 정확히 다음 값만 사용합니다.
 
 ```text
 cooperative
-detective
 ```
 
-`cooperative`는 다른 근거가 없을 때 사용하는 기준 값입니다. `detective`는 보안 담당 문서가 그 주장을
-지원하고, 프로젝트 강제 사실, 확인된 Agent Connection 또는 User Channel 출처,
-활성화된 강제 메커니즘, 관찰 범위 사실이 이를 뒷받침할 때만 표시할 수 있습니다.
-선언된 연결 역량만으로 표시 보장을 높일 수 없습니다.
-
-`GuaranteeDisclosure.guarantee_class`는 아래 값을 사용합니다.
+`GuaranteeDisclosure.guarantee_class`는 다음 값을 사용합니다.
 
 ```text
 authority_record
-cooperative_host_decision
-detective_observation
 user_action_resolution
 ```
 
-값 의미:
-- `authority_record`는 결과가 문서화된 메서드 계약 안에서 Core 권한 상태, 응답 분기 메타데이터, 메서드별 결과 필드를 보고한다는 뜻입니다.
-- `cooperative_host_decision`은 결과가 관찰된 호스트 이벤트에 대해 협력형 호스트 훅으로 반환한 결정을 보고한다는 뜻입니다.
-- `detective_observation`은 결과가 Volicord가 검사할 수 있었던 로컬 진단, 검증, 관찰, 전송 상태 사실을 보고한다는 뜻입니다.
-- `user_action_resolution`은 결과가 지원되는 `User Channel` 경로로 받은 불변 사용자 소유 해결을 기록한다는 뜻입니다.
+`authority_record`는 메서드 계약 안의 Core 권한 상태를 보고합니다.
+`user_action_resolution`은 CLI User Channel로 받은 변경 불가능한 로컬 사용자
+resolution을 보고합니다.
 
 `GuaranteeDisclosure.non_guarantees`는 아래 값을 사용합니다.
 

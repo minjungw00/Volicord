@@ -17,23 +17,23 @@
 이 문서는 아래 항목을 담당하지 않습니다.
 
 - 공통 요청 래퍼, 응답 분기, `dry_run`, 거절 응답 스키마 본문
-- `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, `GuardHealthSummary`, `NextActionSummary` 필드 정의
+- `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, `NextActionSummary` 필드 정의
 - 저장소 테이블 배치, SQLite 제약, 공개 오류 코드 의미, 공개 오류 우선순위, 공통 응답 분기 처리
 - 정확성 증명, 테스트 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안 보장
 
 ## 목적
 
-`volicord.reconcile_changes`는 `detective` 호스트 훅이나 `session-watch`가 만든 미기록 변경을 복구하는 공개 경로입니다.
+`volicord.reconcile_changes`는 지속 저장된 미기록 변경을 복구하는 공개 경로입니다.
 
 선택한 `Task`에 대해 이 메서드는 다음 작업을 합니다.
 
 - 미해결 미기록 변경을 나열합니다.
-- 저장된 Core, 호스트 훅, 예상 쓰기, `session-watch` 기록으로 검증할 수 있는 변경을 해결합니다.
+- 저장된 Core, Run, 예상 쓰기, 쓰기 티켓 기록으로 검증할 수 있는 변경을 해결합니다.
 - 남은 변경에 사용자 수락이 필요하면 대기 중인 `UserActionRequest`를 만듭니다.
 
 이 메서드는 우회를 조용히 묵살하지 않습니다. 호환되는 User Channel 행동이 해결되지 않았다면 Agent Connection은 미기록 변경을 수락된 것으로 표시할 수 없습니다.
 
-미기록 변경을 해결하면 미해결 호스트 훅 상태 수와 `unresolved_unrecorded_changes` 닫기 차단 사유 계산에서 빠집니다. 해결됐다는 사실만으로 제품 파일이 정확하거나, 검토 또는 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 뜻은 아닙니다.
+미기록 변경을 해결하면 `unresolved_unrecorded_changes` 닫기 차단 사유 계산에서 빠집니다. 해결됐다는 사실만으로 제품 파일이 정확하거나, 검토 또는 테스트되었거나, 닫기에 최종 수락되었거나, 잔여 위험으로 수락 가능하다는 뜻은 아닙니다.
 
 모든 finding은 `confidence=confirmed|suspected`를 가집니다. 확인된
 (`confirmed`) 미해결 Product Repository 변경은 `unresolved_unrecorded_changes`에
@@ -101,11 +101,8 @@ UnrecordedChangeResolutionRequest:
 
 저장 변경이 없는 유효한 호출은 읽기 전용 결과를 반환합니다. 재실행 행, 이벤트, 상태 버전 증가는 만들지 않습니다.
 
-세션에 묶인 메서드 경계에서는 조정 계획 전에 런타임이 제한된 `session-watch` 확인을 실행할 수 있습니다. 이 진단 확인은 관찰을 하나의 결정적 예상 쓰기 또는 `active` 쓰기 티켓과 연결할 수 있습니다. Product Repository 스냅샷 변경이 일치하지 않거나, 티켓 범위 밖이거나, 모호하면 새 미해결 미기록 변경을 만듭니다.
-
-경로나 내용 변경을 결정적으로 관찰하면 `confirmed`입니다. 불완전하거나 휴리스틱
-기반이거나 모호한 watcher 신호는 이후 비교에서 변경을 확정하거나 기각할 때까지
-`suspected`로 저장할 수 있습니다. 조정 변경은 별도 동작이 티켓의 명시적 유효성
+조정은 지속 저장된 미기록 변경을 바탕으로 계획하며 새 관찰을 만들지 않습니다.
+조정 변경은 별도 동작이 티켓의 명시적 유효성
 좌표 중 하나를 바꾸지 않는 한 쓰기 티켓을 소비하거나 무효화하지 않습니다. 조정에
 따른 상태 버전 증가만으로는 티켓 유효성이 바뀌지 않습니다.
 
@@ -126,7 +123,6 @@ UnrecordedChangeResolutionRequest:
 - `rejected_resolution_requests`
 - 현재 `state`
 - 계획 후 `close_blockers`
-- 계획 후 `guard_health`
 - `next_actions`
 
 ## 메서드 결과 필드
@@ -142,7 +138,6 @@ UnrecordedChangeResolutionRequest:
 | `rejected_resolution_requests` | Core가 거부한 호출자 제공 해결 요청입니다. 이는 성공한 메서드 결과 안의 구조화된 거부이며 공개 `ToolRejectedResponse` 오류가 아닙니다. |
 | `state` | 조정 보기 또는 커밋 뒤의 현재 `StateSummary`입니다. |
 | `close_blockers` | 계획된 조정 효과 뒤의 닫기 차단 사유 보기입니다. |
-| `guard_health` | 검증된 연결에서 사용할 수 있을 때의 `GuardHealthSummary` 호스트 훅 상태 보기입니다. |
 | `next_actions` | 사용자가 생성된 사용자 행동을 해결하는 `user_only` 행동이나 조정을 다시 실행하는 `agent_workflow`/`local_recovery` 행동 같은 다음 안전 단계입니다. 비어 있지 않은 목록에는 primary 표시 행동이 정확히 하나 있습니다. |
 
 결과 공개는 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 행위자 귀속 증명이 아닙니다.
@@ -153,29 +148,20 @@ Core가 결정하는 해결 근거(`basis`):
 
 - `invalid_observation`: 저장된 관찰 데이터를 Product Repository 경로로 해석할 수 없습니다.
 - `not_product_change`: 저장된 관찰 데이터에 조정할 Product Repository 경로가 없습니다.
-- `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 포함하거나, 같은 `Task`의 결정적 예상 쓰기 상관관계가 감시자가 관찰한 Product Repository 경로를 포함합니다.
+- `recorded_as_expected_write`: 같은 `Task`의 기록된 Run이 관찰된 Product Repository 경로를 이미 포함하거나, 같은 `Task`의 결정적 예상 쓰기 상관관계가 그 경로를 포함합니다.
 - `covered_by_write_ticket`: 같은 `Task`의 호환되는 소비된 쓰기 티켓 하나 또는 현재 `active`이고 소비되지 않았으며 상태에 묶여 유효한 쓰기 티켓 하나가 관찰된 Product Repository 경로를 결정적으로 포함합니다. 선택적 idle timeout이 설정된 경우에만 이를 확인하며 고정 티켓 수명은 없습니다.
-- `reverted`: 감시자가 만든 미기록 변경이 `session-watch` 관찰에 연결되어 있고 현재 Product Repository 스냅샷이 저장된 감시 기준선과 다시 일치합니다.
 
 사용자가 결정하는 해결 근거:
 
 - `accepted_by_user`: 미기록 변경에 연결된 호환되는 해결된 `product_decision` 사용자 행동이 로컬 사용자가 해당 관찰 변경을 이 `Task`에서 의도된 변경으로 수락했음을 기록합니다.
 
-`superseded_by_new_observation`은 예약 값이며 기준 메서드가 생성하지 않습니다. 호출자는 Core가 결정하는 해결 근거를 에이전트 묵살 사유로 선택할 수 없습니다. 이 메서드는 해결 근거를 만들기 위해 파일시스템을 되돌리거나 추가로 탐색하지 않습니다.
+`reverted`와 `superseded_by_new_observation`은 예약 값이며 기준 메서드가 생성하지 않습니다. 호출자는 Core가 결정하는 해결 근거를 에이전트 묵살 사유로 선택할 수 없습니다. 이 메서드는 해결 근거를 만들기 위해 파일시스템을 되돌리거나 추가로 탐색하지 않습니다.
 
 아직 수락이 필요한 미기록 변경은 Core가 임의로 수락하지 않습니다. 대신 대기 중인
 `UserActionRequest` 행을 만듭니다. 메서드 결과는
 `AgentSafeUserActionRequestSummary` 항목과 일반 User Channel 연속 작업만 노출합니다.
 Form, 명령, URL, credential, request ref를 반환하지 않고 결과 projection만을 위해 token을
-발급하지 않습니다. 사용자는 별도로 검증된 다음 User Channel 입력 방법으로 해결할 수 있습니다.
-
-- 초기화된 클라이언트에서 해당 경로를 실제로 사용할 수 있을 때의 호스트 프롬프트 입력
-- 명령 캡처 상태가 `configured`, `observed`, `active`일 때의 채팅 명령 캡처
-- listener가 준비됐고 초기화한 client가
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
-  정확한 boolean `true`를 보냈을 때의 loopback local consent 표면. URL은 host 소유의
-  모델 비가시적 `_meta`로만 전달합니다.
-- CLI inbox 경로인 로컬 `volicord inbox` 명령
+발급하지 않습니다. 로컬 사용자는 `volicord inbox`에서만 이 행동을 해결합니다.
 
 사용자 소유 행동이 해결되면 `volicord.reconcile_changes`가 연결된 미기록 변경을 `accepted_by_user`로 해결할 수 있습니다.
 

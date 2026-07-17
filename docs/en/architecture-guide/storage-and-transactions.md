@@ -283,19 +283,14 @@ in [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
 
 ## Other storage-owned clock-floor writers
 
-Registered evidence-capture fulfillment and local-web User Channel token
-issuance also run outside the normal Core mutation commit:
+Registered evidence-capture fulfillment runs outside the normal Core mutation
+commit. It atomically inserts one receipt, its transient staging row and bytes,
+and all source claims while advancing the floor to at least receipt
+`created_at`.
 
-- Receipt fulfillment atomically inserts one receipt, its transient staging
-  row and bytes, and all source claims, while advancing the floor to at least
-  receipt `created_at`.
-- Token issuance samples canonical current project time for token `created_at`,
-  derives `expires_at`, inserts the hash-only token, and advances the floor to
-  at least `created_at` in one transaction. Validation accepts only
-  `created_at <= now < expires_at`.
-
-Neither path increments `state_version` or creates authority events or replay
-rows. A failed transaction rolls back both the owned rows and its floor update.
+This path does not increment `state_version` or create authority events or
+replay rows. A failed transaction rolls back both the owned rows and its floor
+update.
 
 ## Failure boundaries
 

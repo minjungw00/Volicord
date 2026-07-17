@@ -14,11 +14,11 @@ managed binding and receipt semantics belong to
 <a id="surface-stability"></a>
 ## Surface Stability
 
-The four `PlatformEnvironment` values, WSL2 topology and ext4 boundary,
-managed stdio MCP prerequisite, and stop criteria are stable contracts.
-Specific runner images, package-manager commands, executable locations, and
-diagnostic prose are release or implementation details unless another owner
-marks them stable.
+The four `PlatformEnvironment` values, the exact first-release WSL2
+distribution/image coordinate, WSL2 topology and ext4 boundary, managed stdio
+MCP prerequisite, and stop criteria are stable contracts. Other runner images,
+package-manager commands, executable locations, and diagnostic prose are
+release or implementation details unless another owner marks them stable.
 
 ## First-Release Environment Matrix
 
@@ -56,18 +56,34 @@ one pinned Ubuntu LTS WSL2 distribution
   ├─ Codex process
   ├─ Volicord process
   ├─ Product Repository on the distribution ext4 filesystem
-  └─ Volicord Runtime Home on the distribution ext4 filesystem
+  ├─ Volicord Runtime Home on the distribution ext4 filesystem
+  └─ Codex/Volicord executables, managed configuration, and generated managed
+     artifacts on the distribution ext4 filesystem
 ```
+
+The exact first-release WSL2 coordinate is:
+
+| Coordinate | Exact value |
+|---|---|
+| `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
+| `/etc/os-release` `ID` | `ubuntu` |
+| `/etc/os-release` `VERSION_ID` | `24.04` |
+| release-cell `environment_image` | `Ubuntu-24.04-LTS-WSL2` |
+
+The product observes the distribution name, operating-system identity, WSL2
+kernel boundary, and filesystem type. The release-cell image value is the
+exact coordinate registered for those observed distribution facts; a cell for
+another image cannot authorize this coordinate.
 
 The WSL2 release cell must establish WSL2 explicitly. An ordinary Linux
 `target_os` result is insufficient. Its `ManagedHostBinding` and
 `HostVerificationReceipt` bind `platform_environment=wsl2`; neither can be
 reused as `linux` or `native_windows` evidence.
 
-The current WSL2 cell uses the one Ubuntu LTS image pinned by its release
-evidence. A different distribution or image is not inferred to be equivalent.
-The Product Repository and Runtime Home must resolve inside the distribution's
-Linux ext4 filesystem.
+The Product Repository, Runtime Home, Codex executable, Volicord executable,
+managed Codex configuration, and every generated managed artifact must resolve
+inside that distribution's Linux ext4 filesystem. A different distribution,
+image, or filesystem is not inferred to be equivalent.
 
 The following WSL topologies are unsupported and must fail with a
 machine-readable unsupported-environment reason before installation or receipt
@@ -87,6 +103,14 @@ use:
 A WSL shutdown or restart invalidates live process identity. A binding or
 receipt whose process or freshness coordinates no longer match is stale and
 must be rejected before a fresh verify flow produces a new receipt.
+
+Unsupported topology is machine-readable. `unsupported_wsl1` identifies WSL1;
+`unsupported_wsl_cross_topology` identifies inconsistent WSL kernel/environment
+facts; `unsupported_wsl2_distribution` identifies a distribution-coordinate
+mismatch; and `unsupported_wsl2_filesystem` identifies a non-ext4 component.
+These are `UnsupportedContract` outcomes. An unavailable kernel, distribution,
+or filesystem observation remains `Unavailable`; it is not converted into an
+unsupported or native environment.
 
 <a id="toolchain-requirements"></a>
 ## Toolchain Requirements
@@ -136,8 +160,9 @@ absolute under the selected platform's path rules, writable for initialization
 and administrative repair, and accessible to the managed Volicord process.
 
 The Runtime Home must remain within one platform environment. Native Windows
-and WSL2 paths are never converted or shared. Inside WSL2 it must be on the
-distribution ext4 filesystem and not under `/mnt/*`.
+and WSL2 paths are never converted or shared. Inside WSL2 its path and nearest
+existing ancestor must be on the distribution ext4 filesystem and not under
+`/mnt/*`; a path that merely has Linux spelling is insufficient.
 
 Fresh development data is created from the current canonical SQLite contract.
 An existing database with another manifest is not upgraded, imported, or

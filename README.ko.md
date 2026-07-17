@@ -22,7 +22,7 @@ Volicord(볼리코드)는 AI 지원 제품 작업을 위한 로컬 작업 권한
 - 어떤 판단이 아직 사용자에게 남아 있는지
 - 작업을 닫기 전에 무엇을 해결해야 하는지
 
-Volicord는 Codex나 Claude Code 같은 에이전트 호스트와 함께 쓰는 로컬
+최초 릴리스 Volicord는 정확히 검증된 Codex 빌드와 함께 쓰는 로컬
 `Product Repository`(제품 저장소)를 대상으로 합니다. OS 샌드박스, 파일 권한 시스템,
 정확성 판정기, 변조 방지 감사 로그, 중앙식 다중 사용자 서비스가 아닙니다.
 
@@ -53,8 +53,7 @@ volicord --version
 volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
-Claude Code는 `--host claude-code`를 사용합니다. 예시 경로는 에이전트가 작업할
-저장소이며 Volicord 소스 저장소일 필요는 없습니다.
+예시 경로는 Codex가 작업할 저장소이며 Volicord 소스 저장소일 필요는 없습니다.
 
 이 명령은 로컬 Volicord 상태를 준비하고 프로젝트 범위 호스트 설정 파일을 씁니다.
 출력의 `Next` 단계를 따릅니다. 호스트 재시작이나 다시 불러오기, 프로젝트 신뢰,
@@ -122,7 +121,7 @@ volicord status --repo /path/to/your-product-repo
 |---|---|
 | `Task` | 구체화하거나 수행하거나, 막혀 있거나, 닫으려는 작업 단위입니다. |
 | Task 통제 수준 | Task 하나에 현재 적용되는 작업 흐름 통제 정도를 Core가 기록한 값입니다. 호스트 통합 프로필과 구분됩니다. |
-| 통합 프로필 | Record 또는 Detective 호스트 설정 선택입니다. 통합과 관찰 경로를 고르며 Task의 위험 수준을 나타내지 않습니다. |
+| 통합 프로필 | 최초 릴리스는 Record 호스트 설정 프로필을 사용합니다. Task 위험 수준과는 별개입니다. |
 | 쓰기 티켓 | 제안된 제품 파일 변경 하나를 현재 작업 경계와 정규화된 프로젝트 쓰기 권한에 대조한 Volicord 기록입니다. OS 권한이나 쓰기가 실제로 일어났다는 증명이 아닙니다. |
 | 증거 | 특정 주장을 뒷받침하는 기록입니다. 사용자 수락이나 정확성 증명이 아닙니다. |
 | 사용자 판단 | 제품 방향, 중요한 기술 방향, 범위, 최종 수락, 잔여 위험 수락처럼 사용자에게 속한 결정입니다. |
@@ -140,7 +139,7 @@ volicord status --repo /path/to/your-product-repo
 ```mermaid
 flowchart LR
   user["사용자"]
-  host["에이전트 호스트<br/>Codex 또는 Claude Code"]
+  host["에이전트 호스트<br/>Codex"]
   mcp["volicord mcp --stdio<br/>로컬 MCP 도구"]
   record["Volicord<br/>작업 기록"]
   runtime["Volicord Runtime Home<br/>로컬 런타임 데이터"]
@@ -180,18 +179,11 @@ flowchart TD
   close -- 아니오 --> finish
 ```
 
-## 통합 프로필과 Task 통제
+## Record 프로필과 Task 통제
 
-일반적인 첫 설정에는 기록 프로필(`--profile record`)을 사용합니다. 호스트 생명주기
-훅이나 세션 감시기를 요구하지 않고 MCP를 통한 협력적 작업 기록을 지원합니다.
-
-탐지 프로필(`--profile detective`)은 선택한 호스트, 플랫폼, 저장소가 전제 조건을
-충족할 때만 사용합니다. 담당 문서가 정의한 호스트 훅과 감시기 관찰 경로를 설정하고
-활성화합니다. 이 설정만으로 현재 기능 지원이 성립하지는 않습니다. 그 결과 생기는 관찰은
-미기록 변경을 드러낼 수 있지만 OS 수준 강제를 제공하거나 파일을 바꾼 사람을 증명하지
-않습니다.
-
-Record와 Detective는 통합 프로필이며 Task 위험 등급이 아닙니다. 각 Task에는 요청,
+최초 릴리스는 Record 프로필(`--profile record`)을 사용하며 관리형 stdio MCP를 통한
+협력적 작업 기록을 지원합니다. Record는 통합 프로필이며 Task 위험 등급이 아닙니다.
+각 Task에는 요청,
 프로젝트 소유 정책, 현재 적용 범위, 관련 위험 사실에서 Core가 정하는 별도 통제
 수준도 있습니다. 에이전트는 수준을 요청할 수 있지만 그 요청으로 프로젝트 정책을
 약화할 수 없습니다. 대표 흐름은 [에이전트 가이드](docs/ko/user-guide/agent-workflow.md),

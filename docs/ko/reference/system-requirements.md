@@ -11,10 +11,11 @@ Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 �
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-네 `PlatformEnvironment` 값, WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제
-조건, 중단 기준은 안정 계약입니다. 특정 runner 이미지, 패키지 관리자 명령,
-실행 파일 위치와 진단 문구는 다른 담당 문서가 안정으로 지정하지 않는 한 릴리스
-또는 구현 세부사항입니다.
+네 `PlatformEnvironment` 값, 정확한 최초 릴리스 WSL2 배포판/이미지 좌표,
+WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제 조건, 중단 기준은 안정
+계약입니다. 그 밖의 runner 이미지, 패키지 관리자 명령, 실행 파일 위치와 진단
+문구는 다른 담당 문서가 안정으로 지정하지 않는 한 릴리스 또는 구현
+세부사항입니다.
 
 ## 최초 릴리스 환경 행렬
 
@@ -52,17 +53,33 @@ triple은 실제 셀 실행을 대신하지 않습니다.
   ├─ Codex 프로세스
   ├─ Volicord 프로세스
   ├─ 배포판 ext4 파일 시스템의 Product Repository
-  └─ 배포판 ext4 파일 시스템의 Volicord Runtime Home
+  ├─ 배포판 ext4 파일 시스템의 Volicord Runtime Home
+  └─ 배포판 ext4 파일 시스템의 Codex/Volicord 실행 파일, 관리 설정,
+     생성된 관리 아티팩트
 ```
+
+최초 릴리스의 정확한 WSL2 좌표는 다음과 같습니다.
+
+| 좌표 | 정확한 값 |
+|---|---|
+| `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
+| `/etc/os-release` `ID` | `ubuntu` |
+| `/etc/os-release` `VERSION_ID` | `24.04` |
+| 릴리스 셀 `environment_image` | `Ubuntu-24.04-LTS-WSL2` |
+
+제품은 배포판 이름, 운영체제 identity, WSL2 커널 경계, 파일 시스템 종류를
+관찰합니다. 릴리스 셀 이미지 값은 관찰한 배포판 사실에 등록된 정확한 좌표이며,
+다른 이미지의 셀은 이 좌표를 승인할 수 없습니다.
 
 WSL2 릴리스 셀은 환경이 WSL2임을 명시적으로 확인해야 합니다. 일반 Linux
 `target_os` 결과만으로는 부족합니다. `ManagedHostBinding`과
 `HostVerificationReceipt`는 `platform_environment=wsl2`를 결속하며 `linux`나
 `native_windows` 증거로 재사용할 수 없습니다.
 
-현재 WSL2 셀은 릴리스 증거에 고정된 Ubuntu LTS 이미지 한 종류만 사용합니다.
-다른 배포판이나 이미지를 동등하다고 추정하지 않습니다. Product Repository와
-Runtime Home은 배포판 Linux ext4 파일 시스템 내부로 해석되어야 합니다.
+Product Repository, Runtime Home, Codex 실행 파일, Volicord 실행 파일, 관리
+Codex 설정, 생성된 모든 관리 아티팩트는 해당 배포판의 Linux ext4 파일 시스템
+내부로 해석되어야 합니다. 다른 배포판, 이미지, 파일 시스템을 동등하다고
+추정하지 않습니다.
 
 다음 WSL 토폴로지는 지원하지 않으며 설치 또는 영수증 사용 전에 machine-readable
 unsupported-environment reason으로 실패해야 합니다.
@@ -78,6 +95,14 @@ unsupported-environment reason으로 실패해야 합니다.
 WSL 종료나 재시작은 살아 있는 프로세스 identity를 무효화합니다. 프로세스 또는
 최신성 좌표가 더 이상 맞지 않는 binding과 영수증은 stale로 거절해야 하며, 새
 verify 흐름을 통해 새 영수증을 만들어야 합니다.
+
+지원하지 않는 토폴로지는 기계 판독할 수 있습니다. `unsupported_wsl1`은 WSL1,
+`unsupported_wsl_cross_topology`는 서로 맞지 않는 WSL 커널/환경 사실,
+`unsupported_wsl2_distribution`은 배포판 좌표 불일치,
+`unsupported_wsl2_filesystem`은 ext4가 아닌 구성요소를 뜻합니다. 이 결과는
+`UnsupportedContract`입니다. 커널, 배포판, 파일 시스템을 관찰할 수 없으면
+`Unavailable`로 남으며, 지원하지 않는 환경이나 네이티브 환경으로 바꾸지
+않습니다.
 
 <a id="toolchain-requirements"></a>
 ## 도구 체인 요구사항
@@ -123,8 +148,9 @@ platform environment를 검증합니다. 비어 있는 환경 값과 없는 환�
 접근할 수 있어야 합니다.
 
 Runtime Home은 하나의 플랫폼 환경 안에 있어야 합니다. 네이티브 Windows와 WSL2
-경로를 변환하거나 공유하지 않습니다. WSL2에서는 배포판 ext4 파일 시스템에 두고
-`/mnt/*` 아래에 두지 않습니다.
+경로를 변환하거나 공유하지 않습니다. WSL2에서는 경로와 가장 가까운 기존 상위
+경로가 배포판 ext4 파일 시스템에 있어야 하고 `/mnt/*` 아래에 두지 않습니다.
+Linux 형태의 경로 문자열만으로는 충분하지 않습니다.
 
 새 개발 데이터는 현재 기준 SQLite 계약으로 만듭니다. 다른 manifest를 가진 기존
 데이터베이스를 upgrade, import 또는 재해석하지 않습니다. 새 Runtime Home이나

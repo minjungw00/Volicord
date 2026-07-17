@@ -62,7 +62,7 @@ Bootstrap은 새 프로젝트의 하한을 초기화합니다. 재등록은 기�
 - 저장소 전용 시간 writer는 권한 상태 전이와 구분되고 event나 state version을 만들지
   않습니다.
 - 호스트 시계 오차와 지연 관찰은 현재 Core 권한 경계를 되감거나 전진시키지 못합니다.
-- 손상된 영속 하한은 추측해 복구할 값이 아니라 사용할 수 없는 담당 상태입니다.
+- 손상된 영속 하한은 추측해 복구할 값이 아니라 손상된 담당 상태입니다.
 - 테스트 시계는 저장된 프로젝트 시각을 우회하는 권한을 얻지 않으면서 사용할 수 있고,
   TTL overflow는 제어된 효과 없음 거부입니다.
 
@@ -87,9 +87,8 @@ Bootstrap은 새 프로젝트의 하한을 초기화합니다. 재등록은 기�
 - [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):
   transaction metadata 적용.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs),
-  [`evidence_capture.rs`](../../../../crates/volicord-store/src/evidence_capture.rs),
-  [`user_action_channel.rs`](../../../../crates/volicord-store/src/user_action_channel.rs): 저장소
-  소유 하한 writer.
+  [`evidence_capture.rs`](../../../../crates/volicord-store/src/evidence_capture.rs): Store 소유
+  하한 writer.
 - [`crates/volicord-store/src/bootstrap.rs`](../../../../crates/volicord-store/src/bootstrap.rs):
   하한 초기화, 보존, 검증.
 

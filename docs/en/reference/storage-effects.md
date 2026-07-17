@@ -38,7 +38,7 @@ Effects come from the selected method behavior and response branch. The table su
 
 | Effect category | Response or branch | Durable storage consequence | Details |
 |---|---|---|---|
-| Read-only | Read-only `MethodResult` | No Core authority-state mutation. Response data only except for method-permitted session-watch diagnostic records; no replay row, authority event, artifact effect, write-ticket effect, close-state mutation, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
+| Read-only | Read-only `MethodResult` | No Core authority-state mutation. Response data only; no replay row, authority event, artifact effect, write-ticket effect, close-state mutation, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
 | No-effect | `ToolRejectedResponse` or a valid `MethodResult` with `effect_kind=no_effect` | No ordinary requested mutation and no Core commit. The response may carry errors or blocker-shaped data, but those values are not persisted by this branch. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [No-effect branches](#no-effect-branches) |
 | Dry-run | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
 | Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging plus an atomic non-decreasing advance of the persisted canonical-UTC floor; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
@@ -57,7 +57,7 @@ owns the complete clock contract.
 Storage effect:
 
 - No Core authority-state storage effect.
-- Response data only except for method-permitted session-watch diagnostic records.
+- Response data only.
 
 Disallowed effects:
 
@@ -225,12 +225,8 @@ Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker
 
 ## Read-only effects
 
-Read-only results have no Core authority-state storage effect and are not replay
-rows. Unless a method section below explicitly permits session-watch diagnostic
-records for a session-bound Agent Connection, read-only results are
-response-only. Permitted diagnostic records are not Core state mutations, replay
-rows, authority events, close-state mutations, or
-`project_state.state_version` changes.
+Read-only results have no Core authority-state storage effect, are not replay
+rows, and are response-only.
 
 For response computation, `volicord.status` and `volicord.check_close` may compute `CurrentCloseBasis`, close state, risk acceptance coverage, blockers, `CloseReadinessBlocker[]`, evidence summaries, artifact refs, project continuity summaries, diagnostics, and next actions for the response when the method owner selects those projections.
 
@@ -252,14 +248,6 @@ Read-time artifact checks may compute an effective missing, unavailable, or inte
 - `project_state.state_version` increment
 
 For `volicord.check_close`, the response branch is owned by [`volicord.check_close`](api/method-close-task.md#volicordcheck_close). This storage page asserts that the check remains read-only for Core authority state and `project_state.state_version`, including with `dry_run=true` and with `blockers: CloseReadinessBlocker[]`.
-
-Session-watch diagnostic records store only the bounded snapshot metadata
-described by [Storage Records](storage-records.md). They must not store raw file
-contents, sensitive prompt text, actor identity inferred from file changes, or a
-claim that Volicord prevented a filesystem write. When a read or check boundary
-creates the first watcher baseline, the baseline metadata records the coverage
-start and a `method_boundary` coverage basis with a partial-coverage warning;
-Product Repository changes before that boundary are outside watcher coverage.
 
 ## Committed blocked effects
 
@@ -314,7 +302,7 @@ Those stored reasons are not:
 - close-readiness blocker records
 
 Project-policy application atomically writes the authoritative
-`project_workflow_policies` v2 copy, monotonic version, canonical JSON,
+`project_workflow_policies` canonical copy, monotonic version, canonical JSON,
 fingerprint, and source. It also derives the normalized write-authority
 fingerprint. When that fingerprint changes, the same transaction invalidates
 with `explicit_revoke` every active ticket with a missing or different stored
@@ -328,10 +316,8 @@ invalidation effect solely because policy apply ran. Exact command, file, and
 host behavior is an administrative-owner concern.
 
 Workflow metrics writes store aggregate counters, durations, serialized tool
-byte counts, and categorical outcomes only. Session-end recording stores a
-bounded authority receipt. Refresh failure, no active Task, or any close
-blocker requires `completion_claim_allowed=0`; no summary string may override
-it. These records never contain prompt, file, answer, or command bodies.
+byte counts, and categorical outcomes only. These records never contain prompt,
+file, answer, or command bodies.
 
 <a id="method-effects"></a>
 ## Method effect summary
@@ -342,7 +328,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 |---|---|---|
 | `volicord.intake` | creates task and shaping records | See [`volicord.intake`](#volicordintake) |
 | `volicord.update_scope` | updates current scope records | See [`volicord.update_scope`](#volicordupdate_scope) |
-| `volicord.status` | read-style response with optional session-watch initialization | See [`volicord.status`](#volicordstatus) |
+| `volicord.status` | read-style response | See [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | reads immutable historical replay bytes without storage effects | See [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | records write decision effects | See [`volicord.prepare_write`](#volicordprepare_write) |
 | `volicord.prepare_evidence_capture` | creates one immutable expiring capture intent | See [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
@@ -350,8 +336,8 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_action` | creates one pending user-action request and canonical capture form | See [`volicord.request_user_action`](#volicordrequest_user_action) |
 | `volicord.resolve_user_action` | inserts one immutable User Channel resolution | See [`volicord.resolve_user_action`](#volicordresolve_user_action) |
-| `volicord.reconcile_changes` | resolves Unrecorded Changes, creates pending user actions, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
-| `volicord.check_close` | close-readiness check with optional session-watch diagnostics | See [`volicord.check_close`](#volicordcheck_close) |
+| `volicord.reconcile_changes` | resolves Unrecorded Changes and creates pending user actions | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
+| `volicord.check_close` | read-only close-readiness check | See [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | persists a successful `complete` terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | persists a successful cancellation terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
 | `volicord.close_task intent=supersede` | persists a successful supersession terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
@@ -430,15 +416,6 @@ Read-only calls:
 - do not mutate Core state
 - do not increment `project_state.state_version`
 
-For a session-bound Agent Connection, `volicord.status` may initialize the
-session-watch diagnostic context by creating an `agent_sessions` row and, when a
-bounded baseline snapshot is available, a `session_watch_baselines` row. It does
-not run a watch comparison, create `session_watch_observations`, create
-`unrecorded_changes`, append authority events, create replay rows, mutate close
-state, or increment `project_state.state_version`. A baseline first created by
-this status boundary uses `method_boundary` coverage metadata and reports
-partial coverage.
-
 `dry_run=true` remains `StatusResult` with `effect_kind=read_only`, not `ToolDryRunResponse`.
 
 No-effect branches:
@@ -462,7 +439,6 @@ The method is response-only and must not create or change:
 - `authority_events` or Core current rows
 - Task, Change Unit, user-action, blocker, or continuity state
 - staging, artifact, evidence, or write-ticket state
-- session-watch diagnostic rows
 - `project_state.state_version`
 
 Rejected access, invalid cursors, unavailable rows, and integrity failures have
@@ -496,7 +472,7 @@ as stale because its binding is missing or different is atomically set to
 `status=invalidated,invalidation_reason=explicit_revoke`. An allowed decision
 does so before issuing the new current ticket; a committed non-allow decision
 persists the invalidation without issuing a replacement. Rejected and dry-run
-paths do not mutate the legacy row; it remains dynamically unusable.
+paths do not mutate such an invalid row; it remains dynamically unusable.
 
 Idempotent replay returns the stored original response under [Storage Versioning](storage-versioning.md) and does not repeat these effects.
 
@@ -734,33 +710,10 @@ The direct origin `(project_id, source_idempotency_key)` is unique for
 `request.operation=resume` branch only reads that row and its immutable original
 replay response for the same Agent Connection access scope, and only after the
 whole response strict-decodes as the current closed agent-safe result shape.
-Legacy or mixed full-form replay rows fail closed as `MCP_UNAVAILABLE` and are
-not rewritten. Resume creates no
-request, event, replay row, token, resolution, prompt, blocker update, or state
+Any stored replay row that violates that contract fails closed as
+`PERSISTED_DATA_CORRUPT` and is not rewritten. Resume creates no
+request, event, replay row, resolution, blocker update, or state
 version, and does not update the persisted canonical-UTC floor.
-
-When MCP uses the local-web fallback for a newly created pending request, token
-issuance is a separate storage-owned transaction. It inserts the hash-only
-`user_action_channel_tokens` row and advances `project_state.updated_at` to at
-least token `created_at` atomically. Issuance creates no additional authority
-event or replay row and does not increment `state_version`.
-The token row is created only after the current adapter evaluator confirms both
-a ready listener and the client's exact model-invisible-surface capability.
-The shared listener state becomes unavailable when its accept loop degrades,
-and after response-budget validation the same evaluator acquires a shared
-ready-listener issuance lease through the atomic token transaction. Listener
-invalidation takes the exclusive lease. Invalidation that linearizes first, or
-a failed startup, selects generic CLI fallback with no token row, `_meta`,
-project-time-floor advance, authority event, replay row, or state-version
-change. Issuance that linearizes first is an already-issued token and is not
-rolled back by a later listener failure. Its
-closed creation metadata is exactly
-`{fallback_kind=local_web_consent,
-delivery_surface=model_invisible_user_surface, endpoint=/consent,
-form_digest}`. A missing, extra, wrong, or mismatched field makes the row
-permanently unusable under corrected code; GET, POST, consumption, and
-resolution have no effect. Token issuance is not performed merely to compute or
-report availability.
 
 No-effect branches:
 
@@ -789,7 +742,6 @@ Committed `dry_run=false` may:
 
 - insert one immutable one-to-one `user_action_resolutions` row, causing the Core effective-status evaluator to return `resolved`
 - store the matching closed resolution body, channel kind and submission id, derived local-user provenance, verification basis, assurance level, and Core capture time; the body carries either option-derived choice facts or the full evidence-observation detail
-- when invoked through local web capture, set the matching `user_action_channel_tokens` row to `status='consumed'` in the same project-state commit
 - create `project_continuity_records` for accepted product, technical, or scope decisions and for accepted current residual risks when selected by the method owner
 - update dependent blockers or next actions
 - append events
@@ -801,7 +753,7 @@ No-effect branches:
 - valid dry-run previews
 - rejected attempts
 
-Rejected channel attempts, including validation failure, wrong binding, expiration, state race, and resolution write failure, must not consume a token or insert a resolution. They also must not update the persisted canonical-UTC floor.
+Rejected CLI attempts, including validation failure, wrong binding, expiration, state race, and resolution write failure, must not insert a resolution or update the persisted canonical-UTC floor.
 
 Valid dry-run previews do not create:
 
@@ -831,11 +783,6 @@ Owner links:
 
 Committed `dry_run=false` may:
 
-- first run a bounded session-watch check for a session-bound Agent Connection
-  and create or update `agent_sessions`, `session_watch_baselines`,
-  `session_watch_observations`, and watcher-created `unrecorded_changes` when
-  Product Repository changes are not deterministically covered by expected-write
-  or active write-ticket correlation
 - set unresolved `unrecorded_changes` rows to `status='resolved'`
 - store resolution JSON that names the resolution basis, capture basis, resolved method, and optional linked user-action ref
 - store `resolved_at` and `resolved_by_actor_source`
@@ -846,9 +793,8 @@ Committed `dry_run=false` may:
 
 Read-only branches:
 
-- After any permitted session-watch diagnostic effect above, a valid call with
-  no planned resolution or pending user-action creation returns response data only
-  and creates no reconciliation effect.
+- A valid call with no planned resolution or pending user-action creation
+  returns response data only and creates no reconciliation effect.
 
 No-effect branches:
 
@@ -878,18 +824,6 @@ Read-only calls have no Core authority-state storage effect:
 - do not touch artifacts or evidence
 - do not increment `project_state.state_version`
 
-For a session-bound Agent Connection and `dry_run=false`, the check may first
-run a bounded session-watch check and create or update `agent_sessions`,
-`session_watch_baselines`, `session_watch_observations`, and watcher-created
-`unrecorded_changes` when Product Repository changes are not deterministically
-covered by expected-write or active write-ticket correlation. These diagnostic
-effects are not Core authority-state storage effects. They do not append
-authority events, create blocker rows, mutate close state, touch artifacts or
-evidence, or increment
-`project_state.state_version`. If this check creates the first watcher
-baseline, the coverage basis is `method_boundary` and earlier Product
-Repository changes are outside watcher coverage.
-
 `dry_run=true` remains `CloseTaskResult` with `effect_kind=read_only`.
 
 No-effect branches:
@@ -905,9 +839,6 @@ Owner links:
 
 Committed `dry_run=false` may:
 
-- first run a bounded session-watch check for a session-bound Agent Connection
-  and create or update the same session-watch diagnostic records permitted for
-  `volicord.check_close`
 - persist the method-selected terminal completion effect
 - persist a terminal close summary distinct from `tasks.close_basis_json` when the method-selected completion effect succeeds
 - create `project_continuity_records` with `kind='known_limit'` for current close-basis residual risks that are visible and do not require residual-risk acceptance when the method-selected completion effect succeeds
@@ -923,7 +854,7 @@ No-effect branches:
 
 Valid `dry_run=true` returns `ToolDryRunResponse`. Preflight failures are no-effect `ToolRejectedResponse`.
 
-A response-only blocked `complete` result uses `base.effect_kind=no_effect` and does not persist close blocker rows, an authority event, a replay row, a terminal mutation, or a state-version increment. Session-watch diagnostic records created before close-readiness evaluation remain separate from the blocked close result.
+A response-only blocked `complete` result uses `base.effect_kind=no_effect` and does not persist close blocker rows, an authority event, a replay row, a terminal mutation, or a state-version increment.
 
 Owner links:
 

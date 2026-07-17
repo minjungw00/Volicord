@@ -195,650 +195,37 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 
 ## 온보딩 사용성 검증
 
-유지되는 온보딩, 설치, 에이전트 호스트 설정, 문제 해결, 담당 경로 문서를
-추가하거나 의미 있게 바꿀 때는 대표 사용자 사용성 검증을 사용합니다. 이는 실제
-참가자가 수행하는 사람 대상 사용성 시험입니다. 자동 `docs-check`, Rust 구현
-테스트, 적합성 점검, 사람이 하는 의미 검토, 에이전트가 수행한 책상 검토와
-구분합니다. 에이전트 책상 검토는 문서 유지보수 차단 사유를 찾을 수 있지만, 첫
-사용자인 사람이 흐름을 완료할 수 있다는 증거는 아닙니다.
-
-참가자 집합은 최소한 아래를 포함해야 합니다.
-
-- Volicord 경험이 없는 기술적으로 능숙한 사용자 두 명
-- Volicord 경험이 없는 MCP 호스트 운영자 한 명
-- API 또는 스키마 참조 문서를 찾아야 하는 구현자 한 명
-
-작업은 참가자가 아래를 할 수 있는지 포함해야 합니다.
-
-1. 자신의 환경이 적합한 것으로 문서화되어 있는지 판단합니다.
-2. 실행 파일을 빌드하거나 선택합니다.
-3. 실행 파일 준비 상태를 확인합니다.
-4. Codex 또는 Claude Code 설정 경로 하나를 선택하고 따릅니다.
-5. `action_required`를 해석하고 필요한 다음 행동을 식별합니다.
-6. 사용할 수 없거나 잘못 선택한 실행 파일 상태에서 복구합니다.
-7. 허용 프로젝트가 없거나 프로젝트 선택이 모호한 상태를 해석합니다.
-8. 안전한 제거 뒤 무엇이 남는지 설명합니다.
-9. `StateRecordRef` 또는 `EvidenceSummary`의 자세한 스키마 담당 문서를 찾습니다.
-10. Agent Connection의 `complete` 결과와 네 가지 `HostFeatureSupportStatus` 값
-    (`verified`, `implemented_unverified`, `unsupported_by_host`,
-    `temporarily_unavailable`)을 구분하고, 기능별 `verified`만 현재 기능 지원
-    주장의 근거가 될 수 있는 이유를 설명합니다.
-
-유지 문서를 개선하는 데 필요한 관찰을 기록합니다. 여기에는 참가자가 멈춘 위치,
-유도 없이 묻는 질문, 잘못된 상태 해석, 안전하지 않은 쓰기 또는 삭제 시도,
-성공을 스스로 확인했는지, 복구가 완료되었는지, 문서 전환의 수와 종류, 실패한
-검색어가 포함됩니다.
-
-사용성 검증을 통과하려면 첫 사용자가 작성자의 설명 없이 실행 파일 준비와 호스트
-경로 하나를 완료하고, 문서화된 성공 상태를 독립적으로 식별하며,
-연결 `complete`와 기능별 `verified`를 구분하고, `action_required`를 설명 없는
-치명적 실패로 취급하지 않고, 관련 없는 사용자 설정 또는 제품 데이터를 삭제하지
-않은 채 복구하며, 작성자의 도움 없이 자세한 스키마 담당 문서를 찾아야 합니다.
-중요한 차단 사유는 작업 완료를 막거나, 안전하지 않은 쓰기 또는 삭제 시도를
-유발하거나, 성공 상태를 잘못 해석하게 하거나, 담당 경로를 깨뜨리는 문제입니다.
-중요한 차단 사유는 적용되는 유지 담당 문서에서 고치고, 대응 문서가 바뀌면 영어와
-한국어 의미를 맞게 유지하며, 해당 자동 및 수동 유지보수 점검을 다시 실행하고,
-관련 참가자 프로필로 영향을 받은 작업을 다시 시험한 뒤 해결된 것으로 취급합니다.
-
-사용성 검증 결과는 대화나 저장소가 승인한 오래 유지될 연구 위치에 보고하며,
-유지 문서 안에 개별 시험 기록으로 저장하지 않습니다. 참가자 메모, 스크린샷, 녹화,
-세션 로그, 작업 로그, 조작된 완료율, 조작된 인용문, 비공개 참가자 데이터를 유지
-문서에 커밋하지 않습니다. 실제 대표 참가자가 작업을 수행했고 그 참여를 확인할 수
-있을 때만 대표 사용자 시험이 있었다고 말합니다. 자동 검증은 자신이 담당하는 기계
-확인 가능 속성만 증명하고, Rust 테스트는 구현 점검만 증명하며, 에이전트 책상
-검토는 유지보수자가 객관적 차단 사유를 문서에서 검토했다는 점만 증명합니다.
-
-<a id="live-host-connection-readiness-sequence"></a>
-## 실제 호스트 연결 준비 순서
-
-아래에서 `Task`에 결속되는 모든 실제 호스트 체크리스트를 실행하기 전에 이 순서를
-적용합니다. Codex Detective fixture에서는 먼저 fixture 작성을 끝내고 게시 domain을
-활성화한 뒤, 읽기 전용 연결 관찰보다 앞서 유지되는 무-prompt 대화형 hook-trust
-preflight를 실행합니다. 그 정확한 폐기 가능한 저장소에서 프로젝트를 신뢰하고 `/hooks`를
-열어 모든 활성 훅 출처를 조사한 뒤 현재 Volicord 프로젝트 훅 정의 각각을 정확히 검토하고
-신뢰합니다. 필수 훅이 누락, skipped, 변경, 미신뢰 상태이거나 운영자가 검토할 수 없는
-예상 밖의 활성 출처가 있으면 제품 `Stop` 실패 증거가 아니라 `SKIP` 또는 `FAIL`입니다.
-검토를 끝낸 뒤에만 preflight를 종료하고 하네스에 정확한 `hooks:reviewed` 확인을
-입력합니다. 이 확인 자체는 이벤트 증거가 아니며, 이후 Task 결속 실행에서 필요한 지속
-`Stop` 이벤트가 여전히 생겨야 합니다.
-
-인증된 호스트 진입점을 실행하기 전에 fixture 초기화 결과의 정확한 Agent Connection ID를
-릴리스 셀 기록기에 결속합니다. 결속이 없거나 형식이 잘못되었거나 기존 값과 충돌하면
-하네스는 로그인이나 호스트 시작 전에 이를 거부하고 해당 셀의 종단 게시를 금지하며, 새
-루트에서 복구할 수 있도록 결과 루트를 보존해야 합니다. 같은 정확한 ID를 다시 결속하는
-것은 문제가 없습니다. 호스트를 시작하지 않는 정적 미지원 경로나 호스트 없음 경로에는 이
-결속이 필요하지 않습니다. 정확한 계약은
-[호스트 릴리스 증거](../reference/host-release-evidence.md)가 계속 담당합니다.
-
-유지되는 preflight는 자격 증명을 복사하지 않고 저장된 ChatGPT 인증을 사용하기 위해
-실행자의 일반 `CODEX_HOME`을 재사용합니다. 이 home은 다른 활성 훅 출처도 제공할 수
-있습니다. 따라서 유지되는 하네스는 `--dangerously-bypass-hook-trust`를 사용하지
-않습니다. 이 1회 실행 옵션은 Volicord fixture뿐 아니라 활성화된 모든 훅 출처의 영속
-신뢰 검사를 우회합니다. 향후 격리된 하네스가 모든 활성 출처를 열거하고 검토할 수 있다면
-그 1회 우회로 이벤트 전달만 증명할 수 있습니다. 그래도 영속 훅 신뢰나 운영 준비 상태는
-증명하지 못합니다.
-
-적용되는 Codex preflight 뒤에 선택한 Product Repository에 활성 `Task`가 없는 상태에서
-정확히 준비한 Agent Connection으로 설치된 호스트를 시작하고 읽기 전용
-`volicord.status` 호출을 관찰합니다. 그 호스트가 종료된 뒤 같은 연결에 대해 관리
-`volicord connection verify ... --json`을 실행하고 담당 문서가 정의한 `complete`
-결과를 요구합니다. 그 후에만 워크플로 `Task`를 만들거나 활성화하고 Task 결속 호스트
-실행을 시작합니다. 첫 관찰은 관리 검증을 대신하지 않습니다. 여기서 `complete`는 이
-순서에서 담당 문서가 정의한 연결 준비 점검 지점만 성립시킵니다. 이는
-`HostFeatureSupportStatus` 값이 아니며 어떤 기능의
-`support_status=verified`도 성립시키지 않습니다.
-
-연결 검증의 정확한 동작과 상태 의미는
-[Agent Connection](../reference/agent-connection.md)과
-[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 계속 담당합니다.
-이 절은 릴리스 검증 순서만 담당합니다.
-
-<a id="live-host-controlling-terminal-foreground"></a>
-## 실제 호스트 제어 터미널 전경 제어
-
-유지되는 모든 대화형 선택 호스트 turn에 이 절차를 적용합니다. 대화형 stdin/stdout인지
-확인하는 것만으로는 충분하지 않습니다. 전용 background 프로세스 그룹의 자식은 제어
-터미널에서 입력을 읽을 때 중지될 수 있습니다. 먼저 runner의 원래 프로세스 그룹이 터미널
-전경 그룹이어야 합니다. 호스트가 입력을 읽기 전에 유지되는 하네스는 제한 시간 안에서
-동작하는 전경 controller를 전용 운영체제 프로세스 그룹에서 시작하고, 제한된 준비 신호를
-기다린 뒤, 제어 터미널의 전경을 정확히 그 그룹으로 이전합니다. 이어서 선택 호스트를 같은
-그룹에서 시작하고 그룹 구성원임을 검증하며 turn ownership 표식과 전경 이전 전의 전체
-터미널 속성 snapshot을 유지합니다.
-
-선택 호스트가 종료되고 직접 자식 프로세스를 회수한 뒤에는 그 controller가 터미널 전경을
-runner의 원래 프로세스 그룹으로 복원하고 자신도 회수되어야 합니다. 정확한 전경 복원을
-확인한 뒤에만 전용 그룹에 신호를 보냅니다. 그룹과 ownership 표식 경계의 정지를 확인한
-다음, 이전에 보관한 전체 터미널 속성을 다시 적용하고 정확한 재조회 일치를 확인합니다.
-controller 준비, 복원, 회수 대기에는 모두 제한 시간을 둡니다. 격리 경계 정지와 터미널
-속성 복원은 turn 이후 기준선 확보, 결과 분류, 종단 게시보다 먼저 끝냅니다. 협력적 격리에는
-계속 전용 그룹과 ownership 표식 유지 프로세스 검사를 함께 사용합니다. 이 절차는
-pseudo-terminal(PTY)을 만들거나 사용한다고 주장하지 않습니다. 실제 생산자는 이미 제어
-터미널을 제공하는 환경에서 실행해야 합니다. 전경을 이전하기 전에 `TOSTOP`이 꺼져 있는지
-확인합니다. `Ctrl-Z` 같은 job-control 키로 전경 호스트 turn을 중지하면 안 됩니다. 중단한
-turn이나 나중에 다시 시작한 turn은 폐기하고 새 result root를 사용합니다.
-
-초기 전경 소유자 확정 또는 검증, controller 준비나 생존, 정확한 호스트 그룹 구성원 확인,
-비활성화된 `TOSTOP` 확인, 전경 이전, 전경 복원, 터미널 속성 복원 또는 정확한 검증,
-controller 회수 중 하나라도 실패하면 해당 플랫폼 셀은 통과할 수 없습니다. 필수 assertion을
-실행해 실패했다면 `failed`, 실행 전제 조건이 없어 전체 시나리오 모음의 결과를 확정하지
-못했다면 `unavailable`로 기록합니다. 어느 결과도 `passed`로 바꾸면 안 됩니다. 정확한 의미는
-[셀 실행 상태](../reference/host-release-evidence.md#cell-execution-status)가 담당합니다.
-
-<a id="live-cell-result-root"></a>
-## 실제 셀 result root 준비와 복구
-
-플랫폼 runner는 크기가 제한된 작업 출력을 위해 새 폐기 가능 `RESULT_ROOT`를 사용할 수
-있습니다. 유지 문서, `Product Repository`, `Volicord Runtime Home` 밖에 두고, symlink가
-없는 하나의 정규 위치로 해석해야 합니다. 각 시도에는 서로 다른 존재하지 않는 하위 경로를
-사용하고 자격 증명, 비밀값, 프롬프트, 대화 기록, 스크린샷, 녹화를 저장하면 안 됩니다.
-
-작업 출력은
-[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell)도 지원 manifest도
-아닙니다. 실행이 중단되거나 출력이 불완전하거나 실행 파일 digest가 바뀌면 그 작업 출력을
-폐기하고 최종 확정 byte에서 해당 플랫폼 셀을 다시 실행합니다. 이전 결과를 편집, 복사,
-재사용해 통과를 주장하면 안 됩니다. 완전한 정확한 셀 실행이 만든 크기가 제한된 증거만
-`validation_evidence`에 들어갈 수 있습니다. 그 뒤 검토된 네 셀 집합을 하나의 릴리스
-작업으로 [체크인된 단일 manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)에
-교체합니다.
-
-<a id="live-host-final-output-release-validation"></a>
-## 실제 호스트 최종 출력 릴리스 검증
-
-Codex 또는 Claude Code의 Record profile이나 Detective profile에서 관리되는 최종 출력
-권한 고지를 지원한다고 명시하는 릴리스를 게시하기 전에 이 체크리스트를 사용합니다.
-정확한 릴리스 후보에서 인증된 환경과 사람의 참여로 수행하는 검증입니다. 호스트 설정
-픽스처, 생성 래퍼 직접 출력, 일반 워크스페이스 테스트, Judgment 왕복은 이 검증을
-대신할 수 없습니다. 정확한 제품 동작은
-[관리 CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure)와 그 집중 의존
-문서가 계속 담당합니다. 이 체크리스트는 릴리스 검증 실행과 증거 분리만 담당합니다.
-
-[위에서 미리 만든 result root](#live-cell-result-root)를 사용하고 릴리스 후보와 설치된
-호스트의 식별 정보를 기록합니다. 각 `VOLICORD_LIVE_HOST_RESULT_PATH`의 최종 셀 이름은
-존재하지 않아야 합니다. 아래 네 유지 호스트·프로필 셀 생산자를 각각 호출합니다. 네
-호스트 종류 셀은 모두 구현되었으며 인증된 대화형 호스트 검증으로 진행합니다.
-
-| 호스트 | Record profile | Detective profile |
-|---|---|---|
-| Codex | `codex_record_live_final_output_is_opt_in` | `codex_detective_live_final_output_is_opt_in` |
-| Claude Code | `claude_code_record_live_final_output_is_opt_in` | `claude_code_detective_live_final_output_is_opt_in` |
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-record-final-output.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-detective-final-output.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-record-final-output.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
-```
-
-Codex와 Claude Code는 호스트 종류 기준으로 두 최종 출력 기능을 모두 구현합니다. 정규
-Codex `host_version=0.144.4`를 포함한 호스트 버전은 표시 및 검증 좌표이며
-`implementation_disposition=implemented`를 바꾸지 않습니다. 위 명령은
-`VOLICORD_RELEASE_REQUEST_VERIFIED=1`을 사용합니다. 설치된 호스트나 필수 표면을 사용할 수
-없어도 이 값은 릴리스 주장을 유지하므로 게이트를 실패시킵니다. `0`은 의도적으로 보고할
-제외에만 사용하며 버전 대체값으로 사용하지 않습니다.
-
-호스트 경로를 실행하는 각 구현 셀에서는 `host`와 `profile`이 일치하는 크기 제한 결과를
-검사합니다. 아래 증거 필드는 서로 분리되어야 하며, 어느 필드도 다른 필드에서 추론하거나
-다른 필드로 대신할 수 없습니다.
-
-1. `config_fixture`는 해당 프로필에서 점검한 관리 호스트 설정을 식별합니다. 픽스처
-   통과는 설치된 호스트가 그 설정을 읽었다는 뜻이 아닙니다.
-2. `generated_wrapper_direct_wire.status_fallback`과
-   `generated_wrapper_direct_wire.authority_receipt`는 정확한 생성 래퍼를 직접 호출해
-   크기가 제한된 두 응답 분기를 분리해서 점검합니다. 둘 다 `verified`여야 하지만 설치된
-   호스트가 이벤트를 전달했거나 UI를 표시했다는 뜻은 아닙니다.
-3. `actual_host_event.status_fallback_event`와
-   `actual_host_event.authority_receipt_event`는 두 분기에서 실제 호스트가 핸들러로
-   전달한 사실을 분리해서 기록합니다.
-   Record는 의도적으로 지속 Guard 관찰을 만들지 않으므로, 해당 event 항목은 인증된
-   호스트 소유 관리 UI 전달을 근거로 명시합니다. 직접 래퍼 전후 개수 검사는 최종 출력
-   핸들러 자체가 Guard 이벤트나 Agent Session을 추가하지 않았음을 증명합니다. 실제 관리
-   호스트 turn에서는 호스트가 관리 서버를 재시도하거나 재시작할 때 하나 이상의 MCP stdio
-   생명주기가 별도로 시작될 수 있습니다. Codex 기술 정보는 시작 출처만 제공하며 정확한
-   클라이언트 identity와 엄격한 호출별 메타데이터가 root 세션과 프로세스 로컬 thread
-   다이제스트를 결속할 때까지 생명주기는 대기합니다. Record event 항목은 한정된 양수
-   AgentSession 집합을 `managed_mcp_observation`으로 보고하고, 새 행 모두를 같은 Agent
-   Connection, `guard_mode=record`, 정확한 관리 세션 결속에 묶으며, 그중 하나 이상에서
-   결속된 초기화·도구 목록·도구 호출 생명주기와 결속 시점부터의 명시적 부분 감시 범위를
-   요구해야 합니다. 이 집합 전체에서 첫 turn은 정확히
-   한 번의 `volicord.status` 수신·완료 호출만 포함하고 다른 도구 호출은 없어야 하며, 두
-   번째 no-tool turn에는 도구 호출이 없어야 합니다. 바깥 개수와 rowid 창 검사는 Guard
-   이벤트 증가가 없고 새 MCP AgentSession 모두가 관리 생명주기에서 비롯됐음을 확인하여
-   이를 최종 출력 전달 효과로 잘못 귀속하지 않습니다. 이는 전달 증거이지 지속 최종 출력
-   관찰을 꾸며낸 것이 아닙니다.
-   `actual_host_fixed_ui.authority_receipt`는 모델 산문과 구분되는 호스트 소유 고정 UI에서
-   현재 Task의 receipt 전체를 별도로 기록하고 Project, Task, `state_version`, 최신 Run,
-   닫기 상태, 차단 사유 수를 결속합니다. `actual_host_fixed_ui.status_fallback`은 Task가
-   없을 때의 고정 UI 확인을 독립적으로 기록합니다. 한 셀이 통과하려면 두 하위 상태가
-   모두 `verified`여야 합니다.
-4. Record의 `detective_decision`은 결과가 `non_observing`과 `non_gating`도 확인하고 Guard
-   이벤트나 결정이 없음을 확인할 때만 `not_applicable`입니다. Detective에서는 `allow`와
-   `block`을 모두 다뤄야 하며 `allow` 결과가 `block`을 대신할 수 없습니다.
-5. 최상위 `status_fallback`은 Task 없음 UI 확인을 생성된 `volicord status --json`
-   명령 및 Task별 명령 부재와 별도로 결속합니다. 생성 래퍼를 직접 호출해 얻은 대체
-   안내 응답이 UI 관찰을 증명하지는 않습니다. 운영자는 관리 UI의 Task 없음 문구
-   전체를 복사하고, 하네스는 명령만 적은 토큰으로 Task별 변형까지 확인한 것처럼
-   처리하지 않도록 전체가 정확히 같은지 검사합니다. 모든 셀은 이 증거와
-   `actual_host_fixed_ui` 아래의 두 분기를 모두 검증해야 하며, 어느 것도 다른 증거를
-   대신할 수 없습니다.
-6. `exact_replay.generated_wrapper_identical_payload`는 생성 래퍼에 같은 payload를 반복
-   전달한 결과를 기록하고, `exact_replay.actual_host_replay`는 실제 호스트 진입점을 통한
-   재생을 기록합니다. Record는 읽기 전용 표시를 새로 고치는 동안에도 관찰을 기록하거나
-   차단하지 않습니다. Detective의 실제 재생은 변경할 수 없는 과거 Guard 이벤트와 결정을
-   그대로 두고 별도 UI에서 현재 권한을 다시 읽습니다. 생성 래퍼 검사는 같은 payload를
-   두 번 전달하는 사이 Task 권한 상태를 전진시키고, 두 번째 표시에는 더 최신인 receipt가
-   나오면서 저장된 과거 이벤트는 byte 단위로 그대로인지 요구합니다.
-
-실제 셀 내부의 증거 상태는 `verified`, `unavailable`, `not_applicable`,
-`failed`입니다. 이는 제품 응답 필드가 아니라 검증 하네스 사실입니다. 적용되는 모든
-증거 항목이 `verified`일 때만 셀이 통과합니다. 이 실제 증거 형태 안에서는 Record에만
-적용되는 Detective 결정이 예상되는 유일한 중첩 `not_applicable` 사례입니다. 설치된 호스트에 안전한 `block` 진입점, 실제 호스트 재생
-진입점, 현재 Task의 receipt가 표시되는 UI, Task가 없을 때의 대체 안내 UI 중 하나라도
-없으면 해당 증거를 `unavailable`로 기록하고 전체 `result=incomplete`를 유지합니다. 생성
-래퍼에 같은 payload를 반복한 결과는 실제 호스트 재생을 대신하지 못합니다.
-
-실행 파일, 인증 환경, 대화형 TTY, 이벤트 전달 표면, 현재 Task의 receipt가 표시되는 UI,
-Task가 없을 때의 대체 안내 UI, 안전한 Detective `block` 진입점, 실제 호스트 재생 진입점을
-사용할 수 없는 결과는 통과가 아닙니다. 하네스가 기록할 수 있으면 구조화된
-`unavailable` 또는 `incomplete` 결과를 보존한 뒤 릴리스 검증 결과를 `SKIP` 또는
-`FAIL`로 보고합니다.
-픽스처, 래퍼 직접 응답, 다른 매트릭스 셀을 근거로 결과를 올리면 안 됩니다. 네 셀은 모두
-존재하고 통과해야 해당 네 셀 주장의 근거가 될 수 있습니다.
-
-기록기는 크기가 제한된 종단 결과 하나를 새 작업 경로에 쓰며 기존 이름을 덮어쓰지
-않습니다. 이 독립 실행 출력은 시나리오 증거일 뿐 `CodexReleaseCell`이나 지원 manifest가
-아닙니다. `result=incomplete`와 그 밖의 통과하지 않은 종단 결과는 불완전한 증거이며 통과로
-세지 않습니다. 플랫폼 runner가 해당 셀의 정확히 최종 확정된 아티팩트를 실행하고 결속할
-때만 이 결과를 포함할 수 있습니다. 크기가 제한된 결과와 릴리스 승인자의
-체크리스트는 그 승인된 외부 릴리스 기록 위치에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화
-기록, 녹화, 자격 증명, 비밀값, 전체 프롬프트, 비공개 운영자 입력을 커밋하지 않습니다.
-이 증거는 관찰한 호스트, 프로필, 릴리스 후보, 환경에만 적용됩니다. 이식 가능한 호스트
-적합성, 보안 증명, 제품 수락, 닫기 준비 상태, 일반적인 정확성 주장이 아닙니다.
-
-<a id="live-host-judgment-release-validation"></a>
-## 실제 호스트 판단 릴리스 검증
-
-유지되는 Codex 또는 Claude Code 판단 경로를 지원한다고 명시하는 릴리스를 게시하기
-전에 이 체크리스트를 사용합니다. 정확한 릴리스 후보에서 인증된 환경과 사람의 참여로
-수행하는 릴리스 검증입니다. 스키마 점검, 픽스처, 일반 워크스페이스 테스트, 또는
-무시된 것으로 보고된 실제 테스트가 이를 대신하지 않습니다.
-위의 네 개 셀 최종 출력 체크리스트와도 구분됩니다. 어느 체크리스트의 증거도 다른
-체크리스트를 충족할 수 없습니다.
-정확한 상태와 영수증 동작은 [상태 메서드](../reference/api/method-status.md)와
-[API 상태 스키마](../reference/api/schema-state.md)가 계속 담당합니다. 이 체크리스트는
-릴리스 검증 실행과 증거 처리만 담당합니다.
-정확한 호스트 고유 검증 단언과 허용하는 Stop 결과 집합은
-[호스트 릴리스 증거](../reference/host-release-evidence.md)가, 숨겨진 Stop 이벤트 동작은
-[관리 CLI](../reference/admin-cli.md#guard-hook-commands)가, 차단 사유 의미는
-[`close_task`](../reference/api/method-close-task.md)가 계속 담당합니다.
-
-[위에서 미리 만든 result root](#live-cell-result-root)를 사용하고 정확한 릴리스 후보와 두
-호스트의 식별 정보를 기록합니다. 아래의 각 최종 셀 경로는 `RESULT_ROOT/cells` 바로 아래에
-있어야 하며 테스트 시작 전에는 존재하지 않아야 합니다. 이전 `result=passed`를 이후 실행
-결과로 오인하지 않도록 lease 아래의 사전 검사가 기존 경로를 거부합니다.
-
-```sh
-/absolute/candidate_path/from/CANDIDATE.json --version
-codex --version
-claude --version
-```
-
-후보 설명자와 다이제스트가 기준입니다. PATH에서 찾은 `volicord`는 `candidate_path`와 다른
-revision일 수 있으므로 대신 사용하면 안 됩니다.
-
-두 호스트의 무시된 판단 테스트를 각각 실행합니다. 승인된 외부 위치에서 테스트마다
-서로 다른 절대 결과 경로를 지정합니다.
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
-```
-
-각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
-
-1. 호스트 고유 판단 선택자가 화면에 표시되고, 에이전트가 아니라 사람 운영자가 제공된
-   선택지 하나를 고릅니다. 호스트가 종료된 뒤 운영자는 `choice:route_alpha` 또는
-   `choice:route_beta`를 입력하고, 하네스는 이 확인값이 저장된
-   `selected_option_id`와 같은지 검사합니다.
-2. 에이전트가 `advisor` Task를 만들고 `volicord.update_scope`로 현재 Change Unit과
-   baseline을 만든 뒤, 기본 간결한 결과의 선택지를 소비해 그 선택지에 매핑된 비쓰기
-   `shaping_update` Run을 `null`이 아닌 최소 close assessment와 함께 기록합니다.
-3. 새로 조회한 LocalUser CLI 상태가 `close_state=ready`, 빈 닫기 차단 사유, 그리고
-   `AuthorityReceipt.latest_run_ref`를 보고합니다. 이는 LocalUser 상태 보기이며,
-   하네스는 시간이나 ID 정렬로 행을 고르지 않고 그 참조가 가리키는 정확한 Run을
-   읽습니다. 이 영수증을 연결 범위 Stop 영수증 대신 사용하지 않습니다.
-4. 일치하는 `user_action_requested`, `user_action_resolved`, `run_recorded` 권한
-   이벤트 payload가 요청, 해결, 선택지, Run, kind, 비쓰기 사실을 보존하고, event
-   sequence가 선택 해결 기록 뒤에 해당 Run이 기록됐음을 증명합니다.
-5. 실행 전 호스트 커서 뒤에 Task와 정확한 세션에 결속된 새 Detective Stop 이벤트가
-   정확히 하나 나타납니다. 저장된 결정, `allowed` 값, 이유, `close_state`, 완전한
-   `close_blockers`, 영수증은 내부적으로 일관되어야 합니다. 일부 관찰 경고나 다른 차단
-   사유가 없고 정확한 세션이 완전한 `mcp_start` 관찰 범위를 가지면 `ready` `allow`를
-   기록합니다. 정확한 활성 세션의 관찰 범위가 일부 관찰 경고가 있는
-   `first_project_selection` 또는 `method_boundary`이면 `allow`,
-   `completion_claim_allowed=false`, `close_readiness_blocked`, 차단된 닫기 상태, 정확한
-   `session_watch_unavailable` 차단 사유를 기록합니다. Stop 영수증과 LocalUser 영수증은
-   Project, Task, `state_version`, 최신 Run에서 같아야 하지만 호출 맥락에서 파생되는 닫기
-   필드는 같을 필요가 없습니다. LocalUser의 `ready` 및 차단 사유 없음 상태는 깨끗한
-   픽스처의 전제일 뿐 호스트 고유 검증 단언 출처가 아닙니다. 하네스는 영속 GuardEvent에서
-   완전한 정규 Stop 영수증을 읽으며 최종 출력 UI 복사본을 요청하거나 증거로 인정하지
-   않습니다. 첫 관리 Stop은 세션 종료를 허용해야 하고 호스트가 이를 재시도하면 안
-   됩니다. 프로세스 종료가 나중의 Stop을 합성하지는 않습니다.
-6. 크기가 제한된 JSON 결과가 고유 `validation_run.run_id`, 시작·기록 시각, 호스트 버전,
-   Volicord `build_id`, 정확한 Agent Connection ID, 운영자가 확인한 선택과 저장된 선택,
-   권한 이벤트 순서, 소비한 Run, 최종 `result=passed`를 보고하며 대화 기록이나 프롬프트
-   본문은 포함하지 않습니다. 외부 셀은 크기가 제한된 종단 파일로만 새로 만들며 기존
-   목적지를 교체하지 않습니다.
-
-5번의 영속 Task 결속 Stop 이벤트는 이 테스트에 필요한 Judgment 이후 권한 관찰
-증거이며 Detective 닫기 상태가 `ready`라고 주장하지 않습니다. 유지하는 정확한 일부
-관찰 범위 미완료 고지만 호스트 고유 UserAction의 미완료 증거로 사용할 수 있습니다. 그러나 이 관찰은 네 셀 최종
-출력
-매트릭스의 어떤 항목도 채우지 못합니다. 그 매트릭스의 호스트·프로필, Task 없음 대체
-경로, Record 동작, `block` 동작, 재생 검증은 별도로 남습니다. Judgment 실행 중
-관찰한 그 밖의 최종 출력은 해당 실행의 진단 자료일 뿐입니다.
-
-고유 elicitation을 사용할 수 없으면 테스트는 대기 항목이 `volicord inbox`에
-표시되고 현재 `volicord inbox resolve` 명령 형태를 사용할 수 있는지 확인합니다.
-픽스처의 임시 경로나 ID가 없는 크기 제한 명령 템플릿을 내보내고
-`result=failed_native_elicitation`을 기록한 뒤 실패합니다. 테스트가 끝나면 폐기 가능한
-Runtime Home이 삭제되므로 이 템플릿은 실행 가능한 복구 명령이 아닙니다. 진단을 위해
-이 실패 결과를 보존하되 CLI 대체 경로를 성공한 고유 왕복으로 세면 안 됩니다. 이
-Judgment inbox 대체 경로는 User Channel 복구 증거이며 최종 출력 `status_fallback`
-증거가 아닙니다. 실행 가능한 CLI 복구는 아래의 별도
-[실제 호스트 CLI 대체 경로 체크리스트](#live-host-cli-fallback-release-validation)가
-담당하며, 그 결과로 이 호스트 고유 셀을 통과시킬 수 없습니다.
-
-실행 파일, 인증 환경, 대화형 TTY, 신뢰·승인 표면, 고유 선택자를 사용할 수 없는 결과는 `PASS`가
-아니라 `SKIP` 또는 `FAIL`입니다. 유지되는 두 호스트를 모두 지원한다고 명시하는
-릴리스에서는 두 호스트별 검증이 모두 통과해야 합니다.
-
-하네스는 새 작업 결과 경로를 요구하고 기존 이름을 덮어쓰지 않습니다. 크기가 제한된
-JSON은 시나리오 증거일 뿐 `CodexReleaseCell`이나 지원 manifest entry가 아닙니다. 현재
-플랫폼 runner가 정확히 최종 확정된 아티팩트를 실행하고 같은 아티팩트, 플랫폼,
-capability 집합, `record` 프로필을 결속할 때만 이 결과를 포함할 수 있습니다. 불완전한
-출력을 통과 결과로 승격하거나 복구하면 안 됩니다.
-
-크기가 제한된 각 JSON 결과와 릴리스 승인자의 체크리스트 기록은 그 승인된 외부 릴리스
-기록 위치에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화 기록,
-녹화, 자격 증명, 비밀값, 전체 프롬프트, 비공개 운영자 입력을 유지 문서나 소스
-저장소에 커밋하지 않습니다. 구조화 결과는 관찰한 호스트와 환경에 대한 릴리스 검증
-증거일 뿐이며 이식 가능한 호스트 적합성, 보안 증명, 제품 수락, 닫기 준비 상태,
-일반적인 정확성 주장이 아닙니다.
-
-<a id="live-host-evidence-observation-release-validation"></a>
-## 실제 호스트 증거 관찰 릴리스 검증
-
-유지되는 Codex 또는 Claude Code의 `local_web_consent` 증거 관찰 경로를 지원한다고
-명시하는 릴리스를 게시하기 전에 이 체크리스트를 사용합니다. 정확한 릴리스 후보에서
-인증된 환경과 사람의 참여로 수행하는 검증입니다. 실제 설치 호스트가 요청을 만들고
-재개하며, 정확한 모델 비가시적 capability를 협상하고, 모델 맥락 밖에 host 전용
-handoff를 표시해야 합니다. 사람은 로컬 브라우저에서 정규 form을 제출해야 합니다. 무시된 테스트,
-픽스처만 수행한 점검, 일반 워크스페이스 테스트, MCP 어댑터 직접 테스트, 호스트 고유
-Judgment 결과, CLI 대체 경로 결과, 최종 출력 결과는 이를 대신할 수 없습니다.
-
-정확한 요청과 재개 동작은
-[`volicord.request_user_action`](../reference/api/method-request-user-action.md), 해결 권한은
-[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md), 공통 요청과
-해결 필드는 [API 사용자 행동 스키마](../reference/api/schema-user-action.md), Run과 증거
-효과는 [`volicord.record_run`](../reference/api/method-record-run.md), 로컬 웹 경로 선택은
-[MCP 전송](../reference/mcp-transport.md#local-web-consent-fallback)이 계속 담당합니다.
-정확한 상태와 receipt 동작은 [상태 메서드](../reference/api/method-status.md)와
-[API 상태 스키마](../reference/api/schema-state.md)가 담당합니다. 이 체크리스트는 릴리스
-검증 실행, 증거 분리, 안전한 결과 보존만 담당합니다.
-
-[위에서 미리 만든 result root](#live-cell-result-root)를 사용하고 정확한 릴리스 후보와
-설치된 호스트의 식별 정보를 기록합니다. 로컬 브라우저에서 루프백 consent 수신기에 접근할
-수 있어야 합니다. 각 최종 셀 경로는 `RESULT_ROOT/cells` 바로 아래에 있어야 하며 시작
-전에는 존재하지 않아야 합니다. Lease 아래의 사전 검사가 기존 경로를 거부합니다. 아래
-유지 셀 생산자를 각각 호출합니다. 두 호스트 종류 셀은 모두 구현되었으며 평소 인증된
-호스트 환경의 대화형 TTY가 필요합니다.
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
-```
-
-유지되는 두 호스트 종류는 local-web user channel을 구현합니다. 호스트 버전은 표시 및 검증
-좌표일 뿐 이 구현 disposition을 바꾸지 않습니다. 각 셀은 실제 관리 호스트 초기화 교환에서
-capability를 획득하고 호스트 소유 handoff를 실행해야 합니다. Fixture capability 데이터나
-신뢰되지 않은 경로의 브라우저 성공으로 결과를 승격할 수 없습니다.
-
-각 셀에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
-
-1. Store 검사에서 호스트 실행 전에는 `UserActionRequest`가 없고, 실행 뒤에는 실제 설치
-   호스트가 준비된 Agent Connection으로 만든 요청 하나만 관찰되어야 합니다. 대상,
-   아티팩트 후보, `required_for` 사실을 위에서 연결한 요청 및 스키마 담당 문서와
-   대조합니다.
-2. 캡처한 초기화 교환에
-   `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`
-   값이 정확한 boolean `true`로 들어 있어야 합니다. create 응답은 닫힌 local-web
-   handoff를 `CallToolResult._meta["io.volicord/user-channel"]`에만 담고, 설치된 호스트가
-   이 handoff를 모델 맥락 밖의 host 소유 표면에 눈에 보이게 표시해야 합니다. Agent나
-   하네스가 아닌 사람 운영자가 그 표면을 사용해 루프백 form을 열고 준비된 대상과
-   아티팩트, `supported`, 크기가 제한된 비밀값 없는 요약을 제출해야 합니다. 이 단언은
-   정확한 capability 협상, 선택된 경로, 사람 참여만 확인하며 비밀값 탐지나 호스트 고유
-   elicitation을 증명하지 않습니다.
-3. Store 검사에서 변경할 수 없는 해결 하나를 관찰하고 집중 해결 및 스키마 담당 문서와
-   대조합니다. 정확한 영속 필드는 `resolved_by_actor_source=local_user`,
-   `channel_kind=local_web_consent`, 그리고 User Channel 어댑터가 제공하는 인식된 로컬 웹
-   근거와 같은 `resolved_verification_basis`입니다. 이 체크리스트는 새로운 안정 basis
-   값을 정의하지 않습니다. 저장 본문은 준비된 대상과 `ArtifactRef`, `supported`,
-   운영자의 크기 제한 요약과 일치해야 합니다. 호스트 종료 뒤 운영자가 같은 요약을 다시
-   입력하면 하네스가 저장 값과 정확히 같은지 확인합니다.
-4. 같은 연결의 진단과 Store 검사는 정확한 요청을 대상으로 한 재개 하나,
-   `agent_workflow_result_replayed=true`, 추가 요청이나 해결 없음, 이후 정확한 해결 ref
-   소비를 관찰합니다. 제한된 교환 observer는 실제 create와 resume의 모델 가시
-   projection을 검사하며, MCP `content`, `structuredContent`, 호환·진단 text, replay된
-   Agent Workflow 본문도 포함합니다. 과거 pending 요청은 정확히
-   `{user_action_request_id, status=pending, next_actor=user}`로 표현되고, 전체 요청, 질문,
-   option, context, form, capture path, command, raw URL, bearer token, 사용자 note, 증거
-   summary는 없어야 합니다.
-5. Store 검사는 소비 Run, 증거 관찰 하나, 생산자와 관련성 앵커, 정확한 아티팩트,
-   Core가 파생한 관찰 시각, 필수 기준 coverage, 요청-해결-Run 이벤트 순서를 위에서
-   연결한 `record_run` 및 상태 스키마 담당 문서와 대조합니다. 이는 담당 문서가 정의한
-   사실을 관찰하는 단언이며 이 체크리스트가 동작을 새로 정의하는 것이 아닙니다.
-6. 요청이 pending인 동안 셀은 status 결과 하나, 차단된 close 결과 하나, 정확한
-   operation-result의 첫 page도 관찰합니다. 모델 가시 pending projection은 같은 정확한
-   세 필드 summary이고 4번의 모든 금지 필드를 빼야 합니다. operation-result page는 저장
-   응답 전체가 현재 닫힌 형태를 만족할 때만 반환합니다. 해결 뒤 새 상태는
-   `AuthorityReceipt.latest_run_ref`를 따라 소비 Run을 가리켜야 하며, 셀은 관찰한 ready
-   상태와 빈 차단 사유 집합을 상태 및 스키마 담당 문서와 대조합니다. 또한 호스트
-   실행 전 커서 뒤의 새 Task 결속 Detective Stop `allow` 이벤트 하나와, 저장된 Stop receipt,
-   새 상태 receipt, 별도의 호스트 소유 관리 UI에서 복사한 완전한 receipt 사이의
-   정확한 일치를 요구합니다.
-7. 폐쇄형이며 크기가 제한된 외부 JSON에는
-   `kind=live_host_evidence_observation_release_validation`, 안전한 검증 좌표, 담당 문서
-   대조 결과, 모델 비가시적 capability 및 host 표시 boolean, projection별 안전 형태 boolean과
-   digest, 운영자 요약의 정확한 일치 여부와 제한된 문자 수만 기록합니다. consent URL,
-   bearer token, raw tool body, 원문 요약, 프롬프트나 대화 기록 내용, 스크린샷이나 녹화, 자격 증명,
-   비밀값, 비공개 운영자 입력을 담으면 안 됩니다.
-
-기록기는 크기가 제한된 종단 결과 하나를 새 작업 경로에 쓰며 기존 이름을 덮어쓰지
-않습니다. 이 출력만으로 지원을 등록하거나 manifest entry를 만들 수 없습니다. 호스트 실행 파일이
-없거나 TTY가 대화형이 아니거나, 정확한 capability가 누락되거나 잘못됐거나, host 전용
-표시 표면이 없거나, host 전용 `_meta`와 모델 가시 결과 데이터를 구별할 수 없으면
-`result=unavailable`을 기록합니다. 픽스처 준비 실패,
-선택된 호스트의 비정상 종료, 저장 상태·Stop·receipt·결과 검증기 invariant 실패는 안전한
-단계 식별자만 포함한 `result=failed`로 기록합니다. 인증과 브라우저 실패는 호스트 실행
-전에 항상 분류할 수 없습니다. 선택된 호스트 실행이 그 이유로 실패하더라도 결과는
-`unavailable`이 아니라 `failed`입니다. 예기치 않은 unwind는
-`result=failed_before_completion`을 만듭니다. 결과가 `passed`가 아니거나, 테스트가
-단지 무시된 것으로 보고됐거나, 선택 변수 없이 실행했으면 통과가 아닙니다.
-
-호스트를 지원한다고 명시하려면 그 호스트의 셀이 통과해야 합니다. Codex `0.144.4`는
-정확한 증거 좌표이며 호스트 종류 기준 구현 disposition을 바꾸지 않습니다. 이 셀은 관찰된
-증거 관찰 로컬 웹 경로만 검증합니다. 호스트 고유 Judgment, 실행 가능한
-CLI 대체 경로, 호스트 설정, 최종 출력 셀을 충족할 수 없고 그 반대도 마찬가지입니다.
-크기가 제한된 결과와 릴리스 승인자의 체크리스트는 그 승인된 외부 릴리스 기록 위치에 보존합니다. 결과나
-Runtime Home을 커밋하지 않습니다. 이 증거는 관찰한 호스트, 릴리스 후보, 환경에만
-적용됩니다. 이식 가능한 호스트 적합성, 보안 증명, 호스트 고유 elicitation 증거, 제품
-수락, 닫기 준비 상태, 일반적인 정확성 주장이 아닙니다.
-
-<a id="live-host-evidence-producer-release-validation"></a>
-## 실제 호스트 증거 생산자 릴리스 검증
-
-설치된 각 유지 호스트에서 생산자 기능 두 개를 한 번씩 실행합니다. 각 명령은 셀을 정확한
-후보 설명자에 결속하고 12개 셀 디렉터리 안의 서로 다른 새 경로를 사용합니다.
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-verified-tool-producer.json VOLICORD_RUN_CODEX_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-verified-tool-producer.json VOLICORD_RUN_CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-registered-connection-observation.json VOLICORD_RUN_CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-registered-connection-observation.json VOLICORD_RUN_CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
-```
-
-선택한 각 셀에서 필수 assertion 계열 일곱 개를 모두 확인합니다. 인증된 실제 호스트는 먼저
-정확한 `volicord.prepare_evidence_capture` intent 하나를 커밋한 뒤 같은 불투명 관리
-세션에서 정확한 benign Bash pre/post 이벤트 쌍 또는 intent 이후의 실제 Stop 이벤트
-하나를 만듭니다. 하네스는 정확한 capture를 받기 전에 의도적으로 불일치시킨 capture를
-영속 효과 없이 거부해야 합니다. 같은 등록 연결에서 실행하는 두 번째 실제 호스트 turn은
-receipt에 결속된 생산자, 아티팩트, Strong Evidence 관찰, criterion coverage, Run, 현재
-status receipt, close 결과를 정확히 하나씩 완결해야 합니다.
-
-대화형 source 자식 프로세스와 결속된 Runtime Home을 동시에 감시합니다.
-`verified_tool_producer`의 source 관찰 장벽은 intent 이후의 정확한 `pre_tool`과 짝을 이루는
-완전한 `post_tool`이 영속 저장되는 시점이며, 짝이 되는 `pre_tool` 결정은 `deny`가 아니어야
-합니다. Stop 이벤트를 요청하거나 기다리지 않습니다. `registered_connection_observation`의
-장벽은 allow 또는 deny와 관계없이 intent 이후의 정확한 Stop 이벤트가 영속 저장되는
-시점입니다. 해당 장벽 직후 15분 intent가 만료되기 전에 불일치 zero-effect 검사와 정확한
-receipt capture를 수행합니다. Receipt capture는 별도의 source fulfillment
-트랜잭션입니다. 그보다 먼저 모델 응답, turn, 프로세스 완료를 기다리지 않습니다. Capture
-뒤 직접 source 자식 프로세스를 끝내고 회수하고, 전용 프로세스 그룹의 나머지 구성원과
-runner가 발견을 지원하는 경우 그룹 밖에서도 turn ownership 표식을 유지하는 모든
-프로세스를 종료합니다. 이 협력적 격리 경계가 정지했음을 확인한 다음 turn 이후 관리 기준선
-snapshot을 만들고 producer 최종화 turn을 시작합니다. 이는 적대적 sandbox가 아닙니다.
-부여된 그룹을 벗어나면서 상속한 표식도 제거하는 host adapter는 검증된 runner profile 밖에
-있습니다. runner가 전용 프로세스 그룹과 그 정지를 확인할 수 없거나 검토 host profile이 그
-전제를 위반하는 것으로 알려졌다면 정지를 추론하지 말고 선택한 실제 셀을 종단 셀 없는
-구조적 실패로 중단합니다. 크기가 제한된 대기 안에 정확한 장벽이 나타나지
-않으면 선택한 시도 실패이며, session/시각 상관관계를 사용하거나 intent 기간을 늘릴 근거가
-아닙니다.
-
-하네스는 인증된 셀 호스트 turn 전에 결속된 깨끗하고 폐기 가능한 Runtime Home에서 정확한
-관리 기준선 정체성과 메타데이터 digest를 크기가 제한된 형태로 snapshot하고, 셀을 기록하기
-전에 같은 snapshot을 다시 만듭니다. 해당 turn의 정확한 불투명 관리 세션 행 가운데 두
-snapshot 사이에 새로 생겼거나 메타데이터 digest가 바뀐 행에서만 클라이언트 정체성을
-가져올 수 있습니다. 같은 연결의 변경되지 않은 과거 기준선을 미리 넣은 negative case도
-검증해야 합니다. 현재 turn에 성공한 관리 initialize가 없으면 그 기준선이 클라이언트
-정체성을 제공해서는 안 됩니다. 조건을 만족하는 행이 없으면 null 클라이언트 집합을
-기록하므로 구현 셀을 검증됨으로 만들 수 없고, 일부만 있거나 형식이 잘못되었거나 모호하거나
-서로 다른 행이 있으면 기록을 중단합니다.
-
-조건을 만족하는 각 키와 정확한 after snapshot 메타데이터 다이제스트는 종단 기록까지
-보존합니다. 변경이 없는 반복 turn과 같은 키를 전진시키는 이후 캡처 turn을 모두
-검증합니다. 후자는 before snapshot이 직전 예상 다이제스트와 정확히 일치할 때만 예상
-다이제스트를 교체할 수 있습니다. 마지막 snapshot 뒤에 조건을 만족한 같은 기준선을
-변경하는 negative case도 실행하고, 기록기가 어느 최종 이름도 게시하기 전에 종단 기록이
-실패하는지 확인합니다. 삭제, 같은 키의 행 교체, 반복 turn의 before snapshot 불일치도
-같은 닫힌 실패입니다. 기록기는 동시에 존재하는 이름을 제거하거나 이 실패를 정직한 null
-정체성 하향 조정으로 처리하면 안 됩니다.
-
-Codex `0.144.4` 셀에서 하네스는 정확한 `clientInfo.name=codex-mcp-client`, 정규
-클라이언트·호스트 버전 `0.144.4`, 바깥·안쪽 thread 같음, root 세션 매핑 하나,
-변경 불가능한 프로세스 로컬 thread 다이제스트 하나도 증명합니다. 세션·thread
-메타데이터가 없거나 일치하지 않으면 관리, 진단, 도구 호출, Core, token, local-web 효과가
-모두 없어야 합니다. 같은 결속의 이후 유효한 `turn_id`는 허용됩니다. 환경, PID, cwd,
-시각, 훅 근접성은 이 assertion을 충족하지 못합니다.
-
-크기가 제한된 증거 sidecar에는 identifier, 개수, digest, 담당 계약 적합성 boolean만
-기록합니다. 프롬프트, 대화 기록, 원본 tool 입력·출력, 원본 native session 또는
-invocation identifier, URL, token, credential, 인증 cache를 보존하면 안 됩니다. 호스트가
-없으면 실제 null 정체성 ignored 셀로 표현합니다. 주장이 필요하면
-`VOLICORD_RELEASE_REQUEST_VERIFIED=1`을 유지하여 부재가 게이트를 실패시키게 합니다. 실행
-전에 의도적으로 보고할 제외를 결정한 경우에만 `0`을 선택합니다.
-
-설치된 호스트를 결속했지만 분류 가능한 source 관찰, capture 또는 producer chain 시도가
-실패하면 먼저 직접 source 자식 프로세스를 끝내고 회수하고 위에서 정의한 협력적 프로세스
-그룹 및 표식 유지 경계의 정지를 확인한 뒤 turn 이후 기준선을 확보하고, 보존한
-정체성, 후보 무결성, 게시 영역을 재검증합니다. 이 검사가 모두 성공한 경우에만 폐기 가능한
-Runtime Home이 남아 있는 동안 엄격하고 크기가 제한된 종단 결과를 게시합니다. 셀은
-`run_state=completed`, `implemented_unverified` 주장을 사용하고 입증하지 못한 모든 필수
-assertion을 크기가 제한된 finding code와 함께 false로 둡니다. 안전한 실패 증거에는 안정된
-stage/code와 정확한 짝 후보 수, 이벤트 종류 순서 분류, 사전 이벤트 결정 분류, invocation
-identity 일치 여부 같은 크기가 제한된 집계 사실만 둘 수 있으며 원본 값은 보존하면 안
-됩니다. 실제 검증은 `FAIL`로 반환하지만 `clean`까지 성공적으로 커밋한 셀은 행렬 입력으로
-유지합니다. 직접 자식 프로세스 회수, 협력적 격리 경계 정지, turn 이후 기준선 확보,
-보존한 무결성 유지, 종단 바이트
-게시 중 하나라도 실패하면 최종 셀 없이 구조적 게시 실패로 처리하고 새 root 복구를
-적용합니다.
-
-<a id="live-host-cli-fallback-release-validation"></a>
-## 실제 호스트 CLI 대체 경로 릴리스 검증
-
-유지되는 Codex 또는 Claude Code 호스트 경로에서 실행 가능한 CLI User Channel 복구를
-지원한다고 명시하는 릴리스를 게시하기 전에 이 체크리스트를 사용합니다. 정확한 릴리스
-후보에서 인증된 환경과 사람의 참여로 수행하는 릴리스 검증입니다. 호스트 고유 Judgment
-셀과 네 셀 최종 출력 매트릭스에서 모두 분리됩니다. 명령 템플릿, 일반 CLI 통합 테스트,
-호스트 고유 elicitation 결과, 최종 출력 결과는 이 체크리스트를 충족할 수 없습니다.
-정확한 CLI와 재개 동작은 [관리 CLI](../reference/admin-cli.md#user-channel-commands),
-[Agent Connection](../reference/agent-connection.md),
-[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md)이 계속
-담당합니다. 이 체크리스트는 릴리스 검증 실행과 증거 분리만 담당합니다.
-
-유지 문서, `Product Repository`, `Volicord Runtime Home` 밖에 새 폐기 가능 작업 출력 위치를
-준비하고 정확한 릴리스 후보와 설치된 호스트의 식별 정보를 기록합니다. 정규 symlink 없는
-`RESULT_ROOT` 하나와 그 정확한 `auxiliary/` 하위 디렉터리를 미리 만듭니다. 각 결과 경로는
-`RESULT_ROOT/auxiliary` 바로 아래의 서로 다른 존재하지 않는 경로여야 합니다. 이 보조 파일은
-[`CodexReleaseCell`](../reference/host-release-evidence.md#codexreleasecell)이 아니며
-[체크인된 manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)를 갱신할
-수 없습니다. 아래 두 무시된 점검을 각각 실행합니다.
-
-```sh
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
-```
-
-각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
-
-1. 하네스가 설치된 호스트에서 사용할 정확한 Detective Agent Connection에 `advisor`
-   Task, 현재 Change Unit, baseline, 두 선택지가 있는 현재 대기 상태 product-decision
-   요청 하나를 준비합니다. 에이전트가 아니라 사람 운영자가 `route_alpha` 또는
-   `route_beta`를 선택합니다.
-2. 실제 `volicord inbox --json` 결과가 그 요청을 정확히 한 번 표시합니다. 하네스가
-   실제 `volicord inbox resolve ... --choice ... --json` 명령으로 사람의 선택을 제출한
-   뒤, 정확히 같은 명령과 인수를 다시 실행합니다. 두 JSON byte가 같고, 첫 해결만 상태를
-   한 번 전진시키며, 재시도와 새 status가 커밋된 `state_version`을 그대로 보존해야
-   합니다.
-3. 저장된 해결은 resolution ID 하나, `resolved_by_actor_source=local_user`,
-   `channel_kind=cli`, 해결 담당 문서가 실제 CLI User Channel 경로에 대해 인정하는
-   `resolved_verification_basis`를 가지며 선택된 option이 운영자의 선택과 같아야 합니다.
-   임시 경로 없는 명령 템플릿이나 `--help` 결과는 이 항목을 충족하지 않습니다.
-4. 설치된 호스트가 준비된 Agent Connection으로 시작해 정확한 요청 ID에 대해
-   `request.operation=resume`으로 `volicord.request_user_action`을 호출합니다. 같은 연결의
-   진단이 최초 결과의 재생을 관찰해야 하며 Task에는 product-decision 요청이 정확히 하나만
-   남아야 합니다. 이어서 호스트가 그 Agent Connection을 이름 붙이는
-   `created_by_actor_source`로 option에 매핑된 Product Repository 비쓰기
-   `shaping_update` Run 하나를 기록합니다.
-5. 일치하는 `user_action_requested`, `user_action_resolved`, `run_recorded` 권한 이벤트가
-   요청, 해결, CLI 채널, 정확한 Run, 종류, 비쓰기 사실을 요청-해결-Run 순서로 결속합니다.
-   새 status는 `AuthorityReceipt.latest_run_ref`가 가리키는 그 Run을 읽고
-   `close_state=ready`와 빈 차단 사유를 보고해야 합니다.
-6. 호스트 실행 전 cursor 뒤에 새 Task 결속 Detective Stop 이벤트가 정확히 하나 나타나고,
-   이유와 차단 사유가 없는 `allow`를 기록하며, 새 status와 같은 완전한 receipt를
-   저장합니다. 운영자는 별도의 호스트 소유 관리 UI에서 완전한 canonical receipt를
-   복사하고, 하네스는 `state_version` 하나만이 아니라 전체가 정확히 같은지 검사합니다.
-7. 크기가 제한된 JSON 결과는 `kind=live_host_cli_fallback_release_validation`,
-   `result=passed`, CLI 근거와 정확한 재시도 사실, 같은 연결의 재개 증거, 매핑된 Run과
-   이벤트 순서, Stop 좌표, receipt 좌표, 완전한 관리 UI 확인을 담습니다. 증거 범위는 이
-   CLI 대체 경로 셀임을 명시하고 호스트 고유 Judgment와 최종 출력 매트릭스 셀을
-   제외합니다.
-
-결과 경로는 필수입니다. 기록기는 크기가 제한된 종단 기록 또는
-`failed_before_completion` 기록 하나를 새 이름에 설치하며 기존 결과를 덮어쓰거나 삭제하지
-않습니다. 쓰기가 실패하거나 명령 완료 여부가 불확실하면 그 작업 경로를 폐기하고 존재하지
-않는 새 auxiliary 경로를 사용합니다. 이 보조 출력은 플랫폼 셀 결과가 아니며 기준
-manifest에 영향을 주지 않습니다. `passed`가 아닌
-모든 결과, 사용할 수 없는 실행 파일, 인증 환경,
-대화형 TTY, 같은 연결의 재개 경로, Task 결속 Stop, 완전한 receipt UI는 통과가 아니라
-`SKIP` 또는 `FAIL`로 처리합니다. 유지되는 두 호스트를 모두 지원한다고 명시하려면 두
-호스트별 셀이 모두 통과해야 합니다.
-
-크기가 제한된 결과와 릴리스 승인자의 체크리스트는 그 승인된 외부 릴리스 기록 위치에 보존합니다. 결과
-파일, Runtime Home, 스크린샷, 대화 기록, 녹화, 자격 증명, 비밀값, 전체 프롬프트,
-비공개 운영자 입력을 커밋하지 않습니다. 이 증거는 관찰한 호스트, 릴리스 후보, 환경에만
-적용됩니다. 이식 가능한 호스트 적합성, 보안 증명, 호스트 고유 Judgment elicitation
-증거, 최종 출력 매트릭스 증거, 제품 수락, 닫기 준비 상태, 일반적인 정확성 주장이
-아닙니다.
+온보딩, 설치, Codex 설정, 문제 해결, 담당 경로가 실질적으로 바뀌면 대표 사용자를
+대상으로 사용성 검증을 수행합니다. 이는 사람이 참여하는 검증이며 자동 검사나 에이전트의
+문서 검토가 실제 참여자를 대신하지 않습니다.
+
+처음 사용하는 운영자가 다음 작업을 완료할 수 있는지 확인합니다.
+
+1. 문서에 나온 플랫폼과 저장소 토폴로지가 지원되는지 판단합니다.
+2. 정확한 `volicord`와 Codex 실행 파일을 설치하거나 선택합니다.
+3. `personal` 또는 `shared` 범위에서 `record` 프로필의 `codex` Agent Connection을
+   프로비저닝합니다.
+4. 연결을 검증하고 성공이 아닌 각 결과를 해석합니다.
+5. `volicord inbox`로 대기 중인 `UserActionRequest`를 찾고
+   `volicord inbox resolve`로 해결한 뒤 에이전트 작업을 재개합니다.
+6. Volicord가 관리하는 구성만 복구하거나 제거합니다.
+7. 정확한 계약의 집중 스키마 또는 저장소 담당 문서를 찾습니다.
+
+결과는 유지 문서 밖에 기록합니다. 참여자 메모, 스크린샷, 녹화, 자격 증명, 대화
+기록, Runtime Home, 꾸며 낸 완료 주장을 커밋하지 않습니다.
+
+## Codex 릴리스 검증 검토
+
+릴리스 검증은 [호스트 릴리스 증거](../reference/host-release-evidence.md)가 정의하는
+정확한 최종 Codex 아티팩트와 독립된 `linux`, `macos`, `native_windows`, `wsl2`
+셀 네 개로 제한됩니다. 선택한 셀은 담당 문서의 닫힌 시나리오 목록을 실행하고 정확히
+제한된 증거 형태를 게시해야 합니다. 저장소 테스트, 구성 fixture, 다른 플랫폼 결과,
+복사한 manifest 항목은 셀을 통과시킬 수 없습니다.
+
+실제 검증에는 폐기 가능한 Product Repository, Runtime Home, 외부 결과 위치만
+사용합니다. 자격 증명, prompt, 대화 기록, token, 스크린샷, 런타임 데이터를 저장소
+밖에 둡니다. runner나 전제 조건이 없으면 `unavailable`, 적격 시도가 없으면
+`not_run`으로 보고합니다.
 
 ## 정확한 호스트 릴리스 증거 게이트
 
@@ -850,12 +237,82 @@ manifest에 영향을 주지 않습니다. `passed`가 아닌
 테스트 전용 `tests/release-validation` 패키지가 있으면 다음을 실행합니다.
 
 ```sh
-cargo test -p volicord-release-validation-tests
+cargo test --locked -p volicord-release-validation-tests --all-targets --all-features
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 ```
 
-이 명령은 계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례, 정확한 지원 조회를
-검증합니다. 최종 확정 Codex 아티팩트를 실행하지 않으므로 어떤 플랫폼 셀도 `passed`로
-만들 수 없습니다.
+테스트 명령은 계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례, 정확한 지원
+조회를 검증합니다. 최종 확정 Codex 아티팩트를 실행하지 않으므로 어떤 플랫폼 셀도
+`passed`로 만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 네 셀의 실제 상태 또는
+파생 상태를 보고합니다. 정직한 `[]` manifest에서는 네 셀 모두 `not_run`으로
+보고합니다.
+
+실행 명령과 모든 정확한 입력 의미는
+[실행 가능한 릴리스 셀 게이트](../reference/host-release-evidence.md#executable-release-cell-gate)가
+담당합니다. 실제 실행 전에 다음 runner 경계를 프로비저닝합니다.
+
+| 셀 | 릴리스 runner 전제 조건 |
+|---|---|
+| `linux` | `self-hosted`, `volicord-release`, `linux`, `native-linux`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Linux runner입니다. WSL이나 container이면 안 됩니다. |
+| `macos` | `self-hosted`, `volicord-release`, `macos`, `native-macos`, `arm64` 라벨을 가진 자체 호스팅 Apple silicon native macOS runner입니다. |
+| `native_windows` | `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Windows runner입니다. |
+| `wsl2` | `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64` 라벨을 가진 자체 호스팅 x86-64 native Windows supervisor이며 정확한 `Ubuntu-24.04` WSL2 배포판이 이미 설치되어 있어야 합니다. Ubuntu GitHub runner는 이 경계가 아닙니다. |
+
+각 runner service는 담당 문서가 정의한 환경 변수를 통해 정확히 최종 확정된 Codex
+경로, 셀에 기록된 정확한 Volicord 경로, 플랫폼 scenario driver, environment-image
+좌표를 미리 프로비저닝합니다. `RUNNER_NAME`은 runner service에서 가져옵니다.
+workflow는 새로운 외부 증거 및 work root와 work root 아래의 존재하지 않는
+`VOLICORD_HOME`을 만듭니다. WSL2 runner는 Codex, Volicord, Product Repository work
+root, Runtime Home을 `Ubuntu-24.04` 안의 ext4에 두며, scenario driver는
+`wsl_shutdown_restart` 중에도 살아남아 이를 검증할 수 있는 native Windows
+coordinator입니다.
+
+첫 자격 시도 또는 재수집에서는 각 runner의 서로 다른 외부 미존재 경로를
+`VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH`로 설정한 뒤, 각 독립 환경에서
+일치하는 생성 명령 하나를 정확히 실행합니다.
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate wsl2
+```
+
+후보 생성은 기존 통과 manifest 셀을 요구하지 않습니다. 전체 플랫폼 카탈로그를
+실행하고 정확한 runner 및 아티팩트 좌표를 기록하며, create-new 방식의 외부 단일 셀
+후보 배열만 기록합니다. 기준 manifest를 편집하거나 승격하지 않습니다. `failed` 또는
+`unavailable` 후보는 검토할 수 있도록 보존하지만 생성기는 실패로 종료합니다. runner가
+없으면 시도하지 않은 상태로 남고, 아티팩트, driver, 환경 좌표, 토폴로지 전제 조건이
+없으면 자격을 갖춘 후보 생성을 시작할 수 없습니다. job을 다른 runner로 우회하지 말고
+이 결과를 정확히 보고합니다.
+
+후보 배열 네 개를 검토하고 한 번의 릴리스 작업으로
+[체크인된 단일 manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)를
+`linux`, `macos`, `native_windows`, `wsl2` 순서로 교체합니다. 과거 entry를 추가하거나,
+셀 사이에 증거를 복사하거나, 결과를 편집해 `passed`로 만들거나, 테스트 전용 설명자를
+불러오거나, 검토 전에 후보 출력을 체크인 증거로 취급하면 안 됩니다. 검토한 manifest를
+대상으로 계약 테스트를 다시 실행합니다.
+
+그런 다음 같은 각 독립 환경에서 차단 재실행 명령을 한 번씩 실행합니다.
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform linux
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform macos
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform native_windows
+cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --platform wsl2
+```
+
+재실행 게이트는 전체 플랫폼 카탈로그를 driver에 위임하기 전에 정확한 기존 체크인 통과
+셀을 요구합니다. 셀이 없으면 `not_run`으로 실패합니다. 체크인 셀이 통과 상태가 아니거나,
+runner 좌표, 아티팩트, scenario driver, 시나리오 증거, 토폴로지가 달라도 선택한 job이
+실패합니다. 따라서 현재의 정직한 `[]` manifest에서는 후보를 생성할 수 있지만 모든 차단
+재실행은 `not_run`으로 실패합니다.
+
+일반 `.github/workflows/ci.yml`은 정적 계약 테스트만 실행합니다.
+`.github/workflows/release.yml`의 pull request도 실제 job을 건너뜁니다. tag push 또는
+수동 workflow dispatch는 native job 세 개와 Windows가 감독하는 독립 WSL2 job을
+예약합니다. `publish-release`는 네 job 모두에 의존하므로 대기, 건너뜀, 사용 불가,
+실패, `not_run` 셀이 하나라도 있으면 게시를 막습니다.
 
 플랫폼별로 게시자가 제어하는 모든 byte 변경을 끝낸 Codex 실행 파일을 최종 확정하고
 SHA-256 digest를 계산한 뒤, 같은 byte를 일치하는
@@ -870,12 +327,6 @@ Runner나 다른 전제 조건을 사용할 수 없으면 `unavailable`, 자격�
 `not_run`으로 보고합니다. 어느 값도 통과가 아닙니다. Linux 결과를 WSL2에, native Windows
 결과를 WSL2에, 어떤 아티팩트나 capability 결과를 다른 셀에 복사하면 안 됩니다. 셀이
 누락되거나 통과하지 못하면 네 플랫폼 릴리스 주장을 막습니다.
-
-네 번의 정확한 실행이 끝나면 한 번의 릴리스 작업으로
-[체크인된 단일 manifest](../reference/host-release-evidence.md#canonical-checked-in-manifest)의
-네 셀 배열을 검토하고 교체합니다. 과거 entry를 추가하거나, 셀 사이에 증거를 복사하거나,
-결과를 편집해 `passed`로 만들거나, 테스트 전용 설명자를 manifest에 불러오면 안 됩니다.
-검토된 manifest를 대상으로 계약 테스트를 다시 실행합니다.
 
 플랫폼별 정확한 명령과 runner 좌표, 담당 문서가 정의한 셀 좌표와 증거 digest, 모든 필수
 시나리오 결과, 네 셀의 실제 상태를 보고합니다. 건너뛰었거나 사용할 수 없는 실행은 이유와

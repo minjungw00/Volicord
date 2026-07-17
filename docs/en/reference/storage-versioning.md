@@ -46,6 +46,13 @@ the current manifest. Recreation is not conversion and does not preserve or
 reinterpret records from another shape. Persisted authority data is never
 silently discarded or recreated by ordinary open.
 
+The separate non-authority `diagnostics.sqlite` database follows the same
+single-current-contract rule through its own semantic
+`volicord.sqlite.diagnostics` manifest and a canonical schema digest derived
+from its SQL inventory. It is created only at an absent path and accepts no
+numeric `PRAGMA user_version` dispatch, migration, importer, inferred format,
+or partial schema. Its manifest is not an authority `StorageManifest`.
+
 ## `StorageManifest`
 
 The supported storage contract is identified by this exact manifest:
@@ -57,6 +64,26 @@ StorageManifest:
   integrity_constraints_digest: string
   enabled_capabilities: string[]
 ```
+
+The current constants are exact:
+
+```yaml
+contract_id: volicord.sqlite.canonical
+enabled_capabilities:
+  - artifact_storage
+  - authority_event_chain
+  - exact_operation_result
+  - guard_reconciliation
+  - managed_codex_connection
+  - project_continuity
+  - user_action_cli_resolution
+```
+
+`enabled_capabilities` is this complete ascending UTF-8 byte order, not a set
+whose serialized order may vary. An unknown or missing `contract_id`, an
+unknown, missing, duplicate, reordered, or strict-subset capability list, or a
+noncurrent value is invalid. Store supplies no default, alias, conversion, or
+capability inference.
 
 Field meanings:
 
