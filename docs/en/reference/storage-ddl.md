@@ -109,6 +109,19 @@ fixed source order. Fresh initialization applies them only to empty SQLite
 databases. There is no migration, conversion, upgrade, importer, historical SQL
 bundle, numeric profile dispatch, or alternate database opener.
 
+These two source files are exact-byte textual contracts. Their canonical
+repository form uses LF bytes only and ends with exactly one LF. The root
+`.gitattributes` rule forces those same bytes in Linux, macOS, native Windows,
+and WSL2 checkouts regardless of client line-ending configuration. Because
+`include_str!` embeds the exact source bytes used to derive
+`GeneratedSchemaMetadata`, changing schema line endings changes the
+`canonical_ddl_digest`, `integrity_constraints_digest`, and resulting
+`StorageManifest` identity. A CRLF canonical schema source is invalid and must
+be rejected; consumers do not normalize line endings, replace CRLF, or trim
+arbitrary whitespace before deriving schema identity. Any canonical SQL change
+must pass the strict byte, isolated checkout, generated metadata, and fixed
+digest contract tests.
+
 A deterministic extractor derives the tables, columns, indexes, constraints,
 and both schema digests from those files for the single shared
 `GeneratedSchemaMetadata`. Runtime validation, manifest construction, Store

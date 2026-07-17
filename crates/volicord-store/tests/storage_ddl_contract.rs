@@ -15,17 +15,37 @@ use volicord_store::{
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    canonical_json_string, GeneratedRelationKind, StorageManifest, STORAGE_CONTRACT_ID,
-    STORAGE_ENABLED_CAPABILITIES,
+    canonical_json_string, GeneratedRelationKind, StorageDatabaseKind, StorageManifest,
+    STORAGE_CONTRACT_ID, STORAGE_ENABLED_CAPABILITIES,
 };
 
 #[test]
-fn generated_metadata_and_manifest_have_stable_vectors() -> Result<(), Box<dyn Error>> {
+fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
+) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 36);
     assert_eq!(metadata.columns.len(), 476);
     assert_eq!(metadata.indexes.len(), 62);
     assert_eq!(metadata.constraints.len(), 36);
+    for database in [
+        StorageDatabaseKind::Registry,
+        StorageDatabaseKind::ProjectState,
+    ] {
+        assert!(
+            metadata
+                .tables
+                .iter()
+                .any(|table| table.database == database),
+            "{database:?} tables must contribute to generated metadata"
+        );
+        assert!(
+            metadata
+                .constraints
+                .iter()
+                .any(|constraint| constraint.database == database),
+            "{database:?} constraints must contribute to generated metadata"
+        );
+    }
     assert_eq!(
         metadata.canonical_ddl_digest,
         "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb"

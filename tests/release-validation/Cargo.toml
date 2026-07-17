@@ -23,3 +23,6 @@ windows-sys = { version = "0.61", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
 ] }
+
+[dev-dependencies]
+volicord-store = { path = "../../crates/volicord-store" }

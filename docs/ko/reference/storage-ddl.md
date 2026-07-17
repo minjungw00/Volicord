@@ -100,6 +100,17 @@ manifest와 같아야 합니다. 정수를 파싱하거나, 버전을 비교하�
 있는 SQLite 데이터베이스에만 이 원본을 적용합니다. 마이그레이션, 변환, 업그레이드,
 가져오기 도구, 과거 SQL 묶음, 숫자 프로필 분기, 대체 데이터베이스 열기 경로는 없습니다.
 
+이 두 원본 파일은 바이트가 정확히 일치해야 하는 텍스트 계약입니다. 저장소의 기준 형식은
+LF 바이트만 사용하고 끝에 LF 하나만 둡니다. 루트 `.gitattributes` 규칙은 Git 클라이언트의
+줄바꿈 설정과 관계없이 Linux, macOS, native Windows, WSL2 체크아웃에서 같은 바이트를
+강제합니다. `include_str!`가 `GeneratedSchemaMetadata`를 파생하는 정확한 원본 바이트를
+포함하므로 스키마 줄바꿈 바이트를 바꾸면 `canonical_ddl_digest`,
+`integrity_constraints_digest`, 그 결과인 `StorageManifest` 식별값이 바뀝니다. CRLF를
+사용한 기준 스키마 원본은 유효하지 않으며 거부해야 합니다. 소비자는 스키마 식별값을
+파생하기 전에 줄바꿈을 정규화하거나, CRLF를 치환하거나, 임의의 공백을 잘라 내지
+않습니다. 기준 SQL을 변경할 때는 엄격한 바이트, 격리 체크아웃, 생성 메타데이터, 고정
+digest 계약 테스트를 모두 통과해야 합니다.
+
 결정적 추출기는 이 파일에서 테이블, 열, 인덱스, 제약, 두 스키마 digest를 파생해 하나의
 공유 `GeneratedSchemaMetadata`를 만듭니다. 런타임 검증, manifest 생성, Store query
 projection, fixture, DDL 계약 테스트, 문서 목록은 이 생성 아티팩트를 사용합니다. 어느

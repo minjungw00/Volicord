@@ -13,6 +13,17 @@ use volicord_release_validation_tests::contracts::{
     parse_release_target_contract, serialize_codex_release_evidence_manifest,
     serialize_codex_support_catalog, serialize_release_target_contract,
 };
+use volicord_store::schema::{
+    current_storage_manifest, generated_schema_metadata, PROJECT_STATE_SCHEMA_SQL,
+    REGISTRY_SCHEMA_SQL,
+};
+
+const CANONICAL_SCHEMA_SQL_DIRECTORY: &str = "crates/volicord-store/src/schema";
+
+const CANONICAL_SCHEMA_SQL_PATHS: &[&str] = &[
+    "crates/volicord-store/src/schema/registry.sql",
+    "crates/volicord-store/src/schema/project.sql",
+];
 
 const RELEASE_CANONICAL_PATHS: &[&str] = &[
     "crates/volicord-types/contracts/codex-support-catalog.json",
@@ -55,6 +66,9 @@ fn canonical_contract_files_are_lf_and_match_deterministic_serialization() {
     for relative_path in SNAPSHOT_CANONICAL_PATHS {
         assert_pretty_json_is_canonical(&root.join(relative_path));
     }
+    for relative_path in CANONICAL_SCHEMA_SQL_PATHS {
+        assert_canonical_text_bytes(&root.join(relative_path));
+    }
 }
 
 #[test]
@@ -83,6 +97,55 @@ fn canonical_byte_validation_accepts_lf_and_rejects_crlf() {
             "unexpected canonical-byte error for {relative_path}: {error}"
         );
     }
+
+    for relative_path in CANONICAL_SCHEMA_SQL_PATHS {
+        let canonical = fs::read(root.join(relative_path)).expect("read canonical schema SQL");
+        validate_canonical_text_bytes(&canonical).unwrap_or_else(|error| {
+            panic!("LF canonical SQL must pass for {relative_path}: {error}")
+        });
+
+        let crlf = crlf_mutation(&canonical);
+        assert!(
+            crlf.contains(&b'\r'),
+            "CRLF mutation must add carriage returns"
+        );
+        let error = validate_canonical_text_bytes(&crlf)
+            .expect_err("CRLF schema SQL bytes must be non-canonical");
+        assert!(
+            error.contains("carriage-return"),
+            "unexpected canonical-byte error for {relative_path}: {error}"
+        );
+    }
+}
+
+#[test]
+fn checked_in_schema_metadata_matches_fixed_storage_digest_vectors() {
+    let root = repository_root();
+    assert_eq!(
+        REGISTRY_SCHEMA_SQL.as_bytes(),
+        fs::read(root.join(CANONICAL_SCHEMA_SQL_PATHS[0])).expect("read checked-in registry SQL")
+    );
+    assert_eq!(
+        PROJECT_STATE_SCHEMA_SQL.as_bytes(),
+        fs::read(root.join(CANONICAL_SCHEMA_SQL_PATHS[1])).expect("read checked-in project SQL")
+    );
+
+    let metadata = generated_schema_metadata().expect("generate metadata from canonical SQL");
+    assert_eq!(
+        metadata.canonical_ddl_digest,
+        "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb"
+    );
+    assert_eq!(
+        metadata.integrity_constraints_digest,
+        "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec"
+    );
+
+    let manifest = current_storage_manifest().expect("build manifest from canonical SQL");
+    assert_eq!(manifest.canonical_ddl_digest, metadata.canonical_ddl_digest);
+    assert_eq!(
+        manifest.integrity_constraints_digest,
+        metadata.integrity_constraints_digest
+    );
 }
 
 #[test]
@@ -123,7 +186,8 @@ fn autocrlf_checkout_preserves_canonical_contract_bytes() {
         ],
     );
 
-    let clone = Command::new("git")
+    let mut clone_command = isolated_git_command();
+    let clone = clone_command
         .args(["clone", "--quiet", "--no-checkout"])
         .arg(&source)
         .arg(&checkout)
@@ -136,6 +200,11 @@ fn autocrlf_checkout_preserves_canonical_contract_bytes() {
     assert_effective_lf_attributes(&checkout, &controlled_paths);
     for relative_path in &controlled_paths {
         assert_lf_only(&checkout.join(relative_path));
+        assert_eq!(
+            fs::read(root.join(relative_path)).expect("read canonical source bytes"),
+            fs::read(checkout.join(relative_path)).expect("read isolated checkout bytes"),
+            "isolated autocrlf checkout changed {relative_path}"
+        );
     }
     load_checked_in_contracts(&checkout)
         .expect("autocrlf checkout must retain canonical release-contract bytes");
@@ -144,6 +213,9 @@ fn autocrlf_checkout_preserves_canonical_contract_bytes() {
     }
     for relative_path in SNAPSHOT_CANONICAL_PATHS {
         assert_pretty_json_is_canonical(&checkout.join(relative_path));
+    }
+    for relative_path in CANONICAL_SCHEMA_SQL_PATHS {
+        assert_canonical_text_bytes(&checkout.join(relative_path));
     }
 }
 
@@ -173,6 +245,7 @@ fn lf_controlled_paths(root: &Path) -> Vec<String> {
             }
         }
     }
+    paths.extend(schema_sql_paths(root));
     paths.sort();
     paths.dedup();
     paths
@@ -201,6 +274,30 @@ fn assert_canonical_path_registry_is_complete(root: &Path) {
         discovered, registered,
         "every canonical JSON in an exact-byte directory must be registered for deterministic serialization validation"
     );
+
+    let mut discovered_schema_sql = schema_sql_paths(root);
+    discovered_schema_sql.sort();
+    let mut registered_schema_sql = CANONICAL_SCHEMA_SQL_PATHS
+        .iter()
+        .map(|path| (*path).to_owned())
+        .collect::<Vec<_>>();
+    registered_schema_sql.sort();
+    assert_eq!(
+        discovered_schema_sql, registered_schema_sql,
+        "every canonical schema SQL file must be registered in CANONICAL_SCHEMA_SQL_PATHS"
+    );
+}
+
+fn schema_sql_paths(root: &Path) -> Vec<String> {
+    let absolute = root.join(CANONICAL_SCHEMA_SQL_DIRECTORY);
+    fs::read_dir(&absolute)
+        .unwrap_or_else(|error| panic!("read {}: {error}", absolute.display()))
+        .map(|entry| entry.expect("read canonical schema directory entry").path())
+        .filter(|path| {
+            path.is_file() && path.extension().is_some_and(|extension| extension == "sql")
+        })
+        .map(|path| repository_path(root, &path))
+        .collect()
 }
 
 fn json_paths(root: &Path, directory: &str) -> Vec<String> {
@@ -232,6 +329,25 @@ fn assert_lf_only(path: &Path) {
         "{} contains a carriage-return byte",
         path.display()
     );
+}
+
+fn assert_canonical_text_bytes(path: &Path) {
+    let bytes = fs::read(path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+    validate_canonical_text_bytes(&bytes)
+        .unwrap_or_else(|error| panic!("{} is not canonical: {error}", path.display()));
+}
+
+fn validate_canonical_text_bytes(bytes: &[u8]) -> Result<(), &'static str> {
+    if bytes.contains(&b'\r') {
+        return Err("canonical text contains a carriage-return byte");
+    }
+    if !bytes.ends_with(b"\n") {
+        return Err("canonical text must end with one final LF");
+    }
+    if bytes.ends_with(b"\n\n") {
+        return Err("canonical text must not end with more than one final LF");
+    }
+    Ok(())
 }
 
 fn assert_release_contract_is_canonical(root: &Path, relative_path: &str) {
@@ -328,7 +444,8 @@ fn assert_effective_lf_attributes(root: &Path, paths: &[String]) {
         root.join(".gitattributes").is_file(),
         "root .gitattributes is missing"
     );
-    let output = Command::new("git")
+    let mut command = isolated_git_command();
+    let output = command
         .current_dir(root)
         .args(["check-attr", "-z", "text", "eol", "--"])
         .args(paths)
@@ -367,12 +484,23 @@ fn assert_effective_lf_attributes(root: &Path, paths: &[String]) {
 }
 
 fn run_git(repository: &Path, args: &[&str]) {
-    let output = Command::new("git")
+    let mut command = isolated_git_command();
+    let output = command
         .current_dir(repository)
         .args(args)
         .output()
         .unwrap_or_else(|error| panic!("run git {}: {error}", args.join(" ")));
     require_success(&format!("git {}", args.join(" ")), &output);
+}
+
+fn isolated_git_command() -> Command {
+    let mut command = Command::new("git");
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    command.env(
+        "GIT_CONFIG_GLOBAL",
+        if cfg!(windows) { "NUL" } else { "/dev/null" },
+    );
+    command
 }
 
 fn require_success(label: &str, output: &Output) {

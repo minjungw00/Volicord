@@ -209,9 +209,17 @@ pub(crate) fn extract_schema_facts(
 }
 
 fn build_generated_schema_metadata() -> Result<GeneratedSchemaMetadata, String> {
-    let registry = canonical_facts_from_sql(StorageDatabaseKind::Registry, REGISTRY_SCHEMA_SQL)?;
-    let project =
-        canonical_facts_from_sql(StorageDatabaseKind::ProjectState, PROJECT_STATE_SCHEMA_SQL)?;
+    validate_canonical_sql_source(REGISTRY_DATABASE_KIND, REGISTRY_SCHEMA_SQL)?;
+    validate_canonical_sql_source(PROJECT_STATE_DATABASE_KIND, PROJECT_STATE_SCHEMA_SQL)?;
+    extract_generated_schema_metadata(REGISTRY_SCHEMA_SQL, PROJECT_STATE_SCHEMA_SQL)
+}
+
+fn extract_generated_schema_metadata(
+    registry_sql: &str,
+    project_sql: &str,
+) -> Result<GeneratedSchemaMetadata, String> {
+    let registry = canonical_facts_from_sql(StorageDatabaseKind::Registry, registry_sql)?;
+    let project = canonical_facts_from_sql(StorageDatabaseKind::ProjectState, project_sql)?;
 
     let mut tables = registry.tables;
     tables.extend(project.tables);
@@ -242,6 +250,26 @@ fn build_generated_schema_metadata() -> Result<GeneratedSchemaMetadata, String> 
         canonical_ddl_digest,
         integrity_constraints_digest,
     })
+}
+
+fn validate_canonical_sql_source(source: &str, sql: &str) -> Result<(), String> {
+    let bytes = sql.as_bytes();
+    if bytes.contains(&b'\r') {
+        return Err(format!(
+            "{source} canonical SQL source contains a carriage-return byte"
+        ));
+    }
+    if !bytes.ends_with(b"\n") {
+        return Err(format!(
+            "{source} canonical SQL source must end with one final LF"
+        ));
+    }
+    if bytes.ends_with(b"\n\n") {
+        return Err(format!(
+            "{source} canonical SQL source must not end with more than one final LF"
+        ));
+    }
+    Ok(())
 }
 
 fn canonical_facts_from_sql(
@@ -380,6 +408,8 @@ fn initialize_canonical_schema(
     database_kind: &'static str,
     sql: &str,
 ) -> StoreResult<()> {
+    validate_canonical_sql_source(database_kind, sql)
+        .map_err(|detail| StoreError::schema_invariant(database_kind, detail))?;
     if user_table_count(conn)? != 0 {
         return Ok(());
     }
@@ -410,4 +440,85 @@ fn user_table_count(conn: &Connection) -> rusqlite::Result<i64> {
         [],
         |row| row.get(0),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CANONICAL_DDL_DIGEST: &str =
+        "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb";
+    const INTEGRITY_CONSTRAINTS_DIGEST: &str =
+        "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec";
+
+    #[test]
+    fn canonical_schema_bytes_are_strict_and_crlf_changes_storage_identity() {
+        validate_canonical_sql_source(REGISTRY_DATABASE_KIND, REGISTRY_SCHEMA_SQL)
+            .expect("LF registry SQL source must be canonical");
+        validate_canonical_sql_source(PROJECT_STATE_DATABASE_KIND, PROJECT_STATE_SCHEMA_SQL)
+            .expect("LF project SQL source must be canonical");
+
+        let canonical =
+            extract_generated_schema_metadata(REGISTRY_SCHEMA_SQL, PROJECT_STATE_SCHEMA_SQL)
+                .expect("extract canonical schema metadata");
+        assert_eq!(canonical.canonical_ddl_digest, CANONICAL_DDL_DIGEST);
+        assert_eq!(
+            canonical.integrity_constraints_digest,
+            INTEGRITY_CONSTRAINTS_DIGEST
+        );
+
+        assert_crlf_source_is_noncanonical_and_changes_identity(
+            REGISTRY_DATABASE_KIND,
+            REGISTRY_SCHEMA_SQL,
+            PROJECT_STATE_SCHEMA_SQL,
+            true,
+            &canonical,
+        );
+        assert_crlf_source_is_noncanonical_and_changes_identity(
+            PROJECT_STATE_DATABASE_KIND,
+            REGISTRY_SCHEMA_SQL,
+            PROJECT_STATE_SCHEMA_SQL,
+            false,
+            &canonical,
+        );
+    }
+
+    fn assert_crlf_source_is_noncanonical_and_changes_identity(
+        source: &str,
+        registry_sql: &str,
+        project_sql: &str,
+        mutate_registry: bool,
+        canonical: &GeneratedSchemaMetadata,
+    ) {
+        let mutated_registry = if mutate_registry {
+            registry_sql.replace('\n', "\r\n")
+        } else {
+            registry_sql.to_owned()
+        };
+        let mutated_project = if mutate_registry {
+            project_sql.to_owned()
+        } else {
+            project_sql.replace('\n', "\r\n")
+        };
+        let mutated_source = if mutate_registry {
+            &mutated_registry
+        } else {
+            &mutated_project
+        };
+
+        let error = validate_canonical_sql_source(source, mutated_source)
+            .expect_err("CRLF schema SQL must be rejected as non-canonical");
+        assert!(error.contains("carriage-return byte"), "{error}");
+
+        let mutated = extract_generated_schema_metadata(&mutated_registry, &mutated_project)
+            .expect("extract CRLF-mutated schema metadata for identity comparison");
+        assert_ne!(
+            mutated.canonical_ddl_digest, canonical.canonical_ddl_digest,
+            "{source} CRLF mutation must change the DDL identity"
+        );
+        assert_ne!(
+            mutated.integrity_constraints_digest, canonical.integrity_constraints_digest,
+            "{source} CRLF mutation must change the integrity identity"
+        );
+    }
 }

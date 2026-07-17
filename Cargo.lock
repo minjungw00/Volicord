@@ -933,6 +933,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tempfile",
+ "volicord-store",
  "volicord-types",
  "windows-sys 0.61.2",
 ]
