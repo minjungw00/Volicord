@@ -15,7 +15,8 @@ use crate::{
     catalog::{generate_support_entry, parse_declared_capabilities, serialize_support_entry},
     contracts::{
         load_codex_release_evidence_manifest, load_release_target_contract,
-        serialize_codex_release_evidence_manifest, ReleaseTargetContract, RELEASE_TARGETS_PATH,
+        parse_codex_release_evidence_manifest, serialize_codex_release_evidence_manifest,
+        validate_static_contract_values, ReleaseTargetContract, RELEASE_TARGETS_PATH,
     },
     gate::scenarios::write_synthetic_retained_scenario_evidence,
     io::{git_head, sha256_external_file, ValidationContext},
@@ -125,6 +126,39 @@ fn empty_production_catalog_is_rejected() {
 }
 
 #[test]
+fn partial_manifest_passes_static_validation_but_fails_production_completeness() {
+    let bundle = SyntheticBundle::new();
+    let retained_cell = bundle.targets.required_cells()[0];
+    let cell_manifest = load_codex_release_evidence_manifest(&bundle.evidence_manifest_path(
+        retained_cell.target_triple,
+        retained_cell.platform_environment,
+    ))
+    .expect("strict cell manifest");
+    let partial_manifest =
+        CodexReleaseEvidenceManifest::from_entries(vec![cell_manifest.entries()[0].clone()])
+            .expect("partial evidence manifest");
+    let partial_bytes = serialize_codex_release_evidence_manifest(&partial_manifest)
+        .expect("canonical partial evidence");
+    let partial_manifest = parse_codex_release_evidence_manifest(&partial_bytes)
+        .expect("production parser accepts partial evidence");
+    validate_static_contract_values(
+        &bundle.targets,
+        &bundle.catalog,
+        &bundle.catalog,
+        &partial_manifest,
+    )
+    .expect("partial evidence is a valid static contract state");
+
+    let missing_cell = bundle.targets.required_cells()[1];
+    fs::remove_dir_all(bundle.evidence_artifact_path(
+        missing_cell.target_triple,
+        missing_cell.platform_environment,
+    ))
+    .expect("remove one production evidence cell");
+    assert!(bundle.verify(&bundle.catalog, true).is_err());
+}
+
+#[test]
 fn incomplete_retained_evidence_is_rejected() {
     let bundle = SyntheticBundle::new();
     let cell = bundle.targets.required_cells()[0];
@@ -150,6 +184,19 @@ fn not_run_scenario_is_rejected_by_the_final_gate() {
             RequiredNullable::some("prerequisite_unavailable".to_owned());
         entry.validation_evidence.scenario_results[1].evidence_digest = RequiredNullable::null();
         entry.validation_evidence.scenario_results[1].observed_at = RequiredNullable::null();
+    });
+    assert!(bundle.verify(&bundle.catalog, true).is_err());
+}
+
+#[test]
+fn failed_release_evidence_is_rejected_by_the_final_gate() {
+    let bundle = SyntheticBundle::new();
+    let cell = bundle.targets.required_cells()[0];
+    bundle.rewrite_entry(cell.target_triple, cell.platform_environment, |entry| {
+        entry.validation_evidence.validation_result = CodexReleaseValidationResult::Failed;
+        entry.validation_evidence.scenario_results[0].status = CodexReleaseScenarioStatus::Failed;
+        entry.validation_evidence.scenario_results[0].reason =
+            RequiredNullable::some("assertion_failed".to_owned());
     });
     assert!(bundle.verify(&bundle.catalog, true).is_err());
 }

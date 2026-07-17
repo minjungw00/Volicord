@@ -52,9 +52,9 @@ entry uses the exact published target, platform, and release coordinate owned by
 canonical order. Its deterministic identity is exactly
 `(codex_artifact_digest, target_triple, platform_environment, integration_profile)`.
 Entries are unique and ordered by that identity. The catalog may contain zero
-through six entries. Every entry must map to a required cell in the release-target
-contract below; an operating-system name alone is never a support identity. An
-empty catalog rejects every Codex artifact.
+through six reviewed runtime support entries. Every entry must map to a required
+cell in the release-target contract below; an operating-system name alone is
+never a support identity. An empty catalog rejects every Codex artifact.
 
 The catalog contains no Volicord executable digest, validation result, scenario
 status, evidence path, workflow run identifier, release-cell timestamp, or any
@@ -369,7 +369,12 @@ Only this file is embedded. It must never gain release results, Volicord
 digests, runner metadata, evidence locations, workflow identifiers, or
 release-cell timestamps. No fixture, generated constant, documentation table,
 runtime database, or release-evidence file may act as a second runtime support
-list.
+list. The checked-in source may be empty or contain reviewed support entries.
+Static contract validation requires the embedded and on-disk values to be
+semantically identical, requires the checked-in bytes to equal canonical compact
+serialization followed by one final LF, and validates ordering, uniqueness,
+closed values, and release-target consistency. These checks do not establish
+release completion.
 
 The release-evidence source is external to every Volicord executable:
 
@@ -377,14 +382,18 @@ The release-evidence source is external to every Volicord executable:
 tests/release-validation/contracts/codex-release-evidence-manifest.json
 ```
 
-It contains zero through six actually runner-generated and reviewed evidence
-entries. Entries are unique and ordered by the exact
+It may be empty, partial, or complete and contains only actually runner-generated
+and reviewed evidence entries, up to the six required cells. Entries are unique
+and ordered by the exact
 `(codex_artifact_digest, target_triple, platform_environment, integration_profile)`
-identity. A not-yet-executed source therefore has
-`entries: []`. An absent required cell has derived status `not_run`; the source must
-not fabricate a placeholder entry, digest, runner coordinate, or evidence
-object. Only an actual qualifying attempt can produce `failed` or
-`unavailable` evidence.
+identity. Static contract validation uses the production parser and canonical
+serializer, cross-checks every entry against the runtime support catalog and
+release-target contract, and rejects ambiguous release cells or inconsistent
+artifact bindings. It accepts every contract-valid population state and does not
+interpret a partial or complete shape as release success. An absent required
+cell has derived status `not_run`; the source must not fabricate a placeholder
+entry, digest, runner coordinate, or evidence object. Only an actual qualifying
+attempt can produce `failed` or `unavailable` evidence.
 
 Production code must not embed this external manifest through `include_bytes!`,
 generated Rust, build-script environment variables, compiled constants, or an
@@ -676,8 +685,11 @@ production it rejects an empty support catalog, missing or duplicate evidence,
 source or digest mismatches, and every support entry that cannot map to and be
 used by exactly one required release cell. The current contract has no
 supported non-release-environment marker, so such an entry is invalid. The
-honest current empty support catalog blocks capture and publication; an empty
-checked-in evidence source still blocks checked-in replay.
+static contract checks do not require a nonempty catalog or complete evidence.
+Runtime lookup still rejects every artifact when the catalog is empty, capture
+requires an exact support entry, checked-in replay requires exact passing
+evidence for the selected cell, and the production verifier requires the
+complete passing bundle.
 
 The producer and gate perform these checks in order:
 

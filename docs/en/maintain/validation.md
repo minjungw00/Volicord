@@ -270,13 +270,16 @@ cargo test --locked -p volicord-release-validation-tests --all-targets --all-fea
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 ```
 
-The test command validates separate contract parsing, explicit test-only
-descriptor separation, negative cases, exact runtime support lookup, the
-non-embedding boundary, and evidence-to-catalog cross-checking. It does not
-execute finalized artifacts and cannot make any platform cell `passed`. The
-status command reports the actual or derived external-evidence status of all six
-cells without executing them. With honest `entries: []` sources it reports all
-six as `not_run`.
+The test command validates canonical checked-in bytes, embedded/on-disk catalog
+equality, separate contract parsing, explicit test-only descriptor separation,
+negative cases, exact runtime support lookup, the non-embedding boundary,
+release-target consistency, and evidence-to-catalog cross-checking. It accepts
+empty or reviewed populated support catalogs and empty, partial, or complete
+evidence manifests when their static contracts are valid. It does not execute
+finalized artifacts, assess release completeness, or make any platform cell
+`passed`. The status command reports the actual or derived external-evidence
+status of all six cells without executing them; every absent entry is reported
+as `not_run`.
 
 The executable command and all exact input meanings are owned by the
 [executable release-cell gate](../reference/host-release-evidence.md#executable-release-cell-gate).
@@ -377,8 +380,10 @@ passing evidence before it delegates the full platform catalog. Missing
 evidence fails as `not_run`; non-passing evidence, a changed runner coordinate,
 changed Codex or Volicord artifact,
 changed scenario driver, mismatched scenario evidence, or topology mismatch
-fails the selected job. The current honest `entries: []` support and evidence
-sources fail closed for both candidate capture and blocking replay.
+fails the selected job. Static contract validity is not a release-success
+decision: an empty catalog blocks runtime lookup, capture, and production
+publication; missing, partial, failed, unavailable, or `not_run` required
+evidence blocks the applicable replay or production completeness gate.
 
 Ordinary `.github/workflows/ci.yml` runs static contract tests only. Pull
 requests to `.github/workflows/release.yml` also skip live jobs. The release

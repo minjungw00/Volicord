@@ -242,12 +242,14 @@ cargo test --locked -p volicord-release-validation-tests --all-targets --all-fea
 cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
 ```
 
-테스트 명령은 분리된 계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례,
-정확한 런타임 지원 조회, 외부 증거 비포함 경계, 증거와 카탈로그의 교차 대조를
-검증합니다. 최종 확정 아티팩트를 실행하지 않으므로 어떤 플랫폼 셀도 `passed`로
-만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 여섯 셀의 실제 또는 파생 외부 증거
-상태를 보고합니다. 사실에 맞는 `entries: []` 원본에서는 여섯 셀 모두 `not_run`으로
-보고합니다.
+테스트 명령은 정규 체크인 byte, 내장 카탈로그와 디스크 카탈로그의 일치, 분리된
+계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례, 정확한 런타임 지원
+조회, 외부 증거 비포함 경계, 릴리스 target 일관성, 증거와 카탈로그의 교차 대조를
+검증합니다. 정적 계약이 유효하면 비어 있거나 검토된 entry가 있는 지원 카탈로그와
+비어 있거나 일부 또는 전체 셀을 담은 증거 manifest를 허용합니다. 최종 확정
+아티팩트를 실행하거나 릴리스 완전성을 판단하지 않으며 어떤 플랫폼 셀도 `passed`로
+만들 수 없습니다. 상태 명령은 셀을 실행하지 않고 여섯 셀의 실제 또는 파생 외부
+증거 상태를 보고하며, entry가 없는 셀은 각각 `not_run`으로 보고합니다.
 
 실행 명령과 모든 정확한 입력 의미는
 [실행 가능한 릴리스 셀 게이트](../reference/host-release-evidence.md#executable-release-cell-gate)가
@@ -341,9 +343,10 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 재실행 게이트는 전체 플랫폼 카탈로그를 driver에 위임하기 전에 정확한 내장 지원
 entry와 기존 체크인 통과 증거를 요구합니다. 증거가 없으면 `not_run`으로 실패합니다.
 증거가 통과 상태가 아니거나, runner 좌표, Codex 또는 Volicord 아티팩트, scenario
-driver, 시나리오 증거, 토폴로지가 달라도 선택한 job이 실패합니다. 따라서 현재의
-사실에 맞는 `entries: []` 지원 및 증거 원본은 후보 생성과 차단 재실행 모두에서 fail
-closed로 동작합니다.
+driver, 시나리오 증거, 토폴로지가 달라도 선택한 job이 실패합니다. 정적 계약의
+유효성은 릴리스 성공 판단이 아닙니다. 빈 카탈로그는 런타임 조회, 후보 생성, 운영
+게시를 차단하고, 누락되거나 일부만 있거나 실패, 사용 불가, `not_run`인 필수 증거는
+적용되는 재실행 또는 운영 완전성 게이트를 차단합니다.
 
 일반 `.github/workflows/ci.yml`은 정적 계약 테스트만 실행합니다.
 `.github/workflows/release.yml`의 pull request도 실제 job을 건너뜁니다. 릴리스

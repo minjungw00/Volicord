@@ -2,13 +2,11 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 use crate::{
     contracts::{
-        embedded_codex_support_catalog, load_codex_release_evidence_manifest,
-        load_codex_support_catalog, load_release_target_contract,
+        load_checked_in_contracts, load_release_target_contract,
         parse_codex_release_evidence_manifest, parse_codex_support_catalog,
         parse_release_target_contract, parse_test_only_codex_descriptor,
         serialize_codex_release_evidence_manifest, serialize_codex_support_catalog,
-        CODEX_RELEASE_EVIDENCE_MANIFEST_PATH, CODEX_SUPPORT_CATALOG_PATH, RELEASE_TARGETS_PATH,
-        UNSUPPORTED_HOST_ARTIFACT_REASON,
+        validate_static_contract_values, RELEASE_TARGETS_PATH, UNSUPPORTED_HOST_ARTIFACT_REASON,
     },
     hosts::codex::FIRST_RELEASE_CODEX_CAPABILITIES,
     platforms::{self, PlatformRunnerBoundary},
@@ -35,37 +33,131 @@ const SOURCE_REVISION: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const LINUX_X86: ReleaseTargetTriple = ReleaseTargetTriple::X86_64UnknownLinuxGnu;
 
 #[test]
-fn checked_in_contracts_are_empty_honest_and_separate() {
-    let catalog = embedded_codex_support_catalog().expect("embedded support catalog");
-    assert!(catalog.entries().is_empty());
+fn checked_in_contracts_are_canonical_valid_and_separate() {
+    let contracts = load_checked_in_contracts(&repository_root()).expect("checked-in contracts");
+    assert_eq!(contracts.release_targets.published_targets().len(), 5);
+    assert_eq!(contracts.release_targets.required_cells().len(), 6);
 
-    let root = repository_root();
+    let support_bytes = serialize_codex_support_catalog(&contracts.support_catalog)
+        .expect("canonical support serialization");
+    let support_json = String::from_utf8(support_bytes).expect("support catalog UTF-8");
+    for external_evidence_field in [
+        "volicord_artifact_digest",
+        "validation_result",
+        "validation_evidence",
+        "scenario_results",
+        "runner_id",
+    ] {
+        assert!(!support_json.contains(external_evidence_field));
+    }
+
+    let identity = contracts
+        .support_catalog
+        .identity_digest()
+        .expect("support catalog identity");
+    contracts
+        .evidence_manifest
+        .validate_against_support_catalog(&contracts.support_catalog)
+        .expect("checked-in evidence is policy-bound");
     assert_eq!(
-        catalog,
-        load_codex_support_catalog(&root.join(CODEX_SUPPORT_CATALOG_PATH))
-            .expect("on-disk support catalog")
+        identity,
+        contracts
+            .support_catalog
+            .identity_digest()
+            .expect("support catalog identity after evidence validation")
     );
-    let evidence =
-        load_codex_release_evidence_manifest(&root.join(CODEX_RELEASE_EVIDENCE_MANIFEST_PATH))
-            .expect("external evidence manifest");
-    assert!(evidence.entries().is_empty());
-    evidence
-        .validate_against_support_catalog(&catalog)
-        .expect("empty evidence is supported by empty policy");
-    let targets = load_release_target_contract(&root.join(RELEASE_TARGETS_PATH))
+}
+
+#[test]
+fn static_contract_validation_accepts_every_valid_population_state() {
+    let targets = load_release_target_contract(&repository_root().join(RELEASE_TARGETS_PATH))
         .expect("release target contract");
-    assert_eq!(targets.published_targets().len(), 5);
-    assert_eq!(targets.required_cells().len(), 6);
-    for cell in targets.required_cells() {
-        assert_eq!(
-            evidence.cell_status(
+    let empty_catalog = support_catalog(Vec::new());
+    let empty_evidence = evidence_manifest(Vec::new());
+    validate_static_contract_values(&targets, &empty_catalog, &empty_catalog, &empty_evidence)
+        .expect("empty catalog and evidence are structurally valid");
+
+    let populated_catalog = support_catalog(vec![support_entry(
+        LINUX_X86,
+        PlatformEnvironment::Linux,
+        CODEX_DIGEST.to_owned(),
+    )]);
+    validate_static_contract_values(
+        &targets,
+        &populated_catalog,
+        &populated_catalog,
+        &empty_evidence,
+    )
+    .expect("populated catalog and empty evidence are structurally valid");
+
+    let partial_evidence = evidence_manifest(vec![passed_evidence_entry(
+        LINUX_X86,
+        PlatformEnvironment::Linux,
+        CODEX_DIGEST.to_owned(),
+        VOLICORD_DIGEST.to_owned(),
+    )]);
+    validate_static_contract_values(
+        &targets,
+        &populated_catalog,
+        &populated_catalog,
+        &partial_evidence,
+    )
+    .expect("partial evidence is structurally valid");
+
+    let mut support_entries = targets
+        .required_cells()
+        .iter()
+        .map(|cell| {
+            support_entry(
                 cell.target_triple,
                 cell.platform_environment,
-                cell.integration_profile
-            ),
-            CodexReleaseCellStatus::NotRun
-        );
-    }
+                CODEX_DIGEST.to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    sort_support_entries(&mut support_entries);
+    let complete_catalog = support_catalog(support_entries);
+    let mut evidence_entries = targets
+        .required_cells()
+        .iter()
+        .map(|cell| {
+            passed_evidence_entry(
+                cell.target_triple,
+                cell.platform_environment,
+                CODEX_DIGEST.to_owned(),
+                VOLICORD_DIGEST.to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    sort_evidence_entries(&mut evidence_entries);
+    let complete_evidence = evidence_manifest(evidence_entries);
+    validate_static_contract_values(
+        &targets,
+        &complete_catalog,
+        &complete_catalog,
+        &complete_evidence,
+    )
+    .expect("complete evidence is structurally valid");
+}
+
+#[test]
+fn embedded_and_on_disk_support_catalog_values_must_match_exactly() {
+    let targets = load_release_target_contract(&repository_root().join(RELEASE_TARGETS_PATH))
+        .expect("release target contract");
+    let embedded = support_catalog(vec![support_entry(
+        LINUX_X86,
+        PlatformEnvironment::Linux,
+        CODEX_DIGEST.to_owned(),
+    )]);
+    let disk = support_catalog(vec![support_entry(
+        LINUX_X86,
+        PlatformEnvironment::Linux,
+        "9".repeat(64),
+    )]);
+    let error =
+        validate_static_contract_values(&targets, &embedded, &disk, &evidence_manifest(Vec::new()))
+            .expect_err("catalog drift");
+    assert!(error.contains("embedded and on-disk"));
 }
 
 #[test]
@@ -120,9 +212,23 @@ fn release_evidence_volicord_digest_does_not_affect_catalog_identity() {
         first.validation_evidence.evidence_digest,
         second.validation_evidence.evidence_digest
     );
+    evidence_manifest(vec![first])
+        .validate_against_support_catalog(&catalog)
+        .expect("first external evidence manifest");
     assert_eq!(
         identity,
-        catalog.identity_digest().expect("catalog identity")
+        catalog
+            .identity_digest()
+            .expect("catalog identity after first evidence manifest")
+    );
+    evidence_manifest(vec![second])
+        .validate_against_support_catalog(&catalog)
+        .expect("second external evidence manifest");
+    assert_eq!(
+        identity,
+        catalog
+            .identity_digest()
+            .expect("catalog identity after second evidence manifest")
     );
 }
 
@@ -231,11 +337,55 @@ fn malformed_and_duplicate_support_entries_are_rejected_deterministically() {
         .expect_err("duplicate support entries");
     assert_eq!(first.detail(), second.detail());
 
-    let malformed =
-        br#"{"contract_id":"volicord.codex-support-catalog","entries":[],"unknown":true}"#;
-    let first = parse_codex_support_catalog(malformed).expect_err("unknown support field");
-    let second = parse_codex_support_catalog(malformed).expect_err("unknown support field");
+    let mut ordered = vec![
+        support_entry(LINUX_X86, PlatformEnvironment::Linux, "1".repeat(64)),
+        support_entry(LINUX_X86, PlatformEnvironment::Linux, "9".repeat(64)),
+    ];
+    ordered.reverse();
+    let first = CodexSupportCatalog::from_entries(ordered.clone())
+        .expect_err("out-of-order support entries");
+    let second =
+        CodexSupportCatalog::from_entries(ordered).expect_err("out-of-order support entries");
     assert_eq!(first.detail(), second.detail());
+
+    let canonical = String::from_utf8(
+        serialize_codex_support_catalog(&support_catalog(vec![support_entry(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            CODEX_DIGEST.to_owned(),
+        )]))
+        .expect("canonical support fixture"),
+    )
+    .expect("support fixture UTF-8");
+    let malformed_documents = [
+        canonical.replacen(CODEX_DIGEST, "not-a-sha256", 1),
+        canonical.replacen("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", 1),
+        canonical.replacen(
+            "\"platform_environment\":\"linux\"",
+            "\"platform_environment\":\"solaris\"",
+            1,
+        ),
+        canonical.replacen(
+            "\"platform_environment\":\"linux\"",
+            "\"platform_environment\":\"macos\"",
+            1,
+        ),
+        canonical.replacen(
+            "\"integration_profile\":\"record\"",
+            "\"integration_profile\":\"observe\"",
+            1,
+        ),
+        canonical.replacen("managed_stdio_mcp", "unknown_capability", 1),
+        "{\"contract_id\":\"volicord.codex-support-catalog\",\"entries\":[],\"unknown\":true}"
+            .to_owned(),
+    ];
+    for malformed in malformed_documents {
+        let first = parse_codex_support_catalog(malformed.as_bytes())
+            .expect_err("malformed support catalog");
+        let second = parse_codex_support_catalog(malformed.as_bytes())
+            .expect_err("malformed support catalog");
+        assert_eq!(first.detail(), second.detail());
+    }
 }
 
 #[test]
@@ -252,12 +402,136 @@ fn malformed_and_duplicate_evidence_entries_are_rejected_deterministically() {
         .expect_err("duplicate evidence entries");
     assert_eq!(first.detail(), second.detail());
 
-    let malformed = br#"{"contract_id":"volicord.codex-release-evidence-manifest","entries":[],"unknown":true}"#;
-    let first =
-        parse_codex_release_evidence_manifest(malformed).expect_err("unknown evidence field");
-    let second =
-        parse_codex_release_evidence_manifest(malformed).expect_err("unknown evidence field");
+    let mut ordered = vec![
+        passed_evidence_entry(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            "1".repeat(64),
+            VOLICORD_DIGEST.to_owned(),
+        ),
+        passed_evidence_entry(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            "9".repeat(64),
+            VOLICORD_DIGEST.to_owned(),
+        ),
+    ];
+    ordered.reverse();
+    let first = CodexReleaseEvidenceManifest::from_entries(ordered.clone())
+        .expect_err("out-of-order evidence entries");
+    let second = CodexReleaseEvidenceManifest::from_entries(ordered)
+        .expect_err("out-of-order evidence entries");
     assert_eq!(first.detail(), second.detail());
+
+    let canonical = String::from_utf8(
+        serialize_codex_release_evidence_manifest(&evidence_manifest(vec![passed_evidence_entry(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            CODEX_DIGEST.to_owned(),
+            VOLICORD_DIGEST.to_owned(),
+        )]))
+        .expect("canonical evidence fixture"),
+    )
+    .expect("evidence fixture UTF-8");
+    let malformed_documents = [
+        canonical.replacen(CODEX_DIGEST, "not-a-sha256", 1),
+        canonical.replacen(VOLICORD_DIGEST, "not-a-sha256", 1),
+        canonical.replacen(
+            "x86_64-unknown-linux-gnu",
+            "x86_64-unknown-linux-musl",
+            1,
+        ),
+        canonical.replacen(
+            "\"platform_environment\":\"linux\"",
+            "\"platform_environment\":\"solaris\"",
+            1,
+        ),
+        canonical.replacen(
+            "\"platform_environment\":\"linux\"",
+            "\"platform_environment\":\"macos\"",
+            1,
+        ),
+        canonical.replacen(
+            "\"integration_profile\":\"record\"",
+            "\"integration_profile\":\"observe\"",
+            1,
+        ),
+        canonical.replacen("managed_stdio_mcp", "unknown_capability", 1),
+        "{\"contract_id\":\"volicord.codex-release-evidence-manifest\",\"entries\":[],\"unknown\":true}"
+            .to_owned(),
+    ];
+    for malformed in malformed_documents {
+        let first = parse_codex_release_evidence_manifest(malformed.as_bytes())
+            .expect_err("malformed evidence manifest");
+        let second = parse_codex_release_evidence_manifest(malformed.as_bytes())
+            .expect_err("malformed evidence manifest");
+        assert_eq!(first.detail(), second.detail());
+    }
+}
+
+#[test]
+fn static_evidence_validation_rejects_ambiguous_cells_and_artifact_combinations() {
+    let targets = load_release_target_contract(&repository_root().join(RELEASE_TARGETS_PATH))
+        .expect("release target contract");
+    let mut support_entries = vec![
+        support_entry(LINUX_X86, PlatformEnvironment::Linux, "1".repeat(64)),
+        support_entry(LINUX_X86, PlatformEnvironment::Linux, "9".repeat(64)),
+    ];
+    sort_support_entries(&mut support_entries);
+    let ambiguous_catalog = support_catalog(support_entries);
+    let mut ambiguous_entries = vec![
+        passed_evidence_entry(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            "1".repeat(64),
+            VOLICORD_DIGEST.to_owned(),
+        ),
+        passed_evidence_entry(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            "9".repeat(64),
+            VOLICORD_DIGEST.to_owned(),
+        ),
+    ];
+    sort_evidence_entries(&mut ambiguous_entries);
+    let error = validate_static_contract_values(
+        &targets,
+        &ambiguous_catalog,
+        &ambiguous_catalog,
+        &evidence_manifest(ambiguous_entries),
+    )
+    .expect_err("ambiguous release cell");
+    assert!(error.contains("duplicated or ambiguous"));
+
+    let mut cross_environment_support = vec![
+        support_entry(LINUX_X86, PlatformEnvironment::Linux, "1".repeat(64)),
+        support_entry(LINUX_X86, PlatformEnvironment::Wsl2, "9".repeat(64)),
+    ];
+    sort_support_entries(&mut cross_environment_support);
+    let cross_environment_catalog = support_catalog(cross_environment_support);
+    let mut mismatched_volicord_entries = vec![
+        passed_evidence_entry(
+            LINUX_X86,
+            PlatformEnvironment::Linux,
+            "1".repeat(64),
+            VOLICORD_DIGEST.to_owned(),
+        ),
+        passed_evidence_entry(
+            LINUX_X86,
+            PlatformEnvironment::Wsl2,
+            "9".repeat(64),
+            OTHER_VOLICORD_DIGEST.to_owned(),
+        ),
+    ];
+    sort_evidence_entries(&mut mismatched_volicord_entries);
+    let error = validate_static_contract_values(
+        &targets,
+        &cross_environment_catalog,
+        &cross_environment_catalog,
+        &evidence_manifest(mismatched_volicord_entries),
+    )
+    .expect_err("different Volicord artifacts for one published target");
+    assert!(error.contains("different Volicord artifacts"));
 }
 
 #[test]
@@ -978,8 +1252,30 @@ fn support_catalog(entries: Vec<CodexSupportEntry>) -> CodexSupportCatalog {
     CodexSupportCatalog::from_entries(entries).expect("valid support catalog")
 }
 
+fn sort_support_entries(entries: &mut [CodexSupportEntry]) {
+    entries.sort_by_key(|entry| {
+        (
+            entry.codex_artifact_digest.clone(),
+            entry.target_triple,
+            entry.platform_environment,
+            entry.integration_profile,
+        )
+    });
+}
+
 fn evidence_manifest(entries: Vec<CodexReleaseEvidenceEntry>) -> CodexReleaseEvidenceManifest {
     CodexReleaseEvidenceManifest::from_entries(entries).expect("valid release evidence")
+}
+
+fn sort_evidence_entries(entries: &mut [CodexReleaseEvidenceEntry]) {
+    entries.sort_by_key(|entry| {
+        (
+            entry.codex_artifact_digest.clone(),
+            entry.target_triple,
+            entry.platform_environment,
+            entry.integration_profile,
+        )
+    });
 }
 
 fn passed_evidence_entry(

@@ -22,10 +22,8 @@ use volicord_types::{
 
 use crate::{
     contracts::{
-        embedded_codex_support_catalog, load_codex_release_evidence_manifest,
-        load_codex_support_catalog, load_release_target_contract, ReleaseCell,
-        ReleaseTargetContract, CODEX_RELEASE_EVIDENCE_MANIFEST_PATH, CODEX_SUPPORT_CATALOG_PATH,
-        RELEASE_TARGETS_PATH,
+        load_checked_in_contracts as load_static_checked_in_contracts,
+        load_codex_release_evidence_manifest, ReleaseCell, ReleaseTargetContract,
     },
     error::{ValidationError, ValidationResult},
     io::{write_json_create_new, ValidationContext, MAX_MANIFEST_JSON_BYTES},
@@ -446,92 +444,13 @@ fn load_checked_in_contracts(
     CodexSupportCatalog,
     CodexReleaseEvidenceManifest,
 )> {
-    let release_targets_path = context.source_checkout().join(RELEASE_TARGETS_PATH);
-    let support_catalog_path = context.source_checkout().join(CODEX_SUPPORT_CATALOG_PATH);
-    let evidence_manifest_path = context
-        .source_checkout()
-        .join(CODEX_RELEASE_EVIDENCE_MANIFEST_PATH);
-    let release_targets = load_release_target_contract(&release_targets_path).map_err(|error| {
-        ValidationError::new(format!(
-            "release target contract is invalid at {}: {error}",
-            release_targets_path.display()
-        ))
-    })?;
-    let embedded_support_catalog = embedded_codex_support_catalog().map_err(|error| {
-        ValidationError::new(format!(
-            "embedded Codex support catalog is invalid: {error}"
-        ))
-    })?;
-    let disk_support_catalog =
-        load_codex_support_catalog(&support_catalog_path).map_err(|error| {
-            ValidationError::new(format!(
-                "on-disk Codex support catalog is invalid at {}: {error}",
-                support_catalog_path.display()
-            ))
-        })?;
-    if embedded_support_catalog != disk_support_catalog {
-        return Err(ValidationError::new(
-            "embedded and on-disk Codex support catalogs differ",
-        ));
-    }
-    let evidence_manifest =
-        load_codex_release_evidence_manifest(&evidence_manifest_path).map_err(|error| {
-            ValidationError::new(format!(
-                "external Codex release-evidence manifest is invalid at {}: {error}",
-                evidence_manifest_path.display()
-            ))
-        })?;
-    evidence_manifest
-        .validate_against_support_catalog(&embedded_support_catalog)
-        .map_err(|error| {
-            ValidationError::new(format!(
-                "external Codex release evidence is not supported by the embedded catalog: {error}"
-            ))
-        })?;
-    validate_target_contract_bindings(
-        &release_targets,
-        &embedded_support_catalog,
-        &evidence_manifest,
-    )?;
-    Ok((release_targets, embedded_support_catalog, evidence_manifest))
-}
-
-fn validate_target_contract_bindings(
-    targets: &ReleaseTargetContract,
-    support_catalog: &CodexSupportCatalog,
-    evidence_manifest: &CodexReleaseEvidenceManifest,
-) -> ValidationResult<()> {
-    for entry in support_catalog.entries() {
-        targets
-            .require_cell(
-                entry.target_triple,
-                entry.platform_environment,
-                entry.integration_profile,
-            )
-            .map_err(|_| {
-                ValidationError::new(format!(
-                    "support-catalog entry {}/{} cannot map to an actual required release target cell",
-                    entry.target_triple,
-                    entry.platform_environment.as_str()
-                ))
-            })?;
-    }
-    for entry in evidence_manifest.entries() {
-        targets
-            .require_cell(
-                entry.target_triple,
-                entry.platform_environment,
-                entry.integration_profile,
-            )
-            .map_err(|_| {
-                ValidationError::new(format!(
-                    "release-evidence entry {}/{} is not a required release target cell",
-                    entry.target_triple,
-                    entry.platform_environment.as_str()
-                ))
-            })?;
-    }
-    Ok(())
+    let contracts = load_static_checked_in_contracts(context.source_checkout())
+        .map_err(ValidationError::new)?;
+    Ok((
+        contracts.release_targets,
+        contracts.support_catalog,
+        contracts.evidence_manifest,
+    ))
 }
 
 fn entry_matches_cell(entry: &CodexReleaseEvidenceEntry, cell: ReleaseCell) -> bool {
@@ -713,12 +632,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checked_in_gate_statuses_report_all_six_absent_cells_as_not_run() {
+    fn checked_in_gate_statuses_match_the_statically_validated_manifest() {
         let statuses = checked_in_cell_statuses().expect("checked-in statuses");
-        assert_eq!(statuses.len(), 6);
-        assert!(statuses
-            .iter()
-            .all(|(_, status)| *status == CodexReleaseCellStatus::NotRun));
+        let context = validation_context(PlatformEnvironment::Linux).expect("validation context");
+        let contracts = load_static_checked_in_contracts(context.source_checkout())
+            .expect("checked-in contracts");
+        assert_eq!(
+            statuses.len(),
+            contracts.release_targets.required_cells().len()
+        );
+        for (cell, status) in statuses {
+            assert_eq!(
+                status,
+                contracts.evidence_manifest.cell_status(
+                    cell.target_triple,
+                    cell.platform_environment,
+                    cell.integration_profile,
+                )
+            );
+        }
     }
 
     #[test]
@@ -748,12 +680,11 @@ mod tests {
         .expect("valid standalone support entry");
         let evidence = CodexReleaseEvidenceManifest::from_entries(Vec::new())
             .expect("empty evidence manifest");
-        assert!(
-            validate_target_contract_bindings(&targets, &support, &evidence)
-                .expect_err("unmapped support entry")
-                .to_string()
-                .contains("cannot map")
-        );
+        assert!(crate::contracts::validate_static_contract_values(
+            &targets, &support, &support, &evidence,
+        )
+        .expect_err("unmapped support entry")
+        .contains("cannot map"));
     }
 
     #[test]

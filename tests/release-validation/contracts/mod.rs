@@ -1,6 +1,10 @@
 //! Release-test routes to the target matrix, runtime policy, and external evidence contracts.
 
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 use serde::{Deserialize, Serialize};
 use volicord_types::{IntegrationProfile, PlatformEnvironment, ReleaseTargetTriple};
@@ -26,6 +30,14 @@ pub const RELEASE_TARGETS_PATH: &str = "tests/release-validation/contracts/relea
 pub const RELEASE_TARGETS_CONTRACT_ID: &str = "volicord.release-targets";
 
 const MAX_RELEASE_TARGETS_BYTES: usize = 1024 * 1024;
+
+/// Canonical checked-in contract values after strict parsing and cross-validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckedInContracts {
+    pub release_targets: ReleaseTargetContract,
+    pub support_catalog: CodexSupportCatalog,
+    pub evidence_manifest: CodexReleaseEvidenceManifest,
+}
 
 /// One required release-validation cell, excluding the captured artifact digest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -103,6 +115,181 @@ pub fn parse_release_target_contract(bytes: &[u8]) -> Result<ReleaseTargetContra
         serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
     validate_release_target_contract(&contract)?;
     Ok(contract)
+}
+
+/// Loads and statically validates the three canonical checked-in release contracts.
+///
+/// Static validation accepts every valid population state. Release completeness is
+/// enforced separately by the production release-bundle verifier.
+pub fn load_checked_in_contracts(repository_root: &Path) -> Result<CheckedInContracts, String> {
+    let release_targets_path = repository_root.join(RELEASE_TARGETS_PATH);
+    let support_catalog_path = repository_root.join(CODEX_SUPPORT_CATALOG_PATH);
+    let evidence_manifest_path = repository_root.join(CODEX_RELEASE_EVIDENCE_MANIFEST_PATH);
+
+    let release_targets = load_release_target_contract(&release_targets_path).map_err(|error| {
+        format!(
+            "release target contract is invalid at {}: {error}",
+            release_targets_path.display()
+        )
+    })?;
+    let embedded_support_catalog = embedded_codex_support_catalog()
+        .map_err(|error| format!("embedded Codex support catalog is invalid: {error}"))?;
+    let support_bytes = fs::read(&support_catalog_path).map_err(|error| {
+        format!(
+            "cannot read on-disk Codex support catalog at {}: {error}",
+            support_catalog_path.display()
+        )
+    })?;
+    let disk_support_catalog =
+        load_codex_support_catalog(&support_catalog_path).map_err(|error| {
+            format!(
+                "on-disk Codex support catalog is invalid at {}: {error}",
+                support_catalog_path.display()
+            )
+        })?;
+    let canonical_support = serialize_codex_support_catalog(&disk_support_catalog)
+        .map_err(|error| format!("cannot serialize Codex support catalog: {error}"))?;
+    require_canonical_checked_in_bytes(
+        "Codex support catalog",
+        &support_bytes,
+        &canonical_support,
+    )?;
+
+    let evidence_bytes = fs::read(&evidence_manifest_path).map_err(|error| {
+        format!(
+            "cannot read external Codex release-evidence manifest at {}: {error}",
+            evidence_manifest_path.display()
+        )
+    })?;
+    let evidence_manifest =
+        load_codex_release_evidence_manifest(&evidence_manifest_path).map_err(|error| {
+            format!(
+                "external Codex release-evidence manifest is invalid at {}: {error}",
+                evidence_manifest_path.display()
+            )
+        })?;
+    let canonical_evidence = serialize_codex_release_evidence_manifest(&evidence_manifest)
+        .map_err(|error| format!("cannot serialize Codex release evidence: {error}"))?;
+    require_canonical_checked_in_bytes(
+        "Codex release-evidence manifest",
+        &evidence_bytes,
+        &canonical_evidence,
+    )?;
+
+    validate_static_contract_values(
+        &release_targets,
+        &embedded_support_catalog,
+        &disk_support_catalog,
+        &evidence_manifest,
+    )?;
+
+    Ok(CheckedInContracts {
+        release_targets,
+        support_catalog: disk_support_catalog,
+        evidence_manifest,
+    })
+}
+
+/// Validates static contract relationships without treating release completeness as success.
+pub fn validate_static_contract_values(
+    targets: &ReleaseTargetContract,
+    embedded_support_catalog: &CodexSupportCatalog,
+    disk_support_catalog: &CodexSupportCatalog,
+    evidence_manifest: &CodexReleaseEvidenceManifest,
+) -> Result<(), String> {
+    if embedded_support_catalog != disk_support_catalog {
+        return Err("embedded and on-disk Codex support catalogs differ".to_owned());
+    }
+    evidence_manifest
+        .validate_against_support_catalog(embedded_support_catalog)
+        .map_err(|error| {
+            format!(
+                "external Codex release evidence is not supported by the embedded catalog: {error}"
+            )
+        })?;
+
+    for entry in embedded_support_catalog.entries() {
+        targets
+            .require_cell(
+                entry.target_triple,
+                entry.platform_environment,
+                entry.integration_profile,
+            )
+            .map_err(|_| {
+                format!(
+                    "support-catalog entry {}/{} cannot map to an actual required release target cell",
+                    entry.target_triple,
+                    entry.platform_environment.as_str()
+                )
+            })?;
+    }
+
+    let mut evidence_cells = BTreeSet::new();
+    let mut volicord_digests = BTreeMap::new();
+    let mut source_revision = None;
+    for entry in evidence_manifest.entries() {
+        targets
+            .require_cell(
+                entry.target_triple,
+                entry.platform_environment,
+                entry.integration_profile,
+            )
+            .map_err(|_| {
+                format!(
+                    "release-evidence entry {}/{} is not a required release target cell",
+                    entry.target_triple,
+                    entry.platform_environment.as_str()
+                )
+            })?;
+        if !evidence_cells.insert((
+            entry.target_triple,
+            entry.platform_environment,
+            entry.integration_profile,
+        )) {
+            return Err(format!(
+                "release-evidence cell {}/{} is duplicated or ambiguous",
+                entry.target_triple,
+                entry.platform_environment.as_str()
+            ));
+        }
+
+        let volicord_digest = &entry.validation_evidence.volicord_artifact_digest;
+        if volicord_digests
+            .insert(entry.target_triple, volicord_digest)
+            .is_some_and(|previous| previous != volicord_digest)
+        {
+            return Err(format!(
+                "release-evidence entries for target {} reference different Volicord artifacts",
+                entry.target_triple
+            ));
+        }
+        let entry_revision = entry.validation_evidence.source_revision.as_str();
+        if source_revision
+            .replace(entry_revision)
+            .is_some_and(|previous| previous != entry_revision)
+        {
+            return Err(
+                "release-evidence entries reference different Volicord source revisions".to_owned(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn require_canonical_checked_in_bytes(
+    label: &str,
+    checked_in: &[u8],
+    canonical: &[u8],
+) -> Result<(), String> {
+    let mut expected = canonical.to_vec();
+    expected.push(b'\n');
+    if checked_in == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "checked-in {label} bytes must equal canonical serialization followed by one final LF"
+        ))
+    }
 }
 
 fn validate_release_target_contract(contract: &ReleaseTargetContract) -> Result<(), String> {

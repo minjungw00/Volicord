@@ -48,9 +48,10 @@ CodexSupportEntry:
 게시 target, 플랫폼 및 릴리스 좌표, 정확한 `integration_profile=record`, 정규 순서의
 정확한 `FirstReleaseCodexCapabilities`를 사용합니다. 결정론적 identity는 정확히
 `(codex_artifact_digest, target_triple, platform_environment, integration_profile)`입니다.
-Entry는 이 identity에 따라 중복 없이 정렬하며 카탈로그에는 0~6개를 둘 수 있습니다.
-모든 entry는 아래 릴리스 target 계약의 실제 필수 셀에 대응해야 합니다. 운영체제
-이름만으로 지원 identity를 만들 수 없습니다. 빈 카탈로그는 모든 Codex 아티팩트를 거절합니다.
+Entry는 이 identity에 따라 중복 없이 정렬하며 카탈로그에는 검토된 런타임 지원
+entry를 0~6개 둘 수 있습니다. 모든 entry는 아래 릴리스 target 계약의 실제 필수 셀에
+대응해야 합니다. 운영체제 이름만으로 지원 identity를 만들 수 없습니다. 빈
+카탈로그는 모든 Codex 아티팩트를 거절합니다.
 
 이 카탈로그에는 Volicord 실행 파일 digest, 검증 결과, 시나리오 상태, 증거 경로,
 workflow run 식별자, 릴리스 셀 timestamp, 최종 Volicord 실행 파일 byte에서
@@ -346,7 +347,11 @@ crates/volicord-types/contracts/codex-support-catalog.json
 실행 파일에는 이 파일만 포함합니다. 이 원본에는 릴리스 결과, Volicord digest,
 runner metadata, 증거 위치, workflow 식별자, 릴리스 셀 timestamp를 넣으면 안
 됩니다. Fixture, 생성 상수, 문서 표, 런타임 데이터베이스, 릴리스 증거 파일이 두
-번째 런타임 지원 목록 역할을 해도 안 됩니다.
+번째 런타임 지원 목록 역할을 해도 안 됩니다. 체크인 원본은 비어 있거나 검토된
+지원 entry를 담을 수 있습니다. 정적 계약 검증은 내장 값과 디스크 값을 의미적으로
+정확히 대조하고, 체크인 byte가 compact 정규 serialization 뒤에 최종 LF 하나를
+붙인 값과 같도록 요구하며, 순서, 중복 여부, 닫힌 값, 릴리스 target 일관성을
+검증합니다. 이 검사는 릴리스 완료를 성립시키지 않습니다.
 
 릴리스 증거 원본은 모든 Volicord 실행 파일 외부에 둡니다.
 
@@ -354,13 +359,16 @@ runner metadata, 증거 위치, workflow 식별자, 릴리스 셀 timestamp를 �
 tests/release-validation/contracts/codex-release-evidence-manifest.json
 ```
 
-이 파일은 runner가 실제로 만들고 review한 증거 entry를 0~6개 담습니다. Entry는
-정확한 `(codex_artifact_digest, target_triple, platform_environment, integration_profile)`
-identity에 따라 중복 없이 정렬합니다. 아직 실행하지 않은 원본은 `entries: []`입니다.
-Entry가 없는 필수 셀의 파생 상태는
-`not_run`입니다. 원본은 placeholder entry, digest, runner 좌표, 증거 객체를
-꾸며 내면 안 됩니다. 실제 자격을 갖춘 시도만 `failed` 또는 `unavailable` 증거를
-만들 수 있습니다.
+이 파일은 비어 있거나 일부 또는 전체 셀의 증거를 담을 수 있으며, runner가 실제로
+만들고 review한 entry만 최대 6개까지 포함합니다. Entry는 정확한
+`(codex_artifact_digest, target_triple, platform_environment, integration_profile)`
+identity에 따라 중복 없이 정렬합니다. 정적 계약 검증은 운영 parser와 정규
+serializer를 사용하고, 각 entry를 런타임 지원 카탈로그 및 릴리스 target 계약과
+교차 대조하며, 모호한 릴리스 셀과 일관되지 않은 아티팩트 결속을 거절합니다. 계약상
+유효한 모든 채움 상태를 허용하지만, 일부 또는 전체 형태를 릴리스 성공으로 해석하지
+않습니다. Entry가 없는 필수 셀의 파생 상태는 `not_run`입니다. 원본은 placeholder
+entry, digest, runner 좌표, 증거 객체를 꾸며 내면 안 됩니다. 실제 자격을 갖춘
+시도만 `failed` 또는 `unavailable` 증거를 만들 수 있습니다.
 
 운영 코드는 `include_bytes!`, 생성 Rust, build script 환경 변수, compile된 상수나
 동등한 메커니즘으로 이 외부 manifest를 포함하면 안 됩니다. 릴리스 검증은 기준
@@ -641,9 +649,11 @@ entry 하나를 표준 출력에 기록합니다. 릴리스 결과나 Volicord d
 `NEW_INDEX_PATH`를 기록합니다. 운영 모드에서는 비어 있는 지원 카탈로그, 누락되거나
 중복된 증거, source 또는 digest 불일치, 필수 릴리스 셀 하나에 정확히 대응되어
 사용될 수 없는 지원 entry를 모두 거부합니다. 현재 계약에는 지원되는 비릴리스 환경
-표시가 없으므로 그런 entry도 유효하지 않습니다. 현재의 비어 있는 지원 카탈로그는
-capture와 게시를 차단하며, 비어 있는 체크인 증거 원본은 계속 체크인 재실행을
-차단합니다.
+표시가 없으므로 그런 entry도 유효하지 않습니다. 정적 계약 검증은 카탈로그가 비어
+있지 않거나 증거가 완전하기를 요구하지 않습니다. 카탈로그가 비어 있으면 런타임
+조회는 여전히 모든 아티팩트를 거절하고, 후보 생성에는 정확한 지원 entry가
+필요하며, 체크인 재실행에는 선택한 셀의 정확한 통과 증거가 필요합니다. 운영
+검증기는 완전한 통과 bundle을 요구합니다.
 
 후보 생성기와 게이트는 다음 순서로 점검합니다.
 
