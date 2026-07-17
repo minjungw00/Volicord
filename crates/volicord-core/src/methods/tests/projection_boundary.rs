@@ -220,6 +220,7 @@ fn agent_workflow_public_projections_use_only_exact_safe_pending_summaries(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -342,7 +343,7 @@ fn agent_workflow_public_projections_use_only_exact_safe_pending_summaries(
 }
 
 #[test]
-fn legacy_full_form_request_result_is_unavailable_before_replay_or_first_page(
+fn legacy_full_form_request_result_is_corrupt_before_replay_or_first_page(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_full_form")?;
@@ -476,7 +477,7 @@ fn legacy_full_form_request_result_is_unavailable_before_replay_or_first_page(
     assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         replay.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert!(!replay.replayed);
     assert!(replay.operation_result_ref.is_none());
@@ -492,7 +493,7 @@ fn legacy_full_form_request_result_is_unavailable_before_replay_or_first_page(
 }
 
 #[test]
-fn legacy_state_summary_is_unavailable_before_replay_or_first_page() -> Result<(), Box<dyn Error>> {
+fn legacy_state_summary_is_corrupt_before_replay_or_first_page() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let request = intake_request(
         "req_legacy_state_summary",
@@ -541,7 +542,7 @@ fn legacy_state_summary_is_unavailable_before_replay_or_first_page() -> Result<(
     assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         replay.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert!(!replay.replayed);
     assert!(replay.operation_result_ref.is_none());
@@ -557,7 +558,7 @@ fn legacy_state_summary_is_unavailable_before_replay_or_first_page() -> Result<(
 }
 
 #[test]
-fn duplicate_json_members_are_unavailable_before_direct_replay_resume_or_first_page(
+fn duplicate_json_members_are_corrupt_before_direct_replay_resume_or_first_page(
 ) -> Result<(), Box<dyn Error>> {
     for variant in ["duplicate_summary", "escaped_nested_member"] {
         let harness = MethodHarness::new()?;
@@ -640,7 +641,7 @@ fn duplicate_json_members_are_unavailable_before_direct_replay_resume_or_first_p
             "variant {variant}"
         );
         assert_eq!(
-            replay.response_value["errors"][0]["code"], "MCP_UNAVAILABLE",
+            replay.response_value["errors"][0]["code"], "PERSISTED_DATA_CORRUPT",
             "variant {variant}"
         );
         assert!(!replay.replayed, "variant {variant}");
@@ -661,7 +662,7 @@ fn duplicate_json_members_are_unavailable_before_direct_replay_resume_or_first_p
         assert_eq!(resumed.response_value["base"]["response_kind"], "rejected");
         assert_eq!(
             resumed.response_value["errors"][0]["code"],
-            "MCP_UNAVAILABLE"
+            "PERSISTED_DATA_CORRUPT"
         );
         assert!(!resumed.replayed);
         assert!(!resumed.response_json.contains(&sentinel));
@@ -684,7 +685,7 @@ fn duplicate_json_members_are_unavailable_before_direct_replay_resume_or_first_p
 }
 
 #[test]
-fn duplicate_members_inside_map_results_are_unavailable_before_replay_or_paging(
+fn duplicate_members_inside_map_results_are_corrupt_before_replay_or_paging(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id, criterion_id, workspace) =
@@ -745,7 +746,7 @@ fn duplicate_members_inside_map_results_are_unavailable_before_replay_or_paging(
     assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         replay.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert!(!replay.replayed);
     assert!(replay.operation_result_ref.is_none());
@@ -768,7 +769,7 @@ fn duplicate_members_inside_map_results_are_unavailable_before_replay_or_paging(
 }
 
 #[test]
-fn stored_commit_envelope_mismatches_are_unavailable() -> Result<(), Box<dyn Error>> {
+fn stored_commit_envelope_mismatches_are_corrupt() -> Result<(), Box<dyn Error>> {
     for variant in ["response_kind", "effect_kind", "dry_run", "state_version"] {
         let harness = MethodHarness::new()?;
         let suffix = format!("stored_envelope_{variant}");
@@ -820,7 +821,7 @@ fn stored_commit_envelope_mismatches_are_unavailable() -> Result<(), Box<dyn Err
         assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
         assert_eq!(
             replay.response_value["errors"][0]["code"],
-            "MCP_UNAVAILABLE"
+            "PERSISTED_DATA_CORRUPT"
         );
         assert!(!replay.replayed, "variant {variant}");
         assert!(replay.operation_result_ref.is_none(), "variant {variant}");

@@ -1,20 +1,20 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    sync::OnceLock,
 };
 
 use rusqlite::{
     config::DbConfig,
     functions::{Context, FunctionFlags},
-    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
+    Connection, OpenFlags, Transaction, TransactionBehavior,
 };
-use volicord_types::UtcTimestamp;
+use volicord_types::{canonical_json_string, StorageDatabaseKind, StorageManifest, UtcTimestamp};
 
 use crate::{
     schema::{
-        initialize_project_state_schema, initialize_registry_schema, PROJECT_STATE_DATABASE_KIND,
-        PROJECT_STATE_SCHEMA_SQL, REGISTRY_DATABASE_KIND, REGISTRY_SCHEMA_SQL, STORAGE_PROFILE,
+        current_schema_facts, current_storage_manifest, current_storage_manifest_json,
+        extract_schema_facts, initialize_project_state_schema, initialize_registry_schema,
+        GeneratedSchemaFacts, PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND,
     },
     StoreError, StoreResult,
 };
@@ -37,11 +37,6 @@ pub const ARTIFACTS_DIR: &str = "artifacts";
 
 /// Project transient artifact staging directory name.
 pub const ARTIFACTS_TMP_DIR: &str = "tmp";
-
-static REGISTRY_SCHEMA_INVENTORY: OnceLock<Result<Vec<CanonicalSchemaObject>, String>> =
-    OnceLock::new();
-static PROJECT_STATE_SCHEMA_INVENTORY: OnceLock<Result<Vec<CanonicalSchemaObject>, String>> =
-    OnceLock::new();
 
 const UTC_SECONDS_SQL_FUNCTION: &str = "volicord_utc_seconds";
 const UTC_SUBSEC_NANOS_SQL_FUNCTION: &str = "volicord_utc_subsec_nanos";
@@ -74,7 +69,7 @@ pub fn artifacts_tmp_path(runtime_home: impl AsRef<Path>, project_id: impl AsRef
         .join(ARTIFACTS_TMP_DIR)
 }
 
-/// Opens `registry.sqlite`, creating the parent directory and baseline schema.
+/// Opens `registry.sqlite`, creating its canonical schema only when empty.
 pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let mut conn = open_sqlite_database(path)?;
     initialize_registry_schema(&mut conn)?;
@@ -82,7 +77,7 @@ pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection>
     Ok(conn)
 }
 
-/// Opens an existing `registry.sqlite` for read-only validation.
+/// Opens an existing `registry.sqlite` for read-only exact-contract validation.
 pub fn open_registry_database_read_only(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let path = path.as_ref();
     if !path.exists() {
@@ -97,7 +92,7 @@ pub fn open_registry_database_read_only(path: impl AsRef<Path>) -> StoreResult<C
     Ok(conn)
 }
 
-/// Opens project `state.sqlite`, creating the parent directory and baseline schema.
+/// Opens project `state.sqlite`, creating its canonical schema only when empty.
 pub fn open_project_state_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let mut conn = open_sqlite_database(path)?;
     initialize_project_state_schema(&mut conn)?;
@@ -105,7 +100,7 @@ pub fn open_project_state_database(path: impl AsRef<Path>) -> StoreResult<Connec
     Ok(conn)
 }
 
-/// Opens an existing project `state.sqlite` for read-only validation.
+/// Opens an existing project `state.sqlite` for read-only exact-contract validation.
 pub fn open_project_state_database_read_only(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let path = path.as_ref();
     if !path.exists() {
@@ -120,7 +115,7 @@ pub fn open_project_state_database_read_only(path: impl AsRef<Path>) -> StoreRes
     Ok(conn)
 }
 
-/// Opens an existing SQLite database for inspection without creating or migrating it.
+/// Opens an existing SQLite database for inspection without creating it.
 pub fn open_read_only_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let conn = Connection::open_with_flags(
         path.as_ref(),
@@ -209,709 +204,32 @@ pub fn with_immediate_transaction<T>(
     Ok(output)
 }
 
-/// Validates baseline registry schema invariants after canonical initialization.
+/// Validates the exact registry manifest, generated metadata, and physical schema.
 pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
     validate_foreign_keys_enabled(conn, REGISTRY_DATABASE_KIND)?;
-    reject_table(conn, REGISTRY_DATABASE_KIND, "schema_migrations")?;
-    require_tables(
+    validate_manifest_carrier(
         conn,
         REGISTRY_DATABASE_KIND,
-        &[
-            "runtime_home",
-            "installation_profile",
-            "projects",
-            "project_aliases",
-            "agent_connections",
-            "connection_projects",
-            "host_capability_verifications",
-            "host_capability_state",
-            "guard_installations",
-        ],
+        "SELECT storage_profile FROM runtime_home ORDER BY singleton_id",
     )?;
-    require_indexes(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        &[
-            "idx_projects_repo_root",
-            "idx_projects_status",
-            "idx_project_aliases_project",
-            "idx_connection_projects_project",
-            "idx_agent_connections_enabled",
-            "idx_agent_connections_project",
-            "idx_agent_connections_target_project",
-            "idx_agent_connections_target_global",
-            "idx_host_capability_verifications_connection",
-            "idx_host_capability_verifications_outcome_expiry",
-            "idx_host_capability_state_current",
-            "idx_guard_installations_connection",
-            "idx_guard_installations_project",
-            "idx_guard_installations_status",
-            "idx_guard_installations_scope_project",
-            "idx_guard_installations_scope_global",
-        ],
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "runtime_home",
-        ColumnSpec {
-            name: "runtime_home_path",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    reject_column(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "runtime_home",
-        "schema_version",
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "runtime_home",
-        ColumnSpec {
-            name: "registry_db_path",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "projects",
-        ColumnSpec {
-            name: "project_internal_id",
-            type_name: "TEXT",
-            not_null: false,
-            default_value: None,
-            primary_key_position: 1,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "project_aliases",
-        ColumnSpec {
-            name: "alias",
-            type_name: "TEXT",
-            not_null: false,
-            default_value: None,
-            primary_key_position: 1,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "connection_internal_id",
-            type_name: "TEXT",
-            not_null: false,
-            default_value: None,
-            primary_key_position: 1,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "intent",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "enabled",
-            type_name: "INTEGER",
-            not_null: true,
-            default_value: Some("1"),
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "metadata_json",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: Some("'{}'"),
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "mode",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "connection_projects",
-        ColumnSpec {
-            name: "connection_internal_id",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 1,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "connection_projects",
-        ColumnSpec {
-            name: "project_internal_id",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 2,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "last_verification_status",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: Some("'not_verified'"),
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "last_verification_report_json",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: Some("'{}'"),
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        ColumnSpec {
-            name: "last_user_actions_json",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: Some("'[]'"),
-            primary_key_position: 0,
-        },
-    )?;
-    for column in [
-        "verification_internal_id",
-        "connection_internal_id",
-        "capability",
-        "outcome",
-        "host_kind",
-        "host_version",
-        "client_name",
-        "client_version",
-        "adapter_profile",
-        "adapter_version",
-        "managed_fingerprint",
-        "volicord_build_id",
-        "source_revision",
-        "target_triple",
-        "executable_sha256",
-        "evidence_artifact_sha256",
-        "observed_at",
-        "expires_at",
-        "metadata_json",
-        "created_at",
-    ] {
-        require_column(
-            conn,
-            REGISTRY_DATABASE_KIND,
-            "host_capability_verifications",
-            column,
-        )?;
-    }
-    require_column_spec(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "host_capability_verifications",
-        ColumnSpec {
-            name: "verification_internal_id",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 1,
-        },
-    )?;
-    for column in [
-        "connection_internal_id",
-        "capability",
-        "current_verification_internal_id",
-        "updated_at",
-    ] {
-        require_column(
-            conn,
-            REGISTRY_DATABASE_KIND,
-            "host_capability_state",
-            column,
-        )?;
-    }
-    validate_host_capability_constraints(conn)?;
-    for column in [
-        "guard_installation_id",
-        "runtime_home_id",
-        "connection_internal_id",
-        "project_internal_id",
-        "host_kind",
-        "guard_mode",
-        "host_capability_json",
-        "installation_status",
-        "installed_at",
-        "last_checked_at",
-        "first_seen_at",
-        "last_seen_at",
-        "last_seen_phase",
-        "observed_host_kind",
-        "observed_policy_hash",
-        "observed_binary_version",
-        "metadata_json",
-        "created_at",
-        "updated_at",
-    ] {
-        require_column(conn, REGISTRY_DATABASE_KIND, "guard_installations", column)?;
-    }
-    validate_guard_installations_constraints(conn)?;
-    validate_registry_storage_profile(conn)?;
-    validate_foreign_key_check(conn, REGISTRY_DATABASE_KIND)?;
-    validate_canonical_schema_inventory(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        REGISTRY_SCHEMA_SQL,
-        &REGISTRY_SCHEMA_INVENTORY,
-    )?;
-    Ok(())
+    validate_generated_schema(conn, REGISTRY_DATABASE_KIND, StorageDatabaseKind::Registry)?;
+    validate_foreign_key_check(conn, REGISTRY_DATABASE_KIND)
 }
 
-/// Validates baseline project-state schema invariants after canonical initialization.
+/// Validates the exact project manifest, generated metadata, and physical schema.
 pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     validate_foreign_keys_enabled(conn, PROJECT_STATE_DATABASE_KIND)?;
-    reject_table(conn, PROJECT_STATE_DATABASE_KIND, "schema_migrations")?;
-    require_tables(
+    validate_manifest_carrier(
         conn,
         PROJECT_STATE_DATABASE_KIND,
-        &[
-            "project_state",
-            "tasks",
-            "acceptance_criteria",
-            "evidence_claims",
-            "change_units",
-            "evidence_capture_intents",
-            "user_action_requests",
-            "user_action_resolutions",
-            "project_continuity_records",
-            "write_tickets",
-            "runs",
-            "artifact_staging",
-            "evidence_capture_receipts",
-            "evidence_capture_source_claims",
-            "artifacts",
-            "artifact_links",
-            "evidence_summaries",
-            "evidence_observations",
-            "evidence_producers",
-            "blockers",
-            "authority_events",
-            "tool_invocations",
-            "agent_sessions",
-            "guard_events",
-            "prompt_captures",
-            "expected_writes",
-            "unrecorded_changes",
-            "session_watch_baselines",
-            "session_watch_observations",
-            "user_action_channel_tokens",
-            "project_workflow_policies",
-            "session_end_receipts",
-        ],
+        "SELECT storage_profile FROM project_state ORDER BY project_id",
     )?;
-    require_views(conn, PROJECT_STATE_DATABASE_KIND, &["task_events"])?;
-    require_indexes(
+    validate_generated_schema(
         conn,
         PROJECT_STATE_DATABASE_KIND,
-        &[
-            "idx_change_units_one_current_active",
-            "idx_write_tickets_consumed_run",
-            "idx_runs_write_ticket",
-            "idx_artifact_staging_promoted_artifact",
-            "idx_artifacts_source_staging",
-            "idx_project_state_active_task",
-            "idx_tasks_lifecycle",
-            "idx_tasks_current_change_unit",
-            "idx_acceptance_criteria_task_status",
-            "idx_evidence_claims_task",
-            "idx_change_units_task_status",
-            "idx_evidence_capture_intents_task_expiry",
-            "idx_evidence_capture_intents_connection_expiry",
-            "idx_user_action_requests_task_basis_expiry",
-            "idx_user_action_requests_task_kind",
-            "idx_user_action_requests_direct_origin",
-            "idx_user_action_resolutions_request",
-            "idx_project_continuity_records_status",
-            "idx_project_continuity_records_source_task",
-            "idx_write_tickets_task_status",
-            "idx_runs_task_created",
-            "idx_artifact_staging_task_status",
-            "idx_artifact_staging_actor_source",
-            "idx_evidence_capture_receipts_created",
-            "idx_evidence_capture_source_claims_receipt",
-            "idx_artifacts_task_status",
-            "idx_artifact_links_owner",
-            "idx_evidence_summaries_task_status",
-            "idx_evidence_observations_task_target",
-            "idx_evidence_observations_run",
-            "idx_evidence_producers_task_run",
-            "idx_blockers_task_status",
-            "idx_authority_events_task_seq",
-            "idx_authority_events_state_version",
-            "idx_authority_events_hash_chain",
-            "idx_agent_sessions_connection",
-            "idx_agent_sessions_open",
-            "idx_guard_events_session",
-            "idx_guard_events_connection",
-            "idx_guard_events_decision",
-            "idx_prompt_captures_session",
-            "idx_prompt_captures_connection",
-            "idx_expected_writes_pending_connection",
-            "idx_expected_writes_session",
-            "idx_expected_writes_host_invocation",
-            "idx_expected_writes_task",
-            "idx_unrecorded_changes_status",
-            "idx_unrecorded_changes_connection",
-            "idx_unrecorded_changes_task",
-            "idx_session_watch_baselines_session",
-            "idx_session_watch_baselines_status",
-            "idx_session_watch_observations_unresolved",
-            "idx_session_watch_observations_baseline",
-            "idx_session_watch_observations_expected_write",
-            "idx_session_watch_observations_unrecorded_change",
-            "idx_user_action_channel_tokens_request",
-            "idx_user_action_channel_tokens_connection",
-            "idx_user_action_channel_tokens_expiry",
-        ],
+        StorageDatabaseKind::ProjectState,
     )?;
-    require_column(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_state",
-        "state_version",
-    )?;
-    reject_column(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_state",
-        "schema_version",
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_state",
-        ColumnSpec {
-            name: "enforcement_profile_json",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: Some("'{\"profile_id\":\"baseline_cooperative\",\"guarantee_level\":\"cooperative\",\"enabled_mechanisms\":[],\"source\":\"baseline_scope\",\"status\":\"active\"}'"),
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "tasks",
-        ColumnSpec {
-            name: "scope_revision",
-            type_name: "INTEGER",
-            not_null: true,
-            default_value: Some("0"),
-            primary_key_position: 0,
-        },
-    )?;
-    for column in [
-        "requested_control_level",
-        "effective_control_level",
-        "control_level_reason",
-    ] {
-        require_column(conn, PROJECT_STATE_DATABASE_KIND, "tasks", column)?;
-    }
-    for column in [
-        "validity_basis_json",
-        "allowed_path_prefixes_json",
-        "denied_path_prefixes_json",
-        "idle_expires_at",
-        "invalidation_reason",
-    ] {
-        require_column(conn, PROJECT_STATE_DATABASE_KIND, "write_tickets", column)?;
-    }
-    for column in [
-        "project_id",
-        "policy_schema",
-        "policy_version",
-        "policy_json",
-        "policy_fingerprint",
-        "source",
-        "applied_at",
-        "created_at",
-    ] {
-        require_column(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "project_workflow_policies",
-            column,
-        )?;
-    }
-    for column in [
-        "project_id",
-        "session_end_receipt_id",
-        "session_id",
-        "active_task_id",
-        "task_state",
-        "close_blocker_codes_json",
-        "next_actor",
-        "completion_claim_allowed",
-        "authority_refresh_succeeded",
-        "created_at",
-    ] {
-        require_column(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "session_end_receipts",
-            column,
-        )?;
-    }
-    validate_v7_workflow_constraints(conn)?;
-    reject_column(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "change_units",
-        "close_basis_json",
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "tasks",
-        ColumnSpec {
-            name: "close_basis_revision",
-            type_name: "INTEGER",
-            not_null: true,
-            default_value: Some("0"),
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "tasks",
-        ColumnSpec {
-            name: "close_basis_json",
-            type_name: "TEXT",
-            not_null: false,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "runs",
-        ColumnSpec {
-            name: "scope_revision",
-            type_name: "INTEGER",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "user_action_requests",
-        ColumnSpec {
-            name: "basis_json",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "user_action_requests",
-        ColumnSpec {
-            name: "basis_status",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: Some("'current'"),
-            primary_key_position: 0,
-        },
-    )?;
-    validate_user_action_tables(conn)?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_continuity_records",
-        ColumnSpec {
-            name: "continuity_record_id",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 2,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_continuity_records",
-        ColumnSpec {
-            name: "kind",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_continuity_records",
-        ColumnSpec {
-            name: "status",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    for column in [
-        "source_task_id",
-        "source_change_unit_id",
-        "title",
-        "summary",
-        "rationale",
-        "applies_to_paths_json",
-        "applies_to_refs_json",
-        "source_refs_json",
-        "artifact_refs_json",
-        "supersedes_refs_json",
-        "review_triggers_json",
-        "created_at",
-        "updated_at",
-        "metadata_json",
-    ] {
-        require_column(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "project_continuity_records",
-            column,
-        )?;
-    }
-    validate_project_continuity_records_constraints(conn)?;
-    reject_column(conn, PROJECT_STATE_DATABASE_KIND, "tasks", "state_version")?;
-    for column in [
-        "event_seq",
-        "event_id",
-        "state_version",
-        "event_type",
-        "actor_source",
-        "operation_category",
-        "payload_json",
-        "request_hash",
-        "previous_event_hash",
-        "event_hash",
-        "created_at",
-    ] {
-        require_column(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "authority_events",
-            column,
-        )?;
-    }
-    require_column(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "tool_invocations",
-        "request_hash",
-    )?;
-    for column in ["actor_source", "operation_category"] {
-        require_column_spec(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "tool_invocations",
-            ColumnSpec {
-                name: column,
-                type_name: "TEXT",
-                not_null: true,
-                default_value: None,
-                primary_key_position: 0,
-            },
-        )?;
-    }
-    require_column(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "tool_invocations",
-        "verification_basis",
-    )?;
-    validate_tool_invocations_columns(conn)?;
-    validate_tool_invocations_primary_key(conn)?;
-    validate_tool_invocations_operation_category_constraint(conn)?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "artifacts",
-        ColumnSpec {
-            name: "integrity_status",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: Some("'verified'"),
-            primary_key_position: 0,
-        },
-    )?;
-    validate_artifacts_integrity_status_constraint(conn)?;
-    validate_artifacts_body_path_constraint(conn)?;
-    validate_guard_project_record_tables(conn)?;
-    validate_user_action_channel_tokens(conn)?;
-    validate_project_state_storage_profile(conn)?;
-    validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
-    validate_canonical_schema_inventory(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        PROJECT_STATE_SCHEMA_SQL,
-        &PROJECT_STATE_SCHEMA_INVENTORY,
-    )?;
-    Ok(())
+    validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)
 }
 
 fn open_sqlite_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
@@ -991,1118 +309,229 @@ fn validate_foreign_keys_enabled(
     }
 }
 
-fn require_tables(
+fn validate_manifest_carrier(
     conn: &Connection,
     database_kind: &'static str,
-    names: &[&str],
+    query: &str,
 ) -> StoreResult<()> {
-    for name in names {
-        if !sqlite_object_exists(conn, "table", name)? {
-            return Err(StoreError::schema_invariant(
-                database_kind,
-                format!("missing table {name}"),
-            ));
-        }
-    }
+    let mut statement = conn.prepare(query)?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+    let profiles = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
-    Ok(())
-}
-
-fn reject_table(conn: &Connection, database_kind: &'static str, name: &str) -> StoreResult<()> {
-    if sqlite_object_exists(conn, "table", name)? {
-        Err(StoreError::schema_invariant(
-            database_kind,
-            format!("forbidden legacy table {name}; recreate the Runtime Home"),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn require_indexes(
-    conn: &Connection,
-    database_kind: &'static str,
-    names: &[&str],
-) -> StoreResult<()> {
-    for name in names {
-        if !sqlite_object_exists(conn, "index", name)? {
-            return Err(StoreError::schema_invariant(
-                database_kind,
-                format!("missing index {name}"),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn require_views(
-    conn: &Connection,
-    database_kind: &'static str,
-    names: &[&str],
-) -> StoreResult<()> {
-    for name in names {
-        if !sqlite_object_exists(conn, "view", name)? {
-            return Err(StoreError::schema_invariant(
-                database_kind,
-                format!("missing view {name}"),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn sqlite_object_exists(
-    conn: &Connection,
-    object_type: &str,
-    name: &str,
-) -> rusqlite::Result<bool> {
-    conn.query_row(
-        "SELECT COUNT(*)
-           FROM sqlite_master
-          WHERE type = ?1 AND name = ?2",
-        [object_type, name],
-        |row| Ok(row.get::<_, i64>(0)? > 0),
-    )
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CanonicalSchemaObject {
-    object_type: String,
-    name: String,
-    table_name: String,
-    definition: Option<String>,
-}
-
-fn validate_canonical_schema_inventory(
-    conn: &Connection,
-    database_kind: &'static str,
-    canonical_sql: &'static str,
-    cache: &'static OnceLock<Result<Vec<CanonicalSchemaObject>, String>>,
-) -> StoreResult<()> {
-    let expected = cache.get_or_init(|| canonical_schema_inventory(canonical_sql));
-    let expected = expected.as_ref().map_err(|detail| {
-        StoreError::schema_invariant(
-            database_kind,
-            format!("canonical schema inventory is unavailable: {detail}"),
-        )
-    })?;
-    let actual = read_schema_inventory(conn)?;
-
-    if &actual == expected {
+    // A newly applied empty schema is not yet a published storage instance. Once
+    // its owner row exists, exactly one complete current manifest is mandatory.
+    if profiles.is_empty() {
         return Ok(());
     }
+    if profiles.len() != 1 {
+        return Err(StoreError::schema_invariant(
+            database_kind,
+            "manifest carrier must contain exactly one owner row",
+        ));
+    }
+    validate_persisted_manifest(database_kind, &profiles[0])
+}
 
-    for expected_object in expected {
-        match actual.iter().find(|actual_object| {
-            actual_object.object_type == expected_object.object_type
-                && actual_object.name == expected_object.name
-        }) {
-            None => {
-                return Err(StoreError::schema_invariant(
+pub(crate) fn validate_persisted_manifest(
+    database_kind: &'static str,
+    persisted: &str,
+) -> StoreResult<()> {
+    let expected = current_storage_manifest()?;
+    let expected_json = current_storage_manifest_json()?;
+    let decoded = serde_json::from_str::<StorageManifest>(persisted);
+    match decoded {
+        Ok(manifest) if &manifest == expected => {
+            let canonical = canonical_json_string(&manifest).map_err(|error| {
+                StoreError::schema_invariant(
                     database_kind,
-                    format!(
-                        "missing canonical {} {}",
-                        expected_object.object_type, expected_object.name
-                    ),
-                ));
-            }
-            Some(actual_object) if actual_object != expected_object => {
-                return Err(StoreError::schema_invariant(
+                    format!("manifest canonical encoding failed: {error}"),
+                )
+            })?;
+            if canonical == persisted {
+                Ok(())
+            } else {
+                Err(StoreError::schema_invariant(
                     database_kind,
-                    format!(
-                        "canonical {} {} definition does not match",
-                        expected_object.object_type, expected_object.name
-                    ),
-                ));
+                    "current manifest carrier is not canonically encoded",
+                ))
             }
-            Some(_) => {}
         }
-    }
-
-    if let Some(unexpected) = actual.iter().find(|actual_object| {
-        !expected.iter().any(|expected_object| {
-            expected_object.object_type == actual_object.object_type
-                && expected_object.name == actual_object.name
-        })
-    }) {
-        Err(StoreError::schema_invariant(
+        Ok(manifest) if manifest.contract_id == volicord_types::STORAGE_CONTRACT_ID => {
+            Err(StoreError::schema_invariant(
+                database_kind,
+                "current manifest digest or capabilities do not match",
+            ))
+        }
+        Ok(manifest) => Err(StoreError::unsupported_storage_profile(
             database_kind,
-            format!(
-                "unexpected {} {} outside the canonical schema",
-                unexpected.object_type, unexpected.name
-            ),
-        ))
-    } else {
-        Err(StoreError::schema_invariant(
+            manifest.contract_id,
+            expected_json,
+        )),
+        Err(error) => Err(StoreError::schema_invariant(
             database_kind,
-            "canonical schema inventory does not match",
-        ))
+            format!("persisted storage manifest is malformed: {error}"),
+        )),
     }
 }
 
-fn canonical_schema_inventory(canonical_sql: &str) -> Result<Vec<CanonicalSchemaObject>, String> {
-    let conn = Connection::open_in_memory().map_err(|error| error.to_string())?;
-    enable_foreign_keys(&conn).map_err(|error| error.to_string())?;
-    conn.execute_batch(canonical_sql)
-        .map_err(|error| error.to_string())?;
-    read_schema_inventory(&conn).map_err(|error| error.to_string())
-}
-
-fn read_schema_inventory(conn: &Connection) -> rusqlite::Result<Vec<CanonicalSchemaObject>> {
-    let mut stmt = conn.prepare(
-        "SELECT type, name, tbl_name, sql
-           FROM sqlite_master
-          WHERE type IN ('table', 'index', 'view', 'trigger')
-            AND name NOT LIKE 'sqlite_%'
-          ORDER BY type, name",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(CanonicalSchemaObject {
-            object_type: row.get(0)?,
-            name: row.get(1)?,
-            table_name: row.get(2)?,
-            definition: row.get(3)?,
-        })
-    })?;
-
-    rows.collect()
-}
-
-fn validate_project_state_storage_profile(conn: &Connection) -> StoreResult<()> {
-    if let Some(actual_storage_profile) = conn
-        .query_row(
-            "SELECT storage_profile
-               FROM project_state
-              WHERE storage_profile != ?1
-              LIMIT 1",
-            [STORAGE_PROFILE],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-    {
-        return Err(StoreError::unsupported_storage_profile(
-            PROJECT_STATE_DATABASE_KIND,
-            actual_storage_profile,
-            STORAGE_PROFILE,
-        ));
-    }
-
-    Ok(())
-}
-
-fn validate_registry_storage_profile(conn: &Connection) -> StoreResult<()> {
-    if let Some(actual_storage_profile) = conn
-        .query_row(
-            "SELECT storage_profile
-               FROM runtime_home
-              WHERE storage_profile != ?1
-              LIMIT 1",
-            [STORAGE_PROFILE],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-    {
-        return Err(StoreError::unsupported_storage_profile(
-            REGISTRY_DATABASE_KIND,
-            actual_storage_profile,
-            STORAGE_PROFILE,
-        ));
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ColumnSpec {
-    name: &'static str,
-    type_name: &'static str,
-    not_null: bool,
-    default_value: Option<&'static str>,
-    primary_key_position: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ColumnInfo {
-    type_name: String,
-    not_null: bool,
-    default_value: Option<String>,
-    primary_key_position: i64,
-}
-
-fn require_column_spec(
+fn validate_generated_schema(
     conn: &Connection,
     database_kind: &'static str,
-    table: &str,
-    expected: ColumnSpec,
+    generated_database: StorageDatabaseKind,
 ) -> StoreResult<()> {
-    let info = column_info(conn, table, expected.name)?.ok_or_else(|| {
+    let expected = current_schema_facts(generated_database)?;
+    let actual = extract_schema_facts(conn, generated_database).map_err(|detail| {
         StoreError::schema_invariant(
             database_kind,
-            format!("missing column {table}.{}", expected.name),
+            format!("physical schema metadata extraction failed: {detail}"),
         )
     })?;
-
-    if info.type_name.eq_ignore_ascii_case(expected.type_name)
-        && info.not_null == expected.not_null
-        && info.default_value.as_deref() == expected.default_value
-        && info.primary_key_position == expected.primary_key_position
-    {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            database_kind,
-            format!(
-                "column {table}.{} has type={} not_null={} default={:?} pk={}, expected type={} not_null={} default={:?} pk={}",
-                expected.name,
-                info.type_name,
-                info.not_null,
-                info.default_value,
-                info.primary_key_position,
-                expected.type_name,
-                expected.not_null,
-                expected.default_value,
-                expected.primary_key_position
-            ),
-        ))
-    }
-}
-
-fn column_info(
-    conn: &Connection,
-    table: &str,
-    column: &str,
-) -> rusqlite::Result<Option<ColumnInfo>> {
-    let escaped_table = table.replace('"', "\"\"");
-    let sql = format!("PRAGMA table_info(\"{escaped_table}\")");
-    let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query([])?;
-
-    while let Some(row) = rows.next()? {
-        let name: String = row.get(1)?;
-        if name == column {
-            return Ok(Some(ColumnInfo {
-                type_name: row.get(2)?,
-                not_null: row.get::<_, i64>(3)? != 0,
-                default_value: row.get(4)?,
-                primary_key_position: row.get(5)?,
-            }));
-        }
-    }
-
-    Ok(None)
-}
-
-fn table_column_names(conn: &Connection, table: &str) -> rusqlite::Result<Vec<String>> {
-    let escaped_table = table.replace('"', "\"\"");
-    let sql = format!("PRAGMA table_info(\"{escaped_table}\")");
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-    })?;
-
-    let mut columns = Vec::new();
-    for row in rows {
-        columns.push(row?);
-    }
-    columns.sort_by_key(|(position, _)| *position);
-    Ok(columns.into_iter().map(|(_, name)| name).collect())
-}
-
-fn validate_user_action_tables(conn: &Connection) -> StoreResult<()> {
-    for column in [
-        "project_id",
-        "user_action_request_id",
-        "task_id",
-        "change_unit_id",
-        "action_kind",
-        "request_json",
-        "basis_json",
-        "basis_status",
-        "required_for_json",
-        "requested_by_actor_source",
-        "requested_at",
-        "expires_at",
-        "metadata_json",
-    ] {
-        require_column(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "user_action_requests",
-            column,
-        )?;
-    }
-    for column in [
-        "project_id",
-        "user_action_resolution_id",
-        "user_action_request_id",
-        "action_kind",
-        "channel_kind",
-        "channel_submission_id",
-        "resolution_json",
-        "resolved_by_actor_source",
-        "resolved_verification_basis",
-        "resolved_assurance_level",
-        "resolved_at",
-    ] {
-        require_column(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "user_action_resolutions",
-            column,
-        )?;
-    }
-
-    let action_kinds = "action_kind in ( 'product_decision', 'technical_decision', 'scope_decision', 'sensitive_approval', 'final_acceptance', 'residual_risk_acceptance', 'cancellation', 'evidence_observation' )";
-    let request_sql = normalized_table_sql(conn, "user_action_requests")?;
-    for fragment in [
-        action_kinds,
-        "basis_status in ('current', 'stale', 'superseded')",
-        "unique (project_id, user_action_request_id, action_kind)",
-    ] {
-        if !request_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "user_action_requests constraints are missing or malformed",
-            ));
-        }
-    }
-
-    let resolution_sql = normalized_table_sql(conn, "user_action_resolutions")?;
-    for fragment in [
-        action_kinds,
-        "channel_kind in ('mcp_elicitation', 'prompt_capture', 'local_web_consent', 'cli')",
-        "resolved_by_actor_source = 'local_user'",
-        "unique (project_id, user_action_request_id)",
-        "unique (project_id, channel_kind, channel_submission_id)",
-    ] {
-        if !resolution_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "user_action_resolutions constraints are missing or malformed",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn validate_project_continuity_records_constraints(conn: &Connection) -> StoreResult<()> {
-    let table_sql = normalized_table_sql(conn, "project_continuity_records")?;
-    let required_fragments = [
-        "kind in ('decision', 'obligation', 'known_limit', 'accepted_risk', 'constraint')",
-        "length(trim(title)) > 0",
-        "length(trim(summary)) > 0",
-        "rationale is null or length(trim(rationale)) > 0",
-        "status in ('active', 'superseded', 'closed')",
-    ];
-    for fragment in required_fragments {
-        if !table_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "project_continuity_records constraints are missing or malformed",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn normalized_table_sql(conn: &Connection, table: &str) -> StoreResult<String> {
-    let table_sql: String = conn.query_row(
-        "SELECT sql
-           FROM sqlite_master
-          WHERE type = 'table'
-            AND name = ?1",
-        [table],
-        |row| row.get(0),
-    )?;
-    Ok(table_sql
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase())
-}
-
-fn validate_tool_invocations_primary_key(conn: &Connection) -> StoreResult<()> {
-    let mut stmt = conn.prepare("PRAGMA table_info(tool_invocations)")?;
-    let mut rows = stmt.query([])?;
-    let mut primary_key_columns = Vec::new();
-
-    while let Some(row) = rows.next()? {
-        let name: String = row.get(1)?;
-        let primary_key_position: i64 = row.get(5)?;
-        if primary_key_position > 0 {
-            primary_key_columns.push((primary_key_position, name));
-        }
-    }
-
-    primary_key_columns.sort_by_key(|(position, _)| *position);
-    let primary_key_columns = primary_key_columns
-        .into_iter()
-        .map(|(_, name)| name)
-        .collect::<Vec<_>>();
-    let expected = vec![
-        "project_id".to_owned(),
-        "tool_name".to_owned(),
-        "idempotency_key".to_owned(),
-    ];
-    if primary_key_columns == expected {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            format!(
-                "tool_invocations primary key is {:?}, expected {:?}",
-                primary_key_columns, expected
-            ),
-        ))
-    }
-}
-
-fn validate_tool_invocations_columns(conn: &Connection) -> StoreResult<()> {
-    let actual = table_column_names(conn, "tool_invocations")?;
-    let expected = [
-        "project_id",
-        "tool_name",
-        "idempotency_key",
-        "request_hash",
-        "basis_state_version",
-        "committed_state_version",
-        "status",
-        "actor_source",
-        "operation_category",
-        "verification_basis",
-        "git_workspace_context_json",
-        "response_json",
-        "created_at",
-    ]
-    .iter()
-    .map(|name| (*name).to_owned())
-    .collect::<Vec<_>>();
     if actual == expected {
         Ok(())
     } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            format!(
-                "tool_invocations columns are {:?}, expected {:?}",
-                actual, expected
-            ),
-        ))
+        Err(schema_mismatch_error(database_kind, &expected, &actual))
     }
 }
 
-fn validate_tool_invocations_operation_category_constraint(conn: &Connection) -> StoreResult<()> {
-    let table_sql = normalized_table_sql(conn, "tool_invocations")?;
-    let has_constraint = table_sql
-        .contains(
-            "operation_category in ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')",
-        )
-        || table_sql.contains(
-            "operation_category in('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')",
+fn schema_mismatch_error(
+    database_kind: &'static str,
+    expected: &GeneratedSchemaFacts,
+    actual: &GeneratedSchemaFacts,
+) -> StoreError {
+    let detail = if actual.tables != expected.tables {
+        relation_mismatch_detail(expected, actual)
+    } else if actual.columns != expected.columns {
+        column_mismatch_detail(expected, actual)
+    } else if actual.indexes != expected.indexes {
+        index_mismatch_detail(expected, actual)
+    } else {
+        constraint_mismatch_detail(expected, actual)
+    };
+    StoreError::schema_invariant(database_kind, detail)
+}
+
+fn relation_mismatch_detail(
+    expected: &GeneratedSchemaFacts,
+    actual: &GeneratedSchemaFacts,
+) -> String {
+    if let Some(relation) = actual.tables.iter().find(|actual_relation| {
+        !expected.tables.iter().any(|expected_relation| {
+            expected_relation.database == actual_relation.database
+                && expected_relation.relation_kind == actual_relation.relation_kind
+                && expected_relation.name == actual_relation.name
+        })
+    }) {
+        return format!(
+            "unexpected SQLite relation {}; explicitly recreate the storage instance",
+            relation.name
         );
-    if has_constraint {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "tool_invocations.operation_category constraint is missing or malformed",
-        ))
     }
+    if let Some(relation) = expected.tables.iter().find(|expected_relation| {
+        !actual.tables.iter().any(|actual_relation| {
+            actual_relation.database == expected_relation.database
+                && actual_relation.relation_kind == expected_relation.relation_kind
+                && actual_relation.name == expected_relation.name
+        })
+    }) {
+        return format!("missing canonical SQLite relation {}", relation.name);
+    }
+    let relation = actual
+        .tables
+        .iter()
+        .zip(&expected.tables)
+        .find(|(actual_relation, expected_relation)| actual_relation != expected_relation)
+        .map(|(actual_relation, _)| actual_relation.name.as_str())
+        .unwrap_or("unknown");
+    format!("canonical SQLite relation {relation} definition differs")
 }
 
-fn validate_guard_installations_constraints(conn: &Connection) -> StoreResult<()> {
-    let table_sql = normalized_table_sql(conn, "guard_installations")?;
-    let required_fragments = [
-        "length(trim(host_kind)) > 0",
-        "guard_mode in ('record', 'detective')",
-    ];
-    for fragment in required_fragments {
-        if !table_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                REGISTRY_DATABASE_KIND,
-                "guard_installations constraints are missing or malformed",
-            ));
-        }
+fn column_mismatch_detail(
+    expected: &GeneratedSchemaFacts,
+    actual: &GeneratedSchemaFacts,
+) -> String {
+    if let Some(column) = actual.columns.iter().find(|actual_column| {
+        !expected.columns.iter().any(|expected_column| {
+            expected_column.database == actual_column.database
+                && expected_column.table == actual_column.table
+                && expected_column.name == actual_column.name
+        })
+    }) {
+        return format!("unexpected SQLite column {}.{}", column.table, column.name);
     }
-    let has_status_constraint = [
-        "installation_status in ('absent', 'configured', 'reload_required', 'active', 'degraded', 'stale', 'broken')",
-        "installation_status in ( 'absent', 'configured', 'reload_required', 'active', 'degraded', 'stale', 'broken' )",
-    ]
-    .iter()
-    .any(|fragment| table_sql.contains(fragment));
-    if !has_status_constraint {
-        return Err(StoreError::schema_invariant(
-            REGISTRY_DATABASE_KIND,
-            "guard_installations constraints are missing or malformed",
-        ));
+    if let Some(column) = expected.columns.iter().find(|expected_column| {
+        !actual.columns.iter().any(|actual_column| {
+            actual_column.database == expected_column.database
+                && actual_column.table == expected_column.table
+                && actual_column.name == expected_column.name
+        })
+    }) {
+        return format!(
+            "missing canonical SQLite column {}.{}",
+            column.table, column.name
+        );
     }
-    Ok(())
+    let column = actual
+        .columns
+        .iter()
+        .zip(&expected.columns)
+        .find(|(actual_column, expected_column)| actual_column != expected_column)
+        .map(|(actual_column, _)| format!("{}.{}", actual_column.table, actual_column.name))
+        .unwrap_or_else(|| "unknown".to_owned());
+    format!("canonical SQLite column {column} definition differs")
 }
 
-fn validate_host_capability_constraints(conn: &Connection) -> StoreResult<()> {
-    let verification_sql = normalized_table_sql(conn, "host_capability_verifications")?;
-    for fragment in [
-        "capability = 'model_invisible_user_surface'",
-        "outcome in ('passed', 'failed', 'unavailable', 'revoked')",
-        "host_kind in ('codex', 'claude_code', 'generic')",
-        "adapter_profile = 'mcp_user_channel_local_web_v1'",
-        "length(executable_sha256) = 64",
-        "length(evidence_artifact_sha256) = 64",
-        "metadata_json = '{}'",
-        "unique (connection_internal_id, capability, verification_internal_id)",
-        "outcome != 'passed' or host_kind in ('codex', 'claude_code')",
-        "outcome != 'passed' or host_version = client_version",
-        "length(source_revision) in (40, 64)",
-        "source_revision not glob '*[^0-9a-f]*'",
-    ] {
-        if !verification_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                REGISTRY_DATABASE_KIND,
-                "host_capability_verifications constraints are missing or malformed",
-            ));
-        }
+fn index_mismatch_detail(expected: &GeneratedSchemaFacts, actual: &GeneratedSchemaFacts) -> String {
+    if let Some(index) = actual.indexes.iter().find(|actual_index| {
+        !expected.indexes.iter().any(|expected_index| {
+            expected_index.database == actual_index.database
+                && expected_index.name == actual_index.name
+        })
+    }) {
+        return format!("unexpected SQLite index {}", index.name);
     }
-    for (column, maximum_bytes) in [
-        ("verification_internal_id", 1024),
-        ("connection_internal_id", 1024),
-        ("host_version", 1024),
-        ("client_name", 256),
-        ("client_version", 256),
-        ("adapter_version", 1024),
-        ("managed_fingerprint", 1024),
-        ("volicord_build_id", 1024),
-        ("source_revision", 1024),
-        ("target_triple", 1024),
-    ] {
-        for fragment in [
-            format!("length(trim({column})) > 0"),
-            format!("length(cast({column} as blob)) between 1 and {maximum_bytes}"),
-        ] {
-            if !verification_sql.contains(&fragment) {
-                return Err(StoreError::schema_invariant(
-                    REGISTRY_DATABASE_KIND,
-                    "host_capability_verifications constraints are missing or malformed",
-                ));
-            }
-        }
+    if let Some(index) = expected.indexes.iter().find(|expected_index| {
+        !actual.indexes.iter().any(|actual_index| {
+            actual_index.database == expected_index.database
+                && actual_index.name == expected_index.name
+        })
+    }) {
+        return format!("missing canonical SQLite index {}", index.name);
     }
-
-    let state_sql = normalized_table_sql(conn, "host_capability_state")?;
-    for fragment in [
-        "capability = 'model_invisible_user_surface'",
-        "primary key (connection_internal_id, capability)",
-        "current_verification_internal_id",
-    ] {
-        if !state_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                REGISTRY_DATABASE_KIND,
-                "host_capability_state constraints are missing or malformed",
-            ));
-        }
-    }
-    for column in ["connection_internal_id", "current_verification_internal_id"] {
-        for fragment in [
-            format!("length(trim({column})) > 0"),
-            format!("length(cast({column} as blob)) between 1 and 1024"),
-        ] {
-            if !state_sql.contains(&fragment) {
-                return Err(StoreError::schema_invariant(
-                    REGISTRY_DATABASE_KIND,
-                    "host_capability_state constraints are missing or malformed",
-                ));
-            }
-        }
-    }
-    Ok(())
+    let index = actual
+        .indexes
+        .iter()
+        .zip(&expected.indexes)
+        .find(|(actual_index, expected_index)| actual_index != expected_index)
+        .map(|(actual_index, _)| actual_index.name.as_str())
+        .unwrap_or("unknown");
+    format!("canonical SQLite index {index} definition differs")
 }
 
-fn validate_user_action_channel_tokens(conn: &Connection) -> StoreResult<()> {
-    for (column, not_null) in [
-        ("project_id", true),
-        ("token_hash", true),
-        ("channel_kind", true),
-        ("connection_internal_id", true),
-        ("user_action_request_id", true),
-        ("capture_basis", true),
-        ("status", true),
-        ("created_at", true),
-        ("expires_at", true),
-        ("consumed_at", false),
-        ("completed_at", false),
-        ("created_metadata_json", true),
-        ("completion_metadata_json", true),
-    ] {
-        require_column_spec(
-            conn,
-            PROJECT_STATE_DATABASE_KIND,
-            "user_action_channel_tokens",
-            ColumnSpec {
-                name: column,
-                type_name: "TEXT",
-                not_null,
-                default_value: match column {
-                    "status" => Some("'pending'"),
-                    "created_metadata_json" | "completion_metadata_json" => Some("'{}'"),
-                    _ => None,
-                },
-                primary_key_position: match column {
-                    "project_id" => 1,
-                    "token_hash" => 2,
-                    _ => 0,
-                },
-            },
-        )?;
-    }
-
-    let table_sql = normalized_table_sql(conn, "user_action_channel_tokens")?;
-    let required_fragments = [
-        "length(token_hash) = 64",
-        "channel_kind = 'local_web_consent'",
-        "status in ('pending', 'consumed', 'expired')",
-        "status = 'pending'",
-        "status = 'consumed'",
-        "status = 'expired'",
-        "consumed_at is null",
-        "consumed_at is not null",
-        "completed_at is null",
-        "completed_at is not null",
-    ];
-    for fragment in required_fragments {
-        if !table_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "user_action_channel_tokens constraints are missing or malformed",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn validate_v7_workflow_constraints(conn: &Connection) -> StoreResult<()> {
-    let tasks_sql = normalized_table_sql(conn, "tasks")?;
-    for fragment in [
-        "requested_control_level in ('auto', 'observe', 'light', 'tracked', 'sensitive')",
-        "effective_control_level in ('observe', 'light', 'tracked', 'sensitive')",
-        "length(trim(control_level_reason)) > 0",
-    ] {
-        if !tasks_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "Task control constraints are missing or malformed",
-            ));
-        }
-    }
-
-    let tickets_sql = normalized_table_sql(conn, "write_tickets")?;
-    for fragment in [
-        "status in ('active', 'consumed', 'invalidated', 'revoked')",
-        "scope_revision_changed",
-        "change_unit_changed",
-        "baseline_changed",
-        "workspace_changed",
-        "approval_basis_changed",
-        "idle_timeout",
-        "task_closed",
-        "explicit_revoke",
-    ] {
-        if !tickets_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "write-ticket v7 constraints are missing or malformed",
-            ));
-        }
-    }
-
-    let policy_sql = normalized_table_sql(conn, "project_workflow_policies")?;
-    for fragment in [
-        "policy_schema = 'volicord-policy-v2'",
-        "policy_version > 0",
-        "length(policy_fingerprint) = 71",
-        "substr(policy_fingerprint, 1, 7) = 'sha256:'",
-        "substr(policy_fingerprint, 8) not glob '*[^0-9a-f]*'",
-    ] {
-        if !policy_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "project workflow-policy constraints are missing or malformed",
-            ));
-        }
-    }
-
-    let receipt_sql = normalized_table_sql(conn, "session_end_receipts")?;
-    for fragment in [
-        "task_state in ( 'none', 'ready', 'blocked', 'closed', 'cancelled', 'superseded', 'authority_unknown' )",
-        "next_actor in ('agent', 'user', 'none')",
-        "completion_claim_allowed in (0, 1)",
-        "authority_refresh_succeeded in (0, 1)",
-        "authority_refresh_succeeded = 0 and task_state = 'authority_unknown'",
-        "task_state = 'none' and active_task_id is null",
-        "completion_claim_allowed = 0",
-        "close_blocker_codes_json = '[]'",
-    ] {
-        if !receipt_sql.contains(fragment) {
-            return Err(StoreError::schema_invariant(
-                PROJECT_STATE_DATABASE_KIND,
-                "session-end receipt constraints are missing or malformed",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn validate_guard_project_record_tables(conn: &Connection) -> StoreResult<()> {
-    for (table, columns) in [
-        (
-            "agent_sessions",
-            &[
-                "project_id",
-                "session_id",
-                "connection_internal_id",
-                "guard_installation_id",
-                "host_kind",
-                "guard_mode",
-                "started_at",
-                "ended_at",
-                "metadata_json",
-            ][..],
-        ),
-        (
-            "guard_events",
-            &[
-                "project_id",
-                "guard_event_id",
-                "session_id",
-                "connection_internal_id",
-                "guard_installation_id",
-                "event_kind",
-                "decision",
-                "subject_json",
-                "result_json",
-                "occurred_at",
-                "metadata_json",
-            ][..],
-        ),
-        (
-            "prompt_captures",
-            &[
-                "project_id",
-                "prompt_capture_id",
-                "session_id",
-                "connection_internal_id",
-                "capture_kind",
-                "prompt_sha256",
-                "prompt_text",
-                "captured_at",
-                "metadata_json",
-            ][..],
-        ),
-        (
-            "expected_writes",
-            &[
-                "project_id",
-                "expected_write_id",
-                "session_id",
-                "connection_internal_id",
-                "guard_installation_id",
-                "pre_tool_guard_event_id",
-                "host_invocation_id",
-                "tool_name",
-                "command_kind",
-                "path_policy",
-                "expected_paths_json",
-                "task_id",
-                "change_unit_id",
-                "write_ticket_ids_json",
-                "basis_state_version",
-                "status",
-                "matched_post_tool_guard_event_id",
-                "matched_paths_json",
-                "created_at",
-                "expires_at",
-                "matched_at",
-                "metadata_json",
-            ][..],
-        ),
-        (
-            "unrecorded_changes",
-            &[
-                "project_id",
-                "unrecorded_change_id",
-                "session_id",
-                "connection_internal_id",
-                "task_id",
-                "status",
-                "confidence",
-                "summary",
-                "observed_paths_json",
-                "detection_json",
-                "resolution_json",
-                "detected_at",
-                "resolved_at",
-                "resolved_by_actor_source",
-                "metadata_json",
-            ][..],
-        ),
-        (
-            "session_watch_baselines",
-            &[
-                "project_id",
-                "watch_baseline_id",
-                "session_id",
-                "connection_internal_id",
-                "guard_installation_id",
-                "status",
-                "scope_kind",
-                "repo_root",
-                "watched_paths_json",
-                "exclusions_json",
-                "snapshot_algorithm",
-                "snapshot_digest",
-                "snapshot_entries_json",
-                "created_at",
-                "updated_at",
-                "metadata_json",
-            ][..],
-        ),
-        (
-            "session_watch_observations",
-            &[
-                "project_id",
-                "watch_observation_id",
-                "watch_baseline_id",
-                "session_id",
-                "connection_internal_id",
-                "expected_write_id",
-                "unrecorded_change_id",
-                "observation_status",
-                "observed_paths_json",
-                "change_summary_json",
-                "snapshot_algorithm",
-                "snapshot_digest",
-                "snapshot_entries_json",
-                "observed_at",
-                "linked_at",
-                "metadata_json",
-            ][..],
-        ),
-    ] {
-        for column in columns {
-            require_column(conn, PROJECT_STATE_DATABASE_KIND, table, column)?;
-        }
-    }
-
-    let expected_writes_sql = normalized_table_sql(conn, "expected_writes")?;
-    let has_status_values = expected_writes_sql.contains("status in ('pending', 'matched')");
-    let has_path_policy = expected_writes_sql.contains("path_policy in ('exact_paths')");
-    let has_pending_group = expected_writes_sql.contains("status = 'pending'")
-        && expected_writes_sql.contains("matched_post_tool_guard_event_id is null")
-        && expected_writes_sql.contains("matched_paths_json is null")
-        && expected_writes_sql.contains("matched_at is null");
-    let has_matched_group = expected_writes_sql.contains("status = 'matched'")
-        && expected_writes_sql.contains("matched_post_tool_guard_event_id is not null")
-        && expected_writes_sql.contains("matched_paths_json is not null")
-        && expected_writes_sql.contains("matched_at is not null");
-    if !has_status_values || !has_path_policy || !has_pending_group || !has_matched_group {
-        return Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "expected_writes constraints are missing or malformed",
-        ));
-    }
-
-    let sessions_sql = normalized_table_sql(conn, "agent_sessions")?;
-    if !sessions_sql.contains("guard_mode in ('record', 'detective')")
-        || !sessions_sql.contains("length(trim(host_kind)) > 0")
-    {
-        return Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "agent_sessions constraints are missing or malformed",
-        ));
-    }
-
-    let guard_events_sql = normalized_table_sql(conn, "guard_events")?;
-    if !guard_events_sql.contains("decision in ('allow', 'deny', 'warn', 'inject_context')") {
-        return Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "guard_events.decision constraint is missing or malformed",
-        ));
-    }
-
-    let unrecorded_changes_sql = normalized_table_sql(conn, "unrecorded_changes")?;
-    let has_status_values = unrecorded_changes_sql.contains("status in ('unresolved', 'resolved')");
-    let has_confidence_values =
-        unrecorded_changes_sql.contains("confidence in ('confirmed', 'suspected')");
-    let has_unresolved_group = unrecorded_changes_sql.contains("status = 'unresolved'")
-        && unrecorded_changes_sql.contains("resolution_json is null")
-        && unrecorded_changes_sql.contains("resolved_at is null")
-        && unrecorded_changes_sql.contains("resolved_by_actor_source is null");
-    let has_resolved_group = unrecorded_changes_sql.contains("status = 'resolved'")
-        && unrecorded_changes_sql.contains("resolution_json is not null")
-        && unrecorded_changes_sql.contains("resolved_at is not null")
-        && unrecorded_changes_sql.contains("resolved_by_actor_source is not null");
-    if !has_status_values || !has_confidence_values || !has_unresolved_group || !has_resolved_group
-    {
-        return Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "unrecorded_changes resolution constraints are missing or malformed",
-        ));
-    }
-
-    let baselines_sql = normalized_table_sql(conn, "session_watch_baselines")?;
-    if !baselines_sql.contains("status in ('disabled', 'active', 'degraded', 'unavailable')")
-        || !baselines_sql.contains("scope_kind in ('repository', 'path_set')")
-    {
-        return Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "session_watch_baselines constraints are missing or malformed",
-        ));
-    }
-
-    let observations_sql = normalized_table_sql(conn, "session_watch_observations")?;
-    let has_status_values =
-        observations_sql.contains("observation_status in ('unresolved', 'linked')");
-    let has_unresolved_group = observations_sql.contains("observation_status = 'unresolved'")
-        && observations_sql.contains("unrecorded_change_id is null")
-        && observations_sql.contains("linked_at is null");
-    let has_linked_group = observations_sql.contains("observation_status = 'linked'")
-        && observations_sql.contains("unrecorded_change_id is not null")
-        && observations_sql.contains("linked_at is not null");
-    if !has_status_values || !has_unresolved_group || !has_linked_group {
-        return Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "session_watch_observations link constraints are missing or malformed",
-        ));
-    }
-
-    Ok(())
-}
-
-fn validate_artifacts_integrity_status_constraint(conn: &Connection) -> StoreResult<()> {
-    let table_sql: String = conn.query_row(
-        "SELECT sql
-           FROM sqlite_master
-          WHERE type = 'table'
-            AND name = 'artifacts'",
-        [],
-        |row| row.get(0),
-    )?;
-    let normalized = table_sql
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    let has_status_values = normalized.contains("integrity_status in ('verified', 'corrupt')")
-        || normalized.contains("integrity_status in('verified', 'corrupt')");
-    let has_verified_requirement = normalized.contains("integrity_status <> 'verified'")
-        && normalized.contains("length(sha256) = 64")
-        && normalized.contains("sha256 not glob '*[^0-9a-f]*'")
-        && normalized.contains("size_bytes is not null")
-        && normalized.contains("content_type is not null");
-    if has_status_values && has_verified_requirement {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "artifacts.integrity_status constraint is missing or malformed",
-        ))
-    }
-}
-
-fn validate_artifacts_body_path_constraint(conn: &Connection) -> StoreResult<()> {
-    let table_sql: String = conn.query_row(
-        "SELECT sql
-           FROM sqlite_master
-          WHERE type = 'table'
-            AND name = 'artifacts'",
-        [],
-        |row| row.get(0),
-    )?;
-    let normalized = table_sql
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    let has_body_path_shape = normalized.contains("body_path is null")
-        && normalized.contains("length(trim(body_path)) > 0")
-        && normalized.contains("body_path not glob '/*'")
-        && normalized.contains("body_path not glob '[a-za-z]:*'")
-        && normalized.contains(r"and instr(body_path, '\') = 0")
-        && normalized.contains("body_path <> '..'")
-        && normalized.contains("body_path not glob '../*'")
-        && normalized.contains("body_path not glob '*/../*'")
-        && normalized.contains("body_path not glob '*/..'")
-        && normalized.contains("body_path <> 'artifacts'")
-        && normalized.contains("body_path not glob 'artifacts/*'");
-    if has_body_path_shape {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "artifacts.body_path constraint is missing or malformed",
-        ))
-    }
-}
-
-fn require_column(
-    conn: &Connection,
-    database_kind: &'static str,
-    table: &str,
-    column: &str,
-) -> StoreResult<()> {
-    if column_exists(conn, table, column)? {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            database_kind,
-            format!("missing column {table}.{column}"),
-        ))
-    }
-}
-
-fn reject_column(
-    conn: &Connection,
-    database_kind: &'static str,
-    table: &str,
-    column: &str,
-) -> StoreResult<()> {
-    if column_exists(conn, table, column)? {
-        Err(StoreError::schema_invariant(
-            database_kind,
-            format!("forbidden column {table}.{column}"),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn column_exists(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
-    let escaped_table = table.replace('"', "\"\"");
-    let sql = format!("PRAGMA table_info(\"{escaped_table}\")");
-    let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query([])?;
-
-    while let Some(row) = rows.next()? {
-        let name: String = row.get(1)?;
-        if name == column {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
+fn constraint_mismatch_detail(
+    expected: &GeneratedSchemaFacts,
+    actual: &GeneratedSchemaFacts,
+) -> String {
+    let table = actual
+        .constraints
+        .iter()
+        .zip(&expected.constraints)
+        .find(|(actual_constraint, expected_constraint)| actual_constraint != expected_constraint)
+        .map(|(actual_constraint, _)| actual_constraint.table.as_str())
+        .unwrap_or("unknown");
+    format!("canonical SQLite integrity constraints differ for {table}")
 }
 
 fn validate_foreign_key_check(conn: &Connection, database_kind: &'static str) -> StoreResult<()> {
-    let mut stmt = conn.prepare("PRAGMA foreign_key_check")?;
-    let mut rows = stmt.query([])?;
-
+    let mut statement = conn.prepare("PRAGMA foreign_key_check")?;
+    let mut rows = statement.query([])?;
     if rows.next()?.is_some() {
-        return Err(StoreError::schema_invariant(
+        Err(StoreError::schema_invariant(
             database_kind,
             "PRAGMA foreign_key_check reported a violation",
-        ));
+        ))
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -2110,427 +539,108 @@ mod tests {
     use std::time::Duration;
 
     use rusqlite::{params, Error, ErrorCode};
+    use serde_json::Value;
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
-    use crate::schema::STORAGE_PROFILE;
+    use crate::schema::current_storage_manifest_json;
 
     #[test]
-    fn registry_schema_initialization_is_idempotent() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("registry-schema-idempotent")?;
-        let path = registry_db_path(runtime_home.path());
+    fn canonical_schema_initialization_is_idempotent() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("canonical-schema-idempotent")?;
+        let registry_path = registry_db_path(runtime_home.path());
+        open_registry_database(&registry_path)?;
+        let registry = open_registry_database(&registry_path)?;
+        validate_registry_schema(&registry)?;
 
-        let conn = open_registry_database(&path)?;
-        assert!(!sqlite_object_exists(&conn, "table", "schema_migrations")?);
-        drop(conn);
+        let project_path = project_state_db_path(runtime_home.path(), "PRJ-0001");
+        open_project_state_database(&project_path)?;
+        let project = open_project_state_database(&project_path)?;
+        validate_project_state_schema(&project)
+    }
 
-        let conn = open_registry_database(&path)?;
-        assert!(foreign_keys_enabled(&conn)?);
-        assert!(sqlite_object_exists(&conn, "table", "runtime_home")?);
-        assert!(sqlite_object_exists(&conn, "table", "agent_connections")?);
-        assert!(sqlite_object_exists(&conn, "table", "connection_projects")?);
-        assert!(sqlite_object_exists(&conn, "table", "guard_installations")?);
-        assert!(!sqlite_object_exists(
-            &conn,
-            "table",
-            "user_action_channel_tokens"
-        )?);
+    #[test]
+    fn exact_validator_rejects_extra_table_column_and_index() -> StoreResult<()> {
+        let cases = [
+            "CREATE TABLE runtime_extension (id TEXT PRIMARY KEY)",
+            "ALTER TABLE tasks ADD COLUMN extension_metadata TEXT",
+            "CREATE INDEX idx_tasks_extension_metadata ON tasks (metadata_json)",
+        ];
+        for (index, statement) in cases.into_iter().enumerate() {
+            let runtime_home = TempRuntimeHome::new(&format!("schema-mismatch-{index}"))?;
+            let path = project_state_db_path(runtime_home.path(), "PRJ-mismatch");
+            let conn = open_project_state_database(&path)?;
+            conn.execute_batch(statement)?;
+            let error = validate_project_state_schema(&conn)
+                .expect_err("physical schema mismatch must fail closed");
+            assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+        }
         Ok(())
     }
 
     #[test]
-    fn utc_order_functions_preserve_offsets_and_submillisecond_precision() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("utc-order-functions")?;
-        let conn = open_registry_database(runtime_home.registry_db_path())?;
-        let mut stmt = conn.prepare(
-            "WITH samples(value) AS (VALUES (?1), (?2), (?3))
-             SELECT value
-               FROM samples
-              ORDER BY volicord_utc_seconds(value),
-                       volicord_utc_subsec_nanos(value)",
-        )?;
-        let ordered = stmt
-            .query_map(
-                params![
-                    "2026-07-13T00:00:00.000000501Z",
-                    "2026-07-13T09:00:00.000000500+09:00",
-                    "2026-07-13T00:00:00.000000499Z",
-                ],
-                |row| row.get::<_, String>(0),
-            )?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+    fn current_manifest_requires_canonical_exact_encoding() -> StoreResult<()> {
+        let manifest = current_storage_manifest_json()?;
+        let parsed: Value = serde_json::from_str(manifest).expect("manifest JSON");
         assert_eq!(
-            ordered,
-            vec![
-                "2026-07-13T00:00:00.000000499Z",
-                "2026-07-13T09:00:00.000000500+09:00",
-                "2026-07-13T00:00:00.000000501Z",
-            ]
+            parsed["contract_id"],
+            Value::String(volicord_types::STORAGE_CONTRACT_ID.to_owned())
         );
+        assert_eq!(
+            canonical_json_string(&parsed).expect("canonical JSON"),
+            manifest
+        );
+        Ok(())
+    }
 
-        let error = conn
-            .query_row(
-                "SELECT volicord_utc_seconds('9999-12-31T23:59:59-23:59')",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect_err("out-of-range UTC normalization must fail closed");
+    #[test]
+    fn persisted_manifest_distinguishes_unsupported_from_corrupt() -> StoreResult<()> {
+        let current = current_storage_manifest()?;
+        let unsupported = StorageManifest::new(
+            "unknown_storage_contract",
+            current.canonical_ddl_digest.clone(),
+            current.integrity_constraints_digest.clone(),
+            current.enabled_capabilities.clone(),
+        )
+        .expect("well-formed non-current manifest");
+        let unsupported = canonical_json_string(&unsupported).expect("canonical manifest JSON");
+        let unsupported_error = validate_persisted_manifest(REGISTRY_DATABASE_KIND, &unsupported)
+            .expect_err("well-formed non-current manifest must be unsupported");
         assert!(matches!(
-            error,
-            rusqlite::Error::SqliteFailure(_, Some(message))
-                if message.contains("canonical four-digit RFC 3339 UTC instant")
+            unsupported_error,
+            StoreError::UnsupportedStorageProfile { .. }
         ));
+
+        let malformed_current = format!(
+            r#"{{"contract_id":"{}"}}"#,
+            volicord_types::STORAGE_CONTRACT_ID
+        );
+        for corrupt in ["not-json", malformed_current.as_str()] {
+            let error = validate_persisted_manifest(REGISTRY_DATABASE_KIND, corrupt)
+                .expect_err("malformed persisted manifest must be corrupt");
+            assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+            assert_eq!(
+                error.classification().route,
+                crate::StoreFailureRoute::PersistedDataCorrupt
+            );
+        }
         Ok(())
     }
 
     #[test]
-    fn project_state_schema_initialization_is_idempotent() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-state-schema-idempotent")?;
-        let path = project_state_db_path(runtime_home.path(), "PRJ-0001");
+    fn persisted_current_manifest_requires_canonical_encoding() -> StoreResult<()> {
+        let current = current_storage_manifest_json()?;
+        let value: Value = serde_json::from_str(current).expect("manifest JSON");
+        let noncanonical = serde_json::to_string_pretty(&value).expect("pretty manifest JSON");
 
-        let conn = open_project_state_database(&path)?;
-        assert!(!sqlite_object_exists(&conn, "table", "schema_migrations")?);
-        drop(conn);
-
-        let conn = open_project_state_database(&path)?;
-        assert!(foreign_keys_enabled(&conn)?);
-        assert!(sqlite_object_exists(&conn, "table", "authority_events")?);
-        assert!(sqlite_object_exists(&conn, "view", "task_events")?);
-        assert!(sqlite_object_exists(&conn, "table", "tool_invocations")?);
-        assert!(sqlite_object_exists(&conn, "table", "agent_sessions")?);
-        assert!(sqlite_object_exists(&conn, "table", "expected_writes")?);
-        assert!(sqlite_object_exists(&conn, "table", "unrecorded_changes")?);
-        assert!(sqlite_object_exists(
-            &conn,
-            "table",
-            "session_watch_baselines"
-        )?);
-        assert!(sqlite_object_exists(
-            &conn,
-            "table",
-            "session_watch_observations"
-        )?);
-        assert!(sqlite_object_exists(
-            &conn,
-            "table",
-            "user_action_channel_tokens"
-        )?);
-        validate_tool_invocations_columns(&conn)?;
-        validate_tool_invocations_operation_category_constraint(&conn)?;
-        Ok(())
-    }
-
-    #[test]
-    fn previous_v6_project_profile_requires_recreation() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-state-v6-profile")?;
-        let path = project_state_db_path(runtime_home.path(), "PRJ-v6-profile");
-        let conn = open_project_state_database(&path)?;
-        conn.execute(
-            "INSERT INTO project_state (
-                project_id, storage_profile, created_at, updated_at
-            ) VALUES ('project_v6', 'baseline_sqlite_v6', 't0', 't0')",
-            [],
-        )?;
-
-        let error = validate_project_state_schema(&conn)
-            .expect_err("the previous v6 profile must not open as baseline_sqlite_v7");
-        assert!(matches!(
-            error,
-            StoreError::UnsupportedStorageProfile {
-                actual_storage_profile,
-                expected_storage_profile: "baseline_sqlite_v7",
-                ..
-            } if actual_storage_profile == "baseline_sqlite_v6"
-        ));
-        Ok(())
-    }
-
-    #[test]
-    fn project_state_schema_has_single_public_clock_column() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("single-clock")?;
-        let conn = open_project_state_database(runtime_home.project_state_db_path("PRJ-clock"))?;
-
-        assert!(column_exists(&conn, "project_state", "state_version")?);
-        assert!(!column_exists(&conn, "project_state", "schema_version")?);
-        assert!(!column_exists(&conn, "tasks", "state_version")?);
-        Ok(())
-    }
-
-    #[test]
-    fn foreign_keys_are_enforced() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("foreign-keys")?;
-        let conn = open_project_state_database(runtime_home.project_state_db_path("PRJ-fk"))?;
-
-        let err = conn
-            .execute(
-                "INSERT INTO tasks (
-                    project_id,
-                    task_id,
-                    created_by_actor_source,
-                    mode,
-                    requested_control_level,
-                    effective_control_level,
-                    control_level_reason,
-                    work_phase,
-                    acceptance_policy,
-                    acceptance_policy_reason,
-                    carry_forward_json,
-                    lifecycle_phase,
-                    created_at,
-                    updated_at
-                )
-                VALUES (
-                    'missing-project',
-                    'task_missing',
-                    'agent_connection:conn_main',
-                    'work',
-                    'tracked',
-                    'tracked',
-                    'Foreign-key fixture control.',
-                    'shaping',
-                    'required',
-                    'Foreign-key fixture requires acceptance.',
-                    '[]',
-                    'shaping',
-                    't0',
-                    't0'
-                )",
-                [],
-            )
-            .expect_err("task insert without project_state row must fail");
-        assert_constraint_error(err);
-        Ok(())
-    }
-
-    #[test]
-    fn one_active_current_change_unit_is_allowed_per_task() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("current-change-unit")?;
-        let conn =
-            open_project_state_database(runtime_home.project_state_db_path("PRJ-change-unit"))?;
-        insert_minimal_project_task(&conn)?;
-
-        conn.execute(
-            "INSERT INTO change_units (
-                project_id,
-                change_unit_id,
-                task_id,
-                status,
-                is_current,
-                created_at,
-                updated_at
-            )
-            VALUES ('project_a', 'cu_1', 'task_a', 'active', 1, 't0', 't0')",
-            [],
-        )?;
-
-        let err = conn
-            .execute(
-                "INSERT INTO change_units (
-                    project_id,
-                    change_unit_id,
-                    task_id,
-                    status,
-                    is_current,
-                    created_at,
-                    updated_at
-                )
-                VALUES ('project_a', 'cu_2', 'task_a', 'active', 1, 't1', 't1')",
-                [],
-            )
-            .expect_err("second active current Change Unit must fail");
-        assert_constraint_error(err);
-        Ok(())
-    }
-
-    #[test]
-    fn tool_invocations_key_does_not_include_request_hash() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("tool-invocations")?;
-        let conn = open_project_state_database(runtime_home.project_state_db_path("PRJ-tools"))?;
-        insert_minimal_project_task(&conn)?;
-
-        insert_tool_invocation(&conn, "idem_same", "sha256:first", 1)?;
-        insert_tool_invocation(&conn, "idem_other", "sha256:first", 2)?;
-
-        let err = conn
-            .execute(
-                "INSERT INTO tool_invocations (
-                    project_id,
-                    tool_name,
-                    idempotency_key,
-                    request_hash,
-                    basis_state_version,
-                    committed_state_version,
-                    actor_source,
-                    operation_category,
-                    response_json,
-                    created_at
-                )
-                VALUES (
-                    'project_a',
-                    'volicord.intake',
-                    'idem_same',
-                    'sha256:second',
-                    0,
-                    3,
-                    'agent_connection:conn_main',
-                    'agent_workflow',
-                    '{}',
-                    't2'
-                )",
-                [],
-            )
-            .expect_err("same project/tool/idempotency key must be unique");
-        assert_constraint_error(err);
-        Ok(())
-    }
-
-    #[test]
-    fn verified_tool_invocation_rejects_invalid_operation_category() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("tool-invocations-operation-category")?;
-        let conn =
-            open_project_state_database(runtime_home.project_state_db_path("PRJ-tools-category"))?;
-        insert_project_state(&conn)?;
-
-        let err = conn
-            .execute(
-                "INSERT INTO tool_invocations (
-                    project_id,
-                    tool_name,
-                    idempotency_key,
-                    request_hash,
-                    basis_state_version,
-                    committed_state_version,
-                    actor_source,
-                    operation_category,
-                    response_json,
-                    created_at
-                )
-                VALUES (
-                    'project_a',
-                    'volicord.intake',
-                    'idem_invalid_category',
-                    'sha256:first',
-                    0,
-                    1,
-                    'agent_connection:conn_main',
-                    'core_mutation',
-                    '{}',
-                    't0'
-                )",
-                [],
-            )
-            .expect_err("verified replay context must use a supported operation category");
-        assert_constraint_error(err);
-        Ok(())
-    }
-
-    #[test]
-    fn tool_invocation_requires_complete_replay_context() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("tool-invocations-context")?;
-        let conn =
-            open_project_state_database(runtime_home.project_state_db_path("PRJ-tools-context"))?;
-        insert_project_state(&conn)?;
-
-        let err = conn
-            .execute(
-                "INSERT INTO tool_invocations (
-                    project_id,
-                    tool_name,
-                    idempotency_key,
-                    request_hash,
-                    basis_state_version,
-                    committed_state_version,
-                    response_json,
-                    created_at
-                )
-                VALUES (
-                    'project_a',
-                    'volicord.intake',
-                    'idem_missing_context',
-                    'sha256:first',
-                    0,
-                    1,
-                    '{}',
-                    't0'
-                )",
-                [],
-            )
-            .expect_err("replay context must include identity fields");
-        assert_constraint_error(err);
-        Ok(())
-    }
-
-    #[test]
-    fn project_state_schema_validation_rejects_unknown_tool_invocation_column() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("schema-validation-replay-status")?;
-        let conn =
-            open_project_state_database(runtime_home.project_state_db_path("PRJ-validation"))?;
-        conn.execute(
-            "ALTER TABLE tool_invocations ADD COLUMN unsupported_extra_status TEXT",
-            [],
-        )?;
-
-        let error = validate_project_state_schema(&conn)
-            .expect_err("unsupported tool_invocations column should fail schema validation");
-        let classification = error.classification();
+        let error = validate_persisted_manifest(PROJECT_STATE_DATABASE_KIND, &noncanonical)
+            .expect_err("non-canonical current manifest must be corrupt");
 
         assert!(matches!(error, StoreError::SchemaInvariant { .. }));
-        assert!(matches!(
-            classification.route,
-            crate::StoreFailureRoute::OperationalUnavailable
-        ));
-        assert_eq!(classification.category, "schema_invariant");
         assert_eq!(
-            classification.database_kind,
-            Some(PROJECT_STATE_DATABASE_KIND)
+            error.classification().route,
+            crate::StoreFailureRoute::PersistedDataCorrupt
         );
-        Ok(())
-    }
-
-    #[test]
-    fn registry_schema_validation_rejects_extra_table() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("registry-extra-table")?;
-        let conn = open_registry_database(runtime_home.registry_db_path())?;
-        conn.execute(
-            "CREATE TABLE runtime_extension (extension_id TEXT PRIMARY KEY)",
-            [],
-        )?;
-
-        let error = validate_registry_schema(&conn)
-            .expect_err("a table outside the canonical registry schema should be rejected");
-
-        assert_schema_invariant(error, REGISTRY_DATABASE_KIND);
-        Ok(())
-    }
-
-    #[test]
-    fn project_state_schema_validation_rejects_extra_non_tool_column() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-extra-column")?;
-        let conn =
-            open_project_state_database(runtime_home.project_state_db_path("PRJ-extra-column"))?;
-        conn.execute("ALTER TABLE tasks ADD COLUMN extension_metadata TEXT", [])?;
-
-        let error = validate_project_state_schema(&conn)
-            .expect_err("a column outside the canonical project schema should be rejected");
-
-        assert_schema_invariant(error, PROJECT_STATE_DATABASE_KIND);
-        Ok(())
-    }
-
-    #[test]
-    fn project_state_schema_validation_rejects_extra_index() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-extra-index")?;
-        let conn =
-            open_project_state_database(runtime_home.project_state_db_path("PRJ-extra-index"))?;
-        conn.execute(
-            "CREATE INDEX idx_tasks_extension_metadata ON tasks (metadata_json)",
-            [],
-        )?;
-
-        let error = validate_project_state_schema(&conn)
-            .expect_err("an index outside the canonical project schema should be rejected");
-
-        assert_schema_invariant(error, PROJECT_STATE_DATABASE_KIND);
         Ok(())
     }
 
@@ -2543,167 +653,37 @@ mod tests {
         first.busy_timeout(Duration::from_millis(0))?;
         second.busy_timeout(Duration::from_millis(0))?;
 
-        let tx = begin_immediate_transaction(&mut first)?;
-        let err = begin_immediate_transaction(&mut second)
-            .expect_err("second immediate writer should wait or fail while first is open");
-        assert_locked_error(err);
-        tx.rollback()?;
+        let transaction = begin_immediate_transaction(&mut first)?;
+        let error = begin_immediate_transaction(&mut second)
+            .expect_err("second immediate writer must not enter concurrently");
+        assert!(matches!(
+            error,
+            Error::SqliteFailure(sqlite_error, _)
+                if matches!(sqlite_error.code, ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked)
+        ));
+        transaction.rollback()?;
         Ok(())
     }
 
     #[test]
-    fn immediate_transaction_helper_commits_on_success() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("immediate-helper")?;
-        let mut conn =
-            open_project_state_database(runtime_home.project_state_db_path("PRJ-helper"))?;
-
-        with_immediate_transaction(&mut conn, |tx| {
-            tx.execute(
-                "INSERT INTO project_state (
-                    project_id,
-                    storage_profile,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?1, ?2, 't0', 't0')",
-                params!["project_tx", STORAGE_PROFILE],
-            )?;
-            Ok(())
-        })?;
-
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM project_state WHERE project_id = 'project_tx'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(count, 1);
-        Ok(())
-    }
-
-    fn insert_project_state(conn: &Connection) -> rusqlite::Result<()> {
-        conn.execute(
-            "INSERT INTO project_state (
-                project_id,
-                storage_profile,
-                created_at,
-                updated_at
-            )
-            VALUES (?1, ?2, 't0', 't0')",
-            params!["project_a", STORAGE_PROFILE],
-        )?;
-        Ok(())
-    }
-
-    fn insert_minimal_project_task(conn: &Connection) -> rusqlite::Result<()> {
-        insert_project_state(conn)?;
+    fn foreign_keys_are_enabled_and_checked() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("foreign-keys")?;
+        let conn = open_project_state_database(runtime_home.project_state_db_path("PRJ-fk"))?;
+        assert!(foreign_keys_enabled(&conn)?);
         conn.execute(
             "INSERT INTO tasks (
-                project_id,
-                task_id,
-                created_by_actor_source,
-                mode,
-                requested_control_level,
-                effective_control_level,
-                control_level_reason,
-                work_phase,
-                acceptance_policy,
-                acceptance_policy_reason,
-                carry_forward_json,
-                lifecycle_phase,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'project_a',
-                'task_a',
-                'agent_connection:conn_main',
-                'work',
-                'tracked',
-                'tracked',
-                'SQLite fixture control.',
-                'shaping',
-                'required',
-                'SQLite fixture requires acceptance.',
-                '[]',
-                'shaping',
-                't0',
-                't0'
-            )",
-            [],
-        )?;
+                project_id, task_id, created_by_actor_source, mode,
+                requested_control_level, effective_control_level, control_level_reason,
+                work_phase, acceptance_policy, acceptance_policy_reason, carry_forward_json,
+                lifecycle_phase, created_at, updated_at
+             ) VALUES (
+                'missing', 'task_missing', 'agent_connection:conn_main', 'work',
+                'tracked', 'tracked', 'fixture', 'shaping', 'required', 'fixture', '[]',
+                'shaping', 't0', 't0'
+             )",
+            params![],
+        )
+        .expect_err("foreign-key violation must fail");
         Ok(())
-    }
-
-    fn insert_tool_invocation(
-        conn: &Connection,
-        idempotency_key: &str,
-        request_hash: &str,
-        committed_state_version: i64,
-    ) -> rusqlite::Result<()> {
-        conn.execute(
-            "INSERT INTO tool_invocations (
-                project_id,
-                tool_name,
-                idempotency_key,
-                request_hash,
-                basis_state_version,
-                committed_state_version,
-                actor_source,
-                operation_category,
-                response_json,
-                created_at
-            )
-            VALUES (
-                'project_a',
-                'volicord.intake',
-                ?1,
-                ?2,
-                0,
-                ?3,
-                'agent_connection:conn_main',
-                'agent_workflow',
-                '{}',
-                't0'
-            )",
-            params![idempotency_key, request_hash, committed_state_version],
-        )?;
-        Ok(())
-    }
-
-    fn assert_schema_invariant(error: StoreError, database_kind: &'static str) {
-        let classification = error.classification();
-
-        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
-        assert!(matches!(
-            classification.route,
-            crate::StoreFailureRoute::OperationalUnavailable
-        ));
-        assert_eq!(classification.category, "schema_invariant");
-        assert_eq!(classification.database_kind, Some(database_kind));
-    }
-
-    fn assert_constraint_error(err: Error) {
-        match err {
-            Error::SqliteFailure(error, _) => {
-                assert_eq!(error.code, ErrorCode::ConstraintViolation);
-            }
-            other => panic!("expected SQLite constraint error, got {other:?}"),
-        }
-    }
-
-    fn assert_locked_error(err: Error) {
-        match err {
-            Error::SqliteFailure(error, _) => {
-                assert!(
-                    matches!(
-                        error.code,
-                        ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked
-                    ),
-                    "expected busy or locked error, got {:?}",
-                    error.code
-                );
-            }
-            other => panic!("expected SQLite lock error, got {other:?}"),
-        }
     }
 }

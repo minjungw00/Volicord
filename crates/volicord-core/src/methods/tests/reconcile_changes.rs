@@ -4,13 +4,7 @@ use super::*;
 fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(
-        &harness,
-        "reconcile_not_product",
-        "detective",
-        "active",
-        "{}",
-    )?;
+    record_guard_installation(&harness, "reconcile_not_product", "record", "active", "{}")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "reconcile_not_product")?;
     let after_evidence = record_close_evidence(
@@ -49,12 +43,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         invocation(OperationCategory::Read),
     )?;
     assert_close_blocker(&before.response_value, "unresolved_unrecorded_changes");
-    assert_close_blocker_resolution(
-        &before.response_value,
-        "unresolved_unrecorded_changes",
-        false,
-        true,
-    );
+    assert_close_blocker_resolution(&before.response_value, "unresolved_unrecorded_changes");
     let blocker = close_blocker_by_code(&before.response_value, "unresolved_unrecorded_changes");
     assert_eq!(
         blocker["next_actions"][0]["owner_method"],
@@ -139,10 +128,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         response.response_value["summary_card"]["evidence"],
         response.response_value["state"]["evidence_gate"]["state"]
     );
-    assert_eq!(
-        response.response_value["summary_card"]["next"],
-        response.response_value["close_blockers"][0]["next_actions"][0]["label"]
-    );
+    assert_eq!(response.response_value["summary_card"]["next"], "none");
     assert_eq!(
         response.response_value["resolved_changes"][0]["resolution_basis"],
         "not_product_change"
@@ -160,10 +146,6 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         response.response_value["next_actions"]
     );
     assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
-    assert_eq!(
-        response.response_value["guard_health"]["unresolved_unrecorded_change_count"],
-        0
-    );
     let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
     assert_eq!(row.status, "resolved");
     let resolution = row_resolution(&row);
@@ -198,7 +180,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
 fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_local", "detective", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_local", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_local")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change_with_paths(&harness, &task_id, "reconcile_local", "[]")?;
@@ -302,13 +284,7 @@ fn reconcile_changes_local_recovery_reports_no_unresolved_findings_read_only(
 fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
-    record_guard_installation(
-        &harness,
-        "reconcile_judgment_dry",
-        "detective",
-        "active",
-        "{}",
-    )?;
+    record_guard_installation(&harness, "reconcile_judgment_dry", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_judgment_dry")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_judgment_dry")?;
@@ -402,7 +378,7 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
     );
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.user_action_requests, before.user_action_requests + 1);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(commit_generator.count(DurableIdKind::UserActionRequest), 1);
     assert_eq!(commit_generator.count(DurableIdKind::Event), 1);
@@ -417,13 +393,7 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
 fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotency(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(
-        &harness,
-        "reconcile_multi_origin",
-        "detective",
-        "active",
-        "{}",
-    )?;
+    record_guard_installation(&harness, "reconcile_multi_origin", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_multi_origin")?;
     let first_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_multi_origin_a")?;
@@ -453,7 +423,7 @@ fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotenc
     );
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.user_action_requests, before.user_action_requests + 2);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
 
     let pending_request_ids = response.response_value["pending_user_action_summaries"]
@@ -514,7 +484,7 @@ fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotenc
 #[test]
 fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_accept", "detective", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_accept", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_accept")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_accept")?;
@@ -623,13 +593,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
 fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_blocker(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(
-        &harness,
-        "reconcile_local_accept",
-        "detective",
-        "active",
-        "{}",
-    )?;
+    record_guard_installation(&harness, "reconcile_local_accept", "record", "active", "{}")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "reconcile_local_accept")?;
     let after_evidence = record_close_evidence(
@@ -756,7 +720,7 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
 fn reconcile_changes_rejects_agent_supplied_system_resolution_basis() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_reject", "detective", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_reject", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_reject")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_reject")?;
@@ -805,13 +769,7 @@ fn reconcile_changes_rejects_agent_supplied_system_resolution_basis() -> Result<
 fn reconcile_changes_rejects_agent_direct_accepted_by_user_without_judgment(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(
-        &harness,
-        "reconcile_agent_accept",
-        "detective",
-        "active",
-        "{}",
-    )?;
+    record_guard_installation(&harness, "reconcile_agent_accept", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_agent_accept")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_agent_accept")?;
@@ -888,7 +846,7 @@ fn reconcile_changes_rejects_mismatched_invocation_project() -> Result<(), Box<d
 fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_invalid", "detective", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_invalid", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_invalid")?;
     let unrecorded_change_id = insert_guarded_unrecorded_change_with_paths(
         &harness,
@@ -924,7 +882,7 @@ fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<
 #[test]
 fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_cross", "detective", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_cross", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_cross")?;
     let main_change_id = insert_guarded_unrecorded_change_with_paths(
         &harness,
@@ -970,7 +928,7 @@ fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
 #[test]
 fn reconcile_changes_resolves_deterministic_active_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_ticket", "detective", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_ticket", "record", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "reconcile_ticket")?;
     let prepare = harness.service.prepare_write(
         prepare_write_request(

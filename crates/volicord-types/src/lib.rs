@@ -8,26 +8,32 @@
 //! adapter behavior.
 
 pub mod canonical;
+pub mod codex_release_manifest;
+pub mod external_contract;
 pub mod host_capability;
-pub mod host_feature_support;
+pub mod host_setup_user_action;
 pub mod ids;
-pub mod managed_host_session;
+pub mod managed_host_contract;
 pub mod managed_mcp_client_info;
 pub mod methods;
 pub mod presentation;
 pub mod schema;
+pub mod storage_contract;
 pub mod tool_names;
 pub mod values;
 
 pub use canonical::*;
+pub use codex_release_manifest::*;
+pub use external_contract::*;
 pub use host_capability::*;
-pub use host_feature_support::*;
+pub use host_setup_user_action::*;
 pub use ids::*;
-pub use managed_host_session::*;
+pub use managed_host_contract::*;
 pub use managed_mcp_client_info::*;
 pub use methods::*;
 pub use presentation::*;
 pub use schema::*;
+pub use storage_contract::*;
 pub use tool_names::*;
 pub use values::*;
 
@@ -169,386 +175,24 @@ mod tests {
     }
 
     #[test]
-    fn evidence_capture_specs_round_trip_as_strict_safe_tagged_variants() {
-        let values = [
-            json!({
-                "capture_kind": "verified_command_execution",
-                "command_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                "command_label": "focused validation",
-                "expected_exit_code": null
-            }),
-            json!({
-                "capture_kind": "verified_tool_invocation",
-                "tool_name": "workspace-validator",
-                "tool_input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                "expected_success": true
-            }),
-            json!({
-                "capture_kind": "registered_connection_observation",
-                "source_selector": {"source_kind": "session_watcher"},
-                "expected_complete": true
-            }),
-        ];
-        for value in values {
-            let parsed: EvidenceCaptureSpec =
-                serde_json::from_value(value.clone()).expect("capture spec parses");
-            assert_eq!(
-                serde_json::to_value(parsed).expect("capture spec serializes"),
-                value
-            );
-        }
-
-        for (field, value) in [
-            ("command", json!(["cargo", "test"])),
-            ("environment", json!({"TOKEN": "secret"})),
-            ("stdout", json!("raw output")),
-            ("stderr", json!("raw error")),
-            ("tool_input", json!({"raw": true})),
-            ("tool_output", json!({"raw": true})),
-        ] {
-            let mut forged = json!({
-                "capture_kind": "verified_command_execution",
-                "command_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                "command_label": "focused validation",
-                "expected_exit_code": 0
-            });
-            forged[field] = value;
-            assert_unknown::<EvidenceCaptureSpec>(forged, field);
-        }
-
-        assert!(serde_json::from_value::<EvidenceCaptureSpec>(json!({
-            "capture_kind": "verified_tool_invocation",
-            "tool_name": "workspace-validator",
-            "tool_input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            "expected_success": true,
-            "expected_exit_code": 0
-        }))
-        .is_err());
-        assert!(serde_json::from_value::<EvidenceCaptureSpec>(json!({
-            "capture_kind": "registered_connection_observation",
-            "source_selector": {"source_kind": "session_watcher"},
-            "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-        }))
-        .is_err());
-
-        for invalid_selector in [
-            json!({"source_kind": "guard_event", "event_kind": "session_start"}),
-            json!({"source_kind": "guard_event"}),
-            json!({"source_kind": "guard_event", "event_kind": "stop", "extra": true}),
-            json!({"source_kind": "session_watcher", "event_kind": "stop"}),
-            json!({"source_kind": "unknown"}),
-        ] {
-            assert!(serde_json::from_value::<EvidenceCaptureSpec>(json!({
-                "capture_kind": "registered_connection_observation",
-                "source_selector": invalid_selector,
-                "expected_complete": true
-            }))
-            .is_err());
-        }
-    }
-
-    #[test]
-    fn evidence_capture_expected_outcome_evaluator_handles_nondefault_expectations() {
-        let command = EvidenceCaptureSpec::VerifiedCommandExecution {
-            command_sha256: "a".repeat(64),
-            command_label: "nonzero validation".to_owned(),
-            expected_exit_code: Some(7).into(),
-        };
-        let command_observed = serde_json::from_value::<JsonObject>(json!({
-            "exit_code": 7,
-            "stdout_sha256": "b".repeat(64),
-            "stdout_size_bytes": 0,
-            "stderr_sha256": "c".repeat(64),
-            "stderr_size_bytes": 0
-        }))
-        .expect("command outcome object");
-        assert!(evidence_capture_observed_outcome_matches_expected(
-            &command,
-            &evidence_capture_expected_outcome(&command),
-            &command_observed,
-        )
-        .expect("strict command outcome"));
-
-        let tool = EvidenceCaptureSpec::VerifiedToolInvocation {
-            tool_name: "negative-check".to_owned(),
-            tool_input_sha256: "d".repeat(64),
-            expected_success: Some(false).into(),
-        };
-        let tool_observed = serde_json::from_value::<JsonObject>(json!({
-            "success": false,
-            "exit_code": 3,
-            "tool_result_sha256": "e".repeat(64),
-            "tool_result_size_bytes": 12
-        }))
-        .expect("tool outcome object");
-        assert!(evidence_capture_observed_outcome_matches_expected(
-            &tool,
-            &evidence_capture_expected_outcome(&tool),
-            &tool_observed,
-        )
-        .expect("strict tool outcome"));
-
-        let connection = EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: ConnectionObservationSourceSelector::GuardEvent {
-                event_kind: ConnectionObservationGuardEventKind::Stop,
-            },
-            expected_complete: Some(false).into(),
-        };
-        let incomplete = serde_json::from_value::<JsonObject>(json!({
-            "complete": false,
-            "guard_event_kind": "stop",
-            "guard_decision": "allow",
-            "observation_sha256": "f".repeat(64)
-        }))
-        .expect("connection outcome object");
-        assert!(
-            evidence_capture_observed_outcome_matches_expected(
-                &connection,
-                &evidence_capture_expected_outcome(&connection),
-                &incomplete,
-            )
-            .is_err(),
-            "an incomplete registered source cannot fulfill even an expectation of false"
-        );
-    }
-
-    #[test]
-    fn mcp_evidence_capture_expected_outcome_omissions_decode_as_null() {
-        let cases = [
-            (
-                json!({
-                    "capture_kind": "verified_command_execution",
-                    "command_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "command_label": "focused validation"
-                }),
-                "expected_exit_code",
-            ),
-            (
-                json!({
-                    "capture_kind": "verified_tool_invocation",
-                    "tool_name": "workspace-validator",
-                    "tool_input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                }),
-                "expected_success",
-            ),
-            (
-                json!({
-                    "capture_kind": "registered_connection_observation",
-                    "source_selector": {"source_kind": "guard_event", "event_kind": "stop"}
-                }),
-                "expected_complete",
-            ),
-        ];
-
-        for (value, expected_field) in cases {
-            let parsed: McpEvidenceCaptureSpec =
-                serde_json::from_value(value).expect("MCP capture spec parses");
-            let normalized: EvidenceCaptureSpec = parsed.into();
-            let encoded = serde_json::to_value(normalized).expect("capture spec serializes");
-            assert_eq!(encoded[expected_field], Value::Null);
-        }
-    }
-
-    #[test]
-    fn evidence_capture_outcomes_are_strictly_bound_to_their_source_class() {
-        let command = EvidenceCaptureSpec::VerifiedCommandExecution {
-            command_sha256: "a".repeat(64),
-            command_label: "focused test".to_owned(),
-            expected_exit_code: RequiredNullable::some(0),
-        };
-        let tool = EvidenceCaptureSpec::VerifiedToolInvocation {
-            tool_name: "fixture.tool".to_owned(),
-            tool_input_sha256: "b".repeat(64),
-            expected_success: RequiredNullable::some(true),
-        };
-        let guard = EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: ConnectionObservationSourceSelector::GuardEvent {
-                event_kind: ConnectionObservationGuardEventKind::Stop,
-            },
-            expected_complete: RequiredNullable::some(true),
-        };
-        let watcher = EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
-            expected_complete: RequiredNullable::some(true),
-        };
-        let object = |value: Value| {
-            value
-                .as_object()
-                .expect("fixture outcome should be an object")
-                .clone()
-        };
-
-        for (capture, expected, observed) in [
-            (
-                &command,
-                json!({"expected_exit_code": 0}),
-                json!({
-                    "exit_code": 0,
-                    "stdout_sha256": "1".repeat(64),
-                    "stdout_size_bytes": 12,
-                    "stderr_sha256": "2".repeat(64),
-                    "stderr_size_bytes": 0
-                }),
-            ),
-            (
-                &tool,
-                json!({"expected_success": true}),
-                json!({
-                    "success": true,
-                    "exit_code": null,
-                    "tool_result_sha256": "3".repeat(64),
-                    "tool_result_size_bytes": 18
-                }),
-            ),
-            (
-                &guard,
-                json!({"expected_complete": true}),
-                json!({
-                    "complete": true,
-                    "guard_event_kind": "stop",
-                    "guard_decision": "allow",
-                    "observation_sha256": "4".repeat(64)
-                }),
-            ),
-            (
-                &watcher,
-                json!({"expected_complete": true}),
-                json!({
-                    "complete": true,
-                    "snapshot_algorithm": WATCH_SNAPSHOT_ALGORITHM,
-                    "snapshot_digest": "5".repeat(64),
-                    "observation_sha256": "6".repeat(64)
-                }),
-            ),
-        ] {
-            validate_evidence_capture_expected_outcome(capture, &object(expected))
-                .expect("expected outcome should match its class");
-            validate_evidence_capture_observed_outcome(capture, &object(observed))
-                .expect("observed outcome should match its class");
-        }
-
-        let invalid_command_outcomes = [
-            json!({
-                "exit_code": 0,
-                "stdout_size_bytes": 12,
-                "stderr_sha256": "2".repeat(64),
-                "stderr_size_bytes": 0
-            }),
-            json!({
-                "exit_code": 0,
-                "stdout_sha256": "1".repeat(64),
-                "stdout_size_bytes": "12",
-                "stderr_sha256": "2".repeat(64),
-                "stderr_size_bytes": 0
-            }),
-            json!({
-                "exit_code": 0,
-                "stdout_sha256": "1".repeat(64),
-                "stdout_size_bytes": 12,
-                "stderr_sha256": "2".repeat(64),
-                "stderr_size_bytes": 0,
-                "stdout": "raw output"
-            }),
-        ];
-        for outcome in invalid_command_outcomes {
-            assert!(
-                validate_evidence_capture_observed_outcome(&command, &object(outcome)).is_err()
-            );
-        }
-        assert!(validate_evidence_capture_expected_outcome(
-            &tool,
-            &object(json!({"expected_success": true, "raw": {}}))
-        )
-        .is_err());
-        assert!(validate_evidence_capture_observed_outcome(
-            &tool,
-            &object(json!({
-                "success": true,
-                "exit_code": null,
-                "tool_result_sha256": "3".repeat(64)
-            }))
-        )
-        .is_err());
-        assert!(validate_evidence_capture_observed_outcome(
-            &guard,
-            &object(json!({
-                "complete": true,
-                "guard_event_kind": "stop",
-                "guard_decision": "allow",
-                "observation_sha256": "4".repeat(64),
-                "raw_event": {"secret": true}
-            }))
-        )
-        .is_err());
-        assert!(validate_evidence_capture_observed_outcome(
-            &watcher,
-            &object(json!({
-                "complete": true,
-                "snapshot_algorithm": WATCH_SNAPSHOT_ALGORITHM,
-                "snapshot_digest": "not-a-digest",
-                "observation_sha256": "6".repeat(64)
-            }))
-        )
-        .is_err());
-        assert!(validate_evidence_capture_observed_outcome(
-            &guard,
-            &object(json!({
-                "complete": false,
-                "guard_event_kind": "stop",
-                "guard_decision": "allow",
-                "observation_sha256": "4".repeat(64)
-            }))
-        )
-        .is_err());
-        assert!(validate_evidence_capture_observed_outcome(
-            &watcher,
-            &object(json!({
-                "complete": true,
-                "snapshot_algorithm": "sha256",
-                "snapshot_digest": "5".repeat(64),
-                "observation_sha256": "6".repeat(64)
-            }))
-        )
-        .is_err());
-        validate_evidence_capture_limitations(
-            &command,
-            &[EVIDENCE_CAPTURE_COMMAND_LIMITATION.to_owned()],
-        )
-        .expect("command limitation should be controlled");
-        assert!(validate_evidence_capture_limitations(
-            &command,
-            &["raw command output follows".to_owned()]
-        )
-        .is_err());
-    }
-
-    #[test]
     fn integration_profile_values_serialize_stable_names() {
         assert_eq!(
             serde_json::to_value(IntegrationProfile::Record).expect("profile serializes"),
             json!("record")
         );
         assert_eq!(
-            serde_json::to_value(IntegrationProfile::Detective).expect("profile serializes"),
-            json!("detective")
-        );
-        assert_eq!(
             serde_json::from_value::<IntegrationProfile>(json!("record"))
                 .expect("record profile deserializes"),
             IntegrationProfile::Record
         );
-        assert_eq!(
-            serde_json::from_value::<IntegrationProfile>(json!("detective"))
-                .expect("detective profile deserializes"),
-            IntegrationProfile::Detective
-        );
+        assert!(serde_json::from_value::<IntegrationProfile>(json!("unsupported")).is_err());
         assert!(
             serde_json::from_value::<IntegrationProfile>(json!("observe")).is_err(),
             "observe is intentionally rejected as an integration profile"
         );
         assert!(
             serde_json::from_value::<IntegrationProfile>(json!("managed")).is_err(),
-            "only record and detective are public integration profiles"
+            "only record is a public integration profile"
         );
         assert_eq!(
             serde_json::to_value(GuardDecision::InjectContext).expect("guard decision serializes"),
@@ -570,22 +214,15 @@ mod tests {
             json!("stale_observation")
         );
         assert_eq!(
-            serde_json::to_value(GuardEffectiveStatus::ActionRequired)
-                .expect("effective guard status serializes"),
-            json!("action_required")
-        );
-        assert_eq!(
             serde_json::to_value(UnrecordedChangeStatus::Unresolved)
                 .expect("change status serializes"),
             json!("unresolved")
         );
 
-        let host: HostKind =
-            serde_json::from_value(json!("custom_host")).expect("custom host should decode");
-        assert_eq!(host, HostKind::Custom("custom_host".to_owned()));
+        assert!(serde_json::from_value::<HostKind>(json!("custom_host")).is_err());
         assert_eq!(
-            serde_json::to_value(host).expect("custom host serializes"),
-            json!("custom_host")
+            serde_json::to_value(HostKind::Codex).expect("Codex host serializes"),
+            json!("codex")
         );
     }
 
@@ -596,7 +233,7 @@ mod tests {
 
         assert_eq!(
             schema_enum_strings(schema),
-            BTreeSet::from(["detective".to_owned(), "record".to_owned()])
+            BTreeSet::from(["record".to_owned()])
         );
     }
 
@@ -811,6 +448,98 @@ mod tests {
                 OperationCategory::AgentWorkflow
             );
         }
+    }
+
+    #[test]
+    fn status_continuity_page_is_optional_nullable_and_strictly_typed() {
+        let omitted: StatusRequest = serde_json::from_value(status_request_json())
+            .expect("omitted continuity_page should decode");
+        assert!(omitted.continuity_page.is_none());
+
+        let mut null_page = status_request_json();
+        null_page["continuity_page"] = Value::Null;
+        let null_page: StatusRequest =
+            serde_json::from_value(null_page).expect("null continuity_page should decode");
+        assert!(null_page.continuity_page.is_none());
+
+        let mut explicit = status_request_json();
+        explicit["include"]["continuity"] = json!(true);
+        explicit["continuity_page"] = json!({
+            "page_size": 64,
+            "cursor": {
+                "updated_at": "2026-07-17T00:00:00Z",
+                "continuity_record_id": "continuity_064"
+            }
+        });
+        let explicit: StatusRequest =
+            serde_json::from_value(explicit).expect("explicit continuity page should decode");
+        let page = explicit
+            .continuity_page
+            .as_ref()
+            .and_then(|page| page.as_ref())
+            .expect("explicit page");
+        assert_eq!(page.page_size, 64);
+        assert_eq!(
+            page.cursor
+                .as_ref()
+                .expect("explicit cursor")
+                .continuity_record_id
+                .as_str(),
+            "continuity_064"
+        );
+
+        for malformed in [
+            json!({"page_size": 8}),
+            json!({"page_size": 8, "cursor": {"updated_at": "not-a-time", "continuity_record_id": "continuity_008"}}),
+            json!({"page_size": 8, "cursor": {"updated_at": "2026-07-17T00:00:00Z"}}),
+            json!({"page_size": 8, "cursor": null, "extra": true}),
+            json!({"page_size": 8, "cursor": {"updated_at": "2026-07-17T00:00:00Z", "continuity_record_id": "continuity_008", "extra": true}}),
+        ] {
+            let mut request = status_request_json();
+            request["include"]["continuity"] = json!(true);
+            request["continuity_page"] = malformed;
+            assert!(
+                serde_json::from_value::<StatusRequest>(request).is_err(),
+                "malformed continuity page must be rejected"
+            );
+        }
+
+        let mcp_omitted: McpStatusArguments =
+            serde_json::from_value(json!({})).expect("omitted MCP page should decode");
+        assert!(mcp_omitted.continuity_page.is_none());
+        let mcp_null: McpStatusArguments = serde_json::from_value(json!({
+            "continuity_page": null
+        }))
+        .expect("null MCP page should decode");
+        assert!(mcp_null.continuity_page.is_none());
+        let mcp_explicit: McpStatusArguments = serde_json::from_value(json!({
+            "detail": "full",
+            "continuity_page": {
+                "page_size": 8,
+                "cursor": {
+                    "updated_at": "2026-07-17T00:00:00Z",
+                    "continuity_record_id": "continuity_008"
+                }
+            }
+        }))
+        .expect("explicit MCP page should decode");
+        assert_eq!(
+            mcp_explicit
+                .continuity_page
+                .as_ref()
+                .and_then(|page| page.as_ref())
+                .expect("explicit MCP page")
+                .page_size,
+            8
+        );
+        assert!(
+            serde_json::from_value::<McpStatusArguments>(json!({
+                "detail": "full",
+                "continuity_page": {"page_size": 8}
+            }))
+            .is_err(),
+            "MCP and public status cursors must have the same strict shape"
+        );
     }
 
     #[test]
@@ -1293,6 +1022,33 @@ mod tests {
             "StageArtifactRequest",
         );
         assert_schema_allows_null_property(&stage, "expected_sha256");
+
+        let status = public_request_schema("volicord.status").expect("status schema");
+        assert_required(&status, &["envelope", "include"], "StatusRequest");
+        assert_schema_allows_null_property(&status, "continuity_page");
+        let continuity_page = definition(&status, "ContinuityPageRequest");
+        assert_required(
+            continuity_page,
+            &["page_size", "cursor"],
+            "ContinuityPageRequest",
+        );
+        assert_eq!(continuity_page["additionalProperties"], false);
+        assert_eq!(continuity_page["properties"]["page_size"]["minimum"], 1.0);
+        assert_eq!(continuity_page["properties"]["page_size"]["maximum"], 64.0);
+        let continuity_cursor = definition(&status, "ContinuityCursor");
+        assert_required(
+            continuity_cursor,
+            &["updated_at", "continuity_record_id"],
+            "ContinuityCursor",
+        );
+        assert_eq!(continuity_cursor["additionalProperties"], false);
+
+        let mcp_status = mcp_request_schema("volicord.status").expect("status MCP argument schema");
+        assert_schema_allows_null_property(&mcp_status, "continuity_page");
+        assert_eq!(
+            definition(&mcp_status, "ContinuityPageRequest")["properties"]["page_size"]["maximum"],
+            64.0
+        );
 
         let record = public_request_schema("volicord.record_run").expect("record_run schema");
         assert_schema_allows_null_property(&record, "close_assessment");
@@ -1836,7 +1592,7 @@ mod tests {
             user_action_resolution_id: UserActionResolutionId::new("ures_test"),
             user_action_request_id: UserActionRequestId::new("uar_test"),
             action_kind: UserActionKind::ProductDecision,
-            channel_kind: UserActionChannelKind::McpElicitation,
+            channel_kind: UserActionChannelKind::Cli,
             resolved_at: timestamp("2026-07-13T00:00:00Z"),
             resolution_summary: McpUserActionResolutionSummary::Choice {
                 selected_option_id: UserActionOptionId::new("uao_accept"),
@@ -1875,24 +1631,10 @@ mod tests {
 
     #[test]
     fn user_action_channels_have_one_exhaustive_verification_basis_mapping() {
-        let rows = [
-            (
-                UserActionChannelKind::McpElicitation,
-                VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-            ),
-            (
-                UserActionChannelKind::PromptCapture,
-                VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-            ),
-            (
-                UserActionChannelKind::LocalWebConsent,
-                VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-            ),
-            (
-                UserActionChannelKind::Cli,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-            ),
-        ];
+        let rows = [(
+            UserActionChannelKind::Cli,
+            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+        )];
         for (channel_kind, verification_basis) in rows {
             assert_eq!(channel_kind.verification_basis(), verification_basis);
             assert_eq!(

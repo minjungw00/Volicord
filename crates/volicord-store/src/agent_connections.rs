@@ -6,6 +6,7 @@ use std::{
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use volicord_types::HostSetupUserAction;
 
 use crate::{
     bootstrap::{
@@ -16,6 +17,10 @@ use crate::{
         guard_installation_from_conn, upsert_guard_installation_in_transaction,
         GuardInstallationRecord, GuardInstallationUpsert,
     },
+    managed_host_authority::{
+        delete_managed_host_authority_for_connection_in_transaction,
+        delete_managed_host_authority_for_membership_in_transaction,
+    },
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
         registry_db_path,
@@ -25,26 +30,16 @@ use crate::{
 
 /// Baseline-valid Codex host kind.
 pub const HOST_KIND_CODEX: &str = "codex";
-/// Baseline-valid Claude Code host kind.
-pub const HOST_KIND_CLAUDE_CODE: &str = "claude_code";
-/// Baseline-valid exported generic host kind.
-pub const HOST_KIND_GENERIC: &str = "generic";
 
 /// Baseline-valid user-scoped host configuration.
 pub const HOST_SCOPE_USER: &str = "user";
 /// Baseline-valid project-scoped host configuration.
 pub const HOST_SCOPE_PROJECT: &str = "project";
-/// Baseline-valid local host configuration.
-pub const HOST_SCOPE_LOCAL: &str = "local";
-/// Baseline-valid exported host configuration.
-pub const HOST_SCOPE_EXPORT: &str = "export";
 
 /// Personal Agent Connection intent.
 pub const CONNECTION_INTENT_PERSONAL: &str = "personal";
 /// Shared Agent Connection intent.
 pub const CONNECTION_INTENT_SHARED: &str = "shared";
-/// Global Agent Connection intent.
-pub const CONNECTION_INTENT_GLOBAL: &str = "global";
 
 /// Agent Connection mode that allows read-only operations.
 pub const CONNECTION_MODE_READ_ONLY: &str = "read_only";
@@ -220,9 +215,13 @@ pub fn connection_metadata_pending_host_cleanup_replacement(
     metadata_json: &str,
     project_id: &str,
 ) -> Option<String> {
-    serde_json::from_str::<Value>(metadata_json)
-        .ok()
-        .and_then(|metadata| metadata.get(PENDING_HOST_CLEANUP_METADATA_KEY).cloned())
+    let metadata = match serde_json::from_str::<Value>(metadata_json) {
+        Ok(metadata) => metadata,
+        Err(_) => return None,
+    };
+    metadata
+        .get(PENDING_HOST_CLEANUP_METADATA_KEY)
+        .cloned()
         .and_then(|pending| {
             let pending = pending.as_object()?;
             if pending.len() != 2
@@ -251,10 +250,10 @@ pub fn connection_metadata_has_pending_host_cleanup_for_project(
 /// Returns whether connection metadata contains the Store-owned cleanup key,
 /// including a malformed value that must not be treated as resumable cleanup.
 pub fn connection_metadata_contains_pending_host_cleanup_key(metadata_json: &str) -> bool {
-    serde_json::from_str::<Value>(metadata_json)
-        .ok()
-        .and_then(|metadata| metadata.as_object().cloned())
-        .is_some_and(|metadata| metadata.contains_key(PENDING_HOST_CLEANUP_METADATA_KEY))
+    match serde_json::from_str::<Value>(metadata_json) {
+        Ok(Value::Object(metadata)) => metadata.contains_key(PENDING_HOST_CLEANUP_METADATA_KEY),
+        Ok(_) | Err(_) => true,
+    }
 }
 
 fn reject_pending_host_cleanup_metadata(metadata_json: &str) -> StoreResult<()> {
@@ -522,6 +521,7 @@ fn write_agent_connection(
     if let Some(existing_target_id) =
         existing_connection_internal_id_for_target(&tx, &registration)?
     {
+        require_agent_connection(&tx, &existing_target_id)?;
         if existing_target_id != registration.connection_internal_id {
             return Err(conflict(
                 "agent_connection",
@@ -543,6 +543,10 @@ fn write_agent_connection(
             ));
         }
         let enabled = registration.enabled || (preserve_existing_enabled && existing.enabled);
+        delete_managed_host_authority_for_connection_in_transaction(
+            &tx,
+            &registration.connection_internal_id,
+        )?;
         tx.execute(
             "UPDATE agent_connections
                 SET mode = ?2,
@@ -662,6 +666,22 @@ pub fn agent_connection_record_read_only(
     agent_connection_record_from_conn(&conn, connection_internal_id)
 }
 
+/// Reads one Agent Connection as raw diagnostic state without validating its
+/// persisted JSON owner fields. This read never creates or writes registry state.
+pub fn agent_connection_record_for_diagnostics(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+) -> StoreResult<Option<AgentConnectionRecord>> {
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    let registry_path = registry_db_path(runtime_home);
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = open_registry_database_read_only(registry_path)?;
+    raw_agent_connection_record_from_conn(&conn, connection_internal_id)
+}
+
 /// Lists Agent Connections in deterministic order.
 pub fn list_agent_connections(
     runtime_home: impl AsRef<Path>,
@@ -687,7 +707,29 @@ pub fn list_agent_connections_read_only(
     list_agent_connections_from_conn(&conn)
 }
 
+/// Lists raw Agent Connection diagnostic state without validating persisted
+/// JSON owner fields. This read never creates or writes registry state.
+pub fn list_agent_connections_for_diagnostics(
+    runtime_home: impl AsRef<Path>,
+) -> StoreResult<Vec<AgentConnectionRecord>> {
+    let registry_path = registry_db_path(runtime_home);
+    if !registry_path.exists() {
+        return Ok(Vec::new());
+    }
+    let conn = open_registry_database_read_only(registry_path)?;
+    list_raw_agent_connections_from_conn(&conn)
+}
+
 fn list_agent_connections_from_conn(conn: &Connection) -> StoreResult<Vec<AgentConnectionRecord>> {
+    list_raw_agent_connections_from_conn(conn)?
+        .into_iter()
+        .map(validate_stored_agent_connection)
+        .collect()
+}
+
+fn list_raw_agent_connections_from_conn(
+    conn: &Connection,
+) -> StoreResult<Vec<AgentConnectionRecord>> {
     let mut stmt = conn.prepare(
         "SELECT
             connection_internal_id,
@@ -730,6 +772,9 @@ pub fn set_connection_enabled(
     require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, connection_internal_id)?;
     reject_generic_pending_host_cleanup_mutation(&connection)?;
+    if connection.enabled != enabled {
+        delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
+    }
     let changed = tx.execute(
         "UPDATE agent_connections
             SET enabled = ?2,
@@ -765,6 +810,10 @@ pub fn set_connection_mode(
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
+    let connection = require_agent_connection(&tx, connection_internal_id)?;
+    if connection.mode != mode {
+        delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
+    }
     let changed = tx.execute(
         "UPDATE agent_connections
             SET mode = ?2,
@@ -802,6 +851,7 @@ pub fn update_agent_connection_verification(
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
+    require_agent_connection(&tx, connection_internal_id)?;
     let changed = tx.execute(
         "UPDATE agent_connections
             SET managed_fingerprint = ?2,
@@ -846,7 +896,7 @@ pub fn update_agent_connection_verification_report(
         "agent_connections.last_verification_report_json",
         last_verification_report_json,
     )?;
-    validate_json_array(
+    validate_host_setup_user_actions_input(
         "agent_connections.last_user_actions_json",
         last_user_actions_json,
     )?;
@@ -854,24 +904,18 @@ pub fn update_agent_connection_verification_report(
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
-    let existing_report_json = tx
-        .query_row(
-            "SELECT last_verification_report_json
-               FROM agent_connections
-              WHERE connection_internal_id = ?1",
-            [connection_internal_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .ok_or_else(|| StoreError::NotFound {
-            entity: "agent_connection",
-            id: connection_internal_id.to_owned(),
+    let existing =
+        raw_agent_connection_record_from_conn(&tx, connection_internal_id)?.ok_or_else(|| {
+            StoreError::NotFound {
+                entity: "agent_connection",
+                id: connection_internal_id.to_owned(),
+            }
         })?;
-    let last_verification_report_json =
-        crate::host_runtime_probes::preserve_runtime_probe_snapshot(
-            &existing_report_json,
-            last_verification_report_json,
-        )?;
+    validate_stored_agent_connection_json_object(
+        connection_internal_id,
+        "metadata_json",
+        &existing.metadata_json,
+    )?;
     let changed = tx.execute(
         "UPDATE agent_connections
             SET managed_fingerprint = ?2,
@@ -928,6 +972,7 @@ pub fn remove_agent_connection_if_unused(
         return Ok(false);
     }
 
+    delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
     let changed = tx.execute(
         "DELETE FROM agent_connections WHERE connection_internal_id = ?1",
         [connection_internal_id],
@@ -1002,6 +1047,11 @@ pub fn remove_connection_project(
         tx.commit()?;
         return Ok(false);
     };
+    delete_managed_host_authority_for_membership_in_transaction(
+        &tx,
+        &connection.connection_internal_id,
+        &project.project_internal_id,
+    )?;
     let changed = tx.execute(
         "DELETE FROM connection_projects
           WHERE connection_internal_id = ?1
@@ -1078,35 +1128,30 @@ pub fn staged_connection_migration_state(
     }
 
     let mut stmt = tx.prepare(
-        "SELECT ac.connection_internal_id, ac.enabled, ac.metadata_json
+        "SELECT ac.connection_internal_id
            FROM connection_projects AS cp
            JOIN agent_connections AS ac
              ON ac.connection_internal_id = cp.connection_internal_id
           WHERE cp.project_internal_id = ?1
             AND ac.connection_internal_id <> ?2
-            AND ac.host_kind IN ('codex', 'claude_code')
+            AND ac.host_kind = 'codex'
             AND ac.intent IN ('personal', 'shared')
           ORDER BY ac.connection_internal_id",
     )?;
     let rows = stmt.query_map(
         params![project.project_internal_id, connection_internal_id],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, bool>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        },
+        |row| row.get::<_, String>(0),
     )?;
     let mut pending_ids = BTreeSet::new();
     for row in rows {
-        let (candidate_id, enabled, metadata_json) = row?;
+        let candidate_id = row?;
+        let candidate = require_agent_connection(&tx, &candidate_id)?;
         if connection_metadata_has_pending_host_cleanup(
-            &metadata_json,
+            &candidate.metadata_json,
             project_id,
             connection_internal_id,
         ) {
-            if enabled {
+            if candidate.enabled {
                 return Err(StoreError::Conflict {
                     entity: "agent_connection",
                     id: candidate_id,
@@ -1114,8 +1159,11 @@ pub fn staged_connection_migration_state(
                 });
             }
             pending_ids.insert(candidate_id);
-        } else if enabled
-            || connection_metadata_has_pending_host_cleanup_for_project(&metadata_json, project_id)
+        } else if candidate.enabled
+            || connection_metadata_has_pending_host_cleanup_for_project(
+                &candidate.metadata_json,
+                project_id,
+            )
         {
             return Err(StoreError::Conflict {
                 entity: "connection_project",
@@ -1203,32 +1251,30 @@ pub fn activate_staged_connection(
         });
     }
     let mut current_stmt = tx.prepare(
-        "SELECT ac.connection_internal_id, ac.enabled, ac.metadata_json
+        "SELECT ac.connection_internal_id
            FROM connection_projects AS cp
            JOIN agent_connections AS ac
              ON ac.connection_internal_id = cp.connection_internal_id
           WHERE cp.project_internal_id = ?1
             AND ac.connection_internal_id <> ?2
-            AND ac.host_kind IN ('codex', 'claude_code')
+            AND ac.host_kind = 'codex'
             AND ac.intent IN ('personal', 'shared')
           ORDER BY ac.connection_internal_id",
     )?;
     let current_rows = current_stmt.query_map(
         params![project.project_internal_id, connection_internal_id],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, bool>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        },
+        |row| row.get::<_, String>(0),
     )?;
     let mut current_superseded = BTreeSet::new();
     for row in current_rows {
-        let (current_connection_id, enabled, metadata_json) = row?;
-        if enabled
+        let current_connection_id = row?;
+        let current_connection = require_agent_connection(&tx, &current_connection_id)?;
+        if current_connection.enabled
             || expected_superseded.contains(&current_connection_id)
-            || connection_metadata_has_pending_host_cleanup_for_project(&metadata_json, project_id)
+            || connection_metadata_has_pending_host_cleanup_for_project(
+                &current_connection.metadata_json,
+                project_id,
+            )
         {
             current_superseded.insert(current_connection_id);
         }
@@ -1281,6 +1327,10 @@ pub fn activate_staged_connection(
                 project_id,
                 connection_internal_id,
             )?;
+            delete_managed_host_authority_for_connection_in_transaction(
+                &tx,
+                &retired_connection.connection_internal_id,
+            )?;
             tx.execute(
                 "UPDATE agent_connections
                     SET enabled = 0,
@@ -1301,6 +1351,11 @@ pub fn activate_staged_connection(
                 detail: "pending host cleanup gained another project membership".to_owned(),
             });
         } else if let Some(project) = raw_project_record_from_conn(&tx, &retired.project_id)? {
+            delete_managed_host_authority_for_membership_in_transaction(
+                &tx,
+                &retired_connection.connection_internal_id,
+                &project.project_internal_id,
+            )?;
             tx.execute(
                 "DELETE FROM connection_projects
                   WHERE connection_internal_id = ?1
@@ -1313,6 +1368,7 @@ pub fn activate_staged_connection(
         }
     }
 
+    delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
     tx.execute(
         "UPDATE agent_connections
             SET enabled = 1,
@@ -1390,6 +1446,11 @@ pub fn complete_pending_host_cleanup<E>(
         pending_connection_ids,
     )?;
     for connection_id in pending_connection_ids {
+        delete_managed_host_authority_for_membership_in_transaction(
+            &tx,
+            connection_id,
+            &project.project_internal_id,
+        )?;
         tx.execute(
             "DELETE FROM connection_projects
               WHERE connection_internal_id = ?1
@@ -1491,32 +1552,7 @@ pub fn list_connection_projects(
 
     let conn = open_registry_database(registry_path)?;
     require_agent_connection(&conn, connection_internal_id)?;
-    let mut stmt = conn.prepare(
-        "SELECT
-            cp.connection_internal_id,
-            cp.project_internal_id,
-            cp.created_at,
-            p.project_name,
-            p.project_alias,
-            p.runtime_home_id,
-            p.repo_root,
-            p.project_home,
-            p.state_db_path,
-            p.status,
-            p.metadata_json
-         FROM connection_projects AS cp
-         JOIN projects AS p
-           ON p.project_internal_id = cp.project_internal_id
-        WHERE cp.connection_internal_id = ?1
-        ORDER BY p.project_name, cp.project_internal_id",
-    )?;
-    let mut rows = stmt.query([connection_internal_id])?;
-    let mut projects = Vec::new();
-    while let Some(row) = rows.next()? {
-        let project = connection_project_record_from_row(row)?;
-        projects.push(validate_connection_project_record(&runtime_home, project)?);
-    }
-    Ok(projects)
+    list_connection_projects_from_conn(&conn, &runtime_home, connection_internal_id)
 }
 
 /// Lists explicitly allowed projects without creating, migrating, or writing registry state.
@@ -1536,6 +1572,40 @@ pub fn list_connection_projects_read_only(
 
     let conn = open_registry_database_read_only(registry_path)?;
     require_agent_connection(&conn, connection_internal_id)?;
+    list_connection_projects_from_conn(&conn, &runtime_home, connection_internal_id)
+}
+
+/// Lists project memberships for raw Agent Connection diagnostic state without
+/// validating the connection's persisted JSON owner fields.
+pub fn list_connection_projects_for_diagnostics(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+) -> StoreResult<Vec<ConnectionProjectRecord>> {
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    if !registry_path.exists() {
+        return Err(StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+        });
+    }
+
+    let conn = open_registry_database_read_only(registry_path)?;
+    if raw_agent_connection_record_from_conn(&conn, connection_internal_id)?.is_none() {
+        return Err(StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+        });
+    }
+    list_connection_projects_from_conn(&conn, &runtime_home, connection_internal_id)
+}
+
+fn list_connection_projects_from_conn(
+    conn: &Connection,
+    runtime_home: &Path,
+    connection_internal_id: &str,
+) -> StoreResult<Vec<ConnectionProjectRecord>> {
     let mut stmt = conn.prepare(
         "SELECT
             cp.connection_internal_id,
@@ -1559,7 +1629,7 @@ pub fn list_connection_projects_read_only(
     let mut projects = Vec::new();
     while let Some(row) = rows.next()? {
         let project = connection_project_record_from_row(row)?;
-        projects.push(validate_connection_project_record(&runtime_home, project)?);
+        projects.push(validate_connection_project_record(runtime_home, project)?);
     }
     Ok(projects)
 }
@@ -1698,7 +1768,7 @@ fn validate_agent_connection_registration(
         "agent_connections.last_verification_report_json",
         &registration.last_verification_report_json,
     )?;
-    validate_json_array(
+    validate_host_setup_user_actions_input(
         "agent_connections.last_user_actions_json",
         &registration.last_user_actions_json,
     )?;
@@ -1726,7 +1796,7 @@ fn validate_agent_connection_natural_key_registration(
         "agent_connections.last_verification_report_json",
         &registration.last_verification_report_json,
     )?;
-    validate_json_array(
+    validate_host_setup_user_actions_input(
         "agent_connections.last_user_actions_json",
         &registration.last_user_actions_json,
     )?;
@@ -1768,7 +1838,7 @@ fn validate_agent_connection_write_registration(
         "agent_connections.last_verification_report_json",
         &registration.last_verification_report_json,
     )?;
-    validate_json_array(
+    validate_host_setup_user_actions_input(
         "agent_connections.last_user_actions_json",
         &registration.last_user_actions_json,
     )?;
@@ -1813,12 +1883,7 @@ fn validate_nonempty(field: &'static str, value: &str) -> StoreResult<()> {
 fn validate_host_kind_scope(host_kind: &str, host_scope: &str) -> StoreResult<()> {
     let valid = matches!(
         (host_kind, host_scope),
-        (HOST_KIND_CODEX, HOST_SCOPE_USER)
-            | (HOST_KIND_CODEX, HOST_SCOPE_PROJECT)
-            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_LOCAL)
-            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_PROJECT)
-            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_USER)
-            | (HOST_KIND_GENERIC, HOST_SCOPE_EXPORT)
+        (HOST_KIND_CODEX, HOST_SCOPE_USER) | (HOST_KIND_CODEX, HOST_SCOPE_PROJECT)
     );
     if valid {
         Ok(())
@@ -1832,12 +1897,12 @@ fn validate_host_kind_scope(host_kind: &str, host_scope: &str) -> StoreResult<()
 fn validate_connection_intent(intent: &str) -> StoreResult<()> {
     if matches!(
         intent,
-        CONNECTION_INTENT_PERSONAL | CONNECTION_INTENT_SHARED | CONNECTION_INTENT_GLOBAL
+        CONNECTION_INTENT_PERSONAL | CONNECTION_INTENT_SHARED
     ) {
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
-            detail: "intent must be personal, shared, or global".to_owned(),
+            detail: "intent must be personal or shared".to_owned(),
         })
     }
 }
@@ -1877,19 +1942,6 @@ fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
     } else {
         Err(StoreError::InvalidInput {
             detail: format!("{field} must be a JSON object"),
-        })
-    }
-}
-
-fn validate_json_array(field: &'static str, text: &str) -> StoreResult<()> {
-    let value = serde_json::from_str::<Value>(text).map_err(|error| StoreError::InvalidInput {
-        detail: format!("{field} must be JSON array text: {error}"),
-    })?;
-    if value.is_array() {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: format!("{field} must be a JSON array"),
         })
     }
 }
@@ -1937,7 +1989,16 @@ fn require_current_project_registration(
     })
 }
 
-fn agent_connection_record_from_conn(
+pub(crate) fn agent_connection_record_from_conn(
+    conn: &Connection,
+    connection_internal_id: &str,
+) -> StoreResult<Option<AgentConnectionRecord>> {
+    raw_agent_connection_record_from_conn(conn, connection_internal_id)?
+        .map(validate_stored_agent_connection)
+        .transpose()
+}
+
+fn raw_agent_connection_record_from_conn(
     conn: &Connection,
     connection_internal_id: &str,
 ) -> StoreResult<Option<AgentConnectionRecord>> {
@@ -1990,6 +2051,52 @@ fn agent_connection_record_from_row(
         updated_at: row.get(14)?,
         metadata_json: row.get(15)?,
     })
+}
+
+fn validate_host_setup_user_actions_input(field: &'static str, value: &str) -> StoreResult<()> {
+    serde_json::from_str::<Vec<HostSetupUserAction>>(value)
+        .map(|_| ())
+        .map_err(|error| StoreError::InvalidInput {
+            detail: format!("{field} violates the closed host-setup action contract: {error}"),
+        })
+}
+
+fn validate_stored_agent_connection(
+    connection: AgentConnectionRecord,
+) -> StoreResult<AgentConnectionRecord> {
+    validate_stored_agent_connection_json_object(
+        &connection.connection_internal_id,
+        "last_verification_report_json",
+        &connection.last_verification_report_json,
+    )?;
+    serde_json::from_str::<Vec<HostSetupUserAction>>(&connection.last_user_actions_json).map_err(
+        |_| StoreError::PersistedUserActionsCorrupt {
+            connection_internal_id: connection.connection_internal_id.clone(),
+        },
+    )?;
+    validate_stored_agent_connection_json_object(
+        &connection.connection_internal_id,
+        "metadata_json",
+        &connection.metadata_json,
+    )?;
+    Ok(connection)
+}
+
+fn validate_stored_agent_connection_json_object(
+    connection_internal_id: &str,
+    logical_column: &'static str,
+    text: &str,
+) -> StoreResult<()> {
+    if matches!(serde_json::from_str::<Value>(text), Ok(Value::Object(_))) {
+        Ok(())
+    } else {
+        Err(StoreError::CorruptOwnerStateJson {
+            database_kind: "registry",
+            table: "agent_connections",
+            record_ref: connection_internal_id.to_owned(),
+            logical_column,
+        })
+    }
 }
 
 fn connection_project_record_from_conn(
@@ -2155,12 +2262,17 @@ mod tests {
 
     use super::*;
     use crate::bootstrap::{
-        initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
+        initialize_runtime_home, project_record_for_execution, register_project,
+        ProjectRegistration, ACTIVE_PROJECT_STATUS,
     };
 
     const PROJECT_ID: &str = "project_a";
     const PRIOR_OTHER_PROJECT_ID: &str = "project_b";
     const TARGET_OTHER_PROJECT_ID: &str = "project_c";
+    const TEST_POLICY_HASH: &str =
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    const TEST_CONTENT_HASH: &str =
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
     #[test]
     fn agent_connection_registration_updates_and_lists() -> Result<(), Box<dyn Error>> {
@@ -2189,6 +2301,357 @@ mod tests {
         assert_eq!(read, updated);
         assert_eq!(listed, vec![updated]);
         Ok(())
+    }
+
+    #[test]
+    fn host_setup_user_actions_accept_only_the_closed_typed_array() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-user-actions-input")?;
+        let current = r#"[{"kind":"reload_required","message":"reload Codex"}]"#;
+        let stored = ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                last_user_actions_json: current.to_owned(),
+                ..connection("conn_actions")
+            },
+        )?;
+        assert_eq!(stored.last_user_actions_json, current);
+
+        for damaged in [
+            "[",
+            r#"{"kind":"reload_required","message":"reload"}"#,
+            r#"[{"kind":"removed","message":"reload"}]"#,
+            r#"[{"message":"reload"}]"#,
+            r#"[{"kind":"reload_required"}]"#,
+            r#"[{"kind":"reload_required","message":"reload","extra":true}]"#,
+            r#"[{"kind":"reload_required","message":""}]"#,
+            r#"[{"kind":"reload_required","message":42}]"#,
+        ] {
+            let error = ensure_agent_connection(
+                fixture.runtime_home.path(),
+                AgentConnectionRegistration {
+                    connection_internal_id: format!("conn_bad_{}", damaged.len()),
+                    config_target: format!("/tmp/volicord-bad-{}.toml", damaged.len()),
+                    last_user_actions_json: damaged.to_owned(),
+                    ..connection("unused")
+                },
+            )
+            .expect_err("damaged host-setup actions must fail before write");
+            assert!(matches!(error, StoreError::InvalidInput { .. }));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn connection_json_mutations_require_object_shaped_metadata_and_report(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-json-object-input")?;
+        for (index, metadata_json, report_json) in [
+            (0, "[]", "{}"),
+            (1, "[", "{}"),
+            (2, "{}", "[]"),
+            (3, "{}", "null"),
+        ] {
+            let error = ensure_agent_connection(
+                fixture.runtime_home.path(),
+                AgentConnectionRegistration {
+                    connection_internal_id: format!("conn_json_bad_{index}"),
+                    config_target: format!("/tmp/volicord-json-bad-{index}.toml"),
+                    metadata_json: metadata_json.to_owned(),
+                    last_verification_report_json: report_json.to_owned(),
+                    ..connection("unused")
+                },
+            )
+            .expect_err("non-object connection JSON must fail before write");
+            assert!(matches!(error, StoreError::InvalidInput { .. }));
+        }
+
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_json_update"))?;
+        for damaged in ["[", "[]", "null"] {
+            let error = update_agent_connection_verification_report(
+                fixture.runtime_home.path(),
+                "conn_json_update",
+                VERIFIED_STATUS_COMPLETE,
+                "fingerprint",
+                damaged,
+                "[]",
+            )
+            .expect_err("non-object replacement report must fail before write");
+            assert!(matches!(error, StoreError::InvalidInput { .. }));
+        }
+        assert_eq!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_json_update")?
+                .expect("rejected replacement must preserve the record")
+                .last_verification_report_json,
+            "{}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn damaged_stored_host_setup_user_actions_fail_every_record_read() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = registry_fixture("connection-user-actions-stored")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_actions"))?;
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database(&registry_path)?;
+
+        for damaged in [
+            "[",
+            r#"{"kind":"reload_required"}"#,
+            r#"[{"kind":"removed","message":"reload"}]"#,
+            r#"[{"message":"reload"}]"#,
+            r#"[{"kind":"reload_required","message":"reload","extra":true}]"#,
+        ] {
+            conn.execute(
+                "UPDATE agent_connections SET last_user_actions_json = ?2 WHERE connection_internal_id = ?1",
+                params!["conn_actions", damaged],
+            )?;
+            for error in [
+                agent_connection_record(fixture.runtime_home.path(), "conn_actions")
+                    .expect_err("single-record read must reject stored damage"),
+                agent_connection_record_read_only(fixture.runtime_home.path(), "conn_actions")
+                    .expect_err("read-only record must reject stored damage"),
+                list_agent_connections(fixture.runtime_home.path())
+                    .expect_err("list read must reject stored damage"),
+                list_agent_connections_read_only(fixture.runtime_home.path())
+                    .expect_err("read-only list must reject stored damage"),
+            ] {
+                assert!(matches!(
+                    error,
+                    StoreError::PersistedUserActionsCorrupt {
+                        ref connection_internal_id
+                    } if connection_internal_id == "conn_actions"
+                ));
+                assert_eq!(
+                    error.classification().category,
+                    volicord_types::PERSISTED_USER_ACTIONS_CORRUPT_REASON
+                );
+            }
+            let diagnostic = agent_connection_record_for_diagnostics(
+                fixture.runtime_home.path(),
+                "conn_actions",
+            )?
+            .expect("diagnostic read should preserve the connection");
+            assert_eq!(diagnostic.last_user_actions_json, damaged);
+            assert_eq!(
+                list_agent_connections_for_diagnostics(fixture.runtime_home.path())?[0]
+                    .last_user_actions_json,
+                damaged
+            );
+            assert!(matches!(
+                set_connection_enabled(fixture.runtime_home.path(), "conn_actions", false)
+                    .expect_err("mutation must reject damaged stored actions before effects"),
+                StoreError::PersistedUserActionsCorrupt {
+                    ref connection_internal_id
+                } if connection_internal_id == "conn_actions"
+            ));
+        }
+
+        update_agent_connection_verification_report(
+            fixture.runtime_home.path(),
+            "conn_actions",
+            VERIFIED_STATUS_COMPLETE,
+            "fingerprint-repaired",
+            "{}",
+            "[]",
+        )?;
+        assert_eq!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_actions")?
+                .expect("valid replacement should repair stored actions")
+                .last_user_actions_json,
+            "[]"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn damaged_stored_verification_report_is_raw_only_until_explicit_replacement(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-report-stored")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_report"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_report".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database(&registry_path)?;
+
+        for damaged in ["[", "[]", "null"] {
+            conn.execute(
+                "UPDATE agent_connections
+                    SET last_verification_report_json = ?2
+                  WHERE connection_internal_id = ?1",
+                params!["conn_report", damaged],
+            )?;
+            assert_connection_owner_json_corrupt(
+                agent_connection_record(fixture.runtime_home.path(), "conn_report")
+                    .expect_err("strict record read must reject a damaged report"),
+                "conn_report",
+                "last_verification_report_json",
+            );
+            assert_connection_owner_json_corrupt(
+                agent_connection_record_read_only(fixture.runtime_home.path(), "conn_report")
+                    .expect_err("strict read-only record must reject a damaged report"),
+                "conn_report",
+                "last_verification_report_json",
+            );
+            assert_connection_owner_json_corrupt(
+                list_agent_connections(fixture.runtime_home.path())
+                    .expect_err("strict list must reject a damaged report"),
+                "conn_report",
+                "last_verification_report_json",
+            );
+            assert_connection_owner_json_corrupt(
+                list_agent_connections_read_only(fixture.runtime_home.path())
+                    .expect_err("strict read-only list must reject a damaged report"),
+                "conn_report",
+                "last_verification_report_json",
+            );
+            assert_connection_owner_json_corrupt(
+                list_connection_projects(fixture.runtime_home.path(), "conn_report")
+                    .expect_err("strict membership read must reject a damaged report"),
+                "conn_report",
+                "last_verification_report_json",
+            );
+            assert_connection_owner_json_corrupt(
+                set_connection_enabled(fixture.runtime_home.path(), "conn_report", false)
+                    .expect_err("mutation must reject a damaged report before effects"),
+                "conn_report",
+                "last_verification_report_json",
+            );
+
+            let diagnostic = agent_connection_record_for_diagnostics(
+                fixture.runtime_home.path(),
+                "conn_report",
+            )?
+            .expect("diagnostic read should preserve the connection");
+            assert_eq!(diagnostic.last_verification_report_json, damaged);
+            assert!(diagnostic.enabled);
+            assert_eq!(
+                list_agent_connections_for_diagnostics(fixture.runtime_home.path())?[0]
+                    .last_verification_report_json,
+                damaged
+            );
+            assert_eq!(
+                list_connection_projects_for_diagnostics(
+                    fixture.runtime_home.path(),
+                    "conn_report",
+                )?
+                .len(),
+                1
+            );
+
+            update_agent_connection_verification_report(
+                fixture.runtime_home.path(),
+                "conn_report",
+                VERIFIED_STATUS_COMPLETE,
+                "fingerprint-repaired",
+                "{}",
+                "[]",
+            )?;
+            assert_eq!(
+                agent_connection_record(fixture.runtime_home.path(), "conn_report")?
+                    .expect("explicit replacement should repair the report")
+                    .last_verification_report_json,
+                "{}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn damaged_stored_metadata_is_raw_only_and_blocks_mutation() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-metadata-stored")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_metadata"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_metadata".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database(&registry_path)?;
+
+        for damaged in ["[", "[]", "null"] {
+            conn.execute(
+                "UPDATE agent_connections
+                    SET metadata_json = ?2
+                  WHERE connection_internal_id = ?1",
+                params!["conn_metadata", damaged],
+            )?;
+            for error in [
+                agent_connection_record(fixture.runtime_home.path(), "conn_metadata")
+                    .expect_err("strict record read must reject damaged metadata"),
+                agent_connection_record_read_only(fixture.runtime_home.path(), "conn_metadata")
+                    .expect_err("strict read-only record must reject damaged metadata"),
+                list_agent_connections(fixture.runtime_home.path())
+                    .expect_err("strict list must reject damaged metadata"),
+                list_agent_connections_read_only(fixture.runtime_home.path())
+                    .expect_err("strict read-only list must reject damaged metadata"),
+                set_connection_enabled(fixture.runtime_home.path(), "conn_metadata", false)
+                    .expect_err("mutation must reject damaged metadata before effects"),
+                update_agent_connection_verification_report(
+                    fixture.runtime_home.path(),
+                    "conn_metadata",
+                    VERIFIED_STATUS_COMPLETE,
+                    "fingerprint-repaired",
+                    "{}",
+                    "[]",
+                )
+                .expect_err("verification replacement cannot repair unrelated metadata"),
+            ] {
+                assert_connection_owner_json_corrupt(error, "conn_metadata", "metadata_json");
+            }
+
+            let diagnostic = agent_connection_record_for_diagnostics(
+                fixture.runtime_home.path(),
+                "conn_metadata",
+            )?
+            .expect("diagnostic read should preserve the connection");
+            assert_eq!(diagnostic.metadata_json, damaged);
+            assert!(diagnostic.enabled);
+            assert_eq!(
+                list_agent_connections_for_diagnostics(fixture.runtime_home.path())?[0]
+                    .metadata_json,
+                damaged
+            );
+            assert_eq!(
+                list_connection_projects_for_diagnostics(
+                    fixture.runtime_home.path(),
+                    "conn_metadata",
+                )?
+                .len(),
+                1
+            );
+
+            conn.execute(
+                "UPDATE agent_connections
+                    SET metadata_json = '{}'
+                  WHERE connection_internal_id = ?1",
+                ["conn_metadata"],
+            )?;
+        }
+        Ok(())
+    }
+
+    fn assert_connection_owner_json_corrupt(
+        error: StoreError,
+        connection_internal_id: &str,
+        logical_column: &'static str,
+    ) {
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateJson {
+                database_kind: "registry",
+                table: "agent_connections",
+                ref record_ref,
+                logical_column: actual_column,
+            } if record_ref == connection_internal_id && actual_column == logical_column
+        ));
     }
 
     #[test]
@@ -3084,145 +3547,111 @@ mod tests {
         connection_internal_id: &str,
         project_id: &str,
     ) -> GuardInstallationUpsert {
-        let repo_root = crate::bootstrap::project_record(runtime_home, project_id)
-            .expect("fixture project lookup should succeed")
-            .expect("fixture project should exist")
+        let repo_root = project_record_for_execution(runtime_home, project_id)
+            .expect("fixture project lookup")
+            .expect("fixture project")
             .repo_root;
-        let policy_hash = "sha256:fixture-policy";
-        let wrapper_path = repo_root.join(".codex/hooks/volicord-stop.sh");
-        let policy_command = |command_name: &str| {
+        let command = |phase: &str| {
             serde_json::json!({
-                "command": "volicord",
+                "command": runtime_home.join("bin/volicord"),
                 "args": [
-                    "_hook",
-                    command_name,
-                    "--repo",
-                    repo_root.display().to_string(),
-                    "--connection",
-                    connection_internal_id,
-                    "--guard-installation",
-                    guard_installation_id,
-                    "--host",
-                    "codex",
-                    "--integration-profile",
-                    "record",
-                    "--output",
-                    "volicord-json",
+                    "_hook", phase,
+                    "--repo", repo_root,
+                    "--connection", connection_internal_id,
+                    "--guard-installation", guard_installation_id,
+                    "--host", "codex",
+                    "--integration-profile", "record",
+                    "--policy-hash", TEST_POLICY_HASH,
+                    "--host-output", "codex",
                 ],
+            })
+        };
+        let wrapper = |phase: &str, command_name: &str| {
+            serde_json::json!({
+                "kind": "host_hook_wrapper",
+                "path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
+                "status": "unchanged",
+                "content_hash": TEST_CONTENT_HASH,
+                "ownership": "managed_script",
+                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                "executable_required": true,
+                "managed_script_command": "exec volicord",
+                "host_kind": "codex",
+                "phase": phase,
+                "purpose": "guard",
+                "connection_id": connection_internal_id,
+                "guard_installation_id": guard_installation_id,
+                "policy_hash": TEST_POLICY_HASH,
+                "host_output": "codex",
             })
         };
         let capability = serde_json::json!({
             "schema": volicord_types::HOST_HOOK_CAPABILITY_SCHEMA,
-            "policy_hash": policy_hash,
+            "policy_hash": TEST_POLICY_HASH,
             "selected_profile": "record",
             "connection_intent": "personal",
-            "final_output_authority_disclosure_implementation_available": true,
-            "native_host_output_adapter": "codex",
-            "native_host_output_adapter_config_verified": true,
-            "bash_shell_mutation_coverage": false,
             "direct_file_write_matcher_coverage": false,
             "host_capabilities": {
                 "stdio_mcp": true,
-                "http_mcp": false,
-                "session_start_hook": false,
-                "pre_tool_hook": false,
-                "post_tool_hook": false,
-                "user_prompt_submit_hook": false,
-                "stop_hook": true,
-                "rule_file_support": false,
+                "pre_tool_hook": true,
+                "post_tool_hook": true,
+                "user_prompt_submit_hook": true,
+                "rule_file_support": true,
                 "project_local_configuration": true,
             },
-            "required_hook_phases": [],
-            "missing_required_hooks": [],
-            "prompt_capture": false,
             "files": [
+                {
+                    "kind": "agents_managed_block",
+                    "path": repo_root.join("AGENTS.md"),
+                    "status": "unchanged",
+                    "content_hash": TEST_CONTENT_HASH,
+                    "ownership": "managed_block",
+                    "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
+                    "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE",
+                },
                 {
                     "kind": "volicord_policy",
                     "path": repo_root.join(".volicord/policy.json"),
                     "status": "unchanged",
-                    "content_hash": "policy-file-hash",
+                    "content_hash": TEST_CONTENT_HASH,
                     "ownership": "managed_json",
-                },
-                {
-                    "kind": "host_hook_wrapper",
-                    "path": &wrapper_path,
-                    "status": "unchanged",
-                    "content_hash": "wrapper-file-hash",
-                    "ownership": "managed_script",
-                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                    "executable_required": true,
-                    "managed_script_command": format!(
-                        "volicord _final-output --repo {} --connection {connection_internal_id} --guard-installation {guard_installation_id} --host codex --integration-profile record --policy-hash {policy_hash} --host-output codex",
-                        repo_root.display(),
-                    ),
-                    "host_kind": "codex",
-                    "phase": "stop",
-                    "purpose": "final_output_authority_disclosure",
-                    "connection_id": connection_internal_id,
-                    "guard_installation_id": guard_installation_id,
-                    "policy_hash": policy_hash,
-                    "host_output": "codex",
                 },
                 {
                     "kind": "host_hook_config",
                     "path": repo_root.join(".codex/hooks.json"),
                     "status": "unchanged",
-                    "content_hash": "hook-config-hash",
+                    "content_hash": TEST_CONTENT_HASH,
                     "ownership": "managed_json",
                 },
-            ],
-            "host_hook_commands": [{
-                "host_kind": "codex",
-                "phase": "stop_hook",
-                "purpose": "final_output_authority_disclosure",
-                "policy_key": "stop",
-                "command_shape": "shell_command_string",
-                "command": "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-stop.sh\"'",
-                "args": null,
-                "expected_wrapper_path": &wrapper_path,
-                "expected_phase_wrapper_path": &wrapper_path,
-                "root_resolution_basis": "git_work_tree",
-                "hook_command_path_basis": "git_root_runtime",
-                "cwd_independent": true,
-                "subdirectory_safe": true,
-                "wrapper_resolution_status": "ok",
-                "verification": {
-                    "basis_verified_by": "repo_root_git_marker",
-                    "host_contract_source": "codex_hook_command_string",
+                {
+                    "kind": "host_hook_dispatch",
+                    "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
+                    "status": "unchanged",
+                    "content_hash": TEST_CONTENT_HASH,
+                    "ownership": "managed_script",
+                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                    "executable_required": true,
+                    "managed_script_role": "codex_dispatch",
+                    "host_kind": "codex",
+                    "phase": "dispatch",
                 },
-            }],
-            "hook_root_resolution": {
-                "basis": "git_work_tree",
-                "all_cwd_independent": true,
-                "all_subdirectory_safe": true,
-                "overall_status": "ok",
-                "phases": [{
-                    "phase": "stop_hook",
-                    "root_resolution_basis": "git_work_tree",
-                    "hook_command_path_basis": "git_root_runtime",
-                    "cwd_independent": true,
-                    "subdirectory_safe": true,
-                    "wrapper_resolution_status": "ok",
-                }],
-            },
-            "hook_path_safety": {
-                "overall_status": "ok",
-                "all_cwd_independent": true,
-                "all_subdirectory_safe": true,
-                "commands": [{
-                    "phase": "stop_hook",
-                    "hook_command_path_basis": "git_root_runtime",
-                    "cwd_independent": true,
-                    "subdirectory_safe": true,
-                    "wrapper_resolution_status": "ok",
-                }],
-            },
+                wrapper("pre_tool", "pre-tool"),
+                wrapper("post_tool", "post-tool"),
+                wrapper("prompt_capture", "prompt-capture"),
+                {
+                    "kind": "host_rule_instruction",
+                    "path": repo_root.join(".codex/rules/volicord.rules"),
+                    "status": "unchanged",
+                    "content_hash": TEST_CONTENT_HASH,
+                    "ownership": "managed_block",
+                    "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
+                    "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
+                },
+            ],
             "commands": {
-                "session_start": policy_command("session-start"),
-                "pre_tool": policy_command("pre-tool"),
-                "post_tool": policy_command("post-tool"),
-                "prompt_capture": policy_command("prompt-capture"),
-                "stop": policy_command("stop"),
+                "pre_tool": command("pre-tool"),
+                "post_tool": command("post-tool"),
+                "prompt_capture": command("prompt-capture"),
             },
         });
         GuardInstallationUpsert {

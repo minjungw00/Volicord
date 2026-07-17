@@ -6,15 +6,17 @@ use sha2::{Digest, Sha256};
 use volicord_types::{UtcTimestamp, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON};
 
 use crate::{
+    managed_host_authority::delete_managed_host_authority_for_project_in_transaction,
     runtime_home::{
         normalize_lexical_path, paths_equal_for_boundary, validate_project_home_boundary,
         validate_runtime_home_product_repository, RuntimePathBoundaryError,
     },
-    schema::STORAGE_PROFILE,
+    schema::current_storage_manifest_json,
     sqlite::{
         begin_immediate_transaction, open_project_state_database, open_registry_database,
         open_registry_database_read_only, project_home_path, registry_db_path,
-        with_immediate_transaction, PROJECT_STATE_DB_FILE,
+        validate_project_state_schema, validate_registry_schema, with_immediate_transaction,
+        PROJECT_STATE_DB_FILE,
     },
     StoreError, StoreResult,
 };
@@ -109,6 +111,7 @@ pub fn initialize_runtime_home(
     let runtime_home_text = path_to_text("runtime_home.runtime_home_path", &runtime_home)?;
     let registry_path_text = path_to_text("runtime_home.registry_db_path", &registry_path)?;
     let mut conn = open_registry_database(&registry_path)?;
+    let storage_manifest_json = current_storage_manifest_json()?;
 
     with_immediate_transaction(&mut conn, |tx| {
         tx.execute(
@@ -136,12 +139,13 @@ pub fn initialize_runtime_home(
                 runtime_home_id,
                 runtime_home_text,
                 registry_path_text,
-                STORAGE_PROFILE,
+                storage_manifest_json,
                 metadata_json
             ],
         )?;
         Ok(())
     })?;
+    validate_registry_schema(&conn)?;
 
     runtime_home_record_from_conn(&conn, runtime_home, registry_path)?.ok_or_else(|| {
         StoreError::NotFound {
@@ -419,6 +423,7 @@ fn write_project_registration_from_validated_paths(
     let repo_root_text = path_to_text("repo_root", &repo_root)?;
     let project_home_text = path_to_text("project_home", &project_home)?;
     let state_db_path_text = path_to_text("state_db_path", &state_db_path)?;
+    let storage_manifest_json = current_storage_manifest_json()?;
 
     let mut project_state = open_project_state_database(&state_db_path)?;
     {
@@ -464,17 +469,17 @@ fn write_project_registration_from_validated_paths(
                 ?4
             )
             ON CONFLICT(project_id) DO UPDATE SET
-                storage_profile = excluded.storage_profile,
                 metadata_json = excluded.metadata_json",
             params![
                 registration.project_internal_id,
-                STORAGE_PROFILE,
+                storage_manifest_json,
                 registration.metadata_json,
                 BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON
             ],
         )?;
         tx.commit()?;
     }
+    validate_project_state_schema(&project_state)?;
 
     with_immediate_transaction(&mut registry, |tx| {
         tx.execute(
@@ -552,8 +557,16 @@ fn write_project_registration_from_validated_paths(
 }
 
 fn path_boundary_input(error: crate::runtime_home::RuntimePathBoundaryError) -> StoreError {
-    StoreError::InvalidInput {
-        detail: error.to_string(),
+    match error {
+        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail } => {
+            StoreError::UnsupportedPlatformEnvironment { reason, detail }
+        }
+        RuntimePathBoundaryError::PlatformUnavailable { reason, detail } => {
+            StoreError::PlatformEnvironmentUnavailable { reason, detail }
+        }
+        error => StoreError::InvalidInput {
+            detail: error.to_string(),
+        },
     }
 }
 
@@ -761,6 +774,7 @@ pub fn forget_project(runtime_home: impl AsRef<Path>, project_ref: &str) -> Stor
         return Ok(false);
     };
     let tx = crate::sqlite::begin_immediate_transaction(&mut conn)?;
+    delete_managed_host_authority_for_project_in_transaction(&tx, &current.project_internal_id)?;
     tx.execute(
         "DELETE FROM project_aliases WHERE project_internal_id = ?1",
         [current.project_internal_id.as_str()],
@@ -843,15 +857,25 @@ fn registered_project_path_error(
     field: &'static str,
     error: RuntimePathBoundaryError,
 ) -> StoreError {
-    let relationship = error
-        .violation()
-        .map(|violation| violation.as_str())
-        .unwrap_or("invalid_path");
-    StoreError::InvalidProjectRegistration {
-        project_id: project.project_id.clone(),
-        field,
-        relationship,
-        detail: error.to_string(),
+    match error {
+        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail } => {
+            StoreError::UnsupportedPlatformEnvironment { reason, detail }
+        }
+        RuntimePathBoundaryError::PlatformUnavailable { reason, detail } => {
+            StoreError::PlatformEnvironmentUnavailable { reason, detail }
+        }
+        error => {
+            let relationship = error
+                .violation()
+                .map(|violation| violation.as_str())
+                .unwrap_or_else(|| error.reason());
+            StoreError::InvalidProjectRegistration {
+                project_id: project.project_id.clone(),
+                field,
+                relationship,
+                detail: error.to_string(),
+            }
+        }
     }
 }
 

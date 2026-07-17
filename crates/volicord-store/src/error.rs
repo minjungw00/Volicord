@@ -5,7 +5,7 @@ use rusqlite::{ffi, ErrorCode as SqliteErrorCode};
 /// Store-layer result type.
 pub type StoreResult<T> = Result<T, StoreError>;
 
-/// Errors raised while opening, migrating, or validating store databases.
+/// Errors raised while opening, initializing, or validating store databases.
 #[derive(Debug)]
 pub enum StoreError {
     /// Filesystem error while preparing a runtime-home path.
@@ -14,6 +14,16 @@ pub enum StoreError {
     Sqlite(rusqlite::Error),
     /// Local administrative setup input is not valid for the storage record.
     InvalidInput { detail: String },
+    /// The observed platform topology is outside the first-release contract.
+    UnsupportedPlatformEnvironment {
+        reason: &'static str,
+        detail: String,
+    },
+    /// A required platform-topology observation could not be completed.
+    PlatformEnvironmentUnavailable {
+        reason: &'static str,
+        detail: String,
+    },
     /// A stored project registration is not valid for execution.
     InvalidProjectRegistration {
         project_id: String,
@@ -53,13 +63,20 @@ pub enum StoreError {
         database_kind: &'static str,
         field: &'static str,
     },
+    /// Persisted Agent Connection host-setup actions violate their closed type.
+    PersistedUserActionsCorrupt { connection_internal_id: String },
     /// A database uses a storage profile that this build does not support.
     UnsupportedStorageProfile {
         database_kind: &'static str,
         actual_storage_profile: String,
         expected_storage_profile: &'static str,
     },
-    /// A migrated database does not satisfy a required schema invariant.
+    /// A persisted external payload names no exact current boundary adapter.
+    UnsupportedExternalContract {
+        contract_id: String,
+        reason: &'static str,
+    },
+    /// An opened database does not satisfy a required schema invariant.
     SchemaInvariant {
         database_kind: &'static str,
         detail: String,
@@ -148,6 +165,24 @@ impl StoreError {
                 field: None,
                 owner_state_error: None,
             },
+            Self::UnsupportedPlatformEnvironment { reason, .. } => StoreFailureClassification {
+                route: StoreFailureRoute::UnsupportedContract,
+                category: reason,
+                retryable: false,
+                database_kind: None,
+                entity: None,
+                field: None,
+                owner_state_error: None,
+            },
+            Self::PlatformEnvironmentUnavailable { reason, .. } => StoreFailureClassification {
+                route: StoreFailureRoute::OperationalUnavailable,
+                category: reason,
+                retryable: true,
+                database_kind: None,
+                entity: None,
+                field: None,
+                owner_state_error: None,
+            },
             Self::InvalidProjectRegistration { field, .. } => StoreFailureClassification {
                 route: StoreFailureRoute::OperationalUnavailable,
                 category: "invalid_project_registration",
@@ -213,7 +248,7 @@ impl StoreError {
                 database_kind,
                 field,
             } => StoreFailureClassification {
-                route: StoreFailureRoute::OperationalUnavailable,
+                route: StoreFailureRoute::PersistedDataCorrupt,
                 category: "corrupt_stored_json",
                 retryable: false,
                 database_kind: Some(database_kind),
@@ -227,7 +262,7 @@ impl StoreError {
                 record_ref,
                 logical_column,
             } => StoreFailureClassification {
-                route: StoreFailureRoute::OperationalUnavailable,
+                route: StoreFailureRoute::PersistedDataCorrupt,
                 category: "corrupt_stored_json",
                 retryable: false,
                 database_kind: Some(database_kind),
@@ -246,7 +281,7 @@ impl StoreError {
                 record_ref,
                 logical_column,
             } => StoreFailureClassification {
-                route: StoreFailureRoute::OperationalUnavailable,
+                route: StoreFailureRoute::PersistedDataCorrupt,
                 category: "corrupt_stored_value",
                 retryable: false,
                 database_kind: Some(database_kind),
@@ -263,7 +298,7 @@ impl StoreError {
                 database_kind,
                 field,
             } => StoreFailureClassification {
-                route: StoreFailureRoute::OperationalUnavailable,
+                route: StoreFailureRoute::PersistedDataCorrupt,
                 category: "corrupt_stored_value",
                 retryable: false,
                 database_kind: Some(database_kind),
@@ -271,8 +306,17 @@ impl StoreError {
                 field: Some(field),
                 owner_state_error: None,
             },
+            Self::PersistedUserActionsCorrupt { .. } => StoreFailureClassification {
+                route: StoreFailureRoute::PersistedDataCorrupt,
+                category: "persisted_user_actions_corrupt",
+                retryable: false,
+                database_kind: Some("registry"),
+                entity: Some("agent_connection"),
+                field: Some("last_user_actions_json"),
+                owner_state_error: None,
+            },
             Self::UnsupportedStorageProfile { database_kind, .. } => StoreFailureClassification {
-                route: StoreFailureRoute::OperationalUnavailable,
+                route: StoreFailureRoute::UnsupportedContract,
                 category: "unsupported_storage_profile",
                 retryable: false,
                 database_kind: Some(database_kind),
@@ -280,8 +324,17 @@ impl StoreError {
                 field: Some("storage_profile"),
                 owner_state_error: None,
             },
+            Self::UnsupportedExternalContract { .. } => StoreFailureClassification {
+                route: StoreFailureRoute::UnsupportedContract,
+                category: "unsupported_external_contract",
+                retryable: false,
+                database_kind: Some("registry"),
+                entity: Some("managed_host_authority"),
+                field: Some("external_contract_descriptor_json"),
+                owner_state_error: None,
+            },
             Self::SchemaInvariant { database_kind, .. } => StoreFailureClassification {
-                route: StoreFailureRoute::OperationalUnavailable,
+                route: StoreFailureRoute::PersistedDataCorrupt,
                 category: "schema_invariant",
                 retryable: false,
                 database_kind: Some(database_kind),
@@ -297,6 +350,8 @@ impl StoreError {
 pub enum StoreFailureRoute {
     OperationalUnavailable,
     InvocationContextMismatch,
+    PersistedDataCorrupt,
+    UnsupportedContract,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -319,32 +374,67 @@ pub struct OwnerStateFailureDetails {
 }
 
 fn sqlite_classification(error: &rusqlite::Error) -> StoreFailureClassification {
-    let (category, retryable) = match error {
+    let (route, category, retryable) = match error {
         rusqlite::Error::SqliteFailure(sqlite_error, _) => match sqlite_error.code {
             SqliteErrorCode::ConstraintViolation => (
+                StoreFailureRoute::OperationalUnavailable,
                 sqlite_constraint_category(sqlite_error.extended_code),
                 false,
             ),
-            SqliteErrorCode::CannotOpen => ("database_open_failed", true),
-            SqliteErrorCode::DatabaseCorrupt | SqliteErrorCode::NotADatabase => {
-                ("database_corrupt", false)
-            }
-            SqliteErrorCode::DatabaseBusy | SqliteErrorCode::DatabaseLocked => {
-                ("database_locked", true)
-            }
-            SqliteErrorCode::ReadOnly | SqliteErrorCode::PermissionDenied => {
-                ("database_access_denied", false)
-            }
-            SqliteErrorCode::SystemIoFailure | SqliteErrorCode::DiskFull => ("database_io", true),
-            SqliteErrorCode::SchemaChanged => ("database_schema_changed", true),
-            _ => ("sqlite_driver_error", true),
+            SqliteErrorCode::CannotOpen => (
+                StoreFailureRoute::OperationalUnavailable,
+                "database_open_failed",
+                true,
+            ),
+            SqliteErrorCode::DatabaseCorrupt | SqliteErrorCode::NotADatabase => (
+                StoreFailureRoute::PersistedDataCorrupt,
+                "database_corrupt",
+                false,
+            ),
+            SqliteErrorCode::DatabaseBusy | SqliteErrorCode::DatabaseLocked => (
+                StoreFailureRoute::OperationalUnavailable,
+                "database_locked",
+                true,
+            ),
+            SqliteErrorCode::ReadOnly | SqliteErrorCode::PermissionDenied => (
+                StoreFailureRoute::OperationalUnavailable,
+                "database_access_denied",
+                false,
+            ),
+            SqliteErrorCode::SystemIoFailure | SqliteErrorCode::DiskFull => (
+                StoreFailureRoute::OperationalUnavailable,
+                "database_io",
+                true,
+            ),
+            SqliteErrorCode::SchemaChanged => (
+                StoreFailureRoute::OperationalUnavailable,
+                "database_schema_changed",
+                true,
+            ),
+            _ => (
+                StoreFailureRoute::OperationalUnavailable,
+                "sqlite_driver_error",
+                true,
+            ),
         },
         rusqlite::Error::FromSqlConversionFailure(_, _, _)
         | rusqlite::Error::IntegralValueOutOfRange(_, _)
         | rusqlite::Error::Utf8Error(_)
-        | rusqlite::Error::InvalidColumnType(_, _, _) => ("stored_value_decode_failed", false),
-        rusqlite::Error::QueryReturnedNoRows => ("store_record_missing", true),
-        rusqlite::Error::InvalidPath(_) => ("runtime_path_invalid", false),
+        | rusqlite::Error::InvalidColumnType(_, _, _) => (
+            StoreFailureRoute::PersistedDataCorrupt,
+            "stored_value_decode_failed",
+            false,
+        ),
+        rusqlite::Error::QueryReturnedNoRows => (
+            StoreFailureRoute::OperationalUnavailable,
+            "store_record_missing",
+            true,
+        ),
+        rusqlite::Error::InvalidPath(_) => (
+            StoreFailureRoute::OperationalUnavailable,
+            "runtime_path_invalid",
+            false,
+        ),
         rusqlite::Error::InvalidColumnIndex(_)
         | rusqlite::Error::InvalidColumnName(_)
         | rusqlite::Error::StatementChangedRows(_)
@@ -352,12 +442,20 @@ fn sqlite_classification(error: &rusqlite::Error) -> StoreFailureClassification 
         | rusqlite::Error::MultipleStatement
         | rusqlite::Error::InvalidParameterCount(_, _)
         | rusqlite::Error::InvalidParameterName(_)
-        | rusqlite::Error::ExecuteReturnedResults => ("store_programming_error", false),
-        _ => ("sqlite_driver_error", true),
+        | rusqlite::Error::ExecuteReturnedResults => (
+            StoreFailureRoute::OperationalUnavailable,
+            "store_programming_error",
+            false,
+        ),
+        _ => (
+            StoreFailureRoute::OperationalUnavailable,
+            "sqlite_driver_error",
+            true,
+        ),
     };
 
     StoreFailureClassification {
-        route: StoreFailureRoute::OperationalUnavailable,
+        route,
         category,
         retryable,
         database_kind: None,
@@ -384,6 +482,10 @@ impl fmt::Display for StoreError {
             Self::Io(error) => write!(formatter, "filesystem error: {error}"),
             Self::Sqlite(error) => write!(formatter, "sqlite error: {error}"),
             Self::InvalidInput { detail } => write!(formatter, "invalid setup input: {detail}"),
+            Self::UnsupportedPlatformEnvironment { reason, detail }
+            | Self::PlatformEnvironmentUnavailable { reason, detail } => {
+                write!(formatter, "{reason}: {detail}")
+            }
             Self::InvalidProjectRegistration {
                 project_id,
                 field,
@@ -439,6 +541,12 @@ impl fmt::Display for StoreError {
                 formatter,
                 "stored field {field} has an unsupported value in {database_kind}"
             ),
+            Self::PersistedUserActionsCorrupt {
+                connection_internal_id,
+            } => write!(
+                formatter,
+                "persisted_user_actions_corrupt for Agent Connection {connection_internal_id}"
+            ),
             Self::UnsupportedStorageProfile {
                 database_kind,
                 actual_storage_profile,
@@ -446,6 +554,13 @@ impl fmt::Display for StoreError {
             } => write!(
                 formatter,
                 "unsupported storage profile for {database_kind}: found {actual_storage_profile}, expected {expected_storage_profile}; explicitly reinitialize the Runtime Home"
+            ),
+            Self::UnsupportedExternalContract {
+                contract_id,
+                reason,
+            } => write!(
+                formatter,
+                "{reason}: unsupported external contract {contract_id}"
             ),
             Self::SchemaInvariant {
                 database_kind,
@@ -464,6 +579,8 @@ impl Error for StoreError {
             Self::Io(error) => Some(error),
             Self::Sqlite(error) => Some(error),
             Self::InvalidInput { .. }
+            | Self::UnsupportedPlatformEnvironment { .. }
+            | Self::PlatformEnvironmentUnavailable { .. }
             | Self::InvalidProjectRegistration { .. }
             | Self::NotFound { .. }
             | Self::Conflict { .. }
@@ -471,7 +588,9 @@ impl Error for StoreError {
             | Self::CorruptOwnerStateJson { .. }
             | Self::CorruptOwnerStateValue { .. }
             | Self::CorruptStoredValue { .. }
+            | Self::PersistedUserActionsCorrupt { .. }
             | Self::UnsupportedStorageProfile { .. }
+            | Self::UnsupportedExternalContract { .. }
             | Self::SchemaInvariant { .. } => None,
         }
     }
@@ -486,5 +605,41 @@ impl From<io::Error> for StoreError {
 impl From<rusqlite::Error> for StoreError {
     fn from(error: rusqlite::Error) -> Self {
         Self::Sqlite(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StoreError, StoreFailureRoute};
+
+    #[test]
+    fn persisted_contract_violations_have_a_corrupt_route() {
+        for error in [
+            StoreError::corrupt_stored_json("project_state", "typed_json"),
+            StoreError::corrupt_stored_value("registry", "typed_value"),
+            StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "fixture".to_owned(),
+            },
+        ] {
+            assert_eq!(
+                error.classification().route,
+                StoreFailureRoute::PersistedDataCorrupt
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_storage_profile_has_an_unsupported_contract_route() {
+        let error = StoreError::unsupported_storage_profile(
+            "registry",
+            "unknown-contract",
+            "current-contract",
+        );
+
+        assert_eq!(
+            error.classification().route,
+            StoreFailureRoute::UnsupportedContract
+        );
     }
 }

@@ -7,11 +7,12 @@ use std::{
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use volicord_types::{
     effective_user_action_status as derive_user_action_status, validate_channel_submission_id,
-    ArtifactRef, CurrentCloseBasis, ObservedChanges, PersistedArtifactProducer,
-    PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata, PersistedUserActionRequest,
-    ProjectEnforcementProfile, RunId, StagedArtifactHandleId, TaskId, UserActionBasis,
-    UserActionBasisStatus, UserActionChannelKind, UserActionKind, UserActionOptionAction,
-    UserActionRequestBody, UserActionResolutionBody, UserActionStatus, UtcTimestamp,
+    ArtifactRef, ContinuityCursor, CurrentCloseBasis, ObservedChanges, PersistedArtifactProducer,
+    PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata, PersistedCloseSummary,
+    PersistedUserActionRequest, ProjectEnforcementProfile, RunId, StagedArtifactHandleId, TaskId,
+    UserActionBasis, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
+    UserActionOptionAction, UserActionRequestBody, UserActionResolutionBody, UserActionStatus,
+    UtcTimestamp, MAX_CONTINUITY_PAGE_SIZE,
 };
 
 use crate::{
@@ -23,10 +24,6 @@ use crate::{
     bootstrap::ProjectRecord,
     guards::{agent_session_from_conn, AgentSessionRecord},
     sqlite::ARTIFACTS_DIR,
-    user_action_channel::{
-        user_action_channel_token_record_tx, validate_persisted_user_action_channel_token_window,
-        UserActionChannelTokenRecord,
-    },
     StoreError, StoreResult,
 };
 
@@ -39,6 +36,31 @@ pub use crate::evidence_capture::{
 
 pub use self::commit::commit_input;
 use self::validation::*;
+
+// These exact projection lists are deliberately shared by every query that
+// uses the corresponding typed row decoder. SQL predicates and transaction
+// boundaries remain visible at each call site.
+const TASK_RECORD_COLUMNS: &str = "
+    project_id, task_id, mode, requested_control_level,
+    effective_control_level, control_level_reason, work_phase, acceptance_policy,
+    acceptance_policy_reason, predecessor_task_id, lineage_relation,
+    lineage_reason, carry_forward_json, lifecycle_phase, result, title,
+    summary, shaping_summary_json, bounded_context_json,
+    autonomy_boundary_json, scope_revision, close_basis_revision,
+    close_basis_json, close_summary_json, current_change_unit_id, closed_at,
+    metadata_json";
+
+const CHANGE_UNIT_RECORD_COLUMNS: &str = "
+    project_id, change_unit_id, task_id, status, is_current,
+    basis_state_version, scope_summary_json, bounded_paths_json,
+    write_basis_json, effect_contract_json, lifecycle_json";
+
+const WRITE_TICKET_RECORD_COLUMNS: &str = "
+    project_id, write_ticket_id, task_id, change_unit_id,
+    basis_state_version, status, validity_basis_json,
+    allowed_path_prefixes_json, denied_path_prefixes_json,
+    attempt_scope_json, idle_expires_at, invalidation_reason, created_at,
+    consumed_by_run_id, consumed_at";
 
 /// Project-local store handle used by the Core request pipeline.
 #[derive(Debug)]
@@ -145,7 +167,6 @@ pub enum CoreStorageMutation {
     InsertEvidenceProducer(EvidenceProducerInsert),
     InsertUserActionRequest(UserActionRequestInsert),
     InsertUserActionResolution(UserActionResolutionInsert),
-    ConsumeUserActionChannelToken(UserActionChannelTokenConsumption),
     ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate),
     InsertProjectContinuityRecord(ProjectContinuityRecordInsert),
     UpdateUserActionBasis(UserActionBasisUpdate),
@@ -309,16 +330,6 @@ pub struct UserActionResolutionInsert {
     pub resolved_verification_basis: String,
     pub resolved_assurance_level: String,
     pub resolved_at: String,
-}
-
-/// Storage input for consuming a channel token with its user-action resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserActionChannelTokenConsumption {
-    pub token_hash: String,
-    pub connection_internal_id: String,
-    pub user_action_request_id: String,
-    pub consumed_at: String,
-    pub completion_metadata_json: String,
 }
 
 /// Storage input for resolving one unrecorded Product Repository change.
@@ -639,7 +650,7 @@ pub struct StorageEffectCounts {
     pub acceptance_criteria: u64,
     pub evidence_claims: u64,
     pub change_units: u64,
-    pub task_events: u64,
+    pub authority_events: u64,
     pub tool_invocations: u64,
     pub user_action_requests: u64,
     pub user_action_resolutions: u64,
@@ -730,7 +741,7 @@ pub struct ChangeUnitRecord {
     pub task_id: String,
     pub status: String,
     pub is_current: bool,
-    pub basis_state_version: Option<u64>,
+    pub basis_state_version: u64,
     pub scope_summary_json: String,
     pub bounded_paths_json: String,
     pub write_basis_json: String,
@@ -744,7 +755,7 @@ pub struct WriteTicketRecord {
     pub project_id: String,
     pub write_ticket_id: String,
     pub task_id: String,
-    pub change_unit_id: Option<String>,
+    pub change_unit_id: String,
     pub basis_state_version: u64,
     pub status: String,
     pub validity_basis_json: String,
@@ -756,6 +767,25 @@ pub struct WriteTicketRecord {
     pub created_at: String,
     pub consumed_by_run_id: Option<String>,
     pub consumed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WriteTicketRecordRaw {
+    project_id: String,
+    write_ticket_id: String,
+    task_id: String,
+    change_unit_id: Option<String>,
+    basis_state_version: u64,
+    status: String,
+    validity_basis_json: String,
+    allowed_path_prefixes_json: String,
+    denied_path_prefixes_json: String,
+    attempt_scope_json: String,
+    idle_expires_at: Option<String>,
+    invalidation_reason: Option<String>,
+    created_at: String,
+    consumed_by_run_id: Option<String>,
+    consumed_at: Option<String>,
 }
 
 /// Stored staged artifact facts needed by `volicord.record_run`.
@@ -916,6 +946,14 @@ pub struct ProjectContinuityRecordRecord {
     pub metadata_json: String,
 }
 
+/// One strictly bounded active project-continuity page read from a single snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveProjectContinuityPage {
+    pub records: Vec<ProjectContinuityRecordRecord>,
+    pub total_count: u64,
+    pub truncated: bool,
+}
+
 /// Public record reference facts read from storage rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredRecordRef {
@@ -965,28 +1003,6 @@ impl CoreProjectStore {
     pub fn agent_session(&self, session_id: &str) -> StoreResult<Option<AgentSessionRecord>> {
         validate_identifier("session_id", session_id)?;
         agent_session_from_conn(&self.conn, &self.project.project_id, session_id)
-    }
-
-    /// Returns whether this snapshot contains an active Agent Session for the
-    /// selected connection.
-    pub fn has_active_agent_session_for_connection(
-        &self,
-        connection_internal_id: &str,
-    ) -> StoreResult<bool> {
-        validate_identifier("connection_internal_id", connection_internal_id)?;
-        self.conn
-            .query_row(
-                "SELECT EXISTS (
-                    SELECT 1
-                      FROM agent_sessions
-                     WHERE project_id = ?1
-                       AND connection_internal_id = ?2
-                       AND ended_at IS NULL
-                )",
-                params![self.project.project_id, connection_internal_id],
-                |row| row.get(0),
-            )
-            .map_err(StoreError::from)
     }
 
     /// Reads and strictly validates the active project enforcement profile.
@@ -1261,7 +1277,7 @@ impl CoreProjectStore {
         row_exists(
             &self.conn,
             &self.project.project_id,
-            "task_events",
+            "authority_events",
             "event_id",
             event_id,
         )
@@ -1447,30 +1463,6 @@ impl CoreProjectStore {
         )
     }
 
-    /// Reads one channel-token row by its stored digest through this handle's
-    /// current SQLite snapshot.
-    pub fn user_action_channel_token_record(
-        &self,
-        token_hash: &str,
-    ) -> StoreResult<Option<UserActionChannelTokenRecord>> {
-        user_action_channel_token_record_tx(&self.conn, token_hash)
-    }
-
-    /// Strictly validates one channel-token lifetime window against its bound
-    /// user-action request through this handle's current SQLite snapshot.
-    pub fn validate_user_action_channel_token_window(
-        &self,
-        record: &UserActionChannelTokenRecord,
-    ) -> StoreResult<(UtcTimestamp, UtcTimestamp)> {
-        validate_persisted_user_action_channel_token_window(
-            &self.conn,
-            &record.project_id,
-            &record.user_action_request_id,
-            &record.created_at,
-            &record.expires_at,
-        )
-    }
-
     /// Returns whether a user-action request id exists in this project.
     pub fn user_action_request_id_exists(&self, user_action_request_id: &str) -> StoreResult<bool> {
         row_exists(
@@ -1522,12 +1514,13 @@ impl CoreProjectStore {
         )
     }
 
-    /// Lists active project-continuity rows for compact status projection.
-    pub fn active_project_continuity_records(
+    /// Reads one active project-continuity page in canonical status order.
+    pub fn active_project_continuity_page(
         &self,
-        limit: usize,
-    ) -> StoreResult<Vec<ProjectContinuityRecordRecord>> {
-        active_project_continuity_records(&self.conn, &self.project.project_id, limit)
+        page_size: u64,
+        cursor: Option<&ContinuityCursor>,
+    ) -> StoreResult<ActiveProjectContinuityPage> {
+        active_project_continuity_page(&self.conn, &self.project.project_id, page_size, cursor)
     }
 
     /// Lists project-continuity rows that originated from one Task.
@@ -1659,7 +1652,11 @@ impl CoreProjectStore {
             )?,
             evidence_claims: table_count(&self.conn, "evidence_claims", &self.project.project_id)?,
             change_units: table_count(&self.conn, "change_units", &self.project.project_id)?,
-            task_events: table_count(&self.conn, "task_events", &self.project.project_id)?,
+            authority_events: table_count(
+                &self.conn,
+                "authority_events",
+                &self.project.project_id,
+            )?,
             tool_invocations: table_count(
                 &self.conn,
                 "tool_invocations",
@@ -1784,65 +1781,35 @@ fn task_record(
     project_id: &str,
     task_id: &str,
 ) -> StoreResult<Option<TaskRecord>> {
-    conn.query_row(
-        "SELECT
-            project_id,
-            task_id,
-            mode,
-            requested_control_level,
-            effective_control_level,
-            control_level_reason,
-            work_phase,
-            acceptance_policy,
-            acceptance_policy_reason,
-            predecessor_task_id,
-            lineage_relation,
-            lineage_reason,
-            carry_forward_json,
-            lifecycle_phase,
-            result,
-            title,
-            summary,
-            shaping_summary_json,
-            bounded_context_json,
-            autonomy_boundary_json,
-            scope_revision,
-            close_basis_revision,
-            close_basis_json,
-            close_summary_json,
-            current_change_unit_id,
-            closed_at,
-            metadata_json
-         FROM tasks
-         WHERE project_id = ?1
-           AND task_id = ?2",
-        params![project_id, task_id],
-        task_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+    let sql = format!(
+        "SELECT {TASK_RECORD_COLUMNS}
+           FROM tasks
+          WHERE project_id = ?1
+            AND task_id = ?2"
+    );
+    conn.query_row(&sql, params![project_id, task_id], task_record_from_row)
+        .optional()
+        .map_err(StoreError::from)?
+        .map(validate_decoded_task_record)
+        .transpose()
 }
 
 fn task_records(conn: &Connection, project_id: &str) -> StoreResult<Vec<TaskRecord>> {
-    let mut statement = conn.prepare(
-        "SELECT
-            project_id, task_id, mode, requested_control_level,
-            effective_control_level, control_level_reason, work_phase, acceptance_policy,
-            acceptance_policy_reason, predecessor_task_id, lineage_relation,
-            lineage_reason, carry_forward_json, lifecycle_phase, result, title,
-            summary, shaping_summary_json, bounded_context_json,
-            autonomy_boundary_json, scope_revision, close_basis_revision,
-            close_basis_json, close_summary_json, current_change_unit_id, closed_at
-            , metadata_json
-         FROM tasks
-         WHERE project_id = ?1
-         ORDER BY volicord_utc_seconds(created_at),
-                  volicord_utc_subsec_nanos(created_at),
-                  task_id",
-    )?;
+    let sql = format!(
+        "SELECT {TASK_RECORD_COLUMNS}
+           FROM tasks
+          WHERE project_id = ?1
+          ORDER BY volicord_utc_seconds(created_at),
+                   volicord_utc_subsec_nanos(created_at),
+                   task_id"
+    );
+    let mut statement = conn.prepare(&sql)?;
     let rows = statement.query_map([project_id], task_record_from_row)?;
     rows.collect::<Result<Vec<_>, _>>()
-        .map_err(StoreError::from)
+        .map_err(StoreError::from)?
+        .into_iter()
+        .map(validate_decoded_task_record)
+        .collect()
 }
 
 fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord> {
@@ -1875,6 +1842,13 @@ fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord>
         closed_at: row.get(25)?,
         metadata_json: row.get(26)?,
     })
+}
+
+fn validate_decoded_task_record(record: TaskRecord) -> StoreResult<TaskRecord> {
+    serde_json::from_str::<PersistedCloseSummary>(&record.close_summary_json).map_err(|_| {
+        StoreError::corrupt_owner_state_json("tasks", record.task_id.clone(), "close_summary_json")
+    })?;
+    Ok(record)
 }
 
 fn active_acceptance_criteria(
@@ -2011,29 +1985,23 @@ fn current_change_unit(
     project_id: &str,
     task_id: &str,
 ) -> StoreResult<Option<ChangeUnitRecord>> {
+    let sql = format!(
+        "SELECT {CHANGE_UNIT_RECORD_COLUMNS}
+           FROM change_units
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND status = 'active'
+            AND is_current = 1"
+    );
     conn.query_row(
-        "SELECT
-            project_id,
-            change_unit_id,
-            task_id,
-            status,
-            is_current,
-            basis_state_version,
-            scope_summary_json,
-            bounded_paths_json,
-            write_basis_json,
-            effect_contract_json,
-            lifecycle_json
-         FROM change_units
-         WHERE project_id = ?1
-           AND task_id = ?2
-           AND status = 'active'
-           AND is_current = 1",
+        &sql,
         params![project_id, task_id],
-        change_unit_record_from_row,
+        raw_change_unit_record_from_row,
     )
     .optional()
-    .map_err(StoreError::from)
+    .map_err(StoreError::from)?
+    .map(validate_decoded_change_unit_record)
+    .transpose()
 }
 
 fn change_unit_record(
@@ -2042,46 +2010,48 @@ fn change_unit_record(
     task_id: &str,
     change_unit_id: &str,
 ) -> StoreResult<Option<ChangeUnitRecord>> {
+    let sql = format!(
+        "SELECT {CHANGE_UNIT_RECORD_COLUMNS}
+           FROM change_units
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND change_unit_id = ?3"
+    );
     conn.query_row(
-        "SELECT
-            project_id,
-            change_unit_id,
-            task_id,
-            status,
-            is_current,
-            basis_state_version,
-            scope_summary_json,
-            bounded_paths_json,
-            write_basis_json,
-            effect_contract_json,
-            lifecycle_json
-         FROM change_units
-         WHERE project_id = ?1
-           AND task_id = ?2
-           AND change_unit_id = ?3",
+        &sql,
         params![project_id, task_id, change_unit_id],
-        change_unit_record_from_row,
+        raw_change_unit_record_from_row,
     )
     .optional()
-    .map_err(StoreError::from)
+    .map_err(StoreError::from)?
+    .map(validate_decoded_change_unit_record)
+    .transpose()
 }
 
-fn change_unit_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChangeUnitRecord> {
-    let is_current = row.get::<_, i64>(4)? == 1;
-    let basis_state_version = match row.get::<_, Option<i64>>(5)? {
-        Some(value) => Some(nonnegative_i64_to_u64(
-            "change_units.basis_state_version",
-            value,
-        )?),
-        None => None,
-    };
-    Ok(ChangeUnitRecord {
+struct RawChangeUnitRecord {
+    project_id: String,
+    change_unit_id: String,
+    task_id: String,
+    status: String,
+    is_current: i64,
+    basis_state_version: Option<i64>,
+    scope_summary_json: String,
+    bounded_paths_json: String,
+    write_basis_json: String,
+    effect_contract_json: String,
+    lifecycle_json: String,
+}
+
+fn raw_change_unit_record_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<RawChangeUnitRecord> {
+    Ok(RawChangeUnitRecord {
         project_id: row.get(0)?,
         change_unit_id: row.get(1)?,
         task_id: row.get(2)?,
         status: row.get(3)?,
-        is_current,
-        basis_state_version,
+        is_current: row.get(4)?,
+        basis_state_version: row.get(5)?,
         scope_summary_json: row.get(6)?,
         bounded_paths_json: row.get(7)?,
         write_basis_json: row.get(8)?,
@@ -2090,38 +2060,67 @@ fn change_unit_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Chan
     })
 }
 
+fn validate_decoded_change_unit_record(
+    record: RawChangeUnitRecord,
+) -> StoreResult<ChangeUnitRecord> {
+    let corrupt_value = |logical_column| {
+        StoreError::corrupt_owner_state_value(
+            "change_units",
+            record.change_unit_id.clone(),
+            logical_column,
+        )
+    };
+    let basis_state_version = record
+        .basis_state_version
+        .ok_or_else(|| corrupt_value("basis_state_version"))
+        .and_then(|value| u64::try_from(value).map_err(|_| corrupt_value("basis_state_version")))?;
+    let is_current = match record.is_current {
+        0 => false,
+        1 => true,
+        _ => return Err(corrupt_value("is_current")),
+    };
+    if !matches!(
+        record.status.as_str(),
+        "proposed" | "active" | "replaced" | "closed"
+    ) {
+        return Err(corrupt_value("status"));
+    }
+    Ok(ChangeUnitRecord {
+        project_id: record.project_id,
+        change_unit_id: record.change_unit_id,
+        task_id: record.task_id,
+        status: record.status,
+        is_current,
+        basis_state_version,
+        scope_summary_json: record.scope_summary_json,
+        bounded_paths_json: record.bounded_paths_json,
+        write_basis_json: record.write_basis_json,
+        effect_contract_json: record.effect_contract_json,
+        lifecycle_json: record.lifecycle_json,
+    })
+}
+
 fn active_write_tickets(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
 ) -> StoreResult<Vec<WriteTicketRecord>> {
-    let mut stmt = conn.prepare(
-        "SELECT
-            project_id,
-            write_ticket_id,
-            task_id,
-            change_unit_id,
-            basis_state_version,
-            status,
-            validity_basis_json,
-            allowed_path_prefixes_json,
-            denied_path_prefixes_json,
-            attempt_scope_json,
-            idle_expires_at,
-            invalidation_reason,
-            created_at,
-            consumed_by_run_id,
-            consumed_at
-         FROM write_tickets
-         WHERE project_id = ?1
-           AND task_id = ?2
-           AND status = 'active'
-         ORDER BY write_ticket_id",
+    let sql = format!(
+        "SELECT {WRITE_TICKET_RECORD_COLUMNS}
+           FROM write_tickets
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND status = 'active'
+          ORDER BY write_ticket_id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        params![project_id, task_id],
+        write_ticket_record_raw_from_row,
     )?;
-    let rows = stmt.query_map(params![project_id, task_id], write_ticket_record_from_row)?;
     let mut records = Vec::new();
     for row in rows {
-        records.push(row?);
+        records.push(decode_write_ticket_record(row?)?);
     }
     Ok(records)
 }
@@ -2131,32 +2130,21 @@ fn write_tickets_for_task(
     project_id: &str,
     task_id: &str,
 ) -> StoreResult<Vec<WriteTicketRecord>> {
-    let mut stmt = conn.prepare(
-        "SELECT
-            project_id,
-            write_ticket_id,
-            task_id,
-            change_unit_id,
-            basis_state_version,
-            status,
-            validity_basis_json,
-            allowed_path_prefixes_json,
-            denied_path_prefixes_json,
-            attempt_scope_json,
-            idle_expires_at,
-            invalidation_reason,
-            created_at,
-            consumed_by_run_id,
-            consumed_at
-         FROM write_tickets
-         WHERE project_id = ?1
-           AND task_id = ?2
-         ORDER BY basis_state_version DESC, write_ticket_id",
+    let sql = format!(
+        "SELECT {WRITE_TICKET_RECORD_COLUMNS}
+           FROM write_tickets
+          WHERE project_id = ?1
+            AND task_id = ?2
+          ORDER BY basis_state_version DESC, write_ticket_id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        params![project_id, task_id],
+        write_ticket_record_raw_from_row,
     )?;
-    let rows = stmt.query_map(params![project_id, task_id], write_ticket_record_from_row)?;
     let mut records = Vec::new();
     for row in rows {
-        records.push(row?);
+        records.push(decode_write_ticket_record(row?)?);
     }
     Ok(records)
 }
@@ -2166,36 +2154,28 @@ fn write_ticket_record(
     project_id: &str,
     write_ticket_id: &str,
 ) -> StoreResult<Option<WriteTicketRecord>> {
+    let sql = format!(
+        "SELECT {WRITE_TICKET_RECORD_COLUMNS}
+           FROM write_tickets
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2"
+    );
     conn.query_row(
-        "SELECT
-            project_id,
-            write_ticket_id,
-            task_id,
-            change_unit_id,
-            basis_state_version,
-            status,
-            validity_basis_json,
-            allowed_path_prefixes_json,
-            denied_path_prefixes_json,
-            attempt_scope_json,
-            idle_expires_at,
-            invalidation_reason,
-            created_at,
-            consumed_by_run_id,
-            consumed_at
-         FROM write_tickets
-         WHERE project_id = ?1
-           AND write_ticket_id = ?2",
+        &sql,
         params![project_id, write_ticket_id],
-        write_ticket_record_from_row,
+        write_ticket_record_raw_from_row,
     )
     .optional()
-    .map_err(StoreError::from)
+    .map_err(StoreError::from)?
+    .map(decode_write_ticket_record)
+    .transpose()
 }
 
-fn write_ticket_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WriteTicketRecord> {
+fn write_ticket_record_raw_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<WriteTicketRecordRaw> {
     let basis_state_version = row.get::<_, i64>(4)?;
-    Ok(WriteTicketRecord {
+    Ok(WriteTicketRecordRaw {
         project_id: row.get(0)?,
         write_ticket_id: row.get(1)?,
         task_id: row.get(2)?,
@@ -2214,6 +2194,36 @@ fn write_ticket_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Wri
         created_at: row.get(12)?,
         consumed_by_run_id: row.get(13)?,
         consumed_at: row.get(14)?,
+    })
+}
+
+fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<WriteTicketRecord> {
+    let change_unit_id = raw
+        .change_unit_id
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "write_tickets",
+                raw.write_ticket_id.clone(),
+                "change_unit_id",
+            )
+        })?;
+    Ok(WriteTicketRecord {
+        project_id: raw.project_id,
+        write_ticket_id: raw.write_ticket_id,
+        task_id: raw.task_id,
+        change_unit_id,
+        basis_state_version: raw.basis_state_version,
+        status: raw.status,
+        validity_basis_json: raw.validity_basis_json,
+        allowed_path_prefixes_json: raw.allowed_path_prefixes_json,
+        denied_path_prefixes_json: raw.denied_path_prefixes_json,
+        attempt_scope_json: raw.attempt_scope_json,
+        idle_expires_at: raw.idle_expires_at,
+        invalidation_reason: raw.invalidation_reason,
+        created_at: raw.created_at,
+        consumed_by_run_id: raw.consumed_by_run_id,
+        consumed_at: raw.consumed_at,
     })
 }
 
@@ -2398,15 +2408,30 @@ fn run_observed_changes_for_task(
             })?;
         event_order.entry(run_id.to_owned()).or_insert(event_seq);
     }
-    records.sort_by(|(left_rowid, left), (right_rowid, right)| {
-        event_order
-            .get(&right.run_id)
-            .copied()
-            .unwrap_or_default()
-            .cmp(&event_order.get(&left.run_id).copied().unwrap_or_default())
-            .then_with(|| right_rowid.cmp(left_rowid))
-    });
-    Ok(records.into_iter().map(|(_, record)| record).collect())
+    let mut ordered_records = records
+        .into_iter()
+        .map(|(rowid, record)| {
+            let event_seq = event_order.get(&record.run_id).copied().ok_or_else(|| {
+                StoreError::corrupt_owner_state_value(
+                    "runs",
+                    record.run_id.clone(),
+                    "authority_events.run_recorded",
+                )
+            })?;
+            Ok((event_seq, rowid, record))
+        })
+        .collect::<StoreResult<Vec<_>>>()?;
+    ordered_records.sort_by(
+        |(left_event_seq, left_rowid, _), (right_event_seq, right_rowid, _)| {
+            right_event_seq
+                .cmp(left_event_seq)
+                .then_with(|| right_rowid.cmp(left_rowid))
+        },
+    );
+    Ok(ordered_records
+        .into_iter()
+        .map(|(_, _, record)| record)
+        .collect())
 }
 
 fn artifact_staging_record(
@@ -3197,54 +3222,131 @@ fn decode_user_action_resolution_record(
     })
 }
 
-fn active_project_continuity_records(
+fn active_project_continuity_page(
     conn: &Connection,
     project_id: &str,
-    limit: usize,
-) -> StoreResult<Vec<ProjectContinuityRecordRecord>> {
-    if limit == 0 {
-        return Ok(Vec::new());
+    page_size: u64,
+    cursor: Option<&ContinuityCursor>,
+) -> StoreResult<ActiveProjectContinuityPage> {
+    if !(1..=MAX_CONTINUITY_PAGE_SIZE).contains(&page_size) {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "project_continuity_records page_size must be between 1 and {MAX_CONTINUITY_PAGE_SIZE}"
+            ),
+        });
     }
-    let limit = i64::try_from(limit).map_err(|_| StoreError::InvalidInput {
-        detail: "project_continuity_records limit is too large".to_owned(),
+
+    let (cursor_updated_at, cursor_record_id) = match cursor {
+        Some(cursor) => {
+            cursor
+                .updated_at
+                .ensure_canonical_rfc3339_representable()
+                .map_err(|_| StoreError::InvalidInput {
+                    detail: "project_continuity_records cursor.updated_at is not representable as canonical RFC 3339 UTC"
+                        .to_owned(),
+                })?;
+            validate_identifier(
+                "project_continuity_records cursor.continuity_record_id",
+                cursor.continuity_record_id.as_str(),
+            )?;
+            (
+                Some(cursor.updated_at.to_canonical_string()),
+                Some(cursor.continuity_record_id.as_str()),
+            )
+        }
+        None => (None, None),
+    };
+    let fetch_limit = i64::try_from(page_size + 1).map_err(|_| StoreError::InvalidInput {
+        detail: "project_continuity_records page_size cannot be represented by SQLite".to_owned(),
     })?;
-    let mut stmt = conn.prepare(
-        "SELECT
-            project_id,
-            continuity_record_id,
-            source_task_id,
-            source_change_unit_id,
-            kind,
-            title,
-            summary,
-            rationale,
-            applies_to_paths_json,
-            applies_to_refs_json,
-            source_refs_json,
-            artifact_refs_json,
-            status,
-            supersedes_refs_json,
-            review_triggers_json,
-            created_at,
-            updated_at,
-            metadata_json
-         FROM project_continuity_records
-         WHERE project_id = ?1
-           AND status = 'active'
-         ORDER BY volicord_utc_seconds(updated_at) DESC,
-                  volicord_utc_subsec_nanos(updated_at) DESC,
-                  continuity_record_id DESC
-         LIMIT ?2",
+    let page_size = usize::try_from(page_size).map_err(|_| StoreError::InvalidInput {
+        detail: "project_continuity_records page_size cannot be represented by this platform"
+            .to_owned(),
+    })?;
+
+    let transaction = conn.unchecked_transaction()?;
+    let total_count: i64 = transaction.query_row(
+        "SELECT COUNT(*)
+           FROM project_continuity_records
+          WHERE project_id = ?1
+            AND status = 'active'",
+        [project_id],
+        |row| row.get(0),
     )?;
-    let rows = stmt.query_map(
-        params![project_id, limit],
-        project_continuity_record_from_row,
-    )?;
-    let mut records = Vec::new();
-    for row in rows {
-        records.push(row?);
+    let total_count = u64::try_from(total_count).map_err(|_| StoreError::CorruptStoredValue {
+        database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+        field: "project_continuity_records.total_count",
+    })?;
+    let mut records = {
+        let mut stmt = transaction.prepare(
+            "SELECT
+                project_id,
+                continuity_record_id,
+                source_task_id,
+                source_change_unit_id,
+                kind,
+                title,
+                summary,
+                rationale,
+                applies_to_paths_json,
+                applies_to_refs_json,
+                source_refs_json,
+                artifact_refs_json,
+                status,
+                supersedes_refs_json,
+                review_triggers_json,
+                created_at,
+                updated_at,
+                metadata_json
+             FROM project_continuity_records
+             WHERE project_id = ?1
+               AND status = 'active'
+               AND (
+                    ?2 IS NULL
+                    OR volicord_utc_seconds(updated_at) < volicord_utc_seconds(?2)
+                    OR (
+                        volicord_utc_seconds(updated_at) = volicord_utc_seconds(?2)
+                        AND volicord_utc_subsec_nanos(updated_at)
+                            < volicord_utc_subsec_nanos(?2)
+                    )
+                    OR (
+                        volicord_utc_seconds(updated_at) = volicord_utc_seconds(?2)
+                        AND volicord_utc_subsec_nanos(updated_at)
+                            = volicord_utc_subsec_nanos(?2)
+                        AND continuity_record_id < ?3
+                    )
+               )
+             ORDER BY volicord_utc_seconds(updated_at) DESC,
+                      volicord_utc_subsec_nanos(updated_at) DESC,
+                      continuity_record_id DESC
+             LIMIT ?4",
+        )?;
+        let rows = stmt.query_map(
+            params![
+                project_id,
+                cursor_updated_at.as_deref(),
+                cursor_record_id,
+                fetch_limit
+            ],
+            project_continuity_record_from_row,
+        )?;
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row?);
+        }
+        records
+    };
+    transaction.commit()?;
+
+    let truncated = records.len() > page_size;
+    if truncated {
+        records.truncate(page_size);
     }
-    Ok(records)
+    Ok(ActiveProjectContinuityPage {
+        records,
+        total_count,
+        truncated,
+    })
 }
 
 fn project_continuity_records_for_task(
@@ -3934,9 +4036,9 @@ mod tests {
     use sha2::{Digest, Sha256};
     use volicord_test_support::TempRuntimeHome;
     use volicord_types::{
-        IdempotencyKey, JudgmentResolutionOutcome, MethodName, ProjectId, RecordId, RequestHash,
-        RequiredNullable, StateRecordKind, StateRecordRef, TaskId, UserActionBasis,
-        UserActionOptionAction,
+        IdempotencyKey, JudgmentResolutionOutcome, MethodName, ProjectContinuityRecordId,
+        ProjectId, RecordId, RequestHash, RequiredNullable, StateRecordKind, StateRecordRef,
+        TaskId, UserActionBasis, UserActionOptionAction,
     };
 
     use super::*;
@@ -3978,6 +4080,96 @@ mod tests {
         fn store(&self) -> StoreResult<CoreProjectStore> {
             CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))
         }
+    }
+
+    #[test]
+    fn decoded_change_unit_requires_a_basis_state_version() {
+        let error = validate_decoded_change_unit_record(RawChangeUnitRecord {
+            project_id: PROJECT_ID.to_owned(),
+            change_unit_id: "cu_missing_basis".to_owned(),
+            task_id: "task_missing_basis".to_owned(),
+            status: "active".to_owned(),
+            is_current: 1,
+            basis_state_version: None,
+            scope_summary_json: "{}".to_owned(),
+            bounded_paths_json: "[]".to_owned(),
+            write_basis_json: "{}".to_owned(),
+            effect_contract_json: "null".to_owned(),
+            lifecycle_json: "{}".to_owned(),
+        })
+        .expect_err("a persisted Change Unit without its basis must be corrupt");
+
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "change_units",
+                logical_column: "basis_state_version",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn task_close_summary_requires_an_explicit_close_reason_on_write_and_read(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let before = store.effect_counts()?;
+        let mut invalid = task_insert("task_missing_close_reason_write");
+        invalid.close_summary_json = "{}".to_owned();
+        let write = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::Intake,
+                Some(&IdempotencyKey::new("idem_missing_close_reason_write")),
+                &RequestHash::new("sha256:missing-close-reason-write"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task(
+                    "missing_close_reason_write",
+                    "task_missing_close_reason_write",
+                )],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(invalid)
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        );
+        assert!(matches!(write, Err(StoreError::InvalidInput { .. })));
+        assert_eq!(store.effect_counts()?, before);
+
+        let task_id = "task_missing_close_reason_read";
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::Intake,
+                Some(&IdempotencyKey::new("idem_missing_close_reason_read")),
+                &RequestHash::new("sha256:missing-close-reason-read"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("missing_close_reason_read", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        store.conn.execute(
+            "UPDATE tasks SET close_summary_json = '{}' WHERE project_id = ?1 AND task_id = ?2",
+            params![PROJECT_ID, task_id],
+        )?;
+        let read = store.task_record(&TaskId::new(task_id));
+        assert!(matches!(
+            read,
+            Err(StoreError::CorruptOwnerStateJson {
+                table: "tasks",
+                logical_column: "close_summary_json",
+                ..
+            })
+        ));
+        Ok(())
     }
 
     #[test]
@@ -4038,13 +4230,6 @@ mod tests {
 
         assert!(matches!(
             store.current_timestamp(),
-            Err(StoreError::CorruptOwnerStateValue { .. })
-        ));
-        assert!(matches!(
-            crate::user_action_channel::user_action_channel_current_timestamp(
-                &harness.runtime_home_path,
-                PROJECT_ID,
-            ),
             Err(StoreError::CorruptOwnerStateValue { .. })
         ));
         let persisted: String = store.conn.query_row(
@@ -4319,7 +4504,7 @@ mod tests {
                     task_id: task_id.to_owned(),
                     lifecycle_phase: "completed".to_owned(),
                     result: "completed".to_owned(),
-                    close_summary_json: "{\"close_reason\":\"completed\"}".to_owned(),
+                    close_summary_json: "{\"close_reason\":\"completed_self_checked\"}".to_owned(),
                     closed_at: "2999-07-13T12:00:00Z".to_owned(),
                 })
                 .apply(mutation, facts.committed_state_version)?;
@@ -4540,7 +4725,7 @@ mod tests {
                     task_id: task_id.to_owned(),
                     lifecycle_phase: "completed".to_owned(),
                     result: "completed".to_owned(),
-                    close_summary_json: "{}".to_owned(),
+                    close_summary_json: "{\"close_reason\":\"completed_self_checked\"}".to_owned(),
                     closed_at: "tomorrow".to_owned(),
                 })
                 .apply(mutation, facts.committed_state_version)
@@ -4943,7 +5128,10 @@ mod tests {
             assert_eq!(store.project_state()?, before_state);
             let after_effects = store.effect_counts()?;
             assert_eq!(after_effects.state_version, before_effects.state_version);
-            assert_eq!(after_effects.task_events, before_effects.task_events);
+            assert_eq!(
+                after_effects.authority_events,
+                before_effects.authority_events
+            );
             assert_eq!(
                 after_effects.tool_invocations,
                 before_effects.tool_invocations
@@ -5181,11 +5369,28 @@ mod tests {
             response_json,
         )?;
 
+        let change_unit_id = "change_unit_ticket_policy_transaction";
+        store.conn.execute(
+            "INSERT INTO change_units (
+                project_id, change_unit_id, task_id, status, is_current,
+                basis_state_version, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'active', 1, 1,
+                       '2026-07-17T00:00:00Z', '2026-07-17T00:00:00Z')",
+            params![PROJECT_ID, change_unit_id, task_id],
+        )?;
+        store.conn.execute(
+            "UPDATE tasks
+                SET current_change_unit_id = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            params![PROJECT_ID, task_id, change_unit_id],
+        )?;
+
         let issued_fingerprint =
             crate::workflow_records::project_write_authority_fingerprint(None)?;
         let validity_basis_json = volicord_types::canonical_json_string(&json!({
             "task_id": task_id,
-            "change_unit_id": "change_unit_ticket_policy_transaction",
+            "change_unit_id": change_unit_id,
             "scope_revision": 0,
             "baseline_ref": null,
             "workspace_context_sha256": null,
@@ -5199,19 +5404,20 @@ mod tests {
                 allowed_path_prefixes_json, denied_path_prefixes_json,
                 attempt_scope_json, created_by_actor_source, created_at,
                 metadata_json
-             ) VALUES (?1, ?2, ?3, NULL, 1, 'active', ?4,
-                       '[\"src/export.rs\"]', '[]', '{}', ?5,
+             ) VALUES (?1, ?2, ?3, ?4, 1, 'active', ?5,
+                       '[\"src/export.rs\"]', '[]', '{}', ?6,
                        '2026-07-17T00:00:00Z', '{}')",
             params![
                 PROJECT_ID,
                 write_ticket_id,
                 task_id,
+                change_unit_id,
                 validity_basis_json,
                 ACTOR_SOURCE
             ],
         )?;
         let tightened_policy = json!({
-            "schema": "volicord-policy-v2",
+            "schema": volicord_types::WORKFLOW_POLICY_CONTRACT_ID,
             "workflow": {
                 "default_direct_control": "tracked",
                 "default_work_control": "tracked",
@@ -5237,9 +5443,14 @@ mod tests {
             "INSERT INTO project_workflow_policies (
                 project_id, policy_schema, policy_version, policy_json,
                 policy_fingerprint, source, applied_at, created_at
-             ) VALUES (?1, 'volicord-policy-v2', 1, ?2, ?3, 'store_test',
+             ) VALUES (?1, ?2, 1, ?3, ?4, 'store_test',
                        '2026-07-17T00:00:00Z', '2026-07-17T00:00:00Z')",
-            params![PROJECT_ID, policy_json, policy_fingerprint],
+            params![
+                PROJECT_ID,
+                volicord_types::WORKFLOW_POLICY_CONTRACT_ID,
+                policy_json,
+                policy_fingerprint
+            ],
         )?;
         let before_state = store.project_state()?;
         let before_effects = store.effect_counts()?;
@@ -5430,15 +5641,16 @@ mod tests {
         assert_eq!(rows[1].9.len(), 71);
         assert_ne!(rows[0].9, rows[1].9);
 
-        let view_count: i64 = store.conn.query_row(
+        let task_scoped_event_count: i64 = store.conn.query_row(
             "SELECT COUNT(*)
-               FROM task_events
+               FROM authority_events
               WHERE project_id = ?1
-                AND event_kind = 'store_test_event'",
+                AND task_id IS NOT NULL
+                AND event_type = 'store_test_event'",
             [PROJECT_ID],
             |row| row.get(0),
         )?;
-        assert_eq!(view_count, 2);
+        assert_eq!(task_scoped_event_count, 2);
         Ok(())
     }
 
@@ -6201,14 +6413,12 @@ mod tests {
         assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
 
         let mut resolution = user_action_resolution_insert(resolution_id, request_id);
-        resolution.channel_kind = UserActionChannelKind::PromptCapture;
         resolution.channel_submission_id = "submission_deferred_pair".to_owned();
         resolution.resolution_json = choice_resolution_json(
             "defer",
             UserActionOptionAction::Defer,
             JudgmentResolutionOutcome::Deferred,
         );
-        resolution.resolved_verification_basis = "user_prompt_submit_hook".to_owned();
         resolution.resolved_assurance_level = "verified_local_user_channel".to_owned();
         let resolve_input = commit_input(
             &ProjectId::new(PROJECT_ID),
@@ -6233,7 +6443,7 @@ mod tests {
             .user_action_resolution_record(resolution_id)?
             .expect("resolved user action should be readable");
         assert_eq!(record.user_action_request_id, request_id);
-        assert_eq!(record.channel_kind, UserActionChannelKind::PromptCapture);
+        assert_eq!(record.channel_kind, UserActionChannelKind::Cli);
         assert_eq!(record.channel_submission_id, "submission_deferred_pair");
         assert_eq!(record.resolved_by_actor_source, "local_user");
         assert_eq!(
@@ -6243,7 +6453,7 @@ mod tests {
         assert_eq!(
             store
                 .user_action_resolution_for_channel_submission(
-                    UserActionChannelKind::PromptCapture,
+                    UserActionChannelKind::Cli,
                     "submission_deferred_pair",
                 )?
                 .expect("channel submission lookup should return the immutable resolution"),
@@ -6488,415 +6698,6 @@ mod tests {
             store.user_action_resolution_record(resolution_id),
             Err(StoreError::CorruptOwnerStateValue { .. })
         ));
-        Ok(())
-    }
-
-    #[test]
-    fn user_action_token_and_resolution_roll_back_with_later_failure() -> Result<(), Box<dyn Error>>
-    {
-        let harness = StoreHarness::new()?;
-        let mut store = harness.store()?;
-        let task_id = "task_local_web_atomic_rollback";
-        let request_id = "action_local_web_atomic_rollback";
-        let token_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-
-        let insert_input = commit_input(
-            &ProjectId::new(PROJECT_ID),
-            MethodName::RequestUserAction,
-            Some(&IdempotencyKey::new("idem_store_local_web_insert")),
-            &RequestHash::new("sha256:local-web-insert"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
-            Some(0),
-            vec![pending_event_for_task("local_web_insert", task_id)],
-        );
-        let inserted = store.commit_mutation(
-            insert_input,
-            |mutation, facts| {
-                for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        request_id, task_id, None,
-                    )),
-                ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
-                }
-                Ok(())
-            },
-            response_json,
-        )?;
-        assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
-
-        store.conn.execute(
-            "INSERT INTO user_action_channel_tokens (
-                project_id, token_hash, channel_kind, connection_internal_id,
-                user_action_request_id, capture_basis, status, created_at, expires_at,
-                consumed_at, completed_at, created_metadata_json, completion_metadata_json
-             ) VALUES (
-                ?1, ?2, 'local_web_consent', ?3, ?4, 'local_user_local_web', 'pending',
-                '2026-01-01T00:00:00Z', '2026-01-01T00:10:00Z', NULL, NULL, '{}', '{}'
-             )",
-            params![PROJECT_ID, token_hash, CONNECTION_ID, request_id],
-        )?;
-        let before_invalid_timestamp = store.effect_counts()?;
-        let invalid_timestamp = store.commit_mutation(
-            commit_input(
-                &ProjectId::new(PROJECT_ID),
-                MethodName::ResolveUserAction,
-                Some(&IdempotencyKey::new(
-                    "idem_store_local_web_invalid_timestamp",
-                )),
-                &RequestHash::new("sha256:local-web-invalid-timestamp"),
-                Some(user_replay_context()),
-                Some(1),
-                vec![pending_event_for_task(
-                    "local_web_invalid_timestamp",
-                    task_id,
-                )],
-            ),
-            |mutation, facts| {
-                CoreStorageMutation::ConsumeUserActionChannelToken(
-                    UserActionChannelTokenConsumption {
-                        token_hash: token_hash.to_owned(),
-                        connection_internal_id: CONNECTION_ID.to_owned(),
-                        user_action_request_id: request_id.to_owned(),
-                        consumed_at: "tomorrow".to_owned(),
-                        completion_metadata_json: "{}".to_owned(),
-                    },
-                )
-                .apply(mutation, facts.committed_state_version)
-            },
-            response_json,
-        );
-        assert!(matches!(
-            invalid_timestamp,
-            Err(StoreError::InvalidInput { .. })
-        ));
-        assert_eq!(store.effect_counts()?, before_invalid_timestamp);
-        assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
-
-        for (variant, field, tampered, original) in [
-            (
-                "created_at",
-                "created_at",
-                "9999-12-31T23:59:59-23:59",
-                "2026-01-01T00:00:00Z",
-            ),
-            (
-                "expires_at",
-                "expires_at",
-                "9999-12-31T23:59:59-23:59",
-                "2026-01-01T00:10:00Z",
-            ),
-            (
-                "extended_window",
-                "expires_at",
-                "2026-01-01T00:10:00.000000001Z",
-                "2026-01-01T00:10:00Z",
-            ),
-            (
-                "shortened_window",
-                "expires_at",
-                "2026-01-01T00:09:59Z",
-                "2026-01-01T00:10:00Z",
-            ),
-        ] {
-            let sql = format!(
-                "UPDATE user_action_channel_tokens
-                    SET {field} = ?3
-                  WHERE project_id = ?1
-                    AND token_hash = ?2"
-            );
-            store
-                .conn
-                .execute(&sql, params![PROJECT_ID, token_hash, tampered])?;
-            let before_corrupt_consume = store.effect_counts()?;
-            let result = store.commit_mutation(
-                commit_input(
-                    &ProjectId::new(PROJECT_ID),
-                    MethodName::ResolveUserAction,
-                    Some(&IdempotencyKey::new(format!(
-                        "idem_store_local_web_corrupt_{variant}"
-                    ))),
-                    &RequestHash::new(format!("sha256:local-web-corrupt-{variant}")),
-                    Some(user_replay_context()),
-                    Some(1),
-                    vec![pending_event_for_task(
-                        &format!("local_web_corrupt_{variant}"),
-                        task_id,
-                    )],
-                ),
-                |mutation, facts| {
-                    CoreStorageMutation::ConsumeUserActionChannelToken(
-                        UserActionChannelTokenConsumption {
-                            token_hash: token_hash.to_owned(),
-                            connection_internal_id: CONNECTION_ID.to_owned(),
-                            user_action_request_id: request_id.to_owned(),
-                            consumed_at: "2026-01-01T00:09:59.999Z".to_owned(),
-                            completion_metadata_json: "{}".to_owned(),
-                        },
-                    )
-                    .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            );
-            assert!(matches!(result, Err(StoreError::CorruptStoredValue { .. })));
-            assert_eq!(store.effect_counts()?, before_corrupt_consume);
-            assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
-            store
-                .conn
-                .execute(&sql, params![PROJECT_ID, token_hash, original])?;
-        }
-        let before = store.effect_counts()?;
-
-        let resolve_input = commit_input(
-            &ProjectId::new(PROJECT_ID),
-            MethodName::ResolveUserAction,
-            Some(&IdempotencyKey::new("idem_store_local_web_rollback")),
-            &RequestHash::new("sha256:local-web-rollback"),
-            Some(user_replay_context()),
-            Some(1),
-            vec![pending_event_for_task("local_web_rollback", task_id)],
-        );
-        let error = store
-            .commit_mutation(
-                resolve_input,
-                |mutation, facts| {
-                    CoreStorageMutation::ConsumeUserActionChannelToken(
-                        UserActionChannelTokenConsumption {
-                            token_hash: token_hash.to_owned(),
-                            connection_internal_id: CONNECTION_ID.to_owned(),
-                            user_action_request_id: request_id.to_owned(),
-                            consumed_at: "2026-01-01T00:09:59.999Z".to_owned(),
-                            completion_metadata_json: "{}".to_owned(),
-                        },
-                    )
-                    .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
-                        "resolution_local_web_atomic_rollback",
-                        request_id,
-                    ))
-                    .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertRun(run_insert_with_missing_task())
-                        .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            )
-            .expect_err("later write failure should roll back the whole commit");
-        assert!(matches!(error, StoreError::Sqlite(_)));
-
-        assert_eq!(store.effect_counts()?, before);
-        let record = store
-            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
-            .expect("pending user action should remain readable");
-        assert_eq!(record.status, UserActionStatus::Pending);
-        assert!(record.resolution.is_none());
-        let (status, consumed_at, completed_at) = user_action_token_state(&store, token_hash)?;
-        assert_eq!(status, "pending");
-        assert_eq!(consumed_at, None);
-        assert_eq!(completed_at, None);
-        Ok(())
-    }
-
-    #[test]
-    fn user_action_token_consume_rejects_equal_instant_with_mixed_timestamp_formats(
-    ) -> Result<(), Box<dyn Error>> {
-        let harness = StoreHarness::new()?;
-        let mut store = harness.store()?;
-        let task_id = "task_local_web_expiry_equality";
-        let request_id = "action_local_web_expiry_equality";
-        let token_hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-        let before_expiry_token_hash =
-            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-        let after_expiry_token_hash =
-            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
-
-        store.commit_mutation(
-            commit_input(
-                &ProjectId::new(PROJECT_ID),
-                MethodName::RequestUserAction,
-                Some(&IdempotencyKey::new("idem_store_local_web_expiry_insert")),
-                &RequestHash::new("sha256:local-web-expiry-insert"),
-                Some(replay_context(CONNECTION_ID, "agent_workflow")),
-                Some(0),
-                vec![pending_event_for_task("local_web_expiry_insert", task_id)],
-            ),
-            |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    request_id, task_id, None,
-                ))
-                .apply(mutation, facts.committed_state_version)
-            },
-            response_json,
-        )?;
-        store.conn.execute(
-            "INSERT INTO user_action_channel_tokens (
-                project_id, token_hash, channel_kind, connection_internal_id,
-                user_action_request_id, capture_basis, status, created_at, expires_at,
-                consumed_at, completed_at, created_metadata_json, completion_metadata_json
-             ) VALUES (
-                ?1, ?2, 'local_web_consent', ?3, ?4, 'local_user_local_web', 'pending',
-                '2026-07-13T00:00:00.000000001Z',
-                '2026-07-13T00:10:00.000000001Z', NULL, NULL, '{}', '{}'
-             )",
-            params![PROJECT_ID, token_hash, CONNECTION_ID, request_id],
-        )?;
-        for extra_token_hash in [before_expiry_token_hash, after_expiry_token_hash] {
-            store.conn.execute(
-                "INSERT INTO user_action_channel_tokens (
-                    project_id, token_hash, channel_kind, connection_internal_id,
-                    user_action_request_id, capture_basis, status, created_at, expires_at,
-                    consumed_at, completed_at, created_metadata_json, completion_metadata_json
-                 ) VALUES (
-                    ?1, ?2, 'local_web_consent', ?3, ?4, 'local_user_local_web', 'pending',
-                    '2026-07-13T00:00:00.000000001Z',
-                    '2026-07-13T00:10:00.000000001Z', NULL, NULL, '{}', '{}'
-                 )",
-                params![PROJECT_ID, extra_token_hash, CONNECTION_ID, request_id],
-            )?;
-        }
-
-        let before_lower_bound = store.effect_counts()?;
-        let error = store
-            .commit_mutation(
-                commit_input(
-                    &ProjectId::new(PROJECT_ID),
-                    MethodName::ResolveUserAction,
-                    Some(&IdempotencyKey::new(
-                        "idem_store_local_web_before_creation_consume",
-                    )),
-                    &RequestHash::new("sha256:local-web-before-creation-consume"),
-                    Some(user_replay_context()),
-                    Some(1),
-                    vec![pending_event_for_task(
-                        "local_web_before_creation_consume",
-                        task_id,
-                    )],
-                ),
-                |mutation, facts| {
-                    CoreStorageMutation::ConsumeUserActionChannelToken(
-                        UserActionChannelTokenConsumption {
-                            token_hash: token_hash.to_owned(),
-                            connection_internal_id: CONNECTION_ID.to_owned(),
-                            user_action_request_id: request_id.to_owned(),
-                            consumed_at: "2026-07-12T23:59:59.999Z".to_owned(),
-                            completion_metadata_json: "{}".to_owned(),
-                        },
-                    )
-                    .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            )
-            .expect_err("a token cannot be consumed before its creation instant");
-        assert!(matches!(error, StoreError::Conflict { .. }));
-        assert_eq!(store.effect_counts()?, before_lower_bound);
-        assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
-
-        store.commit_mutation(
-            commit_input(
-                &ProjectId::new(PROJECT_ID),
-                MethodName::ResolveUserAction,
-                Some(&IdempotencyKey::new(
-                    "idem_store_local_web_just_before_expiry_consume",
-                )),
-                &RequestHash::new("sha256:local-web-just-before-expiry-consume"),
-                Some(user_replay_context()),
-                Some(1),
-                vec![pending_event_for_task(
-                    "local_web_just_before_expiry_consume",
-                    task_id,
-                )],
-            ),
-            |mutation, facts| {
-                CoreStorageMutation::ConsumeUserActionChannelToken(
-                    UserActionChannelTokenConsumption {
-                        token_hash: before_expiry_token_hash.to_owned(),
-                        connection_internal_id: CONNECTION_ID.to_owned(),
-                        user_action_request_id: request_id.to_owned(),
-                        consumed_at: "2026-07-13T00:10:00.000000000Z".to_owned(),
-                        completion_metadata_json: "{}".to_owned(),
-                    },
-                )
-                .apply(mutation, facts.committed_state_version)
-            },
-            response_json,
-        )?;
-        assert_eq!(
-            user_action_token_state(&store, before_expiry_token_hash)?.0,
-            "consumed"
-        );
-        let before_expiry_rejections = (store.effect_counts()?, store.project_state()?);
-
-        let error = store
-            .commit_mutation(
-                commit_input(
-                    &ProjectId::new(PROJECT_ID),
-                    MethodName::ResolveUserAction,
-                    Some(&IdempotencyKey::new("idem_store_local_web_expiry_consume")),
-                    &RequestHash::new("sha256:local-web-expiry-consume"),
-                    Some(user_replay_context()),
-                    Some(2),
-                    vec![pending_event_for_task("local_web_expiry_consume", task_id)],
-                ),
-                |mutation, facts| {
-                    CoreStorageMutation::ConsumeUserActionChannelToken(
-                        UserActionChannelTokenConsumption {
-                            token_hash: token_hash.to_owned(),
-                            connection_internal_id: CONNECTION_ID.to_owned(),
-                            user_action_request_id: request_id.to_owned(),
-                            consumed_at: "2026-07-13T00:10:00.000000001Z".to_owned(),
-                            completion_metadata_json: "{}".to_owned(),
-                        },
-                    )
-                    .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            )
-            .expect_err("a token cannot be consumed at its expiry instant");
-        assert!(matches!(error, StoreError::Conflict { .. }));
-        assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
-
-        let error = store
-            .commit_mutation(
-                commit_input(
-                    &ProjectId::new(PROJECT_ID),
-                    MethodName::ResolveUserAction,
-                    Some(&IdempotencyKey::new(
-                        "idem_store_local_web_after_expiry_consume",
-                    )),
-                    &RequestHash::new("sha256:local-web-after-expiry-consume"),
-                    Some(user_replay_context()),
-                    Some(2),
-                    vec![pending_event_for_task(
-                        "local_web_after_expiry_consume",
-                        task_id,
-                    )],
-                ),
-                |mutation, facts| {
-                    CoreStorageMutation::ConsumeUserActionChannelToken(
-                        UserActionChannelTokenConsumption {
-                            token_hash: after_expiry_token_hash.to_owned(),
-                            connection_internal_id: CONNECTION_ID.to_owned(),
-                            user_action_request_id: request_id.to_owned(),
-                            consumed_at: "2026-07-13T00:10:00.000000002Z".to_owned(),
-                            completion_metadata_json: "{}".to_owned(),
-                        },
-                    )
-                    .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            )
-            .expect_err("a token cannot be consumed after its expiry instant");
-        assert!(matches!(error, StoreError::Conflict { .. }));
-        assert_eq!(
-            user_action_token_state(&store, after_expiry_token_hash)?.0,
-            "pending"
-        );
-        assert_eq!(
-            (store.effect_counts()?, store.project_state()?),
-            before_expiry_rejections
-        );
         Ok(())
     }
 
@@ -7221,7 +7022,8 @@ mod tests {
         invalid_resolutions.push(("missing_assurance", missing_assurance));
         let mut mismatched_channel_basis =
             user_action_resolution_insert("resolution_mismatched_channel_basis", request_id);
-        mismatched_channel_basis.channel_kind = UserActionChannelKind::PromptCapture;
+        mismatched_channel_basis.resolved_verification_basis =
+            "unsupported_user_action_channel".to_owned();
         invalid_resolutions.push(("mismatched_channel_basis", mismatched_channel_basis));
 
         for (marker, resolution) in invalid_resolutions {
@@ -7840,28 +7642,132 @@ mod tests {
                 ))
                 .apply(mutation, facts.committed_state_version)?;
                 CoreStorageMutation::InsertProjectContinuityRecord(
-                    project_continuity_record_insert(task_id, change_unit_id),
+                    project_continuity_record_insert(
+                        "continuity_store_001",
+                        task_id,
+                        change_unit_id,
+                        "2026-01-01T00:00:00Z",
+                    ),
                 )
                 .apply(mutation, facts.committed_state_version)
             },
             response_json,
         )?;
 
-        let active = store.active_project_continuity_records(10)?;
+        let active = store.active_project_continuity_page(10, None)?;
         assert_eq!(store.effect_counts()?.project_continuity_records, 1);
-        assert_eq!(active.len(), 1);
-        assert_eq!(active[0].continuity_record_id, "continuity_store_001");
-        assert_eq!(active[0].kind, "decision");
-        assert_eq!(active[0].status, "active");
-        assert_eq!(active[0].source_task_id, task_id);
+        assert_eq!(active.total_count, 1);
+        assert!(!active.truncated);
+        assert_eq!(active.records.len(), 1);
         assert_eq!(
-            active[0].source_change_unit_id.as_deref(),
+            active.records[0].continuity_record_id,
+            "continuity_store_001"
+        );
+        assert_eq!(active.records[0].kind, "decision");
+        assert_eq!(active.records[0].status, "active");
+        assert_eq!(active.records[0].source_task_id, task_id);
+        assert_eq!(
+            active.records[0].source_change_unit_id.as_deref(),
             Some(change_unit_id)
         );
 
         let task_records = store.project_continuity_records_for_task(task_id)?;
         assert_eq!(task_records.len(), 1);
         assert!(store.project_continuity_record_exists("continuity_store_001")?);
+        Ok(())
+    }
+
+    #[test]
+    fn project_continuity_pages_are_exclusive_totalled_and_tie_broken_by_id(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_continuity_page";
+        let change_unit_id = "cu_continuity_page";
+        let input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::ResolveUserAction,
+            Some(&IdempotencyKey::new("idem_store_continuity_page")),
+            &RequestHash::new("sha256:store-continuity-page"),
+            Some(user_replay_context()),
+            Some(0),
+            vec![pending_event_for_task("continuity_page", task_id)],
+        );
+
+        store.commit_mutation(
+            input,
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertCurrentChangeUnit(change_unit_insert(
+                    change_unit_id,
+                    task_id,
+                    "null".to_owned(),
+                ))
+                .apply(mutation, facts.committed_state_version)?;
+                for (record_id, updated_at) in [
+                    ("continuity_a", "2026-01-02T00:00:00Z"),
+                    ("continuity_c", "2026-01-02T00:00:00Z"),
+                    ("continuity_b", "2026-01-02T00:00:00Z"),
+                    ("continuity_d", "2026-01-01T23:59:59Z"),
+                ] {
+                    CoreStorageMutation::InsertProjectContinuityRecord(
+                        project_continuity_record_insert(
+                            record_id,
+                            task_id,
+                            change_unit_id,
+                            updated_at,
+                        ),
+                    )
+                    .apply(mutation, facts.committed_state_version)?;
+                }
+                Ok(())
+            },
+            response_json,
+        )?;
+
+        let first = store.active_project_continuity_page(2, None)?;
+        assert_eq!(first.total_count, 4);
+        assert!(first.truncated);
+        assert_eq!(
+            first
+                .records
+                .iter()
+                .map(|record| record.continuity_record_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["continuity_c", "continuity_b"]
+        );
+        let last = first.records.last().expect("first page cursor source");
+        let cursor = ContinuityCursor {
+            updated_at: UtcTimestamp::parse(&last.updated_at)?,
+            continuity_record_id: ProjectContinuityRecordId::new(last.continuity_record_id.clone()),
+        };
+        let second = store.active_project_continuity_page(2, Some(&cursor))?;
+        assert_eq!(second.total_count, 4);
+        assert!(!second.truncated);
+        assert_eq!(
+            second
+                .records
+                .iter()
+                .map(|record| record.continuity_record_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["continuity_a", "continuity_d"]
+        );
+
+        for invalid_page_size in [0, MAX_CONTINUITY_PAGE_SIZE + 1] {
+            assert!(matches!(
+                store.active_project_continuity_page(invalid_page_size, None),
+                Err(StoreError::InvalidInput { .. })
+            ));
+        }
+        let malformed_cursor = ContinuityCursor {
+            updated_at: UtcTimestamp::parse("2026-01-02T00:00:00Z")?,
+            continuity_record_id: ProjectContinuityRecordId::new("   "),
+        };
+        assert!(matches!(
+            store.active_project_continuity_page(2, Some(&malformed_cursor)),
+            Err(StoreError::InvalidInput { .. })
+        ));
         Ok(())
     }
 
@@ -7953,7 +7859,7 @@ mod tests {
             shaping_summary_json: "{}".to_owned(),
             bounded_context_json: "[]".to_owned(),
             autonomy_boundary_json: "{}".to_owned(),
-            close_summary_json: "{}".to_owned(),
+            close_summary_json: "{\"close_reason\":\"none\"}".to_owned(),
             current_change_unit_id: None,
         }
     }
@@ -8227,11 +8133,13 @@ mod tests {
     }
 
     fn project_continuity_record_insert(
+        continuity_record_id: &str,
         task_id: &str,
         change_unit_id: &str,
+        updated_at: &str,
     ) -> ProjectContinuityRecordInsert {
         ProjectContinuityRecordInsert {
-            continuity_record_id: "continuity_store_001".to_owned(),
+            continuity_record_id: continuity_record_id.to_owned(),
             source_task_id: task_id.to_owned(),
             source_change_unit_id: Some(change_unit_id.to_owned()),
             kind: "decision".to_owned(),
@@ -8257,8 +8165,8 @@ mod tests {
             status: "active".to_owned(),
             supersedes_refs_json: "[]".to_owned(),
             review_triggers_json: json!(["Review if the source Task changes."]).to_string(),
-            created_at: "2026-01-01T00:00:00Z".to_owned(),
-            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            created_at: updated_at.to_owned(),
+            updated_at: updated_at.to_owned(),
             metadata_json: json!({"source": "store_test"}).to_string(),
         }
     }
@@ -8312,23 +8220,6 @@ mod tests {
             created_by_actor_source: ACTOR_SOURCE.to_owned(),
             metadata_json: "{}".to_owned(),
         }
-    }
-
-    fn user_action_token_state(
-        store: &CoreProjectStore,
-        token_hash: &str,
-    ) -> StoreResult<(String, Option<String>, Option<String>)> {
-        store
-            .conn
-            .query_row(
-                "SELECT status, consumed_at, completed_at
-               FROM user_action_channel_tokens
-              WHERE project_id = ?1
-                AND token_hash = ?2",
-                params![PROJECT_ID, token_hash],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .map_err(StoreError::Sqlite)
     }
 
     fn response_json(facts: CommittedMutationFacts) -> StoreResult<String> {

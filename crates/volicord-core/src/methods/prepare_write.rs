@@ -34,17 +34,17 @@ impl CoreService {
             Ok(prepared) => prepared,
             Err(response) => return Ok(response),
         };
-        let had_prior_write_ticket = prepared
+        let ticket_task_id = request.task_id.clone().unwrap_or_else(|| {
+            prepared
+                .context
+                .resolved_task_id
+                .clone()
+                .expect("prepare_write preflight resolves an exact Task")
+        });
+        let had_prior_write_ticket = !prepared
             .store
-            .write_tickets_for_task(&request.task_id.clone().unwrap_or_else(|| {
-                prepared
-                    .context
-                    .resolved_task_id
-                    .clone()
-                    .expect("prepare_write preflight resolves an exact Task")
-            }))
-            .map(|tickets| !tickets.is_empty())
-            .unwrap_or(false);
+            .write_tickets_for_task(&ticket_task_id)?
+            .is_empty();
         let plan = match plan_prepare_write(
             self,
             &prepared.store,
@@ -101,7 +101,7 @@ impl CoreService {
                 event_kind: plan.event_kind,
                 event_payload: plan.event_payload,
                 task_id: Some(plan.task_id),
-                change_unit_id: plan.change_unit_id,
+                change_unit_id: Some(plan.change_unit_id),
                 storage_mutations: plan.storage_mutations,
             },
         )?;
@@ -154,6 +154,171 @@ fn prepare_write_policy(request: &PrepareWriteRequest) -> MethodPolicy {
     }
 }
 
+struct PrepareWriteRawRequest {
+    request: PrepareWriteRequest,
+    plan_now: UtcTimestamp,
+}
+
+impl PrepareWriteRawRequest {
+    fn new(request: PrepareWriteRequest, operation_now: &UtcTimestamp) -> Self {
+        Self {
+            request,
+            plan_now: operation_now.clone(),
+        }
+    }
+}
+
+struct PrepareWriteNormalizedRequest {
+    raw: PrepareWriteRawRequest,
+    planned_state_version: u64,
+    intended_operation: String,
+    intended_paths: Vec<String>,
+    sensitive_categories: Vec<String>,
+}
+
+struct PrepareWriteResolvedContext {
+    normalized: PrepareWriteNormalizedRequest,
+    task_id: TaskId,
+    task: TaskRecord,
+    change_unit: ChangeUnitRecord,
+    reasons: Vec<WriteDecisionReason>,
+}
+
+struct PrepareWritePolicyDecision {
+    normalized: PrepareWriteNormalizedRequest,
+    task_id: TaskId,
+    task: TaskRecord,
+    change_unit: ChangeUnitRecord,
+    reasons: Vec<WriteDecisionReason>,
+    workflow_policy: ProjectWorkflowPolicy,
+    sensitive_approval_required: bool,
+    control_mutations: Vec<CoreStorageMutation>,
+}
+
+struct PrepareWritePlannedMutations {
+    request: PrepareWriteRequest,
+    planned_state_version: u64,
+    plan_now: UtcTimestamp,
+    task_id: TaskId,
+    task: TaskRecord,
+    change_unit: ChangeUnitRecord,
+    reasons: Vec<WriteDecisionReason>,
+    decision: PrepareWriteDecision,
+    allowed: bool,
+    pending_user_action_refs: Vec<StateRecordRef>,
+    active_user_action_refs: Vec<StateRecordRef>,
+    guarantee_display: Option<GuaranteeDisplay>,
+    write_ticket_id: Option<WriteTicketId>,
+    write_ticket_ref: Option<StateRecordRef>,
+    planned_write_ticket_record: Option<WriteTicketRecord>,
+    idle_expires_at: Option<UtcTimestamp>,
+    write_ticket_effect: WriteTicketEffect,
+    allowed_path_patterns: Vec<String>,
+    denied_path_patterns: Vec<String>,
+    storage_mutations: Vec<CoreStorageMutation>,
+}
+
+struct PrepareWriteResponseProjection {
+    task_id: TaskId,
+    change_unit_id: ChangeUnitId,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_kind: String,
+    event_payload: JsonObject,
+    result: PrepareWriteResult,
+    dry_run_summary: DryRunSummary,
+}
+
+impl PrepareWriteResponseProjection {
+    fn into_plan(self) -> Result<PrepareWritePlan, PlanError> {
+        Ok(PrepareWritePlan {
+            task_id: self.task_id,
+            change_unit_id: self.change_unit_id,
+            storage_mutations: self.storage_mutations,
+            event_kind: self.event_kind,
+            event_payload: self.event_payload,
+            result_fields: strip_base(serde_json::to_value(self.result)?)?,
+            dry_run_summary: self.dry_run_summary,
+        })
+    }
+}
+
+fn resolve_prepare_write_context(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    normalized: PrepareWriteNormalizedRequest,
+) -> Result<PrepareWriteResolvedContext, PlanError> {
+    let request = &normalized.raw.request;
+    let (task_id, task, mut reasons) = resolve_prepare_write_task(store, project_state, request)?;
+    let change_unit = match store.current_change_unit(&task_id).map_err(|error| {
+        PlanError::Response(Box::new(store_error_response(
+            &request.envelope,
+            project_state,
+            error,
+        )))
+    })? {
+        Some(change_unit) => change_unit,
+        None => {
+            let _ = record_core_rejection_diagnostic(
+                service.runtime_home(),
+                CoreRejectionDiagnostic {
+                    project_id: request.envelope.project_id.as_str(),
+                    task_id: task_id.as_str(),
+                    method_name: MethodName::PrepareWrite,
+                    reason: CoreRejectionReason::CurrentChangeUnitRequired,
+                    occurred_at: &normalized.raw.plan_now,
+                },
+            );
+            return Err(PlanError::Response(Box::new(
+                prepare_write_change_unit_required_response(request, project_state, &task_id),
+            )));
+        }
+    };
+    validate_prepare_write_change_unit(request, &task_id, &change_unit, &mut reasons);
+
+    Ok(PrepareWriteResolvedContext {
+        normalized,
+        task_id,
+        task,
+        change_unit,
+        reasons,
+    })
+}
+
+fn prepare_write_change_unit_required_response(
+    request: &PrepareWriteRequest,
+    project_state: &ProjectStateHeader,
+    task_id: &TaskId,
+) -> PipelineResponse {
+    let mut details = Map::new();
+    details.insert(
+        "reason".to_owned(),
+        Value::String("current_change_unit_required".to_owned()),
+    );
+    details.insert(
+        "method".to_owned(),
+        Value::String(MethodName::PrepareWrite.as_str().to_owned()),
+    );
+    details.insert(
+        "project_id".to_owned(),
+        Value::String(request.envelope.project_id.as_str().to_owned()),
+    );
+    details.insert(
+        "task_id".to_owned(),
+        Value::String(task_id.as_str().to_owned()),
+    );
+    infallible_rejected_pipeline_response(
+        request.envelope.dry_run,
+        Some(project_state.state_version),
+        vec![tool_error(
+            ErrorCode::NoActiveChangeUnit,
+            "write preparation requires a current Change Unit",
+            false,
+            Some(details),
+        )],
+    )
+}
+
 fn plan_prepare_write(
     service: &CoreService,
     store: &CoreProjectStore,
@@ -162,35 +327,47 @@ fn plan_prepare_write(
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
 ) -> Result<PrepareWritePlan, PlanError> {
-    if request.intended_operation.trim().is_empty() {
-        validation_plan_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
+    let raw = PrepareWriteRawRequest::new(request, operation_now);
+    let normalized = normalize_prepare_write_request(store, project_state, raw)?;
+    let resolved = resolve_prepare_write_context(service, store, project_state, normalized)?;
+    let policy = decide_prepare_write_policy(store, project_state, resolved)?;
+    let mutations =
+        plan_prepare_write_mutations(service, store, project_state, verified_invocation, policy)?;
+    project_prepare_write_response(store, project_state, verified_invocation, mutations)?
+        .into_plan()
+}
+
+fn normalize_prepare_write_request(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    raw: PrepareWriteRawRequest,
+) -> Result<PrepareWriteNormalizedRequest, PlanError> {
+    if raw.request.intended_operation.trim().is_empty() {
+        return prepare_write_validation_error(
+            raw.request.envelope.dry_run,
+            project_state.state_version,
             "intended_operation",
             "intended_operation must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
-    let normalized_operation = request.intended_operation.trim().to_owned();
-    let normalized_sensitive_categories = normalized_string_set(&request.sensitive_categories);
-
-    let normalized_paths = match normalize_product_paths(
+    let intended_operation = raw.request.intended_operation.trim().to_owned();
+    let sensitive_categories = normalized_string_set(&raw.request.sensitive_categories);
+    let intended_paths = match normalize_product_paths(
         &store.project_record().repo_root,
-        &request.intended_paths,
+        &raw.request.intended_paths,
     ) {
         Ok(paths) => paths,
         Err(ProductPathError::Invalid) => {
-            validation_plan_error(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
+            return prepare_write_validation_error(
+                raw.request.envelope.dry_run,
+                project_state.state_version,
                 "intended_paths",
                 "intended_paths must be relative Product Repository paths that stay inside the repository",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         Err(ProductPathError::LocalAccess) => {
             let response = rejected_pipeline_response(
-                request.envelope.dry_run,
+                raw.request.envelope.dry_run,
                 Some(project_state.state_version),
                 vec![tool_error(
                     ErrorCode::InvocationContextMismatch,
@@ -203,19 +380,35 @@ fn plan_prepare_write(
             return Err(PlanError::Response(Box::new(response)));
         }
     };
+    Ok(PrepareWriteNormalizedRequest {
+        raw,
+        planned_state_version: project_state.state_version + 1,
+        intended_operation,
+        intended_paths,
+        sensitive_categories,
+    })
+}
 
-    let planned_state_version = project_state.state_version + 1;
-    let plan_now = operation_now.clone();
-    let (task_id, mut task, mut reasons) =
-        resolve_prepare_write_task(store, project_state, &request)?;
+fn decide_prepare_write_policy(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    resolved: PrepareWriteResolvedContext,
+) -> Result<PrepareWritePolicyDecision, PlanError> {
+    let PrepareWriteResolvedContext {
+        normalized,
+        task_id,
+        mut task,
+        change_unit,
+        reasons,
+    } = resolved;
+    let dry_run = normalized.raw.request.envelope.dry_run;
     if parse_task_mode(&task.mode)? == TaskMode::Advisor {
-        validation_plan_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
+        return prepare_write_validation_error(
+            dry_run,
+            project_state.state_version,
             "task_id",
             "advisor Task mode does not support write preparation",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
     let current_control =
@@ -226,21 +419,20 @@ fn plan_prepare_write(
     let resolved_base_control = resolved_control.effective_control_level;
     let mut next_control = resolved_base_control;
     if next_control == TaskControlLevel::Observe {
-        validation_plan_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
+        return prepare_write_validation_error(
+            dry_run,
+            project_state.state_version,
             "task_id",
             "observe control does not permit product write preparation",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
-    let has_policy_denied_path = workflow_policy.has_denied_path(&normalized_paths);
+    let has_policy_denied_path = workflow_policy.has_denied_path(&normalized.intended_paths);
     if next_control == TaskControlLevel::Light
-        && !workflow_policy.light_paths_are_allowed(&normalized_paths)
+        && !workflow_policy.light_paths_are_allowed(&normalized.intended_paths)
     {
         next_control = TaskControlLevel::Tracked;
     }
-    if has_policy_denied_path || !normalized_sensitive_categories.is_empty() {
+    if has_policy_denied_path || !normalized.sensitive_categories.is_empty() {
         next_control = TaskControlLevel::Sensitive;
     }
     let control_acceptance = acceptance_policy_for_control(next_control, &workflow_policy);
@@ -306,28 +498,50 @@ fn plan_prepare_write(
         }
     }
     if parse_work_phase(&task.work_phase)? != WorkPhase::Implementation {
-        validation_plan_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
+        return prepare_write_validation_error(
+            dry_run,
+            project_state.state_version,
             "task_id",
             "write preparation requires work_phase=implementation",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
-    let current_change_unit = store.current_change_unit(&task_id).map_err(|error| {
-        PlanError::Response(Box::new(store_error_response(
-            &request.envelope,
-            project_state,
-            error,
-        )))
-    })?;
-    let change_unit = resolve_prepare_write_change_unit(
-        &request,
-        &task_id,
-        current_change_unit.as_ref(),
-        &mut reasons,
-    );
+    Ok(PrepareWritePolicyDecision {
+        normalized,
+        task_id,
+        task,
+        change_unit,
+        reasons,
+        workflow_policy,
+        sensitive_approval_required: next_control == TaskControlLevel::Sensitive,
+        control_mutations,
+    })
+}
 
+fn plan_prepare_write_mutations(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    policy: PrepareWritePolicyDecision,
+) -> Result<PrepareWritePlannedMutations, PlanError> {
+    let PrepareWritePolicyDecision {
+        normalized,
+        task_id,
+        task,
+        change_unit,
+        mut reasons,
+        workflow_policy,
+        sensitive_approval_required,
+        control_mutations,
+    } = policy;
+    let PrepareWriteNormalizedRequest {
+        raw,
+        planned_state_version,
+        intended_operation: normalized_operation,
+        intended_paths: normalized_paths,
+        sensitive_categories: normalized_sensitive_categories,
+    } = normalized;
+    let PrepareWriteRawRequest { request, plan_now } = raw;
     if request.product_file_write_intended == normalized_paths.is_empty() {
         reasons.push(write_decision_reason(
             WriteDecisionCategory::WriteCompatibility,
@@ -337,82 +551,79 @@ fn plan_prepare_write(
         ));
     }
 
-    if let Some(change_unit) = change_unit {
-        if !workspace_context_matches(change_unit, verified_invocation)? {
-            reasons.push(write_decision_reason(
-                WriteDecisionCategory::Workspace,
-                "workspace_context_mismatch",
-                "The current Git workspace does not match the Change Unit baseline context.",
-                vec![change_unit_ref(
-                    &request.envelope.project_id,
-                    &task_id,
-                    change_unit,
-                    project_state.state_version,
-                )],
-            ));
-        }
-        if !baseline_matches(change_unit, &task, &request.baseline_ref)? {
-            reasons.push(write_decision_reason(
-                WriteDecisionCategory::Baseline,
-                "baseline_mismatch",
-                "baseline_ref does not match the current write-compatibility basis.",
-                vec![change_unit_ref(
-                    &request.envelope.project_id,
-                    &task_id,
-                    change_unit,
-                    project_state.state_version,
-                )],
-            ));
-        }
+    if !workspace_context_matches(&change_unit, verified_invocation)? {
+        reasons.push(write_decision_reason(
+            WriteDecisionCategory::Workspace,
+            "workspace_context_mismatch",
+            "The current Git workspace does not match the Change Unit baseline context.",
+            vec![change_unit_ref(
+                &request.envelope.project_id,
+                &task_id,
+                &change_unit,
+                project_state.state_version,
+            )],
+        ));
+    }
+    if !baseline_matches(&change_unit, &task, &request.baseline_ref)? {
+        reasons.push(write_decision_reason(
+            WriteDecisionCategory::Baseline,
+            "baseline_mismatch",
+            "baseline_ref does not match the current write-compatibility basis.",
+            vec![change_unit_ref(
+                &request.envelope.project_id,
+                &task_id,
+                &change_unit,
+                project_state.state_version,
+            )],
+        ));
+    }
 
-        if !paths_match_current_change_unit(
+    if !paths_match_current_change_unit(
+        &store.project_record().repo_root,
+        &normalized_paths,
+        &change_unit,
+    )? {
+        reasons.push(write_decision_reason(
+            WriteDecisionCategory::Scope,
+            "path_out_of_scope",
+            "One or more intended paths are outside the current Change Unit path scope.",
+            vec![change_unit_ref(
+                &request.envelope.project_id,
+                &task_id,
+                &change_unit,
+                project_state.state_version,
+            )],
+        ));
+    }
+
+    if let Some(contract) = change_unit_effect_contract(&change_unit)? {
+        let contract_violations = product_write_violations(
             &store.project_record().repo_root,
+            &contract,
+            request.product_file_write_intended,
             &normalized_paths,
-            change_unit,
-        )? {
-            reasons.push(write_decision_reason(
-                WriteDecisionCategory::Scope,
-                "path_out_of_scope",
-                "One or more intended paths are outside the current Change Unit path scope.",
-                vec![change_unit_ref(
+        )
+        .map_err(|_| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                "change_units",
+                change_unit.change_unit_id.clone(),
+                "effect_contract_json",
+            ))
+        })?;
+        for violation in contract_violations {
+            reasons.push(effect_contract_reason(
+                violation,
+                change_unit_ref(
                     &request.envelope.project_id,
                     &task_id,
-                    change_unit,
+                    &change_unit,
                     project_state.state_version,
-                )],
+                ),
             ));
-        }
-
-        if let Some(contract) = change_unit_effect_contract(change_unit)? {
-            let contract_violations = product_write_violations(
-                &store.project_record().repo_root,
-                &contract,
-                request.product_file_write_intended,
-                &normalized_paths,
-            )
-            .map_err(|_| {
-                CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                    "change_units",
-                    change_unit.change_unit_id.clone(),
-                    "effect_contract_json",
-                ))
-            })?;
-            for violation in contract_violations {
-                reasons.push(effect_contract_reason(
-                    violation,
-                    change_unit_ref(
-                        &request.envelope.project_id,
-                        &task_id,
-                        change_unit,
-                        project_state.state_version,
-                    ),
-                ));
-            }
         }
     }
 
-    let current_change_unit_id =
-        change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
+    let current_change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let task_ref = state_ref(
         StateRecordKind::Task,
         task_id.as_str(),
@@ -420,33 +631,30 @@ fn plan_prepare_write(
         Some(&task_id),
         Some(project_state.state_version),
     );
-    let mut operation_refs = vec![task_ref.clone()];
-    if let Some(change_unit) = change_unit {
-        operation_refs.push(change_unit_ref(
+    let operation_refs = vec![
+        task_ref.clone(),
+        change_unit_ref(
             &request.envelope.project_id,
             &task_id,
-            change_unit,
+            &change_unit,
             project_state.state_version,
-        ));
-    }
-    let sensitive_approval_required = next_control == TaskControlLevel::Sensitive;
+        ),
+    ];
     let sensitive_requirement = if !sensitive_approval_required {
         None
     } else {
-        current_change_unit_id
-            .as_ref()
-            .map(|change_unit_id| SensitiveApprovalRequirement {
-                task_id: &task_id,
-                change_unit_id,
-                scope_revision: task.scope_revision,
-                operation: &normalized_operation,
-                normalized_paths: &normalized_paths,
-                sensitive_categories: &normalized_sensitive_categories,
-                baseline_ref: Some(&request.baseline_ref),
-                required_for: UserActionRequiredFor::PrepareWrite,
-                now: &plan_now,
-                repo_root: &store.project_record().repo_root,
-            })
+        Some(SensitiveApprovalRequirement {
+            task_id: &task_id,
+            change_unit_id: &current_change_unit_id,
+            scope_revision: task.scope_revision,
+            operation: &normalized_operation,
+            normalized_paths: &normalized_paths,
+            sensitive_categories: &normalized_sensitive_categories,
+            baseline_ref: Some(&request.baseline_ref),
+            required_for: UserActionRequiredFor::PrepareWrite,
+            now: &plan_now,
+            repo_root: &store.project_record().repo_root,
+        })
     };
     let pending_authorities = pending_user_action_authorities_for_plan(
         store,
@@ -458,7 +666,7 @@ fn plan_prepare_write(
     let operation_context = UserActionOperationContext {
         operation: UserActionOperation::PrepareWrite,
         task_id: &task_id,
-        change_unit_id: current_change_unit_id.as_ref(),
+        change_unit_id: Some(&current_change_unit_id),
         scope_revision: task.scope_revision,
         close_basis: None,
         operation_refs: &operation_refs,
@@ -495,7 +703,7 @@ fn plan_prepare_write(
             request: &request,
             task_id: &task_id,
             task: &task,
-            change_unit,
+            change_unit: &change_unit,
             intended_operation: &normalized_operation,
             normalized_paths: &normalized_paths,
             sensitive_categories: &normalized_sensitive_categories,
@@ -528,17 +736,10 @@ fn plan_prepare_write(
         verified_invocation,
         planned_state_version,
     )?);
-    let branch_change_unit_id =
-        change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
-    let scope_change_unit_id = branch_change_unit_id.clone().unwrap_or_else(|| {
-        request
-            .change_unit_id
-            .clone()
-            .unwrap_or_else(|| ChangeUnitId::new("missing_current_change_unit"))
-    });
+    let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let attempt_scope = WriteTicketAttemptScope {
         task_id: task_id.clone(),
-        change_unit_id: scope_change_unit_id.clone(),
+        change_unit_id: change_unit_id.clone(),
         intended_operation: normalized_operation,
         intended_paths: normalized_paths.clone(),
         product_file_write_intended: request.product_file_write_intended,
@@ -549,7 +750,7 @@ fn plan_prepare_write(
     let created_at = plan_now.to_string();
     let validity_basis = WriteTicketValidityBasis {
         task_id: task_id.clone(),
-        change_unit_id: scope_change_unit_id.clone(),
+        change_unit_id: change_unit_id.clone(),
         scope_revision: task.scope_revision,
         baseline_ref: Some(request.baseline_ref.clone()),
         workspace_context_sha256: verified_invocation
@@ -557,7 +758,7 @@ fn plan_prepare_write(
             .as_ref()
             .map(volicord_types::canonical_json_bare_sha256)
             .transpose()?,
-        write_authority_fingerprint: Some(workflow_policy.write_authority_fingerprint.clone()),
+        write_authority_fingerprint: workflow_policy.write_authority_fingerprint.clone(),
         approval_basis_refs: active_user_action_refs.clone(),
     };
     let active_ticket_selection = select_active_write_tickets(
@@ -649,7 +850,7 @@ fn plan_prepare_write(
             .cloned()
             .collect::<Vec<_>>()
     };
-    let synthetic_write_ticket = if let Some(record) = compatible_ticket.as_ref() {
+    let planned_write_ticket_record = if let Some(record) = compatible_ticket.as_ref() {
         (!request.envelope.dry_run).then(|| record.clone())
     } else {
         write_ticket_id
@@ -658,7 +859,7 @@ fn plan_prepare_write(
                 project_id: request.envelope.project_id.as_str().to_owned(),
                 write_ticket_id: write_ticket_id.as_str().to_owned(),
                 task_id: task_id.as_str().to_owned(),
-                change_unit_id: Some(scope_change_unit_id.as_str().to_owned()),
+                change_unit_id: change_unit_id.as_str().to_owned(),
                 basis_state_version: planned_state_version,
                 status: "active".to_owned(),
                 validity_basis_json: serde_json::to_string(&validity_basis)
@@ -676,6 +877,118 @@ fn plan_prepare_write(
             })
     };
 
+    let write_ticket_effect = if reuse_write_ticket {
+        WriteTicketEffect::Reused
+    } else if issue_write_ticket {
+        WriteTicketEffect::Issued
+    } else {
+        WriteTicketEffect::None
+    };
+    let mut storage_mutations = control_mutations;
+    if !request.envelope.dry_run {
+        for write_ticket_id in active_ticket_selection.stale_approval_ticket_ids {
+            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
+                WriteTicketByIdInvalidation {
+                    write_ticket_id,
+                    invalidation_reason: "approval_basis_changed".to_owned(),
+                },
+            ));
+        }
+        for write_ticket_id in active_ticket_selection.stale_workspace_ticket_ids {
+            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
+                WriteTicketByIdInvalidation {
+                    write_ticket_id,
+                    invalidation_reason: WriteTicketInvalidationReason::WorkspaceChanged
+                        .as_str()
+                        .to_owned(),
+                },
+            ));
+        }
+        for write_ticket_id in active_ticket_selection.stale_policy_ticket_ids {
+            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
+                WriteTicketByIdInvalidation {
+                    write_ticket_id,
+                    invalidation_reason: WriteTicketInvalidationReason::ExplicitRevoke
+                        .as_str()
+                        .to_owned(),
+                },
+            ));
+        }
+    }
+    if write_ticket_effect == WriteTicketEffect::Issued {
+        let write_ticket_id = write_ticket_id
+            .as_ref()
+            .expect("new ticket issuance has an allocated ID");
+        storage_mutations.push(CoreStorageMutation::InsertWriteTicket(WriteTicketInsert {
+            write_ticket_id: write_ticket_id.as_str().to_owned(),
+            task_id: task_id.as_str().to_owned(),
+            change_unit_id: change_unit_id.as_str().to_owned(),
+            validity_basis_json: serde_json::to_string(&validity_basis)?,
+            allowed_path_prefixes_json: serde_json::to_string(&allowed_path_patterns)?,
+            denied_path_prefixes_json: serde_json::to_string(&denied_path_patterns)?,
+            attempt_scope_json,
+            created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
+            created_by_user_action_resolution_id,
+            idle_expires_at: idle_expires_at_timestamp.as_ref().map(ToString::to_string),
+            created_at,
+            metadata_json: serde_json::to_string(&json!({
+                "verification_basis": verified_invocation.verification_basis.clone()
+            }))?,
+        }));
+    }
+    Ok(PrepareWritePlannedMutations {
+        request,
+        planned_state_version,
+        plan_now,
+        task_id,
+        task,
+        change_unit,
+        reasons,
+        decision,
+        allowed,
+        pending_user_action_refs,
+        active_user_action_refs,
+        guarantee_display,
+        write_ticket_id,
+        write_ticket_ref,
+        planned_write_ticket_record,
+        idle_expires_at: idle_expires_at_timestamp,
+        write_ticket_effect,
+        allowed_path_patterns,
+        denied_path_patterns,
+        storage_mutations,
+    })
+}
+
+fn project_prepare_write_response(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    planned: PrepareWritePlannedMutations,
+) -> Result<PrepareWriteResponseProjection, PlanError> {
+    let PrepareWritePlannedMutations {
+        request,
+        planned_state_version,
+        plan_now,
+        task_id,
+        task,
+        change_unit,
+        reasons,
+        decision,
+        allowed,
+        pending_user_action_refs,
+        active_user_action_refs,
+        guarantee_display,
+        write_ticket_id,
+        write_ticket_ref,
+        planned_write_ticket_record,
+        idle_expires_at,
+        write_ticket_effect,
+        allowed_path_patterns,
+        denied_path_patterns,
+        storage_mutations,
+    } = planned;
+    let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let blocker_refs = store
         .active_blocker_refs(&task_id, planned_state_version)
         .map_err(|error| {
@@ -710,7 +1023,7 @@ fn plan_prepare_write(
         &task_id,
         close_context_from_projection(
             task.clone(),
-            change_unit.cloned(),
+            Some(change_unit.clone()),
             projected_close_basis(store, &task_id)?,
             pending_user_action_refs.clone(),
             blocker_refs.clone(),
@@ -721,7 +1034,7 @@ fn plan_prepare_write(
     )?;
     let mut close_state = close_plan.close_state;
     let mut close_blockers = close_plan.blockers;
-    if issue_write_ticket {
+    if write_ticket_effect == WriteTicketEffect::Issued {
         if let Some(write_ticket_ref) = write_ticket_ref.as_ref() {
             let planned_task_ref = state_ref(
                 StateRecordKind::Task,
@@ -741,14 +1054,10 @@ fn plan_prepare_write(
         }
     }
     normalize_close_blocker_action_projection(&mut close_blockers, planned_state_version);
-    let control_surface = close_plan
-        .guard_health
-        .as_ref()
-        .map(|guard_health| guard_health.control_surface.clone());
     let write_ticket = match (
         write_ticket_id.as_ref(),
         write_ticket_ref.as_ref(),
-        synthetic_write_ticket.as_ref(),
+        planned_write_ticket_record.as_ref(),
     ) {
         (Some(write_ticket_id), Some(write_ticket_ref), Some(record)) => {
             let selected_scope: WriteTicketAttemptScope =
@@ -771,7 +1080,7 @@ fn plan_prepare_write(
                 state: WriteTicketState::Open,
                 scope: WriteTicketScope {
                     task_id: task_id.clone(),
-                    change_unit_id: scope_change_unit_id.clone(),
+                    change_unit_id: change_unit_id.clone(),
                     intended_operation: selected_scope.intended_operation,
                     product_file_write_intended: selected_scope.product_file_write_intended,
                     sensitive_categories: selected_scope.sensitive_categories,
@@ -785,8 +1094,7 @@ fn plan_prepare_write(
                 basis_state_version: record.basis_state_version,
                 validity_basis: selected_validity_basis,
                 invalidation_reason: None,
-                idle_expires_at: idle_expires_at_timestamp.clone(),
-                control_surface: control_surface.clone(),
+                idle_expires_at: idle_expires_at.clone(),
                 guarantee_display: guarantee_display.clone(),
             })
         }
@@ -797,11 +1105,11 @@ fn plan_prepare_write(
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task,
-        current_change_unit: change_unit,
+        current_change_unit: Some(&change_unit),
         acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
         pending_user_action_refs,
         blocker_refs,
-        write_ticket_summary: synthetic_write_ticket
+        write_ticket_summary: planned_write_ticket_record
             .as_ref()
             .map(|record| {
                 write_ticket_summary_for_record(
@@ -818,7 +1126,6 @@ fn plan_prepare_write(
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_state),
         close_blockers,
-        guard_health: close_plan.guard_health,
         guarantee_display: guarantee_display.clone(),
     })?;
     let result = PrepareWriteResult {
@@ -828,75 +1135,16 @@ fn plan_prepare_write(
         write_ticket_id: write_ticket_id.clone(),
         write_ticket_ref: write_ticket_ref.clone(),
         write_ticket,
-        write_ticket_effect: if reuse_write_ticket {
-            WriteTicketEffect::Reused
-        } else if issue_write_ticket {
-            WriteTicketEffect::Issued
-        } else {
-            WriteTicketEffect::None
-        },
+        write_ticket_effect,
         allowed_path_patterns: allowed_path_patterns.clone(),
         denied_path_patterns: denied_path_patterns.clone(),
-        control_surface,
         active_user_action_refs,
         write_decision_reasons: reasons.clone(),
         user_action_draft: None,
         guarantee_display: guarantee_display.clone(),
     };
 
-    let mut storage_mutations = control_mutations;
-    if !request.envelope.dry_run {
-        for write_ticket_id in active_ticket_selection.stale_approval_ticket_ids {
-            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
-                WriteTicketByIdInvalidation {
-                    write_ticket_id,
-                    invalidation_reason: "approval_basis_changed".to_owned(),
-                },
-            ));
-        }
-        for write_ticket_id in active_ticket_selection.stale_workspace_ticket_ids {
-            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
-                WriteTicketByIdInvalidation {
-                    write_ticket_id,
-                    invalidation_reason: WriteTicketInvalidationReason::WorkspaceChanged
-                        .as_str()
-                        .to_owned(),
-                },
-            ));
-        }
-        for write_ticket_id in active_ticket_selection.stale_policy_ticket_ids {
-            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
-                WriteTicketByIdInvalidation {
-                    write_ticket_id,
-                    invalidation_reason: WriteTicketInvalidationReason::ExplicitRevoke
-                        .as_str()
-                        .to_owned(),
-                },
-            ));
-        }
-    }
-    if issue_write_ticket {
-        let write_ticket_id = write_ticket_id
-            .as_ref()
-            .expect("new ticket issuance has an allocated ID");
-        storage_mutations.push(CoreStorageMutation::InsertWriteTicket(WriteTicketInsert {
-            write_ticket_id: write_ticket_id.as_str().to_owned(),
-            task_id: task_id.as_str().to_owned(),
-            change_unit_id: scope_change_unit_id.as_str().to_owned(),
-            validity_basis_json: serde_json::to_string(&validity_basis)?,
-            allowed_path_prefixes_json: serde_json::to_string(&allowed_path_patterns)?,
-            denied_path_prefixes_json: serde_json::to_string(&denied_path_patterns)?,
-            attempt_scope_json,
-            created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-            created_by_user_action_resolution_id,
-            idle_expires_at: idle_expires_at_timestamp.as_ref().map(ToString::to_string),
-            created_at,
-            metadata_json: serde_json::to_string(&json!({
-                "verification_basis": verified_invocation.verification_basis.clone()
-            }))?,
-        }));
-    }
-    let event_kind = if reuse_write_ticket {
+    let event_kind = if write_ticket_effect == WriteTicketEffect::Reused {
         "write_ticket_reused"
     } else if allowed {
         "write_ticket_issued"
@@ -906,7 +1154,7 @@ fn plan_prepare_write(
     .to_owned();
     let mut event_payload = object_from_value(json!({
         "task_id": task_id.clone(),
-        "change_unit_id": branch_change_unit_id.clone(),
+        "change_unit_id": change_unit_id.clone(),
         "decision": decision,
         "write_ticket_id": write_ticket_id
             .as_ref()
@@ -919,13 +1167,13 @@ fn plan_prepare_write(
         );
     }
 
-    Ok(PrepareWritePlan {
+    Ok(PrepareWriteResponseProjection {
         task_id,
-        change_unit_id: branch_change_unit_id,
+        change_unit_id,
         storage_mutations,
         event_kind,
         event_payload,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
+        result,
         dry_run_summary: prepare_write_dry_run_summary(
             allowed,
             &reasons,
@@ -933,6 +1181,17 @@ fn plan_prepare_write(
             guarantee_display,
         ),
     })
+}
+
+fn prepare_write_validation_error<T>(
+    dry_run: bool,
+    state_version: u64,
+    field: &'static str,
+    message: &'static str,
+) -> Result<T, PlanError> {
+    let response = validation_rejected(dry_run, Some(state_version), field, message)
+        .map_err(PlanError::Core)?;
+    Err(PlanError::Response(Box::new(response)))
 }
 
 fn acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
@@ -966,10 +1225,7 @@ fn select_active_write_tickets(
     now: &UtcTimestamp,
 ) -> Result<ActiveWriteTicketSelection, PlanError> {
     let required_basis = requirements.validity_basis;
-    let required_write_authority_fingerprint = required_basis
-        .write_authority_fingerprint
-        .as_deref()
-        .expect("prepare_write always supplies the current write-authority fingerprint");
+    let required_write_authority_fingerprint = &required_basis.write_authority_fingerprint;
     let required_scope = requirements.attempt_scope;
     let mut selection = ActiveWriteTicketSelection::default();
     for record in store
@@ -987,9 +1243,7 @@ fn select_active_write_tickets(
             "validity_basis_json",
             Some(&record.validity_basis_json),
         )?;
-        if basis.write_authority_fingerprint.as_deref()
-            != Some(required_write_authority_fingerprint)
-        {
+        if basis.write_authority_fingerprint != *required_write_authority_fingerprint {
             selection
                 .stale_policy_ticket_ids
                 .push(record.write_ticket_id);

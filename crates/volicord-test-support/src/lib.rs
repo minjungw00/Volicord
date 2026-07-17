@@ -26,7 +26,12 @@ use volicord_store::{
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     sqlite::open_project_state_database,
 };
-use volicord_types::TypeBoundary;
+use volicord_types::{
+    AgentConnectionId, CodexCapability, CurrentHostReceiptContext, HostKind,
+    HostVerificationReceipt, HostVerificationResult, IntegrationProfile, PlatformEnvironment,
+    PlatformReleaseCoordinate, ProjectId, TypeBoundary, UtcTimestamp,
+    HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
+};
 
 pub mod fixtures {
     /// Placement marker for future shared fixtures.
@@ -38,6 +43,71 @@ pub mod golden {
     /// Placement marker for future golden-output helpers.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct GoldenBoundary;
+}
+
+/// Non-product invocation label for local-user and negative-path test fixtures.
+pub const TEST_FIXTURE_INVOCATION_BINDING_BASIS: &str = "test_fixture_binding";
+
+/// Complete typed receipt/current-context fixture for Core authorization tests.
+#[derive(Debug, Clone)]
+pub struct TestHostReceiptFixture {
+    pub receipt: HostVerificationReceipt,
+    pub current: CurrentHostReceiptContext,
+    pub validation_time: UtcTimestamp,
+}
+
+/// Builds one exact typed managed-host fixture without filesystem or process authority claims.
+pub fn test_host_receipt_fixture(project_id: &str, connection_id: &str) -> TestHostReceiptFixture {
+    const RAW_DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const PREFIXED_DIGEST: &str =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let capabilities = vec![
+        CodexCapability::ManagedStdioMcp,
+        CodexCapability::PersonalManagedBinding,
+        CodexCapability::RecordWorkflow,
+        CodexCapability::SharedManagedBinding,
+    ];
+    let receipt = HostVerificationReceipt {
+        contract_id: HOST_VERIFICATION_RECEIPT_CONTRACT_ID.to_owned(),
+        project_id: ProjectId::new(project_id),
+        connection_id: AgentConnectionId::new(connection_id),
+        host_kind: HostKind::Codex,
+        integration_profile: IntegrationProfile::Record,
+        platform_environment: PlatformEnvironment::Linux,
+        platform_release_coordinate: PlatformReleaseCoordinate::Native,
+        required_capabilities: capabilities.clone(),
+        verified_capabilities: capabilities.clone(),
+        binding_digest: PREFIXED_DIGEST.to_owned(),
+        generated_artifacts_digest: PREFIXED_DIGEST.to_owned(),
+        executable_digest: RAW_DIGEST.to_owned(),
+        policy_digest: PREFIXED_DIGEST.to_owned(),
+        verifier_build_digest: RAW_DIGEST.to_owned(),
+        observed_at: UtcTimestamp::parse("2026-01-01T00:00:00Z")
+            .expect("fixture timestamp is valid"),
+        expires_at: UtcTimestamp::parse("2027-01-01T00:00:00Z")
+            .expect("fixture timestamp is valid"),
+        result: HostVerificationResult::Verified,
+    };
+    let current = CurrentHostReceiptContext {
+        project_id: receipt.project_id.clone(),
+        connection_id: receipt.connection_id.clone(),
+        host_kind: receipt.host_kind,
+        integration_profile: receipt.integration_profile,
+        platform_environment: receipt.platform_environment,
+        platform_release_coordinate: receipt.platform_release_coordinate.clone(),
+        required_capabilities: capabilities,
+        binding_digest: receipt.binding_digest.clone(),
+        generated_artifacts_digest: receipt.generated_artifacts_digest.clone(),
+        executable_digest: receipt.executable_digest.clone(),
+        policy_digest: receipt.policy_digest.clone(),
+        verifier_build_digest: receipt.verifier_build_digest.clone(),
+    };
+    TestHostReceiptFixture {
+        receipt,
+        current,
+        validation_time: UtcTimestamp::parse("2026-06-18T00:00:00Z")
+            .expect("fixture timestamp is valid"),
+    }
 }
 
 /// Returns a candidate disposable runtime-home path without creating it.
@@ -344,6 +414,7 @@ pub mod core_fixtures {
             StatusRequest {
                 envelope: self.envelope(request_id, None, false, None, task_id),
                 include: status_include_all(),
+                continuity_page: None,
             }
         }
 
@@ -1325,19 +1396,20 @@ pub mod core_fixtures {
             })
         }
 
-        /// Reads the most recently appended authority event through the task_events view.
-        pub fn latest_task_event(&self) -> Result<TaskEventFixtureRow, Box<dyn Error>> {
+        /// Reads the most recently appended Task-scoped authority event.
+        pub fn latest_authority_event(&self) -> Result<AuthorityEventFixtureRow, Box<dyn Error>> {
             let (event_kind, event_payload_text, state_version): (String, String, i64) =
                 self.conn()?.query_row(
-                    "SELECT event_kind, event_payload_json, state_version
-                       FROM task_events
+                    "SELECT event_type, payload_json, state_version
+                       FROM authority_events
                       WHERE project_id = ?1
+                        AND task_id IS NOT NULL
                       ORDER BY event_seq DESC
                       LIMIT 1",
                     rusqlite::params![self.project_id],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )?;
-            Ok(TaskEventFixtureRow {
+            Ok(AuthorityEventFixtureRow {
                 event_kind,
                 event_payload: serde_json::from_str(&event_payload_text)?,
                 state_version: u64::try_from(state_version)?,
@@ -1508,9 +1580,9 @@ pub mod core_fixtures {
         pub closed_at: Option<String>,
     }
 
-    /// Authority event fields read from the task_events compatibility view.
+    /// Task-scoped authority event fields read from the canonical record table.
     #[derive(Debug, Clone, PartialEq)]
-    pub struct TaskEventFixtureRow {
+    pub struct AuthorityEventFixtureRow {
         pub event_kind: String,
         pub event_payload: Value,
         pub state_version: u64,

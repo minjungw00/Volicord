@@ -1,14 +1,14 @@
-//! Store-owned workflow policy and managed session-end receipt records.
+//! Store-owned workflow-policy records.
 
 use std::{cell::RefCell, collections::BTreeSet};
 
-use rusqlite::{params, OptionalExtension, Row, Transaction};
+use rusqlite::{params, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, validate_managed_host_session_id,
-    AcceptancePolicy, AuthorityNextActor, RequestedControlLevel, SessionEndTaskState,
-    TaskControlLevel, TaskMode, UtcTimestamp,
+    canonical_json_sha256, canonical_json_string, AcceptancePolicy, RequestedControlLevel,
+    TaskControlLevel, TaskMode, UtcTimestamp, WORKFLOW_POLICY_CONTRACT_ID,
+    WRITE_AUTHORITY_CONTRACT_ID,
 };
 
 use crate::{
@@ -22,7 +22,6 @@ use crate::{
 
 pub const POLICY_CONTROL_REEVALUATION_METADATA_KEY: &str = "policy_control_reevaluation";
 const POLICY_APPLIED_EVENT_KIND: &str = "project_workflow_policy_applied";
-const WRITE_AUTHORITY_FINGERPRINT_SCHEMA: &str = "volicord-write-authority-v1";
 
 /// Authoritative project workflow-policy replacement input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,35 +151,6 @@ pub struct ProjectWorkflowPolicyRecord {
     pub created_at: String,
 }
 
-/// Insert input for one durable managed session-end authority receipt.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionEndReceiptInsert {
-    pub session_end_receipt_id: String,
-    pub managed_session_id: String,
-    pub active_task_id: Option<String>,
-    pub task_state: SessionEndTaskState,
-    pub close_blocker_codes_json: String,
-    pub next_actor: AuthorityNextActor,
-    pub completion_claim_allowed: bool,
-    pub authority_refresh_succeeded: bool,
-    pub created_at: String,
-}
-
-/// One durable managed session-end authority receipt row.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionEndReceiptRecord {
-    pub project_id: String,
-    pub session_end_receipt_id: String,
-    pub managed_session_id: String,
-    pub active_task_id: Option<String>,
-    pub task_state: SessionEndTaskState,
-    pub close_blocker_codes_json: String,
-    pub next_actor: AuthorityNextActor,
-    pub completion_claim_allowed: bool,
-    pub authority_refresh_succeeded: bool,
-    pub created_at: String,
-}
-
 /// Derives the write-authority digest from an optional stored workflow-policy copy.
 pub fn project_write_authority_fingerprint(policy_json: Option<&str>) -> StoreResult<String> {
     let mut basis = match policy_json {
@@ -203,7 +173,7 @@ pub fn project_write_authority_fingerprint(policy_json: Option<&str>) -> StoreRe
                 });
             }
             ProjectWriteAuthorityFingerprintBasis {
-                schema: WRITE_AUTHORITY_FINGERPRINT_SCHEMA,
+                schema: WRITE_AUTHORITY_CONTRACT_ID,
                 default_direct_control: stored.workflow.default_direct_control,
                 default_work_control: stored.workflow.default_work_control,
                 light: ProjectWriteAuthorityLightBasis {
@@ -219,7 +189,7 @@ pub fn project_write_authority_fingerprint(policy_json: Option<&str>) -> StoreRe
             }
         }
         None => ProjectWriteAuthorityFingerprintBasis {
-            schema: WRITE_AUTHORITY_FINGERPRINT_SCHEMA,
+            schema: WRITE_AUTHORITY_CONTRACT_ID,
             default_direct_control: TaskControlLevel::Tracked,
             default_work_control: TaskControlLevel::Tracked,
             light: ProjectWriteAuthorityLightBasis {
@@ -341,7 +311,7 @@ impl CoreProjectStore {
         let write_authority_changed =
             prior_write_authority_fingerprint != resulting_write_authority_fingerprint;
         let payload = canonical_json_string(&json!({
-            "policy_schema": "volicord-policy-v2",
+            "policy_schema": WORKFLOW_POLICY_CONTRACT_ID,
             "policy_version": input.policy_version,
             "policy_fingerprint": input.policy_fingerprint,
             "write_authority_fingerprint": resulting_write_authority_fingerprint,
@@ -491,94 +461,7 @@ impl CoreProjectStore {
             active_task_requires_policy_reevaluation,
         })
     }
-
-    /// Inserts one durable managed session-end authority receipt.
-    pub fn insert_session_end_receipt(
-        &mut self,
-        input: SessionEndReceiptInsert,
-    ) -> StoreResult<SessionEndReceiptRecord> {
-        require_writable(self)?;
-        validate_session_end_receipt(&input)?;
-        let tx = begin_immediate_transaction(&mut self.conn)?;
-        tx.execute(
-            "INSERT INTO session_end_receipts (
-                project_id, session_end_receipt_id, session_id, active_task_id,
-                task_state, close_blocker_codes_json, next_actor,
-                completion_claim_allowed, authority_refresh_succeeded, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
-                self.project.project_id,
-                input.session_end_receipt_id,
-                input.managed_session_id,
-                input.active_task_id,
-                input.task_state.as_str(),
-                input.close_blocker_codes_json,
-                input.next_actor.as_str(),
-                i64::from(input.completion_claim_allowed),
-                i64::from(input.authority_refresh_succeeded),
-                input.created_at
-            ],
-        )?;
-        tx.commit()?;
-        self.session_end_receipt(&input.session_end_receipt_id)?
-            .ok_or_else(|| {
-                StoreError::schema_invariant("project_state", "session-end receipt write vanished")
-            })
-    }
-
-    /// Reads one managed session-end receipt by project-local identity.
-    pub fn session_end_receipt(
-        &self,
-        session_end_receipt_id: &str,
-    ) -> StoreResult<Option<SessionEndReceiptRecord>> {
-        validate_identifier("session_end_receipt_id", session_end_receipt_id)?;
-        session_end_receipt_from_conn(&self.conn, &self.project.project_id, session_end_receipt_id)
-    }
-
-    /// Reads the latest receipt for one managed session using semantic UTC ordering.
-    pub fn latest_session_end_receipt_for_session(
-        &self,
-        managed_session_id: &str,
-    ) -> StoreResult<Option<SessionEndReceiptRecord>> {
-        validate_managed_session_id(managed_session_id)?;
-        let row = self
-            .conn
-            .query_row(
-                &format!(
-                    "{SESSION_END_RECEIPT_SELECT}
-                       WHERE project_id = ?1
-                         AND session_id = ?2
-                       ORDER BY volicord_utc_seconds(created_at) DESC,
-                                volicord_utc_subsec_nanos(created_at) DESC,
-                                session_end_receipt_id DESC
-                       LIMIT 1"
-                ),
-                params![self.project.project_id, managed_session_id],
-                session_end_receipt_raw_from_row,
-            )
-            .optional()?;
-        row.map(session_end_receipt_from_raw).transpose()
-    }
 }
-
-const SESSION_END_RECEIPT_SELECT: &str = "SELECT
-    project_id, session_end_receipt_id, session_id, active_task_id, task_state,
-    close_blocker_codes_json, next_actor, completion_claim_allowed,
-    authority_refresh_succeeded, created_at
-  FROM session_end_receipts";
-
-type SessionEndReceiptRaw = (
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    String,
-    String,
-    i64,
-    i64,
-    String,
-);
 
 fn project_workflow_policy_from_conn(
     conn: &rusqlite::Connection,
@@ -613,7 +496,7 @@ fn project_workflow_policy_from_conn(
                 "policy_version",
             )
         })?;
-        if raw.1 != "volicord-policy-v2" || policy_version == 0 {
+        if raw.1 != WORKFLOW_POLICY_CONTRACT_ID || policy_version == 0 {
             return Err(StoreError::corrupt_owner_state_value(
                 "project_workflow_policies",
                 raw.0,
@@ -688,7 +571,7 @@ pub(crate) fn apply_project_workflow_policy_mutation(
         "INSERT INTO project_workflow_policies (
             project_id, policy_schema, policy_version, policy_json,
             policy_fingerprint, source, applied_at, created_at
-         ) VALUES (?1, 'volicord-policy-v2', ?2, ?3, ?4, ?5, ?6, ?7)
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(project_id) DO UPDATE SET
             policy_schema = excluded.policy_schema,
             policy_version = excluded.policy_version,
@@ -699,6 +582,7 @@ pub(crate) fn apply_project_workflow_policy_mutation(
             created_at = excluded.created_at",
         params![
             project_id,
+            WORKFLOW_POLICY_CONTRACT_ID,
             policy_version,
             input.policy_json,
             input.policy_fingerprint,
@@ -998,17 +882,26 @@ fn invalidate_incompatible_write_tickets(
     }
     let mut invalidated_write_ticket_ids = Vec::new();
     for (write_ticket_id, task_id, validity_basis_json) in active_tickets {
-        let stored_write_authority_fingerprint =
-            serde_json::from_str::<Value>(&validity_basis_json)
-                .ok()
-                .and_then(|basis| {
-                    basis
-                        .get("write_authority_fingerprint")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned)
-                });
-        let policy_binding_mismatch = stored_write_authority_fingerprint.as_deref()
-            != Some(resulting_write_authority_fingerprint);
+        let basis = serde_json::from_str::<Value>(&validity_basis_json).map_err(|_| {
+            StoreError::corrupt_owner_state_json(
+                "write_tickets",
+                &write_ticket_id,
+                "validity_basis_json",
+            )
+        })?;
+        let stored_write_authority_fingerprint = basis
+            .get("write_authority_fingerprint")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                StoreError::corrupt_owner_state_value(
+                    "write_tickets",
+                    &write_ticket_id,
+                    "validity_basis_json.write_authority_fingerprint",
+                )
+            })?;
+        let policy_binding_mismatch =
+            stored_write_authority_fingerprint != resulting_write_authority_fingerprint;
         let task_reevaluation_pending = reevaluated_task_id == Some(task_id.as_str());
         if !policy_binding_mismatch && !task_reevaluation_pending {
             continue;
@@ -1260,82 +1153,6 @@ fn validate_policy_replacement_basis(
     Ok(())
 }
 
-fn session_end_receipt_from_conn(
-    conn: &rusqlite::Connection,
-    project_id: &str,
-    receipt_id: &str,
-) -> StoreResult<Option<SessionEndReceiptRecord>> {
-    let raw = conn
-        .query_row(
-            &format!(
-                "{SESSION_END_RECEIPT_SELECT}
-                   WHERE project_id = ?1
-                     AND session_end_receipt_id = ?2"
-            ),
-            params![project_id, receipt_id],
-            session_end_receipt_raw_from_row,
-        )
-        .optional()?;
-    raw.map(session_end_receipt_from_raw).transpose()
-}
-
-fn session_end_receipt_raw_from_row(row: &Row<'_>) -> rusqlite::Result<SessionEndReceiptRaw> {
-    Ok((
-        row.get(0)?,
-        row.get(1)?,
-        row.get(2)?,
-        row.get(3)?,
-        row.get(4)?,
-        row.get(5)?,
-        row.get(6)?,
-        row.get(7)?,
-        row.get(8)?,
-        row.get(9)?,
-    ))
-}
-
-fn session_end_receipt_from_raw(raw: SessionEndReceiptRaw) -> StoreResult<SessionEndReceiptRecord> {
-    let task_state = SessionEndTaskState::from_stable_str(&raw.4).ok_or_else(|| {
-        StoreError::corrupt_owner_state_value("session_end_receipts", raw.1.clone(), "task_state")
-    })?;
-    let next_actor = AuthorityNextActor::from_stable_str(&raw.6).ok_or_else(|| {
-        StoreError::corrupt_owner_state_value("session_end_receipts", raw.1.clone(), "next_actor")
-    })?;
-    let completion_claim_allowed = sqlite_bool(&raw.1, "completion_claim_allowed", raw.7)?;
-    let authority_refresh_succeeded = sqlite_bool(&raw.1, "authority_refresh_succeeded", raw.8)?;
-    let record = SessionEndReceiptRecord {
-        project_id: raw.0,
-        session_end_receipt_id: raw.1,
-        managed_session_id: raw.2,
-        active_task_id: raw.3,
-        task_state,
-        close_blocker_codes_json: raw.5,
-        next_actor,
-        completion_claim_allowed,
-        authority_refresh_succeeded,
-        created_at: raw.9,
-    };
-    validate_session_end_receipt(&SessionEndReceiptInsert {
-        session_end_receipt_id: record.session_end_receipt_id.clone(),
-        managed_session_id: record.managed_session_id.clone(),
-        active_task_id: record.active_task_id.clone(),
-        task_state: record.task_state,
-        close_blocker_codes_json: record.close_blocker_codes_json.clone(),
-        next_actor: record.next_actor,
-        completion_claim_allowed: record.completion_claim_allowed,
-        authority_refresh_succeeded: record.authority_refresh_succeeded,
-        created_at: record.created_at.clone(),
-    })
-    .map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "session_end_receipts",
-            record.session_end_receipt_id.clone(),
-            "receipt_basis",
-        )
-    })?;
-    Ok(record)
-}
-
 fn validate_project_workflow_policy(input: &ProjectWorkflowPolicyUpsert) -> StoreResult<()> {
     validate_project_workflow_policy_fields(
         input.policy_version,
@@ -1381,70 +1198,6 @@ fn validate_project_workflow_policy_fields(
     Ok(())
 }
 
-fn validate_session_end_receipt(input: &SessionEndReceiptInsert) -> StoreResult<()> {
-    validate_identifier("session_end_receipt_id", &input.session_end_receipt_id)?;
-    validate_managed_session_id(&input.managed_session_id)?;
-    if let Some(task_id) = &input.active_task_id {
-        validate_identifier("active_task_id", task_id)?;
-    }
-    validate_timestamp("created_at", &input.created_at)?;
-    let blocker_codes: Vec<String> = serde_json::from_str(&input.close_blocker_codes_json)
-        .map_err(|_| StoreError::InvalidInput {
-            detail: "close_blocker_codes_json must be a JSON string array".to_owned(),
-        })?;
-    if blocker_codes.iter().any(|code| code.trim().is_empty()) {
-        return invalid("close blocker codes must not be empty");
-    }
-    let canonical =
-        canonical_json_string(&blocker_codes).map_err(|_| StoreError::InvalidInput {
-            detail: "close blocker codes cannot be canonicalized".to_owned(),
-        })?;
-    if canonical != input.close_blocker_codes_json {
-        return invalid("close_blocker_codes_json must use canonical JSON serialization");
-    }
-    let refresh_matches_state = if input.authority_refresh_succeeded {
-        input.task_state != SessionEndTaskState::AuthorityUnknown
-    } else {
-        input.task_state == SessionEndTaskState::AuthorityUnknown
-    };
-    if !refresh_matches_state {
-        return invalid("authority refresh result and task_state are inconsistent");
-    }
-    if input.task_state == SessionEndTaskState::None && input.active_task_id.is_some() {
-        return invalid("task_state none requires no active_task_id");
-    }
-    if !matches!(
-        input.task_state,
-        SessionEndTaskState::None | SessionEndTaskState::AuthorityUnknown
-    ) && input.active_task_id.is_none()
-    {
-        return invalid("the selected task_state requires active_task_id");
-    }
-    if input.completion_claim_allowed
-        && (!input.authority_refresh_succeeded
-            || input.task_state != SessionEndTaskState::Ready
-            || input.active_task_id.is_none()
-            || !blocker_codes.is_empty())
-    {
-        return invalid("completion_claim_allowed lacks a ready blocker-free authority basis");
-    }
-    Ok(())
-}
-
-fn validate_managed_session_id(value: &str) -> StoreResult<()> {
-    validate_managed_host_session_id(value).map_err(|_| StoreError::InvalidInput {
-        detail: "managed_session_id must be a canonical managed-host session ID".to_owned(),
-    })
-}
-
-fn validate_identifier(field: &str, value: &str) -> StoreResult<()> {
-    if value.trim().is_empty() || value.as_bytes().contains(&0) {
-        invalid(format!("{field} must not be empty or contain NUL"))
-    } else {
-        Ok(())
-    }
-}
-
 fn validate_timestamp(field: &str, value: &str) -> StoreResult<()> {
     let timestamp = UtcTimestamp::parse(value).map_err(|_| StoreError::InvalidInput {
         detail: format!("{field} must be a canonical RFC 3339 UTC timestamp"),
@@ -1454,18 +1207,6 @@ fn validate_timestamp(field: &str, value: &str) -> StoreResult<()> {
         .map_err(|_| StoreError::InvalidInput {
             detail: format!("{field} must be a canonical RFC 3339 UTC timestamp"),
         })
-}
-
-fn sqlite_bool(record_ref: &str, field: &'static str, value: i64) -> StoreResult<bool> {
-    match value {
-        0 => Ok(false),
-        1 => Ok(true),
-        _ => Err(StoreError::corrupt_owner_state_value(
-            "session_end_receipts",
-            record_ref.to_owned(),
-            field,
-        )),
-    }
 }
 
 fn require_writable(store: &CoreProjectStore) -> StoreResult<()> {
@@ -1506,7 +1247,7 @@ mod tests {
         final_acceptance: &str,
     ) -> Result<(String, String), Box<dyn Error>> {
         let value = json!({
-            "schema": "volicord-policy-v2",
+            "schema": WORKFLOW_POLICY_CONTRACT_ID,
             "workflow": {
                 "default_direct_control": default_direct_control,
                 "default_work_control": "tracked",
@@ -1517,11 +1258,7 @@ mod tests {
                     "denied_path_patterns": [],
                     "final_acceptance": final_acceptance
                 },
-                "write_ticket": {"idle_timeout_minutes": null},
-                "detective": {
-                    "unknown_effect_behavior": "warn",
-                    "stop_behavior": "allow_with_disclosure"
-                }
+                "write_ticket": {"idle_timeout_minutes": null}
             }
         });
         Ok((
@@ -1535,10 +1272,9 @@ mod tests {
         allowed_path_patterns: Vec<&str>,
         denied_path_patterns: Vec<&str>,
         idle_timeout_minutes: Option<u64>,
-        unknown_effect_behavior: &str,
     ) -> Result<(String, String), Box<dyn Error>> {
         let value = json!({
-            "schema": "volicord-policy-v2",
+            "schema": WORKFLOW_POLICY_CONTRACT_ID,
             "workflow": {
                 "default_direct_control": "light",
                 "default_work_control": "light",
@@ -1549,11 +1285,7 @@ mod tests {
                     "denied_path_patterns": denied_path_patterns,
                     "final_acceptance": "policy_dependent"
                 },
-                "write_ticket": {"idle_timeout_minutes": idle_timeout_minutes},
-                "detective": {
-                    "unknown_effect_behavior": unknown_effect_behavior,
-                    "stop_behavior": "allow_with_disclosure"
-                }
+                "write_ticket": {"idle_timeout_minutes": idle_timeout_minutes}
             }
         });
         Ok((
@@ -1562,8 +1294,38 @@ mod tests {
         ))
     }
 
+    fn insert_current_change_unit(
+        store: &CoreProjectStore,
+        task_id: &str,
+        change_unit_id: &str,
+        basis_state_version: u64,
+        timestamp: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        store.conn.execute(
+            "INSERT INTO change_units (
+                project_id, change_unit_id, task_id, status, is_current,
+                basis_state_version, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'active', 1, ?4, ?5, ?5)",
+            params![
+                store.project.project_id,
+                change_unit_id,
+                task_id,
+                i64::try_from(basis_state_version)?,
+                timestamp
+            ],
+        )?;
+        store.conn.execute(
+            "UPDATE tasks
+                SET current_change_unit_id = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            params![store.project.project_id, task_id, change_unit_id],
+        )?;
+        Ok(())
+    }
+
     #[test]
-    fn workflow_policy_and_session_end_receipt_round_trip() -> Result<(), Box<dyn Error>> {
+    fn workflow_policy_round_trip() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("workflow-record-round-trip")?;
         let mut store = CoreProjectStore::open(
             fixture.runtime_home_path(),
@@ -1571,7 +1333,7 @@ mod tests {
         )?;
 
         let policy_value = json!({
-            "schema": "volicord-policy-v2",
+            "schema": WORKFLOW_POLICY_CONTRACT_ID,
             "workflow": {
                 "default_direct_control": "tracked",
                 "default_work_control": "tracked",
@@ -1582,11 +1344,7 @@ mod tests {
                     "denied_path_patterns": [],
                     "final_acceptance": "policy_dependent"
                 },
-                "write_ticket": {"idle_timeout_minutes": null},
-                "detective": {
-                    "unknown_effect_behavior": "warn",
-                    "stop_behavior": "allow_with_disclosure"
-                }
+                "write_ticket": {"idle_timeout_minutes": null}
             }
         });
         let policy_json = canonical_json_string(&policy_value)?;
@@ -1599,69 +1357,10 @@ mod tests {
             applied_at: "2026-07-16T00:00:00Z".to_owned(),
             created_at: "2026-07-16T00:00:00Z".to_owned(),
         })?;
-        assert_eq!(policy.policy_schema, "volicord-policy-v2");
+        assert_eq!(policy.policy_schema, WORKFLOW_POLICY_CONTRACT_ID);
         assert_eq!(policy.policy_json, policy_json);
         assert_eq!(policy.policy_fingerprint, policy_fingerprint);
         assert_eq!(store.project_workflow_policy()?, Some(policy));
-
-        let managed_session_id = format!("mhs_{}", "a".repeat(64));
-        store.conn.execute(
-            "INSERT INTO tasks (
-                project_id, task_id, created_by_actor_source, mode,
-                requested_control_level, effective_control_level, control_level_reason,
-                work_phase, acceptance_policy, acceptance_policy_reason,
-                lifecycle_phase, created_at, updated_at
-             ) VALUES (?1, 'task_session_end', ?2, 'work', 'tracked', 'tracked',
-                       'Session-end fixture control.', 'implementation', 'required',
-                       'Session-end fixture acceptance.', 'implementation',
-                       '2026-07-16T00:00:00Z', '2026-07-16T00:00:00Z')",
-            params![fixture.project_id(), fixture.actor_source()],
-        )?;
-        store.conn.execute(
-            "INSERT INTO agent_sessions (
-                project_id, session_id, connection_internal_id, host_kind,
-                guard_mode, started_at, metadata_json
-             ) VALUES (?1, ?2, 'conn_session_end', 'codex', 'record',
-                       '2026-07-16T00:00:00Z', '{}')",
-            params![fixture.project_id(), managed_session_id],
-        )?;
-
-        let receipt = store.insert_session_end_receipt(SessionEndReceiptInsert {
-            session_end_receipt_id: "session_end_receipt_a".to_owned(),
-            managed_session_id: managed_session_id.clone(),
-            active_task_id: Some("task_session_end".to_owned()),
-            task_state: SessionEndTaskState::Ready,
-            close_blocker_codes_json: "[]".to_owned(),
-            next_actor: AuthorityNextActor::None,
-            completion_claim_allowed: true,
-            authority_refresh_succeeded: true,
-            created_at: "2026-07-16T00:01:00Z".to_owned(),
-        })?;
-        assert!(receipt.completion_claim_allowed);
-        assert_eq!(
-            store.latest_session_end_receipt_for_session(&managed_session_id)?,
-            Some(receipt.clone())
-        );
-        assert_eq!(
-            store.session_end_receipt("session_end_receipt_a")?,
-            Some(receipt)
-        );
-
-        let invalid_receipt = store.insert_session_end_receipt(SessionEndReceiptInsert {
-            session_end_receipt_id: "session_end_receipt_invalid".to_owned(),
-            managed_session_id,
-            active_task_id: Some("task_session_end".to_owned()),
-            task_state: SessionEndTaskState::Ready,
-            close_blocker_codes_json: r#"["acceptance_required"]"#.to_owned(),
-            next_actor: AuthorityNextActor::User,
-            completion_claim_allowed: true,
-            authority_refresh_succeeded: true,
-            created_at: "2026-07-16T00:02:00Z".to_owned(),
-        });
-        assert!(matches!(
-            invalid_receipt,
-            Err(StoreError::InvalidInput { .. })
-        ));
         Ok(())
     }
 
@@ -1689,6 +1388,13 @@ mod tests {
             "UPDATE project_state SET active_task_id = 'task_policy_active' WHERE project_id = ?1",
             [fixture.project_id()],
         )?;
+        insert_current_change_unit(
+            &store,
+            "task_policy_active",
+            "cu_policy_active",
+            0,
+            "2026-07-16T00:00:00Z",
+        )?;
 
         let (observe_json, observe_fingerprint) = workflow_policy("observe", false)?;
         let initial =
@@ -1713,7 +1419,7 @@ mod tests {
         assert_eq!(event_task_id, None);
         assert_eq!(event_created_at, initial.policy.applied_at);
         assert_eq!(store.project_state()?.updated_at, initial.policy.applied_at);
-        assert_eq!(store.effect_counts()?.task_events, 0);
+        assert_eq!(store.effect_counts()?.authority_events, 1);
 
         let replay =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
@@ -1727,7 +1433,7 @@ mod tests {
         assert_eq!(replay.resulting_state_version, 1);
         assert!(!replay.write_authority_changed);
         assert!(replay.invalidated_write_ticket_ids.is_empty());
-        assert_eq!(store.effect_counts()?.task_events, 0);
+        assert_eq!(store.effect_counts()?.authority_events, 1);
         let authority_event_count: i64 =
             store
                 .conn
@@ -1736,6 +1442,15 @@ mod tests {
                 })?;
         assert_eq!(authority_event_count, 1);
 
+        let validity_basis_json = canonical_json_string(&json!({
+            "task_id": "task_policy_active",
+            "change_unit_id": "cu_policy_active",
+            "scope_revision": 0,
+            "baseline_ref": null,
+            "workspace_context_sha256": null,
+            "write_authority_fingerprint": observe_fingerprint,
+            "approval_basis_refs": []
+        }))?;
         store.conn.execute(
             "INSERT INTO write_tickets (
                 project_id, write_ticket_id, task_id, change_unit_id,
@@ -1745,11 +1460,15 @@ mod tests {
                 created_by_user_action_resolution_id, idle_expires_at,
                 invalidation_reason, consumed_by_run_id, consumed_at,
                 revoked_at, created_at, metadata_json
-             ) VALUES (?1, 'ticket_policy_before_raise', 'task_policy_active', NULL,
-                       1, 'active', '{}', '[]', '[]', '{}', ?2,
+             ) VALUES (?1, 'ticket_policy_before_raise', 'task_policy_active',
+                       'cu_policy_active', 1, 'active', ?2, '[]', '[]', '{}', ?3,
                        NULL, NULL, NULL, NULL, NULL, NULL,
                        '2026-07-16T00:00:00Z', '{}')",
-            params![fixture.project_id(), fixture.actor_source()],
+            params![
+                fixture.project_id(),
+                validity_basis_json,
+                fixture.actor_source()
+            ],
         )?;
 
         let (tracked_json, tracked_fingerprint) = workflow_policy("tracked", false)?;
@@ -1937,7 +1656,6 @@ mod tests {
                 case.initial_allowed,
                 case.initial_denied,
                 case.initial_timeout,
-                "warn",
             )?;
             let initial = store.apply_project_workflow_policy_authority(
                 ProjectWorkflowPolicyAuthorityApply {
@@ -1967,6 +1685,13 @@ mod tests {
                   WHERE project_id = ?1",
                 [fixture.project_id()],
             )?;
+            insert_current_change_unit(
+                &store,
+                "task_policy_binding",
+                "cu_policy_binding",
+                1,
+                "2026-07-17T00:00:00Z",
+            )?;
             let validity_basis_json = canonical_json_string(&json!({
                 "task_id": "task_policy_binding",
                 "change_unit_id": "cu_policy_binding",
@@ -1986,7 +1711,8 @@ mod tests {
                     created_by_user_action_resolution_id, idle_expires_at,
                     invalidation_reason, consumed_by_run_id, consumed_at,
                     revoked_at, created_at, metadata_json
-                 ) VALUES (?1, 'ticket_policy_binding', 'task_policy_binding', NULL,
+                 ) VALUES (?1, 'ticket_policy_binding', 'task_policy_binding',
+                           'cu_policy_binding',
                            1, 'active', ?2, ?3, '[]', '{}', ?4,
                            NULL, NULL, NULL, NULL, NULL, NULL,
                            '2026-07-17T00:00:00Z', '{}')",
@@ -2003,7 +1729,6 @@ mod tests {
                 case.tightened_allowed,
                 case.tightened_denied,
                 case.tightened_timeout,
-                "warn",
             )?;
             let tightened = store.apply_project_workflow_policy_authority(
                 ProjectWorkflowPolicyAuthorityApply {
@@ -2079,7 +1804,6 @@ mod tests {
             vec!["src/**", "tests/**"],
             vec!["target/**", "vendor/**"],
             Some(30),
-            "warn",
         )?;
         let initial =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
@@ -2108,6 +1832,13 @@ mod tests {
               WHERE project_id = ?1",
             [fixture.project_id()],
         )?;
+        insert_current_change_unit(
+            &store,
+            "task_policy_equivalent",
+            "cu_policy_equivalent",
+            1,
+            "2026-07-17T00:00:00Z",
+        )?;
         let validity_basis_json = canonical_json_string(&json!({
             "task_id": "task_policy_equivalent",
             "change_unit_id": "cu_policy_equivalent",
@@ -2126,7 +1857,8 @@ mod tests {
                 created_by_user_action_resolution_id, idle_expires_at,
                 invalidation_reason, consumed_by_run_id, consumed_at,
                 revoked_at, created_at, metadata_json
-             ) VALUES (?1, 'ticket_policy_equivalent', 'task_policy_equivalent', NULL,
+             ) VALUES (?1, 'ticket_policy_equivalent', 'task_policy_equivalent',
+                       'cu_policy_equivalent',
                        1, 'active', ?2, '[\"src/export.rs\"]', '[]', '{}', ?3,
                        NULL, NULL, NULL, NULL, NULL, NULL,
                        '2026-07-17T00:00:00Z', '{}')",
@@ -2142,7 +1874,6 @@ mod tests {
             vec!["tests/**", "src/**", "src/**"],
             vec!["vendor/**", "target/**", "target/**"],
             Some(30),
-            "warn",
         )?;
         assert_ne!(initial_fingerprint, equivalent_fingerprint);
         let equivalent =

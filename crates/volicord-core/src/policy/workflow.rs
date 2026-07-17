@@ -7,12 +7,10 @@ use volicord_store::{
 };
 use volicord_types::{
     AcceptancePolicy, ProjectWorkflowPolicySummary, RequestedControlLevel, TaskControlLevel,
-    TaskMode,
+    TaskMode, WORKFLOW_POLICY_CONTRACT_ID,
 };
 
 use crate::policy::path::path_is_within;
-
-const WORKFLOW_POLICY_SCHEMA: &str = "volicord-policy-v2";
 
 /// Core-owned view of the project workflow policy.
 ///
@@ -44,7 +42,6 @@ struct StoredWorkflowPolicy {
     default_work_control: TaskControlLevel,
     light: StoredLightWorkflowPolicy,
     write_ticket: StoredWriteTicketWorkflowPolicy,
-    detective: StoredDetectiveWorkflowPolicy,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,13 +58,6 @@ struct StoredLightWorkflowPolicy {
 #[serde(deny_unknown_fields)]
 struct StoredWriteTicketWorkflowPolicy {
     idle_timeout_minutes: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StoredDetectiveWorkflowPolicy {
-    unknown_effect_behavior: String,
-    stop_behavior: String,
 }
 
 impl ProjectWorkflowPolicy {
@@ -127,11 +117,11 @@ pub(crate) fn project_workflow_policy(
             "policy_json",
         )
     };
-    if record.policy_schema != WORKFLOW_POLICY_SCHEMA {
+    if record.policy_schema != WORKFLOW_POLICY_CONTRACT_ID {
         return Err(corrupt());
     }
     let value: Value = serde_json::from_str(&record.policy_json).map_err(|_| corrupt())?;
-    if value.get("schema").and_then(Value::as_str) != Some(WORKFLOW_POLICY_SCHEMA) {
+    if value.get("schema").and_then(Value::as_str) != Some(WORKFLOW_POLICY_CONTRACT_ID) {
         return Err(corrupt());
     }
     let stored: StoredWorkflowPolicy =
@@ -142,8 +132,6 @@ pub(crate) fn project_workflow_policy(
             .write_ticket
             .idle_timeout_minutes
             .is_some_and(|minutes| minutes == 0)
-        || stored.detective.unknown_effect_behavior != "warn"
-        || stored.detective.stop_behavior != "allow_with_disclosure"
     {
         return Err(corrupt());
     }

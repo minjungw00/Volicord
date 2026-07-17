@@ -1,9 +1,4 @@
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-    ops::Deref,
-};
+use std::{borrow::Cow, collections::BTreeSet, fmt, ops::Deref};
 
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
@@ -20,20 +15,17 @@ use crate::ids::{
 use crate::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
     ArtifactIntegrityStatus, AuthorityNextActor, CarryForwardDispositionStatus, CarryForwardKind,
-    ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
-    ConnectionObservationGuardEventKind, CoverageHostHookState, CoverageSessionWatcherState,
-    EffectKind, EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel,
-    EvidenceCoverageState, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState,
-    EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind,
-    EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
-    GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
-    IntegrationProfile, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
-    NextActionKind, NextActionPresentationRole, NonGuarantee, ObservationConfidence,
+    ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState, EffectKind,
+    EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState,
+    EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState, EvidenceProducerKind,
+    EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus,
+    FailureCategory, GuaranteeClass, GuaranteeLevel, GuardDecision, GuardInstallationStatus,
+    HostKind, IntegrationProfile, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome,
+    MethodName, NextActionKind, NextActionPresentationRole, NonGuarantee, ObservationConfidence,
     ObservedEffectKind, OperationCategory, PlannedBlockerSourceKind, ProjectContinuityKind,
     ProjectContinuityStatus, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
-    PromptCaptureStatus, RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis,
-    SessionWatchStatus, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
-    TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeConfidence,
+    RedactionState, ResponseKind, RunKind, StateRecordKind, StatusCloseState, TaskControlLevel,
+    TaskLifecyclePhase, TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeConfidence,
     UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus,
     UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
     UserActionStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
@@ -43,26 +35,14 @@ use crate::values::{
 /// JSON object used where an owner document defines a field as `object`.
 pub type JsonObject = Map<String, Value>;
 
-/// Stable snapshot digest algorithm used by session-watch capture outcomes.
-pub const WATCH_SNAPSHOT_ALGORITHM: &str = "volicord_session_watch_snapshot_v1_sha256";
-
 /// Owner-defined lifetime of one immutable evidence-capture intent.
 pub const EVIDENCE_CAPTURE_INTENT_TTL_MINUTES: i64 = 15;
 
 /// Owner-defined lifetime of one evidence-observation user-action request.
 pub const USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES: i64 = 15;
 
-/// Owner-defined maximum lifetime of one request-bound User Channel token.
-pub const USER_ACTION_CHANNEL_TOKEN_MAX_TTL_SECONDS: u64 = 10 * 60;
-
 /// Controlled limitation recorded for Volicord-owned command capture.
 pub const EVIDENCE_CAPTURE_COMMAND_LIMITATION: &str = "environment_not_bound";
-
-/// Controlled limitation recorded for registered cooperative guard capture.
-pub const EVIDENCE_CAPTURE_GUARD_LIMITATION: &str = "registered_hook_cooperative_not_attested";
-
-/// Controlled limitation recorded for registered session-watcher capture.
-pub const EVIDENCE_CAPTURE_WATCHER_LIMITATION: &str = "registered_session_watcher_not_attested";
 
 /// Required public field that may contain JSON `null`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -266,12 +246,44 @@ pub enum ToolResponse<T> {
 }
 
 /// Public API error item.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct ToolError {
+    pub category: FailureCategory,
     pub code: ErrorCode,
     pub message: String,
     pub retryable: bool,
     pub details: Option<JsonObject>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ToolErrorWire {
+    category: FailureCategory,
+    code: ErrorCode,
+    message: String,
+    retryable: bool,
+    details: Option<JsonObject>,
+}
+
+impl<'de> Deserialize<'de> for ToolError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ToolErrorWire::deserialize(deserializer)?;
+        if wire.category != wire.code.failure_category() {
+            return Err(serde::de::Error::custom(
+                "ToolError category does not match its public error code",
+            ));
+        }
+        Ok(Self {
+            category: wire.category,
+            code: wire.code,
+            message: wire.message,
+            retryable: wire.retryable,
+            details: wire.details,
+        })
+    }
 }
 
 /// Event reference emitted in common result metadata.
@@ -310,18 +322,6 @@ impl GuaranteeDisclosure {
             guarantees: vec![
                 "Reports the decision Volicord returned to a cooperative host hook for one observed event.".to_owned(),
                 "May record the host event and Volicord decision when the host-hook command reaches the storage path.".to_owned(),
-            ],
-            non_guarantees: broad_non_guarantees(),
-        }
-    }
-
-    /// Disclosure for local diagnostic, verification, observation, or transport-status results.
-    pub fn detective_observation() -> Self {
-        Self {
-            guarantee_class: GuaranteeClass::DetectiveObservation,
-            guarantees: vec![
-                "Reports local diagnostic observations from accessible Runtime Home, host configuration, transport, or hook state.".to_owned(),
-                "Records what Volicord could inspect at the time of the check.".to_owned(),
             ],
             non_guarantees: broad_non_guarantees(),
         }
@@ -502,7 +502,6 @@ pub struct AgentSession {
     pub host_kind: HostKind,
     pub integration_profile: IntegrationProfile,
     pub started_at: UtcTimestamp,
-    pub ended_at: RequiredNullable<UtcTimestamp>,
     pub metadata: JsonObject,
 }
 
@@ -569,7 +568,6 @@ pub struct UnrecordedChangeFinding {
     pub summary: String,
     pub observed_paths: Vec<String>,
     pub detected_at: UtcTimestamp,
-    pub can_resolve_in_chat: bool,
     pub next_action: NextActionSummary,
 }
 
@@ -583,103 +581,6 @@ pub struct UnrecordedChangeResolutionSummary {
     pub capture_basis: String,
     pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
     pub resolved_at: UtcTimestamp,
-}
-
-/// Public summary of Volicord control-surface capabilities.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ControlSurfaceSummary {
-    pub selected_profile: IntegrationProfile,
-    pub host_hooks_active: bool,
-    pub session_watcher_active: bool,
-    pub cooperative_pre_tool_warning_available: bool,
-    pub cooperative_pre_tool_denial_available: bool,
-    pub unrecorded_changes_detectable: bool,
-    pub actor_identity_provable: bool,
-    pub os_enforced: bool,
-}
-
-/// Compact integration-health projection for close-readiness and status views.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct GuardHealthSummary {
-    pub selected_profile: IntegrationProfile,
-    pub control_surface: ControlSurfaceSummary,
-    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
-    pub guard_installation_status: GuardInstallationStatus,
-    pub guard_configuration_status: GuardConfigurationStatus,
-    pub guard_observation_status: GuardObservationStatus,
-    pub effective_guard_status: GuardEffectiveStatus,
-    pub generated_config_verified: bool,
-    pub native_host_output_adapter_config_verified: bool,
-    pub hook_path_safety: String,
-    pub hook_commands_cwd_independent: bool,
-    pub hook_commands_subdirectory_safe: bool,
-    pub cooperative_pre_tool_warning_available: bool,
-    pub cooperative_pre_tool_denial_available: bool,
-    pub post_tool_correlation_available: bool,
-    pub bash_shell_mutation_coverage: bool,
-    pub direct_file_write_matcher_coverage: bool,
-    pub bypass_detection_active: bool,
-    pub guard_hook_observed: bool,
-    pub last_guard_observed_at: RequiredNullable<UtcTimestamp>,
-    pub last_guard_event_at: RequiredNullable<UtcTimestamp>,
-    pub host_kind: RequiredNullable<HostKind>,
-    pub observed_hook_phase: RequiredNullable<String>,
-    pub observed_host_kind: RequiredNullable<HostKind>,
-    pub expected_policy_hash: RequiredNullable<String>,
-    pub observed_policy_hash: RequiredNullable<String>,
-    pub observed_binary_version: RequiredNullable<String>,
-    pub required_hook_phases: Vec<String>,
-    pub missing_required_hook_phases: Vec<String>,
-    pub prompt_capture_status: PromptCaptureStatus,
-    pub prompt_capture_available: bool,
-    pub local_web_consent_available: bool,
-    pub mcp_connection_healthy: bool,
-    pub mcp_connection_status: RequiredNullable<String>,
-    pub session_watch_status: SessionWatchStatus,
-    pub last_session_watch_checked_at: RequiredNullable<UtcTimestamp>,
-    pub session_watch_baseline_created_at: RequiredNullable<UtcTimestamp>,
-    pub session_watch_coverage_start_at: RequiredNullable<UtcTimestamp>,
-    pub session_watch_coverage_basis: RequiredNullable<SessionWatchCoverageBasis>,
-    pub session_watch_partial_coverage_warning: RequiredNullable<String>,
-    pub session_watch_detail: RequiredNullable<String>,
-    pub session_watch_scan_summary: RequiredNullable<SessionWatchScanSummary>,
-    pub unresolved_unrecorded_change_count: u64,
-    pub missing_or_stale_write_ticket: bool,
-    pub write_ticket_path_scope_violation: bool,
-}
-
-/// Compact scan-limit and skipped-path summary for a session watcher snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SessionWatchScanSummary {
-    pub files_scanned: u64,
-    pub files_skipped: u64,
-    pub unreadable_paths_count: u64,
-    pub degraded_reasons: Vec<String>,
-    pub degraded_reason_counts: BTreeMap<String, u64>,
-    pub skipped_paths_sample: Vec<String>,
-    pub skipped_paths_truncated: bool,
-    pub default_excluded_paths: Vec<String>,
-    pub max_file_size_bytes: u64,
-    pub max_file_count: u64,
-    pub follows_symlinks: bool,
-    pub not_full_filesystem_monitoring: bool,
-}
-
-/// Concise coverage projection for status and close-readiness views.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CoverageSummary {
-    pub active_profile: IntegrationProfile,
-    pub host_hook_state: CoverageHostHookState,
-    pub session_watcher_state: CoverageSessionWatcherState,
-    pub coverage_started_at: RequiredNullable<UtcTimestamp>,
-    pub last_snapshot_at: RequiredNullable<UtcTimestamp>,
-    pub watcher_scan_summary: RequiredNullable<SessionWatchScanSummary>,
-    pub unresolved_unrecorded_change_count: u64,
-    pub non_guarantees: Vec<NonGuarantee>,
 }
 
 /// Project-level continuity record that preserves durable context after Task close.
@@ -719,6 +620,47 @@ pub struct ProjectContinuitySummary {
     pub review_triggers: Vec<String>,
 }
 
+/// Exclusive ordering cursor for one project-continuity status page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContinuityCursor {
+    pub updated_at: UtcTimestamp,
+    pub continuity_record_id: ProjectContinuityRecordId,
+}
+
+/// Explicit project-continuity page selection for `volicord.status`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContinuityPageRequest {
+    #[schemars(range(min = 1, max = 64))]
+    pub page_size: u64,
+    pub cursor: RequiredNullable<ContinuityCursor>,
+}
+
+/// Complete page metadata for a project-continuity status projection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContinuityPageInfo {
+    pub total_count: u64,
+    pub returned_count: u64,
+    pub truncated: bool,
+    pub next_cursor: RequiredNullable<ContinuityCursor>,
+}
+
+/// Bounded project-continuity status projection with explicit pagination facts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectContinuityPage {
+    pub items: Vec<ProjectContinuitySummary>,
+    pub page_info: ContinuityPageInfo,
+}
+
+/// Default page size selected when `continuity_page` is omitted or null.
+pub const DEFAULT_CONTINUITY_PAGE_SIZE: u64 = 8;
+
+/// Largest page size accepted by the public status contract.
+pub const MAX_CONTINUITY_PAGE_SIZE: u64 = 64;
+
 /// Baseline cooperative project enforcement profile identifier.
 pub const BASELINE_COOPERATIVE_ENFORCEMENT_PROFILE_ID: &str = "baseline_cooperative";
 
@@ -752,6 +694,15 @@ pub fn baseline_project_enforcement_profile() -> ProjectEnforcementProfile {
         refs: Vec::new(),
     }
 }
+
+/// Semantic identity of the canonical project workflow-policy representation.
+pub const WORKFLOW_POLICY_CONTRACT_ID: &str = "volicord.workflow_policy";
+
+/// Semantic identity of the canonical normalized write-authority projection.
+pub const WRITE_AUTHORITY_CONTRACT_ID: &str = "volicord.write_authority";
+
+/// Semantic identity of the canonical correlated-path observation projection.
+pub const CORRELATED_PATH_IDENTITY_CONTRACT_ID: &str = "volicord.correlated_path_identity";
 
 /// Compact reference to the authoritative project workflow-policy copy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -832,7 +783,6 @@ pub struct StateSummary {
     pub evidence_gate: Option<EvidenceGateSummary>,
     pub close_state: Option<CloseState>,
     pub close_blockers: Vec<CloseReadinessBlocker>,
-    pub guard_health: Option<GuardHealthSummary>,
     pub guarantee_display: Option<GuaranteeDisplay>,
 }
 
@@ -1024,8 +974,7 @@ pub struct WriteTicketValidityBasis {
     pub scope_revision: u64,
     pub baseline_ref: Option<BaselineRef>,
     pub workspace_context_sha256: Option<String>,
-    #[serde(default)]
-    pub write_authority_fingerprint: Option<String>,
+    pub write_authority_fingerprint: String,
     pub approval_basis_refs: Vec<StateRecordRef>,
 }
 
@@ -1055,7 +1004,6 @@ pub struct WriteTicket {
     pub validity_basis: WriteTicketValidityBasis,
     pub invalidation_reason: Option<WriteTicketInvalidationReason>,
     pub idle_expires_at: Option<UtcTimestamp>,
-    pub control_surface: Option<ControlSurfaceSummary>,
     pub guarantee_display: Option<GuaranteeDisplay>,
 }
 
@@ -1140,16 +1088,6 @@ pub enum EvidenceTarget {
     },
 }
 
-/// Pre-intent source selector for one registered connection observation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "source_kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ConnectionObservationSourceSelector {
-    GuardEvent {
-        event_kind: ConnectionObservationGuardEventKind,
-    },
-    SessionWatcher {},
-}
-
 /// Exact source selection and expected outcome for one evidence-capture intent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "capture_kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -1164,10 +1102,6 @@ pub enum EvidenceCaptureSpec {
         tool_input_sha256: String,
         expected_success: RequiredNullable<bool>,
     },
-    RegisteredConnectionObservation {
-        source_selector: ConnectionObservationSourceSelector,
-        expected_complete: RequiredNullable<bool>,
-    },
 }
 
 /// Derives the canonical immutable input digest bound by a capture intent.
@@ -1181,9 +1115,6 @@ pub fn evidence_capture_input_sha256(
         EvidenceCaptureSpec::VerifiedToolInvocation {
             tool_input_sha256, ..
         } => Ok(tool_input_sha256.clone()),
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector, ..
-        } => crate::canonical_json_bare_sha256(source_selector),
     }
 }
 
@@ -1227,10 +1158,7 @@ pub struct EvidenceCaptureReceipt {
     pub observed_outcome: JsonObject,
     pub source_refs: Vec<StateRecordRef>,
     pub connection_id: AgentConnectionId,
-    pub session_id: RequiredNullable<AgentSessionId>,
-    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
-    pub guard_event_ids: Vec<GuardEventId>,
-    pub watch_observation_refs: Vec<String>,
+    pub host_invocation_id: RequiredNullable<String>,
     pub staged_receipt_handle: StagedArtifactHandle,
     pub complete: bool,
     pub limitations: Vec<String>,
@@ -1245,18 +1173,23 @@ pub struct EvidenceCaptureReceipt {
 #[serde(deny_unknown_fields)]
 pub struct PersistedEvidenceCaptureReceiptSource {
     pub connection_id: AgentConnectionId,
-    pub session_id: RequiredNullable<AgentSessionId>,
-    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
-    pub guard_event_ids: Vec<GuardEventId>,
-    pub watch_observation_refs: Vec<String>,
     pub host_invocation_id: RequiredNullable<String>,
 }
+
+/// Semantic identity for the one supported evidence-capture receipt contract.
+pub const EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID: &str = "volicord.evidence_capture_receipt";
+
+/// Exact provenance basis for a Volicord-owned command execution.
+pub const EVIDENCE_CAPTURE_COMMAND_VERIFICATION_BASIS: &str = "volicord_owned_command_execution";
+
+/// Exact provenance basis for a registered adapter tool invocation.
+pub const EVIDENCE_CAPTURE_TOOL_VERIFICATION_BASIS: &str = "verified_tool_invocation";
 
 /// Canonical bounded safe receipt body shared by source adapters and Core.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PersistedEvidenceCaptureReceiptBody {
-    pub schema_version: String,
+    pub contract_id: String,
     pub capture_kind: EvidenceProducerKind,
     pub capture_intent_id: EvidenceCaptureIntentId,
     pub input_sha256: String,
@@ -1296,24 +1229,6 @@ struct ToolCaptureObservedOutcome {
     tool_result_size_bytes: u64,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct GuardConnectionCaptureObservedOutcome {
-    complete: bool,
-    guard_event_kind: ConnectionObservationGuardEventKind,
-    guard_decision: String,
-    observation_sha256: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct WatcherConnectionCaptureObservedOutcome {
-    complete: bool,
-    snapshot_algorithm: String,
-    snapshot_digest: String,
-    observation_sha256: String,
-}
-
 /// Strictly validates the class-specific expected-outcome object derived for an
 /// evidence-capture intent.
 pub fn validate_evidence_capture_expected_outcome(
@@ -1348,14 +1263,6 @@ pub fn evidence_capture_expected_outcome(capture: &EvidenceCaptureSpec) -> JsonO
                 Value::from(expected_success.as_ref().copied().unwrap_or(true)),
             );
         }
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            expected_complete, ..
-        } => {
-            outcome.insert(
-                "expected_complete".to_owned(),
-                Value::from(expected_complete.as_ref().copied().unwrap_or(true)),
-            );
-        }
     }
     outcome
 }
@@ -1375,38 +1282,6 @@ pub fn validate_evidence_capture_observed_outcome(
         EvidenceCaptureSpec::VerifiedToolInvocation { .. } => {
             let decoded = decode_capture_outcome::<ToolCaptureObservedOutcome>(outcome)?;
             validate_capture_sha256("tool_result_sha256", &decoded.tool_result_sha256)?;
-        }
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: ConnectionObservationSourceSelector::GuardEvent { event_kind },
-            ..
-        } => {
-            let decoded = decode_capture_outcome::<GuardConnectionCaptureObservedOutcome>(outcome)?;
-            if !decoded.complete {
-                return Err("registered guard observation must be complete".to_owned());
-            }
-            if decoded.guard_event_kind != *event_kind {
-                return Err("guard_event_kind does not match the intent source selector".to_owned());
-            }
-            validate_capture_nonempty("guard_decision", &decoded.guard_decision)?;
-            validate_capture_sha256("observation_sha256", &decoded.observation_sha256)?;
-        }
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
-            ..
-        } => {
-            let decoded =
-                decode_capture_outcome::<WatcherConnectionCaptureObservedOutcome>(outcome)?;
-            if !decoded.complete {
-                return Err("registered session-watcher observation must be complete".to_owned());
-            }
-            if decoded.snapshot_algorithm != WATCH_SNAPSHOT_ALGORITHM {
-                return Err(
-                    "snapshot_algorithm must identify the canonical session-watch snapshot"
-                        .to_owned(),
-                );
-            }
-            validate_capture_sha256("snapshot_digest", &decoded.snapshot_digest)?;
-            validate_capture_sha256("observation_sha256", &decoded.observation_sha256)?;
         }
     }
     Ok(())
@@ -1430,10 +1305,6 @@ pub fn evidence_capture_observed_outcome_matches_expected(
             observed.get("success").and_then(Value::as_bool)
                 == expected.get("expected_success").and_then(Value::as_bool)
         }
-        EvidenceCaptureSpec::RegisteredConnectionObservation { .. } => {
-            observed.get("complete").and_then(Value::as_bool)
-                == expected.get("expected_complete").and_then(Value::as_bool)
-        }
     })
 }
 
@@ -1445,15 +1316,7 @@ pub fn validate_evidence_capture_limitations(
 ) -> Result<(), String> {
     let expected = match capture {
         EvidenceCaptureSpec::VerifiedCommandExecution { .. } => EVIDENCE_CAPTURE_COMMAND_LIMITATION,
-        EvidenceCaptureSpec::VerifiedToolInvocation { .. }
-        | EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: ConnectionObservationSourceSelector::GuardEvent { .. },
-            ..
-        } => EVIDENCE_CAPTURE_GUARD_LIMITATION,
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
-            ..
-        } => EVIDENCE_CAPTURE_WATCHER_LIMITATION,
+        EvidenceCaptureSpec::VerifiedToolInvocation { .. } => EVIDENCE_CAPTURE_COMMAND_LIMITATION,
     };
     if limitations.len() == 1 && limitations[0] == expected {
         Ok(())
@@ -1483,14 +1346,6 @@ fn validate_capture_sha256(field: &str, value: &str) -> Result<(), String> {
     }
 }
 
-fn validate_capture_nonempty(field: &str, value: &str) -> Result<(), String> {
-    if value.trim().is_empty() {
-        Err(format!("{field} must not be empty"))
-    } else {
-        Ok(())
-    }
-}
-
 /// Immutable Core-finalized producer bound one-to-one to a Run observation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -1512,10 +1367,7 @@ pub struct EvidenceProducer {
     pub observed_outcome: JsonObject,
     pub source_refs: Vec<StateRecordRef>,
     pub connection_id: AgentConnectionId,
-    pub session_id: RequiredNullable<AgentSessionId>,
-    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
-    pub guard_event_ids: Vec<GuardEventId>,
-    pub watch_observation_refs: Vec<String>,
+    pub host_invocation_id: RequiredNullable<String>,
     pub receipt_artifact_refs: Vec<ArtifactRef>,
     pub complete: bool,
     pub limitations: Vec<String>,
@@ -1777,12 +1629,6 @@ pub struct CloseReadinessBlocker {
     pub category: CloseReadinessBlockerCategory,
     pub code: String,
     pub message: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub control_surface: Option<ControlSurfaceSummary>,
-    #[serde(default)]
-    pub can_resolve_in_chat: bool,
-    #[serde(default)]
-    pub outside_chat_action_required: bool,
     pub related_refs: Vec<StateRecordRef>,
     pub next_actions: Vec<NextActionSummary>,
 }

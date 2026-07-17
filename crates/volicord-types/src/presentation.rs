@@ -167,8 +167,8 @@ impl UserActionPresentationPlan {
 
     /// Evaluates the exact question, context, and complete rendered form that
     /// an adapter would otherwise place in a new agent-facing user-input
-    /// surface. User-only local web and CLI surfaces may still render the full
-    /// canonical form when this classification requires them.
+    /// surface. The user-only CLI inbox may still render the full canonical
+    /// form when this classification requires it.
     pub fn agent_facing_input_safety(
         &self,
         question: &str,

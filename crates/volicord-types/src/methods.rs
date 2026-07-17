@@ -9,14 +9,14 @@ use crate::ids::{
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary,
     ArtifactInput, ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ConnectionObservationSourceSelector, ControlSurfaceSummary,
-    CoverageSummary, CurrentCloseBasis, EventRef, EvidenceCaptureIntent, EvidenceCaptureSpec,
-    EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput,
-    EvidenceProducer, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
-    GuardHealthSummary, JsonObject, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
-    RequiredNullable, RiskAcceptanceCoverage, RunSummary, SourceRef, StagedArtifactHandle,
-    StateRecordRef, StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse,
-    ToolEnvelope, ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    CloseReadinessBlocker, ContinuityPageRequest, CurrentCloseBasis, EventRef,
+    EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary,
+    EvidenceObservation, EvidenceObservationInput, EvidenceProducer, EvidenceSummary,
+    EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, JsonObject, NextActionSummary,
+    ObservedChanges, ProjectContinuityPage, ProjectContinuitySummary, RequiredNullable,
+    RiskAcceptanceCoverage, RunSummary, SourceRef, StagedArtifactHandle, StateRecordRef,
+    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse, ToolEnvelope,
+    ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest, UserActionResolution,
     UserActionResolutionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
     CHANNEL_SUBMISSION_ID_MAX_BYTES,
@@ -599,6 +599,8 @@ pub struct UpdateScopeResult {
 pub struct StatusRequest {
     pub envelope: ToolEnvelope,
     pub include: StatusInclude,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuity_page: Option<RequiredNullable<ContinuityPageRequest>>,
 }
 
 impl MethodOperationCategory for StatusRequest {
@@ -621,6 +623,8 @@ pub struct McpStatusArguments {
     pub task_id: RequiredNullable<TaskId>,
     #[serde(default)]
     pub detail: StatusDetailLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuity_page: Option<RequiredNullable<ContinuityPageRequest>>,
 }
 
 impl StatusDetailLevel {
@@ -696,13 +700,9 @@ pub struct StatusResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub close_blockers: Option<Vec<CloseReadinessBlocker>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub guard_health: Option<GuardHealthSummary>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub coverage_summary: Option<CoverageSummary>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub guarantee_display: Option<RequiredNullable<GuaranteeDisplay>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub continuity_summary: Option<Vec<ProjectContinuitySummary>>,
+    pub continuity_summary: Option<ProjectContinuityPage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_flow: Option<Vec<TaskFlowItem>>,
     pub authority_receipt: Option<AuthorityReceipt>,
@@ -791,11 +791,6 @@ pub enum McpEvidenceCaptureSpec {
         #[serde(default)]
         expected_success: RequiredNullable<bool>,
     },
-    RegisteredConnectionObservation {
-        source_selector: ConnectionObservationSourceSelector,
-        #[serde(default)]
-        expected_complete: RequiredNullable<bool>,
-    },
 }
 
 impl From<McpEvidenceCaptureSpec> for EvidenceCaptureSpec {
@@ -818,13 +813,6 @@ impl From<McpEvidenceCaptureSpec> for EvidenceCaptureSpec {
                 tool_name,
                 tool_input_sha256,
                 expected_success,
-            },
-            McpEvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_selector,
-                expected_complete,
-            } => Self::RegisteredConnectionObservation {
-                source_selector,
-                expected_complete,
             },
         }
     }
@@ -911,7 +899,6 @@ pub struct PrepareWriteResult {
     pub write_ticket_effect: WriteTicketEffect,
     pub allowed_path_patterns: Vec<String>,
     pub denied_path_patterns: Vec<String>,
-    pub control_surface: Option<ControlSurfaceSummary>,
     pub active_user_action_refs: Vec<StateRecordRef>,
     pub write_decision_reasons: Vec<WriteDecisionReason>,
     pub user_action_draft: Option<UserActionDraft>,
@@ -1279,7 +1266,6 @@ pub struct ReconcileChangesResult {
     pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
     pub state: StateSummary,
     pub close_blockers: Vec<CloseReadinessBlocker>,
-    pub guard_health: Option<GuardHealthSummary>,
     pub next_actions: Vec<NextActionSummary>,
 }
 
@@ -1373,8 +1359,6 @@ pub struct CloseTaskResult {
     pub state: StateSummary,
     pub blockers: Vec<CloseReadinessBlocker>,
     pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
-    pub guard_health: Option<GuardHealthSummary>,
-    pub coverage_summary: Option<CoverageSummary>,
     pub evidence_summary: Option<EvidenceSummary>,
     pub evidence_gate: EvidenceGateSummary,
     pub artifact_refs: Vec<ArtifactRef>,

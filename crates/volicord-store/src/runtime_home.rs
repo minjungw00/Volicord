@@ -5,6 +5,12 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+use volicord_platform_fs::{
+    observe_local_platform_boundary, observe_path_filesystem, LocalPlatformBoundary,
+    PathFilesystemKind, PlatformBoundaryError, PlatformBoundaryErrorKind,
+};
+use volicord_types::PlatformEnvironment;
+
 #[cfg(windows)]
 use std::path::{Prefix, PrefixComponent};
 
@@ -94,13 +100,32 @@ pub enum RuntimePathBoundaryError {
         repo_root: PathBuf,
         project_home: Option<PathBuf>,
     },
+    UnsupportedEnvironment {
+        reason: &'static str,
+        detail: String,
+    },
+    PlatformUnavailable {
+        reason: &'static str,
+        detail: String,
+    },
 }
 
 impl RuntimePathBoundaryError {
     pub fn violation(&self) -> Option<RuntimePathBoundaryViolation> {
         match self {
             Self::BoundaryViolation { violation, .. } => Some(*violation),
-            Self::InvalidPath { .. } => None,
+            Self::InvalidPath { .. }
+            | Self::UnsupportedEnvironment { .. }
+            | Self::PlatformUnavailable { .. } => None,
+        }
+    }
+
+    pub fn reason(&self) -> &'static str {
+        match self {
+            Self::InvalidPath { .. } => "invalid_path",
+            Self::BoundaryViolation { violation, .. } => violation.as_str(),
+            Self::UnsupportedEnvironment { reason, .. }
+            | Self::PlatformUnavailable { reason, .. } => reason,
         }
     }
 }
@@ -158,11 +183,52 @@ impl fmt::Display for RuntimePathBoundaryError {
                     )
                 }
             },
+            Self::UnsupportedEnvironment { reason, detail }
+            | Self::PlatformUnavailable { reason, detail } => {
+                write!(formatter, "{reason}: {detail}")
+            }
         }
     }
 }
 
 impl Error for RuntimePathBoundaryError {}
+
+/// Injected platform and filesystem facts for one Runtime Home/Product Repository pair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeProductPlatformFacts {
+    pub boundary: LocalPlatformBoundary,
+    pub runtime_home_filesystem: PathFilesystemKind,
+    pub product_repository_filesystem: PathFilesystemKind,
+}
+
+/// Validates the operating-environment topology independently of path probing.
+pub fn validate_runtime_product_platform_facts(
+    facts: &RuntimeProductPlatformFacts,
+) -> Result<(), RuntimePathBoundaryError> {
+    facts
+        .boundary
+        .release_coordinate
+        .validate_for(facts.boundary.environment)
+        .map_err(|error| RuntimePathBoundaryError::UnsupportedEnvironment {
+            reason: error.reason(),
+            detail: "the observed platform release coordinate is not canonical".to_owned(),
+        })?;
+    if facts.boundary.environment != PlatformEnvironment::Wsl2 {
+        return Ok(());
+    }
+    for (role, filesystem) in [
+        ("runtime_home", facts.runtime_home_filesystem),
+        ("product_repository", facts.product_repository_filesystem),
+    ] {
+        if filesystem != PathFilesystemKind::LinuxExt4 {
+            return Err(RuntimePathBoundaryError::UnsupportedEnvironment {
+                reason: "unsupported_wsl2_filesystem",
+                detail: format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
+            });
+        }
+    }
+    Ok(())
+}
 
 /// Resolves the Volicord Runtime Home path from environment values and a cwd.
 ///
@@ -200,6 +266,7 @@ pub fn validate_runtime_home_product_repository(
 ) -> Result<RuntimeProductPathValidation, RuntimePathBoundaryError> {
     let runtime_home = normalize_maybe_missing_directory("runtime_home", runtime_home.as_ref())?;
     let repo_root = normalize_existing_directory("repo_root", repo_root.as_ref())?;
+    validate_runtime_product_platform_paths(&runtime_home, &repo_root)?;
     let relation = runtime_product_path_relation(&runtime_home, &repo_root);
     match relation {
         RuntimeProductPathRelation::Separate => Ok(RuntimeProductPathValidation {
@@ -258,6 +325,7 @@ pub fn validate_project_home_boundary(
         ..
     } = validate_runtime_home_product_repository(runtime_home, repo_root)?;
     let project_home = normalize_maybe_missing_directory("project_home", project_home.as_ref())?;
+    validate_platform_path(&project_home, "project_home")?;
 
     if paths_overlap(&project_home, &repo_root) {
         return Err(RuntimePathBoundaryError::BoundaryViolation {
@@ -278,6 +346,58 @@ pub fn validate_project_home_boundary(
     }
 
     Ok(project_home)
+}
+
+fn validate_runtime_product_platform_paths(
+    runtime_home: &Path,
+    repo_root: &Path,
+) -> Result<(), RuntimePathBoundaryError> {
+    let boundary = observe_local_platform_boundary().map_err(runtime_platform_error)?;
+    let (runtime_home_filesystem, product_repository_filesystem) =
+        if boundary.environment == PlatformEnvironment::Wsl2 {
+            (
+                observe_path_filesystem(runtime_home).map_err(runtime_platform_error)?,
+                observe_path_filesystem(repo_root).map_err(runtime_platform_error)?,
+            )
+        } else {
+            (PathFilesystemKind::Other, PathFilesystemKind::Other)
+        };
+    validate_runtime_product_platform_facts(&RuntimeProductPlatformFacts {
+        boundary,
+        runtime_home_filesystem,
+        product_repository_filesystem,
+    })
+}
+
+fn validate_platform_path(path: &Path, role: &'static str) -> Result<(), RuntimePathBoundaryError> {
+    let boundary = observe_local_platform_boundary().map_err(runtime_platform_error)?;
+    if boundary.environment != PlatformEnvironment::Wsl2 {
+        return Ok(());
+    }
+    let filesystem = observe_path_filesystem(path).map_err(runtime_platform_error)?;
+    if filesystem == PathFilesystemKind::LinuxExt4 {
+        Ok(())
+    } else {
+        Err(RuntimePathBoundaryError::UnsupportedEnvironment {
+            reason: "unsupported_wsl2_filesystem",
+            detail: format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
+        })
+    }
+}
+
+fn runtime_platform_error(error: PlatformBoundaryError) -> RuntimePathBoundaryError {
+    match error.kind() {
+        PlatformBoundaryErrorKind::Unsupported => {
+            RuntimePathBoundaryError::UnsupportedEnvironment {
+                reason: error.reason(),
+                detail: error.detail().to_owned(),
+            }
+        }
+        PlatformBoundaryErrorKind::Unavailable => RuntimePathBoundaryError::PlatformUnavailable {
+            reason: error.reason(),
+            detail: error.detail().to_owned(),
+        },
+    }
 }
 
 pub(crate) fn normalize_lexical_path(
@@ -673,10 +793,13 @@ mod tests {
     };
 
     use volicord_test_support::TempRuntimeHome;
+    use volicord_types::{PlatformEnvironment, PlatformReleaseCoordinate};
 
     use super::{
-        resolve_runtime_home, validate_runtime_home_product_repository, RuntimeHomeResolutionError,
-        RuntimePathBoundaryViolation, RuntimeProductPathRelation,
+        resolve_runtime_home, validate_runtime_home_product_repository,
+        validate_runtime_product_platform_facts, LocalPlatformBoundary, PathFilesystemKind,
+        RuntimeHomeResolutionError, RuntimePathBoundaryViolation, RuntimeProductPathRelation,
+        RuntimeProductPlatformFacts,
     };
 
     fn cwd() -> PathBuf {
@@ -693,6 +816,54 @@ mod tests {
             },
             cwd(),
         )
+    }
+
+    #[test]
+    fn injected_wsl2_path_facts_require_ext4_for_both_product_roots() {
+        let supported = RuntimeProductPlatformFacts {
+            boundary: LocalPlatformBoundary {
+                environment: PlatformEnvironment::Wsl2,
+                release_coordinate: PlatformReleaseCoordinate::first_release_wsl2(),
+            },
+            runtime_home_filesystem: PathFilesystemKind::LinuxExt4,
+            product_repository_filesystem: PathFilesystemKind::LinuxExt4,
+        };
+        validate_runtime_product_platform_facts(&supported)
+            .expect("one-distribution WSL2 ext4 topology should be valid");
+
+        for mutate in [
+            |facts: &mut RuntimeProductPlatformFacts| {
+                facts.runtime_home_filesystem = PathFilesystemKind::Other;
+            },
+            |facts: &mut RuntimeProductPlatformFacts| {
+                facts.product_repository_filesystem = PathFilesystemKind::Other;
+            },
+        ] {
+            let mut facts = supported.clone();
+            mutate(&mut facts);
+            let error = validate_runtime_product_platform_facts(&facts)
+                .expect_err("a WSL2 cross-filesystem topology must fail closed");
+            assert_eq!(error.reason(), "unsupported_wsl2_filesystem");
+        }
+    }
+
+    #[test]
+    fn injected_native_platform_facts_keep_native_filesystem_behavior() {
+        for environment in [
+            PlatformEnvironment::Linux,
+            PlatformEnvironment::Macos,
+            PlatformEnvironment::NativeWindows,
+        ] {
+            validate_runtime_product_platform_facts(&RuntimeProductPlatformFacts {
+                boundary: LocalPlatformBoundary {
+                    environment,
+                    release_coordinate: PlatformReleaseCoordinate::Native,
+                },
+                runtime_home_filesystem: PathFilesystemKind::Other,
+                product_repository_filesystem: PathFilesystemKind::Other,
+            })
+            .expect("native platform path policy should remain native");
+        }
     }
 
     #[test]

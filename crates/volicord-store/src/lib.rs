@@ -16,15 +16,11 @@ pub mod error;
 pub mod evidence_capture;
 pub mod export;
 pub mod guards;
-pub mod host_capabilities;
-pub mod host_runtime_probes;
 pub mod inspection;
+pub mod managed_host_authority;
 pub mod runtime_home;
 pub mod schema;
-pub mod session_watch;
 pub mod sqlite;
-pub mod storage_upgrade;
-pub mod user_action_channel;
 pub mod workflow_records;
 
 pub use error::{StoreError, StoreFailureRoute, StoreResult};

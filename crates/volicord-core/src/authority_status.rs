@@ -302,8 +302,8 @@ fn authority_next_actor(action: Option<&NextActionSummary>) -> AuthorityNextActo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{ActorSource, OperationCategory, VERIFICATION_BASIS_TEST_FIXTURE_BINDING};
+    use volicord_test_support::{core_fixtures::CoreFixture, test_host_receipt_fixture};
+    use volicord_types::{ActorSource, OperationCategory};
 
     use crate::{CoreService, InvocationContext};
 
@@ -321,12 +321,7 @@ mod tests {
                 false,
                 Some(0),
             ),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            agent_invocation(&fixture, OperationCategory::AgentWorkflow),
         )?;
         let task_id = intake
             .resolved_task_id
@@ -334,12 +329,7 @@ mod tests {
             .expect("intake resolves a Task");
         let status = service.status(
             fixture.status_request("req_authority_status_refresh", Some(task_id.as_str())),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-            ),
+            agent_invocation(&fixture, OperationCategory::Read),
         )?;
         let state_version = status.response_value["base"]["state_version"]
             .as_u64()
@@ -353,6 +343,27 @@ mod tests {
                 .with_state_version(state_version)
                 .with_current_change_unit(change_unit_id);
         Ok((fixture, task_id, status.response_value, expectation))
+    }
+
+    fn agent_invocation(
+        fixture: &CoreFixture,
+        operation_category: OperationCategory,
+    ) -> InvocationContext {
+        let receipt = test_host_receipt_fixture(fixture.project_id(), fixture.connection_id());
+        InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::agent_connection(fixture.connection_id()),
+            operation_category,
+            volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        )
+        .with_validated_host_receipt(
+            crate::validate_host_verification_receipt(
+                receipt.receipt,
+                &receipt.current,
+                &receipt.validation_time,
+            )
+            .expect("typed host receipt fixture should validate"),
+        )
     }
 
     #[test]

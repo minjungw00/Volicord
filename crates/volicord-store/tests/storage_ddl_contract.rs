@@ -1,2799 +1,364 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    error::Error,
-};
+use std::error::Error;
 
-use rusqlite::{params, Connection, Error as RusqliteError, ErrorCode};
-use serde_json::Value;
+use rusqlite::{params, Connection};
+use serde_json::{json, Value};
 use volicord_store::{
     schema::{
-        initialize_project_state_schema, initialize_registry_schema, REGISTRY_DATABASE_KIND,
-        REGISTRY_SCHEMA_SQL, STORAGE_PROFILE,
+        current_storage_manifest, current_storage_manifest_json, generated_schema_metadata,
+        initialize_project_state_schema, initialize_registry_schema,
     },
-    sqlite::{enable_foreign_keys, validate_project_state_schema, validate_registry_schema},
-    StoreError,
+    sqlite::{
+        enable_foreign_keys, open_project_state_database, open_project_state_database_read_only,
+        validate_project_state_schema, validate_registry_schema,
+    },
+    StoreError, StoreFailureRoute,
+};
+use volicord_test_support::TempRuntimeHome;
+use volicord_types::{
+    canonical_json_string, GeneratedRelationKind, StorageManifest, STORAGE_CONTRACT_ID,
+    STORAGE_ENABLED_CAPABILITIES,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DatabaseSchema {
-    tables: BTreeMap<String, TableSchema>,
-    explicit_indexes: BTreeMap<String, IndexSchema>,
-    unique_constraints: BTreeSet<UniqueConstraintSchema>,
-    triggers: BTreeMap<String, TriggerSchema>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TableSchema {
-    columns: BTreeMap<String, ColumnSchema>,
-    foreign_keys: BTreeSet<ForeignKeySchema>,
-    check_constraints: BTreeSet<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ColumnSchema {
-    declared_type: String,
-    not_null: bool,
-    default_value: Option<String>,
-    primary_key_position: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct ForeignKeySchema {
-    parent_table: String,
-    columns: Vec<ForeignKeyColumnSchema>,
-    on_update: String,
-    on_delete: String,
-    match_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct ForeignKeyColumnSchema {
-    child_column: String,
-    parent_column: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct IndexSchema {
-    table: String,
-    unique: bool,
-    columns: Vec<IndexedColumnSchema>,
-    partial_predicate: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct UniqueConstraintSchema {
-    table: String,
-    columns: Vec<IndexedColumnSchema>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct IndexedColumnSchema {
-    name: String,
-    descending: bool,
-    collation: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TriggerSchema {
-    table: String,
-    sql: String,
-}
-
 #[test]
-fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn Error>> {
-    let initial_registry = initial_registry_schema()?;
-    let initial_registry_schema = read_database_schema(&initial_registry)?;
-    let initial_project = initial_project_state_schema()?;
-    let initial_project_schema = read_database_schema(&initial_project)?;
-
-    assert_tables_include(
-        &initial_registry_schema,
-        &[
-            "runtime_home",
-            "installation_profile",
-            "projects",
-            "project_aliases",
-            "agent_connections",
-            "connection_projects",
-            "host_capability_verifications",
-            "host_capability_state",
-            "guard_installations",
-        ],
+fn generated_metadata_and_manifest_have_stable_vectors() -> Result<(), Box<dyn Error>> {
+    let metadata = generated_schema_metadata()?;
+    assert_eq!(metadata.tables.len(), 36);
+    assert_eq!(metadata.columns.len(), 476);
+    assert_eq!(metadata.indexes.len(), 62);
+    assert_eq!(metadata.constraints.len(), 36);
+    assert_eq!(
+        metadata.canonical_ddl_digest,
+        "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb"
     );
-    assert_columns_include(
-        &initial_registry_schema,
-        "runtime_home",
-        &["runtime_home_path", "registry_db_path"],
+    assert_eq!(
+        metadata.integrity_constraints_digest,
+        "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec"
     );
-    assert_columns_include(
-        &initial_registry_schema,
-        "installation_profile",
-        &[
-            "installation_id",
-            "volicord_command",
-            "volicord_mcp_command",
-            "default_connection_mode",
-        ],
-    );
-    assert_columns_include(
-        &initial_registry_schema,
-        "projects",
-        &["project_internal_id", "project_name", "project_alias"],
-    );
-    assert_columns_include(
-        &initial_registry_schema,
-        "agent_connections",
-        &[
-            "connection_internal_id",
-            "intent",
-            "project_internal_id",
-            "last_verification_status",
-            "last_verification_report_json",
-            "last_user_actions_json",
-        ],
-    );
-    assert_columns_include(
-        &initial_registry_schema,
-        "connection_projects",
-        &["connection_internal_id", "project_internal_id"],
-    );
-    assert_columns_include(
-        &initial_registry_schema,
-        "host_capability_verifications",
-        &[
-            "verification_internal_id",
-            "connection_internal_id",
-            "capability",
-            "outcome",
-            "host_kind",
-            "host_version",
-            "client_name",
-            "client_version",
-            "adapter_profile",
-            "adapter_version",
-            "managed_fingerprint",
-            "volicord_build_id",
-            "source_revision",
-            "target_triple",
-            "executable_sha256",
-            "evidence_artifact_sha256",
-            "observed_at",
-            "expires_at",
-            "metadata_json",
-            "created_at",
-        ],
-    );
-    assert_columns_include(
-        &initial_registry_schema,
-        "host_capability_state",
-        &[
-            "connection_internal_id",
-            "capability",
-            "current_verification_internal_id",
-            "updated_at",
-        ],
-    );
-    assert_columns_include(
-        &initial_registry_schema,
-        "guard_installations",
-        &[
-            "guard_installation_id",
-            "connection_internal_id",
-            "project_internal_id",
-            "guard_mode",
-            "installation_status",
-            "first_seen_at",
-            "last_seen_at",
-            "last_seen_phase",
-            "observed_host_kind",
-            "observed_policy_hash",
-            "observed_binary_version",
-        ],
-    );
-    assert_primary_key_columns(
-        &initial_registry_schema,
-        "connection_projects",
-        &["connection_internal_id", "project_internal_id"],
-    );
-    assert_primary_key_columns(
-        &initial_registry_schema,
-        "host_capability_verifications",
-        &["verification_internal_id"],
-    );
-    assert_primary_key_columns(
-        &initial_registry_schema,
-        "host_capability_state",
-        &["connection_internal_id", "capability"],
-    );
-    assert_foreign_key_columns(
-        &initial_registry_schema,
-        "connection_projects",
-        "agent_connections",
-        &[("connection_internal_id", "connection_internal_id")],
-    );
-    assert_foreign_key_columns(
-        &initial_registry_schema,
-        "connection_projects",
-        "projects",
-        &[("project_internal_id", "project_internal_id")],
-    );
-    assert_foreign_key_columns(
-        &initial_registry_schema,
-        "host_capability_verifications",
-        "agent_connections",
-        &[("connection_internal_id", "connection_internal_id")],
-    );
-    assert_foreign_key_delete_action(
-        &initial_registry_schema,
-        "host_capability_verifications",
-        "agent_connections",
-        "CASCADE",
-    );
-    assert_foreign_key_columns(
-        &initial_registry_schema,
-        "host_capability_state",
-        "host_capability_verifications",
-        &[
-            ("connection_internal_id", "connection_internal_id"),
-            ("capability", "capability"),
-            (
-                "current_verification_internal_id",
-                "verification_internal_id",
-            ),
-        ],
-    );
-    assert_foreign_key_delete_action(
-        &initial_registry_schema,
-        "host_capability_state",
-        "host_capability_verifications",
-        "CASCADE",
-    );
-    assert_unique_index_columns(
-        &initial_registry_schema,
-        "idx_projects_repo_root",
-        &["repo_root"],
-    );
-    assert_unique_index_columns(
-        &initial_registry_schema,
-        "idx_agent_connections_target_project",
-        &[
-            "host_kind",
-            "intent",
-            "host_scope",
-            "project_internal_id",
-            "config_target",
-            "server_name",
-        ],
-    );
-    assert_unique_index_columns(
-        &initial_registry_schema,
-        "idx_agent_connections_target_global",
-        &[
-            "host_kind",
-            "intent",
-            "host_scope",
-            "config_target",
-            "server_name",
-        ],
-    );
-    for index in [
-        "idx_host_capability_verifications_connection",
-        "idx_host_capability_verifications_outcome_expiry",
-        "idx_host_capability_state_current",
-    ] {
-        assert!(
-            initial_registry_schema.explicit_indexes.contains_key(index),
-            "expected host-capability index {index}"
-        );
-    }
-    assert_registry_host_capability_contract_behavior(&initial_registry)?;
-    assert!(
-        !initial_registry_schema
+    assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(metadata.indexes.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(metadata
+        .constraints
+        .windows(2)
+        .all(|pair| pair[0] < pair[1]));
+    assert_eq!(
+        metadata
             .tables
-            .contains_key("user_action_channel_tokens"),
-        "user-action channel tokens are project-state rows, not registry rows"
+            .iter()
+            .filter(|table| table.relation_kind == GeneratedRelationKind::Table)
+            .count(),
+        metadata.constraints.len()
     );
 
-    assert!(initial_project_schema.tables.contains_key("write_tickets"));
-    assert_tables_include(
-        &initial_project_schema,
-        &[
-            "authority_events",
-            "agent_sessions",
-            "guard_events",
-            "prompt_captures",
-            "expected_writes",
-            "unrecorded_changes",
-            "session_watch_baselines",
-            "session_watch_observations",
-            "user_action_requests",
-            "user_action_resolutions",
-            "user_action_channel_tokens",
-            "evidence_capture_intents",
-            "evidence_capture_receipts",
-            "evidence_capture_source_claims",
-            "evidence_producers",
-            "project_workflow_policies",
-            "session_end_receipts",
-        ],
+    let round_trip = serde_json::from_str(&serde_json::to_string(metadata)?)?;
+    assert_eq!(metadata, &round_trip);
+    let manifest = current_storage_manifest()?;
+    assert_eq!(manifest.contract_id, STORAGE_CONTRACT_ID);
+    assert_eq!(
+        manifest.enabled_capabilities,
+        STORAGE_ENABLED_CAPABILITIES
+            .iter()
+            .map(|capability| (*capability).to_owned())
+            .collect::<Vec<_>>()
     );
-    assert_columns_include(
-        &initial_project_schema,
-        "tasks",
-        &[
-            "requested_control_level",
-            "effective_control_level",
-            "control_level_reason",
-        ],
+    let manifest_json = current_storage_manifest_json()?;
+    assert_eq!(manifest_json, canonical_json_string(manifest)?);
+    assert_eq!(
+        manifest_json,
+        concat!(
+            "{\"canonical_ddl_digest\":\"sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb\",",
+            "\"contract_id\":\"volicord.sqlite.canonical\",",
+            "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
+            "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
+            "\"project_continuity\",\"user_action_cli_resolution\"],",
+            "\"integrity_constraints_digest\":\"sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec\"}"
+        )
     );
-    assert_columns_include(
-        &initial_project_schema,
-        "write_tickets",
-        &[
-            "validity_basis_json",
-            "allowed_path_prefixes_json",
-            "denied_path_prefixes_json",
-            "idle_expires_at",
-            "invalidation_reason",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "project_workflow_policies",
-        &[
-            "policy_schema",
-            "policy_version",
-            "policy_json",
-            "policy_fingerprint",
-            "source",
-            "applied_at",
-            "created_at",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "session_end_receipts",
-        &[
-            "session_end_receipt_id",
-            "session_id",
-            "active_task_id",
-            "task_state",
-            "close_blocker_codes_json",
-            "next_actor",
-            "completion_claim_allowed",
-            "authority_refresh_succeeded",
-            "created_at",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "evidence_capture_intents",
-        &[
-            "evidence_capture_intent_id",
-            "task_id",
-            "change_unit_id",
-            "scope_revision",
-            "baseline_ref",
-            "target_json",
-            "capture_kind",
-            "capture_spec_json",
-            "input_sha256",
-            "expected_outcome_json",
-            "requested_by_actor_source",
-            "requesting_connection_internal_id",
-            "session_context_json",
-            "workspace_context_json",
-            "created_at",
-            "expires_at",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "evidence_capture_receipts",
-        &[
-            "evidence_capture_receipt_id",
-            "evidence_capture_intent_id",
-            "staging_handle_id",
-            "capture_kind",
-            "input_sha256",
-            "result_sha256",
-            "expected_outcome_json",
-            "observed_outcome_json",
-            "source_refs_json",
-            "observed_by_actor_source",
-            "completeness",
-            "safe_receipt_json",
-            "safe_receipt_sha256",
-            "safe_receipt_size_bytes",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "evidence_capture_source_claims",
-        &[
-            "source_claim_kind",
-            "source_claim_id",
-            "evidence_capture_intent_id",
-            "evidence_capture_receipt_id",
-            "capture_kind",
-            "claimed_at",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "evidence_producers",
-        &[
-            "evidence_producer_id",
-            "evidence_capture_intent_id",
-            "evidence_capture_receipt_id",
-            "evidence_observation_id",
-            "artifact_id",
-            "run_id",
-            "task_id",
-            "change_unit_id",
-            "scope_revision",
-            "baseline_ref",
-            "producer_kind",
-            "canonical_producer_json",
-        ],
-    );
-    assert_foreign_key_columns(
-        &initial_project_schema,
-        "evidence_capture_receipts",
-        "evidence_capture_intents",
-        &[
-            ("project_id", "project_id"),
-            ("evidence_capture_intent_id", "evidence_capture_intent_id"),
-        ],
-    );
-    assert_foreign_key_columns(
-        &initial_project_schema,
-        "evidence_capture_source_claims",
-        "evidence_capture_receipts",
-        &[
-            ("project_id", "project_id"),
-            ("evidence_capture_intent_id", "evidence_capture_intent_id"),
-            ("evidence_capture_receipt_id", "evidence_capture_receipt_id"),
-        ],
-    );
-    assert_foreign_key_columns(
-        &initial_project_schema,
-        "evidence_producers",
-        "evidence_capture_receipts",
-        &[
-            ("project_id", "project_id"),
-            ("evidence_capture_intent_id", "evidence_capture_intent_id"),
-            ("evidence_capture_receipt_id", "evidence_capture_receipt_id"),
-        ],
-    );
-    assert_foreign_key_columns(
-        &initial_project_schema,
-        "evidence_capture_receipts",
-        "artifact_staging",
-        &[
-            ("project_id", "project_id"),
-            ("staging_handle_id", "handle_id"),
-        ],
-    );
-    assert_foreign_key_columns(
-        &initial_project_schema,
-        "evidence_producers",
-        "evidence_observations",
-        &[
-            ("project_id", "project_id"),
-            ("evidence_observation_id", "evidence_observation_id"),
-        ],
-    );
-    for index in [
-        "idx_evidence_capture_intents_task_expiry",
-        "idx_evidence_capture_intents_connection_expiry",
-        "idx_evidence_capture_receipts_created",
-        "idx_evidence_capture_source_claims_receipt",
-        "idx_evidence_producers_task_run",
-    ] {
-        assert!(
-            initial_project_schema.explicit_indexes.contains_key(index),
-            "expected evidence-capture index {index}"
+    Ok(())
+}
+
+#[test]
+fn canonical_sql_initialization_and_runtime_validation_share_metadata() -> Result<(), Box<dyn Error>>
+{
+    let manifest = current_storage_manifest_json()?;
+    let mut registry = canonical_registry()?;
+    insert_registry_owner(&registry, manifest)?;
+    validate_registry_schema(&registry)?;
+
+    let mut project = canonical_project()?;
+    insert_project_owner(&project, manifest)?;
+    validate_project_state_schema(&project)?;
+
+    initialize_registry_schema(&mut registry)?;
+    initialize_project_state_schema(&mut project)?;
+    validate_registry_schema(&registry)?;
+    validate_project_state_schema(&project)?;
+    Ok(())
+}
+
+#[test]
+fn current_manifest_tampering_is_corrupt() -> Result<(), Box<dyn Error>> {
+    let current = current_storage_manifest()?.clone();
+    let mut cases = Vec::new();
+
+    let mut digest_tamper = current.clone();
+    digest_tamper.canonical_ddl_digest = format!("sha256:{}", "0".repeat(64));
+    cases.push(canonical_json_string(&digest_tamper)?);
+
+    let mut constraint_tamper = current.clone();
+    constraint_tamper.integrity_constraints_digest = format!("sha256:{}", "1".repeat(64));
+    cases.push(canonical_json_string(&constraint_tamper)?);
+
+    let mut missing_capability = current.clone();
+    missing_capability.enabled_capabilities.pop();
+    cases.push(canonical_json_string(&missing_capability)?);
+
+    let mut reordered = current.clone();
+    reordered.enabled_capabilities.swap(0, 1);
+    cases.push(serde_json::to_string(&reordered)?);
+
+    let mut unknown_member = serde_json::to_value(&current)?;
+    unknown_member
+        .as_object_mut()
+        .expect("manifest object")
+        .insert("unexpected".to_owned(), Value::Bool(true));
+    cases.push(canonical_json_string(&unknown_member)?);
+
+    let noncanonical_field_order = serde_json::to_string(&current)?;
+    assert_ne!(noncanonical_field_order, current_storage_manifest_json()?);
+    cases.push(noncanonical_field_order);
+
+    for (index, persisted) in cases.into_iter().enumerate() {
+        let project = canonical_project()?;
+        insert_project_owner(&project, &persisted)?;
+        let error = validate_project_state_schema(&project)
+            .expect_err("current-contract tampering must fail closed");
+        assert_corrupt(error, &format!("tamper case {index}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_manifests_are_corrupt_and_well_formed_unknown_is_unsupported(
+) -> Result<(), Box<dyn Error>> {
+    let current = current_storage_manifest()?;
+    let unknown = StorageManifest::new(
+        "volicord.sqlite.unknown",
+        current.canonical_ddl_digest.clone(),
+        current.integrity_constraints_digest.clone(),
+        current.enabled_capabilities.clone(),
+    )?;
+    for (index, persisted) in ["{}".to_owned(), json!("legacy_numeric_profile").to_string()]
+        .into_iter()
+        .enumerate()
+    {
+        let registry = canonical_registry()?;
+        insert_registry_owner(&registry, &persisted)?;
+        let error = validate_registry_schema(&registry)
+            .expect_err("malformed persisted manifest must be rejected");
+        assert_eq!(
+            error.classification().route,
+            StoreFailureRoute::PersistedDataCorrupt,
+            "corrupt case {index}: {error}"
         );
     }
-    assert_columns_include(
-        &initial_project_schema,
-        "authority_events",
-        &[
-            "event_id",
-            "project_id",
-            "state_version",
-            "event_type",
-            "actor_source",
-            "operation_category",
-            "payload_json",
-            "request_hash",
-            "previous_event_hash",
-            "event_hash",
-            "created_at",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "tool_invocations",
-        &["actor_source", "operation_category"],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "agent_sessions",
-        &["session_id", "connection_internal_id", "guard_mode"],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "guard_events",
-        &["guard_event_id", "session_id", "decision"],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "prompt_captures",
-        &["prompt_capture_id", "session_id", "prompt_sha256"],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "expected_writes",
-        &[
-            "expected_write_id",
-            "pre_tool_guard_event_id",
-            "host_invocation_id",
-            "path_policy",
-            "expected_paths_json",
-            "write_ticket_ids_json",
-            "matched_post_tool_guard_event_id",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "unrecorded_changes",
-        &[
-            "unrecorded_change_id",
-            "status",
-            "confidence",
-            "resolution_json",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "session_watch_baselines",
-        &[
-            "watch_baseline_id",
-            "session_id",
-            "connection_internal_id",
-            "status",
-            "scope_kind",
-            "repo_root",
-            "snapshot_digest",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "session_watch_observations",
-        &[
-            "watch_observation_id",
-            "watch_baseline_id",
-            "session_id",
-            "expected_write_id",
-            "unrecorded_change_id",
-            "observation_status",
-            "observed_paths_json",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "user_action_channel_tokens",
-        &[
-            "project_id",
-            "token_hash",
-            "channel_kind",
-            "connection_internal_id",
-            "user_action_request_id",
-            "capture_basis",
-            "status",
-            "created_at",
-            "expires_at",
-            "consumed_at",
-            "completed_at",
-            "created_metadata_json",
-            "completion_metadata_json",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "user_action_requests",
-        &[
-            "user_action_request_id",
-            "task_id",
-            "change_unit_id",
-            "action_kind",
-            "request_json",
-            "basis_json",
-            "basis_status",
-            "required_for_json",
-            "requested_by_actor_source",
-            "source_method",
-            "source_idempotency_key",
-            "requested_at",
-            "expires_at",
-            "metadata_json",
-        ],
-    );
-    assert_columns_include(
-        &initial_project_schema,
-        "user_action_resolutions",
-        &[
-            "user_action_resolution_id",
-            "user_action_request_id",
-            "action_kind",
-            "channel_kind",
-            "channel_submission_id",
-            "resolution_json",
-            "resolved_by_actor_source",
-            "resolved_verification_basis",
-            "resolved_assurance_level",
-            "resolved_at",
-        ],
-    );
-    assert_primary_key_columns(
-        &initial_project_schema,
-        "user_action_channel_tokens",
-        &["project_id", "token_hash"],
-    );
-    assert_foreign_key_columns(
-        &initial_project_schema,
-        "user_action_channel_tokens",
-        "project_state",
-        &[("project_id", "project_id")],
-    );
-    assert_foreign_key_columns(
-        &initial_project_schema,
-        "user_action_channel_tokens",
-        "user_action_requests",
-        &[
-            ("project_id", "project_id"),
-            ("user_action_request_id", "user_action_request_id"),
-        ],
-    );
-    assert!(
-        initial_project_schema
-            .explicit_indexes
-            .contains_key("idx_user_action_channel_tokens_expiry"),
-        "expected user-action channel expiry index"
-    );
 
-    assert_project_contract_behavior("initial project state.sqlite", &initial_project)?;
-
+    let registry = canonical_registry()?;
+    insert_registry_owner(&registry, &canonical_json_string(&unknown)?)?;
+    let error = validate_registry_schema(&registry)
+        .expect_err("well-formed noncurrent storage contract must be rejected");
+    assert_eq!(
+        error.classification().route,
+        StoreFailureRoute::UnsupportedContract,
+        "well-formed noncurrent manifest: {error}"
+    );
     Ok(())
 }
 
 #[test]
-fn user_action_direct_origin_is_unique_while_reconcile_origin_can_repeat(
-) -> Result<(), Box<dyn Error>> {
-    let conn = initial_project_state_schema()?;
-    insert_minimal_project_graph(&conn)?;
-
-    insert_ddl_user_action_request_with_origin(
-        &conn,
-        "action_direct_origin_a",
-        "product_decision",
-        "volicord.request_user_action",
-        "idem_shared_direct_origin",
-    )?;
-    let duplicate_direct_origin = insert_ddl_user_action_request_with_origin(
-        &conn,
-        "action_direct_origin_b",
-        "technical_decision",
-        "volicord.request_user_action",
-        "idem_shared_direct_origin",
-    )
-    .unwrap_err();
-    assert_constraint_error("initial project state.sqlite", duplicate_direct_origin);
-
-    for request_id in ["action_reconcile_origin_a", "action_reconcile_origin_b"] {
-        insert_ddl_user_action_request_with_origin(
-            &conn,
-            request_id,
-            "scope_decision",
-            "volicord.reconcile_changes",
-            "idem_shared_reconcile_origin",
-        )?;
-    }
-
-    Ok(())
-}
-
-#[test]
-fn schema_comparison_detects_contract_critical_drift() -> Result<(), Box<dyn Error>> {
-    let expected_conn = initial_project_state_schema()?;
-    let expected = read_database_schema(&expected_conn)?;
-
-    let missing_actor_source = initial_project_state_schema()?;
-    missing_actor_source.execute(
-        "CREATE TABLE tool_invocations_drift AS
-         SELECT project_id, tool_name, idempotency_key, request_hash,
-                basis_state_version, committed_state_version, status,
-                operation_category, verification_basis, git_workspace_context_json,
-                response_json, created_at
-           FROM tool_invocations",
+fn physical_schema_mismatch_is_corrupt_before_reopen() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("physical-schema-mismatch")?;
+    let path = runtime_home.project_state_db_path("project_schema");
+    let conn = open_project_state_database(&path)?;
+    insert_project_owner(&conn, current_storage_manifest_json()?)?;
+    validate_project_state_schema(&conn)?;
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN unauthorized_extension TEXT",
         [],
     )?;
-    missing_actor_source.execute("DROP TABLE tool_invocations", [])?;
-    missing_actor_source.execute(
-        "ALTER TABLE tool_invocations_drift RENAME TO tool_invocations",
+    let error = validate_project_state_schema(&conn)
+        .expect_err("unexpected physical column must fail closed");
+    assert_corrupt(error, "unexpected physical column");
+    drop(conn);
+
+    let error = open_project_state_database_read_only(&path)
+        .expect_err("read-only reopen must repeat exact-schema rejection");
+    assert_corrupt(error, "read-only reopen");
+    Ok(())
+}
+
+#[test]
+fn missing_index_and_unexpected_trigger_are_corrupt() -> Result<(), Box<dyn Error>> {
+    let manifest = current_storage_manifest_json()?;
+    let missing_index = canonical_project()?;
+    insert_project_owner(&missing_index, manifest)?;
+    missing_index.execute("DROP INDEX idx_tasks_lifecycle", [])?;
+    assert_corrupt(
+        validate_project_state_schema(&missing_index)
+            .expect_err("missing canonical index must be rejected"),
+        "missing index",
+    );
+
+    let unexpected_trigger = canonical_project()?;
+    insert_project_owner(&unexpected_trigger, manifest)?;
+    unexpected_trigger.execute_batch(
+        "CREATE TRIGGER unauthorized_task_trigger
+         AFTER INSERT ON tasks BEGIN SELECT 1; END",
+    )?;
+    assert_corrupt(
+        validate_project_state_schema(&unexpected_trigger)
+            .expect_err("unexpected trigger must be rejected"),
+        "unexpected trigger",
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_and_project_carriers_persist_the_same_complete_manifest() -> Result<(), Box<dyn Error>> {
+    let manifest = current_storage_manifest_json()?;
+    let registry = canonical_registry()?;
+    insert_registry_owner(&registry, manifest)?;
+    let project = canonical_project()?;
+    insert_project_owner(&project, manifest)?;
+
+    let runtime_profile: String = registry.query_row(
+        "SELECT storage_profile FROM runtime_home WHERE singleton_id = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let project_profile: String = project.query_row(
+        "SELECT storage_profile FROM project_state WHERE project_id = 'project_a'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(runtime_profile, project_profile);
+    assert_eq!(runtime_profile, manifest);
+    validate_registry_schema(&registry)?;
+    validate_project_state_schema(&project)?;
+    Ok(())
+}
+
+#[test]
+fn ordinary_open_rejects_a_tampered_manifest_before_returning_a_write_handle(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("manifest-before-write")?;
+    let path = runtime_home.project_state_db_path("project_manifest");
+    let conn = open_project_state_database(&path)?;
+    insert_project_owner(&conn, json!("legacy_numeric_profile").to_string().as_str())?;
+    drop(conn);
+
+    let error = open_project_state_database(&path)
+        .expect_err("ordinary open must reject before exposing a writable connection");
+    assert_eq!(
+        error.classification().route,
+        StoreFailureRoute::PersistedDataCorrupt
+    );
+    Ok(())
+}
+
+#[test]
+fn canonical_constraints_remain_executable() -> Result<(), Box<dyn Error>> {
+    let project = canonical_project()?;
+    insert_project_owner(&project, current_storage_manifest_json()?)?;
+    let invalid_control = project.execute(
+        "INSERT INTO tasks (
+            project_id, task_id, created_by_actor_source, mode,
+            requested_control_level, effective_control_level, control_level_reason,
+            work_phase, acceptance_policy, acceptance_policy_reason, carry_forward_json,
+            lifecycle_phase, created_at, updated_at
+         ) VALUES (
+            'project_a', 'task_invalid', 'agent_connection:conn_main', 'work',
+            'unbounded', 'tracked', 'fixture', 'shaping', 'required', 'fixture', '[]',
+            'shaping', 't0', 't0'
+         )",
+        [],
+    );
+    assert!(invalid_control.is_err());
+
+    insert_task(&project)?;
+    project.execute(
+        "INSERT INTO change_units (
+            project_id, change_unit_id, task_id, status, is_current,
+            basis_state_version, created_at, updated_at
+         ) VALUES ('project_a', 'cu_a', 'task_a', 'active', 1, 1, 't0', 't0')",
         [],
     )?;
-    assert_schema_differs(
-        "removing tool_invocations.actor_source",
-        &expected,
-        &read_database_schema(&missing_actor_source)?,
+    let duplicate = project.execute(
+        "INSERT INTO change_units (
+            project_id, change_unit_id, task_id, status, is_current,
+            basis_state_version, created_at, updated_at
+         ) VALUES ('project_a', 'cu_b', 'task_a', 'active', 1, 1, 't0', 't0')",
+        [],
     );
-
-    let weakened_write_ticket = initial_project_state_schema()?;
-    weakened_write_ticket.execute("DROP INDEX idx_write_tickets_consumed_run", [])?;
-    assert_schema_differs(
-        "removing write ticket consumed-run uniqueness",
-        &expected,
-        &read_database_schema(&weakened_write_ticket)?,
-    );
-
+    assert!(duplicate.is_err());
     Ok(())
 }
 
-#[test]
-fn registry_schema_validation_rejects_weakened_host_capability_byte_bounds(
-) -> Result<(), Box<dyn Error>> {
-    for (label, original, weakened, expected_detail) in [
-        (
-            "missing history-coordinate byte bound",
-            "length(CAST(host_version AS BLOB)) BETWEEN 1 AND 1024",
-            "1",
-            "host_capability_verifications constraints are missing or malformed",
-        ),
-        (
-            "weakened client-identity byte bound",
-            "length(CAST(client_name AS BLOB)) BETWEEN 1 AND 256",
-            "length(CAST(client_name AS BLOB)) BETWEEN 1 AND 257",
-            "host_capability_verifications constraints are missing or malformed",
-        ),
-        (
-            "weakened current-pointer byte bound",
-            "length(CAST(current_verification_internal_id AS BLOB)) BETWEEN 1 AND 1024",
-            "length(CAST(current_verification_internal_id AS BLOB)) BETWEEN 1 AND 2048",
-            "host_capability_state constraints are missing or malformed",
-        ),
-    ] {
-        let weakened_sql = REGISTRY_SCHEMA_SQL.replacen(original, weakened, 1);
-        assert_ne!(
-            weakened_sql, REGISTRY_SCHEMA_SQL,
-            "{label}: canonical constraint fixture was not found"
-        );
-        let conn = build_schema_from_sql(&weakened_sql)?;
-        let error = match validate_registry_schema(&conn) {
-            Err(error) => error,
-            Ok(()) => panic!("{label}: weakened v6 schema must be rejected"),
-        };
-        assert!(
-            matches!(
-                error,
-                StoreError::SchemaInvariant {
-                    database_kind: REGISTRY_DATABASE_KIND,
-                    detail,
-                } if detail == expected_detail
-            ),
-            "{label}: expected the focused host-capability schema invariant"
-        );
-    }
-
-    let missing_not_null_sql = REGISTRY_SCHEMA_SQL.replacen(
-        "verification_internal_id TEXT NOT NULL PRIMARY KEY",
-        "verification_internal_id TEXT PRIMARY KEY",
-        1,
-    );
-    assert_ne!(missing_not_null_sql, REGISTRY_SCHEMA_SQL);
-    let conn = build_schema_from_sql(&missing_not_null_sql)?;
-    let error = match validate_registry_schema(&conn) {
-        Err(error) => error,
-        Ok(()) => panic!("a nullable bounded verification ID must be rejected"),
-    };
-    assert!(
-        matches!(
-            error,
-            StoreError::SchemaInvariant {
-                database_kind: REGISTRY_DATABASE_KIND,
-                detail,
-            } if detail.contains("host_capability_verifications.verification_internal_id")
-                && detail.contains("not_null=false")
-                && detail.contains("not_null=true")
-        ),
-        "expected the verification-ID column-shape invariant"
-    );
-
-    Ok(())
-}
-
-#[test]
-fn schema_comparison_ignores_harmless_sql_formatting() -> Result<(), Box<dyn Error>> {
-    let sql = "
-        CREATE TABLE sample (
-          id TEXT PRIMARY KEY,
-          value TEXT NOT NULL CHECK (value IN ('a', 'b'))
-        );
-        CREATE INDEX idx_sample_value ON sample (value);
-    ";
-    let project = read_database_schema(&build_schema_from_sql(sql)?)?;
-    let reformatted_project =
-        read_database_schema(&build_schema_from_sql(&harmlessly_reformat_sql(sql))?)?;
-    assert_schema_eq(
-        "schema with harmless SQL formatting changes",
-        &project,
-        &reformatted_project,
-    );
-
-    Ok(())
-}
-
-fn build_schema_from_sql(sql: &str) -> Result<Connection, Box<dyn Error>> {
-    let conn = Connection::open_in_memory()?;
-    enable_foreign_keys(&conn)?;
-    conn.execute_batch(sql)?;
-    Ok(conn)
-}
-
-fn initial_registry_schema() -> Result<Connection, Box<dyn Error>> {
+fn canonical_registry() -> Result<Connection, Box<dyn Error>> {
     let mut conn = Connection::open_in_memory()?;
     enable_foreign_keys(&conn)?;
     initialize_registry_schema(&mut conn)?;
-    validate_registry_schema(&conn)?;
     Ok(conn)
 }
 
-fn initial_project_state_schema() -> Result<Connection, Box<dyn Error>> {
+fn canonical_project() -> Result<Connection, Box<dyn Error>> {
     let mut conn = Connection::open_in_memory()?;
     enable_foreign_keys(&conn)?;
     initialize_project_state_schema(&mut conn)?;
-    validate_project_state_schema(&conn)?;
     Ok(conn)
 }
 
-fn assert_tables_include(schema: &DatabaseSchema, tables: &[&str]) {
-    for table in tables {
-        assert!(schema.tables.contains_key(*table), "expected table {table}");
-    }
-}
-
-fn assert_columns_include(schema: &DatabaseSchema, table: &str, columns: &[&str]) {
-    let table_schema = schema
-        .tables
-        .get(table)
-        .unwrap_or_else(|| panic!("expected table {table}"));
-    for column in columns {
-        assert!(
-            table_schema.columns.contains_key(*column),
-            "expected {table}.{column}"
-        );
-    }
-}
-
-fn assert_primary_key_columns(schema: &DatabaseSchema, table: &str, columns: &[&str]) {
-    let table_schema = schema
-        .tables
-        .get(table)
-        .unwrap_or_else(|| panic!("expected table {table}"));
-    let mut primary_key_columns = table_schema
-        .columns
-        .iter()
-        .filter(|(_, column)| column.primary_key_position > 0)
-        .map(|(name, column)| (column.primary_key_position, name.as_str()))
-        .collect::<Vec<_>>();
-    primary_key_columns.sort_by_key(|(position, _)| *position);
-    let actual = primary_key_columns
-        .into_iter()
-        .map(|(_, name)| name)
-        .collect::<Vec<_>>();
-    assert_eq!(actual, columns, "unexpected primary key for {table}");
-}
-
-fn assert_foreign_key_columns(
-    schema: &DatabaseSchema,
-    table: &str,
-    parent_table: &str,
-    columns: &[(&str, &str)],
-) {
-    let table_schema = schema
-        .tables
-        .get(table)
-        .unwrap_or_else(|| panic!("expected table {table}"));
-    let expected = columns
-        .iter()
-        .map(|(child, parent)| (*child, *parent))
-        .collect::<Vec<_>>();
-    let found = table_schema.foreign_keys.iter().any(|foreign_key| {
-        foreign_key.parent_table == parent_table
-            && foreign_key
-                .columns
-                .iter()
-                .map(|column| (column.child_column.as_str(), column.parent_column.as_str()))
-                .collect::<Vec<_>>()
-                == expected
-    });
-    assert!(
-        found,
-        "expected {table} foreign key to {parent_table} on {expected:?}"
-    );
-}
-
-fn assert_foreign_key_delete_action(
-    schema: &DatabaseSchema,
-    table: &str,
-    parent_table: &str,
-    on_delete: &str,
-) {
-    let table_schema = schema
-        .tables
-        .get(table)
-        .unwrap_or_else(|| panic!("expected table {table}"));
-    assert!(
-        table_schema
-            .foreign_keys
-            .iter()
-            .any(|foreign_key| foreign_key.parent_table == parent_table
-                && foreign_key.on_delete == on_delete),
-        "expected {table} foreign key to {parent_table} with ON DELETE {on_delete}"
-    );
-}
-
-fn assert_unique_index_columns(schema: &DatabaseSchema, index: &str, columns: &[&str]) {
-    let index_schema = schema
-        .explicit_indexes
-        .get(index)
-        .unwrap_or_else(|| panic!("expected index {index}"));
-    assert!(index_schema.unique, "expected {index} to be unique");
-    let actual = index_schema
-        .columns
-        .iter()
-        .map(|column| column.name.as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(actual, columns, "unexpected columns for {index}");
-}
-
-fn read_database_schema(conn: &Connection) -> rusqlite::Result<DatabaseSchema> {
-    let tables = read_tables(conn)?;
-    let (explicit_indexes, unique_constraints) = read_indexes(conn, tables.keys())?;
-    let triggers = read_triggers(conn)?;
-    Ok(DatabaseSchema {
-        tables,
-        explicit_indexes,
-        unique_constraints,
-        triggers,
-    })
-}
-
-fn read_tables(conn: &Connection) -> rusqlite::Result<BTreeMap<String, TableSchema>> {
-    let mut stmt = conn.prepare(
-        "SELECT name, sql
-           FROM sqlite_master
-          WHERE type = 'table'
-            AND name NOT LIKE 'sqlite_%'
-          ORDER BY name",
+fn insert_registry_owner(conn: &Connection, manifest: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO runtime_home (
+            singleton_id, runtime_home_id, runtime_home_path, registry_db_path,
+            storage_profile, created_at, updated_at
+         ) VALUES (1, 'runtime_a', '/runtime-a', '/runtime-a/registry.sqlite', ?1, 't0', 't0')",
+        [manifest],
     )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-
-    let mut tables = BTreeMap::new();
-    for row in rows {
-        let (name, sql) = row?;
-        tables.insert(
-            name.clone(),
-            TableSchema {
-                columns: read_columns(conn, &name)?,
-                foreign_keys: read_foreign_keys(conn, &name)?,
-                check_constraints: extract_check_constraints(&sql),
-            },
-        );
-    }
-    Ok(tables)
-}
-
-fn read_columns(
-    conn: &Connection,
-    table: &str,
-) -> rusqlite::Result<BTreeMap<String, ColumnSchema>> {
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", quote_identifier(table)))?;
-    let rows = stmt.query_map([], |row| {
-        let name = row.get::<_, String>(1)?;
-        Ok((
-            name,
-            ColumnSchema {
-                declared_type: row.get::<_, String>(2)?.trim().to_ascii_uppercase(),
-                not_null: row.get::<_, i64>(3)? != 0,
-                default_value: normalize_default_value(row.get::<_, Option<String>>(4)?),
-                primary_key_position: row.get(5)?,
-            },
-        ))
-    })?;
-
-    let mut columns = BTreeMap::new();
-    for row in rows {
-        let (name, column) = row?;
-        columns.insert(name, column);
-    }
-    Ok(columns)
-}
-
-fn read_foreign_keys(
-    conn: &Connection,
-    table: &str,
-) -> rusqlite::Result<BTreeSet<ForeignKeySchema>> {
-    #[derive(Debug)]
-    struct Row {
-        id: i64,
-        seq: i64,
-        parent_table: String,
-        child_column: String,
-        parent_column: String,
-        on_update: String,
-        on_delete: String,
-        match_name: String,
-    }
-
-    let mut stmt = conn.prepare(&format!(
-        "PRAGMA foreign_key_list({})",
-        quote_identifier(table)
-    ))?;
-    let rows = stmt.query_map([], |row| {
-        Ok(Row {
-            id: row.get(0)?,
-            seq: row.get(1)?,
-            parent_table: row.get(2)?,
-            child_column: row.get(3)?,
-            parent_column: row.get(4)?,
-            on_update: row.get::<_, String>(5)?.to_ascii_uppercase(),
-            on_delete: row.get::<_, String>(6)?.to_ascii_uppercase(),
-            match_name: row.get::<_, String>(7)?.to_ascii_uppercase(),
-        })
-    })?;
-
-    let mut grouped = BTreeMap::<i64, Vec<Row>>::new();
-    for row in rows {
-        let row = row?;
-        grouped.entry(row.id).or_default().push(row);
-    }
-
-    let mut foreign_keys = BTreeSet::new();
-    for (_, mut rows) in grouped {
-        rows.sort_by_key(|row| row.seq);
-        let first = rows
-            .first()
-            .expect("grouped foreign key rows must be non-empty");
-        foreign_keys.insert(ForeignKeySchema {
-            parent_table: first.parent_table.clone(),
-            columns: rows
-                .iter()
-                .map(|row| ForeignKeyColumnSchema {
-                    child_column: row.child_column.clone(),
-                    parent_column: row.parent_column.clone(),
-                })
-                .collect(),
-            on_update: first.on_update.clone(),
-            on_delete: first.on_delete.clone(),
-            match_name: first.match_name.clone(),
-        });
-    }
-
-    Ok(foreign_keys)
-}
-
-fn read_indexes<'a>(
-    conn: &Connection,
-    tables: impl Iterator<Item = &'a String>,
-) -> rusqlite::Result<(
-    BTreeMap<String, IndexSchema>,
-    BTreeSet<UniqueConstraintSchema>,
-)> {
-    let mut explicit_indexes = BTreeMap::new();
-    let mut unique_constraints = BTreeSet::new();
-
-    for table in tables {
-        let mut stmt = conn.prepare(&format!("PRAGMA index_list({})", quote_identifier(table)))?;
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)? != 0,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)? != 0,
-            ))
-        })?;
-
-        for row in rows {
-            let (name, unique, origin, partial) = row?;
-            let columns = read_index_columns(conn, &name)?;
-            match origin.as_str() {
-                "c" => {
-                    explicit_indexes.insert(
-                        name.clone(),
-                        IndexSchema {
-                            table: table.clone(),
-                            unique,
-                            columns,
-                            partial_predicate: if partial {
-                                Some(read_partial_index_predicate(conn, &name)?)
-                            } else {
-                                None
-                            },
-                        },
-                    );
-                }
-                "u" => {
-                    unique_constraints.insert(UniqueConstraintSchema {
-                        table: table.clone(),
-                        columns,
-                    });
-                }
-                _ => {}
-            }
-        }
-    }
-
-    Ok((explicit_indexes, unique_constraints))
-}
-
-fn read_index_columns(
-    conn: &Connection,
-    index: &str,
-) -> rusqlite::Result<Vec<IndexedColumnSchema>> {
-    let mut stmt = conn.prepare(&format!("PRAGMA index_xinfo({})", quote_identifier(index)))?;
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, i64>(3)? != 0,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, i64>(5)? != 0,
-        ))
-    })?;
-
-    let mut columns = Vec::new();
-    for row in rows {
-        let (seqno, name, descending, collation, key) = row?;
-        if key {
-            columns.push((
-                seqno,
-                IndexedColumnSchema {
-                    name: name.unwrap_or_else(|| format!("<expression:{seqno}>")),
-                    descending,
-                    collation: collation
-                        .unwrap_or_else(|| "BINARY".to_owned())
-                        .to_ascii_uppercase(),
-                },
-            ));
-        }
-    }
-    columns.sort_by_key(|(seqno, _)| *seqno);
-    Ok(columns.into_iter().map(|(_, column)| column).collect())
-}
-
-fn read_partial_index_predicate(conn: &Connection, index: &str) -> rusqlite::Result<String> {
-    let sql = conn.query_row(
-        "SELECT sql
-           FROM sqlite_master
-          WHERE type = 'index'
-            AND name = ?1",
-        [index],
-        |row| row.get::<_, String>(0),
-    )?;
-    find_keyword_outside_quotes(&sql, "where")
-        .map(|index| normalize_sql_fragment(&sql[index + "where".len()..]))
-        .ok_or_else(|| RusqliteError::InvalidQuery)
-}
-
-fn read_triggers(conn: &Connection) -> rusqlite::Result<BTreeMap<String, TriggerSchema>> {
-    let mut stmt = conn.prepare(
-        "SELECT name, tbl_name, sql
-           FROM sqlite_master
-          WHERE type = 'trigger'
-            AND name NOT LIKE 'sqlite_%'
-          ORDER BY name",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            TriggerSchema {
-                table: row.get(1)?,
-                sql: normalize_sql_fragment(&row.get::<_, String>(2)?),
-            },
-        ))
-    })?;
-
-    let mut triggers = BTreeMap::new();
-    for row in rows {
-        let (name, trigger) = row?;
-        triggers.insert(name, trigger);
-    }
-    Ok(triggers)
-}
-
-fn normalize_default_value(value: Option<String>) -> Option<String> {
-    let value = value?;
-    let trimmed = value.trim();
-    if let Some(unquoted) = unquote_sql_string(trimmed) {
-        if let Ok(json) = serde_json::from_str::<Value>(&unquoted) {
-            if json.is_object() || json.is_array() {
-                return Some(format!(
-                    "json:{}",
-                    serde_json::to_string(&json).expect("parsed JSON should serialize")
-                ));
-            }
-        }
-        Some(format!("string:{unquoted}"))
-    } else {
-        Some(format!("expr:{}", normalize_sql_fragment(trimmed)))
-    }
-}
-
-fn unquote_sql_string(value: &str) -> Option<String> {
-    let bytes = value.as_bytes();
-    if bytes.len() < 2 || bytes.first() != Some(&b'\'') || bytes.last() != Some(&b'\'') {
-        return None;
-    }
-    Some(value[1..value.len() - 1].replace("''", "'"))
-}
-
-fn extract_check_constraints(sql: &str) -> BTreeSet<String> {
-    let chars = sql.chars().collect::<Vec<_>>();
-    let mut checks = BTreeSet::new();
-    let mut index = 0;
-
-    while index < chars.len() {
-        if keyword_at(&chars, index, "check") {
-            let mut open = index + "check".len();
-            while open < chars.len() && chars[open].is_whitespace() {
-                open += 1;
-            }
-            if open < chars.len() && chars[open] == '(' {
-                if let Some((expression, end)) = balanced_parenthesized(&chars, open) {
-                    checks.insert(normalize_sql_fragment(&expression));
-                    index = end;
-                    continue;
-                }
-            }
-        }
-        index += 1;
-    }
-
-    checks
-}
-
-fn balanced_parenthesized(chars: &[char], open: usize) -> Option<(String, usize)> {
-    let mut depth = 0;
-    let mut expression = String::new();
-    let mut index = open;
-    let mut in_single = false;
-    let mut in_double = false;
-
-    while index < chars.len() {
-        let ch = chars[index];
-        if in_single {
-            expression.push(ch);
-            if ch == '\'' {
-                if chars.get(index + 1) == Some(&'\'') {
-                    index += 1;
-                    expression.push(chars[index]);
-                } else {
-                    in_single = false;
-                }
-            }
-        } else if in_double {
-            expression.push(ch);
-            if ch == '"' {
-                if chars.get(index + 1) == Some(&'"') {
-                    index += 1;
-                    expression.push(chars[index]);
-                } else {
-                    in_double = false;
-                }
-            }
-        } else {
-            match ch {
-                '\'' => {
-                    in_single = true;
-                    expression.push(ch);
-                }
-                '"' => {
-                    in_double = true;
-                    expression.push(ch);
-                }
-                '(' => {
-                    if depth > 0 {
-                        expression.push(ch);
-                    }
-                    depth += 1;
-                }
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some((expression, index + 1));
-                    }
-                    expression.push(ch);
-                }
-                _ => expression.push(ch),
-            }
-        }
-        index += 1;
-    }
-
-    None
-}
-
-fn normalize_sql_fragment(sql: &str) -> String {
-    let mut normalized = String::new();
-    let mut chars = sql.chars().peekable();
-    let mut pending_space = false;
-
-    while let Some(ch) = chars.next() {
-        if ch.is_whitespace() {
-            pending_space = true;
-            continue;
-        }
-
-        if ch == '\'' {
-            push_pending_space(&mut normalized, pending_space, true);
-            pending_space = false;
-            normalized.push(ch);
-            while let Some(quoted) = chars.next() {
-                normalized.push(quoted);
-                if quoted == '\'' {
-                    if chars.peek() == Some(&'\'') {
-                        normalized.push(chars.next().expect("peeked quote exists"));
-                    } else {
-                        break;
-                    }
-                }
-            }
-            continue;
-        }
-
-        if ch == '"' {
-            push_pending_space(&mut normalized, pending_space, true);
-            pending_space = false;
-            normalized.push(ch);
-            while let Some(quoted) = chars.next() {
-                normalized.push(quoted.to_ascii_lowercase());
-                if quoted == '"' {
-                    if chars.peek() == Some(&'"') {
-                        normalized.push(chars.next().expect("peeked quote exists"));
-                    } else {
-                        break;
-                    }
-                }
-            }
-            continue;
-        }
-
-        if is_word_char(ch) {
-            push_pending_space(&mut normalized, pending_space, true);
-            normalized.push(ch.to_ascii_lowercase());
-        } else {
-            normalized.push(ch.to_ascii_lowercase());
-        }
-        pending_space = false;
-    }
-
-    normalized.trim().trim_end_matches(';').to_owned()
-}
-
-fn push_pending_space(normalized: &mut String, pending_space: bool, next_word_like: bool) {
-    if pending_space
-        && normalized
-            .chars()
-            .last()
-            .is_some_and(|previous| next_word_like && is_word_char(previous))
-    {
-        normalized.push(' ');
-    }
-}
-
-fn find_keyword_outside_quotes(sql: &str, keyword: &str) -> Option<usize> {
-    let chars = sql.chars().collect::<Vec<_>>();
-    let mut index = 0;
-    let mut in_single = false;
-    let mut in_double = false;
-
-    while index < chars.len() {
-        let ch = chars[index];
-        if in_single {
-            if ch == '\'' {
-                if chars.get(index + 1) == Some(&'\'') {
-                    index += 1;
-                } else {
-                    in_single = false;
-                }
-            }
-        } else if in_double {
-            if ch == '"' {
-                if chars.get(index + 1) == Some(&'"') {
-                    index += 1;
-                } else {
-                    in_double = false;
-                }
-            }
-        } else if ch == '\'' {
-            in_single = true;
-        } else if ch == '"' {
-            in_double = true;
-        } else if keyword_at(&chars, index, keyword) {
-            return Some(chars[..index].iter().map(|ch| ch.len_utf8()).sum());
-        }
-        index += 1;
-    }
-
-    None
-}
-
-fn keyword_at(chars: &[char], index: usize, keyword: &str) -> bool {
-    let keyword_chars = keyword.chars().collect::<Vec<_>>();
-    if index + keyword_chars.len() > chars.len() {
-        return false;
-    }
-    if index > 0 && is_word_char(chars[index - 1]) {
-        return false;
-    }
-    if index + keyword_chars.len() < chars.len() && is_word_char(chars[index + keyword_chars.len()])
-    {
-        return false;
-    }
-    chars[index..index + keyword_chars.len()]
-        .iter()
-        .zip(keyword_chars.iter())
-        .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
-}
-
-fn is_word_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.')
-}
-
-fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<(), Box<dyn Error>> {
-    insert_minimal_project_graph(conn)?;
-    assert_user_action_value_sets_are_closed(label, conn);
-    assert_user_action_requests_require_basis(label, conn);
-    assert_user_action_resolution_identity_is_unique(label, conn);
-    assert_channel_submission_id_bounds(label, conn);
-    assert_project_continuity_value_sets_are_closed(label, conn);
-    assert_write_ticket_status_is_closed(label, conn);
-    assert_evidence_observation_value_sets_are_closed(label, conn);
-    assert_acceptance_evidence_target_constraints(label, conn);
-    assert_tool_invocation_requires_identity(label, conn);
-    assert_one_active_current_change_unit(label, conn);
-    assert_artifacts_integrity_status_is_closed(label, conn);
-    assert_verified_artifacts_require_integrity_facts(label, conn);
-    assert_artifacts_body_path_shape(label, conn);
-    assert_evidence_capture_intent_constraints(label, conn);
     Ok(())
 }
 
-fn assert_registry_host_capability_contract_behavior(
-    conn: &Connection,
-) -> Result<(), Box<dyn Error>> {
+fn insert_project_owner(conn: &Connection, manifest: &str) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO agent_connections (
-            connection_internal_id, host_kind, intent, host_scope, server_name,
-            config_target, mode, managed_fingerprint, created_at, updated_at
-        ) VALUES (
-            'conn_a', 'codex', 'personal', 'user', 'volicord',
-            'codex-target', 'workflow', 'fingerprint-a', 't0', 't0'
-        )",
-        [],
+        "INSERT INTO project_state (project_id, storage_profile, created_at, updated_at)
+         VALUES ('project_a', ?1, 't0', 't0')",
+        [manifest],
     )?;
-
-    insert_host_capability_ddl_row(conn, "verification_a", "passed", "codex")?;
-    insert_host_capability_ddl_row(conn, "verification_b", "failed", "codex")?;
-    conn.execute(
-        "INSERT INTO host_capability_state (
-            connection_internal_id, capability,
-            current_verification_internal_id, updated_at
-        ) VALUES (
-            'conn_a', 'model_invisible_user_surface', 'verification_b', 't2'
-        )",
-        [],
-    )?;
-
-    let generic_pass = conn
-        .execute(
-            "INSERT INTO host_capability_verifications (
-                verification_internal_id, connection_internal_id, capability,
-                outcome, host_kind, host_version, client_name, client_version,
-                adapter_profile, adapter_version, managed_fingerprint,
-                volicord_build_id, source_revision, target_triple,
-                executable_sha256, evidence_artifact_sha256,
-                observed_at, expires_at, created_at
-            ) VALUES (
-                'verification_generic', 'conn_a', 'model_invisible_user_surface',
-                'passed', 'generic', '1.0.0', 'generic-client', '1.0.0',
-                'mcp_user_channel_local_web_v1', '0.9.0', 'fingerprint-a',
-                'build-a', '1111111111111111111111111111111111111111',
-                'x86_64-unknown-linux-gnu',
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-                't0', 't1', 't1'
-            )",
-            [],
-        )
-        .expect_err("generic outcome=passed must be rejected by canonical DDL");
-    assert_constraint_error("initial registry.sqlite", generic_pass);
-
-    for (label, sql) in [
-        (
-            "different passed host/client versions",
-            "UPDATE host_capability_verifications
-                SET host_version = '2.0.0'
-              WHERE verification_internal_id = 'verification_a'",
-        ),
-        (
-            "non-exact passed source revision",
-            "UPDATE host_capability_verifications
-                SET source_revision = 'unknown'
-              WHERE verification_internal_id = 'verification_a'",
-        ),
-        (
-            "nonempty v1 metadata",
-            "UPDATE host_capability_verifications
-                SET metadata_json = '{\"raw\":true}'
-              WHERE verification_internal_id = 'verification_a'",
-        ),
-    ] {
-        let error = conn.execute(sql, []).expect_err(label);
-        assert_constraint_error("initial registry.sqlite", error);
-    }
-
-    let history_count: i64 = conn.query_row(
-        "SELECT COUNT(*)
-           FROM host_capability_verifications
-          WHERE evidence_artifact_sha256 =
-                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(
-        history_count, 2,
-        "one evidence artifact digest may bind multiple exact verification rows"
-    );
-    assert_host_capability_utf8_byte_bounds(conn)?;
-
-    conn.execute(
-        "DELETE FROM agent_connections WHERE connection_internal_id = 'conn_a'",
-        [],
-    )?;
-    let remaining: i64 = conn.query_row(
-        "SELECT
-            (SELECT COUNT(*) FROM host_capability_verifications)
-            + (SELECT COUNT(*) FROM host_capability_state)",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(
-        remaining, 0,
-        "connection deletion must cascade capability rows"
-    );
     Ok(())
 }
 
-fn insert_host_capability_ddl_row(
-    conn: &Connection,
-    verification_internal_id: &str,
-    outcome: &str,
-    host_kind: &str,
-) -> rusqlite::Result<usize> {
-    insert_host_capability_ddl_row_with_optional_id(
-        conn,
-        Some(verification_internal_id),
-        outcome,
-        host_kind,
-    )
-}
-
-fn insert_host_capability_ddl_row_with_optional_id(
-    conn: &Connection,
-    verification_internal_id: Option<&str>,
-    outcome: &str,
-    host_kind: &str,
-) -> rusqlite::Result<usize> {
-    conn.execute(
-        "INSERT INTO host_capability_verifications (
-            verification_internal_id, connection_internal_id, capability,
-            outcome, host_kind, host_version, client_name, client_version,
-            adapter_profile, adapter_version, managed_fingerprint,
-            volicord_build_id, source_revision, target_triple,
-            executable_sha256, evidence_artifact_sha256,
-            observed_at, expires_at, created_at
-        ) VALUES (
-            ?1, 'conn_a', 'model_invisible_user_surface',
-            ?2, ?3, '1.0.0', 'codex-mcp-client', '1.0.0',
-            'mcp_user_channel_local_web_v1', '0.9.0', 'fingerprint-a',
-            'build-a', '1111111111111111111111111111111111111111',
-            'x86_64-unknown-linux-gnu',
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-            't0', 't1', 't1'
-        )",
-        params![verification_internal_id, outcome, host_kind],
-    )
-}
-
-fn assert_host_capability_utf8_byte_bounds(conn: &Connection) -> Result<(), Box<dyn Error>> {
-    let exact_general = multibyte_text_with_utf8_len(1024);
-    let over_general = format!("{exact_general}a");
-    let exact_client = multibyte_text_with_utf8_len(256);
-    let over_client = format!("{exact_client}a");
-    assert_eq!(over_general.len(), 1025);
-    assert_eq!(over_client.len(), 257);
-
-    for (connection_internal_id, config_target) in [
-        (exact_general.as_str(), "hcv-byte-bound-exact"),
-        (over_general.as_str(), "hcv-byte-bound-over"),
-    ] {
-        conn.execute(
-            "INSERT INTO agent_connections (
-                connection_internal_id, host_kind, intent, host_scope, server_name,
-                config_target, mode, managed_fingerprint, created_at, updated_at
-            ) VALUES (
-                ?1, 'codex', 'personal', 'user', 'volicord',
-                ?2, 'workflow', 'fingerprint-bounds', 't0', 't0'
-            )",
-            params![connection_internal_id, config_target],
-        )?;
-    }
-
-    insert_host_capability_ddl_row(conn, "verification_bounds", "failed", "codex")?;
-    let null_verification_id =
-        insert_host_capability_ddl_row_with_optional_id(conn, None, "failed", "codex")
-            .expect_err("the bounded verification ID must be explicitly NOT NULL");
-    assert_constraint_error(
-        "host-capability verification ID null bound",
-        null_verification_id,
-    );
-
-    assert_eq!(
-        conn.execute(
-            "UPDATE host_capability_verifications
-                SET verification_internal_id = ?1
-              WHERE verification_internal_id = 'verification_bounds'",
-            [exact_general.as_str()],
-        )?,
-        1,
-        "a multibyte verification ID at exactly 1,024 UTF-8 bytes must be accepted"
-    );
-    assert_eq!(
-        conn.execute(
-            "UPDATE host_capability_verifications
-                SET verification_internal_id = 'verification_bounds'
-              WHERE verification_internal_id = ?1",
-            [exact_general.as_str()],
-        )?,
-        1
-    );
-    let over_verification_id = conn
-        .execute(
-            "UPDATE host_capability_verifications
-                SET verification_internal_id = ?1
-              WHERE verification_internal_id = 'verification_bounds'",
-            [over_general.as_str()],
-        )
-        .expect_err("a verification ID over 1,024 UTF-8 bytes must be rejected");
-    assert_constraint_error(
-        "host-capability verification ID byte bound",
-        over_verification_id,
-    );
-
-    assert_eq!(
-        conn.execute(
-            "UPDATE host_capability_verifications
-                SET connection_internal_id = ?1
-              WHERE verification_internal_id = 'verification_bounds'",
-            [exact_general.as_str()],
-        )?,
-        1,
-        "a multibyte connection ID at exactly 1,024 UTF-8 bytes must be accepted"
-    );
-    assert_eq!(
-        conn.execute(
-            "UPDATE host_capability_verifications
-                SET connection_internal_id = 'conn_a'
-              WHERE verification_internal_id = 'verification_bounds'",
-            [],
-        )?,
-        1
-    );
-    let over_connection_id = conn
-        .execute(
-            "UPDATE host_capability_verifications
-                SET connection_internal_id = ?1
-              WHERE verification_internal_id = 'verification_bounds'",
-            [over_general.as_str()],
-        )
-        .expect_err("a verification connection ID over 1,024 UTF-8 bytes must be rejected");
-    assert_constraint_error(
-        "host-capability verification connection ID byte bound",
-        over_connection_id,
-    );
-
-    for (column, original) in [
-        ("host_version", "1.0.0"),
-        ("adapter_version", "0.9.0"),
-        ("managed_fingerprint", "fingerprint-a"),
-        ("volicord_build_id", "build-a"),
-        (
-            "source_revision",
-            "1111111111111111111111111111111111111111",
-        ),
-        ("target_triple", "x86_64-unknown-linux-gnu"),
-    ] {
-        let sql = format!(
-            "UPDATE host_capability_verifications
-                SET {column} = ?1
-              WHERE verification_internal_id = 'verification_bounds'"
-        );
-        assert_eq!(
-            conn.execute(&sql, [exact_general.as_str()])?,
-            1,
-            "{column}: a multibyte value at exactly 1,024 UTF-8 bytes must be accepted"
-        );
-        assert_eq!(conn.execute(&sql, [original])?, 1);
-        let error = conn
-            .execute(&sql, [over_general.as_str()])
-            .expect_err(&format!(
-                "{column}: a value over 1,024 bytes must be rejected"
-            ));
-        assert_constraint_error(&format!("{column} UTF-8 byte bound"), error);
-    }
-
-    for (column, original) in [
-        ("client_name", "codex-mcp-client"),
-        ("client_version", "1.0.0"),
-    ] {
-        let sql = format!(
-            "UPDATE host_capability_verifications
-                SET {column} = ?1
-              WHERE verification_internal_id = 'verification_bounds'"
-        );
-        assert_eq!(
-            conn.execute(&sql, [exact_client.as_str()])?,
-            1,
-            "{column}: a multibyte value at exactly 256 UTF-8 bytes must be accepted"
-        );
-        assert_eq!(conn.execute(&sql, [original])?, 1);
-        let error = conn
-            .execute(&sql, [over_client.as_str()])
-            .expect_err(&format!(
-                "{column}: a value over 256 bytes must be rejected"
-            ));
-        assert_constraint_error(&format!("{column} UTF-8 byte bound"), error);
-    }
-
-    conn.execute(
-        "DELETE FROM host_capability_verifications
-          WHERE verification_internal_id = 'verification_bounds'",
-        [],
-    )?;
-    conn.execute(
-        "DELETE FROM agent_connections WHERE config_target LIKE 'hcv-byte-bound-%'",
-        [],
-    )?;
-
-    conn.pragma_update(None, "foreign_keys", "OFF")?;
-    assert_eq!(
-        conn.execute(
-            "INSERT INTO host_capability_state (
-                connection_internal_id, capability,
-                current_verification_internal_id, updated_at
-            ) VALUES (?1, 'model_invisible_user_surface', ?2, 't0')",
-            params![exact_general.as_str(), exact_general.as_str()],
-        )?,
-        1,
-        "multibyte current-pointer coordinates at exactly 1,024 bytes must be accepted"
-    );
-    conn.execute(
-        "DELETE FROM host_capability_state WHERE updated_at = 't0'",
-        [],
-    )?;
-
-    for (label, connection_internal_id, verification_internal_id) in [
-        (
-            "host-capability state connection ID byte bound",
-            over_general.as_str(),
-            "verification-state-bounds",
-        ),
-        (
-            "host-capability state verification ID byte bound",
-            "connection-state-bounds",
-            over_general.as_str(),
-        ),
-    ] {
-        let error = conn
-            .execute(
-                "INSERT INTO host_capability_state (
-                    connection_internal_id, capability,
-                    current_verification_internal_id, updated_at
-                ) VALUES (?1, 'model_invisible_user_surface', ?2, 't0')",
-                params![connection_internal_id, verification_internal_id],
-            )
-            .expect_err("an over-bound current-pointer coordinate must be rejected");
-        assert_constraint_error(label, error);
-    }
-    conn.pragma_update(None, "foreign_keys", "ON")?;
-
-    Ok(())
-}
-
-fn multibyte_text_with_utf8_len(byte_len: usize) -> String {
-    let value = format!(
-        "{}{}",
-        "가".repeat(byte_len / "가".len()),
-        "a".repeat(byte_len % "가".len())
-    );
-    assert_eq!(value.len(), byte_len);
-    assert!(value.contains('가'));
-    value
-}
-
-fn assert_evidence_capture_intent_constraints(label: &str, conn: &Connection) {
-    conn.execute(
-        "INSERT INTO change_units (
-            project_id, change_unit_id, task_id, status, is_current,
-            created_at, updated_at
-        ) VALUES ('project_a', 'cu_capture', 'task_a', 'proposed', 0, 't0', 't0')",
-        [],
-    )
-    .expect("capture fixture Change Unit should insert");
-
-    let bad_kind = conn
-        .execute(
-            "INSERT INTO evidence_capture_intents (
-                project_id, evidence_capture_intent_id, task_id, change_unit_id,
-                scope_revision, baseline_ref, target_json, capture_kind,
-                capture_spec_json, input_sha256, expected_outcome_json,
-                requested_by_actor_source, requesting_connection_internal_id,
-                created_at, expires_at
-            ) VALUES (
-                'project_a', 'intent_bad_kind', 'task_a', 'cu_capture', 0,
-                'baseline', '{}', 'caller_report', '{}',
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                '{}', 'agent_connection:conn_main', 'conn_main', 't0', 't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, bad_kind);
-
-    let uppercase_sha = conn
-        .execute(
-            "INSERT INTO evidence_capture_intents (
-                project_id, evidence_capture_intent_id, task_id, change_unit_id,
-                scope_revision, baseline_ref, target_json, capture_kind,
-                capture_spec_json, input_sha256, expected_outcome_json,
-                requested_by_actor_source, requesting_connection_internal_id,
-                created_at, expires_at
-            ) VALUES (
-                'project_a', 'intent_bad_sha', 'task_a', 'cu_capture', 0,
-                'baseline', '{}', 'verified_command_execution', '{}',
-                'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-                '{}', 'agent_connection:conn_main', 'conn_main', 't0', 't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, uppercase_sha);
-}
-
-fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "INSERT INTO project_state (
-            project_id,
-            storage_profile,
-            created_at,
-            updated_at
-        )
-        VALUES (?1, ?2, 't0', 't0')",
-        params!["project_a", STORAGE_PROFILE],
-    )?;
+fn insert_task(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO tasks (
-            project_id,
-            task_id,
-            created_by_actor_source,
-            mode,
-            requested_control_level,
-            effective_control_level,
-            control_level_reason,
-            work_phase,
-            acceptance_policy,
-            acceptance_policy_reason,
-            carry_forward_json,
-            lifecycle_phase,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            'project_a',
-            'task_a',
-            'agent_connection:conn_main',
-            'work',
-            'tracked',
-            'tracked',
-            'DDL fixture control.',
-            'shaping',
-            'required',
-            'DDL fixture requires explicit acceptance.',
-            '[]',
-            'shaping',
-            't0',
-            't0'
-        )",
-        [],
+            project_id, task_id, created_by_actor_source, mode,
+            requested_control_level, effective_control_level, control_level_reason,
+            work_phase, acceptance_policy, acceptance_policy_reason, carry_forward_json,
+            lifecycle_phase, created_at, updated_at
+         ) VALUES (
+            'project_a', 'task_a', 'agent_connection:conn_main', 'work',
+            'tracked', 'tracked', 'fixture', 'shaping', 'required', 'fixture', '[]',
+            'shaping', 't0', 't0'
+         )",
+        params![],
     )?;
     Ok(())
 }
 
-fn assert_user_action_value_sets_are_closed(label: &str, conn: &Connection) {
-    let bad_request_kind = conn
-        .execute(
-            "INSERT INTO user_action_requests (
-                project_id, user_action_request_id, task_id, action_kind,
-                request_json, basis_json, required_for_json,
-                requested_by_actor_source, source_method,
-                source_idempotency_key, requested_at
-            ) VALUES (
-                'project_a', 'action_bad_kind', 'task_a', 'approval',
-                '{}', '{}', '[]', 'agent_connection:conn_main',
-                'volicord.request_user_action', 'idem_action_bad_kind', 't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, bad_request_kind);
-
-    insert_ddl_user_action_request(conn, "action_for_bad_resolution", "product_decision");
-    for (resolution_id, channel_kind, actor_source) in [
-        ("resolution_bad_channel", "browser", "local_user"),
-        ("resolution_bad_actor", "cli", "agent_connection:conn_main"),
-    ] {
-        let error = conn
-            .execute(
-                "INSERT INTO user_action_resolutions (
-                    project_id, user_action_resolution_id, user_action_request_id,
-                    action_kind, channel_kind, channel_submission_id, resolution_json,
-                    resolved_by_actor_source, resolved_verification_basis,
-                    resolved_assurance_level, resolved_at
-                ) VALUES (
-                    'project_a', ?1, 'action_for_bad_resolution',
-                    'product_decision', ?2, ?1, '{}', ?3, 'fixture', 'local_user_channel', 't2'
-                )",
-                params![resolution_id, channel_kind, actor_source],
-            )
-            .unwrap_err();
-        assert_constraint_error(label, error);
-    }
-}
-
-fn assert_user_action_requests_require_basis(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO user_action_requests (
-                project_id, user_action_request_id, task_id, action_kind,
-                request_json, required_for_json, requested_by_actor_source,
-                source_method, source_idempotency_key, requested_at
-            ) VALUES (
-                'project_a', 'action_missing_basis', 'task_a', 'product_decision',
-                '{}', '[]', 'agent_connection:conn_main',
-                'volicord.request_user_action', 'idem_action_missing_basis', 't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
-}
-
-fn assert_user_action_resolution_identity_is_unique(label: &str, conn: &Connection) {
-    insert_ddl_user_action_request(conn, "action_unique_a", "product_decision");
-    insert_ddl_user_action_request(conn, "action_unique_b", "technical_decision");
-    conn.execute(
-        "INSERT INTO user_action_resolutions (
-            project_id, user_action_resolution_id, user_action_request_id,
-            action_kind, channel_kind, channel_submission_id, resolution_json,
-            resolved_by_actor_source, resolved_verification_basis,
-            resolved_assurance_level, resolved_at
-        ) VALUES (
-            'project_a', 'resolution_unique_a', 'action_unique_a',
-            'product_decision', 'cli', 'submission_unique', '{}',
-            'local_user', 'fixture', 'local_user_channel', 't2'
-        )",
-        [],
-    )
-    .expect("first immutable resolution should insert");
-
-    let duplicate_request = conn
-        .execute(
-            "INSERT INTO user_action_resolutions (
-                project_id, user_action_resolution_id, user_action_request_id,
-                action_kind, channel_kind, channel_submission_id, resolution_json,
-                resolved_by_actor_source, resolved_verification_basis,
-                resolved_assurance_level, resolved_at
-            ) VALUES (
-                'project_a', 'resolution_unique_a_second', 'action_unique_a',
-                'product_decision', 'cli', 'submission_other', '{}',
-                'local_user', 'fixture', 'local_user_channel', 't3'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, duplicate_request);
-
-    let duplicate_submission = conn
-        .execute(
-            "INSERT INTO user_action_resolutions (
-                project_id, user_action_resolution_id, user_action_request_id,
-                action_kind, channel_kind, channel_submission_id, resolution_json,
-                resolved_by_actor_source, resolved_verification_basis,
-                resolved_assurance_level, resolved_at
-            ) VALUES (
-                'project_a', 'resolution_unique_b', 'action_unique_b',
-                'technical_decision', 'cli', 'submission_unique', '{}',
-                'local_user', 'fixture', 'local_user_channel', 't3'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, duplicate_submission);
-}
-
-fn assert_channel_submission_id_bounds(label: &str, conn: &Connection) {
-    insert_ddl_user_action_request(conn, "action_submission_256", "product_decision");
-    let accepted = "x".repeat(256);
-    conn.execute(
-        "INSERT INTO user_action_resolutions (
-            project_id, user_action_resolution_id, user_action_request_id,
-            action_kind, channel_kind, channel_submission_id, resolution_json,
-            resolved_by_actor_source, resolved_verification_basis,
-            resolved_assurance_level, resolved_at
-        ) VALUES (
-            'project_a', 'resolution_submission_256', 'action_submission_256',
-            'product_decision', 'cli', ?1, '{}',
-            'local_user', 'fixture', 'local_user_channel', 't2'
-        )",
-        [&accepted],
-    )
-    .expect("256 visible ASCII submission bytes should satisfy the DDL");
-
-    insert_ddl_user_action_request(conn, "action_submission_invalid", "technical_decision");
-    for (index, rejected) in [
-        String::new(),
-        " ".to_owned(),
-        "contains whitespace".to_owned(),
-        "x".repeat(257),
-        "submission\0suffix".to_owned(),
-        "제출".to_owned(),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let error = conn
-            .execute(
-                "INSERT INTO user_action_resolutions (
-                    project_id, user_action_resolution_id, user_action_request_id,
-                    action_kind, channel_kind, channel_submission_id, resolution_json,
-                    resolved_by_actor_source, resolved_verification_basis,
-                    resolved_assurance_level, resolved_at
-                ) VALUES (
-                    'project_a', ?1, 'action_submission_invalid',
-                    'technical_decision', 'cli', ?2, '{}',
-                    'local_user', 'fixture', 'local_user_channel', 't2'
-                )",
-                params![format!("resolution_submission_invalid_{index}"), rejected],
-            )
-            .unwrap_err();
-        assert_constraint_error(label, error);
-    }
-}
-
-fn insert_ddl_user_action_request(conn: &Connection, request_id: &str, action_kind: &str) {
-    insert_ddl_user_action_request_with_origin(
-        conn,
-        request_id,
-        action_kind,
-        "volicord.request_user_action",
-        &format!("idem_{request_id}"),
-    )
-    .expect("user-action DDL fixture should insert");
-}
-
-fn insert_ddl_user_action_request_with_origin(
-    conn: &Connection,
-    request_id: &str,
-    action_kind: &str,
-    source_method: &str,
-    source_idempotency_key: &str,
-) -> rusqlite::Result<usize> {
-    conn.execute(
-        "INSERT INTO user_action_requests (
-            project_id, user_action_request_id, task_id, action_kind,
-            request_json, basis_json, required_for_json,
-            requested_by_actor_source, source_method,
-            source_idempotency_key, requested_at
-        ) VALUES (
-            'project_a', ?1, 'task_a', ?2, '{}', '{}', '[]',
-            'agent_connection:conn_main', ?3, ?4, 't1'
-        )",
-        params![
-            request_id,
-            action_kind,
-            source_method,
-            source_idempotency_key
-        ],
-    )
-}
-
-fn assert_project_continuity_value_sets_are_closed(label: &str, conn: &Connection) {
-    let bad_kind = conn
-        .execute(
-            "INSERT INTO project_continuity_records (
-                project_id,
-                continuity_record_id,
-                source_task_id,
-                kind,
-                title,
-                summary,
-                status,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'project_a',
-                'continuity_bad_kind',
-                'task_a',
-                'authority',
-                'Bad continuity kind',
-                'Continuity records must stay inside the documented kind set.',
-                'active',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, bad_kind);
-
-    let bad_status = conn
-        .execute(
-            "INSERT INTO project_continuity_records (
-                project_id,
-                continuity_record_id,
-                source_task_id,
-                kind,
-                title,
-                summary,
-                status,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'project_a',
-                'continuity_bad_status',
-                'task_a',
-                'decision',
-                'Bad continuity status',
-                'Continuity status values must stay closed.',
-                'current_authority',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, bad_status);
-}
-
-fn assert_write_ticket_status_is_closed(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO write_tickets (
-                project_id,
-                write_ticket_id,
-                task_id,
-                basis_state_version,
-                status,
-                validity_basis_json,
-                created_by_actor_source,
-                created_at
-            )
-            VALUES (
-                'project_a',
-                'write_ticket_bad_status',
-                'task_a',
-                1,
-                'accepted',
-                '{}',
-                'agent_connection:conn_main',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
-}
-
-fn assert_evidence_observation_value_sets_are_closed(label: &str, conn: &Connection) {
-    conn.execute(
-        "INSERT INTO evidence_claims (
-            project_id,
-            task_id,
-            evidence_claim_id,
-            statement,
-            created_at
-        )
-        VALUES (
-            'project_a',
-            'task_a',
-            'claim_close_support',
-            'Close claim supported.',
-            't1'
-        )",
-        [],
-    )
-    .expect("supplemental evidence claim should insert");
-
-    let bad_source = conn
-        .execute(
-            "INSERT INTO evidence_observations (
-                project_id,
-                evidence_observation_id,
-                task_id,
-                evidence_claim_id,
-                source_kind,
-                assurance_level,
-                observed_at,
-                recorded_at
-            )
-            VALUES (
-                'project_a',
-                'evidence_observation_bad_source',
-                'task_a',
-                'claim_close_support',
-                'final_acceptance',
-                'external_tool_result',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, bad_source);
-
-    let bad_assurance = conn
-        .execute(
-            "INSERT INTO evidence_observations (
-                project_id,
-                evidence_observation_id,
-                task_id,
-                evidence_claim_id,
-                source_kind,
-                assurance_level,
-                observed_at,
-                recorded_at
-            )
-            VALUES (
-                'project_a',
-                'evidence_observation_bad_assurance',
-                'task_a',
-                'claim_close_support',
-                'external_tool',
-                'accepted',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, bad_assurance);
-}
-
-fn assert_acceptance_evidence_target_constraints(label: &str, conn: &Connection) {
-    let negative_position = conn
-        .execute(
-            "INSERT INTO acceptance_criteria (
-                project_id,
-                acceptance_criterion_id,
-                task_id,
-                statement,
-                evidence_requirement,
-                position,
-                status,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'project_a',
-                'criterion_negative_position',
-                'task_a',
-                'Position must be nonnegative.',
-                'optional',
-                -1,
-                'active',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, negative_position);
-
-    conn.execute(
-        "INSERT INTO acceptance_criteria (
-            project_id,
-            acceptance_criterion_id,
-            task_id,
-            statement,
-            evidence_requirement,
-            position,
-            status,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            'project_a',
-            'criterion_target_task_a',
-            'task_a',
-            'Criterion target for Task A.',
-            'required',
-            0,
-            'active',
-            't1',
-            't1'
-        )",
-        [],
-    )
-    .expect("valid acceptance criterion should insert");
-    conn.execute(
-        "INSERT INTO evidence_claims (
-            project_id,
-            evidence_claim_id,
-            task_id,
-            statement,
-            created_at
-        )
-        VALUES
-            ('project_a', 'claim_target_task_a', 'task_a', 'Task A only claim.', 't1'),
-            ('project_a', 'claim_shared', 'task_a', 'Task A shared-ID statement.', 't1')",
-        [],
-    )
-    .expect("valid Task A claims should insert");
-    conn.execute(
-        "INSERT INTO tasks (
-            project_id,
-            task_id,
-            created_by_actor_source,
-            mode,
-            requested_control_level,
-            effective_control_level,
-            control_level_reason,
-            work_phase,
-            acceptance_policy,
-            acceptance_policy_reason,
-            carry_forward_json,
-            lifecycle_phase,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            'project_a',
-            'task_b',
-            'agent_connection:conn_main',
-            'work',
-            'tracked',
-            'tracked',
-            'DDL fixture control.',
-            'shaping',
-            'required',
-            'DDL fixture requires explicit acceptance.',
-            '[]',
-            'shaping',
-            't1',
-            't1'
-        )",
-        [],
-    )
-    .expect("second Task should insert");
-    conn.execute(
-        "INSERT INTO evidence_claims (
-            project_id,
-            evidence_claim_id,
-            task_id,
-            statement,
-            created_at
-        )
-        VALUES (
-            'project_a',
-            'claim_shared',
-            'task_b',
-            'Task B may use the same claim ID independently.',
-            't1'
-        )",
-        [],
-    )
-    .expect("the same EvidenceClaimId should be allowed in another Task");
-    let shared_claim_count: i64 = conn
-        .query_row(
-            "SELECT count(*)
-               FROM evidence_claims
-              WHERE project_id = 'project_a'
-                AND evidence_claim_id = 'claim_shared'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("shared claim count should be readable");
+fn assert_corrupt(error: StoreError, label: &str) {
     assert_eq!(
-        shared_claim_count, 2,
-        "{label}: claim identity is Task-scoped"
+        error.classification().route,
+        StoreFailureRoute::PersistedDataCorrupt,
+        "{label}: {error}"
     );
-
-    let neither_target = conn
-        .execute(
-            "INSERT INTO evidence_observations (
-                project_id,
-                evidence_observation_id,
-                task_id,
-                source_kind,
-                assurance_level,
-                observed_at,
-                recorded_at
-            )
-            VALUES (
-                'project_a',
-                'observation_neither_target',
-                'task_a',
-                'external_tool',
-                'external_tool_result',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, neither_target);
-
-    let both_targets = conn
-        .execute(
-            "INSERT INTO evidence_observations (
-                project_id,
-                evidence_observation_id,
-                task_id,
-                acceptance_criterion_id,
-                evidence_claim_id,
-                source_kind,
-                assurance_level,
-                observed_at,
-                recorded_at
-            )
-            VALUES (
-                'project_a',
-                'observation_both_targets',
-                'task_a',
-                'criterion_target_task_a',
-                'claim_target_task_a',
-                'external_tool',
-                'external_tool_result',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, both_targets);
-
-    let cross_task_criterion = conn
-        .execute(
-            "INSERT INTO evidence_observations (
-                project_id,
-                evidence_observation_id,
-                task_id,
-                acceptance_criterion_id,
-                source_kind,
-                assurance_level,
-                observed_at,
-                recorded_at
-            )
-            VALUES (
-                'project_a',
-                'observation_cross_task_criterion',
-                'task_b',
-                'criterion_target_task_a',
-                'external_tool',
-                'external_tool_result',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, cross_task_criterion);
-
-    let cross_task_claim = conn
-        .execute(
-            "INSERT INTO evidence_observations (
-                project_id,
-                evidence_observation_id,
-                task_id,
-                evidence_claim_id,
-                source_kind,
-                assurance_level,
-                observed_at,
-                recorded_at
-            )
-            VALUES (
-                'project_a',
-                'observation_cross_task_claim',
-                'task_b',
-                'claim_target_task_a',
-                'external_tool',
-                'external_tool_result',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, cross_task_claim);
-}
-
-fn assert_tool_invocation_requires_identity(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO tool_invocations (
-                project_id,
-                tool_name,
-                idempotency_key,
-                request_hash,
-                basis_state_version,
-                committed_state_version,
-                response_json,
-                created_at
-            )
-            VALUES (
-                'project_a',
-                'volicord.intake',
-                'idem_verified_missing_context',
-                'sha256:second',
-                0,
-                2,
-                '{}',
-                't2'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
-}
-
-fn assert_one_active_current_change_unit(label: &str, conn: &Connection) {
-    conn.execute(
-        "INSERT INTO change_units (
-            project_id,
-            change_unit_id,
-            task_id,
-            status,
-            is_current,
-            created_at,
-            updated_at
-        )
-        VALUES ('project_a', 'cu_current_1', 'task_a', 'active', 1, 't1', 't1')",
-        [],
-    )
-    .expect("first current Change Unit should insert");
-
-    let error = conn
-        .execute(
-            "INSERT INTO change_units (
-                project_id,
-                change_unit_id,
-                task_id,
-                status,
-                is_current,
-                created_at,
-                updated_at
-            )
-            VALUES ('project_a', 'cu_current_2', 'task_a', 'active', 1, 't2', 't2')",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
-}
-
-fn assert_artifacts_integrity_status_is_closed(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO artifacts (
-                project_id,
-                artifact_id,
-                task_id,
-                uri,
-                integrity_status,
-                redaction_state,
-                status,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'project_a',
-                'artifact_bad_integrity_status',
-                'task_a',
-                'volicord-artifact://project_a/artifact_bad_integrity_status',
-                'unsupported_status',
-                'none',
-                'unavailable',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
-}
-
-fn assert_verified_artifacts_require_integrity_facts(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO artifacts (
-                project_id,
-                artifact_id,
-                task_id,
-                uri,
-                integrity_status,
-                redaction_state,
-                status,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'project_a',
-                'artifact_verified_missing_facts',
-                'task_a',
-                'volicord-artifact://project_a/artifact_verified_missing_facts',
-                'verified',
-                'none',
-                'available',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
-}
-
-fn assert_artifacts_body_path_shape(label: &str, conn: &Connection) {
-    conn.execute(
-        "INSERT INTO artifacts (
-            project_id,
-            artifact_id,
-            task_id,
-            uri,
-            body_path,
-            sha256,
-            size_bytes,
-            content_type,
-            integrity_status,
-            redaction_state,
-            status,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            'project_a',
-            'artifact_canonical_body_path',
-            'task_a',
-            'volicord-artifact://project_a/artifact_canonical_body_path',
-            'tmp/canonical.txt',
-            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-            0,
-            'text/plain',
-            'verified',
-            'none',
-            'available',
-            't1',
-            't1'
-        )",
-        [],
-    )
-    .expect("canonical artifact-store-relative body_path should insert");
-
-    for (artifact_id, body_path) in [
-        ("artifact_empty_body_path", ""),
-        ("artifact_absolute_body_path", "/tmp/absolute.txt"),
-        ("artifact_parent_body_path", "../tmp/parent.txt"),
-        ("artifact_nested_parent_body_path", "tmp/../parent.txt"),
-        ("artifact_terminal_parent_body_path", "tmp/parent/.."),
-        ("artifact_drive_prefix_body_path", "C:tmp/drive.txt"),
-        ("artifact_backslash_body_path", r"tmp\backslash.txt"),
-        ("artifact_project_home_dir_body_path", "artifacts"),
-        (
-            "artifact_project_home_body_path",
-            "artifacts/tmp/obsolete.txt",
-        ),
-    ] {
-        let error = conn
-            .execute(
-                "INSERT INTO artifacts (
-                    project_id,
-                    artifact_id,
-                    task_id,
-                    uri,
-                    body_path,
-                    sha256,
-                    size_bytes,
-                    content_type,
-                    integrity_status,
-                    redaction_state,
-                    status,
-                    created_at,
-                    updated_at
-                )
-                VALUES (
-                    'project_a',
-                    ?1,
-                    'task_a',
-                    'volicord-artifact://project_a/bad_body_path',
-                    ?2,
-                    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-                    0,
-                    'text/plain',
-                    'verified',
-                    'none',
-                    'available',
-                    't1',
-                    't1'
-                )",
-                params![artifact_id, body_path],
-            )
-            .unwrap_err();
-        assert_constraint_error(label, error);
-    }
-}
-
-fn assert_constraint_error(label: &str, error: RusqliteError) {
-    match error {
-        RusqliteError::SqliteFailure(failure, _) => {
-            assert_eq!(
-                failure.code,
-                ErrorCode::ConstraintViolation,
-                "{label}: expected SQLite constraint failure"
-            );
-        }
-        other => panic!("{label}: expected SQLite constraint failure, got {other:?}"),
-    }
-}
-
-fn quote_identifier(identifier: &str) -> String {
-    format!("\"{}\"", identifier.replace('"', "\"\""))
-}
-
-fn assert_schema_eq(label: &str, expected: &DatabaseSchema, actual: &DatabaseSchema) {
-    assert_eq!(expected, actual, "{label} schemas differ");
-}
-
-fn assert_schema_differs(label: &str, expected: &DatabaseSchema, actual: &DatabaseSchema) {
-    assert_ne!(
-        expected, actual,
-        "{label} should change the normalized schema comparison"
-    );
-}
-
-fn harmlessly_reformat_sql(sql: &str) -> String {
-    sql.replace("CREATE UNIQUE INDEX", "create\n  unique\n  index")
-        .replace("CREATE INDEX", "create\n  index")
-        .replace("CREATE TABLE", "create\n  table")
-        .replace("CREATE TRIGGER", "create\n  trigger")
-        .replace("FOREIGN KEY", "foreign\n  key")
-        .replace("CHECK", "check")
-        .replace(" DEFAULT ", "\n  default\n  ")
 }

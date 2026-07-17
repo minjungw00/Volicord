@@ -4,16 +4,14 @@ use std::{
 };
 
 use chrono::Duration;
-use rusqlite::Connection;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    canonical_json_string, ActorSource, ArtifactRef, CarryForwardDisposition,
-    ChangeUnitEffectContract, CurrentCloseBasis, EvidenceAssuranceLevel, EvidenceCoverageItem,
-    EvidenceCoverageUpdate, EvidenceSourceKind, ObservedChanges, OperationCategory,
-    PersistedArtifactProducer, PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
+    canonical_git_object_id, canonical_json_string, is_canonical_sha256_digest, ActorSource,
+    ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis, EvidenceAssuranceLevel,
+    EvidenceCoverageItem, EvidenceSourceKind, OperationCategory, PersistedArtifactProducer,
+    PersistedArtifactProvenanceMetadata, PersistedCloseSummary, PersistedEvidenceMetadata,
     PersistedEvidenceObservationAuthority, PersistedUserActionRequest,
     PersistedUserActionResolution, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfile, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
@@ -173,16 +171,11 @@ fn parse_canonical_git_workspace_context(
 ) -> Result<PersistedGitWorkspaceReplayContext, &'static str> {
     let context = serde_json::from_str::<PersistedGitWorkspaceReplayContext>(text)
         .map_err(|_| "must have the strict Git workspace-context JSON shape")?;
-    let sha256_coordinate = |value: &str| {
-        value.strip_prefix("sha256:").is_some_and(|digest| {
-            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-        })
-    };
     if context.git_common_dir.trim().is_empty() || !Path::new(&context.git_common_dir).is_absolute()
     {
         return Err("must contain an absolute non-empty git_common_dir");
     }
-    if !sha256_coordinate(&context.worktree_id) {
+    if !is_canonical_sha256_digest(&context.worktree_id) {
         return Err("must contain a valid worktree_id");
     }
     if context.branch_ref.as_ref().is_some_and(|reference| {
@@ -192,12 +185,17 @@ fn parse_canonical_git_workspace_context(
     }) {
         return Err("must contain a valid branch_ref or null");
     }
-    if context.head_sha.as_ref().is_some_and(|sha| {
-        !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|byte| byte.is_ascii_hexdigit())
-    }) {
-        return Err("must contain a valid head_sha or null");
+    if context
+        .head_sha
+        .as_ref()
+        .is_some_and(|sha| match canonical_git_object_id(sha) {
+            Ok(canonical) => canonical != *sha,
+            Err(_) => true,
+        })
+    {
+        return Err("must contain a canonical lowercase head_sha or null");
     }
-    if !sha256_coordinate(&context.workspace_fingerprint) {
+    if !is_canonical_sha256_digest(&context.workspace_fingerprint) {
         return Err("must contain a valid workspace_fingerprint");
     }
     if canonical_json_string(&context).map_err(|_| "must be serializable")? != text {
@@ -341,502 +339,6 @@ pub(super) fn validate_json_text(field: &'static str, text: &str) -> StoreResult
     Ok(())
 }
 
-/// Revalidates the v6 Core-owned JSON domains that have durable typed owners.
-///
-/// The offline v6-to-v7 converter calls this only after exact DDL and foreign-key
-/// validation. It deliberately reuses the same parsers as ordinary Core reads and
-/// writes so syntactically valid but wrong-shaped authority state is not copied into
-/// a current Runtime Home.
-pub(crate) fn validate_v6_typed_owner_state_for_conversion(
-    conn: &Connection,
-    project_id: &str,
-) -> StoreResult<()> {
-    super::project_enforcement_profile(conn, project_id)?;
-    validate_v6_task_owner_state(conn, project_id)?;
-    validate_v6_change_unit_owner_state(conn, project_id)?;
-    validate_v6_user_action_owner_state(conn, project_id)?;
-    validate_v6_evidence_owner_state(conn, project_id)?;
-    validate_v6_continuity_owner_state(conn, project_id)?;
-    validate_v6_replay_owner_state(conn, project_id)?;
-    validate_v6_structural_json_domains(conn, project_id)
-}
-
-fn validate_v6_task_owner_state(conn: &Connection, project_id: &str) -> StoreResult<()> {
-    let mut statement = conn.prepare(
-        "SELECT task_id, scope_revision, close_basis_revision, carry_forward_json,
-                close_basis_json
-           FROM tasks
-          WHERE project_id = ?1
-          ORDER BY task_id",
-    )?;
-    let rows = statement.query_map([project_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)?,
-            row.get::<_, i64>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, Option<String>>(4)?,
-        ))
-    })?;
-    for row in rows {
-        let (task_id, scope_revision, close_basis_revision, carry_forward_json, close_basis_json) =
-            row?;
-        validate_owner_json::<Vec<CarryForwardDisposition>>(
-            "tasks",
-            &task_id,
-            "carry_forward_json",
-            &carry_forward_json,
-        )?;
-        if let Some(raw) = close_basis_json {
-            let basis = decode_owner_json::<CurrentCloseBasis>(
-                "tasks",
-                &task_id,
-                "close_basis_json",
-                &raw,
-            )?;
-            let stored_scope_revision = u64::try_from(scope_revision).map_err(|_| {
-                StoreError::corrupt_owner_state_value("tasks", task_id.clone(), "scope_revision")
-            })?;
-            let stored_close_basis_revision =
-                u64::try_from(close_basis_revision).map_err(|_| {
-                    StoreError::corrupt_owner_state_value(
-                        "tasks",
-                        task_id.clone(),
-                        "close_basis_revision",
-                    )
-                })?;
-            if basis.task_id.as_str() != task_id
-                || basis.scope_revision != stored_scope_revision
-                || basis.close_basis_revision != stored_close_basis_revision
-            {
-                return Err(StoreError::corrupt_owner_state_value(
-                    "tasks",
-                    task_id,
-                    "close_basis_json",
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_v6_change_unit_owner_state(conn: &Connection, project_id: &str) -> StoreResult<()> {
-    let mut statement = conn.prepare(
-        "SELECT change_unit_id, effect_contract_json
-           FROM change_units
-          WHERE project_id = ?1
-          ORDER BY change_unit_id",
-    )?;
-    let rows = statement.query_map([project_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    for row in rows {
-        let (change_unit_id, effect_contract_json) = row?;
-        validate_owner_json::<Option<ChangeUnitEffectContract>>(
-            "change_units",
-            &change_unit_id,
-            "effect_contract_json",
-            &effect_contract_json,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_v6_user_action_owner_state(conn: &Connection, project_id: &str) -> StoreResult<()> {
-    let mut statement = conn.prepare(
-        "SELECT user_action_request_id
-           FROM user_action_requests
-          WHERE project_id = ?1
-          ORDER BY user_action_request_id",
-    )?;
-    let rows = statement.query_map([project_id], |row| row.get::<_, String>(0))?;
-    for row in rows {
-        let request_id = row?;
-        let request = super::user_action_request_record(conn, project_id, &request_id)?
-            .ok_or_else(|| {
-                StoreError::corrupt_owner_state_value(
-                    "user_action_requests",
-                    request_id.clone(),
-                    "request_json",
-                )
-            })?;
-        if let Some(resolution) =
-            super::user_action_resolution_record_by_request(conn, project_id, &request_id)?
-        {
-            super::validate_user_action_request_resolution_pair(&request, &resolution)?;
-        }
-    }
-    Ok(())
-}
-
-fn validate_v6_evidence_owner_state(conn: &Connection, project_id: &str) -> StoreResult<()> {
-    let mut summaries = conn.prepare(
-        "SELECT evidence_summary_id, coverage_json, supporting_refs_json,
-                gap_refs_json, metadata_json
-           FROM evidence_summaries
-          WHERE project_id = ?1
-          ORDER BY evidence_summary_id",
-    )?;
-    let rows = summaries.query_map([project_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-        ))
-    })?;
-    for row in rows {
-        let (record_id, coverage, supporting, gaps, metadata) = row?;
-        validate_owner_json::<Vec<EvidenceCoverageItem>>(
-            "evidence_summaries",
-            &record_id,
-            "coverage_json",
-            &coverage,
-        )?;
-        validate_owner_json::<Vec<StateRecordRef>>(
-            "evidence_summaries",
-            &record_id,
-            "supporting_refs_json",
-            &supporting,
-        )?;
-        validate_owner_json::<Vec<StateRecordRef>>(
-            "evidence_summaries",
-            &record_id,
-            "gap_refs_json",
-            &gaps,
-        )?;
-        validate_owner_json::<PersistedEvidenceMetadata>(
-            "evidence_summaries",
-            &record_id,
-            "metadata_json",
-            &metadata,
-        )?;
-    }
-
-    let mut observations = conn.prepare(
-        "SELECT evidence_observation_id, source_kind, assurance_level,
-                acceptance_criterion_id, evidence_claim_id, tool_metadata_json,
-                input_refs_json, source_refs_json, output_artifact_refs_json,
-                limitations_json, metadata_json
-           FROM evidence_observations
-          WHERE project_id = ?1
-          ORDER BY evidence_observation_id",
-    )?;
-    let rows = observations.query_map([project_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, String>(5)?,
-            row.get::<_, String>(6)?,
-            row.get::<_, String>(7)?,
-            row.get::<_, String>(8)?,
-            row.get::<_, String>(9)?,
-            row.get::<_, String>(10)?,
-        ))
-    })?;
-    for row in rows {
-        let (
-            record_id,
-            source_kind,
-            assurance_level,
-            acceptance_criterion_id,
-            evidence_claim_id,
-            tool_metadata,
-            input_refs,
-            source_refs,
-            artifact_refs,
-            limitations,
-            metadata,
-        ) = row?;
-        if acceptance_criterion_id.is_some() == evidence_claim_id.is_some()
-            || serde_json::from_value::<EvidenceSourceKind>(Value::String(source_kind)).is_err()
-            || serde_json::from_value::<EvidenceAssuranceLevel>(Value::String(assurance_level))
-                .is_err()
-        {
-            return Err(StoreError::corrupt_owner_state_value(
-                "evidence_observations",
-                record_id,
-                "target_or_evidence_class",
-            ));
-        }
-        validate_owner_json::<serde_json::Map<String, Value>>(
-            "evidence_observations",
-            &record_id,
-            "tool_metadata_json",
-            &tool_metadata,
-        )?;
-        validate_owner_json::<Vec<StateRecordRef>>(
-            "evidence_observations",
-            &record_id,
-            "input_refs_json",
-            &input_refs,
-        )?;
-        validate_owner_json::<Vec<SourceRef>>(
-            "evidence_observations",
-            &record_id,
-            "source_refs_json",
-            &source_refs,
-        )?;
-        validate_owner_json::<Vec<ArtifactRef>>(
-            "evidence_observations",
-            &record_id,
-            "output_artifact_refs_json",
-            &artifact_refs,
-        )?;
-        validate_owner_json::<Vec<String>>(
-            "evidence_observations",
-            &record_id,
-            "limitations_json",
-            &limitations,
-        )?;
-        validate_owner_json::<PersistedEvidenceObservationAuthority>(
-            "evidence_observations",
-            &record_id,
-            "metadata_json",
-            &metadata,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_v6_continuity_owner_state(conn: &Connection, project_id: &str) -> StoreResult<()> {
-    let mut statement = conn.prepare(
-        "SELECT continuity_record_id, applies_to_paths_json, applies_to_refs_json,
-                source_refs_json, artifact_refs_json, supersedes_refs_json,
-                review_triggers_json
-           FROM project_continuity_records
-          WHERE project_id = ?1
-          ORDER BY continuity_record_id",
-    )?;
-    let rows = statement.query_map([project_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, String>(5)?,
-            row.get::<_, String>(6)?,
-        ))
-    })?;
-    for row in rows {
-        let (record_id, paths, applies_to, sources, artifacts, supersedes, triggers) = row?;
-        validate_owner_json::<Vec<String>>(
-            "project_continuity_records",
-            &record_id,
-            "applies_to_paths_json",
-            &paths,
-        )?;
-        for (column, raw) in [
-            ("applies_to_refs_json", applies_to),
-            ("source_refs_json", sources),
-            ("supersedes_refs_json", supersedes),
-        ] {
-            validate_owner_json::<Vec<StateRecordRef>>(
-                "project_continuity_records",
-                &record_id,
-                column,
-                &raw,
-            )?;
-        }
-        validate_owner_json::<Vec<ArtifactRef>>(
-            "project_continuity_records",
-            &record_id,
-            "artifact_refs_json",
-            &artifacts,
-        )?;
-        validate_owner_json::<Vec<String>>(
-            "project_continuity_records",
-            &record_id,
-            "review_triggers_json",
-            &triggers,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_v6_replay_owner_state(conn: &Connection, project_id: &str) -> StoreResult<()> {
-    let mut statement = conn.prepare(
-        "SELECT tool_name, idempotency_key, actor_source, operation_category, verification_basis,
-                git_workspace_context_json
-           FROM tool_invocations
-          WHERE project_id = ?1
-          ORDER BY tool_name, idempotency_key",
-    )?;
-    let rows = statement.query_map([project_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, Option<String>>(5)?,
-        ))
-    })?;
-    for row in rows {
-        let (
-            tool_name,
-            idempotency_key,
-            actor_source,
-            operation_category,
-            verification_basis,
-            context,
-        ) = row?;
-        let record_id = format!("{tool_name}:{idempotency_key}");
-        if let Err(failure) = validate_canonical_replay_identity(
-            &actor_source,
-            &operation_category,
-            verification_basis.as_deref(),
-            context.as_deref(),
-        ) {
-            return Err(match failure.field_kind {
-                ReplayContextFieldKind::Value => StoreError::corrupt_owner_state_value(
-                    "tool_invocations",
-                    record_id,
-                    failure.logical_column,
-                ),
-                ReplayContextFieldKind::Json => StoreError::corrupt_owner_state_json(
-                    "tool_invocations",
-                    record_id,
-                    failure.logical_column,
-                ),
-            });
-        }
-    }
-    Ok(())
-}
-
-fn validate_v6_structural_json_domains(conn: &Connection, project_id: &str) -> StoreResult<()> {
-    for (table, column) in [
-        ("project_state", "metadata_json"),
-        ("tasks", "shaping_summary_json"),
-        ("tasks", "autonomy_boundary_json"),
-        ("tasks", "close_summary_json"),
-        ("tasks", "metadata_json"),
-        ("change_units", "scope_summary_json"),
-        ("change_units", "write_basis_json"),
-        ("change_units", "lifecycle_json"),
-        ("change_units", "metadata_json"),
-        ("user_action_requests", "metadata_json"),
-        ("runs", "summary_json"),
-        ("runs", "write_ticket_effect_json"),
-        ("runs", "metadata_json"),
-        ("artifact_staging", "artifact_json"),
-        ("artifact_staging", "safe_metadata_json"),
-        ("artifact_staging", "metadata_json"),
-        ("artifacts", "retention_json"),
-        ("artifacts", "producer_json"),
-        ("artifacts", "metadata_json"),
-        ("artifact_links", "metadata_json"),
-        ("evidence_producers", "metadata_json"),
-        ("blockers", "detail_json"),
-        ("blockers", "metadata_json"),
-        ("authority_events", "payload_json"),
-        ("tool_invocations", "response_json"),
-        ("agent_sessions", "metadata_json"),
-        ("guard_events", "subject_json"),
-        ("guard_events", "result_json"),
-        ("guard_events", "metadata_json"),
-        ("prompt_captures", "metadata_json"),
-        ("unrecorded_changes", "detection_json"),
-        ("unrecorded_changes", "resolution_json"),
-        ("unrecorded_changes", "metadata_json"),
-        ("expected_writes", "metadata_json"),
-        ("session_watch_baselines", "metadata_json"),
-        ("session_watch_observations", "change_summary_json"),
-        ("session_watch_observations", "metadata_json"),
-        ("user_action_channel_tokens", "created_metadata_json"),
-        ("user_action_channel_tokens", "completion_metadata_json"),
-    ] {
-        validate_owner_column::<serde_json::Map<String, Value>>(conn, project_id, table, column)?;
-    }
-    for (table, column) in [
-        ("change_units", "bounded_paths_json"),
-        ("unrecorded_changes", "observed_paths_json"),
-        ("expected_writes", "expected_paths_json"),
-        ("expected_writes", "write_ticket_ids_json"),
-        ("expected_writes", "matched_paths_json"),
-        ("session_watch_baselines", "watched_paths_json"),
-        ("session_watch_baselines", "exclusions_json"),
-        ("session_watch_observations", "observed_paths_json"),
-    ] {
-        validate_owner_column::<Vec<String>>(conn, project_id, table, column)?;
-    }
-    for (table, column) in [
-        ("session_watch_baselines", "snapshot_entries_json"),
-        ("session_watch_observations", "snapshot_entries_json"),
-    ] {
-        validate_owner_column::<Vec<Value>>(conn, project_id, table, column)?;
-    }
-    validate_owner_column::<ObservedChanges>(conn, project_id, "runs", "observed_changes_json")?;
-    validate_owner_column::<Vec<EvidenceCoverageUpdate>>(
-        conn,
-        project_id,
-        "runs",
-        "evidence_updates_json",
-    )?;
-    validate_owner_column::<Vec<StateRecordRef>>(conn, project_id, "blockers", "owner_refs_json")?;
-    validate_owner_column::<Vec<StateRecordRef>>(
-        conn,
-        project_id,
-        "blockers",
-        "related_refs_json",
-    )?;
-    Ok(())
-}
-
-fn validate_owner_column<T>(
-    conn: &Connection,
-    project_id: &str,
-    table: &'static str,
-    column: &'static str,
-) -> StoreResult<()>
-where
-    T: DeserializeOwned,
-{
-    let mut statement = conn.prepare(&format!(
-        "SELECT rowid, {column} FROM {table} WHERE project_id = ?1 AND {column} IS NOT NULL ORDER BY rowid"
-    ))?;
-    let rows = statement.query_map([project_id], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-    })?;
-    for row in rows {
-        let (row_id, raw) = row?;
-        validate_owner_json::<T>(table, &row_id.to_string(), column, &raw)?;
-    }
-    Ok(())
-}
-
-fn validate_owner_json<T>(
-    table: &'static str,
-    record_ref: &str,
-    logical_column: &'static str,
-    text: &str,
-) -> StoreResult<()>
-where
-    T: DeserializeOwned,
-{
-    decode_owner_json::<T>(table, record_ref, logical_column, text).map(|_| ())
-}
-
-fn decode_owner_json<T>(
-    table: &'static str,
-    record_ref: &str,
-    logical_column: &'static str,
-    text: &str,
-) -> StoreResult<T>
-where
-    T: DeserializeOwned,
-{
-    serde_json::from_str(text).map_err(|_| {
-        StoreError::corrupt_owner_state_json(table, record_ref.to_owned(), logical_column)
-    })
-}
-
 pub(super) fn validate_effect_contract_json(field: &'static str, text: &str) -> StoreResult<()> {
     serde_json::from_str::<Option<ChangeUnitEffectContract>>(text).map_err(|error| {
         StoreError::InvalidInput {
@@ -852,6 +354,18 @@ pub(super) fn validate_current_close_basis_json(
 ) -> StoreResult<()> {
     serde_json::from_str::<CurrentCloseBasis>(text).map_err(|error| StoreError::InvalidInput {
         detail: format!("{field} must be CurrentCloseBasis JSON: {error}"),
+    })?;
+    Ok(())
+}
+
+pub(super) fn validate_persisted_close_summary_json(
+    field: &'static str,
+    text: &str,
+) -> StoreResult<()> {
+    serde_json::from_str::<PersistedCloseSummary>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be canonical persisted close-summary JSON: {error}"),
+        }
     })?;
     Ok(())
 }
@@ -1398,9 +912,6 @@ pub(super) fn user_action_kind_as_str(kind: UserActionKind) -> &'static str {
 
 pub(super) fn user_action_channel_kind_as_str(kind: UserActionChannelKind) -> &'static str {
     match kind {
-        UserActionChannelKind::McpElicitation => "mcp_elicitation",
-        UserActionChannelKind::PromptCapture => "prompt_capture",
-        UserActionChannelKind::LocalWebConsent => "local_web_consent",
         UserActionChannelKind::Cli => "cli",
     }
 }
@@ -1490,5 +1001,49 @@ mod source_ref_tests {
             r#"[{"source_kind":"user_context","source":{"context_id":"message_1","uri":"https://example.invalid"}}]"#,
         )
         .is_err());
+    }
+
+    #[test]
+    fn persisted_workspace_context_requires_canonical_git_object_id_spelling() {
+        let canonical = canonical_json_string(&serde_json::json!({
+            "git_common_dir": "/tmp/volicord-git-object-id/.git",
+            "worktree_id": format!("sha256:{}", "1".repeat(64)),
+            "branch_ref": "refs/heads/test",
+            "head_sha": "a".repeat(40),
+            "workspace_fingerprint": format!("sha256:{}", "2".repeat(64)),
+        }))
+        .expect("fixture must serialize");
+        assert!(parse_canonical_git_workspace_context(&canonical).is_ok());
+
+        let uppercase = canonical_json_string(&serde_json::json!({
+            "git_common_dir": "/tmp/volicord-git-object-id/.git",
+            "worktree_id": format!("sha256:{}", "1".repeat(64)),
+            "branch_ref": "refs/heads/test",
+            "head_sha": "A".repeat(40),
+            "workspace_fingerprint": format!("sha256:{}", "2".repeat(64)),
+        }))
+        .expect("fixture must serialize");
+        assert!(parse_canonical_git_workspace_context(&uppercase).is_err());
+
+        for (worktree_id, workspace_fingerprint) in [
+            (
+                format!("sha256:{}", "A".repeat(64)),
+                format!("sha256:{}", "2".repeat(64)),
+            ),
+            (
+                format!("sha256:{}", "1".repeat(64)),
+                format!("sha256:{}", "F".repeat(64)),
+            ),
+        ] {
+            let uppercase_digest = canonical_json_string(&serde_json::json!({
+                "git_common_dir": "/tmp/volicord-git-object-id/.git",
+                "worktree_id": worktree_id,
+                "branch_ref": "refs/heads/test",
+                "head_sha": "a".repeat(40),
+                "workspace_fingerprint": workspace_fingerprint,
+            }))
+            .expect("fixture must serialize");
+            assert!(parse_canonical_git_workspace_context(&uppercase_digest).is_err());
+        }
     }
 }

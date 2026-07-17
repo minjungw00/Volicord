@@ -84,16 +84,6 @@ impl CoreService {
         };
         let state_version = prepared.context.project_state.state_version;
         let now = prepared.operation_now.clone();
-        if !request.envelope.dry_run {
-            if let Err(error) = session_watch::run_session_watch_check(
-                &prepared.store,
-                &prepared.context.verified_invocation,
-                Some(&request.task_id),
-                &now,
-            ) {
-                return core_error_response(&request.envelope, Some(state_version), error);
-            }
-        }
         let plan = match plan_reconcile_changes(
             self,
             &prepared.store,
@@ -231,11 +221,6 @@ fn plan_reconcile_changes(
                 error,
             )))
         })?;
-    let user_channel_guard_health =
-        adjusted_guard_health(store, verified_invocation, &request, &[])?;
-    let can_resolve_in_chat =
-        close_task::user_channel_can_resolve_in_chat(user_channel_guard_health.as_ref());
-
     let mut planned_resolutions = Vec::new();
     let mut planned_user_actions = Vec::new();
     let mut unresolved_findings = Vec::new();
@@ -291,12 +276,9 @@ fn plan_reconcile_changes(
         }
 
         if let Some(candidate) = deterministic_resolution(
-            store,
             record,
-            &request.task_id,
             &runs,
             &write_tickets,
-            project_state.state_version,
             *now.as_datetime(),
         )?
         .or_else(|| {
@@ -339,7 +321,6 @@ fn plan_reconcile_changes(
             record,
             &request,
             project_state.state_version,
-            can_resolve_in_chat,
         )?);
     }
 
@@ -421,7 +402,7 @@ fn plan_reconcile_changes(
             .filter_map(|user_action| user_action.user_action.as_ref())
             .map(user_action_authority_from_state),
     );
-    let close_plan = projected_close_check_with_guard_health(
+    let close_plan = projected_close_check_with_resolutions(
         store,
         project_state,
         verified_invocation,
@@ -450,7 +431,6 @@ fn plan_reconcile_changes(
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers.clone(),
-        guard_health: close_plan.guard_health.clone(),
         guarantee_display: Some(guarantee_display),
     })?;
     let task_ref = state_ref(
@@ -467,7 +447,6 @@ fn plan_reconcile_changes(
     let mut result_next_actions = reconcile_next_actions(
         &unresolved_findings,
         &planned_user_actions,
-        user_channel_guard_health.as_ref(),
         request.envelope.dry_run,
     );
     normalize_next_action_collection(&mut result_next_actions, planned_state_version);
@@ -478,10 +457,7 @@ fn plan_reconcile_changes(
         } else {
             "core_committed"
         },
-        profile: profile_summary_text(
-            close_plan.guard_health.as_ref(),
-            state.guarantee_display.as_ref(),
-        ),
+        profile: profile_summary_text(state.guarantee_display.as_ref()),
         write_ticket: write_ticket_summary_text(true, state.write_ticket_summary.as_ref()),
         evidence: evidence_gate_summary_text(true, state.evidence_gate.as_ref()),
         pending_user_actions: projected_pending_refs.len(),
@@ -502,7 +478,6 @@ fn plan_reconcile_changes(
         rejected_resolution_requests,
         state,
         close_blockers: close_plan.blockers.clone(),
-        guard_health: close_plan.guard_health.clone(),
         next_actions: result_next_actions.clone(),
     };
     let event_payload = object_from_value(json!({
@@ -634,12 +609,9 @@ fn validate_requested_resolution(
 }
 
 fn deterministic_resolution(
-    store: &CoreProjectStore,
     record: &UnrecordedChangeRecord,
-    task_id: &TaskId,
     runs: &[RunObservedChangesRecord],
     write_tickets: &[WriteTicketRecord],
-    _state_version: u64,
     now: DateTime<Utc>,
 ) -> CoreResult<Option<ResolutionCandidate>> {
     let observed_paths = match observed_paths(record) {
@@ -651,9 +623,6 @@ fn deterministic_resolution(
             )))
         }
     };
-    if let Some(candidate) = session_watch::watcher_reverted_resolution(store, record)? {
-        return Ok(Some(candidate));
-    }
     if observed_paths.is_empty() {
         return Ok(Some(system_resolution(
             UnrecordedChangeResolutionBasis::NotProductChange,
@@ -669,11 +638,6 @@ fn deterministic_resolution(
             UnrecordedChangeResolutionBasis::RecordedAsExpectedWrite,
             "core_deterministic_recorded_run",
         )));
-    }
-    if let Some(candidate) =
-        session_watch::watcher_expected_write_resolution(store, record, task_id)?
-    {
-        return Ok(Some(candidate));
     }
     let mut active_matches = Vec::new();
     for write_ticket in write_tickets {
@@ -1022,7 +986,7 @@ fn projected_pending_refs(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn projected_close_check_with_guard_health(
+fn projected_close_check_with_resolutions(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     verified_invocation: &VerifiedInvocationContext,
@@ -1057,8 +1021,10 @@ fn projected_close_check_with_guard_health(
         ),
         pending_authorities,
     );
-    context.guard_health =
-        adjusted_guard_health(store, verified_invocation, request, planned_resolutions)?;
+    context.projected_resolved_unrecorded_change_ids = planned_resolutions
+        .iter()
+        .map(|resolution| resolution.record.unrecorded_change_id.clone())
+        .collect();
     projected_close_check(
         store,
         &projected_project_state,
@@ -1068,39 +1034,6 @@ fn projected_close_check_with_guard_health(
         context,
         now,
     )
-}
-
-fn adjusted_guard_health(
-    store: &CoreProjectStore,
-    verified_invocation: &VerifiedInvocationContext,
-    request: &ReconcileChangesRequest,
-    planned_resolutions: &[PlannedResolution],
-) -> Result<Option<GuardHealthSummary>, PlanError> {
-    let Some(connection_id) = verified_invocation.actor_source.agent_connection_id() else {
-        return Ok(None);
-    };
-    let record = volicord_store::guards::guard_health_record(
-        store.runtime_home(),
-        request.envelope.project_id.as_str(),
-        connection_id.as_str(),
-    )
-    .map_err(CorePipelineError::from)
-    .map_err(PlanError::Core)?;
-    let mut guard_health = close_task::guard_health_summary_from_record(record)?;
-    if let Some(summary) = guard_health.as_mut() {
-        summary.local_web_consent_available = verified_invocation.local_web_consent_available;
-        session_watch::apply_session_watch_status(store, verified_invocation, summary)?;
-        let resolved_for_connection = planned_resolutions
-            .iter()
-            .filter(|resolution| resolution.record.connection_internal_id == connection_id.as_str())
-            .filter(|resolution| resolution.record.confidence == "confirmed")
-            .count() as u64;
-        summary.unresolved_unrecorded_change_count = summary
-            .unresolved_unrecorded_change_count
-            .saturating_sub(resolved_for_connection);
-        close_task::refresh_control_surface(summary);
-    }
-    Ok(guard_health)
 }
 
 fn resolution_mutation(resolution: &PlannedResolution) -> CoreResult<CoreStorageMutation> {
@@ -1123,7 +1056,6 @@ fn unrecorded_finding(
     record: &UnrecordedChangeRecord,
     request: &ReconcileChangesRequest,
     state_version: u64,
-    can_resolve_in_chat: bool,
 ) -> CoreResult<UnrecordedChangeFinding> {
     Ok(UnrecordedChangeFinding {
         unrecorded_change_ref: unrecorded_change_ref(record, request, state_version),
@@ -1133,14 +1065,19 @@ fn unrecorded_finding(
             &record.confidence,
         )?,
         summary: record.summary.clone(),
-        observed_paths: observed_paths(record).unwrap_or_default(),
+        observed_paths: observed_paths(record).map_err(|()| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                "unrecorded_changes",
+                record.unrecorded_change_id.clone(),
+                "observed_paths_json",
+            ))
+        })?,
         detected_at: parse_owner_storage_value(
             "unrecorded_changes",
             record.unrecorded_change_id.clone(),
             "detected_at",
             &record.detected_at,
         )?,
-        can_resolve_in_chat,
         next_action: NextActionSummary {
             presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::ReconcileChanges,
@@ -1195,7 +1132,6 @@ fn resolution_summary(
 fn reconcile_next_actions(
     unresolved_findings: &[UnrecordedChangeFinding],
     planned_user_actions: &[PlannedUserAction],
-    guard_health: Option<&GuardHealthSummary>,
     dry_run: bool,
 ) -> Vec<NextActionSummary> {
     if planned_user_actions.is_empty() && unresolved_findings.is_empty() {
@@ -1226,7 +1162,7 @@ fn reconcile_next_actions(
             action_kind: NextActionKind::ResolveUserAction,
             owner_method: Some(MethodName::ResolveUserAction),
             allowed_operation_categories: vec![OperationCategory::UserOnly],
-            label: close_task::user_channel_pending_action_instruction(guard_health),
+            label: close_task::user_channel_pending_action_instruction(),
             blocking_question: None,
             expected_state_version: RequiredNullable::null(),
             required_refs: planned_user_actions

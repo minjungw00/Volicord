@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_types::{
-    host_hook_capability_has_exact_v2_shape, host_hook_capability_matches_owner_binding,
+    host_hook_capability_has_exact_current_shape, host_hook_capability_matches_owner_binding,
     GuardDecision, GuardInstallationStatus, HostHookCapabilityOwnerBinding, HostKind,
     IntegrationProfile, PromptCaptureStatus, UnrecordedChangeStatus, UtcTimestamp,
     HOST_HOOK_CAPABILITY_SCHEMA,
@@ -31,23 +31,9 @@ use crate::{
     StoreError, StoreResult,
 };
 
-const REQUIRED_GUARD_HOOK_PHASES: &[&str] = &[
-    "session_start_hook",
-    "pre_tool_hook",
-    "post_tool_hook",
-    "user_prompt_submit_hook",
-    "stop_hook",
-];
+const KNOWN_GUARD_OBSERVATION_PHASES: &[&str] = &["pre_tool", "post_tool", "prompt_capture"];
 
-const KNOWN_GUARD_OBSERVATION_PHASES: &[&str] = &[
-    "session_start",
-    "pre_tool",
-    "post_tool",
-    "prompt_capture",
-    "stop",
-];
-
-/// Maximum prior post-tool events considered for one durable-correlation subtraction.
+/// Maximum prior post-tool Guard events considered for one exact correlation window.
 pub const POST_TOOL_CORRELATION_EVENT_LIMIT: usize = 512;
 
 /// Guard installation creation or update input.
@@ -122,7 +108,7 @@ impl<'a> From<&'a GuardInstallationRecord> for GuardObservationMatch<'a> {
     }
 }
 
-/// Returns whether persisted observation metadata matches the current exact-v2 capability.
+/// Returns whether persisted observation metadata matches the exact canonical capability.
 ///
 /// Invalid timestamps, stale host or policy identity, unknown lifecycle phases, and phases not
 /// configured by the current capability all fail closed.
@@ -151,25 +137,30 @@ pub fn guard_observation_matches_current_capability(
     if observed_host_kind != Some(host_kind) {
         return Ok(false);
     }
-    let Ok(capability) = serde_json::from_str::<Value>(host_capability_json) else {
-        return Ok(false);
-    };
-    if !host_hook_capability_has_exact_v2_shape(&capability)
-        || observed_policy_hash != capability["policy_hash"].as_str()
-    {
+    let capability = serde_json::from_str::<Value>(host_capability_json).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "guard_installations",
+            guard_installation_id.to_owned(),
+            "host_capability_json",
+        )
+    })?;
+    if !host_hook_capability_has_exact_current_shape(&capability) {
+        return Err(StoreError::corrupt_owner_state_value(
+            "guard_installations",
+            guard_installation_id.to_owned(),
+            "host_capability_json",
+        ));
+    }
+    if observed_policy_hash != capability["policy_hash"].as_str() {
         return Ok(false);
     }
     let Some(last_seen_phase) = last_seen_phase else {
         return Ok(false);
     };
     Ok(KNOWN_GUARD_OBSERVATION_PHASES.contains(&last_seen_phase)
-        && capability["host_hook_commands"]
-            .as_array()
-            .is_some_and(|commands| {
-                commands
-                    .iter()
-                    .any(|command| command["policy_key"].as_str() == Some(last_seen_phase))
-            }))
+        && capability["commands"]
+            .as_object()
+            .is_some_and(|commands| commands.contains_key(last_seen_phase)))
 }
 
 /// Returns whether one stored installation has a current matching hook observation.
@@ -215,7 +206,6 @@ pub struct AgentSessionRecord {
     pub host_kind: String,
     pub guard_mode: String,
     pub started_at: String,
-    pub ended_at: Option<String>,
     pub metadata_json: String,
 }
 
@@ -310,10 +300,10 @@ pub struct ExpectedWriteInsert {
     pub tool_name: Option<String>,
     pub command_kind: String,
     pub path_policy: String,
-    pub expected_paths_json: String,
+    pub expected_paths: Vec<String>,
     pub task_id: String,
-    pub change_unit_id: Option<String>,
-    pub write_ticket_ids_json: String,
+    pub change_unit_id: String,
+    pub write_ticket_ids: Vec<String>,
     pub basis_state_version: u64,
     pub created_at: String,
     pub expires_at: String,
@@ -324,7 +314,7 @@ pub struct ExpectedWriteInsert {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedWriteMatch {
     pub matched_post_tool_guard_event_id: String,
-    pub matched_paths_json: String,
+    pub matched_paths: Vec<String>,
     pub matched_at: String,
 }
 
@@ -341,18 +331,44 @@ pub struct ExpectedWriteRecord {
     pub tool_name: Option<String>,
     pub command_kind: String,
     pub path_policy: String,
-    pub expected_paths_json: String,
+    pub expected_paths: Vec<String>,
     pub task_id: String,
-    pub change_unit_id: Option<String>,
-    pub write_ticket_ids_json: String,
+    pub change_unit_id: String,
+    pub write_ticket_ids: Vec<String>,
     pub basis_state_version: u64,
     pub status: String,
     pub matched_post_tool_guard_event_id: Option<String>,
-    pub matched_paths_json: Option<String>,
+    pub matched_paths: Option<Vec<String>>,
     pub created_at: String,
     pub expires_at: String,
     pub matched_at: Option<String>,
     pub metadata_json: String,
+}
+
+#[derive(Debug)]
+struct ExpectedWriteRaw {
+    project_id: String,
+    expected_write_id: String,
+    session_id: Option<String>,
+    connection_internal_id: String,
+    guard_installation_id: Option<String>,
+    pre_tool_guard_event_id: String,
+    host_invocation_id: Option<String>,
+    tool_name: Option<String>,
+    command_kind: String,
+    path_policy: String,
+    expected_paths_json: String,
+    task_id: String,
+    change_unit_id: Option<String>,
+    write_ticket_ids_json: String,
+    basis_state_version: u64,
+    status: String,
+    matched_post_tool_guard_event_id: Option<String>,
+    matched_paths_json: Option<String>,
+    created_at: String,
+    expires_at: String,
+    matched_at: Option<String>,
+    metadata_json: String,
 }
 
 /// Unrecorded Product Repository change insert input.
@@ -419,7 +435,7 @@ pub struct GuardHealthRecord {
     pub unresolved_unrecorded_changes: Vec<UnrecordedChangeRecord>,
 }
 
-/// Derived prompt-capture availability for one project and Agent Connection.
+/// Derived prompt-observation availability for one project and Agent Connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromptCaptureAvailability {
     pub status: PromptCaptureStatus,
@@ -429,8 +445,8 @@ pub struct PromptCaptureAvailability {
 }
 
 impl PromptCaptureAvailability {
-    pub fn can_use_chat_commands(&self) -> bool {
-        self.status.allows_chat_user_action_commands()
+    pub fn is_operational(&self) -> bool {
+        self.status.is_operational()
     }
 }
 
@@ -673,7 +689,10 @@ pub fn list_guard_installations(
         params![connection_internal_id, project_internal_id],
         guard_installation_from_row,
     )?;
-    collect_rows(rows)
+    collect_rows(rows)?
+        .into_iter()
+        .map(validate_decoded_guard_installation)
+        .collect()
 }
 
 /// Records a validated guard hook observation and promotes healthy configured installations.
@@ -814,36 +833,6 @@ pub fn agent_session(
         })
         .transpose()
         .map(Option::flatten)
-}
-
-/// Marks one Agent Session ended.
-pub fn end_agent_session(
-    runtime_home: impl AsRef<Path>,
-    project_id: &str,
-    session_id: &str,
-    ended_at: &str,
-) -> StoreResult<AgentSessionRecord> {
-    validate_identifier("project_id", project_id)?;
-    validate_identifier("session_id", session_id)?;
-    validate_timestamp_text("ended_at", ended_at)?;
-    let mut project = open_project_for_required_read(runtime_home, project_id)?;
-    let tx = begin_immediate_transaction(&mut project.conn)?;
-    let changed = tx.execute(
-        "UPDATE agent_sessions
-            SET ended_at = ?3
-          WHERE project_id = ?1
-            AND session_id = ?2",
-        params![project.project.project_id, session_id, ended_at],
-    )?;
-    tx.commit()?;
-    if changed == 0 {
-        return Err(StoreError::NotFound {
-            entity: "agent_session",
-            id: session_id.to_owned(),
-        });
-    }
-
-    agent_session_by_conn(&project.conn, &project.project.project_id, session_id)
 }
 
 /// Inserts one project-scoped guard event row.
@@ -1038,6 +1027,16 @@ pub fn insert_expected_write(
     input: ExpectedWriteInsert,
 ) -> StoreResult<ExpectedWriteRecord> {
     validate_expected_write_insert(&input)?;
+    let expected_paths_json =
+        serde_json::to_string(&input.expected_paths).map_err(|error| StoreError::InvalidInput {
+            detail: format!("expected paths cannot be serialized: {error}"),
+        })?;
+    let write_ticket_ids_json =
+        serde_json::to_string(&input.write_ticket_ids).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: format!("write-ticket IDs cannot be serialized: {error}"),
+            }
+        })?;
     let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
     validate_optional_session_scope(
         &project.conn,
@@ -1080,10 +1079,10 @@ pub fn insert_expected_write(
             input.tool_name,
             input.command_kind,
             input.path_policy,
-            input.expected_paths_json,
+            expected_paths_json,
             input.task_id,
             input.change_unit_id,
-            input.write_ticket_ids_json,
+            write_ticket_ids_json,
             input.basis_state_version,
             input.created_at,
             input.expires_at,
@@ -1165,9 +1164,12 @@ pub fn list_pending_expected_writes(
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
-        expected_write_from_row,
+        expected_write_raw_from_row,
     )?;
-    collect_rows(rows)
+    collect_rows(rows)?
+        .into_iter()
+        .map(expected_write_from_raw)
+        .collect()
 }
 
 /// Lists all expected writes for one project and Agent Connection.
@@ -1214,9 +1216,12 @@ pub fn list_expected_writes_for_connection(
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
-        expected_write_from_row,
+        expected_write_raw_from_row,
     )?;
-    collect_rows(rows)
+    collect_rows(rows)?
+        .into_iter()
+        .map(expected_write_from_raw)
+        .collect()
 }
 
 /// Lists expected writes already matched by one post-tool guard event.
@@ -1271,9 +1276,12 @@ pub fn list_expected_writes_matched_by_post_event(
             connection_internal_id,
             post_tool_guard_event_id
         ],
-        expected_write_from_row,
+        expected_write_raw_from_row,
     )?;
-    collect_rows(rows)
+    collect_rows(rows)?
+        .into_iter()
+        .map(expected_write_from_raw)
+        .collect()
 }
 
 /// Marks one pending expected-write row matched by a post-tool observation.
@@ -1286,6 +1294,10 @@ pub fn mark_expected_write_matched(
     validate_identifier("project_id", project_id)?;
     validate_identifier("expected_write_id", expected_write_id)?;
     validate_expected_write_match(&input)?;
+    let matched_paths_json =
+        serde_json::to_string(&input.matched_paths).map_err(|error| StoreError::InvalidInput {
+            detail: format!("matched paths cannot be serialized: {error}"),
+        })?;
     let mut project = open_project_for_required_read(runtime_home, project_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let changed = tx.execute(
@@ -1301,7 +1313,7 @@ pub fn mark_expected_write_matched(
             project.project.project_id,
             expected_write_id,
             input.matched_post_tool_guard_event_id,
-            input.matched_paths_json,
+            matched_paths_json,
             input.matched_at,
         ],
     )?;
@@ -1555,10 +1567,10 @@ pub fn guard_health_record(
     })
 }
 
-/// Reads post-tool GuardEvents for one exact session/connection at or after a timestamp.
+/// Reads post-tool Guard events for one exact session and connection at or after a timestamp.
 ///
-/// This is used by the detective adapter to re-check durable write correlations without
-/// treating a session-wide watcher or Git worktree diff as a new effect on every later tool.
+/// The 513th matching row is a fail-closed overflow probe; callers must not treat a truncated
+/// correlation window as complete.
 pub fn post_tool_guard_events_for_session_since(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
@@ -1705,11 +1717,9 @@ pub fn prompt_capture_availability(
         .zip(facts.expected_policy_hash.as_deref())
         .is_some_and(|(observed, expected)| observed == expected);
     let observation_is_current = guard_installation_observation_is_current(installation)?;
-    let status = if installation.guard_mode == IntegrationProfile::Record.as_str() {
-        PromptCaptureStatus::NotConfigured
-    } else if !facts.host_supports_prompt_capture {
+    let status = if !facts.host_supports_prompt_capture {
         PromptCaptureStatus::UnsupportedByHost
-    } else if !facts.prompt_capture_configured || facts.prompt_capture_hook_missing {
+    } else if !facts.prompt_capture_configured {
         PromptCaptureStatus::NotConfigured
     } else if matches!(
         installation.installation_status.as_str(),
@@ -1750,39 +1760,32 @@ struct PromptCaptureCapabilityFacts {
     expected_policy_hash: Option<String>,
     host_supports_prompt_capture: bool,
     prompt_capture_configured: bool,
-    prompt_capture_hook_missing: bool,
 }
 
 fn prompt_capture_capability_facts(
     host_capability_json: &str,
 ) -> StoreResult<PromptCaptureCapabilityFacts> {
     let value = current_host_capability_value(host_capability_json)?;
-    let expected_policy_hash = value
-        .get("policy_hash")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned);
+    let expected_policy_hash = Some(
+        value
+            .get("policy_hash")
+            .and_then(Value::as_str)
+            .expect("validated host capability has a policy_hash")
+            .to_owned(),
+    );
     let host_supports_prompt_capture = value
         .get("host_capabilities")
         .and_then(|capabilities| capabilities.get("user_prompt_submit_hook"))
         .and_then(Value::as_bool)
-        .unwrap_or(false);
+        .expect("validated host capability has user_prompt_submit_hook");
     let prompt_capture_configured = value
-        .get("prompt_capture")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let prompt_capture_hook_missing = value
-        .get("missing_required_hooks")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .any(|phase| phase == "user_prompt_submit_hook");
+        .get("commands")
+        .and_then(Value::as_object)
+        .is_some_and(|commands| commands.contains_key("prompt_capture"));
     Ok(PromptCaptureCapabilityFacts {
         expected_policy_hash,
         host_supports_prompt_capture,
         prompt_capture_configured,
-        prompt_capture_hook_missing,
     })
 }
 
@@ -1796,16 +1799,7 @@ fn selected_guard_installation(
     if records.is_empty() {
         records = list_guard_installations(runtime_home, connection_internal_id, None)?;
     }
-    records.sort_by_key(|record| guard_mode_priority(&record.guard_mode));
     Ok(records.pop())
-}
-
-fn guard_mode_priority(value: &str) -> u8 {
-    match value {
-        "detective" => 2,
-        "record" => 1,
-        _ => 0,
-    }
 }
 
 fn latest_agent_session(
@@ -1825,7 +1819,6 @@ fn latest_agent_session(
                 host_kind,
                 guard_mode,
                 started_at,
-                ended_at,
                 metadata_json
              FROM agent_sessions
             WHERE project_id = ?1
@@ -2199,7 +2192,7 @@ fn validate_guard_installation_binding(
     Ok(())
 }
 
-/// Validates that a stored exact-v2 capability is bound to its owner row and
+/// Validates that a stored exact canonical capability is bound to its owner row and
 /// owning Agent Connection before any capability facts are consumed.
 pub fn validate_stored_guard_installation_capability_binding(
     installation: &GuardInstallationRecord,
@@ -2269,12 +2262,6 @@ fn validate_guard_installation_observation(
     validate_identifier("project_id", &input.project_id)?;
     validate_host_kind(&input.host_kind)?;
     validate_guard_mode(&input.guard_mode)?;
-    if input.guard_mode == IntegrationProfile::Record.as_str() {
-        return Err(StoreError::InvalidInput {
-            detail: "host hook observation requires detective host-hook integration profile"
-                .to_owned(),
-        });
-    }
     validate_identifier("observed_policy_hash", &input.observed_policy_hash)?;
     if let Some(version) = &input.observed_binary_version {
         validate_identifier("observed_binary_version", version)?;
@@ -2343,18 +2330,10 @@ fn validate_expected_write_insert(input: &ExpectedWriteInsert) -> StoreResult<()
     }
     validate_identifier("command_kind", &input.command_kind)?;
     validate_expected_write_path_policy(&input.path_policy)?;
-    validate_json_array(
-        "expected_writes.expected_paths_json",
-        &input.expected_paths_json,
-    )?;
+    validate_string_items("expected_writes.expected_paths", &input.expected_paths)?;
     validate_identifier("task_id", &input.task_id)?;
-    if let Some(change_unit_id) = &input.change_unit_id {
-        validate_identifier("change_unit_id", change_unit_id)?;
-    }
-    validate_json_array(
-        "expected_writes.write_ticket_ids_json",
-        &input.write_ticket_ids_json,
-    )?;
+    validate_identifier("change_unit_id", &input.change_unit_id)?;
+    validate_string_items("expected_writes.write_ticket_ids", &input.write_ticket_ids)?;
     validate_timestamp_text("created_at", &input.created_at)?;
     validate_timestamp_text("expires_at", &input.expires_at)?;
     validate_json_object("expected_writes.metadata_json", &input.metadata_json)
@@ -2365,10 +2344,7 @@ fn validate_expected_write_match(input: &ExpectedWriteMatch) -> StoreResult<()> 
         "matched_post_tool_guard_event_id",
         &input.matched_post_tool_guard_event_id,
     )?;
-    validate_json_array(
-        "expected_writes.matched_paths_json",
-        &input.matched_paths_json,
-    )?;
+    validate_string_items("expected_writes.matched_paths", &input.matched_paths)?;
     validate_timestamp_text("matched_at", &input.matched_at)
 }
 
@@ -2479,16 +2455,11 @@ fn validate_host_kind(value: &str) -> StoreResult<()> {
 }
 
 fn validate_guard_mode(value: &str) -> StoreResult<()> {
-    if [
-        IntegrationProfile::Record.as_str(),
-        IntegrationProfile::Detective.as_str(),
-    ]
-    .contains(&value)
-    {
+    if value == IntegrationProfile::Record.as_str() {
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
-            detail: "integration profile must be record or detective".to_owned(),
+            detail: "integration profile must be record".to_owned(),
         })
     }
 }
@@ -2499,9 +2470,7 @@ fn validate_guard_hook_phase(field: &'static str, value: &str) -> StoreResult<()
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
-            detail: format!(
-                "{field} must be session_start, pre_tool, post_tool, prompt_capture, or stop"
-            ),
+            detail: format!("{field} must be pre_tool, post_tool, or prompt_capture"),
         })
     }
 }
@@ -2575,7 +2544,7 @@ fn validate_host_hook_capability_json(field: &'static str, text: &str) -> StoreR
     let value = serde_json::from_str::<Value>(text).map_err(|_| StoreError::InvalidInput {
         detail: format!("{field} must be exact current capability JSON"),
     })?;
-    if host_hook_capability_has_exact_v2_shape(&value) {
+    if host_hook_capability_has_exact_current_shape(&value) {
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
@@ -2597,54 +2566,43 @@ fn validate_json_array(field: &'static str, text: &str) -> StoreResult<()> {
     }
 }
 
+fn validate_string_items(field: &'static str, values: &[String]) -> StoreResult<()> {
+    if values.iter().all(|value| !value.trim().is_empty()) {
+        Ok(())
+    } else {
+        Err(StoreError::InvalidInput {
+            detail: format!("{field} must contain only non-empty strings"),
+        })
+    }
+}
+
+fn decode_canonical_string_array(text: &str) -> Result<Vec<String>, ()> {
+    let values = serde_json::from_str::<Vec<String>>(text).map_err(|_| ())?;
+    if values.iter().any(|value| value.trim().is_empty())
+        || serde_json::to_string(&values).map_err(|_| ())? != text
+    {
+        return Err(());
+    }
+    Ok(values)
+}
+
 fn expected_policy_hash(host_capability_json: &str) -> StoreResult<Option<String>> {
     let value = current_host_capability_value(host_capability_json)?;
-    Ok(value
-        .get("policy_hash")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned))
+    Ok(Some(
+        value["policy_hash"]
+            .as_str()
+            .expect("validated host capability has a policy_hash")
+            .to_owned(),
+    ))
 }
 
 fn guard_status_after_observation(installation: &GuardInstallationRecord) -> StoreResult<String> {
-    if host_capability_has_missing_required_hooks(&installation.host_capability_json)? {
-        return Ok(installation.installation_status.clone());
-    }
+    current_host_capability_value(&installation.host_capability_json)?;
     let status = match installation.installation_status.as_str() {
         "configured" | "reload_required" | "active" => GuardInstallationStatus::Active.as_str(),
         _ => installation.installation_status.as_str(),
     };
     Ok(status.to_owned())
-}
-
-fn host_capability_has_missing_required_hooks(host_capability_json: &str) -> StoreResult<bool> {
-    let value = current_host_capability_value(host_capability_json)?;
-    if value
-        .get("missing_required_hooks")
-        .and_then(Value::as_array)
-        .is_some_and(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .any(|value| !value.trim().is_empty())
-        })
-    {
-        return Ok(true);
-    }
-    let configured_phases = value
-        .get("required_hook_phases")
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    Ok(REQUIRED_GUARD_HOOK_PHASES
-        .iter()
-        .any(|required_phase| !configured_phases.contains(required_phase)))
 }
 
 fn current_host_capability_value(host_capability_json: &str) -> StoreResult<Value> {
@@ -2654,7 +2612,7 @@ fn current_host_capability_value(host_capability_json: &str) -> StoreResult<Valu
                 .to_owned(),
         }
     })?;
-    if !host_hook_capability_has_exact_v2_shape(&value) {
+    if !host_hook_capability_has_exact_current_shape(&value) {
         return Err(StoreError::InvalidInput {
             detail: format!(
                 "guard_installations.host_capability_json must use {HOST_HOOK_CAPABILITY_SCHEMA}"
@@ -2705,8 +2663,9 @@ pub(crate) fn guard_installation_from_conn(
     conn: &Connection,
     guard_installation_id: &str,
 ) -> StoreResult<Option<GuardInstallationRecord>> {
-    conn.query_row(
-        "SELECT
+    let record = conn
+        .query_row(
+            "SELECT
             gi.guard_installation_id,
             gi.runtime_home_id,
             gi.connection_internal_id,
@@ -2731,11 +2690,11 @@ pub(crate) fn guard_installation_from_conn(
          LEFT JOIN projects AS p
            ON p.project_internal_id = gi.project_internal_id
         WHERE gi.guard_installation_id = ?1",
-        [guard_installation_id],
-        guard_installation_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            [guard_installation_id],
+            guard_installation_from_row,
+        )
+        .optional()?;
+    record.map(validate_decoded_guard_installation).transpose()
 }
 
 fn guard_installation_from_row(row: &Row<'_>) -> rusqlite::Result<GuardInstallationRecord> {
@@ -2764,6 +2723,19 @@ fn guard_installation_from_row(row: &Row<'_>) -> rusqlite::Result<GuardInstallat
     })
 }
 
+fn validate_decoded_guard_installation(
+    installation: GuardInstallationRecord,
+) -> StoreResult<GuardInstallationRecord> {
+    current_host_capability_value(&installation.host_capability_json).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "guard_installations",
+            installation.guard_installation_id.clone(),
+            "host_capability_json",
+        )
+    })?;
+    Ok(installation)
+}
+
 pub(crate) fn agent_session_from_conn(
     conn: &Connection,
     project_id: &str,
@@ -2778,7 +2750,6 @@ pub(crate) fn agent_session_from_conn(
             host_kind,
             guard_mode,
             started_at,
-            ended_at,
             metadata_json
          FROM agent_sessions
         WHERE project_id = ?1
@@ -2810,8 +2781,7 @@ fn agent_session_from_row(row: &Row<'_>) -> rusqlite::Result<AgentSessionRecord>
         host_kind: row.get(4)?,
         guard_mode: row.get(5)?,
         started_at: row.get(6)?,
-        ended_at: row.get(7)?,
-        metadata_json: row.get(8)?,
+        metadata_json: row.get(7)?,
     })
 }
 
@@ -2928,8 +2898,9 @@ fn expected_write_from_conn(
     project_id: &str,
     expected_write_id: &str,
 ) -> StoreResult<Option<ExpectedWriteRecord>> {
-    conn.query_row(
-        "SELECT
+    let raw = conn
+        .query_row(
+            "SELECT
             project_id,
             expected_write_id,
             session_id,
@@ -2955,11 +2926,11 @@ fn expected_write_from_conn(
          FROM expected_writes
         WHERE project_id = ?1
           AND expected_write_id = ?2",
-        params![project_id, expected_write_id],
-        expected_write_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            params![project_id, expected_write_id],
+            expected_write_raw_from_row,
+        )
+        .optional()?;
+    raw.map(expected_write_from_raw).transpose()
 }
 
 fn expected_write_by_conn(
@@ -2975,8 +2946,8 @@ fn expected_write_by_conn(
     })
 }
 
-fn expected_write_from_row(row: &Row<'_>) -> rusqlite::Result<ExpectedWriteRecord> {
-    Ok(ExpectedWriteRecord {
+fn expected_write_raw_from_row(row: &Row<'_>) -> rusqlite::Result<ExpectedWriteRaw> {
+    Ok(ExpectedWriteRaw {
         project_id: row.get(0)?,
         expected_write_id: row.get(1)?,
         session_id: row.get(2)?,
@@ -2999,6 +2970,53 @@ fn expected_write_from_row(row: &Row<'_>) -> rusqlite::Result<ExpectedWriteRecor
         expires_at: row.get(19)?,
         matched_at: row.get(20)?,
         metadata_json: row.get(21)?,
+    })
+}
+
+fn expected_write_from_raw(raw: ExpectedWriteRaw) -> StoreResult<ExpectedWriteRecord> {
+    let corrupt = |field| {
+        StoreError::corrupt_owner_state_json(
+            "expected_writes",
+            raw.expected_write_id.clone(),
+            field,
+        )
+    };
+    let expected_paths = decode_canonical_string_array(&raw.expected_paths_json)
+        .map_err(|_| corrupt("expected_paths_json"))?;
+    let write_ticket_ids = decode_canonical_string_array(&raw.write_ticket_ids_json)
+        .map_err(|_| corrupt("write_ticket_ids_json"))?;
+    let change_unit_id = raw
+        .change_unit_id
+        .ok_or_else(|| corrupt("change_unit_id"))?;
+    let matched_paths = raw
+        .matched_paths_json
+        .as_deref()
+        .map(decode_canonical_string_array)
+        .transpose()
+        .map_err(|_| corrupt("matched_paths_json"))?;
+    Ok(ExpectedWriteRecord {
+        project_id: raw.project_id,
+        expected_write_id: raw.expected_write_id,
+        session_id: raw.session_id,
+        connection_internal_id: raw.connection_internal_id,
+        guard_installation_id: raw.guard_installation_id,
+        pre_tool_guard_event_id: raw.pre_tool_guard_event_id,
+        host_invocation_id: raw.host_invocation_id,
+        tool_name: raw.tool_name,
+        command_kind: raw.command_kind,
+        path_policy: raw.path_policy,
+        expected_paths,
+        task_id: raw.task_id,
+        change_unit_id,
+        write_ticket_ids,
+        basis_state_version: raw.basis_state_version,
+        status: raw.status,
+        matched_post_tool_guard_event_id: raw.matched_post_tool_guard_event_id,
+        matched_paths,
+        created_at: raw.created_at,
+        expires_at: raw.expires_at,
+        matched_at: raw.matched_at,
+        metadata_json: raw.metadata_json,
     })
 }
 
@@ -3083,7 +3101,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{error::Error, fs};
+    use std::{error::Error, path::Path};
 
     use volicord_test_support::TempRuntimeHome;
 
@@ -3099,606 +3117,168 @@ mod tests {
         },
     };
 
+    const TEST_POLICY_HASH: &str =
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    const TEST_CONTENT_HASH: &str =
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
     #[test]
-    fn capability_consumers_reject_non_v2_input_without_inference() {
+    fn capability_consumers_reject_unsupported_input_without_inference() {
         for capability in [
-            r#"{"schema":"volicord-host-hook-capability-v1","policy_hash":"sha256:old","prompt_capture":true,"missing_required_hooks":[]}"#,
-            r#"{"policy_hash":"sha256:missing-schema","prompt_capture":true,"missing_required_hooks":[]}"#,
+            r#"{"schema":"unsupported-host-capability","policy_hash":"sha256:old"}"#,
+            r#"{"policy_hash":"sha256:missing-schema"}"#,
         ] {
             assert!(prompt_capture_capability_facts(capability).is_err());
             assert!(expected_policy_hash(capability).is_err());
-            assert!(host_capability_has_missing_required_hooks(capability).is_err());
         }
     }
 
-    fn test_codex_hook_command(command_name: &str) -> String {
-        format!(
-            "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}'"
-        )
-    }
-
-    fn test_guard_command_args(
-        repo_root: &Path,
-        connection_internal_id: &str,
-        guard_installation_id: &str,
-        command_name: &str,
-        policy_hash: Option<&str>,
-    ) -> Vec<String> {
-        let mut args = vec![
-            "_hook".to_owned(),
-            command_name.to_owned(),
-            "--repo".to_owned(),
-            repo_root.display().to_string(),
-            "--connection".to_owned(),
-            connection_internal_id.to_owned(),
-            "--guard-installation".to_owned(),
-            guard_installation_id.to_owned(),
-            "--host".to_owned(),
-            "codex".to_owned(),
-            "--integration-profile".to_owned(),
-            "detective".to_owned(),
-        ];
-        if let Some(policy_hash) = policy_hash {
-            args.push("--policy-hash".to_owned());
-            args.push(policy_hash.to_owned());
-        }
-        args.extend(["--host-output".to_owned(), "codex".to_owned()]);
-        args
-    }
-
-    fn test_shell_word(value: &str) -> String {
-        if !value.is_empty()
-            && value.chars().all(|ch| {
-                ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '=')
+    #[test]
+    fn persisted_capability_corruption_is_not_reported_as_a_stale_observation() {
+        for (capability, expected_json_error) in [
+            ("not-json", true),
+            (r#"{"schema":"unsupported-host-capability"}"#, false),
+        ] {
+            let error = guard_observation_matches_current_capability(GuardObservationMatch {
+                guard_installation_id: "guard_corrupt",
+                host_kind: "codex",
+                host_capability_json: capability,
+                last_seen_at: Some("2026-06-30T00:01:00Z"),
+                last_seen_phase: Some("pre_tool"),
+                observed_host_kind: Some("codex"),
+                observed_policy_hash: Some(TEST_POLICY_HASH),
             })
-        {
-            return value.to_owned();
+            .expect_err("corrupt persisted capability must fail closed");
+            assert_eq!(
+                matches!(error, StoreError::CorruptOwnerStateJson { .. }),
+                expected_json_error
+            );
+            assert_eq!(
+                error.classification().route,
+                crate::StoreFailureRoute::PersistedDataCorrupt
+            );
         }
-        format!("'{}'", value.replace('\'', "'\\''"))
-    }
-
-    fn test_guard_command_line(
-        repo_root: &Path,
-        connection_internal_id: &str,
-        guard_installation_id: &str,
-        command_name: &str,
-        policy_hash: &str,
-    ) -> String {
-        std::iter::once("volicord".to_owned())
-            .chain(test_guard_command_args(
-                repo_root,
-                connection_internal_id,
-                guard_installation_id,
-                command_name,
-                Some(policy_hash),
-            ))
-            .map(|value| test_shell_word(&value))
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
-    fn test_policy_command(
-        repo_root: &Path,
-        connection_internal_id: &str,
-        guard_installation_id: &str,
-        command_name: &str,
-    ) -> Value {
-        serde_json::json!({
-            "command": "volicord",
-            "args": test_guard_command_args(
-                repo_root,
-                connection_internal_id,
-                guard_installation_id,
-                command_name,
-                None,
-            ),
-        })
     }
 
     fn test_host_capability(
-        repo_root: &Path,
-        connection_internal_id: &str,
-        guard_installation_id: &str,
         policy_hash: &str,
-        required_hook_phases: &[&str],
-        missing_required_hooks: &[&str],
-        prompt_capture: bool,
+        repo_root: &Path,
+        connection_id: &str,
+        guard_installation_id: &str,
     ) -> String {
-        let phases = [
-            ("session_start_hook", "session_start", "session-start"),
-            ("pre_tool_hook", "pre_tool", "pre-tool"),
-            ("post_tool_hook", "post_tool", "post-tool"),
-            (
-                "user_prompt_submit_hook",
-                "prompt_capture",
-                "prompt-capture",
-            ),
-            ("stop_hook", "stop", "stop"),
-        ];
-        let host_hook_commands = phases
-            .iter()
-            .filter(|(phase, _, _)| !missing_required_hooks.contains(phase))
-            .map(|(phase, policy_key, command_name)| {
-                serde_json::json!({
-                    "host_kind": "codex",
-                    "phase": phase,
-                    "purpose": "detective_guard",
-                    "policy_key": policy_key,
-                    "command_shape": "shell_command_string",
-                    "command": test_codex_hook_command(command_name),
-                    "args": null,
-                    "expected_wrapper_path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-                    "expected_phase_wrapper_path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
-                    "root_resolution_basis": "git_work_tree",
-                    "hook_command_path_basis": "git_root_runtime",
-                    "cwd_independent": true,
-                    "subdirectory_safe": true,
-                    "wrapper_resolution_status": "ok",
-                    "verification": {
-                        "basis_verified_by": "repo_root_git_marker",
-                        "host_contract_source": "codex_hook_command_string",
-                    },
-                })
+        let command = |phase: &str| {
+            serde_json::json!({
+                "command": repo_root.join(".volicord/bin/volicord"),
+                "args": [
+                    "_hook", phase,
+                    "--repo", repo_root,
+                    "--connection", connection_id,
+                    "--guard-installation", guard_installation_id,
+                    "--host", "codex",
+                    "--integration-profile", "record",
+                    "--policy-hash", policy_hash,
+                    "--host-output", "codex",
+                ],
             })
-            .collect::<Vec<_>>();
-        let root_phases = host_hook_commands
-            .iter()
-            .map(|command| {
-                serde_json::json!({
-                    "phase": command["phase"],
-                    "root_resolution_basis": command["root_resolution_basis"],
-                    "hook_command_path_basis": command["hook_command_path_basis"],
-                    "cwd_independent": command["cwd_independent"],
-                    "subdirectory_safe": command["subdirectory_safe"],
-                    "wrapper_resolution_status": command["wrapper_resolution_status"],
-                })
+        };
+        let wrapper = |phase: &str, command_name: &str| {
+            serde_json::json!({
+                "kind": "host_hook_wrapper",
+                "path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
+                "status": "unchanged",
+                "content_hash": TEST_CONTENT_HASH,
+                "ownership": "managed_script",
+                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                "executable_required": true,
+                "managed_script_command": "exec volicord",
+                "host_kind": "codex",
+                "phase": phase,
+                "purpose": "guard",
+                "connection_id": connection_id,
+                "guard_installation_id": guard_installation_id,
+                "policy_hash": policy_hash,
+                "host_output": "codex",
             })
-            .collect::<Vec<_>>();
-        let safety_commands = host_hook_commands
-            .iter()
-            .map(|command| {
-                serde_json::json!({
-                    "phase": command["phase"],
-                    "hook_command_path_basis": command["hook_command_path_basis"],
-                    "cwd_independent": command["cwd_independent"],
-                    "subdirectory_safe": command["subdirectory_safe"],
-                    "wrapper_resolution_status": command["wrapper_resolution_status"],
-                })
-            })
-            .collect::<Vec<_>>();
-        let mut files = host_hook_commands
-            .iter()
-            .map(|command| {
-                serde_json::json!({
-                    "kind": "host_hook_wrapper",
-                    "path": command["expected_phase_wrapper_path"],
+        };
+        serde_json::json!({
+            "schema": HOST_HOOK_CAPABILITY_SCHEMA,
+            "policy_hash": policy_hash,
+            "selected_profile": "record",
+            "connection_intent": "shared",
+            "direct_file_write_matcher_coverage": true,
+            "host_capabilities": {
+                "stdio_mcp": true,
+                "pre_tool_hook": true,
+                "post_tool_hook": true,
+                "user_prompt_submit_hook": true,
+                "rule_file_support": true,
+                "project_local_configuration": true,
+            },
+            "files": [
+                {
+                    "kind": "agents_managed_block",
+                    "path": repo_root.join("AGENTS.md"),
                     "status": "unchanged",
-                    "content_hash": "wrapper-hash",
-                    "ownership": "managed_script",
-                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                    "executable_required": true,
-                    "managed_script_command": test_guard_command_line(
-                        repo_root,
-                        connection_internal_id,
-                        guard_installation_id,
-                        command["policy_key"]
-                            .as_str()
-                            .and_then(|policy_key| match policy_key {
-                                "session_start" => Some("session-start"),
-                                "pre_tool" => Some("pre-tool"),
-                                "post_tool" => Some("post-tool"),
-                                "prompt_capture" => Some("prompt-capture"),
-                                "stop" => Some("stop"),
-                                _ => None,
-                            })
-                            .expect("known policy key"),
-                        policy_hash,
-                    ),
-                    "host_kind": "codex",
-                    "phase": command["policy_key"],
-                    "purpose": "detective_guard",
-                    "connection_id": connection_internal_id,
-                    "guard_installation_id": guard_installation_id,
-                    "policy_hash": policy_hash,
-                    "host_output": "codex",
-                })
-            })
-            .collect::<Vec<_>>();
-        if !host_hook_commands.is_empty() {
-            files.extend([
-                serde_json::json!({
+                    "content_hash": TEST_CONTENT_HASH,
+                    "ownership": "managed_block",
+                    "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
+                    "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE",
+                },
+                {
                     "kind": "volicord_policy",
                     "path": repo_root.join(".volicord/policy.json"),
                     "status": "unchanged",
-                    "content_hash": "policy-file-hash",
+                    "content_hash": TEST_CONTENT_HASH,
                     "ownership": "managed_json",
-                }),
-                serde_json::json!({
+                },
+                {
+                    "kind": "host_hook_config",
+                    "path": repo_root.join(".codex/hooks.json"),
+                    "status": "unchanged",
+                    "content_hash": TEST_CONTENT_HASH,
+                    "ownership": "managed_json",
+                },
+                {
                     "kind": "host_hook_dispatch",
                     "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
                     "status": "unchanged",
-                    "content_hash": "dispatch-hash",
+                    "content_hash": TEST_CONTENT_HASH,
                     "ownership": "managed_script",
                     "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
                     "executable_required": true,
                     "managed_script_role": "codex_dispatch",
                     "host_kind": "codex",
                     "phase": "dispatch",
-                }),
-                serde_json::json!({
-                    "kind": "host_hook_config",
-                    "path": repo_root.join(".codex/hooks.json"),
-                    "status": "unchanged",
-                    "content_hash": "config-hash",
-                    "ownership": "managed_json",
-                }),
-                serde_json::json!({
+                },
+                wrapper("pre_tool", "pre-tool"),
+                wrapper("post_tool", "post-tool"),
+                wrapper("prompt_capture", "prompt-capture"),
+                {
                     "kind": "host_rule_instruction",
                     "path": repo_root.join(".codex/rules/volicord.rules"),
                     "status": "unchanged",
-                    "content_hash": "rule-hash",
+                    "content_hash": TEST_CONTENT_HASH,
                     "ownership": "managed_block",
                     "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
                     "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
-                }),
-            ]);
-        }
-        let supports = |phase| !missing_required_hooks.contains(&phase);
-        serde_json::json!({
-            "schema": HOST_HOOK_CAPABILITY_SCHEMA,
-            "policy_hash": policy_hash,
-            "selected_profile": "detective",
-            "connection_intent": "shared",
-            "final_output_authority_disclosure_implementation_available": true,
-            "native_host_output_adapter": "codex",
-            "native_host_output_adapter_config_verified": true,
-            "bash_shell_mutation_coverage": true,
-            "direct_file_write_matcher_coverage": true,
-            "host_capabilities": {
-                "stdio_mcp": true,
-                "http_mcp": false,
-                "session_start_hook": supports("session_start_hook"),
-                "pre_tool_hook": supports("pre_tool_hook"),
-                "post_tool_hook": supports("post_tool_hook"),
-                "user_prompt_submit_hook": supports("user_prompt_submit_hook"),
-                "stop_hook": supports("stop_hook"),
-                "rule_file_support": true,
-                "project_local_configuration": true,
-            },
-            "required_hook_phases": required_hook_phases,
-            "missing_required_hooks": missing_required_hooks,
-            "prompt_capture": prompt_capture,
-            "files": files,
-            "host_hook_commands": host_hook_commands,
-            "hook_root_resolution": {
-                "basis": "git_work_tree",
-                "all_cwd_independent": true,
-                "all_subdirectory_safe": true,
-                "overall_status": "ok",
-                "phases": root_phases,
-            },
-            "hook_path_safety": {
-                "overall_status": "ok",
-                "all_cwd_independent": true,
-                "all_subdirectory_safe": true,
-                "commands": safety_commands,
-            },
+                },
+            ],
             "commands": {
-                "session_start": test_policy_command(repo_root, connection_internal_id, guard_installation_id, "session-start"),
-                "pre_tool": test_policy_command(repo_root, connection_internal_id, guard_installation_id, "pre-tool"),
-                "post_tool": test_policy_command(repo_root, connection_internal_id, guard_installation_id, "post-tool"),
-                "prompt_capture": test_policy_command(repo_root, connection_internal_id, guard_installation_id, "prompt-capture"),
-                "stop": test_policy_command(repo_root, connection_internal_id, guard_installation_id, "stop"),
+                "pre_tool": command("pre-tool"),
+                "post_tool": command("post-tool"),
+                "prompt_capture": command("prompt-capture"),
             },
         })
         .to_string()
     }
-
-    #[test]
-    fn guard_installation_upsert_rejects_nonexact_capability_v2_at_write_boundary(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-capability-write-boundary")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        let repo_root = fixture.project_repo_root("project_guard_a")?;
-        fs::create_dir_all(repo_root.join(".git"))?;
-        let base_input = GuardInstallationUpsert {
-            guard_installation_id: "guard_installation_a".to_owned(),
-            connection_internal_id: "conn_guard_a".to_owned(),
-            project_id: Some("project_guard_a".to_owned()),
-            host_kind: "codex".to_owned(),
-            guard_mode: "detective".to_owned(),
-            host_capability_json: test_host_capability(
-                &repo_root,
-                "conn_guard_a",
-                "guard_installation_a",
-                "sha256:policy-a",
-                REQUIRED_GUARD_HOOK_PHASES,
-                &[],
-                true,
-            ),
-            installation_status: "configured".to_owned(),
-            installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
-            last_checked_at: "2026-06-30T01:59:00Z".to_owned(),
-            first_seen_at: None,
-            last_seen_at: None,
-            last_seen_phase: None,
-            observed_host_kind: None,
-            observed_policy_hash: None,
-            observed_binary_version: None,
-            metadata_json: "{}".to_owned(),
-        };
-        let mut valid: Value = serde_json::from_str(&base_input.host_capability_json)?;
-        valid["files"]
-            .as_array_mut()
-            .expect("files")
-            .push(serde_json::json!({
-                "kind": "git_info_exclude",
-                "path": repo_root.join(".git/info/exclude"),
-                "status": "unchanged",
-                "content_hash": "git-exclude-hash",
-                "ownership": "managed_block",
-                "managed_marker_start": "# BEGIN VOLICORD MANAGED LOCAL EXCLUDES",
-                "managed_marker_end": "# END VOLICORD MANAGED LOCAL EXCLUDES",
-            }));
-        let mut invalid_cases = Vec::new();
-
-        let mut value = valid.clone();
-        value["schema"] = serde_json::json!("volicord-host-hook-capability-v1");
-        invalid_cases.push(("v1", value));
-
-        let mut value = valid.clone();
-        value
-            .as_object_mut()
-            .expect("capability object")
-            .remove("schema");
-        invalid_cases.push(("missing_schema", value));
-
-        let mut value = valid.clone();
-        value["schema"] = serde_json::json!("volicord-host-hook-capability-v3");
-        invalid_cases.push(("unknown_schema", value));
-
-        let mut value = valid.clone();
-        value
-            .as_object_mut()
-            .expect("capability object")
-            .remove("policy_hash");
-        invalid_cases.push(("missing_v2_field", value));
-
-        let mut value = valid.clone();
-        value["unexpected"] = serde_json::json!(true);
-        invalid_cases.push(("extra_v2_field", value));
-
-        let mut value = valid.clone();
-        value["commands"]["pre_tool"]["unexpected"] = serde_json::json!(true);
-        invalid_cases.push(("nested_command_extra", value));
-
-        let mut value = valid.clone();
-        value["files"] = serde_json::json!([{
-            "kind": "host_hook_dispatch",
-            "path": ".codex/hooks/volicord-dispatch.sh",
-            "status": "unchanged",
-            "content_hash": "sha256:file",
-            "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-            "executable_required": true,
-            "managed_script_role": "codex_dispatch",
-            "managed_script_command": "volicord _hook",
-            "host_kind": "codex",
-            "phase": "dispatch",
-        }]);
-        invalid_cases.push(("contradictory_script_ownership", value));
-
-        for (name, capability) in invalid_cases {
-            let mut input = base_input.clone();
-            input.host_capability_json = capability.to_string();
-            let error =
-                upsert_guard_installation(fixture.runtime_home.path(), input).expect_err(name);
-            assert!(
-                matches!(error, StoreError::InvalidInput { .. }),
-                "{name}: {error}"
-            );
-        }
-
-        let mut contextual_cases = Vec::new();
-        let mut capability = valid.clone();
-        capability["selected_profile"] = serde_json::json!("record");
-        capability["required_hook_phases"] = serde_json::json!([]);
-        capability["missing_required_hooks"] = serde_json::json!([]);
-        capability["prompt_capture"] = serde_json::json!(false);
-        capability["host_hook_commands"] = serde_json::json!([]);
-        capability["hook_root_resolution"] = Value::Null;
-        capability["hook_path_safety"] = Value::Null;
-        contextual_cases.push(("profile_mismatch", capability));
-
-        let mut capability = valid.clone();
-        capability["connection_intent"] = serde_json::json!("personal");
-        contextual_cases.push(("intent_mismatch", capability));
-
-        let mut capability = valid.clone();
-        capability["native_host_output_adapter"] = serde_json::json!("claude-code");
-        contextual_cases.push(("adapter_host_mismatch", capability));
-
-        let mut capability = valid.clone();
-        capability["native_host_output_adapter"] = serde_json::json!("none");
-        capability["final_output_authority_disclosure_implementation_available"] =
-            serde_json::json!(false);
-        capability["native_host_output_adapter_config_verified"] = serde_json::json!(false);
-        contextual_cases.push(("adapter_wrapper_output_mismatch", capability));
-
-        let mut capability = valid.clone();
-        for command in capability["host_hook_commands"]
-            .as_array_mut()
-            .expect("command array")
-        {
-            command["host_kind"] = serde_json::json!("claude_code");
-        }
-        contextual_cases.push(("command_host_mismatch", capability));
-
-        let mut capability = valid.clone();
-        capability["host_hook_commands"][0]["command"] = serde_json::json!("sh -c volicord");
-        contextual_cases.push(("generated_hook_command_text_mismatch", capability));
-
-        let mut capability = valid.clone();
-        capability["host_hook_commands"][0]["command_shape"] = serde_json::json!("exec_form");
-        capability["host_hook_commands"][0]["command"] =
-            serde_json::json!(repo_root.join(".codex/hooks/volicord-session-start.sh"));
-        capability["host_hook_commands"][0]["args"] = serde_json::json!([]);
-        contextual_cases.push(("generated_hook_command_shape_mismatch", capability));
-
-        let mut capability = valid.clone();
-        capability["commands"]["pre_tool"]["args"][5] = serde_json::json!("conn_other");
-        contextual_cases.push(("policy_command_owner_args_mismatch", capability));
-
-        let mut capability = valid.clone();
-        let wrapper = capability["files"]
-            .as_array_mut()
-            .expect("files")
-            .iter_mut()
-            .find(|file| file["kind"] == "host_hook_wrapper")
-            .expect("wrapper inventory");
-        wrapper["managed_script_command"] = serde_json::json!("volicord _hook unexpected");
-        contextual_cases.push(("managed_wrapper_command_mismatch", capability));
-
-        for (name, field, replacement) in [
-            ("wrapper_connection_mismatch", "connection_id", "conn_other"),
-            (
-                "wrapper_installation_mismatch",
-                "guard_installation_id",
-                "guard_other",
-            ),
-            ("wrapper_policy_mismatch", "policy_hash", "other-policy"),
-            ("wrapper_host_output_mismatch", "host_output", "claude-code"),
-            ("wrapper_phase_mismatch", "phase", "pre_tool"),
-            ("wrapper_path_mismatch", "path", "/repo/arbitrary.sh"),
-        ] {
-            let mut capability = valid.clone();
-            let wrapper = capability["files"]
-                .as_array_mut()
-                .expect("files")
-                .iter_mut()
-                .find(|file| file["kind"] == "host_hook_wrapper")
-                .expect("wrapper inventory");
-            wrapper[field] = serde_json::json!(replacement);
-            contextual_cases.push((name, capability));
-        }
-
-        for (name, kind) in [
-            ("missing_wrapper", "host_hook_wrapper"),
-            ("missing_dispatch", "host_hook_dispatch"),
-            ("missing_hook_config", "host_hook_config"),
-            ("missing_rule", "host_rule_instruction"),
-        ] {
-            let mut capability = valid.clone();
-            let files = capability["files"].as_array_mut().expect("files");
-            let index = files
-                .iter()
-                .position(|file| file["kind"] == kind)
-                .expect("required inventory kind");
-            files.remove(index);
-            contextual_cases.push((name, capability));
-        }
-
-        let other_root = fixture.runtime_home.path().join("other-repo");
-        for (name, kind, relative) in [
-            (
-                "relocated_policy",
-                "volicord_policy",
-                ".volicord/policy.json",
-            ),
-            (
-                "relocated_hook_config",
-                "host_hook_config",
-                ".codex/hooks.json",
-            ),
-            (
-                "relocated_rule",
-                "host_rule_instruction",
-                ".codex/rules/volicord.rules",
-            ),
-        ] {
-            let mut capability = valid.clone();
-            let file = capability["files"]
-                .as_array_mut()
-                .expect("files")
-                .iter_mut()
-                .find(|file| file["kind"] == kind)
-                .expect("inventory kind");
-            file["path"] = serde_json::json!(other_root.join(relative));
-            contextual_cases.push((name, capability));
-        }
-
-        let mut capability = valid.clone();
-        let git_exclude = capability["files"]
-            .as_array_mut()
-            .expect("files")
-            .iter_mut()
-            .find(|file| file["kind"] == "git_info_exclude")
-            .expect("git exclude inventory");
-        git_exclude["path"] = serde_json::json!(other_root.join("info/exclude"));
-        contextual_cases.push(("relocated_git_info_exclude", capability));
-
-        let mut capability = valid.clone();
-        let root_text = repo_root.to_string_lossy();
-        let other_text = other_root.to_string_lossy();
-        for command in capability["host_hook_commands"]
-            .as_array_mut()
-            .expect("commands")
-        {
-            for field in ["expected_wrapper_path", "expected_phase_wrapper_path"] {
-                let relocated = command[field].as_str().expect("command path").replacen(
-                    root_text.as_ref(),
-                    other_text.as_ref(),
-                    1,
-                );
-                command[field] = serde_json::json!(relocated);
-            }
-        }
-        for file in capability["files"].as_array_mut().expect("files") {
-            if matches!(
-                file["kind"].as_str(),
-                Some("host_hook_wrapper" | "host_hook_dispatch")
-            ) {
-                let relocated = file["path"].as_str().expect("file path").replacen(
-                    root_text.as_ref(),
-                    other_text.as_ref(),
-                    1,
-                );
-                file["path"] = serde_json::json!(relocated);
-            }
-        }
-        contextual_cases.push(("coordinated_wrapper_dispatch_relocation", capability));
-
-        for (name, capability) in contextual_cases {
-            assert!(
-                host_hook_capability_has_exact_v2_shape(&capability),
-                "{name}"
-            );
-            let mut input = base_input.clone();
-            input.host_capability_json = capability.to_string();
-            let error =
-                upsert_guard_installation(fixture.runtime_home.path(), input).expect_err(name);
-            assert!(
-                matches!(error, StoreError::InvalidInput { .. }),
-                "{name}: {error}"
-            );
-        }
-
-        let mut row_host_mismatch = base_input.clone();
-        row_host_mismatch.host_kind = "generic".to_owned();
-        let error = upsert_guard_installation(fixture.runtime_home.path(), row_host_mismatch)
-            .expect_err("row host_kind must match connection host_kind");
-        assert!(matches!(error, StoreError::InvalidInput { .. }));
-
-        let mut canonical_git_input = base_input;
-        canonical_git_input.host_capability_json = valid.to_string();
-        upsert_guard_installation(fixture.runtime_home.path(), canonical_git_input)?;
-        Ok(())
-    }
-
     #[test]
     fn guard_records_round_trip_and_unrecorded_changes_resolve() -> Result<(), Box<dyn Error>> {
         let fixture = GuardFixture::new("guard-round-trip")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
+        let repo_root =
+            project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
+                .expect("fixture project should exist")
+                .repo_root;
 
         let installation = upsert_guard_installation(
             fixture.runtime_home.path(),
@@ -3707,30 +3287,27 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
+                guard_mode: "record".to_owned(),
                 host_capability_json: test_host_capability(
-                    &fixture.project_repo_root("project_guard_a")?,
+                    TEST_POLICY_HASH,
+                    &repo_root,
                     "conn_guard_a",
                     "guard_installation_a",
-                    "sha256:test",
-                    REQUIRED_GUARD_HOOK_PHASES,
-                    &[],
-                    true,
                 ),
                 installation_status: "active".to_owned(),
                 installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
                 last_checked_at: "2026-06-30T00:01:00Z".to_owned(),
                 first_seen_at: Some("2026-06-30T00:01:00Z".to_owned()),
                 last_seen_at: Some("2026-06-30T00:01:00Z".to_owned()),
-                last_seen_phase: Some("session_start".to_owned()),
+                last_seen_phase: Some("pre_tool".to_owned()),
                 observed_host_kind: Some("codex".to_owned()),
-                observed_policy_hash: Some("sha256:test".to_owned()),
+                observed_policy_hash: Some(TEST_POLICY_HASH.to_owned()),
                 observed_binary_version: Some("test".to_owned()),
                 metadata_json: "{}".to_owned(),
             },
         )?;
         assert_eq!(installation.project_id.as_deref(), Some("project_guard_a"));
-        assert_eq!(installation.guard_mode, "detective");
+        assert_eq!(installation.guard_mode, "record");
 
         let session = insert_agent_session(
             fixture.runtime_home.path(),
@@ -3740,7 +3317,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: Some("guard_installation_a".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
+                guard_mode: "record".to_owned(),
                 started_at: "2026-06-30T00:02:00Z".to_owned(),
                 metadata_json: "{}".to_owned(),
             },
@@ -3798,10 +3375,10 @@ mod tests {
                 tool_name: Some("shell".to_owned()),
                 command_kind: "mutating".to_owned(),
                 path_policy: "exact_paths".to_owned(),
-                expected_paths_json: r#"["src/lib.rs"]"#.to_owned(),
+                expected_paths: vec!["src/lib.rs".to_owned()],
                 task_id: "task_guard_a".to_owned(),
-                change_unit_id: Some("change_unit_guard_a".to_owned()),
-                write_ticket_ids_json: r#"["write_ticket_a"]"#.to_owned(),
+                change_unit_id: "change_unit_guard_a".to_owned(),
+                write_ticket_ids: vec!["write_ticket_a".to_owned()],
                 basis_state_version: 1,
                 created_at: "2026-06-30T00:04:30Z".to_owned(),
                 expires_at: "2026-06-30T00:19:30Z".to_owned(),
@@ -3824,7 +3401,7 @@ mod tests {
             "expected_write_a",
             ExpectedWriteMatch {
                 matched_post_tool_guard_event_id: "guard_event_post_a".to_owned(),
-                matched_paths_json: r#"["src/lib.rs"]"#.to_owned(),
+                matched_paths: vec!["src/lib.rs".to_owned()],
                 matched_at: "2026-06-30T00:05:00Z".to_owned(),
             },
         )?;
@@ -3883,77 +3460,38 @@ mod tests {
         )?
         .is_empty());
 
-        let ended = end_agent_session(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            "session_guard_a",
-            "2026-06-30T00:07:00Z",
-        )?;
-        assert_eq!(ended.ended_at.as_deref(), Some("2026-06-30T00:07:00Z"));
-        Ok(())
-    }
-
-    #[test]
-    fn deterministic_observation_promotes_only_unresolved_suspected_change(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-promote-suspected")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        insert_agent_session(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            AgentSessionInsert {
-                session_id: "session_guard_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                guard_installation_id: None,
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                started_at: "2026-06-30T00:00:00Z".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        insert_unrecorded_change(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            UnrecordedChangeInsert {
-                unrecorded_change_id: "unrecorded_change_suspected".to_owned(),
-                session_id: Some("session_guard_a".to_owned()),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                task_id: None,
-                confidence: "suspected".to_owned(),
-                summary: "A heuristic host event may have changed a product file".to_owned(),
-                observed_paths_json: "[]".to_owned(),
-                detection_json: r#"{"source":"heuristic_event"}"#.to_owned(),
-                detected_at: "2026-06-30T00:01:00Z".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-
-        let promoted = promote_suspected_unrecorded_change(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            "unrecorded_change_suspected",
-            UnrecordedChangePromotion {
-                observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
-                detection_json: r#"{"source":"structured_host_changed_paths","promotion":{"basis":"deterministic_post_tool_observation"}}"#.to_owned(),
-                confirmed_at: "2026-06-30T00:02:00Z".to_owned(),
-            },
-        )?;
-        assert_eq!(promoted.status, "unresolved");
-        assert_eq!(promoted.confidence, "confirmed");
-        assert_eq!(promoted.observed_paths_json, r#"["src/lib.rs"]"#);
-
-        let error = promote_suspected_unrecorded_change(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            "unrecorded_change_suspected",
-            UnrecordedChangePromotion {
-                observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
-                detection_json: r#"{"source":"structured_host_changed_paths"}"#.to_owned(),
-                confirmed_at: "2026-06-30T00:03:00Z".to_owned(),
-            },
-        )
-        .expect_err("a confirmed row cannot be promoted twice");
-        assert!(matches!(error, StoreError::Conflict { .. }));
+        let project = project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
+            .expect("fixture project should exist");
+        let conn = open_project_state_database(&project.state_db_path)?;
+        for (column, corrupt_text, restored_text) in [
+            (
+                "expected_paths_json",
+                r#"{"not":"paths"}"#,
+                r#"["src/lib.rs"]"#,
+            ),
+            ("write_ticket_ids_json", r#"[1]"#, r#"["write_ticket_a"]"#),
+            ("matched_paths_json", r#"[""]"#, r#"["src/lib.rs"]"#),
+        ] {
+            conn.execute(
+                &format!(
+                    "UPDATE expected_writes SET {column} = ?1 WHERE expected_write_id = 'expected_write_a'"
+                ),
+                [corrupt_text],
+            )?;
+            let error = expected_write(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                "expected_write_a",
+            )
+            .expect_err("malformed persisted string arrays must fail closed");
+            assert!(matches!(error, StoreError::CorruptOwnerStateJson { .. }));
+            conn.execute(
+                &format!(
+                    "UPDATE expected_writes SET {column} = ?1 WHERE expected_write_id = 'expected_write_a'"
+                ),
+                [restored_text],
+            )?;
+        }
         Ok(())
     }
 
@@ -3971,7 +3509,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
                 host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
+                guard_mode: "record".to_owned(),
                 started_at: "2026-06-30T01:00:00Z".to_owned(),
                 metadata_json: "{}".to_owned(),
             },
@@ -4038,15 +3576,14 @@ mod tests {
                 connection_internal_id: "conn_guard_a".to_owned(),
                 project_id: Some("project_guard_b".to_owned()),
                 host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
+                guard_mode: "record".to_owned(),
                 host_capability_json: test_host_capability(
-                    &fixture.project_repo_root("project_guard_b")?,
+                    TEST_POLICY_HASH,
+                    &project_record_for_execution(fixture.runtime_home.path(), "project_guard_b")?
+                        .expect("fixture project B should exist")
+                        .repo_root,
                     "conn_guard_a",
                     "guard_installation_cross",
-                    "sha256:cross",
-                    REQUIRED_GUARD_HOOK_PHASES,
-                    &[],
-                    true,
                 ),
                 installation_status: "active".to_owned(),
                 installed_at: None,
@@ -4069,556 +3606,6 @@ mod tests {
             }
         ));
 
-        Ok(())
-    }
-
-    #[test]
-    fn guard_installation_observation_promotes_active() -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-detective-active")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        fixture.upsert_observable_installation("guard_installation_a", "conn_guard_a")?;
-
-        let observed = observe_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "session_start".to_owned(),
-                observed_at: "2026-06-30T02:00:00Z".to_owned(),
-            },
-        )?
-        .expect("matching observation should promote installation");
-
-        assert_eq!(observed.installation_status, "active");
-        assert_eq!(
-            observed.first_seen_at.as_deref(),
-            Some("2026-06-30T02:00:00Z")
-        );
-        assert_eq!(
-            observed.last_seen_at.as_deref(),
-            Some("2026-06-30T02:00:00Z")
-        );
-        assert_eq!(observed.last_seen_phase.as_deref(), Some("session_start"));
-        assert_eq!(observed.observed_host_kind.as_deref(), Some("codex"));
-        assert_eq!(
-            observed.observed_policy_hash.as_deref(),
-            Some("sha256:policy-a")
-        );
-        assert_eq!(observed.observed_binary_version.as_deref(), Some("1.2.3"));
-
-        let observed_again = observe_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.4".to_owned()),
-                observed_phase: "pre_tool".to_owned(),
-                observed_at: "2026-06-30T02:05:00Z".to_owned(),
-            },
-        )?
-        .expect("later matching observation should update last-seen metadata");
-        assert_eq!(
-            observed_again.first_seen_at.as_deref(),
-            Some("2026-06-30T02:00:00Z")
-        );
-        assert_eq!(
-            observed_again.last_seen_at.as_deref(),
-            Some("2026-06-30T02:05:00Z")
-        );
-        assert_eq!(observed_again.last_seen_phase.as_deref(), Some("pre_tool"));
-        assert_eq!(
-            observed_again.observed_binary_version.as_deref(),
-            Some("1.2.4")
-        );
-
-        let idempotent_upsert = upsert_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: Some("project_guard_a".to_owned()),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                host_capability_json: test_host_capability(
-                    &fixture.project_repo_root("project_guard_a")?,
-                    "conn_guard_a",
-                    "guard_installation_a",
-                    "sha256:policy-a",
-                    REQUIRED_GUARD_HOOK_PHASES,
-                    &[],
-                    true,
-                ),
-                installation_status: "configured".to_owned(),
-                installed_at: Some("2026-06-30T02:06:00Z".to_owned()),
-                last_checked_at: "2026-06-30T02:06:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        assert_eq!(idempotent_upsert.installation_status, "active");
-        assert_eq!(
-            idempotent_upsert.last_seen_at.as_deref(),
-            Some("2026-06-30T02:05:00Z")
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn current_observation_requires_current_policy_host_timestamp_and_configured_phase(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-current-observation")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        fixture.upsert_observable_installation("guard_installation_a", "conn_guard_a")?;
-        let current = observe_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "pre_tool".to_owned(),
-                observed_at: "2026-06-30T02:00:00Z".to_owned(),
-            },
-        )?
-        .expect("matching observation should be recorded");
-        assert!(guard_installation_observation_is_current(&current)?);
-
-        let mut invalid_timestamp = current.clone();
-        invalid_timestamp.last_seen_at = Some("not-a-timestamp".to_owned());
-        let error = guard_installation_observation_is_current(&invalid_timestamp)
-            .expect_err("invalid persisted timestamp must remain owner-state corruption");
-        assert!(matches!(error, StoreError::CorruptOwnerStateJson { .. }));
-
-        type GuardInstallationMutation = fn(&mut GuardInstallationRecord);
-        let stale_cases: [(&str, GuardInstallationMutation); 3] = [
-            (
-                "other_host",
-                |installation: &mut GuardInstallationRecord| {
-                    installation.observed_host_kind = Some("claude_code".to_owned());
-                },
-            ),
-            (
-                "other_policy",
-                |installation: &mut GuardInstallationRecord| {
-                    installation.observed_policy_hash = Some("sha256:other".to_owned());
-                },
-            ),
-            (
-                "unknown_phase",
-                |installation: &mut GuardInstallationRecord| {
-                    installation.last_seen_phase = Some("unknown".to_owned());
-                },
-            ),
-        ];
-        for (name, mutate) in stale_cases {
-            let mut installation = current.clone();
-            mutate(&mut installation);
-            assert!(
-                !guard_installation_observation_is_current(&installation)?,
-                "{name} must fail closed"
-            );
-        }
-
-        let mut phase_removed = current.clone();
-        phase_removed.host_capability_json = test_host_capability(
-            &fixture.project_repo_root("project_guard_a")?,
-            "conn_guard_a",
-            "guard_installation_a",
-            "sha256:policy-a",
-            REQUIRED_GUARD_HOOK_PHASES,
-            &["pre_tool_hook"],
-            true,
-        );
-        assert!(
-            !guard_installation_observation_is_current(&phase_removed)?,
-            "a known phase omitted by the current exact capability must fail closed"
-        );
-
-        let refreshed = upsert_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: Some("project_guard_a".to_owned()),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                host_capability_json: test_host_capability(
-                    &fixture.project_repo_root("project_guard_a")?,
-                    "conn_guard_a",
-                    "guard_installation_a",
-                    "sha256:policy-b",
-                    REQUIRED_GUARD_HOOK_PHASES,
-                    &[],
-                    true,
-                ),
-                installation_status: "configured".to_owned(),
-                installed_at: Some("2026-06-30T02:05:00Z".to_owned()),
-                last_checked_at: "2026-06-30T02:05:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        assert_eq!(refreshed.installation_status, "configured");
-        assert_eq!(
-            refreshed.last_seen_at.as_deref(),
-            Some("2026-06-30T02:00:00Z"),
-            "same-identity policy refresh preserves diagnostic observation metadata"
-        );
-        assert!(!guard_installation_observation_is_current(&refreshed)?);
-
-        let health = guard_health_record(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            "conn_guard_a",
-        )?;
-        assert_eq!(
-            prompt_capture_availability(&health)?.status,
-            PromptCaptureStatus::ReloadRequired
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn guard_installation_observation_records_metadata_without_promoting_degraded(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-detective-degraded")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        upsert_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_degraded".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: Some("project_guard_a".to_owned()),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                host_capability_json: test_host_capability(
-                    &fixture.project_repo_root("project_guard_a")?,
-                    "conn_guard_a",
-                    "guard_installation_degraded",
-                    "sha256:policy-a",
-                    REQUIRED_GUARD_HOOK_PHASES,
-                    &["pre_tool_hook"],
-                    true,
-                ),
-                installation_status: "degraded".to_owned(),
-                installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
-                last_checked_at: "2026-06-30T01:59:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-
-        let observed = observe_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_degraded".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "session_start".to_owned(),
-                observed_at: "2026-06-30T02:00:00Z".to_owned(),
-            },
-        )?
-        .expect("matching degraded observation should be recorded");
-
-        assert_eq!(observed.installation_status, "degraded");
-        assert_eq!(
-            observed.first_seen_at.as_deref(),
-            Some("2026-06-30T02:00:00Z")
-        );
-        assert_eq!(
-            observed.last_seen_at.as_deref(),
-            Some("2026-06-30T02:00:00Z")
-        );
-        assert_eq!(observed.last_seen_phase.as_deref(), Some("session_start"));
-        assert_eq!(
-            observed.observed_policy_hash.as_deref(),
-            Some("sha256:policy-a")
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn guard_installation_upsert_rejects_partial_detective_required_phase_configuration(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-detective-partial-hooks")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        let error = upsert_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationUpsert {
-                guard_installation_id: "guard_installation_partial".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: Some("project_guard_a".to_owned()),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                host_capability_json: test_host_capability(
-                    &fixture.project_repo_root("project_guard_a")?,
-                    "conn_guard_a",
-                    "guard_installation_partial",
-                    "sha256:policy-a",
-                    &["session_start_hook"],
-                    &[],
-                    true,
-                ),
-                installation_status: "configured".to_owned(),
-                installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
-                last_checked_at: "2026-06-30T01:59:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
-            },
-        )
-        .expect_err("Detective capability must declare all required phases");
-        assert!(matches!(error, StoreError::InvalidInput { .. }));
-        Ok(())
-    }
-
-    #[test]
-    fn guard_installation_observation_rejects_mismatched_identity_or_policy(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-detective-invalid")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        fixture.add_project_connection("project_guard_b", "conn_guard_b", "repo-b")?;
-        fixture.add_connection_to_existing_project("project_guard_a", "conn_guard_other")?;
-        fixture.upsert_observable_installation("guard_installation_a", "conn_guard_a")?;
-
-        for observation in [
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_other".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "session_start".to_owned(),
-                observed_at: "2026-06-30T03:00:00Z".to_owned(),
-            },
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_b".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "pre_tool".to_owned(),
-                observed_at: "2026-06-30T03:01:00Z".to_owned(),
-            },
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "claude_code".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "post_tool".to_owned(),
-                observed_at: "2026-06-30T03:02:00Z".to_owned(),
-            },
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:other-policy".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "stop".to_owned(),
-                observed_at: "2026-06-30T03:03:00Z".to_owned(),
-            },
-        ] {
-            assert!(
-                observe_guard_installation(fixture.runtime_home.path(), observation)?.is_none(),
-                "mismatched observation must not promote installation"
-            );
-        }
-
-        let stored = guard_installation(fixture.runtime_home.path(), "guard_installation_a")?
-            .expect("installation should remain stored");
-        assert_eq!(stored.installation_status, "reload_required");
-        assert!(stored.first_seen_at.is_none());
-        assert!(stored.last_seen_at.is_none());
-        assert!(stored.last_seen_phase.is_none());
-        assert!(stored.observed_policy_hash.is_none());
-        Ok(())
-    }
-
-    #[test]
-    fn guard_installation_observation_rejects_unknown_phase() -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-detective-unknown-phase")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        fixture.upsert_observable_installation("guard_installation_a", "conn_guard_a")?;
-
-        let error = observe_guard_installation(
-            fixture.runtime_home.path(),
-            GuardInstallationObservation {
-                guard_installation_id: "guard_installation_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: "project_guard_a".to_owned(),
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                observed_policy_hash: "sha256:policy-a".to_owned(),
-                observed_binary_version: Some("1.2.3".to_owned()),
-                observed_phase: "unknown_phase".to_owned(),
-                observed_at: "2026-06-30T03:30:00Z".to_owned(),
-            },
-        )
-        .expect_err("unknown observation phase must be rejected");
-        assert!(matches!(error, StoreError::InvalidInput { .. }));
-        Ok(())
-    }
-
-    #[test]
-    fn guard_health_uses_exact_submillisecond_latest_and_returns_all_co_latest_events(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-health-exact-latest")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        insert_agent_session(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            AgentSessionInsert {
-                session_id: "session_guard_a".to_owned(),
-                connection_internal_id: "conn_guard_a".to_owned(),
-                guard_installation_id: None,
-                host_kind: "codex".to_owned(),
-                guard_mode: "detective".to_owned(),
-                started_at: "2026-06-30T04:00:00Z".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-
-        for (guard_event_id, decision, occurred_at) in [
-            (
-                "guard_event_z_earlier",
-                "warn",
-                "2026-06-30T04:00:01.000000500Z",
-            ),
-            (
-                "guard_event_a_latest_allow",
-                "allow",
-                "2026-06-30T04:00:01.000000501Z",
-            ),
-            (
-                "guard_event_b_latest_deny",
-                "deny",
-                "2026-06-30T04:00:01.000000501Z",
-            ),
-        ] {
-            insert_guard_event(
-                fixture.runtime_home.path(),
-                "project_guard_a",
-                GuardEventInsert {
-                    guard_event_id: guard_event_id.to_owned(),
-                    session_id: Some("session_guard_a".to_owned()),
-                    connection_internal_id: "conn_guard_a".to_owned(),
-                    guard_installation_id: None,
-                    event_kind: "write_attempt".to_owned(),
-                    decision: decision.to_owned(),
-                    subject_json: "{}".to_owned(),
-                    result_json: "{}".to_owned(),
-                    occurred_at: occurred_at.to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-        }
-
-        let health = guard_health_record(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            "conn_guard_a",
-        )?;
-        assert_eq!(
-            health
-                .latest_event
-                .as_ref()
-                .expect("one co-latest event should remain available as the compact latest event")
-                .guard_event_id,
-            "guard_event_b_latest_deny"
-        );
-        let mut co_latest = health
-            .co_latest_events
-            .iter()
-            .map(|event| (event.guard_event_id.as_str(), event.decision.as_str()))
-            .collect::<Vec<_>>();
-        co_latest.sort_unstable();
-        assert_eq!(
-            co_latest,
-            vec![
-                ("guard_event_a_latest_allow", "allow"),
-                ("guard_event_b_latest_deny", "deny"),
-            ]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn guard_health_rejects_ambiguous_co_latest_agent_sessions() -> Result<(), Box<dyn Error>> {
-        let fixture = GuardFixture::new("guard-health-session-tie")?;
-        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        for session_id in ["session_guard_a", "session_guard_b"] {
-            insert_agent_session(
-                fixture.runtime_home.path(),
-                "project_guard_a",
-                AgentSessionInsert {
-                    session_id: session_id.to_owned(),
-                    connection_internal_id: "conn_guard_a".to_owned(),
-                    guard_installation_id: None,
-                    host_kind: "codex".to_owned(),
-                    guard_mode: "detective".to_owned(),
-                    started_at: "2026-06-30T05:00:00.000000001Z".to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-        }
-
-        let error = guard_health_record(
-            fixture.runtime_home.path(),
-            "project_guard_a",
-            "conn_guard_a",
-        )
-        .expect_err("distinct co-latest sessions must not be selected by opaque id order");
-        assert!(matches!(
-            error,
-            StoreError::SchemaInvariant {
-                database_kind: "project_state",
-                detail,
-            } if detail.contains("ambiguous co-latest agent_sessions")
-        ));
         Ok(())
     }
 
@@ -4684,17 +3671,6 @@ mod tests {
             Ok(())
         }
 
-        fn project_repo_root(
-            &self,
-            project_id: &str,
-        ) -> Result<std::path::PathBuf, Box<dyn Error>> {
-            Ok(
-                project_record_for_execution(self.runtime_home.path(), project_id)?
-                    .expect("project should be registered")
-                    .repo_root,
-            )
-        }
-
         fn insert_task(&self, project_id: &str, task_id: &str) -> Result<(), Box<dyn Error>> {
             let project = project_record_for_execution(self.runtime_home.path(), project_id)?
                 .expect("project should be registered");
@@ -4723,82 +3699,6 @@ mod tests {
                     'shaping', 't0', 't0'
                 )",
                 params![project_id, task_id],
-            )?;
-            Ok(())
-        }
-
-        fn upsert_observable_installation(
-            &self,
-            guard_installation_id: &str,
-            connection_id: &str,
-        ) -> Result<(), Box<dyn Error>> {
-            upsert_guard_installation(
-                self.runtime_home.path(),
-                GuardInstallationUpsert {
-                    guard_installation_id: guard_installation_id.to_owned(),
-                    connection_internal_id: connection_id.to_owned(),
-                    project_id: Some("project_guard_a".to_owned()),
-                    host_kind: "codex".to_owned(),
-                    guard_mode: "detective".to_owned(),
-                    host_capability_json: test_host_capability(
-                        &self.project_repo_root("project_guard_a")?,
-                        connection_id,
-                        guard_installation_id,
-                        "sha256:policy-a",
-                        REQUIRED_GUARD_HOOK_PHASES,
-                        &[],
-                        true,
-                    ),
-                    installation_status: "reload_required".to_owned(),
-                    installed_at: Some("2026-06-30T01:59:00Z".to_owned()),
-                    last_checked_at: "2026-06-30T01:59:00Z".to_owned(),
-                    first_seen_at: None,
-                    last_seen_at: None,
-                    last_seen_phase: None,
-                    observed_host_kind: None,
-                    observed_policy_hash: None,
-                    observed_binary_version: None,
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-            Ok(())
-        }
-
-        fn add_connection_to_existing_project(
-            &self,
-            project_id: &str,
-            connection_id: &str,
-        ) -> Result<(), Box<dyn Error>> {
-            ensure_agent_connection(
-                self.runtime_home.path(),
-                AgentConnectionRegistration {
-                    connection_internal_id: connection_id.to_owned(),
-                    host_kind: HOST_KIND_CODEX.to_owned(),
-                    intent: CONNECTION_INTENT_SHARED.to_owned(),
-                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
-                    server_name: format!("volicord-{connection_id}"),
-                    config_target: self
-                        .runtime_home
-                        .path()
-                        .join("agent-connections")
-                        .join(connection_id)
-                        .to_string_lossy()
-                        .into_owned(),
-                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                    enabled: true,
-                    managed_fingerprint: format!("fingerprint:{connection_id}"),
-                    last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-                    last_verification_report_json: "{}".to_owned(),
-                    last_user_actions_json: "[]".to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-            add_connection_project(
-                self.runtime_home.path(),
-                ConnectionProjectRegistration {
-                    connection_internal_id: connection_id.to_owned(),
-                    project_id: project_id.to_owned(),
-                },
             )?;
             Ok(())
         }

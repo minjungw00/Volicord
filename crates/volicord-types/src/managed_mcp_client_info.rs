@@ -1,7 +1,112 @@
 use std::{error::Error, fmt};
 
+use sha2::{Digest, Sha256};
+
 /// Maximum accepted UTF-8 byte length for each managed MCP `clientInfo` field.
 pub const MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES: usize = 256;
+
+/// Exact MCP `clientInfo.name` accepted for the managed Codex stdio boundary.
+pub const CODEX_MANAGED_MCP_CLIENT_NAME: &str = "codex-mcp-client";
+
+/// Maximum accepted byte length for one host-native managed stdio session identifier.
+pub const MAX_MANAGED_HOST_NATIVE_SESSION_ID_BYTES: usize = 256;
+
+const MANAGED_STDIO_SESSION_DOMAIN: &[u8] = b"volicord.managed-stdio-session\0";
+const MANAGED_STDIO_SESSION_ID_PREFIX: &str = "mcp_stdio_";
+
+/// Validation failure for one host-native managed stdio session identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ManagedHostNativeSessionIdError;
+
+impl fmt::Display for ManagedHostNativeSessionIdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(
+            "native managed-host session id must be 1 through 256 bytes and match [A-Za-z0-9._:-]+",
+        )
+    }
+}
+
+impl Error for ManagedHostNativeSessionIdError {}
+
+/// Validation failure for an internal managed stdio session coordinate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagedStdioSessionIdError {
+    InvalidConnectionInternalId,
+    InvalidNativeSessionId,
+    InvalidSessionId,
+}
+
+impl fmt::Display for ManagedStdioSessionIdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidConnectionInternalId => {
+                "managed stdio session requires a non-empty Agent Connection identity"
+            }
+            Self::InvalidNativeSessionId => {
+                "managed stdio session requires an exact native session identity"
+            }
+            Self::InvalidSessionId => {
+                "managed stdio session identity must use the canonical internal digest coordinate"
+            }
+        })
+    }
+}
+
+impl Error for ManagedStdioSessionIdError {}
+
+/// Validates one exact host-native session identifier used by managed stdio.
+pub fn validate_managed_host_native_session_id(
+    native_session_id: &str,
+) -> Result<(), ManagedHostNativeSessionIdError> {
+    let bytes = native_session_id.as_bytes();
+    if bytes.is_empty()
+        || bytes.len() > MAX_MANAGED_HOST_NATIVE_SESSION_ID_BYTES
+        || !bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'.' | b'_' | b':' | b'-'))
+    {
+        return Err(ManagedHostNativeSessionIdError);
+    }
+    Ok(())
+}
+
+/// Builds the private connection-bound coordinate used for one managed stdio session.
+pub fn managed_stdio_session_id(
+    connection_internal_id: &str,
+    native_session_id: &str,
+) -> Result<String, ManagedStdioSessionIdError> {
+    if connection_internal_id.is_empty() || connection_internal_id.as_bytes().contains(&0) {
+        return Err(ManagedStdioSessionIdError::InvalidConnectionInternalId);
+    }
+    validate_managed_host_native_session_id(native_session_id)
+        .map_err(|_| ManagedStdioSessionIdError::InvalidNativeSessionId)?;
+    let mut digest = Sha256::new();
+    digest.update(MANAGED_STDIO_SESSION_DOMAIN);
+    digest.update(connection_internal_id.as_bytes());
+    digest.update([0]);
+    digest.update(native_session_id.as_bytes());
+    Ok(format!(
+        "{MANAGED_STDIO_SESSION_ID_PREFIX}{:x}",
+        digest.finalize()
+    ))
+}
+
+/// Validates one internal managed stdio session coordinate read from storage.
+pub fn validate_managed_stdio_session_id(
+    session_id: &str,
+) -> Result<(), ManagedStdioSessionIdError> {
+    let Some(digest) = session_id.strip_prefix(MANAGED_STDIO_SESSION_ID_PREFIX) else {
+        return Err(ManagedStdioSessionIdError::InvalidSessionId);
+    };
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    {
+        return Err(ManagedStdioSessionIdError::InvalidSessionId);
+    }
+    Ok(())
+}
 
 /// One field in the closed managed MCP initialized-client identity pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,6 +235,40 @@ mod tests {
                 .field(),
             ManagedMcpClientInfoField::Version
         );
+    }
+
+    #[test]
+    fn native_session_validation_is_exact_and_bounded() {
+        for valid in ["a", "A0._:-", &"x".repeat(256)] {
+            assert!(validate_managed_host_native_session_id(valid).is_ok());
+        }
+        for invalid in [
+            "",
+            "has space",
+            "has/slash",
+            "line\nbreak",
+            "세션",
+            &"x".repeat(257),
+        ] {
+            assert_eq!(
+                validate_managed_host_native_session_id(invalid),
+                Err(ManagedHostNativeSessionIdError)
+            );
+        }
+    }
+
+    #[test]
+    fn managed_stdio_session_coordinate_is_connection_bound_and_exact() {
+        let first = managed_stdio_session_id("connection-a", "native-session")
+            .expect("valid context should bind");
+        let replay = managed_stdio_session_id("connection-a", "native-session")
+            .expect("same context should replay");
+        let other = managed_stdio_session_id("connection-b", "native-session")
+            .expect("other connection should bind");
+        assert_eq!(first, replay);
+        assert_ne!(first, other);
+        assert!(validate_managed_stdio_session_id(&first).is_ok());
+        assert!(validate_managed_stdio_session_id(&first.to_uppercase()).is_err());
     }
 
     #[test]

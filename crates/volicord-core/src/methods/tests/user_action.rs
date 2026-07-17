@@ -42,8 +42,7 @@ fn current_state_version(harness: &MethodHarness) -> Result<u64, Box<dyn Error>>
 }
 
 #[test]
-fn user_channel_inbox_projection_is_authenticated_and_connection_scoped(
-) -> Result<(), Box<dyn Error>> {
+fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "user_channel_projection")?;
@@ -106,286 +105,25 @@ fn user_channel_inbox_projection_is_authenticated_and_connection_scoped(
             && item.inbox_item.question == item.request.body.question()
     }));
 
-    let prompt_invocation = |connection_id: &str, basis: &str, session_id: Option<&str>| {
-        let invocation = InvocationContext::new(
-            ProjectId::new(PROJECT_ID),
-            ActorSource::agent_connection(connection_id),
-            OperationCategory::Read,
-            basis,
-        );
-        match session_id {
-            Some(session_id) => invocation.with_session_id(session_id),
-            None => invocation,
-        }
-    };
-    assert!(harness
-        .service
-        .user_channel_inbox_projection(
-            projection_request.clone(),
-            prompt_invocation(
-                CONNECTION_ID,
-                VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-                None,
-            ),
-        )?
-        .is_none());
-
-    let session_id = "session_user_channel_projection";
-    insert_agent_session(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        AgentSessionInsert {
-            session_id: session_id.to_owned(),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: None,
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "detective".to_owned(),
-            started_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    let prompt_projection = harness
-        .service
-        .user_channel_inbox_projection(
-            projection_request.clone(),
-            prompt_invocation(
-                CONNECTION_ID,
-                VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-                Some(session_id),
-            ),
-        )?
-        .expect("an active same-connection prompt hook should receive its projection");
-    assert_eq!(prompt_projection.items.len(), 1);
+    assert_eq!(cli_projection.user_channel_availability.paths.len(), 1);
     assert_eq!(
-        prompt_projection.items[0]
-            .request
-            .user_action_request_id
-            .as_str(),
-        own_id
+        cli_projection.user_channel_availability.paths[0].kind,
+        "cli"
     );
-    let mcp_projection = harness
-        .service
-        .user_channel_inbox_projection(
-            projection_request.clone(),
-            prompt_invocation(
-                CONNECTION_ID,
-                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-                Some(session_id),
-            )
-            .with_host_elicitation_available(true)
-            .with_local_web_consent_available(true),
-        )?
-        .expect("an active same-connection MCP renderer should receive its projection");
-    assert_eq!(mcp_projection.items.len(), 1);
-    for kind in ["mcp_elicitation", "local_web_consent"] {
-        assert!(mcp_projection
-            .user_channel_availability
-            .paths
-            .iter()
-            .any(|path| path.kind == kind && path.available));
-    }
-    assert!(mcp_projection
-        .user_channel_availability
-        .paths
-        .iter()
-        .any(|path| path.kind == "prompt_capture" && !path.available));
+    assert!(cli_projection.user_channel_availability.paths[0].available);
+
     assert!(harness
         .service
         .user_channel_inbox_projection(
             projection_request.clone(),
-            prompt_invocation(
-                "connection_other",
-                VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-                Some(session_id),
-            ),
-        )?
-        .is_none());
-    assert!(harness
-        .service
-        .user_channel_inbox_projection(
-            projection_request.clone(),
-            prompt_invocation(
-                CONNECTION_ID,
+            InvocationContext::new(
+                ProjectId::new(PROJECT_ID),
+                ActorSource::agent_connection(CONNECTION_ID),
+                OperationCategory::Read,
                 VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-                Some(session_id)
             ),
         )?
         .is_none());
-
-    harness.conn()?.execute(
-        "UPDATE agent_sessions SET ended_at = ?3 WHERE project_id = ?1 AND session_id = ?2",
-        rusqlite::params![PROJECT_ID, session_id, "2026-06-18T00:01:00Z"],
-    )?;
-    assert!(harness
-        .service
-        .user_channel_inbox_projection(
-            projection_request,
-            prompt_invocation(
-                CONNECTION_ID,
-                VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-                Some(session_id),
-            ),
-        )?
-        .is_none());
-    Ok(())
-}
-
-#[test]
-fn local_web_projection_revalidates_bearer_session_and_consumed_replay(
-) -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    let fixture = create_local_web_projection_fixture(&harness, "bearer")?;
-    let before = harness.counts()?;
-
-    let projected =
-        local_web_projection(&harness, &fixture, fixture.validated_token.clone(), false)?;
-    let LocalWebConsentUserActionProjectionOutcome::Projected(projected) = projected else {
-        panic!("a current bearer with an active connection session should project");
-    };
-    assert_eq!(
-        projected.request.user_action_request_id.as_str(),
-        fixture.action_id
-    );
-    assert_eq!(projected.form, projected.request.body.capture_form()?);
-    assert_eq!(harness.counts()?, before);
-
-    let wrong_bearer = harness.service.local_web_consent_user_action_projection(
-        LocalWebConsentUserActionProjectionRequest {
-            token: "different-local-web-projection-token".to_owned(),
-            validated_token: fixture.validated_token.clone(),
-            allow_resolved_replay: false,
-        },
-    )?;
-    assert!(matches!(
-        wrong_bearer,
-        LocalWebConsentUserActionProjectionOutcome::Invalid
-    ));
-
-    let completion_metadata = crate::LocalWebConsentCompletionMetadata {
-        selection_recording: Some("recorded".to_owned()),
-        endpoint: Some("/consent".to_owned()),
-    };
-    let channel_submission_id = crate::local_web_channel_submission_id(
-        &ProjectId::new(PROJECT_ID),
-        &UserActionRequestId::new(fixture.action_id.clone()),
-        &fixture.token,
-        CONNECTION_ID,
-        &completion_metadata,
-    )?;
-    let resolved = harness.service.resolve_local_web_consent_user_action(
-        crate::LocalWebConsentUserActionRequest {
-            request: resolve_user_action_request(
-                "req_local_web_projection_resolve",
-                &channel_submission_id,
-                None,
-                &fixture.task_id,
-                &fixture.action_id,
-                "accept",
-            ),
-            token: fixture.token.clone(),
-            expected_connection_internal_id: CONNECTION_ID.to_owned(),
-            completion_metadata_json: serde_json::to_string(&completion_metadata)?,
-        },
-        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-    )?;
-    assert_eq!(resolved.response_value["base"]["response_kind"], "result");
-
-    let now = user_action_channel_current_timestamp(&harness.runtime_home_path, PROJECT_ID)?;
-    let consumed = match validate_user_action_channel_token(
-        &harness.runtime_home_path,
-        UserActionChannelTokenCheck {
-            token: fixture.token.clone(),
-            expected_project_id: PROJECT_ID.to_owned(),
-            expected_connection_internal_id: CONNECTION_ID.to_owned(),
-            now,
-        },
-    )? {
-        UserActionChannelTokenValidation::Rejected(UserActionChannelTokenRejection::Consumed(
-            record,
-        )) => record,
-        other => {
-            return Err(format!("resolved fixture token should be consumed: {other:?}").into())
-        }
-    };
-    assert!(matches!(
-        local_web_projection(&harness, &fixture, consumed.clone(), false)?,
-        LocalWebConsentUserActionProjectionOutcome::Invalid
-    ));
-    let replay = local_web_projection(&harness, &fixture, consumed.clone(), true)?;
-    let LocalWebConsentUserActionProjectionOutcome::Projected(replay) = replay else {
-        panic!("an in-window consumed bearer should project its exact resolved replay form");
-    };
-    assert!(replay.request.user_action_resolution_ref.as_ref().is_some());
-
-    harness.conn()?.execute(
-        "UPDATE agent_sessions SET ended_at = ?3 WHERE project_id = ?1 AND session_id = ?2",
-        rusqlite::params![PROJECT_ID, fixture.session_id, "2026-06-18T00:01:00Z"],
-    )?;
-    assert!(matches!(
-        local_web_projection(&harness, &fixture, consumed, true)?,
-        LocalWebConsentUserActionProjectionOutcome::Invalid
-    ));
-    Ok(())
-}
-
-#[test]
-fn local_web_projection_requires_current_connection_membership() -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    let fixture = create_local_web_projection_fixture(&harness, "registry_access")?;
-    assert!(matches!(
-        local_web_projection(&harness, &fixture, fixture.validated_token.clone(), false,)?,
-        LocalWebConsentUserActionProjectionOutcome::Projected(_)
-    ));
-
-    set_connection_enabled(&harness.runtime_home_path, CONNECTION_ID, false)?;
-    assert!(matches!(
-        local_web_projection(&harness, &fixture, fixture.validated_token.clone(), false,)?,
-        LocalWebConsentUserActionProjectionOutcome::Invalid
-    ));
-    set_connection_enabled(&harness.runtime_home_path, CONNECTION_ID, true)?;
-    assert!(matches!(
-        local_web_projection(&harness, &fixture, fixture.validated_token.clone(), false,)?,
-        LocalWebConsentUserActionProjectionOutcome::Projected(_)
-    ));
-
-    assert!(remove_connection_project(
-        &harness.runtime_home_path,
-        CONNECTION_ID,
-        PROJECT_ID,
-    )?);
-    assert!(matches!(
-        local_web_projection(&harness, &fixture, fixture.validated_token.clone(), false,)?,
-        LocalWebConsentUserActionProjectionOutcome::Invalid
-    ));
-    Ok(())
-}
-
-#[test]
-fn local_web_projection_classifies_closed_creation_metadata_mismatch() -> Result<(), Box<dyn Error>>
-{
-    let harness = MethodHarness::new()?;
-    let mut fixture = create_local_web_projection_fixture(&harness, "form_mismatch")?;
-    fixture.validated_token.created_metadata_json = json!({
-        "fallback_kind": "local_web_consent",
-        "delivery_surface": "model_invisible_user_surface",
-        "endpoint": "/consent",
-        "form_digest": "0".repeat(64),
-    })
-    .to_string();
-    harness.conn()?.execute(
-        "UPDATE user_action_channel_tokens
-            SET created_metadata_json = ?3
-          WHERE project_id = ?1 AND token_hash = ?2",
-        rusqlite::params![
-            PROJECT_ID,
-            fixture.validated_token.token_hash,
-            fixture.validated_token.created_metadata_json,
-        ],
-    )?;
-    assert!(matches!(
-        local_web_projection(&harness, &fixture, fixture.validated_token.clone(), false,)?,
-        LocalWebConsentUserActionProjectionOutcome::FormMismatch
-    ));
     Ok(())
 }
 
@@ -430,6 +168,7 @@ fn chrono_max_custom_clock_is_rejected_without_effects() -> Result<(), Box<dyn E
     let response = harness.service.status(
         StatusRequest {
             envelope: envelope("req_extreme_clock", None, false, None, None),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -495,6 +234,7 @@ fn each_prepared_operation_samples_the_core_clock_once() -> Result<(), Box<dyn E
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -645,7 +385,7 @@ fn evidence_user_action_extended_stored_ttl_rejects_resolution_without_effects(
             "dry_run={dry_run}"
         );
         assert_eq!(
-            response.response_value["errors"][0]["code"], "MCP_UNAVAILABLE",
+            response.response_value["errors"][0]["code"], "PERSISTED_DATA_CORRUPT",
             "dry_run={dry_run}"
         );
         assert_eq!(
@@ -1536,6 +1276,7 @@ fn resolution_uses_core_clock_at_expiry_boundary() -> Result<(), Box<dyn Error>>
                         None,
                         Some(&task_id),
                     ),
+                    continuity_page: None,
                     include: StatusInclude {
                         pending_user_actions: true,
                         ..status_include()
@@ -1611,7 +1352,7 @@ fn resolution_rejects_explicit_future_requested_at_corruption_without_effects(
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert_eq!(
         response.response_value["errors"][0]["details"]["owner_state_error"]["logical_column"],
@@ -1714,25 +1455,6 @@ fn exact_replay_is_stable_and_payload_conflict_has_no_effect() -> Result<(), Box
         .resolve_user_action(request.clone(), invocation(OperationCategory::UserOnly))?;
     assert_eq!(second.response_value, first.response_value);
     assert!(second.replayed);
-    assert_eq!(harness.counts()?, after_first);
-
-    let cross_channel = harness.service.resolve_user_action(
-        request.clone(),
-        InvocationContext::new(
-            ProjectId::new(PROJECT_ID),
-            ActorSource::LocalUser,
-            OperationCategory::UserOnly,
-            volicord_types::VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-        ),
-    )?;
-    assert_eq!(
-        cross_channel.response_value["base"]["response_kind"],
-        "rejected"
-    );
-    assert_eq!(
-        cross_channel.response_value["errors"][0]["code"],
-        "INVOCATION_CONTEXT_MISMATCH"
-    );
     assert_eq!(harness.counts()?, after_first);
 
     let mut conflict = request;
@@ -1843,12 +1565,24 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
     assert_eq!(resumed.operation_result_ref, original.operation_result_ref);
     assert_eq!(harness.counts()?, after_origin);
 
+    let mut rotated_host = test_host_receipt_fixture(PROJECT_ID, CONNECTION_ID);
+    let rotated_binding_digest =
+        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    rotated_host.receipt.binding_digest = rotated_binding_digest.to_owned();
+    rotated_host.current.binding_digest = rotated_binding_digest.to_owned();
+    let rotated_receipt = crate::validate_host_verification_receipt(
+        rotated_host.receipt,
+        &rotated_host.current,
+        &rotated_host.validation_time,
+    )
+    .expect("the rotated typed host receipt fixture should validate");
     let rotated_basis = InvocationContext::new(
         ProjectId::new(PROJECT_ID),
         ActorSource::agent_connection(CONNECTION_ID),
         OperationCategory::AgentWorkflow,
-        "rotated_agent_registration_basis",
-    );
+        volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    )
+    .with_validated_host_receipt(rotated_receipt);
     let changed_workspace = invocation(OperationCategory::AgentWorkflow)
         .with_git_workspace_context(crate::GitWorkspaceContext {
             git_common_dir: "/tmp/volicord-resume-changed-workspace.git".to_owned(),
@@ -2008,7 +1742,7 @@ fn origin_resume_rejects_tampered_safe_or_legacy_projection_without_effect(
                 );
                 assert_eq!(
                     response.response_value["errors"][0]["code"],
-                    "MCP_UNAVAILABLE"
+                    "PERSISTED_DATA_CORRUPT"
                 );
                 assert!(!response.replayed);
             }
@@ -2313,6 +2047,7 @@ fn immediate_projection_matches_authoritative_status_after_each_commit(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -2361,6 +2096,7 @@ fn immediate_projection_matches_authoritative_status_after_each_commit(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -2758,6 +2494,7 @@ fn residual_risk_private_note_stays_only_in_resolution_body() -> Result<(), Box<
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -2935,219 +2672,5 @@ fn canonical_bounds_reject_n_plus_one_empty_and_over_32k_without_effect(
         .request_user_action(oversized, invocation(OperationCategory::AgentWorkflow))?;
     assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
     assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
-fn local_web_token_is_bound_and_consumed_atomically() -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "local_web")?;
-    let requested = harness.service.request_user_action(
-        user_action_request(
-            "req_local_web_action",
-            "idem_local_web_action",
-            false,
-            Some(2),
-            &task_id,
-            Some(&change_unit_id),
-            JudgmentKind::ProductDecision,
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-    let action_id = request_id(&requested);
-    let token_hash = create_local_web_token_for_user_action(
-        &harness,
-        "local-web-token-user-action",
-        &action_id,
-    )?;
-    let completion_metadata = crate::LocalWebConsentCompletionMetadata {
-        selection_recording: Some("recorded".to_owned()),
-        endpoint: Some("/local-web-consent/complete".to_owned()),
-    };
-    let channel_submission_id = crate::local_web_channel_submission_id(
-        &ProjectId::new(PROJECT_ID),
-        &UserActionRequestId::new(action_id.clone()),
-        "local-web-token-user-action",
-        CONNECTION_ID,
-        &completion_metadata,
-    )?;
-    let local_request = crate::LocalWebConsentUserActionRequest {
-        request: resolve_user_action_request(
-            "req_local_web_resolve",
-            &channel_submission_id,
-            None,
-            &task_id,
-            &action_id,
-            "accept",
-        ),
-        token: "local-web-token-user-action".to_owned(),
-        expected_connection_internal_id: CONNECTION_ID.to_owned(),
-        completion_metadata_json: serde_json::to_string(&completion_metadata)?,
-    };
-    assert!(!format!("{local_request:?}").contains("local-web-token-user-action"));
-    let before_generic = harness.counts()?;
-    let before_generic_floor: String = harness.conn()?.query_row(
-        "SELECT updated_at FROM project_state WHERE project_id = ?1",
-        [PROJECT_ID],
-        |row| row.get(0),
-    )?;
-    let mut dry_run = local_request.clone();
-    dry_run.request.envelope.dry_run = true;
-    let rejected = harness.service.resolve_local_web_consent_user_action(
-        dry_run,
-        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-    )?;
-    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        rejected.response_value["errors"][0]["code"],
-        "VALIDATION_FAILED"
-    );
-    assert_eq!(harness.counts()?, before_generic);
-    assert_eq!(local_web_token_status(&harness, &token_hash)?.0, "pending");
-    for generic_invocation in [
-        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-        InvocationContext::new(
-            ProjectId::new(PROJECT_ID),
-            ActorSource::LocalUser,
-            OperationCategory::UserOnly,
-            format!(" {VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB} "),
-        ),
-    ] {
-        let rejected = harness
-            .service
-            .resolve_user_action(local_request.request.clone(), generic_invocation)?;
-        assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
-        assert_eq!(
-            rejected.response_value["errors"][0]["code"],
-            "INVOCATION_CONTEXT_MISMATCH"
-        );
-        assert_eq!(harness.counts()?, before_generic);
-        assert_eq!(local_web_token_status(&harness, &token_hash)?.0, "pending");
-        let floor: String = harness.conn()?.query_row(
-            "SELECT updated_at FROM project_state WHERE project_id = ?1",
-            [PROJECT_ID],
-            |row| row.get(0),
-        )?;
-        assert_eq!(floor, before_generic_floor);
-    }
-
-    let response = harness.service.resolve_local_web_consent_user_action(
-        local_request.clone(),
-        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-    )?;
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert!(!response
-        .response_json
-        .contains("local-web-token-user-action"));
-    let (status, consumed_at, completed_at) = local_web_token_status(&harness, &token_hash)?;
-    assert_eq!(status, "consumed");
-    assert!(consumed_at.is_some());
-    assert!(completed_at.is_some());
-    assert_eq!(user_action_status(&harness, &action_id)?, "resolved");
-
-    let raw_token_occurrences: i64 = harness.conn()?.query_row(
-        "SELECT COUNT(*)
-           FROM (
-             SELECT request_hash AS value FROM tool_invocations WHERE project_id = ?1
-             UNION ALL SELECT response_json FROM tool_invocations WHERE project_id = ?1
-             UNION ALL SELECT request_hash FROM authority_events WHERE project_id = ?1
-             UNION ALL SELECT payload_json FROM authority_events WHERE project_id = ?1
-             UNION ALL SELECT channel_submission_id FROM user_action_resolutions WHERE project_id = ?1
-             UNION ALL SELECT resolution_json FROM user_action_resolutions WHERE project_id = ?1
-             UNION ALL SELECT token_hash FROM user_action_channel_tokens WHERE project_id = ?1
-             UNION ALL SELECT created_metadata_json FROM user_action_channel_tokens WHERE project_id = ?1
-             UNION ALL SELECT completion_metadata_json FROM user_action_channel_tokens WHERE project_id = ?1
-           )
-          WHERE instr(value, ?2) > 0",
-        rusqlite::params![PROJECT_ID, "local-web-token-user-action"],
-        |row| row.get(0),
-    )?;
-    assert_eq!(
-        raw_token_occurrences, 0,
-        "raw local-web token reached durable state"
-    );
-
-    let after_commit = harness.counts()?;
-    let after_commit_floor: String = harness.conn()?.query_row(
-        "SELECT updated_at FROM project_state WHERE project_id = ?1",
-        [PROJECT_ID],
-        |row| row.get(0),
-    )?;
-    let mut semantically_equivalent = local_request.clone();
-    semantically_equivalent.completion_metadata_json =
-        " { \"endpoint\" : \"/local-web-consent/complete\", \"selection_recording\" : \"recorded\" } "
-            .to_owned();
-    let replay = harness.service.resolve_local_web_consent_user_action(
-        semantically_equivalent,
-        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-    )?;
-    assert!(replay.replayed);
-    assert_eq!(replay.response_json, response.response_json);
-    assert_eq!(harness.counts()?, after_commit);
-    let exact_replay = harness.service.resolve_local_web_consent_user_action(
-        local_request.clone(),
-        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-    )?;
-    assert!(exact_replay.replayed);
-    assert_eq!(exact_replay.response_json, response.response_json);
-    assert_eq!(harness.counts()?, after_commit);
-
-    let mut wrong_token = local_request.clone();
-    wrong_token.token = "different-local-web-token-user-action".to_owned();
-    let mut invalid_token_shape = local_request.clone();
-    invalid_token_shape.token.clear();
-    let mut wrong_connection = local_request.clone();
-    wrong_connection.expected_connection_internal_id = "conn_wrong_local_web".to_owned();
-    let mut wrong_metadata = local_request.clone();
-    wrong_metadata.completion_metadata_json =
-        serde_json::to_string(&crate::LocalWebConsentCompletionMetadata {
-            selection_recording: Some("recorded".to_owned()),
-            endpoint: Some("/different-local-web-endpoint".to_owned()),
-        })?;
-    let mut unknown_metadata = local_request.clone();
-    unknown_metadata.completion_metadata_json =
-        r#"{"selection_recording":"recorded","endpoint":"/local-web-consent/complete","unknown":true}"#
-            .to_owned();
-    let mut handcrafted_submission = local_request.clone();
-    handcrafted_submission.request.channel_submission_id = "local_web:handcrafted".to_owned();
-    handcrafted_submission.request.envelope.idempotency_key =
-        Some(IdempotencyKey::new("local_web:handcrafted")).into();
-    for attempted in [
-        wrong_token,
-        invalid_token_shape,
-        wrong_connection,
-        wrong_metadata,
-        unknown_metadata,
-        handcrafted_submission,
-    ] {
-        let rejected = harness.service.resolve_local_web_consent_user_action(
-            attempted,
-            local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-        )?;
-        assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
-        assert_eq!(harness.counts()?, after_commit);
-        let floor: String = harness.conn()?.query_row(
-            "SELECT updated_at FROM project_state WHERE project_id = ?1",
-            [PROJECT_ID],
-            |row| row.get(0),
-        )?;
-        assert_eq!(floor, after_commit_floor);
-    }
-    for generic_invocation in [
-        local_web_invocation(ActorSource::LocalUser, OperationCategory::UserOnly),
-        InvocationContext::new(
-            ProjectId::new(PROJECT_ID),
-            ActorSource::LocalUser,
-            OperationCategory::UserOnly,
-            format!(" {VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB} "),
-        ),
-    ] {
-        let rejected = harness
-            .service
-            .resolve_user_action(local_request.request.clone(), generic_invocation)?;
-        assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
-        assert_eq!(harness.counts()?, after_commit);
-        assert_eq!(local_web_token_status(&harness, &token_hash)?.0, "consumed");
-    }
     Ok(())
 }

@@ -112,7 +112,7 @@ pub(crate) fn run_write_ticket_mismatch(
             "write ticket task is not compatible with the recorded run",
         ));
     }
-    if record.change_unit_id.as_deref() != Some(attempt.change_unit_id.as_str())
+    if record.change_unit_id != attempt.change_unit_id.as_str()
         || scope.change_unit_id != *attempt.change_unit_id
     {
         return Some(run_mismatch(

@@ -8,6 +8,7 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
     let response = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status", None, false, None, None),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -27,6 +28,7 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
                 Some(0),
                 None,
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -60,6 +62,7 @@ fn status_renders_idle_timeout_invalidation_without_mutating_row() -> Result<(),
     let response = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_auth_expired", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -122,6 +125,7 @@ fn status_rejects_unrepresentable_stored_write_ticket_expiry_without_effect(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -186,6 +190,7 @@ fn status_selects_latest_write_ticket_by_basis_state_version_when_ids_disagree(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -277,6 +282,7 @@ fn status_projects_control_policy_ticket_basis_invalidation_and_completion_claim
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -328,6 +334,7 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
     let response = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_evidence", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: StatusInclude {
                 task: true,
                 pending_user_actions: false,
@@ -451,6 +458,7 @@ fn status_receipt_uses_authority_commit_order_for_latest_run() -> Result<(), Box
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -509,6 +517,7 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     let status = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_close", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: StatusInclude {
                 task: true,
                 pending_user_actions: true,
@@ -631,10 +640,6 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     assert_eq!(
         status.response_value["guarantee_display"]["level"],
         "cooperative"
-    );
-    assert_ne!(
-        status.response_value["guarantee_display"]["level"],
-        "detective"
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -761,6 +766,7 @@ fn status_ready_close_uses_empty_blockers_only_after_computation() -> Result<(),
     let status = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_ready_empty", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -808,6 +814,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     let none = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_flags_none", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -851,6 +858,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -877,6 +885,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     let close_only = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_flags_close", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -904,6 +913,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -950,6 +960,7 @@ fn status_receipt_fails_closed_on_corrupt_close_basis_for_every_include_shape(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -981,6 +992,7 @@ fn status_receipt_fails_closed_on_corrupt_close_basis_for_every_include_shape(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -1043,6 +1055,7 @@ fn status_guarantee_include_false_does_not_read_corrupt_profile() -> Result<(), 
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: true,
                 pending_user_actions: false,
@@ -1070,6 +1083,7 @@ fn status_guarantee_include_false_does_not_read_corrupt_profile() -> Result<(), 
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -1100,7 +1114,7 @@ fn status_guarantee_include_true_rejects_unsupported_profile_state() -> Result<(
     harness.set_project_enforcement_profile_json(
         &json!({
             "profile_id": "baseline_cooperative",
-            "guarantee_level": "detective",
+            "guarantee_level": "unsupported",
             "enabled_mechanisms": [],
             "source": "baseline_scope",
             "status": "active"
@@ -1111,7 +1125,8 @@ fn status_guarantee_include_true_rejects_unsupported_profile_state() -> Result<(
 
     let response = harness.service.status(
         StatusRequest {
-            envelope: envelope("req_status_profile_detective", None, false, None, None),
+            envelope: envelope("req_status_profile_unsupported", None, false, None, None),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -1125,7 +1140,7 @@ fn status_guarantee_include_true_rejects_unsupported_profile_state() -> Result<(
         invocation(OperationCategory::Read),
     )?;
 
-    assert_owner_state_value_rejection(
+    assert_owner_state_rejection(
         &response,
         "project_state",
         PROJECT_ID,
@@ -1153,6 +1168,7 @@ fn status_guarantee_include_true_rejects_missing_profile_fields() -> Result<(), 
     let response = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_profile_missing", None, false, None, None),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -1186,6 +1202,7 @@ fn guarantee_display_uses_verified_invocation_without_profile_elevation(
     let status = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_guarantee_invocation", None, false, None, None),
+            continuity_page: None,
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -1202,10 +1219,6 @@ fn guarantee_display_uses_verified_invocation_without_profile_elevation(
     assert_eq!(
         status.response_value["guarantee_display"]["level"],
         "cooperative"
-    );
-    assert_ne!(
-        status.response_value["guarantee_display"]["level"],
-        "detective"
     );
     assert!(status.response_value["guarantee_display"]["basis"]
         .as_str()
@@ -1255,6 +1268,7 @@ fn status_close_reports_exact_missing_residual_risk_coverage() -> Result<(), Box
     let response = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_risk", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1309,6 +1323,7 @@ fn status_close_shows_stale_final_acceptance_blocker_context() -> Result<(), Box
     let response = harness.service.status(
         StatusRequest {
             envelope: envelope("req_status_stale_final", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1329,4 +1344,280 @@ fn status_close_shows_stale_final_acceptance_blocker_context() -> Result<(), Box
         .any(|record_ref| record_ref["record_id"] == final_judgment_id));
     assert_eq!(harness.counts()?, before);
     Ok(())
+}
+
+#[test]
+fn status_continuity_page_defaults_bounds_and_traversal_are_exact() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "status_continuity_pages")?;
+    let record_ids = (0..65)
+        .map(|index| format!("continuity_{index:03}"))
+        .collect::<Vec<_>>();
+    insert_active_continuity_records(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        &record_ids,
+        "2026-06-18T00:00:01Z",
+    )?;
+    let before = harness.counts()?;
+
+    let omitted = continuity_status(
+        &harness,
+        "req_status_continuity_default_omitted",
+        &task_id,
+        None,
+    )?;
+    let null = continuity_status(
+        &harness,
+        "req_status_continuity_default_null",
+        &task_id,
+        Some(RequiredNullable::null()),
+    )?;
+    for response in [&omitted, &null] {
+        let page = &response.response_value["continuity_summary"];
+        assert_eq!(page["page_info"]["total_count"], 65);
+        assert_eq!(page["page_info"]["returned_count"], 8);
+        assert_eq!(page["page_info"]["truncated"], true);
+        assert_eq!(continuity_page_ids(page).len(), 8);
+    }
+    assert_eq!(
+        continuity_page_ids(&omitted.response_value["continuity_summary"]),
+        continuity_page_ids(&null.response_value["continuity_summary"])
+    );
+
+    for page_size in [1, 8, 64] {
+        let response = continuity_status(
+            &harness,
+            &format!("req_status_continuity_size_{page_size}"),
+            &task_id,
+            Some(RequiredNullable::some(ContinuityPageRequest {
+                page_size,
+                cursor: RequiredNullable::null(),
+            })),
+        )?;
+        let page = &response.response_value["continuity_summary"];
+        assert_eq!(page["page_info"]["total_count"], 65);
+        assert_eq!(page["page_info"]["returned_count"], page_size);
+        assert_eq!(page["page_info"]["truncated"], true);
+    }
+
+    let first_one = continuity_status(
+        &harness,
+        "req_status_continuity_exact_first",
+        &task_id,
+        Some(RequiredNullable::some(ContinuityPageRequest {
+            page_size: 1,
+            cursor: RequiredNullable::null(),
+        })),
+    )?;
+    let exact_cursor: ContinuityCursor = serde_json::from_value(
+        first_one.response_value["continuity_summary"]["page_info"]["next_cursor"].clone(),
+    )?;
+    let exact_remainder = continuity_status(
+        &harness,
+        "req_status_continuity_exact_remainder",
+        &task_id,
+        Some(RequiredNullable::some(ContinuityPageRequest {
+            page_size: 64,
+            cursor: RequiredNullable::some(exact_cursor),
+        })),
+    )?;
+    let exact_page = &exact_remainder.response_value["continuity_summary"];
+    assert_eq!(exact_page["page_info"]["returned_count"], 64);
+    assert_eq!(exact_page["page_info"]["truncated"], false);
+    assert_eq!(exact_page["page_info"]["next_cursor"], Value::Null);
+
+    let expected_ids = record_ids.iter().rev().cloned().collect::<Vec<_>>();
+    let mut traversed_ids = Vec::new();
+    let mut cursor = RequiredNullable::null();
+    let mut page_number = 0;
+    loop {
+        let response = continuity_status(
+            &harness,
+            &format!("req_status_continuity_traversal_{page_number}"),
+            &task_id,
+            Some(RequiredNullable::some(ContinuityPageRequest {
+                page_size: 8,
+                cursor: cursor.clone(),
+            })),
+        )?;
+        let page = &response.response_value["continuity_summary"];
+        assert_eq!(page["page_info"]["total_count"], 65);
+        traversed_ids.extend(continuity_page_ids(page));
+        if page["page_info"]["truncated"] == false {
+            assert_eq!(page["page_info"]["next_cursor"], Value::Null);
+            break;
+        }
+        cursor = RequiredNullable::some(serde_json::from_value(
+            page["page_info"]["next_cursor"].clone(),
+        )?);
+        page_number += 1;
+    }
+    assert_eq!(traversed_ids, expected_ids);
+    assert_eq!(
+        traversed_ids.iter().collect::<BTreeSet<_>>().len(),
+        traversed_ids.len()
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn status_continuity_empty_page_and_invalid_controls_fail_closed() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "status_continuity_empty")?;
+    let before = harness.counts()?;
+
+    let empty = continuity_status(&harness, "req_status_continuity_empty", &task_id, None)?;
+    let page = &empty.response_value["continuity_summary"];
+    assert_eq!(page["items"], json!([]));
+    assert_eq!(page["page_info"]["total_count"], 0);
+    assert_eq!(page["page_info"]["returned_count"], 0);
+    assert_eq!(page["page_info"]["truncated"], false);
+    assert_eq!(page["page_info"]["next_cursor"], Value::Null);
+
+    for (request_id, page, expected_field) in [
+        (
+            "req_status_continuity_zero",
+            ContinuityPageRequest {
+                page_size: 0,
+                cursor: RequiredNullable::null(),
+            },
+            "continuity_page.page_size",
+        ),
+        (
+            "req_status_continuity_over_max",
+            ContinuityPageRequest {
+                page_size: 65,
+                cursor: RequiredNullable::null(),
+            },
+            "continuity_page.page_size",
+        ),
+        (
+            "req_status_continuity_empty_cursor_id",
+            ContinuityPageRequest {
+                page_size: 8,
+                cursor: RequiredNullable::some(ContinuityCursor {
+                    updated_at: UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
+                    continuity_record_id: ProjectContinuityRecordId::new(" "),
+                }),
+            },
+            "continuity_page.cursor.continuity_record_id",
+        ),
+    ] {
+        let response = continuity_status(
+            &harness,
+            request_id,
+            &task_id,
+            Some(RequiredNullable::some(page)),
+        )?;
+        assert_status_continuity_validation_rejection(&response, expected_field);
+    }
+
+    let ambiguous = harness.service.status(
+        StatusRequest {
+            envelope: envelope("req_status_continuity_ambiguous", None, false, None, None),
+            include: StatusInclude {
+                task: false,
+                pending_user_actions: false,
+                write_ticket: false,
+                evidence: false,
+                close: false,
+                guarantees: false,
+                continuity: false,
+            },
+            continuity_page: Some(RequiredNullable::some(ContinuityPageRequest {
+                page_size: 8,
+                cursor: RequiredNullable::null(),
+            })),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_status_continuity_validation_rejection(&ambiguous, "continuity_page");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+fn continuity_status(
+    harness: &MethodHarness,
+    request_id: &str,
+    task_id: &str,
+    continuity_page: Option<RequiredNullable<ContinuityPageRequest>>,
+) -> Result<PipelineResponse, Box<dyn Error>> {
+    Ok(harness.service.status(
+        StatusRequest {
+            envelope: envelope(request_id, None, false, None, Some(task_id)),
+            include: StatusInclude {
+                task: false,
+                pending_user_actions: false,
+                write_ticket: false,
+                evidence: false,
+                close: false,
+                guarantees: false,
+                continuity: true,
+            },
+            continuity_page,
+        },
+        invocation(OperationCategory::Read),
+    )?)
+}
+
+fn continuity_page_ids(page: &Value) -> Vec<String> {
+    page["items"]
+        .as_array()
+        .expect("continuity items")
+        .iter()
+        .map(|item| {
+            item["continuity_record_ref"]["record_id"]
+                .as_str()
+                .expect("continuity record id")
+                .to_owned()
+        })
+        .collect()
+}
+
+fn insert_active_continuity_records(
+    harness: &MethodHarness,
+    task_id: &str,
+    change_unit_id: &str,
+    record_ids: &[String],
+    updated_at: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut conn = harness.conn()?;
+    let transaction = conn.transaction()?;
+    for record_id in record_ids {
+        transaction.execute(
+            "INSERT INTO project_continuity_records (
+                project_id, continuity_record_id, source_task_id, source_change_unit_id,
+                kind, title, summary, rationale, applies_to_paths_json,
+                applies_to_refs_json, source_refs_json, artifact_refs_json, status,
+                supersedes_refs_json, review_triggers_json, created_at, updated_at,
+                metadata_json
+             ) VALUES (
+                ?1, ?2, ?3, ?4, 'decision', ?2, ?2, NULL, '[]', '[]', '[]', '[]',
+                'active', '[]', '[]', ?5, ?5, '{}'
+             )",
+            rusqlite::params![PROJECT_ID, record_id, task_id, change_unit_id, updated_at],
+        )?;
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+fn assert_status_continuity_validation_rejection(
+    response: &PipelineResponse,
+    expected_field: &str,
+) {
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        expected_field
+    );
 }

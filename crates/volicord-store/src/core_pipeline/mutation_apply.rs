@@ -2,7 +2,6 @@ use super::*;
 use crate::evidence_capture::{
     validate_evidence_capture_intent_window, EvidenceCaptureIntentWindowError,
 };
-use crate::user_action_channel::validate_persisted_user_action_channel_token_window;
 use crate::workflow_records::{
     apply_project_workflow_policy_mutation, clear_satisfied_task_policy_reevaluation,
     project_write_authority_fingerprint, ProjectWorkflowPolicyMutationEffect,
@@ -102,9 +101,6 @@ impl CoreStorageMutation {
             Self::InsertUserActionResolution(input) => {
                 mutation.insert_user_action_resolution(input)
             }
-            Self::ConsumeUserActionChannelToken(input) => {
-                mutation.consume_user_action_channel_token(input)
-            }
             Self::ResolveUnrecordedChange(input) => mutation.resolve_unrecorded_change(input),
             Self::InsertProjectContinuityRecord(input) => {
                 mutation.insert_project_continuity_record(input)
@@ -170,7 +166,10 @@ impl ProjectMutation<'_> {
             "tasks.autonomy_boundary_json",
             &input.autonomy_boundary_json,
         )?;
-        validate_json_text("tasks.close_summary_json", &input.close_summary_json)?;
+        validate_persisted_close_summary_json(
+            "tasks.close_summary_json",
+            &input.close_summary_json,
+        )?;
         self.tx.execute(
             "INSERT INTO tasks (
                 project_id,
@@ -370,7 +369,10 @@ impl ProjectMutation<'_> {
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("lifecycle_phase", &input.lifecycle_phase)?;
         validate_identifier("result", &input.result)?;
-        validate_json_text("tasks.close_summary_json", &input.close_summary_json)?;
+        validate_persisted_close_summary_json(
+            "tasks.close_summary_json",
+            &input.close_summary_json,
+        )?;
         validate_timestamp("tasks.closed_at", &input.closed_at)?;
 
         let changed = self.tx.execute(
@@ -417,7 +419,7 @@ impl ProjectMutation<'_> {
             self.update_task_text_column(&input.task_id, "autonomy_boundary_json", value)?;
         }
         if let Some(value) = &input.close_summary_json {
-            validate_json_text("tasks.close_summary_json", value)?;
+            validate_persisted_close_summary_json("tasks.close_summary_json", value)?;
             self.update_task_text_column(&input.task_id, "close_summary_json", value)?;
         }
         if let Some(value) = &input.lifecycle_phase {
@@ -942,8 +944,8 @@ impl ProjectMutation<'_> {
             project_write_authority_fingerprint(policy_json.as_deref())?;
         if status != "active"
             || basis_state_version != input.expected_basis_state_version
-            || validity_basis.write_authority_fingerprint.as_deref()
-                != Some(input.expected_write_authority_fingerprint.as_str())
+            || validity_basis.write_authority_fingerprint
+                != input.expected_write_authority_fingerprint
             || current_write_authority_fingerprint != input.expected_write_authority_fingerprint
         {
             return Err(StoreError::Conflict {
@@ -1849,123 +1851,6 @@ impl ProjectMutation<'_> {
             ],
         )?;
         Ok(())
-    }
-
-    fn consume_user_action_channel_token(
-        &mut self,
-        input: &UserActionChannelTokenConsumption,
-    ) -> StoreResult<()> {
-        validate_identifier("user_action_channel_tokens.token_hash", &input.token_hash)?;
-        if input.token_hash.len() != 64
-            || input
-                .token_hash
-                .chars()
-                .any(|character| !character.is_ascii_hexdigit())
-        {
-            return Err(StoreError::InvalidInput {
-                detail: "user_action_channel_tokens.token_hash must be 64 hex characters"
-                    .to_owned(),
-            });
-        }
-        validate_identifier("connection_internal_id", &input.connection_internal_id)?;
-        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
-        validate_timestamp("user_action_channel_tokens.consumed_at", &input.consumed_at)?;
-        validate_json_text(
-            "user_action_channel_tokens.completion_metadata_json",
-            &input.completion_metadata_json,
-        )?;
-
-        let consumed_at =
-            UtcTimestamp::parse(&input.consumed_at).map_err(|_| StoreError::InvalidInput {
-                detail: "user_action_channel_tokens.consumed_at must be a valid RFC 3339 timestamp"
-                    .to_owned(),
-            })?;
-        let stored = self
-            .tx
-            .query_row(
-                "SELECT status, created_at, expires_at
-                   FROM user_action_channel_tokens
-                  WHERE project_id = ?1
-                    AND token_hash = ?2
-                    AND connection_internal_id = ?3
-                    AND user_action_request_id = ?4",
-                params![
-                    self.project_id,
-                    input.token_hash,
-                    input.connection_internal_id,
-                    input.user_action_request_id
-                ],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                },
-            )
-            .optional()?;
-        let Some((status, created_at, expires_at)) = stored else {
-            return Err(StoreError::Conflict {
-                entity: "user_action_channel_token",
-                id: input.token_hash.clone(),
-                detail: "token is not pending, is expired, or is not bound to this user action"
-                    .to_owned(),
-            });
-        };
-        if status != "pending" {
-            return Err(StoreError::Conflict {
-                entity: "user_action_channel_token",
-                id: input.token_hash.clone(),
-                detail: "token is not pending, is expired, or is not bound to this user action"
-                    .to_owned(),
-            });
-        }
-        let (created_at, expires_at) = validate_persisted_user_action_channel_token_window(
-            self.tx,
-            self.project_id,
-            &input.user_action_request_id,
-            &created_at,
-            &expires_at,
-        )?;
-        if consumed_at < created_at || consumed_at >= expires_at {
-            return Err(StoreError::Conflict {
-                entity: "user_action_channel_token",
-                id: input.token_hash.clone(),
-                detail: "token is not pending, is expired, or is not bound to this user action"
-                    .to_owned(),
-            });
-        }
-
-        let changed = self.tx.execute(
-            "UPDATE user_action_channel_tokens
-                SET status = 'consumed',
-                    consumed_at = ?5,
-                    completed_at = ?5,
-                    completion_metadata_json = ?6
-              WHERE project_id = ?1
-                AND token_hash = ?2
-                AND connection_internal_id = ?3
-                AND user_action_request_id = ?4
-                AND status = 'pending'",
-            params![
-                self.project_id,
-                input.token_hash,
-                input.connection_internal_id,
-                input.user_action_request_id,
-                input.consumed_at,
-                input.completion_metadata_json
-            ],
-        )?;
-        if changed == 1 {
-            Ok(())
-        } else {
-            Err(StoreError::Conflict {
-                entity: "user_action_channel_token",
-                id: input.token_hash.clone(),
-                detail: "token is not pending, is expired, or is not bound to this user action"
-                    .to_owned(),
-            })
-        }
     }
 
     fn resolve_unrecorded_change(

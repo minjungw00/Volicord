@@ -1,18 +1,5 @@
 use super::*;
 
-const LOCAL_WEB_CONSENT_FALLBACK_KIND: &str = "local_web_consent";
-const LOCAL_WEB_CONSENT_DELIVERY_SURFACE: &str = "model_invisible_user_surface";
-const LOCAL_WEB_CONSENT_ENDPOINT: &str = "/consent";
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LocalWebConsentCreatedMetadata {
-    fallback_kind: String,
-    delivery_surface: String,
-    endpoint: String,
-    form_digest: String,
-}
-
 impl CoreService {
     /// Executes `volicord.request_user_action` through the shared Core mutation pipeline.
     pub fn request_user_action(
@@ -29,187 +16,7 @@ impl CoreService {
         request: ResolveUserActionRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
-        execute_resolve_user_action(self, request, invocation, None)
-    }
-
-    /// Resolves one local-web action and consumes its bearer token atomically.
-    pub fn resolve_local_web_consent_user_action(
-        &self,
-        request: LocalWebConsentUserActionRequest,
-        invocation: InvocationContext,
-    ) -> CoreResult<PipelineResponse> {
-        if request.request.envelope.dry_run {
-            return validation_rejected(
-                true,
-                None,
-                "envelope.dry_run",
-                "local-web user-action resolution does not support dry_run",
-            );
-        }
-        let LocalWebConsentUserActionRequest {
-            request,
-            token,
-            expected_connection_internal_id,
-            completion_metadata_json,
-        } = request;
-        execute_resolve_user_action(
-            self,
-            request,
-            invocation,
-            Some(LocalWebTokenContext {
-                token,
-                expected_connection_internal_id,
-                completion_metadata_json,
-            }),
-        )
-    }
-
-    /// Projects the complete canonical local-web form for one bearer token.
-    ///
-    /// The adapter supplies the raw presented credential and the exact token
-    /// record returned by its non-recording validation. Core then rereads that
-    /// record and all project-local authority in one read snapshot before
-    /// returning this nonserialized User Channel value.
-    pub fn local_web_consent_user_action_projection(
-        &self,
-        request: LocalWebConsentUserActionProjectionRequest,
-    ) -> CoreResult<LocalWebConsentUserActionProjectionOutcome> {
-        let LocalWebConsentUserActionProjectionRequest {
-            token,
-            validated_token,
-            allow_resolved_replay,
-        } = request;
-        let Ok(token_hash) = user_action_channel_token_hash(&token) else {
-            return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-        };
-        if token_hash != validated_token.token_hash
-            || validated_token.channel_kind != UserActionChannelKind::LocalWebConsent
-            || validated_token.capture_basis
-                != UserActionChannelKind::LocalWebConsent.verification_basis()
-        {
-            return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-        }
-
-        let current_access = agent_connection_project_access_read_only(
-            self.runtime_home(),
-            &validated_token.connection_internal_id,
-            &validated_token.project_id,
-        )?;
-        if !current_access.is_some_and(|access| {
-            access.connection_internal_id == validated_token.connection_internal_id
-                && access.project_id == validated_token.project_id
-                && access.connection_enabled
-                && access.project_allowed
-                && access.project.is_some()
-        }) {
-            return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-        }
-
-        let project_id = ProjectId::new(validated_token.project_id.clone());
-        let store = CoreProjectStore::open_read_only(self.runtime_home(), &project_id)?;
-        store.with_read_snapshot(|store| {
-            Ok(
-                (|| -> CoreResult<LocalWebConsentUserActionProjectionOutcome> {
-                    let Some(snapshot_token) =
-                        store.user_action_channel_token_record(&validated_token.token_hash)?
-                    else {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                    };
-                    if snapshot_token != validated_token || snapshot_token.token_hash != token_hash
-                    {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                    }
-                    if !store.has_active_agent_session_for_connection(
-                        &snapshot_token.connection_internal_id,
-                    )? {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                    }
-
-                    let project_state = store.project_state()?;
-                    let observed_at = self.project_store_now(store)?;
-                    let (created_at, expires_at) =
-                        store.validate_user_action_channel_token_window(&snapshot_token)?;
-                    let Some(effective) = store
-                        .user_action_record(&snapshot_token.user_action_request_id, &observed_at)?
-                    else {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                    };
-                    let expected_creator =
-                        format!("agent_connection:{}", snapshot_token.connection_internal_id);
-                    if effective.request.requested_by_actor_source != expected_creator {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                    }
-
-                    match snapshot_token.status.as_str() {
-                        "pending"
-                            if observed_at >= created_at
-                                && observed_at < expires_at
-                                && effective.status == UserActionStatus::Pending
-                                && effective.resolution.is_none() => {}
-                        "consumed"
-                            if allow_resolved_replay
-                                && observed_at >= created_at
-                                && observed_at < expires_at
-                                && effective.resolution.is_some() =>
-                        {
-                            let Some(consumed_at) = snapshot_token
-                                .consumed_at
-                                .as_deref()
-                                .and_then(|value| UtcTimestamp::parse(value).ok())
-                            else {
-                                return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                            };
-                            let Some(completed_at) = snapshot_token
-                                .completed_at
-                                .as_deref()
-                                .and_then(|value| UtcTimestamp::parse(value).ok())
-                            else {
-                                return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                            };
-                            if consumed_at != completed_at
-                                || consumed_at < created_at
-                                || consumed_at >= expires_at
-                            {
-                                return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
-                            }
-                        }
-                        _ => return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid),
-                    }
-
-                    let Ok(metadata) = serde_json::from_str::<LocalWebConsentCreatedMetadata>(
-                        &snapshot_token.created_metadata_json,
-                    ) else {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::FormMismatch);
-                    };
-                    if metadata.fallback_kind != LOCAL_WEB_CONSENT_FALLBACK_KIND
-                        || metadata.delivery_surface != LOCAL_WEB_CONSENT_DELIVERY_SURFACE
-                        || metadata.endpoint != LOCAL_WEB_CONSENT_ENDPOINT
-                    {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::FormMismatch);
-                    }
-
-                    let public_request =
-                        user_action_from_record(&effective, project_state.state_version)?;
-                    let form = public_request.body.capture_form().map_err(|_| {
-                        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                            "user_action_requests",
-                            snapshot_token.user_action_request_id.clone(),
-                            "request_json",
-                        ))
-                    })?;
-                    let current_form_digest = canonical_json_bare_sha256(&form)?;
-                    if metadata.form_digest != current_form_digest {
-                        return Ok(LocalWebConsentUserActionProjectionOutcome::FormMismatch);
-                    }
-                    Ok(LocalWebConsentUserActionProjectionOutcome::Projected(
-                        Box::new(LocalWebConsentUserActionProjection {
-                            request: public_request,
-                            form,
-                        }),
-                    ))
-                })(),
-            )
-        })?
+        execute_resolve_user_action(self, request, invocation)
     }
 
     /// Projects pending user-action forms only for an authenticated User
@@ -224,72 +31,14 @@ impl CoreService {
     ) -> CoreResult<Option<UserChannelInboxProjection>> {
         if request.project_id != invocation.project_id
             || invocation.operation_category != OperationCategory::Read
+            || invocation.actor_source != ActorSource::LocalUser
+            || invocation.invocation_binding_basis != VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
         {
             return Ok(None);
         }
 
-        let (same_connection_actor, user_channel, required_active_session) =
-            match &invocation.actor_source {
-                ActorSource::LocalUser
-                    if invocation.invocation_binding_basis
-                        == VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL =>
-                {
-                    (
-                        None,
-                        UserChannelContext {
-                            prompt_capture_available: false,
-                            host_elicitation_available: false,
-                            local_web_consent_available: false,
-                        },
-                        None,
-                    )
-                }
-                ActorSource::AgentConnection(connection_id) => {
-                    let prompt_capture = invocation.invocation_binding_basis
-                        == VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK;
-                    let mcp_connection_binding = matches!(
-                        invocation.invocation_binding_basis.as_str(),
-                        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
-                            | VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING
-                    );
-                    if !prompt_capture && !mcp_connection_binding {
-                        return Ok(None);
-                    }
-                    let Some(session_id) = invocation
-                        .session_id
-                        .as_deref()
-                        .filter(|session_id| !session_id.trim().is_empty())
-                    else {
-                        return Ok(None);
-                    };
-                    (
-                        Some(invocation.actor_source.to_canonical_string()),
-                        UserChannelContext {
-                            prompt_capture_available: prompt_capture,
-                            host_elicitation_available: mcp_connection_binding
-                                && invocation.host_elicitation_available,
-                            local_web_consent_available: mcp_connection_binding
-                                && invocation.local_web_consent_available,
-                        },
-                        Some((session_id.to_owned(), connection_id.as_str().to_owned())),
-                    )
-                }
-                ActorSource::LocalUser | ActorSource::System => return Ok(None),
-            };
-
         let store = CoreProjectStore::open_read_only(self.runtime_home(), &request.project_id)?;
         let Some((project_state, observed_at, records)) = store.with_read_snapshot(|store| {
-            if let Some((session_id, connection_id)) = required_active_session.as_ref() {
-                let Some(session) = store.agent_session(session_id)? else {
-                    return Ok(None);
-                };
-                if session.project_id != request.project_id.as_str()
-                    || session.connection_internal_id.as_str() != connection_id
-                    || session.ended_at.is_some()
-                {
-                    return Ok(None);
-                }
-            }
             if !store.task_exists(&request.task_id)? {
                 return Ok(None);
             }
@@ -303,18 +52,12 @@ impl CoreService {
         };
         let items = records
             .iter()
-            .filter(|record| {
-                same_connection_actor
-                    .as_ref()
-                    .is_none_or(|actor| record.request.requested_by_actor_source == actor.as_str())
-            })
             .map(|record| {
                 let request = user_action_from_record(record, project_state.state_version)?;
                 let inbox_item = user_action_inbox_item_from_request(
                     record,
                     request.clone(),
                     project_state.state_version,
-                    user_channel,
                 )?;
                 Ok(UserChannelInboxProjectionItem {
                     request,
@@ -322,7 +65,7 @@ impl CoreService {
                 })
             })
             .collect::<CoreResult<Vec<_>>>()?;
-        let user_channel_availability = user_channel_availability(user_channel);
+        let user_channel_availability = user_channel_availability();
         Ok(Some(UserChannelInboxProjection {
             project_id: request.project_id,
             task_id: request.task_id,
@@ -502,7 +245,7 @@ impl CoreService {
             &replay.response_json,
             replay.committed_state_version,
         ) {
-            return crate::pipeline::stored_response_unavailable_response(
+            return crate::pipeline::stored_response_corrupt_response(
                 project_state.state_version,
                 Some(verified_invocation),
                 Some(task_id),
@@ -1629,10 +1372,7 @@ fn user_action_validation_error<T>(
     field: &'static str,
     message: &'static str,
 ) -> Result<T, PlanError> {
-    match validation_plan_error(dry_run, state_version, field, message) {
-        Err(error) => Err(error),
-        Ok(()) => unreachable!("validation_plan_error always returns Err"),
-    }
+    validation_plan_error(dry_run, state_version, field, message)
 }
 
 fn scope_baseline_is_missing(task: &TaskRecord) -> Result<bool, PlanError> {
@@ -1741,7 +1481,7 @@ fn projected_user_action_state(
             &record.change_unit_id,
             &envelope.project_id,
             Some(&task_id),
-            Some(record.basis_state_version.unwrap_or(planned_state_version)),
+            Some(record.basis_state_version),
         )
     });
     let next_actions = next_actions_for_state(
@@ -1839,7 +1579,6 @@ fn projected_user_action_state(
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
-        guard_health: close_plan.guard_health,
         guarantee_display: Some(guarantee_display),
     })?;
     Ok((state, blocker_refs, next_actions))
@@ -1849,7 +1588,6 @@ fn execute_resolve_user_action(
     service: &CoreService,
     request: ResolveUserActionRequest,
     invocation: InvocationContext,
-    mut local_web: Option<LocalWebTokenContext>,
 ) -> CoreResult<PipelineResponse> {
     if let Err(error) = validate_channel_submission_id(&request.channel_submission_id) {
         return validation_rejected(
@@ -1875,20 +1613,6 @@ fn execute_resolve_user_action(
             "resolve_user_action requires expected_state_version to be null",
         );
     }
-    if local_web.is_none()
-        && invocation.invocation_binding_basis.trim() == VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
-    {
-        return rejected_pipeline_response(
-            request.envelope.dry_run,
-            None,
-            vec![tool_error(
-                ErrorCode::InvocationContextMismatch,
-                "local-web user authority requires the token-bearing Core entry point",
-                false,
-                None,
-            )],
-        );
-    }
     if request
         .envelope
         .idempotency_key
@@ -1903,104 +1627,11 @@ fn execute_resolve_user_action(
             "idempotency_key must exactly match channel_submission_id",
         );
     }
-    let local_web_replay_binding = match local_web.as_mut() {
-        Some(context) => {
-            if context.expected_connection_internal_id.is_empty()
-                || context.expected_connection_internal_id.len() > 256
-                || !context
-                    .expected_connection_internal_id
-                    .bytes()
-                    .all(|byte| (0x21..=0x7e).contains(&byte))
-            {
-                return validation_rejected(
-                    request.envelope.dry_run,
-                    None,
-                    "expected_connection_internal_id",
-                    "expected connection id must be 1..=256 bytes of visible ASCII",
-                );
-            }
-            let completion_metadata = match serde_json::from_str::<LocalWebConsentCompletionMetadata>(
-                &context.completion_metadata_json,
-            ) {
-                Ok(metadata) => metadata,
-                Err(_) => {
-                    return validation_rejected(
-                        request.envelope.dry_run,
-                        None,
-                        "completion_metadata_json",
-                        "local-web completion metadata must use the closed object shape",
-                    )
-                }
-            };
-            if completion_metadata
-                .selection_recording
-                .as_deref()
-                .is_some_and(|value| value != "recorded")
-                || completion_metadata
-                    .endpoint
-                    .as_deref()
-                    .is_some_and(|value| {
-                        value.is_empty()
-                            || value.len() > 256
-                            || !value.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
-                    })
-            {
-                return validation_rejected(
-                    request.envelope.dry_run,
-                    None,
-                    "completion_metadata_json",
-                    "local-web completion metadata contains unsupported values",
-                );
-            }
-            let canonical_completion_metadata =
-                volicord_types::canonical_json_string(&completion_metadata)?;
-            let token_digest = match user_action_channel_token_hash(&context.token) {
-                Ok(digest) => digest,
-                Err(_) => {
-                    return validation_rejected(
-                        request.envelope.dry_run,
-                        None,
-                        "token",
-                        "local-web token must use the bounded bearer-token shape",
-                    )
-                }
-            };
-            let derived_submission_id = local_web_channel_submission_id(
-                &request.envelope.project_id,
-                &request.user_action_request_id,
-                &context.token,
-                &context.expected_connection_internal_id,
-                &completion_metadata,
-            )?;
-            if request.channel_submission_id != derived_submission_id {
-                return validation_rejected(
-                    request.envelope.dry_run,
-                    None,
-                    "channel_submission_id",
-                    "local-web channel_submission_id must match the Core-derived credential binding",
-                );
-            }
-            context.completion_metadata_json = canonical_completion_metadata;
-            Some(json!({
-                "token_digest": token_digest,
-                "expected_connection_internal_id": context.expected_connection_internal_id,
-                "completion_metadata": completion_metadata,
-            }))
-        }
-        None => None,
-    };
-    let request_json = match local_web_replay_binding {
-        Some(binding) => json!({
-            "request": request,
-            "local_web_replay_binding": binding,
-        }),
-        None => serde_json::to_value(&request)?,
-    };
     let prepared = match prepare_or_response(
         service,
         MethodName::ResolveUserAction,
         request.envelope.clone(),
-        request_json,
+        serde_json::to_value(&request)?,
         invocation,
         mutation_method_policy(
             request.operation_category(),
@@ -2029,65 +1660,21 @@ fn execute_resolve_user_action(
             )],
         );
     }
-    let channel_kind = if local_web.is_some() {
-        if channel_kind_from_verified_invocation(&prepared.context.verified_invocation)
-            != Some(UserActionChannelKind::LocalWebConsent)
-        {
-            return rejected_pipeline_response(
-                request.envelope.dry_run,
-                Some(prepared.context.project_state.state_version),
-                vec![tool_error(
-                    ErrorCode::InvocationContextMismatch,
-                    "token-bearing local-web resolution requires verified local-web authority",
-                    false,
-                    None,
-                )],
-            );
-        }
-        UserActionChannelKind::LocalWebConsent
-    } else {
-        let Some(channel_kind) =
-            channel_kind_from_verified_invocation(&prepared.context.verified_invocation)
-        else {
-            return rejected_pipeline_response(
-                request.envelope.dry_run,
-                Some(prepared.context.project_state.state_version),
-                vec![tool_error(
-                    ErrorCode::InvocationContextMismatch,
-                    "verified invocation is not a supported User Channel",
-                    false,
-                    None,
-                )],
-            );
-        };
-        if channel_kind == UserActionChannelKind::LocalWebConsent {
-            return rejected_pipeline_response(
-                request.envelope.dry_run,
-                Some(prepared.context.project_state.state_version),
-                vec![tool_error(
-                    ErrorCode::InvocationContextMismatch,
-                    "local-web user authority requires the token-bearing Core entry point",
-                    false,
-                    None,
-                )],
-            );
-        }
-        channel_kind
+    let Some(channel_kind) =
+        channel_kind_from_verified_invocation(&prepared.context.verified_invocation)
+    else {
+        return rejected_pipeline_response(
+            request.envelope.dry_run,
+            Some(prepared.context.project_state.state_version),
+            vec![tool_error(
+                ErrorCode::InvocationContextMismatch,
+                "verified invocation is not a supported User Channel",
+                false,
+                None,
+            )],
+        );
     };
     let now = prepared.operation_now.clone();
-    let token_consumption = match local_web {
-        Some(local_web) => match validated_local_web_token_consumption(
-            &prepared.store,
-            &prepared.context.project_state,
-            &request,
-            local_web,
-            &now,
-        ) {
-            Ok(consumption) => Some(consumption),
-            Err(response) => return Ok(*response),
-        },
-        None => None,
-    };
     let plan = match plan_resolve_user_action(
         service,
         &prepared.store,
@@ -2096,7 +1683,6 @@ fn execute_resolve_user_action(
         &prepared.context.verified_invocation,
         &prepared.context.verified_actor,
         channel_kind,
-        token_consumption,
         now,
     ) {
         Ok(plan) => plan,
@@ -2140,12 +1726,6 @@ fn execute_resolve_user_action(
     Ok(response)
 }
 
-struct LocalWebTokenContext {
-    token: String,
-    expected_connection_internal_id: String,
-    completion_metadata_json: String,
-}
-
 struct ResolveUserActionPlan {
     method: MethodPlan,
 }
@@ -2154,74 +1734,6 @@ fn channel_kind_from_verified_invocation(
     invocation: &VerifiedInvocationContext,
 ) -> Option<UserActionChannelKind> {
     UserActionChannelKind::from_verification_basis(&invocation.verification_basis)
-}
-
-fn validated_local_web_token_consumption(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &ResolveUserActionRequest,
-    local_web: LocalWebTokenContext,
-    now: &UtcTimestamp,
-) -> Result<UserActionChannelTokenConsumption, Box<PipelineResponse>> {
-    let validation = validate_user_action_channel_token(
-        store.runtime_home(),
-        UserActionChannelTokenCheck {
-            token: local_web.token,
-            expected_project_id: request.envelope.project_id.as_str().to_owned(),
-            expected_connection_internal_id: local_web.expected_connection_internal_id,
-            now: now.to_string(),
-        },
-    )
-    .map_err(|error| {
-        Box::new(store_error_response(
-            &request.envelope,
-            project_state,
-            error,
-        ))
-    })?;
-    let record = match validation {
-        UserActionChannelTokenValidation::Valid(record) => record,
-        UserActionChannelTokenValidation::Rejected(UserActionChannelTokenRejection::Expired(_)) => {
-            return Err(Box::new(decision_rejected_response(
-                &request.envelope,
-                None,
-                "local web user-action token is expired",
-            )))
-        }
-        UserActionChannelTokenValidation::Rejected(UserActionChannelTokenRejection::Consumed(
-            _,
-        )) => {
-            return Err(Box::new(decision_rejected_response(
-                &request.envelope,
-                None,
-                "local web user-action token is already consumed",
-            )))
-        }
-        UserActionChannelTokenValidation::Rejected(_) => {
-            return Err(Box::new(decision_rejected_response(
-                &request.envelope,
-                None,
-                "local web user-action token is invalid for this request",
-            )))
-        }
-    };
-    if record.channel_kind != UserActionChannelKind::LocalWebConsent
-        || record.user_action_request_id != request.user_action_request_id.as_str()
-        || record.capture_basis != VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
-    {
-        return Err(Box::new(decision_rejected_response(
-            &request.envelope,
-            None,
-            "local web token is not bound to this pending user action",
-        )));
-    }
-    Ok(UserActionChannelTokenConsumption {
-        token_hash: record.token_hash,
-        connection_internal_id: record.connection_internal_id,
-        user_action_request_id: record.user_action_request_id,
-        consumed_at: now.to_string(),
-        completion_metadata_json: local_web.completion_metadata_json,
-    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2233,7 +1745,6 @@ fn plan_resolve_user_action(
     verified_invocation: &VerifiedInvocationContext,
     verified_actor: &VerifiedActorContext,
     channel_kind: UserActionChannelKind,
-    token_consumption: Option<UserActionChannelTokenConsumption>,
     now: UtcTimestamp,
 ) -> Result<ResolveUserActionPlan, PlanError> {
     if verified_actor.actor_source != ActorSource::LocalUser {
@@ -2453,13 +1964,7 @@ fn plan_resolve_user_action(
         state,
         next_actions: next_actions.clone(),
     };
-    let mut storage_mutations = Vec::new();
-    if let Some(token_consumption) = token_consumption {
-        storage_mutations.push(CoreStorageMutation::ConsumeUserActionChannelToken(
-            token_consumption,
-        ));
-    }
-    storage_mutations.push(CoreStorageMutation::InsertUserActionResolution(
+    let mut storage_mutations = vec![CoreStorageMutation::InsertUserActionResolution(
         UserActionResolutionInsert {
             user_action_resolution_id: resolution_record.user_action_resolution_id,
             user_action_request_id: resolution_record.user_action_request_id,
@@ -2472,7 +1977,7 @@ fn plan_resolve_user_action(
             resolved_assurance_level: resolution_record.resolved_assurance_level,
             resolved_at: resolution_record.resolved_at,
         },
-    ));
+    )];
     storage_mutations.extend(continuity_plans.into_iter().map(|plan| plan.mutation));
     if let Some(lifecycle_phase) = lifecycle_phase {
         storage_mutations.push(task_lifecycle_mutation(&task_id, lifecycle_phase));
@@ -2853,7 +2358,7 @@ fn plan_user_action_continuity_records(
                 title: format!(
                     "{}: {}",
                     decision_title_prefix(choice.judgment_kind),
-                    short_user_action_continuity_title(&selected.label)
+                    selected.label.trim().to_owned()
                 ),
                 summary,
                 rationale: None,
@@ -2912,10 +2417,7 @@ fn plan_user_action_continuity_records(
                 applies_to_refs.extend(risk.source_refs.clone());
                 let draft = ProjectContinuityDraft {
                     kind: ProjectContinuityKind::AcceptedRisk,
-                    title: format!(
-                        "Accepted residual risk: {}",
-                        short_user_action_continuity_title(&risk.summary)
-                    ),
+                    title: format!("Accepted residual risk: {}", risk.summary.trim().to_owned()),
                     summary: risk.summary.clone(),
                     rationale: None,
                     applies_to_paths: applies_to_paths.clone(),
@@ -2939,18 +2441,6 @@ fn plan_user_action_continuity_records(
             Ok(plans)
         }
         _ => Ok(Vec::new()),
-    }
-}
-
-fn short_user_action_continuity_title(value: &str) -> String {
-    const MAX_CHARS: usize = 96;
-    let trimmed = value.trim();
-    let mut chars = trimmed.chars();
-    let short = chars.by_ref().take(MAX_CHARS).collect::<String>();
-    if chars.next().is_some() {
-        format!("{short}...")
-    } else {
-        short
     }
 }
 

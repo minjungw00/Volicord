@@ -11,46 +11,33 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
     agent_connections::{
-        add_connection_project, ensure_agent_connection, remove_connection_project,
-        set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
-        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
-        VERIFIED_STATUS_FAILED,
+        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+        ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX,
+        HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
     },
     bootstrap::{
         initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts, TaskRevisionRecord},
+    diagnostics::read_core_rejection_diagnostics,
     guards::{
-        guard_health_record, insert_agent_session, insert_expected_write, insert_guard_event,
-        insert_unrecorded_change, list_unresolved_unrecorded_changes, observe_guard_installation,
-        unrecorded_change, upsert_guard_installation, AgentSessionInsert, ExpectedWriteInsert,
-        GuardEventInsert, GuardInstallationObservation, GuardInstallationUpsert,
-        UnrecordedChangeInsert, UnrecordedChangeRecord,
-    },
-    session_watch::{
-        compare_watch_snapshots, create_watch_baseline, record_watch_observation,
-        snapshot_product_repository, validate_current_complete_watch_observation,
-        SessionWatchStatus, ValidatedCaptureWatchObservation, WatchBaselineCreate,
-        WatchObservationInsert, WatchSnapshot, WatchSnapshotOptions,
+        insert_unrecorded_change, unrecorded_change, upsert_guard_installation,
+        GuardInstallationUpsert, UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
     sqlite::open_project_state_database,
-    user_action_channel::{
-        create_user_action_channel_token, user_action_channel_current_timestamp,
-        validate_user_action_channel_token, UserActionChannelTokenCheck,
-        UserActionChannelTokenCreate, UserActionChannelTokenRecord,
-        UserActionChannelTokenRejection, UserActionChannelTokenValidation,
-    },
     workflow_records::{project_write_authority_fingerprint, ProjectWorkflowPolicyUpsert},
 };
-use volicord_test_support::TempRuntimeHome;
+use volicord_test_support::{
+    test_host_receipt_fixture, TempRuntimeHome,
+    TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+};
 use volicord_types::CloseMutationIntent;
 use volicord_types::{
     prefixed_durable_id, ActorSource, ChangeUnitEffectContract, ChangeUnitEffectKind,
     ChangeUnitUpdate, DurableIdError, DurableIdGenerator, DurableIdKind, EvidenceAssuranceLevel,
     EvidenceSourceKind, EvidenceUpdateProvenance, IdempotencyKey, InitialScope, OperationCategory,
     RequestId, ScopeUpdate, SequenceDurableIdGenerator, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
 use super::*;
@@ -161,8 +148,6 @@ struct MethodHarness {
     runtime_home_path: PathBuf,
     service: CoreService,
 }
-
-type LocalWebTokenStatus = (String, Option<String>, Option<String>);
 
 #[derive(Debug, Clone)]
 struct ContinuityRecordRow {
@@ -302,7 +287,7 @@ impl MethodHarness {
         workflow: Value,
     ) -> Result<(), Box<dyn Error>> {
         let policy_value = json!({
-            "schema": "volicord-policy-v2",
+            "schema": volicord_types::WORKFLOW_POLICY_CONTRACT_ID,
             "workflow": workflow,
         });
         let policy_json = volicord_types::canonical_json_string(&policy_value)?;
@@ -336,36 +321,6 @@ impl MethodHarness {
     }
 }
 
-fn set_method_harness_connection_verification_status(
-    harness: &MethodHarness,
-    status: &str,
-) -> Result<(), Box<dyn Error>> {
-    ensure_agent_connection(
-        &harness.runtime_home_path,
-        AgentConnectionRegistration {
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            intent: volicord_store::agent_connections::CONNECTION_INTENT_SHARED.to_owned(),
-            host_scope: HOST_SCOPE_PROJECT.to_owned(),
-            server_name: "volicord-method-test".to_owned(),
-            config_target: harness
-                .runtime_home_path
-                .join("agent-connections")
-                .join(CONNECTION_ID)
-                .to_string_lossy()
-                .into_owned(),
-            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            enabled: true,
-            managed_fingerprint: "fixture:methods".to_owned(),
-            last_verification_status: status.to_owned(),
-            last_verification_report_json: "{}".to_owned(),
-            last_user_actions_json: "[]".to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(())
-}
-
 fn response_record_id(response_value: &Value, field: &str) -> String {
     if field == "user_action_request_ref" {
         return response_value["user_action_request_summary"]["user_action_request_id"]
@@ -375,7 +330,7 @@ fn response_record_id(response_value: &Value, field: &str) -> String {
     }
     response_value[field]["record_id"]
         .as_str()
-        .expect("record_id should be present")
+        .unwrap_or_else(|| panic!("{field}.record_id should be present: {response_value}"))
         .to_owned()
 }
 
@@ -413,23 +368,6 @@ fn cli_user_channel_projection(
             ),
         )?
         .expect("authenticated local CLI should receive the User Channel projection"))
-}
-
-fn user_channel_projection_for_invocation(
-    harness: &MethodHarness,
-    task_id: &str,
-    invocation: InvocationContext,
-) -> Result<UserChannelInboxProjection, Box<dyn Error>> {
-    Ok(harness
-        .service
-        .user_channel_inbox_projection(
-            UserChannelInboxProjectionRequest {
-                project_id: ProjectId::new(PROJECT_ID),
-                task_id: TaskId::new(task_id),
-            },
-            invocation,
-        )?
-        .expect("authenticated User Channel invocation should receive its projection"))
 }
 
 fn test_state_record_ref(
@@ -520,24 +458,35 @@ fn invocation_with_actor(
     actor_source: ActorSource,
     operation_category: OperationCategory,
 ) -> InvocationContext {
-    InvocationContext::new(
+    let invocation = InvocationContext::new(
         ProjectId::new(PROJECT_ID),
-        actor_source,
+        actor_source.clone(),
         operation_category,
-        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-    )
+        if matches!(actor_source, ActorSource::AgentConnection(_)) {
+            volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+        } else {
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+        },
+    );
+    match actor_source {
+        ActorSource::AgentConnection(connection_id) => invocation.with_validated_host_receipt(
+            validated_fixture_host_receipt(PROJECT_ID, connection_id.as_str()),
+        ),
+        _ => invocation,
+    }
 }
 
-fn local_web_invocation(
-    actor_source: ActorSource,
-    operation_category: OperationCategory,
-) -> InvocationContext {
-    InvocationContext::new(
-        ProjectId::new(PROJECT_ID),
-        actor_source,
-        operation_category,
-        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+fn validated_fixture_host_receipt(
+    project_id: &str,
+    connection_id: &str,
+) -> crate::ValidatedHostVerificationReceipt {
+    let fixture = test_host_receipt_fixture(project_id, connection_id);
+    crate::validate_host_verification_receipt(
+        fixture.receipt,
+        &fixture.current,
+        &fixture.validation_time,
     )
+    .expect("typed host receipt fixture should validate")
 }
 
 fn create_close_ready_task(
@@ -552,192 +501,9 @@ fn create_close_ready_task(
     Ok((task_id, change_unit_id, after_final))
 }
 
-fn initialize_watch_baseline(
-    harness: &MethodHarness,
-    _task_id: &str,
-    session_id: &str,
-    suffix: &str,
-) -> Result<WatchSnapshot, Box<dyn Error>> {
-    let health = guard_health_record(&harness.runtime_home_path, PROJECT_ID, CONNECTION_ID)?;
-    let guard_installation_id = health
-        .guard_installation
-        .as_ref()
-        .map(|installation| installation.guard_installation_id.clone());
-    let guard_mode = health
-        .guard_installation
-        .as_ref()
-        .map(|installation| installation.guard_mode.clone())
-        .unwrap_or_else(|| "detective".to_owned());
-    insert_agent_session(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        AgentSessionInsert {
-            session_id: session_id.to_owned(),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: guard_installation_id.clone(),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode,
-            started_at: "2026-06-30T00:03:00Z".to_owned(),
-            metadata_json: serde_json::to_string(&json!({
-                "source": "test_fixture",
-                "session_watch_initialized": true
-            }))?,
-        },
-    )?;
-    let repo_root = product_repo_root(harness)?;
-    let snapshot = snapshot_product_repository(
-        &harness.runtime_home_path,
-        &repo_root,
-        WatchSnapshotOptions::default(),
-    )?;
-    create_watch_baseline(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        WatchBaselineCreate {
-            watch_baseline_id: format!("watch_base_{suffix}"),
-            session_id: session_id.to_owned(),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id,
-            status: SessionWatchStatus::Active,
-            snapshot: snapshot.clone(),
-            created_at: "2026-06-30T00:03:00Z".to_owned(),
-            metadata_json: serde_json::to_string(&json!({
-                "source": "volicord_session_watch",
-                "status_detail": "active",
-                "detector_role": "detective",
-                "does_not_prevent_writes": true,
-                "does_not_identify_actor": true,
-                "coverage_start_at": "2026-06-30T00:03:00Z",
-                "coverage_basis": SessionWatchCoverageBasis::MethodBoundary.as_str(),
-                "partial_coverage_warning": "Session-watch coverage starts at a method boundary; Product Repository changes before that boundary are outside watcher coverage."
-            }))?,
-        },
-    )?;
-    Ok(snapshot)
-}
-
-fn initialize_full_watch_baseline(
-    harness: &MethodHarness,
-    session_id: &str,
-    guard_installation_id: &str,
-    suffix: &str,
-) -> Result<(), Box<dyn Error>> {
-    insert_agent_session(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        AgentSessionInsert {
-            session_id: session_id.to_owned(),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: Some(guard_installation_id.to_owned()),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "detective".to_owned(),
-            started_at: "2026-06-30T00:03:00Z".to_owned(),
-            metadata_json: serde_json::to_string(&json!({
-                "source": "test_fixture",
-                "session_watch_initialized": true
-            }))?,
-        },
-    )?;
-    let repo_root = product_repo_root(harness)?;
-    let snapshot = snapshot_product_repository(
-        &harness.runtime_home_path,
-        &repo_root,
-        WatchSnapshotOptions::default(),
-    )?;
-    create_watch_baseline(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        WatchBaselineCreate {
-            watch_baseline_id: format!("watch_base_full_{suffix}"),
-            session_id: session_id.to_owned(),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: Some(guard_installation_id.to_owned()),
-            status: SessionWatchStatus::Active,
-            snapshot,
-            created_at: "2026-06-30T00:03:00Z".to_owned(),
-            metadata_json: serde_json::to_string(&json!({
-                "source": "volicord_session_watch",
-                "status_detail": "active",
-                "detector_role": "detective",
-                "does_not_prevent_writes": true,
-                "does_not_identify_actor": true,
-                "coverage_start_at": "2026-06-30T00:03:00Z",
-                "coverage_basis": SessionWatchCoverageBasis::McpStart.as_str(),
-                "coverage_started_by": "session_start_hook"
-            }))?,
-        },
-    )?;
-    Ok(())
-}
-
 fn product_repo_root(harness: &MethodHarness) -> Result<PathBuf, Box<dyn Error>> {
     let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     Ok(store.project_record().repo_root.clone())
-}
-
-fn write_product_file(
-    harness: &MethodHarness,
-    path: &str,
-    contents: &str,
-) -> Result<(), Box<dyn Error>> {
-    let absolute = product_repo_root(harness)?.join(path);
-    if let Some(parent) = absolute.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(absolute, contents)?;
-    Ok(())
-}
-
-fn unresolved_changes_for_connection(
-    harness: &MethodHarness,
-) -> Result<Vec<UnrecordedChangeRecord>, Box<dyn Error>> {
-    Ok(list_unresolved_unrecorded_changes(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        Some(CONNECTION_ID),
-    )?)
-}
-
-fn insert_expected_write_for_paths(
-    harness: &MethodHarness,
-    guard_installation_id: &str,
-    session_id: &str,
-    task_id: &str,
-    change_unit_id: &str,
-    suffix: &str,
-    expected_paths: &[&str],
-) -> Result<String, Box<dyn Error>> {
-    let expected_write_id = format!("expected_write_{suffix}");
-    let expected_paths = expected_paths
-        .iter()
-        .map(|path| (*path).to_owned())
-        .collect::<Vec<_>>();
-    insert_expected_write(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        ExpectedWriteInsert {
-            expected_write_id: expected_write_id.clone(),
-            session_id: Some(session_id.to_owned()),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: Some(guard_installation_id.to_owned()),
-            pre_tool_guard_event_id: format!("guard_event_pre_tool_{suffix}"),
-            host_invocation_id: Some(format!("host_invocation_{suffix}")),
-            tool_name: Some("fixture_tool".to_owned()),
-            command_kind: "product_file_write".to_owned(),
-            path_policy: "exact_paths".to_owned(),
-            expected_paths_json: serde_json::to_string(&expected_paths)?,
-            task_id: task_id.to_owned(),
-            change_unit_id: Some(change_unit_id.to_owned()),
-            write_ticket_ids_json: "[]".to_owned(),
-            basis_state_version: 2,
-            created_at: "2026-06-30T00:07:00Z".to_owned(),
-            expires_at: "2026-06-30T01:07:00Z".to_owned(),
-            metadata_json: serde_json::to_string(&json!({
-                "source": "test_fixture"
-            }))?,
-        },
-    )?;
-    Ok(expected_write_id)
 }
 
 fn assert_verified_invocation(response: &PipelineResponse, operation_category: OperationCategory) {
@@ -756,7 +522,7 @@ fn assert_verified_invocation(response: &PipelineResponse, operation_category: O
         if operation_category == OperationCategory::UserOnly {
             VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
         } else {
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         }
     );
 }
@@ -816,7 +582,8 @@ fn assert_owner_state_rejection_with_category(
     corruption_category: &str,
     runtime_home_path: &Path,
 ) {
-    assert_store_rejection(response, "MCP_UNAVAILABLE", corruption_category);
+    assert_store_rejection(response, "PERSISTED_DATA_CORRUPT", corruption_category);
+    assert_eq!(response.response_value["errors"][0]["category"], "corrupt");
     assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     let details = &response.response_value["errors"][0]["details"];
     assert_eq!(details["owner_state_error"]["table"], table);
@@ -907,29 +674,6 @@ fn assert_authority_disclosure(value: &Value) {
     }
 }
 
-fn assert_coverage_non_guarantees(value: &Value) {
-    let values = value["non_guarantees"]
-        .as_array()
-        .expect("coverage summary should include non_guarantees")
-        .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .expect("coverage non_guarantees should contain strings")
-        })
-        .collect::<BTreeSet<_>>();
-    for expected in [
-        "NotActorAttributionProof",
-        "NotFullFilesystemMonitoring",
-        "NotFullWritePrevention",
-    ] {
-        assert!(
-            values.contains(expected),
-            "missing coverage non-guarantee {expected}: {value}"
-        );
-    }
-}
-
 fn assert_write_ticket_invalid_reason(response: &PipelineResponse, reason: &str) {
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
@@ -1003,11 +747,7 @@ fn light_workflow_policy() -> Value {
             "denied_path_patterns": ["src/denied"],
             "final_acceptance": "policy_dependent"
         },
-        "write_ticket": { "idle_timeout_minutes": null },
-        "detective": {
-            "unknown_effect_behavior": "warn",
-            "stop_behavior": "allow_with_disclosure"
-        }
+        "write_ticket": { "idle_timeout_minutes": null }
     })
 }
 
@@ -1251,11 +991,7 @@ fn record_guard_installation(
 ) -> Result<String, Box<dyn Error>> {
     let guard_installation_id = format!("guard_installation_{suffix}");
     let host_capability_json = if host_capability_json == "{}" {
-        if guard_mode == "record" {
-            record_host_hook_capability_json(harness, &guard_installation_id)?
-        } else {
-            complete_host_hook_capability_json(harness, &guard_installation_id)?
-        }
+        record_guard_capability_json(harness, &guard_installation_id)
     } else {
         host_capability_json.to_owned()
     };
@@ -1275,7 +1011,7 @@ fn record_guard_installation(
                 .then(|| "2026-06-30T00:02:00Z".to_owned()),
             last_seen_at: (installation_status == "active")
                 .then(|| "2026-06-30T00:02:00Z".to_owned()),
-            last_seen_phase: (installation_status == "active").then(|| "session_start".to_owned()),
+            last_seen_phase: (installation_status == "active").then(|| "pre_tool".to_owned()),
             observed_host_kind: (installation_status == "active")
                 .then(|| HOST_KIND_CODEX.to_owned()),
             observed_policy_hash: (installation_status == "active")
@@ -1288,341 +1024,117 @@ fn record_guard_installation(
     Ok(guard_installation_id)
 }
 
-fn complete_host_hook_capability_json(
-    harness: &MethodHarness,
-    guard_installation_id: &str,
-) -> Result<String, Box<dyn Error>> {
-    Ok(complete_guard_capability_value(harness, guard_installation_id)?.to_string())
-}
-
-fn record_host_hook_capability_json(
-    harness: &MethodHarness,
-    guard_installation_id: &str,
-) -> Result<String, Box<dyn Error>> {
-    let repo_root = product_repo_root(harness)?;
-    Ok(json!({
-        "schema": "volicord-host-hook-capability-v2",
-        "policy_hash": "sha256:recordfixture",
-        "selected_profile": "record",
-        "connection_intent": "shared",
-        "final_output_authority_disclosure_implementation_available": false,
-        "native_host_output_adapter": "none",
-        "native_host_output_adapter_config_verified": false,
-        "bash_shell_mutation_coverage": false,
-        "direct_file_write_matcher_coverage": false,
-        "host_capabilities": {
-            "stdio_mcp": true,
-            "http_mcp": false,
-            "session_start_hook": false,
-            "pre_tool_hook": false,
-            "post_tool_hook": false,
-            "user_prompt_submit_hook": false,
-            "stop_hook": false,
-            "rule_file_support": false,
-            "project_local_configuration": true,
-        },
-        "required_hook_phases": [],
-        "missing_required_hooks": [],
-        "prompt_capture": false,
-        "files": [],
-        "host_hook_commands": [],
-        "hook_root_resolution": null,
-        "hook_path_safety": null,
-        "commands": policy_commands_value(
-            "volicord",
-            &repo_root,
-            CONNECTION_ID,
-            guard_installation_id,
-            "record",
-        ),
-    })
-    .to_string())
-}
-
-fn complete_host_capabilities_value() -> Value {
-    json!({
-        "stdio_mcp": true,
-        "http_mcp": false,
-        "session_start_hook": true,
-        "pre_tool_hook": true,
-        "post_tool_hook": true,
-        "user_prompt_submit_hook": true,
-        "stop_hook": true,
-        "rule_file_support": true,
-        "project_local_configuration": true,
-    })
-}
-
-fn policy_commands_value(
-    executable: &str,
-    repo_root: &Path,
-    connection_id: &str,
-    guard_installation_id: &str,
-    profile: &str,
-) -> Value {
-    let policy_command = |command_name: &str| {
-        let (output_flag, output_format) = if profile == "detective" {
-            ("--host-output", "codex")
-        } else {
-            ("--output", "volicord-json")
-        };
+fn record_guard_capability_json(harness: &MethodHarness, guard_installation_id: &str) -> String {
+    const POLICY_HASH: &str =
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    const CONTENT_HASH: &str =
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    let repo_root = harness._runtime_home.product_repo_path("repo");
+    let command_path = harness.runtime_home_path.join("bin/volicord");
+    let command = |phase: &str| {
         json!({
-            "command": executable,
+            "command": command_path,
             "args": [
-                "_hook",
-                command_name,
-                "--repo",
-                path_text(repo_root),
-                "--connection",
-                connection_id,
-                "--guard-installation",
-                guard_installation_id,
-                "--host",
-                "codex",
-                "--integration-profile",
-                profile,
-                output_flag,
-                output_format,
-            ],
+                "_hook", phase,
+                "--repo", repo_root,
+                "--connection", CONNECTION_ID,
+                "--guard-installation", guard_installation_id,
+                "--host", "codex",
+                "--integration-profile", "record",
+                "--policy-hash", POLICY_HASH,
+                "--host-output", "codex"
+            ]
+        })
+    };
+    let wrapper = |phase: &str, command_name: &str| {
+        json!({
+            "kind": "host_hook_wrapper",
+            "path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
+            "status": "unchanged",
+            "content_hash": CONTENT_HASH,
+            "ownership": "managed_script",
+            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+            "executable_required": true,
+            "managed_script_command": "exec volicord",
+            "host_kind": "codex",
+            "phase": phase,
+            "purpose": "guard",
+            "connection_id": CONNECTION_ID,
+            "guard_installation_id": guard_installation_id,
+            "policy_hash": POLICY_HASH,
+            "host_output": "codex"
         })
     };
     json!({
-        "session_start": policy_command("session-start"),
-        "pre_tool": policy_command("pre-tool"),
-        "post_tool": policy_command("post-tool"),
-        "prompt_capture": policy_command("prompt-capture"),
-        "stop": policy_command("stop"),
-    })
-}
-
-fn complete_guard_capability_value(
-    harness: &MethodHarness,
-    guard_installation_id: &str,
-) -> Result<Value, Box<dyn Error>> {
-    let repo_root = product_repo_root(harness)?;
-    let policy_path = repo_root.join(".volicord").join("policy.json");
-    let hook_config_path = repo_root.join(".codex").join("hooks.json");
-    let rule_path = repo_root
-        .join(".codex")
-        .join("rules")
-        .join("volicord.rules");
-    let hooks_dir = repo_root.join(".codex").join("hooks");
-    fs::create_dir_all(policy_path.parent().expect("policy path has parent"))?;
-    fs::create_dir_all(
-        hook_config_path
-            .parent()
-            .expect("hook config path has parent"),
-    )?;
-    fs::create_dir_all(&hooks_dir)?;
-    fs::create_dir_all(rule_path.parent().expect("rule path has parent"))?;
-    let policy_text = r#"{"managed_by":"volicord","host_hook": {"commands":{}}}"#;
-    let hook_config_text = r#"{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start'"}]}],"PreToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" pre-tool'"}]}],"PostToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" post-tool'"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" prompt-capture'"}]}],"Stop":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" stop'"}]}]}}"#;
-    fs::write(&policy_path, policy_text)?;
-    fs::write(&hook_config_path, hook_config_text)?;
-    let rule_text = concat!(
-        "# BEGIN VOLICORD MANAGED CODEX RULES\n",
-        "# test fixture\n",
-        "# END VOLICORD MANAGED CODEX RULES\n",
-    );
-    fs::write(&rule_path, rule_text)?;
-    let dispatch_path = hooks_dir.join("volicord-dispatch.sh");
-    let dispatch_text = concat!(
-        "#!/bin/sh\n",
-        "# VOLICORD_MANAGED_HOOK_WRAPPER\n",
-        "# host_kind=codex\n",
-        "# phase=dispatch\n",
-        "# script_role=codex_dispatch\n",
-        "if [ \"$#\" -ne 1 ]; then\n",
-        "    exit 64\n",
-        "fi\n",
-        "phase=$1\n",
-        "case \"$phase\" in\n",
-        "    session-start|pre-tool|post-tool|prompt-capture|stop) ;;\n",
-        "    *) exit 64 ;;\n",
-        "esac\n",
-        "root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 70\n",
-        "wrapper=\"$root/.codex/hooks/volicord-$phase.sh\"\n",
-        "if [ ! -f \"$wrapper\" ] || [ ! -x \"$wrapper\" ]; then\n",
-        "    exit 70\n",
-        "fi\n",
-        "exec \"$wrapper\"\n",
-    );
-    fs::write(&dispatch_path, dispatch_text)?;
-    set_test_executable(&dispatch_path)?;
-    let phases = [
-        ("session_start_hook", "session-start", "session_start"),
-        ("pre_tool_hook", "pre-tool", "pre_tool"),
-        ("post_tool_hook", "post-tool", "post_tool"),
-        (
-            "user_prompt_submit_hook",
-            "prompt-capture",
-            "prompt_capture",
-        ),
-        ("stop_hook", "stop", "stop"),
-    ];
-    let mut wrapper_files = Vec::new();
-    let mut host_hook_commands = Vec::new();
-    for (capability_phase, command_name, policy_key) in phases {
-        let wrapper_path = hooks_dir.join(format!("volicord-{command_name}.sh"));
-        let wrapper_command = format!(
-            "/opt/volicord _hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation {guard_installation_id} --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
-            path_text(&repo_root),
-        );
-        let wrapper_text = format!(
-            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER\n# host_kind=codex\n# phase={policy_key}\n# purpose=detective_guard\n# connection_id={CONNECTION_ID}\n# guard_installation_id={guard_installation_id}\n# policy_hash=sha256:guardedfixture\n# host_output=codex\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME=/runtime/home\nVOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1\nexport VOLICORD_HOME\nexport VOLICORD_MANAGED_PROCESS_BINDING\nexec {wrapper_command}\n"
-        );
-        fs::write(&wrapper_path, &wrapper_text)?;
-        set_test_executable(&wrapper_path)?;
-        wrapper_files.push(json!({
-            "kind": "host_hook_wrapper",
-            "path": path_text(&wrapper_path),
-            "status": "unchanged",
-            "content_hash": sha256_text(&wrapper_text),
-            "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-            "executable_required": true,
-            "managed_script_command": wrapper_command,
-            "host_kind": "codex",
-            "phase": policy_key,
-            "purpose": "detective_guard",
-            "connection_id": CONNECTION_ID,
-            "guard_installation_id": guard_installation_id,
-            "policy_hash": "sha256:guardedfixture",
-            "host_output": "codex"
-        }));
-        host_hook_commands.push(json!({
-            "host_kind": "codex",
-            "phase": capability_phase,
-            "purpose": "detective_guard",
-            "policy_key": policy_key,
-            "command_shape": "shell_command_string",
-            "command": format!("sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}'"),
-            "args": Value::Null,
-            "expected_wrapper_path": path_text(&dispatch_path),
-            "expected_phase_wrapper_path": path_text(&wrapper_path),
-            "root_resolution_basis": "git_work_tree",
-            "hook_command_path_basis": "git_root_runtime",
-            "cwd_independent": true,
-            "subdirectory_safe": true,
-            "wrapper_resolution_status": "ok",
-            "verification": {
-                "basis_verified_by": "repo_root_git_marker",
-                "host_contract_source": "codex_hook_command_string"
-            }
-        }));
-    }
-    let hook_root_phases = host_hook_commands
-        .iter()
-        .map(|command| {
-            json!({
-                "phase": command["phase"],
-                "root_resolution_basis": command["root_resolution_basis"],
-                "hook_command_path_basis": command["hook_command_path_basis"],
-                "cwd_independent": command["cwd_independent"],
-                "subdirectory_safe": command["subdirectory_safe"],
-                "wrapper_resolution_status": command["wrapper_resolution_status"],
-            })
-        })
-        .collect::<Vec<_>>();
-    let hook_path_commands = host_hook_commands
-        .iter()
-        .map(|command| {
-            json!({
-                "phase": command["phase"],
-                "hook_command_path_basis": command["hook_command_path_basis"],
-                "cwd_independent": command["cwd_independent"],
-                "subdirectory_safe": command["subdirectory_safe"],
-                "wrapper_resolution_status": command["wrapper_resolution_status"],
-            })
-        })
-        .collect::<Vec<_>>();
-    let mut files = vec![
-        json!({
-            "kind": "volicord_policy",
-            "path": path_text(&policy_path),
-            "status": "unchanged",
-            "content_hash": sha256_text(policy_text),
-            "ownership": "managed_json"
-        }),
-        json!({
-            "kind": "host_hook_config",
-            "path": path_text(&hook_config_path),
-            "status": "unchanged",
-            "content_hash": sha256_text(hook_config_text),
-            "ownership": "managed_json"
-        }),
-        json!({
-            "kind": "host_hook_dispatch",
-            "path": path_text(&dispatch_path),
-            "status": "unchanged",
-            "content_hash": sha256_text(dispatch_text),
-            "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-            "executable_required": true,
-            "managed_script_role": "codex_dispatch",
-            "host_kind": "codex",
-            "phase": "dispatch"
-        }),
-        json!({
-            "kind": "host_rule_instruction",
-            "path": path_text(&rule_path),
-            "status": "unchanged",
-            "content_hash": sha256_text(rule_text),
-            "ownership": "managed_block",
-            "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
-            "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES"
-        }),
-    ];
-    files.extend(wrapper_files);
-    Ok(json!({
-        "schema": "volicord-host-hook-capability-v2",
-        "policy_hash": "sha256:guardedfixture",
-        "selected_profile": "detective",
+        "schema": volicord_types::HOST_HOOK_CAPABILITY_SCHEMA,
+        "policy_hash": POLICY_HASH,
+        "selected_profile": "record",
         "connection_intent": "shared",
-        "final_output_authority_disclosure_implementation_available": true,
-        "native_host_output_adapter": "codex",
-        "native_host_output_adapter_config_verified": true,
-        "bash_shell_mutation_coverage": true,
-        "direct_file_write_matcher_coverage": true,
-        "host_capabilities": complete_host_capabilities_value(),
-        "required_hook_phases": [
-            "session_start_hook",
-            "pre_tool_hook",
-            "post_tool_hook",
-            "user_prompt_submit_hook",
-            "stop_hook"
+        "direct_file_write_matcher_coverage": false,
+        "host_capabilities": {
+            "stdio_mcp": true,
+            "pre_tool_hook": true,
+            "post_tool_hook": true,
+            "user_prompt_submit_hook": true,
+            "rule_file_support": true,
+            "project_local_configuration": true
+        },
+        "files": [
+            {
+                "kind": "agents_managed_block",
+                "path": repo_root.join("AGENTS.md"),
+                "status": "unchanged",
+                "content_hash": CONTENT_HASH,
+                "ownership": "managed_block",
+                "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
+                "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE"
+            },
+            {
+                "kind": "volicord_policy",
+                "path": repo_root.join(".volicord/policy.json"),
+                "status": "unchanged",
+                "content_hash": CONTENT_HASH,
+                "ownership": "managed_json"
+            },
+            {
+                "kind": "host_hook_config",
+                "path": repo_root.join(".codex/hooks.json"),
+                "status": "unchanged",
+                "content_hash": CONTENT_HASH,
+                "ownership": "managed_json"
+            },
+            {
+                "kind": "host_hook_dispatch",
+                "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
+                "status": "unchanged",
+                "content_hash": CONTENT_HASH,
+                "ownership": "managed_script",
+                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                "executable_required": true,
+                "managed_script_role": "codex_dispatch",
+                "host_kind": "codex",
+                "phase": "dispatch"
+            },
+            wrapper("pre_tool", "pre-tool"),
+            wrapper("post_tool", "post-tool"),
+            wrapper("prompt_capture", "prompt-capture"),
+            {
+                "kind": "host_rule_instruction",
+                "path": repo_root.join(".codex/rules/volicord.rules"),
+                "status": "unchanged",
+                "content_hash": CONTENT_HASH,
+                "ownership": "managed_block",
+                "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
+                "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES"
+            }
         ],
-        "missing_required_hooks": [],
-        "prompt_capture": true,
-        "files": files,
-        "host_hook_commands": host_hook_commands,
-        "hook_root_resolution": {
-            "basis": "git_work_tree",
-            "all_cwd_independent": true,
-            "all_subdirectory_safe": true,
-            "overall_status": "ok",
-            "phases": hook_root_phases,
-        },
-        "hook_path_safety": {
-            "overall_status": "ok",
-            "all_cwd_independent": true,
-            "all_subdirectory_safe": true,
-            "commands": hook_path_commands,
-        },
-        "commands": policy_commands_value(
-            "/opt/volicord",
-            &repo_root,
-            CONNECTION_ID,
-            guard_installation_id,
-            "detective",
-        ),
-    }))
-}
-
-fn sha256_text(text: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
-    format!("sha256:{}", hex_bytes(&hasher.finalize()))
+        "commands": {
+            "pre_tool": command("pre-tool"),
+            "post_tool": command("post-tool"),
+            "prompt_capture": command("prompt-capture")
+        }
+    })
+    .to_string()
 }
 
 fn hex_bytes(bytes: &[u8]) -> String {
@@ -1633,46 +1145,6 @@ fn hex_bytes(bytes: &[u8]) -> String {
         output.push(HEX[(byte & 0x0f) as usize] as char);
     }
     output
-}
-
-fn path_text(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
-}
-
-#[cfg(unix)]
-fn set_test_executable(path: &Path) -> Result<(), Box<dyn Error>> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)?.permissions();
-    permissions.set_mode(permissions.mode() | 0o755);
-    fs::set_permissions(path, permissions)?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_test_executable(_path: &Path) -> Result<(), Box<dyn Error>> {
-    Ok(())
-}
-
-fn insert_guarded_agent_session(
-    harness: &MethodHarness,
-    suffix: &str,
-    guard_mode: &str,
-) -> Result<(), Box<dyn Error>> {
-    insert_agent_session(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        AgentSessionInsert {
-            session_id: format!("agent_session_{suffix}"),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: None,
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: guard_mode.to_owned(),
-            started_at: "2026-06-30T00:02:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(())
 }
 
 fn insert_guarded_unrecorded_change(
@@ -1768,68 +1240,6 @@ fn row_resolution(row: &UnrecordedChangeRecord) -> Value {
             .expect("resolved row should carry resolution_json"),
     )
     .expect("resolution_json should be valid JSON")
-}
-
-fn insert_write_ticket_guard_event(
-    harness: &MethodHarness,
-    guard_installation_id: &str,
-    suffix: &str,
-) -> Result<(), Box<dyn Error>> {
-    insert_guard_event(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        GuardEventInsert {
-            guard_event_id: format!("guard_event_{suffix}"),
-            session_id: None,
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: Some(guard_installation_id.to_owned()),
-            event_kind: "prepare_write".to_owned(),
-            decision: "deny".to_owned(),
-            subject_json: "{}".to_owned(),
-            result_json: r#"{"reasons":[{"code":"write_ticket_missing"}]}"#.to_owned(),
-            occurred_at: "2026-06-30T00:06:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(())
-}
-
-fn insert_write_ticket_path_scope_guard_event(
-    harness: &MethodHarness,
-    guard_installation_id: &str,
-    suffix: &str,
-) -> Result<(), Box<dyn Error>> {
-    insert_guard_event(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        GuardEventInsert {
-            guard_event_id: format!("guard_event_{suffix}"),
-            session_id: None,
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: Some(guard_installation_id.to_owned()),
-            event_kind: "pre_tool".to_owned(),
-            decision: "deny".to_owned(),
-            subject_json: "{}".to_owned(),
-            result_json: serde_json::to_string(&json!({
-                "reasons": [{
-                    "code": "write_ticket_path_scope_violation",
-                    "severity": "deny"
-                }],
-                "write_ticket_backing": {
-                    "status": "out_of_scope",
-                    "ticket_scope_violation": true,
-                    "observed_paths": ["src/other.rs"],
-                    "active_write_ticket_ids": ["wt_scope_fixture"]
-                },
-                "disclosure": {
-                    "non_guarantees": ["NotFullWritePrevention", "NotActorAttributionProof", "NotOsSandbox"]
-                }
-            }))?,
-            occurred_at: "2026-06-30T00:06:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(())
 }
 
 fn record_close_evidence(
@@ -2504,28 +1914,6 @@ fn assert_close_blocker_category(response_value: &Value, code: &str, category: &
     assert_eq!(blocker["category"], category);
 }
 
-fn assert_pending_judgment_safe_guidance(response_value: &Value) {
-    assert_close_blocker(response_value, "pending_user_action");
-    let blocker = close_blocker_by_code(response_value, "pending_user_action");
-    assert!(blocker["next_actions"][0]["blocking_question"].is_null());
-    assert_eq!(
-        blocker["next_actions"][0]["label"],
-        "Resolve pending user actions through the User Channel."
-    );
-    assert!(!response_value.to_string().contains("verification code"));
-    assert!(!response_value.to_string().contains("chat command"));
-}
-
-fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
-    let paths = availability["paths"]
-        .as_array()
-        .expect("user_channel_availability.paths should be an array");
-    paths
-        .iter()
-        .find(|path| path["kind"] == kind)
-        .unwrap_or_else(|| panic!("expected user channel path {kind}, got {paths:?}"))
-}
-
 fn close_blocker_by_code<'a>(response_value: &'a Value, code: &str) -> &'a Value {
     let blockers = response_value
         .get("blockers")
@@ -2539,18 +1927,10 @@ fn close_blocker_by_code<'a>(response_value: &'a Value, code: &str) -> &'a Value
         .unwrap_or_else(|| panic!("expected close blocker code {code}, got {blockers:?}"))
 }
 
-fn assert_close_blocker_resolution(
-    response_value: &Value,
-    code: &str,
-    can_resolve_in_chat: bool,
-    outside_chat_action_required: bool,
-) {
+fn assert_close_blocker_resolution(response_value: &Value, code: &str) {
     let blocker = close_blocker_by_code(response_value, code);
-    assert_eq!(blocker["can_resolve_in_chat"], can_resolve_in_chat);
-    assert_eq!(
-        blocker["outside_chat_action_required"],
-        outside_chat_action_required
-    );
+    assert!(blocker.get("can_resolve_in_chat").is_none());
+    assert!(blocker.get("outside_chat_action_required").is_none());
     let next_actions = blocker["next_actions"]
         .as_array()
         .expect("guard blocker next_actions should be an array");
@@ -3423,21 +2803,23 @@ fn write_decision_event_count(harness: &MethodHarness) -> Result<u64, Box<dyn Er
     let conn = harness.conn()?;
     let count: i64 = conn.query_row(
         "SELECT COUNT(*)
-               FROM task_events
+               FROM authority_events
               WHERE project_id = ?1
-                AND event_kind = 'write_decision_recorded'",
+                AND task_id IS NOT NULL
+                AND event_type = 'write_decision_recorded'",
         rusqlite::params![PROJECT_ID],
         |row| row.get(0),
     )?;
     Ok(u64::try_from(count)?)
 }
 
-fn latest_task_event(harness: &MethodHarness) -> Result<(String, Value, u64), Box<dyn Error>> {
+fn latest_authority_event(harness: &MethodHarness) -> Result<(String, Value, u64), Box<dyn Error>> {
     let conn = harness.conn()?;
     let (event_kind, event_payload_text, state_version): (String, String, i64) = conn.query_row(
-        "SELECT event_kind, event_payload_json, state_version
-                   FROM task_events
+        "SELECT event_type, payload_json, state_version
+                   FROM authority_events
                   WHERE project_id = ?1
+                    AND task_id IS NOT NULL
                   ORDER BY event_seq DESC
                   LIMIT 1",
         rusqlite::params![PROJECT_ID],
@@ -3456,7 +2838,7 @@ fn assert_latest_prepare_write_event(
     expected_decision: &str,
     expected_reason_code: &str,
 ) -> Result<Value, Box<dyn Error>> {
-    let (event_kind, payload, event_state_version) = latest_task_event(harness)?;
+    let (event_kind, payload, event_state_version) = latest_authority_event(harness)?;
     assert_eq!(event_kind, "write_decision_recorded");
     assert_eq!(event_state_version, response_value["base"]["state_version"]);
     assert_eq!(payload["decision"], expected_decision);
@@ -3537,165 +2919,6 @@ fn user_action_status(
         return Ok("expired".to_owned());
     }
     Ok("pending".to_owned())
-}
-
-fn create_local_web_token_for_user_action(
-    harness: &MethodHarness,
-    token: &str,
-    user_action_request_id: &str,
-) -> Result<String, Box<dyn Error>> {
-    let record = create_user_action_channel_token(
-        &harness.runtime_home_path,
-        UserActionChannelTokenCreate {
-            token: token.to_owned(),
-            project_id: PROJECT_ID.to_owned(),
-            channel_kind: volicord_types::UserActionChannelKind::LocalWebConsent,
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            user_action_request_id: user_action_request_id.to_owned(),
-            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            created_metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(record.token_hash)
-}
-
-struct LocalWebProjectionFixture {
-    task_id: String,
-    action_id: String,
-    session_id: String,
-    token: String,
-    validated_token: UserActionChannelTokenRecord,
-}
-
-fn create_local_web_projection_fixture(
-    harness: &MethodHarness,
-    suffix: &str,
-) -> Result<LocalWebProjectionFixture, Box<dyn Error>> {
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(harness, &format!("local_web_projection_{suffix}"))?;
-    let requested = harness.service.request_user_action(
-        user_action_request(
-            &format!("req_local_web_projection_{suffix}"),
-            &format!("idem_local_web_projection_{suffix}"),
-            false,
-            Some(2),
-            &task_id,
-            Some(&change_unit_id),
-            JudgmentKind::ProductDecision,
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-    let action_id = requested.response_value["user_action_request_summary"]
-        ["user_action_request_id"]
-        .as_str()
-        .ok_or("request result should contain its safe user-action request id")?
-        .to_owned();
-    let session_id = format!("session_local_web_projection_{suffix}");
-    insert_agent_session(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        AgentSessionInsert {
-            session_id: session_id.clone(),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            guard_installation_id: None,
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "detective".to_owned(),
-            started_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    let inbox = harness
-        .service
-        .user_channel_inbox_projection(
-            UserChannelInboxProjectionRequest {
-                project_id: ProjectId::new(PROJECT_ID),
-                task_id: TaskId::new(&task_id),
-            },
-            InvocationContext::new(
-                ProjectId::new(PROJECT_ID),
-                ActorSource::agent_connection(CONNECTION_ID),
-                OperationCategory::Read,
-                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-            )
-            .with_session_id(session_id.clone())
-            .with_local_web_consent_available(true),
-        )?
-        .ok_or("active MCP fixture session should receive a User Channel projection")?;
-    let item = inbox
-        .items
-        .iter()
-        .find(|item| item.request.user_action_request_id.as_str() == action_id)
-        .ok_or("projection should contain its newly created user action")?;
-    let form_digest = canonical_json_bare_sha256(&item.inbox_item.form)?;
-    let token = format!("local-web-projection-token-{suffix}");
-    create_user_action_channel_token(
-        &harness.runtime_home_path,
-        UserActionChannelTokenCreate {
-            token: token.clone(),
-            project_id: PROJECT_ID.to_owned(),
-            channel_kind: UserActionChannelKind::LocalWebConsent,
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            user_action_request_id: action_id.clone(),
-            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            created_metadata_json: json!({
-                "fallback_kind": "local_web_consent",
-                "delivery_surface": "model_invisible_user_surface",
-                "endpoint": "/consent",
-                "form_digest": form_digest,
-            })
-            .to_string(),
-        },
-    )?;
-    let now = user_action_channel_current_timestamp(&harness.runtime_home_path, PROJECT_ID)?;
-    let validated_token = match validate_user_action_channel_token(
-        &harness.runtime_home_path,
-        UserActionChannelTokenCheck {
-            token: token.clone(),
-            expected_project_id: PROJECT_ID.to_owned(),
-            expected_connection_internal_id: CONNECTION_ID.to_owned(),
-            now,
-        },
-    )? {
-        UserActionChannelTokenValidation::Valid(record) => record,
-        other => return Err(format!("fixture token should validate: {other:?}").into()),
-    };
-    Ok(LocalWebProjectionFixture {
-        task_id,
-        action_id,
-        session_id,
-        token,
-        validated_token,
-    })
-}
-
-fn local_web_projection(
-    harness: &MethodHarness,
-    fixture: &LocalWebProjectionFixture,
-    validated_token: UserActionChannelTokenRecord,
-    allow_resolved_replay: bool,
-) -> CoreResult<LocalWebConsentUserActionProjectionOutcome> {
-    harness.service.local_web_consent_user_action_projection(
-        LocalWebConsentUserActionProjectionRequest {
-            token: fixture.token.clone(),
-            validated_token,
-            allow_resolved_replay,
-        },
-    )
-}
-
-fn local_web_token_status(
-    harness: &MethodHarness,
-    token_hash: &str,
-) -> Result<LocalWebTokenStatus, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT status, consumed_at, completed_at
-           FROM user_action_channel_tokens
-          WHERE project_id = ?1
-            AND token_hash = ?2",
-        rusqlite::params![PROJECT_ID, token_hash],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    )?)
 }
 
 fn user_action_basis_status(
@@ -4516,6 +3739,7 @@ fn status_with_evidence_and_close(
                 None,
                 Some(task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: true,
                 pending_user_actions: false,

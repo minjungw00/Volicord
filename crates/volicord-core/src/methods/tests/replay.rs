@@ -194,7 +194,7 @@ fn idempotent_replay_returns_original_generated_ids() -> Result<(), Box<dyn Erro
         response_event_id(&second.response_value)
     );
     assert_eq!(harness.counts()?.tasks, 1);
-    assert_eq!(harness.counts()?.task_events, 1);
+    assert_eq!(harness.counts()?.authority_events, 1);
     Ok(())
 }
 

@@ -7,9 +7,9 @@ use schemars::{
     JsonSchema,
 };
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
-use sha2::{Digest, Sha256};
+use serde_json::Value;
 
-use crate::ids::AgentConnectionId;
+use crate::ids::{AgentConnectionId, TaskId};
 
 /// Parsed RFC 3339 timestamp normalized to a UTC instant.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -428,79 +428,16 @@ pub const VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION: &str = "local_admin_regis
 /// Controlled adapter-binding basis value for MCP stdio sessions.
 pub const VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING: &str = "mcp_stdio_connection_binding";
 
-/// Controlled adapter-binding basis value for MCP local HTTP sessions.
-pub const VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING: &str =
-    "mcp_local_http_connection_binding";
-
-/// Controlled adapter-binding basis for a registered managed host Stop/final-output hook.
-pub const VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING: &str =
-    "registered_host_stop_hook_connection_binding";
-
-/// Non-authorizing provenance for a defensive read from an unverified host-hook event.
-pub const VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT: &str = "unregistered_host_hook_event";
-
 /// Controlled adapter-binding basis value for direct CLI invocation.
 pub const VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL: &str = "cli_direct_user_channel";
-
-/// Controlled User Channel basis value for host prompt-submit hook capture.
-pub const VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK: &str = "user_prompt_submit_hook";
-
-/// Controlled User Channel basis value for MCP elicitation capture.
-pub const VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL: &str = "mcp_elicitation_user_channel";
-
-/// Controlled User Channel basis value for local loopback web consent capture.
-pub const VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB: &str = "local_user_local_web";
-
-/// Controlled binding basis value for repository tests and fixtures.
-pub const VERIFICATION_BASIS_TEST_FIXTURE_BINDING: &str = "test_fixture_binding";
-
-/// Builds the copy-paste chat verification code for one pending user action and connection.
-pub fn chat_user_action_verification_code(
-    project_id: &str,
-    task_id: &str,
-    user_action_request_id: &str,
-    requested_at: &str,
-    connection_id: &str,
-) -> String {
-    const ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-    let mut hasher = Sha256::new();
-    for part in [
-        "chat_user_action_verification_code",
-        project_id,
-        task_id,
-        user_action_request_id,
-        requested_at,
-        connection_id,
-    ] {
-        hasher.update(part.as_bytes());
-        hasher.update([0]);
-    }
-    let digest = hasher.finalize();
-    let mut bits = 0_u64;
-    for byte in digest.iter().take(5) {
-        bits = (bits << 8) | u64::from(*byte);
-    }
-
-    let mut code = String::with_capacity(7);
-    code.push('#');
-    for shift in (2..=7).rev() {
-        let index = ((bits >> (shift * 5)) & 0b11111) as usize;
-        code.push(char::from(ALPHABET[index]));
-    }
-    code
-}
 
 /// Baseline actor assurance level for cooperative Agent Connection provenance.
 pub const ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE: &str = "agent_connection_cooperative";
 
-/// Host family associated with an Agent Connection or host-hook record.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Host family supported by the release Agent Connection contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HostKind {
     Codex,
-    ClaudeCode,
-    Generic,
-    Custom(String),
 }
 
 impl HostKind {
@@ -508,9 +445,6 @@ impl HostKind {
     pub fn as_str(&self) -> &str {
         match self {
             Self::Codex => "codex",
-            Self::ClaudeCode => "claude_code",
-            Self::Generic => "generic",
-            Self::Custom(value) => value.as_str(),
         }
     }
 
@@ -530,15 +464,10 @@ impl FromStr for HostKind {
     type Err = HostKindParseError;
 
     fn from_str(raw: &str) -> Result<Self, Self::Err> {
-        if raw.trim().is_empty() || raw.contains('\0') {
-            return Err(HostKindParseError);
+        match raw {
+            "codex" => Ok(Self::Codex),
+            _ => Err(HostKindParseError),
         }
-        Ok(match raw {
-            "codex" => Self::Codex,
-            "claude_code" => Self::ClaudeCode,
-            "generic" => Self::Generic,
-            value => Self::Custom(value.to_owned()),
-        })
     }
 }
 
@@ -580,7 +509,7 @@ pub struct HostKindParseError;
 
 impl fmt::Display for HostKindParseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("host_kind must be a non-empty string without NUL bytes")
+        formatter.write_str("host_kind must be `codex`")
     }
 }
 
@@ -591,7 +520,6 @@ impl Error for HostKindParseError {}
 #[serde(rename_all = "snake_case")]
 pub enum IntegrationProfile {
     Record,
-    Detective,
 }
 
 impl IntegrationProfile {
@@ -599,7 +527,6 @@ impl IntegrationProfile {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Record => "record",
-            Self::Detective => "detective",
         }
     }
 }
@@ -700,141 +627,7 @@ impl GuardObservationStatus {
     }
 }
 
-/// Derived effective detective-signal health used by close-readiness checks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum GuardEffectiveStatus {
-    Inactive,
-    ActionRequired,
-    Active,
-    Degraded,
-    Broken,
-}
-
-impl GuardEffectiveStatus {
-    /// Returns the stable value name for this effective detective-signal status.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Inactive => "inactive",
-            Self::ActionRequired => "action_required",
-            Self::Active => "active",
-            Self::Degraded => "degraded",
-            Self::Broken => "broken",
-        }
-    }
-}
-
-/// Session-level Product Repository watch availability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionWatchStatus {
-    Disabled,
-    Active,
-    Degraded,
-    Unavailable,
-    PendingProjectSelection,
-}
-
-impl SessionWatchStatus {
-    /// Returns the stable value name for this session-watch status.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Disabled => "disabled",
-            Self::Active => "active",
-            Self::Degraded => "degraded",
-            Self::Unavailable => "unavailable",
-            Self::PendingProjectSelection => "pending_project_selection",
-        }
-    }
-}
-
-/// Concise public host-hook coverage state for status and close views.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum CoverageHostHookState {
-    Observed,
-    NotObserved,
-    Unsupported,
-    Degraded,
-}
-
-impl CoverageHostHookState {
-    /// Returns the stable value name for this coverage state.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Observed => "observed",
-            Self::NotObserved => "not_observed",
-            Self::Unsupported => "unsupported",
-            Self::Degraded => "degraded",
-        }
-    }
-}
-
-/// Concise public session-watcher coverage state for status and close views.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum CoverageSessionWatcherState {
-    Active,
-    Inactive,
-    Unsupported,
-    Degraded,
-}
-
-impl CoverageSessionWatcherState {
-    /// Returns the stable value name for this coverage state.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Active => "active",
-            Self::Inactive => "inactive",
-            Self::Unsupported => "unsupported",
-            Self::Degraded => "degraded",
-        }
-    }
-}
-
-/// Basis for the session-watch coverage start time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionWatchCoverageBasis {
-    McpStart,
-    FirstProjectSelection,
-    MethodBoundary,
-}
-
-impl SessionWatchCoverageBasis {
-    /// Returns the stable value name for this session-watch coverage basis.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::McpStart => "mcp_start",
-            Self::FirstProjectSelection => "first_project_selection",
-            Self::MethodBoundary => "method_boundary",
-        }
-    }
-}
-
-/// Support state for one exact managed-host feature.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum HostFeatureSupportStatus {
-    Verified,
-    ImplementedUnverified,
-    UnsupportedByHost,
-    TemporarilyUnavailable,
-}
-
-impl HostFeatureSupportStatus {
-    /// Returns the stable value name for this host-feature support state.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Verified => "verified",
-            Self::ImplementedUnverified => "implemented_unverified",
-            Self::UnsupportedByHost => "unsupported_by_host",
-            Self::TemporarilyUnavailable => "temporarily_unavailable",
-        }
-    }
-}
-
-/// Derived prompt-capture availability for host-observed User Channel chat commands.
+/// Derived availability of the Codex prompt-observation Guard hook.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptCaptureStatus {
@@ -863,8 +656,8 @@ impl PromptCaptureStatus {
         }
     }
 
-    /// Returns true when chat user-action commands may be presented or recorded.
-    pub const fn allows_chat_user_action_commands(self) -> bool {
+    /// Returns true when prompt observations can be recorded without degradation.
+    pub const fn is_operational(self) -> bool {
         matches!(self, Self::Configured | Self::Observed | Self::Active)
     }
 }
@@ -1145,48 +938,6 @@ impl AuthorityNextActor {
     }
 }
 
-/// Task state captured by a bounded session-end authority receipt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionEndTaskState {
-    None,
-    Ready,
-    Blocked,
-    Closed,
-    Cancelled,
-    Superseded,
-    AuthorityUnknown,
-}
-
-impl SessionEndTaskState {
-    /// Returns the stable value name for this receipt state.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Ready => "ready",
-            Self::Blocked => "blocked",
-            Self::Closed => "closed",
-            Self::Cancelled => "cancelled",
-            Self::Superseded => "superseded",
-            Self::AuthorityUnknown => "authority_unknown",
-        }
-    }
-
-    /// Parses one stable receipt state.
-    pub fn from_stable_str(value: &str) -> Option<Self> {
-        match value {
-            "none" => Some(Self::None),
-            "ready" => Some(Self::Ready),
-            "blocked" => Some(Self::Blocked),
-            "closed" => Some(Self::Closed),
-            "cancelled" => Some(Self::Cancelled),
-            "superseded" => Some(Self::Superseded),
-            "authority_unknown" => Some(Self::AuthorityUnknown),
-            _ => None,
-        }
-    }
-}
-
 /// MCP mutation response detail requested by the caller.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1253,6 +1004,43 @@ pub enum CloseReason {
     CompletedWithRiskAccepted,
     Cancelled,
     Superseded,
+}
+
+/// Canonical persisted Task close summary.
+///
+/// Every Task records an explicit close reason, including `none` while the
+/// Task is open. The remaining members are present only when their owning
+/// close workflow has produced them.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedCloseSummary {
+    pub close_reason: CloseReason,
+    #[serde(default)]
+    pub closed_at: Option<UtcTimestamp>,
+    #[serde(default)]
+    pub intent: Option<CloseIntent>,
+    #[serde(default)]
+    pub user_note: Option<String>,
+    #[serde(default)]
+    pub superseding_task_id: Option<TaskId>,
+    #[serde(default)]
+    pub required_sensitive_categories: Vec<String>,
+    #[serde(default)]
+    pub sensitive_categories: Vec<String>,
+    #[serde(default)]
+    pub baseline_stale: bool,
+    #[serde(default)]
+    pub baseline_status: Option<String>,
+    #[serde(default)]
+    pub recovery_required: bool,
+    #[serde(default)]
+    pub visible_risks: Vec<Value>,
+    #[serde(default)]
+    pub residual_risk_visible: bool,
+    #[serde(default)]
+    pub residual_risks: Vec<Value>,
+    #[serde(default)]
+    pub residual_risk_present: bool,
 }
 
 /// Task result values.
@@ -1535,7 +1323,6 @@ pub enum EvidenceRequirement {
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceSourceKind {
     AgentReport,
-    ConnectionObservation,
     ExternalTool,
     UserObservation,
     ReusedEvidence,
@@ -1547,7 +1334,6 @@ pub enum EvidenceSourceKind {
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceAssuranceLevel {
     CooperativeReport,
-    RegisteredConnectionObserved,
     ExternalToolResult,
     UserObserved,
     Unverified,
@@ -1559,32 +1345,9 @@ pub enum EvidenceAssuranceLevel {
 pub enum EvidenceProducerKind {
     UnverifiedCaller,
     UserChannelObservation,
-    RegisteredConnectionObservation,
     VerifiedToolInvocation,
     VerifiedCommandExecution,
     ReusedEvidence,
-}
-
-/// Guard-event kinds that can fulfill a post-intent connection observation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ConnectionObservationGuardEventKind {
-    PreTool,
-    PostTool,
-    PromptCapture,
-    Stop,
-}
-
-impl ConnectionObservationGuardEventKind {
-    /// Returns the canonical stored guard-event kind.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::PreTool => "pre_tool",
-            Self::PostTool => "post_tool",
-            Self::PromptCapture => "prompt_capture",
-            Self::Stop => "stop",
-        }
-    }
 }
 
 /// Core-derived claim-relevance assessment states for evidence observations.
@@ -1621,7 +1384,6 @@ pub enum ValidatorSeverity {
 #[serde(rename_all = "snake_case")]
 pub enum GuaranteeLevel {
     Cooperative,
-    Detective,
 }
 
 /// Public disclosure classes for result interpretation.
@@ -1630,7 +1392,6 @@ pub enum GuaranteeLevel {
 pub enum GuaranteeClass {
     AuthorityRecord,
     CooperativeHostDecision,
-    DetectiveObservation,
     UserActionResolution,
 }
 
@@ -1884,9 +1645,6 @@ pub enum UserActionBasisStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum UserActionChannelKind {
-    McpElicitation,
-    PromptCapture,
-    LocalWebConsent,
     Cli,
 }
 
@@ -1894,9 +1652,6 @@ impl UserActionChannelKind {
     /// Returns the single verified invocation basis owned by this User Channel.
     pub const fn verification_basis(self) -> &'static str {
         match self {
-            Self::McpElicitation => VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-            Self::PromptCapture => VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-            Self::LocalWebConsent => VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
             Self::Cli => VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         }
     }
@@ -1904,11 +1659,34 @@ impl UserActionChannelKind {
     /// Resolves one controlled verification basis to its owning User Channel.
     pub fn from_verification_basis(verification_basis: &str) -> Option<Self> {
         match verification_basis {
-            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL => Some(Self::McpElicitation),
-            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK => Some(Self::PromptCapture),
-            VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB => Some(Self::LocalWebConsent),
             VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL => Some(Self::Cli),
             _ => None,
+        }
+    }
+}
+
+/// Product-wide primary failure classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureCategory {
+    Rejected,
+    NotAllowed,
+    Unavailable,
+    Degraded,
+    Corrupt,
+    UnsupportedContract,
+}
+
+impl FailureCategory {
+    /// Returns the stable machine-readable category identifier.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rejected => "rejected",
+            Self::NotAllowed => "not_allowed",
+            Self::Unavailable => "unavailable",
+            Self::Degraded => "degraded",
+            Self::Corrupt => "corrupt",
+            Self::UnsupportedContract => "unsupported_contract",
         }
     }
 }
@@ -1918,6 +1696,8 @@ impl UserActionChannelKind {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
     ValidationFailed,
+    UnsupportedContract,
+    PersistedDataCorrupt,
     StateVersionConflict,
     McpUnavailable,
     InvocationContextMismatch,
@@ -1944,23 +1724,109 @@ pub enum ErrorCode {
     OperationResultUnavailable,
 }
 
+impl ErrorCode {
+    /// Returns the failure category carried by a public `ToolError` with this code.
+    pub const fn failure_category(self) -> FailureCategory {
+        match self {
+            Self::UnsupportedContract => FailureCategory::UnsupportedContract,
+            Self::PersistedDataCorrupt => FailureCategory::Corrupt,
+            Self::McpUnavailable
+            | Self::OperationResultUnavailable
+            | Self::ProjectionStale
+            | Self::ArtifactMissing
+            | Self::ValidatorFailed => FailureCategory::Unavailable,
+            Self::ScopeViolation
+            | Self::ApprovalDenied
+            | Self::AutonomyBoundaryExceeded
+            | Self::CapabilityInsufficient
+            | Self::EvidenceInsufficient
+            | Self::ResidualRiskNotVisible
+            | Self::AcceptanceRequired => FailureCategory::NotAllowed,
+            Self::ValidationFailed
+            | Self::StateVersionConflict
+            | Self::InvocationContextMismatch
+            | Self::NoActiveTask
+            | Self::NoActiveChangeUnit
+            | Self::BaselineStale
+            | Self::ScopeRequired
+            | Self::WriteTicketRequired
+            | Self::WriteTicketInvalid
+            | Self::ApprovalExpired
+            | Self::ApprovalRequired
+            | Self::DecisionUnresolved
+            | Self::DecisionRequired => FailureCategory::Rejected,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use chrono::{DateTime, Duration, Utc};
-    use schemars::schema_for;
-    use serde_json::{json, Value};
+    use serde_json::json;
 
     use super::{
-        AuthorityNextActor, HostFeatureSupportStatus, ObservationConfidence, ObservedEffectKind,
-        RequestedControlLevel, SessionEndTaskState, TaskControlLevel, UnrecordedChangeConfidence,
-        UtcTimestamp, WriteTicketEffect, WriteTicketInvalidationReason, WriteTicketState,
-        WriteTicketStatus,
+        AuthorityNextActor, ErrorCode, FailureCategory, ObservationConfidence, ObservedEffectKind,
+        RequestedControlLevel, TaskControlLevel, UnrecordedChangeConfidence, UtcTimestamp,
+        WriteTicketEffect, WriteTicketInvalidationReason, WriteTicketState, WriteTicketStatus,
     };
 
     #[test]
-    fn v7_workflow_values_have_exact_json_names_and_ordering() {
+    fn failure_categories_have_exact_machine_readable_names() {
+        for (category, expected) in [
+            (FailureCategory::Rejected, "rejected"),
+            (FailureCategory::NotAllowed, "not_allowed"),
+            (FailureCategory::Unavailable, "unavailable"),
+            (FailureCategory::Degraded, "degraded"),
+            (FailureCategory::Corrupt, "corrupt"),
+            (FailureCategory::UnsupportedContract, "unsupported_contract"),
+        ] {
+            assert_eq!(category.as_str(), expected);
+            assert_eq!(
+                serde_json::to_value(category).expect("category serializes"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn public_error_codes_select_one_explicit_failure_category() {
+        assert_eq!(
+            ErrorCode::UnsupportedContract.failure_category(),
+            FailureCategory::UnsupportedContract
+        );
+        assert_eq!(
+            ErrorCode::PersistedDataCorrupt.failure_category(),
+            FailureCategory::Corrupt
+        );
+        assert_eq!(
+            ErrorCode::McpUnavailable.failure_category(),
+            FailureCategory::Unavailable
+        );
+        assert_eq!(
+            ErrorCode::ScopeViolation.failure_category(),
+            FailureCategory::NotAllowed
+        );
+        assert_eq!(
+            ErrorCode::NoActiveChangeUnit.failure_category(),
+            FailureCategory::Rejected
+        );
+    }
+
+    #[test]
+    fn tool_error_decode_rejects_a_mismatched_category() {
+        let mismatch = serde_json::json!({
+            "category": "unavailable",
+            "code": "NO_ACTIVE_CHANGE_UNIT",
+            "message": "fixture",
+            "retryable": false,
+            "details": null,
+        });
+
+        assert!(serde_json::from_value::<crate::ToolError>(mismatch).is_err());
+    }
+
+    #[test]
+    fn canonical_workflow_values_have_exact_json_names_and_ordering() {
         let cases = [
             (
                 serde_json::to_value(RequestedControlLevel::Auto).unwrap(),
@@ -1998,10 +1864,6 @@ mod tests {
                 serde_json::to_value(ObservedEffectKind::ProductFileWrite).unwrap(),
                 json!("product_file_write"),
             ),
-            (
-                serde_json::to_value(SessionEndTaskState::AuthorityUnknown).unwrap(),
-                json!("authority_unknown"),
-            ),
         ];
         for (actual, expected) in cases {
             assert_eq!(actual, expected);
@@ -2011,11 +1873,6 @@ mod tests {
             AuthorityNextActor::from_stable_str("user"),
             Some(AuthorityNextActor::User)
         );
-        assert_eq!(
-            SessionEndTaskState::from_stable_str("ready"),
-            Some(SessionEndTaskState::Ready)
-        );
-        assert_eq!(SessionEndTaskState::from_stable_str("unknown"), None);
     }
 
     #[test]
@@ -2037,62 +1894,5 @@ mod tests {
         let chrono_max = UtcTimestamp::from_datetime(DateTime::<Utc>::MAX_UTC);
         assert!(chrono_max.ensure_canonical_rfc3339_representable().is_err());
         assert!(chrono_max.checked_add(Duration::zero()).is_err());
-    }
-
-    #[test]
-    fn host_feature_support_status_has_exact_public_values() {
-        let cases = [
-            (HostFeatureSupportStatus::Verified, "verified"),
-            (
-                HostFeatureSupportStatus::ImplementedUnverified,
-                "implemented_unverified",
-            ),
-            (
-                HostFeatureSupportStatus::UnsupportedByHost,
-                "unsupported_by_host",
-            ),
-            (
-                HostFeatureSupportStatus::TemporarilyUnavailable,
-                "temporarily_unavailable",
-            ),
-        ];
-
-        for (status, expected) in cases {
-            assert_eq!(status.as_str(), expected);
-            assert_eq!(
-                serde_json::to_value(status).expect("support status should serialize"),
-                json!(expected)
-            );
-            assert_eq!(
-                serde_json::from_value::<HostFeatureSupportStatus>(json!(expected))
-                    .expect("support status should deserialize"),
-                status
-            );
-        }
-        assert!(serde_json::from_value::<HostFeatureSupportStatus>(json!("unverified")).is_err());
-
-        let schema = serde_json::to_value(schema_for!(HostFeatureSupportStatus))
-            .expect("support status schema should serialize");
-        let values = schema
-            .get("enum")
-            .and_then(Value::as_array)
-            .expect("support status schema should expose a direct enum")
-            .iter()
-            .map(|value| {
-                value
-                    .as_str()
-                    .expect("support status schema values should be strings")
-                    .to_owned()
-            })
-            .collect::<BTreeSet<_>>();
-        assert_eq!(
-            values,
-            BTreeSet::from([
-                "implemented_unverified".to_owned(),
-                "temporarily_unavailable".to_owned(),
-                "unsupported_by_host".to_owned(),
-                "verified".to_owned(),
-            ])
-        );
     }
 }

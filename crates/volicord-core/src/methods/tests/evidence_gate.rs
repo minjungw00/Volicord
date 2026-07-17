@@ -76,9 +76,6 @@ fn blocker(category: CloseReadinessBlockerCategory, code: &str) -> CloseReadines
         category,
         code: code.to_owned(),
         message: code.to_owned(),
-        control_surface: None,
-        can_resolve_in_chat: false,
-        outside_chat_action_required: false,
         related_refs: Vec::new(),
         next_actions: Vec::new(),
     }

@@ -91,7 +91,7 @@ fn stage_artifact_creates_transient_handle_without_core_commit() -> Result<(), B
     assert_eq!(after.state_version, before.state_version);
     assert_eq!(after.artifact_staging, before.artifact_staging + 1);
     assert_eq!(after.artifacts, before.artifacts);
-    assert_eq!(after.task_events, before.task_events);
+    assert_eq!(after.authority_events, before.authority_events);
     assert_eq!(after.tool_invocations, before.tool_invocations);
     assert_eq!(row.status, "staged");
     assert_eq!(row.redaction_state, "none");
@@ -178,6 +178,7 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: true,
                 pending_user_actions: false,

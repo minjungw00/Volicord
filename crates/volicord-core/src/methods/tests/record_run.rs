@@ -223,7 +223,7 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
     assert_eq!(after.runs, before.runs + 1);
     assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.artifacts, before.artifacts);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     let after_revision = task_revision(&harness, &task_id)?;
     assert_eq!(
@@ -375,6 +375,7 @@ fn non_product_category_signal_requires_final_without_manufacturing_sensitive_co
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1372,6 +1373,7 @@ fn record_run_post_commit_close_projection_matches_immediate_status() -> Result<
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1478,6 +1480,7 @@ fn record_run_without_evidence_updates_separates_result_state_and_close_evidence
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1573,6 +1576,7 @@ fn record_run_promoted_artifact_close_projection_matches_immediate_status(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1672,7 +1676,7 @@ fn record_run_generates_opaque_residual_risk_ids_on_commit() -> Result<(), Box<d
                 .to_owned()
         })
         .collect::<Vec<_>>();
-    let (_, event_payload, _) = latest_task_event(&harness)?;
+    let (_, event_payload, _) = latest_authority_event(&harness)?;
 
     assert_eq!(risk_ids, vec!["risk_risk_alpha", "risk_risk_beta"]);
     assert_eq!(generator.count(DurableIdKind::Risk), 2);
@@ -2261,6 +2265,7 @@ fn record_run_product_write_omits_optional_operation_and_consumes_ticket_once(
     let status = harness.service.status(
         StatusRequest {
             envelope: envelope("req_run_write_status", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -2277,32 +2282,34 @@ fn record_run_product_write_omits_optional_operation_and_consumes_ticket_once(
             .expect("validity basis should be an object")
             .remove("write_authority_fingerprint");
     })?;
-    let legacy_status = harness.service.status(
+    let corrupt_status = harness.service.status(
         StatusRequest {
             envelope: envelope(
-                "req_run_write_legacy_consumed_status",
+                "req_run_write_corrupt_consumed_status",
                 None,
                 false,
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
     )?;
-    assert_eq!(
-        legacy_status.response_value["write_ticket_summary"]["status"],
-        "consumed"
+    assert_store_rejection(
+        &corrupt_status,
+        "PERSISTED_DATA_CORRUPT",
+        "corrupt_stored_json",
     );
     assert_eq!(
-        legacy_status.response_value["write_ticket_summary"]["write_ticket_ref"]["record_id"],
-        write_ticket_id
+        corrupt_status.response_value["base"]["effect_kind"],
+        "no_effect"
     );
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
     assert_eq!(after.write_tickets, before.write_tickets);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     Ok(())
 }
@@ -2477,7 +2484,7 @@ fn record_run_consumes_write_ticket_at_fourteen_minutes_fifty_nine_seconds(
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     Ok(())
 }
 
@@ -2626,7 +2633,7 @@ fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_store_rejection(&response, "MCP_UNAVAILABLE", "corrupt_stored_value");
+    assert_store_rejection(&response, "PERSISTED_DATA_CORRUPT", "corrupt_stored_value");
     let details = &response.response_value["errors"][0]["details"]["owner_state_error"];
     assert_eq!(details["table"], "write_tickets");
     assert_eq!(details["record_ref"], "wa_bad_timestamp");
@@ -2898,7 +2905,7 @@ fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
 }
 
 #[test]
-fn record_run_rejects_missing_write_authority_binding_without_consumption(
+fn record_run_rejects_missing_write_authority_binding_as_corrupt_without_consumption(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -2932,7 +2939,8 @@ fn record_run_rejects_missing_write_authority_binding_without_consumption(
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_write_ticket_invalid_reason(&response, "policy_authority_mismatch");
+    assert_store_rejection(&response, "PERSISTED_DATA_CORRUPT", "corrupt_stored_json");
+    assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
 
@@ -2945,18 +2953,13 @@ fn record_run_rejects_missing_write_authority_binding_without_consumption(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
     )?;
-    assert_eq!(
-        status.response_value["write_ticket_summary"]["status"],
-        "invalidated"
-    );
-    assert_eq!(
-        status.response_value["write_ticket_summary"]["invalidation_reason"],
-        "explicit_revoke"
-    );
+    assert_store_rejection(&status, "PERSISTED_DATA_CORRUPT", "corrupt_stored_json");
+    assert_eq!(status.response_value["base"]["effect_kind"], "no_effect");
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     Ok(())
 }
@@ -3232,6 +3235,7 @@ fn record_run_rejects_expired_sensitive_approval_basis_without_consumption(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -3441,13 +3445,6 @@ fn record_run_observations_derive_provenance_and_actor_fail_closed() -> Result<(
             "Agent cooperative report.",
             EvidenceSourceKind::AgentReport,
             EvidenceAssuranceLevel::CooperativeReport,
-            "agent_report",
-            "cooperative_report",
-        ),
-        (
-            "Registered connection observation.",
-            EvidenceSourceKind::ConnectionObservation,
-            EvidenceAssuranceLevel::RegisteredConnectionObserved,
             "agent_report",
             "cooperative_report",
         ),
@@ -4746,6 +4743,7 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 task: true,
                 pending_user_actions: false,
@@ -5050,6 +5048,87 @@ fn symlink_within_artifact_store_keeps_persistent_artifact_usable() -> Result<()
     assert_eq!(artifact_ref["availability"], "available");
     assert_eq!(artifact_ref["integrity_status"], "verified");
     assert_no_close_blocker(&status.response_value, "artifact_unavailable");
+    Ok(())
+}
+
+#[test]
+fn record_run_corrupt_staged_artifact_metadata_rejects_without_effect() -> Result<(), Box<dyn Error>>
+{
+    for (suffix, artifact_json) in [("malformed", corrupt_owner_json()), ("non_object", "[]")] {
+        let harness = MethodHarness::new()?;
+        enable_record_run_capabilities(&harness)?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("run_stage_metadata_{suffix}"))?;
+        let handle =
+            stage_artifact_for_record_run(&harness, &task_id, &format!("metadata_{suffix}"), 2)?;
+        let handle_id = handle.handle_id.as_str().to_owned();
+        set_artifact_staging_artifact_json(&harness, &handle_id, artifact_json)?;
+        let before = harness.counts()?;
+
+        let mut request = record_run_request(
+            &format!("req_run_stage_metadata_{suffix}"),
+            &format!("idem_run_stage_metadata_{suffix}"),
+            false,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        );
+        request.artifact_inputs = vec![artifact_input_for_handle(
+            &format!("artifact_input_metadata_{suffix}"),
+            handle,
+            None,
+            None,
+        )];
+        let response = harness
+            .service
+            .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+        assert_owner_state_rejection(
+            &response,
+            "artifact_staging",
+            &handle_id,
+            "artifact_json",
+            &harness.runtime_home_path,
+        );
+        assert_eq!(harness.counts()?, before, "case {suffix}");
+        assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
+    }
+    Ok(())
+}
+
+#[test]
+fn record_run_staged_artifact_without_display_name_uses_handle_id() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_stage_default_display")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "default_display", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    set_artifact_staging_artifact_json(&harness, &handle_id, "{}")?;
+
+    let mut request = record_run_request(
+        "req_run_stage_default_display",
+        "idem_run_stage_default_display",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_default_display",
+        handle,
+        None,
+        None,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["display_name"],
+        handle_id
+    );
     Ok(())
 }
 
@@ -5425,7 +5504,7 @@ fn record_run_body_checksum_mismatch_rolls_back_all_effects() -> Result<(), Box<
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert_eq!(harness.counts()?, before);
     assert_eq!(task_revision(&harness, &task_id)?, before_revision);
@@ -5477,7 +5556,7 @@ fn record_run_body_size_mismatch_rolls_back_all_effects() -> Result<(), Box<dyn 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert_eq!(harness.counts()?, before);
     assert_eq!(task_revision(&harness, &task_id)?, before_revision);
@@ -5523,7 +5602,7 @@ fn record_run_staging_path_outside_artifact_store_rolls_back_all_effects(
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert_eq!(harness.counts()?, before);
     assert_eq!(task_revision(&harness, &task_id)?, before_revision);

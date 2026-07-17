@@ -1,4 +1,53 @@
 use super::*;
+use crate::policy::workflow::ResolvedTaskControlAuthority;
+
+/// Public close-family input before request-local identity and intent validation.
+enum CloseTaskRawRequest {
+    Check(CheckCloseRequest),
+    Mutating(CloseTaskRequest),
+}
+
+impl CloseTaskRawRequest {
+    fn request_json(&self) -> CoreResult<Value> {
+        match self {
+            Self::Check(request) => serde_json::to_value(request).map_err(CorePipelineError::from),
+            Self::Mutating(request) => {
+                serde_json::to_value(request).map_err(CorePipelineError::from)
+            }
+        }
+    }
+
+    fn normalize(self) -> CoreResult<Result<CloseTaskPlanRequest, PipelineResponse>> {
+        match self {
+            Self::Check(request) => {
+                if let Some(response) = validate_close_task_identity(
+                    &request.envelope,
+                    &request.task_id,
+                    "envelope.task_id must match CheckCloseRequest.task_id",
+                    "check_close requires envelope.task_id to identify the Task",
+                )? {
+                    return Ok(Err(response));
+                }
+                Ok(Ok(CloseTaskPlanRequest::check(request)))
+            }
+            Self::Mutating(request) => {
+                if let Some(response) = validate_close_task_identity(
+                    &request.envelope,
+                    &request.task_id,
+                    "envelope.task_id must match CloseTaskRequest.task_id",
+                    "close_task requires envelope.task_id to identify the Task being closed",
+                )? {
+                    return Ok(Err(response));
+                }
+                let request = CloseTaskPlanRequest::mutating(request);
+                if let Some(response) = validate_close_intent_fields(&request)? {
+                    return Ok(Err(response));
+                }
+                Ok(Ok(request))
+            }
+        }
+    }
+}
 
 impl CoreService {
     /// Executes `volicord.check_close` through read-only close-readiness rules.
@@ -7,16 +56,12 @@ impl CoreService {
         request: CheckCloseRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
-        let request_json = serde_json::to_value(&request)?;
-        if let Some(response) = validate_close_task_identity(
-            &request.envelope,
-            &request.task_id,
-            "envelope.task_id must match CheckCloseRequest.task_id",
-            "check_close requires envelope.task_id to identify the Task",
-        )? {
-            return Ok(response);
-        }
-        let request = CloseTaskPlanRequest::check(request);
+        let raw = CloseTaskRawRequest::Check(request);
+        let request_json = raw.request_json()?;
+        let request = match raw.normalize()? {
+            Ok(request) => request,
+            Err(response) => return Ok(response),
+        };
         let close_policy = check_close_policy(&request);
         let prepared = match prepare_or_response(
             self,
@@ -30,20 +75,6 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         let plan_now = prepared.operation_now.clone();
-        if !request.envelope.dry_run && prepared.store.is_writable() {
-            if let Err(error) = session_watch::run_session_watch_check(
-                &prepared.store,
-                &prepared.context.verified_invocation,
-                Some(&request.task_id),
-                &plan_now,
-            ) {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    PlanError::Core(error),
-                );
-            }
-        }
 
         let guarantee_profile = match prepared.store.project_enforcement_profile() {
             Ok(record) => record.profile,
@@ -86,19 +117,12 @@ impl CoreService {
         request: CloseTaskRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
-        let request_json = serde_json::to_value(&request)?;
-        if let Some(response) = validate_close_task_identity(
-            &request.envelope,
-            &request.task_id,
-            "envelope.task_id must match CloseTaskRequest.task_id",
-            "close_task requires envelope.task_id to identify the Task being closed",
-        )? {
-            return Ok(response);
-        }
-        let request = CloseTaskPlanRequest::from(request);
-        if let Some(response) = validate_close_intent_fields(&request)? {
-            return Ok(response);
-        }
+        let raw = CloseTaskRawRequest::Mutating(request);
+        let request_json = raw.request_json()?;
+        let request = match raw.normalize()? {
+            Ok(request) => request,
+            Err(response) => return Ok(response),
+        };
         let close_policy = close_task_policy(&request);
         let prepared = match prepare_or_response(
             self,
@@ -112,20 +136,6 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         let plan_now = prepared.operation_now.clone();
-        if request.intent == CloseIntent::Complete && !request.envelope.dry_run {
-            if let Err(error) = session_watch::run_session_watch_check(
-                &prepared.store,
-                &prepared.context.verified_invocation,
-                Some(&request.task_id),
-                &plan_now,
-            ) {
-                return plan_error_response(
-                    &request.envelope,
-                    &prepared.context.project_state,
-                    PlanError::Core(error),
-                );
-            }
-        }
 
         if request.envelope.dry_run {
             return self.execute_prepared_request(
@@ -243,6 +253,7 @@ impl CoreService {
     }
 }
 
+/// Canonical request after the Task identity and intent-field combination are valid.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct CloseTaskPlanRequest {
     envelope: ToolEnvelope,
@@ -255,13 +266,27 @@ pub(super) struct CloseTaskPlanRequest {
 
 impl CloseTaskPlanRequest {
     pub(super) fn check(request: CheckCloseRequest) -> Self {
+        let task_id = request.task_id;
+        let mut envelope = request.envelope;
+        envelope.task_id = Some(task_id.clone()).into();
         Self {
-            envelope: request.envelope,
-            task_id: request.task_id,
+            envelope,
+            task_id,
             intent: CloseIntent::Check,
             close_reason: RequiredNullable::null(),
             superseding_task_id: RequiredNullable::null(),
             user_note: RequiredNullable::null(),
+        }
+    }
+
+    fn mutating(request: CloseTaskRequest) -> Self {
+        Self {
+            envelope: request.envelope,
+            task_id: request.task_id,
+            intent: request.intent.into(),
+            close_reason: request.close_reason,
+            superseding_task_id: request.superseding_task_id,
+            user_note: request.user_note,
         }
     }
 
@@ -275,16 +300,73 @@ impl CloseTaskPlanRequest {
     }
 }
 
-impl From<CloseTaskRequest> for CloseTaskPlanRequest {
-    fn from(request: CloseTaskRequest) -> Self {
-        Self {
-            envelope: request.envelope,
-            task_id: request.task_id,
-            intent: request.intent.into(),
-            close_reason: request.close_reason,
-            superseding_task_id: request.superseding_task_id,
-            user_note: request.user_note,
-        }
+/// Store-backed close context with typed policy authority and control values.
+struct CloseTaskResolvedContext {
+    request: CloseTaskPlanRequest,
+    context: CloseTaskContext,
+    workflow_policy: ProjectWorkflowPolicy,
+    current_control: TaskControlLevel,
+    resolved_control: ResolvedTaskControlAuthority,
+    current_acceptance: AcceptancePolicy,
+    sensitive_effect: bool,
+}
+
+/// Close-readiness decision with canonical blockers and the selected result state.
+struct CloseTaskPolicyDecision {
+    request: CloseTaskPlanRequest,
+    context: CloseTaskContext,
+    control_update: Option<TaskControlLevelUpdate>,
+    risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
+    blockers: Vec<CloseReadinessBlocker>,
+    committed_terminal: bool,
+    response_state_version: u64,
+    close_state: CloseState,
+}
+
+/// Exact terminal mutations and immutable event selected by an allowed decision.
+struct CloseTaskPlannedMutations {
+    request: CloseTaskPlanRequest,
+    context: CloseTaskContext,
+    risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
+    blockers: Vec<CloseReadinessBlocker>,
+    response_state_version: u64,
+    close_state: CloseState,
+    synthetic_task: TaskRecord,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_kind: String,
+    event_payload: JsonObject,
+}
+
+/// Transport-independent typed response retained until final plan serialization.
+struct CloseTaskResponseProjection {
+    task_id: TaskId,
+    change_unit_id: Option<ChangeUnitId>,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_kind: String,
+    event_payload: JsonObject,
+    result: CloseTaskResult,
+    close_state: CloseState,
+    current_close_basis: Option<CurrentCloseBasis>,
+    risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
+    blockers: Vec<CloseReadinessBlocker>,
+    evidence_gate: EvidenceGateSummary,
+}
+
+impl CloseTaskResponseProjection {
+    fn into_plan(self) -> Result<CloseTaskPlan, PlanError> {
+        Ok(CloseTaskPlan {
+            task_id: self.task_id,
+            change_unit_id: self.change_unit_id,
+            storage_mutations: self.storage_mutations,
+            event_kind: self.event_kind,
+            event_payload: self.event_payload,
+            result_fields: strip_base(serde_json::to_value(self.result)?)?,
+            close_state: self.close_state,
+            current_close_basis: self.current_close_basis,
+            risk_acceptance_coverage: self.risk_acceptance_coverage,
+            blockers: self.blockers,
+            evidence_gate: self.evidence_gate,
+        })
     }
 }
 
@@ -435,8 +517,7 @@ pub(super) fn plan_close_task(
     request: CloseTaskPlanRequest,
     now: &UtcTimestamp,
 ) -> Result<CloseTaskPlan, PlanError> {
-    let context =
-        load_close_task_context(store, project_state, verified_invocation, &request, now)?;
+    let context = load_close_task_context(store, project_state, &request, now)?;
     plan_close_task_with_context(
         store,
         project_state,
@@ -457,7 +538,24 @@ pub(super) fn plan_close_task_with_context(
     now: &UtcTimestamp,
     context: CloseTaskContext,
 ) -> Result<CloseTaskPlan, PlanError> {
-    let mut context = context;
+    let resolved = resolve_close_task_context(store, request, context)?;
+    let decision = decide_close_task_policy(store, project_state, now, resolved)?;
+    let mutations = plan_close_task_mutations(now, decision)?;
+    project_close_task_response(
+        store,
+        verified_invocation,
+        guarantee_profile,
+        now,
+        mutations,
+    )?
+    .into_plan()
+}
+
+fn resolve_close_task_context(
+    store: &CoreProjectStore,
+    request: CloseTaskPlanRequest,
+    context: CloseTaskContext,
+) -> Result<CloseTaskResolvedContext, PlanError> {
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
     let current_control = parse_task_control_level(&context.task.effective_control_level)
         .map_err(CorePipelineError::from)?;
@@ -480,12 +578,39 @@ pub(super) fn plan_close_task_with_context(
                     )
                 })
         });
+    let current_acceptance = parse_acceptance_policy(&context.task.acceptance_policy)?;
+
+    Ok(CloseTaskResolvedContext {
+        request,
+        context,
+        workflow_policy,
+        current_control,
+        resolved_control,
+        current_acceptance,
+        sensitive_effect,
+    })
+}
+
+fn decide_close_task_policy(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    now: &UtcTimestamp,
+    resolved: CloseTaskResolvedContext,
+) -> Result<CloseTaskPolicyDecision, PlanError> {
+    let CloseTaskResolvedContext {
+        request,
+        mut context,
+        workflow_policy,
+        current_control,
+        resolved_control,
+        current_acceptance,
+        sensitive_effect,
+    } = resolved;
     let next_control = if sensitive_effect {
         TaskControlLevel::Sensitive
     } else {
         resolved_control.effective_control_level
     };
-    let current_acceptance = parse_acceptance_policy(&context.task.acceptance_policy)?;
     let control_acceptance = acceptance_policy_for_control(next_control, &workflow_policy);
     let next_acceptance = if close_acceptance_policy_rank(resolved_control.acceptance_policy)
         >= close_acceptance_policy_rank(control_acceptance)
@@ -522,7 +647,7 @@ pub(super) fn plan_close_task_with_context(
                 )
             };
         }
-        CoreStorageMutation::UpdateTaskControlLevel(TaskControlLevelUpdate {
+        TaskControlLevelUpdate {
             task_id: context.task.task_id.clone(),
             effective_control_level: next_control.as_str().to_owned(),
             control_level_reason: reason,
@@ -530,12 +655,9 @@ pub(super) fn plan_close_task_with_context(
                 .then(|| acceptance_policy_storage(next_acceptance).to_owned()),
             acceptance_policy_reason: acceptance_raised
                 .then(|| context.task.acceptance_policy_reason.clone()),
-        })
+        }
     });
-    if context.guard_health.is_none() {
-        context.guard_health =
-            projected_guard_health(store, project_state, verified_invocation, &request)?;
-    }
+
     let risk_acceptance_coverage =
         risk_acceptance_coverage(store, project_state, &request, &context)?;
     let mut blockers = terminal_close_blockers(store, project_state, &request, &context, now)?;
@@ -548,14 +670,13 @@ pub(super) fn plan_close_task_with_context(
             &risk_acceptance_coverage,
             now,
         )?);
-        blockers.extend(guard_close_blockers(project_state, &request, &context));
-    } else {
-        blockers.extend(
-            guard_close_blockers(project_state, &request, &context)
-                .into_iter()
-                .filter(|blocker| blocker.code == "unresolved_unrecorded_changes"),
-        );
     }
+    blockers.extend(unrecorded_change_close_blockers(
+        store,
+        project_state,
+        &request,
+        &context,
+    )?);
     normalize_close_blocker_action_projection(&mut blockers, project_state.state_version);
 
     let committed_terminal = request.intent != CloseIntent::Check && blockers.is_empty();
@@ -564,57 +685,61 @@ pub(super) fn plan_close_task_with_context(
     } else {
         project_state.state_version
     };
-    let close_state = match request.intent {
-        CloseIntent::Check => {
-            if blockers.is_empty() {
-                CloseState::Ready
-            } else {
-                CloseState::Blocked
-            }
-        }
-        CloseIntent::Complete => {
-            if blockers.is_empty() {
-                CloseState::Closed
-            } else {
-                CloseState::Blocked
-            }
-        }
-        CloseIntent::Cancel => {
-            if blockers.is_empty() {
-                CloseState::Cancelled
-            } else {
-                CloseState::Blocked
-            }
-        }
-        CloseIntent::Supersede => {
-            if blockers.is_empty() {
-                CloseState::Superseded
-            } else {
-                CloseState::Blocked
-            }
-        }
-    };
+    let close_state = close_state_for_policy(request.intent, blockers.is_empty());
 
+    Ok(CloseTaskPolicyDecision {
+        request,
+        context,
+        control_update,
+        risk_acceptance_coverage,
+        blockers,
+        committed_terminal,
+        response_state_version,
+        close_state,
+    })
+}
+
+fn close_state_for_policy(intent: CloseIntent, allowed: bool) -> CloseState {
+    if !allowed {
+        return CloseState::Blocked;
+    }
+    match intent {
+        CloseIntent::Check => CloseState::Ready,
+        CloseIntent::Complete => CloseState::Closed,
+        CloseIntent::Cancel => CloseState::Cancelled,
+        CloseIntent::Supersede => CloseState::Superseded,
+    }
+}
+
+fn plan_close_task_mutations(
+    now: &UtcTimestamp,
+    decision: CloseTaskPolicyDecision,
+) -> Result<CloseTaskPlannedMutations, PlanError> {
+    let CloseTaskPolicyDecision {
+        request,
+        context,
+        control_update,
+        risk_acceptance_coverage,
+        blockers,
+        committed_terminal,
+        response_state_version,
+        close_state,
+    } = decision;
     let mut synthetic_task = context.task.clone();
     let mut storage_mutations = Vec::new();
     if committed_terminal {
-        storage_mutations.extend(control_update);
+        storage_mutations.extend(control_update.map(CoreStorageMutation::UpdateTaskControlLevel));
     }
     let mut event_kind = String::new();
     let mut event_payload = Map::new();
-    let closed_at = if committed_terminal {
-        Some(now.clone())
-    } else {
-        None
-    };
 
-    if let Some(closed_at) = &closed_at {
+    if committed_terminal {
         let terminal = close_terminal_storage(request.intent, parse_task_mode(&context.task.mode)?);
-        let close_summary_json = terminal_close_summary_json(&context.task, &request, closed_at)?;
+        let close_summary_json = terminal_close_summary_json(&context.task, &request, now)?;
         synthetic_task.lifecycle_phase = terminal.lifecycle_phase.to_owned();
         synthetic_task.result = Some(terminal.result.to_owned());
         synthetic_task.close_summary_json = close_summary_json.clone();
-        synthetic_task.closed_at = Some(closed_at.to_string());
+        synthetic_task.closed_at = Some(now.to_string());
         storage_mutations.push(CoreStorageMutation::InvalidateActiveWriteTickets(
             WriteTicketInvalidation {
                 task_id: request.task_id.as_str().to_owned(),
@@ -628,7 +753,7 @@ pub(super) fn plan_close_task_with_context(
             lifecycle_phase: terminal.lifecycle_phase.to_owned(),
             result: terminal.result.to_owned(),
             close_summary_json,
-            closed_at: closed_at.to_string(),
+            closed_at: now.to_string(),
         }));
         if request.intent == CloseIntent::Supersede {
             if let Some(superseding_task_id) = request.superseding_task_id.as_ref() {
@@ -644,10 +769,43 @@ pub(super) fn plan_close_task_with_context(
             "close_reason": request.close_reason,
             "superseding_task_id": request.superseding_task_id,
             "user_note": request.user_note,
-            "closed_at": closed_at
+            "closed_at": now
         }))?;
     }
 
+    Ok(CloseTaskPlannedMutations {
+        request,
+        context,
+        risk_acceptance_coverage,
+        blockers,
+        response_state_version,
+        close_state,
+        synthetic_task,
+        storage_mutations,
+        event_kind,
+        event_payload,
+    })
+}
+
+fn project_close_task_response(
+    store: &CoreProjectStore,
+    verified_invocation: Option<&VerifiedInvocationContext>,
+    guarantee_profile: Option<&ProjectEnforcementProfile>,
+    now: &UtcTimestamp,
+    planned: CloseTaskPlannedMutations,
+) -> Result<CloseTaskResponseProjection, PlanError> {
+    let CloseTaskPlannedMutations {
+        request,
+        context,
+        risk_acceptance_coverage,
+        mut blockers,
+        response_state_version,
+        close_state,
+        synthetic_task,
+        storage_mutations,
+        event_kind,
+        event_payload,
+    } = planned;
     let guarantee_display = match (verified_invocation, guarantee_profile) {
         (Some(invocation), Some(profile)) => Some(guarantee_display_from_profile(
             profile,
@@ -657,17 +815,14 @@ pub(super) fn plan_close_task_with_context(
         _ => None,
     };
 
-    let result_current_close_basis = context.current_close_basis.clone();
-    let result_evidence_summary = context
+    let current_close_basis = context.current_close_basis.clone();
+    let evidence_summary = context
         .evidence_summary
         .clone()
-        .map(|summary| evidence_summary_for_display(summary, result_current_close_basis.as_ref()));
+        .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
     let acceptance_criteria = active_acceptance_criteria_for_task(store, &request.task_id)?;
-    let evidence_gate = evaluate_evidence_gate(
-        &acceptance_criteria,
-        result_evidence_summary.as_ref(),
-        &blockers,
-    );
+    let evidence_gate =
+        evaluate_evidence_gate(&acceptance_criteria, evidence_summary.as_ref(), &blockers);
 
     let current_close_pending_user_action_ids = blockers
         .iter()
@@ -676,7 +831,7 @@ pub(super) fn plan_close_task_with_context(
         .filter(|record_ref| record_ref.record_kind == StateRecordKind::UserActionRequest)
         .map(|record_ref| record_ref.record_id.as_str().to_owned())
         .collect::<BTreeSet<_>>();
-    let result_pending_user_action_summaries = agent_safe_pending_user_action_summaries(
+    let pending_user_action_summaries = agent_safe_pending_user_action_summaries(
         context
             .pending_user_action_refs
             .iter()
@@ -716,21 +871,14 @@ pub(super) fn plan_close_task_with_context(
             *now.as_datetime(),
             guarantee_display.clone(),
         )?,
-        evidence_summary: result_evidence_summary.clone(),
+        evidence_summary: evidence_summary.clone(),
         evidence_gate: Some(evidence_gate),
         close_state: Some(close_state),
         close_blockers: blockers.clone(),
-        guard_health: context.guard_health.clone(),
         guarantee_display,
     })?;
 
-    let result_state = state.clone();
-    let result_risk_acceptance_coverage = risk_acceptance_coverage.clone();
-    let result_artifact_refs = context.artifact_refs.clone();
-    let result_coverage_summary = context
-        .guard_health
-        .as_ref()
-        .map(coverage_summary_from_guard_health);
+    let artifact_refs = context.artifact_refs.clone();
     let no_next_actions: &[NextActionSummary] = &[];
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task: Some(&synthetic_task),
@@ -739,20 +887,13 @@ pub(super) fn plan_close_task_with_context(
         } else {
             "core_committed"
         },
-        profile: profile_summary_text(
-            context.guard_health.as_ref(),
-            result_state.guarantee_display.as_ref(),
-        ),
-        write_ticket: write_ticket_summary_text(true, result_state.write_ticket_summary.as_ref()),
-        evidence: evidence_gate_summary_text(true, result_state.evidence_gate.as_ref()),
-        pending_user_actions: result_state.pending_user_action_summaries.len(),
+        profile: profile_summary_text(state.guarantee_display.as_ref()),
+        write_ticket: write_ticket_summary_text(true, state.write_ticket_summary.as_ref()),
+        evidence: evidence_gate_summary_text(true, state.evidence_gate.as_ref()),
+        pending_user_actions: state.pending_user_action_summaries.len(),
         changes: changes_summary_text(
             true,
-            context
-                .guard_health
-                .as_ref()
-                .map(|health| health.unresolved_unrecorded_change_count)
-                .unwrap_or(0),
+            unresolved_unrecorded_changes(store, &request, &context)?.len() as u64,
         ),
         close_status: close_state_text(close_state).to_owned(),
         verified_invocation: verified_invocation
@@ -835,7 +976,7 @@ pub(super) fn plan_close_task_with_context(
             CloseState::Superseded => StatusCloseState::Superseded,
         },
         close_blockers: blockers.clone(),
-        completion_claim_allowed: result_current_close_basis.is_some()
+        completion_claim_allowed: current_close_basis.is_some()
             && blockers.is_empty()
             && matches!(close_state, CloseState::Ready | CloseState::Closed),
         next_actor,
@@ -845,36 +986,34 @@ pub(super) fn plan_close_task_with_context(
         base: placeholder_base(),
         summary_card,
         close_state,
-        current_close_basis: result_current_close_basis.clone(),
-        risk_acceptance_coverage: result_risk_acceptance_coverage.clone(),
+        current_close_basis: current_close_basis.clone(),
+        risk_acceptance_coverage: risk_acceptance_coverage.clone(),
         continuity_summary: Vec::new(),
-        state: result_state.clone(),
+        state,
         blockers: blockers.clone(),
-        pending_user_action_summaries: result_pending_user_action_summaries,
-        guard_health: context.guard_health.clone(),
-        coverage_summary: result_coverage_summary,
-        evidence_summary: result_evidence_summary.clone(),
+        pending_user_action_summaries,
+        evidence_summary: evidence_summary.clone(),
         evidence_gate,
-        artifact_refs: result_artifact_refs.clone(),
+        artifact_refs,
         authority_receipt,
     };
+    let change_unit_id = context
+        .current_change_unit
+        .as_ref()
+        .map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
 
-    Ok(CloseTaskPlan {
+    Ok(CloseTaskResponseProjection {
         task_id: request.task_id,
-        change_unit_id: context
-            .current_change_unit
-            .as_ref()
-            .map(|record| ChangeUnitId::new(record.change_unit_id.clone())),
+        change_unit_id,
         storage_mutations,
         event_kind,
         event_payload,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
+        result,
         close_state,
-        current_close_basis: result_current_close_basis,
-        risk_acceptance_coverage: result_risk_acceptance_coverage,
+        current_close_basis,
+        risk_acceptance_coverage,
         blockers,
         evidence_gate,
-        guard_health: context.guard_health,
     })
 }
 
@@ -910,10 +1049,7 @@ fn plan_close_completion_continuity_records(
     {
         let draft = ProjectContinuityDraft {
             kind: ProjectContinuityKind::KnownLimit,
-            title: format!(
-                "Known limit: {}",
-                short_close_continuity_title(&risk.summary)
-            ),
+            title: format!("Known limit: {}", risk.summary.trim().to_owned()),
             summary: risk.summary.clone(),
             rationale: Some(format!(
                 "{} Consequence: {}",
@@ -942,18 +1078,6 @@ fn plan_close_completion_continuity_records(
         );
     }
     Ok(records)
-}
-
-fn short_close_continuity_title(value: &str) -> String {
-    const MAX_CHARS: usize = 96;
-    let trimmed = value.trim();
-    let mut chars = trimmed.chars();
-    let short = chars.by_ref().take(MAX_CHARS).collect::<String>();
-    if chars.next().is_some() {
-        format!("{short}...")
-    } else {
-        short
-    }
 }
 
 struct CloseTerminalStorage {
@@ -1035,7 +1159,6 @@ fn terminal_close_summary_json(
 fn load_close_task_context(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    verified_invocation: Option<&VerifiedInvocationContext>,
     request: &CloseTaskPlanRequest,
     now: &UtcTimestamp,
 ) -> Result<CloseTaskContext, PlanError> {
@@ -1137,7 +1260,6 @@ fn load_close_task_context(
         task,
         current_change_unit,
         current_close_basis,
-        guard_health: projected_guard_health(store, project_state, verified_invocation, request)?,
         pending_user_action_refs,
         blocker_refs,
         evidence_summary,
@@ -1146,1829 +1268,73 @@ fn load_close_task_context(
         projected_evidence_observations: Vec::new(),
         projected_artifacts: Vec::new(),
         projected_required_criterion_ids: None,
+        projected_resolved_unrecorded_change_ids: BTreeSet::new(),
         pending_user_action_authorities: None,
         resolved_judgment_authorities: None,
     })
 }
 
-fn projected_guard_health(
+fn unrecorded_change_close_blockers(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    verified_invocation: Option<&VerifiedInvocationContext>,
-    request: &CloseTaskPlanRequest,
-) -> Result<Option<GuardHealthSummary>, PlanError> {
-    let Some(invocation) = verified_invocation else {
-        return Ok(None);
-    };
-    let Some(connection_id) = invocation.actor_source.agent_connection_id() else {
-        return Ok(None);
-    };
-    let record = volicord_store::guards::guard_health_record(
-        store.runtime_home(),
-        request.envelope.project_id.as_str(),
-        connection_id.as_str(),
-    )
-    .map_err(|error| {
-        PlanError::Response(Box::new(store_error_response(
-            &request.envelope,
-            project_state,
-            error,
-        )))
-    })?;
-    let mut summary = guard_health_summary_from_record(record)?;
-    if let Some(summary) = summary.as_mut() {
-        summary.local_web_consent_available = invocation.local_web_consent_available;
-        session_watch::apply_session_watch_status(store, invocation, summary)?;
-        refresh_control_surface(summary);
-    }
-    Ok(summary)
-}
-
-const REQUIRED_GUARD_HOOK_PHASES: &[&str] = &[
-    "session_start_hook",
-    "pre_tool_hook",
-    "post_tool_hook",
-    "user_prompt_submit_hook",
-    "stop_hook",
-];
-
-const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
-const MANAGED_PROCESS_BINDING_ENV: &str = "VOLICORD_MANAGED_PROCESS_BINDING";
-const MANAGED_PROCESS_BINDING_V1: &str = "runtime-home-and-profile-command-v1";
-
-#[derive(Debug, Clone)]
-struct GuardCapabilityFacts {
-    expected_policy_hash: Option<String>,
-    required_hook_phases: Vec<String>,
-    missing_required_hook_phases: Vec<String>,
-    native_host_output_adapter_config_verified: bool,
-    bash_shell_mutation_coverage_configured: bool,
-    direct_file_write_matcher_coverage_configured: bool,
-    generated_config_verified: bool,
-    hook_path_safety: String,
-    hook_commands_cwd_independent: bool,
-    hook_commands_subdirectory_safe: bool,
-}
-
-pub(super) fn guard_health_summary_from_record(
-    record: GuardHealthRecord,
-) -> Result<Option<GuardHealthSummary>, PlanError> {
-    if let Some(installation) = record.guard_installation.as_ref() {
-        let connection = record.connection.as_ref().ok_or_else(|| {
-            PlanError::Core(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_json(
-                    "guard_installations",
-                    installation.guard_installation_id.clone(),
-                    "host_capability_json",
-                ),
-            ))
-        })?;
-        volicord_store::guards::validate_stored_guard_installation_capability_binding(
-            installation,
-            connection,
-            &record.project_repo_root,
-        )
-        .map_err(CorePipelineError::from)
-        .map_err(PlanError::Core)?;
-    }
-    let selected_profile = guard_health_profile(&record)?;
-    let guard_installation_status = if let Some(installation) = record.guard_installation.as_ref() {
-        parse_guard_installation_status(
-            "guard_installations",
-            &installation.guard_installation_id,
-            &installation.installation_status,
-        )?
-    } else {
-        GuardInstallationStatus::Absent
-    };
-    let capability = record
-        .guard_installation
-        .as_ref()
-        .map(guard_capability_facts)
-        .transpose()?
-        .unwrap_or_else(default_guard_capability_facts);
-    let guard_configuration_status =
-        guard_configuration_status(guard_installation_status, &capability);
-    let guard_observation_status = guard_observation_status(record.guard_installation.as_ref())?;
-    let effective_guard_status = effective_guard_status(
-        selected_profile,
-        guard_configuration_status,
-        guard_observation_status,
-    );
-    let guard_installation_id = record
-        .guard_installation
-        .as_ref()
-        .map(|installation| GuardInstallationId::new(installation.guard_installation_id.clone()))
-        .into();
-    let host_kind = record
-        .guard_installation
-        .as_ref()
-        .map(|installation| {
-            parse_owner_storage_value(
-                "guard_installations",
-                installation.guard_installation_id.clone(),
-                "host_kind",
-                &installation.host_kind,
-            )
-        })
-        .transpose()?
-        .into();
-    let last_guard_event_at = record
-        .latest_event
-        .as_ref()
-        .map(|event| {
-            parse_owner_storage_value(
-                "guard_events",
-                event.guard_event_id.clone(),
-                "occurred_at",
-                &event.occurred_at,
-            )
-        })
-        .transpose()?
-        .into();
-    let last_guard_observed_at: RequiredNullable<UtcTimestamp> = record
-        .guard_installation
-        .as_ref()
-        .and_then(|installation| {
-            installation.last_seen_at.as_ref().map(|last_seen_at| {
-                parse_owner_storage_value(
-                    "guard_installations",
-                    installation.guard_installation_id.clone(),
-                    "last_seen_at",
-                    last_seen_at,
-                )
-            })
-        })
-        .transpose()?
-        .into();
-    let observed_hook_phase = record
-        .guard_installation
-        .as_ref()
-        .and_then(|installation| installation.last_seen_phase.clone())
-        .into();
-    let observed_host_kind = record
-        .guard_installation
-        .as_ref()
-        .and_then(|installation| {
-            installation.observed_host_kind.as_ref().map(|host_kind| {
-                parse_owner_storage_value(
-                    "guard_installations",
-                    installation.guard_installation_id.clone(),
-                    "observed_host_kind",
-                    host_kind,
-                )
-            })
-        })
-        .transpose()?
-        .into();
-    let guard_hook_observed = guard_observation_status == GuardObservationStatus::Observed;
-    let mcp_connection_status = record
-        .connection
-        .as_ref()
-        .map(|connection| connection.last_verification_status.clone())
-        .into();
-    let mcp_connection_healthy = record.connection.as_ref().is_some_and(|connection| {
-        connection.enabled && connection.last_verification_status == "complete"
-    });
-    let prompt_capture_availability = volicord_store::guards::prompt_capture_availability(&record)
-        .map_err(CorePipelineError::from)
-        .map_err(PlanError::Core)?;
-    let prompt_capture_status = prompt_capture_availability.status;
-    let prompt_capture_available = prompt_capture_availability.can_use_chat_commands();
-    let missing_or_stale_write_ticket = record.co_latest_events.iter().try_fold(
-        false,
-        |found, event| -> Result<bool, PlanError> {
-            let event_has_issue = latest_guard_event_has_write_ticket_issue(event)?;
-            Ok(found || event_has_issue)
-        },
-    )?;
-    let write_ticket_path_scope_violation = record.co_latest_events.iter().try_fold(
-        false,
-        |found, event| -> Result<bool, PlanError> {
-            let event_has_violation =
-                latest_guard_event_has_write_ticket_path_scope_violation(event)?;
-            Ok(found || event_has_violation)
-        },
-    )?;
-    let mut summary = GuardHealthSummary {
-        selected_profile,
-        control_surface: inactive_control_surface(selected_profile),
-        guard_installation_id,
-        guard_installation_status,
-        guard_configuration_status,
-        guard_observation_status,
-        effective_guard_status,
-        generated_config_verified: capability.generated_config_verified,
-        native_host_output_adapter_config_verified: capability
-            .native_host_output_adapter_config_verified,
-        hook_path_safety: capability.hook_path_safety,
-        hook_commands_cwd_independent: capability.hook_commands_cwd_independent,
-        hook_commands_subdirectory_safe: capability.hook_commands_subdirectory_safe,
-        cooperative_pre_tool_warning_available: false,
-        cooperative_pre_tool_denial_available: false,
-        post_tool_correlation_available: false,
-        bash_shell_mutation_coverage: capability.bash_shell_mutation_coverage_configured,
-        direct_file_write_matcher_coverage: capability
-            .direct_file_write_matcher_coverage_configured,
-        bypass_detection_active: false,
-        guard_hook_observed,
-        last_guard_observed_at,
-        last_guard_event_at,
-        host_kind,
-        observed_hook_phase,
-        observed_host_kind,
-        expected_policy_hash: capability.expected_policy_hash.into(),
-        observed_policy_hash: record
-            .guard_installation
-            .as_ref()
-            .and_then(|installation| installation.observed_policy_hash.clone())
-            .into(),
-        observed_binary_version: record
-            .guard_installation
-            .as_ref()
-            .and_then(|installation| installation.observed_binary_version.clone())
-            .into(),
-        required_hook_phases: capability.required_hook_phases,
-        missing_required_hook_phases: capability.missing_required_hook_phases,
-        prompt_capture_status,
-        prompt_capture_available,
-        local_web_consent_available: false,
-        mcp_connection_healthy,
-        mcp_connection_status,
-        session_watch_status: SessionWatchStatus::Disabled,
-        last_session_watch_checked_at: RequiredNullable::null(),
-        session_watch_baseline_created_at: RequiredNullable::null(),
-        session_watch_coverage_start_at: RequiredNullable::null(),
-        session_watch_coverage_basis: RequiredNullable::null(),
-        session_watch_partial_coverage_warning: RequiredNullable::null(),
-        session_watch_detail: RequiredNullable::null(),
-        session_watch_scan_summary: RequiredNullable::null(),
-        unresolved_unrecorded_change_count: record
-            .unresolved_unrecorded_changes
-            .iter()
-            .filter(|change| change.confidence == "confirmed")
-            .count() as u64,
-        missing_or_stale_write_ticket,
-        write_ticket_path_scope_violation,
-    };
-    refresh_control_surface(&mut summary);
-    Ok(Some(summary))
-}
-
-fn default_guard_capability_facts() -> GuardCapabilityFacts {
-    GuardCapabilityFacts {
-        expected_policy_hash: None,
-        required_hook_phases: Vec::new(),
-        missing_required_hook_phases: Vec::new(),
-        native_host_output_adapter_config_verified: false,
-        bash_shell_mutation_coverage_configured: false,
-        direct_file_write_matcher_coverage_configured: false,
-        generated_config_verified: false,
-        hook_path_safety: "not_recorded".to_owned(),
-        hook_commands_cwd_independent: false,
-        hook_commands_subdirectory_safe: false,
-    }
-}
-
-fn guard_capability_facts(
-    installation: &volicord_store::guards::GuardInstallationRecord,
-) -> Result<GuardCapabilityFacts, PlanError> {
-    let capability = decode_required_json_object(
-        "guard_installations",
-        installation.guard_installation_id.clone(),
-        "host_capability_json",
-        Some(&installation.host_capability_json),
-    )?;
-    if !host_hook_capability_has_exact_v2_shape(&Value::Object(capability.clone())) {
-        return Err(
-            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                "guard_installations",
-                installation.guard_installation_id.clone(),
-                "host_capability_json",
-            ))
-            .into(),
-        );
-    }
-    let expected_policy_hash = capability
-        .get("policy_hash")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned);
-    let required_hook_phases =
-        string_array_field(&capability, "required_hook_phases").unwrap_or_default();
-    let missing_required_hook_phases = guard_missing_required_hook_phases(
-        &required_hook_phases,
-        string_array_field(&capability, "missing_required_hooks").unwrap_or_default(),
-    );
-    let hook_path_safety = hook_path_safety_facts(&capability, installation);
-    let generated_files_verified = generated_guard_config_verified(&capability);
-    Ok(GuardCapabilityFacts {
-        expected_policy_hash,
-        required_hook_phases,
-        missing_required_hook_phases,
-        native_host_output_adapter_config_verified: capability_bool_field(
-            &capability,
-            "native_host_output_adapter_config_verified",
-        ),
-        bash_shell_mutation_coverage_configured: capability_bool_field(
-            &capability,
-            "bash_shell_mutation_coverage",
-        ),
-        direct_file_write_matcher_coverage_configured: capability_bool_field(
-            &capability,
-            "direct_file_write_matcher_coverage",
-        ),
-        generated_config_verified: generated_files_verified && hook_path_safety.is_ok(),
-        hook_path_safety: hook_path_safety.status,
-        hook_commands_cwd_independent: hook_path_safety.cwd_independent,
-        hook_commands_subdirectory_safe: hook_path_safety.subdirectory_safe,
-    })
-}
-
-fn capability_bool_field(object: &JsonObject, field: &str) -> bool {
-    object.get(field).and_then(Value::as_bool).unwrap_or(false)
-}
-
-#[derive(Debug, Clone)]
-struct HookPathSafetyFacts {
-    status: String,
-    cwd_independent: bool,
-    subdirectory_safe: bool,
-}
-
-impl HookPathSafetyFacts {
-    fn ok() -> Self {
-        Self {
-            status: "ok".to_owned(),
-            cwd_independent: true,
-            subdirectory_safe: true,
-        }
-    }
-
-    fn failed(status: impl Into<String>) -> Self {
-        Self {
-            status: status.into(),
-            cwd_independent: false,
-            subdirectory_safe: false,
-        }
-    }
-
-    fn is_ok(&self) -> bool {
-        self.status == "ok" && self.cwd_independent && self.subdirectory_safe
-    }
-}
-
-fn hook_path_safety_facts(
-    capability: &JsonObject,
-    installation: &volicord_store::guards::GuardInstallationRecord,
-) -> HookPathSafetyFacts {
-    let Some(commands) = capability
-        .get("host_hook_commands")
-        .and_then(Value::as_array)
-    else {
-        return if capability_requires_hook_path_safety(capability) {
-            HookPathSafetyFacts::failed("metadata_missing")
-        } else {
-            HookPathSafetyFacts::failed("not_recorded")
-        };
-    };
-    if commands.is_empty() {
-        return if capability_requires_hook_path_safety(capability) {
-            HookPathSafetyFacts::failed("metadata_missing")
-        } else {
-            HookPathSafetyFacts::failed("not_recorded")
-        };
-    }
-    let mut status = "ok";
-    for command in commands {
-        let command_status = recorded_hook_command_path_status(command, installation);
-        if command_status != "ok" {
-            status = more_severe_hook_path_status(status, command_status);
-        }
-    }
-    if status == "ok" {
-        HookPathSafetyFacts::ok()
-    } else {
-        HookPathSafetyFacts::failed(status)
-    }
-}
-
-fn capability_requires_hook_path_safety(capability: &JsonObject) -> bool {
-    capability
-        .get("required_hook_phases")
-        .and_then(Value::as_array)
-        .is_some_and(|phases| !phases.is_empty())
-}
-
-fn recorded_hook_command_path_status(
-    command: &Value,
-    installation: &volicord_store::guards::GuardInstallationRecord,
-) -> &'static str {
-    let host_kind = command
-        .get("host_kind")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let phase = command
-        .get("phase")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let command_text = command
-        .get("command")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let args = command
-        .get("args")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    let expected_wrapper_path = command
-        .get("expected_wrapper_path")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let expected_phase_wrapper_path = command
-        .get("expected_phase_wrapper_path")
-        .and_then(Value::as_str)
-        .unwrap_or(expected_wrapper_path);
-    let phase_command = phase_command_name_from_capability(phase).unwrap_or_default();
-    if host_kind != installation.host_kind {
-        return "authority_mismatch";
-    }
-    if command.get("cwd_independent").and_then(Value::as_bool) != Some(true)
-        || command.get("subdirectory_safe").and_then(Value::as_bool) != Some(true)
-    {
-        return "relative_path_unsafe";
-    }
-    let mut status = classify_hook_command_path(
-        host_kind,
-        phase_command,
-        command_text,
-        args,
-        expected_wrapper_path,
-        expected_phase_wrapper_path,
-    );
-    if let Some(recorded_status) = command
-        .get("wrapper_resolution_status")
-        .and_then(Value::as_str)
-        .filter(|value| *value != "ok")
-    {
-        status = more_severe_hook_path_status(
-            status,
-            hook_path_status_from_str(recorded_status).unwrap_or("metadata_missing"),
-        );
-    }
-    status = more_severe_hook_path_status(
-        status,
-        verify_hook_wrapper_path(expected_phase_wrapper_path, "wrapper_missing"),
-    );
-    if host_kind == "codex" {
-        status = more_severe_hook_path_status(
-            status,
-            verify_hook_wrapper_path(expected_wrapper_path, "dispatch_missing"),
-        );
-    }
-    status
-}
-
-fn verify_hook_wrapper_path(path_text_value: &str, missing_status: &'static str) -> &'static str {
-    if path_text_value.trim().is_empty() {
-        return "metadata_missing";
-    }
-    match std::fs::metadata(Path::new(path_text_value)) {
-        Ok(metadata) if metadata.is_file() => {
-            if script_is_executable_path(path_text_value) {
-                "ok"
-            } else {
-                "wrapper_not_executable"
-            }
-        }
-        Ok(_) => "wrapper_missing",
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => missing_status,
-        Err(_) => "wrapper_missing",
-    }
-}
-
-fn classify_hook_command_path(
-    host_kind: &str,
-    phase_command: &str,
-    command_text: &str,
-    args: &[Value],
-    expected_wrapper_path: &str,
-    expected_phase_wrapper_path: &str,
-) -> &'static str {
-    if phase_command.is_empty() || command_text.trim().is_empty() {
-        return "metadata_missing";
-    }
-    match host_kind {
-        "codex" => classify_codex_hook_command_path(
-            phase_command,
-            command_text,
-            expected_wrapper_path,
-            expected_phase_wrapper_path,
-        ),
-        "claude_code" => classify_claude_hook_command_path(
-            phase_command,
-            command_text,
-            args,
-            expected_phase_wrapper_path,
-        ),
-        _ => "metadata_missing",
-    }
-}
-
-fn classify_codex_hook_command_path(
-    phase_command: &str,
-    command_text: &str,
-    expected_dispatch_path: &str,
-    expected_phase_wrapper_path: &str,
-) -> &'static str {
-    let relative_wrapper = format!(".codex/hooks/volicord-{phase_command}.sh");
-    if contains_bare_relative_hook_path(command_text, ".codex/hooks/") {
-        return "relative_path_unsafe";
-    }
-    if command_text.contains(".codex/hooks/volicord-dispatch.sh")
-        || command_text.contains(&relative_wrapper)
-    {
-        if command_text.contains("git rev-parse --show-toplevel")
-            && command_text.contains(".codex/hooks/volicord-dispatch.sh")
-            && command_text.contains(phase_command)
-        {
-            return "ok";
-        }
-        if let Some(path) =
-            absolute_path_ending_with(command_text, ".codex/hooks/volicord-dispatch.sh")
-        {
-            return if paths_equivalent_text(&path, expected_dispatch_path) {
-                "ok"
-            } else {
-                "absolute_path_stale"
-            };
-        }
-        if let Some(path) = absolute_path_ending_with(command_text, &relative_wrapper) {
-            return if paths_equivalent_text(&path, expected_phase_wrapper_path) {
-                "ok"
-            } else {
-                "absolute_path_stale"
-            };
-        }
-        return "relative_path_unsafe";
-    }
-    if command_text.contains(&format!("volicord _hook {phase_command}")) {
-        return "ok";
-    }
-    "metadata_missing"
-}
-
-fn classify_claude_hook_command_path(
-    phase_command: &str,
-    command_text: &str,
-    args: &[Value],
-    expected_phase_wrapper_path: &str,
-) -> &'static str {
-    let relative_wrapper = format!(".claude/hooks/volicord-{phase_command}.sh");
-    let placeholder_wrapper = format!("${{CLAUDE_PROJECT_DIR}}/{relative_wrapper}");
-    if contains_bare_relative_hook_path(command_text, ".claude/hooks/") {
-        return "relative_path_unsafe";
-    }
-    if command_text.contains("${CLAUDE_PROJECT_DIR}") {
-        return if command_text == placeholder_wrapper && args.is_empty() {
-            "ok"
-        } else {
-            "placeholder_unsupported"
-        };
-    }
-    if command_text.contains(&relative_wrapper) {
-        if let Some(path) = absolute_path_ending_with(command_text, &relative_wrapper) {
-            return if paths_equivalent_text(&path, expected_phase_wrapper_path) {
-                "ok"
-            } else {
-                "absolute_path_stale"
-            };
-        }
-        return "relative_path_unsafe";
-    }
-    if command_text.contains(&format!("volicord _hook {phase_command}")) {
-        return "ok";
-    }
-    "metadata_missing"
-}
-
-fn contains_bare_relative_hook_path(command_text: &str, prefix: &str) -> bool {
-    let trimmed = command_text.trim_start_matches([' ', '\'', '"']);
-    trimmed.starts_with(prefix)
-        || trimmed.starts_with(&format!("./{prefix}"))
-        || command_text.contains(&format!(" {prefix}"))
-        || command_text.contains(&format!(" './{prefix}"))
-        || command_text.contains(&format!(" \"./{prefix}"))
-        || command_text.contains(&format!(" '{prefix}"))
-        || command_text.contains(&format!(" \"{prefix}"))
-}
-
-fn absolute_path_ending_with(command_text: &str, suffix: &str) -> Option<String> {
-    let index = command_text.find(suffix)?;
-    let prefix = &command_text[..index];
-    let start = prefix
-        .rfind([' ', '\'', '"', '=', ';', '('])
-        .map(|position| position + 1)
-        .unwrap_or(0);
-    let path_prefix = prefix.get(start..)?;
-    if !path_prefix.starts_with('/') {
-        return None;
-    }
-    Some(format!("{path_prefix}{suffix}"))
-}
-
-fn paths_equivalent_text(left: &str, right: &str) -> bool {
-    lexical_absolute_path(left)
-        .is_some_and(|left| lexical_absolute_path(right).is_some_and(|right| left == right))
-}
-
-fn lexical_absolute_path(path_text_value: &str) -> Option<String> {
-    let path = Path::new(path_text_value);
-    if !path.is_absolute() {
-        return None;
-    }
-    let mut parts = Vec::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::RootDir => {}
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                parts.pop();
-            }
-            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
-            std::path::Component::Prefix(_) => return None,
-        }
-    }
-    Some(format!("/{}", parts.join("/")))
-}
-
-fn phase_command_name_from_capability(phase: &str) -> Option<&'static str> {
-    match phase {
-        "session_start_hook" | "session_start" => Some("session-start"),
-        "pre_tool_hook" | "pre_tool" => Some("pre-tool"),
-        "post_tool_hook" | "post_tool" => Some("post-tool"),
-        "user_prompt_submit_hook" | "prompt_capture" => Some("prompt-capture"),
-        "stop_hook" | "stop" => Some("stop"),
-        _ => None,
-    }
-}
-
-fn more_severe_hook_path_status(left: &'static str, right: &'static str) -> &'static str {
-    if hook_path_status_rank(left) <= hook_path_status_rank(right) {
-        left
-    } else {
-        right
-    }
-}
-
-fn hook_path_status_rank(status: &str) -> u8 {
-    match status {
-        "ok" => 100,
-        "metadata_missing" => 0,
-        "authority_mismatch" => 1,
-        "policy_hash_mismatch" => 2,
-        "host_output_mismatch" => 3,
-        "relative_path_unsafe" => 4,
-        "absolute_path_stale" => 5,
-        "placeholder_unsupported" => 6,
-        "dispatch_missing" => 7,
-        "wrapper_missing" => 8,
-        "wrapper_not_executable" => 9,
-        _ => 10,
-    }
-}
-
-fn hook_path_status_from_str(status: &str) -> Option<&'static str> {
-    match status {
-        "ok" => Some("ok"),
-        "metadata_missing" => Some("metadata_missing"),
-        "authority_mismatch" => Some("authority_mismatch"),
-        "policy_hash_mismatch" => Some("policy_hash_mismatch"),
-        "host_output_mismatch" => Some("host_output_mismatch"),
-        "relative_path_unsafe" => Some("relative_path_unsafe"),
-        "absolute_path_stale" => Some("absolute_path_stale"),
-        "placeholder_unsupported" => Some("placeholder_unsupported"),
-        "dispatch_missing" => Some("dispatch_missing"),
-        "wrapper_missing" => Some("wrapper_missing"),
-        "wrapper_not_executable" => Some("wrapper_not_executable"),
-        _ => None,
-    }
-}
-
-fn generated_guard_config_verified(capability: &JsonObject) -> bool {
-    let Some(files) = capability.get("files").and_then(Value::as_array) else {
-        return false;
-    };
-    if files.is_empty() {
-        return false;
-    }
-    let mut has_policy_file = false;
-    let mut has_hook_config = false;
-    let mut has_hook_wrapper = false;
-    for file in files {
-        let Some(kind) = file.get("kind").and_then(Value::as_str) else {
-            return false;
-        };
-        match kind {
-            "volicord_policy" => has_policy_file = true,
-            "host_hook_config" => has_hook_config = true,
-            "host_hook_wrapper" => has_hook_wrapper = true,
-            _ => {}
-        }
-        if !generated_guard_file_verified(file) {
-            return false;
-        }
-    }
-    has_policy_file && has_hook_config && has_hook_wrapper
-}
-
-fn generated_guard_file_verified(file: &Value) -> bool {
-    let Some(path_text) = file.get("path").and_then(Value::as_str) else {
-        return false;
-    };
-    let Ok(text) = std::fs::read_to_string(Path::new(path_text)) else {
-        return false;
-    };
-    let expected_hash = file
-        .get("content_hash")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    match file.get("ownership").and_then(Value::as_str) {
-        Some("managed_block") => generated_managed_block_verified(file, &text, expected_hash),
-        Some("managed_json") => sha256_text(&text) == expected_hash,
-        Some("managed_json_projection") => {
-            generated_json_projection_verified(file, &text, expected_hash)
-        }
-        Some("managed_script") => generated_script_verified(file, &text, expected_hash),
-        _ => false,
-    }
-}
-
-fn generated_managed_block_verified(file: &Value, text: &str, expected_hash: &str) -> bool {
-    let Some(start_marker) = file.get("managed_marker_start").and_then(Value::as_str) else {
-        return false;
-    };
-    let Some(end_marker) = file.get("managed_marker_end").and_then(Value::as_str) else {
-        return false;
-    };
-    if marker_count(text, start_marker) != 1 || marker_count(text, end_marker) != 1 {
-        return false;
-    }
-    let Some(block) = managed_block_slice(text, start_marker, end_marker) else {
-        return false;
-    };
-    sha256_text(block) == expected_hash
-}
-
-fn generated_json_projection_verified(file: &Value, text: &str, expected_hash: &str) -> bool {
-    let Some(expected_projection_json) =
-        file.get("managed_projection_json").and_then(Value::as_str)
-    else {
-        return false;
-    };
-    if sha256_text(expected_projection_json) != expected_hash {
-        return false;
-    }
-    let Ok(actual) = serde_json::from_str::<Value>(text) else {
-        return false;
-    };
-    let Ok(desired) = serde_json::from_str::<Value>(expected_projection_json) else {
-        return false;
-    };
-    managed_projection_present(&actual, &desired)
-}
-
-fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> bool {
-    let Some(managed_marker) = file.get("managed_marker").and_then(Value::as_str) else {
-        return false;
-    };
-    if managed_marker != HOOK_WRAPPER_MARKER
-        || !text
-            .lines()
-            .any(|line| line == format!("# {HOOK_WRAPPER_MARKER}"))
-    {
-        return false;
-    }
-    if sha256_text(text) != expected_hash {
-        return false;
-    }
-    match file.get("managed_script_role").and_then(Value::as_str) {
-        Some("codex_dispatch") => return generated_dispatch_script_verified(file, text),
-        Some(_) => return false,
-        None => {}
-    }
-    if !has_current_managed_process_binding(text) {
-        return false;
-    }
-    let Some(expected_command) = file
-        .get("managed_script_command")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-    else {
-        return false;
-    };
-    if !generated_managed_command_shape_verified(file, expected_command) {
-        return false;
-    }
-    if hook_wrapper_exec_command(text) != Some(expected_command) {
-        return false;
-    }
-    for key in [
-        "host_kind",
-        "phase",
-        "purpose",
-        "connection_id",
-        "guard_installation_id",
-        "policy_hash",
-        "host_output",
-    ] {
-        let Some(expected) = file.get(key).and_then(Value::as_str) else {
-            return false;
-        };
-        if hook_wrapper_comment_value(text, key) != Some(expected) {
-            return false;
-        }
-    }
-    if file
-        .get("executable_required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        && !script_is_executable(file)
-    {
-        return false;
-    }
-    true
-}
-
-fn generated_managed_command_shape_verified(file: &Value, command: &str) -> bool {
-    let Some(purpose) = file.get("purpose").and_then(Value::as_str) else {
-        return false;
-    };
-    let Some(words) = generated_shell_words(command) else {
-        return false;
-    };
-    if !words
-        .first()
-        .is_some_and(|word| !word.is_empty() && Path::new(word).is_absolute())
-    {
-        return false;
-    }
-    let required_options = [
-        "--repo",
-        "--connection",
-        "--guard-installation",
-        "--host",
-        "--integration-profile",
-        "--policy-hash",
-        "--host-output",
-    ];
-    let argument_start = match purpose {
-        "detective_guard" => {
-            let Some(phase) = file
-                .get("phase")
-                .and_then(Value::as_str)
-                .and_then(managed_script_phase_command_name)
-            else {
-                return false;
-            };
-            if words.get(1).map(String::as_str) != Some("_hook")
-                || words.get(2).map(String::as_str) != Some(phase)
-            {
-                return false;
-            }
-            3
-        }
-        "final_output_authority_disclosure" => {
-            if file.get("phase").and_then(Value::as_str) != Some("stop")
-                || words.get(1).map(String::as_str) != Some("_final-output")
-            {
-                return false;
-            }
-            2
-        }
-        _ => return false,
-    };
-    if words.len() != argument_start + required_options.len() * 2 {
-        return false;
-    }
-    let arguments = &words[argument_start..];
-    required_options.into_iter().all(|option| {
-        arguments
-            .chunks_exact(2)
-            .filter(|pair| pair[0] == option)
-            .count()
-            == 1
-            && arguments
-                .chunks_exact(2)
-                .any(|pair| pair[0] == option && !pair[1].is_empty() && !pair[1].starts_with("--"))
-    })
-}
-
-fn managed_script_phase_command_name(phase: &str) -> Option<&'static str> {
-    match phase {
-        "session_start" => Some("session-start"),
-        "pre_tool" => Some("pre-tool"),
-        "post_tool" => Some("post-tool"),
-        "prompt_capture" => Some("prompt-capture"),
-        "stop" => Some("stop"),
-        _ => None,
-    }
-}
-
-fn generated_shell_words(command: &str) -> Option<Vec<String>> {
-    let mut chars = command.chars().peekable();
-    let mut words = Vec::new();
-    while chars.peek().is_some() {
-        while chars
-            .peek()
-            .is_some_and(|character| character.is_whitespace())
-        {
-            chars.next();
-        }
-        if chars.peek().is_none() {
-            break;
-        }
-        let mut word = String::new();
-        let mut consumed = false;
-        while chars
-            .peek()
-            .is_some_and(|character| !character.is_whitespace())
-        {
-            match chars.next()? {
-                '\'' => {
-                    consumed = true;
-                    loop {
-                        match chars.next() {
-                            Some('\'') => break,
-                            Some(character) => word.push(character),
-                            None => return None,
-                        }
-                    }
-                }
-                '\\' => {
-                    consumed = true;
-                    word.push(chars.next()?);
-                }
-                character
-                    if character.is_ascii_alphanumeric()
-                        || matches!(character, '_' | '-' | '.' | '/' | ':' | '=') =>
-                {
-                    consumed = true;
-                    word.push(character);
-                }
-                _ => return None,
-            }
-        }
-        if !consumed {
-            return None;
-        }
-        words.push(word);
-    }
-    Some(words)
-}
-
-fn has_current_managed_process_binding(content: &str) -> bool {
-    let binding_export = format!("export {MANAGED_PROCESS_BINDING_ENV}");
-    let binding_assignment = format!("{MANAGED_PROCESS_BINDING_ENV}={MANAGED_PROCESS_BINDING_V1}");
-    if hook_wrapper_comment_value(content, "runtime_home_binding")
-        != Some("selected_init_runtime_home")
-        || content
-            .lines()
-            .filter(|line| *line == "export VOLICORD_HOME")
-            .count()
-            != 1
-        || content
-            .lines()
-            .filter(|line| *line == binding_export)
-            .count()
-            != 1
-        || content
-            .lines()
-            .filter(|line| *line == binding_assignment)
-            .count()
-            != 1
-    {
-        return false;
-    }
-    let mut assignments = content
-        .lines()
-        .filter(|line| line.starts_with("VOLICORD_HOME="));
-    let Some(assignment) = assignments.next() else {
-        return false;
-    };
-    if assignments.next().is_some() {
-        return false;
-    }
-    generated_shell_words(assignment)
-        .filter(|words| words.len() == 1)
-        .and_then(|words| words.into_iter().next())
-        .and_then(|word| word.strip_prefix("VOLICORD_HOME=").map(str::to_owned))
-        .is_some_and(|runtime_home| {
-            !runtime_home.is_empty() && Path::new(&runtime_home).is_absolute()
-        })
-}
-
-fn generated_dispatch_script_verified(file: &Value, text: &str) -> bool {
-    if hook_wrapper_comment_value(text, "host_kind") != Some("codex")
-        || hook_wrapper_comment_value(text, "phase") != Some("dispatch")
-        || hook_wrapper_comment_value(text, "script_role") != Some("codex_dispatch")
-    {
-        return false;
-    }
-    for required in [
-        "git rev-parse --show-toplevel",
-        "session-start|pre-tool|post-tool|prompt-capture|stop",
-        ".codex/hooks/volicord-$phase.sh",
-        "exec \"$wrapper\"",
-    ] {
-        if !text.contains(required) {
-            return false;
-        }
-    }
-    !file
-        .get("executable_required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        || script_is_executable(file)
-}
-
-fn marker_count(text: &str, marker: &str) -> usize {
-    text.match_indices(marker).count()
-}
-
-fn managed_block_slice<'a>(text: &'a str, start_marker: &str, end_marker: &str) -> Option<&'a str> {
-    let start = text.find(start_marker)?;
-    let end = start + text[start..].find(end_marker)? + end_marker.len();
-    let end = if text[end..].starts_with('\n') {
-        end + 1
-    } else {
-        end
-    };
-    text.get(start..end)
-}
-
-fn managed_projection_present(actual: &Value, desired: &Value) -> bool {
-    let Some(desired_object) = desired.as_object() else {
-        return actual == desired;
-    };
-    desired_object.iter().all(|(key, desired_value)| {
-        let Some(actual_value) = actual.get(key) else {
-            return false;
-        };
-        if key == "hooks" || key == "mcpServers" {
-            return managed_projection_object_present(actual_value, desired_value);
-        }
-        managed_projection_present(actual_value, desired_value)
-    })
-}
-
-fn managed_projection_object_present(actual: &Value, desired: &Value) -> bool {
-    let (Some(actual_object), Some(desired_object)) = (actual.as_object(), desired.as_object())
-    else {
-        return false;
-    };
-    desired_object.iter().all(|(key, desired_value)| {
-        let Some(actual_value) = actual_object.get(key) else {
-            return false;
-        };
-        match (actual_value.as_array(), desired_value.as_array()) {
-            (Some(actual_array), Some(desired_array)) => desired_array.iter().all(|desired_item| {
-                let desired_count = desired_array
-                    .iter()
-                    .filter(|item| *item == desired_item)
-                    .count();
-                let actual_count = actual_array
-                    .iter()
-                    .filter(|item| *item == desired_item)
-                    .count();
-                actual_count == desired_count
-            }),
-            _ => actual_value == desired_value,
-        }
-    })
-}
-
-fn hook_wrapper_exec_command(text: &str) -> Option<&str> {
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix("exec "))
-}
-
-fn hook_wrapper_comment_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
-    let prefix = format!("# {key}=");
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix(&prefix))
-        .map(str::trim)
-}
-
-#[cfg(unix)]
-fn script_is_executable(file: &Value) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    let Some(path_text) = file.get("path").and_then(Value::as_str) else {
-        return false;
-    };
-    std::fs::metadata(Path::new(path_text))
-        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(unix)]
-fn script_is_executable_path(path_text: &str) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::metadata(Path::new(path_text))
-        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn script_is_executable(_file: &Value) -> bool {
-    true
-}
-
-#[cfg(not(unix))]
-fn script_is_executable_path(_path_text: &str) -> bool {
-    true
-}
-
-fn sha256_text(text: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
-    format!("sha256:{}", hex_bytes(&hasher.finalize()))
-}
-
-fn hex_bytes(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        output.push(HEX[(byte >> 4) as usize] as char);
-        output.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    output
-}
-
-fn string_array_field(object: &JsonObject, field: &str) -> Option<Vec<String>> {
-    Some(
-        object
-            .get(field)?
-            .as_array()?
-            .iter()
-            .filter_map(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .map(str::to_owned)
-            .collect(),
-    )
-}
-
-fn inactive_control_surface(selected_profile: IntegrationProfile) -> ControlSurfaceSummary {
-    ControlSurfaceSummary {
-        selected_profile,
-        host_hooks_active: false,
-        session_watcher_active: false,
-        cooperative_pre_tool_warning_available: false,
-        cooperative_pre_tool_denial_available: false,
-        unrecorded_changes_detectable: false,
-        actor_identity_provable: false,
-        os_enforced: false,
-    }
-}
-
-pub(super) fn refresh_control_surface(summary: &mut GuardHealthSummary) {
-    let host_hooks_active = host_hooks_active(summary);
-    let pre_tool_available = host_hooks_active && required_hook_available(summary, "pre_tool_hook");
-    summary.cooperative_pre_tool_warning_available = pre_tool_available;
-    summary.cooperative_pre_tool_denial_available = pre_tool_available;
-    summary.post_tool_correlation_available =
-        host_hooks_active && required_hook_available(summary, "post_tool_hook");
-    summary.bypass_detection_active = summary.session_watch_status == SessionWatchStatus::Active;
-    summary.control_surface = ControlSurfaceSummary {
-        selected_profile: summary.selected_profile,
-        host_hooks_active,
-        session_watcher_active: summary.session_watch_status == SessionWatchStatus::Active,
-        cooperative_pre_tool_warning_available: summary.cooperative_pre_tool_warning_available,
-        cooperative_pre_tool_denial_available: summary.cooperative_pre_tool_denial_available,
-        unrecorded_changes_detectable: summary.session_watch_status == SessionWatchStatus::Active,
-        actor_identity_provable: false,
-        os_enforced: false,
-    };
-}
-
-pub(super) fn coverage_summary_from_guard_health(summary: &GuardHealthSummary) -> CoverageSummary {
-    CoverageSummary {
-        active_profile: summary.selected_profile,
-        host_hook_state: coverage_host_hook_state(summary),
-        session_watcher_state: coverage_session_watcher_state(summary),
-        coverage_started_at: summary.session_watch_coverage_start_at.clone(),
-        last_snapshot_at: summary.last_session_watch_checked_at.clone(),
-        watcher_scan_summary: summary.session_watch_scan_summary.clone(),
-        unresolved_unrecorded_change_count: summary.unresolved_unrecorded_change_count,
-        non_guarantees: vec![
-            NonGuarantee::NotActorAttributionProof,
-            NonGuarantee::NotFullFilesystemMonitoring,
-            NonGuarantee::NotFullWritePrevention,
-        ],
-    }
-}
-
-fn coverage_host_hook_state(summary: &GuardHealthSummary) -> CoverageHostHookState {
-    if summary.selected_profile == IntegrationProfile::Record {
-        return CoverageHostHookState::Unsupported;
-    }
-    if summary.control_surface.host_hooks_active {
-        return CoverageHostHookState::Observed;
-    }
-    match summary.effective_guard_status {
-        GuardEffectiveStatus::Degraded | GuardEffectiveStatus::Broken => {
-            CoverageHostHookState::Degraded
-        }
-        GuardEffectiveStatus::ActionRequired
-            if summary.guard_observation_status == GuardObservationStatus::StaleObservation =>
-        {
-            CoverageHostHookState::Degraded
-        }
-        _ => CoverageHostHookState::NotObserved,
-    }
-}
-
-fn coverage_session_watcher_state(summary: &GuardHealthSummary) -> CoverageSessionWatcherState {
-    match summary.session_watch_status {
-        SessionWatchStatus::Active => {
-            if summary.session_watch_partial_coverage_warning.is_some() {
-                CoverageSessionWatcherState::Degraded
-            } else {
-                CoverageSessionWatcherState::Active
-            }
-        }
-        SessionWatchStatus::Degraded | SessionWatchStatus::Unavailable => {
-            CoverageSessionWatcherState::Degraded
-        }
-        SessionWatchStatus::Disabled if summary.selected_profile == IntegrationProfile::Record => {
-            CoverageSessionWatcherState::Unsupported
-        }
-        SessionWatchStatus::Disabled | SessionWatchStatus::PendingProjectSelection => {
-            CoverageSessionWatcherState::Inactive
-        }
-    }
-}
-
-fn host_hooks_active(summary: &GuardHealthSummary) -> bool {
-    summary.selected_profile == IntegrationProfile::Detective
-        && summary.effective_guard_status == GuardEffectiveStatus::Active
-        && summary.guard_configuration_status == GuardConfigurationStatus::Configured
-        && summary.guard_observation_status == GuardObservationStatus::Observed
-        && summary.guard_hook_observed
-        && summary.generated_config_verified
-        && summary.native_host_output_adapter_config_verified
-        && summary.hook_path_safety == "ok"
-        && summary.hook_commands_cwd_independent
-        && summary.hook_commands_subdirectory_safe
-        && summary
-            .expected_policy_hash
-            .as_ref()
-            .is_some_and(|expected| {
-                summary
-                    .observed_policy_hash
-                    .as_ref()
-                    .is_some_and(|observed| observed == expected)
-            })
-        && summary.observed_host_kind.as_ref() == summary.host_kind.as_ref()
-        && REQUIRED_GUARD_HOOK_PHASES
-            .iter()
-            .all(|phase| required_hook_available(summary, phase))
-        && summary
-            .required_hook_phases
-            .iter()
-            .any(|phase| phase == "pre_tool_hook")
-        && summary
-            .required_hook_phases
-            .iter()
-            .any(|phase| phase == "post_tool_hook")
-        && summary
-            .required_hook_phases
-            .iter()
-            .any(|phase| phase == "stop_hook")
-        && (!summary.prompt_capture_available
-            || summary
-                .required_hook_phases
-                .iter()
-                .any(|phase| phase == "user_prompt_submit_hook"))
-        && summary.bash_shell_mutation_coverage
-        && summary.direct_file_write_matcher_coverage
-}
-
-fn required_hook_available(summary: &GuardHealthSummary, phase: &str) -> bool {
-    summary.effective_guard_status == GuardEffectiveStatus::Active
-        && summary
-            .required_hook_phases
-            .iter()
-            .any(|configured| configured == phase)
-        && !summary
-            .missing_required_hook_phases
-            .iter()
-            .any(|missing| missing == phase)
-}
-
-fn guard_missing_required_hook_phases(
-    configured_required_hook_phases: &[String],
-    mut explicit_missing_hook_phases: Vec<String>,
-) -> Vec<String> {
-    for required_phase in REQUIRED_GUARD_HOOK_PHASES {
-        if !configured_required_hook_phases
-            .iter()
-            .any(|phase| phase == required_phase)
-        {
-            explicit_missing_hook_phases.push((*required_phase).to_owned());
-        }
-    }
-    explicit_missing_hook_phases.sort();
-    explicit_missing_hook_phases.dedup();
-    explicit_missing_hook_phases
-}
-
-fn guard_configuration_status(
-    installation_status: GuardInstallationStatus,
-    capability: &GuardCapabilityFacts,
-) -> GuardConfigurationStatus {
-    if !capability.missing_required_hook_phases.is_empty()
-        && !matches!(
-            installation_status,
-            GuardInstallationStatus::Absent
-                | GuardInstallationStatus::Stale
-                | GuardInstallationStatus::Broken
-        )
-    {
-        return GuardConfigurationStatus::Degraded;
-    }
-    match installation_status {
-        GuardInstallationStatus::Absent => GuardConfigurationStatus::Absent,
-        GuardInstallationStatus::Configured | GuardInstallationStatus::Active => {
-            GuardConfigurationStatus::Configured
-        }
-        GuardInstallationStatus::ReloadRequired => GuardConfigurationStatus::ReloadRequired,
-        GuardInstallationStatus::Degraded => GuardConfigurationStatus::Degraded,
-        GuardInstallationStatus::Stale => GuardConfigurationStatus::Stale,
-        GuardInstallationStatus::Broken => GuardConfigurationStatus::Broken,
-    }
-}
-
-fn guard_observation_status(
-    installation: Option<&volicord_store::guards::GuardInstallationRecord>,
-) -> Result<GuardObservationStatus, PlanError> {
-    let Some(installation) = installation else {
-        return Ok(GuardObservationStatus::NotObserved);
-    };
-    if installation.last_seen_at.is_none() {
-        return Ok(GuardObservationStatus::NotObserved);
-    };
-    let observation_is_current = guard_installation_observation_is_current(installation)
-        .map_err(CorePipelineError::from)
-        .map_err(PlanError::Core)?;
-    if observation_is_current {
-        Ok(GuardObservationStatus::Observed)
-    } else {
-        Ok(GuardObservationStatus::StaleObservation)
-    }
-}
-
-fn effective_guard_status(
-    selected_profile: IntegrationProfile,
-    configuration_status: GuardConfigurationStatus,
-    observation_status: GuardObservationStatus,
-) -> GuardEffectiveStatus {
-    if selected_profile == IntegrationProfile::Record {
-        return GuardEffectiveStatus::Inactive;
-    }
-    match configuration_status {
-        GuardConfigurationStatus::Absent => GuardEffectiveStatus::Inactive,
-        GuardConfigurationStatus::Broken => GuardEffectiveStatus::Broken,
-        GuardConfigurationStatus::Stale | GuardConfigurationStatus::Degraded => {
-            GuardEffectiveStatus::Degraded
-        }
-        GuardConfigurationStatus::ReloadRequired => GuardEffectiveStatus::ActionRequired,
-        GuardConfigurationStatus::Configured => {
-            if observation_status == GuardObservationStatus::Observed {
-                GuardEffectiveStatus::Active
-            } else {
-                GuardEffectiveStatus::ActionRequired
-            }
-        }
-    }
-}
-
-fn guard_health_profile(record: &GuardHealthRecord) -> Result<IntegrationProfile, PlanError> {
-    if let Some(installation) = record.guard_installation.as_ref() {
-        return parse_integration_profile(
-            "guard_installations",
-            &installation.guard_installation_id,
-            &installation.guard_mode,
-        );
-    }
-    if let Some(session) = record.latest_session.as_ref() {
-        return parse_integration_profile(
-            "agent_sessions",
-            &session.session_id,
-            &session.guard_mode,
-        );
-    }
-    Ok(IntegrationProfile::Record)
-}
-
-fn parse_integration_profile(
-    table: &'static str,
-    record_ref: &str,
-    value: &str,
-) -> Result<IntegrationProfile, PlanError> {
-    serde_json::from_value(Value::String(value.to_owned()))
-        .map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                table,
-                record_ref.to_owned(),
-                "integration_profile",
-            ))
-        })
-        .map_err(PlanError::Core)
-}
-
-fn parse_guard_installation_status(
-    table: &'static str,
-    record_ref: &str,
-    value: &str,
-) -> Result<GuardInstallationStatus, PlanError> {
-    serde_json::from_value(Value::String(value.to_owned()))
-        .map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                table,
-                record_ref.to_owned(),
-                "installation_status",
-            ))
-        })
-        .map_err(PlanError::Core)
-}
-
-fn latest_guard_event_has_write_ticket_issue(
-    event: &volicord_store::guards::GuardEventRecord,
-) -> Result<bool, PlanError> {
-    let result = decode_required_json_object(
-        "guard_events",
-        event.guard_event_id.clone(),
-        "result_json",
-        Some(&event.result_json),
-    )?;
-    let result = Value::Object(result);
-    Ok(json_has_code(
-        &result,
-        &[
-            "write_ticket_missing",
-            "write_ticket_scope_indeterminate",
-            "write_ticket_ambiguous",
-            "write_ticket_stale",
-        ],
-    ) || json_has_non_empty_array_key(&result, "stale_write_ticket_ids"))
-}
-
-fn latest_guard_event_has_write_ticket_path_scope_violation(
-    event: &volicord_store::guards::GuardEventRecord,
-) -> Result<bool, PlanError> {
-    let result = decode_required_json_object(
-        "guard_events",
-        event.guard_event_id.clone(),
-        "result_json",
-        Some(&event.result_json),
-    )?;
-    let result = Value::Object(result);
-    Ok(
-        json_has_code(&result, &["write_ticket_path_scope_violation"])
-            || json_has_truthy_key(&result, "ticket_scope_violation"),
-    )
-}
-
-fn json_has_code(value: &Value, codes: &[&str]) -> bool {
-    match value {
-        Value::Object(object) => {
-            object
-                .get("code")
-                .and_then(Value::as_str)
-                .is_some_and(|code| codes.contains(&code))
-                || object.values().any(|value| json_has_code(value, codes))
-        }
-        Value::Array(values) => values.iter().any(|value| json_has_code(value, codes)),
-        _ => false,
-    }
-}
-
-fn json_has_truthy_key(value: &Value, key: &str) -> bool {
-    match value {
-        Value::Object(object) => {
-            object.get(key).and_then(Value::as_bool).unwrap_or(false)
-                || object.values().any(|value| json_has_truthy_key(value, key))
-        }
-        Value::Array(values) => values.iter().any(|value| json_has_truthy_key(value, key)),
-        _ => false,
-    }
-}
-
-fn json_has_non_empty_array_key(value: &Value, key: &str) -> bool {
-    match value {
-        Value::Object(object) => {
-            object
-                .get(key)
-                .and_then(Value::as_array)
-                .is_some_and(|values| !values.is_empty())
-                || object
-                    .values()
-                    .any(|value| json_has_non_empty_array_key(value, key))
-        }
-        Value::Array(values) => values
-            .iter()
-            .any(|value| json_has_non_empty_array_key(value, key)),
-        _ => false,
-    }
-}
-
-fn guard_close_blockers(
     project_state: &ProjectStateHeader,
     request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
-) -> Vec<CloseReadinessBlocker> {
-    let Some(summary) = context.guard_health.as_ref() else {
-        return Vec::new();
-    };
-    let record_unrecorded_blocks = summary.selected_profile == IntegrationProfile::Record
-        && summary.unresolved_unrecorded_change_count > 0;
-    if summary.selected_profile != IntegrationProfile::Detective && !record_unrecorded_blocks {
-        return Vec::new();
+) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
+    let unresolved = unresolved_unrecorded_changes(store, request, context)?;
+    if unresolved.is_empty() {
+        return Ok(Vec::new());
     }
 
     let task_ref = task_ref_for_close(request, project_state.state_version);
-    let mut blockers = Vec::new();
-    if summary.selected_profile == IntegrationProfile::Record {
-        if summary.unresolved_unrecorded_change_count > 0 {
-            let can_resolve_in_chat = user_channel_can_resolve_in_chat(Some(summary));
-            blockers.push(close_blocker_with_resolution(
-                CloseReadinessBlockerCategory::ConnectionCapability,
-                "unresolved_unrecorded_changes",
-                "Observed Product Repository changes still need reconciliation.",
-                can_resolve_in_chat,
-                !can_resolve_in_chat,
-                vec![task_ref.clone()],
-                vec![NextActionSummary {
-                    presentation_role: NextActionPresentationRole::Primary,
-                    action_kind: NextActionKind::ReconcileChanges,
-                    owner_method: Some(MethodName::ReconcileChanges),
-                    allowed_operation_categories: vec![
-                        OperationCategory::AgentWorkflow,
-                        OperationCategory::LocalRecovery,
-                    ],
-                    label:
-                        "Run reconciliation for observed Product Repository changes before close."
-                            .to_owned(),
-                    blocking_question: Some(
-                        "Does the user accept any remaining observed Product Repository change as intentional?"
-                            .to_owned(),
-                    ),
-                    expected_state_version: RequiredNullable::null(),
-                    required_refs: vec![task_ref],
-                }],
-            ));
-        }
-        return guard_blockers_with_control_surface(blockers, &summary.control_surface);
-    }
-    if let Some(blocker) = guard_installation_close_blocker(summary, &task_ref) {
-        blockers.push(blocker);
-    }
-    if summary.session_watch_status != SessionWatchStatus::Active
-        || summary.session_watch_partial_coverage_warning.is_some()
-    {
-        let message = if summary.session_watch_status == SessionWatchStatus::Active {
-            "Detective profile requires full Product Repository session-watch coverage."
-        } else {
-            "Detective profile requires an active Product Repository session watch."
-        };
-        blockers.push(close_blocker_with_resolution(
-            CloseReadinessBlockerCategory::ConnectionCapability,
-            "session_watch_unavailable",
-            message,
-            false,
-            true,
-            vec![task_ref.clone()],
-            vec![NextActionSummary {
-                presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::CloseTask,
-                owner_method: Some(MethodName::CloseTask),
-                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-                label: "Repair session watch outside this API, then retry volicord.close_task."
-                    .to_owned(),
-                blocking_question: None,
-                expected_state_version: RequiredNullable::null(),
-                required_refs: vec![task_ref.clone()],
-            }],
-        ));
-    }
-    if !summary.mcp_connection_healthy {
-        blockers.push(close_blocker_with_resolution(
-            CloseReadinessBlockerCategory::ConnectionCapability,
-            "guard_connection_unhealthy",
-            "Detective profile requires the Agent Connection to be healthy.",
-            false,
-            true,
-            vec![task_ref.clone()],
-            vec![NextActionSummary {
-                presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::CloseTask,
-                owner_method: Some(MethodName::CloseTask),
-                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-                label:
-                    "Repair Agent Connection health outside this API, then retry volicord.close_task."
-                        .to_owned(),
-                blocking_question: None,
-                expected_state_version: RequiredNullable::null(),
-                required_refs: vec![task_ref.clone()],
-            }],
-        ));
-    }
-    if summary.unresolved_unrecorded_change_count > 0 {
-        let can_resolve_in_chat = user_channel_can_resolve_in_chat(Some(summary));
-        blockers.push(close_blocker_with_resolution(
-            CloseReadinessBlockerCategory::ConnectionCapability,
-            "unresolved_unrecorded_changes",
-            "Observed Product Repository changes still need reconciliation.",
-            can_resolve_in_chat,
-            !can_resolve_in_chat,
-            vec![task_ref.clone()],
-            vec![NextActionSummary {
-                presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::ReconcileChanges,
-                owner_method: Some(MethodName::ReconcileChanges),
-                allowed_operation_categories: vec![
-                    OperationCategory::AgentWorkflow,
-                    OperationCategory::LocalRecovery,
-                ],
-                label: "Run reconciliation for observed Product Repository changes before close."
-                    .to_owned(),
-                blocking_question: Some(
-                    "Does the user accept any remaining observed Product Repository change as intentional?"
-                        .to_owned(),
-                ),
-                expected_state_version: RequiredNullable::null(),
-                required_refs: vec![task_ref.clone()],
-            }],
-        ));
-    }
-    if summary.missing_or_stale_write_ticket && context.task.mode != "advisor" {
-        blockers.push(close_blocker(
-            CloseReadinessBlockerCategory::WriteCompatibility,
-            "guard_write_ticket_missing_or_stale",
-            "Host hook events detected a missing or stale write ticket.",
-            vec![task_ref.clone()],
-            vec![NextActionSummary {
-                presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::PrepareWrite,
-                owner_method: Some(MethodName::PrepareWrite),
-                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-                label: "Refresh the write ticket before completing the Task.".to_owned(),
-                blocking_question: None,
-                expected_state_version: RequiredNullable::null(),
-                required_refs: vec![task_ref.clone()],
-            }],
-        ));
-    }
-    if summary.write_ticket_path_scope_violation {
-        blockers.push(close_blocker(
-            CloseReadinessBlockerCategory::WriteCompatibility,
-            "guard_write_ticket_path_scope_violation",
-            "Host hook events observed a Product Repository path outside the active write ticket scope.",
-            vec![task_ref.clone()],
-            vec![NextActionSummary {
-                presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::ReconcileChanges,
-                owner_method: Some(MethodName::ReconcileChanges),
-                allowed_operation_categories: vec![
-                    OperationCategory::AgentWorkflow,
-                    OperationCategory::LocalRecovery,
-                ],
-                label: "Reconcile the out-of-scope observed Product Repository change before completing the Task."
-                    .to_owned(),
-                blocking_question: Some(
-                    "Does the user accept the out-of-scope observed Product Repository change as intentional?"
-                        .to_owned(),
-                ),
-                expected_state_version: RequiredNullable::null(),
-                required_refs: vec![task_ref],
-            }],
-        ));
-    }
-    guard_blockers_with_control_surface(blockers, &summary.control_surface)
-}
-
-fn guard_blockers_with_control_surface(
-    mut blockers: Vec<CloseReadinessBlocker>,
-    control_surface: &ControlSurfaceSummary,
-) -> Vec<CloseReadinessBlocker> {
-    for blocker in &mut blockers {
-        blocker.control_surface = Some(control_surface.clone());
-    }
-    blockers
-}
-
-pub(super) fn user_channel_pending_action_instruction(
-    _guard_health: Option<&GuardHealthSummary>,
-) -> String {
-    "Use `volicord inbox` through the User Channel to list and resolve pending actions.".to_owned()
-}
-
-pub(super) fn user_channel_can_resolve_in_chat(_guard_health: Option<&GuardHealthSummary>) -> bool {
-    false
-}
-
-fn guard_installation_close_blocker(
-    summary: &GuardHealthSummary,
-    task_ref: &StateRecordRef,
-) -> Option<CloseReadinessBlocker> {
-    if summary.effective_guard_status == GuardEffectiveStatus::Active {
-        return None;
-    }
-    let host_kind = summary
-        .host_kind
-        .as_ref()
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "unknown".to_owned());
-    let missing_phases = if summary.missing_required_hook_phases.is_empty() {
-        "none".to_owned()
-    } else {
-        summary.missing_required_hook_phases.join(", ")
-    };
-    let observation_detail = format!(
-        "host_kind={host_kind}; observation_status={}; missing_required_hooks={missing_phases}",
-        summary.guard_observation_status.as_str()
-    );
-    let (code, message, label) = match summary.guard_configuration_status {
-        GuardConfigurationStatus::Absent => (
-            "guard_not_installed",
-            format!("Detective profile requires a recorded host-hook installation ({observation_detail})."),
-            format!("Install the detective profile hook integration for host {host_kind} before completing the Task."),
-        ),
-        GuardConfigurationStatus::ReloadRequired => (
-            "guard_reload_required",
-            format!("Host-hook files are installed, but the host has not reloaded them ({observation_detail})."),
-            format!("Restart or reload host {host_kind} so it loads the Volicord host hooks."),
-        ),
-        GuardConfigurationStatus::Configured
-            if summary.guard_observation_status == GuardObservationStatus::StaleObservation =>
-        {
-            (
-                "guard_not_observed",
-                format!("Host-hook files are configured, but the latest observation does not match the current installation ({observation_detail})."),
-                format!("Run a current host hook for host {host_kind} before completing the Task."),
-            )
-        }
-        GuardConfigurationStatus::Configured => (
-            "guard_not_observed",
-            format!("Host-hook files are configured, but no matching host hook has been observed ({observation_detail})."),
-            format!("Start or reload host {host_kind} and let the Volicord host hook run before close."),
-        ),
-        GuardConfigurationStatus::Stale => (
-            "guard_stale",
-            format!("Detective profile health is stale for this close path ({observation_detail})."),
-            format!("Refresh or reinstall the detective profile hook integration for host {host_kind} before completing the Task."),
-        ),
-        GuardConfigurationStatus::Broken => (
-            "guard_broken",
-            format!("Detective profile health is broken for this close path ({observation_detail})."),
-            format!("Repair the detective profile hook integration for host {host_kind} before completing the Task."),
-        ),
-        GuardConfigurationStatus::Degraded if !summary.missing_required_hook_phases.is_empty() => (
-            "guard_required_hooks_missing",
-            format!("Detective profile configuration is missing required hook phases for this close path ({observation_detail})."),
-            format!("Install required host hook phases for host {host_kind}: {missing_phases}."),
-        ),
-        GuardConfigurationStatus::Degraded => (
-            "guard_degraded",
-            format!("Detective profile health is degraded and blocks close ({observation_detail})."),
-            format!("Repair degraded detective profile health for host {host_kind} before completing the Task."),
-        ),
-    };
-    Some(close_blocker_with_resolution(
+    Ok(vec![close_blocker(
         CloseReadinessBlockerCategory::ConnectionCapability,
-        code,
-        message,
-        false,
-        true,
+        "unresolved_unrecorded_changes",
+        "Observed Product Repository changes still need reconciliation.",
         vec![task_ref.clone()],
         vec![NextActionSummary {
             presentation_role: NextActionPresentationRole::Primary,
-            action_kind: NextActionKind::CloseTask,
-            owner_method: Some(MethodName::CloseTask),
-            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-            label: format!(
-                "{label} The repair is outside this API; then retry volicord.close_task."
+            action_kind: NextActionKind::ReconcileChanges,
+            owner_method: Some(MethodName::ReconcileChanges),
+            allowed_operation_categories: vec![
+                OperationCategory::AgentWorkflow,
+                OperationCategory::LocalRecovery,
+            ],
+            label: "Run reconciliation for observed Product Repository changes before close."
+                .to_owned(),
+            blocking_question: Some(
+                "Does the user accept any remaining observed Product Repository change as intentional?"
+                    .to_owned(),
             ),
-            blocking_question: None,
             expected_state_version: RequiredNullable::null(),
-            required_refs: vec![task_ref.clone()],
+            required_refs: vec![task_ref],
         }],
-    ))
+    )])
+}
+
+fn unresolved_unrecorded_changes(
+    store: &CoreProjectStore,
+    request: &CloseTaskPlanRequest,
+    context: &CloseTaskContext,
+) -> Result<Vec<UnrecordedChangeRecord>, PlanError> {
+    let unresolved = volicord_store::guards::list_unresolved_unrecorded_changes(
+        store.runtime_home(),
+        request.envelope.project_id.as_str(),
+        None,
+    )
+    .map_err(CorePipelineError::from)
+    .map_err(PlanError::Core)?;
+    Ok(unresolved
+        .into_iter()
+        .filter(|record| {
+            !context
+                .projected_resolved_unrecorded_change_ids
+                .contains(&record.unrecorded_change_id)
+        })
+        .collect())
+}
+
+pub(super) fn user_channel_pending_action_instruction() -> String {
+    "Use `volicord inbox` through the User Channel to list and resolve pending actions.".to_owned()
 }
 
 fn terminal_close_blockers(
@@ -3088,9 +1454,7 @@ fn terminal_close_blockers(
                         owner_method: Some(MethodName::ResolveUserAction),
                         allowed_operation_categories: vec![OperationCategory::UserOnly],
                         label: "Resolve pending user actions through the User Channel.".to_owned(),
-                        blocking_question: Some(user_channel_pending_action_instruction(
-                            context.guard_health.as_ref(),
-                        )),
+                        blocking_question: Some(user_channel_pending_action_instruction()),
                         expected_state_version: RequiredNullable::null(),
                         required_refs: pending_refs,
                     }],
@@ -3503,9 +1867,7 @@ fn completion_close_blockers(
                 owner_method: Some(MethodName::ResolveUserAction),
                 allowed_operation_categories: vec![OperationCategory::UserOnly],
                 label: "Resolve pending user actions through the User Channel.".to_owned(),
-                blocking_question: Some(user_channel_pending_action_instruction(
-                    context.guard_health.as_ref(),
-                )),
+                blocking_question: Some(user_channel_pending_action_instruction()),
                 expected_state_version: RequiredNullable::null(),
                 required_refs: close_complete_pending_refs,
             }],
@@ -4306,8 +2668,7 @@ fn close_evidence_issue_for_item(
             }
             if matches!(
                 observation.producer_anchor.producer_kind,
-                EvidenceProducerKind::RegisteredConnectionObservation
-                    | EvidenceProducerKind::VerifiedToolInvocation
+                EvidenceProducerKind::VerifiedToolInvocation
                     | EvidenceProducerKind::VerifiedCommandExecution
             ) && observation.relevance_assessment.status != EvidenceRelevanceStatus::Supported
             {
@@ -4764,10 +3125,7 @@ fn light_completion_without_acceptance_allowed(
         .any(|risk| risk.acceptance_required)
         || !close_basis.sensitive_categories.is_empty()
         || !close_basis.sensitive_action_requirements.is_empty()
-        || context
-            .guard_health
-            .as_ref()
-            .is_some_and(|health| health.unresolved_unrecorded_change_count > 0)
+        || !unresolved_unrecorded_changes(store, request, context)?.is_empty()
     {
         return Ok(false);
     }
@@ -5054,167 +3412,4 @@ fn task_ref_for_close(request: &CloseTaskPlanRequest, state_version: u64) -> Sta
         Some(&request.task_id),
         Some(state_version),
     )
-}
-
-#[cfg(test)]
-mod hook_command_classification_tests {
-    use super::*;
-
-    fn managed_wrapper_file(command: &str, phase: &str, purpose: &str) -> Value {
-        serde_json::json!({
-            "managed_marker": HOOK_WRAPPER_MARKER,
-            "executable_required": false,
-            "managed_script_command": command,
-            "host_kind": "codex",
-            "phase": phase,
-            "purpose": purpose,
-            "connection_id": "connection_test",
-            "guard_installation_id": "guard_test",
-            "policy_hash": "sha256:test",
-            "host_output": "codex"
-        })
-    }
-
-    fn managed_wrapper_text(
-        command: &str,
-        phase: &str,
-        purpose: &str,
-        runtime_home_assignment: &str,
-        binding_assignment: &str,
-    ) -> String {
-        format!(
-            "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind=codex\n# phase={phase}\n# purpose={purpose}\n# connection_id=connection_test\n# guard_installation_id=guard_test\n# policy_hash=sha256:test\n# host_output=codex\n# runtime_home_binding=selected_init_runtime_home\n{runtime_home_assignment}\n{binding_assignment}\nexport VOLICORD_HOME\nexport {MANAGED_PROCESS_BINDING_ENV}\nexec {command}\n"
-        )
-    }
-
-    fn detective_command(executable: &str) -> String {
-        format!(
-            "{executable} _hook pre-tool --repo /repo --connection connection_test --guard-installation guard_test --host codex --integration-profile detective --policy-hash sha256:test --host-output codex"
-        )
-    }
-
-    #[test]
-    fn direct_hook_commands_use_the_hidden_internal_namespace() {
-        let no_args = Vec::new();
-
-        for host_kind in ["codex", "claude_code"] {
-            assert_eq!(
-                classify_hook_command_path(
-                    host_kind,
-                    "pre-tool",
-                    "volicord _hook pre-tool",
-                    &no_args,
-                    "",
-                    "",
-                ),
-                "ok"
-            );
-            assert_ne!(
-                classify_hook_command_path(
-                    host_kind,
-                    "pre-tool",
-                    "volicord host-hook pre-tool",
-                    &no_args,
-                    "",
-                    "",
-                ),
-                "ok"
-            );
-        }
-    }
-
-    #[test]
-    fn matching_pre_binding_wrapper_and_capability_are_not_generated_config() {
-        let command = detective_command("/opt/volicord");
-        let text = format!(
-            "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind=codex\n# phase=pre_tool\n# purpose=detective_guard\n# connection_id=connection_test\n# guard_installation_id=guard_test\n# policy_hash=sha256:test\n# host_output=codex\nexec {command}\n"
-        );
-        let file = managed_wrapper_file(&command, "pre_tool", "detective_guard");
-
-        assert!(!generated_script_verified(
-            &file,
-            &text,
-            &sha256_text(&text)
-        ));
-    }
-
-    #[test]
-    fn current_binding_accepts_quoted_absolute_profile_command_and_runtime_home() {
-        let command = detective_command("'/opt/selected build/volicord'\\''s binary'");
-        let text = managed_wrapper_text(
-            &command,
-            "pre_tool",
-            "detective_guard",
-            "VOLICORD_HOME='/runtime home/clone'\\''s data'",
-            "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
-        );
-        let file = managed_wrapper_file(&command, "pre_tool", "detective_guard");
-
-        assert!(generated_script_verified(&file, &text, &sha256_text(&text)));
-    }
-
-    #[test]
-    fn current_binding_rejects_relative_home_command_and_wrong_marker() {
-        let absolute_command = detective_command("/opt/volicord");
-        let relative_command = detective_command("volicord");
-        for (command, home, marker) in [
-            (
-                absolute_command.as_str(),
-                "VOLICORD_HOME=relative/home",
-                "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
-            ),
-            (
-                relative_command.as_str(),
-                "VOLICORD_HOME=/runtime/home",
-                "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
-            ),
-            (
-                absolute_command.as_str(),
-                "VOLICORD_HOME=/runtime/home",
-                "VOLICORD_MANAGED_PROCESS_BINDING=wrong-version",
-            ),
-        ] {
-            let text = managed_wrapper_text(command, "pre_tool", "detective_guard", home, marker);
-            let file = managed_wrapper_file(command, "pre_tool", "detective_guard");
-            assert!(!generated_script_verified(
-                &file,
-                &text,
-                &sha256_text(&text)
-            ));
-        }
-    }
-
-    #[test]
-    fn current_binding_rejects_capability_phase_alias_as_file_phase() {
-        let command = detective_command("/opt/volicord");
-        let text = managed_wrapper_text(
-            &command,
-            "pre_tool_hook",
-            "detective_guard",
-            "VOLICORD_HOME=/runtime/home",
-            "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
-        );
-        let file = managed_wrapper_file(&command, "pre_tool_hook", "detective_guard");
-
-        assert!(!generated_script_verified(
-            &file,
-            &text,
-            &sha256_text(&text)
-        ));
-    }
-
-    #[test]
-    fn current_binding_accepts_final_output_wrapper_shape() {
-        let command = "/opt/volicord _final-output --repo /repo --connection connection_test --guard-installation guard_test --host codex --integration-profile record --policy-hash sha256:test --host-output codex";
-        let text = managed_wrapper_text(
-            command,
-            "stop",
-            "final_output_authority_disclosure",
-            "VOLICORD_HOME=/runtime/home",
-            "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
-        );
-        let file = managed_wrapper_file(command, "stop", "final_output_authority_disclosure");
-
-        assert!(generated_script_verified(&file, &text, &sha256_text(&text)));
-    }
 }

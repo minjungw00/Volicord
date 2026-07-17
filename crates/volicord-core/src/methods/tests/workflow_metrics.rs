@@ -4,11 +4,15 @@ use volicord_store::diagnostics::{
     DiagnosticSessionStart, DiagnosticTransport, WorkflowMetricAggregateRow,
 };
 
-fn start_metrics_session(harness: &MethodHarness, session_id: &str) -> Result<(), Box<dyn Error>> {
+fn start_metrics_session(
+    harness: &MethodHarness,
+    native_session_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    let session_id = volicord_types::managed_stdio_session_id(CONNECTION_ID, native_session_id)?;
     start_diagnostic_session(
         &harness.runtime_home_path,
         DiagnosticSessionStart {
-            session_id,
+            session_id: &session_id,
             connection_id: Some(CONNECTION_ID),
             project_id: Some(PROJECT_ID),
             transport: DiagnosticTransport::McpStdio,
@@ -17,7 +21,7 @@ fn start_metrics_session(harness: &MethodHarness, session_id: &str) -> Result<()
             build_id: "core-workflow-metrics-test",
         },
     )?;
-    Ok(())
+    Ok(session_id)
 }
 
 fn metric_total(rows: &[WorkflowMetricAggregateRow], kind: &str) -> u64 {
@@ -39,8 +43,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
     harness.use_clock(clock.clone());
-    let session_id = "session_core_write_metrics";
-    start_metrics_session(&harness, session_id)?;
+    let session_id = start_metrics_session(&harness, "session_core_write_metrics")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "core_write_metrics")?;
 
     let issued = harness.service.prepare_write(
@@ -51,7 +54,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
             Some(&task_id),
             Some(&change_unit_id),
         ),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(issued.response_value["write_ticket_effect"], "issued");
     let ticket_id = response_record_id(&issued.response_value, "write_ticket_ref");
@@ -64,7 +67,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
             Some(&task_id),
             Some(&change_unit_id),
         ),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(reused.response_value["write_ticket_effect"], "reused");
 
@@ -96,7 +99,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     );
     let first_run = harness.service.record_run(
         run_request.clone(),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(
         first_run.response_value["base"]["effect_kind"],
@@ -104,7 +107,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     );
     let replayed_run = harness.service.record_run(
         run_request,
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert!(replayed_run.replayed);
 
@@ -117,12 +120,12 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     );
     let reissued = harness.service.prepare_write(
         reissue_request.clone(),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(reissued.response_value["write_ticket_effect"], "issued");
     let replayed_reissue = harness.service.prepare_write(
         reissue_request,
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert!(replayed_reissue.replayed);
 
@@ -134,7 +137,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
             &task_id,
             Vec::new(),
         ),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(
         reconciled.response_value["resolved_changes"][0]["resolution_basis"],
@@ -166,8 +169,7 @@ fn first_write_metric_stays_pending_without_an_actual_write_timestamp() -> Resul
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
     harness.use_clock(clock.clone());
-    let session_id = "session_core_write_metric_pending";
-    start_metrics_session(&harness, session_id)?;
+    let session_id = start_metrics_session(&harness, "session_core_write_metric_pending")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "core_write_metric_pending")?;
     let issued = harness.service.prepare_write(
@@ -178,7 +180,7 @@ fn first_write_metric_stays_pending_without_an_actual_write_timestamp() -> Resul
             Some(&task_id),
             Some(&change_unit_id),
         ),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     let ticket_id = response_record_id(&issued.response_value, "write_ticket_ref");
     clock.advance(Duration::seconds(30));
@@ -193,7 +195,7 @@ fn first_write_metric_stays_pending_without_an_actual_write_timestamp() -> Resul
             &ticket_id,
             "run_core_write_metric_pending",
         ),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(
         recorded.response_value["base"]["effect_kind"],
@@ -213,8 +215,7 @@ fn terminal_task_duration_metric_is_not_replayed() -> Result<(), Box<dyn Error>>
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
     harness.use_clock(clock.clone());
-    let session_id = "session_core_close_metrics";
-    start_metrics_session(&harness, session_id)?;
+    let session_id = start_metrics_session(&harness, "session_core_close_metrics")?;
     let (task_id, _change_unit_id, state_version) =
         create_close_ready_task(&harness, "core_close_metrics")?;
     clock.advance(Duration::seconds(5));
@@ -231,12 +232,12 @@ fn terminal_task_duration_metric_is_not_replayed() -> Result<(), Box<dyn Error>>
 
     let closed = harness.service.close_task(
         request.clone(),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(closed.response_value["close_state"], "closed");
     let replayed = harness.service.close_task(
         request,
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert!(replayed.replayed);
 
@@ -248,8 +249,7 @@ fn terminal_task_duration_metric_is_not_replayed() -> Result<(), Box<dyn Error>>
 #[test]
 fn user_roundtrip_metric_counts_one_committed_resolution() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let session_id = "session_core_user_roundtrip";
-    start_metrics_session(&harness, session_id)?;
+    let session_id = start_metrics_session(&harness, "session_core_user_roundtrip")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "core_user_roundtrip")?;
     let pending = harness.service.request_user_action(
         user_action_request(
@@ -275,7 +275,7 @@ fn user_roundtrip_metric_counts_one_committed_resolution() -> Result<(), Box<dyn
 
     let resolved = harness.service.resolve_user_action(
         resolution.clone(),
-        invocation_with_session(OperationCategory::UserOnly, session_id),
+        invocation_with_session(OperationCategory::UserOnly, &session_id),
     )?;
     assert!(!resolved.replayed);
     assert_eq!(
@@ -287,11 +287,11 @@ fn user_roundtrip_metric_counts_one_committed_resolution() -> Result<(), Box<dyn
             .verified_invocation
             .as_ref()
             .and_then(|invocation| invocation.session_id.as_deref()),
-        Some(session_id)
+        Some(session_id.as_str())
     );
     let replayed = harness.service.resolve_user_action(
         resolution,
-        invocation_with_session(OperationCategory::UserOnly, session_id),
+        invocation_with_session(OperationCategory::UserOnly, &session_id),
     )?;
     assert!(replayed.replayed);
 
@@ -303,15 +303,8 @@ fn user_roundtrip_metric_counts_one_committed_resolution() -> Result<(), Box<dyn
 #[test]
 fn confirmed_invalid_observation_records_one_false_positive() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let session_id = "session_core_reconcile_metrics";
-    start_metrics_session(&harness, session_id)?;
-    record_guard_installation(
-        &harness,
-        "core_reconcile_metrics",
-        "detective",
-        "active",
-        "{}",
-    )?;
+    let session_id = start_metrics_session(&harness, "session_core_reconcile_metrics")?;
+    record_guard_installation(&harness, "core_reconcile_metrics", "record", "active", "{}")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "core_reconcile_metrics")?;
     insert_guarded_unrecorded_change_with_paths(
         &harness,
@@ -329,7 +322,7 @@ fn confirmed_invalid_observation_records_one_false_positive() -> Result<(), Box<
 
     let reconciled = harness.service.reconcile_changes(
         request.clone(),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(
         reconciled.response_value["resolved_changes"][0]["resolution_basis"],
@@ -337,7 +330,7 @@ fn confirmed_invalid_observation_records_one_false_positive() -> Result<(), Box<
     );
     let replayed = harness.service.reconcile_changes(
         request,
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert!(replayed.replayed);
 
@@ -352,8 +345,7 @@ fn confirmed_invalid_observation_records_one_false_positive() -> Result<(), Box<
 #[test]
 fn explicit_sensitive_approval_block_is_counted_once() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let session_id = "session_core_sensitive_block";
-    start_metrics_session(&harness, session_id)?;
+    let session_id = start_metrics_session(&harness, "session_core_sensitive_block")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "core_sensitive_block")?;
     let mut request = prepare_write_request(
         "req_core_sensitive_block",
@@ -366,12 +358,12 @@ fn explicit_sensitive_approval_block_is_counted_once() -> Result<(), Box<dyn Err
 
     let blocked = harness.service.prepare_write(
         request.clone(),
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert_eq!(blocked.response_value["decision"], "approval_required");
     let replayed = harness.service.prepare_write(
         request,
-        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+        invocation_with_session(OperationCategory::AgentWorkflow, &session_id),
     )?;
     assert!(replayed.replayed);
 

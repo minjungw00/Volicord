@@ -38,6 +38,7 @@ fn advisor_current_change_unit_next_action_is_record_run() -> Result<(), Box<dyn
     let status = harness.service.status(
         StatusRequest {
             envelope: envelope("req_advisor_next_status", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: StatusInclude {
                 task: true,
                 ..status_include()
@@ -111,7 +112,7 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
     );
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.change_units, before.change_units + 1);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(active_current_change_units(&harness, &task_id)?, 1);
     let revision = task_revision(&harness, &task_id)?;
@@ -259,7 +260,7 @@ fn material_scope_change_increments_revision_and_invalidates_basis() -> Result<(
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let after = task_revision(&harness, &task_id)?;
-    let (_, event_payload, _) = latest_task_event(&harness)?;
+    let (_, event_payload, _) = latest_authority_event(&harness)?;
 
     assert_eq!(response.response_value["base"]["state_version"], 4);
     assert_eq!(after.scope_revision, before.scope_revision + 1);
@@ -326,7 +327,7 @@ fn semantic_noop_scope_update_does_not_increment_revisions() -> Result<(), Box<d
         .service
         .update_scope(request, invocation(OperationCategory::AgentWorkflow))?;
     let after = task_revision(&harness, &task_id)?;
-    let (_, event_payload, _) = latest_task_event(&harness)?;
+    let (_, event_payload, _) = latest_authority_event(&harness)?;
 
     assert_eq!(response.response_value["base"]["state_version"], 3);
     assert_eq!(after.scope_revision, before.scope_revision);
@@ -545,6 +546,7 @@ fn criterion_replacement_preserves_identity_order_and_retires_omissions(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),

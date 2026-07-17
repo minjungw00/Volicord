@@ -1,28 +1,26 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     path::{Path, PathBuf},
 };
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 use volicord_types::{GuardInstallationStatus, IntegrationProfile};
+use volicord_types::{HostSetupUserAction, PERSISTED_USER_ACTIONS_CORRUPT_REASON};
 
 use crate::{
     agent_connections::{
-        CONNECTION_INTENT_GLOBAL, CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED,
-        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CLAUDE_CODE,
-        HOST_KIND_CODEX, HOST_KIND_GENERIC, HOST_SCOPE_EXPORT, HOST_SCOPE_LOCAL,
-        HOST_SCOPE_PROJECT, HOST_SCOPE_USER, VERIFIED_STATUS_ACTION_REQUIRED,
-        VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED, VERIFIED_STATUS_NOT_VERIFIED,
+        CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
+        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
+        VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
+        VERIFIED_STATUS_NOT_VERIFIED,
     },
     bootstrap::{validate_project_record_for_execution, ProjectRecord},
-    host_capabilities::{
-        validate_stored_bounded_text, validate_stored_record,
-        validate_unique_newest_host_capability_pointer, HostCapabilityVerificationRecord,
-        HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+    schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND},
+    sqlite::{
+        open_read_only_database, registry_db_path, validate_persisted_manifest,
+        validate_project_state_schema, validate_registry_schema,
     },
-    schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND, STORAGE_PROFILE},
-    sqlite::{open_read_only_database, registry_db_path, validate_project_state_schema},
     StoreError,
 };
 
@@ -125,14 +123,6 @@ pub struct ConnectionProjectInspectionRecord {
     pub project_internal_id: String,
     pub project_id: String,
     pub created_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct HostCapabilityStateInspectionRecord {
-    connection_internal_id: String,
-    capability: String,
-    current_verification_internal_id: String,
-    updated_at: String,
 }
 
 /// Guard installation row read from the current registry schema.
@@ -248,8 +238,8 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
         Err(error) => return unreadable(path, error),
     };
 
-    if let Err(issue) = validate_registry_required_schema(&conn) {
-        return issue.into_database_inspection(path);
+    if let Err(error) = validate_registry_schema(&conn) {
+        return project_state_validation_issue(error).into_database_inspection(path);
     }
 
     let runtime_home_record = match read_runtime_home_record(&conn) {
@@ -308,19 +298,6 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
             Ok(records) => records,
             Err(issue) => return issue.into_database_inspection(path),
         };
-    let host_capability_verifications =
-        match read_host_capability_verification_rows(&conn, &agent_connections) {
-            Ok(records) => records,
-            Err(issue) => return issue.into_database_inspection(path),
-        };
-    let _host_capability_states = match read_host_capability_state_rows(
-        &conn,
-        &agent_connections,
-        &host_capability_verifications,
-    ) {
-        Ok(records) => records,
-        Err(issue) => return issue.into_database_inspection(path),
-    };
     let guard_installations =
         match read_guard_installation_rows(&conn, &agent_connections, &projects) {
             Ok(records) => records,
@@ -442,262 +419,6 @@ fn unreadable<T>(path: &Path, error: impl ToString) -> DatabaseInspection<T> {
         path: path.to_path_buf(),
         detail: error.to_string(),
     }
-}
-
-fn validate_registry_required_schema(conn: &Connection) -> Result<(), InspectionIssue> {
-    reject_table(conn, REGISTRY_DATABASE_KIND, "schema_migrations")?;
-    require_tables(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        &[
-            "runtime_home",
-            "installation_profile",
-            "projects",
-            "project_aliases",
-            "agent_connections",
-            "connection_projects",
-            "host_capability_verifications",
-            "host_capability_state",
-            "guard_installations",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "runtime_home",
-        &[
-            "singleton_id",
-            "runtime_home_id",
-            "runtime_home_path",
-            "registry_db_path",
-            "storage_profile",
-            "metadata_json",
-            "created_at",
-            "updated_at",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "host_capability_verifications",
-        &[
-            "verification_internal_id",
-            "connection_internal_id",
-            "capability",
-            "outcome",
-            "host_kind",
-            "host_version",
-            "client_name",
-            "client_version",
-            "adapter_profile",
-            "adapter_version",
-            "managed_fingerprint",
-            "volicord_build_id",
-            "source_revision",
-            "target_triple",
-            "executable_sha256",
-            "evidence_artifact_sha256",
-            "observed_at",
-            "expires_at",
-            "metadata_json",
-            "created_at",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "host_capability_state",
-        &[
-            "connection_internal_id",
-            "capability",
-            "current_verification_internal_id",
-            "updated_at",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "installation_profile",
-        &[
-            "installation_id",
-            "runtime_home_id",
-            "volicord_command",
-            "volicord_mcp_command",
-            "bin_dir",
-            "default_connection_mode",
-            "metadata_json",
-            "created_at",
-            "updated_at",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "projects",
-        &[
-            "project_internal_id",
-            "project_name",
-            "project_alias",
-            "runtime_home_id",
-            "repo_root",
-            "project_home",
-            "state_db_path",
-            "status",
-            "metadata_json",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "project_aliases",
-        &["alias", "project_internal_id", "created_at"],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "agent_connections",
-        &[
-            "connection_internal_id",
-            "host_kind",
-            "intent",
-            "host_scope",
-            "project_internal_id",
-            "server_name",
-            "config_target",
-            "mode",
-            "enabled",
-            "managed_fingerprint",
-            "last_verification_status",
-            "last_verification_report_json",
-            "last_user_actions_json",
-            "created_at",
-            "updated_at",
-            "metadata_json",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "connection_projects",
-        &[
-            "connection_internal_id",
-            "project_internal_id",
-            "created_at",
-        ],
-    )?;
-    require_columns(
-        conn,
-        REGISTRY_DATABASE_KIND,
-        "guard_installations",
-        &[
-            "guard_installation_id",
-            "runtime_home_id",
-            "connection_internal_id",
-            "project_internal_id",
-            "host_kind",
-            "guard_mode",
-            "host_capability_json",
-            "installation_status",
-            "installed_at",
-            "last_checked_at",
-            "first_seen_at",
-            "last_seen_at",
-            "last_seen_phase",
-            "observed_host_kind",
-            "observed_policy_hash",
-            "observed_binary_version",
-            "metadata_json",
-            "created_at",
-            "updated_at",
-        ],
-    )?;
-    Ok(())
-}
-
-fn require_tables(
-    conn: &Connection,
-    database_kind: &'static str,
-    tables: &[&str],
-) -> Result<(), InspectionIssue> {
-    for table in tables {
-        require_table(conn, database_kind, table)?;
-    }
-    Ok(())
-}
-
-fn require_table(
-    conn: &Connection,
-    database_kind: &'static str,
-    table: &str,
-) -> Result<(), InspectionIssue> {
-    if sqlite_object_exists(conn, "table", table)? {
-        Ok(())
-    } else {
-        Err(InspectionIssue::Malformed(format!(
-            "{database_kind} missing table {table}"
-        )))
-    }
-}
-
-fn reject_table(
-    conn: &Connection,
-    database_kind: &'static str,
-    table: &str,
-) -> Result<(), InspectionIssue> {
-    if sqlite_object_exists(conn, "table", table)? {
-        Err(InspectionIssue::Malformed(format!(
-            "{database_kind} has legacy table {table}; recreate the Runtime Home"
-        )))
-    } else {
-        Ok(())
-    }
-}
-
-fn require_columns(
-    conn: &Connection,
-    database_kind: &'static str,
-    table: &str,
-    columns: &[&str],
-) -> Result<(), InspectionIssue> {
-    for column in columns {
-        if !column_exists(conn, table, column)? {
-            return Err(InspectionIssue::Malformed(format!(
-                "{database_kind} missing column {table}.{column}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn sqlite_object_exists(
-    conn: &Connection,
-    object_type: &str,
-    name: &str,
-) -> Result<bool, InspectionIssue> {
-    conn.query_row(
-        "SELECT COUNT(*)
-           FROM sqlite_master
-          WHERE type = ?1 AND name = ?2",
-        params![object_type, name],
-        |row| Ok(row.get::<_, i64>(0)? > 0),
-    )
-    .map_err(sqlite_unreadable)
-}
-
-fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, InspectionIssue> {
-    let escaped_table = table.replace('"', "\"\"");
-    let sql = format!("PRAGMA table_info(\"{escaped_table}\")");
-    let mut stmt = conn.prepare(&sql).map_err(sqlite_unreadable)?;
-    let mut rows = stmt.query([]).map_err(sqlite_unreadable)?;
-    while let Some(row) = rows.next().map_err(sqlite_unreadable)? {
-        let name = row.get::<_, String>(1).map_err(|error| {
-            InspectionIssue::Malformed(format!("could not decode {table} column info: {error}"))
-        })?;
-        if name == column {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn read_runtime_home_record(
@@ -1012,223 +733,6 @@ fn read_connection_project_rows(
     Ok(memberships)
 }
 
-fn read_host_capability_verification_rows(
-    conn: &Connection,
-    connections: &[AgentConnectionInspectionRecord],
-) -> Result<Vec<HostCapabilityVerificationRecord>, InspectionIssue> {
-    let connection_ids = connections
-        .iter()
-        .map(|record| record.connection_internal_id.as_str())
-        .collect::<BTreeSet<_>>();
-    let mut stmt = conn
-        .prepare(
-            "SELECT
-                verification_internal_id,
-                connection_internal_id,
-                capability,
-                outcome,
-                host_kind,
-                host_version,
-                client_name,
-                client_version,
-                adapter_profile,
-                adapter_version,
-                managed_fingerprint,
-                volicord_build_id,
-                source_revision,
-                target_triple,
-                executable_sha256,
-                evidence_artifact_sha256,
-                observed_at,
-                expires_at,
-                metadata_json,
-                created_at
-             FROM host_capability_verifications
-             ORDER BY connection_internal_id, capability, observed_at,
-                      verification_internal_id",
-        )
-        .map_err(sqlite_unreadable)?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(HostCapabilityVerificationRecord {
-                verification_internal_id: row.get(0)?,
-                connection_internal_id: row.get(1)?,
-                capability: row.get(2)?,
-                outcome: row.get(3)?,
-                host_kind: row.get(4)?,
-                host_version: row.get(5)?,
-                client_name: row.get(6)?,
-                client_version: row.get(7)?,
-                adapter_profile: row.get(8)?,
-                adapter_version: row.get(9)?,
-                managed_fingerprint: row.get(10)?,
-                volicord_build_id: row.get(11)?,
-                source_revision: row.get(12)?,
-                target_triple: row.get(13)?,
-                executable_sha256: row.get(14)?,
-                evidence_artifact_sha256: row.get(15)?,
-                observed_at: row.get(16)?,
-                expires_at: row.get(17)?,
-                metadata_json: row.get(18)?,
-                created_at: row.get(19)?,
-            })
-        })
-        .map_err(sqlite_unreadable)?;
-
-    let mut records = Vec::new();
-    for row in rows {
-        let record = row.map_err(registration_decode_error)?;
-        validate_stored_record(&record)
-            .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
-        if !connection_ids.contains(record.connection_internal_id.as_str()) {
-            return Err(InspectionIssue::Malformed(format!(
-                "host_capability_verifications references missing connection_internal_id {}",
-                record.connection_internal_id
-            )));
-        }
-        records.push(record);
-    }
-    Ok(records)
-}
-
-fn read_host_capability_state_rows(
-    conn: &Connection,
-    connections: &[AgentConnectionInspectionRecord],
-    verifications: &[HostCapabilityVerificationRecord],
-) -> Result<Vec<HostCapabilityStateInspectionRecord>, InspectionIssue> {
-    let connection_ids = connections
-        .iter()
-        .map(|record| record.connection_internal_id.as_str())
-        .collect::<BTreeSet<_>>();
-    let verification_by_key = verifications
-        .iter()
-        .map(|record| {
-            (
-                (
-                    record.connection_internal_id.as_str(),
-                    record.capability.as_str(),
-                    record.verification_internal_id.as_str(),
-                ),
-                record,
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let mut observations_by_scope = BTreeMap::<(&str, &str), Vec<(&str, &str)>>::new();
-    for verification in verifications {
-        observations_by_scope
-            .entry((
-                verification.connection_internal_id.as_str(),
-                verification.capability.as_str(),
-            ))
-            .or_default()
-            .push((
-                verification.verification_internal_id.as_str(),
-                verification.observed_at.as_str(),
-            ));
-    }
-    let mut stmt = conn
-        .prepare(
-            "SELECT
-                connection_internal_id,
-                capability,
-                current_verification_internal_id,
-                updated_at
-             FROM host_capability_state
-             ORDER BY connection_internal_id, capability",
-        )
-        .map_err(sqlite_unreadable)?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(HostCapabilityStateInspectionRecord {
-                connection_internal_id: row.get(0)?,
-                capability: row.get(1)?,
-                current_verification_internal_id: row.get(2)?,
-                updated_at: row.get(3)?,
-            })
-        })
-        .map_err(sqlite_unreadable)?;
-
-    let mut records = Vec::new();
-    let mut state_scopes = BTreeSet::new();
-    for row in rows {
-        let record = row.map_err(registration_decode_error)?;
-        validate_stored_bounded_text(
-            "host_capability_state.connection_internal_id",
-            &record.connection_internal_id,
-        )
-        .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
-        if record.capability != HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE {
-            return Err(InspectionIssue::Malformed(
-                "host_capability_state.capability is outside the supported value set".to_owned(),
-            ));
-        }
-        validate_stored_bounded_text(
-            "host_capability_state.current_verification_internal_id",
-            &record.current_verification_internal_id,
-        )
-        .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
-        if !connection_ids.contains(record.connection_internal_id.as_str()) {
-            return Err(InspectionIssue::Malformed(format!(
-                "host_capability_state references missing connection_internal_id {}",
-                record.connection_internal_id
-            )));
-        }
-        let verification = verification_by_key
-            .get(&(
-                record.connection_internal_id.as_str(),
-                record.capability.as_str(),
-                record.current_verification_internal_id.as_str(),
-            ))
-            .ok_or_else(|| {
-                InspectionIssue::Malformed(format!(
-                    "host_capability_state references missing verification_internal_id {}",
-                    record.current_verification_internal_id
-                ))
-            })?;
-        if record.updated_at != verification.created_at {
-            return Err(InspectionIssue::Malformed(format!(
-                "host_capability_state.updated_at does not match verification {} created_at",
-                record.current_verification_internal_id
-            )));
-        }
-        let scope = (
-            record.connection_internal_id.as_str(),
-            record.capability.as_str(),
-        );
-        let observations = observations_by_scope.get(&scope).ok_or_else(|| {
-            InspectionIssue::Malformed(
-                "host_capability_state has no matching verification history".to_owned(),
-            )
-        })?;
-        validate_unique_newest_host_capability_pointer(
-            observations.iter().copied(),
-            &record.current_verification_internal_id,
-        )
-        .map_err(|_| {
-            InspectionIssue::Malformed(
-                "host_capability_state.current_verification_internal_id does not reference the unique newest observation"
-                    .to_owned(),
-            )
-        })?;
-        state_scopes.insert((
-            record.connection_internal_id.clone(),
-            record.capability.clone(),
-        ));
-        records.push(record);
-    }
-    for verification in verifications {
-        if !state_scopes.contains(&(
-            verification.connection_internal_id.clone(),
-            verification.capability.clone(),
-        )) {
-            return Err(InspectionIssue::Malformed(
-                "host-capability verification history has no current state pointer".to_owned(),
-            ));
-        }
-    }
-    Ok(records)
-}
-
 fn read_guard_installation_rows(
     conn: &Connection,
     connections: &[AgentConnectionInspectionRecord],
@@ -1379,9 +883,13 @@ fn validate_agent_connection_row(
         "agent_connections.last_verification_report_json",
         &connection.last_verification_report_json,
     )?;
-    validate_json_array(
-        "agent_connections.last_user_actions_json",
-        &connection.last_user_actions_json,
+    serde_json::from_str::<Vec<HostSetupUserAction>>(&connection.last_user_actions_json).map_err(
+        |_| {
+            InspectionIssue::Malformed(format!(
+                "{PERSISTED_USER_ACTIONS_CORRUPT_REASON}: agent_connections.last_user_actions_json for {}",
+                connection.connection_internal_id
+            ))
+        },
     )?;
     require_nonempty("agent_connections.created_at", &connection.created_at)?;
     require_nonempty("agent_connections.updated_at", &connection.updated_at)?;
@@ -1495,12 +1003,7 @@ fn validate_guard_installation_row(
 fn validate_host_kind_scope(host_kind: &str, host_scope: &str) -> Result<(), InspectionIssue> {
     let valid = matches!(
         (host_kind, host_scope),
-        (HOST_KIND_CODEX, HOST_SCOPE_USER)
-            | (HOST_KIND_CODEX, HOST_SCOPE_PROJECT)
-            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_LOCAL)
-            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_PROJECT)
-            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_USER)
-            | (HOST_KIND_GENERIC, HOST_SCOPE_EXPORT)
+        (HOST_KIND_CODEX, HOST_SCOPE_USER) | (HOST_KIND_CODEX, HOST_SCOPE_PROJECT)
     );
     if valid {
         Ok(())
@@ -1512,10 +1015,7 @@ fn validate_host_kind_scope(host_kind: &str, host_scope: &str) -> Result<(), Ins
 }
 
 fn validate_host_kind_value(host_kind: &str) -> Result<(), InspectionIssue> {
-    if matches!(
-        host_kind,
-        HOST_KIND_CODEX | HOST_KIND_CLAUDE_CODE | HOST_KIND_GENERIC
-    ) {
+    if host_kind == HOST_KIND_CODEX {
         Ok(())
     } else {
         Err(InspectionIssue::Malformed(format!(
@@ -1527,7 +1027,7 @@ fn validate_host_kind_value(host_kind: &str) -> Result<(), InspectionIssue> {
 fn validate_connection_intent(intent: &str) -> Result<(), InspectionIssue> {
     if matches!(
         intent,
-        CONNECTION_INTENT_PERSONAL | CONNECTION_INTENT_SHARED | CONNECTION_INTENT_GLOBAL
+        CONNECTION_INTENT_PERSONAL | CONNECTION_INTENT_SHARED
     ) {
         Ok(())
     } else {
@@ -1538,11 +1038,7 @@ fn validate_connection_intent(intent: &str) -> Result<(), InspectionIssue> {
 }
 
 fn validate_guard_mode_value(mode: &str) -> Result<(), InspectionIssue> {
-    if matches!(
-        mode,
-        value if value == IntegrationProfile::Record.as_str()
-            || value == IntegrationProfile::Detective.as_str()
-    ) {
+    if mode == IntegrationProfile::Record.as_str() {
         Ok(())
     } else {
         Err(InspectionIssue::Malformed(format!(
@@ -1600,17 +1096,8 @@ fn validate_storage_profile(
     database_kind: &'static str,
     storage_profile: &str,
 ) -> Result<(), InspectionIssue> {
-    if storage_profile == STORAGE_PROFILE {
-        Ok(())
-    } else {
-        Err(InspectionIssue::Unsupported {
-            detail: unsupported_storage_profile_detail(
-                database_kind,
-                storage_profile,
-                STORAGE_PROFILE,
-            ),
-        })
-    }
+    validate_persisted_manifest(database_kind, storage_profile)
+        .map_err(project_state_validation_issue)
 }
 
 fn unsupported_storage_profile_detail(
@@ -1646,19 +1133,6 @@ fn validate_json_object(field: &'static str, text: &str) -> Result<(), Inspectio
     }
 }
 
-fn validate_json_array(field: &'static str, text: &str) -> Result<(), InspectionIssue> {
-    let value = serde_json::from_str::<Value>(text).map_err(|error| {
-        InspectionIssue::Malformed(format!("{field} must be JSON array text: {error}"))
-    })?;
-    if value.is_array() {
-        Ok(())
-    } else {
-        Err(InspectionIssue::Malformed(format!(
-            "{field} must be a JSON array"
-        )))
-    }
-}
-
 fn sqlite_unreadable(error: rusqlite::Error) -> InspectionIssue {
     InspectionIssue::Unreadable(error.to_string())
 }
@@ -1679,6 +1153,7 @@ mod tests {
     use rusqlite::{params, Connection};
     use sha2::{Digest, Sha256};
     use volicord_test_support::TempRuntimeHome;
+    use volicord_types::{canonical_json_string, StorageManifest};
 
     use super::*;
     use crate::{
@@ -1687,13 +1162,13 @@ mod tests {
             initialize_runtime_home, register_project, ProjectRecord, ProjectRegistration,
             ACTIVE_PROJECT_STATUS,
         },
-        host_capabilities::MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+        schema::current_storage_manifest,
         sqlite::{open_read_only_database, project_state_db_path, registry_db_path},
     };
 
     const PROJECT_ID: &str = "project_inspect";
     const RUNTIME_HOME_ID: &str = "runtime_home_inspect";
-    const UNSUPPORTED_STORAGE_PROFILE: &str = "baseline_sqlite";
+    const UNSUPPORTED_STORAGE_PROFILE: &str = "unknown_storage_contract";
 
     struct InspectionFixture {
         runtime_home: TempRuntimeHome,
@@ -1771,6 +1246,23 @@ mod tests {
     }
 
     #[test]
+    fn malformed_registry_profile_is_corrupt_without_mutation() -> Result<(), Box<dyn Error>> {
+        let fixture = current_fixture("inspect-malformed-profile-registry")?;
+        let registry_path = fixture.runtime_home.registry_db_path();
+        mark_registry_profile(&registry_path, "not-json")?;
+        let before_hash = file_hash(&registry_path)?;
+
+        let inspection = inspect_runtime_home(fixture.runtime_home.path());
+
+        assert!(matches!(
+            inspection.registry,
+            DatabaseInspection::Malformed { .. }
+        ));
+        assert_eq!(file_hash(&registry_path)?, before_hash);
+        Ok(())
+    }
+
+    #[test]
     fn current_registry_agent_connection_rows_are_inspected() -> Result<(), Box<dyn Error>> {
         let fixture = current_fixture("inspect-agent-connection-rows")?;
         let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
@@ -1823,8 +1315,6 @@ mod tests {
              VALUES ('agent_inspected', ?1, 't0')",
             [PROJECT_ID],
         )?;
-        insert_inspected_host_capability(&registry)?;
-
         let inspection = inspect_runtime_home(fixture.runtime_home.path());
         let snapshot = present_registry(&inspection.registry);
 
@@ -1838,204 +1328,6 @@ mod tests {
         assert_eq!(snapshot.agent_connections[0].mode, CONNECTION_MODE_WORKFLOW);
         assert_eq!(snapshot.connection_projects.len(), 1);
         assert_eq!(snapshot.connection_projects[0].project_id, PROJECT_ID);
-        Ok(())
-    }
-
-    #[test]
-    fn registry_inspection_rejects_mismatched_host_capability_pointer_time(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = current_fixture("inspect-host-capability-pointer-time")?;
-        let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
-        registry.execute(
-            "INSERT INTO agent_connections (
-                connection_internal_id, host_kind, intent, host_scope,
-                server_name, config_target, mode, managed_fingerprint,
-                created_at, updated_at
-            ) VALUES (
-                'agent_inspected', 'codex', 'personal', 'user',
-                'volicord-inspected', 'codex-target', 'workflow',
-                'fingerprint-inspected', 't0', 't0'
-            )",
-            [],
-        )?;
-        insert_inspected_host_capability(&registry)?;
-        registry.execute(
-            "UPDATE host_capability_state
-                SET updated_at = '2026-07-14T00:00:02Z'",
-            [],
-        )?;
-        drop(registry);
-
-        match inspect_registry_database(fixture.runtime_home.path()) {
-            DatabaseInspection::Malformed { detail, .. } => {
-                assert!(detail.contains("host_capability_state.updated_at"));
-            }
-            other => panic!("expected malformed host-capability pointer, got {other:?}"),
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn registry_inspection_rejects_host_capability_pointer_rollback() -> Result<(), Box<dyn Error>>
-    {
-        let fixture = current_fixture("inspect-host-capability-pointer-rollback")?;
-        let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
-        registry.execute(
-            "INSERT INTO agent_connections (
-                connection_internal_id, host_kind, intent, host_scope,
-                server_name, config_target, mode, managed_fingerprint,
-                created_at, updated_at
-            ) VALUES (
-                'agent_inspected', 'codex', 'personal', 'user',
-                'volicord-inspected', 'codex-target', 'workflow',
-                'fingerprint-inspected', 't0', 't0'
-            )",
-            [],
-        )?;
-        insert_inspected_host_capability(&registry)?;
-        registry.execute(
-            "INSERT INTO host_capability_verifications (
-                verification_internal_id, connection_internal_id, capability,
-                outcome, host_kind, host_version, client_name, client_version,
-                adapter_profile, adapter_version, managed_fingerprint,
-                volicord_build_id, source_revision, target_triple,
-                executable_sha256, evidence_artifact_sha256,
-                observed_at, expires_at, metadata_json, created_at
-            )
-            SELECT
-                'verification_newer', connection_internal_id, capability,
-                'failed', host_kind, host_version, client_name, client_version,
-                adapter_profile, adapter_version, managed_fingerprint,
-                volicord_build_id, source_revision, target_triple,
-                executable_sha256,
-                'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-                '2026-07-14T01:00:00Z', '2026-07-15T01:00:00Z', metadata_json,
-                '2026-07-14T01:00:01Z'
-              FROM host_capability_verifications
-             WHERE verification_internal_id = 'verification_inspected'",
-            [],
-        )?;
-        drop(registry);
-
-        match inspect_registry_database(fixture.runtime_home.path()) {
-            DatabaseInspection::Malformed { detail, .. } => {
-                assert!(detail.contains("unique newest observation"));
-            }
-            other => panic!("expected malformed rolled-back pointer, got {other:?}"),
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn registry_inspection_reports_overbound_host_capability_without_value_leakage(
-    ) -> Result<(), Box<dyn Error>> {
-        for (column, expected_field) in [
-            ("host_version", "host_capability_verifications.host_version"),
-            (
-                "connection_internal_id",
-                "host_capability_verifications.connection_internal_id",
-            ),
-        ] {
-            let fixture = current_fixture(&format!("inspect-host-capability-{column}-overbound"))?;
-            let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
-            registry.execute(
-                "INSERT INTO agent_connections (
-                    connection_internal_id, host_kind, intent, host_scope,
-                    server_name, config_target, mode, managed_fingerprint,
-                    created_at, updated_at
-                ) VALUES (
-                    'agent_inspected', 'codex', 'personal', 'user',
-                    'volicord-inspected', 'codex-target', 'workflow',
-                    'fingerprint-inspected', 't0', 't0'
-                )",
-                [],
-            )?;
-            insert_inspected_host_capability(&registry)?;
-            let private_marker = format!("private-overbound-{column}");
-            let corrupt_value = format!(
-                "{private_marker}{}",
-                "가".repeat(MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES)
-            );
-            assert!(corrupt_value.len() > MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES);
-            registry.pragma_update(None, "foreign_keys", "OFF")?;
-            registry.pragma_update(None, "ignore_check_constraints", "ON")?;
-            registry.execute(
-                &format!(
-                    "UPDATE host_capability_verifications
-                        SET {column} = ?1
-                      WHERE verification_internal_id = 'verification_inspected'"
-                ),
-                [corrupt_value.as_str()],
-            )?;
-            drop(registry);
-
-            match inspect_registry_database(fixture.runtime_home.path()) {
-                DatabaseInspection::Malformed { detail, .. } => {
-                    assert!(detail.contains(expected_field), "{column}: {detail}");
-                    assert!(!detail.contains(&private_marker), "{column}: {detail}");
-                    assert!(!detail.contains(&corrupt_value), "{column}: {detail}");
-                }
-                other => {
-                    panic!("expected malformed over-bound host capability {column}, got {other:?}")
-                }
-            }
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn registry_inspection_reports_overbound_host_capability_pointers_without_value_leakage(
-    ) -> Result<(), Box<dyn Error>> {
-        for (column, expected_field) in [
-            (
-                "connection_internal_id",
-                "host_capability_state.connection_internal_id",
-            ),
-            (
-                "current_verification_internal_id",
-                "host_capability_state.current_verification_internal_id",
-            ),
-        ] {
-            let fixture = current_fixture(&format!("inspect-host-capability-{column}-overbound"))?;
-            let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
-            registry.execute(
-                "INSERT INTO agent_connections (
-                    connection_internal_id, host_kind, intent, host_scope,
-                    server_name, config_target, mode, managed_fingerprint,
-                    created_at, updated_at
-                ) VALUES (
-                    'agent_inspected', 'codex', 'personal', 'user',
-                    'volicord-inspected', 'codex-target', 'workflow',
-                    'fingerprint-inspected', 't0', 't0'
-                )",
-                [],
-            )?;
-            insert_inspected_host_capability(&registry)?;
-            let private_marker = format!("private-overbound-{column}");
-            let corrupt_pointer = format!(
-                "{private_marker}{}",
-                "가".repeat(MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES)
-            );
-            assert!(corrupt_pointer.len() > MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES);
-            registry.pragma_update(None, "foreign_keys", "OFF")?;
-            registry.pragma_update(None, "ignore_check_constraints", "ON")?;
-            registry.execute(
-                &format!("UPDATE host_capability_state SET {column} = ?1"),
-                [corrupt_pointer.as_str()],
-            )?;
-            drop(registry);
-
-            match inspect_registry_database(fixture.runtime_home.path()) {
-                DatabaseInspection::Malformed { detail, .. } => {
-                    assert!(detail.contains(expected_field), "{column}: {detail}");
-                    assert!(!detail.contains(&private_marker), "{column}: {detail}");
-                    assert!(!detail.contains(&corrupt_pointer), "{column}: {detail}");
-                }
-                other => panic!(
-                    "expected malformed over-bound host capability pointer {column}, got {other:?}"
-                ),
-            }
-        }
         Ok(())
     }
 
@@ -2122,6 +1414,24 @@ mod tests {
     }
 
     #[test]
+    fn malformed_current_project_profile_is_corrupt_without_mutation() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = current_fixture("inspect-malformed-current-profile-state")?;
+        let malformed = format!(
+            r#"{{"contract_id":"{}"}}"#,
+            volicord_types::STORAGE_CONTRACT_ID
+        );
+        mark_project_state_profile(&fixture.project.state_db_path, &malformed)?;
+        let before_hash = file_hash(&fixture.project.state_db_path)?;
+
+        let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
+
+        assert!(matches!(state, DatabaseInspection::Malformed { .. }));
+        assert_eq!(file_hash(&fixture.project.state_db_path)?, before_hash);
+        Ok(())
+    }
+
+    #[test]
     fn forbidden_schema_migrations_table_requires_recreation() -> Result<(), Box<dyn Error>> {
         let fixture = current_fixture("inspect-forbidden-schema-ledger")?;
         Connection::open(&fixture.project.state_db_path)?.execute(
@@ -2150,24 +1460,6 @@ mod tests {
         let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
 
         assert!(matches!(state, DatabaseInspection::Malformed { .. }));
-        Ok(())
-    }
-
-    #[test]
-    fn missing_user_action_channel_tokens_table_is_malformed() -> Result<(), Box<dyn Error>> {
-        let fixture = current_fixture("inspect-missing-user-action-channel-tokens")?;
-        let conn = Connection::open(&fixture.project.state_db_path)?;
-        conn.execute("DROP TABLE user_action_channel_tokens", [])?;
-        drop(conn);
-
-        let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
-
-        match state {
-            DatabaseInspection::Malformed { detail, .. } => {
-                assert!(detail.contains("user_action_channel_tokens"));
-            }
-            other => panic!("expected malformed project-state diagnostic, got {other:?}"),
-        }
         Ok(())
     }
 
@@ -2291,43 +1583,6 @@ mod tests {
         Ok(())
     }
 
-    fn insert_inspected_host_capability(conn: &Connection) -> rusqlite::Result<()> {
-        conn.execute(
-            "INSERT INTO host_capability_verifications (
-                verification_internal_id, connection_internal_id, capability,
-                outcome, host_kind, host_version, client_name, client_version,
-                adapter_profile, adapter_version, managed_fingerprint,
-                volicord_build_id, source_revision, target_triple,
-                executable_sha256, evidence_artifact_sha256,
-                observed_at, expires_at, metadata_json, created_at
-            ) VALUES (
-                'verification_inspected', 'agent_inspected',
-                'model_invisible_user_surface', 'passed', 'codex', '1.2.3',
-                'codex-mcp-client', '1.2.3',
-                'mcp_user_channel_local_web_v1', '0.9.0',
-                'fingerprint-inspected', 'build-inspected',
-                '1111111111111111111111111111111111111111',
-                'x86_64-unknown-linux-gnu',
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-                '2026-07-14T00:00:00Z', '2026-07-15T00:00:00Z', '{}',
-                '2026-07-14T00:00:01Z'
-            )",
-            [],
-        )?;
-        conn.execute(
-            "INSERT INTO host_capability_state (
-                connection_internal_id, capability,
-                current_verification_internal_id, updated_at
-            ) VALUES (
-                'agent_inspected', 'model_invisible_user_surface',
-                'verification_inspected', '2026-07-14T00:00:01Z'
-            )",
-            [],
-        )?;
-        Ok(())
-    }
-
     fn current_fixture(prefix: &str) -> Result<InspectionFixture, Box<dyn Error>> {
         let runtime_home = TempRuntimeHome::new(prefix)?;
         let repo_root = runtime_home.create_product_repo("repo")?;
@@ -2361,21 +1616,34 @@ mod tests {
         Ok(())
     }
 
-    fn mark_registry_old_profile(path: &Path) -> rusqlite::Result<()> {
-        let conn = Connection::open(path)?;
-        conn.execute(
-            "UPDATE runtime_home SET storage_profile = ?1",
-            [UNSUPPORTED_STORAGE_PROFILE],
+    fn unsupported_storage_profile() -> Result<String, Box<dyn Error>> {
+        let current = current_storage_manifest()?;
+        let manifest = StorageManifest::new(
+            UNSUPPORTED_STORAGE_PROFILE,
+            current.canonical_ddl_digest.clone(),
+            current.integrity_constraints_digest.clone(),
+            current.enabled_capabilities.clone(),
         )?;
+        Ok(canonical_json_string(&manifest)?)
+    }
+
+    fn mark_registry_old_profile(path: &Path) -> Result<(), Box<dyn Error>> {
+        mark_registry_profile(path, &unsupported_storage_profile()?)
+    }
+
+    fn mark_registry_profile(path: &Path, profile: &str) -> Result<(), Box<dyn Error>> {
+        let conn = Connection::open(path)?;
+        conn.execute("UPDATE runtime_home SET storage_profile = ?1", [profile])?;
         Ok(())
     }
 
-    fn mark_project_state_old_profile(path: &Path) -> rusqlite::Result<()> {
+    fn mark_project_state_old_profile(path: &Path) -> Result<(), Box<dyn Error>> {
+        mark_project_state_profile(path, &unsupported_storage_profile()?)
+    }
+
+    fn mark_project_state_profile(path: &Path, profile: &str) -> Result<(), Box<dyn Error>> {
         let conn = Connection::open(path)?;
-        conn.execute(
-            "UPDATE project_state SET storage_profile = ?1",
-            [UNSUPPORTED_STORAGE_PROFILE],
-        )?;
+        conn.execute("UPDATE project_state SET storage_profile = ?1", [profile])?;
         Ok(())
     }
 

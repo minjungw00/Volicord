@@ -1,8 +1,9 @@
 use serde_json::{Map, Value};
 use volicord_store::core_pipeline::ProjectStateHeader;
 use volicord_types::{
-    ActorSource, ErrorCode, OperationCategory, ToolEnvelope, ToolError,
-    ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE,
+    canonical_git_object_id, is_canonical_sha256_digest, ActorSource, ErrorCode, OperationCategory,
+    ToolEnvelope, ToolError, ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE,
+    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 use crate::pipeline::{tool_error, InvocationContext, MethodPolicy, VerifiedInvocationContext};
@@ -36,7 +37,9 @@ pub(crate) fn derive_verified_invocation(
             "invocation.invocation_binding_basis",
         ));
     }
-    if let Some(workspace) = invocation.git_workspace_context.as_ref() {
+    let verification_basis = verified_binding_basis(invocation)?;
+    let mut git_workspace_context = invocation.git_workspace_context.clone();
+    if let Some(workspace) = git_workspace_context.as_mut() {
         validate_git_workspace_context(workspace)?;
     }
 
@@ -44,23 +47,41 @@ pub(crate) fn derive_verified_invocation(
         project_id: invocation.project_id.clone(),
         actor_source: invocation.actor_source.clone(),
         operation_category: invocation.operation_category,
-        verification_basis: invocation.invocation_binding_basis.trim().to_owned(),
+        verification_basis,
         assurance_level: actor_assurance_level(&invocation.actor_source).to_owned(),
         session_id: invocation.session_id.clone(),
-        host_elicitation_available: invocation.host_elicitation_available,
-        local_web_consent_available: invocation.local_web_consent_available,
-        git_workspace_context: invocation.git_workspace_context.clone(),
+        git_workspace_context,
     })
 }
 
+fn verified_binding_basis(invocation: &InvocationContext) -> Result<String, ToolError> {
+    match (&invocation.actor_source, &invocation.validated_host_receipt) {
+        (ActorSource::AgentConnection(connection_id), Some(validated)) => {
+            let receipt = validated.receipt();
+            if invocation.invocation_binding_basis
+                != VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+                || receipt.project_id != invocation.project_id
+                || receipt.connection_id.as_str() != connection_id.as_str()
+            {
+                return Err(invocation_context_mismatch_error(
+                    "invocation.validated_host_receipt",
+                ));
+            }
+            Ok(receipt.binding_digest.clone())
+        }
+        (ActorSource::AgentConnection(_), None) => Err(invocation_context_mismatch_error(
+            "invocation.validated_host_receipt",
+        )),
+        (_, Some(_)) => Err(invocation_context_mismatch_error(
+            "invocation.validated_host_receipt",
+        )),
+        (_, None) => Ok(invocation.invocation_binding_basis.trim().to_owned()),
+    }
+}
+
 fn validate_git_workspace_context(
-    workspace: &crate::pipeline::GitWorkspaceContext,
+    workspace: &mut crate::pipeline::GitWorkspaceContext,
 ) -> Result<(), ToolError> {
-    let sha256_coordinate = |value: &str| {
-        value.strip_prefix("sha256:").is_some_and(|digest| {
-            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-        })
-    };
     if workspace.git_common_dir.trim().is_empty()
         || !std::path::Path::new(&workspace.git_common_dir).is_absolute()
     {
@@ -68,7 +89,7 @@ fn validate_git_workspace_context(
             "invocation.git_workspace_context.git_common_dir",
         ));
     }
-    if !sha256_coordinate(&workspace.worktree_id) {
+    if !is_canonical_sha256_digest(&workspace.worktree_id) {
         return Err(invocation_context_mismatch_error(
             "invocation.git_workspace_context.worktree_id",
         ));
@@ -82,14 +103,12 @@ fn validate_git_workspace_context(
             "invocation.git_workspace_context.branch_ref",
         ));
     }
-    if workspace.head_sha.as_ref().is_some_and(|sha| {
-        !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|byte| byte.is_ascii_hexdigit())
-    }) {
-        return Err(invocation_context_mismatch_error(
-            "invocation.git_workspace_context.head_sha",
-        ));
+    if let Some(head_sha) = workspace.head_sha.as_mut() {
+        *head_sha = canonical_git_object_id(head_sha).map_err(|_| {
+            invocation_context_mismatch_error("invocation.git_workspace_context.head_sha")
+        })?;
     }
-    if !sha256_coordinate(&workspace.workspace_fingerprint) {
+    if !is_canonical_sha256_digest(&workspace.workspace_fingerprint) {
         return Err(invocation_context_mismatch_error(
             "invocation.git_workspace_context.workspace_fingerprint",
         ));
@@ -189,4 +208,169 @@ fn actor_source_mismatch_error(
         false,
         Some(details),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_git_workspace_context, verified_binding_basis};
+    use crate::{
+        pipeline::{GitWorkspaceContext, InvocationContext},
+        validate_host_verification_receipt,
+    };
+    use volicord_types::{
+        AgentConnectionId, CodexCapability, CurrentHostReceiptContext, HostKind,
+        HostVerificationReceipt, HostVerificationResult, IntegrationProfile, PlatformEnvironment,
+        PlatformReleaseCoordinate, ProjectId, UtcTimestamp, HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
+        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    };
+
+    fn workspace_context(head_sha: &str) -> GitWorkspaceContext {
+        GitWorkspaceContext {
+            git_common_dir: "/tmp/volicord-git-object-id/.git".to_owned(),
+            worktree_id: format!("sha256:{}", "1".repeat(64)),
+            branch_ref: Some("refs/heads/test".to_owned()),
+            head_sha: Some(head_sha.to_owned()),
+            workspace_fingerprint: format!("sha256:{}", "2".repeat(64)),
+        }
+    }
+
+    #[test]
+    fn workspace_head_sha_uses_the_shared_git_object_id_canonicalizer() {
+        let mut context = workspace_context(&"A".repeat(40));
+
+        validate_git_workspace_context(&mut context).expect("uppercase Git OID should be valid");
+
+        assert_eq!(context.head_sha, Some("a".repeat(40)));
+    }
+
+    #[test]
+    fn workspace_head_sha_rejects_intermediate_length() {
+        let mut context = workspace_context(&"a".repeat(63));
+
+        assert!(validate_git_workspace_context(&mut context).is_err());
+    }
+
+    #[test]
+    fn workspace_digest_coordinates_require_canonical_lowercase() {
+        let mut context = workspace_context(&"a".repeat(40));
+        context.worktree_id = format!("sha256:{}", "A".repeat(64));
+        assert!(validate_git_workspace_context(&mut context).is_err());
+
+        let mut context = workspace_context(&"a".repeat(40));
+        context.workspace_fingerprint = format!("sha256:{}", "F".repeat(64));
+        assert!(validate_git_workspace_context(&mut context).is_err());
+    }
+
+    #[test]
+    fn static_managed_stdio_label_cannot_authorize_without_a_typed_receipt() {
+        let invocation = InvocationContext::new(
+            ProjectId::new("project-a"),
+            volicord_types::ActorSource::agent_connection("connection-a"),
+            volicord_types::OperationCategory::Read,
+            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        );
+
+        let error = verified_binding_basis(&invocation).unwrap_err();
+        assert_eq!(
+            error.code,
+            volicord_types::ErrorCode::InvocationContextMismatch
+        );
+        assert_eq!(
+            error
+                .details
+                .and_then(|details| details.get("field").cloned()),
+            Some(serde_json::Value::String(
+                "invocation.validated_host_receipt".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn alternate_agent_connection_label_cannot_bypass_a_typed_receipt() {
+        let invocation = InvocationContext::new(
+            ProjectId::new("project-a"),
+            volicord_types::ActorSource::agent_connection("connection-a"),
+            volicord_types::OperationCategory::Read,
+            "nonstatic-caller-controlled-label",
+        );
+
+        let error = verified_binding_basis(&invocation).unwrap_err();
+        assert_eq!(
+            error.code,
+            volicord_types::ErrorCode::InvocationContextMismatch
+        );
+        assert_eq!(
+            error
+                .details
+                .and_then(|details| details.get("field").cloned()),
+            Some(serde_json::Value::String(
+                "invocation.validated_host_receipt".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn validated_managed_receipt_supplies_the_exact_binding_identity() {
+        const RAW: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        const PREFIXED: &str =
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let capabilities = vec![
+            CodexCapability::ManagedStdioMcp,
+            CodexCapability::PersonalManagedBinding,
+            CodexCapability::RecordWorkflow,
+            CodexCapability::SharedManagedBinding,
+        ];
+        let receipt = HostVerificationReceipt {
+            contract_id: HOST_VERIFICATION_RECEIPT_CONTRACT_ID.to_owned(),
+            project_id: ProjectId::new("project-a"),
+            connection_id: AgentConnectionId::new("connection-a"),
+            host_kind: HostKind::Codex,
+            integration_profile: IntegrationProfile::Record,
+            platform_environment: PlatformEnvironment::Linux,
+            platform_release_coordinate: PlatformReleaseCoordinate::Native,
+            required_capabilities: capabilities.clone(),
+            verified_capabilities: capabilities.clone(),
+            binding_digest: PREFIXED.to_owned(),
+            generated_artifacts_digest: PREFIXED.to_owned(),
+            executable_digest: RAW.to_owned(),
+            policy_digest: PREFIXED.to_owned(),
+            verifier_build_digest: RAW.to_owned(),
+            observed_at: UtcTimestamp::parse("2026-07-17T01:00:00Z")
+                .expect("fixture observation timestamp is valid"),
+            expires_at: UtcTimestamp::parse("2026-07-17T01:05:00Z")
+                .expect("fixture expiry timestamp is valid"),
+            result: HostVerificationResult::Verified,
+        };
+        let current = CurrentHostReceiptContext {
+            project_id: receipt.project_id.clone(),
+            connection_id: receipt.connection_id.clone(),
+            host_kind: receipt.host_kind,
+            integration_profile: receipt.integration_profile,
+            platform_environment: receipt.platform_environment,
+            platform_release_coordinate: receipt.platform_release_coordinate.clone(),
+            required_capabilities: capabilities,
+            binding_digest: receipt.binding_digest.clone(),
+            generated_artifacts_digest: receipt.generated_artifacts_digest.clone(),
+            executable_digest: receipt.executable_digest.clone(),
+            policy_digest: receipt.policy_digest.clone(),
+            verifier_build_digest: receipt.verifier_build_digest.clone(),
+        };
+        let now = UtcTimestamp::parse("2026-07-17T01:01:00Z")
+            .expect("fixture current timestamp is valid");
+        let validated = validate_host_verification_receipt(receipt, &current, &now)
+            .expect("matching fixture receipt must validate");
+        let invocation = InvocationContext::new(
+            ProjectId::new("project-a"),
+            volicord_types::ActorSource::agent_connection("connection-a"),
+            volicord_types::OperationCategory::Read,
+            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        )
+        .with_validated_host_receipt(validated);
+
+        assert_eq!(
+            verified_binding_basis(&invocation)
+                .expect("validated fixture receipt must authorize the binding"),
+            PREFIXED
+        );
+    }
 }

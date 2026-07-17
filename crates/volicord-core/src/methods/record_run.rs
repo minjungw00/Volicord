@@ -112,6 +112,110 @@ impl CoreService {
     }
 }
 
+struct RecordRunRawRequest {
+    request: RecordRunRequest,
+    plan_now: UtcTimestamp,
+}
+
+impl RecordRunRawRequest {
+    fn new(request: RecordRunRequest, operation_now: &UtcTimestamp) -> Self {
+        Self {
+            request,
+            plan_now: operation_now.clone(),
+        }
+    }
+}
+
+struct RecordRunNormalizedRequest {
+    raw: RecordRunRawRequest,
+    planned_state_version: u64,
+    normalized_changed_paths: Vec<String>,
+    normalized_observed_changes: ObservedChanges,
+}
+
+struct RecordRunResolvedContext {
+    normalized: RecordRunNormalizedRequest,
+    task: TaskRecord,
+    change_unit: ChangeUnitRecord,
+    workflow_policy: ProjectWorkflowPolicy,
+    resolved_control: crate::policy::workflow::ResolvedTaskControlAuthority,
+    evidence_claim_mutations: Vec<CoreStorageMutation>,
+}
+
+struct RecordRunPolicyDecision {
+    resolved: RecordRunResolvedContext,
+    write_ticket_scope: Option<(WriteTicketRecord, WriteTicketAttemptScope)>,
+    run_id: RunId,
+    run_ref: StateRecordRef,
+}
+
+struct RecordRunPlannedMutations {
+    request: RecordRunRequest,
+    plan_now: UtcTimestamp,
+    planned_state_version: u64,
+    change_unit: ChangeUnitRecord,
+    write_ticket_scope: Option<(WriteTicketRecord, WriteTicketAttemptScope)>,
+    run_id: RunId,
+    run_ref: StateRecordRef,
+    normalized_observed_changes: ObservedChanges,
+    registered_artifacts: Vec<ArtifactRef>,
+    evidence_observations: Vec<EvidenceObservation>,
+    observation_refs: Vec<StateRecordRef>,
+    evidence_producers: Vec<EvidenceProducer>,
+    acceptance_criteria: Vec<AcceptanceCriterion>,
+    recorded_evidence_summary: Option<EvidenceSummary>,
+    projected_close_evidence_summary: Option<EvidenceSummary>,
+    projected_state_evidence_summary: Option<EvidenceSummary>,
+    current_close_basis: Option<CurrentCloseBasis>,
+    blocker_refs: Vec<StateRecordRef>,
+    pending_user_action_refs: Vec<StateRecordRef>,
+    pending_authorities: Vec<UserActionAuthority>,
+    projected_task: TaskRecord,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_payload: JsonObject,
+}
+
+struct RecordRunResponseProjection {
+    task_id: TaskId,
+    change_unit_id: ChangeUnitId,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_payload: JsonObject,
+    result: RecordRunResult,
+}
+
+impl RecordRunResponseProjection {
+    fn into_plan(self) -> Result<MethodPlan, PlanError> {
+        Ok(MethodPlan {
+            task_id: self.task_id,
+            change_unit_id: Some(self.change_unit_id),
+            storage_mutations: self.storage_mutations,
+            event_payload: self.event_payload,
+            result_fields: strip_base(serde_json::to_value(self.result)?)?,
+            next_actions: Vec::new(),
+        })
+    }
+}
+
+struct RecordRunMutationAssembly<'a> {
+    request: &'a RecordRunRequest,
+    task: &'a TaskRecord,
+    workflow_policy: &'a ProjectWorkflowPolicy,
+    write_ticket_scope: Option<&'a (WriteTicketRecord, WriteTicketAttemptScope)>,
+    run_id: &'a RunId,
+    normalized_observed_changes: &'a ObservedChanges,
+    close_basis_revision: u64,
+    close_basis_json: Option<String>,
+    lifecycle_phase: Option<&'static str>,
+    sensitive_category_acceptance_update: Option<CoreStorageMutation>,
+    evidence_claim_mutations: Vec<CoreStorageMutation>,
+    artifact_plans: &'a [RecordRunArtifactPlan],
+    observation_plans: &'a [RecordRunObservationPlan],
+    recorded_evidence_summary: Option<&'a EvidenceSummary>,
+    evidence_summary_id: Option<&'a String>,
+    registered_artifacts: &'a [ArtifactRef],
+    verified_invocation: &'a VerifiedInvocationContext,
+}
+
 struct RecordRunArtifactPlan {
     artifact_ref: ArtifactRef,
     evidence_target: Option<EvidenceTarget>,
@@ -139,10 +243,6 @@ struct RecordRunCaptureAuthority {
     receipt_artifact_ref: ArtifactRef,
     source_refs: Vec<StateRecordRef>,
     connection_id: AgentConnectionId,
-    session_id: Option<AgentSessionId>,
-    guard_installation_id: Option<GuardInstallationId>,
-    guard_event_ids: Vec<volicord_types::GuardEventId>,
-    watch_observation_refs: Vec<String>,
     host_invocation_id: Option<String>,
     observed_by_actor_source: ActorSource,
     observed_outcome: JsonObject,
@@ -289,13 +389,12 @@ fn validate_record_run_evidence_targets(
                     &record.evidence_requirement,
                 )?;
                 if requirement == EvidenceRequirement::Required {
-                    validation_plan_error(
+                    return validation_plan_error(
                         request.envelope.dry_run,
                         Some(project_state.state_version),
                         "evidence_updates[].coverage_state",
                         "required acceptance criteria cannot be marked not_applicable",
-                    )?;
-                    unreachable!("validation_plan_error always returns Err");
+                    );
                 }
             }
         }
@@ -317,13 +416,12 @@ fn validate_record_run_evidence_targets(
         {
             Some(record) if record.statement == statement => {}
             Some(_) => {
-                validation_plan_error(
+                return validation_plan_error(
                     request.envelope.dry_run,
                     Some(project_state.state_version),
                     "evidence_target.statement",
                     "supplemental evidence claim statements are immutable within a Task",
-                )?;
-                unreachable!("validation_plan_error always returns Err");
+                );
             }
             None => mutations.push(CoreStorageMutation::EnsureEvidenceClaim(
                 EvidenceClaimInsert {
@@ -341,10 +439,27 @@ fn plan_record_run(
     service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    mut request: RecordRunRequest,
+    request: RecordRunRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
 ) -> Result<MethodPlan, PlanError> {
+    let raw = RecordRunRawRequest::new(request, operation_now);
+    let normalized = normalize_record_run_request(store, project_state, raw)?;
+    let resolved =
+        resolve_record_run_context(store, project_state, normalized, verified_invocation)?;
+    let policy =
+        decide_record_run_policy(service, store, project_state, verified_invocation, resolved)?;
+    let mutations =
+        plan_record_run_mutations(service, store, project_state, verified_invocation, policy)?;
+    project_record_run_response(store, project_state, verified_invocation, mutations)?.into_plan()
+}
+
+fn normalize_record_run_request(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    mut raw: RecordRunRawRequest,
+) -> Result<RecordRunNormalizedRequest, PlanError> {
+    let request = &mut raw.request;
     let normalized_performed_operation = request
         .performed_operation
         .as_ref()
@@ -353,36 +468,33 @@ fn plan_record_run(
         .as_ref()
         .is_some_and(String::is_empty)
     {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "performed_operation",
             "performed_operation must be null, omitted, or a non-empty operation",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     request.performed_operation = normalized_performed_operation.into();
     if request.summary.trim().is_empty() {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "summary",
             "summary must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if request
         .run_id
         .as_ref()
         .is_some_and(|id| id.as_str().trim().is_empty())
     {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "run_id",
             "run_id must be null or a non-empty identifier",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
 
     let normalized_changed_paths = match normalize_product_paths(
@@ -391,13 +503,12 @@ fn plan_record_run(
     ) {
         Ok(paths) => sorted_unique(paths),
         Err(ProductPathError::Invalid) => {
-            validation_plan_error(
+            return validation_plan_error(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "observed_changes.changed_paths",
                 "changed_paths must be relative Product Repository paths that stay inside the repository",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         Err(ProductPathError::LocalAccess) => {
             let response = rejected_pipeline_response(
@@ -415,23 +526,21 @@ fn plan_record_run(
         }
     };
     if request.observed_changes.product_file_write_observed && normalized_changed_paths.is_empty() {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "observed_changes",
             "product_file_write_observed requires at least one changed_path",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if !request.observed_changes.product_file_write_observed && !normalized_changed_paths.is_empty()
     {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "observed_changes",
             "changed_paths require product_file_write_observed=true",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if request
         .observed_changes
@@ -439,17 +548,41 @@ fn plan_record_run(
         .as_ref()
         .is_some_and(|baseline_ref| baseline_ref != &request.baseline_ref)
     {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "observed_changes.baseline_ref",
             "observed_changes.baseline_ref must match request baseline_ref when present",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let normalized_sensitive_categories =
         normalized_string_set(&request.observed_changes.sensitive_categories);
 
+    normalize_record_run_evidence_targets(request);
+    let normalized_observed_changes = ObservedChanges {
+        changed_paths: normalized_changed_paths.clone(),
+        product_file_write_observed: request.observed_changes.product_file_write_observed,
+        sensitive_categories: normalized_sensitive_categories,
+        baseline_ref: Some(request.baseline_ref.clone()).into(),
+    };
+    Ok(RecordRunNormalizedRequest {
+        raw,
+        planned_state_version: project_state.state_version + 1,
+        normalized_changed_paths,
+        normalized_observed_changes,
+    })
+}
+
+fn resolve_record_run_context(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    normalized: RecordRunNormalizedRequest,
+    verified_invocation: &VerifiedInvocationContext,
+) -> Result<RecordRunResolvedContext, PlanError> {
+    let request = &normalized.raw.request;
+    let normalized_changed_paths = &normalized.normalized_changed_paths;
+    let normalized_sensitive_categories =
+        &normalized.normalized_observed_changes.sensitive_categories;
     let task = store
         .task_record(&request.task_id)
         .map_err(|error| {
@@ -469,38 +602,34 @@ fn plan_record_run(
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
     let resolved_control =
         resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
-    let task_control = resolved_control.effective_control_level;
     let work_phase = parse_work_phase(&task.work_phase)?;
     if !task_mode_allows_run_kind(task_mode, work_phase, request.kind) {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "kind",
             "kind is not compatible with the current Task mode and work phase",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if task_mode == TaskMode::Advisor
         && (request.observed_changes.product_file_write_observed
             || !normalized_changed_paths.is_empty()
             || !normalized_sensitive_categories.is_empty())
     {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "observed_changes",
             "advisor Task runs cannot report Product Repository file changes or sensitive effects",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if task_mode == TaskMode::Advisor && request.write_ticket_id.is_some() {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "write_ticket_id",
             "advisor Task runs cannot consume a write ticket",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let change_unit = store
         .change_unit_record(&request.task_id, request.change_unit_id.as_str())
@@ -543,18 +672,40 @@ fn plan_record_run(
         ))));
     }
 
-    normalize_record_run_evidence_targets(&mut request);
     let evidence_claim_mutations =
-        validate_record_run_evidence_targets(store, project_state, &request)?;
+        validate_record_run_evidence_targets(store, project_state, request)?;
 
-    let planned_state_version = project_state.state_version + 1;
-    let plan_now = operation_now.clone();
-    let normalized_observed_changes = ObservedChanges {
-        changed_paths: normalized_changed_paths.clone(),
-        product_file_write_observed: request.observed_changes.product_file_write_observed,
-        sensitive_categories: normalized_sensitive_categories,
-        baseline_ref: Some(request.baseline_ref.clone()).into(),
-    };
+    Ok(RecordRunResolvedContext {
+        normalized,
+        task,
+        change_unit,
+        workflow_policy,
+        resolved_control,
+        evidence_claim_mutations,
+    })
+}
+
+fn decide_record_run_policy(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    resolved: RecordRunResolvedContext,
+) -> Result<RecordRunPolicyDecision, PlanError> {
+    let RecordRunResolvedContext {
+        normalized,
+        task,
+        change_unit,
+        workflow_policy,
+        resolved_control,
+        evidence_claim_mutations,
+    } = resolved;
+    let request = &normalized.raw.request;
+    let planned_state_version = normalized.planned_state_version;
+    let plan_now = &normalized.raw.plan_now;
+    let normalized_changed_paths = &normalized.normalized_changed_paths;
+    let normalized_observed_changes = &normalized.normalized_observed_changes;
+    let task_control = resolved_control.effective_control_level;
     let write_ticket_required = request.observed_changes.product_file_write_observed
         || task_control == TaskControlLevel::Sensitive;
     let write_ticket_scope = if write_ticket_required {
@@ -598,10 +749,10 @@ fn plan_record_run(
             WriteTicketRunValidationContext {
                 store,
                 project_state,
-                request: &request,
+                request,
                 change_unit: &change_unit,
                 verified_invocation,
-                observed_changes: &normalized_observed_changes,
+                observed_changes: normalized_observed_changes,
                 write_authority_fingerprint: &workflow_policy.write_authority_fingerprint,
                 now: *plan_now.as_datetime(),
             },
@@ -647,11 +798,11 @@ fn plan_record_run(
             change_unit_id: &request.change_unit_id,
             scope_revision: task.scope_revision,
             operation: &scope.intended_operation,
-            normalized_paths: &normalized_changed_paths,
+            normalized_paths: normalized_changed_paths,
             sensitive_categories: &normalized_observed_changes.sensitive_categories,
             baseline_ref: Some(&request.baseline_ref),
             required_for: UserActionRequiredFor::RecordRun,
-            now: &plan_now,
+            now: plan_now,
             repo_root: &store.project_record().repo_root,
         });
     let operation_context = UserActionOperationContext {
@@ -667,7 +818,7 @@ fn plan_record_run(
         store,
         project_state,
         &request.envelope,
-        &plan_now,
+        plan_now,
         &operation_context,
     )?
     .is_empty()
@@ -709,24 +860,65 @@ fn plan_record_run(
         Some(planned_state_version),
     );
 
+    Ok(RecordRunPolicyDecision {
+        resolved: RecordRunResolvedContext {
+            normalized,
+            task,
+            change_unit,
+            workflow_policy,
+            resolved_control,
+            evidence_claim_mutations,
+        },
+        write_ticket_scope,
+        run_id,
+        run_ref,
+    })
+}
+
+fn plan_record_run_mutations(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    policy: RecordRunPolicyDecision,
+) -> Result<RecordRunPlannedMutations, PlanError> {
+    let RecordRunPolicyDecision {
+        resolved,
+        write_ticket_scope,
+        run_id,
+        run_ref,
+    } = policy;
+    let RecordRunResolvedContext {
+        normalized,
+        task,
+        change_unit,
+        workflow_policy,
+        resolved_control: _,
+        evidence_claim_mutations,
+    } = resolved;
+    let request = &normalized.raw.request;
+    let plan_now = &normalized.raw.plan_now;
+    let planned_state_version = normalized.planned_state_version;
+    let normalized_observed_changes = &normalized.normalized_observed_changes;
+
     let artifact_context = RecordRunArtifactContext {
         store,
         project_state,
-        request: &request,
+        request,
         verified_invocation,
         run_id: &run_id,
         run_ref: &run_ref,
-        now: &plan_now,
+        now: plan_now,
     };
     let mut artifact_plans = plan_record_run_artifacts(service, artifact_context)?;
     let capture_artifact_context = RecordRunArtifactContext {
         store,
         project_state,
-        request: &request,
+        request,
         verified_invocation,
         run_id: &run_id,
         run_ref: &run_ref,
-        now: &plan_now,
+        now: plan_now,
     };
     let (capture_artifact_plans, capture_authorities) = plan_record_run_capture_authorities(
         service,
@@ -742,7 +934,7 @@ fn plan_record_run(
         service,
         store,
         project_state,
-        request: &request,
+        request,
         verified_invocation,
         run_id: &run_id,
         run_ref: &run_ref,
@@ -751,7 +943,7 @@ fn plan_record_run(
         capture_authorities: &capture_authorities,
         current_scope_revision: task.scope_revision,
         planned_state_version,
-        now: &plan_now,
+        now: plan_now,
     };
     let observation_plans = plan_record_run_observations(&observation_context)?;
     let evidence_observations = observation_plans
@@ -767,7 +959,7 @@ fn plan_record_run(
     let acceptance_criteria = active_acceptance_criteria_for_task(store, &request.task_id)?;
     let mut recorded_evidence_summary = build_record_run_evidence_summary(
         &observation_context,
-        &request,
+        request,
         &run_ref,
         &registered_artifacts,
         &artifact_plans,
@@ -792,7 +984,7 @@ fn plan_record_run(
         service,
         store,
         project_state,
-        request: &request,
+        request,
         task: &task,
         run_ref: &run_ref,
         write_ticket_scope: write_ticket_scope.as_ref(),
@@ -800,7 +992,7 @@ fn plan_record_run(
         registered_artifacts: &registered_artifacts,
         close_basis_revision,
         snapshot_state_version: planned_state_version,
-        now: &plan_now,
+        now: plan_now,
     };
     let current_close_basis = build_record_run_close_basis(close_basis_context)?;
     recorded_evidence_summary = recorded_evidence_summary
@@ -839,16 +1031,16 @@ fn plan_record_run(
     let pending_user_action_refs = pending_refs_after_record_run_invalidation(
         store,
         project_state,
-        &request,
+        request,
         planned_state_version,
-        &plan_now,
+        plan_now,
     )?;
     let pending_authorities = pending_user_action_authorities_for_plan(
         store,
         project_state,
         &request.envelope,
         &request.task_id,
-        &plan_now,
+        plan_now,
     )?
     .into_iter()
     .filter(|authority| {
@@ -892,6 +1084,291 @@ fn plan_record_run(
     if let Some(lifecycle_phase) = lifecycle_phase {
         projected_task.lifecycle_phase = lifecycle_phase.to_owned();
     }
+    let observation_refs = observation_plans
+        .iter()
+        .map(|plan| plan.observation_ref.clone())
+        .collect::<Vec<_>>();
+
+    let storage_mutations = assemble_record_run_storage_mutations(RecordRunMutationAssembly {
+        request,
+        task: &task,
+        workflow_policy: &workflow_policy,
+        write_ticket_scope: write_ticket_scope.as_ref(),
+        run_id: &run_id,
+        normalized_observed_changes,
+        close_basis_revision,
+        close_basis_json,
+        lifecycle_phase,
+        sensitive_category_acceptance_update,
+        evidence_claim_mutations,
+        artifact_plans: &artifact_plans,
+        observation_plans: &observation_plans,
+        recorded_evidence_summary: recorded_evidence_summary.as_ref(),
+        evidence_summary_id: evidence_summary_id.as_ref(),
+        registered_artifacts: &registered_artifacts,
+        verified_invocation,
+    })?;
+    let residual_risk_ids = current_close_basis
+        .as_ref()
+        .map(|basis| {
+            basis
+                .residual_risks
+                .iter()
+                .map(|risk| risk.risk_id.as_str().to_owned())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let event_payload = object_from_value(json!({
+        "task_id": request.task_id,
+        "change_unit_id": request.change_unit_id,
+        "run_id": run_id,
+        "source_run_ref": run_ref,
+        "scope_revision": task.scope_revision,
+        "close_basis_revision": close_basis_revision,
+        "residual_risk_ids": residual_risk_ids,
+        "kind": request.kind,
+        "product_file_write_observed": normalized_observed_changes.product_file_write_observed,
+        "write_ticket_id": write_ticket_scope
+            .as_ref()
+            .map(|(record, _scope)| record.write_ticket_id.clone()),
+        "artifact_ids": registered_artifacts
+            .iter()
+            .map(|artifact| artifact.artifact_id.as_str().to_owned())
+            .collect::<Vec<_>>(),
+        "evidence_observation_ids": evidence_observations
+            .iter()
+            .map(|observation| observation.observation_id.as_str().to_owned())
+            .collect::<Vec<_>>()
+    }))?;
+
+    let RecordRunNormalizedRequest {
+        raw,
+        normalized_observed_changes,
+        ..
+    } = normalized;
+    Ok(RecordRunPlannedMutations {
+        request: raw.request,
+        plan_now: raw.plan_now,
+        planned_state_version,
+        change_unit,
+        write_ticket_scope,
+        run_id,
+        run_ref,
+        normalized_observed_changes,
+        registered_artifacts,
+        evidence_observations,
+        observation_refs,
+        evidence_producers,
+        acceptance_criteria,
+        recorded_evidence_summary,
+        projected_close_evidence_summary,
+        projected_state_evidence_summary,
+        current_close_basis,
+        blocker_refs,
+        pending_user_action_refs,
+        pending_authorities,
+        projected_task,
+        storage_mutations,
+        event_payload,
+    })
+}
+
+fn assemble_record_run_storage_mutations(
+    assembly: RecordRunMutationAssembly<'_>,
+) -> Result<Vec<CoreStorageMutation>, PlanError> {
+    let RecordRunMutationAssembly {
+        request,
+        task,
+        workflow_policy,
+        write_ticket_scope,
+        run_id,
+        normalized_observed_changes,
+        close_basis_revision,
+        close_basis_json,
+        lifecycle_phase,
+        sensitive_category_acceptance_update,
+        evidence_claim_mutations,
+        artifact_plans,
+        observation_plans,
+        recorded_evidence_summary,
+        evidence_summary_id,
+        registered_artifacts,
+        verified_invocation,
+    } = assembly;
+    let mut storage_mutations = vec![CoreStorageMutation::InsertRun(RunInsert {
+        run_id: run_id.as_str().to_owned(),
+        task_id: request.task_id.as_str().to_owned(),
+        change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
+        scope_revision: task.scope_revision,
+        write_ticket_id: request
+            .write_ticket_id
+            .as_ref()
+            .map(|id| id.as_str().to_owned()),
+        kind: storage_value(request.kind)?,
+        status: "recorded".to_owned(),
+        summary_json: serde_json::to_string(&json!({
+            "summary": request.summary
+        }))?,
+        observed_changes_json: serde_json::to_string(normalized_observed_changes)?,
+        evidence_updates_json: serde_json::to_string(&request.evidence_updates)?,
+        write_ticket_effect_json: serde_json::to_string(&json!({
+            "write_ticket_id": request.write_ticket_id,
+            "effect": if write_ticket_scope.is_some() { "consumed" } else { "none" }
+        }))?,
+        created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
+        metadata_json: serde_json::to_string(&json!({
+            "verification_basis": verified_invocation.verification_basis.clone()
+        }))?,
+    })];
+    if let Some(acceptance_update) = sensitive_category_acceptance_update {
+        storage_mutations.push(acceptance_update);
+    }
+    storage_mutations.push(CoreStorageMutation::UpdateTaskCloseBasis(
+        TaskCloseBasisUpdate {
+            task_id: request.task_id.as_str().to_owned(),
+            close_basis_revision,
+            close_basis_json,
+        },
+    ));
+    storage_mutations.push(CoreStorageMutation::MarkUserActionsSupersededOrStale(
+        UserActionInvalidation {
+            task_id: request.task_id.as_str().to_owned(),
+            action_kinds: vec![
+                UserActionKind::FinalAcceptance,
+                UserActionKind::ResidualRiskAcceptance,
+            ],
+        },
+    ));
+    if let Some(lifecycle_phase) = lifecycle_phase {
+        storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
+    }
+    if let Some((record, _scope)) = write_ticket_scope {
+        storage_mutations.push(CoreStorageMutation::ConsumeWriteTicket(
+            WriteTicketConsumption {
+                write_ticket_id: record.write_ticket_id.clone(),
+                run_id: run_id.as_str().to_owned(),
+                expected_basis_state_version: record.basis_state_version,
+                expected_write_authority_fingerprint: workflow_policy
+                    .write_authority_fingerprint
+                    .clone(),
+            },
+        ));
+    }
+    storage_mutations.extend(evidence_claim_mutations);
+    for plan in artifact_plans {
+        if let Some(mutation) = &plan.source_mutation {
+            storage_mutations.push(mutation.clone());
+        }
+        storage_mutations.push(plan.run_link.clone());
+    }
+    for plan in observation_plans {
+        storage_mutations.push(plan.mutation.clone());
+        for artifact_ref in &plan.observation.output_artifact_refs {
+            storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
+                artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
+                task_id: request.task_id.as_str().to_owned(),
+                owner_record_kind: "evidence_observation".to_owned(),
+                owner_record_id: plan.observation.observation_id.as_str().to_owned(),
+                created_by_run_id: run_id.as_str().to_owned(),
+                metadata_json: serde_json::to_string(&json!({
+                    "relation": "evidence_observation_output"
+                }))?,
+            }));
+        }
+        if let Some(producer_mutation) = &plan.producer_mutation {
+            storage_mutations.push(producer_mutation.clone());
+        }
+        if let Some(producer) = &plan.producer {
+            for artifact_ref in &producer.receipt_artifact_refs {
+                storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
+                    artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
+                    task_id: request.task_id.as_str().to_owned(),
+                    owner_record_kind: "evidence_producer".to_owned(),
+                    owner_record_id: producer.evidence_producer_id.as_str().to_owned(),
+                    created_by_run_id: run_id.as_str().to_owned(),
+                    metadata_json: serde_json::to_string(&json!({
+                        "relation": "evidence_capture_receipt"
+                    }))?,
+                }));
+            }
+        }
+    }
+    if let (Some(evidence_summary), Some(evidence_summary_id)) =
+        (recorded_evidence_summary, evidence_summary_id)
+    {
+        storage_mutations.push(CoreStorageMutation::UpsertEvidenceSummary(
+            EvidenceSummaryUpsert {
+                evidence_summary_id: evidence_summary_id.clone(),
+                task_id: request.task_id.as_str().to_owned(),
+                change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
+                status: storage_value(evidence_summary.status)?,
+                coverage_json: serde_json::to_string(&evidence_summary.coverage_items)?,
+                supporting_refs_json: serde_json::to_string(
+                    &evidence_summary
+                        .coverage_items
+                        .iter()
+                        .flat_map(|item| item.supporting_run_refs.clone())
+                        .collect::<Vec<_>>(),
+                )?,
+                gap_refs_json: serde_json::to_string(
+                    &evidence_summary
+                        .coverage_items
+                        .iter()
+                        .flat_map(|item| item.gap_refs.clone())
+                        .collect::<Vec<_>>(),
+                )?,
+                metadata_json: serde_json::to_string(&json!({
+                    "updated_by_run_id": run_id.as_str()
+                }))?,
+            },
+        ));
+        for artifact_ref in registered_artifacts {
+            storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
+                artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
+                task_id: request.task_id.as_str().to_owned(),
+                owner_record_kind: "evidence_summary".to_owned(),
+                owner_record_id: evidence_summary_id.clone(),
+                created_by_run_id: run_id.as_str().to_owned(),
+                metadata_json: serde_json::to_string(&json!({
+                    "relation": "evidence_support"
+                }))?,
+            }));
+        }
+    }
+    Ok(storage_mutations)
+}
+
+fn project_record_run_response(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    planned: RecordRunPlannedMutations,
+) -> Result<RecordRunResponseProjection, PlanError> {
+    let RecordRunPlannedMutations {
+        request,
+        plan_now,
+        planned_state_version,
+        change_unit,
+        write_ticket_scope,
+        run_id,
+        run_ref,
+        normalized_observed_changes,
+        registered_artifacts,
+        evidence_observations,
+        observation_refs,
+        evidence_producers,
+        acceptance_criteria,
+        recorded_evidence_summary,
+        projected_close_evidence_summary,
+        projected_state_evidence_summary,
+        current_close_basis,
+        blocker_refs,
+        pending_user_action_refs,
+        pending_authorities,
+        projected_task,
+        storage_mutations,
+        event_payload,
+    } = planned;
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
     let write_ticket_summary = if let Some((record, _scope)) = &write_ticket_scope {
@@ -899,10 +1376,6 @@ fn plan_record_run(
         consumed_record.status = storage_value(WriteTicketStatus::Consumed)?;
         consumed_record.consumed_by_run_id = Some(run_id.as_str().to_owned());
         consumed_record.consumed_at = Some(plan_now.to_string());
-        let observation_refs = observation_plans
-            .iter()
-            .map(|plan| plan.observation_ref.clone())
-            .collect::<Vec<_>>();
         Some(write_ticket_summary_for_record(
             None,
             &consumed_record,
@@ -970,20 +1443,17 @@ fn plan_record_run(
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
-        guard_health: close_plan.guard_health,
         guarantee_display: Some(guarantee_display),
     })?;
-
-    let run_summary = RunSummary {
-        run_ref: run_ref.clone(),
-        kind: request.kind,
-        summary: request.summary.clone(),
-        observed_changes: normalized_observed_changes.clone(),
-        artifact_refs: registered_artifacts.clone(),
-    };
     let result = RecordRunResult {
         base: placeholder_base(),
-        run_summary,
+        run_summary: RunSummary {
+            run_ref: run_ref.clone(),
+            kind: request.kind,
+            summary: request.summary.clone(),
+            observed_changes: normalized_observed_changes.clone(),
+            artifact_refs: registered_artifacts.clone(),
+        },
         registered_artifacts: registered_artifacts.clone(),
         evidence_summary: recorded_evidence_summary.clone(),
         evidence_observations: evidence_observations.clone(),
@@ -992,189 +1462,12 @@ fn plan_record_run(
         blocker_refs,
         state,
     };
-
-    let mut storage_mutations = vec![CoreStorageMutation::InsertRun(RunInsert {
-        run_id: run_id.as_str().to_owned(),
-        task_id: request.task_id.as_str().to_owned(),
-        change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
-        scope_revision: task.scope_revision,
-        write_ticket_id: request
-            .write_ticket_id
-            .as_ref()
-            .map(|id| id.as_str().to_owned()),
-        kind: storage_value(request.kind)?,
-        status: "recorded".to_owned(),
-        summary_json: serde_json::to_string(&json!({
-            "summary": request.summary
-        }))?,
-        observed_changes_json: serde_json::to_string(&normalized_observed_changes)?,
-        evidence_updates_json: serde_json::to_string(&request.evidence_updates)?,
-        write_ticket_effect_json: serde_json::to_string(&json!({
-            "write_ticket_id": request.write_ticket_id,
-            "effect": if write_ticket_scope.is_some() { "consumed" } else { "none" }
-        }))?,
-        created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-        metadata_json: serde_json::to_string(&json!({
-            "verification_basis": verified_invocation.verification_basis.clone()
-        }))?,
-    })];
-    if let Some(acceptance_update) = sensitive_category_acceptance_update {
-        storage_mutations.push(acceptance_update);
-    }
-    storage_mutations.push(CoreStorageMutation::UpdateTaskCloseBasis(
-        TaskCloseBasisUpdate {
-            task_id: request.task_id.as_str().to_owned(),
-            close_basis_revision,
-            close_basis_json,
-        },
-    ));
-    storage_mutations.push(CoreStorageMutation::MarkUserActionsSupersededOrStale(
-        UserActionInvalidation {
-            task_id: request.task_id.as_str().to_owned(),
-            action_kinds: vec![
-                UserActionKind::FinalAcceptance,
-                UserActionKind::ResidualRiskAcceptance,
-            ],
-        },
-    ));
-    if let Some(lifecycle_phase) = lifecycle_phase {
-        storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
-    }
-    if let Some((record, _scope)) = &write_ticket_scope {
-        storage_mutations.push(CoreStorageMutation::ConsumeWriteTicket(
-            WriteTicketConsumption {
-                write_ticket_id: record.write_ticket_id.clone(),
-                run_id: run_id.as_str().to_owned(),
-                expected_basis_state_version: record.basis_state_version,
-                expected_write_authority_fingerprint: workflow_policy
-                    .write_authority_fingerprint
-                    .clone(),
-            },
-        ));
-    }
-    storage_mutations.extend(evidence_claim_mutations);
-    for plan in &artifact_plans {
-        if let Some(mutation) = &plan.source_mutation {
-            storage_mutations.push(mutation.clone());
-        }
-        storage_mutations.push(plan.run_link.clone());
-    }
-    for plan in &observation_plans {
-        storage_mutations.push(plan.mutation.clone());
-        for artifact_ref in &plan.observation.output_artifact_refs {
-            storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
-                artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
-                task_id: request.task_id.as_str().to_owned(),
-                owner_record_kind: "evidence_observation".to_owned(),
-                owner_record_id: plan.observation.observation_id.as_str().to_owned(),
-                created_by_run_id: run_id.as_str().to_owned(),
-                metadata_json: serde_json::to_string(&json!({
-                    "relation": "evidence_observation_output"
-                }))?,
-            }));
-        }
-        if let Some(producer_mutation) = &plan.producer_mutation {
-            storage_mutations.push(producer_mutation.clone());
-        }
-        if let Some(producer) = &plan.producer {
-            for artifact_ref in &producer.receipt_artifact_refs {
-                storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
-                    artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
-                    task_id: request.task_id.as_str().to_owned(),
-                    owner_record_kind: "evidence_producer".to_owned(),
-                    owner_record_id: producer.evidence_producer_id.as_str().to_owned(),
-                    created_by_run_id: run_id.as_str().to_owned(),
-                    metadata_json: serde_json::to_string(&json!({
-                        "relation": "evidence_capture_receipt"
-                    }))?,
-                }));
-            }
-        }
-    }
-    if let (Some(evidence_summary), Some(evidence_summary_id)) =
-        (&recorded_evidence_summary, evidence_summary_id.as_ref())
-    {
-        storage_mutations.push(CoreStorageMutation::UpsertEvidenceSummary(
-            EvidenceSummaryUpsert {
-                evidence_summary_id: evidence_summary_id.clone(),
-                task_id: request.task_id.as_str().to_owned(),
-                change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
-                status: storage_value(evidence_summary.status)?,
-                coverage_json: serde_json::to_string(&evidence_summary.coverage_items)?,
-                supporting_refs_json: serde_json::to_string(
-                    &evidence_summary
-                        .coverage_items
-                        .iter()
-                        .flat_map(|item| item.supporting_run_refs.clone())
-                        .collect::<Vec<_>>(),
-                )?,
-                gap_refs_json: serde_json::to_string(
-                    &evidence_summary
-                        .coverage_items
-                        .iter()
-                        .flat_map(|item| item.gap_refs.clone())
-                        .collect::<Vec<_>>(),
-                )?,
-                metadata_json: serde_json::to_string(&json!({
-                    "updated_by_run_id": run_id.as_str()
-                }))?,
-            },
-        ));
-        for artifact_ref in &registered_artifacts {
-            storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
-                artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
-                task_id: request.task_id.as_str().to_owned(),
-                owner_record_kind: "evidence_summary".to_owned(),
-                owner_record_id: evidence_summary_id.clone(),
-                created_by_run_id: run_id.as_str().to_owned(),
-                metadata_json: serde_json::to_string(&json!({
-                    "relation": "evidence_support"
-                }))?,
-            }));
-        }
-    }
-
-    let residual_risk_ids = current_close_basis
-        .as_ref()
-        .map(|basis| {
-            basis
-                .residual_risks
-                .iter()
-                .map(|risk| risk.risk_id.as_str().to_owned())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let event_payload = object_from_value(json!({
-        "task_id": request.task_id,
-        "change_unit_id": request.change_unit_id,
-        "run_id": run_id,
-        "source_run_ref": run_ref,
-        "scope_revision": task.scope_revision,
-        "close_basis_revision": close_basis_revision,
-        "residual_risk_ids": residual_risk_ids,
-        "kind": request.kind,
-        "product_file_write_observed": normalized_observed_changes.product_file_write_observed,
-        "write_ticket_id": write_ticket_scope
-            .as_ref()
-            .map(|(record, _scope)| record.write_ticket_id.clone()),
-        "artifact_ids": registered_artifacts
-            .iter()
-            .map(|artifact| artifact.artifact_id.as_str().to_owned())
-            .collect::<Vec<_>>()
-        ,
-        "evidence_observation_ids": evidence_observations
-            .iter()
-            .map(|observation| observation.observation_id.as_str().to_owned())
-            .collect::<Vec<_>>()
-    }))?;
-
-    Ok(MethodPlan {
+    Ok(RecordRunResponseProjection {
         task_id: request.task_id,
-        change_unit_id: Some(request.change_unit_id),
+        change_unit_id: request.change_unit_id,
         storage_mutations,
         event_payload,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
-        next_actions: Vec::new(),
+        result,
     })
 }
 
@@ -1327,13 +1620,11 @@ fn plan_record_run_capture_authority(
             )
         })?;
     let body = validate_capture_receipt_record(&intent, &receipt)?;
-    let intent_session_id = decode_capture_intent_session_id(&intent_record)?;
     store
         .validate_evidence_capture_source_claims_for_receipt(
             &intent_record,
             &receipt,
             &intent.capture,
-            intent_session_id.as_ref(),
             &body,
         )
         .map_err(CorePipelineError::from)?;
@@ -1436,11 +1727,6 @@ fn plan_record_run_capture_authority(
                 tool_name,
             )
         }
-        EvidenceProducerKind::RegisteredConnectionObservation => (
-            EvidenceSourceKind::ConnectionObservation,
-            EvidenceAssuranceLevel::RegisteredConnectionObserved,
-            None,
-        ),
         EvidenceProducerKind::UnverifiedCaller
         | EvidenceProducerKind::UserChannelObservation
         | EvidenceProducerKind::ReusedEvidence => {
@@ -1495,10 +1781,6 @@ fn plan_record_run_capture_authority(
         receipt_artifact_ref: artifact_plan.artifact_ref.clone(),
         source_refs,
         connection_id: body.source.connection_id,
-        session_id: body.source.session_id.into_option(),
-        guard_installation_id: body.source.guard_installation_id.into_option(),
-        guard_event_ids: body.source.guard_event_ids,
-        watch_observation_refs: body.source.watch_observation_refs,
         host_invocation_id: body.source.host_invocation_id.into_option(),
         observed_by_actor_source: body.observed_by_actor_source,
         observed_outcome: body.observed_outcome,
@@ -1569,27 +1851,6 @@ fn decode_capture_intent_record(
         created_at,
         expires_at,
     })
-}
-
-fn decode_capture_intent_session_id(
-    record: &EvidenceCaptureIntentRecord,
-) -> CoreResult<Option<AgentSessionId>> {
-    let corrupt = || {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "evidence_capture_intents",
-            record.evidence_capture_intent_id.clone(),
-            "session_context_json",
-        ))
-    };
-    let session_context =
-        serde_json::from_str::<Value>(&record.session_context_json).map_err(|_| corrupt())?;
-    match session_context.get("session_id") {
-        Some(Value::String(value)) if !value.trim().is_empty() => {
-            Ok(Some(AgentSessionId::new(value)))
-        }
-        Some(Value::Null) => Ok(None),
-        _ => Err(corrupt()),
-    }
 }
 
 fn validate_capture_intent_current(
@@ -1687,7 +1948,7 @@ fn validate_capture_receipt_record(
     let observed_outcome_sha256 =
         volicord_types::canonical_json_bare_sha256(&body.observed_outcome)?;
     let expected_metadata = serde_json::json!({"source": &body.source});
-    if body.schema_version != "volicord.evidence_capture_receipt.v1"
+    if body.contract_id != volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
         || canonical_body != receipt.safe_receipt_json
         || !body.complete
         || body.redaction_state != RedactionState::Redacted
@@ -1747,9 +2008,6 @@ fn capture_spec_producer_kind(capture: &EvidenceCaptureSpec) -> EvidenceProducer
         }
         EvidenceCaptureSpec::VerifiedToolInvocation { .. } => {
             EvidenceProducerKind::VerifiedToolInvocation
-        }
-        EvidenceCaptureSpec::RegisteredConnectionObservation { .. } => {
-            EvidenceProducerKind::RegisteredConnectionObservation
         }
     }
 }
@@ -1819,10 +2077,6 @@ fn capture_authority_for_input<'a>(
         | EvidenceProducerKind::VerifiedToolInvocation => {
             input.source_kind == EvidenceSourceKind::ExternalTool
                 && input.assurance_level == EvidenceAssuranceLevel::ExternalToolResult
-        }
-        EvidenceProducerKind::RegisteredConnectionObservation => {
-            input.source_kind == EvidenceSourceKind::ConnectionObservation
-                && input.assurance_level == EvidenceAssuranceLevel::RegisteredConnectionObserved
         }
         EvidenceProducerKind::UnverifiedCaller
         | EvidenceProducerKind::UserChannelObservation
@@ -1998,10 +2252,7 @@ fn plan_record_run_observation(
             "capture_receipt_id": capture.receipt.evidence_capture_receipt_id,
             "result_sha256": capture.receipt.result_sha256,
             "connection_id": capture.connection_id,
-            "session_id": capture.session_id,
-            "guard_installation_id": capture.guard_installation_id,
-            "guard_event_ids": capture.guard_event_ids,
-            "watch_observation_refs": capture.watch_observation_refs
+            "host_invocation_id": capture.host_invocation_id
         }))?;
         canonical_input.source_refs.clear();
         canonical_input.limitations = capture.limitations.clone();
@@ -2013,26 +2264,24 @@ fn plan_record_run_observation(
         .as_ref()
         .is_some_and(|value| value.trim().is_empty())
     {
-        validation_plan_error(
+        return validation_plan_error(
             context.request.envelope.dry_run,
             Some(context.project_state.state_version),
             "evidence_observations[].tool_name",
             "tool_name must be null or a non-empty string",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if input
         .tool_invocation_id
         .as_ref()
         .is_some_and(|value| value.trim().is_empty())
     {
-        validation_plan_error(
+        return validation_plan_error(
             context.request.envelope.dry_run,
             Some(context.project_state.state_version),
             "evidence_observations[].tool_invocation_id",
             "tool_invocation_id must be null or a non-empty string",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
 
     let observation_id = allocate_evidence_observation_id(context.service, context.store)
@@ -2148,10 +2397,7 @@ fn plan_record_run_observation(
             observed_outcome: capture.observed_outcome.clone(),
             source_refs: capture.source_refs.clone(),
             connection_id: capture.connection_id.clone(),
-            session_id: capture.session_id.clone().into(),
-            guard_installation_id: capture.guard_installation_id.clone().into(),
-            guard_event_ids: capture.guard_event_ids.clone(),
-            watch_observation_refs: capture.watch_observation_refs.clone(),
+            host_invocation_id: capture.host_invocation_id.clone().into(),
             receipt_artifact_refs: vec![capture.receipt_artifact_ref.clone()],
             complete: true,
             limitations: capture.limitations.clone(),
@@ -2549,13 +2795,12 @@ fn validate_record_run_evidence_update(
             .as_ref()
             .is_some_and(|value| value.trim().is_empty())
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].provenance.tool_name",
                 "tool_name must be null or a non-empty string",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         normalize_source_refs(
             context.store,
@@ -2570,13 +2815,12 @@ fn validate_record_run_evidence_update(
             .as_ref()
             .is_some_and(|value| value.trim().is_empty())
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].provenance.tool_invocation_id",
                 "tool_invocation_id must be null or a non-empty string",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
     }
     if update.coverage_state == EvidenceCoverageUpdateState::Supported
@@ -2584,13 +2828,12 @@ fn validate_record_run_evidence_update(
         && update.provenance.is_none()
         && update.observation_refs.is_empty()
     {
-        validation_plan_error(
+        return validation_plan_error(
             context.request.envelope.dry_run,
             Some(context.project_state.state_version),
             "evidence_updates[].provenance",
             "supported evidence updates require provenance or a target-matching evidence observation",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     Ok(())
 }
@@ -2645,46 +2888,42 @@ fn validate_evidence_observation_state_refs(
 ) -> Result<(), PlanError> {
     for record_ref in refs {
         if record_ref.record_id.as_str().trim().is_empty() {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 field,
                 "evidence observation refs must use non-empty record_id values",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         if field == "evidence_updates[].observation_refs"
             && record_ref.record_kind != StateRecordKind::EvidenceObservation
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 field,
                 "evidence update observation_refs must identify evidence_observation records",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         if record_ref.project_id != context.request.envelope.project_id {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 field,
                 "evidence observation refs must belong to the request project",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         if record_ref
             .task_id
             .as_ref()
             .is_some_and(|task_id| task_id != &context.request.task_id)
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 field,
                 "evidence observation refs must not belong to another Task",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
     }
     Ok(())
@@ -2702,38 +2941,35 @@ fn validate_evidence_update_observation_refs(
             || record_ref.task_id.as_ref() != Some(&context.request.task_id)
             || record_ref.record_id.as_str().trim().is_empty()
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must identify same-Task evidence observations",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         let record = context
             .store
             .evidence_observation_record(record_ref.record_id.as_str())
             .map_err(CorePipelineError::from)?;
         let Some(record) = record else {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must identify existing observations",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         };
         if record.task_id != context.request.task_id.as_str()
             || record.change_unit_id.as_deref() != Some(context.request.change_unit_id.as_str())
             || !evidence_observation_record_matches_target(&record, target)
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must match the current Task, Change Unit, and evidence target",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         let source_run = record
             .run_id
@@ -2752,13 +2988,12 @@ fn validate_evidence_update_observation_refs(
                 Some(context.request.baseline_ref.as_str()),
             )
         }) {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must have current same-scope Run provenance",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         if require_strong_reuse
             && (stored_evidence_observation_provenance_class(
@@ -2776,13 +3011,12 @@ fn validate_evidence_update_observation_refs(
             )? != EvidenceProvenanceClass::Strong
                 || !stored_evidence_observation_has_supported_relevance(&record)?)
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "supported evidence may only reuse target-matching observations with sufficient provenance and supported relevance",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
     }
     Ok(())
@@ -2932,8 +3166,7 @@ pub(super) fn stored_evidence_observation_capture_relevance(
     )?;
     Ok(matches!(
         authority.producer_anchor.producer_kind,
-        EvidenceProducerKind::RegisteredConnectionObservation
-            | EvidenceProducerKind::VerifiedToolInvocation
+        EvidenceProducerKind::VerifiedToolInvocation
             | EvidenceProducerKind::VerifiedCommandExecution
     )
     .then_some(authority.relevance_assessment.status))
@@ -2999,11 +3232,9 @@ pub(super) fn projected_evidence_observation_provenance_class(
                 &mut visited,
             )?
         }
-        (EvidenceSourceKind::ExternalTool, EvidenceAssuranceLevel::ExternalToolResult)
-        | (
-            EvidenceSourceKind::ConnectionObservation,
-            EvidenceAssuranceLevel::RegisteredConnectionObserved,
-        ) => projected_capture_authority_is_current(observation, basis),
+        (EvidenceSourceKind::ExternalTool, EvidenceAssuranceLevel::ExternalToolResult) => {
+            projected_capture_authority_is_current(observation, basis)
+        }
         _ => false,
     };
     Ok(if anchored {
@@ -3047,7 +3278,7 @@ fn stored_evidence_observation_anchored_assurance(
         "metadata_json",
         Some(&record.metadata_json),
     )?;
-    if authority.recorded_by_run_id.as_str() != record.run_id.as_deref().unwrap_or_default()
+    if record.run_id.as_deref() != Some(authority.recorded_by_run_id.as_str())
         || authority.invocation_verification_basis.trim().is_empty()
     {
         return Ok(None);
@@ -3160,21 +3391,19 @@ fn stored_evidence_observation_anchored_assurance(
             )?;
             Ok((inherited == Some(inherited_assurance)).then_some(inherited_assurance))
         }
-        (EvidenceSourceKind::ExternalTool, EvidenceAssuranceLevel::ExternalToolResult)
-        | (
-            EvidenceSourceKind::ConnectionObservation,
-            EvidenceAssuranceLevel::RegisteredConnectionObserved,
-        ) => Ok(stored_capture_authority_is_current(
-            store,
-            record,
-            basis,
-            &input_refs,
-            &output_artifact_refs,
-            observed_by_actor_source.as_ref(),
-            &authority.producer_anchor,
-            &authority.relevance_assessment,
-        )?
-        .then_some(assurance_level)),
+        (EvidenceSourceKind::ExternalTool, EvidenceAssuranceLevel::ExternalToolResult) => {
+            Ok(stored_capture_authority_is_current(
+                store,
+                record,
+                basis,
+                &input_refs,
+                &output_artifact_refs,
+                observed_by_actor_source.as_ref(),
+                &authority.producer_anchor,
+                &authority.relevance_assessment,
+            )?
+            .then_some(assurance_level))
+        }
         _ => Ok(None),
     }
 }
@@ -3353,13 +3582,11 @@ fn stored_capture_authority_is_current(
         return Ok(false);
     };
     let receipt_body = validate_capture_receipt_record(&intent, &receipt)?;
-    let intent_session_id = decode_capture_intent_session_id(&intent_record)?;
     store
         .validate_evidence_capture_source_claims_for_receipt(
             &intent_record,
             &receipt,
             &intent.capture,
-            intent_session_id.as_ref(),
             &receipt_body,
         )
         .map_err(CorePipelineError::from)?;
@@ -3382,7 +3609,6 @@ fn stored_capture_authority_is_current(
             Some("volicord.command_runner".to_owned())
         }
         EvidenceCaptureSpec::VerifiedToolInvocation { tool_name, .. } => Some(tool_name.clone()),
-        EvidenceCaptureSpec::RegisteredConnectionObservation { .. } => None,
     };
     let expected_tool_invocation_id = receipt_body.source.host_invocation_id.as_ref().cloned();
     let expected_tool_metadata = object_from_value(serde_json::json!({
@@ -3390,10 +3616,7 @@ fn stored_capture_authority_is_current(
         "capture_receipt_id": receipt.evidence_capture_receipt_id,
         "result_sha256": receipt.result_sha256,
         "connection_id": receipt_body.source.connection_id,
-        "session_id": receipt_body.source.session_id,
-        "guard_installation_id": receipt_body.source.guard_installation_id,
-        "guard_event_ids": receipt_body.source.guard_event_ids,
-        "watch_observation_refs": receipt_body.source.watch_observation_refs
+        "host_invocation_id": receipt_body.source.host_invocation_id
     }))?;
     let expected_tool_metadata_json = canonical_json_string(&expected_tool_metadata)?;
     let expected_source_refs_json = canonical_json_string(&receipt_source_refs)?;
@@ -3416,11 +3639,7 @@ fn stored_capture_authority_is_current(
         && receipt_body.observed_outcome == producer.observed_outcome
         && producer.source_refs == receipt_source_refs
         && producer.connection_id == receipt_body.source.connection_id
-        && producer.session_id.as_ref() == receipt_body.source.session_id.as_ref()
-        && producer.guard_installation_id.as_ref()
-            == receipt_body.source.guard_installation_id.as_ref()
-        && producer.guard_event_ids == receipt_body.source.guard_event_ids
-        && producer.watch_observation_refs == receipt_body.source.watch_observation_refs
+        && producer.host_invocation_id.as_ref() == receipt_body.source.host_invocation_id.as_ref()
         && producer.limitations == receipt_body.limitations
         && producer.observed_at == receipt_body.observed_at
         && observation_record.tool_name == expected_tool_name
@@ -3437,13 +3656,10 @@ fn stored_capture_authority_is_current(
 fn capture_verification_basis(kind: EvidenceProducerKind) -> Option<&'static str> {
     match kind {
         EvidenceProducerKind::VerifiedCommandExecution => {
-            Some("volicord_owned_command_execution_v1")
+            Some(volicord_types::EVIDENCE_CAPTURE_COMMAND_VERIFICATION_BASIS)
         }
         EvidenceProducerKind::VerifiedToolInvocation => {
-            Some("registered_guard_exact_invocation_v1")
-        }
-        EvidenceProducerKind::RegisteredConnectionObservation => {
-            Some("registered_connection_observation_v1")
+            Some(volicord_types::EVIDENCE_CAPTURE_TOOL_VERIFICATION_BASIS)
         }
         EvidenceProducerKind::UnverifiedCaller
         | EvidenceProducerKind::UserChannelObservation
@@ -3736,13 +3952,12 @@ fn validate_supporting_run_refs(
                         || run.status != "recorded"
                 }))
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].supporting_run_refs",
                 "supporting_run_refs must identify existing Runs for the request Task",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
     }
     Ok(())
@@ -3767,13 +3982,12 @@ fn validate_evidence_gap_refs(
                 .iter()
                 .any(|stored| stored.record_id == record_ref.record_id.as_str())
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 "evidence_updates[].gap_refs",
                 "gap_refs must identify active blockers for the request Task",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
     }
     Ok(())
@@ -3793,13 +4007,12 @@ fn canonical_evidence_artifact_refs(
         if artifact_ref.project_id != context.request.envelope.project_id
             || artifact_ref.task_id != context.request.task_id
         {
-            validation_plan_error(
+            return validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
                 field,
                 "evidence artifact refs must identify existing artifacts owned by the request project and Task",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         let canonical_ref = if let Some(registered) = newly_registered {
             registered.clone()
@@ -3816,25 +4029,23 @@ fn canonical_evidence_artifact_refs(
                 )
                 .map_err(CorePipelineError::from)?;
             let Some(stored) = stored else {
-                validation_plan_error(
+                return validation_plan_error(
                     context.request.envelope.dry_run,
                     Some(context.project_state.state_version),
                     field,
                     "evidence artifact refs must identify existing artifacts owned by the request project and Task",
-                )?;
-                unreachable!("validation_plan_error always returns Err");
+                );
             };
             if stored.project_id != context.request.envelope.project_id.as_str()
                 || stored.task_id != context.request.task_id.as_str()
                 || !owner_link
             {
-                validation_plan_error(
+                return validation_plan_error(
                     context.request.envelope.dry_run,
                     Some(context.project_state.state_version),
                     field,
                     "evidence artifact refs must identify existing artifacts owned by the request project and Task",
-                )?;
-                unreachable!("validation_plan_error always returns Err");
+                );
             }
             artifact_ref_from_verified_record(
                 context.store,
@@ -3941,13 +4152,12 @@ fn build_record_run_close_basis(
         return Ok(None);
     };
     if assessment.result_summary.trim().is_empty() {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "close_assessment.result_summary",
             "close_assessment.result_summary must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
 
     let mut result_refs = assessment.result_refs.clone();
@@ -4034,13 +4244,12 @@ fn build_record_run_close_basis(
     let derived_sensitive_categories = sensitive_category_summary(&sensitive_action_requirements);
     let caller_sensitive_categories = normalize_string_list(&assessment.sensitive_categories);
     if caller_sensitive_categories != derived_sensitive_categories {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "close_assessment.sensitive_categories",
             "close_assessment.sensitive_categories must match Core-derived sensitive requirements",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
 
     Ok(Some(CurrentCloseBasis {
@@ -4210,22 +4419,20 @@ fn validate_residual_risk_input(
     let request = context.request;
     let project_state = context.project_state;
     if risk.summary.trim().is_empty() {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "close_assessment.residual_risks.summary",
             "residual risk summary must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if risk.consequence.trim().is_empty() {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "close_assessment.residual_risks.consequence",
             "residual risk consequence must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     canonicalize_close_basis_refs(context, &risk.source_refs)
 }
@@ -4250,13 +4457,12 @@ fn resolve_close_basis_ref(
     let request = context.request;
     let project_state = context.project_state;
     if record_ref.record_id.as_str().trim().is_empty() {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             context.field,
             "close assessment refs must use non-empty record_id values",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if !matches!(
         record_ref.record_kind,
@@ -4265,31 +4471,28 @@ fn resolve_close_basis_ref(
             | StateRecordKind::EvidenceSummary
             | StateRecordKind::ChangeUnit
     ) {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             context.field,
             "close assessment refs may only use run, artifact, evidence_summary, or change_unit record_kind",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if record_ref.project_id != request.envelope.project_id {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             context.field,
             "close assessment refs must belong to the request project",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if record_ref.task_id.as_ref() != Some(&request.task_id) {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(project_state.state_version),
             context.field,
             "close assessment refs must belong to the request Task",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
 
     match record_ref.record_kind {
@@ -4326,13 +4529,12 @@ fn resolve_close_basis_run_ref(
         None => false,
     };
     if !compatible {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(context.project_state.state_version),
             context.field,
             "Run refs in close_assessment must exist for the request Task, current Change Unit, current scope revision, and current baseline",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let record = record.expect("compatible run record is present");
     Ok(canonical_close_basis_ref(
@@ -4400,13 +4602,12 @@ fn resolve_close_basis_change_unit_ref(
             || record.status != "active"
             || !record.is_current
     }) {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(context.project_state.state_version),
             context.field,
             "Change Unit refs in close_assessment must identify the current Change Unit",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let record = record.expect("current Change Unit record is present");
     Ok(canonical_close_basis_ref(
@@ -4458,13 +4659,12 @@ fn resolve_close_basis_evidence_summary_ref(
                 .as_ref()
                 .is_none_or(|latest| latest.evidence_summary_id != record.evidence_summary_id)
     }) {
-        validation_plan_error(
+        return validation_plan_error(
             request.envelope.dry_run,
             Some(context.project_state.state_version),
             context.field,
             "Evidence Summary refs in close_assessment must identify the current Task evidence summary",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let record = record.expect("current Evidence Summary record is present");
     Ok(canonical_close_basis_ref(
@@ -4539,8 +4739,7 @@ fn resolve_close_basis_artifact_ref(
             Some(context.project_state.state_version),
             context.field,
             "Artifact refs in close_assessment must identify verified available artifacts owned by the request Task",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        )
     }
 }
 
@@ -4731,7 +4930,7 @@ fn plan_staged_artifact_input(
         request.envelope.project_id.as_str(),
         artifact_id.as_str()
     );
-    let display_name = staged_artifact_display_name(&record);
+    let display_name = staged_artifact_display_name(&record)?;
     let content_type = record
         .content_type
         .clone()
@@ -5237,7 +5436,7 @@ fn validate_write_ticket_for_run(
         "validity_basis_json",
         Some(&record.validity_basis_json),
     )?;
-    if validity_basis.write_authority_fingerprint.as_deref() != Some(write_authority_fingerprint) {
+    if validity_basis.write_authority_fingerprint != write_authority_fingerprint {
         return write_ticket_mismatch(
             request,
             project_state,
@@ -5530,12 +5729,14 @@ fn build_record_run_evidence_summary(
     }))
 }
 
-fn staged_artifact_display_name(record: &StoredArtifactStagingRecord) -> String {
-    string_member(
-        &display_only_json_object_lossy(&record.artifact_json),
-        "display_name",
-    )
-    .unwrap_or_else(|| record.handle_id.clone())
+fn staged_artifact_display_name(record: &StoredArtifactStagingRecord) -> CoreResult<String> {
+    let artifact = decode_required_json_object(
+        "artifact_staging",
+        record.handle_id.clone(),
+        "artifact_json",
+        Some(&record.artifact_json),
+    )?;
+    Ok(string_member(&artifact, "display_name").unwrap_or_else(|| record.handle_id.clone()))
 }
 
 fn artifact_link_metadata(input: &ArtifactInput) -> CoreResult<String> {

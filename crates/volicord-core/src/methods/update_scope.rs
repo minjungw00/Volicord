@@ -80,17 +80,55 @@ impl CoreService {
     }
 }
 
-fn plan_update_scope(
-    service: &CoreService,
+struct NormalizedUpdateScopeRequest {
+    request: UpdateScopeRequest,
+    sensitive_effect: bool,
+}
+
+fn normalize_update_scope_request(request: UpdateScopeRequest) -> NormalizedUpdateScopeRequest {
+    let sensitive_effect = request
+        .change_unit
+        .effect_contract
+        .as_ref()
+        .is_some_and(|contract| {
+            !contract.sensitive_action_expectations.is_empty()
+                || contract.allowed_effects.iter().any(|effect| {
+                    matches!(
+                        effect,
+                        ChangeUnitEffectKind::SensitiveAction
+                            | ChangeUnitEffectKind::ExternalNetwork
+                            | ChangeUnitEffectKind::SecretAccess
+                    )
+                })
+        });
+    NormalizedUpdateScopeRequest {
+        request,
+        sensitive_effect,
+    }
+}
+
+struct ResolvedUpdateScopeContext {
+    request: UpdateScopeRequest,
+    sensitive_effect: bool,
+    planned_state_version: u64,
+    plan_now: UtcTimestamp,
+    task: TaskRecord,
+    current_change_unit: Option<ChangeUnitRecord>,
+    workflow_policy: ProjectWorkflowPolicy,
+}
+
+fn resolve_update_scope_context(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: UpdateScopeRequest,
-    verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan, PlanError> {
+    normalized: NormalizedUpdateScopeRequest,
+) -> Result<ResolvedUpdateScopeContext, PlanError> {
+    let NormalizedUpdateScopeRequest {
+        request,
+        sensitive_effect,
+    } = normalized;
     let planned_state_version = project_state.state_version + 1;
-    let plan_now = operation_now.clone();
-    let mut task = store
+    let task = store
         .task_record(&request.task_id)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
@@ -116,25 +154,51 @@ fn plan_update_scope(
         })?;
     validate_requested_effect_contract(store, project_state, &request)?;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
+
+    Ok(ResolvedUpdateScopeContext {
+        request,
+        sensitive_effect,
+        planned_state_version,
+        plan_now: operation_now.clone(),
+        task,
+        current_change_unit,
+        workflow_policy,
+    })
+}
+
+struct ScopePolicyDecision {
+    request: UpdateScopeRequest,
+    planned_state_version: u64,
+    plan_now: UtcTimestamp,
+    task: TaskRecord,
+    current_change_unit: Option<ChangeUnitRecord>,
+    next_control: TaskControlLevel,
+    next_acceptance: AcceptancePolicy,
+    control_raised: bool,
+    acceptance_raised: bool,
+    control_level_reason: String,
+    acceptance_policy_reason: String,
+    linked_scope_decision_refs: Vec<StateRecordRef>,
+}
+
+fn decide_update_scope_policy(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    resolved: ResolvedUpdateScopeContext,
+) -> Result<ScopePolicyDecision, PlanError> {
+    let ResolvedUpdateScopeContext {
+        request,
+        sensitive_effect,
+        planned_state_version,
+        plan_now,
+        task,
+        current_change_unit,
+        workflow_policy,
+    } = resolved;
     let current_control =
         parse_task_control_level(&task.effective_control_level).map_err(CorePipelineError::from)?;
     let resolved_control =
         resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
-    let sensitive_effect = request
-        .change_unit
-        .effect_contract
-        .as_ref()
-        .is_some_and(|contract| {
-            !contract.sensitive_action_expectations.is_empty()
-                || contract.allowed_effects.iter().any(|effect| {
-                    matches!(
-                        effect,
-                        ChangeUnitEffectKind::SensitiveAction
-                            | ChangeUnitEffectKind::ExternalNetwork
-                            | ChangeUnitEffectKind::SecretAccess
-                    )
-                })
-        });
     let next_control = if sensitive_effect {
         TaskControlLevel::Sensitive
     } else {
@@ -223,19 +287,72 @@ fn plan_update_scope(
         ))));
     }
 
+    Ok(ScopePolicyDecision {
+        request,
+        planned_state_version,
+        plan_now,
+        task,
+        current_change_unit,
+        next_control,
+        next_acceptance,
+        control_raised,
+        acceptance_raised,
+        control_level_reason,
+        acceptance_policy_reason,
+        linked_scope_decision_refs,
+    })
+}
+
+struct PlannedScopeMutations {
+    request: UpdateScopeRequest,
+    planned_state_version: u64,
+    plan_now: UtcTimestamp,
+    synthetic_task: TaskRecord,
+    synthetic_change_unit: Option<ChangeUnitRecord>,
+    acceptance_criteria: Vec<AcceptanceCriterion>,
+    scope_changed: bool,
+    next_scope_revision: u64,
+    next_close_basis_revision: u64,
+    change_unit_ref: Option<StateRecordRef>,
+    change_unit_id: Option<ChangeUnitId>,
+    linked_scope_decision_refs: Vec<StateRecordRef>,
+    stale_write_ticket_refs: Vec<StateRecordRef>,
+    storage_mutations: Vec<CoreStorageMutation>,
+}
+
+fn plan_update_scope_mutations(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    policy: ScopePolicyDecision,
+) -> Result<PlannedScopeMutations, PlanError> {
+    let ScopePolicyDecision {
+        request,
+        planned_state_version,
+        plan_now,
+        mut task,
+        current_change_unit,
+        next_control,
+        next_acceptance,
+        control_raised,
+        acceptance_raised,
+        control_level_reason,
+        acceptance_policy_reason,
+        linked_scope_decision_refs,
+    } = policy;
     let current_scope = StoredScope::from_task(&task)?;
     let next_scope = current_scope.apply_request(&request);
     if request.change_unit.operation == ChangeUnitOperation::KeepCurrent
         && current_change_unit.is_some()
         && current_scope.baseline_ref != next_scope.baseline_ref
     {
-        validation_plan_error(
+        return scope_validation_rejection(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "baseline_ref",
             "changing the Task baseline while a current Change Unit exists requires replace_current",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let (acceptance_criteria, acceptance_criteria_mutation, acceptance_criteria_changed) =
         plan_acceptance_criteria_replacement(service, store, project_state, &request)?;
@@ -356,7 +473,7 @@ fn plan_update_scope(
         synthetic_task.work_phase = work_phase_storage(WorkPhase::Implementation).to_owned();
     }
 
-    let (change_unit_ref, synthetic_change_unit, branch_change_unit_id) =
+    let (change_unit_ref, synthetic_change_unit, change_unit_id) =
         match request.change_unit.operation {
             ChangeUnitOperation::KeepCurrent => {
                 let change_unit_ref = current_change_unit.as_ref().map(|record| {
@@ -365,7 +482,7 @@ fn plan_update_scope(
                         &record.change_unit_id,
                         &request.envelope.project_id,
                         Some(&request.task_id),
-                        Some(record.basis_state_version.unwrap_or(planned_state_version)),
+                        Some(record.basis_state_version),
                     )
                 });
                 (
@@ -378,14 +495,12 @@ fn plan_update_scope(
             }
             ChangeUnitOperation::CreateCurrent => {
                 if current_change_unit.is_some() {
-                    let response = validation_rejected(
+                    return scope_validation_rejection(
                         request.envelope.dry_run,
                         Some(project_state.state_version),
                         "change_unit.operation",
                         "create_current requires no current Change Unit",
-                    )
-                    .map_err(PlanError::Core)?;
-                    return Err(PlanError::Response(Box::new(response)));
+                    );
                 }
                 let change_unit_id =
                     allocate_change_unit_id(service, store).map_err(PlanError::Core)?;
@@ -482,6 +597,93 @@ fn plan_update_scope(
         }
     }
 
+    Ok(PlannedScopeMutations {
+        request,
+        planned_state_version,
+        plan_now,
+        synthetic_task,
+        synthetic_change_unit,
+        acceptance_criteria,
+        scope_changed,
+        next_scope_revision,
+        next_close_basis_revision,
+        change_unit_ref,
+        change_unit_id,
+        linked_scope_decision_refs,
+        stale_write_ticket_refs,
+        storage_mutations,
+    })
+}
+
+struct UpdateScopeResponseProjection {
+    task_id: TaskId,
+    change_unit_id: Option<ChangeUnitId>,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_payload: JsonObject,
+    result_fields: JsonObject,
+    next_actions: Vec<NextActionSummary>,
+}
+
+impl UpdateScopeResponseProjection {
+    fn into_method_plan(self) -> MethodPlan {
+        MethodPlan {
+            task_id: self.task_id,
+            change_unit_id: self.change_unit_id,
+            storage_mutations: self.storage_mutations,
+            event_payload: self.event_payload,
+            result_fields: self.result_fields,
+            next_actions: self.next_actions,
+        }
+    }
+}
+
+fn plan_update_scope(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    request: UpdateScopeRequest,
+    verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
+) -> Result<MethodPlan, PlanError> {
+    let policy = decide_update_scope_policy(
+        store,
+        project_state,
+        resolve_update_scope_context(
+            store,
+            project_state,
+            operation_now,
+            normalize_update_scope_request(request),
+        )?,
+    )?;
+    let mutations =
+        plan_update_scope_mutations(service, store, project_state, verified_invocation, policy)?;
+    let projection =
+        project_update_scope_response(store, project_state, verified_invocation, mutations)?;
+    Ok(projection.into_method_plan())
+}
+
+fn project_update_scope_response(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    mutations: PlannedScopeMutations,
+) -> Result<UpdateScopeResponseProjection, PlanError> {
+    let PlannedScopeMutations {
+        request,
+        planned_state_version,
+        plan_now,
+        synthetic_task,
+        synthetic_change_unit,
+        acceptance_criteria,
+        scope_changed,
+        next_scope_revision,
+        next_close_basis_revision,
+        change_unit_ref,
+        change_unit_id: branch_change_unit_id,
+        linked_scope_decision_refs,
+        stale_write_ticket_refs,
+        storage_mutations,
+    } = mutations;
     let pending_refs = if scope_changed {
         Vec::new()
     } else {
@@ -598,7 +800,6 @@ fn plan_update_scope(
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
-        guard_health: close_plan.guard_health,
         guarantee_display: Some(guarantee_display),
     })?;
     let result = volicord_types::UpdateScopeResult {
@@ -619,7 +820,7 @@ fn plan_update_scope(
         "close_basis_revision": next_close_basis_revision
     }))?;
 
-    Ok(MethodPlan {
+    Ok(UpdateScopeResponseProjection {
         task_id: request.task_id,
         change_unit_id: branch_change_unit_id,
         storage_mutations,
@@ -627,6 +828,17 @@ fn plan_update_scope(
         result_fields: strip_base(serde_json::to_value(result)?)?,
         next_actions,
     })
+}
+
+fn scope_validation_rejection<T>(
+    dry_run: bool,
+    state_version: Option<u64>,
+    field: &'static str,
+    message: &'static str,
+) -> Result<T, PlanError> {
+    let response =
+        validation_rejected(dry_run, state_version, field, message).map_err(PlanError::Core)?;
+    Err(PlanError::Response(Box::new(response)))
 }
 
 fn acceptance_policy_rank_for_scope(policy: AcceptancePolicy) -> u8 {
@@ -661,54 +873,49 @@ fn plan_acceptance_criteria_replacement(
     for (position, replacement) in replacements.iter().enumerate() {
         let statement = normalize_display_text(&replacement.statement);
         if statement.is_empty() {
-            validation_plan_error(
+            return scope_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "acceptance_criteria[].statement",
                 "acceptance criterion statements must not be empty",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         let acceptance_criterion_id = match replacement.acceptance_criterion_id.as_ref() {
             Some(id) => {
                 if !seen_ids.insert(id.as_str().to_owned()) {
-                    validation_plan_error(
+                    return scope_validation_rejection(
                         request.envelope.dry_run,
                         Some(project_state.state_version),
                         "acceptance_criteria[].acceptance_criterion_id",
                         "acceptance criterion replacement IDs must not be duplicated",
-                    )?;
-                    unreachable!("validation_plan_error always returns Err");
+                    );
                 }
                 let record = store
                     .acceptance_criterion_record(id.as_str())
                     .map_err(CorePipelineError::from)?;
                 let Some(record) = record else {
-                    validation_plan_error(
+                    return scope_validation_rejection(
                         request.envelope.dry_run,
                         Some(project_state.state_version),
                         "acceptance_criteria[].acceptance_criterion_id",
                         "acceptance criterion replacement ID is unknown",
-                    )?;
-                    unreachable!("validation_plan_error always returns Err");
+                    );
                 };
                 if record.task_id != request.task_id.as_str() {
-                    validation_plan_error(
+                    return scope_validation_rejection(
                         request.envelope.dry_run,
                         Some(project_state.state_version),
                         "acceptance_criteria[].acceptance_criterion_id",
                         "acceptance criterion replacement ID belongs to another Task",
-                    )?;
-                    unreachable!("validation_plan_error always returns Err");
+                    );
                 }
                 if record.status != "active" {
-                    validation_plan_error(
+                    return scope_validation_rejection(
                         request.envelope.dry_run,
                         Some(project_state.state_version),
                         "acceptance_criteria[].acceptance_criterion_id",
                         "retired acceptance criterion IDs cannot be reused",
-                    )?;
-                    unreachable!("validation_plan_error always returns Err");
+                    );
                 }
                 id.clone()
             }
@@ -754,34 +961,31 @@ fn validate_requested_effect_contract(
     match validate_effect_contract(contract) {
         Ok(()) => {}
         Err(EffectContractValidationError::ConflictingEffect(_)) => {
-            validation_plan_error(
+            return scope_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "change_unit.effect_contract",
                 "effect_contract cannot list the same effect as both allowed and forbidden",
-            )?;
+            );
         }
         Err(EffectContractValidationError::EmptyText(field)) => {
-            validation_plan_error(
+            return scope_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 field,
                 "effect_contract string list entries must not be empty",
-            )?;
+            );
         }
     }
 
     match validate_effect_contract_paths(&store.project_record().repo_root, contract) {
         Ok(()) => Ok(()),
-        Err(ProductPathError::Invalid) => {
-            validation_plan_error(
+        Err(ProductPathError::Invalid) => scope_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "change_unit.effect_contract.allowed_paths",
                 "effect_contract.allowed_paths must be relative Product Repository paths that stay inside the repository",
-            )?;
-            unreachable!("validation_plan_error always returns Err")
-        }
+            ),
         Err(ProductPathError::LocalAccess) => {
             let response = rejected_pipeline_response(
                 request.envelope.dry_run,
@@ -822,7 +1026,7 @@ fn validate_related_scope_decisions(
             &current_change_unit.change_unit_id,
             &request.envelope.project_id,
             Some(&request.task_id),
-            current_change_unit.basis_state_version,
+            Some(current_change_unit.basis_state_version),
         ));
     }
     let requirement = ScopeDecisionAuthorityRequirement {
@@ -838,13 +1042,12 @@ fn validate_related_scope_decisions(
             || related_ref.project_id != request.envelope.project_id
             || related_ref.task_id.as_ref() != Some(&request.task_id)
         {
-            return validation_plan_error(
+            return scope_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "related_scope_decision_refs",
                 "related scope decision refs must identify user-action resolutions for this Task",
-            )
-            .map(|()| Vec::new());
+            );
         }
         let resolution = store
             .user_action_resolution_record(related_ref.record_id.as_str())

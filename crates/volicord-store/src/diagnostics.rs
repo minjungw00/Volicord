@@ -6,48 +6,59 @@
 
 use std::{
     collections::BTreeMap,
-    fs,
+    fs::{self, OpenOptions},
+    io::ErrorKind,
     path::{Path, PathBuf},
+    sync::OnceLock,
     time::Duration,
 };
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use volicord_types::{
-    validate_managed_host_session_id, IntegrationProfile, MethodName, ObservationConfidence,
-    MANAGED_HOST_SESSION_ID_PREFIX,
+    canonical_json_bytes, validate_managed_stdio_session_id, IntegrationProfile, MethodName,
+    ObservationConfidence, UtcTimestamp,
 };
 
 use crate::{sqlite::enable_foreign_keys, StoreError, StoreResult};
 
 /// Runtime Home filename for the non-authoritative diagnostics store.
 pub const DIAGNOSTICS_DB_FILE: &str = "diagnostics.sqlite";
-/// Current local diagnostics schema version.
-pub const DIAGNOSTICS_SCHEMA_VERSION: u32 = 2;
+/// Semantic identity of the one accepted local diagnostics storage contract.
+pub const DIAGNOSTICS_CONTRACT_ID: &str = "volicord.sqlite.diagnostics";
 /// Maximum age retained for diagnostic sessions.
 pub const DIAGNOSTICS_RETENTION_DAYS: u32 = 7;
 /// Maximum diagnostic sessions retained in one Runtime Home.
 pub const DIAGNOSTICS_MAX_SESSIONS: u32 = 64;
 /// Maximum diagnostic events retained for one session.
 pub const DIAGNOSTICS_MAX_EVENTS_PER_SESSION: u32 = 1_024;
+/// Maximum Core rejection observations retained in one Runtime Home.
+pub const DIAGNOSTICS_MAX_CORE_REJECTIONS: u32 = 1_024;
 
 const DATABASE_KIND: &str = "local_diagnostics";
 const BUSY_TIMEOUT_MILLIS: u64 = 250;
 
-pub(crate) const DIAGNOSTICS_SCHEMA_V1_SQL: &str = r#"
-CREATE TABLE IF NOT EXISTS diagnostic_sessions (
+const DIAGNOSTICS_SCHEMA_SQL: &str = r#"
+CREATE TABLE diagnostics_manifest (
+    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    contract_id TEXT NOT NULL,
+    canonical_schema_digest TEXT NOT NULL
+);
+
+CREATE TABLE diagnostic_sessions (
     session_id TEXT PRIMARY KEY NOT NULL,
     connection_id TEXT,
     project_id TEXT,
-    transport TEXT NOT NULL CHECK (transport IN ('mcp_stdio', 'guard_hook', 'local_http', 'unknown')),
-    host_kind TEXT CHECK (host_kind IS NULL OR host_kind IN ('codex', 'claude_code', 'generic', 'unknown')),
+    transport TEXT NOT NULL CHECK (transport IN ('mcp_stdio', 'guard_hook', 'cli_inbox')),
+    host_kind TEXT CHECK (host_kind IS NULL OR host_kind = 'codex'),
     package_version TEXT NOT NULL,
     build_id TEXT NOT NULL,
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS diagnostic_events (
+CREATE TABLE diagnostic_events (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL REFERENCES diagnostic_sessions(session_id) ON DELETE CASCADE,
     event_kind TEXT NOT NULL CHECK (event_kind IN ('mcp_tool_call', 'guard_hook', 'session')),
@@ -61,14 +72,10 @@ CREATE TABLE IF NOT EXISTS diagnostic_events (
     core_committed INTEGER NOT NULL CHECK (core_committed IN (0, 1)),
     replayed INTEGER NOT NULL CHECK (replayed IN (0, 1)),
     user_channel_kind TEXT CHECK (
-        user_channel_kind IS NULL OR user_channel_kind IN (
-            'mcp_elicitation', 'prompt_capture', 'local_web_consent', 'cli_inbox'
-        )
+        user_channel_kind IS NULL OR user_channel_kind IN ('prompt_capture', 'cli_inbox')
     ),
     fallback_kind TEXT CHECK (
-        fallback_kind IS NULL OR fallback_kind IN (
-            'prompt_capture', 'local_web_consent', 'cli_inbox'
-        )
+        fallback_kind IS NULL OR fallback_kind = 'cli_inbox'
     ),
     product_file_write_count INTEGER NOT NULL CHECK (product_file_write_count >= 0),
     authoritative_refresh_failure INTEGER NOT NULL CHECK (authoritative_refresh_failure IN (0, 1)),
@@ -78,16 +85,26 @@ CREATE TABLE IF NOT EXISTS diagnostic_events (
     occurred_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_diagnostic_sessions_updated
+CREATE INDEX idx_diagnostic_sessions_updated
     ON diagnostic_sessions(updated_at DESC, session_id DESC);
-CREATE INDEX IF NOT EXISTS idx_diagnostic_events_session
+CREATE INDEX idx_diagnostic_events_session
     ON diagnostic_events(session_id, event_id);
-CREATE INDEX IF NOT EXISTS idx_diagnostic_events_tool
+CREATE INDEX idx_diagnostic_events_tool
     ON diagnostic_events(session_id, tool_name, event_id);
-"#;
 
-pub(crate) const DIAGNOSTICS_SCHEMA_V2_SQL: &str = r#"
-CREATE TABLE IF NOT EXISTS workflow_metric_events (
+CREATE TABLE core_rejection_diagnostics (
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    method_name TEXT NOT NULL CHECK (method_name = 'volicord.prepare_write'),
+    reason TEXT NOT NULL CHECK (reason = 'current_change_unit_required'),
+    occurred_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, task_id, method_name, reason)
+);
+
+CREATE INDEX idx_core_rejection_diagnostics_time
+    ON core_rejection_diagnostics(occurred_at DESC, project_id, task_id);
+
+CREATE TABLE workflow_metric_events (
     workflow_metric_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL REFERENCES diagnostic_sessions(session_id) ON DELETE CASCADE,
     project_id TEXT,
@@ -102,8 +119,6 @@ CREATE TABLE IF NOT EXISTS workflow_metric_events (
             'write_ticket_reused',
             'write_ticket_reissued',
             'user_roundtrip',
-            'stop_call',
-            'stop_repeat',
             'tools_list_serialized_bytes',
             'pre_tool_decision',
             'observation_assessment',
@@ -134,7 +149,7 @@ CREATE TABLE IF NOT EXISTS workflow_metric_events (
         )
     ),
     integration_profile TEXT CHECK (
-        integration_profile IS NULL OR integration_profile IN ('record', 'detective')
+        integration_profile IS NULL OR integration_profile = 'record'
     ),
     decision TEXT CHECK (
         decision IS NULL OR decision IN ('allow', 'warn', 'deny')
@@ -187,14 +202,244 @@ CREATE TABLE IF NOT EXISTS workflow_metric_events (
     )
 );
 
-CREATE INDEX IF NOT EXISTS idx_workflow_metric_events_session
+CREATE INDEX idx_workflow_metric_events_session
     ON workflow_metric_events(session_id, workflow_metric_event_id);
-CREATE INDEX IF NOT EXISTS idx_workflow_metric_events_aggregate
+CREATE INDEX idx_workflow_metric_events_aggregate
     ON workflow_metric_events(
         project_id, metric_kind, method_name, integration_profile,
         decision, observation_confidence, outcome
-    );
+);
 "#;
+
+static DIAGNOSTICS_SCHEMA_METADATA: OnceLock<Result<DiagnosticsSchemaMetadata, String>> =
+    OnceLock::new();
+static DIAGNOSTICS_STORAGE_MANIFEST: OnceLock<Result<DiagnosticsStorageManifest, String>> =
+    OnceLock::new();
+
+/// Exact semantic manifest for the local, non-authority diagnostics database.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DiagnosticsStorageManifest {
+    pub contract_id: String,
+    pub canonical_schema_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct DiagnosticsSchemaMetadata {
+    relations: Vec<DiagnosticsRelation>,
+    columns: Vec<DiagnosticsColumn>,
+    indexes: Vec<DiagnosticsIndex>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct DiagnosticsRelation {
+    object_type: String,
+    name: String,
+    canonical_sql: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct DiagnosticsColumn {
+    relation: String,
+    ordinal: u32,
+    name: String,
+    declared_type: String,
+    not_null: bool,
+    default_value: Option<String>,
+    primary_key_ordinal: u32,
+    hidden: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct DiagnosticsIndex {
+    table: String,
+    name: String,
+    unique: bool,
+    partial: bool,
+    canonical_sql: String,
+}
+
+/// Returns the one exact manifest derived from the canonical diagnostics SQL.
+pub fn current_diagnostics_storage_manifest() -> StoreResult<&'static DiagnosticsStorageManifest> {
+    DIAGNOSTICS_STORAGE_MANIFEST
+        .get_or_init(|| {
+            let metadata = DIAGNOSTICS_SCHEMA_METADATA
+                .get_or_init(build_diagnostics_schema_metadata)
+                .as_ref()
+                .map_err(Clone::clone)?;
+            let bytes = canonical_json_bytes(metadata).map_err(|error| error.to_string())?;
+            let digest = Sha256::digest(bytes);
+            Ok(DiagnosticsStorageManifest {
+                contract_id: DIAGNOSTICS_CONTRACT_ID.to_owned(),
+                canonical_schema_digest: format!("sha256:{digest:x}"),
+            })
+        })
+        .as_ref()
+        .map_err(|detail| {
+            StoreError::schema_invariant(
+                DATABASE_KIND,
+                format!("canonical diagnostics manifest is unavailable: {detail}"),
+            )
+        })
+}
+
+fn canonical_diagnostics_schema_metadata() -> StoreResult<&'static DiagnosticsSchemaMetadata> {
+    DIAGNOSTICS_SCHEMA_METADATA
+        .get_or_init(build_diagnostics_schema_metadata)
+        .as_ref()
+        .map_err(|detail| {
+            StoreError::schema_invariant(
+                DATABASE_KIND,
+                format!("canonical diagnostics schema metadata is unavailable: {detail}"),
+            )
+        })
+}
+
+fn build_diagnostics_schema_metadata() -> Result<DiagnosticsSchemaMetadata, String> {
+    let conn = Connection::open_in_memory().map_err(|error| error.to_string())?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|error| error.to_string())?;
+    conn.execute_batch(DIAGNOSTICS_SCHEMA_SQL)
+        .map_err(|error| error.to_string())?;
+    extract_diagnostics_schema_metadata(&conn)
+}
+
+fn extract_diagnostics_schema_metadata(
+    conn: &Connection,
+) -> Result<DiagnosticsSchemaMetadata, String> {
+    let mut relations = Vec::new();
+    let mut relation_statement = conn
+        .prepare(
+            "SELECT type, name, sql
+               FROM sqlite_schema
+              WHERE type IN ('table', 'view', 'trigger')
+                AND name NOT LIKE 'sqlite_%'
+              ORDER BY type, name",
+        )
+        .map_err(|error| error.to_string())?;
+    let relation_rows = relation_statement
+        .query_map([], |row| {
+            Ok(DiagnosticsRelation {
+                object_type: row.get(0)?,
+                name: row.get(1)?,
+                canonical_sql: row.get(2)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    for row in relation_rows {
+        relations.push(row.map_err(|error| error.to_string())?);
+    }
+
+    let mut columns = Vec::new();
+    for relation in relations
+        .iter()
+        .filter(|relation| relation.object_type != "trigger")
+    {
+        columns.extend(read_diagnostics_columns(conn, &relation.name)?);
+    }
+    let mut indexes = read_diagnostics_indexes(conn)?;
+    relations.sort();
+    columns.sort();
+    indexes.sort();
+    Ok(DiagnosticsSchemaMetadata {
+        relations,
+        columns,
+        indexes,
+    })
+}
+
+fn read_diagnostics_columns(
+    conn: &Connection,
+    relation: &str,
+) -> Result<Vec<DiagnosticsColumn>, String> {
+    let sql = format!("PRAGMA table_xinfo({})", quote_sqlite_identifier(relation));
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut columns = Vec::new();
+    for row in rows {
+        let (ordinal, name, declared_type, not_null, default_value, primary_key, hidden) =
+            row.map_err(|error| error.to_string())?;
+        columns.push(DiagnosticsColumn {
+            relation: relation.to_owned(),
+            ordinal: u32::try_from(ordinal).map_err(|error| error.to_string())?,
+            name,
+            declared_type,
+            not_null: not_null != 0,
+            default_value,
+            primary_key_ordinal: u32::try_from(primary_key).map_err(|error| error.to_string())?,
+            hidden: u32::try_from(hidden).map_err(|error| error.to_string())?,
+        });
+    }
+    Ok(columns)
+}
+
+fn read_diagnostics_indexes(conn: &Connection) -> Result<Vec<DiagnosticsIndex>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT name, tbl_name, sql
+               FROM sqlite_schema
+              WHERE type = 'index'
+                AND name NOT LIKE 'sqlite_%'
+              ORDER BY name",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut indexes = Vec::new();
+    for row in rows {
+        let (name, table, canonical_sql) = row.map_err(|error| error.to_string())?;
+        let (unique, partial) = diagnostics_index_flags(conn, &table, &name)?;
+        indexes.push(DiagnosticsIndex {
+            table,
+            name,
+            unique,
+            partial,
+            canonical_sql,
+        });
+    }
+    Ok(indexes)
+}
+
+fn diagnostics_index_flags(
+    conn: &Connection,
+    table: &str,
+    index: &str,
+) -> Result<(bool, bool), String> {
+    let sql = format!("PRAGMA index_list({})", quote_sqlite_identifier(table));
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        if row.get::<_, String>(1).map_err(|error| error.to_string())? == index {
+            return Ok((
+                row.get::<_, i64>(2).map_err(|error| error.to_string())? != 0,
+                row.get::<_, i64>(4).map_err(|error| error.to_string())? != 0,
+            ));
+        }
+    }
+    Err(format!("canonical diagnostics index {index} is missing"))
+}
+
+fn quote_sqlite_identifier(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
 
 /// Returns the diagnostics database path for a Runtime Home.
 pub fn diagnostics_db_path(runtime_home: impl AsRef<Path>) -> PathBuf {
@@ -206,8 +451,7 @@ pub fn diagnostics_db_path(runtime_home: impl AsRef<Path>) -> PathBuf {
 pub enum DiagnosticTransport {
     McpStdio,
     GuardHook,
-    LocalHttp,
-    Unknown,
+    CliInbox,
 }
 
 impl DiagnosticTransport {
@@ -215,8 +459,7 @@ impl DiagnosticTransport {
         match self {
             Self::McpStdio => "mcp_stdio",
             Self::GuardHook => "guard_hook",
-            Self::LocalHttp => "local_http",
-            Self::Unknown => "unknown",
+            Self::CliInbox => "cli_inbox",
         }
     }
 }
@@ -225,29 +468,18 @@ impl DiagnosticTransport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticHostKind {
     Codex,
-    ClaudeCode,
-    Generic,
-    Unknown,
 }
 
 impl DiagnosticHostKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Codex => "codex",
-            Self::ClaudeCode => "claude_code",
-            Self::Generic => "generic",
-            Self::Unknown => "unknown",
         }
     }
 
     /// Maps a stored Agent Connection host kind to the bounded diagnostic set.
-    pub fn from_connection_host_kind(value: &str) -> Self {
-        match value {
-            "codex" => Self::Codex,
-            "claude_code" => Self::ClaudeCode,
-            "generic" => Self::Generic,
-            _ => Self::Unknown,
-        }
+    pub fn from_connection_host_kind(value: &str) -> Option<Self> {
+        (value == "codex").then_some(Self::Codex)
     }
 }
 
@@ -296,18 +528,14 @@ impl DiagnosticOutcome {
 /// Controlled verified User Channel category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticUserChannelKind {
-    McpElicitation,
     PromptCapture,
-    LocalWebConsent,
     CliInbox,
 }
 
 impl DiagnosticUserChannelKind {
     const fn as_str(self) -> &'static str {
         match self {
-            Self::McpElicitation => "mcp_elicitation",
             Self::PromptCapture => "prompt_capture",
-            Self::LocalWebConsent => "local_web_consent",
             Self::CliInbox => "cli_inbox",
         }
     }
@@ -316,16 +544,12 @@ impl DiagnosticUserChannelKind {
 /// Controlled pending-user-action fallback category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticFallbackKind {
-    PromptCapture,
-    LocalWebConsent,
     CliInbox,
 }
 
 impl DiagnosticFallbackKind {
     const fn as_str(self) -> &'static str {
         match self {
-            Self::PromptCapture => "prompt_capture",
-            Self::LocalWebConsent => "local_web_consent",
             Self::CliInbox => "cli_inbox",
         }
     }
@@ -344,8 +568,6 @@ pub enum WorkflowMetricKind {
     WriteTicketReused,
     WriteTicketReissued,
     UserRoundtrip,
-    StopCall,
-    StopRepeat,
     ToolsListSerializedBytes,
     PreToolDecision,
     ObservationAssessment,
@@ -359,7 +581,7 @@ pub enum WorkflowMetricKind {
 
 impl WorkflowMetricKind {
     /// All supported workflow metric kinds in stable contract order.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 18] = [
         Self::TaskDurationMicros,
         Self::FirstProductWriteDurationMicros,
         Self::McpMethodCall,
@@ -369,8 +591,6 @@ impl WorkflowMetricKind {
         Self::WriteTicketReused,
         Self::WriteTicketReissued,
         Self::UserRoundtrip,
-        Self::StopCall,
-        Self::StopRepeat,
         Self::ToolsListSerializedBytes,
         Self::PreToolDecision,
         Self::ObservationAssessment,
@@ -394,8 +614,6 @@ impl WorkflowMetricKind {
             Self::WriteTicketReused => "write_ticket_reused",
             Self::WriteTicketReissued => "write_ticket_reissued",
             Self::UserRoundtrip => "user_roundtrip",
-            Self::StopCall => "stop_call",
-            Self::StopRepeat => "stop_repeat",
             Self::ToolsListSerializedBytes => "tools_list_serialized_bytes",
             Self::PreToolDecision => "pre_tool_decision",
             Self::ObservationAssessment => "observation_assessment",
@@ -544,6 +762,42 @@ pub struct DiagnosticEvent<'a> {
     pub outcome: DiagnosticOutcome,
 }
 
+/// Closed reason set for bounded Core structural-rejection observations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreRejectionReason {
+    /// Write preparation resolved a Task without a current Change Unit.
+    CurrentChangeUnitRequired,
+}
+
+impl CoreRejectionReason {
+    /// Returns the stable machine-readable reason.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CurrentChangeUnitRequired => "current_change_unit_required",
+        }
+    }
+}
+
+/// Content-free bounded observation of one Core structural rejection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreRejectionDiagnostic<'a> {
+    pub project_id: &'a str,
+    pub task_id: &'a str,
+    pub method_name: MethodName,
+    pub reason: CoreRejectionReason,
+    pub occurred_at: &'a UtcTimestamp,
+}
+
+/// Stored projection of one bounded Core structural-rejection observation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CoreRejectionDiagnosticRecord {
+    pub project_id: String,
+    pub task_id: String,
+    pub method_name: String,
+    pub reason: String,
+    pub occurred_at: String,
+}
+
 /// Bounded per-tool aggregate returned by the diagnostics reader.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DiagnosticToolAggregate {
@@ -614,12 +868,6 @@ pub fn start_diagnostic_session(
          ON CONFLICT(session_id) DO UPDATE SET
              connection_id = COALESCE(excluded.connection_id, diagnostic_sessions.connection_id),
              project_id = COALESCE(excluded.project_id, diagnostic_sessions.project_id),
-             transport = CASE
-                 WHEN diagnostic_sessions.transport = 'unknown'
-                      OR excluded.transport IN ('mcp_stdio', 'local_http')
-                 THEN excluded.transport
-                 ELSE diagnostic_sessions.transport
-             END,
              host_kind = COALESCE(excluded.host_kind, diagnostic_sessions.host_kind),
              package_version = excluded.package_version,
              build_id = excluded.build_id,
@@ -659,28 +907,31 @@ fn validate_diagnostic_session_start_shape(input: &DiagnosticSessionStart<'_>) -
     validate_optional_identifier("project_id", input.project_id)?;
     validate_build_value("package_version", input.package_version, 128)?;
     validate_build_value("build_id", input.build_id, 2_048)?;
-    if input.session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX) {
-        validate_managed_host_session_id(input.session_id).map_err(|error| {
+    match input.transport {
+        DiagnosticTransport::McpStdio | DiagnosticTransport::GuardHook
+            if input.connection_id.is_none()
+                || input.host_kind != Some(DiagnosticHostKind::Codex) =>
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "managed diagnostics require a Codex Agent Connection".to_owned(),
+            });
+        }
+        DiagnosticTransport::CliInbox if input.host_kind.is_some() => {
+            return Err(StoreError::InvalidInput {
+                detail: "CLI inbox diagnostics are not host-bound".to_owned(),
+            });
+        }
+        _ => {}
+    }
+    if matches!(
+        input.transport,
+        DiagnosticTransport::McpStdio | DiagnosticTransport::GuardHook
+    ) {
+        validate_managed_stdio_session_id(input.session_id).map_err(|error| {
             StoreError::InvalidInput {
                 detail: error.to_string(),
             }
         })?;
-    }
-    if input.session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX)
-        && (input.connection_id.is_none()
-            || !matches!(
-                input.host_kind,
-                Some(DiagnosticHostKind::Codex | DiagnosticHostKind::ClaudeCode)
-            )
-            || !matches!(
-                input.transport,
-                DiagnosticTransport::McpStdio | DiagnosticTransport::GuardHook
-            ))
-    {
-        return Err(StoreError::InvalidInput {
-            detail: "mhs_ diagnostic sessions require a managed built-in host, connection, and managed transport"
-                .to_owned(),
-        });
     }
     Ok(())
 }
@@ -689,7 +940,10 @@ fn validate_managed_diagnostic_session_binding(
     conn: &Connection,
     input: &DiagnosticSessionStart<'_>,
 ) -> StoreResult<()> {
-    if !input.session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX) {
+    if !matches!(
+        input.transport,
+        DiagnosticTransport::McpStdio | DiagnosticTransport::GuardHook
+    ) {
         return Ok(());
     }
     let existing = conn
@@ -799,6 +1053,75 @@ pub fn record_diagnostic_event(
     prune_diagnostics(&tx)?;
     tx.commit()?;
     Ok(())
+}
+
+/// Records one bounded Core structural rejection outside authority storage.
+pub fn record_core_rejection_diagnostic(
+    runtime_home: impl AsRef<Path>,
+    input: CoreRejectionDiagnostic<'_>,
+) -> StoreResult<()> {
+    validate_identifier("project_id", input.project_id)?;
+    validate_identifier("task_id", input.task_id)?;
+    if input.method_name != MethodName::PrepareWrite
+        || input.reason != CoreRejectionReason::CurrentChangeUnitRequired
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "diagnostics Core rejection method and reason are not a supported pair"
+                .to_owned(),
+        });
+    }
+    input
+        .occurred_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "diagnostics occurred_at must be canonical RFC 3339 UTC".to_owned(),
+        })?;
+
+    let mut conn = open_diagnostics_database(runtime_home)?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    tx.execute(
+        "INSERT INTO core_rejection_diagnostics (
+             project_id, task_id, method_name, reason, occurred_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(project_id, task_id, method_name, reason) DO UPDATE SET
+             occurred_at = excluded.occurred_at",
+        params![
+            input.project_id,
+            input.task_id,
+            input.method_name.as_str(),
+            input.reason.as_str(),
+            input.occurred_at.to_canonical_string(),
+        ],
+    )?;
+    prune_diagnostics(&tx)?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Reads the bounded Core rejection observations without creating storage.
+pub fn read_core_rejection_diagnostics(
+    runtime_home: impl AsRef<Path>,
+) -> StoreResult<Vec<CoreRejectionDiagnosticRecord>> {
+    let path = diagnostics_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let conn = open_diagnostics_database_read_only(&path)?;
+    let mut statement = conn.prepare(
+        "SELECT project_id, task_id, method_name, reason, occurred_at
+           FROM core_rejection_diagnostics
+          ORDER BY project_id, task_id, method_name, reason",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(CoreRejectionDiagnosticRecord {
+            project_id: row.get(0)?,
+            task_id: row.get(1)?,
+            method_name: row.get(2)?,
+            reason: row.get(3)?,
+            occurred_at: row.get(4)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 /// Records one privacy-bounded workflow metric and enforces shared event retention.
@@ -981,41 +1304,53 @@ fn open_diagnostics_database(runtime_home: impl AsRef<Path>) -> StoreResult<Conn
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut conn = Connection::open(&path)?;
-    harden_diagnostics_permissions(&path)?;
-    conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
-    enable_foreign_keys(&conn)?;
-    let version = conn.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))?;
-    match version {
-        0 => {
-            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            tx.execute_batch(DIAGNOSTICS_SCHEMA_V1_SQL)?;
-            tx.execute_batch(DIAGNOSTICS_SCHEMA_V2_SQL)?;
-            tx.pragma_update(None, "user_version", DIAGNOSTICS_SCHEMA_VERSION)?;
-            tx.commit()?;
+    let created = reserve_diagnostics_database_file(&path)?;
+    let result = (|| {
+        let mut conn = Connection::open_with_flags(
+            &path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
+        enable_foreign_keys(&conn)?;
+        if created {
+            harden_diagnostics_permissions(&path)?;
+            initialize_diagnostics_database(&mut conn)?;
+        } else {
+            validate_diagnostics_schema(&conn)?;
+            harden_diagnostics_permissions(&path)?;
         }
-        1 => {
-            validate_diagnostics_schema_v1(&conn)?;
-            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            tx.execute_batch(DIAGNOSTICS_SCHEMA_V2_SQL)?;
-            tx.pragma_update(None, "user_version", DIAGNOSTICS_SCHEMA_VERSION)?;
-            tx.commit()?;
-        }
-        DIAGNOSTICS_SCHEMA_VERSION => {}
-        _ => {
-            return Err(StoreError::UnsupportedStorageProfile {
-                database_kind: DATABASE_KIND,
-                actual_storage_profile: version.to_string(),
-                expected_storage_profile: "2",
-            });
-        }
+        Ok(conn)
+    })();
+    if result.is_err() && created {
+        let _ = fs::remove_file(&path);
     }
-    validate_diagnostics_schema(&conn)?;
-    Ok(conn)
+    result
 }
 
-pub(crate) fn ensure_current_diagnostics_schema(runtime_home: impl AsRef<Path>) -> StoreResult<()> {
-    open_diagnostics_database(runtime_home).map(drop)
+fn reserve_diagnostics_database_file(path: &Path) -> StoreResult<bool> {
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => {
+            drop(file);
+            Ok(true)
+        }
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(StoreError::Io(error)),
+    }
+}
+
+fn initialize_diagnostics_database(conn: &mut Connection) -> StoreResult<()> {
+    let manifest = current_diagnostics_storage_manifest()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    tx.execute_batch(DIAGNOSTICS_SCHEMA_SQL)?;
+    tx.execute(
+        "INSERT INTO diagnostics_manifest (
+             singleton_id, contract_id, canonical_schema_digest
+         ) VALUES (1, ?1, ?2)",
+        params![&manifest.contract_id, &manifest.canonical_schema_digest],
+    )?;
+    validate_diagnostics_schema(&tx)?;
+    tx.commit()?;
+    Ok(())
 }
 
 fn open_diagnostics_database_read_only(path: &Path) -> StoreResult<Connection> {
@@ -1024,100 +1359,175 @@ fn open_diagnostics_database_read_only(path: &Path) -> StoreResult<Connection> {
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
     conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
+    enable_foreign_keys(&conn)?;
     conn.pragma_update(None, "query_only", "ON")?;
-    let version = conn.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))?;
-    if version != DIAGNOSTICS_SCHEMA_VERSION {
-        return Err(StoreError::UnsupportedStorageProfile {
-            database_kind: DATABASE_KIND,
-            actual_storage_profile: version.to_string(),
-            expected_storage_profile: "2",
-        });
-    }
     validate_diagnostics_schema(&conn)?;
     Ok(conn)
 }
 
 fn validate_diagnostics_schema(conn: &Connection) -> StoreResult<()> {
-    validate_diagnostics_schema_v1(conn)?;
-    let columns = table_columns(conn, "workflow_metric_events")?;
-    let expected_columns = [
-        "workflow_metric_event_id",
-        "session_id",
-        "project_id",
-        "metric_kind",
-        "value",
-        "method_name",
-        "integration_profile",
-        "decision",
-        "observation_confidence",
-        "outcome",
-        "occurred_at",
-    ];
-    if columns != expected_columns {
-        return Err(StoreError::SchemaInvariant {
-            database_kind: DATABASE_KIND,
-            detail: format!(
-                "workflow_metric_events columns do not match the privacy-bounded v2 schema: {columns:?}"
-            ),
-        });
+    validate_diagnostics_manifest(conn)?;
+    let expected = canonical_diagnostics_schema_metadata()?;
+    let actual = extract_diagnostics_schema_metadata(conn).map_err(|detail| {
+        StoreError::schema_invariant(
+            DATABASE_KIND,
+            format!("diagnostics schema inventory could not be read: {detail}"),
+        )
+    })?;
+    if actual != *expected {
+        return Err(StoreError::schema_invariant(
+            DATABASE_KIND,
+            diagnostics_schema_difference(expected, &actual),
+        ));
     }
-    let table_sql = conn
+    Ok(())
+}
+
+fn validate_diagnostics_manifest(conn: &Connection) -> StoreResult<()> {
+    let current = current_diagnostics_storage_manifest()?;
+    let carrier_exists = conn
         .query_row(
-            "SELECT sql
+            "SELECT 1
                FROM sqlite_schema
-              WHERE type = 'table' AND name = 'workflow_metric_events'",
+              WHERE type = 'table' AND name = 'diagnostics_manifest'",
             [],
-            |row| row.get::<_, Option<String>>(0),
+            |_| Ok(()),
         )
         .optional()?
-        .flatten()
-        .ok_or_else(|| StoreError::SchemaInvariant {
-            database_kind: DATABASE_KIND,
-            detail: "required table workflow_metric_events is missing".to_owned(),
-        })?;
-    for metric_kind in WorkflowMetricKind::ALL {
-        let expected = format!("'{}'", metric_kind.as_str());
-        if !table_sql.contains(&expected) {
-            return Err(StoreError::SchemaInvariant {
-                database_kind: DATABASE_KIND,
-                detail: format!(
-                    "workflow_metric_events is missing the closed metric kind {}",
-                    metric_kind.as_str()
-                ),
-            });
-        }
+        .is_some();
+    if !carrier_exists {
+        return Err(StoreError::unsupported_storage_profile(
+            DATABASE_KIND,
+            "missing_diagnostics_manifest",
+            DIAGNOSTICS_CONTRACT_ID,
+        ));
+    }
+
+    let mut statement = conn.prepare(
+        "SELECT singleton_id, contract_id, canonical_schema_digest
+           FROM diagnostics_manifest
+          ORDER BY singleton_id",
+    )?;
+    let mut rows = statement.query([])?;
+    let first = rows.next()?.ok_or_else(|| {
+        StoreError::unsupported_storage_profile(
+            DATABASE_KIND,
+            "missing_diagnostics_manifest_row",
+            DIAGNOSTICS_CONTRACT_ID,
+        )
+    })?;
+    let singleton_id = first.get::<_, i64>(0)?;
+    let contract_id = first.get::<_, String>(1)?;
+    let schema_digest = first.get::<_, String>(2)?;
+    if rows.next()?.is_some() {
+        return Err(StoreError::schema_invariant(
+            DATABASE_KIND,
+            "diagnostics manifest contains more than one row",
+        ));
+    }
+    if singleton_id != 1 {
+        return Err(StoreError::schema_invariant(
+            DATABASE_KIND,
+            "diagnostics manifest singleton identity is invalid",
+        ));
+    }
+    if contract_id != current.contract_id {
+        return Err(StoreError::unsupported_storage_profile(
+            DATABASE_KIND,
+            contract_id,
+            DIAGNOSTICS_CONTRACT_ID,
+        ));
+    }
+    if schema_digest != current.canonical_schema_digest {
+        return Err(StoreError::schema_invariant(
+            DATABASE_KIND,
+            "diagnostics manifest schema digest does not match canonical SQL",
+        ));
     }
     Ok(())
 }
 
-fn validate_diagnostics_schema_v1(conn: &Connection) -> StoreResult<()> {
-    for table in ["diagnostic_sessions", "diagnostic_events"] {
-        let exists = conn
-            .query_row(
-                "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1",
-                [table],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        if !exists {
-            return Err(StoreError::SchemaInvariant {
-                database_kind: DATABASE_KIND,
-                detail: format!("required table {table} is missing"),
-            });
+fn diagnostics_schema_difference(
+    expected: &DiagnosticsSchemaMetadata,
+    actual: &DiagnosticsSchemaMetadata,
+) -> String {
+    for relation in &actual.relations {
+        if !expected.relations.iter().any(|expected_relation| {
+            expected_relation.object_type == relation.object_type
+                && expected_relation.name == relation.name
+        }) {
+            return format!(
+                "unexpected diagnostics SQLite {} {}",
+                relation.object_type, relation.name
+            );
         }
     }
-    Ok(())
+    for relation in &expected.relations {
+        let Some(actual_relation) = actual.relations.iter().find(|actual_relation| {
+            actual_relation.object_type == relation.object_type
+                && actual_relation.name == relation.name
+        }) else {
+            return format!(
+                "missing canonical diagnostics SQLite {} {}",
+                relation.object_type, relation.name
+            );
+        };
+        if actual_relation != relation {
+            return format!(
+                "diagnostics SQLite {} {} definition does not match canonical SQL",
+                relation.object_type, relation.name
+            );
+        }
+    }
+    if let Some(column) = actual
+        .columns
+        .iter()
+        .find(|column| !expected.columns.contains(column))
+    {
+        return format!(
+            "unexpected or changed diagnostics column {}.{}",
+            column.relation, column.name
+        );
+    }
+    if let Some(column) = expected
+        .columns
+        .iter()
+        .find(|column| !actual.columns.contains(column))
+    {
+        return format!(
+            "missing canonical diagnostics column {}.{}",
+            column.relation, column.name
+        );
+    }
+    if let Some(index) = actual
+        .indexes
+        .iter()
+        .find(|index| !expected.indexes.contains(index))
+    {
+        return format!("unexpected or changed diagnostics index {}", index.name);
+    }
+    if let Some(index) = expected
+        .indexes
+        .iter()
+        .find(|index| !actual.indexes.contains(index))
+    {
+        return format!("missing canonical diagnostics index {}", index.name);
+    }
+    "diagnostics SQLite schema does not match canonical metadata".to_owned()
 }
 
-fn table_columns(conn: &Connection, table: &'static str) -> StoreResult<Vec<String>> {
-    // `table` is selected only by this module and is never runtime input.
-    let mut statement = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+#[cfg(test)]
+fn table_columns(conn: &Connection, table: &str) -> StoreResult<Vec<String>> {
+    let mut statement = conn.prepare(&format!(
+        "PRAGMA table_info({})",
+        quote_sqlite_identifier(table)
+    ))?;
     let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 fn prune_diagnostics(conn: &Connection) -> rusqlite::Result<()> {
+    prune_core_rejection_diagnostics(conn)?;
     conn.execute(
         "DELETE FROM diagnostic_sessions
           WHERE julianday(updated_at) < julianday('now', ?1)",
@@ -1132,6 +1542,28 @@ fn prune_diagnostics(conn: &Connection) -> rusqlite::Result<()> {
                LIMIT ?1
           )",
         [DIAGNOSTICS_MAX_SESSIONS],
+    )?;
+    Ok(())
+}
+
+fn prune_core_rejection_diagnostics(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM core_rejection_diagnostics
+          WHERE julianday(occurred_at) < julianday('now', ?1)",
+        [format!("-{} days", DIAGNOSTICS_RETENTION_DAYS)],
+    )?;
+    conn.execute(
+        "DELETE FROM core_rejection_diagnostics
+          WHERE rowid NOT IN (
+              SELECT rowid
+                FROM core_rejection_diagnostics
+               ORDER BY julianday(occurred_at) DESC,
+                        occurred_at DESC,
+                        project_id DESC,
+                        task_id DESC
+               LIMIT ?1
+          )",
+        [DIAGNOSTICS_MAX_CORE_REJECTIONS],
     )?;
     Ok(())
 }
@@ -1416,7 +1848,12 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::managed_host_session_id;
+    use volicord_types::managed_stdio_session_id;
+
+    fn managed_session_id(native_session_id: &str) -> String {
+        managed_stdio_session_id("connection_test", native_session_id)
+            .expect("fixture managed session identity")
+    }
 
     fn start<'a>(session_id: &'a str) -> DiagnosticSessionStart<'a> {
         DiagnosticSessionStart {
@@ -1442,7 +1879,7 @@ mod tests {
             core_reached: true,
             core_committed: true,
             replayed: false,
-            user_channel_kind: Some(DiagnosticUserChannelKind::McpElicitation),
+            user_channel_kind: Some(DiagnosticUserChannelKind::CliInbox),
             fallback_kind: None,
             product_file_write_count: 1,
             authoritative_refresh_failure: false,
@@ -1470,7 +1907,8 @@ mod tests {
     #[test]
     fn diagnostics_are_separate_bounded_and_aggregate_without_content_columns() {
         let fixture = TempRuntimeHome::new("diagnostics-bounded").expect("fixture");
-        start_diagnostic_session(fixture.path(), start("session_test")).expect("start");
+        let session_id = managed_session_id("session_test");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
         record_diagnostic_event(
             fixture.path(),
             DiagnosticEvent {
@@ -1478,11 +1916,11 @@ mod tests {
                 core_reached: false,
                 core_committed: false,
                 outcome: DiagnosticOutcome::ValidationFailure,
-                ..event("session_test", "volicord.record_run")
+                ..event(&session_id, "volicord.record_run")
             },
         )
         .expect("validation event");
-        record_diagnostic_event(fixture.path(), event("session_test", "volicord.record_run"))
+        record_diagnostic_event(fixture.path(), event(&session_id, "volicord.record_run"))
             .expect("retry event");
 
         let aggregate = read_diagnostic_session(fixture.path(), None)
@@ -1495,7 +1933,7 @@ mod tests {
         assert_eq!(aggregate.totals.core_committed_count, 1);
         assert_eq!(aggregate.totals.product_file_write_count, 2);
         assert_eq!(aggregate.tools[0].request_bytes, 200);
-        assert_eq!(aggregate.user_channel_counts["mcp_elicitation"], 2);
+        assert_eq!(aggregate.user_channel_counts["cli_inbox"], 2);
 
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
         let columns = conn
@@ -1525,28 +1963,29 @@ mod tests {
     #[test]
     fn diagnostics_reject_content_bearing_identifiers() {
         let fixture = TempRuntimeHome::new("diagnostics-redaction").expect("fixture");
-        let mut input = start("session_test");
+        let session_id = managed_session_id("session_test");
+        let mut input = start(&session_id);
         input.connection_id = Some("/home/user/private-file.txt");
         assert!(start_diagnostic_session(fixture.path(), input).is_err());
 
-        let mut input = start("session_test");
+        let mut input = start(&session_id);
         input.build_id = "0.2.0;target=/private/build/location";
         assert!(start_diagnostic_session(fixture.path(), input).is_err());
 
-        start_diagnostic_session(fixture.path(), start("session_test")).expect("start");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
         let error = record_diagnostic_event(
             fixture.path(),
-            event("session_test", "prompt text with secret"),
+            event(&session_id, "prompt text with secret"),
         )
         .expect_err("content must not fit tool field");
         assert!(matches!(error, StoreError::InvalidInput { .. }));
     }
 
     #[test]
-    fn managed_session_diagnostics_are_coordinate_immutable_and_exactly_idempotent() {
+    fn managed_session_diagnostics_bind_native_identity_to_the_connection() {
         let fixture = TempRuntimeHome::new("diagnostics-managed-binding").expect("fixture");
-        let session_id = managed_host_session_id("codex", "connection_test", "native-session")
-            .expect("managed test coordinates should bind");
+        let session_id = managed_stdio_session_id("connection_test", "native-session")
+            .expect("managed context should bind");
         start_diagnostic_session(fixture.path(), start(&session_id)).expect("initial start");
         record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
             .expect("initial event");
@@ -1566,12 +2005,6 @@ mod tests {
             .expect_err("cross-connection managed reuse must fail");
         assert!(matches!(error, StoreError::Conflict { .. }));
 
-        let mut cross_host = start(&session_id);
-        cross_host.host_kind = Some(DiagnosticHostKind::ClaudeCode);
-        let error = start_diagnostic_session(fixture.path(), cross_host)
-            .expect_err("cross-host managed reuse must fail");
-        assert!(matches!(error, StoreError::Conflict { .. }));
-
         let unchanged = read_diagnostic_session(fixture.path(), Some(&session_id))
             .expect("read unchanged binding")
             .expect("managed diagnostics session");
@@ -1581,42 +2014,41 @@ mod tests {
     }
 
     #[test]
-    fn managed_session_prefix_is_rejected_for_generic_or_unmanaged_diagnostics() {
-        let fixture = TempRuntimeHome::new("diagnostics-managed-prefix").expect("fixture");
-        let session_id = managed_host_session_id("codex", "connection_test", "native-session")
-            .expect("managed test coordinates should bind");
+    fn managed_transport_requires_bound_valid_native_session_identity() {
+        let fixture = TempRuntimeHome::new("diagnostics-managed-native-session").expect("fixture");
+        let session_id = managed_stdio_session_id("connection_test", "native-session")
+            .expect("managed context should bind");
 
-        let mut generic = start(&session_id);
-        generic.host_kind = Some(DiagnosticHostKind::Generic);
+        let mut unbound = start(&session_id);
+        unbound.host_kind = None;
         assert!(matches!(
-            start_diagnostic_session(fixture.path(), generic),
+            start_diagnostic_session(fixture.path(), unbound),
             Err(StoreError::InvalidInput { .. })
         ));
 
-        let mut local_http = start(&session_id);
-        local_http.transport = DiagnosticTransport::LocalHttp;
-        assert!(matches!(
-            start_diagnostic_session(fixture.path(), local_http),
-            Err(StoreError::InvalidInput { .. })
-        ));
+        let mut cli_inbox = start(&session_id);
+        cli_inbox.transport = DiagnosticTransport::CliInbox;
+        cli_inbox.host_kind = None;
+        start_diagnostic_session(fixture.path(), cli_inbox)
+            .expect("CLI inbox session identities are not host-bound");
 
-        let malformed = start("mhs_not-a-canonical-binding");
+        let malformed = start("not a native id");
         assert!(matches!(
             start_diagnostic_session(fixture.path(), malformed),
             Err(StoreError::InvalidInput { .. })
         ));
-        assert!(!diagnostics_db_path(fixture.path()).exists());
     }
 
     #[test]
     fn per_session_event_retention_is_enforced() {
         let fixture = TempRuntimeHome::new("diagnostics-event-retention").expect("fixture");
-        start_diagnostic_session(fixture.path(), start("session_test")).expect("start");
+        let session_id = managed_session_id("session_test");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
         for _ in 0..(DIAGNOSTICS_MAX_EVENTS_PER_SESSION + 3) {
-            record_diagnostic_event(fixture.path(), event("session_test", "volicord.status"))
+            record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
                 .expect("event");
         }
-        let aggregate = read_diagnostic_session(fixture.path(), Some("session_test"))
+        let aggregate = read_diagnostic_session(fixture.path(), Some(&session_id))
             .expect("read")
             .expect("session");
         assert_eq!(
@@ -1628,9 +2060,12 @@ mod tests {
     #[test]
     fn session_count_retention_is_enforced() {
         let fixture = TempRuntimeHome::new("diagnostics-session-retention").expect("fixture");
-        for index in 0..(DIAGNOSTICS_MAX_SESSIONS + 3) {
-            let session_id = format!("session_{index:03}");
-            start_diagnostic_session(fixture.path(), start(&session_id)).expect("session");
+        let mut session_ids = (0..(DIAGNOSTICS_MAX_SESSIONS + 3))
+            .map(|index| managed_session_id(&format!("session_{index:03}")))
+            .collect::<Vec<_>>();
+        session_ids.sort();
+        for session_id in &session_ids {
+            start_diagnostic_session(fixture.path(), start(session_id)).expect("session");
         }
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
         let count = conn
@@ -1639,45 +2074,54 @@ mod tests {
             })
             .expect("session count");
         assert_eq!(count, u64::from(DIAGNOSTICS_MAX_SESSIONS));
-        assert!(read_diagnostic_session(fixture.path(), Some("session_000"))
-            .expect("oldest session")
-            .is_none());
-        assert!(read_diagnostic_session(fixture.path(), Some("session_066"))
-            .expect("latest session")
-            .is_some());
+        assert!(
+            read_diagnostic_session(fixture.path(), Some(&session_ids[0]))
+                .expect("oldest session")
+                .is_none()
+        );
+        assert!(read_diagnostic_session(
+            fixture.path(),
+            Some(session_ids.last().expect("latest session id"))
+        )
+        .expect("latest session")
+        .is_some());
     }
 
     #[test]
     fn age_retention_compares_iso_timestamps_as_time_values() {
         let fixture = TempRuntimeHome::new("diagnostics-age-retention").expect("fixture");
-        start_diagnostic_session(fixture.path(), start("session_expired")).expect("expired");
-        start_diagnostic_session(fixture.path(), start("session_recent")).expect("recent");
+        let expired_session_id = managed_session_id("session_expired");
+        let recent_session_id = managed_session_id("session_recent");
+        let trigger_session_id = managed_session_id("session_trigger");
+        start_diagnostic_session(fixture.path(), start(&expired_session_id)).expect("expired");
+        start_diagnostic_session(fixture.path(), start(&recent_session_id)).expect("recent");
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
         conn.execute(
             "UPDATE diagnostic_sessions
                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days', '-1 hour')
-              WHERE session_id = 'session_expired'",
-            [],
+              WHERE session_id = ?1",
+            [&expired_session_id],
         )
         .expect("backdate expired session");
         conn.execute(
             "UPDATE diagnostic_sessions
                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 days')
-              WHERE session_id = 'session_recent'",
-            [],
+              WHERE session_id = ?1",
+            [&recent_session_id],
         )
         .expect("backdate recent session");
         drop(conn);
 
-        start_diagnostic_session(fixture.path(), start("session_trigger")).expect("trigger prune");
+        start_diagnostic_session(fixture.path(), start(&trigger_session_id))
+            .expect("trigger prune");
 
         assert!(
-            read_diagnostic_session(fixture.path(), Some("session_expired"))
+            read_diagnostic_session(fixture.path(), Some(&expired_session_id))
                 .expect("expired read")
                 .is_none()
         );
         assert!(
-            read_diagnostic_session(fixture.path(), Some("session_recent"))
+            read_diagnostic_session(fixture.path(), Some(&recent_session_id))
                 .expect("recent read")
                 .is_some()
         );
@@ -1698,8 +2142,6 @@ mod tests {
                 "write_ticket_reused",
                 "write_ticket_reissued",
                 "user_roundtrip",
-                "stop_call",
-                "stop_repeat",
                 "tools_list_serialized_bytes",
                 "pre_tool_decision",
                 "observation_assessment",
@@ -1755,7 +2197,7 @@ mod tests {
         invalid.outcome = Some(WorkflowMetricOutcome::Success);
         assert!(validate_workflow_metric_event(&invalid).is_err());
 
-        invalid = metric("session_test", WorkflowMetricKind::StopCall, 1);
+        invalid = metric("session_test", WorkflowMetricKind::StatusReread, 1);
         invalid.observation_confidence = Some(ObservationConfidence::Unknown);
         assert!(validate_workflow_metric_event(&invalid).is_err());
     }
@@ -1763,27 +2205,24 @@ mod tests {
     #[test]
     fn workflow_metrics_are_exposed_only_as_bounded_aggregate_rows() {
         let fixture = TempRuntimeHome::new("workflow-metric-aggregates").expect("fixture");
-        start_diagnostic_session(fixture.path(), start("session_metrics")).expect("start");
+        let session_id = managed_session_id("session_metrics");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
 
-        let mut method_call = metric("session_metrics", WorkflowMetricKind::McpMethodCall, 1);
+        let mut method_call = metric(&session_id, WorkflowMetricKind::McpMethodCall, 1);
         method_call.method_name = Some(MethodName::Status);
-        method_call.integration_profile = Some(IntegrationProfile::Detective);
+        method_call.integration_profile = Some(IntegrationProfile::Record);
         method_call.outcome = Some(WorkflowMetricOutcome::Success);
         record_workflow_metric_event(fixture.path(), &method_call).expect("method call one");
         record_workflow_metric_event(fixture.path(), &method_call).expect("method call two");
 
-        let mut pre_tool = metric("session_metrics", WorkflowMetricKind::PreToolDecision, 1);
-        pre_tool.integration_profile = Some(IntegrationProfile::Detective);
+        let mut pre_tool = metric(&session_id, WorkflowMetricKind::PreToolDecision, 1);
+        pre_tool.integration_profile = Some(IntegrationProfile::Record);
         pre_tool.decision = Some(WorkflowMetricDecision::Allow);
         pre_tool.observation_confidence = Some(ObservationConfidence::Confirmed);
         record_workflow_metric_event(fixture.path(), &pre_tool).expect("pre-tool decision");
 
-        let mut observation = metric(
-            "session_metrics",
-            WorkflowMetricKind::ObservationAssessment,
-            3,
-        );
-        observation.integration_profile = Some(IntegrationProfile::Detective);
+        let mut observation = metric(&session_id, WorkflowMetricKind::ObservationAssessment, 3);
+        observation.integration_profile = Some(IntegrationProfile::Record);
         observation.observation_confidence = Some(ObservationConfidence::Heuristic);
         observation.outcome = Some(WorkflowMetricOutcome::ReadOnly);
         record_workflow_metric_event(fixture.path(), &observation).expect("observation");
@@ -1797,7 +2236,7 @@ mod tests {
             .expect("method aggregate");
         assert_eq!(calls.method_name.as_deref(), Some("volicord.status"));
         assert_eq!(calls.host_kind.as_deref(), Some("codex"));
-        assert_eq!(calls.integration_profile.as_deref(), Some("detective"));
+        assert_eq!(calls.integration_profile.as_deref(), Some("record"));
         assert_eq!(calls.outcome.as_deref(), Some("success"));
         assert_eq!(calls.effect, None);
         assert_eq!(calls.sample_count, 2);
@@ -1843,94 +2282,272 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_v1_migrates_additively_to_workflow_metrics_v2() {
-        let fixture = TempRuntimeHome::new("diagnostics-v1-migration").expect("fixture");
-        let path = diagnostics_db_path(fixture.path());
-        let conn = Connection::open(&path).expect("v1 diagnostics db");
-        conn.execute_batch(DIAGNOSTICS_SCHEMA_V1_SQL)
-            .expect("v1 schema");
-        conn.pragma_update(None, "user_version", 1)
-            .expect("v1 version");
-        conn.execute(
-            "INSERT INTO diagnostic_sessions (
-                 session_id, connection_id, project_id, transport, host_kind,
-                 package_version, build_id, started_at, updated_at
-             ) VALUES (
-                 'session_v1', 'connection_test', 'project_test', 'mcp_stdio',
-                 'codex', '0.1.0', '0.1.0;git=unknown;tree=unknown',
-                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
-             )",
-            [],
-        )
-        .expect("v1 session");
-        conn.execute(
-            "INSERT INTO diagnostic_events (
-                 session_id, event_kind, tool_name, latency_micros,
-                 request_bytes, response_bytes, validation_failure,
-                 retry_after_validation_failure, core_reached, core_committed,
-                 replayed, user_channel_kind, fallback_kind,
-                 product_file_write_count, authoritative_refresh_failure,
-                 outcome, occurred_at
-             ) VALUES (
-                 'session_v1', 'mcp_tool_call', 'volicord.status', 1,
-                 2, 3, 0, 0, 1, 0, 0, NULL, NULL, 0, 0, 'success',
-                 '2026-01-01T00:00:00.000Z'
-             )",
-            [],
-        )
-        .expect("v1 event");
-        drop(conn);
-
-        let status_reread = metric("session_v1", WorkflowMetricKind::StatusReread, 1);
-        record_workflow_metric_event(fixture.path(), &status_reread).expect("migrated metric");
-
-        let conn = Connection::open(&path).expect("migrated diagnostics db");
-        let version = conn
-            .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
-            .expect("schema version");
-        assert_eq!(version, DIAGNOSTICS_SCHEMA_VERSION);
-        assert_eq!(
-            conn.query_row("SELECT COUNT(*) FROM diagnostic_events", [], |row| {
-                row.get::<_, u64>(0)
-            })
-            .expect("preserved v1 event"),
-            1
-        );
-        assert_eq!(
-            conn.query_row("SELECT COUNT(*) FROM workflow_metric_events", [], |row| row
-                .get::<_, u64>(0),)
-                .expect("new v2 event"),
-            1
-        );
-    }
-
-    #[test]
     fn workflow_metrics_share_the_per_session_event_retention_limit() {
         let fixture = TempRuntimeHome::new("workflow-metric-retention").expect("fixture");
-        start_diagnostic_session(fixture.path(), start("session_metrics")).expect("start");
-        record_diagnostic_event(fixture.path(), event("session_metrics", "volicord.status"))
-            .expect("legacy event");
-        let status_reread = metric("session_metrics", WorkflowMetricKind::StatusReread, 1);
+        let session_id = managed_session_id("session_metrics");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
+        record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
+            .expect("diagnostic event");
+        let status_reread = metric(&session_id, WorkflowMetricKind::StatusReread, 1);
         for _ in 0..DIAGNOSTICS_MAX_EVENTS_PER_SESSION {
             record_workflow_metric_event(fixture.path(), &status_reread).expect("workflow event");
         }
 
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
-        let legacy_count = conn
+        let diagnostic_count = conn
             .query_row(
-                "SELECT COUNT(*) FROM diagnostic_events WHERE session_id = 'session_metrics'",
-                [],
+                "SELECT COUNT(*) FROM diagnostic_events WHERE session_id = ?1",
+                [&session_id],
                 |row| row.get::<_, u64>(0),
             )
-            .expect("legacy count");
+            .expect("diagnostic count");
         let workflow_count = conn
             .query_row(
-                "SELECT COUNT(*) FROM workflow_metric_events WHERE session_id = 'session_metrics'",
-                [],
+                "SELECT COUNT(*) FROM workflow_metric_events WHERE session_id = ?1",
+                [&session_id],
                 |row| row.get::<_, u64>(0),
             )
             .expect("workflow count");
-        assert_eq!(legacy_count + workflow_count, 1_024);
+        assert_eq!(diagnostic_count + workflow_count, 1_024);
+    }
+
+    #[test]
+    fn core_rejection_diagnostics_are_exact_bounded_upserts() {
+        let fixture = TempRuntimeHome::new("core-rejection-diagnostic").expect("fixture");
+        let first = UtcTimestamp::parse("2026-07-17T01:02:03Z").expect("first timestamp");
+        let second = UtcTimestamp::parse("2026-07-17T01:03:04Z").expect("second timestamp");
+        let input = |occurred_at| CoreRejectionDiagnostic {
+            project_id: "project_test",
+            task_id: "task_test",
+            method_name: MethodName::PrepareWrite,
+            reason: CoreRejectionReason::CurrentChangeUnitRequired,
+            occurred_at,
+        };
+        record_core_rejection_diagnostic(fixture.path(), input(&first)).expect("first observation");
+        record_core_rejection_diagnostic(fixture.path(), input(&second))
+            .expect("updated observation");
+
+        let records = read_core_rejection_diagnostics(fixture.path()).expect("records");
+        assert_eq!(
+            records,
+            vec![CoreRejectionDiagnosticRecord {
+                project_id: "project_test".to_owned(),
+                task_id: "task_test".to_owned(),
+                method_name: "volicord.prepare_write".to_owned(),
+                reason: "current_change_unit_required".to_owned(),
+                occurred_at: "2026-07-17T01:03:04Z".to_owned(),
+            }]
+        );
+
+        let invalid = CoreRejectionDiagnostic {
+            method_name: MethodName::Status,
+            ..input(&second)
+        };
+        assert!(record_core_rejection_diagnostic(fixture.path(), invalid).is_err());
+    }
+
+    #[test]
+    fn core_rejection_diagnostics_enforce_global_retention() {
+        let fixture = TempRuntimeHome::new("core-rejection-retention").expect("fixture");
+        let now = UtcTimestamp::parse("2099-07-17T01:02:03Z").expect("timestamp");
+        record_core_rejection_diagnostic(
+            fixture.path(),
+            CoreRejectionDiagnostic {
+                project_id: "project_seed",
+                task_id: "task_seed",
+                method_name: MethodName::PrepareWrite,
+                reason: CoreRejectionReason::CurrentChangeUnitRequired,
+                occurred_at: &now,
+            },
+        )
+        .expect("seed");
+        let mut conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
+        let tx = conn.transaction().expect("transaction");
+        for index in 0..=DIAGNOSTICS_MAX_CORE_REJECTIONS {
+            tx.execute(
+                "INSERT OR REPLACE INTO core_rejection_diagnostics (
+                     project_id, task_id, method_name, reason, occurred_at
+                 ) VALUES (?1, ?2, 'volicord.prepare_write',
+                           'current_change_unit_required', ?3)",
+                params![
+                    format!("project_{index}"),
+                    format!("task_{index}"),
+                    now.to_canonical_string()
+                ],
+            )
+            .expect("insert");
+        }
+        tx.commit().expect("commit");
+        drop(conn);
+
+        record_core_rejection_diagnostic(
+            fixture.path(),
+            CoreRejectionDiagnostic {
+                project_id: "project_final",
+                task_id: "task_final",
+                method_name: MethodName::PrepareWrite,
+                reason: CoreRejectionReason::CurrentChangeUnitRequired,
+                occurred_at: &now,
+            },
+        )
+        .expect("prune");
+        assert_eq!(
+            read_core_rejection_diagnostics(fixture.path())
+                .expect("bounded records")
+                .len(),
+            DIAGNOSTICS_MAX_CORE_REJECTIONS as usize
+        );
+    }
+
+    #[test]
+    fn diagnostics_manifest_is_semantic_and_derived_from_canonical_sql() {
+        let fixture = TempRuntimeHome::new("diagnostics-manifest").expect("fixture");
+        let session_id = managed_session_id("session_manifest");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+
+        let current = current_diagnostics_storage_manifest().expect("current manifest");
+        assert_eq!(current.contract_id, DIAGNOSTICS_CONTRACT_ID);
+        assert!(current.canonical_schema_digest.starts_with("sha256:"));
+        assert_eq!(current.canonical_schema_digest.len(), 71);
+        let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
+        let persisted = conn
+            .query_row(
+                "SELECT contract_id, canonical_schema_digest
+                   FROM diagnostics_manifest
+                  WHERE singleton_id = 1",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .expect("persisted manifest");
+        assert_eq!(persisted.0, current.contract_id);
+        assert_eq!(persisted.1, current.canonical_schema_digest);
+    }
+
+    #[test]
+    fn existing_empty_diagnostics_database_is_rejected_without_initialization() {
+        let fixture = TempRuntimeHome::new("diagnostics-existing-empty").expect("fixture");
+        let path = diagnostics_db_path(fixture.path());
+        Connection::open(&path).expect("empty database");
+
+        let error = start_diagnostic_session(
+            fixture.path(),
+            start(&managed_session_id("session_existing_empty")),
+        )
+        .expect_err("existing empty database must not be initialized");
+        assert!(matches!(
+            error,
+            StoreError::UnsupportedStorageProfile { .. }
+        ));
+        let conn = Connection::open(path).expect("unchanged database");
+        let object_count = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'",
+                [],
+                |row| row.get::<_, u64>(0),
+            )
+            .expect("object count");
+        assert_eq!(object_count, 0);
+    }
+
+    #[test]
+    fn missing_diagnostics_manifest_row_is_rejected_without_repair() {
+        let fixture = TempRuntimeHome::new("diagnostics-missing-manifest-row").expect("fixture");
+        let session_id = managed_session_id("session_missing_manifest");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        let path = diagnostics_db_path(fixture.path());
+        let conn = Connection::open(&path).expect("database");
+        conn.execute("DELETE FROM diagnostics_manifest", [])
+            .expect("remove manifest row");
+        drop(conn);
+
+        let error = read_diagnostic_session(fixture.path(), None)
+            .expect_err("missing manifest row must fail closed");
+        assert!(matches!(
+            error,
+            StoreError::UnsupportedStorageProfile { .. }
+        ));
+        let conn = Connection::open(path).expect("database remains inspectable");
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM diagnostics_manifest", [], |row| {
+                row.get::<_, u64>(0)
+            })
+            .expect("manifest count"),
+            0
+        );
+    }
+
+    #[test]
+    fn extra_diagnostics_manifest_row_is_rejected() {
+        let fixture = TempRuntimeHome::new("diagnostics-extra-manifest-row").expect("fixture");
+        let session_id = managed_session_id("session_extra_manifest");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
+        conn.pragma_update(None, "ignore_check_constraints", "ON")
+            .expect("test-only constraint bypass");
+        let current = current_diagnostics_storage_manifest().expect("manifest");
+        conn.execute(
+            "INSERT INTO diagnostics_manifest (
+                 singleton_id, contract_id, canonical_schema_digest
+             ) VALUES (2, ?1, ?2)",
+            params![&current.contract_id, &current.canonical_schema_digest],
+        )
+        .expect("extra manifest row");
+        drop(conn);
+
+        let error = read_diagnostic_session(fixture.path(), None)
+            .expect_err("extra manifest row must fail closed");
+        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+    }
+
+    #[test]
+    fn unknown_diagnostics_manifest_contract_is_rejected() {
+        let fixture = TempRuntimeHome::new("diagnostics-unknown-manifest").expect("fixture");
+        let session_id = managed_session_id("session_unknown_manifest");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
+        conn.execute(
+            "UPDATE diagnostics_manifest SET contract_id = 'unknown.diagnostics.contract'",
+            [],
+        )
+        .expect("replace contract identity");
+        drop(conn);
+
+        let error = read_diagnostic_session(fixture.path(), None)
+            .expect_err("unknown manifest contract must fail closed");
+        assert!(matches!(
+            error,
+            StoreError::UnsupportedStorageProfile { .. }
+        ));
+    }
+
+    #[test]
+    fn missing_canonical_diagnostics_index_is_rejected() {
+        let fixture = TempRuntimeHome::new("diagnostics-missing-index").expect("fixture");
+        let session_id = managed_session_id("session_missing_index");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
+        conn.execute("DROP INDEX idx_diagnostic_events_tool", [])
+            .expect("remove canonical index");
+        drop(conn);
+
+        let error = read_diagnostic_session(fixture.path(), None)
+            .expect_err("missing canonical index must fail closed");
+        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+    }
+
+    #[test]
+    fn unexpected_diagnostics_schema_objects_are_rejected() {
+        let fixture = TempRuntimeHome::new("diagnostics-unexpected-object").expect("fixture");
+        let session_id = managed_session_id("session_unexpected_object");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
+        conn.execute("CREATE TABLE unexpected_diagnostics_state (value TEXT)", [])
+            .expect("unexpected object");
+        drop(conn);
+
+        let error = read_diagnostic_session(fixture.path(), None)
+            .expect_err("unexpected object must fail closed");
+        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
     }
 
     #[test]
@@ -1944,6 +2561,9 @@ mod tests {
                 .expect("empty workflow read")
                 .is_empty()
         );
+        assert!(read_core_rejection_diagnostics(fixture.path())
+            .expect("empty Core rejection read")
+            .is_empty());
         assert!(!diagnostics_db_path(fixture.path()).exists());
     }
 }

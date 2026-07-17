@@ -3,22 +3,20 @@ use std::{error::Error, fs, path::Path};
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use volicord_core::{
-    rejected_response, tool_error, Clock, CoreService, InvocationContext,
-    UserChannelInboxProjectionRequest,
+    rejected_response, tool_error, validate_host_verification_receipt, Clock, CoreService,
+    InvocationContext, UserChannelInboxProjectionRequest,
 };
-use volicord_store::{
-    agent_connections::HOST_KIND_CODEX,
-    guards::{
-        insert_unrecorded_change, upsert_guard_installation, GuardInstallationUpsert,
-        UnrecordedChangeInsert,
-    },
-};
+use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, choice_user_action_resolution, observation_user_action_resolution,
     supported_evidence_update, unsupported_evidence_update, ArtifactOwnerJsonColumn,
     ChangeUnitOwnerJsonColumn, CloseTaskFixture, CoreFixture, EvidenceSummaryOwnerJsonColumn,
     ObservationUserActionFixture, ResolveUserActionFixture, TaskOwnerJsonColumn,
     UpdateScopeFixture, UserActionFixture, DEFAULT_PRODUCT_PATH,
+};
+use volicord_test_support::{
+    test_host_receipt_fixture,
+    TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use volicord_types::{
     AcceptanceCriterionId, ActorSource, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind,
@@ -29,7 +27,7 @@ use volicord_types::{
     RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusRequest, TaskId,
     UserActionBasis, UserActionOptionAction, UserActionRequestBody, UserActionRequiredFor,
     UserActionResolutionBody, UtcTimestamp, WriteTicketId,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 #[test]
@@ -72,7 +70,10 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
     assert_eq!(committed.response_value["base"]["state_version"], 1);
     assert_eq!(after_commit.state_version, initial_counts.state_version + 1);
     assert_eq!(after_commit.tasks, initial_counts.tasks + 1);
-    assert_eq!(after_commit.task_events, initial_counts.task_events + 1);
+    assert_eq!(
+        after_commit.authority_events,
+        initial_counts.authority_events + 1
+    );
     assert_eq!(
         after_commit.tool_invocations,
         initial_counts.tool_invocations + 1
@@ -301,7 +302,7 @@ fn committed_non_allow_prepare_write_audit_and_replay_are_exact() -> Result<(), 
     assert_prepare_reason(&first.response_value, "path_out_of_scope");
     assert_eq!(first.response_value["write_ticket"], Value::Null);
     assert_eq!(after_first.state_version, before.state_version + 1);
-    assert_eq!(after_first.task_events, before.task_events + 1);
+    assert_eq!(after_first.authority_events, before.authority_events + 1);
     assert_eq!(after_first.tool_invocations, before.tool_invocations + 1);
     assert_eq!(after_first.write_tickets, before.write_tickets);
     assert_eq!(after_first.artifact_staging, before.artifact_staging);
@@ -438,8 +439,8 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
     );
     assert_eq!(allowed.response_value["write_ticket"]["state"], "open");
     assert_eq!(
-        allowed.response_value["write_ticket"]["control_surface"]["os_enforced"],
-        false
+        allowed.response_value["write_ticket"]["guarantee_display"]["level"],
+        "cooperative"
     );
     assert_eq!(allowed.response_value["write_ticket_effect"], "issued");
     assert_eq!(write_ticket_id, ref_write_ticket_id);
@@ -1001,13 +1002,11 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
 }
 
 #[test]
-fn guarded_unresolved_unrecorded_changes_block_close_without_mutation() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("guarded_unrecorded_close")?;
+fn unresolved_unrecorded_changes_block_close_without_mutation() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("unrecorded_close")?;
     let service = core(&fixture);
-    record_guard_installation(&fixture, "guarded_unrecorded_close", "detective", "active")?;
     let (task_id, change_unit_id) =
-        create_task_with_change_unit(&fixture, &service, "guarded_unrecorded_close")?;
+        create_task_with_change_unit(&fixture, &service, "unrecorded_close")?;
     let after_evidence =
         record_close_evidence(&fixture, &service, &task_id, &change_unit_id, 2, true)?;
     let after_final = record_final_acceptance(
@@ -1016,14 +1015,14 @@ fn guarded_unresolved_unrecorded_changes_block_close_without_mutation() -> Resul
         &task_id,
         &change_unit_id,
         after_evidence,
-        "guarded_unrecorded_close",
+        "unrecorded_close",
     )?;
-    insert_guarded_unrecorded_change(&fixture, &task_id, "guarded_unrecorded_close")?;
+    insert_unrecorded_change_fixture(&fixture, &task_id, "unrecorded_close")?;
     let before = fixture.counts()?;
 
     let check = service.check_close(
         fixture.check_close_request(CloseTaskFixture {
-            request_id: "req_guarded_unrecorded_check",
+            request_id: "req_unrecorded_check",
             idempotency_key: None,
             dry_run: false,
             expected_state_version: None,
@@ -1037,17 +1036,13 @@ fn guarded_unresolved_unrecorded_changes_block_close_without_mutation() -> Resul
     assert_eq!(check.response_value["base"]["effect_kind"], "read_only");
     assert_eq!(check.response_value["close_state"], "blocked");
     assert_close_blocker(&check.response_value, "unresolved_unrecorded_changes");
-    assert_eq!(
-        check.response_value["guard_health"]["unresolved_unrecorded_change_count"],
-        1
-    );
     assert!(!check.response_json.contains("src/export.rs"));
     assert_eq!(fixture.counts()?, before);
 
     let close = service.close_task(
         fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_guarded_unrecorded_close",
-            idempotency_key: Some("idem_guarded_unrecorded_close"),
+            request_id: "req_unrecorded_close",
+            idempotency_key: Some("idem_unrecorded_close"),
             dry_run: false,
             expected_state_version: Some(after_final),
             task_id: &task_id,
@@ -1096,7 +1091,10 @@ fn cancel_and_supersede_terminal_paths_commit_once() -> Result<(), Box<dyn Error
     let cancel_fields = cancel_fixture.task_terminal_fields(&task_id)?;
     assert_eq!(cancel.response_value["close_state"], "cancelled");
     assert_eq!(after_cancel.state_version, before_cancel.state_version + 1);
-    assert_eq!(after_cancel.task_events, before_cancel.task_events + 1);
+    assert_eq!(
+        after_cancel.authority_events,
+        before_cancel.authority_events + 1
+    );
     assert_eq!(cancel_fields.lifecycle_phase, "cancelled");
     assert_eq!(cancel_fields.result.as_deref(), Some("cancelled"));
 
@@ -1128,8 +1126,8 @@ fn cancel_and_supersede_terminal_paths_commit_once() -> Result<(), Box<dyn Error
         before_supersede.state_version + 1
     );
     assert_eq!(
-        after_supersede.task_events,
-        before_supersede.task_events + 1
+        after_supersede.authority_events,
+        before_supersede.authority_events + 1
     );
     assert_eq!(supersede_fields.lifecycle_phase, "superseded");
     assert_eq!(supersede_fields.result.as_deref(), Some("superseded"));
@@ -1178,7 +1176,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
         }),
         invocation(&fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(&check.response_value, "tasks", "close_summary_json");
+    assert_owner_state_corrupt(&check.response_value, "tasks", "close_summary_json");
     assert_eq!(fixture.counts()?, before);
 
     let fixture = CoreFixture::new("corrupt_close_basis")?;
@@ -1199,7 +1197,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
         }),
         invocation(&fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(&check.response_value, "tasks", "close_basis_json");
+    assert_owner_state_corrupt(&check.response_value, "tasks", "close_basis_json");
     assert_eq!(fixture.counts()?, before);
 
     let fixture = CoreFixture::new("corrupt_write_basis")?;
@@ -1222,7 +1220,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
         ),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_owner_state_unavailable(&prepare.response_value, "change_units", "write_basis_json");
+    assert_owner_state_corrupt(&prepare.response_value, "change_units", "write_basis_json");
     assert_eq!(fixture.counts()?, before);
 
     let fixture = CoreFixture::new("corrupt_bounded_paths")?;
@@ -1245,7 +1243,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
         ),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_owner_state_unavailable(
+    assert_owner_state_corrupt(
         &prepare.response_value,
         "change_units",
         "bounded_paths_json",
@@ -1275,7 +1273,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
         }),
         invocation(&fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(&check.response_value, "change_units", "lifecycle_json");
+    assert_owner_state_corrupt(&check.response_value, "change_units", "lifecycle_json");
     assert_eq!(fixture.counts()?, before);
 
     Ok(())
@@ -1351,7 +1349,7 @@ fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
         }),
         invocation(&malformed_fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(
+    assert_owner_state_corrupt(
         &check.response_value,
         "user_action_resolutions",
         "resolution_json",
@@ -1584,8 +1582,8 @@ fn prepare_write_issues_write_ticket_only_on_committed_allowed_effect() -> Resul
         write_ticket_id
     );
     assert_eq!(
-        allowed.response_value["write_ticket"]["control_surface"]["os_enforced"],
-        false
+        allowed.response_value["write_ticket"]["guarantee_display"]["level"],
+        "cooperative"
     );
     assert_eq!(write_ticket_id, ref_write_ticket_id);
     let timestamps = fixture.write_ticket_timestamps(&ref_write_ticket_id)?;
@@ -2116,10 +2114,6 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
     assert_eq!(
         status.response_value["guarantee_display"]["level"],
         "cooperative"
-    );
-    assert_ne!(
-        status.response_value["guarantee_display"]["level"],
-        "detective"
     );
     assert_eq!(fixture.counts()?, before);
 
@@ -3379,7 +3373,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         "submission_corrupt_public_request_record",
         "accept",
     )?;
-    assert_owner_state_unavailable(
+    assert_owner_state_corrupt(
         &response.response_value,
         "user_action_requests",
         "request_json",
@@ -3425,7 +3419,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         }),
         invocation(&resolution_fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(
+    assert_owner_state_corrupt(
         &response.response_value,
         "user_action_resolutions",
         "resolution_json",
@@ -3464,7 +3458,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         "submission_corrupt_public_basis_record",
         "accept",
     )?;
-    assert_owner_state_unavailable(
+    assert_owner_state_corrupt(
         &response.response_value,
         "user_action_requests",
         "basis_json",
@@ -3509,7 +3503,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         run,
         invocation(&artifact_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_owner_state_unavailable(&response.response_value, "artifacts", "producer_json");
+    assert_owner_state_corrupt(&response.response_value, "artifacts", "producer_json");
     assert_eq!(artifact_fixture.counts()?, before);
 
     let provenance_fixture = CoreFixture::new("corrupt_public_provenance")?;
@@ -3569,7 +3563,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         }),
         invocation(&provenance_fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(
+    assert_owner_state_corrupt(
         &response.response_value,
         "artifacts",
         "source_staging_handle_id",
@@ -3602,7 +3596,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         evidence_fixture.status_request("req_corrupt_public_evidence_status", Some(&task_id)),
         invocation(&evidence_fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(
+    assert_owner_state_corrupt(
         &response.response_value,
         "evidence_summaries",
         "metadata_json",
@@ -3805,7 +3799,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         run,
         invocation(&corrupt_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_owner_state_unavailable(&response.response_value, "artifact_staging", "expires_at");
+    assert_owner_state_corrupt(&response.response_value, "artifact_staging", "expires_at");
     assert_eq!(corrupt_fixture.counts()?, before);
     Ok(())
 }
@@ -3841,342 +3835,35 @@ fn invocation_with_actor(
     actor_source: ActorSource,
     operation_category: OperationCategory,
 ) -> InvocationContext {
-    let verification_basis = if operation_category == OperationCategory::UserOnly {
+    let verification_basis = if matches!(actor_source, ActorSource::AgentConnection(_)) {
+        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+    } else if operation_category == OperationCategory::UserOnly {
         VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
     } else {
         VERIFICATION_BASIS_TEST_FIXTURE_BINDING
     };
-    InvocationContext::new(
+    let invocation = InvocationContext::new(
         ProjectId::new(fixture.project_id()),
-        actor_source,
+        actor_source.clone(),
         operation_category,
         verification_basis,
-    )
-}
-
-fn record_guard_installation(
-    fixture: &CoreFixture,
-    suffix: &str,
-    guard_mode: &str,
-    installation_status: &str,
-) -> Result<(), Box<dyn Error>> {
-    let guard_installation_id = format!("guard_installation_{suffix}");
-    upsert_guard_installation(
-        fixture.runtime_home_path(),
-        GuardInstallationUpsert {
-            guard_installation_id: guard_installation_id.clone(),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            project_id: Some(fixture.project_id().to_owned()),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: guard_mode.to_owned(),
-            host_capability_json: complete_host_hook_capability_json(
-                fixture,
-                &guard_installation_id,
-            ),
-            installation_status: installation_status.to_owned(),
-            installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
-            last_checked_at: "2026-06-30T00:01:00Z".to_owned(),
-            first_seen_at: (installation_status == "active")
-                .then(|| "2026-06-30T00:02:00Z".to_owned()),
-            last_seen_at: (installation_status == "active")
-                .then(|| "2026-06-30T00:02:00Z".to_owned()),
-            last_seen_phase: (installation_status == "active").then(|| "session_start".to_owned()),
-            observed_host_kind: (installation_status == "active")
-                .then(|| HOST_KIND_CODEX.to_owned()),
-            observed_policy_hash: (installation_status == "active")
-                .then(|| "sha256:guardedfixture".to_owned()),
-            observed_binary_version: (installation_status == "active")
-                .then(|| "0.0.0-test".to_owned()),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    Ok(())
-}
-
-fn conformance_codex_hook_command(command_name: &str) -> String {
-    format!(
-        "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}'"
-    )
-}
-
-fn conformance_guard_command_args(
-    repo_root: &Path,
-    connection_internal_id: &str,
-    guard_installation_id: &str,
-    command_name: &str,
-    policy_hash: Option<&str>,
-) -> Vec<String> {
-    let mut args = vec![
-        "_hook".to_owned(),
-        command_name.to_owned(),
-        "--repo".to_owned(),
-        repo_root.display().to_string(),
-        "--connection".to_owned(),
-        connection_internal_id.to_owned(),
-        "--guard-installation".to_owned(),
-        guard_installation_id.to_owned(),
-        "--host".to_owned(),
-        "codex".to_owned(),
-        "--integration-profile".to_owned(),
-        "detective".to_owned(),
-    ];
-    if let Some(policy_hash) = policy_hash {
-        args.push("--policy-hash".to_owned());
-        args.push(policy_hash.to_owned());
+    );
+    match actor_source {
+        ActorSource::AgentConnection(connection_id) => {
+            let host = test_host_receipt_fixture(fixture.project_id(), connection_id.as_str());
+            let receipt = validate_host_verification_receipt(
+                host.receipt,
+                &host.current,
+                &host.validation_time,
+            )
+            .expect("the typed conformance host receipt fixture must validate");
+            invocation.with_validated_host_receipt(receipt)
+        }
+        _ => invocation,
     }
-    args.extend(["--host-output".to_owned(), "codex".to_owned()]);
-    args
 }
 
-fn conformance_shell_word(value: &str) -> String {
-    if !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
-    {
-        return value.to_owned();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn conformance_guard_command_line(
-    repo_root: &Path,
-    connection_internal_id: &str,
-    guard_installation_id: &str,
-    command_name: &str,
-    policy_hash: &str,
-) -> String {
-    std::iter::once("volicord".to_owned())
-        .chain(conformance_guard_command_args(
-            repo_root,
-            connection_internal_id,
-            guard_installation_id,
-            command_name,
-            Some(policy_hash),
-        ))
-        .map(|value| conformance_shell_word(&value))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn conformance_policy_command(
-    repo_root: &Path,
-    connection_internal_id: &str,
-    guard_installation_id: &str,
-    command_name: &str,
-) -> Value {
-    json!({
-        "command": "volicord",
-        "args": conformance_guard_command_args(
-            repo_root,
-            connection_internal_id,
-            guard_installation_id,
-            command_name,
-            None,
-        ),
-    })
-}
-
-fn complete_host_hook_capability_json(
-    fixture: &CoreFixture,
-    guard_installation_id: &str,
-) -> String {
-    let repo_root = fixture.product_repo_path();
-    let policy_hash = "sha256:guardedfixture";
-    let phases = [
-        ("session_start_hook", "session_start", "session-start"),
-        ("pre_tool_hook", "pre_tool", "pre-tool"),
-        ("post_tool_hook", "post_tool", "post-tool"),
-        (
-            "user_prompt_submit_hook",
-            "prompt_capture",
-            "prompt-capture",
-        ),
-        ("stop_hook", "stop", "stop"),
-    ];
-    let host_hook_commands = phases
-        .iter()
-        .map(|(phase, policy_key, command_name)| {
-            json!({
-                "host_kind": "codex",
-                "phase": phase,
-                "purpose": "detective_guard",
-                "policy_key": policy_key,
-                "command_shape": "shell_command_string",
-                "command": conformance_codex_hook_command(command_name),
-                "args": null,
-                "expected_wrapper_path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-                "expected_phase_wrapper_path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
-                "root_resolution_basis": "git_work_tree",
-                "hook_command_path_basis": "git_root_runtime",
-                "cwd_independent": true,
-                "subdirectory_safe": true,
-                "wrapper_resolution_status": "ok",
-                "verification": {
-                    "basis_verified_by": "repo_root_git_marker",
-                    "host_contract_source": "codex_hook_command_string",
-                },
-            })
-        })
-        .collect::<Vec<_>>();
-    let mut files = host_hook_commands
-        .iter()
-        .map(|command| {
-            let command_name = command["policy_key"]
-                .as_str()
-                .and_then(|policy_key| match policy_key {
-                    "session_start" => Some("session-start"),
-                    "pre_tool" => Some("pre-tool"),
-                    "post_tool" => Some("post-tool"),
-                    "prompt_capture" => Some("prompt-capture"),
-                    "stop" => Some("stop"),
-                    _ => None,
-                })
-                .expect("known policy key");
-            json!({
-                "kind": "host_hook_wrapper",
-                "path": command["expected_phase_wrapper_path"],
-                "status": "unchanged",
-                "content_hash": "wrapper-hash",
-                "ownership": "managed_script",
-                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                "executable_required": true,
-                "managed_script_command": conformance_guard_command_line(
-                    &repo_root,
-                    fixture.connection_id(),
-                    guard_installation_id,
-                    command_name,
-                    policy_hash,
-                ),
-                "host_kind": "codex",
-                "phase": command["policy_key"],
-                "purpose": "detective_guard",
-                "connection_id": fixture.connection_id(),
-                "guard_installation_id": guard_installation_id,
-                "policy_hash": policy_hash,
-                "host_output": "codex",
-            })
-        })
-        .collect::<Vec<_>>();
-    files.extend([
-        json!({
-            "kind": "volicord_policy",
-            "path": repo_root.join(".volicord/policy.json"),
-            "status": "unchanged",
-            "content_hash": "policy-file-hash",
-            "ownership": "managed_json",
-        }),
-        json!({
-            "kind": "host_hook_dispatch",
-            "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-            "status": "unchanged",
-            "content_hash": "dispatch-hash",
-            "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-            "executable_required": true,
-            "managed_script_role": "codex_dispatch",
-            "host_kind": "codex",
-            "phase": "dispatch",
-        }),
-        json!({
-            "kind": "host_hook_config",
-            "path": repo_root.join(".codex/hooks.json"),
-            "status": "unchanged",
-            "content_hash": "config-hash",
-            "ownership": "managed_json",
-        }),
-        json!({
-            "kind": "host_rule_instruction",
-            "path": repo_root.join(".codex/rules/volicord.rules"),
-            "status": "unchanged",
-            "content_hash": "rule-hash",
-            "ownership": "managed_block",
-            "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
-            "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
-        }),
-    ]);
-    let root_phases = host_hook_commands
-        .iter()
-        .map(|command| {
-            json!({
-                "phase": command["phase"],
-                "root_resolution_basis": command["root_resolution_basis"],
-                "hook_command_path_basis": command["hook_command_path_basis"],
-                "cwd_independent": command["cwd_independent"],
-                "subdirectory_safe": command["subdirectory_safe"],
-                "wrapper_resolution_status": command["wrapper_resolution_status"],
-            })
-        })
-        .collect::<Vec<_>>();
-    let safety_commands = host_hook_commands
-        .iter()
-        .map(|command| {
-            json!({
-                "phase": command["phase"],
-                "hook_command_path_basis": command["hook_command_path_basis"],
-                "cwd_independent": command["cwd_independent"],
-                "subdirectory_safe": command["subdirectory_safe"],
-                "wrapper_resolution_status": command["wrapper_resolution_status"],
-            })
-        })
-        .collect::<Vec<_>>();
-    json!({
-        "schema": "volicord-host-hook-capability-v2",
-        "policy_hash": policy_hash,
-        "selected_profile": "detective",
-        "connection_intent": "shared",
-        "final_output_authority_disclosure_implementation_available": true,
-        "native_host_output_adapter": "codex",
-        "native_host_output_adapter_config_verified": true,
-        "bash_shell_mutation_coverage": true,
-        "direct_file_write_matcher_coverage": true,
-        "host_capabilities": {
-            "stdio_mcp": true,
-            "http_mcp": false,
-            "session_start_hook": true,
-            "pre_tool_hook": true,
-            "post_tool_hook": true,
-            "user_prompt_submit_hook": true,
-            "stop_hook": true,
-            "rule_file_support": true,
-            "project_local_configuration": true,
-        },
-        "required_hook_phases": [
-            "session_start_hook",
-            "pre_tool_hook",
-            "post_tool_hook",
-            "user_prompt_submit_hook",
-            "stop_hook"
-        ],
-        "missing_required_hooks": [],
-        "prompt_capture": true,
-        "files": files,
-        "host_hook_commands": host_hook_commands,
-        "hook_root_resolution": {
-            "basis": "git_work_tree",
-            "all_cwd_independent": true,
-            "all_subdirectory_safe": true,
-            "overall_status": "ok",
-            "phases": root_phases,
-        },
-        "hook_path_safety": {
-            "overall_status": "ok",
-            "all_cwd_independent": true,
-            "all_subdirectory_safe": true,
-            "commands": safety_commands,
-        },
-        "commands": {
-            "session_start": conformance_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "session-start"),
-            "pre_tool": conformance_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "pre-tool"),
-            "post_tool": conformance_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "post-tool"),
-            "prompt_capture": conformance_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "prompt-capture"),
-            "stop": conformance_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "stop"),
-        },
-    })
-    .to_string()
-}
-
-fn insert_guarded_unrecorded_change(
+fn insert_unrecorded_change_fixture(
     fixture: &CoreFixture,
     task_id: &str,
     suffix: &str,
@@ -5216,7 +4903,7 @@ fn assert_latest_prepare_write_event(
     response_value: &Value,
     decision: &str,
 ) -> Result<Value, Box<dyn Error>> {
-    let event = fixture.latest_task_event()?;
+    let event = fixture.latest_authority_event()?;
     assert_eq!(event.event_kind, "write_decision_recorded");
     assert_eq!(
         event.state_version,
@@ -5262,8 +4949,9 @@ fn assert_rejected_code(response_value: &Value, code: &str) {
     );
 }
 
-fn assert_owner_state_unavailable(response_value: &Value, table: &str, logical_column: &str) {
-    assert_rejected_code(response_value, "MCP_UNAVAILABLE");
+fn assert_owner_state_corrupt(response_value: &Value, table: &str, logical_column: &str) {
+    assert_rejected_code(response_value, "PERSISTED_DATA_CORRUPT");
+    assert_eq!(response_value["errors"][0]["category"], "corrupt");
     let error = &response_value["errors"][0]["details"]["owner_state_error"];
     assert_eq!(error["table"], table);
     assert_eq!(error["logical_column"], logical_column);

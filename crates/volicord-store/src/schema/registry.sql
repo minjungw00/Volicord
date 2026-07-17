@@ -53,9 +53,9 @@ CREATE INDEX idx_project_aliases_project
 
 CREATE TABLE agent_connections (
   connection_internal_id TEXT PRIMARY KEY,
-  host_kind TEXT NOT NULL CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
-  intent TEXT NOT NULL CHECK (intent IN ('personal', 'shared', 'global')),
-  host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project', 'local', 'export')),
+  host_kind TEXT NOT NULL CHECK (host_kind = 'codex'),
+  intent TEXT NOT NULL CHECK (intent IN ('personal', 'shared')),
+  host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project')),
   project_internal_id TEXT,
   server_name TEXT NOT NULL,
   config_target TEXT NOT NULL,
@@ -70,11 +70,7 @@ CREATE TABLE agent_connections (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_internal_id) REFERENCES projects (project_internal_id) ON DELETE RESTRICT,
-  CHECK (
-    (host_kind = 'codex' AND host_scope IN ('user', 'project'))
-    OR (host_kind = 'claude_code' AND host_scope IN ('local', 'project', 'user'))
-    OR (host_kind = 'generic' AND host_scope = 'export')
-  )
+  CHECK (host_kind = 'codex' AND host_scope IN ('user', 'project'))
 );
 
 CREATE TABLE connection_projects (
@@ -105,7 +101,7 @@ CREATE UNIQUE INDEX idx_agent_connections_target_project
     server_name
   )
   WHERE project_internal_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_agent_connections_target_global
+CREATE UNIQUE INDEX idx_agent_connections_target_unscoped
   ON agent_connections (
     host_kind,
     intent,
@@ -115,114 +111,35 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   )
   WHERE project_internal_id IS NULL;
 
-CREATE TABLE host_capability_verifications (
-  verification_internal_id TEXT NOT NULL PRIMARY KEY CHECK (
-    length(trim(verification_internal_id)) > 0
-    AND length(CAST(verification_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  connection_internal_id TEXT NOT NULL CHECK (
-    length(trim(connection_internal_id)) > 0
-    AND length(CAST(connection_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  capability TEXT NOT NULL
-    CHECK (capability = 'model_invisible_user_surface'),
-  outcome TEXT NOT NULL
-    CHECK (outcome IN ('passed', 'failed', 'unavailable', 'revoked')),
-  host_kind TEXT NOT NULL
-    CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
-  host_version TEXT NOT NULL CHECK (
-    length(trim(host_version)) > 0
-    AND length(CAST(host_version AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  client_name TEXT NOT NULL CHECK (
-    length(trim(client_name)) > 0
-    AND length(CAST(client_name AS BLOB)) BETWEEN 1 AND 256
-  ),
-  client_version TEXT NOT NULL CHECK (
-    length(trim(client_version)) > 0
-    AND length(CAST(client_version AS BLOB)) BETWEEN 1 AND 256
-  ),
-  adapter_profile TEXT NOT NULL
-    CHECK (adapter_profile = 'mcp_user_channel_local_web_v1'),
-  adapter_version TEXT NOT NULL CHECK (
-    length(trim(adapter_version)) > 0
-    AND length(CAST(adapter_version AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  managed_fingerprint TEXT NOT NULL CHECK (
-    length(trim(managed_fingerprint)) > 0
-    AND length(CAST(managed_fingerprint AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  volicord_build_id TEXT NOT NULL CHECK (
-    length(trim(volicord_build_id)) > 0
-    AND length(CAST(volicord_build_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  source_revision TEXT NOT NULL CHECK (
-    length(trim(source_revision)) > 0
-    AND length(CAST(source_revision AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  target_triple TEXT NOT NULL CHECK (
-    length(trim(target_triple)) > 0
-    AND length(CAST(target_triple AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  executable_sha256 TEXT NOT NULL
-    CHECK (length(executable_sha256) = 64 AND executable_sha256 NOT GLOB '*[^0-9a-f]*'),
-  evidence_artifact_sha256 TEXT NOT NULL
-    CHECK (
-      length(evidence_artifact_sha256) = 64
-      AND evidence_artifact_sha256 NOT GLOB '*[^0-9a-f]*'
-    ),
+CREATE TABLE managed_host_authority (
+  connection_internal_id TEXT NOT NULL,
+  project_internal_id TEXT NOT NULL,
+  external_contract_descriptor_json TEXT NOT NULL,
+  managed_host_binding_json TEXT NOT NULL,
+  binding_digest TEXT NOT NULL
+    CHECK (length(binding_digest) = 71 AND substr(binding_digest, 1, 7) = 'sha256:'),
+  generated_artifacts_json TEXT NOT NULL,
+  generated_artifacts_digest TEXT NOT NULL
+    CHECK (length(generated_artifacts_digest) = 71 AND substr(generated_artifacts_digest, 1, 7) = 'sha256:'),
+  host_verification_receipt_json TEXT NOT NULL,
   observed_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
-  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (metadata_json = '{}'),
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (connection_internal_id)
-    REFERENCES agent_connections (connection_internal_id)
-    ON DELETE CASCADE,
-  UNIQUE (connection_internal_id, capability, verification_internal_id),
-  CHECK (outcome != 'passed' OR host_kind IN ('codex', 'claude_code')),
-  CHECK (outcome != 'passed' OR host_version = client_version),
-  CHECK (
-    outcome != 'passed'
-    OR (
-      length(source_revision) IN (40, 64)
-      AND source_revision NOT GLOB '*[^0-9a-f]*'
-    )
-  )
-);
-
-CREATE TABLE host_capability_state (
-  connection_internal_id TEXT NOT NULL CHECK (
-    length(trim(connection_internal_id)) > 0
-    AND length(CAST(connection_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
-  capability TEXT NOT NULL
-    CHECK (capability = 'model_invisible_user_surface'),
-  current_verification_internal_id TEXT NOT NULL CHECK (
-    length(trim(current_verification_internal_id)) > 0
-    AND length(CAST(current_verification_internal_id AS BLOB)) BETWEEN 1 AND 1024
-  ),
   updated_at TEXT NOT NULL,
-  PRIMARY KEY (connection_internal_id, capability),
+  PRIMARY KEY (connection_internal_id, project_internal_id),
   FOREIGN KEY (connection_internal_id)
     REFERENCES agent_connections (connection_internal_id)
-    ON DELETE CASCADE,
-  FOREIGN KEY (
-    connection_internal_id,
-    capability,
-    current_verification_internal_id
-  ) REFERENCES host_capability_verifications (
-    connection_internal_id,
-    capability,
-    verification_internal_id
-  ) ON DELETE CASCADE
+    ON DELETE RESTRICT,
+  FOREIGN KEY (project_internal_id)
+    REFERENCES projects (project_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id, project_internal_id)
+    REFERENCES connection_projects (connection_internal_id, project_internal_id)
+    ON DELETE RESTRICT,
+  CHECK (observed_at < expires_at)
 );
 
-CREATE INDEX idx_host_capability_verifications_connection
-  ON host_capability_verifications (connection_internal_id, capability, observed_at);
-CREATE INDEX idx_host_capability_verifications_outcome_expiry
-  ON host_capability_verifications (outcome, expires_at);
-CREATE INDEX idx_host_capability_state_current
-  ON host_capability_state (current_verification_internal_id);
+CREATE INDEX idx_managed_host_authority_expiry
+  ON managed_host_authority (expires_at);
 
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
@@ -230,7 +147,7 @@ CREATE TABLE guard_installations (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
   host_capability_json TEXT NOT NULL DEFAULT '{}',
   installation_status TEXT NOT NULL
     CHECK (installation_status IN (

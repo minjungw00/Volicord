@@ -65,9 +65,6 @@ pub(crate) fn evidence_assurance_matches_source(
         EvidenceSourceKind::AgentReport => {
             assurance_level == EvidenceAssuranceLevel::CooperativeReport
         }
-        EvidenceSourceKind::ConnectionObservation => {
-            assurance_level == EvidenceAssuranceLevel::RegisteredConnectionObserved
-        }
         EvidenceSourceKind::ExternalTool => {
             assurance_level == EvidenceAssuranceLevel::ExternalToolResult
         }
@@ -76,9 +73,7 @@ pub(crate) fn evidence_assurance_matches_source(
         }
         EvidenceSourceKind::ReusedEvidence => matches!(
             assurance_level,
-            EvidenceAssuranceLevel::RegisteredConnectionObserved
-                | EvidenceAssuranceLevel::ExternalToolResult
-                | EvidenceAssuranceLevel::UserObserved
+            EvidenceAssuranceLevel::ExternalToolResult | EvidenceAssuranceLevel::UserObserved
         ),
         EvidenceSourceKind::UnverifiedClaim => {
             assurance_level == EvidenceAssuranceLevel::Unverified
@@ -119,7 +114,8 @@ pub(crate) fn state_record_ref_identity_key(
 ) -> (String, String, String) {
     (
         record_ref.project_id.as_str().to_owned(),
-        serde_json::to_string(&record_ref.record_kind).unwrap_or_default(),
+        serde_json::to_string(&record_ref.record_kind)
+            .expect("serializing a closed record-kind enum cannot fail"),
         record_ref.record_id.as_str().to_owned(),
     )
 }

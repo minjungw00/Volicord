@@ -8,31 +8,23 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
-    agent_connections::agent_connection_project_access_read_only,
     artifacts::{ArtifactStagingInsert, PersistentArtifactVerificationStatus, StagedPayloadKind},
     core_pipeline::*,
-    diagnostics::{record_workflow_metric_event, WorkflowMetricEvent, WorkflowMetricKind},
+    diagnostics::{
+        record_core_rejection_diagnostic, record_workflow_metric_event, CoreRejectionDiagnostic,
+        CoreRejectionReason, WorkflowMetricEvent, WorkflowMetricKind,
+    },
     evidence_capture::{
         EvidenceCaptureIntentInsert, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord,
         EvidenceProducerInsert, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
     },
-    guards::{
-        guard_installation_observation_is_current, GuardHealthRecord, UnrecordedChangeRecord,
-    },
-    user_action_channel::{
-        user_action_channel_token_hash, validate_user_action_channel_token,
-        UserActionChannelTokenCheck, UserActionChannelTokenRejection,
-        UserActionChannelTokenValidation,
-    },
+    guards::UnrecordedChangeRecord,
     StoreError,
 };
 use volicord_types::*;
 
 #[cfg(test)]
-use volicord_types::{
-    EVIDENCE_CAPTURE_COMMAND_LIMITATION, EVIDENCE_CAPTURE_GUARD_LIMITATION,
-    EVIDENCE_CAPTURE_WATCHER_LIMITATION, WATCH_SNAPSHOT_ALGORITHM,
-};
+use volicord_types::EVIDENCE_CAPTURE_COMMAND_LIMITATION;
 
 use crate::pipeline::{
     dry_run_response, method_result_base, operation_result_ref, rejected_response,
@@ -44,13 +36,12 @@ use crate::pipeline::{
 use crate::policy::{
     close_readiness::{
         accepted_current_scope_decision_authority, close_basis_is_current, close_basis_run_refs,
-        close_blocker, close_blocker_with_resolution, close_next_action,
-        current_acceptance_required_risk_ids, current_cancellation_authority,
-        current_final_acceptance, current_residual_risk_acceptance_coverage,
-        final_acceptance_requirement, is_terminal_lifecycle,
-        run_record_matches_close_basis_context, user_action_has_current_basis,
-        verified_user_channel_provenance, CancellationAuthorityRequirement,
-        ScopeDecisionAuthorityRequirement, UserActionAuthority,
+        close_blocker, close_next_action, current_acceptance_required_risk_ids,
+        current_cancellation_authority, current_final_acceptance,
+        current_residual_risk_acceptance_coverage, final_acceptance_requirement,
+        is_terminal_lifecycle, run_record_matches_close_basis_context,
+        user_action_has_current_basis, verified_user_channel_provenance,
+        CancellationAuthorityRequirement, ScopeDecisionAuthorityRequirement, UserActionAuthority,
     },
     continuity::{decision_title_prefix, judgment_continuity_kind},
     effect_contract::{
@@ -80,10 +71,7 @@ use crate::policy::{
     },
 };
 use crate::{
-    local_web_channel_submission_id, CurrentUserActionProjection,
-    LocalWebConsentCompletionMetadata, LocalWebConsentUserActionProjection,
-    LocalWebConsentUserActionProjectionOutcome, LocalWebConsentUserActionProjectionRequest,
-    LocalWebConsentUserActionRequest, UserChannelInboxProjection, UserChannelInboxProjectionItem,
+    CurrentUserActionProjection, UserChannelInboxProjection, UserChannelInboxProjectionItem,
     UserChannelInboxProjectionRequest,
 };
 
@@ -94,7 +82,6 @@ mod prepare_evidence_capture;
 mod prepare_write;
 mod reconcile_changes;
 mod record_run;
-mod session_watch;
 mod stage_artifact;
 mod status;
 #[cfg(test)]
@@ -113,7 +100,7 @@ struct MethodPlan {
 
 struct PrepareWritePlan {
     task_id: TaskId,
-    change_unit_id: Option<ChangeUnitId>,
+    change_unit_id: ChangeUnitId,
     storage_mutations: Vec<CoreStorageMutation>,
     event_kind: String,
     event_payload: JsonObject,
@@ -133,7 +120,6 @@ struct CloseTaskPlan {
     risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
     blockers: Vec<CloseReadinessBlocker>,
     evidence_gate: EvidenceGateSummary,
-    guard_health: Option<GuardHealthSummary>,
 }
 
 struct CloseTaskContext {
@@ -141,7 +127,6 @@ struct CloseTaskContext {
     task: TaskRecord,
     current_change_unit: Option<ChangeUnitRecord>,
     current_close_basis: Option<CurrentCloseBasis>,
-    guard_health: Option<GuardHealthSummary>,
     pending_user_action_refs: Vec<StateRecordRef>,
     blocker_refs: Vec<StateRecordRef>,
     evidence_summary: Option<EvidenceSummary>,
@@ -150,6 +135,7 @@ struct CloseTaskContext {
     projected_evidence_observations: Vec<EvidenceObservation>,
     projected_artifacts: Vec<ArtifactRef>,
     projected_required_criterion_ids: Option<BTreeSet<String>>,
+    projected_resolved_unrecorded_change_ids: BTreeSet<String>,
     pending_user_action_authorities: Option<Vec<UserActionAuthority>>,
     resolved_judgment_authorities: Option<Vec<UserActionAuthority>>,
 }
@@ -563,15 +549,7 @@ fn prepare_or_response(
         invocation,
         policy,
     })? {
-        PipelinePreflightOutcome::Prepared(prepared) => {
-            let prepared = *prepared;
-            session_watch::initialize_session_watch_baseline(
-                &prepared.store,
-                &prepared.context.verified_invocation,
-                &prepared.operation_now,
-            )?;
-            Ok(Ok(prepared))
-        }
+        PipelinePreflightOutcome::Prepared(prepared) => Ok(Ok(*prepared)),
         PipelinePreflightOutcome::Response(response) => Ok(Err(*response)),
     }
 }
@@ -820,14 +798,18 @@ fn normalize_source_ref(
                     )
                 }
             };
-            if !git_object_id_is_valid(&source.baseline_commit_sha) {
-                return source_ref_error(
-                    envelope,
-                    project_state,
-                    field,
-                    "Git object ids must be full lowercase hexadecimal SHA-1 or SHA-256 ids",
-                );
-            }
+            source.baseline_commit_sha = match canonical_git_object_id(&source.baseline_commit_sha)
+            {
+                Ok(value) => value,
+                Err(_) => {
+                    return source_ref_error(
+                        envelope,
+                        project_state,
+                        field,
+                        "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
+                    )
+                }
+            };
             if !artifact_sha256_is_lowercase_hex(&source.content_sha256) {
                 return source_ref_error(
                     envelope,
@@ -850,28 +832,43 @@ fn normalize_source_ref(
             }
             Ok(SourceRef::RepositoryFile(source))
         }
-        SourceRef::GitCommit(source) => {
-            if !git_object_id_is_valid(&source.commit_sha) {
-                return source_ref_error(
-                    envelope,
-                    project_state,
-                    field,
-                    "Git object ids must be full lowercase hexadecimal SHA-1 or SHA-256 ids",
-                );
-            }
+        SourceRef::GitCommit(mut source) => {
+            source.commit_sha = match canonical_git_object_id(&source.commit_sha) {
+                Ok(value) => value,
+                Err(_) => {
+                    return source_ref_error(
+                        envelope,
+                        project_state,
+                        field,
+                        "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
+                    )
+                }
+            };
             Ok(SourceRef::GitCommit(source))
         }
         SourceRef::GitDiff(mut source) => {
-            if !git_object_id_is_valid(&source.base_commit_sha)
-                || !git_object_id_is_valid(&source.head_commit_sha)
-            {
-                return source_ref_error(
-                    envelope,
-                    project_state,
-                    field,
-                    "Git object ids must be full lowercase hexadecimal SHA-1 or SHA-256 ids",
-                );
-            }
+            source.base_commit_sha = match canonical_git_object_id(&source.base_commit_sha) {
+                Ok(value) => value,
+                Err(_) => {
+                    return source_ref_error(
+                        envelope,
+                        project_state,
+                        field,
+                        "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
+                    )
+                }
+            };
+            source.head_commit_sha = match canonical_git_object_id(&source.head_commit_sha) {
+                Ok(value) => value,
+                Err(_) => {
+                    return source_ref_error(
+                        envelope,
+                        project_state,
+                        field,
+                        "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
+                    )
+                }
+            };
             if let Some(artifact_ref) = source.diff_artifact_ref.as_ref() {
                 source.diff_artifact_ref = Some(canonical_source_artifact_ref(
                     store,
@@ -988,13 +985,6 @@ fn normalize_source_repository_path(raw: &str) -> Option<String> {
 fn has_windows_drive_prefix(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
-}
-
-fn git_object_id_is_valid(value: &str) -> bool {
-    matches!(value.len(), 40 | 64)
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn external_source_uri_is_valid(value: &str) -> bool {
@@ -1402,7 +1392,6 @@ fn user_action_inbox_item_from_request(
     record: &EffectiveUserActionRecord,
     request: UserActionRequest,
     state_version: u64,
-    user_channel: UserChannelContext,
 ) -> CoreResult<UserActionInboxItem> {
     let form = request.body.capture_form().map_err(|_| {
         CorePipelineError::Store(StoreError::corrupt_owner_state_json(
@@ -1411,12 +1400,9 @@ fn user_action_inbox_item_from_request(
             "request_json",
         ))
     })?;
-    let answer_path_availability = user_channel_availability(user_channel);
-    let (preferred_capture_path, fallbacks) = user_action_capture_paths(
-        &request.user_action_request_id,
-        request.action_kind,
-        &answer_path_availability,
-    );
+    let answer_path_availability = user_channel_availability();
+    let (preferred_capture_path, fallbacks) =
+        user_action_capture_paths(&request.user_action_request_id, request.action_kind);
     let required = request
         .required_for
         .iter()
@@ -1451,23 +1437,7 @@ fn user_action_inbox_item_from_request(
 fn user_action_capture_paths(
     request_id: &UserActionRequestId,
     action_kind: UserActionKind,
-    availability: &UserChannelAvailability,
 ) -> (Option<UserActionCapturePath>, Vec<UserActionCapturePath>) {
-    let path =
-        |kind: &str, label: &str, basis: &str, command: Option<String>| UserActionCapturePath {
-            kind: kind.to_owned(),
-            label: label.to_owned(),
-            available: kind == "cli"
-                || availability
-                    .paths
-                    .iter()
-                    .any(|candidate| candidate.kind == kind && candidate.available),
-            command: command.into(),
-            url: RequiredNullable::null(),
-            capture_basis: Some(basis.to_owned()).into(),
-            expires_at: RequiredNullable::null(),
-            detail: RequiredNullable::null(),
-        };
     let cli_command = if action_kind == UserActionKind::EvidenceObservation {
         format!(
             "volicord inbox resolve {} (--criterion ID | --claim ID) --artifact ID --summary TEXT",
@@ -1479,103 +1449,39 @@ fn user_action_capture_paths(
             request_id.as_str()
         )
     };
-    let candidates = vec![
-        path(
-            "mcp_elicitation",
-            "Host prompt input",
-            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-            None,
-        ),
-        path(
-            "prompt_capture",
-            "Chat command capture",
-            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-            None,
-        ),
-        path(
-            "local_web_consent",
-            "Local consent URL",
-            VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-            None,
-        ),
-        path(
-            "cli",
-            "CLI inbox",
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-            Some(cli_command),
-        ),
-    ];
-    let preferred = candidates.iter().find(|path| path.available).cloned();
-    let fallbacks = candidates
-        .into_iter()
-        .filter(|path| {
-            path.available
-                && preferred
-                    .as_ref()
-                    .is_none_or(|preferred| preferred.kind != path.kind)
-        })
-        .collect();
-    (preferred, fallbacks)
-}
-
-#[derive(Clone, Copy)]
-struct UserChannelContext {
-    prompt_capture_available: bool,
-    host_elicitation_available: bool,
-    local_web_consent_available: bool,
-}
-
-fn user_channel_availability(user_channel: UserChannelContext) -> UserChannelAvailability {
-    let prompt_available = user_channel.prompt_capture_available;
-    let local_web_available = user_channel.local_web_consent_available;
-    let path =
-        |kind: &str, label: &str, available: bool, basis: &str| UserChannelPathAvailability {
-            kind: kind.to_owned(),
-            label: label.to_owned(),
-            available,
-            status: if available {
-                "available"
-            } else {
-                "unavailable"
-            }
-            .to_owned(),
-            capture_basis: Some(basis.to_owned()).into(),
+    (
+        Some(UserActionCapturePath {
+            kind: "cli".to_owned(),
+            label: "CLI inbox".to_owned(),
+            available: true,
+            command: Some(cli_command).into(),
+            url: RequiredNullable::null(),
+            capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
+            expires_at: RequiredNullable::null(),
             detail: RequiredNullable::null(),
-        };
-    let paths = vec![
-        path(
-            "mcp_elicitation",
-            "Host prompt input",
-            user_channel.host_elicitation_available,
-            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-        ),
-        path(
-            "prompt_capture",
-            "Chat command capture",
-            prompt_available,
-            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-        ),
-        path(
-            "local_web_consent",
-            "Local consent URL",
-            local_web_available,
-            VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-        ),
-        path(
-            "cli",
-            "CLI inbox",
-            true,
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-        ),
-    ];
-    let recommended = paths.iter().find(|path| path.available).cloned();
+        }),
+        Vec::new(),
+    )
+}
+
+fn user_channel_availability() -> UserChannelAvailability {
+    let path = UserChannelPathAvailability {
+        kind: "cli".to_owned(),
+        label: "CLI inbox".to_owned(),
+        available: true,
+        status: "available".to_owned(),
+        capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
+        detail: RequiredNullable::null(),
+    };
     UserChannelAvailability {
-        paths,
-        recommended_path_kind: recommended.as_ref().map(|path| path.kind.clone()).into(),
-        recommended_path_label: recommended.as_ref().map(|path| path.label.clone()).into(),
-        recommendation: recommended
-            .map(|path| format!("Use {} to resolve pending user actions.", path.label))
-            .into(),
+        paths: vec![path.clone()],
+        recommended_path_kind: Some(path.kind).into(),
+        recommended_path_label: Some(path.label.clone()).into(),
+        recommendation: Some(format!(
+            "Use {} to resolve pending user actions.",
+            path.label
+        ))
+        .into(),
     }
 }
 
@@ -1664,12 +1570,12 @@ where
     }
 }
 
-fn validation_plan_error(
+fn validation_plan_error<T>(
     dry_run: bool,
     state_version: Option<u64>,
     field: &'static str,
     message: &'static str,
-) -> Result<(), PlanError> {
+) -> Result<T, PlanError> {
     let response =
         validation_rejected(dry_run, state_version, field, message).map_err(PlanError::Core)?;
     Err(PlanError::Response(Box::new(response)))
@@ -1684,15 +1590,12 @@ fn checked_derived_expiration(
 ) -> Result<UtcTimestamp, PlanError> {
     match created_at.checked_add(duration) {
         Ok(expires_at) => Ok(expires_at),
-        Err(_) => {
-            validation_plan_error(
-                dry_run,
-                state_version,
-                field,
-                "derived expiration exceeds the supported canonical RFC 3339 range",
-            )?;
-            unreachable!("validation_plan_error always returns Err")
-        }
+        Err(_) => validation_plan_error(
+            dry_run,
+            state_version,
+            field,
+            "derived expiration exceeds the supported canonical RFC 3339 range",
+        ),
     }
 }
 
@@ -1784,22 +1687,12 @@ fn resolve_prepare_write_task(
     Ok((task_id, task, reasons))
 }
 
-fn resolve_prepare_write_change_unit<'a>(
+fn validate_prepare_write_change_unit(
     request: &PrepareWriteRequest,
     task_id: &TaskId,
-    current_change_unit: Option<&'a ChangeUnitRecord>,
+    current_change_unit: &ChangeUnitRecord,
     reasons: &mut Vec<WriteDecisionReason>,
-) -> Option<&'a ChangeUnitRecord> {
-    let Some(current_change_unit) = current_change_unit else {
-        reasons.push(write_decision_reason(
-            WriteDecisionCategory::Scope,
-            "no_current_change_unit",
-            "No current Change Unit can be resolved for write preparation.",
-            Vec::new(),
-        ));
-        return None;
-    };
-
+) {
     if request
         .change_unit_id
         .as_ref()
@@ -1813,12 +1706,10 @@ fn resolve_prepare_write_change_unit<'a>(
                 &request.envelope.project_id,
                 task_id,
                 current_change_unit,
-                current_change_unit.basis_state_version.unwrap_or_default(),
+                current_change_unit.basis_state_version,
             )],
         ));
     }
-
-    Some(current_change_unit)
 }
 
 fn baseline_matches(
@@ -1901,7 +1792,7 @@ struct SensitiveApprovalSearch<'a> {
     request: &'a PrepareWriteRequest,
     task_id: &'a TaskId,
     task: &'a TaskRecord,
-    change_unit: Option<&'a ChangeUnitRecord>,
+    change_unit: &'a ChangeUnitRecord,
     intended_operation: &'a str,
     normalized_paths: &'a [String],
     sensitive_categories: &'a [String],
@@ -1932,9 +1823,6 @@ fn matching_sensitive_approval(
                 error,
             )))
         })?;
-    let Some(change_unit) = change_unit else {
-        return Ok(None);
-    };
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let requirement = SensitiveApprovalRequirement {
         task_id,
@@ -2227,40 +2115,6 @@ struct PersistedLifecycleState {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(dead_code)]
-struct PersistedCloseSummary {
-    #[serde(default)]
-    close_reason: Option<CloseReason>,
-    #[serde(default)]
-    closed_at: Option<UtcTimestamp>,
-    #[serde(default)]
-    intent: Option<CloseIntent>,
-    #[serde(default)]
-    user_note: Option<String>,
-    #[serde(default)]
-    superseding_task_id: Option<TaskId>,
-    #[serde(default)]
-    required_sensitive_categories: Vec<String>,
-    #[serde(default)]
-    sensitive_categories: Vec<String>,
-    #[serde(default)]
-    baseline_stale: bool,
-    #[serde(default)]
-    baseline_status: Option<String>,
-    #[serde(default)]
-    recovery_required: bool,
-    #[serde(default)]
-    visible_risks: Vec<Value>,
-    #[serde(default)]
-    residual_risk_visible: bool,
-    #[serde(default)]
-    residual_risks: Vec<Value>,
-    #[serde(default)]
-    residual_risk_present: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct PersistedWriteTicketAttemptScope {
     task_id: TaskId,
     change_unit_id: ChangeUnitId,
@@ -2428,7 +2282,6 @@ struct SummaryBuild<'a> {
     evidence_gate: Option<EvidenceGateSummary>,
     close_state: Option<CloseState>,
     close_blockers: Vec<CloseReadinessBlocker>,
-    guard_health: Option<GuardHealthSummary>,
     guarantee_display: Option<GuaranteeDisplay>,
 }
 
@@ -2447,7 +2300,6 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         evidence_gate,
         close_state,
         close_blockers,
-        guard_health,
         guarantee_display,
     } = input;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
@@ -2465,7 +2317,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
             &record.change_unit_id,
             project_id,
             Some(&task_id),
-            Some(record.basis_state_version.unwrap_or(state_version)),
+            Some(record.basis_state_version),
         )
     });
     let effect_contract = current_change_unit
@@ -2587,7 +2439,6 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         evidence_gate,
         close_state,
         close_blockers,
-        guard_health,
         guarantee_display,
     })
 }
@@ -2738,9 +2589,7 @@ fn write_ticket_projection_invalidation_reason(
             })
         })?;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
-    if validity_basis.write_authority_fingerprint.as_deref()
-        != Some(workflow_policy.write_authority_fingerprint.as_str())
-    {
+    if validity_basis.write_authority_fingerprint != workflow_policy.write_authority_fingerprint {
         return Ok(Some(WriteTicketInvalidationReason::ExplicitRevoke));
     }
     let resolved_control =
@@ -3023,7 +2872,6 @@ fn close_context_from_projection(
         task,
         current_change_unit,
         current_close_basis,
-        guard_health: None,
         pending_user_action_refs,
         blocker_refs,
         evidence_summary,
@@ -3032,6 +2880,7 @@ fn close_context_from_projection(
         projected_evidence_observations: Vec::new(),
         projected_artifacts: Vec::new(),
         projected_required_criterion_ids: None,
+        projected_resolved_unrecorded_change_ids: BTreeSet::new(),
         pending_user_action_authorities: None,
         resolved_judgment_authorities: None,
     }
@@ -3321,7 +3170,7 @@ fn synthetic_change_unit_record(
         task_id: task_id.as_str().to_owned(),
         status: "active".to_owned(),
         is_current: true,
-        basis_state_version: Some(planned_state_version),
+        basis_state_version: planned_state_version,
         scope_summary_json: insert.scope_summary_json.clone(),
         bounded_paths_json: insert.bounded_paths_json.clone(),
         write_basis_json: insert.write_basis_json.clone(),
@@ -3497,18 +3346,10 @@ fn task_summary_text(task: Option<&TaskRecord>) -> String {
         .unwrap_or_else(|| "none".to_owned())
 }
 
-fn profile_summary_text(
-    guard_health: Option<&GuardHealthSummary>,
-    guarantee_display: Option<&GuaranteeDisplay>,
-) -> Option<String> {
-    guard_health
-        .map(|health| health.selected_profile.as_str().to_owned())
-        .or_else(|| {
-            guarantee_display.map(|display| match display.level {
-                GuaranteeLevel::Cooperative => "record".to_owned(),
-                GuaranteeLevel::Detective => "detective".to_owned(),
-            })
-        })
+fn profile_summary_text(guarantee_display: Option<&GuaranteeDisplay>) -> Option<String> {
+    guarantee_display.map(|display| match display.level {
+        GuaranteeLevel::Cooperative => "record".to_owned(),
+    })
 }
 
 fn write_ticket_summary_text(selected: bool, summary: Option<&WriteTicketStateSummary>) -> String {
@@ -4177,7 +4018,7 @@ fn parse_close_reason(task: &TaskRecord) -> CoreResult<CloseReason> {
         "close_summary_json",
         Some(&task.close_summary_json),
     )?;
-    Ok(value.close_reason.unwrap_or(CloseReason::None))
+    Ok(value.close_reason)
 }
 
 fn invalid_storage<T>(field: &'static str) -> CoreResult<T> {
@@ -4185,16 +4026,6 @@ fn invalid_storage<T>(field: &'static str) -> CoreResult<T> {
         "project_state",
         field,
     )))
-}
-
-fn display_only_json_object_lossy(text: &str) -> JsonObject {
-    serde_json::from_str::<Value>(text)
-        .ok()
-        .and_then(|value| match value {
-            Value::Object(object) => Some(object),
-            _ => None,
-        })
-        .unwrap_or_default()
 }
 
 fn string_member(object: &JsonObject, key: &str) -> Option<String> {

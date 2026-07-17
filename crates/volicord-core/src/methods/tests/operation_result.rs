@@ -174,7 +174,7 @@ fn corrupt_replay_identity_routes_operation_result_to_owner_state_unavailability
         ),
         invocation(OperationCategory::Read),
     )?;
-    assert_rejected_without_chunk(&actor, "MCP_UNAVAILABLE");
+    assert_rejected_without_chunk(&actor, "PERSISTED_DATA_CORRUPT");
     assert_owner_state_value_rejection(
         &actor,
         "tool_invocations",
@@ -216,7 +216,7 @@ fn corrupt_replay_identity_routes_operation_result_to_owner_state_unavailability
         ),
         invocation(OperationCategory::Read),
     )?;
-    assert_rejected_without_chunk(&basis, "MCP_UNAVAILABLE");
+    assert_rejected_without_chunk(&basis, "PERSISTED_DATA_CORRUPT");
     assert_owner_state_value_rejection(
         &basis,
         "tool_invocations",
@@ -263,7 +263,7 @@ fn corrupt_replay_identity_routes_operation_result_to_owner_state_unavailability
         ),
         invocation(OperationCategory::Read),
     )?;
-    assert_rejected_without_chunk(&category, "MCP_UNAVAILABLE");
+    assert_rejected_without_chunk(&category, "PERSISTED_DATA_CORRUPT");
     assert_owner_state_value_rejection(
         &category,
         "tool_invocations",
@@ -394,6 +394,16 @@ fn operation_result_failures_return_no_chunk_and_have_no_effects() -> Result<(),
         .into_option()
         .expect("large result should return a cursor");
 
+    let version_prefixed = harness.service.get_operation_result(
+        get_request(
+            "req_operation_version_prefixed_cursor",
+            large_ref.clone(),
+            Some(format!("v1.{cursor}")),
+        ),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_rejected_without_chunk(&version_prefixed, "VALIDATION_FAILED");
+
     let mut tampered_cursor = cursor.clone();
     let replacement = if tampered_cursor.ends_with('a') {
         'b'
@@ -456,7 +466,7 @@ fn operation_result_failures_return_no_chunk_and_have_no_effects() -> Result<(),
         get_request("req_operation_corrupt_owner_state", large_ref.clone(), None),
         invocation(OperationCategory::Read),
     )?;
-    assert_rejected_without_chunk(&corrupt_owner_state, "MCP_UNAVAILABLE");
+    assert_rejected_without_chunk(&corrupt_owner_state, "PERSISTED_DATA_CORRUPT");
 
     harness.conn()?.execute(
         "UPDATE tool_invocations

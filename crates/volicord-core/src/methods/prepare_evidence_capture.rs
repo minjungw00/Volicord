@@ -376,23 +376,6 @@ fn normalize_capture_spec(
                 input_sha256: tool_input_sha256.clone(),
             })
         }
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector,
-            expected_complete,
-        } => {
-            let expected_complete = expected_complete.clone().into_option().unwrap_or(true);
-            let capture = EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_selector: *source_selector,
-                expected_complete: Some(expected_complete).into(),
-            };
-            let input_sha256 = evidence_capture_input_sha256(&capture)?;
-            Ok(NormalizedCaptureSpec {
-                expected_outcome: evidence_capture_expected_outcome(&capture),
-                capture,
-                producer_kind: EvidenceProducerKind::RegisteredConnectionObservation,
-                input_sha256,
-            })
-        }
     }
 }
 
@@ -407,8 +390,7 @@ fn invalid_capture_spec<T>(
         Some(project_state.state_version),
         field,
         message,
-    )?;
-    unreachable!("validation_plan_error always returns Err")
+    )
 }
 
 fn validate_capture_target(

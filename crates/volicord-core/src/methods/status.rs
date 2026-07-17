@@ -1,7 +1,5 @@
 use super::*;
 
-const STATUS_CONTINUITY_RECORD_LIMIT: usize = 8;
-
 impl CoreService {
     /// Executes `volicord.status` as a read-only Core result.
     pub fn status(
@@ -29,6 +27,20 @@ impl CoreService {
         };
         let state_version = prepared.context.project_state.state_version;
 
+        let continuity_page = match validated_continuity_page_request(
+            &request,
+            prepared.context.project_state.state_version,
+        ) {
+            Ok(page) => page,
+            Err(error) => {
+                return plan_error_response(
+                    &request.envelope,
+                    &prepared.context.project_state,
+                    error,
+                )
+            }
+        };
+
         let task = match status_task(
             &prepared.store,
             &prepared.context.project_state,
@@ -45,7 +57,10 @@ impl CoreService {
             &prepared.context.project_state,
             &prepared.context.verified_invocation,
             task.as_ref(),
-            &request.include,
+            StatusProjectionOptions {
+                include: &request.include,
+                continuity_page: continuity_page.as_ref(),
+            },
             *prepared.operation_now.as_datetime(),
         ) {
             Ok(result_fields) => result_fields,
@@ -67,6 +82,68 @@ impl CoreService {
     }
 }
 
+struct StatusProjectionOptions<'a> {
+    include: &'a StatusInclude,
+    continuity_page: Option<&'a ContinuityPageRequest>,
+}
+
+fn validated_continuity_page_request(
+    request: &StatusRequest,
+    state_version: u64,
+) -> Result<Option<ContinuityPageRequest>, PlanError> {
+    let explicit_page = request
+        .continuity_page
+        .as_ref()
+        .and_then(|page| page.as_ref());
+    if !request.include.continuity {
+        if explicit_page.is_some() {
+            validation_plan_error(
+                request.envelope.dry_run,
+                Some(state_version),
+                "continuity_page",
+                "continuity_page must be null or omitted when continuity is not selected",
+            )?;
+        }
+        return Ok(None);
+    }
+
+    let page = explicit_page.cloned().unwrap_or(ContinuityPageRequest {
+        page_size: DEFAULT_CONTINUITY_PAGE_SIZE,
+        cursor: RequiredNullable::null(),
+    });
+    if !(1..=MAX_CONTINUITY_PAGE_SIZE).contains(&page.page_size) {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(state_version),
+            "continuity_page.page_size",
+            "continuity_page.page_size must be between 1 and 64",
+        )?;
+    }
+    if let Some(cursor) = page.cursor.as_ref() {
+        if cursor.continuity_record_id.as_str().trim().is_empty() {
+            validation_plan_error(
+                request.envelope.dry_run,
+                Some(state_version),
+                "continuity_page.cursor.continuity_record_id",
+                "continuity cursor record id must not be empty",
+            )?;
+        }
+        if cursor
+            .updated_at
+            .ensure_canonical_rfc3339_representable()
+            .is_err()
+        {
+            validation_plan_error(
+                request.envelope.dry_run,
+                Some(state_version),
+                "continuity_page.cursor.updated_at",
+                "continuity cursor timestamp must be representable as canonical RFC 3339 UTC",
+            )?;
+        }
+    }
+    Ok(Some(page))
+}
+
 fn status_task(
     store: &CoreProjectStore,
     _project_state: &ProjectStateHeader,
@@ -84,9 +161,11 @@ fn status_result_fields(
     project_state: &ProjectStateHeader,
     verified_invocation: &VerifiedInvocationContext,
     task: Option<&TaskRecord>,
-    include: &StatusInclude,
+    projection: StatusProjectionOptions<'_>,
     now: DateTime<Utc>,
 ) -> Result<JsonObject, PlanError> {
+    let include = projection.include;
+    let continuity_page_request = projection.continuity_page;
     let user_action_now = UtcTimestamp::from_datetime(now);
     let state_version = project_state.state_version;
     let project_id = &envelope.project_id;
@@ -100,8 +179,6 @@ fn status_result_fields(
     let mut current_close_basis = None;
     let mut risk_acceptance_coverage = None;
     let mut close_blockers = None;
-    let mut guard_health = None;
-    let mut coverage_summary = None;
     let mut continuity_summary = None;
     let mut task_flow = None;
     let mut authority_receipt = None;
@@ -234,11 +311,6 @@ fn status_result_fields(
             close_state = Some(status_close_state(effective_close_state));
             risk_acceptance_coverage = Some(close_plan.risk_acceptance_coverage.clone());
             close_blockers = Some(effective_close_blockers.clone());
-            guard_health = close_plan.guard_health.clone();
-            coverage_summary = close_plan
-                .guard_health
-                .as_ref()
-                .map(close_task::coverage_summary_from_guard_health);
             next_actions.extend(effective_close_actions.clone());
         }
         if include.task {
@@ -272,10 +344,6 @@ fn status_result_fields(
                 } else {
                     Vec::new()
                 },
-                guard_health: include
-                    .close
-                    .then(|| close_plan.guard_health.clone())
-                    .flatten(),
                 guarantee_display: guarantee_projection.clone(),
             })?;
             active_task = Some(status_state_summary_value(state, include)?);
@@ -320,10 +388,16 @@ fn status_result_fields(
         });
     }
     if include.continuity {
+        let continuity_page_request = continuity_page_request.ok_or_else(|| {
+            PlanError::Core(CorePipelineError::InvalidDispatch {
+                detail: "selected continuity projection is missing its validated page request"
+                    .to_owned(),
+            })
+        })?;
         continuity_summary = Some(projected_continuity_summary(
             store,
             state_version,
-            STATUS_CONTINUITY_RECORD_LIMIT,
+            continuity_page_request,
         )?);
         if let Some(task) = task {
             task_flow = Some(projected_task_flow(store, task, state_version)?);
@@ -346,7 +420,7 @@ fn status_result_fields(
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task,
         recording: "read_only",
-        profile: profile_summary_text(guard_health.as_ref(), guarantee_projection.as_ref()),
+        profile: profile_summary_text(guarantee_projection.as_ref()),
         write_ticket: write_ticket_summary_text(
             include.write_ticket,
             write_ticket_summary.as_ref(),
@@ -358,10 +432,17 @@ fn status_result_fields(
         pending_user_actions: card_pending_user_action_count,
         changes: changes_summary_text(
             include.close,
-            guard_health
-                .as_ref()
-                .map(|health| health.unresolved_unrecorded_change_count)
-                .unwrap_or(0),
+            if include.close {
+                volicord_store::guards::list_unresolved_unrecorded_changes(
+                    store.runtime_home(),
+                    project_id.as_str(),
+                    None,
+                )
+                .map_err(CorePipelineError::from)?
+                .len() as u64
+            } else {
+                0
+            },
         ),
         close_status: close_state_summary_text(include.close, close_state),
         verified_invocation,
@@ -383,8 +464,6 @@ fn status_result_fields(
         current_close_basis: include.close.then(|| current_close_basis.into()),
         risk_acceptance_coverage,
         close_blockers,
-        guard_health: include.close.then_some(guard_health).flatten(),
-        coverage_summary: include.close.then_some(coverage_summary).flatten(),
         guarantee_display: guarantee_projection.map(RequiredNullable::some),
         continuity_summary,
         task_flow,
@@ -502,16 +581,52 @@ fn status_summary_for(
 fn projected_continuity_summary(
     store: &CoreProjectStore,
     state_version: u64,
-    limit: usize,
-) -> Result<Vec<ProjectContinuitySummary>, PlanError> {
-    store
-        .active_project_continuity_records(limit)
-        .map_err(CorePipelineError::from)?
+    request: &ContinuityPageRequest,
+) -> Result<ProjectContinuityPage, PlanError> {
+    let stored_page = store
+        .active_project_continuity_page(request.page_size, request.cursor.as_ref())
+        .map_err(CorePipelineError::from)?;
+    let items = stored_page
+        .records
         .iter()
         .map(|record| {
             project_continuity_summary_from_record(record, state_version).map_err(PlanError::Core)
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    let returned_count = u64::try_from(items.len()).map_err(|_| {
+        PlanError::Core(CorePipelineError::InvalidDispatch {
+            detail: "continuity page item count cannot be represented in the public response"
+                .to_owned(),
+        })
+    })?;
+    let next_cursor = if stored_page.truncated {
+        let last = stored_page.records.last().ok_or_else(|| {
+            PlanError::Core(CorePipelineError::InvalidDispatch {
+                detail: "truncated continuity page has no cursor source record".to_owned(),
+            })
+        })?;
+        let updated_at = parse_owner_storage_value(
+            "project_continuity_records",
+            last.continuity_record_id.clone(),
+            "updated_at",
+            &last.updated_at,
+        )?;
+        RequiredNullable::some(ContinuityCursor {
+            updated_at,
+            continuity_record_id: ProjectContinuityRecordId::new(last.continuity_record_id.clone()),
+        })
+    } else {
+        RequiredNullable::null()
+    };
+    Ok(ProjectContinuityPage {
+        items,
+        page_info: ContinuityPageInfo {
+            total_count: stored_page.total_count,
+            returned_count,
+            truncated: stored_page.truncated,
+            next_cursor,
+        },
+    })
 }
 
 fn status_close_state(close_state: CloseState) -> StatusCloseState {
@@ -551,7 +666,7 @@ pub(super) fn unique_next_actions(actions: Vec<NextActionSummary>) -> Vec<NextAc
                 &action.blocking_question,
                 required_ref_keys,
             ))
-            .unwrap_or_default();
+            .expect("serializing the closed action identity tuple cannot fail");
             seen.insert(key).then_some(action)
         })
         .collect()
@@ -579,7 +694,6 @@ fn status_state_summary_value(
     if !include.close {
         object.remove("close_state");
         object.remove("close_blockers");
-        object.remove("guard_health");
     }
     if !include.guarantees {
         object.remove("guarantee_display");

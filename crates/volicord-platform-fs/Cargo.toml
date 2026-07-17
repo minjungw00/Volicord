@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+volicord-types = { path = "../volicord-types" }
 sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
@@ -13,3 +14,6 @@ windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["fs"] }

@@ -36,7 +36,7 @@ fn intake_commits_once_and_replays_without_effect() -> Result<(), Box<dyn Error>
     assert!(first.response_value["state"]["project_policy"].is_null());
     assert_eq!(after_first.state_version, before.state_version + 1);
     assert_eq!(after_first.tasks, before.tasks + 1);
-    assert_eq!(after_first.task_events, before.task_events + 1);
+    assert_eq!(after_first.authority_events, before.authority_events + 1);
     assert_eq!(after_first.tool_invocations, before.tool_invocations + 1);
 
     let second = harness
@@ -82,7 +82,7 @@ fn intake_persists_normalized_non_authoritative_source_context() -> Result<(), B
     request.initial_source_refs = vec![volicord_types::SourceRef::RepositoryFile(
         volicord_types::RepositoryFileSource {
             repository_path: "notes/./source.md".to_owned(),
-            baseline_commit_sha: "a".repeat(40),
+            baseline_commit_sha: "A".repeat(40),
             content_sha256: "b".repeat(64),
             line_range: Some(volicord_types::SourceLineRange {
                 start_line: 2,
@@ -107,6 +107,10 @@ fn intake_persists_normalized_non_authoritative_source_context() -> Result<(), B
     assert_eq!(
         bounded_context["initial_source_refs"][0]["source"]["repository_path"],
         "notes/source.md"
+    );
+    assert_eq!(
+        bounded_context["initial_source_refs"][0]["source"]["baseline_commit_sha"],
+        "a".repeat(40)
     );
     assert_eq!(bounded_context["initial_context_refs"], json!([]));
     Ok(())
@@ -194,7 +198,7 @@ fn intake_resolves_light_control_from_authoritative_project_policy() -> Result<(
     );
     assert_eq!(
         response.response_value["state"]["project_policy"]["policy_schema"],
-        "volicord-policy-v2"
+        volicord_types::WORKFLOW_POLICY_CONTRACT_ID
     );
     assert_eq!(
         response.response_value["state"]["project_policy"]["policy_version"],
@@ -661,6 +665,7 @@ fn intake_lineage_selectively_carries_scope_and_status_shows_connected_flow(
                 None,
                 Some(followup_task_id),
             ),
+            continuity_page: None,
             include: StatusInclude {
                 continuity: true,
                 ..status_include()

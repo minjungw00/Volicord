@@ -1,7 +1,6 @@
 use super::*;
 
-const CURSOR_VERSION: &str = "v1";
-const CURSOR_DOMAIN: &[u8] = b"volicord.operation-result.cursor.v1";
+const CURSOR_DOMAIN: &[u8] = b"volicord.operation-result.cursor\0";
 
 impl CoreService {
     /// Reads one bounded page of an immutable historical operation result.
@@ -214,18 +213,13 @@ struct ParsedCursor {
 
 fn parse_cursor(cursor: &str) -> Result<ParsedCursor, ()> {
     let mut parts = cursor.split('.');
-    let version = parts.next().ok_or(())?;
     let offset = parts.next().ok_or(())?;
     let digest = parts.next().ok_or(())?;
     if parts.next().is_some()
-        || version != CURSOR_VERSION
         || offset.is_empty()
         || !offset.bytes().all(|byte| byte.is_ascii_digit())
         || (offset.len() > 1 && offset.starts_with('0'))
-        || digest.len() != 64
-        || !digest
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || !is_canonical_sha256_hex(digest)
     {
         return Err(());
     }
@@ -236,10 +230,7 @@ fn parse_cursor(cursor: &str) -> Result<ParsedCursor, ()> {
 }
 
 fn cursor_for_ref(operation_result_ref: &OperationResultRef, offset: u64) -> String {
-    format!(
-        "{CURSOR_VERSION}.{offset}.{}",
-        cursor_digest(operation_result_ref, offset)
-    )
+    format!("{offset}.{}", cursor_digest(operation_result_ref, offset))
 }
 
 fn cursor_matches_ref(cursor: &ParsedCursor, operation_result_ref: &OperationResultRef) -> bool {

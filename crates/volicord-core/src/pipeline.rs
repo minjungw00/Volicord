@@ -124,9 +124,8 @@ pub struct InvocationContext {
     pub actor_source: ActorSource,
     pub operation_category: OperationCategory,
     pub invocation_binding_basis: String,
+    pub validated_host_receipt: Option<crate::ValidatedHostVerificationReceipt>,
     pub session_id: Option<String>,
-    pub host_elicitation_available: bool,
-    pub local_web_consent_available: bool,
     pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
@@ -143,29 +142,25 @@ impl InvocationContext {
             actor_source,
             operation_category,
             invocation_binding_basis: invocation_binding_basis.into(),
+            validated_host_receipt: None,
             session_id: None,
-            host_elicitation_available: false,
-            local_web_consent_available: false,
             git_workspace_context: None,
         }
+    }
+
+    /// Adds the typed receipt that the adapter validated against current host facts.
+    pub fn with_validated_host_receipt(
+        mut self,
+        receipt: crate::ValidatedHostVerificationReceipt,
+    ) -> Self {
+        self.validated_host_receipt = Some(receipt);
+        self
     }
 
     /// Adds adapter-owned session identity when the transport has one.
     pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
         let session_id = session_id.into();
         self.session_id = (!session_id.trim().is_empty()).then_some(session_id);
-        self
-    }
-
-    /// Marks whether this invocation can use host prompt elicitation for user actions.
-    pub fn with_host_elicitation_available(mut self, available: bool) -> Self {
-        self.host_elicitation_available = available;
-        self
-    }
-
-    /// Marks whether this adapter process has a loopback local web consent endpoint.
-    pub fn with_local_web_consent_available(mut self, available: bool) -> Self {
-        self.local_web_consent_available = available;
         self
     }
 
@@ -185,8 +180,6 @@ pub struct VerifiedInvocationContext {
     pub verification_basis: String,
     pub assurance_level: String,
     pub session_id: Option<String>,
-    pub host_elicitation_available: bool,
-    pub local_web_consent_available: bool,
     pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
@@ -970,6 +963,7 @@ pub fn tool_error(
     details: Option<JsonObject>,
 ) -> ToolError {
     ToolError {
+        category: code.failure_category(),
         code,
         message: message.into(),
         retryable,
@@ -1117,7 +1111,7 @@ fn replay_preflight_response(
             &record.response_json,
             record.committed_state_version,
         ) {
-            return Ok(Some(stored_response_unavailable_response(
+            return Ok(Some(stored_response_corrupt_response(
                 project_state.state_version,
                 Some(verified_invocation.clone()),
                 request.envelope.task_id.as_ref().cloned(),
@@ -1319,7 +1313,7 @@ impl<'de> Visitor<'de> for UniqueJsonDocumentVisitor {
     }
 }
 
-pub(crate) fn stored_response_unavailable_response(
+pub(crate) fn stored_response_corrupt_response(
     state_version: u64,
     verified_invocation: Option<VerifiedInvocationContext>,
     resolved_task_id: Option<TaskId>,
@@ -1328,8 +1322,14 @@ pub(crate) fn stored_response_unavailable_response(
         rejected_response(
             false,
             Some(state_version),
-            vec![mcp_unavailable_error(
-                "stored operation result does not match the current response contract",
+            vec![tool_error(
+                ErrorCode::PersistedDataCorrupt,
+                "stored operation result violates the current response contract",
+                false,
+                Some(serde_json::Map::from_iter([(
+                    "reason".to_owned(),
+                    Value::String("stored_response_contract_violation".to_owned()),
+                )])),
             )],
         ),
         verified_invocation,
@@ -1516,7 +1516,7 @@ fn commit_mutation(
                 committed_state_version,
             ) {
                 let current_state_version = store.project_state()?.state_version;
-                return stored_response_unavailable_response(
+                return stored_response_corrupt_response(
                     current_state_version,
                     Some(verified_invocation),
                     Some(task_id.clone()),
@@ -1855,12 +1855,22 @@ pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
     let code = match classification.route {
         StoreFailureRoute::OperationalUnavailable => ErrorCode::McpUnavailable,
         StoreFailureRoute::InvocationContextMismatch => ErrorCode::InvocationContextMismatch,
+        StoreFailureRoute::PersistedDataCorrupt => ErrorCode::PersistedDataCorrupt,
+        StoreFailureRoute::UnsupportedContract => ErrorCode::UnsupportedContract,
     };
+    if code == ErrorCode::UnsupportedContract {
+        details.insert(
+            "reason".to_owned(),
+            Value::String("unsupported_external_contract".to_owned()),
+        );
+    }
     let message = match code {
         ErrorCode::McpUnavailable => "Core storage is unavailable",
         ErrorCode::InvocationContextMismatch => {
             "project binding or invocation context does not match registration"
         }
+        ErrorCode::PersistedDataCorrupt => "persisted owner data violates its declared contract",
+        ErrorCode::UnsupportedContract => "the exact storage contract is not supported",
         _ => "Core storage is unavailable",
     };
     tool_error(code, message, classification.retryable, Some(details))
@@ -1882,30 +1892,32 @@ fn no_active_task_error() -> ToolError {
 fn error_precedence(code: ErrorCode) -> u8 {
     match code {
         ErrorCode::ValidationFailed => 1,
-        ErrorCode::StateVersionConflict => 2,
-        ErrorCode::McpUnavailable => 3,
-        ErrorCode::InvocationContextMismatch => 4,
-        ErrorCode::NoActiveTask => 5,
-        ErrorCode::NoActiveChangeUnit => 6,
-        ErrorCode::BaselineStale => 7,
-        ErrorCode::ScopeRequired => 8,
-        ErrorCode::ScopeViolation => 9,
-        ErrorCode::WriteTicketRequired => 10,
-        ErrorCode::WriteTicketInvalid => 11,
-        ErrorCode::ApprovalDenied => 12,
-        ErrorCode::ApprovalExpired => 13,
-        ErrorCode::ApprovalRequired => 14,
-        ErrorCode::DecisionUnresolved => 15,
-        ErrorCode::AutonomyBoundaryExceeded => 16,
-        ErrorCode::DecisionRequired => 17,
-        ErrorCode::CapabilityInsufficient => 18,
-        ErrorCode::EvidenceInsufficient => 19,
-        ErrorCode::ResidualRiskNotVisible => 20,
-        ErrorCode::AcceptanceRequired => 21,
-        ErrorCode::ProjectionStale => 22,
-        ErrorCode::ArtifactMissing => 23,
-        ErrorCode::ValidatorFailed => 24,
-        ErrorCode::OperationResultUnavailable => 25,
+        ErrorCode::UnsupportedContract => 2,
+        ErrorCode::PersistedDataCorrupt => 3,
+        ErrorCode::StateVersionConflict => 4,
+        ErrorCode::McpUnavailable => 5,
+        ErrorCode::InvocationContextMismatch => 6,
+        ErrorCode::NoActiveTask => 7,
+        ErrorCode::NoActiveChangeUnit => 8,
+        ErrorCode::BaselineStale => 9,
+        ErrorCode::ScopeRequired => 10,
+        ErrorCode::ScopeViolation => 11,
+        ErrorCode::WriteTicketRequired => 12,
+        ErrorCode::WriteTicketInvalid => 13,
+        ErrorCode::ApprovalDenied => 14,
+        ErrorCode::ApprovalExpired => 15,
+        ErrorCode::ApprovalRequired => 16,
+        ErrorCode::DecisionUnresolved => 17,
+        ErrorCode::AutonomyBoundaryExceeded => 18,
+        ErrorCode::DecisionRequired => 19,
+        ErrorCode::CapabilityInsufficient => 20,
+        ErrorCode::EvidenceInsufficient => 21,
+        ErrorCode::ResidualRiskNotVisible => 22,
+        ErrorCode::AcceptanceRequired => 23,
+        ErrorCode::ProjectionStale => 24,
+        ErrorCode::ArtifactMissing => 25,
+        ErrorCode::ValidatorFailed => 26,
+        ErrorCode::OperationResultUnavailable => 27,
     }
 }
 
@@ -1934,10 +1946,12 @@ mod tests {
         core_pipeline::{ChangeUnitInsert, CoreProjectStore, StorageEffectCounts},
         sqlite::{open_project_state_database, open_registry_database, registry_db_path},
     };
-    use volicord_test_support::TempRuntimeHome;
+    use volicord_test_support::{
+        test_host_receipt_fixture, TempRuntimeHome,
+        TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    };
     use volicord_types::{
         ActorSource, IdempotencyKey, OperationCategory, PlannedEffect, ProjectId, RequestId,
-        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
 
     use super::*;
@@ -2299,7 +2313,7 @@ mod tests {
     }
 
     #[test]
-    fn forbidden_schema_ledger_routes_to_structured_unavailability() -> Result<(), Box<dyn Error>> {
+    fn forbidden_schema_ledger_routes_to_persisted_data_corruption() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         harness.conn()?.execute(
             "CREATE TABLE schema_migrations (database_kind TEXT NOT NULL)",
@@ -2322,7 +2336,8 @@ mod tests {
             },
         })?;
 
-        assert_store_rejection(&response, "MCP_UNAVAILABLE", "schema_invariant");
+        assert_store_rejection(&response, "PERSISTED_DATA_CORRUPT", "schema_invariant");
+        assert_eq!(response.response_value["errors"][0]["category"], "corrupt");
         assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
         Ok(())
     }
@@ -2364,7 +2379,7 @@ mod tests {
             1
         );
         assert_eq!(after.state_version, before.state_version + 1);
-        assert_eq!(after.task_events, before.task_events + 1);
+        assert_eq!(after.authority_events, before.authority_events + 1);
         assert_eq!(after.tool_invocations, before.tool_invocations + 1);
         assert_eq!(after.tasks, before.tasks);
         Ok(())
@@ -2446,7 +2461,7 @@ mod tests {
         assert_eq!(second.response_value["base"]["response_kind"], "rejected");
         assert_eq!(
             second.response_value["errors"][0]["code"],
-            "MCP_UNAVAILABLE"
+            "PERSISTED_DATA_CORRUPT"
         );
         assert_ne!(second.response_json, first.response_json);
         assert_eq!(after_second, after_first);
@@ -2505,7 +2520,7 @@ mod tests {
         assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
         assert_eq!(
             replay.response_value["errors"][0]["code"],
-            "MCP_UNAVAILABLE"
+            "PERSISTED_DATA_CORRUPT"
         );
         assert!(!replay.replayed);
         assert!(replay.operation_result_ref.is_none());
@@ -2903,12 +2918,30 @@ mod tests {
         actor_source: ActorSource,
         operation_category: OperationCategory,
     ) -> InvocationContext {
-        InvocationContext::new(
+        let invocation = InvocationContext::new(
             ProjectId::new(PROJECT_ID),
-            actor_source,
+            actor_source.clone(),
             operation_category,
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-        )
+            if matches!(actor_source, ActorSource::AgentConnection(_)) {
+                volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+            } else {
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+            },
+        );
+        match actor_source {
+            ActorSource::AgentConnection(connection_id) => {
+                let fixture = test_host_receipt_fixture(PROJECT_ID, connection_id.as_str());
+                invocation.with_validated_host_receipt(
+                    crate::validate_host_verification_receipt(
+                        fixture.receipt,
+                        &fixture.current,
+                        &fixture.validation_time,
+                    )
+                    .expect("typed host receipt fixture should validate"),
+                )
+            }
+            _ => invocation,
+        }
     }
 
     fn request_json(method_name: MethodName, envelope: &ToolEnvelope, marker: &str) -> Value {

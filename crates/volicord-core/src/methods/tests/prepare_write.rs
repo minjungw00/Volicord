@@ -139,14 +139,6 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         response.response_value["write_ticket"]["validity_basis"]["write_authority_fingerprint"],
         project_write_authority_fingerprint(None)?
     );
-    assert_eq!(
-        response.response_value["write_ticket"]["control_surface"],
-        response.response_value["control_surface"]
-    );
-    assert_eq!(
-        response.response_value["control_surface"]["os_enforced"],
-        false
-    );
     assert_eq!(response.response_value["base"]["state_version"], 5);
     assert_eq!(response.response_value["write_ticket_effect"], "issued");
     assert_eq!(
@@ -166,7 +158,7 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
     );
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.write_tickets, before.write_tickets + 1);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     let ref_write_ticket_id = response_record_id(&response.response_value, "write_ticket_ref");
     assert_eq!(write_ticket_id, ref_write_ticket_id);
@@ -187,6 +179,7 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -257,7 +250,7 @@ fn prepare_write_reuses_compatible_ticket_across_unrelated_state_increment(
 }
 
 #[test]
-fn prepare_write_replaces_active_ticket_missing_write_authority_binding(
+fn prepare_write_rejects_active_ticket_missing_write_authority_binding_as_corrupt(
 ) -> Result<(), Box<dyn Error>> {
     assert_prepare_write_replaces_policy_stale_ticket(None, "missing")
 }
@@ -303,6 +296,7 @@ fn assert_prepare_write_replaces_policy_stale_ticket(
             object.remove("write_authority_fingerprint");
         }
     })?;
+    let before_replacement = harness.counts()?;
 
     let replacement = harness.service.prepare_write(
         prepare_write_request(
@@ -314,6 +308,22 @@ fn assert_prepare_write_replaces_policy_stale_ticket(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+
+    if stale_fingerprint.is_none() {
+        assert_store_rejection(
+            &replacement,
+            "PERSISTED_DATA_CORRUPT",
+            "corrupt_stored_json",
+        );
+        assert_eq!(
+            replacement.response_value["base"]["effect_kind"],
+            "no_effect"
+        );
+        assert_eq!(write_ticket_count(&harness)?, 1);
+        assert_eq!(write_ticket_status(&harness, &stale_ticket_id)?, "active");
+        assert_eq!(harness.counts()?, before_replacement);
+        return Ok(());
+    }
 
     assert_eq!(replacement.response_value["decision"], "allowed");
     assert_eq!(replacement.response_value["write_ticket_effect"], "issued");
@@ -372,6 +382,7 @@ fn prepare_write_reuses_ticket_after_status_user_action_evidence_and_non_product
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -755,6 +766,7 @@ fn change_unit_effect_contract_is_stored_and_returned() -> Result<(), Box<dyn Er
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -786,6 +798,7 @@ fn state_summary_reports_absent_effect_contract_as_null() -> Result<(), Box<dyn 
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1017,6 +1030,7 @@ fn policy_denied_path_raises_light_task_to_sensitive() -> Result<(), Box<dyn Err
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),
@@ -1079,6 +1093,7 @@ fn prepare_write_honors_and_clears_durable_policy_reevaluation_mark() -> Result<
                     None,
                     Some(&task_id),
                 ),
+                continuity_page: None,
                 include: status_include(),
             },
             invocation(OperationCategory::Read),
@@ -1226,7 +1241,7 @@ fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Err
     assert_eq!(response.response_value["write_ticket_effect"], "none");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.write_tickets, before.write_tickets);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(after.artifact_staging, before.artifact_staging);
     assert_eq!(after.artifacts, before.artifacts);
@@ -1258,9 +1273,11 @@ fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn prepare_write_shaping_task_is_rejected_before_change_unit_resolution(
+fn prepare_write_without_current_change_unit_rejects_before_policy_or_effects(
 ) -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
+    let mut harness = MethodHarness::new()?;
+    let diagnostic_time = "2026-07-17T01:02:03Z";
+    harness.use_clock(ManualClock::at(diagnostic_time));
     let intake = harness.service.intake(
         intake_request(
             "req_prepare_no_cu_task",
@@ -1284,17 +1301,95 @@ fn prepare_write_shaping_task_is_rejected_before_change_unit_resolution(
         Some(&task_id),
         None,
     );
-    let response = harness
-        .service
-        .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
+    let response = harness.service.prepare_write(
+        request.clone(),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "VALIDATION_FAILED"
+        "NO_ACTIVE_CHANGE_UNIT"
     );
-    assert_eq!(after.write_tickets, before.write_tickets);
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["reason"],
+        "current_change_unit_required"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["method"],
+        "volicord.prepare_write"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["project_id"],
+        PROJECT_ID
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["task_id"],
+        task_id
+    );
+    assert!(response.response_value.get("decision").is_none());
+    assert_eq!(after, before);
+
+    let repeated = harness
+        .service
+        .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(repeated.response_value, response.response_value);
+    assert_eq!(harness.counts()?, before);
+    let diagnostics = read_core_rejection_diagnostics(&harness.runtime_home_path)?;
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].project_id, PROJECT_ID);
+    assert_eq!(diagnostics[0].task_id, task_id);
+    assert_eq!(diagnostics[0].method_name, "volicord.prepare_write");
+    assert_eq!(diagnostics[0].reason, "current_change_unit_required");
+    assert_eq!(diagnostics[0].occurred_at, diagnostic_time);
+    Ok(())
+}
+
+#[test]
+fn prepare_write_dry_run_without_current_change_unit_has_no_effects() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let intake = harness.service.intake(
+        intake_request(
+            "req_prepare_no_cu_dry_task",
+            "idem_prepare_no_cu_dry_task",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = response_record_id(&intake.response_value, "task_ref");
+    let before = harness.counts()?;
+    let mut request = prepare_write_request(
+        "req_prepare_no_cu_dry",
+        "idem_prepare_no_cu_dry",
+        Some(1),
+        Some(&task_id),
+        None,
+    );
+    request.envelope.dry_run = true;
+
+    let response = harness.service.prepare_write(
+        request.clone(),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let repeated = harness
+        .service
+        .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "NO_ACTIVE_CHANGE_UNIT"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["reason"],
+        "current_change_unit_required"
+    );
+    assert_eq!(repeated.response_value, response.response_value);
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
@@ -1338,7 +1433,7 @@ fn prepare_write_unresolved_user_action_requires_decision() -> Result<(), Box<dy
     assert_prepare_reason(&response.response_value, "user_action_unresolved");
     assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.state_version, before.state_version + 1);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
     let event_payload = assert_latest_prepare_write_event(
@@ -1607,7 +1702,7 @@ fn prepare_write_missing_sensitive_approval_requires_approval() -> Result<(), Bo
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
     assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.state_version, before.state_version + 1);
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
     let event_payload = assert_latest_prepare_write_event(
@@ -2079,7 +2174,7 @@ fn prepare_write_non_allow_replay_returns_original_response_without_effect(
     assert_eq!(first.response_value["decision"], "blocked");
     assert_prepare_reason(&first.response_value, "path_out_of_scope");
     assert_eq!(after_first.state_version, before.state_version + 1);
-    assert_eq!(after_first.task_events, before.task_events + 1);
+    assert_eq!(after_first.authority_events, before.authority_events + 1);
     assert_eq!(after_first.tool_invocations, before.tool_invocations + 1);
     assert_eq!(after_first.write_tickets, before.write_tickets);
     assert_latest_prepare_write_event(

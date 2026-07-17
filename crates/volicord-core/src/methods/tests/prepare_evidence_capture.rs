@@ -10,10 +10,7 @@ fn workspace_context(seed: char) -> crate::pipeline::GitWorkspaceContext {
         worktree_id: format!("sha256:{}", seed.to_string().repeat(64)),
         branch_ref: Some("refs/heads/evidence-capture".to_owned()),
         head_sha: Some(seed.to_string().repeat(40)),
-        workspace_fingerprint: format!(
-            "sha256:{}",
-            seed.to_ascii_uppercase().to_string().repeat(64)
-        ),
+        workspace_fingerprint: format!("sha256:{}", seed.to_string().repeat(64)),
     }
 }
 
@@ -102,15 +99,11 @@ fn fulfill_command_receipt(
     let result_sha256 = lowercase_sha256(&volicord_types::canonical_json_bytes(&observed_outcome)?);
     let source = json!({
         "connection_id": CONNECTION_ID,
-        "session_id": null,
-        "guard_installation_id": null,
-        "guard_event_ids": [],
-        "watch_observation_refs": [],
         "host_invocation_id": format!("host_invocation_command_{suffix}")
     });
     let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
     let safe_receipt = json!({
-        "schema_version": "volicord.evidence_capture_receipt.v1",
+        "contract_id": volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
         "capture_kind": "verified_command_execution",
         "capture_intent_id": intent_id,
         "input_sha256": intent.input_sha256,
@@ -166,21 +159,9 @@ fn fulfill_registered_source_receipt(
     .to_canonical_string();
     let result_sha256 = lowercase_sha256(&volicord_types::canonical_json_bytes(&observed_outcome)?);
     let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
-    let capture: EvidenceCaptureSpec = serde_json::from_str(&intent.capture_spec_json)?;
-    let limitation = match capture {
-        EvidenceCaptureSpec::VerifiedToolInvocation { .. }
-        | EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: volicord_types::ConnectionObservationSourceSelector::GuardEvent { .. },
-            ..
-        } => EVIDENCE_CAPTURE_GUARD_LIMITATION,
-        EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_selector: volicord_types::ConnectionObservationSourceSelector::SessionWatcher {},
-            ..
-        } => EVIDENCE_CAPTURE_WATCHER_LIMITATION,
-        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => EVIDENCE_CAPTURE_COMMAND_LIMITATION,
-    };
+    let limitation = EVIDENCE_CAPTURE_COMMAND_LIMITATION;
     let safe_receipt = json!({
-        "schema_version": "volicord.evidence_capture_receipt.v1",
+        "contract_id": volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
         "capture_kind": intent.capture_kind,
         "capture_intent_id": intent_id,
         "input_sha256": intent.input_sha256,
@@ -216,54 +197,6 @@ fn fulfill_registered_source_receipt(
         },
     )?;
     Ok(())
-}
-
-fn record_current_complete_watch_observation(
-    harness: &MethodHarness,
-    intent_id: &str,
-    session_id: &str,
-    suffix: &str,
-    baseline_snapshot: &WatchSnapshot,
-) -> Result<ValidatedCaptureWatchObservation, Box<dyn Error>> {
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
-    let intent = store
-        .evidence_capture_intent_record(intent_id)?
-        .expect("capture intent should exist");
-    let observed_at = UtcTimestamp::from_datetime(
-        *UtcTimestamp::parse(&intent.created_at)?.as_datetime() + Duration::minutes(1),
-    )
-    .to_canonical_string();
-    let repo_root = product_repo_root(harness)?;
-    let snapshot = snapshot_product_repository(
-        &harness.runtime_home_path,
-        &repo_root,
-        WatchSnapshotOptions::default(),
-    )?;
-    let diff = compare_watch_snapshots(baseline_snapshot, &snapshot);
-    let metadata_json = volicord_types::canonical_json_string(&json!({
-        "scan_summary": &snapshot.scan_summary
-    }))?;
-    let watch_observation_id = format!("watch_observation_{suffix}");
-    record_watch_observation(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        WatchObservationInsert {
-            watch_observation_id: watch_observation_id.clone(),
-            watch_baseline_id: format!("watch_base_{suffix}"),
-            expected_write_id: None,
-            snapshot,
-            diff,
-            observed_at,
-            metadata_json,
-        },
-    )?;
-    Ok(validate_current_complete_watch_observation(
-        &harness.runtime_home_path,
-        PROJECT_ID,
-        CONNECTION_ID,
-        session_id,
-        &watch_observation_id,
-    )?)
 }
 
 fn record_run_with_capture(
@@ -375,7 +308,7 @@ fn command_capture_defaults_are_persisted_once_and_replay_is_exact() -> Result<(
         after.evidence_capture_intents,
         before.evidence_capture_intents + 1
     );
-    assert_eq!(after.task_events, before.task_events + 1);
+    assert_eq!(after.authority_events, before.authority_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(
         after.evidence_capture_receipts,
@@ -453,28 +386,16 @@ fn capture_variants_apply_omission_defaults_from_one_owner() -> Result<(), Box<d
     harness.use_clock(clock.clone());
     let (task_id, change_unit_id, criterion_id, workspace) =
         create_workspace_bound_task(&harness, "variants")?;
-    let cases = [
-        (
-            EvidenceCaptureSpec::VerifiedToolInvocation {
-                tool_name: "  cargo-test  ".to_owned(),
-                tool_input_sha256: "b".repeat(64),
-                expected_success: RequiredNullable::null(),
-            },
-            "verified_tool_invocation",
-            "expected_success",
-            json!(true),
-        ),
-        (
-            EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_selector:
-                    volicord_types::ConnectionObservationSourceSelector::SessionWatcher {},
-                expected_complete: RequiredNullable::null(),
-            },
-            "registered_connection_observation",
-            "expected_complete",
-            json!(true),
-        ),
-    ];
+    let cases = [(
+        EvidenceCaptureSpec::VerifiedToolInvocation {
+            tool_name: "  cargo-test  ".to_owned(),
+            tool_input_sha256: "b".repeat(64),
+            expected_success: RequiredNullable::null(),
+        },
+        "verified_tool_invocation",
+        "expected_success",
+        json!(true),
+    )];
     for (index, (capture, kind, expected_field, expected_value)) in cases.into_iter().enumerate() {
         if index > 0 {
             clock.advance(Duration::nanoseconds(1));
@@ -501,13 +422,6 @@ fn capture_variants_apply_omission_defaults_from_one_owner() -> Result<(), Box<d
             response.response_value["capture_intent"]["expected_outcome"][expected_field],
             expected_value
         );
-        if kind == "registered_connection_observation" {
-            let selector = json!({"source_kind": "session_watcher"});
-            assert_eq!(
-                response.response_value["capture_intent"]["input_sha256"],
-                volicord_types::canonical_json_bare_sha256(&selector)?
-            );
-        }
     }
     Ok(())
 }
@@ -561,32 +475,6 @@ fn invalid_or_unbound_capture_and_dry_run_have_no_effects() -> Result<(), Box<dy
     );
     assert_eq!(harness.counts()?, before);
 
-    let missing_session = harness.service.prepare_evidence_capture(
-        capture_request(
-            "req_capture_missing_session",
-            Some("idem_capture_missing_session"),
-            false,
-            2,
-            (&task_id, &change_unit_id, &criterion_id),
-            EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_selector: volicord_types::ConnectionObservationSourceSelector::GuardEvent {
-                    event_kind: volicord_types::ConnectionObservationGuardEventKind::Stop,
-                },
-                expected_complete: RequiredNullable::null(),
-            },
-        ),
-        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace.clone()),
-    )?;
-    assert_eq!(
-        missing_session.response_value["base"]["response_kind"],
-        "rejected"
-    );
-    assert_eq!(
-        missing_session.response_value["errors"][0]["code"],
-        "INVOCATION_CONTEXT_MISMATCH"
-    );
-    assert_eq!(harness.counts()?, before);
-
     let dry_run = harness.service.prepare_evidence_capture(
         capture_request(
             "req_capture_dry_run",
@@ -594,11 +482,10 @@ fn invalid_or_unbound_capture_and_dry_run_have_no_effects() -> Result<(), Box<dy
             true,
             2,
             (&task_id, &change_unit_id, &criterion_id),
-            EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_selector: volicord_types::ConnectionObservationSourceSelector::GuardEvent {
-                    event_kind: volicord_types::ConnectionObservationGuardEventKind::Stop,
-                },
-                expected_complete: RequiredNullable::null(),
+            EvidenceCaptureSpec::VerifiedToolInvocation {
+                tool_name: "fixture".to_owned(),
+                tool_input_sha256: "e".repeat(64),
+                expected_success: RequiredNullable::null(),
             },
         ),
         invocation_with_session(OperationCategory::AgentWorkflow, "session_capture_dry_run")
@@ -879,6 +766,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
                 None,
                 Some(&task_id),
             ),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read).with_git_workspace_context(workspace.clone()),
@@ -1066,7 +954,7 @@ fn contradicted_and_corrupt_capture_paths_fail_closed_without_false_support(
     assert_eq!(corrupt.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         corrupt.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert_eq!(harness.counts()?, before_corrupt);
 
@@ -1123,7 +1011,7 @@ fn contradicted_and_corrupt_capture_paths_fail_closed_without_false_support(
     );
     assert_eq!(
         oversized.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert_eq!(harness.counts()?, before_corrupt);
     Ok(())
@@ -1179,7 +1067,7 @@ fn missing_source_claim_rejects_finalization_without_core_effects() -> Result<()
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
+        "PERSISTED_DATA_CORRUPT"
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -1399,8 +1287,7 @@ fn record_run_rejects_corrupt_capture_authority_times_without_effects() -> Resul
 }
 
 #[test]
-fn tool_and_connection_receipts_finalize_to_their_exact_producer_classes(
-) -> Result<(), Box<dyn Error>> {
+fn tool_receipts_finalize_to_their_exact_producer_class() -> Result<(), Box<dyn Error>> {
     struct Case {
         suffix: &'static str,
         capture: EvidenceCaptureSpec,
@@ -1413,64 +1300,30 @@ fn tool_and_connection_receipts_finalize_to_their_exact_producer_classes(
         tool_invocation_id: Option<&'static str>,
         session_id: &'static str,
     }
-    let cases = vec![
-        Case {
-            suffix: "tool",
-            capture: EvidenceCaptureSpec::VerifiedToolInvocation {
-                tool_name: "fixture_tool".to_owned(),
-                tool_input_sha256: "3".repeat(64),
-                expected_success: RequiredNullable::null(),
-            },
-            observed_outcome: json!({
-                "success": true,
-                "exit_code": null,
-                "tool_result_sha256": "4".repeat(64),
-                "tool_result_size_bytes": 12
-            }),
-            source: json!({
-                "connection_id": CONNECTION_ID,
-                "session_id": "session_tool",
-                "guard_installation_id": "guard_installation_tool",
-                "guard_event_ids": ["guard_pre_tool", "guard_post_tool"],
-                "watch_observation_refs": [],
-                "host_invocation_id": "host_invocation_tool"
-            }),
-            source_kind: EvidenceSourceKind::ExternalTool,
-            assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
-            producer_kind: "verified_tool_invocation",
-            tool_name: Some("fixture_tool"),
-            tool_invocation_id: Some("host_invocation_tool"),
-            session_id: "session_tool",
+    let cases = vec![Case {
+        suffix: "tool",
+        capture: EvidenceCaptureSpec::VerifiedToolInvocation {
+            tool_name: "fixture_tool".to_owned(),
+            tool_input_sha256: "3".repeat(64),
+            expected_success: RequiredNullable::null(),
         },
-        Case {
-            suffix: "connection",
-            capture: EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_selector:
-                    volicord_types::ConnectionObservationSourceSelector::SessionWatcher {},
-                expected_complete: RequiredNullable::null(),
-            },
-            observed_outcome: json!({
-                "complete": true,
-                "snapshot_algorithm": WATCH_SNAPSHOT_ALGORITHM,
-                "snapshot_digest": "6".repeat(64),
-                "observation_sha256": "5".repeat(64)
-            }),
-            source: json!({
-                "connection_id": CONNECTION_ID,
-                "session_id": "session_watch",
-                "guard_installation_id": null,
-                "guard_event_ids": [],
-                "watch_observation_refs": ["watch_observation_1"],
-                "host_invocation_id": null
-            }),
-            source_kind: EvidenceSourceKind::ConnectionObservation,
-            assurance_level: EvidenceAssuranceLevel::RegisteredConnectionObserved,
-            producer_kind: "registered_connection_observation",
-            tool_name: None,
-            tool_invocation_id: None,
-            session_id: "session_watch",
-        },
-    ];
+        observed_outcome: json!({
+            "success": true,
+            "exit_code": null,
+            "tool_result_sha256": "4".repeat(64),
+            "tool_result_size_bytes": 12
+        }),
+        source: json!({
+            "connection_id": CONNECTION_ID,
+            "host_invocation_id": "host_invocation_tool"
+        }),
+        source_kind: EvidenceSourceKind::ExternalTool,
+        assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
+        producer_kind: "verified_tool_invocation",
+        tool_name: Some("fixture_tool"),
+        tool_invocation_id: Some("host_invocation_tool"),
+        session_id: "session_tool",
+    }];
 
     for case in cases {
         let mut harness = MethodHarness::new()?;
@@ -1478,9 +1331,6 @@ fn tool_and_connection_receipts_finalize_to_their_exact_producer_classes(
             create_workspace_bound_task(&harness, case.suffix)?;
         let clock = ManualClock::at("2026-07-13T01:00:00Z");
         harness.use_clock(clock.clone());
-        let baseline_snapshot = (case.suffix == "connection")
-            .then(|| initialize_watch_baseline(&harness, &task_id, case.session_id, case.suffix))
-            .transpose()?;
         let prepared = harness.service.prepare_evidence_capture(
             capture_request(
                 &format!("req_capture_{}", case.suffix),
@@ -1495,35 +1345,8 @@ fn tool_and_connection_receipts_finalize_to_their_exact_producer_classes(
         )?;
         let intent_ref: StateRecordRef =
             serde_json::from_value(prepared.response_value["capture_intent_ref"].clone())?;
-        let (observed_outcome, source) = if case.suffix == "connection" {
-            let selected = record_current_complete_watch_observation(
-                &harness,
-                intent_ref.record_id.as_str(),
-                case.session_id,
-                case.suffix,
-                baseline_snapshot
-                    .as_ref()
-                    .expect("connection capture should initialize a watcher baseline"),
-            )?;
-            (
-                json!({
-                    "complete": true,
-                    "snapshot_algorithm": selected.observation.snapshot_algorithm,
-                    "snapshot_digest": selected.observation.snapshot_digest,
-                    "observation_sha256": selected.selection_sha256,
-                }),
-                json!({
-                    "connection_id": CONNECTION_ID,
-                    "session_id": selected.observation.session_id,
-                    "guard_installation_id": null,
-                    "guard_event_ids": [],
-                    "watch_observation_refs": [selected.observation.watch_observation_id],
-                    "host_invocation_id": null
-                }),
-            )
-        } else {
-            (case.observed_outcome, case.source)
-        };
+        let observed_outcome = case.observed_outcome;
+        let source = case.source;
         fulfill_registered_source_receipt(
             &harness,
             intent_ref.record_id.as_str(),

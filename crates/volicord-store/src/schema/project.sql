@@ -43,7 +43,7 @@ CREATE TABLE tasks (
   scope_revision INTEGER NOT NULL DEFAULT 0 CHECK (scope_revision >= 0),
   close_basis_revision INTEGER NOT NULL DEFAULT 0 CHECK (close_basis_revision >= 0),
   close_basis_json TEXT,
-  close_summary_json TEXT NOT NULL DEFAULT '{}',
+  close_summary_json TEXT NOT NULL DEFAULT '{"close_reason":"none"}',
   current_change_unit_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE change_units (
   task_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('proposed', 'active', 'replaced', 'closed')),
   is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
-  basis_state_version INTEGER CHECK (basis_state_version >= 0),
+  basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   scope_summary_json TEXT NOT NULL DEFAULT '{}',
   bounded_paths_json TEXT NOT NULL DEFAULT '[]',
   write_basis_json TEXT NOT NULL DEFAULT '{}',
@@ -135,8 +135,7 @@ CREATE TABLE evidence_capture_intents (
   capture_kind TEXT NOT NULL CHECK (
     capture_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   capture_spec_json TEXT NOT NULL,
@@ -214,9 +213,7 @@ CREATE TABLE user_action_resolutions (
       'evidence_observation'
     )
   ),
-  channel_kind TEXT NOT NULL CHECK (
-    channel_kind IN ('mcp_elicitation', 'prompt_capture', 'local_web_consent', 'cli')
-  ),
+  channel_kind TEXT NOT NULL CHECK (channel_kind = 'cli'),
   channel_submission_id TEXT NOT NULL CHECK (
     length(CAST(channel_submission_id AS BLOB)) BETWEEN 1 AND 256
     AND length(channel_submission_id) = length(CAST(channel_submission_id AS BLOB))
@@ -268,7 +265,7 @@ CREATE TABLE write_tickets (
   project_id TEXT NOT NULL,
   write_ticket_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
-  change_unit_id TEXT,
+  change_unit_id TEXT NOT NULL,
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version > 0),
   status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'invalidated', 'revoked')),
   validity_basis_json TEXT NOT NULL,
@@ -377,8 +374,7 @@ CREATE TABLE evidence_capture_receipts (
   capture_kind TEXT NOT NULL CHECK (
     capture_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   input_sha256 TEXT NOT NULL CHECK (
@@ -420,11 +416,7 @@ CREATE TABLE evidence_capture_receipts (
 CREATE TABLE evidence_capture_source_claims (
   project_id TEXT NOT NULL,
   source_claim_kind TEXT NOT NULL CHECK (
-    source_claim_kind IN (
-      'host_invocation',
-      'guard_event',
-      'session_watch_observation'
-    )
+    source_claim_kind = 'host_invocation'
   ),
   source_claim_id TEXT NOT NULL CHECK (length(trim(source_claim_id)) > 0),
   evidence_capture_intent_id TEXT NOT NULL,
@@ -432,8 +424,7 @@ CREATE TABLE evidence_capture_source_claims (
   capture_kind TEXT NOT NULL CHECK (
     capture_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   claimed_at TEXT NOT NULL,
@@ -609,8 +600,7 @@ CREATE TABLE evidence_producers (
   producer_kind TEXT NOT NULL CHECK (
     producer_kind IN (
       'verified_command_execution',
-      'verified_tool_invocation',
-      'registered_connection_observation'
+      'verified_tool_invocation'
     )
   ),
   canonical_producer_json TEXT NOT NULL,
@@ -696,20 +686,6 @@ CREATE TABLE authority_events (
     REFERENCES authority_events (project_id, event_hash)
     DEFERRABLE INITIALLY DEFERRED
 );
-
-CREATE VIEW task_events AS
-SELECT
-  project_id,
-  event_seq,
-  event_id,
-  task_id,
-  change_unit_id,
-  state_version,
-  event_type AS event_kind,
-  payload_json AS event_payload_json,
-  created_at
-FROM authority_events
-WHERE task_id IS NOT NULL;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -834,9 +810,8 @@ CREATE TABLE agent_sessions (
   connection_internal_id TEXT NOT NULL,
   guard_installation_id TEXT,
   host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode IN ('record', 'detective')),
+  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
   started_at TEXT NOT NULL,
-  ended_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, session_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
@@ -912,9 +887,6 @@ CREATE TABLE unrecorded_changes (
 
 CREATE INDEX idx_agent_sessions_connection
   ON agent_sessions (project_id, connection_internal_id);
-CREATE INDEX idx_agent_sessions_open
-  ON agent_sessions (project_id, connection_internal_id)
-  WHERE ended_at IS NULL;
 CREATE INDEX idx_guard_events_session
   ON guard_events (project_id, session_id, occurred_at);
 CREATE INDEX idx_guard_events_connection
@@ -944,7 +916,7 @@ CREATE TABLE expected_writes (
   path_policy TEXT NOT NULL CHECK (path_policy IN ('exact_paths')),
   expected_paths_json TEXT NOT NULL DEFAULT '[]',
   task_id TEXT NOT NULL,
-  change_unit_id TEXT,
+  change_unit_id TEXT NOT NULL,
   write_ticket_ids_json TEXT NOT NULL DEFAULT '[]',
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   status TEXT NOT NULL CHECK (status IN ('pending', 'matched')),
@@ -983,130 +955,9 @@ CREATE INDEX idx_expected_writes_host_invocation
   WHERE host_invocation_id IS NOT NULL;
 CREATE INDEX idx_expected_writes_task
   ON expected_writes (project_id, task_id, status);
-CREATE TABLE session_watch_baselines (
-  project_id TEXT NOT NULL,
-  watch_baseline_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  guard_installation_id TEXT,
-  status TEXT NOT NULL CHECK (status IN ('disabled', 'active', 'degraded', 'unavailable')),
-  scope_kind TEXT NOT NULL CHECK (scope_kind IN ('repository', 'path_set')),
-  repo_root TEXT NOT NULL CHECK (length(trim(repo_root)) > 0),
-  watched_paths_json TEXT NOT NULL DEFAULT '[]',
-  exclusions_json TEXT NOT NULL DEFAULT '[]',
-  snapshot_algorithm TEXT NOT NULL CHECK (length(trim(snapshot_algorithm)) > 0),
-  snapshot_digest TEXT NOT NULL CHECK (length(trim(snapshot_digest)) > 0),
-  snapshot_entries_json TEXT NOT NULL DEFAULT '[]',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, watch_baseline_id),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id)
-);
-
-CREATE TABLE session_watch_observations (
-  project_id TEXT NOT NULL,
-  watch_observation_id TEXT NOT NULL,
-  watch_baseline_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  connection_internal_id TEXT NOT NULL,
-  expected_write_id TEXT,
-  unrecorded_change_id TEXT,
-  observation_status TEXT NOT NULL CHECK (observation_status IN ('unresolved', 'linked')),
-  observed_paths_json TEXT NOT NULL DEFAULT '[]',
-  change_summary_json TEXT NOT NULL DEFAULT '{}',
-  snapshot_algorithm TEXT NOT NULL CHECK (length(trim(snapshot_algorithm)) > 0),
-  snapshot_digest TEXT NOT NULL CHECK (length(trim(snapshot_digest)) > 0),
-  snapshot_entries_json TEXT NOT NULL DEFAULT '[]',
-  observed_at TEXT NOT NULL,
-  linked_at TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, watch_observation_id),
-  CHECK (
-    (
-      observation_status = 'unresolved'
-      AND unrecorded_change_id IS NULL
-      AND linked_at IS NULL
-    )
-    OR (
-      observation_status = 'linked'
-      AND unrecorded_change_id IS NOT NULL
-      AND linked_at IS NOT NULL
-    )
-  ),
-  FOREIGN KEY (project_id, watch_baseline_id)
-    REFERENCES session_watch_baselines (project_id, watch_baseline_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
-  FOREIGN KEY (project_id, expected_write_id)
-    REFERENCES expected_writes (project_id, expected_write_id),
-  FOREIGN KEY (project_id, unrecorded_change_id)
-    REFERENCES unrecorded_changes (project_id, unrecorded_change_id)
-);
-
-CREATE INDEX idx_session_watch_baselines_session
-  ON session_watch_baselines (project_id, session_id, status);
-CREATE INDEX idx_session_watch_baselines_status
-  ON session_watch_baselines (project_id, status, updated_at);
-CREATE INDEX idx_session_watch_observations_unresolved
-  ON session_watch_observations (project_id, session_id, observation_status, observed_at);
-CREATE INDEX idx_session_watch_observations_baseline
-  ON session_watch_observations (project_id, watch_baseline_id, observed_at);
-CREATE INDEX idx_session_watch_observations_expected_write
-  ON session_watch_observations (project_id, expected_write_id)
-  WHERE expected_write_id IS NOT NULL;
-CREATE INDEX idx_session_watch_observations_unrecorded_change
-  ON session_watch_observations (project_id, unrecorded_change_id)
-  WHERE unrecorded_change_id IS NOT NULL;
-CREATE TABLE user_action_channel_tokens (
-  project_id TEXT NOT NULL,
-  token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
-  channel_kind TEXT NOT NULL CHECK (channel_kind = 'local_web_consent'),
-  connection_internal_id TEXT NOT NULL,
-  user_action_request_id TEXT NOT NULL,
-  capture_basis TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'consumed', 'expired')),
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT,
-  completed_at TEXT,
-  created_metadata_json TEXT NOT NULL DEFAULT '{}',
-  completion_metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, token_hash),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
-  FOREIGN KEY (project_id, user_action_request_id)
-    REFERENCES user_action_requests (project_id, user_action_request_id)
-    ON DELETE RESTRICT,
-  CHECK (
-    (
-      status = 'pending'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-    OR (
-      status = 'consumed'
-      AND consumed_at IS NOT NULL
-      AND completed_at IS NOT NULL
-    )
-    OR (
-      status = 'expired'
-      AND consumed_at IS NULL
-      AND completed_at IS NULL
-    )
-  )
-);
-
-CREATE INDEX idx_user_action_channel_tokens_request
-  ON user_action_channel_tokens (project_id, user_action_request_id, status);
-CREATE INDEX idx_user_action_channel_tokens_connection
-  ON user_action_channel_tokens (project_id, connection_internal_id, channel_kind, status, expires_at);
-CREATE INDEX idx_user_action_channel_tokens_expiry
-  ON user_action_channel_tokens (project_id, status, expires_at);
-
 CREATE TABLE project_workflow_policies (
   project_id TEXT PRIMARY KEY,
-  policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord-policy-v2'),
+  policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord.workflow_policy'),
   policy_version INTEGER NOT NULL CHECK (policy_version > 0),
   policy_json TEXT NOT NULL,
   policy_fingerprint TEXT NOT NULL CHECK (
@@ -1118,44 +969,4 @@ CREATE TABLE project_workflow_policies (
   applied_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
-);
-
-CREATE TABLE session_end_receipts (
-  project_id TEXT NOT NULL,
-  session_end_receipt_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  active_task_id TEXT,
-  task_state TEXT NOT NULL CHECK (
-    task_state IN (
-      'none', 'ready', 'blocked', 'closed', 'cancelled', 'superseded',
-      'authority_unknown'
-    )
-  ),
-  close_blocker_codes_json TEXT NOT NULL DEFAULT '[]',
-  next_actor TEXT NOT NULL CHECK (next_actor IN ('agent', 'user', 'none')),
-  completion_claim_allowed INTEGER NOT NULL CHECK (completion_claim_allowed IN (0, 1)),
-  authority_refresh_succeeded INTEGER NOT NULL CHECK (authority_refresh_succeeded IN (0, 1)),
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (project_id, session_end_receipt_id),
-  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
-  FOREIGN KEY (project_id, active_task_id) REFERENCES tasks (project_id, task_id),
-  CHECK (
-    (authority_refresh_succeeded = 0 AND task_state = 'authority_unknown')
-    OR (authority_refresh_succeeded = 1 AND task_state <> 'authority_unknown')
-  ),
-  CHECK (
-    (task_state = 'none' AND active_task_id IS NULL)
-    OR (task_state = 'authority_unknown')
-    OR (task_state NOT IN ('none', 'authority_unknown') AND active_task_id IS NOT NULL)
-  ),
-  CHECK (
-    completion_claim_allowed = 0
-    OR (
-      authority_refresh_succeeded = 1
-      AND task_state = 'ready'
-      AND active_task_id IS NOT NULL
-      AND close_blocker_codes_json = '[]'
-    )
-  )
 );

@@ -6,10 +6,11 @@ use std::{
 
 use rusqlite::{types::ValueRef, Connection, Row};
 use serde_json::{Map, Number, Value};
+use volicord_types::{GeneratedRelationKind, StorageDatabaseKind};
 
 use crate::{
     bootstrap::{validate_current_project_registration, ProjectRecord},
-    schema::PROJECT_STATE_DATABASE_KIND,
+    schema::{generated_schema_metadata, PROJECT_STATE_DATABASE_KIND},
     sqlite::{
         open_read_only_database, registry_db_path, validate_project_state_schema,
         validate_registry_schema, ARTIFACTS_DIR,
@@ -17,36 +18,38 @@ use crate::{
     StoreError, StoreResult,
 };
 
-const PROJECT_STATE_EXPORT_TABLES: &[&str] = &[
-    "project_state",
-    "agent_sessions",
-    "guard_events",
-    "prompt_captures",
-    "expected_writes",
-    "unrecorded_changes",
-    "session_watch_baselines",
-    "session_watch_observations",
-    "tasks",
-    "change_units",
-    "evidence_capture_intents",
-    "user_action_requests",
-    "user_action_resolutions",
-    "user_action_channel_tokens",
-    "project_continuity_records",
-    "write_tickets",
-    "runs",
-    "artifact_staging",
-    "evidence_capture_receipts",
-    "evidence_capture_source_claims",
-    "artifacts",
-    "artifact_links",
-    "evidence_summaries",
-    "evidence_observations",
-    "evidence_producers",
-    "blockers",
-    "authority_events",
-    "tool_invocations",
-];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectStateExportRelationClass {
+    CanonicalRecordTable,
+    DerivedOrInternalRelation,
+}
+
+const fn project_state_export_relation_class(
+    relation_kind: GeneratedRelationKind,
+) -> ProjectStateExportRelationClass {
+    match relation_kind {
+        GeneratedRelationKind::Table => ProjectStateExportRelationClass::CanonicalRecordTable,
+        GeneratedRelationKind::View | GeneratedRelationKind::Trigger => {
+            ProjectStateExportRelationClass::DerivedOrInternalRelation
+        }
+    }
+}
+
+fn project_state_export_tables() -> StoreResult<Vec<&'static str>> {
+    let metadata = generated_schema_metadata()?;
+    let mut tables = metadata
+        .tables
+        .iter()
+        .filter(|relation| relation.database == StorageDatabaseKind::ProjectState)
+        .filter_map(|relation| {
+            (project_state_export_relation_class(relation.relation_kind)
+                == ProjectStateExportRelationClass::CanonicalRecordTable)
+                .then_some(relation.name.as_str())
+        })
+        .collect::<Vec<_>>();
+    tables.sort_unstable();
+    Ok(tables)
+}
 
 /// Read-only export snapshot for a registered project's authority bundle.
 #[derive(Debug, Clone, PartialEq)]
@@ -172,11 +175,11 @@ fn export_project_state_records(
 ) -> StoreResult<(Vec<AuthorityBundleRecord>, Vec<AuthorityBundleTableCount>)> {
     let mut records = Vec::new();
     let mut table_counts = Vec::new();
-    for table in PROJECT_STATE_EXPORT_TABLES {
+    for table in project_state_export_tables()? {
         let table_records = export_table_records(conn, table)?;
         table_counts.push(AuthorityBundleTableCount {
             database: PROJECT_STATE_DATABASE_KIND,
-            table: (*table).to_owned(),
+            table: table.to_owned(),
             row_count: table_records.len(),
         });
         records.extend(table_records);
@@ -184,10 +187,7 @@ fn export_project_state_records(
     Ok((records, table_counts))
 }
 
-fn export_table_records(
-    conn: &Connection,
-    table: &'static str,
-) -> StoreResult<Vec<AuthorityBundleRecord>> {
+fn export_table_records(conn: &Connection, table: &str) -> StoreResult<Vec<AuthorityBundleRecord>> {
     let columns = table_columns(conn, table)?;
     let sql = format!(
         "SELECT * FROM {table} ORDER BY {}",
@@ -213,6 +213,11 @@ fn export_table_records(
 }
 
 fn authority_bundle_row_projection(table: &str, mut row: Value) -> Value {
+    if table == "prompt_captures" {
+        row.as_object_mut()
+            .expect("table rows are serialized as JSON objects")
+            .insert("prompt_text".to_owned(), Value::Null);
+    }
     if table == "tool_invocations"
         && row.get("operation_category").and_then(Value::as_str) == Some("user_only")
     {
@@ -349,4 +354,63 @@ fn table_columns(conn: &Connection, table: &str) -> StoreResult<Vec<String>> {
 
 fn quote_identifier(identifier: &str) -> String {
     format!("\"{}\"", identifier.replace('"', "\"\""))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn export_tables_are_derived_from_every_canonical_project_record_table() {
+        let tables = project_state_export_tables().expect("canonical export tables");
+        for required in [
+            "acceptance_criteria",
+            "authority_events",
+            "evidence_claims",
+            "project_workflow_policies",
+        ] {
+            assert!(
+                tables.contains(&required),
+                "missing export table {required}"
+            );
+        }
+        let metadata = generated_schema_metadata().expect("generated metadata");
+        let project_relations = metadata
+            .tables
+            .iter()
+            .filter(|relation| relation.database == StorageDatabaseKind::ProjectState)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            tables.len(),
+            project_relations
+                .iter()
+                .filter(|relation| {
+                    project_state_export_relation_class(relation.relation_kind)
+                        == ProjectStateExportRelationClass::CanonicalRecordTable
+                })
+                .count()
+        );
+        assert!(project_relations.iter().all(|relation| {
+            relation.relation_kind == GeneratedRelationKind::Table
+                || project_state_export_relation_class(relation.relation_kind)
+                    == ProjectStateExportRelationClass::DerivedOrInternalRelation
+        }));
+    }
+
+    #[test]
+    fn authority_bundle_projection_redacts_content_by_record_semantics() {
+        let prompt = authority_bundle_row_projection(
+            "prompt_captures",
+            json!({"prompt_capture_id": "capture_test", "prompt_text": "private prompt"}),
+        );
+        assert_eq!(prompt["prompt_text"], Value::Null);
+
+        let user_only = authority_bundle_row_projection(
+            "tool_invocations",
+            json!({"operation_category": "user_only", "response_json": "private result"}),
+        );
+        assert_eq!(user_only["response_json"], Value::Null);
+    }
 }

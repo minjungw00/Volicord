@@ -59,6 +59,7 @@ fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn E
     let status = harness.service.status(
         StatusRequest {
             envelope: envelope("req_verified_status", None, false, None, Some(&task_id)),
+            continuity_page: None,
             include: status_include(),
         },
         invocation(OperationCategory::Read),

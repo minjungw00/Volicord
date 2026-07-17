@@ -77,36 +77,50 @@ impl CoreService {
     }
 }
 
-fn plan_intake(
-    service: &CoreService,
+struct NormalizedIntakeRequest {
+    request: volicord_types::IntakeRequest,
+    mode: TaskMode,
+}
+
+fn normalize_intake_request(request: volicord_types::IntakeRequest) -> NormalizedIntakeRequest {
+    let mode = resolve_requested_mode(request.requested_mode);
+    NormalizedIntakeRequest { request, mode }
+}
+
+struct ResolvedIntakeContext {
+    request: volicord_types::IntakeRequest,
+    mode: TaskMode,
+    planned_state_version: u64,
+    active_task: Option<TaskRecord>,
+    create_new: bool,
+    workflow_policy: ProjectWorkflowPolicy,
+    planned_lineage: Option<PlannedTaskLineage>,
+}
+
+fn resolve_intake_context(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    mut request: volicord_types::IntakeRequest,
     verified_invocation: &VerifiedInvocationContext,
-    operation_now: &UtcTimestamp,
-) -> Result<MethodPlan, PlanError> {
-    let plan_now = *operation_now.as_datetime();
-    let user_action_now = operation_now.clone();
+    normalized: NormalizedIntakeRequest,
+) -> Result<ResolvedIntakeContext, PlanError> {
+    let NormalizedIntakeRequest { mut request, mode } = normalized;
     let planned_state_version = project_state.state_version + 1;
-    let mode = resolve_requested_mode(request.requested_mode);
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
     let active_task = store
         .active_task_record()
         .map_err(CorePipelineError::from)?;
-
     let create_new = match request.resume_policy {
         ResumePolicy::ResumeActive => active_task.is_none(),
         ResumePolicy::CreateNew | ResumePolicy::RejectIfActive => true,
         ResumePolicy::SupersedeActive => true,
     };
     if !create_new && (request.acceptance_policy.is_some() || request.lineage.is_some()) {
-        validation_plan_error(
+        return intake_validation_rejection(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "acceptance_policy",
             "resume_active requires null acceptance_policy and lineage fields",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     if create_new
         && mode == TaskMode::Advisor
@@ -115,13 +129,12 @@ fn plan_intake(
             RequestedControlLevel::Auto | RequestedControlLevel::Observe
         )
     {
-        validation_plan_error(
+        return intake_validation_rejection(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "requested_control_level",
             "advisor mode accepts only auto or observe control",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let planned_lineage = if create_new {
         plan_task_lineage(
@@ -134,6 +147,45 @@ fn plan_intake(
     } else {
         None
     };
+
+    Ok(ResolvedIntakeContext {
+        request,
+        mode,
+        planned_state_version,
+        active_task,
+        create_new,
+        workflow_policy,
+        planned_lineage,
+    })
+}
+
+struct IntakePolicyDecision {
+    request: volicord_types::IntakeRequest,
+    mode: TaskMode,
+    planned_state_version: u64,
+    active_task: Option<TaskRecord>,
+    create_new: bool,
+    planned_lineage: Option<PlannedTaskLineage>,
+    requested_control_level: RequestedControlLevel,
+    effective_control_level: TaskControlLevel,
+    control_level_reason: String,
+    acceptance_policy: AcceptancePolicy,
+    acceptance_policy_reason: String,
+    control_or_acceptance_raised: bool,
+}
+
+fn decide_intake_policy(
+    resolved: ResolvedIntakeContext,
+) -> Result<IntakePolicyDecision, PlanError> {
+    let ResolvedIntakeContext {
+        request,
+        mode,
+        planned_state_version,
+        active_task,
+        create_new,
+        workflow_policy,
+        planned_lineage,
+    } = resolved;
     let (
         requested_control_level,
         effective_control_level,
@@ -176,6 +228,58 @@ fn plan_intake(
             resolved_control.control_raised || resolved_control.acceptance_raised,
         )
     };
+
+    Ok(IntakePolicyDecision {
+        request,
+        mode,
+        planned_state_version,
+        active_task,
+        create_new,
+        planned_lineage,
+        requested_control_level,
+        effective_control_level,
+        control_level_reason,
+        acceptance_policy,
+        acceptance_policy_reason,
+        control_or_acceptance_raised,
+    })
+}
+
+struct PlannedIntakeMutations {
+    request: volicord_types::IntakeRequest,
+    mode: TaskMode,
+    planned_state_version: u64,
+    create_new: bool,
+    planned_lineage: Option<PlannedTaskLineage>,
+    acceptance_policy: AcceptancePolicy,
+    task_id: TaskId,
+    task_record: TaskRecord,
+    current_change_unit: Option<ChangeUnitRecord>,
+    acceptance_criteria: Vec<AcceptanceCriterion>,
+    storage_mutations: Vec<CoreStorageMutation>,
+}
+
+fn plan_intake_mutations(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    policy: IntakePolicyDecision,
+) -> Result<PlannedIntakeMutations, PlanError> {
+    let IntakePolicyDecision {
+        request,
+        mode,
+        planned_state_version,
+        active_task,
+        create_new,
+        planned_lineage,
+        requested_control_level,
+        effective_control_level,
+        control_level_reason,
+        acceptance_policy,
+        acceptance_policy_reason,
+        control_or_acceptance_raised,
+    } = policy;
     let task_id = if create_new {
         match request.envelope.task_id.as_ref().cloned() {
             Some(task_id) => task_id,
@@ -194,13 +298,12 @@ fn plan_intake(
         .as_ref()
         .is_some_and(|lineage| lineage.predecessor_task_id == task_id.as_str())
     {
-        validation_plan_error(
+        return intake_validation_rejection(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "lineage.predecessor_task_id",
             "a Task cannot name itself as its predecessor",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
 
     let mut initial_source_refs = if create_new {
@@ -271,13 +374,12 @@ fn plan_intake(
         for input in &request.initial_scope.acceptance_criteria {
             let statement = normalize_display_text(&input.statement);
             if statement.is_empty() {
-                validation_plan_error(
+                return intake_validation_rejection(
                     request.envelope.dry_run,
                     Some(project_state.state_version),
                     "initial_scope.acceptance_criteria[].statement",
                     "acceptance criterion statements must not be empty",
-                )?;
-                unreachable!("validation_plan_error always returns Err");
+                );
             }
             let acceptance_criterion_id =
                 allocate_acceptance_criterion_id(service, store, &reserved_ids)
@@ -420,6 +522,88 @@ fn plan_intake(
             .current_change_unit(&task_id)
             .map_err(CorePipelineError::from)?
     };
+
+    Ok(PlannedIntakeMutations {
+        request,
+        mode,
+        planned_state_version,
+        create_new,
+        planned_lineage,
+        acceptance_policy,
+        task_id,
+        task_record,
+        current_change_unit,
+        acceptance_criteria,
+        storage_mutations,
+    })
+}
+
+struct IntakeResponseProjection {
+    task_id: TaskId,
+    storage_mutations: Vec<CoreStorageMutation>,
+    event_payload: JsonObject,
+    result_fields: JsonObject,
+    next_actions: Vec<NextActionSummary>,
+}
+
+impl IntakeResponseProjection {
+    fn into_method_plan(self) -> MethodPlan {
+        MethodPlan {
+            task_id: self.task_id,
+            change_unit_id: None,
+            storage_mutations: self.storage_mutations,
+            event_payload: self.event_payload,
+            result_fields: self.result_fields,
+            next_actions: self.next_actions,
+        }
+    }
+}
+
+fn plan_intake(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    request: volicord_types::IntakeRequest,
+    verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
+) -> Result<MethodPlan, PlanError> {
+    let normalized = normalize_intake_request(request);
+    let resolved = resolve_intake_context(store, project_state, verified_invocation, normalized)?;
+    let policy = decide_intake_policy(resolved)?;
+    let mutations =
+        plan_intake_mutations(service, store, project_state, verified_invocation, policy)?;
+    let projection = project_intake_response(
+        store,
+        project_state,
+        verified_invocation,
+        operation_now,
+        mutations,
+    )?;
+    Ok(projection.into_method_plan())
+}
+
+fn project_intake_response(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
+    mutations: PlannedIntakeMutations,
+) -> Result<IntakeResponseProjection, PlanError> {
+    let PlannedIntakeMutations {
+        request,
+        mode,
+        planned_state_version,
+        create_new,
+        planned_lineage,
+        acceptance_policy,
+        task_id,
+        task_record,
+        current_change_unit,
+        acceptance_criteria,
+        storage_mutations,
+    } = mutations;
+    let plan_now = *operation_now.as_datetime();
+    let user_action_now = operation_now.clone();
     let task_ref = state_ref(
         StateRecordKind::Task,
         &task_record.task_id,
@@ -433,7 +617,7 @@ fn plan_intake(
             &record.change_unit_id,
             &request.envelope.project_id,
             Some(&task_id),
-            Some(record.basis_state_version.unwrap_or(planned_state_version)),
+            Some(record.basis_state_version),
         )
     });
     let pending_refs = if create_new {
@@ -520,7 +704,6 @@ fn plan_intake(
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
-        guard_health: close_plan.guard_health,
         guarantee_display: Some(guarantee_display),
     })?;
     let result = volicord_types::IntakeResult {
@@ -542,9 +725,8 @@ fn plan_intake(
             "carry_forward": lineage.dispositions
         }))
     }))?;
-    Ok(MethodPlan {
+    Ok(IntakeResponseProjection {
         task_id,
-        change_unit_id: None,
         storage_mutations,
         event_payload,
         result_fields: strip_base(serde_json::to_value(result)?)?,
@@ -562,6 +744,17 @@ struct PlannedTaskLineage {
     carried_source_refs: Vec<SourceRef>,
 }
 
+fn intake_validation_rejection<T>(
+    dry_run: bool,
+    state_version: Option<u64>,
+    field: &'static str,
+    message: &'static str,
+) -> Result<T, PlanError> {
+    let response =
+        validation_rejected(dry_run, state_version, field, message).map_err(PlanError::Core)?;
+    Err(PlanError::Response(Box::new(response)))
+}
+
 fn plan_task_lineage(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
@@ -574,13 +767,12 @@ fn plan_task_lineage(
     };
     lineage.creation_reason = normalize_display_text(&lineage.creation_reason);
     if lineage.creation_reason.is_empty() {
-        validation_plan_error(
+        return intake_validation_rejection(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "lineage.creation_reason",
             "lineage creation_reason must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let predecessor = store
         .task_record(&lineage.predecessor_task_id)
@@ -597,13 +789,12 @@ fn plan_task_lineage(
             && predecessor.lifecycle_phase == "completed"
             && predecessor.result.as_deref() == Some("advice_only"))
     {
-        validation_plan_error(
+        return intake_validation_rejection(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "lineage.relation",
             "implements_advice_from requires a completed advisor advice_only predecessor",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let selected = lineage
         .carry_forward
@@ -611,13 +802,12 @@ fn plan_task_lineage(
         .copied()
         .collect::<BTreeSet<_>>();
     if selected.len() != lineage.carry_forward.len() {
-        validation_plan_error(
+        return intake_validation_rejection(
             request.envelope.dry_run,
             Some(project_state.state_version),
             "lineage.carry_forward",
             "carry_forward values must not contain duplicates",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     let predecessor_ref = state_ref(
         StateRecordKind::Task,
@@ -646,62 +836,57 @@ fn plan_task_lineage(
             })
             .collect::<CoreResult<Vec<_>>>()?;
         if predecessor_scope.scope_summary.is_none() && predecessor_criteria.is_empty() {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "lineage.carry_forward",
                 "selected scope carry-forward has no predecessor scope material",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         if let Some(scope) = predecessor_scope.scope_summary.as_ref() {
             let submitted = normalize_display_text(&request.initial_scope.boundary);
             if submitted.is_empty() {
                 request.initial_scope.boundary = scope.clone();
             } else if submitted != normalize_display_text(scope) {
-                validation_plan_error(
+                return intake_validation_rejection(
                     request.envelope.dry_run,
                     Some(project_state.state_version),
                     "initial_scope.boundary",
                     "carried scope must match an explicitly submitted new-Task boundary",
-                )?;
-                unreachable!("validation_plan_error always returns Err");
+                );
             }
         }
         if request.initial_scope.acceptance_criteria.is_empty() {
             request.initial_scope.acceptance_criteria = predecessor_criteria;
         } else if request.initial_scope.acceptance_criteria != predecessor_criteria {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "initial_scope.acceptance_criteria",
                 "carried criteria must match explicitly submitted criterion statements and requirements",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
     }
     if selected.contains(&CarryForwardKind::NonGoals) {
         if predecessor_scope.non_goals.is_empty() {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "lineage.carry_forward",
                 "selected non_goals carry-forward has no predecessor non-goals",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         if request.initial_scope.non_goals.is_empty() {
             request.initial_scope.non_goals = predecessor_scope.non_goals.clone();
         } else if normalized_string_set(&request.initial_scope.non_goals)
             != normalized_string_set(&predecessor_scope.non_goals)
         {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "initial_scope.non_goals",
                 "carried non-goals must match explicitly submitted non-goals",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
     }
 
@@ -718,13 +903,12 @@ fn plan_task_lineage(
             .transpose()?
             .unwrap_or_default();
         if refs.is_empty() {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "lineage.carry_forward",
                 "selected context_refs carry-forward has no predecessor context refs",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         request.initial_context_refs.extend(refs);
         request.initial_context_refs =
@@ -737,13 +921,12 @@ fn plan_task_lineage(
             .transpose()?
             .unwrap_or_default();
         if refs.is_empty() {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "lineage.carry_forward",
                 "selected source_refs carry-forward has no predecessor source refs",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         refs
     } else {
@@ -785,22 +968,20 @@ fn plan_task_lineage(
         )?;
         if write_basis.baseline_ref.as_ref().map(BaselineRef::as_str) != Some(baseline_ref.as_str())
         {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "lineage.carry_forward",
                 "baseline carry-forward requires matching predecessor Task and Change Unit baselines",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         if write_basis.git_workspace_context != verified_invocation.git_workspace_context {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "lineage.carry_forward",
                 "baseline carry-forward requires the exact current compatible Git workspace context",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         Some(BaselineRef::new(baseline_ref.clone()))
     } else {
@@ -912,13 +1093,12 @@ fn reference_only_carry_sources(
                             change_unit.change_unit_id == close_basis.change_unit_id.as_str()
                         });
                     if !compatible {
-                        validation_plan_error(
+                        return intake_validation_rejection(
                             request.envelope.dry_run,
                             Some(project_state.state_version),
                             "lineage.carry_forward",
                             "reference-only risk carry-forward requires a current compatible predecessor close basis",
-                        )?;
-                        unreachable!("validation_plan_error always returns Err");
+                        );
                     }
                     source_refs.push(close_basis.source_run_ref.clone());
                     source_refs.extend(
@@ -931,13 +1111,12 @@ fn reference_only_carry_sources(
         }
         source_refs = unique_state_record_refs(source_refs);
         if source_refs.is_empty() {
-            validation_plan_error(
+            return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "lineage.carry_forward",
                 "selected reference-only carry-forward has no active compatible predecessor record",
-            )?;
-            unreachable!("validation_plan_error always returns Err");
+            );
         }
         result.insert(kind, source_refs);
     }
@@ -971,13 +1150,12 @@ fn resolve_acceptance_policy(
         }
     };
     if !valid {
-        validation_plan_error(
+        return intake_validation_rejection(
             request.envelope.dry_run,
             None,
             "acceptance_policy",
             "acceptance_policy is incompatible with the effective Task control level and project workflow policy",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
+        );
     }
     Ok((selected, acceptance_policy_reason(selected, control)))
 }
