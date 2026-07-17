@@ -79,8 +79,7 @@
       "enum": [
         "host_only",
         "host_with_record_compat",
-        "record_light",
-        "detective"
+        "record_light"
       ]
     },
     "taskGroup": {

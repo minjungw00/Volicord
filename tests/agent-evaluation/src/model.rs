@@ -12,15 +12,13 @@ pub enum EvaluationCondition {
     HostOnly,
     HostWithRecordCompat,
     RecordLight,
-    Detective,
 }
 
 impl EvaluationCondition {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 3] = [
         Self::HostOnly,
         Self::HostWithRecordCompat,
         Self::RecordLight,
-        Self::Detective,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -28,7 +26,6 @@ impl EvaluationCondition {
             Self::HostOnly => "host_only",
             Self::HostWithRecordCompat => "host_with_record_compat",
             Self::RecordLight => "record_light",
-            Self::Detective => "detective",
         }
     }
 }

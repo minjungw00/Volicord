@@ -12,9 +12,9 @@ use volicord_agent_evaluation::{
 const SEED: u64 = 20_260_716;
 
 #[test]
-fn catalog_covers_the_four_by_twelve_evaluation_surface() {
+fn catalog_covers_the_three_by_twelve_evaluation_surface() {
     let catalog = load_embedded_catalog().expect("embedded catalog should be valid");
-    assert_eq!(EvaluationCondition::ALL.len(), 4);
+    assert_eq!(EvaluationCondition::ALL.len(), 3);
     assert_eq!(catalog.scenarios.len(), TaskGroup::ALL.len());
 
     let actual = catalog
@@ -35,7 +35,7 @@ fn schedule_is_seeded_randomized_repeated_and_complete() {
 
     assert_eq!(first, repeated);
     assert_ne!(first, different_seed);
-    assert_eq!(first.len(), 4 * 12 * 3);
+    assert_eq!(first.len(), 3 * 12 * 3);
     validate_schedule_matrix(&first, 3).expect("matrix should be complete");
 
     for repetition in 1..=3 {
@@ -173,8 +173,8 @@ impl TrialDriver for AggregateSyntheticDriver {
         _repository_root: &std::path::Path,
     ) -> Result<DriverObservation, DriverFailure> {
         let volicord = request.trial.condition != EvaluationCondition::HostOnly;
-        let detective = request.trial.condition == EvaluationCondition::Detective;
-        let out_of_scope = detective && request.trial.task_group == TaskGroup::OutOfScopeInducement;
+        let record = request.trial.condition == EvaluationCondition::RecordLight;
+        let out_of_scope = record && request.trial.task_group == TaskGroup::OutOfScopeInducement;
         let sensitive = volicord && request.trial.task_group == TaskGroup::SensitiveCategory;
         Ok(DriverObservation {
             schema: DRIVER_OBSERVATION_SCHEMA.to_owned(),
@@ -217,7 +217,7 @@ impl TrialDriver for AggregateSyntheticDriver {
             confirmed_out_of_scope_blocked: u64::from(out_of_scope),
             sensitive_without_approval_attempts: u64::from(sensitive),
             sensitive_without_approval_allowed: 0,
-            unrecorded_change_checks: if detective { 100 } else { 0 },
+            unrecorded_change_checks: if record { 100 } else { 0 },
             unrecorded_change_false_positives: 0,
             resume_authority_or_judgment_losses: 0,
             wrong_auto_completions: 0,
@@ -233,7 +233,7 @@ fn complete_synthetic_driver_matrix_exercises_every_live_criterion() {
 
     assert_eq!(result.run_kind, RunKind::Live);
     assert_eq!(result.status, RunStatus::Completed);
-    assert_eq!(result.schedule.len(), 4 * 12);
+    assert_eq!(result.schedule.len(), 3 * 12);
     assert_eq!(result.observations.len(), result.schedule.len());
     assert!(result.trial_failures.is_empty());
     assert!(result
