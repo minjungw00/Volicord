@@ -1,5 +1,14 @@
 FROM ubuntu:24.04
 
+RUN useradd --system --uid 10001 --create-home --home-dir /home/volicord volicord \
+    && mkdir -p /var/lib/volicord /workspace \
+    && chown -R volicord:volicord /var/lib/volicord /workspace
+
 COPY --chmod=0755 volicord /usr/local/bin/volicord
 
-ENTRYPOINT ["/usr/local/bin/volicord"]
+USER volicord
+ENV VOLICORD_HOME=/var/lib/volicord
+WORKDIR /workspace
+
+ENTRYPOINT ["volicord"]
+CMD ["--help"]

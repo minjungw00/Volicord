@@ -239,13 +239,20 @@ init reports `action_required`, complete the named local or host action before
 starting new terminals or agent hosts. Ordinary `volicord init` and `volicord
 connection add` commands use the saved installation profile.
 
-## Docker Image
+## Docker Images
 
-The repository Dockerfile can build the same `volicord` executable for
-development and CI. Mount a disposable Runtime Home and the intended Product
-Repository, then run administrative checks or the bound stdio process. The
-container image does not add a separate public transport or broaden supported
-host and platform claims.
+The root `Dockerfile` is the general-purpose source-building definition for
+development and CI. `Dockerfile.release` has a separate production packaging
+responsibility: the release workflow supplies the already validated
+`x86_64-unknown-linux-gnu` executable as `volicord`, and the release Dockerfile
+copies those exact bytes into the image without rebuilding Volicord. The
+workflow requires the SHA-256 digest of `/usr/local/bin/volicord` inside the
+image to equal the validated raw artifact digest.
+
+For a local source build, use the general-purpose root Dockerfile. Mount a
+disposable Runtime Home and the intended Product Repository, then run
+administrative checks or the bound stdio process. The container image does not
+add a separate public transport or change platform applicability.
 
 ```sh
 docker build -t volicord:local .

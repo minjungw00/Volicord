@@ -232,10 +232,18 @@ volicord doctor
 
 ## Docker 이미지
 
-저장소 Dockerfile은 개발과 CI에서 같은 `volicord` 실행 파일을 빌드할 수 있습니다.
-폐기 가능한 Runtime Home과 의도한 Product Repository를 마운트한 뒤 관리 점검 또는
-결속된 stdio 프로세스를 실행합니다. 컨테이너 이미지는 별도 공개 transport를 추가하거나
-`host_kind=codex` 및 네 platform-cell 계약을 넓히지 않습니다.
+저장소 루트의 `Dockerfile`은 개발과 CI에서 사용하는 범용 소스 빌드 정의입니다.
+`Dockerfile.release`는 별도의 프로덕션 릴리스 패키징 책임을 가집니다. 릴리스
+워크플로가 이미 검증한 `x86_64-unknown-linux-gnu` 실행 파일을 `volicord`라는
+이름으로 제공하면, 릴리스 Dockerfile은 Volicord를 다시 빌드하지 않고 그 정확한
+바이트를 이미지에 복사합니다. 워크플로는 이미지 안의
+`/usr/local/bin/volicord` SHA-256 다이제스트가 검증된 원시 아티팩트 다이제스트와
+같아야 한다고 요구합니다.
+
+로컬 소스 빌드에는 범용 루트 Dockerfile을 사용합니다. 폐기 가능한 Runtime Home과
+의도한 Product Repository를 마운트한 뒤 관리 점검 또는 결속된 stdio 프로세스를
+실행합니다. 컨테이너 이미지는 별도 공개 transport를 추가하거나 플랫폼 적용 범위를
+바꾸지 않습니다.
 
 ```sh
 docker build -t volicord:local .

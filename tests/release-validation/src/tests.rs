@@ -1214,6 +1214,123 @@ fn release_workflow_builds_once_and_publishes_only_validated_raw_artifacts() {
 }
 
 #[test]
+fn release_image_packages_the_verified_linux_binary_without_rebuilding() {
+    let root = repository_root();
+    let dockerfile_path = root.join("Dockerfile.release");
+    assert!(
+        dockerfile_path.is_file(),
+        "release image definition is missing"
+    );
+    let dockerfile = fs::read_to_string(&dockerfile_path).expect("release Dockerfile");
+    let normalized = dockerfile.to_ascii_lowercase();
+    assert_eq!(
+        dockerfile
+            .lines()
+            .filter(|line| line.trim_start().to_ascii_lowercase().starts_with("from "))
+            .count(),
+        1,
+        "release image must have exactly one runtime stage"
+    );
+    assert!(dockerfile.lines().any(|line| {
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        fields.len() == 4
+            && fields[0].eq_ignore_ascii_case("COPY")
+            && fields[1] == "--chmod=0755"
+            && fields[2] == "volicord"
+            && fields[3] == "/usr/local/bin/volicord"
+    }));
+    for forbidden in [
+        " as builder",
+        "cargo build",
+        "copy --from=",
+        "rustc",
+        "strip /usr/local/bin/volicord",
+    ] {
+        assert!(
+            !normalized.contains(forbidden),
+            "release Dockerfile contains forbidden build behavior: {forbidden}"
+        );
+    }
+
+    let release: serde_yaml::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join(".github/workflows/release.yml")).expect("release workflow"),
+    )
+    .expect("release workflow YAML");
+    let docker_job = &release["jobs"]["docker-image"];
+    let steps = docker_job["steps"]
+        .as_sequence()
+        .expect("Docker image steps");
+    assert!(steps.iter().any(|step| {
+        step["uses"].as_str() == Some("actions/download-artifact@v4")
+            && step["with"]["name"].as_str()
+                == Some(
+                    "volicord-build-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}",
+                )
+    }));
+
+    let verify_step = steps
+        .iter()
+        .position(|step| {
+            step["run"]
+                .as_str()
+                .is_some_and(|run| run.contains("--verify-build-artifact"))
+        })
+        .expect("raw build-artifact verification step");
+    let package_step = steps
+        .iter()
+        .position(|step| {
+            step["run"]
+                .as_str()
+                .is_some_and(|run| run.contains("docker build"))
+        })
+        .expect("Docker packaging step");
+    assert!(verify_step < package_step);
+
+    let package_run = steps[package_step]["run"]
+        .as_str()
+        .expect("Docker packaging command");
+    assert!(package_run.contains("context=\"$RUNNER_TEMP/volicord-docker-context\""));
+    assert!(package_run.contains(
+        "cp \"$RUNNER_TEMP/volicord-docker-build-input/volicord\" \"$context/volicord\""
+    ));
+    assert!(package_run.contains("cp Dockerfile.release \"$context/Dockerfile\""));
+    assert!(!package_run.contains("cargo build"));
+
+    let mut repository_files = BTreeSet::new();
+    for line in package_run.lines().map(str::trim) {
+        let Some(arguments) = line.strip_prefix("cp ") else {
+            continue;
+        };
+        let source = arguments
+            .split_whitespace()
+            .next()
+            .expect("copy source")
+            .trim_matches(['\'', '"']);
+        if !source.contains('$') && !Path::new(source).is_absolute() {
+            repository_files.insert(source.to_owned());
+        }
+    }
+    assert_eq!(
+        repository_files,
+        BTreeSet::from(["Dockerfile.release".to_owned()])
+    );
+    for path in repository_files {
+        assert!(
+            root.join(&path).is_file(),
+            "Docker packaging references missing repository file {path}"
+        );
+    }
+
+    let image_verification = workflow_job_runs(docker_job)
+        .find(|run| run.contains("actual_digest="))
+        .expect("inside-image digest verification");
+    assert!(image_verification.contains("volicord.sha256"));
+    assert!(image_verification
+        .contains("--entrypoint sha256sum \"volicord:${{ github.sha }}\" /usr/local/bin/volicord"));
+    assert!(image_verification.contains("test \"$actual_digest\" = \"$expected\""));
+}
+
+#[test]
 fn wsl2_static_scenarios_keep_ext4_and_rejection_boundaries_explicit() {
     let expectations = WSL2_ADDITIONAL_SCENARIOS.map(|scenario| definition(scenario).expectation);
     assert_eq!(
