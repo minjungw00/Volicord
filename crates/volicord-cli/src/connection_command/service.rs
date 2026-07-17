@@ -1307,6 +1307,160 @@ fn ensure_host_plan_has_no_conflict(plan: &HostPlan) -> Result<(), ConnectionCom
 }
 
 #[cfg(test)]
+mod init_planning_tests {
+    use std::{ffi::OsString, fs, path::PathBuf};
+
+    use volicord_store::bootstrap::runtime_home_record_read_only;
+    use volicord_test_support::TempRuntimeHome;
+
+    use super::*;
+    use crate::guard_integration::capability::{
+        host_hook_capability_has_exact_current_shape, host_hook_capability_json,
+    };
+
+    struct PlanningProcess {
+        current_exe: PathBuf,
+    }
+
+    impl PlanningProcess {
+        fn new() -> Result<Self, std::io::Error> {
+            Ok(Self {
+                current_exe: std::env::current_exe()?,
+            })
+        }
+    }
+
+    impl ConnectionProcess for PlanningProcess {
+        fn env_var(&self, _name: &str) -> Option<OsString> {
+            None
+        }
+
+        fn current_exe(&self) -> Result<PathBuf, String> {
+            Ok(self.current_exe.clone())
+        }
+
+        fn run_preflight(
+            &mut self,
+            _launch: &McpLaunch,
+            _runtime_home: &Path,
+            _connection_id: &str,
+            _project_id: Option<&str>,
+        ) -> Result<ConnectionProcessOutput, String> {
+            Err("init planning must not run MCP preflight".to_owned())
+        }
+
+        fn verify_mcp_stdio(
+            &mut self,
+            _launch: &McpLaunch,
+            _runtime_home: &Path,
+            _connection_id: &str,
+            _mode: &str,
+        ) -> Result<McpVerification, String> {
+            Err("init planning must not run MCP verification".to_owned())
+        }
+    }
+
+    fn parsed_init(runtime_home: &Path, repo_root: &Path, dry_run: bool) -> ParsedInitOptions {
+        ParsedInitOptions {
+            host_kind: Some(HostKind::Codex),
+            repo: Some(repo_root.to_path_buf()),
+            runtime_home: Some(runtime_home.to_path_buf()),
+            mcp_command: None,
+            mode: InitMode::Record,
+            shared: true,
+            dry_run,
+            json: true,
+        }
+    }
+
+    fn directory_is_empty(path: &Path) -> Result<bool, std::io::Error> {
+        Ok(fs::read_dir(path)?.next().is_none())
+    }
+
+    fn create_empty_product_repository(
+        fixture: &TempRuntimeHome,
+    ) -> Result<PathBuf, std::io::Error> {
+        let repo_root = fixture.create_product_repo("empty-repo")?;
+        fs::create_dir(repo_root.join(".git"))?;
+        Ok(repo_root)
+    }
+
+    fn assert_empty_product_repository_untouched(repo_root: &Path) -> Result<(), std::io::Error> {
+        let entries = fs::read_dir(repo_root)?.collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].file_name(), ".git");
+        assert!(directory_is_empty(&repo_root.join(".git"))?);
+        Ok(())
+    }
+
+    fn assert_no_planned_files_exist(plan: &InitProvisioningPlan) {
+        for file in &plan.integration.generated_files {
+            assert!(
+                !file.path.exists(),
+                "planning unexpectedly created {}",
+                file.path.display()
+            );
+        }
+    }
+
+    #[test]
+    fn normal_init_planning_validates_the_capability_before_apply(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-capability-preflight")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, false);
+        let process = PlanningProcess::new()?;
+
+        let plan = plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        )?;
+        let capability: Value =
+            serde_json::from_str(&host_hook_capability_json(&plan.integration)?)?;
+        assert!(host_hook_capability_has_exact_current_shape(&capability));
+        assert!(runtime_home_record_read_only(fixture.path())?.is_none());
+        assert!(!fixture.registry_db_path().exists());
+        assert_no_planned_files_exist(&plan);
+        assert_empty_product_repository_untouched(&repo_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let fixture = TempRuntimeHome::new("init-dry-run-empty-repo")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, true);
+        let mut process = PlanningProcess::new()?;
+
+        let outcome = provision_init(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &mut process,
+        )?;
+        assert_eq!(outcome.status, AgentResultStatus::DryRun);
+        assert!(outcome.guard_installation.is_none());
+        assert!(runtime_home_record_read_only(fixture.path())?.is_none());
+        assert!(!fixture.registry_db_path().exists());
+        assert!(directory_is_empty(fixture.path())?);
+        for file in &outcome.integration.generated_files {
+            assert!(
+                !file.path.exists(),
+                "dry run unexpectedly created {}",
+                file.path.display()
+            );
+        }
+        assert_empty_product_repository_untouched(&repo_root)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
 mod migration_state_tests {
     use super::*;
     use volicord_test_support::TempRuntimeHome;

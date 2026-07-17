@@ -18,6 +18,7 @@ use volicord_types::{
 use crate::{
     guard_integration::{
         audit::policy_hash,
+        capability::host_hook_capability_json,
         files::{
             plan_managed_block_file, plan_managed_file_retirement, plan_policy_file,
             GeneratedFilePlan, ManagedFileRetirementPlan, AGENTS_FILE, GUIDANCE_END_MARKER,
@@ -201,7 +202,7 @@ pub(crate) fn plan_guard_integration(
         profile,
         retain_personal_paths,
     )?;
-    Ok(GuardIntegrationPlan {
+    validate_generated_host_hook_capability(GuardIntegrationPlan {
         repo_root: repo_root.to_path_buf(),
         prior_connection_id: prior_policy.map(|prior| prior.connection_id),
         migration_required,
@@ -220,6 +221,13 @@ pub(crate) fn plan_guard_integration(
         capabilities,
         missing_required_hooks,
     })
+}
+
+fn validate_generated_host_hook_capability(
+    plan: GuardIntegrationPlan,
+) -> Result<GuardIntegrationPlan, GuardIntegrationError> {
+    host_hook_capability_json(&plan)?;
+    Ok(plan)
 }
 
 fn preserve_authoritative_workflow_policy(
@@ -448,4 +456,54 @@ fn agents_guidance_block() -> String {
     format!(
         "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Treat Volicord's recorded scope and user-owned decisions as authoritative.\n- Do not modify Product Repository files outside an active compatible write authorization.\n- Do not infer, resolve, or record user-owned judgments on the user's behalf.\n- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.\n- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.\n- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.\n{GUIDANCE_END_MARKER}\n"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use volicord_test_support::core_fixtures::CoreFixture;
+    use volicord_types::IntegrationProfile;
+
+    use super::{
+        plan_guard_integration, validate_generated_host_hook_capability,
+        GuardIntegrationPlanRequest,
+    };
+    use crate::host_integration::{ConnectionIntent, HostKind, ManagedServerEntry};
+
+    #[test]
+    fn plan_finalization_rejects_a_generated_capability_with_an_invalid_exact_shape(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("guard-plan-capability-validation")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let volicord_command = fixture.runtime_home_path().join("bin/volicord");
+        let mcp_entry = ManagedServerEntry::new_project_bound(
+            fixture.connection_id(),
+            Some(fixture.project_id()),
+            &volicord_command,
+        );
+        let mut plan = plan_guard_integration(GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Record,
+            runtime_home: fixture.runtime_home_path(),
+            volicord_command: &volicord_command,
+            repo_root: &repo_root,
+            connection_id: fixture.connection_id(),
+            guard_installation_id: "guard_invalid_generated_shape",
+            mcp_entry: &mcp_entry,
+            connection_intent: ConnectionIntent::Shared,
+        })?;
+        plan.guard_commands
+            .get_mut("pre_tool")
+            .expect("pre-tool command")
+            .args[9] = "invalid_host".to_owned();
+
+        let error = validate_generated_host_hook_capability(plan)
+            .expect_err("invalid generated capability must fail plan finalization");
+        assert!(error
+            .to_string()
+            .contains("generated host-hook capability does not match the current exact shape"));
+        Ok(())
+    }
 }

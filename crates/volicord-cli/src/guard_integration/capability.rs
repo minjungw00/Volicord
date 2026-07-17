@@ -333,11 +333,15 @@ mod tests {
 
     use serde_json::{json, Value};
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::IntegrationProfile;
+    use volicord_types::{GuardInstallationStatus, IntegrationProfile};
 
-    use super::{host_hook_capability_has_exact_current_shape, host_hook_capability_json};
+    use super::{
+        host_hook_capability_has_exact_current_shape, host_hook_capability_json,
+        record_guard_installation,
+    };
     use crate::{
         guard_integration::{
+            apply_guard_integration,
             audit::{hook_wrapper_comment_value, hook_wrapper_exec_command},
             hooks::guard_command_line,
             plan::{plan_guard_integration, GuardIntegrationPlanRequest},
@@ -349,7 +353,7 @@ mod tests {
     };
 
     #[test]
-    fn generated_capability_uses_the_exact_post_hash_wrapper_commands(
+    fn successfully_returned_plan_generates_an_exact_current_capability(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = CoreFixture::new("guard-capability-post-hash")?;
         let repo_root = fixture.product_repo_path();
@@ -492,6 +496,59 @@ mod tests {
         assert!(!host_hook_capability_has_exact_current_shape(
             &extra_phase_capability
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn persisted_capability_uses_applied_file_statuses_instead_of_preflight_statuses(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("guard-capability-applied-statuses")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let volicord_command = fixture.runtime_home_path().join("bin/volicord");
+        let mcp_entry = ManagedServerEntry::new_project_bound(
+            fixture.connection_id(),
+            Some(fixture.project_id()),
+            &volicord_command,
+        );
+        let plan = plan_guard_integration(GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Record,
+            runtime_home: fixture.runtime_home_path(),
+            volicord_command: &volicord_command,
+            repo_root: &repo_root,
+            connection_id: fixture.connection_id(),
+            guard_installation_id: "guard_applied_statuses",
+            mcp_entry: &mcp_entry,
+            connection_intent: ConnectionIntent::Shared,
+        })?;
+        let preflight: Value = serde_json::from_str(&host_hook_capability_json(&plan)?)?;
+        assert!(preflight["files"]
+            .as_array()
+            .expect("preflight files")
+            .iter()
+            .all(|file| file["status"] == "planned_create"));
+
+        let applied = apply_guard_integration(plan)?;
+        let installation = record_guard_installation(
+            fixture.runtime_home_path(),
+            HostKind::Codex,
+            IntegrationProfile::Record,
+            GuardInstallationStatus::Configured,
+            fixture.connection_id(),
+            fixture.project_id(),
+            &applied,
+        )?;
+        let persisted: Value = serde_json::from_str(&installation.host_capability_json)?;
+        assert!(host_hook_capability_has_exact_current_shape(&persisted));
+        let persisted_files = persisted["files"].as_array().expect("persisted files");
+        assert!(persisted_files
+            .iter()
+            .all(|file| matches!(file["status"].as_str(), Some("created" | "unchanged"))));
+        assert!(persisted_files
+            .iter()
+            .any(|file| file["status"] == "created"));
+        assert_ne!(persisted["files"], preflight["files"]);
         Ok(())
     }
 }
