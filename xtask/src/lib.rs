@@ -4,7 +4,6 @@ use serde_yaml::{Mapping, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Component, Path, PathBuf};
 use toml_edit::{DocumentMut, Item};
 
@@ -181,7 +180,6 @@ const PUBLIC_LANGUAGE_SOURCE_ROOTS: &[&str] = &[
     "crates/volicord-cli/src/connection_command.rs",
     "crates/volicord-cli/src/connection_command",
     "crates/volicord-cli/src/doctor_command.rs",
-    "crates/volicord-cli/src/final_output_command.rs",
     "crates/volicord-cli/src/guard_command.rs",
     "crates/volicord-cli/src/guard_command",
     "crates/volicord-cli/src/guard_integration",
@@ -3693,7 +3691,6 @@ fn validate_volicord_command(tokens: &[String]) -> std::result::Result<(), Strin
         "status" => validate_status_command(&args[1..]),
         "doctor" => validate_doctor_command(&args[1..]),
         "mcp" => validate_mcp_command(&args[1..]),
-        "serve" => validate_serve_command(&args[1..]),
         "init" => validate_init_command(&args[1..]),
         "connection" => validate_connection_command(&args[1..]),
         "project" => validate_project_command(&args[1..]),
@@ -3792,37 +3789,6 @@ fn validate_mcp_command(args: &[String]) -> std::result::Result<(), String> {
     Ok(())
 }
 
-fn validate_serve_command(args: &[String]) -> std::result::Result<(), String> {
-    if is_help_only(args)
-        || matches!(args, [option] if matches!(option.as_str(), "-V" | "--version"))
-    {
-        return Ok(());
-    }
-
-    let parsed = parse_command_args_with_repeatable_values(
-        args,
-        &["generate-token"],
-        &[
-            "transport",
-            "listen",
-            "home",
-            "connection",
-            "project",
-            "token",
-            "allow-origin",
-        ],
-        &["project", "allow-origin"],
-    )?;
-    reject_mutually_exclusive(&parsed, "token", "generate-token")?;
-    reject_positionals(&parsed, 0, "`volicord serve`")?;
-    if !parsed.options.contains("transport") {
-        return Err("`volicord serve` requires --transport".to_string());
-    }
-    validate_serve_transport(&parsed)?;
-    validate_serve_listen(&parsed)?;
-    Ok(())
-}
-
 fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     if is_help_only(args) {
         return Ok(());
@@ -3839,6 +3805,12 @@ fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     if !parsed.options.contains("repo") {
         return Err("`volicord init` requires --repo".to_string());
     }
+    let host = parsed
+        .value_options
+        .get("host")
+        .and_then(|values| values.first())
+        .expect("host presence already checked");
+    validate_host(host)?;
     validate_integration_profile_option(&parsed, "profile", "`volicord init`")?;
     Ok(())
 }
@@ -4382,40 +4354,6 @@ fn reject_mutually_exclusive(
     }
 }
 
-fn validate_serve_transport(parsed: &ParsedCommandArgs) -> std::result::Result<(), String> {
-    let transport = parsed
-        .value_options
-        .get("transport")
-        .and_then(|values| values.first())
-        .expect("transport presence already checked");
-    if transport == "local-http" {
-        Ok(())
-    } else {
-        Err(format!(
-            "unsupported `volicord serve --transport {transport}`; use `local-http`"
-        ))
-    }
-}
-
-fn validate_serve_listen(parsed: &ParsedCommandArgs) -> std::result::Result<(), String> {
-    for listen in parsed.value_options.get("listen").into_iter().flatten() {
-        let addr = listen
-            .parse::<SocketAddr>()
-            .map_err(|error| format!("`volicord serve --listen` must be host:port: {error}"))?;
-        if !serve_listen_is_supported_loopback(&addr) {
-            return Err(format!(
-                "`volicord serve --listen {listen}` is not supported; use 127.0.0.1 or [::1]"
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn serve_listen_is_supported_loopback(addr: &SocketAddr) -> bool {
-    matches!(addr.ip(), IpAddr::V4(address) if address == Ipv4Addr::LOCALHOST)
-        || matches!(addr.ip(), IpAddr::V6(address) if address == Ipv6Addr::LOCALHOST)
-}
-
 fn reject_positionals(
     parsed: &ParsedCommandArgs,
     max: usize,
@@ -4468,12 +4406,10 @@ fn validate_connection_mode_positionals(
 }
 
 fn validate_host(host: &str) -> std::result::Result<(), String> {
-    if matches!(host, "codex" | "claude-code" | "claude_code") {
+    if host == "codex" {
         Ok(())
     } else {
-        Err(format!(
-            "unsupported host `{host}`; use `codex` or `claude-code`"
-        ))
+        Err(format!("unsupported host `{host}`; use `codex`"))
     }
 }
 
@@ -4483,9 +4419,9 @@ fn validate_integration_profile_option(
     context: &str,
 ) -> std::result::Result<(), String> {
     for value in parsed.value_options.get(option).into_iter().flatten() {
-        if !matches!(value.as_str(), "record" | "detective") {
+        if value != "record" {
             return Err(format!(
-                "{context} option `--{option}` value `{value}` is unsupported; use `record` or `detective`"
+                "{context} option `--{option}` value `{value}` is unsupported; use `record`"
             ));
         }
     }

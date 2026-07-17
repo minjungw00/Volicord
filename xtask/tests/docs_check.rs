@@ -1386,7 +1386,7 @@ fn reports_each_ambiguous_host_support_grammar_class_in_public_cli_source() {
     ];
     write(
         fixture.path(),
-        "crates/volicord-cli/src/final_output_command.rs",
+        "crates/volicord-cli/src/doctor_command.rs",
         &claims
             .iter()
             .enumerate()
@@ -1400,7 +1400,7 @@ fn reports_each_ambiguous_host_support_grammar_class_in_public_cli_source() {
     assert_eq!(errors.len(), claims.len(), "{:#?}", report.errors());
     assert!(errors
         .iter()
-        .all(|error| { error.file() == "crates/volicord-cli/src/final_output_command.rs" }));
+        .all(|error| { error.file() == "crates/volicord-cli/src/doctor_command.rs" }));
 }
 
 #[test]
@@ -1586,11 +1586,7 @@ volicord mcp --stdio --connection CONNECTION_ID
 volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
 volicord mcp --check --connection CONNECTION_ID
 volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
-volicord serve --transport local-http
-volicord serve --transport local-http --listen 127.0.0.1:8765 --generate-token
-volicord serve --transport local-http --listen [::1]:8765 --token TOKEN --project /path/to/repo --project /path/to/other-repo --allow-origin https://app.example --allow-origin http://127.0.0.1:3000
 volicord init --host codex --repo /path/to/repo --profile record
-volicord init --host claude-code --repo /path/to/repo --shared --profile detective
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
 volicord status --repo /path/to/repo
 volicord status --task active
@@ -1623,7 +1619,6 @@ fn accepts_inline_supported_init_profile_examples() {
     let fixture = valid_fixture();
     let commands = r#"```sh
 volicord init --host codex --repo /path/to/repo --profile=record
-volicord init --host claude-code --repo /path/to/repo --profile=detective
 ```
 "#;
     write(
@@ -1643,18 +1638,33 @@ volicord init --host claude-code --repo /path/to/repo --profile=detective
 }
 
 #[test]
-fn rejects_init_examples_outside_public_option_surface() {
+fn rejects_removed_host_profile_and_init_options() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host claude-code --repo /path/to/repo --profile detective --allow-degraded\nvolicord init --host codex --repo /path/to/repo --connection CONNECTION_ID\n```\n",
+        "# Overview\n\n```sh\nvolicord init --host claude-code --repo /path/to/repo --profile record\nvolicord init --host codex --repo /path/to/repo --profile detective\nvolicord init --host codex --repo /path/to/repo --allow-degraded\nvolicord init --host codex --repo /path/to/repo --connection CONNECTION_ID\n```\n",
     );
 
     let report = report(fixture.path());
     let errors = category_errors(&report, "command.invalid_example");
 
-    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+    assert_eq!(errors.len(), 4, "{:#?}", report.errors());
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("claude-code")
+                && error.message().contains("codex")),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors.iter().any(
+            |error| error.message().contains("detective") && error.message().contains("record")
+        ),
+        "{:#?}",
+        report.errors()
+    );
     assert!(
         errors
             .iter()
@@ -1691,8 +1701,7 @@ fn rejects_inline_init_examples_outside_public_option_surface() {
             .iter()
             .any(|error| error.message().contains("--profile")
                 && error.message().contains("managed")
-                && error.message().contains("record")
-                && error.message().contains("detective")),
+                && error.message().contains("record")),
         "{:#?}",
         report.errors()
     );
@@ -1715,41 +1724,12 @@ fn rejects_inline_init_examples_outside_public_option_surface() {
 }
 
 #[test]
-fn rejects_serve_examples_outside_public_local_http_option_surface() {
+fn rejects_removed_serve_command() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord serve --transport local-http --allow-nonlocal-listen\nvolicord serve --transport local-http --host 0.0.0.0\n```\n",
-    );
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--allow-nonlocal-listen")),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--host")),
-        "{:#?}",
-        report.errors()
-    );
-}
-
-#[test]
-fn rejects_conflicting_local_http_bearer_token_examples() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord serve --transport local-http --token TOKEN --generate-token\n```\n",
+        "# Overview\n\n```sh\nvolicord serve --transport local-http\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1757,49 +1737,9 @@ fn rejects_conflicting_local_http_bearer_token_examples() {
 
     assert_eq!(errors.len(), 1, "{:#?}", report.errors());
     assert!(
-        errors[0].message().contains("--token") && errors[0].message().contains("--generate-token"),
-        "{:#?}",
-        report.errors()
-    );
-}
-
-#[test]
-fn rejects_nonloopback_local_http_serve_listen_examples() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord serve --transport local-http --listen 0.0.0.0:8765\nvolicord serve --transport local-http --listen [::]:8765\nvolicord serve --transport local-http --listen 192.0.2.10:8765\n```\n",
-    );
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 3, "{:#?}", report.errors());
-    for listen in ["0.0.0.0:8765", "[::]:8765", "192.0.2.10:8765"] {
-        assert!(
-            errors.iter().any(|error| error.message().contains(listen)),
-            "{:#?}",
-            report.errors()
-        );
-    }
-}
-
-#[test]
-fn rejects_unsupported_local_http_serve_transport_examples() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord serve --transport streamable-http\n```\n",
-    );
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
-    assert!(
-        errors[0].message().contains("--transport streamable-http"),
+        errors[0]
+            .message()
+            .contains("unknown `volicord` command `serve`"),
         "{:#?}",
         report.errors()
     );
@@ -1819,11 +1759,9 @@ fn rejects_invalid_public_integration_profile_examples() {
 
     assert_eq!(errors.len(), 1, "{:#?}", report.errors());
     assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--profile")
-                && error.message().contains("record")
-                && error.message().contains("detective")),
+        errors.iter().any(
+            |error| error.message().contains("--profile") && error.message().contains("record")
+        ),
         "{:#?}",
         report.errors()
     );
