@@ -720,9 +720,6 @@ pub(crate) fn concise_store_reason(error: &StoreError) -> String {
         | StoreError::CorruptOwnerStateValue { logical_column, .. } => {
             format!("corrupt owner state field {logical_column}")
         }
-        StoreError::PersistedUserActionsCorrupt { .. } => {
-            volicord_types::PERSISTED_USER_ACTIONS_CORRUPT_REASON.to_owned()
-        }
         StoreError::SchemaInvariant { database_kind, .. } => {
             format!("{database_kind} schema is invalid")
         }
@@ -758,7 +755,7 @@ mod repository_discovery_tests {
         agent_connections::{
             add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
             ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
-            HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_NOT_VERIFIED,
+            HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
         },
         bootstrap::{
             initialize_runtime_home, register_project, write_installation_profile,
@@ -823,9 +820,7 @@ mod repository_discovery_tests {
                     mode: CONNECTION_MODE_WORKFLOW.to_owned(),
                     enabled: true,
                     managed_fingerprint: format!("fingerprint-{index}"),
-                    last_verification_status: VERIFIED_STATUS_NOT_VERIFIED.to_owned(),
-                    last_verification_report_json: "{}".to_owned(),
-                    last_user_actions_json: "[]".to_owned(),
+                    verification_report_json: None,
                     metadata_json: "{}".to_owned(),
                 },
             )?;

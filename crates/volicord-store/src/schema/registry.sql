@@ -62,10 +62,7 @@ CREATE TABLE agent_connections (
   mode TEXT NOT NULL CHECK (mode IN ('read_only', 'workflow')),
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   managed_fingerprint TEXT NOT NULL,
-  last_verification_status TEXT NOT NULL DEFAULT 'not_verified'
-    CHECK (last_verification_status IN ('not_verified', 'complete', 'action_required', 'failed')),
-  last_verification_report_json TEXT NOT NULL DEFAULT '{}',
-  last_user_actions_json TEXT NOT NULL DEFAULT '[]',
+  verification_report_json TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,

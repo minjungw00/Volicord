@@ -40,6 +40,7 @@ Registry records include:
 - installation and executable selection;
 - project registrations and aliases;
 - Agent Connections and Connection Projects memberships;
+- at most one canonical connection verification report per Agent Connection;
 - canonical `ManagedHostBinding` identity, generated-artifact identity, and
   current verification receipt coordinates.
 
@@ -143,6 +144,21 @@ are invalid input and corrupt persisted data.
 Metadata explicitly classified as non-authority remains non-authority. It cannot
 create user judgment, evidence assurance, acceptance, Write Ticket authority,
 or close readiness.
+
+### Agent Connection Verification Report
+
+`agent_connections.verification_report_json` is the only persisted
+connection-verification state. A non-null value is one complete strict
+`ConnectionVerificationReport`; its derived status, checks, and user actions
+cannot be stored or changed independently. SQL null means no completed report.
+Reads project that absence through the Agent Connection owner's synthesized
+`verification_not_run` report without mutating Registry storage.
+
+Store validates the shared report type before write and after read, including
+closed values, bounds, deterministic ordering, duplicate rejection, and the
+derived aggregate. Malformed or noncanonical report JSON is corrupt persisted
+owner state. It is not interpreted as no report and is not repaired from
+another column.
 
 <a id="authority-bundle-export"></a>
 ## Authority Bundle Export

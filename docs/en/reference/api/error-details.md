@@ -86,7 +86,6 @@ following code and domain combinations require the listed value:
 | Public code and domain | `ToolError.category` | `details.reason` | Meaning owner |
 |---|---|---|---|
 | `NO_ACTIVE_CHANGE_UNIT` from `volicord.prepare_write` | `rejected` | `current_change_unit_required` | [`volicord.prepare_write`](method-prepare-write.md) |
-| `PERSISTED_DATA_CORRUPT` for persisted host-setup `UserAction` data | `corrupt` | `persisted_user_actions_corrupt` | [Agent Connection](../agent-connection.md#persisted-host-setup-user-actions) |
 | `UNSUPPORTED_CONTRACT` for an unknown external descriptor or boundary contract | `unsupported_contract` | `unsupported_external_contract` | [External Contracts](../external-contracts.md) |
 | `UNSUPPORTED_CONTRACT` for an ineligible exact Codex host artifact | `unsupported_contract` | `unsupported_host_artifact` | [Agent Connection](../agent-connection.md#codex-adapter-responsibilities) and [Host Release Evidence](../host-release-evidence.md) |
 

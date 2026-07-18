@@ -16,9 +16,7 @@ use json::{
 use summary::connection_diagnostic_summary_card;
 use text::{render_compact_connection_text, render_compact_plan_text, render_init_text_output};
 
-pub(super) use json::{
-    connection_states_json, detailed_verification_report_json, json_object_text,
-};
+pub(super) use json::connection_states_json;
 pub(super) use text::{render_connection_remove_dry_run_output, render_connections_output};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,22 +169,17 @@ fn active_tool_exposure_text(status: ActiveToolExposureStatus) -> String {
 fn stored_preflight_diagnostics(
     connection: &AgentConnectionRecord,
 ) -> Option<McpPreflightDiagnostics> {
-    let report = json_object_text(&connection.last_verification_report_json);
-    let object = report.as_object()?;
-    stored_preflight_diagnostics_from_report(object)
-}
-
-fn stored_preflight_diagnostics_from_report(
-    report: &serde_json::Map<String, Value>,
-) -> Option<McpPreflightDiagnostics> {
-    let diagnostics = report
-        .get("cli_mcp_preflight")?
-        .get("diagnostics")?
-        .as_object()?;
+    let report = connection.verification_report().ok().flatten()?;
+    let details = report
+        .checks()
+        .iter()
+        .find(|check| check.id().as_str() == "cli_mcp_preflight")?
+        .details()?
+        .as_object();
     Some(McpPreflightDiagnostics {
-        storage_read: diagnostics.get("storage_read")?.as_str()?.to_owned(),
-        storage_write: diagnostics.get("storage_write")?.as_str()?.to_owned(),
-        effective_tool_mode: diagnostics.get("effective_tool_mode")?.as_str()?.to_owned(),
+        storage_read: details.get("storage_read")?.as_str()?.to_owned(),
+        storage_write: details.get("storage_write")?.as_str()?.to_owned(),
+        effective_tool_mode: details.get("effective_tool_mode")?.as_str()?.to_owned(),
     })
 }
 
@@ -241,15 +234,7 @@ pub(super) fn render_connection_output(
             render_compact_connection_text(&data, &mcp_config_state, primary_next_action.as_ref())
         }
         OutputFormat::Json => {
-            let projected_user_actions = if data.verification.is_some()
-                || data.current_host.is_some()
-                || !decode_persisted_user_actions(&data.connection.last_user_actions_json)
-                    .is_corrupt()
-            {
-                Some(data.user_actions.as_slice())
-            } else {
-                None
-            };
+            let projected_user_actions = Some(data.user_actions.as_slice());
             let mut value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
@@ -312,10 +297,11 @@ pub(super) fn render_connection_plan_output(
             let value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
+                "operation_mode": "dry_run",
                 "disclosure": cooperative_host_decision_disclosure_json(),
                 "runtime_home": path_text(data.runtime_home),
                 "states": connection_states_json(
-                    data.status.as_str(),
+                    "planned",
                     project_state,
                     &format!("planned_{planned_change}"),
                     &guard_state,
@@ -329,7 +315,6 @@ pub(super) fn render_connection_plan_output(
                     "mode": data.mode,
                     "enabled": data.enabled,
                     "connected_repositories": connected_repositories,
-                    "verification_status": data.status.as_str(),
                     "server_name": data.plan.server_name,
                     "config_target": target,
                 },
@@ -401,9 +386,10 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
             let value = json!({
                 "action": "init",
                 "status": data.status.as_str(),
+                "operation_mode": if data.status == AgentResultStatus::DryRun { "dry_run" } else { "apply" },
                 "disclosure": cooperative_host_decision_disclosure_json(),
                 "states": connection_states_json(
-                    data.status.as_str(),
+                    if data.status == AgentResultStatus::DryRun { "planned" } else { data.status.as_str() },
                     project_state,
                     mcp_config_state.as_str(),
                     &guard_state,
@@ -446,6 +432,7 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
                     "recorded": data.guard_installation.is_some(),
                 },
                 "host_hook": guard_state.to_json(),
+                "verification": data.verification.map(verification_json),
                 "checks": init_checks_json(data.verification, guard_status, &guard_state),
                 "actions": actions_json_values(&actions),
                 "primary_next_action": primary_next_action.map(|action| action.to_json()),
@@ -598,12 +585,21 @@ fn connection_mcp_config_state(
     if let Some(plan) = plan {
         return planned_change_text(plan.change).to_owned();
     }
-    json_object_text(&connection.last_verification_report_json)
-        .get("host")
-        .and_then(|host| host.get("managed_config"))
-        .and_then(Value::as_str)
-        .unwrap_or("unknown")
-        .to_owned()
+    connection
+        .verification_report()
+        .ok()
+        .flatten()
+        .and_then(|report| {
+            report
+                .checks()
+                .iter()
+                .find(|check| check.id().as_str() == "host")
+                .and_then(|check| check.details())
+                .and_then(|details| details.as_object().get("managed_config"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 fn init_mcp_config_state(
@@ -717,7 +713,19 @@ fn primary_connection_action(
             }
         }
         if let Some(connection) = connection {
-            let stored_report = json_object_text(&connection.last_verification_report_json);
+            let stored_host_details =
+                connection
+                    .verification_report()
+                    .ok()
+                    .flatten()
+                    .and_then(|report| {
+                        report
+                            .checks()
+                            .iter()
+                            .find(|check| check.id().as_str() == "host")
+                            .and_then(|check| check.details())
+                            .map(|details| details.as_object().clone())
+                    });
             match connection_mcp_config_state(connection, None, None, None).as_str() {
                 "missing" => {
                     return Some(connection_repair_action(
@@ -753,24 +761,18 @@ fn primary_connection_action(
                 }
                 _ => {}
             }
-            if stored_report
-                .get("host")
-                .and_then(|host| host.get("host_executable"))
+            if stored_host_details
+                .as_ref()
+                .and_then(|host| host.get("executable"))
                 .and_then(Value::as_str)
                 == Some("unavailable")
             {
                 return Some(PrimaryNextAction::new(
                     "path_binary_not_found",
-                    stored_report
-                        .get("host")
-                        .and_then(|host| host.get("diagnostic"))
+                    stored_host_details
+                        .as_ref()
+                        .and_then(|host| host.get("failure_reason"))
                         .and_then(Value::as_str)
-                        .or_else(|| {
-                            stored_report
-                                .get("host")
-                                .and_then(|host| host.get("details"))
-                                .and_then(Value::as_str)
-                        })
                         .unwrap_or(
                             "Install or repair the host executable so it is available on PATH.",
                         ),

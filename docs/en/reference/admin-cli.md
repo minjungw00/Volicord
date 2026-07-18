@@ -137,6 +137,12 @@ unambiguous. The only accepted explicit value is `codex`.
 `complete` is not a release-cell pass, Core authority receipt, host attestation,
 or proof that an active Codex session exposed tools.
 
+Connection verification serializes the canonical
+[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report).
+Its check and action arrays are not accompanied by an independent connection
+status or setup-action state. `--dry-run` is reported as operation mode or plan
+context; it never adds `dry_run` to either closed status set.
+
 <a id="external-host-configuration"></a>
 ## Managed Codex Configuration
 

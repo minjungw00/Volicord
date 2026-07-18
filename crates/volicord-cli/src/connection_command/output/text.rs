@@ -181,8 +181,6 @@ fn compact_connection_checks(
     mcp_config_state: &str,
     primary_next_action: Option<&PrimaryNextAction>,
 ) -> Vec<(&'static str, String)> {
-    let persisted_user_actions =
-        decode_persisted_user_actions(&data.connection.last_user_actions_json);
     if let Some(verification) = data.verification {
         let mut checks = vec![("MCP configuration", mcp_config_state.to_owned())];
         append_host_policy_overlay_compact_check(&mut checks, &verification.host);
@@ -202,14 +200,6 @@ fn compact_connection_checks(
         checks.push((
             "Host follow-up",
             host_follow_up_text(data.status, primary_next_action).to_owned(),
-        ));
-        checks.push((
-            "Stored UserAction values",
-            if persisted_user_actions.is_corrupt() {
-                PERSISTED_USER_ACTIONS_CORRUPT_REASON.to_owned()
-            } else {
-                "current".to_owned()
-            },
         ));
         return checks;
     }
@@ -246,14 +236,6 @@ fn compact_connection_checks(
     checks.push((
         "Host follow-up",
         host_follow_up_text(data.status, primary_next_action).to_owned(),
-    ));
-    checks.push((
-        "Stored UserAction values",
-        if persisted_user_actions.is_corrupt() {
-            PERSISTED_USER_ACTIONS_CORRUPT_REASON.to_owned()
-        } else {
-            "current".to_owned()
-        },
     ));
     checks
 }
@@ -560,7 +542,6 @@ fn compact_agent_status_text(status: AgentResultStatus) -> &'static str {
         AgentResultStatus::Complete => "complete",
         AgentResultStatus::ActionRequired => "action required",
         AgentResultStatus::Failed => "failed",
-        AgentResultStatus::NotVerified => "not verified",
         AgentResultStatus::DryRun => "dry run",
     }
 }
@@ -576,7 +557,6 @@ fn host_follow_up_text(
         AgentResultStatus::Complete => "ready",
         AgentResultStatus::ActionRequired => "action required",
         AgentResultStatus::Failed => "failed",
-        AgentResultStatus::NotVerified => "not observed",
         AgentResultStatus::DryRun => "skipped",
     }
 }
@@ -590,12 +570,18 @@ fn enabled_text(enabled: bool) -> &'static str {
 }
 
 fn stored_verification_step_status(connection: &AgentConnectionRecord, step: &str) -> String {
-    let report = json_object_text(&connection.last_verification_report_json);
-    report
-        .get(step)
-        .and_then(|step| step.get("status"))
-        .and_then(Value::as_str)
-        .unwrap_or("not observed")
+    connection
+        .verification_report()
+        .ok()
+        .flatten()
+        .and_then(|report| {
+            report
+                .checks()
+                .iter()
+                .find(|check| check.id().as_str() == step)
+                .map(|check| check.status().as_str().to_owned())
+        })
+        .unwrap_or_else(|| "pending".to_owned())
         .replace('_', " ")
 }
 
@@ -911,7 +897,6 @@ fn init_text_title(status: AgentResultStatus, host_kind: HostKind) -> String {
         }
         AgentResultStatus::DryRun => format!("Volicord init plan for {host}"),
         AgentResultStatus::Failed => format!("Volicord init failed for {host}"),
-        AgentResultStatus::NotVerified => format!("Volicord init not verified for {host}"),
     }
 }
 
@@ -1028,30 +1013,18 @@ pub(in crate::connection_command) fn render_connections_output(
     match format {
         OutputFormat::Text => {
             let mut output = String::from(
-                "host\tintent\tmode\tenabled\tconnected_repositories\tverification_status\tverification_report_state\tuser_actions_state\tmetadata_state\ttarget\n",
+                "host\tintent\tmode\tenabled\tconnected_repositories\tverification_status\tmetadata_state\ttarget\n",
             );
             for (connection, projects) in rows {
-                let user_actions_state =
-                    decode_persisted_user_actions(&connection.last_user_actions_json);
+                let report = effective_connection_report(connection)?;
                 output.push_str(&format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
                     public_host_name_text(&connection.host_kind),
                     connection.intent,
                     public_mode_text(&connection.mode),
                     connection.enabled,
                     display_project_roots(projects),
-                    connection.last_verification_status,
-                    if decode_persisted_object(&connection.last_verification_report_json).is_some()
-                    {
-                        "current"
-                    } else {
-                        PERSISTED_VERIFICATION_REPORT_CORRUPT_REASON
-                    },
-                    if user_actions_state.is_corrupt() {
-                        PERSISTED_USER_ACTIONS_CORRUPT_REASON
-                    } else {
-                        "current"
-                    },
+                    report.status().as_str(),
                     if decode_persisted_object(&connection.metadata_json).is_some() {
                         "current"
                     } else {
@@ -1064,8 +1037,7 @@ pub(in crate::connection_command) fn render_connections_output(
         }
         OutputFormat::Json => {
             let degraded = rows.iter().any(|(connection, _)| {
-                decode_persisted_user_actions(&connection.last_user_actions_json).is_corrupt()
-                    || decode_persisted_object(&connection.last_verification_report_json).is_none()
+                connection.verification_report().is_err()
                     || decode_persisted_object(&connection.metadata_json).is_none()
             });
             let values = rows

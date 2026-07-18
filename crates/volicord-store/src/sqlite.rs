@@ -356,6 +356,26 @@ pub(crate) fn validate_persisted_manifest(
                 ))
             }
         }
+        Ok(manifest)
+            if manifest.contract_id == volicord_types::STORAGE_CONTRACT_ID
+                && manifest.canonical_ddl_digest
+                    == "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb"
+                && manifest.integrity_constraints_digest
+                    == "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec"
+                && manifest.enabled_capabilities == expected.enabled_capabilities =>
+        {
+            let actual = canonical_json_string(&manifest).map_err(|error| {
+                StoreError::schema_invariant(
+                    database_kind,
+                    format!("prior manifest canonical encoding failed: {error}"),
+                )
+            })?;
+            Err(StoreError::unsupported_storage_profile(
+                database_kind,
+                actual,
+                expected_json,
+            ))
+        }
         Ok(manifest) if manifest.contract_id == volicord_types::STORAGE_CONTRACT_ID => {
             Err(StoreError::schema_invariant(
                 database_kind,

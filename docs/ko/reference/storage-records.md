@@ -39,6 +39,7 @@ Registry 기록에는 다음이 포함됩니다.
 - 설치와 실행 파일 선택
 - 프로젝트 등록과 alias
 - Agent Connection과 Connection Projects membership
+- Agent Connection마다 최대 하나의 정규 연결 검증 보고서
 - 정규 `ManagedHostBinding` identity, 생성 artifact identity, 현재 검증 receipt 좌표
 
 프로젝트 상태 기록에는 다음이 포함됩니다.
@@ -135,6 +136,18 @@ encoding, 명시적 크기 제한을 사용합니다. 알 수 없거나 빠지�
 
 명시적으로 비권한으로 분류한 metadata는 계속 비권한입니다. 사용자 판단, evidence
 assurance, acceptance, 쓰기 티켓 권한, 닫기 준비 상태를 만들 수 없습니다.
+
+### Agent Connection 검증 보고서
+
+`agent_connections.verification_report_json`은 유일한 영속 연결 검증 상태입니다.
+Null이 아닌 값은 완전하고 엄격한 `ConnectionVerificationReport` 하나이며 파생 상태,
+check, 사용자 action을 독립적으로 저장하거나 변경할 수 없습니다. SQL null은 완료된
+보고서가 없다는 뜻입니다. 읽기 경로는 Registry 저장소를 바꾸지 않고 그 부재를 Agent
+Connection 담당 문서의 합성 `verification_not_run` 보고서로 projection합니다.
+
+Store는 쓰기 전과 읽은 뒤 공유 보고서 type을 검증합니다. 닫힌 값, 상한, 결정적 순서,
+중복 거부, 파생 집계를 모두 확인합니다. 형식이 잘못되었거나 비정규인 보고서 JSON은
+영속 담당 상태 손상입니다. 보고서 부재로 해석하거나 다른 column에서 복구하지 않습니다.
 
 <a id="authority-bundle-export"></a>
 ## 권한 번들 내보내기

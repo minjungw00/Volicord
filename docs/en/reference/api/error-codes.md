@@ -122,9 +122,7 @@ Required failure category:
 
 Required details:
 - Use the applicable `ToolError.details.reason` value from
-  [API error details](error-details.md#reason). Persisted host-setup
-  `UserAction` decode or validation failure uses
-  `persisted_user_actions_corrupt`.
+  [API error details](error-details.md#reason).
 
 <a id="errorcode-state-version-conflict"></a>
 ### `STATE_VERSION_CONFLICT`

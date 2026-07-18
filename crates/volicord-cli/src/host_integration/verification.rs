@@ -246,7 +246,7 @@ impl HostConfigurationStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verification {
     pub status: VerificationStatus,
     pub host_state: HostVerificationState,

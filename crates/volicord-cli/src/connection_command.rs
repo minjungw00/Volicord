@@ -24,7 +24,6 @@ use volicord_store::{
         PendingHostCleanupError, StagedConnectionMigrationState, SupersededConnectionProject,
         CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
         CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
-        VERIFIED_STATUS_NOT_VERIFIED,
     },
     bootstrap::{
         ensure_project_for_repo, initialize_runtime_home, installation_profile,
@@ -45,7 +44,6 @@ use volicord_types::{
     canonical_json_sha256, canonical_json_string, current_managed_host_binding_external_descriptor,
     host_hook_capability_managed_artifacts, GeneratedManagedArtifact, GuardInstallationStatus,
     IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
-    PERSISTED_USER_ACTIONS_CORRUPT_REASON,
 };
 
 use crate::cli::{
@@ -71,8 +69,7 @@ use crate::host_integration::{
     process::canonical_existing_platform_path,
     verification::{
         ActiveToolExposureStatus, HostMcpCommandDiagnostic, HostMcpCommandLaunchMode,
-        HostRuntimeDiagnostic, HostRuntimeObservationStatus, ManagedHostStorageDiagnostic,
-        ProjectTrustStatus, Verification,
+        HostRuntimeObservationStatus, ProjectTrustStatus, Verification,
     },
     ConnectionIntent, HostAdapter, HostConfigError, HostIntegrationFileKind, HostKind,
     HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope, HostTarget,
@@ -86,7 +83,7 @@ use crate::{
 mod args;
 mod mcp_process;
 mod output;
-mod persisted_user_actions;
+mod persisted_state;
 mod selection;
 mod service;
 mod verification;
@@ -102,14 +99,13 @@ use args::{
 };
 use mcp_process::mcp_launch_from_host_plan;
 use output::{
-    detailed_verification_report_json, render_connection_output, render_connection_plan_output,
+    render_connection_output, render_connection_plan_output,
     render_connection_remove_dry_run_output, render_connections_output, render_init_output,
     ConnectionOutput, ConnectionPlanOutput, ConnectionRemovePlan, InitOutput,
 };
-use persisted_user_actions::{
-    decode_persisted_object, decode_persisted_user_actions, persisted_object_state_json,
-    persisted_user_actions_check_json, PERSISTED_CONNECTION_METADATA_CORRUPT_REASON,
-    PERSISTED_VERIFICATION_REPORT_CORRUPT_REASON,
+use persisted_state::{
+    decode_persisted_object, persisted_object_state_json,
+    PERSISTED_CONNECTION_METADATA_CORRUPT_REASON,
 };
 use selection::{
     connection_for_host_target, connection_selector, host_scope_for_intent,
@@ -121,10 +117,10 @@ use service::{
     ProvisionConnectionRequest,
 };
 use verification::{
-    connection_status_actions, current_status_host_diagnostic, effective_tool_mode_check_status,
-    host_mcp_command_check_status, status_from_store, status_with_current_diagnostics,
-    storage_read_check_status, storage_write_check_status, verify_connection, AgentResultStatus,
-    McpPreflightDiagnostics, VerificationReport, VerificationStep,
+    agent_result_status, connection_status_actions, current_status_host_diagnostic,
+    effective_connection_report, report_with_user_actions, status_with_current_diagnostics,
+    verify_connection, AgentResultStatus, McpPreflightDiagnostics, VerificationReport,
+    VerificationStep,
 };
 
 const PATH_ENV: &str = "PATH";
@@ -347,15 +343,10 @@ fn command_connection_status(
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
-    let persisted_user_actions = decode_persisted_user_actions(&connection.last_user_actions_json);
-    let persisted_report_corrupt =
-        decode_persisted_object(&connection.last_verification_report_json).is_none();
+    let report = effective_connection_report(&connection)?;
     let persisted_metadata_corrupt = decode_persisted_object(&connection.metadata_json).is_none();
     if persisted_metadata_corrupt {
-        let user_actions = persisted_user_actions
-            .actions()
-            .unwrap_or_default()
-            .to_vec();
+        let user_actions = connection_status_actions(None, &report);
         return render_connection_output(ConnectionOutput {
             format: connection_output_format(&parsed),
             action: "status",
@@ -381,17 +372,12 @@ fn command_connection_status(
         &projects,
         process,
     )?;
-    let projected_user_actions =
-        connection_status_actions(current_host.as_ref(), &persisted_user_actions);
-    let user_actions = projected_user_actions.unwrap_or_default();
-    let mut status = status_with_current_diagnostics(
-        status_from_store(&connection.last_verification_status),
+    let user_actions = connection_status_actions(current_host.as_ref(), &report);
+    let status = status_with_current_diagnostics(
+        agent_result_status(report.status()),
         &user_actions,
         current_host.as_ref(),
     );
-    if persisted_user_actions.is_corrupt() || persisted_report_corrupt {
-        status = AgentResultStatus::ActionRequired;
-    }
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "status",
@@ -438,10 +424,8 @@ fn command_connection_verify(
     connection = update_agent_connection_verification_report(
         &runtime_home,
         &connection.connection_internal_id,
-        verification.status.store_status(),
         &host_plan.fingerprint,
-        &detailed_verification_report_json(&verification)?,
-        &user_actions_json(&verification.host.user_actions)?,
+        Some(&verification.report),
     )?;
     let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
     render_connection_output(ConnectionOutput {
@@ -471,31 +455,16 @@ fn command_connection_mode(
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, _) = select_connection(&runtime_home, &selector)?;
-    let persisted_user_actions = decode_persisted_user_actions(&connection.last_user_actions_json);
-    let mut actions = persisted_user_actions.actions().ok_or_else(|| {
-        ConnectionCommandError::runtime(format!(
-            "{PERSISTED_USER_ACTIONS_CORRUPT_REASON}: connection mode was not changed because stored UserAction values are corrupt; run `volicord connection verify` to regenerate current typed values"
-        ))
-    })?.to_vec();
-    let mut connection =
-        set_connection_mode(&runtime_home, &connection.connection_internal_id, &mode)?;
-    actions.push(UserAction::new(
+    let connection = set_connection_mode(&runtime_home, &connection.connection_internal_id, &mode)?;
+    let actions = vec![UserAction::new(
         UserActionKind::ReloadRequired,
         "Restart or reload the host so it refreshes the Volicord tool list for the selected mode",
-    ));
-    connection = update_agent_connection_verification_report(
-        &runtime_home,
-        &connection.connection_internal_id,
-        &connection.last_verification_status,
-        &connection.managed_fingerprint,
-        &connection.last_verification_report_json,
-        &user_actions_json(&actions)?,
-    )?;
+    )];
     let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "mode_updated",
-        status: status_from_store(&connection.last_verification_status),
+        status: AgentResultStatus::ActionRequired,
         runtime_home: &runtime_home,
         host_kind: parse_host_kind(&connection.host_kind)?,
         guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
@@ -1334,13 +1303,18 @@ fn init_first_run_user_actions(
 ) -> Vec<UserAction> {
     let mut actions = existing.to_vec();
     let _ = init_mode;
-    actions.push(UserAction::new(
-        UserActionKind::ReloadRequired,
-        format!(
-            "Restart or reload {} so it loads the Volicord MCP and host hook configuration",
-            public_host_label(host_kind)
-        ),
-    ));
+    if !actions
+        .iter()
+        .any(|action| action.kind == UserActionKind::ReloadRequired)
+    {
+        actions.push(UserAction::new(
+            UserActionKind::ReloadRequired,
+            format!(
+                "Restart or reload {} so it loads the Volicord MCP and host hook configuration",
+                public_host_label(host_kind)
+            ),
+        ));
+    }
     actions
 }
 
@@ -2020,13 +1994,6 @@ fn canonical_utc_timestamp(value: &str) -> Option<UtcTimestamp> {
     Some(timestamp)
 }
 
-fn user_actions_json(
-    actions: &[crate::host_integration::UserAction],
-) -> Result<String, ConnectionCommandError> {
-    serde_json::to_string(actions)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
-}
-
 fn connection_metadata_json(
     plan: &HostPlan,
     mcp_command: &Path,
@@ -2311,15 +2278,15 @@ mod persisted_metadata_tests {
     }
 
     #[test]
-    fn corrupt_user_actions_degrade_list_and_status_then_verify_repairs_them(
+    fn corrupt_verification_report_degrades_list_then_verify_repairs_it(
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = CoreFixture::new("connection-corrupt-user-actions")?;
+        let fixture = CoreFixture::new("connection-corrupt-verification-report")?;
         let repo_root = fixture.product_repo_path();
         fs::create_dir_all(repo_root.join(".git"))?;
-        let damaged = r#"[{"kind":"removed_variant","message":"unknown"}]"#;
+        let damaged = r#"{"status":"not_verified"}"#;
         open_registry_database(registry_db_path(fixture.runtime_home_path()))?.execute(
             "UPDATE agent_connections
-                SET last_user_actions_json = ?2
+                SET verification_report_json = ?2
               WHERE connection_internal_id = ?1",
             (fixture.connection_id(), damaged),
         )?;
@@ -2340,11 +2307,7 @@ mod persisted_metadata_tests {
         )?;
         let list: Value = serde_json::from_str(&list)?;
         assert_eq!(list["status"], "degraded");
-        assert_eq!(
-            list["connections"][0]["user_actions_state"]["reason"],
-            PERSISTED_USER_ACTIONS_CORRUPT_REASON
-        );
-        assert!(list["connections"][0]["user_actions"].is_null());
+        assert!(list["connections"][0]["verification_report"].is_null());
 
         let select_args = || ConnectionSelectArgs {
             host: Some(crate::cli::CodexHost::Codex),
@@ -2352,20 +2315,6 @@ mod persisted_metadata_tests {
             shared: false,
             json: true,
         };
-        let status = run_connection_command(
-            ConnectionArgs {
-                command: ConnectionCommand::Status(select_args()),
-            },
-            &repo_root,
-            &mut process,
-        )?;
-        let status: Value = serde_json::from_str(&status)?;
-        assert_eq!(status["status"], "action_required");
-        assert_eq!(
-            status["connection"]["user_actions_state"]["reason"],
-            PERSISTED_USER_ACTIONS_CORRUPT_REASON
-        );
-
         let _verification = run_connection_command(
             ConnectionArgs {
                 command: ConnectionCommand::Verify(select_args()),
@@ -2376,9 +2325,7 @@ mod persisted_metadata_tests {
         let repaired =
             agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
                 .expect("verification should preserve the selected connection");
-        let repaired_actions = decode_persisted_user_actions(&repaired.last_user_actions_json);
-        assert!(!repaired_actions.is_corrupt());
-        assert!(decode_persisted_object(&repaired.last_verification_report_json).is_some());
+        assert!(repaired.verification_report()?.is_some());
         Ok(())
     }
 }

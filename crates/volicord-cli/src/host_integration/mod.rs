@@ -9,9 +9,36 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
 pub use volicord_types::{
-    ConfigurationTargetOwner as HostScope, HostKind, HostSetupUserAction as UserAction,
-    HostSetupUserActionKind as UserActionKind, ManagedConnectionScope as ConnectionIntent,
+    ConfigurationTargetOwner as HostScope, HostKind, ManagedConnectionScope as ConnectionIntent,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserActionKind {
+    HostTrustRequired,
+    ProjectApprovalRequired,
+    ReloadRequired,
+    ManagedHostStartupNotObserved,
+    ManagedHostToolsListNotObserved,
+    ActiveToolExposureUnconfirmed,
+    ManagedHostStorageDegraded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserAction {
+    pub kind: UserActionKind,
+    pub message: String,
+}
+
+impl UserAction {
+    pub fn new(kind: UserActionKind, message: impl Into<String>) -> Self {
+        let message = message.into();
+        assert!(
+            !message.is_empty() && message.len() <= 4_096 && !message.as_bytes().contains(&0),
+            "adapter-owned user-action text must satisfy the canonical report bounds"
+        );
+        Self { kind, message }
+    }
+}
 
 pub mod codex;
 pub mod config_edit;

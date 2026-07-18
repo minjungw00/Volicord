@@ -35,7 +35,7 @@ use volicord_core::CoreBoundary;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
-    CONNECTION_MODE_READ_ONLY, HOST_KIND_CODEX, VERIFIED_STATUS_COMPLETE,
+    CONNECTION_MODE_READ_ONLY, HOST_KIND_CODEX,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostics::{
@@ -1851,9 +1851,7 @@ fn managed_stdio_preseed_conflicts_fail_before_any_effect() -> Result<(), Box<dy
             mode: CONNECTION_MODE_WORKFLOW.to_owned(),
             enabled: true,
             managed_fingerprint: format!("fixture:{label}"),
-            last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-            last_verification_report_json: "{}".to_owned(),
-            last_user_actions_json: "[]".to_owned(),
+            verification_report_json: None,
             metadata_json: "{}".to_owned(),
         },
     )?;
@@ -4512,9 +4510,7 @@ fn adapter_for_additional_connection(
             mode: existing.mode,
             enabled: existing.enabled,
             managed_fingerprint: format!("{}_additional", existing.managed_fingerprint),
-            last_verification_status: existing.last_verification_status,
-            last_verification_report_json: existing.last_verification_report_json,
-            last_user_actions_json: existing.last_user_actions_json,
+            verification_report_json: existing.verification_report_json,
             metadata_json: existing.metadata_json,
         },
     )?;
@@ -4819,9 +4815,7 @@ fn set_mode(fixture: &CoreFixture, mode: &str) -> Result<(), Box<dyn Error>> {
             mode: mode.to_owned(),
             enabled: existing.enabled,
             managed_fingerprint: existing.managed_fingerprint,
-            last_verification_status: existing.last_verification_status,
-            last_verification_report_json: existing.last_verification_report_json,
-            last_user_actions_json: existing.last_user_actions_json,
+            verification_report_json: existing.verification_report_json,
             metadata_json: existing.metadata_json,
         },
     )?;

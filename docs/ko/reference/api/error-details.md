@@ -85,7 +85,6 @@
 | 공개 코드와 도메인 | `ToolError.category` | `details.reason` | 의미 담당 문서 |
 |---|---|---|---|
 | `volicord.prepare_write`의 `NO_ACTIVE_CHANGE_UNIT` | `rejected` | `current_change_unit_required` | [`volicord.prepare_write`](method-prepare-write.md) |
-| 영속 호스트 설정 `UserAction` 데이터의 `PERSISTED_DATA_CORRUPT` | `corrupt` | `persisted_user_actions_corrupt` | [Agent Connection](../agent-connection.md#persisted-host-setup-user-actions) |
 | 알 수 없는 외부 설명자 또는 경계 계약의 `UNSUPPORTED_CONTRACT` | `unsupported_contract` | `unsupported_external_contract` | [외부 계약](../external-contracts.md) |
 | 적격하지 않은 정확한 Codex 호스트 아티팩트의 `UNSUPPORTED_CONTRACT` | `unsupported_contract` | `unsupported_host_artifact` | [Agent Connection](../agent-connection.md#codex-adapter-responsibilities), [호스트 릴리스 증거](../host-release-evidence.md) |
 

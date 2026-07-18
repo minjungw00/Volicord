@@ -92,6 +92,11 @@ manifest와 같아야 합니다. 정수를 파싱하거나, 버전을 비교하�
 고르거나, 다른 프로필을 시도하지 않습니다. 정확한 열기 결과와 실패 범주는
 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
+분산된 Agent Connection 검증 열을 `verification_report_json`으로 교체하면 두 schema
+digest가 모두 바뀝니다. 바로 이전의 분산 스키마 manifest를 지닌 Runtime Home은 명시적인
+재초기화 안내와 함께 지원하지 않는 storage profile로 거부합니다. Store는 해당 행을
+제자리에서 migration하지 않습니다.
+
 ## 기준 SQL 원본
 
 실행 가능한 DDL 원본은 고정된 순서의
@@ -192,10 +197,7 @@ CREATE TABLE agent_connections (
   mode TEXT NOT NULL CHECK (mode IN ('read_only', 'workflow')),
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   managed_fingerprint TEXT NOT NULL,
-  last_verification_status TEXT NOT NULL DEFAULT 'not_verified'
-    CHECK (last_verification_status IN ('not_verified', 'complete', 'action_required', 'failed')),
-  last_verification_report_json TEXT NOT NULL DEFAULT '{}',
-  last_user_actions_json TEXT NOT NULL DEFAULT '[]',
+  verification_report_json TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -330,11 +332,11 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 - `project_aliases`는 별칭을 `project_internal_id` 값에 매핑합니다. 별칭 행은 레지스트리 선택 보조 값이지 프로젝트별 Core 권한 기록이 아닙니다.
 - `projects.state_db_path`는 저장 열로 유지됩니다. Store의 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 쓰기 가능한 프로젝트 상태 열기, Agent Connection 프로젝트 처리 경로, Core 실행, 프로젝트 Store 재사용, MCP 프로젝트 가용성 확인 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
 - `projects.status`는 저장소 소유 값이며 유효한 값은 `active`뿐입니다.
-- `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프를 저장합니다.
+- `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 선택적 정규 검증 보고서 JSON 값, 메타데이터, 타임스탬프를 저장합니다.
 - `agent_connections.intent`는 현재 `host_kind=codex` 계약에서 `personal` 또는 `shared`로 제한됩니다.
 - 현재 Codex connection 계약은 `host_kind=codex`를 사용하고 connection intent에 따라 `host_scope`로 `user` 또는 `project`를 사용합니다.
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
-- `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
+- `agent_connections.verification_report_json`은 완료된 보고서가 없으면 SQL null입니다. Null이 아닌 값은 파생 상태와 action을 포함하는 엄격한 정규 `ConnectionVerificationReport` 하나를 저장합니다. Store는 그 구성 요소를 독립적으로 영속 저장하지 않습니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
 - `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 project 범위에 대한 Codex Record Guard 설정 생명주기 상태와 구성 metadata를 저장합니다. 내부 `guard_mode`는 정확히 `record`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 이 행은 expected-write 상관관계와 reconciliation을 지원하지만 공개 Core Guard health projection, OS 수준 집행 증명, 쓰기 방지 증명은 아닙니다.
 

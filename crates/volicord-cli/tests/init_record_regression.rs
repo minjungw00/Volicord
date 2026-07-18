@@ -23,10 +23,7 @@ use volicord_cli::{
     policy_command::run_policy_command,
 };
 use volicord_store::{
-    agent_connections::{
-        update_agent_connection_verification_report, VERIFIED_STATUS_FAILED,
-        VERIFIED_STATUS_NOT_VERIFIED,
-    },
+    agent_connections::update_agent_connection_verification_report,
     core_pipeline::CoreProjectStore,
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
 };
@@ -167,10 +164,8 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     update_agent_connection_verification_report(
         fixture.path(),
         &seeded_ids.connection_id,
-        VERIFIED_STATUS_NOT_VERIFIED,
         &seeded_connection.managed_fingerprint,
-        "{}",
-        "[]",
+        None,
     )?;
     delete_guard_installation(fixture.path(), &seeded_ids.guard_installation_id)?;
 
@@ -179,10 +174,9 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     assert_eq!(partial.agent_connections.len(), 1);
     assert_eq!(partial.connection_projects.len(), 1);
     assert!(partial.guard_installations.is_empty());
-    assert_eq!(
-        partial.agent_connections[0].last_verification_status,
-        VERIFIED_STATUS_NOT_VERIFIED
-    );
+    assert!(partial.agent_connections[0]
+        .verification_report_json
+        .is_none());
     assert_authoritative_policy_matches_file(fixture.path(), &seeded_ids.project_id, &repo_root)?;
     assert_eq!(fs::read_to_string(&unrelated_path)?, unrelated_content);
 
@@ -276,18 +270,24 @@ fn assert_unavailable_codex_verification(
     snapshot: &RegistryInspectionSnapshot,
 ) -> Result<(), Box<dyn Error>> {
     let connection = &snapshot.agent_connections[0];
-    assert_eq!(connection.last_verification_status, VERIFIED_STATUS_FAILED);
-    let report: Value = serde_json::from_str(&connection.last_verification_report_json)?;
+    let report: Value = serde_json::from_str(
+        connection
+            .verification_report_json
+            .as_deref()
+            .expect("failed init stores a canonical report"),
+    )?;
     assert_eq!(report["status"], "failed");
-    assert_eq!(report["host"]["managed_config"], "match");
-    assert_eq!(report["host"]["host_executable"], "unavailable");
-    assert_eq!(report["host"]["mcp_handshake_allowed"], false);
-    assert_eq!(
-        report["host"]["diagnostic"],
-        "Codex executable `codex` was not found on PATH"
-    );
-    assert_eq!(report["cli_mcp_preflight"]["status"], "passed");
-    assert_eq!(report["cli_mcp_handshake"]["status"], "skipped");
+    let checks = report["checks"].as_array().expect("report checks");
+    let check = |id: &str| {
+        checks
+            .iter()
+            .find(|check| check["id"] == id)
+            .unwrap_or_else(|| panic!("missing check {id}"))
+    };
+    assert_eq!(check("host")["details"]["managed_config"], "match");
+    assert_eq!(check("host")["details"]["executable"], "unavailable");
+    assert_eq!(check("cli_mcp_preflight")["status"], "passed");
+    assert_eq!(check("cli_mcp_handshake")["status"], "pending");
     Ok(())
 }
 

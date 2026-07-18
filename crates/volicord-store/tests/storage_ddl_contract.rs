@@ -24,9 +24,20 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 36);
-    assert_eq!(metadata.columns.len(), 476);
+    assert_eq!(metadata.columns.len(), 474);
     assert_eq!(metadata.indexes.len(), 62);
     assert_eq!(metadata.constraints.len(), 36);
+    let agent_connection_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::Registry && column.table == "agent_connections"
+        })
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    assert!(agent_connection_columns.contains(&"verification_report_json"));
+    assert!(!agent_connection_columns.contains(&"last_verification_status"));
+    assert!(!agent_connection_columns.contains(&"last_user_actions_json"));
     for database in [
         StorageDatabaseKind::Registry,
         StorageDatabaseKind::ProjectState,
@@ -48,11 +59,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb"
+        "sha256:73b80faf24dc880d18c78007ccc15540c2fe96e50e44ec4a2f421fd956bd7def"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec"
+        "sha256:4397dca3b75485907d64b9a5889a15d0528c34cb01a0e514551b19bc0bda7459"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -86,12 +97,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb\",",
+            "{\"canonical_ddl_digest\":\"sha256:73b80faf24dc880d18c78007ccc15540c2fe96e50e44ec4a2f421fd956bd7def\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec\"}"
+            "\"integrity_constraints_digest\":\"sha256:4397dca3b75485907d64b9a5889a15d0528c34cb01a0e514551b19bc0bda7459\"}"
         )
     );
     Ok(())
@@ -192,6 +203,29 @@ fn malformed_manifests_are_corrupt_and_well_formed_unknown_is_unsupported(
         StoreFailureRoute::UnsupportedContract,
         "well-formed noncurrent manifest: {error}"
     );
+    Ok(())
+}
+
+#[test]
+fn prior_fragmented_connection_schema_requires_runtime_home_reinitialization(
+) -> Result<(), Box<dyn Error>> {
+    let current = current_storage_manifest()?;
+    let prior = StorageManifest::new(
+        STORAGE_CONTRACT_ID,
+        "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb",
+        "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec",
+        current.enabled_capabilities.clone(),
+    )?;
+    let registry = canonical_registry()?;
+    insert_registry_owner(&registry, &canonical_json_string(&prior)?)?;
+
+    let error = validate_registry_schema(&registry)
+        .expect_err("the prior Agent Connection schema must not be opened or migrated");
+    assert_eq!(
+        error.classification().route,
+        StoreFailureRoute::UnsupportedContract
+    );
+    assert!(error.to_string().contains("reinitialize the Runtime Home"));
     Ok(())
 }
 

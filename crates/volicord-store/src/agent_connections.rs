@@ -6,7 +6,7 @@ use std::{
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_types::HostSetupUserAction;
+use volicord_types::{ConnectionVerificationReport, UtcTimestamp};
 
 use crate::{
     bootstrap::{
@@ -46,15 +46,6 @@ pub const CONNECTION_MODE_READ_ONLY: &str = "read_only";
 /// Agent Connection mode that allows workflow operations.
 pub const CONNECTION_MODE_WORKFLOW: &str = "workflow";
 
-/// Agent Connection has not been checked.
-pub const VERIFIED_STATUS_NOT_VERIFIED: &str = "not_verified";
-/// Agent Connection verification completed.
-pub const VERIFIED_STATUS_COMPLETE: &str = "complete";
-/// Agent Connection needs a host-controlled action.
-pub const VERIFIED_STATUS_ACTION_REQUIRED: &str = "action_required";
-/// Agent Connection verification failed.
-pub const VERIFIED_STATUS_FAILED: &str = "failed";
-
 const PENDING_HOST_CLEANUP_METADATA_KEY: &str = "pending_host_cleanup";
 
 /// Agent Connection creation or compatible update input.
@@ -69,9 +60,7 @@ pub struct AgentConnectionRegistration {
     pub mode: String,
     pub enabled: bool,
     pub managed_fingerprint: String,
-    pub last_verification_status: String,
-    pub last_verification_report_json: String,
-    pub last_user_actions_json: String,
+    pub verification_report_json: Option<String>,
     pub metadata_json: String,
 }
 
@@ -87,9 +76,7 @@ pub struct AgentConnectionNaturalKeyRegistration {
     pub mode: String,
     pub enabled: bool,
     pub managed_fingerprint: String,
-    pub last_verification_status: String,
-    pub last_verification_report_json: String,
-    pub last_user_actions_json: String,
+    pub verification_report_json: Option<String>,
     pub metadata_json: String,
 }
 
@@ -117,12 +104,58 @@ pub struct AgentConnectionRecord {
     pub mode: String,
     pub enabled: bool,
     pub managed_fingerprint: String,
-    pub last_verification_status: String,
-    pub last_verification_report_json: String,
-    pub last_user_actions_json: String,
+    pub verification_report_json: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub metadata_json: String,
+}
+
+impl AgentConnectionRecord {
+    /// Decodes the stored canonical report, if verification has run.
+    pub fn verification_report(&self) -> StoreResult<Option<ConnectionVerificationReport>> {
+        self.verification_report_json
+            .as_deref()
+            .map(|text| {
+                let report =
+                    serde_json::from_str::<ConnectionVerificationReport>(text).map_err(|_| {
+                        StoreError::CorruptOwnerStateJson {
+                            database_kind: "registry",
+                            table: "agent_connections",
+                            record_ref: self.connection_internal_id.clone(),
+                            logical_column: "verification_report_json",
+                        }
+                    })?;
+                if serde_json::to_string(&report).ok().as_deref() != Some(text) {
+                    return Err(StoreError::CorruptOwnerStateJson {
+                        database_kind: "registry",
+                        table: "agent_connections",
+                        record_ref: self.connection_internal_id.clone(),
+                        logical_column: "verification_report_json",
+                    });
+                }
+                Ok(report)
+            })
+            .transpose()
+    }
+
+    /// Returns the stored report or the read-only projection for an unverified connection.
+    pub fn effective_verification_report(
+        &self,
+        checked_at: UtcTimestamp,
+    ) -> StoreResult<ConnectionVerificationReport> {
+        self.verification_report()?.map_or_else(
+            || {
+                ConnectionVerificationReport::verification_not_run(checked_at).map_err(|error| {
+                    StoreError::InvalidInput {
+                        detail: format!(
+                            "could not synthesize the unverified connection report: {error}"
+                        ),
+                    }
+                })
+            },
+            Ok,
+        )
+    }
 }
 
 /// Explicit project allowlist row creation input.
@@ -350,9 +383,7 @@ struct AgentConnectionWriteRegistration {
     mode: String,
     enabled: bool,
     managed_fingerprint: String,
-    last_verification_status: String,
-    last_verification_report_json: String,
-    last_user_actions_json: String,
+    verification_report_json: Option<String>,
     metadata_json: String,
 }
 
@@ -376,9 +407,7 @@ pub fn ensure_agent_connection(
             mode: registration.mode,
             enabled: registration.enabled,
             managed_fingerprint: registration.managed_fingerprint,
-            last_verification_status: registration.last_verification_status,
-            last_verification_report_json: registration.last_verification_report_json,
-            last_user_actions_json: registration.last_user_actions_json,
+            verification_report_json: registration.verification_report_json,
             metadata_json: registration.metadata_json,
         },
         false,
@@ -410,9 +439,7 @@ pub fn ensure_staged_agent_connection(
             mode: registration.mode,
             enabled: false,
             managed_fingerprint: registration.managed_fingerprint,
-            last_verification_status: registration.last_verification_status,
-            last_verification_report_json: registration.last_verification_report_json,
-            last_user_actions_json: registration.last_user_actions_json,
+            verification_report_json: registration.verification_report_json,
             metadata_json: registration.metadata_json,
         },
         true,
@@ -462,9 +489,7 @@ pub fn ensure_agent_connection_for_target(
             mode: registration.mode,
             enabled: registration.enabled,
             managed_fingerprint: registration.managed_fingerprint,
-            last_verification_status: registration.last_verification_status,
-            last_verification_report_json: registration.last_verification_report_json,
-            last_user_actions_json: registration.last_user_actions_json,
+            verification_report_json: registration.verification_report_json,
             metadata_json: registration.metadata_json,
         },
         false,
@@ -552,21 +577,17 @@ fn write_agent_connection(
                 SET mode = ?2,
                     enabled = ?3,
                     managed_fingerprint = ?4,
-                    last_verification_status = ?5,
-                    last_verification_report_json = ?6,
-                    last_user_actions_json = ?7,
-                    metadata_json = ?8,
+                    verification_report_json = ?5,
+                    metadata_json = ?6,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                    project_internal_id = ?9
+                    project_internal_id = ?7
               WHERE connection_internal_id = ?1",
             params![
                 registration.connection_internal_id,
                 registration.mode,
                 enabled_as_i64(enabled),
                 registration.managed_fingerprint,
-                registration.last_verification_status,
-                registration.last_verification_report_json,
-                registration.last_user_actions_json,
+                registration.verification_report_json,
                 registration.metadata_json,
                 registration.project_internal_id
             ],
@@ -584,9 +605,7 @@ fn write_agent_connection(
                 mode,
                 enabled,
                 managed_fingerprint,
-                last_verification_status,
-                last_verification_report_json,
-                last_user_actions_json,
+                verification_report_json,
                 metadata_json,
                 created_at,
                 updated_at
@@ -604,8 +623,6 @@ fn write_agent_connection(
                 ?10,
                 ?11,
                 ?12,
-                ?13,
-                ?14,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             )",
@@ -620,9 +637,7 @@ fn write_agent_connection(
                 registration.mode,
                 enabled_as_i64(registration.enabled),
                 registration.managed_fingerprint,
-                registration.last_verification_status,
-                registration.last_verification_report_json,
-                registration.last_user_actions_json,
+                registration.verification_report_json,
                 registration.metadata_json
             ],
         )?;
@@ -742,9 +757,7 @@ fn list_raw_agent_connections_from_conn(
             mode,
             enabled,
             managed_fingerprint,
-            last_verification_status,
-            last_verification_report_json,
-            last_user_actions_json,
+            verification_report_json,
             created_at,
             updated_at,
             metadata_json
@@ -816,7 +829,8 @@ pub fn set_connection_mode(
     }
     let changed = tx.execute(
         "UPDATE agent_connections
-            SET mode = ?2,
+            SET verification_report_json = CASE WHEN mode = ?2 THEN verification_report_json ELSE NULL END,
+                mode = ?2,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
           WHERE connection_internal_id = ?1",
         params![connection_internal_id, mode],
@@ -837,69 +851,21 @@ pub fn set_connection_mode(
     })
 }
 
-/// Updates last-known Agent Connection verification state and fingerprint.
-pub fn update_agent_connection_verification(
-    runtime_home: impl AsRef<Path>,
-    connection_internal_id: &str,
-    last_verification_status: &str,
-    managed_fingerprint: &str,
-) -> StoreResult<AgentConnectionRecord> {
-    validate_identifier("connection_internal_id", connection_internal_id)?;
-    validate_verification_status(last_verification_status)?;
-    validate_nonempty("managed_fingerprint", managed_fingerprint)?;
-    let registry_path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
-    let tx = begin_immediate_transaction(&mut conn)?;
-    require_runtime_home(&tx, &registry_path)?;
-    require_agent_connection(&tx, connection_internal_id)?;
-    let changed = tx.execute(
-        "UPDATE agent_connections
-            SET managed_fingerprint = ?2,
-                last_verification_status = ?3,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-          WHERE connection_internal_id = ?1",
-        params![
-            connection_internal_id,
-            managed_fingerprint,
-            last_verification_status
-        ],
-    )?;
-    if changed == 0 {
-        return Err(StoreError::NotFound {
-            entity: "agent_connection",
-            id: connection_internal_id.to_owned(),
-        });
-    }
-    tx.commit()?;
-
-    agent_connection_record_from_conn(&conn, connection_internal_id)?.ok_or_else(|| {
-        StoreError::NotFound {
-            entity: "agent_connection",
-            id: connection_internal_id.to_owned(),
-        }
-    })
-}
-
-/// Updates verification status, full report JSON, user actions JSON, and fingerprint.
+/// Atomically replaces the canonical verification report and managed fingerprint.
 pub fn update_agent_connection_verification_report(
     runtime_home: impl AsRef<Path>,
     connection_internal_id: &str,
-    last_verification_status: &str,
     managed_fingerprint: &str,
-    last_verification_report_json: &str,
-    last_user_actions_json: &str,
+    verification_report: Option<&ConnectionVerificationReport>,
 ) -> StoreResult<AgentConnectionRecord> {
     validate_identifier("connection_internal_id", connection_internal_id)?;
-    validate_verification_status(last_verification_status)?;
     validate_nonempty("managed_fingerprint", managed_fingerprint)?;
-    validate_json_object(
-        "agent_connections.last_verification_report_json",
-        last_verification_report_json,
-    )?;
-    validate_host_setup_user_actions_input(
-        "agent_connections.last_user_actions_json",
-        last_user_actions_json,
-    )?;
+    let verification_report_json = verification_report
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| StoreError::InvalidInput {
+            detail: format!("verification_report could not be serialized: {error}"),
+        })?;
     let registry_path = registry_db_path(runtime_home);
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
@@ -919,17 +885,13 @@ pub fn update_agent_connection_verification_report(
     let changed = tx.execute(
         "UPDATE agent_connections
             SET managed_fingerprint = ?2,
-                last_verification_status = ?3,
-                last_verification_report_json = ?4,
-                last_user_actions_json = ?5,
+                verification_report_json = ?3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
           WHERE connection_internal_id = ?1",
         params![
             connection_internal_id,
             managed_fingerprint,
-            last_verification_status,
-            last_verification_report_json,
-            last_user_actions_json
+            verification_report_json,
         ],
     )?;
     if changed == 0 {
@@ -1763,15 +1725,7 @@ fn validate_agent_connection_registration(
     validate_nonempty("config_target", &registration.config_target)?;
     validate_connection_mode(&registration.mode)?;
     validate_nonempty("managed_fingerprint", &registration.managed_fingerprint)?;
-    validate_verification_status(&registration.last_verification_status)?;
-    validate_json_object(
-        "agent_connections.last_verification_report_json",
-        &registration.last_verification_report_json,
-    )?;
-    validate_host_setup_user_actions_input(
-        "agent_connections.last_user_actions_json",
-        &registration.last_user_actions_json,
-    )?;
+    validate_verification_report_input(&registration.verification_report_json)?;
     validate_json_object(
         "agent_connections.metadata_json",
         &registration.metadata_json,
@@ -1791,15 +1745,7 @@ fn validate_agent_connection_natural_key_registration(
     validate_nonempty("config_target", &registration.config_target)?;
     validate_connection_mode(&registration.mode)?;
     validate_nonempty("managed_fingerprint", &registration.managed_fingerprint)?;
-    validate_verification_status(&registration.last_verification_status)?;
-    validate_json_object(
-        "agent_connections.last_verification_report_json",
-        &registration.last_verification_report_json,
-    )?;
-    validate_host_setup_user_actions_input(
-        "agent_connections.last_user_actions_json",
-        &registration.last_user_actions_json,
-    )?;
+    validate_verification_report_input(&registration.verification_report_json)?;
     validate_json_object(
         "agent_connections.metadata_json",
         &registration.metadata_json,
@@ -1833,15 +1779,7 @@ fn validate_agent_connection_write_registration(
     validate_nonempty("config_target", &registration.config_target)?;
     validate_connection_mode(&registration.mode)?;
     validate_nonempty("managed_fingerprint", &registration.managed_fingerprint)?;
-    validate_verification_status(&registration.last_verification_status)?;
-    validate_json_object(
-        "agent_connections.last_verification_report_json",
-        &registration.last_verification_report_json,
-    )?;
-    validate_host_setup_user_actions_input(
-        "agent_connections.last_user_actions_json",
-        &registration.last_user_actions_json,
-    )?;
+    validate_verification_report_input(&registration.verification_report_json)?;
     validate_json_object(
         "agent_connections.metadata_json",
         &registration.metadata_json,
@@ -1917,22 +1855,6 @@ fn validate_connection_mode(mode: &str) -> StoreResult<()> {
     }
 }
 
-fn validate_verification_status(status: &str) -> StoreResult<()> {
-    if matches!(
-        status,
-        VERIFIED_STATUS_NOT_VERIFIED
-            | VERIFIED_STATUS_COMPLETE
-            | VERIFIED_STATUS_ACTION_REQUIRED
-            | VERIFIED_STATUS_FAILED
-    ) {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: "last_verification_status is not supported".to_owned(),
-        })
-    }
-}
-
 fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
     let value = serde_json::from_str::<Value>(text).map_err(|error| StoreError::InvalidInput {
         detail: format!("{field} must be JSON object text: {error}"),
@@ -1942,6 +1864,31 @@ fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
     } else {
         Err(StoreError::InvalidInput {
             detail: format!("{field} must be a JSON object"),
+        })
+    }
+}
+
+fn validate_verification_report_input(value: &Option<String>) -> StoreResult<()> {
+    let Some(text) = value else {
+        return Ok(());
+    };
+    let report = serde_json::from_str::<ConnectionVerificationReport>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!(
+                "agent_connections.verification_report_json violates the canonical report contract: {error}"
+            ),
+        }
+    })?;
+    let canonical = serde_json::to_string(&report).map_err(|error| StoreError::InvalidInput {
+        detail: format!("verification_report could not be serialized: {error}"),
+    })?;
+    if canonical == *text {
+        Ok(())
+    } else {
+        Err(StoreError::InvalidInput {
+            detail:
+                "agent_connections.verification_report_json must use canonical JSON serialization"
+                    .to_owned(),
         })
     }
 }
@@ -2014,9 +1961,7 @@ fn raw_agent_connection_record_from_conn(
             mode,
             enabled,
             managed_fingerprint,
-            last_verification_status,
-            last_verification_report_json,
-            last_user_actions_json,
+            verification_report_json,
             created_at,
             updated_at,
             metadata_json
@@ -2044,36 +1989,17 @@ fn agent_connection_record_from_row(
         mode: row.get(7)?,
         enabled: row.get::<_, i64>(8)? == 1,
         managed_fingerprint: row.get(9)?,
-        last_verification_status: row.get(10)?,
-        last_verification_report_json: row.get(11)?,
-        last_user_actions_json: row.get(12)?,
-        created_at: row.get(13)?,
-        updated_at: row.get(14)?,
-        metadata_json: row.get(15)?,
+        verification_report_json: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
+        metadata_json: row.get(13)?,
     })
-}
-
-fn validate_host_setup_user_actions_input(field: &'static str, value: &str) -> StoreResult<()> {
-    serde_json::from_str::<Vec<HostSetupUserAction>>(value)
-        .map(|_| ())
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("{field} violates the closed host-setup action contract: {error}"),
-        })
 }
 
 fn validate_stored_agent_connection(
     connection: AgentConnectionRecord,
 ) -> StoreResult<AgentConnectionRecord> {
-    validate_stored_agent_connection_json_object(
-        &connection.connection_internal_id,
-        "last_verification_report_json",
-        &connection.last_verification_report_json,
-    )?;
-    serde_json::from_str::<Vec<HostSetupUserAction>>(&connection.last_user_actions_json).map_err(
-        |_| StoreError::PersistedUserActionsCorrupt {
-            connection_internal_id: connection.connection_internal_id.clone(),
-        },
-    )?;
+    connection.verification_report()?;
     validate_stored_agent_connection_json_object(
         &connection.connection_internal_id,
         "metadata_json",
@@ -2285,7 +2211,7 @@ mod tests {
                 mode: CONNECTION_MODE_READ_ONLY.to_owned(),
                 enabled: false,
                 managed_fingerprint: "fingerprint-updated".to_owned(),
-                last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+                verification_report_json: Some(report_json(&verification_report())?),
                 metadata_json: r#"{"updated":true}"#.to_owned(),
                 ..connection("conn_a")
             },
@@ -2304,162 +2230,65 @@ mod tests {
     }
 
     #[test]
-    fn host_setup_user_actions_accept_only_the_closed_typed_array() -> Result<(), Box<dyn Error>> {
-        let fixture = registry_fixture("connection-user-actions-input")?;
-        let current = r#"[{"kind":"reload_required","message":"reload Codex"}]"#;
-        let stored = ensure_agent_connection(
-            fixture.runtime_home.path(),
-            AgentConnectionRegistration {
-                last_user_actions_json: current.to_owned(),
-                ..connection("conn_actions")
-            },
-        )?;
-        assert_eq!(stored.last_user_actions_json, current);
-
-        for damaged in [
-            "[",
-            r#"{"kind":"reload_required","message":"reload"}"#,
-            r#"[{"kind":"removed","message":"reload"}]"#,
-            r#"[{"message":"reload"}]"#,
-            r#"[{"kind":"reload_required"}]"#,
-            r#"[{"kind":"reload_required","message":"reload","extra":true}]"#,
-            r#"[{"kind":"reload_required","message":""}]"#,
-            r#"[{"kind":"reload_required","message":42}]"#,
-        ] {
-            let error = ensure_agent_connection(
-                fixture.runtime_home.path(),
-                AgentConnectionRegistration {
-                    connection_internal_id: format!("conn_bad_{}", damaged.len()),
-                    config_target: format!("/tmp/volicord-bad-{}.toml", damaged.len()),
-                    last_user_actions_json: damaged.to_owned(),
-                    ..connection("unused")
-                },
-            )
-            .expect_err("damaged host-setup actions must fail before write");
-            assert!(matches!(error, StoreError::InvalidInput { .. }));
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn connection_json_mutations_require_object_shaped_metadata_and_report(
-    ) -> Result<(), Box<dyn Error>> {
-        let fixture = registry_fixture("connection-json-object-input")?;
-        for (index, metadata_json, report_json) in [
-            (0, "[]", "{}"),
-            (1, "[", "{}"),
-            (2, "{}", "[]"),
-            (3, "{}", "null"),
-        ] {
+    fn registration_accepts_only_a_canonical_verification_report() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-report-input")?;
+        for (index, report_json) in [
+            "{}",
+            "[]",
+            "null",
+            r#"{"status":"not_verified","checked_at":"2026-07-18T00:00:00Z","checks":[],"actions":[]}"#,
+            r#"{"status":"complete","checked_at":"2026-07-18T00:00:00Z","checks":[],"actions":[]} "#,
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let error = ensure_agent_connection(
                 fixture.runtime_home.path(),
                 AgentConnectionRegistration {
                     connection_internal_id: format!("conn_json_bad_{index}"),
                     config_target: format!("/tmp/volicord-json-bad-{index}.toml"),
-                    metadata_json: metadata_json.to_owned(),
-                    last_verification_report_json: report_json.to_owned(),
+                    verification_report_json: Some(report_json.to_owned()),
                     ..connection("unused")
                 },
             )
-            .expect_err("non-object connection JSON must fail before write");
+            .expect_err("noncanonical verification report must fail before write");
             assert!(matches!(error, StoreError::InvalidInput { .. }));
         }
-
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_json_update"))?;
-        for damaged in ["[", "[]", "null"] {
-            let error = update_agent_connection_verification_report(
-                fixture.runtime_home.path(),
-                "conn_json_update",
-                VERIFIED_STATUS_COMPLETE,
-                "fingerprint",
-                damaged,
-                "[]",
-            )
-            .expect_err("non-object replacement report must fail before write");
-            assert!(matches!(error, StoreError::InvalidInput { .. }));
-        }
+        let canonical = report_json(&verification_report())?;
+        let stored = ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                verification_report_json: Some(canonical.clone()),
+                ..connection("conn_report")
+            },
+        )?;
         assert_eq!(
-            agent_connection_record(fixture.runtime_home.path(), "conn_json_update")?
-                .expect("rejected replacement must preserve the record")
-                .last_verification_report_json,
-            "{}"
+            stored.verification_report_json.as_deref(),
+            Some(canonical.as_str())
         );
+        assert_eq!(stored.verification_report()?, Some(verification_report()));
         Ok(())
     }
 
     #[test]
-    fn damaged_stored_host_setup_user_actions_fail_every_record_read() -> Result<(), Box<dyn Error>>
-    {
-        let fixture = registry_fixture("connection-user-actions-stored")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_actions"))?;
-        let registry_path = registry_db_path(fixture.runtime_home.path());
-        let conn = open_registry_database(&registry_path)?;
+    fn missing_report_synthesizes_action_required_without_writing() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-report-missing")?;
+        let connection =
+            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_missing"))?;
+        assert!(connection.verification_report_json.is_none());
 
-        for damaged in [
-            "[",
-            r#"{"kind":"reload_required"}"#,
-            r#"[{"kind":"removed","message":"reload"}]"#,
-            r#"[{"message":"reload"}]"#,
-            r#"[{"kind":"reload_required","message":"reload","extra":true}]"#,
-        ] {
-            conn.execute(
-                "UPDATE agent_connections SET last_user_actions_json = ?2 WHERE connection_internal_id = ?1",
-                params!["conn_actions", damaged],
-            )?;
-            for error in [
-                agent_connection_record(fixture.runtime_home.path(), "conn_actions")
-                    .expect_err("single-record read must reject stored damage"),
-                agent_connection_record_read_only(fixture.runtime_home.path(), "conn_actions")
-                    .expect_err("read-only record must reject stored damage"),
-                list_agent_connections(fixture.runtime_home.path())
-                    .expect_err("list read must reject stored damage"),
-                list_agent_connections_read_only(fixture.runtime_home.path())
-                    .expect_err("read-only list must reject stored damage"),
-            ] {
-                assert!(matches!(
-                    error,
-                    StoreError::PersistedUserActionsCorrupt {
-                        ref connection_internal_id
-                    } if connection_internal_id == "conn_actions"
-                ));
-                assert_eq!(
-                    error.classification().category,
-                    volicord_types::PERSISTED_USER_ACTIONS_CORRUPT_REASON
-                );
-            }
-            let diagnostic = agent_connection_record_for_diagnostics(
-                fixture.runtime_home.path(),
-                "conn_actions",
-            )?
-            .expect("diagnostic read should preserve the connection");
-            assert_eq!(diagnostic.last_user_actions_json, damaged);
-            assert_eq!(
-                list_agent_connections_for_diagnostics(fixture.runtime_home.path())?[0]
-                    .last_user_actions_json,
-                damaged
-            );
-            assert!(matches!(
-                set_connection_enabled(fixture.runtime_home.path(), "conn_actions", false)
-                    .expect_err("mutation must reject damaged stored actions before effects"),
-                StoreError::PersistedUserActionsCorrupt {
-                    ref connection_internal_id
-                } if connection_internal_id == "conn_actions"
-            ));
-        }
-
-        update_agent_connection_verification_report(
-            fixture.runtime_home.path(),
-            "conn_actions",
-            VERIFIED_STATUS_COMPLETE,
-            "fingerprint-repaired",
-            "{}",
-            "[]",
-        )?;
+        let projected = connection.effective_verification_report(test_timestamp())?;
         assert_eq!(
-            agent_connection_record(fixture.runtime_home.path(), "conn_actions")?
-                .expect("valid replacement should repair stored actions")
-                .last_user_actions_json,
-            "[]"
+            projected.status(),
+            volicord_types::ConnectionStatus::ActionRequired
+        );
+        assert_eq!(projected.checks()[0].id().as_str(), "verification_not_run");
+        assert_eq!(projected.actions()[0].id(), "run_verification");
+        assert!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_missing")?
+                .expect("projection must not remove the connection")
+                .verification_report_json
+                .is_none()
         );
         Ok(())
     }
@@ -2479,10 +2308,12 @@ mod tests {
         let registry_path = registry_db_path(fixture.runtime_home.path());
         let conn = open_registry_database(&registry_path)?;
 
-        for damaged in ["[", "[]", "null"] {
+        let mut noncanonical = report_json(&verification_report())?;
+        noncanonical.push(' ');
+        for damaged in ["[", "[]", "null", noncanonical.as_str()] {
             conn.execute(
                 "UPDATE agent_connections
-                    SET last_verification_report_json = ?2
+                    SET verification_report_json = ?2
                   WHERE connection_internal_id = ?1",
                 params!["conn_report", damaged],
             )?;
@@ -2490,37 +2321,37 @@ mod tests {
                 agent_connection_record(fixture.runtime_home.path(), "conn_report")
                     .expect_err("strict record read must reject a damaged report"),
                 "conn_report",
-                "last_verification_report_json",
+                "verification_report_json",
             );
             assert_connection_owner_json_corrupt(
                 agent_connection_record_read_only(fixture.runtime_home.path(), "conn_report")
                     .expect_err("strict read-only record must reject a damaged report"),
                 "conn_report",
-                "last_verification_report_json",
+                "verification_report_json",
             );
             assert_connection_owner_json_corrupt(
                 list_agent_connections(fixture.runtime_home.path())
                     .expect_err("strict list must reject a damaged report"),
                 "conn_report",
-                "last_verification_report_json",
+                "verification_report_json",
             );
             assert_connection_owner_json_corrupt(
                 list_agent_connections_read_only(fixture.runtime_home.path())
                     .expect_err("strict read-only list must reject a damaged report"),
                 "conn_report",
-                "last_verification_report_json",
+                "verification_report_json",
             );
             assert_connection_owner_json_corrupt(
                 list_connection_projects(fixture.runtime_home.path(), "conn_report")
                     .expect_err("strict membership read must reject a damaged report"),
                 "conn_report",
-                "last_verification_report_json",
+                "verification_report_json",
             );
             assert_connection_owner_json_corrupt(
                 set_connection_enabled(fixture.runtime_home.path(), "conn_report", false)
                     .expect_err("mutation must reject a damaged report before effects"),
                 "conn_report",
-                "last_verification_report_json",
+                "verification_report_json",
             );
 
             let diagnostic = agent_connection_record_for_diagnostics(
@@ -2528,12 +2359,16 @@ mod tests {
                 "conn_report",
             )?
             .expect("diagnostic read should preserve the connection");
-            assert_eq!(diagnostic.last_verification_report_json, damaged);
+            assert_eq!(
+                diagnostic.verification_report_json.as_deref(),
+                Some(damaged)
+            );
             assert!(diagnostic.enabled);
             assert_eq!(
                 list_agent_connections_for_diagnostics(fixture.runtime_home.path())?[0]
-                    .last_verification_report_json,
-                damaged
+                    .verification_report_json
+                    .as_deref(),
+                Some(damaged)
             );
             assert_eq!(
                 list_connection_projects_for_diagnostics(
@@ -2547,16 +2382,14 @@ mod tests {
             update_agent_connection_verification_report(
                 fixture.runtime_home.path(),
                 "conn_report",
-                VERIFIED_STATUS_COMPLETE,
                 "fingerprint-repaired",
-                "{}",
-                "[]",
+                Some(&verification_report()),
             )?;
             assert_eq!(
                 agent_connection_record(fixture.runtime_home.path(), "conn_report")?
                     .expect("explicit replacement should repair the report")
-                    .last_verification_report_json,
-                "{}"
+                    .verification_report_json,
+                Some(report_json(&verification_report())?)
             );
         }
         Ok(())
@@ -2597,10 +2430,8 @@ mod tests {
                 update_agent_connection_verification_report(
                     fixture.runtime_home.path(),
                     "conn_metadata",
-                    VERIFIED_STATUS_COMPLETE,
                     "fingerprint-repaired",
-                    "{}",
-                    "[]",
+                    Some(&verification_report()),
                 )
                 .expect_err("verification replacement cannot repair unrelated metadata"),
             ] {
@@ -3534,11 +3365,22 @@ mod tests {
             mode: CONNECTION_MODE_WORKFLOW.to_owned(),
             enabled: true,
             managed_fingerprint: "fingerprint".to_owned(),
-            last_verification_status: VERIFIED_STATUS_NOT_VERIFIED.to_owned(),
-            last_verification_report_json: "{}".to_owned(),
-            last_user_actions_json: "[]".to_owned(),
+            verification_report_json: None,
             metadata_json: "{}".to_owned(),
         }
+    }
+
+    fn test_timestamp() -> UtcTimestamp {
+        UtcTimestamp::parse("2026-07-18T00:00:00Z").expect("test timestamp")
+    }
+
+    fn verification_report() -> ConnectionVerificationReport {
+        ConnectionVerificationReport::verification_not_run(test_timestamp())
+            .expect("canonical test report")
+    }
+
+    fn report_json(report: &ConnectionVerificationReport) -> Result<String, serde_json::Error> {
+        serde_json::to_string(report)
     }
 
     fn guard_installation_upsert(

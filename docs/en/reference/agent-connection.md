@@ -1,9 +1,9 @@
 # Agent Connection Reference
 
 This document defines the first-release Agent Connection contract. It owns the
-exact `host_kind=codex` record connection surface, the canonical managed host
-binding, host verification receipts, and the boundary between the Codex adapter
-and Core.
+exact `host_kind=codex` record connection surface, the canonical connection
+verification report, the canonical managed host binding, host verification
+receipts, and the boundary between the Codex adapter and Core.
 
 <a id="owns-and-does-not-own"></a>
 
@@ -13,13 +13,14 @@ This document owns:
 
 - the accepted exact `host_kind`, integration profile, connection intents,
   transport, user-action delivery path, and platform-environment values;
+- the canonical `ConnectionVerificationReport`, its closed status values,
+  deterministic aggregation, strict encoding, and missing-report projection;
 - `ManagedHostBinding` fields, canonical encoding, and digest meaning;
 - `HostVerificationReceipt` fields and the checks Core performs before
   consuming a receipt;
 - Codex adapter discovery, installation, verification, repair, and uninstall
   responsibilities;
-- exact Codex artifact eligibility at the Agent Connection boundary; and
-- typed handling of persisted host-setup `UserAction` values.
+- exact Codex artifact eligibility at the Agent Connection boundary.
 
 This document does not own:
 
@@ -48,7 +49,7 @@ Labels follow the canonical vocabulary in
 
 | Surface | Stability | Contract |
 |---|---|---|
-| First-release value sets, `PlatformEnvironment`, `ManagedHostBinding` fields and digest, and `HostVerificationReceipt` fields | `stable` | These are exact boundary contracts. |
+| First-release value sets, `ConnectionVerificationReport`, `PlatformEnvironment`, `ManagedHostBinding` fields and digest, and `HostVerificationReceipt` fields | `stable` | These are exact boundary contracts. |
 | Codex discovery, managed installation, verification, repair, uninstall, and drift result semantics | `stable` | Implementations may change without changing the observable contract. |
 | Adapter modules, filesystem helpers, encoders, and Store query helpers | `internal` | They must preserve the stable boundary but are not public surfaces. |
 | Human-readable verification, degraded-state, and repair guidance | `diagnostic` | Machine-readable categories, reasons, and typed fields remain authoritative. |
@@ -85,6 +86,75 @@ one current Agent Connection.
 User-owned actions are delivered through the CLI inbox. An agent-facing MCP
 connection may request an owner-defined action, but it cannot act as the local
 user channel or resolve that action on the user's behalf.
+
+<a id="connection-verification-report"></a>
+
+## `ConnectionVerificationReport`
+
+One small report is the canonical serialized connection-verification state.
+Its exact closed shape is:
+
+```yaml
+ConnectionVerificationReport:
+  status: complete | action_required | failed
+  checked_at: UtcTimestamp
+  checks: ConnectionCheck[]
+  actions: ConnectionAction[]
+
+ConnectionCheck:
+  id: ConnectionCheckId
+  status: passed | pending | failed
+  code: string | null
+  summary: string
+  details: object | null
+  observed_at: UtcTimestamp | null
+
+ConnectionAction:
+  id: string
+  instruction: string
+  command: string | null
+```
+
+Every member shown above is required, including nullable members and arrays.
+Unknown members, duplicate JSON keys, duplicate check IDs, duplicate action
+IDs, noncanonical ordering, and unknown status values are invalid. Check IDs,
+action IDs, and non-null check codes are 1 through 128 ASCII bytes and match
+`[a-z][a-z0-9_]*`. `summary`, `instruction`, and non-null `command` values are
+1 through 4,096 UTF-8 bytes and contain no NUL. A non-null `details` value is a
+JSON object whose serialized form is at most 16 KiB. A report contains at most
+64 checks and 32 actions, and its serialized form is at most 64 KiB.
+
+Checks are sorted by `id` in ascending UTF-8 byte order. Actions use the same
+ordering by `id`. Producers construct that order deterministically; strict
+decoding rejects a stored or external report in another order rather than
+silently normalizing it.
+
+Every check in the report is required for that report. The top-level status is
+derived and cannot disagree with the checks:
+
+1. any `failed` check produces `status=failed`;
+2. otherwise any `pending` check produces `status=action_required`;
+3. otherwise `status=complete`.
+
+`dry_run` is an operation mode and is never a connection status or check
+status. Configuration matching, executable availability, protocol and host
+versions, capability observations, and observation timestamps are check facts.
+They belong in `code`, `details`, and `observed_at`; they do not introduce
+another public or persisted status enum.
+
+User instructions resulting from connection verification appear only in
+`actions` inside this report. Registry storage does not keep an independent
+verification status or action array. A connection with no completed persisted
+report is projected as a synthesized `status=action_required` report containing
+one `verification_not_run` pending check and one clear verification action.
+For that projection, `checked_at` is the projection time and the check's
+`observed_at` is null. The synthesized report is not written merely because it
+was read.
+
+Operational compatibility is reported from the checks that the adapter
+actually performed and the host behavior it observed. `complete` does not mean
+release certification of exact host artifacts, operating-system enforcement,
+actor identity proof, correctness proof, or tamper-proof recording.
 
 <a id="external-contract-linkage"></a>
 
@@ -483,35 +553,6 @@ before `expires_at`. A platform lifecycle change that invalidates
 [System Requirements](system-requirements.md#wsl2-topology). Core
 does not re-inspect host files or the executable to compensate for an invalid
 receipt.
-
-<a id="persisted-host-setup-user-actions"></a>
-
-## Persisted Host-Setup `UserAction` Values
-
-Host setup may persist a typed array of setup actions for connection status and
-repair guidance. This array is diagnostic connection state; it is not a Core
-`UserActionRequest`, `UserActionResolution`, policy decision, or authority
-record.
-
-The complete closed `UserAction` type is validated both before write and after
-read:
-
-- a valid `[]` means there are no current host-setup actions;
-- syntax failure, a non-array value, an unknown action variant, a missing
-  required field, or an invalid payload is not converted to `[]`;
-- reads never synthesize host-specific default actions;
-- when a default action is required, the adapter computes and validates it
-  before persistence;
-- corrupt persisted data is reported with category `corrupt` and
-  machine-readable reason `persisted_user_actions_corrupt`;
-- when the connection's core managed binding remains usable, its status is
-  machine-readably `degraded` and identifies the unavailable setup guidance;
-- any operation that depends on the corrupt action data fails closed; and
-- an explicit verify or repair flow may regenerate the current typed value.
-
-Ordinary reads do not repair, migrate, guess, or replace the value. The
-[Failure Model](failure-model.md) owns the distinction between `Corrupt` and a
-`Degraded` connection projection.
 
 <a id="threat-model"></a>
 

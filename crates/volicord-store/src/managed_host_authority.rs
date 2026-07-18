@@ -653,9 +653,9 @@ mod tests {
 
         for (logical_column, update_sql, damaged) in [
             (
-                "last_verification_report_json",
+                "verification_report_json",
                 "UPDATE agent_connections
-                    SET last_verification_report_json = ?2
+                    SET verification_report_json = ?2
                   WHERE connection_internal_id = ?1",
                 "[]",
             ),
@@ -690,35 +690,11 @@ mod tests {
             }
             conn.execute(
                 "UPDATE agent_connections
-                    SET last_verification_report_json = '{}',
+                    SET verification_report_json = NULL,
                         metadata_json = '{}'
                   WHERE connection_internal_id = ?1",
                 [fixture.connection_id()],
             )?;
-        }
-
-        conn.execute(
-            "UPDATE agent_connections
-                SET last_user_actions_json = '[{}]'
-              WHERE connection_internal_id = ?1",
-            [fixture.connection_id()],
-        )?;
-        for error in [
-            managed_host_authority_read_only(
-                fixture.runtime_home_path(),
-                fixture.connection_id(),
-                fixture.project_id(),
-            )
-            .expect_err("authority read must reject corrupt parent UserActions"),
-            upsert_managed_host_authority(fixture.runtime_home_path(), input)
-                .expect_err("authority mutation must reject corrupt parent UserActions"),
-        ] {
-            assert!(matches!(
-                error,
-                StoreError::PersistedUserActionsCorrupt {
-                    ref connection_internal_id
-                } if connection_internal_id == fixture.connection_id()
-            ));
         }
         Ok(())
     }
@@ -763,9 +739,7 @@ mod tests {
                 mode: connection.mode,
                 enabled: connection.enabled,
                 managed_fingerprint: connection.managed_fingerprint,
-                last_verification_status: connection.last_verification_status,
-                last_verification_report_json: connection.last_verification_report_json,
-                last_user_actions_json: connection.last_user_actions_json,
+                verification_report_json: connection.verification_report_json,
                 metadata_json: connection.metadata_json,
             },
         )?;

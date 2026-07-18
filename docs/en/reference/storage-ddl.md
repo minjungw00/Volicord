@@ -100,6 +100,12 @@ an integer, compare versions, inspect field presence to select a decoder, or
 try another profile. The exact open result and failure category remain with
 [Storage Versioning](storage-versioning.md).
 
+Replacing the fragmented Agent Connection verification columns with
+`verification_report_json` changes both schema digests. A Runtime Home carrying
+the immediately prior fragmented schema manifest is rejected as an unsupported
+storage profile with explicit reinitialization guidance. Store does not migrate
+its rows in place.
+
 ## Canonical SQL Sources
 
 The only executable DDL sources are
@@ -206,10 +212,7 @@ CREATE TABLE agent_connections (
   mode TEXT NOT NULL CHECK (mode IN ('read_only', 'workflow')),
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   managed_fingerprint TEXT NOT NULL,
-  last_verification_status TEXT NOT NULL DEFAULT 'not_verified'
-    CHECK (last_verification_status IN ('not_verified', 'complete', 'action_required', 'failed')),
-  last_verification_report_json TEXT NOT NULL DEFAULT '{}',
-  last_user_actions_json TEXT NOT NULL DEFAULT '[]',
+  verification_report_json TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -344,11 +347,11 @@ Registry constraints:
 - `project_aliases` maps aliases to `project_internal_id` values. Alias rows are registry selection aids, not project-local Core authority records.
 - `projects.state_db_path` is retained as a stored column. Store application-level current-registration validation must confirm it equals `project_home/state.sqlite` before operational `ProjectRecord` lookup or listing, writable project-state open, Agent Connection project routing, Core execution, project-store reuse, or MCP project availability.
 - `projects.status` is storage-owned and valid only as `active`.
-- `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps.
+- `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, an optional canonical verification report JSON value, metadata, and timestamps.
 - `agent_connections.intent` is constrained to `personal` or `shared` for the current `host_kind=codex` contract.
 - The current Codex connection contract uses `host_kind=codex` and a `host_scope` of `user` or `project` according to its connection intent.
 - `agent_connections.mode` is constrained to `read_only` or `workflow`.
-- `agent_connections.last_verification_report_json` stores the latest verification report JSON object. `agent_connections.last_user_actions_json` stores the latest user-action JSON array.
+- `agent_connections.verification_report_json` is SQL null when no completed report exists. A non-null value stores one strict canonical `ConnectionVerificationReport`, including its derived status and actions. Store does not persist those components independently.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
 - `guard_installations` stores Codex Record Guard setup lifecycle state for one Runtime Home, Agent Connection, and optional project scope. Its internal `guard_mode` is exactly `record`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. These rows support expected-write correlation and reconciliation; they are not public Core guard-health projections, OS-level enforcement proof, or write-prevention proof.
 

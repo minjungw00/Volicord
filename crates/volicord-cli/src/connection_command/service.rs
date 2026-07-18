@@ -353,12 +353,6 @@ fn apply_init_provisioning(
     let is_integration_migration = integration.migration_required || is_connection_migration;
     let mcp_command = PathBuf::from(&host_plan.entry.command);
     let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &plan.runtime_home)?;
-    let last_user_actions_json = migration_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        user_actions_json(&host_plan.user_actions),
-    )?;
     let desired_connection_registration = AgentConnectionRegistration {
         connection_internal_id: plan.connection_id.clone(),
         host_kind: plan.host_kind.as_str().to_owned(),
@@ -369,15 +363,9 @@ fn apply_init_provisioning(
         mode: mode.to_owned(),
         enabled: !is_connection_migration,
         managed_fingerprint: host_plan.fingerprint.clone(),
-        last_verification_status: existing
+        verification_report_json: existing
             .as_ref()
-            .map(|record| record.last_verification_status.clone())
-            .unwrap_or_else(|| VERIFIED_STATUS_NOT_VERIFIED.to_owned()),
-        last_verification_report_json: existing
-            .as_ref()
-            .map(|record| record.last_verification_report_json.clone())
-            .unwrap_or_else(|| "{}".to_owned()),
-        last_user_actions_json,
+            .and_then(|record| record.verification_report_json.clone()),
         metadata_json,
     };
     let registered_connection = connection_before_host_apply(
@@ -615,7 +603,7 @@ fn apply_init_provisioning(
         }
     }
     let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
-    let verification = migration_post_transition_step(
+    let mut verification = migration_post_transition_step(
         &plan,
         &superseded_integrations,
         is_integration_migration,
@@ -633,18 +621,13 @@ fn apply_init_provisioning(
         plan.host_kind,
         plan.init_mode,
     );
-    let detailed_report = migration_post_transition_step(
+    verification.report = migration_post_transition_step(
         &plan,
         &superseded_integrations,
         is_integration_migration,
-        detailed_verification_report_json(&verification),
+        report_with_user_actions(&verification.report, &user_actions),
     )?;
-    let stored_user_actions = migration_post_transition_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        user_actions_json(&user_actions),
-    )?;
+    verification.status = agent_result_status(verification.report.status());
     connection = migration_post_transition_step(
         &plan,
         &superseded_integrations,
@@ -652,10 +635,8 @@ fn apply_init_provisioning(
         update_agent_connection_verification_report(
             &plan.runtime_home,
             &connection.connection_internal_id,
-            verification.status.store_status(),
             &host_plan.fingerprint,
-            &detailed_report,
-            &stored_user_actions,
+            Some(&verification.report),
         )
         .map_err(ConnectionCommandError::from),
     )?;
@@ -1221,15 +1202,9 @@ fn apply_connection_provisioning(
         mode: plan.mode.clone(),
         enabled: true,
         managed_fingerprint: host_plan.fingerprint.clone(),
-        last_verification_status: existing
+        verification_report_json: existing
             .as_ref()
-            .map(|record| record.last_verification_status.clone())
-            .unwrap_or_else(|| VERIFIED_STATUS_NOT_VERIFIED.to_owned()),
-        last_verification_report_json: existing
-            .as_ref()
-            .map(|record| record.last_verification_report_json.clone())
-            .unwrap_or_else(|| "{}".to_owned()),
-        last_user_actions_json: user_actions_json(&host_plan.user_actions)?,
+            .and_then(|record| record.verification_report_json.clone()),
         metadata_json,
     };
     let mut connection = connection_before_host_apply(
@@ -1262,10 +1237,8 @@ fn apply_connection_provisioning(
     connection = update_agent_connection_verification_report(
         &plan.runtime_home,
         &connection.connection_internal_id,
-        verification.status.store_status(),
         &host_plan.fingerprint,
-        &detailed_verification_report_json(&verification)?,
-        &user_actions_json(&verification.host.user_actions)?,
+        Some(&verification.report),
     )?;
     let projects =
         list_connection_projects(&plan.runtime_home, &connection.connection_internal_id)?;
@@ -1484,9 +1457,7 @@ mod migration_state_tests {
             mode: CONNECTION_MODE_WORKFLOW.to_owned(),
             enabled: true,
             managed_fingerprint: "fingerprint_current".to_owned(),
-            last_verification_status: VERIFIED_STATUS_NOT_VERIFIED.to_owned(),
-            last_verification_report_json: "{}".to_owned(),
-            last_user_actions_json: "[]".to_owned(),
+            verification_report_json: None,
             metadata_json: "{}".to_owned(),
         };
         let stored = ensure_agent_connection(fixture.path(), current_registration.clone())?;

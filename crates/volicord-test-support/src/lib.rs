@@ -17,7 +17,7 @@ use volicord_store::{
     agent_connections::{
         add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
         ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX,
-        HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
+        HOST_SCOPE_PROJECT,
     },
     bootstrap::{
         initialize_runtime_home, register_project, write_installation_profile,
@@ -284,9 +284,7 @@ pub mod core_fixtures {
                     mode: CONNECTION_MODE_WORKFLOW.to_owned(),
                     enabled: true,
                     managed_fingerprint: format!("fixture:{component}"),
-                    last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
-                    last_verification_report_json: "{}".to_owned(),
-                    last_user_actions_json: "[]".to_owned(),
+                    verification_report_json: None,
                     metadata_json: "{}".to_owned(),
                 },
             )?;

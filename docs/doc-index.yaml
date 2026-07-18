@@ -226,8 +226,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -1729,8 +1729,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -1746,6 +1746,7 @@ documents:
   - command arguments, defaults, output routing, exit codes, and noninteractive behavior
   - Runtime Home selection and project registration commands
   - personal and shared Codex Record connection setup, verification, mode, repair, and removal
+  - canonical connection verification report output and dry-run separation
   - managed stdio MCP launch and preflight commands
   - CLI inbox listing and CLI-only UserAction resolution
   - policy, diagnostics, authority-bundle export, and change-reconciliation commands
@@ -2437,8 +2438,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2553,8 +2554,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2609,8 +2610,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2624,6 +2625,7 @@ documents:
   - strict stored owner values and JSON placement
   - canonical project time-floor and commit timestamp relationships
   - Agent Connection, project membership, and Codex binding records
+  - single nullable canonical Agent Connection verification report persistence
   - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
   - strict UserAction request and immutable CLI resolution records
@@ -2754,14 +2756,14 @@ documents:
   path_en: docs/en/reference/agent-connection.md
   path_ko: docs/ko/reference/agent-connection.md
   kind: reference
-  summary: Reference contract for the Codex record Agent Connection, canonical managed binding,
-    host verification receipt, platform environment, adapter/Core boundary, and persisted setup actions.
+  summary: Reference contract for the Codex record Agent Connection, canonical verification report,
+    managed binding, host verification receipt, platform environment, and adapter/Core boundary.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -2774,6 +2776,7 @@ documents:
   - implement
   canonical_for:
   - Codex `record`, personal/shared, managed stdio MCP, and CLI inbox first-release connection surface
+  - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
   - exact `PlatformEnvironment` value set and independent WSL2 identity
   - exact `PlatformReleaseCoordinate` shape and pinned WSL2 distribution/image binding
   - '`ManagedHostBinding` fields, deterministic canonical encoding, and domain-separated digest'
@@ -2781,7 +2784,7 @@ documents:
   - exact `HostVerificationReceipt` fields, freshness, project/connection/policy/binding/capability binding
   - Core receipt validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
   - exact embedded Codex support-catalog eligibility and `unsupported_host_artifact`
-  - typed persisted host-setup `UserAction`, `persisted_user_actions_corrupt`, degraded projection, and repair
+  - report-contained connection actions without an independent persisted status or action array
   - first-release managed-host threat model and non-signing boundary
   depends_on:
   - reference.host-release-evidence

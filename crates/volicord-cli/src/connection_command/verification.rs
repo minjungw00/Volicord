@@ -1,25 +1,30 @@
+use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeMap, path::Path, time::SystemTime};
 use volicord_store::agent_connections::{
     list_connection_projects_for_diagnostics, AgentConnectionRecord, ConnectionProjectRecord,
-    VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
-    VERIFIED_STATUS_NOT_VERIFIED,
 };
-use volicord_types::HostVerificationReceipt;
+use volicord_types::{
+    ConnectionAction, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckId,
+    ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport, HostVerificationReceipt,
+    UtcTimestamp,
+};
 
+#[cfg(test)]
+use crate::host_integration::verification::{
+    CliMcpStepStatus, CliMcpVerification, StorageCapability,
+};
 use crate::host_integration::{
     codex::{self, CodexAdapter},
     verification::{
-        ActiveToolExposureStatus, CliMcpStepStatus, CliMcpVerification, HostMcpCommandDiagnostic,
-        HostMcpCommandLaunchMode, HostRuntimeDiagnostic, HostRuntimeObservationStatus,
-        ManagedConfigStatus, ProjectTrustStatus, StorageCapability, Verification,
-        VerificationStatus,
+        ActiveToolExposureStatus, HostMcpCommandDiagnostic, HostMcpCommandLaunchMode,
+        HostRuntimeDiagnostic, HostRuntimeObservationStatus, ManagedConfigStatus,
+        ProjectTrustStatus, Verification, VerificationStatus,
     },
     HostAdapter, HostKind, HostPlan, HostScope, ManagedServerEntry, UserAction, UserActionKind,
 };
 
 use super::mcp_process::{run_connection_preflight, ConnectionProcess, McpLaunch, McpVerification};
-use super::persisted_user_actions::{decode_persisted_user_actions, PersistedUserActions};
 use super::{codex_environment, parse_host_kind, parse_host_scope, ConnectionCommandError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +32,6 @@ pub(in crate::connection_command) enum AgentResultStatus {
     Complete,
     ActionRequired,
     Failed,
-    NotVerified,
     DryRun,
 }
 
@@ -37,17 +41,7 @@ impl AgentResultStatus {
             Self::Complete => "complete",
             Self::ActionRequired => "action_required",
             Self::Failed => "failed",
-            Self::NotVerified => "not_verified",
             Self::DryRun => "dry_run",
-        }
-    }
-
-    pub(in crate::connection_command) fn store_status(self) -> &'static str {
-        match self {
-            Self::Complete => VERIFIED_STATUS_COMPLETE,
-            Self::ActionRequired => VERIFIED_STATUS_ACTION_REQUIRED,
-            Self::Failed => VERIFIED_STATUS_FAILED,
-            Self::NotVerified | Self::DryRun => VERIFIED_STATUS_NOT_VERIFIED,
         }
     }
 }
@@ -128,6 +122,7 @@ impl McpPreflightDiagnostics {
         })
     }
 
+    #[cfg(test)]
     fn storage_capability(&self) -> StorageCapability {
         StorageCapability::from_read_write_status(
             &self.storage_read,
@@ -148,11 +143,12 @@ impl McpPreflightDiagnostics {
 #[derive(Debug, Clone)]
 pub(in crate::connection_command) struct VerificationReport {
     pub(in crate::connection_command) status: AgentResultStatus,
+    pub(in crate::connection_command) report: ConnectionVerificationReport,
     pub(in crate::connection_command) host: Verification,
     pub(in crate::connection_command) preflight: VerificationStep,
     pub(in crate::connection_command) handshake: VerificationStep,
-    pub(in crate::connection_command) tools: Vec<String>,
-    pub(in crate::connection_command) receipt: Option<HostVerificationReceipt>,
+    pub(in crate::connection_command) _tools: Vec<String>,
+    pub(in crate::connection_command) _receipt: Option<HostVerificationReceipt>,
 }
 
 pub(in crate::connection_command) fn verify_connection(
@@ -163,7 +159,6 @@ pub(in crate::connection_command) fn verify_connection(
     project_id: Option<&str>,
     process: &mut impl ConnectionProcess,
 ) -> Result<VerificationReport, ConnectionCommandError> {
-    let persisted_user_actions = decode_persisted_user_actions(&connection.last_user_actions_json);
     let host_kind = parse_host_kind(&connection.host_kind)?;
     let mut host = verify_host_plan(host_kind, host_plan, process)?;
     let projects =
@@ -175,16 +170,6 @@ pub(in crate::connection_command) fn verify_connection(
         &projects,
         host,
     );
-    let mut regenerated_actions = host.user_actions.clone();
-    for action in persisted_user_actions
-        .actions_for_verification_repair()
-        .iter()
-        .filter(|action| action.kind == UserActionKind::ReloadRequired)
-        .cloned()
-    {
-        push_unique_action(&mut regenerated_actions, action);
-    }
-    host = host.with_user_actions(regenerated_actions);
     let preflight = run_connection_preflight(
         process,
         launch,
@@ -214,21 +199,292 @@ pub(in crate::connection_command) fn verify_connection(
             tools: Vec::new(),
         }
     };
-    let cli_mcp = cli_mcp_verification(&preflight, &handshake.step, &handshake.tools);
-    let status = aggregate_verification_status(
+    let report = canonical_verification_report(
         &host,
-        &cli_mcp,
+        &preflight,
+        &handshake.step,
         host_plan_requires_active_tool_exposure(host_plan),
-    );
+    )?;
+    let status = agent_result_status(report.status());
     let receipt = None;
     Ok(VerificationReport {
         status,
+        report,
         host,
         preflight,
         handshake: handshake.step,
-        tools: handshake.tools,
-        receipt,
+        _tools: handshake.tools,
+        _receipt: receipt,
     })
+}
+
+pub(in crate::connection_command) fn effective_connection_report(
+    connection: &AgentConnectionRecord,
+) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
+    connection
+        .effective_verification_report(current_timestamp())
+        .map_err(ConnectionCommandError::from)
+}
+
+fn canonical_verification_report(
+    host: &Verification,
+    preflight: &VerificationStep,
+    handshake: &VerificationStep,
+    requires_active_tool_exposure: bool,
+) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
+    let mut checks = vec![
+        canonical_check(
+            "host",
+            host_check_status(host),
+            Some(format!("host_{}", host.status.as_str())),
+            nonempty_summary(&host.details, "Host verification completed"),
+            Some(json!({
+                "host_version": &host.host_version,
+                "managed_config": host.managed_config.as_str(),
+                "executable": host.host_executable.as_str(),
+                "protocol_gate": host.host_gate.as_str(),
+                "configuration": host.host_configuration.as_str(),
+                "failure_category": &host.failure_category,
+                "failure_reason": &host.failure_reason,
+            })),
+            None,
+        )?,
+        canonical_check(
+            "cli_mcp_preflight",
+            step_check_status(preflight.status),
+            Some(
+                match preflight.status {
+                    StepStatus::Passed => "preflight_passed",
+                    StepStatus::Failed => "preflight_failed",
+                    StepStatus::Skipped => "preflight_pending",
+                }
+                .to_owned(),
+            ),
+            nonempty_summary(&preflight.details, "MCP preflight has not completed"),
+            preflight
+                .preflight_diagnostics
+                .as_ref()
+                .map(McpPreflightDiagnostics::to_json),
+            None,
+        )?,
+        canonical_check(
+            "cli_mcp_handshake",
+            step_check_status(handshake.status),
+            Some(
+                match handshake.status {
+                    StepStatus::Passed => "handshake_passed",
+                    StepStatus::Failed => "handshake_failed",
+                    StepStatus::Skipped => "handshake_pending",
+                }
+                .to_owned(),
+            ),
+            nonempty_summary(&handshake.details, "MCP handshake has not completed"),
+            None,
+            None,
+        )?,
+    ];
+
+    if requires_active_tool_exposure {
+        if let Some(runtime) = host.host_runtime.as_ref() {
+            let observed_at = runtime
+                .last_observed_at
+                .as_deref()
+                .and_then(|value| UtcTimestamp::parse(value).ok());
+            checks.extend([
+                runtime_observation_check(
+                    "managed_host_startup",
+                    runtime.managed_host_startup,
+                    "Managed host startup observation",
+                    observed_at.clone(),
+                )?,
+                runtime_observation_check(
+                    "managed_host_tools_list",
+                    runtime.managed_host_tools_list,
+                    "Managed host tools/list observation",
+                    observed_at.clone(),
+                )?,
+                runtime_observation_check(
+                    "managed_host_tool_call",
+                    runtime.managed_host_tool_call,
+                    "Managed host tool-call observation",
+                    observed_at.clone(),
+                )?,
+                canonical_check(
+                    "active_tool_exposure",
+                    match runtime.active_tool_exposure {
+                        ActiveToolExposureStatus::Confirmed => ConnectionCheckStatus::Passed,
+                        ActiveToolExposureStatus::Unconfirmed
+                        | ActiveToolExposureStatus::Unknown => ConnectionCheckStatus::Pending,
+                    },
+                    Some(
+                        match runtime.active_tool_exposure {
+                            ActiveToolExposureStatus::Confirmed => "active_tool_exposure_confirmed",
+                            ActiveToolExposureStatus::Unconfirmed => {
+                                "active_tool_exposure_unconfirmed"
+                            }
+                            ActiveToolExposureStatus::Unknown => "active_tool_exposure_pending",
+                        }
+                        .to_owned(),
+                    ),
+                    "Active Volicord tool exposure in the managed host",
+                    Some(json!({"runtime_details": runtime.details})),
+                    observed_at,
+                )?,
+            ]);
+        } else {
+            checks.push(canonical_check(
+                "active_tool_exposure",
+                ConnectionCheckStatus::Pending,
+                Some("active_tool_exposure_pending".to_owned()),
+                "Active Volicord tool exposure has not been observed in the managed host",
+                None,
+                None,
+            )?);
+        }
+    }
+
+    let actions = host
+        .user_actions
+        .iter()
+        .map(|action| {
+            ConnectionAction::try_new(
+                connection_action_id(action.kind),
+                action.message.clone(),
+                None,
+            )
+            .map_err(connection_report_error)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)
+        .map_err(connection_report_error)
+}
+
+fn canonical_check(
+    id: &'static str,
+    status: ConnectionCheckStatus,
+    code: Option<String>,
+    summary: impl Into<String>,
+    details: Option<Value>,
+    observed_at: Option<UtcTimestamp>,
+) -> Result<ConnectionCheck, ConnectionCommandError> {
+    let details = details
+        .map(|details| {
+            let Value::Object(details) = details else {
+                unreachable!("connection check details are constructed as objects")
+            };
+            ConnectionCheckDetails::try_new(details).map_err(connection_report_error)
+        })
+        .transpose()?;
+    ConnectionCheck::try_new(
+        ConnectionCheckId::new(id),
+        status,
+        code,
+        summary,
+        details,
+        observed_at,
+    )
+    .map_err(connection_report_error)
+}
+
+fn runtime_observation_check(
+    id: &'static str,
+    status: HostRuntimeObservationStatus,
+    summary: &'static str,
+    observed_at: Option<UtcTimestamp>,
+) -> Result<ConnectionCheck, ConnectionCommandError> {
+    let (status, code) = match status {
+        HostRuntimeObservationStatus::Observed => {
+            (ConnectionCheckStatus::Passed, format!("{id}_observed"))
+        }
+        HostRuntimeObservationStatus::NotObserved | HostRuntimeObservationStatus::Unknown => {
+            (ConnectionCheckStatus::Pending, format!("{id}_pending"))
+        }
+    };
+    canonical_check(id, status, Some(code), summary, None, observed_at)
+}
+
+fn host_check_status(host: &Verification) -> ConnectionCheckStatus {
+    if host.host_executable.as_str() == "unavailable" {
+        return ConnectionCheckStatus::Failed;
+    }
+    match host.status {
+        VerificationStatus::Complete => ConnectionCheckStatus::Passed,
+        VerificationStatus::ActionRequired | VerificationStatus::NotVerified => {
+            ConnectionCheckStatus::Pending
+        }
+        VerificationStatus::Missing
+        | VerificationStatus::Changed
+        | VerificationStatus::Rejected
+        | VerificationStatus::Unavailable
+        | VerificationStatus::Unknown
+        | VerificationStatus::Failed
+        | VerificationStatus::UnsupportedContract => ConnectionCheckStatus::Failed,
+    }
+}
+
+fn step_check_status(status: StepStatus) -> ConnectionCheckStatus {
+    match status {
+        StepStatus::Passed => ConnectionCheckStatus::Passed,
+        StepStatus::Failed => ConnectionCheckStatus::Failed,
+        StepStatus::Skipped => ConnectionCheckStatus::Pending,
+    }
+}
+
+fn connection_action_id(kind: UserActionKind) -> &'static str {
+    match kind {
+        UserActionKind::HostTrustRequired => "host_trust_required",
+        UserActionKind::ProjectApprovalRequired => "project_approval_required",
+        UserActionKind::ReloadRequired => "reload_required",
+        UserActionKind::ManagedHostStartupNotObserved => "managed_host_startup_not_observed",
+        UserActionKind::ManagedHostToolsListNotObserved => "managed_host_tools_list_not_observed",
+        UserActionKind::ActiveToolExposureUnconfirmed => "active_tool_exposure_unconfirmed",
+        UserActionKind::ManagedHostStorageDegraded => "managed_host_storage_degraded",
+    }
+}
+
+pub(in crate::connection_command) fn report_with_user_actions(
+    report: &ConnectionVerificationReport,
+    actions: &[UserAction],
+) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
+    let mut checks = report.checks().to_vec();
+    let actions = actions
+        .iter()
+        .map(|action| {
+            let id = connection_action_id(action.kind);
+            if !checks.iter().any(|check| check.id().as_str() == id) {
+                checks.push(canonical_check(
+                    id,
+                    ConnectionCheckStatus::Pending,
+                    Some(id.to_owned()),
+                    action.message.clone(),
+                    None,
+                    None,
+                )?);
+            }
+            ConnectionAction::try_new(id, action.message.clone(), None)
+                .map_err(connection_report_error)
+        })
+        .collect::<Result<Vec<_>, ConnectionCommandError>>()?;
+    ConnectionVerificationReport::try_new(report.checked_at().clone(), checks, actions)
+        .map_err(connection_report_error)
+}
+
+fn current_timestamp() -> UtcTimestamp {
+    UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now()))
+}
+
+fn nonempty_summary<'a>(summary: &'a str, fallback: &'a str) -> &'a str {
+    if summary.is_empty() {
+        fallback
+    } else {
+        summary
+    }
+}
+
+fn connection_report_error(error: impl std::fmt::Display) -> ConnectionCommandError {
+    ConnectionCommandError::runtime(format!(
+        "connection verification report is invalid: {error}"
+    ))
 }
 
 pub(in crate::connection_command) fn current_status_host_diagnostic(
@@ -322,31 +578,42 @@ pub(in crate::connection_command) fn status_with_current_diagnostics(
 
 pub(in crate::connection_command) fn connection_status_actions(
     current_host: Option<&Verification>,
-    persisted: &PersistedUserActions,
-) -> Option<Vec<UserAction>> {
+    report: &ConnectionVerificationReport,
+) -> Vec<UserAction> {
     let mut actions = match current_host {
         Some(host) => host.user_actions.clone(),
-        None => persisted.actions()?.to_vec(),
+        None => Vec::new(),
     };
-    if let Some(persisted_actions) = persisted.actions() {
-        for action in persisted_actions
-            .iter()
-            .filter(|action| action.kind == UserActionKind::ReloadRequired)
-            .cloned()
-        {
+    for action in report.actions().iter().filter_map(report_action_for_host) {
+        if action.kind == UserActionKind::ReloadRequired || current_host.is_none() {
             push_unique_action(&mut actions, action);
         }
     }
-    Some(actions)
+    actions
 }
 
-pub(in crate::connection_command) fn status_from_store(value: &str) -> AgentResultStatus {
-    match value {
-        VERIFIED_STATUS_COMPLETE => AgentResultStatus::Complete,
-        VERIFIED_STATUS_ACTION_REQUIRED => AgentResultStatus::ActionRequired,
-        VERIFIED_STATUS_FAILED => AgentResultStatus::Failed,
-        _ => AgentResultStatus::NotVerified,
+pub(in crate::connection_command) fn agent_result_status(
+    status: ConnectionStatus,
+) -> AgentResultStatus {
+    match status {
+        ConnectionStatus::Complete => AgentResultStatus::Complete,
+        ConnectionStatus::ActionRequired => AgentResultStatus::ActionRequired,
+        ConnectionStatus::Failed => AgentResultStatus::Failed,
     }
+}
+
+fn report_action_for_host(action: &ConnectionAction) -> Option<UserAction> {
+    let kind = match action.id() {
+        "host_trust_required" => UserActionKind::HostTrustRequired,
+        "project_approval_required" => UserActionKind::ProjectApprovalRequired,
+        "reload_required" => UserActionKind::ReloadRequired,
+        "managed_host_startup_not_observed" => UserActionKind::ManagedHostStartupNotObserved,
+        "managed_host_tools_list_not_observed" => UserActionKind::ManagedHostToolsListNotObserved,
+        "active_tool_exposure_unconfirmed" => UserActionKind::ActiveToolExposureUnconfirmed,
+        "managed_host_storage_degraded" => UserActionKind::ManagedHostStorageDegraded,
+        _ => return None,
+    };
+    Some(UserAction::new(kind, action.instruction()))
 }
 
 fn verify_host_plan(
@@ -363,6 +630,7 @@ fn verify_host_plan(
     adapter.verify(plan).map_err(Into::into)
 }
 
+#[cfg(test)]
 fn cli_mcp_verification(
     preflight: &VerificationStep,
     handshake: &VerificationStep,
@@ -386,6 +654,7 @@ fn cli_mcp_verification(
     )
 }
 
+#[cfg(test)]
 fn cli_mcp_step_status(status: StepStatus) -> CliMcpStepStatus {
     match status {
         StepStatus::Passed => CliMcpStepStatus::Passed,
@@ -394,20 +663,24 @@ fn cli_mcp_step_status(status: StepStatus) -> CliMcpStepStatus {
     }
 }
 
+#[cfg(test)]
 fn cli_mcp_tools_list_status(status: StepStatus, _tools: &[String]) -> CliMcpStepStatus {
     cli_mcp_step_status(status)
 }
 
 fn stored_host_managed_config(connection: &AgentConnectionRecord) -> Option<String> {
-    serde_json::from_str::<Value>(&connection.last_verification_report_json)
+    connection
+        .verification_report()
         .ok()
-        .and_then(|report| {
-            report
-                .get("host")
-                .and_then(|host| host.get("managed_config"))
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
+        .flatten()?
+        .checks()
+        .iter()
+        .find(|check| check.id().as_str() == "host")?
+        .details()?
+        .as_object()
+        .get("managed_config")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 fn managed_config_status_from_str(value: &str) -> Option<ManagedConfigStatus> {
@@ -609,6 +882,7 @@ fn host_mcp_command_diagnostic(
     }
 }
 
+#[cfg(test)]
 fn aggregate_verification_status(
     host: &Verification,
     cli_mcp: &CliMcpVerification,
@@ -631,7 +905,7 @@ fn aggregate_verification_status(
             {
                 AgentResultStatus::ActionRequired
             }
-            VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
+            VerificationStatus::NotVerified => AgentResultStatus::ActionRequired,
             _ => AgentResultStatus::Failed,
         };
     }
@@ -642,7 +916,7 @@ fn aggregate_verification_status(
             {
                 AgentResultStatus::ActionRequired
             }
-            VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
+            VerificationStatus::NotVerified => AgentResultStatus::ActionRequired,
             _ => AgentResultStatus::Failed,
         };
     }
@@ -657,7 +931,7 @@ fn aggregate_verification_status(
         {
             AgentResultStatus::ActionRequired
         }
-        VerificationStatus::NotVerified => AgentResultStatus::NotVerified,
+        VerificationStatus::NotVerified => AgentResultStatus::ActionRequired,
         _ => AgentResultStatus::Failed,
     }
 }
@@ -705,9 +979,8 @@ pub(in crate::connection_command) fn effective_tool_mode_check_status(value: &st
     }
 }
 
-pub(in crate::connection_command) fn host_mcp_command_check_status(
-    command: &HostMcpCommandDiagnostic,
-) -> &'static str {
+#[cfg(test)]
+fn host_mcp_command_check_status(command: &HostMcpCommandDiagnostic) -> &'static str {
     if command.mode == HostMcpCommandLaunchMode::Malformed {
         "failed"
     } else if command.risk.is_some() {
@@ -722,17 +995,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn status_actions_preserve_corrupt_persisted_state_as_unknown() {
-        assert!(connection_status_actions(None, &PersistedUserActions::Corrupt).is_none());
-
-        let current = Verification::new(VerificationStatus::NotVerified, "current diagnostics")
+    fn canonical_report_contains_host_actions() {
+        let host = Verification::new(VerificationStatus::ActionRequired, "reload required")
             .with_user_actions(vec![UserAction::new(
-                UserActionKind::ManagedHostStartupNotObserved,
-                "start Codex",
+                UserActionKind::ReloadRequired,
+                "reload Codex",
             )]);
-        let actions = connection_status_actions(Some(&current), &PersistedUserActions::Corrupt)
-            .expect("current typed diagnostics replace unknown persisted actions");
-        assert_eq!(actions, current.user_actions);
+        let report = canonical_verification_report(
+            &host,
+            &VerificationStep::passed("preflight passed"),
+            &VerificationStep::passed("handshake passed"),
+            false,
+        )
+        .expect("canonical report");
+
+        assert_eq!(report.status(), ConnectionStatus::ActionRequired);
+        assert_eq!(report.actions()[0].id(), "reload_required");
+        assert!(serde_json::to_string(&report)
+            .expect("serialize report")
+            .contains("\"status\":\"pending\""));
     }
 
     #[test]

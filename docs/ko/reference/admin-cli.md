@@ -134,6 +134,12 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 `complete`는 릴리스 셀 통과, Core 권한 receipt, host attestation, 활성 Codex 세션의
 도구 노출 증명이 아닙니다.
 
+연결 검증은 정규
+[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)를
+직렬화합니다. Check 및 action 배열과 별개인 연결 상태 또는 설정 action 상태를 함께
+두지 않습니다. `--dry-run`은 작업 모드 또는 계획 맥락으로 보고하며 어느 닫힌 상태
+집합에도 `dry_run`을 추가하지 않습니다.
+
 <a id="external-host-configuration"></a>
 ## 관리 Codex 구성
 

@@ -5,15 +5,12 @@ use std::{
 
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
-use volicord_types::{GuardInstallationStatus, IntegrationProfile};
-use volicord_types::{HostSetupUserAction, PERSISTED_USER_ACTIONS_CORRUPT_REASON};
+use volicord_types::{ConnectionVerificationReport, GuardInstallationStatus, IntegrationProfile};
 
 use crate::{
     agent_connections::{
         CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
         CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
-        VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
-        VERIFIED_STATUS_NOT_VERIFIED,
     },
     bootstrap::{validate_project_record_for_execution, ProjectRecord},
     schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND},
@@ -108,9 +105,7 @@ pub struct AgentConnectionInspectionRecord {
     pub mode: String,
     pub enabled: bool,
     pub managed_fingerprint: String,
-    pub last_verification_status: String,
-    pub last_verification_report_json: String,
-    pub last_user_actions_json: String,
+    pub verification_report_json: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub metadata_json: String,
@@ -647,9 +642,7 @@ fn read_agent_connection_rows(
                 mode,
                 enabled,
                 managed_fingerprint,
-                last_verification_status,
-                last_verification_report_json,
-                last_user_actions_json,
+                verification_report_json,
                 created_at,
                 updated_at,
                 metadata_json
@@ -671,12 +664,10 @@ fn read_agent_connection_rows(
                 mode: row.get(7)?,
                 enabled: row.get::<_, i64>(8)? == 1,
                 managed_fingerprint: row.get(9)?,
-                last_verification_status: row.get(10)?,
-                last_verification_report_json: row.get(11)?,
-                last_user_actions_json: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
-                metadata_json: row.get(15)?,
+                verification_report_json: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+                metadata_json: row.get(13)?,
             })
         })
         .map_err(sqlite_unreadable)?;
@@ -878,19 +869,20 @@ fn validate_agent_connection_row(
         "agent_connections.managed_fingerprint",
         &connection.managed_fingerprint,
     )?;
-    validate_verification_status(&connection.last_verification_status)?;
-    validate_json_object(
-        "agent_connections.last_verification_report_json",
-        &connection.last_verification_report_json,
-    )?;
-    serde_json::from_str::<Vec<HostSetupUserAction>>(&connection.last_user_actions_json).map_err(
-        |_| {
+    if let Some(text) = connection.verification_report_json.as_deref() {
+        let report = serde_json::from_str::<ConnectionVerificationReport>(text).map_err(|error| {
             InspectionIssue::Malformed(format!(
-                "{PERSISTED_USER_ACTIONS_CORRUPT_REASON}: agent_connections.last_user_actions_json for {}",
-                connection.connection_internal_id
+                "agent_connections.verification_report_json for {} violates the canonical report contract: {error}",
+                connection.connection_internal_id,
             ))
-        },
-    )?;
+        })?;
+        if serde_json::to_string(&report).ok().as_deref() != Some(text) {
+            return Err(InspectionIssue::Malformed(format!(
+                "agent_connections.verification_report_json for {} is not canonical JSON",
+                connection.connection_internal_id,
+            )));
+        }
+    }
     require_nonempty("agent_connections.created_at", &connection.created_at)?;
     require_nonempty("agent_connections.updated_at", &connection.updated_at)?;
     validate_json_object("agent_connections.metadata_json", &connection.metadata_json)?;
@@ -1076,22 +1068,6 @@ fn validate_connection_mode(mode: &str) -> Result<(), InspectionIssue> {
     }
 }
 
-fn validate_verification_status(status: &str) -> Result<(), InspectionIssue> {
-    if matches!(
-        status,
-        VERIFIED_STATUS_NOT_VERIFIED
-            | VERIFIED_STATUS_COMPLETE
-            | VERIFIED_STATUS_ACTION_REQUIRED
-            | VERIFIED_STATUS_FAILED
-    ) {
-        Ok(())
-    } else {
-        Err(InspectionIssue::Malformed(format!(
-            "agent_connections.last_verification_status is not supported: {status}"
-        )))
-    }
-}
-
 fn validate_storage_profile(
     database_kind: &'static str,
     storage_profile: &str,
@@ -1157,7 +1133,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent_connections::{HOST_KIND_CODEX, HOST_SCOPE_USER, VERIFIED_STATUS_COMPLETE},
+        agent_connections::{HOST_KIND_CODEX, HOST_SCOPE_USER},
         bootstrap::{
             initialize_runtime_home, register_project, ProjectRecord, ProjectRegistration,
             ACTIVE_PROJECT_STATUS,
@@ -1278,9 +1254,7 @@ mod tests {
                 mode,
                 enabled,
                 managed_fingerprint,
-                last_verification_status,
-                last_verification_report_json,
-                last_user_actions_json,
+                verification_report_json,
                 metadata_json,
                 created_at,
                 updated_at
@@ -1296,19 +1270,12 @@ mod tests {
                 'workflow',
                 1,
                 'fingerprint-inspected',
-                ?4,
-                '{}',
-                '[]',
+                NULL,
                 '{}',
                 't0',
                 't0'
             )",
-            params![
-                HOST_KIND_CODEX,
-                CONNECTION_INTENT_PERSONAL,
-                HOST_SCOPE_USER,
-                VERIFIED_STATUS_COMPLETE
-            ],
+            params![HOST_KIND_CODEX, CONNECTION_INTENT_PERSONAL, HOST_SCOPE_USER],
         )?;
         registry.execute(
             "INSERT INTO connection_projects (connection_internal_id, project_internal_id, created_at)

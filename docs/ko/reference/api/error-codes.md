@@ -117,8 +117,7 @@
 
 필수 세부사항:
 - 해당 도메인에는 [API 오류 세부사항](error-details.md#reason)의
-  `ToolError.details.reason` 값을 사용합니다. 영속 호스트 설정 `UserAction` decode 또는
-  검증 실패는 `persisted_user_actions_corrupt`를 사용합니다.
+  `ToolError.details.reason` 값을 사용합니다.
 
 <a id="errorcode-state-version-conflict"></a>
 ### `STATE_VERSION_CONFLICT`

@@ -548,9 +548,7 @@ impl McpFixture {
                 mode: mode.to_owned(),
                 enabled: existing.enabled,
                 managed_fingerprint: existing.managed_fingerprint,
-                last_verification_status: existing.last_verification_status,
-                last_verification_report_json: existing.last_verification_report_json,
-                last_user_actions_json: existing.last_user_actions_json,
+                verification_report_json: existing.verification_report_json,
                 metadata_json: existing.metadata_json,
             },
         )?;

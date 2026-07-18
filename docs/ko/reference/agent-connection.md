@@ -1,8 +1,8 @@
 # Agent Connection 참조
 
 이 문서는 최초 릴리스의 Agent Connection 계약을 정의합니다. 정확한
-`host_kind=codex` record 연결 표면, 정규 관리형 호스트 결속, 호스트 검증 영수증,
-Codex 어댑터와 Core의 경계를 담당합니다.
+`host_kind=codex` record 연결 표면, 정규 연결 검증 보고서, 정규 관리형 호스트 결속,
+호스트 검증 영수증, Codex 어댑터와 Core의 경계를 담당합니다.
 
 <a id="owns-and-does-not-own"></a>
 
@@ -12,11 +12,12 @@ Codex 어댑터와 Core의 경계를 담당합니다.
 
 - 허용하는 정확한 `host_kind`, integration profile, 연결 의도, 전송, 사용자 행동
   전달 경로, 플랫폼 환경 값
+- 정규 `ConnectionVerificationReport`, 닫힌 상태 값, 결정적 집계, 엄격한 인코딩,
+  보고서 부재 projection
 - `ManagedHostBinding` 필드, 정규 인코딩, digest 의미
 - `HostVerificationReceipt` 필드와 Core가 영수증을 소비하기 전에 수행하는 검증
 - Codex 어댑터의 탐색, 설치, 검증, repair, 제거 책임
 - Agent Connection 경계에서 정확한 Codex 아티팩트의 지원 가능 여부
-- 영속 호스트 설정 `UserAction` 값의 typed 처리
 
 이 문서는 아래 항목을 담당하지 않습니다.
 
@@ -44,7 +45,7 @@ Codex 어댑터와 Core의 경계를 담당합니다.
 
 | 표면 | 안정성 | 계약 |
 |---|---|---|
-| 최초 릴리스 값 집합, `PlatformEnvironment`, `ManagedHostBinding` 필드와 digest, `HostVerificationReceipt` 필드 | `stable` | 정확한 경계 계약입니다. |
+| 최초 릴리스 값 집합, `ConnectionVerificationReport`, `PlatformEnvironment`, `ManagedHostBinding` 필드와 digest, `HostVerificationReceipt` 필드 | `stable` | 정확한 경계 계약입니다. |
 | Codex 탐색, 관리 설치, 검증, repair, 제거, 설정 불일치 결과의 의미 | `stable` | 관찰 가능한 계약을 유지하면서 구현을 바꿀 수 있습니다. |
 | 어댑터 모듈, 파일시스템 helper, encoder, Store query helper | `internal` | 안정된 경계를 보존해야 하지만 공개 표면은 아닙니다. |
 | 사람이 읽는 검증, 저하 상태, repair 안내 | `diagnostic` | Machine-readable 범주, 사유, typed 필드가 권위 있는 값입니다. |
@@ -78,6 +79,69 @@ Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록
 사용자 소유 행동은 CLI inbox로 전달합니다. 에이전트 대상 MCP 연결은 담당 문서가
 정의한 행동을 요청할 수 있지만, 로컬 사용자 채널로 동작하거나 사용자를 대신해 그
 행동을 해결할 수 없습니다.
+
+<a id="connection-verification-report"></a>
+
+## `ConnectionVerificationReport`
+
+작은 보고서 하나가 정규 직렬화 연결 검증 상태입니다. 정확한 닫힌 형태는 다음과
+같습니다.
+
+```yaml
+ConnectionVerificationReport:
+  status: complete | action_required | failed
+  checked_at: UtcTimestamp
+  checks: ConnectionCheck[]
+  actions: ConnectionAction[]
+
+ConnectionCheck:
+  id: ConnectionCheckId
+  status: passed | pending | failed
+  code: string | null
+  summary: string
+  details: object | null
+  observed_at: UtcTimestamp | null
+
+ConnectionAction:
+  id: string
+  instruction: string
+  command: string | null
+```
+
+Nullable 구성원과 배열을 포함해 표시한 모든 구성원은 필수입니다. 알 수 없는 구성원,
+중복 JSON key, 중복 check ID, 중복 action ID, 비정규 순서, 알 수 없는 상태 값은
+유효하지 않습니다. Check ID, action ID, null이 아닌 check code는 ASCII 1~128
+byte이고 `[a-z][a-z0-9_]*`와 일치해야 합니다. `summary`, `instruction`, null이
+아닌 `command`는 UTF-8 1~4,096 byte이고 NUL을 포함하지 않습니다. Null이 아닌
+`details`는 직렬화 형태가 최대 16 KiB인 JSON 객체입니다. 보고서는 check를 최대
+64개, action을 최대 32개 포함하며 직렬화 형태는 최대 64 KiB입니다.
+
+Check는 `id`의 UTF-8 byte 오름차순으로 정렬합니다. Action도 `id`를 기준으로 같은
+순서를 사용합니다. Producer는 이 순서를 결정적으로 구성합니다. 엄격한 decoding은
+다른 순서의 저장 또는 외부 보고서를 조용히 정규화하지 않고 거부합니다.
+
+보고서의 모든 check는 그 보고서에 필수입니다. 최상위 상태는 check에서 파생되며 서로
+불일치할 수 없습니다.
+
+1. `failed` check가 하나라도 있으면 `status=failed`입니다.
+2. 그렇지 않고 `pending` check가 하나라도 있으면 `status=action_required`입니다.
+3. 그렇지 않으면 `status=complete`입니다.
+
+`dry_run`은 작업 모드이며 연결 상태나 check 상태가 아닙니다. 설정 일치, 실행 파일
+가용성, protocol 및 host version, capability 관찰, 관찰 timestamp는 check
+사실입니다. 이 사실은 `code`, `details`, `observed_at`에 두며 별도의 공개 또는 영속
+상태 enum을 만들지 않습니다.
+
+연결 검증에서 나온 사용자 지시는 이 보고서 안의 `actions`에만 둡니다. Registry
+저장소는 독립된 검증 상태나 action 배열을 저장하지 않습니다. 완료된 영속 보고서가
+없는 연결은 `verification_not_run` pending check 하나와 명확한 검증 action 하나를
+포함하는 합성 `status=action_required` 보고서로 projection합니다. 이 projection의
+`checked_at`은 projection 시각이고 check의 `observed_at`은 null입니다. 읽었다는
+이유만으로 합성 보고서를 쓰지는 않습니다.
+
+운영 호환성은 어댑터가 실제로 수행한 check와 관찰한 host 동작에서 보고합니다.
+`complete`는 정확한 host artifact의 release certification, 운영체제 집행, 행위자
+identity 증명, correctness 증명, 조작 방지 기록을 뜻하지 않습니다.
 
 <a id="external-contract-linkage"></a>
 
@@ -456,32 +520,6 @@ Core는 typed 영수증만 소비하며 영수증에 의존하는 동작을 진�
 영수증을 오래된 상태로 만듭니다. WSL2 재시작 동작은
 [시스템 요구사항](system-requirements.md#wsl2-topology)이 정의합니다. Core는
 유효하지 않은 영수증을 보정하려고 호스트 파일이나 실행 파일을 다시 조사하지 않습니다.
-
-<a id="persisted-host-setup-user-actions"></a>
-
-## 영속 호스트 설정 `UserAction` 값
-
-호스트 설정은 연결 상태 및 repair 안내에 사용할 typed 설정 행동 배열을 영속 저장할 수
-있습니다. 이 배열은 진단용 연결 상태이며 Core `UserActionRequest`,
-`UserActionResolution`, policy decision, 권한 기록이 아닙니다.
-
-완전한 닫힌 `UserAction` type을 쓰기 전과 읽은 뒤 모두 검증합니다.
-
-- 유효한 `[]`은 현재 호스트 설정 행동이 없다는 뜻입니다.
-- 문법 오류, 배열이 아닌 값, 알 수 없는 행동 variant, 필수 필드 누락, 유효하지 않은
-  payload를 `[]`로 변환하지 않습니다.
-- 읽기 경로는 호스트별 기본 행동을 합성하지 않습니다.
-- 기본 행동이 필요하면 어댑터가 영속 저장 전에 계산하고 검증합니다.
-- 손상된 영속 데이터는 범주 `corrupt`와 machine-readable reason
-  `persisted_user_actions_corrupt`로 보고합니다.
-- 연결의 핵심 관리 결속을 계속 사용할 수 있으면 연결 상태는 machine-readable
-  `degraded`이며 사용할 수 없는 설정 안내를 식별합니다.
-- 손상된 행동 데이터에 의존하는 동작은 fail-closed합니다.
-- 명시적인 verify 또는 repair 흐름은 현재 typed 값을 다시 생성할 수 있습니다.
-
-일반 읽기는 값을 repair, migration, 추정, 교체하지 않습니다.
-[실패 모델](failure-model.md)이 `Corrupt` 데이터와 `Degraded` 연결 projection의
-차이를 담당합니다.
 
 <a id="threat-model"></a>
 

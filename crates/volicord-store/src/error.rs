@@ -63,8 +63,6 @@ pub enum StoreError {
         database_kind: &'static str,
         field: &'static str,
     },
-    /// Persisted Agent Connection host-setup actions violate their closed type.
-    PersistedUserActionsCorrupt { connection_internal_id: String },
     /// A database uses a storage profile that this build does not support.
     UnsupportedStorageProfile {
         database_kind: &'static str,
@@ -306,15 +304,6 @@ impl StoreError {
                 field: Some(field),
                 owner_state_error: None,
             },
-            Self::PersistedUserActionsCorrupt { .. } => StoreFailureClassification {
-                route: StoreFailureRoute::PersistedDataCorrupt,
-                category: "persisted_user_actions_corrupt",
-                retryable: false,
-                database_kind: Some("registry"),
-                entity: Some("agent_connection"),
-                field: Some("last_user_actions_json"),
-                owner_state_error: None,
-            },
             Self::UnsupportedStorageProfile { database_kind, .. } => StoreFailureClassification {
                 route: StoreFailureRoute::UnsupportedContract,
                 category: "unsupported_storage_profile",
@@ -541,12 +530,6 @@ impl fmt::Display for StoreError {
                 formatter,
                 "stored field {field} has an unsupported value in {database_kind}"
             ),
-            Self::PersistedUserActionsCorrupt {
-                connection_internal_id,
-            } => write!(
-                formatter,
-                "persisted_user_actions_corrupt for Agent Connection {connection_internal_id}"
-            ),
             Self::UnsupportedStorageProfile {
                 database_kind,
                 actual_storage_profile,
@@ -588,7 +571,6 @@ impl Error for StoreError {
             | Self::CorruptOwnerStateJson { .. }
             | Self::CorruptOwnerStateValue { .. }
             | Self::CorruptStoredValue { .. }
-            | Self::PersistedUserActionsCorrupt { .. }
             | Self::UnsupportedStorageProfile { .. }
             | Self::UnsupportedExternalContract { .. }
             | Self::SchemaInvariant { .. } => None,
