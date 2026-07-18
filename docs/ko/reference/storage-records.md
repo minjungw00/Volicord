@@ -54,8 +54,8 @@ Registry 기록에는 다음이 포함됩니다.
   producer
 - `UserActionRequest`, immutable `UserActionResolution`, project continuity
 - 조정에 쓰는 expected write, Guard 관찰, prompt 관찰, unrecorded change
-- Registry runtime session을 참조하고 host session/thread/latest-turn 상관관계와 현재
-  프로젝트 통합 revision을 보관하는 프로젝트 Agent Session
+- Registry runtime binding보다 먼저 생길 수 있고 host session/thread/latest-turn 상관관계,
+  최초/마지막 관찰, 현재 프로젝트 통합 revision을 보관하는 프로젝트 Agent Session
 
 Prompt 관련 Guard 기록은 관찰일 뿐입니다. UserAction resolution, 사용자 답,
 verification basis, 권한 출처가 아닙니다.
@@ -81,14 +81,26 @@ protocol failure, graceful close를 기록합니다. 권위 있는 Store 쓰기�
 성공을 내보내지 않습니다. Best-effort diagnostics는 분리되어 있으며 정상적인 도구 결과를
 실패시킬 수 없습니다.
 
-프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 runtime
-session 하나와 Connection을 이름 붙이고, 현재 workflow-policy fingerprint와 Guard
-ownership pair를 더한 프로젝트 통합 revision을 보관하며, workflow와 Guard 상관관계에
-필요한 host session, thread, latest turn만 유지합니다. 복합 프로젝트 foreign key는
-하위 Guard row가 session을 다른 Connection과 조합하지 못하게 합니다. 분리된 SQLite
-데이터베이스 사이에는 foreign key를 만들 수 없으므로 Registry의
-`mcp_runtime_project_session_bindings`가 uniqueness 경계를 제공하며 runtime/host session
-하나를 다른 프로젝트에서 재사용하지 못하게 합니다.
+프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 Connection을
+이름 붙이고 현재 workflow-policy fingerprint와 Guard ownership pair를 더한 프로젝트 통합
+revision을 보관하며, workflow와 Guard 상관관계에 필요한 결정적 Connection-bound session
+ID, host session, thread, latest turn, 최초/마지막 관찰을 유지합니다. Guard 관찰은
+`runtime_session_id=NULL`인 row를 만들 수 있습니다. 빈 값, sentinel, 조작한 runtime,
+CLI-preflight runtime으로 이 상태를 나타내지 않습니다. 복합 프로젝트 foreign key는 하위
+Guard row가 session을 다른 Connection과 조합하지 못하게 합니다.
+
+동일한 host session의 첫 실제 managed MCP 도구 호출은 Registry
+`mcp_runtime_project_session_bindings`를 예약한 다음 runtime을 프로젝트 row에 붙입니다.
+분리된 SQLite 데이터베이스 사이에는 foreign key를 만들 수 없으므로 Registry 예약이
+uniqueness 경계를 제공합니다. 예약 뒤 attach 전에 중단된 경우를 포함해 정확한 replay는
+멱등이고 runtime, Connection, 프로젝트, host-session claim이 다르면 실패합니다. 프로젝트의
+partial index는 null이 아닌 runtime attach를 유일하게 만들면서 Guard-first unbound session은
+여러 개 허용합니다.
+
+현재 Registry binding과 정확히 일치하는 attached 프로젝트 row만 Core를 승인할 수
+있습니다. Unbound row는 Guard event와 prompt capture를 보관할 수 있습니다. Runtime row
+자체는 process의 이력 관찰이므로 crash한 row가 열린 것처럼 남거나 현재 row 여러 개가
+동시에 존재해도 Guard 상관관계를 막거나 대신 선택되지 않습니다.
 
 Runtime 권한은 이 현재 기록을 직접 읽습니다. 활성 Connection, 현재 Connection Project
 membership, 그 Connection의 `session_source=managed_host` runtime session, 같은 runtime

@@ -20,9 +20,13 @@ use support::binary_fixture::{run_child, ChildStdin};
 use volicord_store::inspection::{
     inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot,
 };
-use volicord_store::operational_sessions::latest_current_managed_runtime_session;
+use volicord_store::operational_sessions::{
+    latest_current_managed_runtime_session, start_mcp_runtime_session, McpRuntimeSessionStart,
+};
 use volicord_test_support::TempRuntimeHome;
-use volicord_types::{guard_manifest_from_json, GuardHookPhase, GuardManifest};
+use volicord_types::{
+    guard_manifest_from_json, GuardHookPhase, GuardManifest, McpRuntimeSessionSource,
+};
 
 const FUTURE_VERSION: &str = "999.0.0";
 const NEXT_FUTURE_VERSION: &str = "1000.0.0";
@@ -154,6 +158,19 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     let manifest = guard_manifest_from_json(&snapshot.guard_installations[0].manifest_json)?;
     assert_current_guard_projection(&fixture, &manifest)?;
 
+    let abandoned = start_mcp_runtime_session(
+        &fixture.runtime_home,
+        McpRuntimeSessionStart {
+            connection_internal_id: connection_id.clone(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: Some(FUTURE_VERSION.to_owned()),
+            process_id: 4242,
+            process_started_at: "2000-01-01T00:00:00Z".to_owned(),
+        },
+    )?;
+    assert!(abandoned.terminal_protocol_failure_code.is_none());
+    assert!(abandoned.graceful_close_at.is_none());
+
     fixture.run_successful_managed_mcp_with_guard(
         &connection_id,
         &project_id,
@@ -215,6 +232,15 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
         NEXT_FUTURE_VERSION,
         NATIVE_SESSION_1000,
     )?;
+    fixture.run_current_guard_phases(&manifest, NATIVE_SESSION_1000)?;
+    let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
+    let runtime_after_guard: Option<String> = project_state.query_row(
+        "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
+        [NATIVE_SESSION_1000],
+        |row| row.get(0),
+    )?;
+    assert!(runtime_after_guard.is_some());
+    drop(project_state);
     let completed_again = fixture.run_connection("status", NEXT_FUTURE_VERSION, true)?;
     assert_connection_report(&completed_again, 0, "status", "complete")?;
 
@@ -550,8 +576,42 @@ impl OperationalFixture {
             initialize_request(version),
             initialized_notification(),
             tools_list_request(),
-            managed_tool_call(3, "volicord.list_projects", json!({}), native_session),
         ])?)?;
+        let started = Instant::now();
+        loop {
+            if latest_current_managed_runtime_session(&self.runtime_home, connection_id)?
+                .is_some_and(|session| session.tools_list_observed_at.is_some())
+            {
+                break;
+            }
+            if started.elapsed() >= Duration::from_secs(10) {
+                return Err("managed MCP tools/list was not recorded before timeout".into());
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        self.run_current_guard_phases(manifest, native_session)?;
+        let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
+        let unbound_runtime: Option<String> = project_state.query_row(
+            "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
+            [native_session],
+            |row| row.get(0),
+        )?;
+        assert!(unbound_runtime.is_none());
+        let guard_history_before: (i64, i64) = (
+            project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?,
+            project_state
+                .query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row.get(0))?,
+        );
+        assert!(guard_history_before.0 > 0);
+        assert!(guard_history_before.1 > 0);
+        drop(project_state);
+
+        child.write(&json_lines(&[managed_tool_call(
+            3,
+            "volicord.list_projects",
+            json!({}),
+            native_session,
+        )])?)?;
         let started = Instant::now();
         loop {
             if latest_current_managed_runtime_session(&self.runtime_home, connection_id)?
@@ -564,13 +624,32 @@ impl OperationalFixture {
             }
             thread::sleep(Duration::from_millis(10));
         }
-        self.run_current_guard_phases(manifest, native_session)?;
         let output = child.finish()?;
         assert_eq!(output.status.code(), Some(0));
         assert!(output.stderr.is_empty());
         let responses = json_rpc_responses(&output.stdout)?;
         assert_eq!(responses.len(), 3);
         assert_eq!(responses[2]["result"]["isError"], false);
+        let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
+        let bound_runtime: Option<String> = project_state.query_row(
+            "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
+            [native_session],
+            |row| row.get(0),
+        )?;
+        assert!(
+            bound_runtime.is_some(),
+            "successful managed tool response did not attach Agent Session: {responses:?}"
+        );
+        assert_eq!(
+            project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row
+                .get::<_, i64>(0))?,
+            guard_history_before.0
+        );
+        assert_eq!(
+            project_state.query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row
+                .get::<_, i64>(0))?,
+            guard_history_before.1
+        );
         Ok(())
     }
 

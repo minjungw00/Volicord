@@ -4,12 +4,14 @@ use rusqlite::params;
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::{
     agent_connections::{set_connection_enabled, set_connection_mode, CONNECTION_MODE_READ_ONLY},
+    guards::{upsert_agent_session, AgentSessionUpsert},
     operational_sessions::{start_mcp_runtime_session, McpRuntimeSessionStart},
+    sqlite::registry_db_path,
 };
 use volicord_test_support::{core_fixtures::CoreFixture, seed_test_agent_session};
 use volicord_types::{
-    ActorSource, AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, McpRuntimeSessionSource,
-    OperationCategory, ProjectId,
+    managed_stdio_session_id, ActorSource, AgentConnectionId, AgentRuntimeSessionId,
+    AgentSessionId, FailureCategory, McpRuntimeSessionSource, OperationCategory, ProjectId,
 };
 
 #[test]
@@ -257,7 +259,7 @@ fn cli_preflight_and_invented_project_session_coordinates_never_authorize(
             session_source: McpRuntimeSessionSource::CliPreflight,
             observed_host_executable_version: Some("future-host-9999.0".to_owned()),
             process_id: std::process::id(),
-            process_started_at: observed_at,
+            process_started_at: observed_at.clone(),
         },
     )?;
     let error = CoreService::new(fixture.runtime_home_path())
@@ -270,5 +272,94 @@ fn cli_preflight_and_invented_project_session_coordinates_never_authorize(
         )
         .expect_err("CLI preflight and invented session coordinates cannot authorize");
     assert_eq!(error.reason(), "agent_runtime_session_not_current");
+    Ok(())
+}
+
+#[test]
+fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("core-agent-session-guard-first")?;
+    let host_session = "host.session.guard-first";
+    let project_session_id = managed_stdio_session_id(fixture.connection_id(), host_session)?;
+    let observed_at = fixture.store()?.current_timestamp()?;
+    let input = |runtime_session_id| AgentSessionUpsert {
+        session_id: project_session_id.clone(),
+        runtime_session_id,
+        connection_internal_id: fixture.connection_id().to_owned(),
+        guard_installation_id: None,
+        host_session_id: host_session.to_owned(),
+        host_thread_id: "host.thread.guard-first".to_owned(),
+        host_turn_id: "host.turn.guard-first".to_owned(),
+        observed_at: observed_at.clone(),
+    };
+    upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        input(None),
+    )?;
+    let runtime = start_mcp_runtime_session(
+        fixture.runtime_home_path(),
+        McpRuntimeSessionStart {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: None,
+            process_id: std::process::id(),
+            process_started_at: observed_at.clone(),
+        },
+    )?;
+    let service = CoreService::new(fixture.runtime_home_path());
+    let error = service
+        .validate_agent_session(
+            AgentConnectionId::new(fixture.connection_id()),
+            ProjectId::new(fixture.project_id()),
+            AgentRuntimeSessionId::new(&runtime.runtime_session_id),
+            AgentSessionId::new(&project_session_id),
+            OperationCategory::Read,
+        )
+        .expect_err("an unbound Guard-created session cannot authorize");
+    assert_eq!(error.reason(), "agent_project_session_unbound");
+
+    upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        input(Some(runtime.runtime_session_id.clone())),
+    )?;
+    service.validate_agent_session(
+        AgentConnectionId::new(fixture.connection_id()),
+        ProjectId::new(fixture.project_id()),
+        AgentRuntimeSessionId::new(runtime.runtime_session_id),
+        AgentSessionId::new(project_session_id),
+        OperationCategory::Read,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn mismatched_registry_host_session_binding_fails_closed() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("core-agent-session-registry-host-mismatch")?;
+    let session = seed_test_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        None,
+    )?;
+    let registry = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
+    registry.execute(
+        "UPDATE mcp_runtime_project_session_bindings
+            SET host_session_id = 'host.session.conflicting'
+          WHERE session_id = ?1",
+        [session.project_session_id.as_str()],
+    )?;
+    let error = CoreService::new(fixture.runtime_home_path())
+        .validate_agent_session(
+            AgentConnectionId::new(fixture.connection_id()),
+            ProjectId::new(fixture.project_id()),
+            session.runtime_session_id,
+            session.project_session_id,
+            OperationCategory::Read,
+        )
+        .expect_err("a mismatched Registry host session must not authorize");
+    assert_eq!(error.reason(), "agent_session_authority_unavailable");
+    assert_eq!(error.category(), FailureCategory::Corrupt);
     Ok(())
 }

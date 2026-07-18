@@ -20,8 +20,8 @@ use volicord_store::{
         WorkflowMetricDecision, WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     },
     guards::{
-        agent_session, guard_event, guard_installation, insert_agent_session, insert_guard_event,
-        AgentSessionInsert, GuardEventInsert,
+        agent_session, guard_event, guard_installation, insert_guard_event, upsert_agent_session,
+        AgentSessionUpsert, GuardEventInsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
@@ -185,7 +185,7 @@ where
             });
         }
     }
-    ensure_required_session(&runtime_home, &project, &envelope, phase)?;
+    ensure_required_session(&runtime_home, &project, &envelope)?;
     if phase == GuardPhase::PromptCapture {
         let _ = start_guard_diagnostic_session_best_effort(&runtime_home, &project, &envelope);
     }
@@ -712,42 +712,24 @@ fn ensure_required_session(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    phase: GuardPhase,
 ) -> Result<(), GuardCommandError> {
     let Some(session_id) = envelope.session_id.as_deref() else {
         return Ok(());
     };
-    if agent_session(runtime_home, &project.project_id, session_id)?.is_some() {
-        validate_existing_connection_session_binding(runtime_home, project, envelope)?;
-        return Ok(());
-    }
-    if phase == GuardPhase::PromptCapture || envelope.session_id.is_some() {
-        let runtime_session =
-            volicord_store::operational_sessions::single_open_current_managed_runtime_session(
-                runtime_home,
-                &envelope.connection_id,
-            )?
-            .ok_or_else(|| {
-                GuardCommandError::Runtime(
-                    "managed Guard event requires one open current managed MCP runtime session"
-                        .to_owned(),
-                )
-            })?;
-        insert_agent_session(
-            runtime_home,
-            &project.project_id,
-            AgentSessionInsert {
-                session_id: session_id.to_owned(),
-                runtime_session_id: runtime_session.runtime_session_id,
-                connection_internal_id: envelope.connection_id.clone(),
-                guard_installation_id: envelope.guard_installation_id.clone(),
-                host_session_id: envelope.host_session_id.clone(),
-                host_thread_id: envelope.host_thread_id.clone(),
-                host_turn_id: envelope.host_turn_id.clone(),
-                observed_at: envelope.occurred_at.clone(),
-            },
-        )?;
-    }
+    upsert_agent_session(
+        runtime_home,
+        &project.project_id,
+        AgentSessionUpsert {
+            session_id: session_id.to_owned(),
+            runtime_session_id: None,
+            connection_internal_id: envelope.connection_id.clone(),
+            guard_installation_id: envelope.guard_installation_id.clone(),
+            host_session_id: envelope.host_session_id.clone(),
+            host_thread_id: envelope.host_thread_id.clone(),
+            host_turn_id: envelope.host_turn_id.clone(),
+            observed_at: envelope.occurred_at.clone(),
+        },
+    )?;
     Ok(())
 }
 

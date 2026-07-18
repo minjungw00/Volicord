@@ -807,7 +807,9 @@ CREATE INDEX idx_authority_events_hash_chain
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
-  runtime_session_id TEXT NOT NULL,
+  runtime_session_id TEXT CHECK (
+    runtime_session_id IS NULL OR length(trim(runtime_session_id)) > 0
+  ),
   connection_internal_id TEXT NOT NULL,
   project_integration_revision TEXT NOT NULL CHECK (
     length(project_integration_revision) = 71
@@ -817,12 +819,11 @@ CREATE TABLE agent_sessions (
   host_session_id TEXT NOT NULL CHECK (length(trim(host_session_id)) > 0),
   host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
   last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
-  started_at TEXT NOT NULL,
+  first_observed_at TEXT NOT NULL,
   last_observed_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id),
   UNIQUE (project_id, session_id, connection_internal_id),
-  UNIQUE (project_id, runtime_session_id, host_session_id),
-  CHECK (last_observed_at >= started_at),
+  CHECK (last_observed_at >= first_observed_at),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
@@ -910,6 +911,9 @@ CREATE TABLE unrecorded_changes (
 
 CREATE INDEX idx_agent_sessions_connection
   ON agent_sessions (project_id, connection_internal_id);
+CREATE UNIQUE INDEX idx_agent_sessions_runtime_binding
+  ON agent_sessions (project_id, runtime_session_id)
+  WHERE runtime_session_id IS NOT NULL;
 CREATE INDEX idx_agent_sessions_runtime_revision
   ON agent_sessions (project_id, runtime_session_id, project_integration_revision, last_observed_at);
 CREATE INDEX idx_guard_events_session

@@ -59,9 +59,9 @@ Project-state records include:
 - `UserActionRequest`, immutable `UserActionResolution`, and project continuity;
 - expected writes, Guard observations, prompt observations, and unrecorded
   changes used by reconciliation;
-- project Agent Sessions that reference a Registry runtime session, retain
-  host session/thread/latest-turn correlation, and carry the current project
-  integration revision.
+- project Agent Sessions that may precede their Registry runtime binding,
+  retain host session/thread/latest-turn correlation plus first/last
+  observations, and carry the current project integration revision.
 
 Prompt-related Guard records are observations only. They are not a UserAction
 resolution, user answer, verification basis, or authority source.
@@ -91,14 +91,29 @@ Store write fails. Best-effort diagnostics remain separate and cannot make an
 otherwise valid tool result fail.
 
 Project `agent_sessions` are the project-local correlation projection. Each
-row names one runtime session and Connection, carries a project integration
-revision that adds the current workflow-policy fingerprint and Guard ownership
-pair, and keeps only the host session, thread, and latest turn needed for
-workflow and Guard correlation. Composite project foreign keys prevent a
-downstream Guard row from pairing a session with another Connection. Registry
-`mcp_runtime_project_session_bindings` supplies the uniqueness boundary that a
-foreign key cannot express across separate SQLite databases, so one
-runtime/host session cannot be reused for another project.
+row names one Connection, carries a project integration revision that adds the
+current workflow-policy fingerprint and Guard ownership pair, and keeps the
+deterministic Connection-bound session ID, host session, thread, latest turn,
+and first/last observations needed for workflow and Guard correlation. A Guard
+observation can create the row with `runtime_session_id=NULL`; no empty,
+sentinel, fabricated, or CLI-preflight runtime represents that state.
+Composite project foreign keys prevent a downstream Guard row from pairing a
+session with another Connection.
+
+The first actual managed MCP tool call for the same host session reserves
+Registry `mcp_runtime_project_session_bindings` and then attaches the runtime
+to the project row. The Registry reservation supplies the uniqueness boundary
+that a foreign key cannot express across separate SQLite databases. Exact
+replay is idempotent, including recovery after reservation but before attach;
+conflicting runtime, Connection, project, or host-session claims fail. A
+partial project index makes non-null runtime attachment unique while allowing
+any number of unbound Guard-first sessions.
+
+Only an attached project row with an exact current Registry binding can
+authorize Core. Unbound rows can retain Guard events and prompt captures.
+Runtime rows themselves are historical process observations: a crashed row
+may remain apparently open, and concurrent current rows may coexist without
+blocking or selecting Guard correlation.
 
 Runtime authorization reads these current records directly. It accepts only an
 enabled Connection, a current Connection Project membership, a

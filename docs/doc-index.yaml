@@ -1665,8 +1665,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -1704,8 +1704,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2521,7 +2521,7 @@ documents:
   - canonical project time-floor and commit timestamp relationships
   - Agent Connection, project membership, and Codex binding records
   - single nullable canonical Agent Connection verification report persistence
-  - authoritative MCP runtime sessions, integration revisions, and project session ownership
+  - authoritative MCP runtime sessions, integration revisions, unbound Guard-first project sessions, and runtime attachment ownership
   - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
   - strict UserAction request and immutable CLI resolution records
@@ -2675,7 +2675,7 @@ documents:
   - typed integration revisions and authoritative managed-host operational-session evidence
   - exact `PlatformEnvironment` value set and independent WSL2 identity
   - pinned WSL2 distribution identity and filesystem boundary
-  - exact `ValidatedAgentSession` fields and ten current Connection/project/session authorization invariants
+  - exact `ValidatedAgentSession` fields and current Connection/project/session authorization invariants
   - Codex discovery, install, verify, repair, uninstall, drift, launch-context, and diagnostic responsibilities
   - deterministic connection/session/revision audit basis without executable identity inputs
   - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge

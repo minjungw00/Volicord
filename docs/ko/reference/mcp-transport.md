@@ -88,6 +88,12 @@ trip으로 `volicord.list_projects`를 호출합니다. 이 process는 server �
 그 lifecycle 사실은 `managed_host` 운영 check를 충족하거나 Connection 호출을 승인할 수
 없습니다.
 
+Runtime row는 process launch의 영속 관찰이지 liveness 기록이 아닙니다. Terminal failure나
+graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보이는 row를 남길 수
+있습니다. 그 row는 이력 evidence로 남지만 이후 Guard event의 상관관계를 위해 선택하지
+않습니다. 여러 managed process가 동시에 존재하면서 서로 다른 host session에 결속할 수
+있습니다.
+
 협상한 protocol version은 권위 있는 protocol data입니다. `clientInfo` name/version과
 관찰한 host 실행 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며
 client identity, host identity, compatibility, allowlist membership을 증명하지 않습니다.
@@ -95,13 +101,22 @@ Session은 실제로 기록한 협력적 protocol 동작만 증명합니다.
 
 ## 호출별 Session 권한
 
+유효한 Guard 관찰은 MCP runtime을 아직 모르는 상태에서 프로젝트 `agent_sessions` row를
+생성하거나 갱신할 수 있습니다. 이 row에는 조작한 값이나 sentinel runtime 좌표를 저장하지
+않습니다. 동일한 Connection-bound host session identity를 운반한 첫 실제 managed
+`tools/call`이 정확한 Registry runtime/project/host-session binding을 예약하고 그 runtime을
+프로젝트 row에 붙입니다. 예약 뒤 프로젝트 쓰기가 중단되어도 동일한 호출을 재실행하면
+attach를 안전하게 완료할 수 있습니다. CLI preflight는 이 binding을 수행하지 않습니다.
+
 프로젝트 도구의 Core 호출 맥락을 만들기 전에 어댑터는 권위 있는 현재 Registry runtime
-session과 프로젝트 `agent_sessions` row를 검증합니다. Connection이 존재하고 활성
-상태여야 하며 프로젝트가 존재하고 Connection Project로 남아 있어야 합니다. Runtime
-session은 해당 Connection 소유의 `managed_host` session이어야 합니다. 프로젝트 session은
-그 runtime session, Connection, 프로젝트에 속해야 합니다. 두 통합 revision은 현재
-Connection과 프로젝트 입력에 일치해야 하며 현재 Connection mode가 요청한 operation
-category를 허용해야 합니다.
+session, 정확한 `mcp_runtime_project_session_bindings` row, 프로젝트 `agent_sessions` row를
+검증합니다. Connection이 존재하고 활성 상태여야 하며 프로젝트가 존재하고 Connection
+Project로 남아 있어야 합니다. Runtime session은 해당 Connection 소유의 현재
+`managed_host` session이어야 합니다. 프로젝트 session은 null이 아닌 runtime binding을
+가지고 동일한 runtime, Connection, 프로젝트, host session에 속해야 합니다. 두 통합
+revision은 현재 Connection과 프로젝트 입력에 일치해야 하며 현재 Connection mode가 요청한
+operation category를 허용해야 합니다. 결속되지 않은 Guard-only session은 Guard 이력을
+보관하지만 도구 호출을 승인할 수 없습니다.
 
 Core는 직렬화할 수 없는 `ValidatedAgentSession` 하나를 받습니다. Connection ID는
 `ActorSource::AgentConnection`과 정확히 같아야 하며 project ID는 모든 프로젝트 범위

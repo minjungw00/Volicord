@@ -25,7 +25,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 37);
     assert_eq!(metadata.columns.len(), 481);
-    assert_eq!(metadata.indexes.len(), 63);
+    assert_eq!(metadata.indexes.len(), 64);
     assert_eq!(metadata.constraints.len(), 37);
     let agent_connection_columns = metadata
         .columns
@@ -38,6 +38,29 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert!(agent_connection_columns.contains(&"verification_report_json"));
     assert!(!agent_connection_columns.contains(&"last_verification_status"));
     assert!(!agent_connection_columns.contains(&"last_user_actions_json"));
+    let agent_session_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::ProjectState && column.table == "agent_sessions"
+        })
+        .collect::<Vec<_>>();
+    assert!(agent_session_columns
+        .iter()
+        .any(|column| column.name == "runtime_session_id" && !column.not_null));
+    assert!(agent_session_columns
+        .iter()
+        .any(|column| column.name == "first_observed_at" && column.not_null));
+    assert!(!agent_session_columns
+        .iter()
+        .any(|column| column.name == "started_at"));
+    assert!(metadata.indexes.iter().any(|index| {
+        index.database == StorageDatabaseKind::ProjectState
+            && index.table == "agent_sessions"
+            && index.name == "idx_agent_sessions_runtime_binding"
+            && index.unique
+            && index.partial
+    }));
     for database in [
         StorageDatabaseKind::Registry,
         StorageDatabaseKind::ProjectState,
@@ -59,11 +82,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:fb07028d7c2d8617b183352bfdab8861c5a5c8dd3ca02acd40f9bbc0eaf9509c"
+        "sha256:57b07a6589c7f6c0ef97a4b3fe5aeaccc124abc7ad21a290c13634a27057176d"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:fc41b9b69b373ca09deaa8e60e7067c796bb71f825c3743b1ec24d260310e5f1"
+        "sha256:f0a91ebbff6aea4a01ee2bda4bde7f5e19f9bbcd2b326bb9ad74198987811c18"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -97,12 +120,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:fb07028d7c2d8617b183352bfdab8861c5a5c8dd3ca02acd40f9bbc0eaf9509c\",",
+            "{\"canonical_ddl_digest\":\"sha256:57b07a6589c7f6c0ef97a4b3fe5aeaccc124abc7ad21a290c13634a27057176d\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:fc41b9b69b373ca09deaa8e60e7067c796bb71f825c3743b1ec24d260310e5f1\"}"
+            "\"integrity_constraints_digest\":\"sha256:f0a91ebbff6aea4a01ee2bda4bde7f5e19f9bbcd2b326bb9ad74198987811c18\"}"
         )
     );
     Ok(())

@@ -8,13 +8,15 @@ use volicord_store::{
     },
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
-    guards::{insert_agent_session, AgentSessionInsert},
+    guards::{agent_session, upsert_agent_session, AgentSessionUpsert},
     operational_sessions::{
-        current_managed_mcp_runtime_session_for_connection, latest_current_managed_runtime_session,
+        bind_mcp_runtime_project_session, current_managed_mcp_runtime_session_for_connection,
+        current_managed_runtime_sessions, latest_current_managed_runtime_session,
         latest_managed_runtime_session, latest_successful_managed_runtime_session,
-        mcp_runtime_session, record_mcp_initialize, record_mcp_initialized_notification,
-        record_mcp_safe_read_only_tool_call, record_mcp_terminal_protocol_failure,
-        record_mcp_tools_list, start_mcp_runtime_session, McpRuntimeSessionStart,
+        mcp_runtime_project_session_binding, mcp_runtime_session, record_mcp_initialize,
+        record_mcp_initialized_notification, record_mcp_safe_read_only_tool_call,
+        record_mcp_terminal_protocol_failure, record_mcp_tools_list, start_mcp_runtime_session,
+        McpRuntimeSessionStart,
     },
 };
 use volicord_test_support::core_fixtures::CoreFixture;
@@ -188,6 +190,25 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
         Some("protocol_eof")
     );
     assert!(fatal_record.graceful_close_at.is_none());
+
+    let completed_then_terminal = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    complete(&fixture, &completed_then_terminal, true)?;
+    record_mcp_terminal_protocol_failure(
+        fixture.runtime_home_path(),
+        &completed_then_terminal,
+        "later_transport_failure",
+        None,
+        "2026-07-18T00:00:05Z",
+    )?;
+    assert_eq!(
+        latest_successful_managed_runtime_session(
+            fixture.runtime_home_path(),
+            fixture.connection_id()
+        )?
+        .expect("completed milestones remain valid evidence")
+        .runtime_session_id,
+        completed_then_terminal
+    );
     Ok(())
 }
 
@@ -231,12 +252,12 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
         },
     )?;
     let other_host_session = "host.session.other";
-    assert!(insert_agent_session(
+    assert!(upsert_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        AgentSessionInsert {
+        AgentSessionUpsert {
             session_id: managed_stdio_session_id(other_connection, other_host_session)?,
-            runtime_session_id: runtime.clone(),
+            runtime_session_id: Some(runtime.clone()),
             connection_internal_id: other_connection.to_owned(),
             guard_installation_id: None,
             host_session_id: other_host_session.to_owned(),
@@ -291,9 +312,9 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
     let runtime_session_id = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session_id = "host.session.shared";
     let session_id = managed_stdio_session_id(fixture.connection_id(), host_session_id)?;
-    let input = |turn: &str| AgentSessionInsert {
+    let input = |turn: &str| AgentSessionUpsert {
         session_id: session_id.clone(),
-        runtime_session_id: runtime_session_id.clone(),
+        runtime_session_id: Some(runtime_session_id.clone()),
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
         host_session_id: host_session_id.to_owned(),
@@ -301,15 +322,225 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         host_turn_id: turn.to_owned(),
         observed_at: INIT.to_owned(),
     };
-    insert_agent_session(
+    upsert_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
         input("host.turn.first"),
     )?;
-    assert!(insert_agent_session(
+    assert!(upsert_agent_session(
         fixture.runtime_home_path(),
         second_project,
         input("host.turn.second")
+    )
+    .is_err());
+    Ok(())
+}
+
+#[test]
+fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-guard-first-binding")?;
+    let host_session_id = "host.session.guard-first";
+    let session_id = managed_stdio_session_id(fixture.connection_id(), host_session_id)?;
+    let observation = |runtime_session_id, turn: &str, observed_at: &str| AgentSessionUpsert {
+        session_id: session_id.clone(),
+        runtime_session_id,
+        connection_internal_id: fixture.connection_id().to_owned(),
+        guard_installation_id: None,
+        host_session_id: host_session_id.to_owned(),
+        host_thread_id: "host.thread.guard-first".to_owned(),
+        host_turn_id: turn.to_owned(),
+        observed_at: observed_at.to_owned(),
+    };
+
+    let unbound = upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        observation(None, "host.turn.guard", START),
+    )?;
+    assert_eq!(unbound.runtime_session_id, None);
+    assert_eq!(unbound.first_observed_at, START);
+    assert!(mcp_runtime_project_session_binding(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id
+    )?
+    .is_none());
+
+    let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    let bound = upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        observation(Some(runtime.clone()), "host.turn.tool", INIT),
+    )?;
+    assert_eq!(bound.runtime_session_id.as_deref(), Some(runtime.as_str()));
+    assert_eq!(bound.first_observed_at, START);
+    assert_eq!(bound.last_observed_at, INIT);
+    assert_eq!(bound.last_host_turn_id, "host.turn.tool");
+
+    let replay = upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        observation(Some(runtime.clone()), "host.turn.tool", INIT),
+    )?;
+    assert_eq!(replay, bound);
+    let reservation = mcp_runtime_project_session_binding(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("runtime binding");
+    assert_eq!(reservation.runtime_session_id, runtime);
+    assert_eq!(reservation.host_session_id, host_session_id);
+    Ok(())
+}
+
+#[test]
+fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("operational-concurrent-runtime-binding")?;
+    let runtime_a = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    let runtime_b = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    for (runtime, host_session, thread) in [
+        (
+            &runtime_a,
+            "host.session.concurrent-a",
+            "host.thread.concurrent-a",
+        ),
+        (
+            &runtime_b,
+            "host.session.concurrent-b",
+            "host.thread.concurrent-b",
+        ),
+    ] {
+        let session_id = managed_stdio_session_id(fixture.connection_id(), host_session)?;
+        upsert_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            AgentSessionUpsert {
+                session_id: session_id.clone(),
+                runtime_session_id: None,
+                connection_internal_id: fixture.connection_id().to_owned(),
+                guard_installation_id: None,
+                host_session_id: host_session.to_owned(),
+                host_thread_id: thread.to_owned(),
+                host_turn_id: format!("{thread}.guard"),
+                observed_at: START.to_owned(),
+            },
+        )?;
+        upsert_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            AgentSessionUpsert {
+                session_id,
+                runtime_session_id: Some(runtime.clone()),
+                connection_internal_id: fixture.connection_id().to_owned(),
+                guard_installation_id: None,
+                host_session_id: host_session.to_owned(),
+                host_thread_id: thread.to_owned(),
+                host_turn_id: format!("{thread}.mcp"),
+                observed_at: INIT.to_owned(),
+            },
+        )?;
+    }
+    let runtime_c = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    let host_session_c = "host.session.concurrent-c";
+    upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionUpsert {
+            session_id: managed_stdio_session_id(fixture.connection_id(), host_session_c)?,
+            runtime_session_id: Some(runtime_c),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session_c.to_owned(),
+            host_thread_id: "host.thread.concurrent-c".to_owned(),
+            host_turn_id: "host.turn.concurrent-c".to_owned(),
+            observed_at: INIT.to_owned(),
+        },
+    )?;
+    assert_eq!(
+        current_managed_runtime_sessions(fixture.runtime_home_path(), fixture.connection_id())?
+            .len(),
+        3
+    );
+    Ok(())
+}
+
+#[test]
+fn registry_reservation_replay_finishes_project_attach_and_conflicts_fail(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-reservation-recovery")?;
+    let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    let host_session = "host.session.recovery";
+    let session_id = managed_stdio_session_id(fixture.connection_id(), host_session)?;
+    bind_mcp_runtime_project_session(
+        fixture.runtime_home_path(),
+        &runtime,
+        fixture.connection_id(),
+        fixture.project_id(),
+        &session_id,
+        host_session,
+        INIT,
+    )?;
+    assert!(agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id
+    )?
+    .is_none());
+    upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionUpsert {
+            session_id: session_id.clone(),
+            runtime_session_id: Some(runtime),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session.to_owned(),
+            host_thread_id: "host.thread.recovery".to_owned(),
+            host_turn_id: "host.turn.recovery".to_owned(),
+            observed_at: INIT.to_owned(),
+        },
+    )?;
+
+    let conflicting_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    assert!(upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionUpsert {
+            session_id,
+            runtime_session_id: Some(conflicting_runtime),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session.to_owned(),
+            host_thread_id: "host.thread.recovery".to_owned(),
+            host_turn_id: "host.turn.conflict".to_owned(),
+            observed_at: TOOLS.to_owned(),
+        },
+    )
+    .is_err());
+    Ok(())
+}
+
+#[test]
+fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-preflight-no-binding")?;
+    let runtime = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
+    let host_session = "host.session.preflight";
+    assert!(upsert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionUpsert {
+            session_id: managed_stdio_session_id(fixture.connection_id(), host_session)?,
+            runtime_session_id: Some(runtime),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session.to_owned(),
+            host_thread_id: "host.thread.preflight".to_owned(),
+            host_turn_id: "host.turn.preflight".to_owned(),
+            observed_at: INIT.to_owned(),
+        },
     )
     .is_err());
     Ok(())

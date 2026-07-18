@@ -106,9 +106,13 @@ allowlist 또는 명시적으로 선택한 구성원입니다. 임의의 파일�
 Registry는 process lifecycle milestone과 프로젝트 간 runtime/host session 예약을
 담당합니다. 각 프로젝트 데이터베이스는 프로젝트 Agent Session과 host
 session/thread/turn 상관관계를 담당합니다. 분리된 데이터베이스 파일 사이에는 SQLite
-foreign key를 집행할 수 없으므로 Store는 프로젝트 쓰기 전에 Registry owner를 검증하고
-프로젝트 간 uniqueness에는 Registry 예약을 사용합니다. `diagnostics.sqlite`는 분리된
-best-effort carrier이며 운영 권한 출처로 사용하지 않습니다.
+foreign key를 집행할 수 없으므로 유효한 Guard 관찰은 먼저 unbound 프로젝트 session을
+만들 수 있습니다. 동일한 host identity의 첫 실제 managed MCP 도구 호출이 Registry
+owner를 검증하고 프로젝트 간 uniqueness를 예약한 뒤 그 runtime을 프로젝트 row에
+붙입니다. 정확한 replay는 중단된 attach를 복구합니다. Process row는 lease나 liveness
+signal이 아니므로 crash 뒤 열린 것처럼 남은 row와 concurrent process가 Guard 상관관계를
+선택하거나 막지 않습니다. `diagnostics.sqlite`는 분리된 best-effort carrier이며 운영 권한
+출처로 사용하지 않습니다.
 
 ## 위치와 권한 경계
 

@@ -61,11 +61,11 @@ pub struct GuardInstallationRecord {
     pub updated_at: String,
 }
 
-/// Agent Session insert input.
+/// Idempotent project Agent Session observation and optional runtime attachment.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentSessionInsert {
+pub struct AgentSessionUpsert {
     pub session_id: String,
-    pub runtime_session_id: String,
+    pub runtime_session_id: Option<String>,
     pub connection_internal_id: String,
     pub guard_installation_id: Option<String>,
     pub host_session_id: String,
@@ -79,13 +79,13 @@ pub struct AgentSessionInsert {
 pub struct AgentSessionRecord {
     pub project_id: String,
     pub session_id: String,
-    pub runtime_session_id: String,
+    pub runtime_session_id: Option<String>,
     pub connection_internal_id: String,
     pub project_integration_revision: String,
     pub host_session_id: String,
     pub host_thread_id: String,
     pub last_host_turn_id: String,
-    pub started_at: String,
+    pub first_observed_at: String,
     pub last_observed_at: String,
 }
 
@@ -522,19 +522,19 @@ pub fn list_guard_installations(
         .collect()
 }
 
-/// Inserts one project-scoped Agent Session row.
-pub fn insert_agent_session(
+/// Creates or updates one project Agent Session and optionally attaches its runtime.
+pub fn upsert_agent_session(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
-    input: AgentSessionInsert,
+    input: AgentSessionUpsert,
 ) -> StoreResult<AgentSessionRecord> {
-    validate_agent_session_insert(&input)?;
+    validate_agent_session_upsert(&input)?;
     let runtime_home = runtime_home.as_ref().to_path_buf();
-    let runtime_session = current_managed_mcp_runtime_session_for_connection(
-        &runtime_home,
-        &input.runtime_session_id,
-        &input.connection_internal_id,
-    )?;
+    let observed_at = UtcTimestamp::parse(&input.observed_at)
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "observed_at must be a canonical RFC 3339 timestamp".to_owned(),
+        })?
+        .to_canonical_string();
     let expected_session_id = managed_stdio_session_id(
         &input.connection_internal_id,
         &input.host_session_id,
@@ -551,20 +551,42 @@ pub fn insert_agent_session(
                 .to_owned(),
         });
     }
-    if input.observed_at < runtime_session.process_started_at {
-        return Err(StoreError::InvalidInput {
-            detail: "Agent Session observation cannot precede MCP process start".to_owned(),
+    let connection =
+        agent_connection_record_read_only(&runtime_home, &input.connection_internal_id)?
+            .ok_or_else(|| StoreError::NotFound {
+                entity: "agent_connection",
+                id: input.connection_internal_id.clone(),
+            })?;
+    if !connection.enabled {
+        return Err(StoreError::Conflict {
+            entity: "agent_connection",
+            id: input.connection_internal_id.clone(),
+            detail: "Agent Connection is disabled".to_owned(),
         });
     }
-    bind_mcp_runtime_project_session(
-        &runtime_home,
-        &input.runtime_session_id,
-        &input.connection_internal_id,
-        project_id,
-        &input.session_id,
-        &input.host_session_id,
-        &input.observed_at,
-    )?;
+    let connection_revision = connection_integration_revision(&connection)?;
+    let runtime_session = input
+        .runtime_session_id
+        .as_deref()
+        .map(|runtime_session_id| {
+            current_managed_mcp_runtime_session_for_connection(
+                &runtime_home,
+                runtime_session_id,
+                &input.connection_internal_id,
+            )
+        })
+        .transpose()?;
+    if runtime_session.as_ref().is_some_and(|runtime| {
+        UtcTimestamp::parse(&runtime.process_started_at).is_ok_and(|started_at| {
+            UtcTimestamp::parse(&observed_at).is_ok_and(|seen| seen < started_at)
+        })
+    }) {
+        return Err(StoreError::InvalidInput {
+            detail: "runtime-bound Agent Session observation cannot precede MCP process start"
+                .to_owned(),
+        });
+    }
+    let mut project = open_guard_project(&runtime_home, project_id, &input.connection_internal_id)?;
     let guard_ownership = input
         .guard_installation_id
         .as_deref()
@@ -584,6 +606,11 @@ pub fn insert_agent_session(
                         .to_owned(),
                 });
             }
+            validate_stored_guard_installation_manifest_binding(
+                &installation,
+                &connection,
+                &project.project.repo_root,
+            )?;
             let manifest = current_guard_manifest(&installation)?;
             Ok((
                 installation.guard_installation_id,
@@ -591,7 +618,18 @@ pub fn insert_agent_session(
             ))
         })
         .transpose()?;
-    let mut project = open_guard_project(&runtime_home, project_id, &input.connection_internal_id)?;
+    if let Some(runtime_session_id) = input.runtime_session_id.as_deref() {
+        // Reserve cross-database uniqueness first. A replay can finish the project attach.
+        bind_mcp_runtime_project_session(
+            &runtime_home,
+            runtime_session_id,
+            &input.connection_internal_id,
+            project_id,
+            &input.session_id,
+            &input.host_session_id,
+            &observed_at,
+        )?;
+    }
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let policy_fingerprint = tx
         .query_row(
@@ -609,7 +647,7 @@ pub fn insert_agent_session(
                 })
         })?;
     let project_revision = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
-        connection_integration_revision: &runtime_session.connection_integration_revision,
+        connection_integration_revision: connection_revision.as_str(),
         project_id: &project.project.project_id,
         policy_fingerprint: &policy_fingerprint,
         guard_installation_id: guard_ownership
@@ -625,30 +663,71 @@ pub fn insert_agent_session(
     if let Some(existing) =
         agent_session_from_conn(&tx, &project.project.project_id, &input.session_id)?
     {
-        if existing.runtime_session_id != input.runtime_session_id
-            || existing.connection_internal_id != input.connection_internal_id
+        if existing.connection_internal_id != input.connection_internal_id
             || existing.host_session_id != input.host_session_id
             || existing.host_thread_id != input.host_thread_id
         {
             return Err(StoreError::Conflict {
                 entity: "agent_session",
                 id: input.session_id,
-                detail: "Agent Session is already bound to another runtime, Connection, or host identity"
+                detail: "Agent Session is already bound to another Connection or host identity"
                     .to_owned(),
             });
         }
+        if let (Some(existing_runtime), Some(requested_runtime)) = (
+            existing.runtime_session_id.as_deref(),
+            input.runtime_session_id.as_deref(),
+        ) {
+            if existing_runtime != requested_runtime {
+                return Err(StoreError::Conflict {
+                    entity: "agent_session",
+                    id: input.session_id,
+                    detail: "Agent Session is already attached to another runtime".to_owned(),
+                });
+            }
+        }
+        let existing_first = strict_stored_timestamp(
+            "agent_sessions",
+            &existing.session_id,
+            "first_observed_at",
+            &existing.first_observed_at,
+        )?;
+        let existing_last = strict_stored_timestamp(
+            "agent_sessions",
+            &existing.session_id,
+            "last_observed_at",
+            &existing.last_observed_at,
+        )?;
+        let observation = UtcTimestamp::parse(&observed_at).expect("validated observation");
+        let first_observed_at = if observation < existing_first {
+            observed_at.as_str()
+        } else {
+            existing.first_observed_at.as_str()
+        };
+        let (last_host_turn_id, last_observed_at) = if observation >= existing_last {
+            (input.host_turn_id.as_str(), observed_at.as_str())
+        } else {
+            (
+                existing.last_host_turn_id.as_str(),
+                existing.last_observed_at.as_str(),
+            )
+        };
         tx.execute(
             "UPDATE agent_sessions
-                SET project_integration_revision = ?3,
-                    last_host_turn_id = ?4,
-                    last_observed_at = ?5
+                SET runtime_session_id = COALESCE(runtime_session_id, ?3),
+                    project_integration_revision = ?4,
+                    last_host_turn_id = ?5,
+                    first_observed_at = ?6,
+                    last_observed_at = ?7
               WHERE project_id = ?1 AND session_id = ?2",
             params![
                 project.project.project_id,
                 input.session_id,
+                input.runtime_session_id,
                 project_revision.as_str(),
-                input.host_turn_id,
-                input.observed_at,
+                last_host_turn_id,
+                first_observed_at,
+                last_observed_at,
             ],
         )?;
     } else {
@@ -656,7 +735,7 @@ pub fn insert_agent_session(
             "INSERT INTO agent_sessions (
                 project_id, session_id, runtime_session_id, connection_internal_id,
                 project_integration_revision, host_session_id, host_thread_id,
-                last_host_turn_id, started_at, last_observed_at
+                last_host_turn_id, first_observed_at, last_observed_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 project.project.project_id,
@@ -667,8 +746,8 @@ pub fn insert_agent_session(
                 input.host_session_id,
                 input.host_thread_id,
                 input.host_turn_id,
-                runtime_session.process_started_at,
-                input.observed_at,
+                observed_at,
+                observed_at,
             ],
         )?;
     }
@@ -706,14 +785,25 @@ pub fn agent_session_matches_current_integration(
     guard_installation_id: Option<&str>,
 ) -> StoreResult<bool> {
     let runtime_home = runtime_home.as_ref();
+    let Some(runtime_session_id) = session.runtime_session_id.as_deref() else {
+        return Ok(false);
+    };
     let runtime = match current_managed_mcp_runtime_session_for_connection(
         runtime_home,
-        &session.runtime_session_id,
+        runtime_session_id,
         &session.connection_internal_id,
     ) {
         Ok(runtime) => runtime,
         Err(StoreError::Conflict { .. } | StoreError::NotFound { .. }) => return Ok(false),
         Err(error) => return Err(error),
+    };
+    let Some(connection) =
+        agent_connection_record_read_only(runtime_home, &session.connection_internal_id)?
+    else {
+        return Ok(false);
+    };
+    let Some(project) = open_project_for_read(runtime_home, &session.project_id)? else {
+        return Ok(false);
     };
     let guard_ownership = guard_installation_id
         .map(|installation_id| -> StoreResult<Option<(String, String)>> {
@@ -729,6 +819,11 @@ pub fn agent_session_matches_current_integration(
             {
                 return Ok(None);
             }
+            validate_stored_guard_installation_manifest_binding(
+                &installation,
+                &connection,
+                &project.project.repo_root,
+            )?;
             let manifest = current_guard_manifest(&installation)?;
             Ok(Some((
                 installation.guard_installation_id,
@@ -740,9 +835,6 @@ pub fn agent_session_matches_current_integration(
     if guard_installation_id.is_some() && guard_ownership.is_none() {
         return Ok(false);
     }
-    let Some(project) = open_project_for_read(runtime_home, &session.project_id)? else {
-        return Ok(false);
-    };
     let policy_fingerprint = project
         .conn
         .query_row(
@@ -1817,7 +1909,7 @@ fn latest_agent_session(
                 host_session_id,
                 host_thread_id,
                 last_host_turn_id,
-                started_at,
+                first_observed_at,
                 last_observed_at
              FROM agent_sessions
             WHERE project_id = ?1
@@ -1831,7 +1923,10 @@ fn latest_agent_session(
         params![project.project.project_id, connection_internal_id],
         agent_session_from_row,
     )?;
-    let records = collect_rows(rows)?;
+    let records = collect_rows(rows)?
+        .into_iter()
+        .map(validate_decoded_agent_session)
+        .collect::<StoreResult<Vec<_>>>()?;
     if records.len() > 1 {
         let first = strict_stored_timestamp(
             "agent_sessions",
@@ -1846,12 +1941,9 @@ fn latest_agent_session(
             &records[1].last_observed_at,
         )?;
         if first == second {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                format!(
-                    "ambiguous co-latest agent_sessions for connection {connection_internal_id}"
-                ),
-            ));
+            // Guard health does not require one session. Omit the singular
+            // diagnostic instead of guessing between concurrent observations.
+            return Ok(None);
         }
     }
     Ok(records.into_iter().next())
@@ -2185,9 +2277,11 @@ fn project_git_info_exclude_path(repo_root: &Path) -> std::io::Result<Option<Pat
         .map(|layout| layout.map(|layout| layout.common_dir.join("info").join("exclude")))
 }
 
-fn validate_agent_session_insert(input: &AgentSessionInsert) -> StoreResult<()> {
+fn validate_agent_session_upsert(input: &AgentSessionUpsert) -> StoreResult<()> {
     validate_identifier("session_id", &input.session_id)?;
-    validate_identifier("runtime_session_id", &input.runtime_session_id)?;
+    if let Some(runtime_session_id) = &input.runtime_session_id {
+        validate_identifier("runtime_session_id", runtime_session_id)?;
+    }
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
     if let Some(guard_installation_id) = &input.guard_installation_id {
         validate_identifier("guard_installation_id", guard_installation_id)?;
@@ -2593,7 +2687,7 @@ pub(crate) fn agent_session_from_conn(
             host_session_id,
             host_thread_id,
             last_host_turn_id,
-            started_at,
+            first_observed_at,
             last_observed_at
          FROM agent_sessions
         WHERE project_id = ?1
@@ -2603,6 +2697,7 @@ pub(crate) fn agent_session_from_conn(
     )
     .optional()
     .map_err(StoreError::from)
+    .and_then(|record| record.map(validate_decoded_agent_session).transpose())
 }
 
 fn agent_session_by_conn(
@@ -2626,9 +2721,60 @@ fn agent_session_from_row(row: &Row<'_>) -> rusqlite::Result<AgentSessionRecord>
         host_session_id: row.get(5)?,
         host_thread_id: row.get(6)?,
         last_host_turn_id: row.get(7)?,
-        started_at: row.get(8)?,
+        first_observed_at: row.get(8)?,
         last_observed_at: row.get(9)?,
     })
+}
+
+fn validate_decoded_agent_session(session: AgentSessionRecord) -> StoreResult<AgentSessionRecord> {
+    let corrupt = |field| {
+        StoreError::corrupt_owner_state_value("agent_sessions", session.session_id.clone(), field)
+    };
+    for (field, value) in [
+        ("project_id", session.project_id.as_str()),
+        ("session_id", session.session_id.as_str()),
+        (
+            "connection_internal_id",
+            session.connection_internal_id.as_str(),
+        ),
+    ] {
+        validate_identifier(field, value).map_err(|_| corrupt(field))?;
+    }
+    if let Some(runtime_session_id) = session.runtime_session_id.as_deref() {
+        validate_identifier("runtime_session_id", runtime_session_id)
+            .map_err(|_| corrupt("runtime_session_id"))?;
+    }
+    let expected_session_id =
+        managed_stdio_session_id(&session.connection_internal_id, &session.host_session_id)
+            .map_err(|_| corrupt("session_id"))?;
+    if expected_session_id != session.session_id {
+        return Err(corrupt("session_id"));
+    }
+    IntegrationRevision::parse(session.project_integration_revision.clone())
+        .map_err(|_| corrupt("project_integration_revision"))?;
+    for (field, value) in [
+        ("host_session_id", &session.host_session_id),
+        ("host_thread_id", &session.host_thread_id),
+        ("last_host_turn_id", &session.last_host_turn_id),
+    ] {
+        validate_managed_host_native_session_id(value).map_err(|_| corrupt(field))?;
+    }
+    let first = strict_stored_timestamp(
+        "agent_sessions",
+        &session.session_id,
+        "first_observed_at",
+        &session.first_observed_at,
+    )?;
+    let last = strict_stored_timestamp(
+        "agent_sessions",
+        &session.session_id,
+        "last_observed_at",
+        &session.last_observed_at,
+    )?;
+    if last < first {
+        return Err(corrupt("last_observed_at"));
+    }
+    Ok(session)
 }
 
 fn guard_event_from_conn(
@@ -3181,12 +3327,12 @@ mod tests {
         )?;
         let host_session_id = "session_guard_a";
         let session_id = managed_stdio_session_id("conn_guard_a", host_session_id)?;
-        let session = insert_agent_session(
+        let session = upsert_agent_session(
             fixture.runtime_home.path(),
             "project_guard_a",
-            AgentSessionInsert {
+            AgentSessionUpsert {
                 session_id: session_id.clone(),
-                runtime_session_id,
+                runtime_session_id: Some(runtime_session_id),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: Some("guard_installation_a".to_owned()),
                 host_session_id: host_session_id.to_owned(),
@@ -3407,12 +3553,12 @@ mod tests {
             "2026-06-30T00:59:00Z",
         )?;
         let session_id = managed_stdio_session_id("conn_guard_a", "session_guard_a")?;
-        insert_agent_session(
+        upsert_agent_session(
             fixture.runtime_home.path(),
             "project_guard_a",
-            AgentSessionInsert {
+            AgentSessionUpsert {
                 session_id: session_id.clone(),
-                runtime_session_id,
+                runtime_session_id: Some(runtime_session_id),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
                 host_session_id: "session_guard_a".to_owned(),

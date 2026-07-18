@@ -4,6 +4,7 @@ use std::{path::Path, str::FromStr};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use volicord_types::{
+    managed_stdio_session_id, validate_managed_host_native_session_id,
     ConnectionIntegrationRevisionBasis, DurableIdGenerator, DurableIdKind, IntegrationRevision,
     ManagedMcpClientInfo, McpRuntimeSessionSource, RandomDurableIdGenerator, UtcTimestamp,
     DURABLE_ID_RETRY_LIMIT,
@@ -56,6 +57,17 @@ pub struct McpRuntimeSessionRecord {
     pub terminal_protocol_failure_code: Option<String>,
     pub terminal_protocol_failure_details: Option<String>,
     pub graceful_close_at: Option<String>,
+}
+
+/// Registry reservation joining one managed runtime to one project Agent Session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpRuntimeProjectSessionBindingRecord {
+    pub runtime_session_id: String,
+    pub connection_internal_id: String,
+    pub project_id: String,
+    pub session_id: String,
+    pub host_session_id: String,
+    pub bound_at: String,
 }
 
 /// Derives the deterministic current integration revision for one Agent Connection.
@@ -181,6 +193,13 @@ pub fn current_managed_mcp_runtime_session_for_connection(
             entity: "agent_connection",
             id: connection_internal_id.to_owned(),
         })?;
+    if !connection.enabled {
+        return Err(StoreError::Conflict {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+            detail: "Agent Connection is disabled".to_owned(),
+        });
+    }
     if connection_integration_revision(&connection)?.as_str()
         != session.connection_integration_revision
     {
@@ -209,26 +228,109 @@ pub fn bind_mcp_runtime_project_session(
 ) -> StoreResult<()> {
     validate_timestamp("bound_at", bound_at)?;
     for (field, value) in [
+        ("runtime_session_id", runtime_session_id),
+        ("connection_internal_id", connection_internal_id),
         ("project_id", project_id),
         ("session_id", session_id),
         ("host_session_id", host_session_id),
     ] {
         validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)?;
     }
-    current_managed_mcp_runtime_session_for_connection(
-        runtime_home.as_ref(),
-        runtime_session_id,
-        connection_internal_id,
-    )?;
+    validate_managed_host_native_session_id(host_session_id).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "host_session_id must be valid managed-host identity metadata".to_owned(),
+        }
+    })?;
+    if managed_stdio_session_id(connection_internal_id, host_session_id).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "runtime binding cannot derive its Connection-bound Agent Session ID"
+                .to_owned(),
+        }
+    })? != session_id
+    {
+        return Err(StoreError::Conflict {
+            entity: "agent_session",
+            id: session_id.to_owned(),
+            detail: "session_id does not match the Connection-bound host session identity"
+                .to_owned(),
+        });
+    }
     let path = registry_db_path(runtime_home);
     let mut conn = open_registry_database(path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
+    let runtime = runtime_session_from_conn(&tx, runtime_session_id)?.ok_or_else(|| {
+        StoreError::NotFound {
+            entity: "mcp_runtime_session",
+            id: runtime_session_id.to_owned(),
+        }
+    })?;
+    let connection = raw_agent_connection_record_from_conn(&tx, connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+        })?;
+    if !connection.enabled
+        || runtime.connection_internal_id != connection_internal_id
+        || runtime.session_source != McpRuntimeSessionSource::ManagedHost
+        || runtime.connection_integration_revision
+            != connection_integration_revision(&connection)?.as_str()
+    {
+        return Err(StoreError::Conflict {
+            entity: "mcp_runtime_session",
+            id: runtime_session_id.to_owned(),
+            detail: "runtime session is not a current managed-host launch owned by an enabled Agent Connection".to_owned(),
+        });
+    }
     let project =
         raw_project_record_from_conn(&tx, project_id)?.ok_or_else(|| StoreError::NotFound {
             entity: "project",
             id: project_id.to_owned(),
         })?;
-    let existing = tx
+    let membership: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM connection_projects
+          WHERE connection_internal_id = ?1 AND project_internal_id = ?2",
+        params![connection_internal_id, project.project_internal_id],
+        |row| row.get(0),
+    )?;
+    if membership != 1 {
+        return Err(StoreError::Conflict {
+            entity: "connection_project",
+            id: format!("{connection_internal_id}/{project_id}"),
+            detail: "project is not a current member of the Agent Connection".to_owned(),
+        });
+    }
+    let existing_project_session = tx
+        .query_row(
+            "SELECT runtime_session_id, connection_internal_id, host_session_id
+               FROM mcp_runtime_project_session_bindings
+              WHERE project_internal_id = ?1 AND session_id = ?2",
+            params![project.project_internal_id, session_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    if let Some((existing_runtime, existing_connection, existing_host_session)) =
+        existing_project_session
+    {
+        if existing_runtime == runtime_session_id
+            && existing_connection == connection_internal_id
+            && existing_host_session == host_session_id
+        {
+            tx.commit()?;
+            return Ok(());
+        }
+        return Err(StoreError::Conflict {
+            entity: "agent_session",
+            id: session_id.to_owned(),
+            detail: "project Agent Session is already reserved for another runtime, Connection, or host session".to_owned(),
+        });
+    }
+    let existing_runtime_host = tx
         .query_row(
             "SELECT connection_internal_id, project_internal_id, session_id
                FROM mcp_runtime_project_session_bindings
@@ -243,14 +345,7 @@ pub fn bind_mcp_runtime_project_session(
             },
         )
         .optional()?;
-    if let Some((existing_connection, existing_project, existing_session)) = existing {
-        if existing_connection == connection_internal_id
-            && existing_project == project.project_internal_id
-            && existing_session == session_id
-        {
-            tx.commit()?;
-            return Ok(());
-        }
+    if existing_runtime_host.is_some() {
         return Err(StoreError::Conflict {
             entity: "agent_session",
             id: session_id.to_owned(),
@@ -274,6 +369,74 @@ pub fn bind_mcp_runtime_project_session(
     )?;
     tx.commit()?;
     Ok(())
+}
+
+/// Reads the exact Registry reservation for one project Agent Session.
+pub fn mcp_runtime_project_session_binding(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    session_id: &str,
+) -> StoreResult<Option<McpRuntimeProjectSessionBindingRecord>> {
+    validate_text("project_id", project_id, MAX_DIAGNOSTIC_FIELD_BYTES)?;
+    validate_text("session_id", session_id, MAX_DIAGNOSTIC_FIELD_BYTES)?;
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    let record = conn
+        .query_row(
+            "SELECT b.runtime_session_id, b.connection_internal_id, p.project_internal_id,
+                    b.session_id, b.host_session_id, b.bound_at
+               FROM mcp_runtime_project_session_bindings AS b
+               JOIN projects AS p ON p.project_internal_id = b.project_internal_id
+              WHERE p.project_internal_id = ?1 AND b.session_id = ?2",
+            params![project_id, session_id],
+            |row| {
+                Ok(McpRuntimeProjectSessionBindingRecord {
+                    runtime_session_id: row.get(0)?,
+                    connection_internal_id: row.get(1)?,
+                    project_id: row.get(2)?,
+                    session_id: row.get(3)?,
+                    host_session_id: row.get(4)?,
+                    bound_at: row.get(5)?,
+                })
+            },
+        )
+        .optional()?;
+    record
+        .map(|record| {
+            let corrupt = |field| {
+                StoreError::corrupt_owner_state_value(
+                    "mcp_runtime_project_session_bindings",
+                    record.session_id.clone(),
+                    field,
+                )
+            };
+            validate_timestamp("bound_at", &record.bound_at).map_err(|_| corrupt("bound_at"))?;
+            for (field, value) in [
+                ("runtime_session_id", record.runtime_session_id.as_str()),
+                (
+                    "connection_internal_id",
+                    record.connection_internal_id.as_str(),
+                ),
+                ("project_id", record.project_id.as_str()),
+                ("session_id", record.session_id.as_str()),
+            ] {
+                validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)
+                    .map_err(|_| corrupt(field))?;
+            }
+            validate_managed_host_native_session_id(&record.host_session_id)
+                .map_err(|_| corrupt("host_session_id"))?;
+            if managed_stdio_session_id(&record.connection_internal_id, &record.host_session_id)
+                .map_err(|_| corrupt("session_id"))?
+                != record.session_id
+            {
+                return Err(corrupt("session_id"));
+            }
+            Ok(record)
+        })
+        .transpose()
 }
 
 /// Records successful MCP initialize completion before its response is emitted.
@@ -502,7 +665,6 @@ pub fn latest_successful_managed_runtime_session(
             AND tools_list_observed_at IS NOT NULL
             AND required_tools_present = 1
             AND last_safe_read_only_tool_call_at IS NOT NULL
-            AND terminal_protocol_failure_code IS NULL
           ORDER BY last_safe_read_only_tool_call_at DESC, runtime_session_id DESC
           LIMIT 1"
         ),
@@ -577,15 +739,15 @@ pub fn latest_current_managed_runtime_session(
     .and_then(|record| record.map(validate_runtime_session).transpose())
 }
 
-/// Resolves the single open managed-host runtime for current Guard correlation.
-/// Zero matches return `None`; concurrent matches are ambiguous and fail closed.
-pub fn single_open_current_managed_runtime_session(
+/// Returns every managed-host observation for the Connection's current revision.
+/// CLI preflight sessions are structurally excluded.
+pub fn current_managed_runtime_sessions(
     runtime_home: impl AsRef<Path>,
     connection_internal_id: &str,
-) -> StoreResult<Option<McpRuntimeSessionRecord>> {
+) -> StoreResult<Vec<McpRuntimeSessionRecord>> {
     let path = registry_db_path(runtime_home);
     if !path.exists() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
     let conn = open_registry_database_read_only(path)?;
     let connection = raw_agent_connection_record_from_conn(&conn, connection_internal_id)?
@@ -599,26 +761,16 @@ pub fn single_open_current_managed_runtime_session(
           WHERE connection_internal_id = ?1
             AND session_source = 'managed_host'
             AND connection_integration_revision = ?2
-            AND terminal_protocol_failure_code IS NULL
-            AND graceful_close_at IS NULL
-          ORDER BY process_started_at DESC, runtime_session_id DESC
-          LIMIT 2"
+          ORDER BY last_observed_at DESC, runtime_session_id DESC"
     ))?;
     let rows = stmt.query_map(
         params![connection_internal_id, revision.as_str()],
         runtime_session_from_row,
     )?;
-    let mut sessions = rows.collect::<Result<Vec<_>, _>>()?;
-    if sessions.len() > 1 {
-        return Err(StoreError::Conflict {
-            entity: "mcp_runtime_session",
-            id: connection_internal_id.to_owned(),
-            detail:
-                "more than one current managed MCP runtime is open; Guard correlation is ambiguous"
-                    .to_owned(),
-        });
-    }
-    sessions.pop().map(validate_runtime_session).transpose()
+    rows.collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(validate_runtime_session)
+        .collect()
 }
 
 fn update_session<F>(

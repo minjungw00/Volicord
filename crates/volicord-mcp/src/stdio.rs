@@ -2637,6 +2637,17 @@ fn validate_managed_stdio_session_ownership(
                 .to_owned(),
         ));
     }
+    let CodexManagedBinding::Bound {
+        host_session_id,
+        host_thread_id,
+        ..
+    } = &state.codex_binding
+    else {
+        return Err(McpAdapterError::Environment(
+            "managed_stdio_session_identity_invalid: active managed stdio binding has no host identity"
+                .to_owned(),
+        ));
+    };
     let _connection = agent_connection_record_read_only(
         &adapter.runtime_home,
         adapter.context.connection_internal_id.as_str(),
@@ -2668,7 +2679,12 @@ fn validate_managed_stdio_session_ownership(
             .map_err(McpAdapterError::Store)?
         {
             if existing.connection_internal_id != adapter.context.connection_internal_id.as_str()
-                || existing.runtime_session_id != state.runtime_session_id
+                || existing
+                    .runtime_session_id
+                    .as_deref()
+                    .is_some_and(|runtime| runtime != state.runtime_session_id)
+                || existing.host_session_id != *host_session_id
+                || existing.host_thread_id != *host_thread_id
             {
                 return Err(McpAdapterError::Environment(
                     "managed_stdio_session_ownership_conflict: existing session ownership does not match this managed stdio connection"

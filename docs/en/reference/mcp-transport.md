@@ -97,6 +97,12 @@ Connection verification starts a separate `cli_preflight` process and calls
 process validates the server surface, but its lifecycle facts cannot satisfy a
 `managed_host` operational check or authorize a Connection call.
 
+Runtime rows are durable process-launch observations, not liveness records.
+A process that exits before recording a terminal failure or graceful close may
+leave a row that appears open. Such a row remains historical evidence and is
+never selected to correlate a later Guard event. Concurrent managed processes
+may coexist and bind different host sessions.
+
 The negotiated protocol version is authoritative protocol data. `clientInfo`
 name/version and an observed host executable version are diagnostic fields;
 they are accepted as bounded future values and do not prove client identity,
@@ -105,14 +111,26 @@ only the cooperative protocol behavior it actually records.
 
 ## Per-Call Session Authorization
 
+A valid Guard observation may create or update a project `agent_sessions` row
+before any MCP runtime is known. That row stores no fabricated or sentinel
+runtime coordinate. The first actual managed `tools/call` carrying the same
+Connection-bound host session identity reserves the exact Registry
+runtime/project/host-session binding and attaches that runtime to the project
+row. The reservation and attach are replay-safe: if reservation succeeds but
+the project write is interrupted, the identical call can finish the attach.
+CLI preflight never performs this binding.
+
 Before constructing Core invocation context for a project tool, the adapter
-validates the authoritative current Registry runtime session and project
-`agent_sessions` row. The Connection must exist and be enabled; the project
-must exist and remain a Connection Project; the runtime session must be a
+validates the authoritative current Registry runtime session, the exact
+`mcp_runtime_project_session_bindings` row, and the project `agent_sessions`
+row. The Connection must exist and be enabled; the project must exist and
+remain a Connection Project; the runtime session must be a current
 `managed_host` session owned by that Connection; and the project session must
-belong to that runtime session, Connection, and project. Both integration
-revisions must match their current Connection and project inputs, and the
-current Connection mode must allow the requested operation category.
+be non-null-bound to the same runtime, Connection, project, and host session.
+Both integration revisions must match their current Connection and project
+inputs, and the current Connection mode must allow the requested operation
+category. An unbound Guard-only session retains Guard history but cannot
+authorize a tool call.
 
 Core receives one non-serializable `ValidatedAgentSession`. Its Connection ID
 must exactly match `ActorSource::AgentConnection`, and its project ID must

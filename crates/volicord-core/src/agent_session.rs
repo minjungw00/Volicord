@@ -4,8 +4,10 @@ use std::{error::Error, fmt};
 
 use volicord_store::{
     agent_connections::{agent_connection_record_read_only, is_agent_connection_project_allowed},
-    guards::{agent_session, agent_session_matches_current_integration, guard_health_record},
-    operational_sessions::current_managed_mcp_runtime_session_for_connection,
+    guards::{agent_session, agent_session_matches_current_integration, list_guard_installations},
+    operational_sessions::{
+        current_managed_mcp_runtime_session_for_connection, mcp_runtime_project_session_binding,
+    },
     StoreError, StoreFailureRoute,
 };
 use volicord_types::{
@@ -192,27 +194,57 @@ impl CoreService {
         .ok_or_else(|| {
             AgentSessionValidationError::rejected("agent_project_session_not_current")
         })?;
+        let Some(bound_runtime_session_id) = session.runtime_session_id.as_deref() else {
+            return Err(AgentSessionValidationError::rejected(
+                "agent_project_session_unbound",
+            ));
+        };
         if session.project_id != project_id.as_str()
             || session.connection_internal_id != connection_id.as_str()
-            || session.runtime_session_id != runtime_session_id.as_str()
+            || bound_runtime_session_id != runtime_session_id.as_str()
         {
             return Err(AgentSessionValidationError::rejected(
                 "agent_project_session_scope_mismatch",
             ));
         }
-        let guard = guard_health_record(
+        let binding = mcp_runtime_project_session_binding(
             self.runtime_home(),
             project_id.as_str(),
+            project_session_id.as_str(),
+        )
+        .map_err(AgentSessionValidationError::store)?
+        .ok_or_else(|| {
+            AgentSessionValidationError::rejected("agent_project_session_binding_missing")
+        })?;
+        if binding.runtime_session_id != runtime_session_id.as_str()
+            || binding.connection_internal_id != connection_id.as_str()
+            || binding.project_id != project_id.as_str()
+            || binding.session_id != project_session_id.as_str()
+            || binding.host_session_id != session.host_session_id
+        {
+            return Err(AgentSessionValidationError::rejected(
+                "agent_project_session_binding_mismatch",
+            ));
+        }
+        let guard_installations = list_guard_installations(
+            self.runtime_home(),
             connection_id.as_str(),
+            Some(project_id.as_str()),
         )
         .map_err(AgentSessionValidationError::store)?;
+        let guard_installation_id = match guard_installations.as_slice() {
+            [] => None,
+            [installation] => Some(installation.guard_installation_id.as_str()),
+            _ => {
+                return Err(AgentSessionValidationError::rejected(
+                    "agent_project_guard_ownership_ambiguous",
+                ))
+            }
+        };
         let current = agent_session_matches_current_integration(
             self.runtime_home(),
             &session,
-            guard
-                .guard_installation
-                .as_ref()
-                .map(|installation| installation.guard_installation_id.as_str()),
+            guard_installation_id,
         )
         .map_err(AgentSessionValidationError::store)?;
         if !current {

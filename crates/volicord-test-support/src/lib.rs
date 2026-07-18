@@ -26,8 +26,8 @@ use volicord_store::{
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     guards::{
-        agent_session_matches_current_integration, guard_health_record, insert_agent_session,
-        AgentSessionInsert,
+        agent_session_matches_current_integration, guard_health_record, upsert_agent_session,
+        AgentSessionUpsert,
     },
     operational_sessions::{
         connection_integration_revision, start_mcp_runtime_session, McpRuntimeSessionStart,
@@ -228,7 +228,12 @@ pub fn seed_test_agent_session(
             guard_installation_id,
         )? {
             return Ok(TestAgentSessionFixture {
-                runtime_session_id: AgentRuntimeSessionId::new(&existing.runtime_session_id),
+                runtime_session_id: AgentRuntimeSessionId::new(
+                    existing
+                        .runtime_session_id
+                        .as_deref()
+                        .expect("current test Agent Session must be runtime-bound"),
+                ),
                 project_session_id: AgentSessionId::new(&existing.session_id),
                 host_session_id: existing.host_session_id.clone(),
                 host_thread_id: existing.host_thread_id.clone(),
@@ -255,12 +260,12 @@ pub fn seed_test_agent_session(
         },
     )?
     .runtime_session_id;
-    insert_agent_session(
+    upsert_agent_session(
         runtime_home,
         project_id,
-        AgentSessionInsert {
+        AgentSessionUpsert {
             session_id: project_session_id.clone(),
-            runtime_session_id: runtime_session_id.clone(),
+            runtime_session_id: Some(runtime_session_id.clone()),
             connection_internal_id: connection_id.to_owned(),
             guard_installation_id: guard_installation_id.map(str::to_owned),
             host_session_id: host_session_id.clone(),

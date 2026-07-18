@@ -1196,7 +1196,9 @@ CREATE INDEX idx_authority_events_hash_chain
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
-  runtime_session_id TEXT NOT NULL,
+  runtime_session_id TEXT CHECK (
+    runtime_session_id IS NULL OR length(trim(runtime_session_id)) > 0
+  ),
   connection_internal_id TEXT NOT NULL,
   project_integration_revision TEXT NOT NULL CHECK (
     length(project_integration_revision) = 71
@@ -1206,12 +1208,11 @@ CREATE TABLE agent_sessions (
   host_session_id TEXT NOT NULL CHECK (length(trim(host_session_id)) > 0),
   host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
   last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
-  started_at TEXT NOT NULL,
+  first_observed_at TEXT NOT NULL,
   last_observed_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id),
   UNIQUE (project_id, session_id, connection_internal_id),
-  UNIQUE (project_id, runtime_session_id, host_session_id),
-  CHECK (last_observed_at >= started_at),
+  CHECK (last_observed_at >= first_observed_at),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
@@ -1299,6 +1300,9 @@ CREATE TABLE unrecorded_changes (
 
 CREATE INDEX idx_agent_sessions_connection
   ON agent_sessions (project_id, connection_internal_id);
+CREATE UNIQUE INDEX idx_agent_sessions_runtime_binding
+  ON agent_sessions (project_id, runtime_session_id)
+  WHERE runtime_session_id IS NOT NULL;
 CREATE INDEX idx_agent_sessions_runtime_revision
   ON agent_sessions (project_id, runtime_session_id, project_integration_revision, last_observed_at);
 CREATE INDEX idx_guard_events_session
@@ -1479,7 +1483,7 @@ CREATE TABLE project_workflow_policies (
   선택적 정규 `git_workspace_context_json`을 포함해 재실행 행을 저장합니다. 재실행
   행은 호출자 권한이 아니며 현재 연결, Git 작업 공간, User Channel 요구사항을
   우회하지 않습니다.
-- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`는 프로젝트별 Codex Record Guard 및 조정 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
+- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`는 프로젝트별 Codex Record Guard 및 조정 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다. `agent_sessions.runtime_session_id`는 일치하는 첫 managed MCP 도구 호출 전까지만 null이며 `first_observed_at`과 `last_observed_at`이 Guard/MCP 관찰 이력의 범위를 정하고 partial unique index는 runtime attach 뒤에만 적용됩니다.
 - `guard_events`는 모든 관찰을 필수 typed hook phase, Guard 설치, 정확한 policy hash, integration revision에 결속합니다. 현재 소유권의 `compatible` event만 필수 phase를 충족하고, 현재 `malformed` 또는 `incompatible` event는 Guard observation check를 실패시키며, 이전 hash나 revision은 현재 check를 충족하지 않습니다. `decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한되며 이 값은 OS 수준 집행 증명이 아니라 로컬 호스트 판단 요청을 기록합니다.
 - `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 일치한 행은 일치한 Guard 관찰 이벤트, 일치 경로 JSON, `matched_at`을 가져야 하고, 대기 행은 이 일치 필드를 가지면 안 됩니다.
 - `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 해결 JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다.

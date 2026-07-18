@@ -142,9 +142,9 @@ The current Codex connection report contains these operational checks:
 | `managed_config` | The selected target contains the canonical managed entry. | Never used after an active inspection. | The required entry is missing, malformed, owned by another entry, changed, or unavailable to inspect. Details name the target and the precise cause. |
 | `host_executable` | `codex` was discovered on `PATH` and its version command succeeded. | The read-only status path has no prior active probe to project. | Discovery or the version command failed. Path and version are diagnostic only. |
 | `mcp_server` | The Volicord CLI self-test passed preflight, `initialize`, `tools/list`, the current required-tool set, and a safe read-only `volicord.list_projects` call. | Never used after an active self-test. | Process startup, storage preflight, initialization, tool discovery, required-tool validation, or the safe call failed. |
-| `host_session` | A `managed_host` session for the current integration revision completed `initialize`. | No managed-host use was observed, only an older revision was observed, initialization is still absent, or the Codex version changed after the observation. | The current session recorded an actual initialization or protocol failure. |
-| `required_tools` | The current managed-host `tools/list` observation contains every tool required by the current mode. | The current session has no tool-list observation, or its host-version observation is stale. | The current managed host actually omitted required tools or returned invalid tool-list data. |
-| `tool_round_trip` | The current managed-host session completed a safe read-only Volicord tool call. | No such current observation exists, or its host-version observation is stale. | The current session recorded an actual protocol or contract incompatibility. |
+| `host_session` | At least one `managed_host` session for the current integration revision and current host-version observation completed `initialize`. | No qualifying managed-host use was observed, only an older revision was observed, initialization is still absent, or the Codex version changed after the observation. | When no qualifying success exists, the newest current attempt recorded an actual initialization or protocol failure. |
+| `required_tools` | At least one current, host-version-fresh managed-host `tools/list` observation contains every tool required by the current mode. | No qualifying tool-list observation exists. | When no qualifying success exists, the newest current managed host actually omitted required tools or returned invalid tool-list data. |
+| `tool_round_trip` | At least one current, host-version-fresh managed-host session completed a safe read-only Volicord tool call. | No such qualifying current observation exists. | When no qualifying success exists, the newest current attempt recorded an actual protocol or contract incompatibility. |
 | `project_trust` | Project trust is satisfied, or no separate project trust applies. | A normal Codex trust or reload action remains. | The trust configuration is malformed or contradictory and cannot be resolved by the normal action. |
 | `guard_files` | Every current Guard manifest file expectation matches, including canonical content, owner fields, markers, wrapper runtime commands, and required executable behavior. | A newly applied configuration still needs the normal host reload step. | A required managed file is missing, malformed, content- or ownership-mismatched, or lacks required executable behavior. |
 | `guard_observation` | Every required typed hook phase was observed for the manifest's exact policy hash and integration revision. Prompt capture is reported as a detail of this check. | Files are valid, but one or more current required phases have not yet been observed. Older policy-hash or integration-revision events do not satisfy the check. | A current Guard event reports a malformed or incompatible hook contract. |
@@ -209,8 +209,18 @@ revision.
 The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint and current Guard installation
 identity/policy hash, or explicit absence of Guard ownership. A project Agent
-Session retains that revision and cannot be rebound across a runtime session,
-Connection, or project.
+Session retains that revision, deterministic Connection-bound session ID,
+Connection, host session/thread/latest turn, and first/last observation times.
+A Guard observation may create it with a null runtime binding. The first actual
+managed MCP tool call for that host session reserves the cross-database binding
+and attaches its runtime. An attached session cannot be rebound across a
+runtime session, Connection, project, host session, or host thread.
+
+Runtime rows are historical process observations, not leases or liveness
+claims. A crashed process may leave an apparently open row, and multiple
+cooperative Codex processes may be current concurrently. Neither condition
+blocks Guard correlation: no runtime is guessed from open rows, and different
+host sessions bind independently.
 
 These records demonstrate locally observed cooperative protocol/session
 ownership under current configuration. They do not identify a binary, host,
@@ -240,16 +250,19 @@ It is created only after validating all of the following current facts:
 1. the Agent Connection exists and is enabled;
 2. the project exists and is currently a Connection Project;
 3. the runtime session belongs to that Connection;
-4. the project session belongs to that runtime session, Connection, and
+4. the project session has a non-null runtime binding;
+5. the Registry binding exactly matches the runtime, Connection, project,
+   project session, and host session;
+6. the project session belongs to that runtime session, Connection, and
    project;
-5. the runtime and project session revisions match current Connection and
+7. the runtime and project session revisions match current Connection and
    project integration revisions;
-6. the Connection mode allows the requested operation category;
-7. `ActorSource::AgentConnection` exactly names the validated Connection;
-8. a project-scoped operation exactly names the validated project;
-9. the runtime session has `session_source=managed_host`, never
+8. the Connection mode allows the requested operation category;
+9. `ActorSource::AgentConnection` exactly names the validated Connection;
+10. a project-scoped operation exactly names the validated project;
+11. the runtime session has `session_source=managed_host`, never
    `cli_preflight`; and
-10. client name/version and host version are ignored for authorization.
+12. client name/version and host version are ignored for authorization.
 
 The adapter validates the authoritative runtime and project rows on every
 project tool call before constructing Core invocation context. No alternate

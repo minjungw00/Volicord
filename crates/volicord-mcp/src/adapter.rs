@@ -935,7 +935,7 @@ impl McpAdapter {
         params: &Value,
         binding: &ManagedAgentSessionBinding,
     ) -> Result<(), McpAdapterError> {
-        if !PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
+        if !PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) && tool_name != LIST_PROJECTS_TOOL_NAME {
             return Ok(());
         }
         let object = params
@@ -944,9 +944,20 @@ impl McpAdapter {
                 tool_name: tool_name.to_owned(),
                 message: "tool arguments must be an object".to_owned(),
             })?;
-        let requested_project_selector =
-            optional_string_field(object, "project_selector", tool_name)?;
-        let project_id = self.select_project(requested_project_selector.as_deref())?;
+        let project_id = if tool_name == LIST_PROJECTS_TOOL_NAME {
+            let projects = self.allowed_project_availabilities(tool_name)?;
+            let [project] = projects.as_slice() else {
+                return Ok(());
+            };
+            if project.storage_capability != McpStorageCapability::ReadWrite {
+                return Ok(());
+            }
+            ProjectId::new(&project.project_id)
+        } else {
+            let requested_project_selector =
+                optional_string_field(object, "project_selector", tool_name)?;
+            self.select_project(requested_project_selector.as_deref())?
+        };
         if self.storage_capability_for_project(&project_id)? == McpStorageCapability::ReadWrite {
             self.ensure_agent_session_binding(&project_id, binding)?;
         }
@@ -969,13 +980,23 @@ impl McpAdapter {
                     .to_owned(),
             )
         })?;
-        let guard = guard_health_record(
+        let guard_installations = list_guard_installations(
             &self.runtime_home,
-            project_id.as_str(),
             self.context.connection_internal_id.as_str(),
+            Some(project_id.as_str()),
         )
         .map_err(McpAdapterError::Store)?;
-        if let Some(installation) = guard.guard_installation.as_ref() {
+        let guard_installation = match guard_installations.as_slice() {
+            [] => None,
+            [installation] => Some(installation),
+            _ => {
+                return Err(McpAdapterError::Environment(
+                    "managed_stdio_session_guard_ownership_ambiguous: project has multiple current Guard installations"
+                        .to_owned(),
+                ))
+            }
+        };
+        if let Some(installation) = guard_installation {
             let manifest = volicord_types::guard_manifest_from_json(&installation.manifest_json)
                 .map_err(|_| {
                     McpAdapterError::Environment(
@@ -990,19 +1011,17 @@ impl McpAdapter {
                 ));
             }
         }
-        let guard_installation_id = guard
-            .guard_installation
-            .as_ref()
-            .map(|installation| installation.guard_installation_id.clone());
+        let guard_installation_id =
+            guard_installation.map(|installation| installation.guard_installation_id.clone());
         let observed_at = CoreProjectStore::open(&self.runtime_home, project_id)
             .and_then(|store| store.current_timestamp())
             .map_err(McpAdapterError::Store)?;
-        let insert_result = insert_agent_session(
+        upsert_agent_session(
             &self.runtime_home,
             project_id.as_str(),
-            AgentSessionInsert {
+            AgentSessionUpsert {
                 session_id: binding.session_id.clone(),
-                runtime_session_id: binding.runtime_session_id.clone(),
+                runtime_session_id: Some(binding.runtime_session_id.clone()),
                 connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
                 guard_installation_id,
                 host_session_id: binding.host_session_id.clone(),
@@ -1010,29 +1029,9 @@ impl McpAdapter {
                 host_turn_id: binding.host_turn_id.clone(),
                 observed_at,
             },
-        );
-        match insert_result {
-            Ok(_) => Ok(()),
-            Err(error) => {
-                let Some(existing) =
-                    agent_session(&self.runtime_home, project_id.as_str(), &binding.session_id)
-                        .map_err(McpAdapterError::Store)?
-                else {
-                    return Err(McpAdapterError::Store(error));
-                };
-                if existing.connection_internal_id != self.context.connection_internal_id.as_str()
-                    || existing.runtime_session_id != binding.runtime_session_id
-                    || existing.host_session_id != binding.host_session_id
-                    || existing.host_thread_id != binding.host_thread_id
-                {
-                    return Err(McpAdapterError::Environment(
-                        "managed_stdio_session_ownership_conflict: concurrently created session ownership does not match this managed stdio connection"
-                            .to_owned(),
-                    ));
-                }
-                Ok(())
-            }
-        }
+        )
+        .map_err(McpAdapterError::Store)?;
+        Ok(())
     }
 
     fn storage_capability_for_project(

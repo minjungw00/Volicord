@@ -116,10 +116,14 @@ authority from arbitrary filesystem proximity.
 The Registry owns process lifecycle milestones and cross-project runtime/host
 session reservations. Each project database owns its project Agent Session and
 host session/thread/turn correlation. Because SQLite cannot enforce a foreign
-key between those separate database files, Store validates the Registry owner
-before a project write and uses the Registry reservation for cross-project
-uniqueness. `diagnostics.sqlite` is a separate best-effort carrier and is never
-an operational authority source.
+key between those separate database files, a valid Guard observation may first
+create an unbound project session. The first actual managed MCP tool call for
+the same host identity validates the Registry owner, reserves cross-project
+uniqueness, and attaches that runtime to the project row. Exact replay repairs
+an interrupted attach. A process row is not a lease or liveness signal, so a
+crashed apparently open row and concurrent processes never select or block
+Guard correlation. `diagnostics.sqlite` is a separate best-effort carrier and
+is never an operational authority source.
 
 ## Location And Authority Boundaries
 

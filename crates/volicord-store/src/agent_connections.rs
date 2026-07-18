@@ -2211,7 +2211,7 @@ mod tests {
     use std::error::Error;
 
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::McpRuntimeSessionSource;
+    use volicord_types::{managed_stdio_session_id, McpRuntimeSessionSource};
 
     use super::*;
     use crate::bootstrap::{
@@ -3348,12 +3348,13 @@ mod tests {
             McpRuntimeSessionSource::ManagedHost,
             42,
         )?;
+        let selected_agent_session_id = managed_stdio_session_id("conn_selected", "host_selected")?;
         bind_mcp_runtime_project_session(
             fixture.runtime_home.path(),
             &selected_session.runtime_session_id,
             "conn_selected",
             PROJECT_ID,
-            "session_selected",
+            &selected_agent_session_id,
             "host_selected",
             "2026-07-19T00:00:01Z",
         )?;
@@ -3387,12 +3388,14 @@ mod tests {
             McpRuntimeSessionSource::ManagedHost,
             43,
         )?;
+        let unrelated_agent_session_id =
+            managed_stdio_session_id("conn_unrelated", "host_unrelated")?;
         bind_mcp_runtime_project_session(
             fixture.runtime_home.path(),
             &unrelated_session.runtime_session_id,
             "conn_unrelated",
             PRIOR_OTHER_PROJECT_ID,
-            "session_unrelated",
+            &unrelated_agent_session_id,
             "host_unrelated",
             "2026-07-19T00:00:01Z",
         )?;
@@ -3486,20 +3489,17 @@ mod tests {
             McpRuntimeSessionSource::ManagedHost,
             44,
         )?;
-        for (project_id, session_id, host_session_id) in [
-            (PROJECT_ID, "session_multi_selected", "host_multi_selected"),
-            (
-                PRIOR_OTHER_PROJECT_ID,
-                "session_multi_retained",
-                "host_multi_retained",
-            ),
+        for (project_id, host_session_id) in [
+            (PROJECT_ID, "host_multi_selected"),
+            (PRIOR_OTHER_PROJECT_ID, "host_multi_retained"),
         ] {
+            let session_id = managed_stdio_session_id("conn_multi", host_session_id)?;
             bind_mcp_runtime_project_session(
                 fixture.runtime_home.path(),
                 &runtime_session.runtime_session_id,
                 "conn_multi",
                 project_id,
-                session_id,
+                &session_id,
                 host_session_id,
                 "2026-07-19T00:00:01Z",
             )?;
@@ -3579,12 +3579,13 @@ mod tests {
             McpRuntimeSessionSource::ManagedHost,
             45,
         )?;
+        let pending_agent_session_id = managed_stdio_session_id("conn_pending", "host_pending")?;
         bind_mcp_runtime_project_session(
             fixture.runtime_home.path(),
             &runtime_session.runtime_session_id,
             "conn_pending",
             PROJECT_ID,
-            "session_pending",
+            &pending_agent_session_id,
             "host_pending",
             "2026-07-19T00:00:01Z",
         )?;

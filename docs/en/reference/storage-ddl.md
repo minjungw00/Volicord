@@ -1211,7 +1211,9 @@ CREATE INDEX idx_authority_events_hash_chain
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
-  runtime_session_id TEXT NOT NULL,
+  runtime_session_id TEXT CHECK (
+    runtime_session_id IS NULL OR length(trim(runtime_session_id)) > 0
+  ),
   connection_internal_id TEXT NOT NULL,
   project_integration_revision TEXT NOT NULL CHECK (
     length(project_integration_revision) = 71
@@ -1221,12 +1223,11 @@ CREATE TABLE agent_sessions (
   host_session_id TEXT NOT NULL CHECK (length(trim(host_session_id)) > 0),
   host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
   last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
-  started_at TEXT NOT NULL,
+  first_observed_at TEXT NOT NULL,
   last_observed_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id),
   UNIQUE (project_id, session_id, connection_internal_id),
-  UNIQUE (project_id, runtime_session_id, host_session_id),
-  CHECK (last_observed_at >= started_at),
+  CHECK (last_observed_at >= first_observed_at),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
@@ -1314,6 +1315,9 @@ CREATE TABLE unrecorded_changes (
 
 CREATE INDEX idx_agent_sessions_connection
   ON agent_sessions (project_id, connection_internal_id);
+CREATE UNIQUE INDEX idx_agent_sessions_runtime_binding
+  ON agent_sessions (project_id, runtime_session_id)
+  WHERE runtime_session_id IS NOT NULL;
 CREATE INDEX idx_agent_sessions_runtime_revision
   ON agent_sessions (project_id, runtime_session_id, project_integration_revision, last_observed_at);
 CREATE INDEX idx_guard_events_session
@@ -1504,7 +1508,7 @@ Project-state constraints:
   operation category, optional verification basis, and optional canonical
   `git_workspace_context_json`. Replay rows are not caller authority and do not
   bypass current connection, Git workspace, or User Channel requirements.
-- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, and `unrecorded_changes` are project-local Codex Record Guard and reconciliation records. They repeat `connection_internal_id` for connection scoping and use project-local keys so records do not leak across projects.
+- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, and `unrecorded_changes` are project-local Codex Record Guard and reconciliation records. They repeat `connection_internal_id` for connection scoping and use project-local keys so records do not leak across projects. `agent_sessions.runtime_session_id` is null only before the first matching managed MCP tool call; `first_observed_at` and `last_observed_at` bound its Guard/MCP observation history, and the partial unique index applies only after runtime attachment.
 - `guard_events` binds every observation to a required typed hook phase, Guard installation, exact policy hash, and integration revision. Only current-owned `compatible` events satisfy a required phase; current `malformed` or `incompatible` events fail the Guard observation check, and older hashes or revisions do not satisfy it. `decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`; these values record local host decision requests, not OS-level enforcement proof.
 - `expected_writes.status` is constrained to `pending` or `matched`, and `path_policy` is constrained to `exact_paths`. Matched rows must carry the matched Guard observation event, matched paths JSON, and `matched_at`; pending rows must not carry those matched fields.
 - `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields.

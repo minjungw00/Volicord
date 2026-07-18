@@ -130,9 +130,9 @@ Check는 `id`의 UTF-8 byte 오름차순으로 정렬합니다. Action도 같은
 | `managed_config` | 선택한 대상에 정규 관리 entry가 있습니다. | 활성 조사 뒤에는 사용하지 않습니다. | 필수 entry가 없거나, malformed이거나, 다른 entry가 이름을 소유하거나, 변경되었거나, 조사할 수 없습니다. Details에는 대상과 정확한 원인을 기록합니다. |
 | `host_executable` | `PATH`에서 `codex`를 찾았고 version 명령이 성공했습니다. | 읽기 전용 status 경로에서 projection할 이전 활성 probe가 없습니다. | 탐색 또는 version 명령이 실패했습니다. Path와 version은 diagnostic일 뿐입니다. |
 | `mcp_server` | Volicord CLI self-test가 preflight, `initialize`, `tools/list`, 현재 필수 도구 집합, 안전한 읽기 전용 `volicord.list_projects` 호출을 통과했습니다. | 활성 self-test 뒤에는 사용하지 않습니다. | Process 시작, storage preflight, 초기화, 도구 검색, 필수 도구 검증, 안전 호출 중 하나가 실패했습니다. |
-| `host_session` | 현재 통합 revision의 `managed_host` session이 `initialize`를 완료했습니다. | Managed-host 사용을 관찰하지 못했거나, 이전 revision만 관찰했거나, 초기화 관찰이 아직 없거나, 관찰 뒤 Codex version이 바뀌었습니다. | 현재 session이 실제 초기화 또는 protocol 실패를 기록했습니다. |
-| `required_tools` | 현재 managed-host `tools/list` 관찰에 현재 mode의 모든 필수 도구가 있습니다. | 현재 session에 도구 목록 관찰이 없거나 host-version 관찰이 오래되었습니다. | 현재 managed host에서 필수 도구가 실제로 빠졌거나 도구 목록 데이터가 유효하지 않습니다. |
-| `tool_round_trip` | 현재 managed-host session이 안전한 읽기 전용 Volicord 도구 호출을 완료했습니다. | 그런 현재 관찰이 없거나 host-version 관찰이 오래되었습니다. | 현재 session이 실제 protocol 또는 contract 비호환을 기록했습니다. |
+| `host_session` | 현재 통합 revision과 현재 host-version 관찰에 맞는 `managed_host` session 하나 이상이 `initialize`를 완료했습니다. | 조건을 충족하는 managed-host 사용을 관찰하지 못했거나, 이전 revision만 관찰했거나, 초기화 관찰이 아직 없거나, 관찰 뒤 Codex version이 바뀌었습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 시도가 실제 초기화 또는 protocol 실패를 기록했습니다. |
+| `required_tools` | 현재 상태이고 host-version이 fresh인 managed-host `tools/list` 관찰 하나 이상에 현재 mode의 모든 필수 도구가 있습니다. | 조건을 충족하는 도구 목록 관찰이 없습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 managed host에서 필수 도구가 실제로 빠졌거나 도구 목록 데이터가 유효하지 않습니다. |
+| `tool_round_trip` | 현재 상태이고 host-version이 fresh인 managed-host session 하나 이상이 안전한 읽기 전용 Volicord 도구 호출을 완료했습니다. | 조건을 충족하는 현재 관찰이 없습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 시도가 실제 protocol 또는 contract 비호환을 기록했습니다. |
 | `project_trust` | 프로젝트 신뢰가 충족되었거나 별도 프로젝트 신뢰가 적용되지 않습니다. | 일반 Codex 신뢰 또는 reload 동작이 남았습니다. | 신뢰 구성이 malformed 또는 모순 상태이고 일반 동작으로 해결할 수 없습니다. |
 | `guard_files` | 정규 content, 소유자 field, marker, wrapper runtime command, 필수 executable 동작을 포함해 현재 Guard manifest의 모든 파일 기대값이 일치합니다. | 새로 적용한 구성이 일반 host reload 단계를 기다립니다. | 필수 managed file이 없거나 malformed이거나 content/ownership이 다르거나 필수 executable 동작을 충족하지 않습니다. |
 | `guard_observation` | Manifest의 정확한 policy hash와 integration revision에 대해 모든 필수 typed hook phase를 관찰했습니다. Prompt capture는 이 check의 detail로 보고합니다. | 파일은 유효하지만 현재 필수 phase 하나 이상을 아직 관찰하지 못했습니다. 이전 policy hash나 integration revision의 event는 이 check를 충족하지 않습니다. | 현재 Guard event가 malformed 또는 incompatible hook contract를 보고했습니다. |
@@ -189,8 +189,17 @@ Runtime session은 소유 Connection과 Connection 통합 revision을 보관합�
 
 프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
 fingerprint와 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
-부재를 더합니다. 프로젝트 Agent Session은 이 revision을 보관하며 다른 runtime
-session, Connection, 프로젝트에 다시 결속할 수 없습니다.
+부재를 더합니다. 프로젝트 Agent Session은 이 revision, 결정적인 Connection-bound session
+ID, Connection, host session/thread/latest turn, 최초/마지막 관찰 시각을 보관합니다. Guard
+관찰은 runtime binding이 null인 session을 만들 수 있습니다. 해당 host session의 첫 실제
+managed MCP 도구 호출이 교차 데이터베이스 binding을 예약하고 runtime을 붙입니다. 붙인
+session은 다른 runtime session, Connection, 프로젝트, host session, host thread에 다시
+결속할 수 없습니다.
+
+Runtime row는 lease나 liveness 주장이 아니라 process의 이력 관찰입니다. Crash한 process는
+열린 것처럼 보이는 row를 남길 수 있고 여러 협력적 Codex process가 동시에 현재 상태일 수
+있습니다. 어느 경우도 Guard 상관관계를 막지 않습니다. 열린 row에서 runtime을 추측하지
+않고 서로 다른 host session은 독립적으로 결속합니다.
 
 이 기록은 현재 구성 아래 로컬에서 관찰한 협력적 protocol/session 소유권을 보여
 줍니다. Binary, host, client, actor, 운영체제 사용자, human identity를 식별하지
@@ -218,14 +227,17 @@ struct ValidatedAgentSession {
 1. Agent Connection이 존재하고 활성 상태입니다.
 2. 프로젝트가 존재하고 현재 Connection Project입니다.
 3. Runtime session이 해당 Connection에 속합니다.
-4. 프로젝트 session이 해당 runtime session, Connection, 프로젝트에 속합니다.
-5. Runtime과 프로젝트 session revision이 현재 Connection/프로젝트 통합 revision과
+4. 프로젝트 session에 null이 아닌 runtime binding이 있습니다.
+5. Registry binding이 runtime, Connection, 프로젝트, 프로젝트 session, host session과
+   정확히 일치합니다.
+6. 프로젝트 session이 해당 runtime session, Connection, 프로젝트에 속합니다.
+7. Runtime과 프로젝트 session revision이 현재 Connection/프로젝트 통합 revision과
    일치합니다.
-6. Connection mode가 요청한 operation category를 허용합니다.
-7. `ActorSource::AgentConnection`이 검증된 Connection을 정확히 이름 붙입니다.
-8. 프로젝트 범위 operation이 검증된 프로젝트를 정확히 이름 붙입니다.
-9. Runtime session의 `session_source=managed_host`이며 `cli_preflight`가 아닙니다.
-10. Client name/version과 host version을 권한에 사용하지 않습니다.
+8. Connection mode가 요청한 operation category를 허용합니다.
+9. `ActorSource::AgentConnection`이 검증된 Connection을 정확히 이름 붙입니다.
+10. 프로젝트 범위 operation이 검증된 프로젝트를 정확히 이름 붙입니다.
+11. Runtime session의 `session_source=managed_host`이며 `cli_preflight`가 아닙니다.
+12. Client name/version과 host version을 권한에 사용하지 않습니다.
 
 어댑터는 프로젝트 도구를 호출할 때마다 Core 호출 맥락을 만들기 전에 권위 있는 runtime
 및 프로젝트 row를 검증합니다. 대체 권한, compatibility, fallback 경로는 없습니다.

@@ -44,6 +44,12 @@ Volicord는 그 OS 사용자를 인증하거나 프로세스 identity를 사람 
 Connection Project membership, 현재 통합 revision, 현재 Connection mode가 허용한 범위만
 증명합니다.
 
+Runtime binding이 없는 Guard-only 프로젝트 session은 상관관계 이력이지 호출 권한이
+아닙니다. Core 권한에는 현재 managed-host runtime과 정확한 Registry
+runtime/project/host-session 예약도 필요합니다. Runtime row는 process-liveness 주장이
+아닙니다. Crash 뒤 열린 것처럼 보이는 row는 이력이고 concurrent row 여러 개가 서로를
+승인하거나 Guard event에 맞는 runtime으로 추측될 수 없습니다.
+
 실행 파일 bytes와 경로, process identity, client name/version, host version, 환경 값,
 host thread/turn metadata는 actor 또는 human identity credential이 아닙니다. Thread와 turn
 metadata는 지원 workflow를 연결할 수 있지만 Connection이나 프로젝트 권한을 넓힐 수

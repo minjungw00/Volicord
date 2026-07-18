@@ -52,6 +52,13 @@ cooperative runtime/project session ownership, current Connection Project
 membership, current integration revisions, and permission under the current
 Connection mode.
 
+A Guard-only project session with no runtime binding is correlation history,
+not invocation authority. Core authority additionally requires a current
+managed-host runtime and an exact Registry runtime/project/host-session
+reservation. Runtime rows are not process-liveness claims: an apparently open
+crashed row is historical, and concurrent rows may coexist without authorizing
+one another or being guessed for a Guard event.
+
 Executable bytes, executable paths, process identity, client name/version,
 host version, environment values, and host thread/turn metadata are not actor
 or human identity credentials. Thread and turn metadata may correlate the

@@ -840,7 +840,7 @@ fn correlation_baseline_identity(
         "kind": "git_worktree",
         "session_id": session.session_id,
         "connection_internal_id": session.connection_internal_id,
-        "session_started_at": session.started_at,
+        "session_first_observed_at": session.first_observed_at,
         "head_oid": head_oid
     })))
 }
@@ -956,7 +956,7 @@ fn try_suppress_previously_recorded_changes(
         .ok_or_else(|| SuppressionFailure::new(SuppressionUnavailableReason::PathIdentityFailed))?;
     let not_before = baseline_identity
         .get("created_at")
-        .or_else(|| baseline_identity.get("session_started_at"))
+        .or_else(|| baseline_identity.get("session_first_observed_at"))
         .and_then(Value::as_str)
         .ok_or_else(|| {
             SuppressionFailure::new(SuppressionUnavailableReason::CorrelationPayloadInvalid)
