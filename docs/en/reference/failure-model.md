@@ -66,6 +66,13 @@ reports their actual `passed`, `pending`, or `failed` results. Failure to find
 or run the executable is `Unavailable` at a general failure-category boundary
 and a failed `host_executable` connection check.
 
+The administrative connection command report uses `failed` only for a typed
+operational result with at least one failed required check. Pending host
+observation is `action_required`, not `Degraded`, a stale/broken public status,
+or an unexpected runtime error. Usage and unexpected runtime or serialization
+failures remain on the CLI error channel rather than being fabricated into a
+successful or action-required report.
+
 No category implies another. In particular:
 
 - `Unavailable` is not an empty successful result.

@@ -93,19 +93,21 @@ ConnectionVerificationReport:
 ConnectionCheck:
   id: ConnectionCheckId
   status: passed | pending | failed
-  code: string | null
+  code?: string
   summary: string
-  details: object | null
-  observed_at: UtcTimestamp | null
+  details?: object
+  observed_at?: UtcTimestamp
 
 ConnectionAction:
   id: string
   instruction: string
-  command: string | null
+  command?: string
 ```
 
-Nullable 구성원과 배열을 포함해 표시한 모든 구성원은 필수입니다. 알 수 없는 구성원,
-중복 JSON key, 중복 check ID, 중복 action ID, 비정규 순서, 알 수 없는 상태 값은
+`status`, `checked_at`, `checks`, `actions`, 각 check 또는 action의 선택 사항이 아닌
+구성원은 필수입니다. 선택적인 `code`, `details`, `observed_at`, `command` 값이 없으면
+null로 직렬화하지 않고 구성원을 생략합니다. 알 수 없는 구성원, 중복 JSON key, 중복
+check ID, 중복 action ID, 비정규 순서, 선택 구성원의 명시적 null, 알 수 없는 상태 값은
 유효하지 않습니다. Check ID, action ID, null이 아닌 check code는 ASCII 1~128
 byte이고 `[a-z][a-z0-9_]*`와 일치해야 합니다. `summary`, `instruction`, null이
 아닌 `command`는 UTF-8 1~4,096 byte이고 NUL을 포함하지 않습니다. Null이 아닌
@@ -149,11 +151,20 @@ Codex를 reload하고 다시 관찰할 때까지 현재 host 관찰이 pending�
 가용성, protocol/host version, capability 관찰, 관찰 timestamp는 check 사실에 두며
 별도 공개 또는 영속 상태 enum을 만들지 않습니다.
 
-사용자 지시는 이 보고서의 `actions`에만 둡니다. Registry 저장소는 독립된 검증 상태나
-action 배열을 저장하지 않습니다. 완료된 영속 보고서가 없는 연결은
+사용자 지시는 이 보고서의 `actions`에만 둡니다. Pending 또는 failed check에서 직접
+만들고 안정적인 ID 순서로 정렬해 중복을 제거합니다. 다시 불러오기와 최초 사용 action은
+실제 Codex 활동을 관찰해야 한다고 명시합니다. `guard_files` check가 통과했다면 Guard
+파일 재설치를 요청하지 않습니다. Registry 저장소는 독립된 검증 상태나 action 배열을
+저장하지 않습니다. 완료된 영속 보고서가 없는 연결은
 `verification_not_run` pending check 하나와 검증 action 하나를 포함하는 합성
 `status=action_required` 보고서로 projection합니다. 읽었다는 이유로 이를 저장하지
 않습니다.
+
+관리 CLI는 이 보고서의 check와 action을 최상위 `ConnectionCommandReport`에 직접
+projection합니다. 이 보고서를 중첩하거나 집계 상태를 반복하거나 `checked_at`을 두 번째
+명령 출력 시간으로 노출하지 않습니다. Status는 저장된 활성 probe 사실과 현재 관찰에서
+메모리 안의 최신 projection을 다시 만들 수 있지만, 이 읽기는 projection을 영속하거나
+timestamp를 바꾸지 않습니다.
 
 운영 호환성은 어댑터가 실제로 수행한 check와 관찰한 동작에서 보고합니다. `complete`는
 정확한 host artifact의 release certification, 운영체제 집행, actor identity 증명,

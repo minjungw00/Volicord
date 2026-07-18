@@ -137,16 +137,54 @@ unambiguous. The only accepted explicit value is `codex`.
 `complete` is not a release-cell pass, Core invocation authorization, host
 attestation, or proof that an active Codex session exposed tools.
 
-Connection verification serializes the canonical
-[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report).
-Its check and action arrays are not accompanied by an independent connection
-status or setup-action state. `--dry-run` is reported as operation mode or plan
-context; it never adds `dry_run` to either closed status set.
+`volicord init`, `volicord connection status`, and
+`volicord connection verify` serialize one `ConnectionCommandReport`:
+
+```yaml
+ConnectionCommandReport:
+  operation: init | status | verify
+  dry_run: bool
+  status: complete | action_required | failed
+  setup_applied: bool                    # init only
+  runtime_home: string
+  connection:
+    id: string
+    host: codex
+    scope: user | project
+    profile: record
+    mode: read_only | workflow
+    repository: string
+    config_target: string
+  checks: ConnectionCheck[]
+  actions: ConnectionAction[]
+  planned_changes: PlannedConnectionChange[] # dry-run only
+  limits: string[]
+```
+
+The report contains one aggregate status and one check/action tree. It does not
+add `states`, a nested verification report or status, a Guard health tree,
+host-gate or approval fields, a summary card, a primary action, or a second
+disclosure tree. JSON omits optional fields when they do not apply; it does not
+emit them as null-filled placeholders. `limits` carries the cooperative
+assurance limitation once.
+
+`setup_applied` separates setup mutation from operational verification. A
+successful `init` apply reports `setup_applied=true` even when a later local or
+operational check makes `status=failed`. A dry run reports
+`setup_applied=false`, includes `planned_changes`, and never serializes
+`status=dry_run`. Its status is `action_required` when a planned change or host
+action remains and otherwise `complete`.
+
+`checks` and `actions` use the canonical
+[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)
+member types and ordering. JSON and human output render the same typed command
+report. Human output may group checks but does not recompute status or actions.
 
 `volicord connection status` is read-only. It projects current managed
 configuration, trust, Guard audit, integration revision, and managed-host
 session observations together with the last active executable and MCP-server
-probe. It neither launches a process nor persists a refreshed report.
+probe. It neither launches a process nor changes files, timestamps, reports,
+actions, observations, or database rows.
 
 `volicord connection verify` actively discovers `codex`, runs the version
 command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test that
@@ -161,6 +199,11 @@ configuration because Codex is unavailable or the self-test fails. A fresh
 valid setup with no managed-host observation is `action_required` and includes
 the typed reload and first-use actions required to obtain those observations.
 No Codex version or executable digest is an eligibility allowlist.
+
+Actions are an ordered, deduplicated list derived from pending and failed
+checks. Reload and first-use instructions state that actual Codex activity must
+be observed. A passing `guard_files` check never produces an instruction to
+reinstall Guard files.
 
 <a id="external-host-configuration"></a>
 ## Managed Codex Configuration
@@ -240,9 +283,13 @@ the CLI does not default, repair, or guess an answer.
 ## Output And Exit Status
 
 `--json` writes exactly one JSON document to stdout. Default prose is for
-humans and must not be parsed for automation. Success and `action_required`
-exit `0`; runtime, storage, verification, and contract failures exit `1`;
-usage errors exit `2`.
+humans and must not be parsed for automation. `complete`, `action_required`,
+and every valid dry run exit `0`; a typed `failed` operational report exits
+`1`; usage errors exit `2`. A failed JSON operational report is the only stdout
+document and leaves stderr empty. A failed human operational report is rendered
+on stdout. Unexpected runtime or serialization errors use stderr and exit `1`.
+Exit selection uses the typed report status, never rendered text or reparsed
+JSON.
 
 <a id="noninteractive-approval-behavior"></a>
 ## Noninteractive Behavior

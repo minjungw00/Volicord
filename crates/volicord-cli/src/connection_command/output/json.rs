@@ -1,51 +1,5 @@
 use super::*;
 
-pub(in crate::connection_command) fn repo_file_changes_json(changes: &[RepoFileChange]) -> Value {
-    Value::Array(
-        changes
-            .iter()
-            .map(|change| {
-                json!({
-                    "status": change.status.as_str(),
-                    "path": change.path,
-                })
-            })
-            .collect(),
-    )
-}
-
-pub(in crate::connection_command) fn changed_repo_files_json(changes: &[RepoFileChange]) -> Value {
-    Value::Array(
-        changes
-            .iter()
-            .filter(|change| change.status.is_actual())
-            .map(|change| {
-                json!({
-                    "status": change.status.as_str(),
-                    "path": change.path,
-                })
-            })
-            .collect(),
-    )
-}
-
-pub(in crate::connection_command) fn init_checks_json(
-    verification: Option<&VerificationReport>,
-    guard_status: &str,
-    guard_state: &GuardOperationalState,
-) -> Value {
-    if let Some(report) = verification {
-        return serde_json::to_value(report.report.checks()).unwrap_or(Value::Array(Vec::new()));
-    }
-    let mut checks = Vec::new();
-    checks.push(json!({
-        "id": "guard_installation",
-        "status": if guard_status == "passed" { "passed" } else if guard_status == "failed" { "failed" } else { "pending" },
-        "summary": "Codex Record Guard installation status",
-    }));
-    checks.extend(guard_checks_json_values(guard_state));
-    Value::Array(checks)
-}
 pub(in crate::connection_command) fn connection_states_json(
     connection_state: &str,
     project_registration: &str,
@@ -119,33 +73,6 @@ pub(in crate::connection_command) fn checks_json(
     Value::Array(checks)
 }
 
-fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
-    vec![
-        json!({
-            "id": "guard_files",
-            "status": match guard_state.files_state.as_str() {
-                "installed" => "passed",
-                "not_configured" => "pending",
-                _ => "failed",
-            },
-            "summary": format!("Codex Record Guard files are {}", guard_state.files_state),
-        }),
-        json!({
-            "id": "guard_observation",
-            "status": match guard_state.hook_observed_state.as_str() {
-                "observed" => "passed",
-                "failed" => "failed",
-                _ => "pending",
-            },
-            "summary": format!(
-                "Codex Record Guard observation is {}; prompt capture is {}",
-                guard_state.hook_observed_state,
-                guard_state.prompt_capture_state,
-            ),
-        }),
-    ]
-}
-
 pub(in crate::connection_command) fn connection_json(
     connection: &AgentConnectionRecord,
     project_ids: &[String],
@@ -174,8 +101,4 @@ pub(in crate::connection_command) fn connection_json(
         "server_name": connection.server_name,
         "config_target": connection.config_target,
     })
-}
-
-pub(in crate::connection_command) fn verification_json(report: &VerificationReport) -> Value {
-    serde_json::to_value(&report.report).unwrap_or(Value::Null)
 }

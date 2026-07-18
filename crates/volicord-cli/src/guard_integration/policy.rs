@@ -13,9 +13,7 @@ use crate::{
         hooks::guard_command_specs_json,
         public_host_label, GuardIntegrationError,
     },
-    host_integration::{
-        ConnectionIntent, HostKind, HostLifecyclePhase, ManagedServerEntry, REQUIRED_GUARD_PHASES,
-    },
+    host_integration::{ConnectionIntent, HostKind, ManagedServerEntry, REQUIRED_GUARD_PHASES},
 };
 
 pub(crate) const POLICY_STORAGE_SCOPE: &str = "local_overlay";
@@ -625,18 +623,6 @@ pub(crate) fn required_guard_phase_names() -> Vec<&'static str> {
         .iter()
         .map(|phase| phase.capability_name())
         .collect()
-}
-
-pub(crate) fn lifecycle_phase_names(phases: &[HostLifecyclePhase]) -> Vec<&'static str> {
-    phases.iter().map(|phase| phase.capability_name()).collect()
-}
-
-pub(crate) fn guard_has_prompt_capture_commands(policy: &Value) -> bool {
-    policy
-        .get("host_hook")
-        .and_then(|guard| guard.get("commands"))
-        .and_then(|commands| commands.get("prompt_capture"))
-        .is_some()
 }
 
 fn path_text(path: &Path) -> String {

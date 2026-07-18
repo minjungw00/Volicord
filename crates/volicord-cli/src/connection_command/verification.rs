@@ -31,7 +31,6 @@ pub(in crate::connection_command) enum AgentResultStatus {
     Complete,
     ActionRequired,
     Failed,
-    DryRun,
 }
 
 impl AgentResultStatus {
@@ -40,7 +39,6 @@ impl AgentResultStatus {
             Self::Complete => "complete",
             Self::ActionRequired => "action_required",
             Self::Failed => "failed",
-            Self::DryRun => "dry_run",
         }
     }
 }
@@ -213,6 +211,28 @@ pub(in crate::connection_command) fn effective_connection_report(
 ) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
     connection
         .effective_verification_report(current_timestamp())
+        .map_err(ConnectionCommandError::from)
+}
+
+pub(in crate::connection_command) fn connection_metadata_failure_report(
+    current: &ConnectionVerificationReport,
+) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
+    let mut checks = current
+        .checks()
+        .iter()
+        .filter(|check| check.id().as_str() != "managed_config")
+        .cloned()
+        .collect::<Vec<_>>();
+    checks.push(canonical_check(
+        "managed_config",
+        ConnectionCheckStatus::Failed,
+        "connection_metadata_invalid",
+        "Agent Connection metadata is invalid, so managed Codex configuration cannot be inspected",
+        None,
+        None,
+    )?);
+    let actions = actions_for_checks(&checks)?;
+    ConnectionVerificationReport::try_new(current.checked_at().clone(), checks, actions)
         .map_err(ConnectionCommandError::from)
 }
 
@@ -630,18 +650,22 @@ fn guard_checks(
         "failed" => ConnectionCheckStatus::Failed,
         _ => ConnectionCheckStatus::Pending,
     };
-    let facts = json!({
-        "generated_config_verified": guard.generated_config_verified,
-        "hook_observed": guard.hook_observed_state == "observed",
+    let mut affected_paths = guard.missing_files.clone();
+    affected_paths.extend(guard.stale_files.iter().cloned());
+    affected_paths.extend(guard.broken_files.iter().cloned());
+    affected_paths.sort();
+    affected_paths.dedup();
+    let file_facts = json!({
+        "manifest_audit_passed": files_status == ConnectionCheckStatus::Passed,
+        "affected_paths": affected_paths,
+        "required_hook_gaps": guard.missing_required_hooks,
+    });
+    let observation_facts = json!({
+        "hook_activity_observed": guard.hook_observed_state == "observed",
         "prompt_capture_observed": matches!(
             guard.prompt_capture_state.as_str(),
             "active" | "observed"
         ),
-        "missing_files": guard.missing_files,
-        "stale_files": guard.stale_files,
-        "broken_files": guard.broken_files,
-        "missing_required_hooks": guard.missing_required_hooks,
-        "last_observed_at": guard.last_observed_at,
     });
     Ok(vec![
         canonical_check(
@@ -653,7 +677,7 @@ fn guard_checks(
                 ConnectionCheckStatus::Failed => "guard_files_failed",
             },
             "Guard managed files were checked",
-            Some(facts.clone()),
+            Some(file_facts),
             guard.last_observed_at.as_deref(),
         )?,
         canonical_check(
@@ -665,7 +689,7 @@ fn guard_checks(
                 ConnectionCheckStatus::Failed => "guard_observation_failed",
             },
             "Current Guard hook phases were checked",
-            Some(facts),
+            Some(observation_facts),
             guard.last_observed_at.as_deref(),
         )?,
     ])
@@ -713,35 +737,31 @@ fn actions_for_checks(
                     ),
                 );
             }
-            ("host_session", ConnectionCheckStatus::Pending)
-            | ("required_tools", ConnectionCheckStatus::Pending) => {
+            (
+                "host_session" | "required_tools" | "tool_round_trip" | "guard_observation",
+                ConnectionCheckStatus::Pending,
+            ) => {
                 actions.insert(
-                    "reload_host",
+                    "observe_codex",
                     (
-                        "Restart or reload Codex so it loads the current Volicord connection",
+                        "Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool so actual Codex connection and Guard activity can be observed",
                         None,
                     ),
                 );
             }
-            ("tool_round_trip", ConnectionCheckStatus::Pending) => {
+            (
+                "host_session" | "required_tools" | "tool_round_trip" | "guard_observation",
+                ConnectionCheckStatus::Failed,
+            ) => {
                 actions.insert(
-                    "use_volicord_tool",
+                    "inspect_codex_protocol",
                     (
-                        "Use the designated read-only Volicord tool in Codex, then check connection status",
-                        None,
+                        "Inspect the recorded Codex protocol failure, repair the incompatible configuration or behavior, then verify again",
+                        Some("volicord connection verify".to_owned()),
                     ),
                 );
             }
-            ("guard_files" | "guard_observation", ConnectionCheckStatus::Pending) => {
-                actions.insert(
-                    "reload_guard",
-                    (
-                        "Restart or reload Codex so the current Guard integration can be observed",
-                        None,
-                    ),
-                );
-            }
-            ("guard_files" | "guard_observation", ConnectionCheckStatus::Failed) => {
+            ("guard_files", ConnectionCheckStatus::Failed) => {
                 actions.insert(
                     "repair_guard",
                     (
@@ -771,6 +791,7 @@ fn canonical_check(
     observed_at: Option<&str>,
 ) -> Result<ConnectionCheck, ConnectionCommandError> {
     let details = details
+        .map(compact_json_value)
         .map(|value| {
             let Value::Object(object) = value else {
                 return Err(ConnectionCommandError::runtime(
@@ -792,12 +813,27 @@ fn canonical_check(
     ConnectionCheck::try_new(
         ConnectionCheckId::new(id),
         status,
-        Some(code.to_owned()),
+        (status != ConnectionCheckStatus::Passed).then(|| code.to_owned()),
         summary,
         details,
         observed_at,
     )
     .map_err(ConnectionCommandError::from)
+}
+
+fn compact_json_value(value: Value) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(
+            object
+                .into_iter()
+                .filter_map(|(key, value)| {
+                    (value != Value::Null).then(|| (key, compact_json_value(value)))
+                })
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(values.into_iter().map(compact_json_value).collect()),
+        other => other,
+    }
 }
 
 fn verify_host_plan(
@@ -950,27 +986,6 @@ pub(in crate::connection_command) fn connection_status_actions(
     actions
 }
 
-pub(in crate::connection_command) fn report_with_user_actions(
-    report: &ConnectionVerificationReport,
-    user_actions: &[UserAction],
-) -> ConnectionVerificationReport {
-    let mut actions = report.actions().to_vec();
-    for action in user_actions {
-        let id = user_action_id(action.kind);
-        if !actions.iter().any(|existing| existing.id() == id) {
-            if let Ok(action) = ConnectionAction::try_new(id, &action.message, None) {
-                actions.push(action);
-            }
-        }
-    }
-    ConnectionVerificationReport::try_new(
-        report.checked_at().clone(),
-        report.checks().to_vec(),
-        actions,
-    )
-    .expect("adapter-owned actions must preserve the canonical report contract")
-}
-
 fn user_action_kind(id: &str) -> UserActionKind {
     match id {
         "host_trust_required" => UserActionKind::HostTrustRequired,
@@ -982,20 +997,6 @@ fn user_action_kind(id: &str) -> UserActionKind {
         "reload_guard" => UserActionKind::ReloadGuard,
         "repair_guard" => UserActionKind::RepairGuard,
         _ => UserActionKind::ReloadRequired,
-    }
-}
-
-fn user_action_id(kind: UserActionKind) -> &'static str {
-    match kind {
-        UserActionKind::HostTrustRequired => "host_trust_required",
-        UserActionKind::RepairManagedConfig => "repair_managed_config",
-        UserActionKind::InstallOrRepairCodex => "install_or_repair_codex",
-        UserActionKind::RepairMcpServer => "repair_mcp_server",
-        UserActionKind::ReloadHost => "reload_host",
-        UserActionKind::UseVolicordTool => "use_volicord_tool",
-        UserActionKind::ReloadGuard => "reload_guard",
-        UserActionKind::RepairGuard => "repair_guard",
-        UserActionKind::ReloadRequired => "reload_host",
     }
 }
 
@@ -1242,7 +1243,7 @@ mod tests {
                 .iter()
                 .map(ConnectionAction::id)
                 .collect::<Vec<_>>(),
-            vec!["reload_host", "use_volicord_tool"]
+            vec!["observe_codex"]
         );
     }
 
@@ -1327,10 +1328,9 @@ mod tests {
         assert_eq!(
             first.iter().map(ConnectionAction::id).collect::<Vec<_>>(),
             vec![
-                "reload_host",
+                "observe_codex",
                 "repair_managed_config",
                 "repair_mcp_server",
-                "use_volicord_tool",
             ]
         );
         let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, first)

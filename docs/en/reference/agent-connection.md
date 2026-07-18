@@ -101,20 +101,23 @@ ConnectionVerificationReport:
 ConnectionCheck:
   id: ConnectionCheckId
   status: passed | pending | failed
-  code: string | null
+  code?: string
   summary: string
-  details: object | null
-  observed_at: UtcTimestamp | null
+  details?: object
+  observed_at?: UtcTimestamp
 
 ConnectionAction:
   id: string
   instruction: string
-  command: string | null
+  command?: string
 ```
 
-Every member shown above is required, including nullable members and arrays.
+`status`, `checked_at`, `checks`, `actions`, and each check or action's
+non-optional members are required. Optional `code`, `details`, `observed_at`,
+and `command` members are omitted when absent rather than serialized as null.
 Unknown members, duplicate JSON keys, duplicate check IDs, duplicate action
-IDs, noncanonical ordering, and unknown status values are invalid. Check IDs,
+IDs, noncanonical ordering, explicit null for an optional member, and unknown
+status values are invalid. Check IDs,
 action IDs, and non-null check codes are 1 through 128 ASCII bytes and match
 `[a-z][a-z0-9_]*`. `summary`, `instruction`, and non-null `command` values are
 1 through 4,096 UTF-8 bytes and contain no NUL. A non-null `details` value is a
@@ -162,11 +165,22 @@ Configuration matching, executable availability, protocol and host versions,
 capability observations, and observation timestamps belong in check facts;
 they do not introduce another public or persisted status enum.
 
-User instructions appear only in `actions` inside this report. Registry
-storage does not keep an independent verification status or action array. A
+User instructions appear only in `actions` inside this report. They are ordered
+and deduplicated by stable ID and are derived directly from pending or failed
+checks. Reload and first-use actions require actual Codex activity to be
+observed. A passing `guard_files` check does not request Guard file
+reinstallation. Registry storage does not keep an independent verification
+status or action array. A
 connection with no completed persisted report is projected as a synthesized
 `status=action_required` report containing one `verification_not_run` pending
 check and one verification action. Reading that projection does not persist it.
+
+The administrative CLI projects the report's checks and actions directly into
+the top-level `ConnectionCommandReport`. It does not nest this report, repeat
+its aggregate status, or expose `checked_at` as a second command-output time.
+Status may rebuild an in-memory current projection from the stored active-probe
+facts and current observations, but that read does not persist the projection
+or modify any timestamp.
 
 Operational compatibility is reported from checks the adapter actually
 performed and behavior it observed. `complete` does not mean exact-artifact

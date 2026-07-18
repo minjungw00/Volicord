@@ -8,10 +8,8 @@ pub(super) struct InitProvisioningRequest<'a> {
 }
 
 pub(super) struct InitProvisioningOutcome {
-    pub(super) status: AgentResultStatus,
+    pub(super) dry_run: bool,
     pub(super) host_kind: HostKind,
-    pub(super) init_mode: InitMode,
-    pub(super) intent: ConnectionIntent,
     pub(super) host_scope: HostScope,
     pub(super) runtime_home: PathBuf,
     pub(super) repo_root: PathBuf,
@@ -19,8 +17,8 @@ pub(super) struct InitProvisioningOutcome {
     pub(super) project_id: Option<String>,
     pub(super) host_plan: HostPlan,
     pub(super) verification: Option<VerificationReport>,
+    pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
     pub(super) integration: GuardIntegrationPlan,
-    pub(super) guard_installation: Option<GuardInstallationRecord>,
     pub(super) profile_action: &'static str,
 }
 
@@ -68,6 +66,7 @@ struct InitProvisioningPlan {
     runtime_home: PathBuf,
     repo_root: PathBuf,
     connection_id: String,
+    current_report: Option<volicord_types::ConnectionVerificationReport>,
     project_id: Option<String>,
     host_plan: HostPlan,
     integration: GuardIntegrationPlan,
@@ -135,10 +134,8 @@ pub(super) fn provision_init(
     let plan = plan_init_provisioning(request, process)?;
     if dry_run {
         return Ok(InitProvisioningOutcome {
-            status: AgentResultStatus::DryRun,
+            dry_run: true,
             host_kind: plan.host_kind,
-            init_mode: plan.init_mode,
-            intent: plan.intent,
             host_scope: plan.host_scope,
             runtime_home: plan.runtime_home,
             repo_root: plan.repo_root.clone(),
@@ -146,8 +143,8 @@ pub(super) fn provision_init(
             project_id: plan.project_id,
             host_plan: plan.host_plan,
             verification: None,
+            current_report: plan.current_report,
             integration: plan.integration,
-            guard_installation: None,
             profile_action: if plan.profile_exists {
                 "reused"
             } else {
@@ -205,6 +202,10 @@ fn plan_init_provisioning(
                 &server_name,
             )
         });
+    let current_report = existing
+        .as_ref()
+        .map(effective_connection_report)
+        .transpose()?;
     let project_hint = project_record_by_repo_root(&runtime_home, &repo_root)
         .ok()
         .flatten();
@@ -274,6 +275,7 @@ fn plan_init_provisioning(
         runtime_home,
         repo_root,
         connection_id,
+        current_report,
         project_id: project_hint.map(|project| project.project_id),
         host_plan,
         integration,
@@ -501,7 +503,7 @@ fn apply_init_provisioning(
         cleanup_resume,
         apply_guard_integration(integration).map_err(ConnectionCommandError::from),
     )?;
-    let (guard_installation, pending_host_cleanup_connections) = if cleanup_resume {
+    let (_guard_installation, pending_host_cleanup_connections) = if cleanup_resume {
         let guard_installation = migration_cleanup_step(
             &plan,
             &superseded_integrations,
@@ -587,7 +589,7 @@ fn apply_init_provisioning(
         }
     }
     let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
-    let mut verification = migration_post_transition_step(
+    let verification = migration_post_transition_step(
         &plan,
         &superseded_integrations,
         is_integration_migration,
@@ -599,20 +601,6 @@ fn apply_init_provisioning(
             Some(&project.project_id),
             process,
         ),
-    )?;
-    let user_actions = init_first_run_user_actions(
-        &connection_status_actions(None, &verification.report),
-        plan.host_kind,
-        plan.init_mode,
-    );
-    verification.report = migration_post_transition_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        Ok(report_with_user_actions(
-            &verification.report,
-            &user_actions,
-        )),
     )?;
     connection = migration_post_transition_step(
         &plan,
@@ -626,21 +614,11 @@ fn apply_init_provisioning(
         )
         .map_err(ConnectionCommandError::from),
     )?;
-    let status = if verification.status() == AgentResultStatus::Complete && user_actions.is_empty()
-    {
-        AgentResultStatus::Complete
-    } else if verification.status() == AgentResultStatus::Failed {
-        AgentResultStatus::Failed
-    } else {
-        AgentResultStatus::ActionRequired
-    };
     let _ = connection;
 
     Ok(InitProvisioningOutcome {
-        status,
+        dry_run: false,
         host_kind: plan.host_kind,
-        init_mode: plan.init_mode,
-        intent: plan.intent,
         host_scope: plan.host_scope,
         runtime_home: plan.runtime_home,
         repo_root: project.repo_root,
@@ -648,8 +626,8 @@ fn apply_init_provisioning(
         project_id: Some(project.project_id),
         host_plan,
         verification: Some(verification),
+        current_report: None,
         integration,
-        guard_installation: Some(guard_installation),
         profile_action: if plan.profile_exists {
             "reused"
         } else {
@@ -1405,8 +1383,7 @@ mod init_planning_tests {
             },
             &mut process,
         )?;
-        assert_eq!(outcome.status, AgentResultStatus::DryRun);
-        assert!(outcome.guard_installation.is_none());
+        assert!(outcome.dry_run);
         assert!(runtime_home_record_read_only(fixture.path())?.is_none());
         assert!(!fixture.registry_db_path().exists());
         assert!(directory_is_empty(fixture.path())?);

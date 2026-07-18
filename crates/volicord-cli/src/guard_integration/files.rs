@@ -188,18 +188,6 @@ pub(crate) enum RetirementPlanStatus {
     Updated,
 }
 
-impl RetirementPlanStatus {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::PlannedRemove => "planned_remove",
-            Self::PlannedUpdate => "planned_update",
-            Self::Unchanged => "unchanged",
-            Self::Removed => "removed",
-            Self::Updated => "updated",
-        }
-    }
-}
-
 impl FilePlanStatus {
     pub(crate) fn as_str(self) -> &'static str {
         match self {

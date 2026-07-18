@@ -1747,7 +1747,7 @@ documents:
   - command arguments, defaults, output routing, exit codes, and noninteractive behavior
   - Runtime Home selection and project registration commands
   - personal and shared Codex Record connection setup, verification, mode, repair, and removal
-  - canonical connection verification report output and dry-run separation
+  - exact `ConnectionCommandReport` output for init, status, and verify, including dry-run separation and exit routing
   - managed stdio MCP launch and preflight commands
   - CLI inbox listing and CLI-only UserAction resolution
   - policy, diagnostics, authority-bundle export, and change-reconciliation commands
@@ -2780,6 +2780,7 @@ documents:
   canonical_for:
   - Codex `record`, personal/shared, managed stdio MCP, and CLI inbox first-release connection surface
   - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
+  - direct CLI projection of canonical verification checks and actions without a nested report or duplicate status tree
   - typed integration revisions and authoritative managed-host operational-session evidence
   - exact `PlatformEnvironment` value set and independent WSL2 identity
   - exact `PlatformReleaseCoordinate` shape and pinned WSL2 distribution/image binding

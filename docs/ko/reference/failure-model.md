@@ -60,6 +60,12 @@ certification되지 않은 Codex version을 `UnsupportedContract`로 분류하�
 파일을 찾거나 실행하지 못한 경우 일반 실패 범주 경계에서는 `Unavailable`, 연결
 보고서에서는 실패한 `host_executable` check입니다.
 
+관리 connection command report는 필수 check가 하나 이상 실패한 typed 운영 결과에만
+`failed`를 사용합니다. Host 관찰이 pending이면 `action_required`이며 `Degraded`,
+stale/broken 공개 상태, 예상하지 못한 런타임 오류로 표시하지 않습니다. 사용법 오류와
+예상하지 못한 런타임 또는 직렬화 실패는 성공이나 action-required 보고서로 꾸미지 않고
+CLI 오류 채널에 남깁니다.
+
 어느 범주도 다른 범주의 의미를 포함하지 않습니다. 특히 다음 규칙을 지킵니다.
 
 - `Unavailable`은 비어 있는 성공 결과가 아닙니다.

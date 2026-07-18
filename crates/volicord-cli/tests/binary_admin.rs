@@ -173,7 +173,13 @@ fn failed_init_is_one_stdout_document_and_exit_one() -> Result<(), Box<dyn Error
     assert!(!text.contains(GENERATED_SHAPE_ERROR));
     let value: Value = serde_json::from_str(&text)?;
     assert_eq!(value["status"], "failed");
-    assert_eq!(value["guard_installation"]["recorded"], true);
+    assert_eq!(value["operation"], "init");
+    assert_eq!(value["dry_run"], false);
+    assert_eq!(value["setup_applied"], true);
+    assert!(value.get("planned_changes").is_none());
+    assert!(value["checks"].is_array());
+    assert!(value["actions"].is_array());
+    assert_eq!(value["limits"].as_array().map(Vec::len), Some(1));
     Ok(())
 }
 
@@ -187,7 +193,64 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     let text = stdout(&output)?;
     assert!(!text.contains(GENERATED_SHAPE_ERROR));
     let value: Value = serde_json::from_str(&text)?;
-    assert_eq!(value["status"], "dry_run");
+    assert_eq!(value["operation"], "init");
+    assert_eq!(value["dry_run"], true);
+    assert_eq!(value["status"], "action_required");
+    assert_eq!(value["setup_applied"], false);
+    assert!(value["planned_changes"].is_array());
+    Ok(())
+}
+
+#[test]
+fn fresh_init_without_host_observation_is_action_required_and_exit_zero(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-init-awaiting-observation")?;
+    fixture.install_codex_executable()?;
+    let output = fixture.run(false)?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let value: Value = serde_json::from_str(&stdout(&output)?)?;
+    assert_eq!(value["operation"], "init");
+    assert_eq!(value["status"], "action_required");
+    assert_eq!(value["setup_applied"], true);
+    assert!(value["checks"].as_array().is_some_and(|checks| {
+        checks
+            .iter()
+            .any(|check| check["id"] == "host_session" && check["status"] == "pending")
+    }));
+    Ok(())
+}
+
+#[test]
+fn failed_verify_json_is_one_stdout_document_and_empty_stderr() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-verify-failed-json")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let output = fixture.run_connection("verify", true)?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(stderr(&output)?, "");
+    let value: Value = serde_json::from_str(&stdout(&output)?)?;
+    assert_eq!(value["operation"], "verify");
+    assert_eq!(value["dry_run"], false);
+    assert_eq!(value["status"], "failed");
+    assert!(value.get("setup_applied").is_none());
+    assert!(value.get("planned_changes").is_none());
+    Ok(())
+}
+
+#[test]
+fn failed_verify_human_report_is_written_to_stdout() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-verify-failed-text")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let output = fixture.run_connection("verify", false)?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(stderr(&output)?, "");
+    let text = stdout(&output)?;
+    assert!(text.starts_with("Operation: verify\nStatus: failed\n"));
+    assert!(text.contains("Checks:\n"));
+    assert!(text.contains("Actions:\n"));
     Ok(())
 }
 
@@ -251,5 +314,38 @@ impl IsolatedInitFixture {
             command.arg("--dry-run");
         }
         Ok(command.output()?)
+    }
+
+    fn run_connection(
+        &self,
+        operation: &str,
+        json: bool,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("connection")
+            .arg(operation)
+            .arg("codex")
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        if json {
+            command.arg("--json");
+        }
+        Ok(command.output()?)
+    }
+
+    fn install_codex_executable(&self) -> Result<(), Box<dyn Error>> {
+        let filename = if cfg!(windows) { "codex.exe" } else { "codex" };
+        fs::copy(
+            env!("CARGO_BIN_EXE_volicord"),
+            self.empty_path.join(filename),
+        )?;
+        Ok(())
     }
 }

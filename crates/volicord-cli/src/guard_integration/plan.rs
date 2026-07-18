@@ -24,7 +24,7 @@ use crate::{
         git_exclude::{
             git_exclude_path, plan_git_excludes, plan_git_excludes_with_personal_protection,
         },
-        hooks::{guard_command_specs, host_hook_command_specs, HostHookCommand, HostHookPurpose},
+        hooks::{guard_command_specs, host_hook_command_specs, HostHookPurpose},
         hosts::{plan_host_generated_files, HostGeneratedFilesRequest},
         policy::{
             policy_json, recorded_local_policy, validate_workflow_policy, LocalPolicyContext,
@@ -49,16 +49,12 @@ pub(crate) struct GuardIntegrationPlan {
     pub(crate) migration_protection_applied: bool,
     pub(crate) policy_commands: GuardCommandSet,
     pub(crate) runtime_commands: GuardCommandSet,
-    pub(crate) host_hook_commands: Vec<HostHookCommand>,
     pub(crate) policy: Value,
     pub(crate) policy_hash: PolicyHash,
     pub(crate) guard_installation_id: String,
     pub(crate) guard_profile: String,
     pub(crate) connection_intent: String,
     pub(crate) required_hook_phases: Vec<GuardHookPhase>,
-    pub(crate) direct_file_write_matcher_coverage: bool,
-    pub(crate) capabilities: crate::host_integration::HostCapabilities,
-    pub(crate) missing_required_hooks: Vec<HostLifecyclePhase>,
 }
 
 pub(crate) struct GuardIntegrationPlanRequest<'a> {
@@ -210,16 +206,12 @@ pub(crate) fn plan_guard_integration(
         migration_protection_applied: false,
         policy_commands,
         runtime_commands,
-        host_hook_commands: host_hook_commands.into_values().collect(),
         policy,
         policy_hash,
         guard_installation_id: guard_installation_id.to_owned(),
         guard_profile: profile.as_str().to_owned(),
         connection_intent: connection_intent.as_str().to_owned(),
         required_hook_phases: GuardHookPhase::REQUIRED.to_vec(),
-        direct_file_write_matcher_coverage: host_kind == HostKind::Codex,
-        capabilities,
-        missing_required_hooks,
     })
 }
 

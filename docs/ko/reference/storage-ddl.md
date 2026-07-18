@@ -376,7 +376,7 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_project
 - `agent_connections.intent`는 현재 `host_kind=codex` 계약에서 `personal` 또는 `shared`로 제한됩니다.
 - 현재 Codex connection 계약은 `host_kind=codex`를 사용하고 connection intent에 따라 `host_scope`로 `user` 또는 `project`를 사용합니다.
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
-- `agent_connections.verification_report_json`은 완료된 보고서가 없으면 SQL null입니다. Null이 아닌 값은 파생 상태와 action을 포함하는 엄격한 정규 `ConnectionVerificationReport` 하나를 저장합니다. Store는 그 구성 요소를 독립적으로 영속 저장하지 않습니다.
+- `agent_connections.verification_report_json`은 완료된 보고서가 없으면 SQL null입니다. Null이 아닌 값은 파생 상태와 action을 포함하는 엄격한 정규 `ConnectionVerificationReport` 하나를 저장하며 값이 없는 선택 구성원은 명시적 null 대신 생략합니다. Store는 그 구성 요소를 독립적으로 영속 저장하지 않습니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase에 결속됩니다. 이 객체는 Volicord 소유권만 설명하며 host capability 인증서, lifecycle 상태, OS 수준 집행 증명, 쓰기 방지 증명이 아닙니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 현재 소유권의 `guard_events`에서 도출합니다.
 

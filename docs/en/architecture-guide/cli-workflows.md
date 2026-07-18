@@ -32,11 +32,21 @@ Store-owned operational records.
 
 ## Connection Verification
 
+`init`, `connection status`, and `connection verify` build one typed command
+report whose checks and actions come from the canonical verification types.
+The JSON and text renderers consume that report, and binary exit handling reads
+its typed aggregate status. Rendering does not reconstruct a parallel state
+tree or parse its own output.
+
+`connection status` reads current files and Store observations without running
+active probes or writing files, reports, observations, or timestamps.
 `connection verify` performs current adapter and managed-configuration
-inspection and returns the canonical three-state report. It does not hash the
-host executable, consult release-certification catalogs, issue an authorization
-receipt, or create an agent session. Authoritative managed runtime and project
-sessions are recorded only by managed MCP lifecycle handling.
+inspection, runs permitted local probes, reads actual managed-host and Guard
+observations, and commits at most one report through the Store owner. It does
+not hash the host executable, consult release-certification catalogs, issue an
+authorization receipt, fabricate host activity, or create a managed-host agent
+session. Authoritative managed runtime and project sessions are recorded only
+by managed MCP lifecycle handling.
 
 ## Project And Policy Workflows
 
@@ -63,8 +73,10 @@ path and the unavailable reason.
 ## Diagnostics And Output
 
 `doctor`, status, and preflight collect read-only facts and report named next
-actions. `--json` serializes the structured result once. Human text, logs, and
-diagnostic metadata are not parsed back into authority state.
+actions. For the three connection-report commands, `dry_run` is an operation
+boolean and the aggregate remains three-state. `--json` serializes the typed
+result once. Human text, logs, and diagnostic metadata are not parsed back into
+authority state.
 
 ## Boundaries
 

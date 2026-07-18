@@ -16,9 +16,8 @@ pub(crate) use volicord_types::guard_manifest_has_exact_current_shape;
 use crate::{
     guard_integration::{
         audit::{hook_wrapper_comment_value, hook_wrapper_exec_command, sha256_text},
-        files::{GeneratedFilePlan, GeneratedFileWriteKind, ManagedFileRetirementPlan},
-        GuardIntegrationError, GuardIntegrationPlan, HostHookCommand, HostHookCommandShape,
-        HOOK_WRAPPER_MARKER,
+        files::{GeneratedFilePlan, GeneratedFileWriteKind},
+        GuardIntegrationError, GuardIntegrationPlan, HOOK_WRAPPER_MARKER,
     },
     host_integration::HostIntegrationFileKind,
 };
@@ -76,21 +75,6 @@ pub(crate) fn guard_manifest_json(
     }
     serde_json::to_string(&manifest)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
-}
-
-pub(crate) fn retired_files_json(files: &[ManagedFileRetirementPlan]) -> Value {
-    Value::Array(
-        files
-            .iter()
-            .map(|file| {
-                json!({
-                    "kind": file.kind.as_str(),
-                    "path": path_text(&file.path),
-                    "status": file.status.as_str(),
-                })
-            })
-            .collect(),
-    )
 }
 
 pub(crate) fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {
@@ -191,79 +175,6 @@ fn managed_file_expectations(
                 .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
         })
         .collect()
-}
-
-pub(crate) fn host_hook_commands_json(commands: &[HostHookCommand]) -> Value {
-    Value::Array(
-        commands
-            .iter()
-            .map(|command| {
-                let (command_text, args) = match &command.generated_command_shape {
-                    HostHookCommandShape::ShellCommandString { command_text, .. } => {
-                        (command_text.clone(), Value::Null)
-                    }
-                };
-                json!({
-                    "host_kind": command.host_kind.as_str(),
-                    "phase": command.phase.capability_name(),
-                    "purpose": command.purpose.as_str(),
-                    "policy_key": command.phase.policy_key(),
-                    "command_shape": command.command_shape_name(),
-                    "command": command_text,
-                    "args": args,
-                    "expected_wrapper_path": path_text(&command.expected_wrapper_path),
-                    "expected_phase_wrapper_path": path_text(&command.expected_phase_wrapper_path),
-                    "root_resolution_basis": command.root_resolution_basis.as_str(),
-                    "hook_command_path_basis": command.hook_command_path_basis.as_str(),
-                    "cwd_independent": command.cwd_independent,
-                    "subdirectory_safe": command.subdirectory_safe,
-                    "wrapper_resolution_status": command.wrapper_resolution_status.as_str(),
-                    "verification": {
-                        "basis_verified_by": &command.verification.basis_verified_by,
-                        "host_contract_source": &command.verification.host_contract_source,
-                    },
-                })
-            })
-            .collect(),
-    )
-}
-
-pub(crate) fn hook_root_resolution_json(commands: &[HostHookCommand]) -> Value {
-    if commands.is_empty() {
-        return Value::Null;
-    }
-    let mut bases = commands
-        .iter()
-        .map(|command| command.root_resolution_basis.as_str())
-        .collect::<Vec<_>>();
-    bases.sort_unstable();
-    bases.dedup();
-    let cwd_independent = commands.iter().all(|command| command.cwd_independent);
-    let subdirectory_safe = commands.iter().all(|command| command.subdirectory_safe);
-    let basis = if bases.len() == 1 {
-        bases[0].to_owned()
-    } else {
-        "mixed".to_owned()
-    };
-    json!({
-        "basis": basis,
-        "all_cwd_independent": cwd_independent,
-        "all_subdirectory_safe": subdirectory_safe,
-        "overall_status": if cwd_independent && subdirectory_safe { "ok" } else { "relative_path_unsafe" },
-        "phases": commands
-            .iter()
-            .map(|command| {
-                json!({
-                    "phase": command.phase.capability_name(),
-                    "root_resolution_basis": command.root_resolution_basis.as_str(),
-                    "hook_command_path_basis": command.hook_command_path_basis.as_str(),
-                    "cwd_independent": command.cwd_independent,
-                    "subdirectory_safe": command.subdirectory_safe,
-                    "wrapper_resolution_status": command.wrapper_resolution_status.as_str(),
-                })
-            })
-            .collect::<Vec<_>>(),
-    })
 }
 
 fn path_text(path: &Path) -> String {

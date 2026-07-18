@@ -237,6 +237,11 @@ derived aggregate. Malformed or noncanonical report JSON is corrupt persisted
 owner state. It is not interpreted as no report and is not repaired from
 another column.
 
+Absent optional check or action members are omitted from canonical JSON rather
+than stored as explicit null. This persisted report remains the sole stored
+check/action state; CLI command output projects those members at top level and
+does not persist a second command-output tree.
+
 <a id="authority-bundle-export"></a>
 ## Authority Bundle Export
 

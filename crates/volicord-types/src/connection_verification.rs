@@ -161,9 +161,12 @@ impl<'de> Deserialize<'de> for ConnectionCheckDetails {
 pub struct ConnectionCheck {
     id: ConnectionCheckId,
     status: ConnectionCheckStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
     summary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     details: Option<ConnectionCheckDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     observed_at: Option<UtcTimestamp>,
 }
 
@@ -267,6 +270,7 @@ impl ConnectionCheck {
 pub struct ConnectionAction {
     id: String,
     instruction: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     command: Option<String>,
 }
 
@@ -699,13 +703,10 @@ mod tests {
                 "status": "passed",
                 "code": "mcp_handshake_result",
                 "summary": "mcp_handshake summary",
-                "details": null,
-                "observed_at": null
             }],
             "actions": [{
                 "id": "reload_host",
                 "instruction": "Reload the host",
-                "command": null
             }]
         });
         assert_eq!(serde_json::to_value(&report).unwrap(), expected);

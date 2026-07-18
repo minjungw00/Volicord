@@ -134,15 +134,51 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 `complete`는 릴리스 셀 통과, Core 호출 권한, host attestation, 활성 Codex 세션의
 도구 노출 증명이 아닙니다.
 
-연결 검증은 정규
-[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)를
-직렬화합니다. Check 및 action 배열과 별개인 연결 상태 또는 설정 action 상태를 함께
-두지 않습니다. `--dry-run`은 작업 모드 또는 계획 맥락으로 보고하며 어느 닫힌 상태
-집합에도 `dry_run`을 추가하지 않습니다.
+`volicord init`, `volicord connection status`,
+`volicord connection verify`는 `ConnectionCommandReport` 하나를 직렬화합니다.
+
+```yaml
+ConnectionCommandReport:
+  operation: init | status | verify
+  dry_run: bool
+  status: complete | action_required | failed
+  setup_applied: bool                    # init에만 사용
+  runtime_home: string
+  connection:
+    id: string
+    host: codex
+    scope: user | project
+    profile: record
+    mode: read_only | workflow
+    repository: string
+    config_target: string
+  checks: ConnectionCheck[]
+  actions: ConnectionAction[]
+  planned_changes: PlannedConnectionChange[] # dry-run에만 사용
+  limits: string[]
+```
+
+이 보고서에는 집계 상태 하나와 check/action 트리 하나만 있습니다. `states`, 중첩 검증
+보고서나 상태, Guard 상태 트리, host gate나 승인 필드, summary card, primary action,
+두 번째 disclosure 트리를 추가하지 않습니다. JSON은 적용되지 않는 선택 필드를 null
+placeholder로 채우지 않고 생략합니다. `limits`에는 협력적 보장 한계를 한 번만 둡니다.
+
+`setup_applied`는 설정 변경과 운영 검증을 구분합니다. `init` 적용이 성공하면 뒤의 로컬
+또는 운영 check 때문에 `status=failed`가 되더라도 `setup_applied=true`입니다. Dry run은
+`setup_applied=false`와 `planned_changes`를 보고하며 `status=dry_run`을 직렬화하지
+않습니다. 계획 변경이나 host action이 남으면 `action_required`, 둘 다 없으면
+`complete`입니다.
+
+`checks`와 `actions`는 정규
+[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의
+구성원 type과 순서를 사용합니다. JSON과 사람용 출력은 같은 typed command report를
+표시합니다. 사람용 출력은 check를 묶어 보여 줄 수 있지만 상태나 action을 다시 계산하지
+않습니다.
 
 `volicord connection status`는 읽기 전용입니다. 현재 관리 구성, 신뢰, Guard audit,
 통합 revision, managed-host session 관찰을 마지막 활성 executable/MCP server probe와
-함께 projection합니다. Process를 시작하거나 새 보고서를 영속하지 않습니다.
+함께 projection합니다. Process를 시작하지 않으며 파일, timestamp, 보고서, action,
+관찰, 데이터베이스 row를 바꾸지 않습니다.
 
 `volicord connection verify`는 `codex`를 활성 탐색하고 version 명령을 실행한 뒤
 `volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. Self-test는
@@ -155,6 +191,10 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 구성을 rollback하지 않습니다. Managed-host 관찰이 아직 없는 새 유효 설정은
 `action_required`이며, 관찰을 얻는 데 필요한 typed reload/first-use action을 담습니다.
 Codex version이나 executable digest를 eligibility allowlist로 사용하지 않습니다.
+
+Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 제거된 목록입니다. 다시
+불러오기와 최초 사용 지시는 실제 Codex 활동을 관찰해야 한다고 명시합니다.
+`guard_files` check가 통과했다면 Guard 파일 재설치를 지시하지 않습니다.
 
 <a id="external-host-configuration"></a>
 ## 관리 Codex 구성
@@ -231,8 +271,12 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ## 출력과 종료 상태
 
 `--json`은 stdout에 JSON 문서 하나만 씁니다. 기본 산문은 사람용이며 자동화에서
-파싱하면 안 됩니다. 성공과 `action_required`는 `0`, 런타임·저장소·검증·계약 실패는
-`1`, 사용법 오류는 `2`로 종료합니다.
+파싱하면 안 됩니다. `complete`, `action_required`, 유효한 모든 dry run은 `0`으로
+종료합니다. Typed `failed` 운영 보고서는 `1`, 사용법 오류는 `2`로 종료합니다. 실패한
+JSON 운영 보고서는 stdout 문서 하나만 쓰고 stderr는 비워 둡니다. 실패한 사람용 운영
+보고서는 stdout에 표시합니다. 예상하지 못한 런타임 또는 직렬화 오류는 stderr를 사용하고
+`1`로 종료합니다. 종료 상태는 표시 문자열이나 다시 parsing한 JSON이 아니라 typed report
+상태로 선택합니다.
 
 <a id="noninteractive-approval-behavior"></a>
 ## 비대화형 동작

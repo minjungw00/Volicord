@@ -61,7 +61,7 @@ pub(super) fn render_compact_connection_text(
                 .first()
                 .map(|project| project.project.repo_root.as_path())
         });
-        append_compact_host_configuration(&mut output, data.plan, repo_root, data.status);
+        append_compact_host_configuration(&mut output, data.plan, repo_root);
     }
     output.push_str("\nChecks:\n");
     for (label, value) in compact_connection_checks(data, mcp_config_state, primary_next_action) {
@@ -95,7 +95,6 @@ fn append_compact_host_configuration(
     output: &mut String,
     plan: Option<&HostPlan>,
     repo_root: Option<&Path>,
-    status: AgentResultStatus,
 ) {
     let Some(plan) = plan else {
         return;
@@ -104,7 +103,7 @@ fn append_compact_host_configuration(
     if let Some(repo_root) = repo_root {
         if let Some(path) = repo_relative_host_target_path(plan, repo_root) {
             output.push_str("Repo file changes:\n");
-            if let Some(status) = repo_file_change_from_host_plan(plan.change, status) {
+            if let Some(status) = repo_file_change_from_host_plan(plan.change, false) {
                 output.push_str(&format!("  {} {}\n", status.text_verb(), path));
             } else {
                 output.push_str("  none\n");
@@ -401,7 +400,6 @@ fn compact_agent_status_text(status: AgentResultStatus) -> &'static str {
         AgentResultStatus::Complete => "complete",
         AgentResultStatus::ActionRequired => "action required",
         AgentResultStatus::Failed => "failed",
-        AgentResultStatus::DryRun => "dry run",
     }
 }
 
@@ -416,7 +414,6 @@ fn host_follow_up_text(
         AgentResultStatus::Complete => "ready",
         AgentResultStatus::ActionRequired => "action required",
         AgentResultStatus::Failed => "failed",
-        AgentResultStatus::DryRun => "skipped",
     }
 }
 
@@ -485,9 +482,7 @@ fn append_compact_plan_changes(output: &mut String, data: &ConnectionPlanOutput<
         if let Some(path) = repo_relative_host_target_path(data.plan, repo_root) {
             match data.plan.change {
                 PlannedChange::Create | PlannedChange::Update => {
-                    if let Some(status) =
-                        repo_file_change_from_host_plan(data.plan.change, data.status)
-                    {
+                    if let Some(status) = repo_file_change_from_host_plan(data.plan.change, true) {
                         output.push_str(&format!("  {} {}\n", status.text_verb(), path));
                     }
                 }
@@ -680,162 +675,10 @@ fn connected_repository_phrase(count: usize) -> &'static str {
     }
 }
 
-pub(super) fn render_init_text_output(
-    data: &InitOutput<'_>,
-    actions: &[UserAction],
-    repo_file_changes: &[RepoFileChange],
-) -> String {
-    let file_section_label = if data.status == AgentResultStatus::DryRun {
-        "Planned repo file changes"
-    } else {
-        "Repo file changes"
-    };
-    let mut output = format!(
-        "{}\n\nProfile:\n  {}\n\nConnection:\n  intent: {}\n  host scope: {}\n\nRepository:\n  {}\n\n{}:\n",
-        init_text_title(data.status, data.host_kind),
-        data.init_mode.profile_value(),
-        data.intent.as_str(),
-        data.host_scope.as_str(),
-        data.repo_root.display(),
-        file_section_label,
-    );
-    if repo_file_changes.is_empty() {
-        output.push_str("  none\n");
-    } else {
-        for change in repo_file_changes {
-            output.push_str(&format!(
-                "  {} {}\n",
-                change.status.text_verb(),
-                change.path
-            ));
-        }
-    }
-    output.push_str(&format!(
-        "\nStored local Volicord state:\n  {}\n\nNext:\n",
-        data.runtime_home.display()
-    ));
-    for (index, step) in init_next_steps(data, actions).iter().enumerate() {
-        match step {
-            InitNextStep::Text(text) => {
-                output.push_str(&format!("  {}. {}\n", index + 1, text));
-            }
-            InitNextStep::Command { label, command } => {
-                output.push_str(&format!("  {}. {}:\n     {}\n", index + 1, label, command));
-            }
-        }
-    }
-    output.push_str(&format!(
-        "\nLimits:\n{}\n\nDiagnostics:\n  Run:\n    {}\n",
-        init_limits_text(data.init_mode),
-        init_diagnostics_command(data),
-    ));
-    output
-}
-
-fn init_text_title(status: AgentResultStatus, host_kind: HostKind) -> String {
-    let host = public_host_display_name(host_kind);
-    match status {
-        AgentResultStatus::Complete | AgentResultStatus::ActionRequired => {
-            format!("Volicord initialized for {host}")
-        }
-        AgentResultStatus::DryRun => format!("Volicord init plan for {host}"),
-        AgentResultStatus::Failed => format!("Volicord init failed for {host}"),
-    }
-}
-
-enum InitNextStep {
-    Text(String),
-    Command {
-        label: &'static str,
-        command: String,
-    },
-}
-
-fn init_next_steps(data: &InitOutput<'_>, actions: &[UserAction]) -> Vec<InitNextStep> {
-    let host = public_host_display_name(data.host_kind);
-    let verify_command = init_verify_command(data.host_kind, data.intent, data.repo_root);
-    if data.status == AgentResultStatus::DryRun {
-        let mut steps = vec![
-            InitNextStep::Text(
-                "Run the same init command without --dry-run to apply the planned repo file changes."
-                    .to_owned(),
-            ),
-            InitNextStep::Text(format!(
-                "After applying, open, restart, or reload {host} in this repository."
-            )),
-        ];
-        if init_actions_include_trust_or_approval(actions) {
-            steps.push(InitNextStep::Text(format!(
-                "Trust or approve the project configuration if {host} asks."
-            )));
-        }
-        steps.push(InitNextStep::Command {
-            label: "After applying, run",
-            command: verify_command,
-        });
-        return steps;
-    }
-    if data.status == AgentResultStatus::Failed {
-        return vec![
-            InitNextStep::Command {
-                label: "Review detailed diagnostics",
-                command: init_diagnostics_command(data),
-            },
-            InitNextStep::Text(format!(
-                "Fix the reported issue, then rerun init for {host}."
-            )),
-        ];
-    }
-    let mut steps = vec![InitNextStep::Text(format!(
-        "Open, restart, or reload {host} in this repository."
-    ))];
-    if init_actions_include_trust_or_approval(actions) {
-        steps.push(InitNextStep::Text(format!(
-            "Trust or approve the project configuration if {host} asks."
-        )));
-    }
-    steps.push(InitNextStep::Command {
-        label: "Run",
-        command: verify_command,
-    });
-    steps
-}
-
 fn init_actions_include_trust_or_approval(actions: &[UserAction]) -> bool {
     actions
         .iter()
-        .any(|action| matches!(action.kind, UserActionKind::HostTrustRequired))
-}
-
-fn init_verify_command(host_kind: HostKind, intent: ConnectionIntent, repo_root: &Path) -> String {
-    format!(
-        "volicord connection verify {}{} --repo {}",
-        public_host_label(host_kind),
-        intent_flag_suffix(intent),
-        repo_root.display()
-    )
-}
-
-fn init_status_command(host_kind: HostKind, intent: ConnectionIntent, repo_root: &Path) -> String {
-    format!(
-        "volicord connection status {}{} --repo {} --json",
-        public_host_label(host_kind),
-        intent_flag_suffix(intent),
-        repo_root.display()
-    )
-}
-
-fn init_diagnostics_command(data: &InitOutput<'_>) -> String {
-    if data.status == AgentResultStatus::DryRun {
-        return format!(
-            "volicord init --host {}{} --repo {} --profile {} --dry-run --json",
-            public_host_label(data.host_kind),
-            intent_flag_suffix(data.intent),
-            data.repo_root.display(),
-            data.init_mode.profile_value()
-        );
-    }
-    init_status_command(data.host_kind, data.intent, data.repo_root)
+        .any(|action| action.kind == UserActionKind::HostTrustRequired)
 }
 
 fn init_limits_text(init_mode: InitMode) -> &'static str {
@@ -931,7 +774,7 @@ pub(in crate::connection_command) fn render_connection_remove_dry_run_output(
             render_connection_plan_output(ConnectionPlanOutput {
                 format,
                 action: "remove",
-                status: AgentResultStatus::DryRun,
+                status: AgentResultStatus::ActionRequired,
                 runtime_home,
                 connection_id: &connection.connection_internal_id,
                 host_kind: parse_host_kind(&connection.host_kind)?,
@@ -958,12 +801,13 @@ pub(in crate::connection_command) fn render_connection_remove_dry_run_output(
                     .collect::<Vec<_>>();
                 serde_json::to_string_pretty(&json!({
                     "action": "remove",
-                    "status": AgentResultStatus::DryRun.as_str(),
+                    "status": AgentResultStatus::ActionRequired.as_str(),
+                    "dry_run": true,
                     "disclosure": cooperative_host_decision_disclosure_json(),
                     "runtime_home": path_text(runtime_home),
                     "states": {
                         "runtime_home": "ready",
-                        "connection": AgentResultStatus::DryRun.as_str(),
+                        "connection": AgentResultStatus::ActionRequired.as_str(),
                         "project_registration": project_registration_state(projects),
                         "mcp_config": "membership",
                         "selected_profile": "not_checked",

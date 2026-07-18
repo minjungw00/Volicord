@@ -49,14 +49,6 @@ impl HostHookPurpose {
     }
 }
 
-impl HostHookCommand {
-    pub(crate) fn command_shape_name(&self) -> &'static str {
-        match &self.generated_command_shape {
-            HostHookCommandShape::ShellCommandString { .. } => "shell_command_string",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HostHookCommandShape {
     ShellCommandString {
@@ -70,25 +62,9 @@ pub(crate) enum HookRootResolutionBasis {
     GitWorkTree,
 }
 
-impl HookRootResolutionBasis {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::GitWorkTree => "git_work_tree",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HookCommandPathBasis {
     GitRootRuntime,
-}
-
-impl HookCommandPathBasis {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::GitRootRuntime => "git_root_runtime",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

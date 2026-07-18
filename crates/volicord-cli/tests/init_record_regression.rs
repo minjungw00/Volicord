@@ -11,7 +11,7 @@ use std::{
 };
 
 use rusqlite::{params, Connection};
-use serde_json::{json, Value};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use support::binary_fixture::create_git_repo;
 use volicord_cli::{
@@ -183,7 +183,7 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
 
     let repair_output = run_record_init(&repo_root, &mut process)?;
     assert_failed_init_with_recorded_guard(&repair_output);
-    assert_eq!(repair_output["changed_repo_files"], json!([]));
+    assert!(repair_output.get("planned_changes").is_none());
     let repaired = registry_snapshot(fixture.path());
     let repaired_ids = assert_single_owned_records(&repaired);
     assert_eq!(repaired_ids, seeded_ids);
@@ -195,7 +195,7 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
 
     let replay_output = run_record_init(&repo_root, &mut process)?;
     assert_failed_init_with_recorded_guard(&replay_output);
-    assert_eq!(replay_output["changed_repo_files"], json!([]));
+    assert!(replay_output.get("planned_changes").is_none());
     let replayed = registry_snapshot(fixture.path());
     let replayed_ids = assert_single_owned_records(&replayed);
     assert_eq!(replayed_ids, seeded_ids);
@@ -264,7 +264,9 @@ fn assert_failed_init_with_recorded_guard(output: &Value) {
         output["status"], "failed",
         "unexpected init result: {output}"
     );
-    assert_eq!(output["guard_installation"]["recorded"], true);
+    assert_eq!(output["operation"], "init");
+    assert_eq!(output["dry_run"], false);
+    assert_eq!(output["setup_applied"], true);
 }
 
 fn assert_unavailable_codex_verification(

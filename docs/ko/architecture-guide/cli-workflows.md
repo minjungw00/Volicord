@@ -29,10 +29,18 @@ Codex adapter에 관리 구성 생성을 요청하며 정확한 관리 변경을
 
 ## 연결 검증
 
-`connection verify`는 현재 adapter와 관리 구성을 검사하고 정규 3상태 보고서를
-반환합니다. 호스트 실행 파일을 hash하거나 릴리스 인증 카탈로그를 조회하거나 권한
-receipt를 발급하거나 agent session을 만들지 않습니다. 권위 있는 관리 runtime/project
-session은 관리 MCP lifecycle 처리에서만 기록합니다.
+`init`, `connection status`, `connection verify`는 정규 검증 type의 check와 action을
+사용해 typed command report 하나를 만듭니다. JSON과 text renderer는 이 보고서를
+소비하고 binary 종료 처리는 typed 집계 상태를 읽습니다. Rendering이 병렬 상태 트리를
+다시 만들거나 자체 출력을 parsing하지 않습니다.
+
+`connection status`는 활성 probe를 실행하거나 파일, 보고서, 관찰, timestamp를 쓰지
+않고 현재 파일과 Store 관찰을 읽습니다. `connection verify`는 현재 adapter와 관리 구성을
+검사하고 허용된 로컬 probe를 실행한 뒤 실제 managed-host 및 Guard 관찰을 읽고 Store
+담당 경로로 보고서를 최대 하나 commit합니다. 호스트 실행 파일을 hash하거나 릴리스 인증
+카탈로그를 조회하거나 권한 receipt를 발급하거나 host 활동을 꾸며 내거나 managed-host
+agent session을 만들지 않습니다. 권위 있는 관리 runtime/project session은 관리 MCP
+lifecycle 처리에서만 기록합니다.
 
 ## 프로젝트와 정책 흐름
 
@@ -59,8 +67,9 @@ form 대신 영속 데이터 오류로 실패합니다.
 ## 진단과 출력
 
 `doctor`, status, preflight는 읽기 전용 사실을 모아 이름 붙은 다음 동작을 보고합니다.
-`--json`은 구조화된 결과를 한 번 직렬화합니다. 사람용 text, log, diagnostic metadata를
-권한 상태로 다시 parse하지 않습니다.
+세 connection report 명령에서 `dry_run`은 작업 boolean이며 집계 결과는 3상태로
+유지됩니다. `--json`은 typed 결과를 한 번 직렬화합니다. 사람용 text, log,
+diagnostic metadata를 권한 상태로 다시 parse하지 않습니다.
 
 ## 경계
 

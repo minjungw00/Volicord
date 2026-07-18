@@ -1,22 +1,22 @@
 use super::*;
 
 mod json;
+mod report;
 mod summary;
 mod text;
 
 use crate::disclosure::cooperative_host_decision_disclosure_json;
 use crate::guard_integration::files::RetirementPlanStatus;
-use crate::guard_integration::{
-    generated_files_json, hook_root_resolution_json, host_hook_commands_json, retired_files_json,
-};
-use json::{
-    actions_json_values, changed_repo_files_json, checks_json, connection_json, init_checks_json,
-    repo_file_changes_json, verification_json,
+use json::{actions_json_values, checks_json, connection_json};
+use report::{
+    render_command_report, CommandConnection, ConnectionCommandReport, PlannedConnectionChange,
+    RenderedCommandReport,
 };
 use summary::connection_diagnostic_summary_card;
-use text::{render_compact_connection_text, render_compact_plan_text, render_init_text_output};
+use text::{render_compact_connection_text, render_compact_plan_text};
 
 pub(super) use json::connection_states_json;
+pub(super) use report::CommandOperation;
 pub(super) use text::{render_connection_remove_dry_run_output, render_connections_output};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,10 +65,8 @@ struct RepoFileChange {
 
 pub(super) struct InitOutput<'a> {
     pub(super) format: OutputFormat,
-    pub(super) status: AgentResultStatus,
+    pub(super) dry_run: bool,
     pub(super) host_kind: HostKind,
-    pub(super) init_mode: InitMode,
-    pub(super) intent: ConnectionIntent,
     pub(super) host_scope: HostScope,
     pub(super) runtime_home: &'a Path,
     pub(super) repo_root: &'a Path,
@@ -76,8 +74,8 @@ pub(super) struct InitOutput<'a> {
     pub(super) project_id: Option<&'a str>,
     pub(super) host_plan: &'a HostPlan,
     pub(super) verification: Option<&'a VerificationReport>,
+    pub(super) current_report: Option<&'a volicord_types::ConnectionVerificationReport>,
     pub(super) integration: &'a GuardIntegrationPlan,
-    pub(super) guard_installation: Option<&'a GuardInstallationRecord>,
     pub(super) profile_action: &'a str,
 }
 
@@ -253,6 +251,31 @@ pub(super) fn render_connection_output(
     }
 }
 
+pub(super) fn render_current_connection_output(
+    format: OutputFormat,
+    operation: CommandOperation,
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    repository: &Path,
+    verification: &volicord_types::ConnectionVerificationReport,
+) -> Result<RenderedCommandReport, ConnectionCommandError> {
+    let report = ConnectionCommandReport::from_verification(
+        operation,
+        None,
+        runtime_home,
+        CommandConnection::new(
+            &connection.connection_internal_id,
+            &connection.host_kind,
+            &connection.host_scope,
+            &connection.mode,
+            repository,
+            &connection.config_target,
+        ),
+        verification,
+    );
+    render_command_report(format, &report)
+}
+
 pub(super) fn render_connection_plan_output(
     data: ConnectionPlanOutput<'_>,
 ) -> Result<String, ConnectionCommandError> {
@@ -313,117 +336,83 @@ pub(super) fn render_connection_plan_output(
     }
 }
 
-pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, ConnectionCommandError> {
+pub(super) fn render_init_output(
+    data: InitOutput<'_>,
+) -> Result<RenderedCommandReport, ConnectionCommandError> {
     let target = host_target_text(&data.host_plan.target);
-    let planned_change = planned_change_text(data.host_plan.change);
-    let actions = if data.status == AgentResultStatus::DryRun {
-        data.host_plan.user_actions.clone()
+    let connection = CommandConnection::new(
+        data.connection_id,
+        data.host_kind.as_str(),
+        data.host_scope.as_str(),
+        CONNECTION_MODE_WORKFLOW,
+        data.repo_root,
+        &target,
+    );
+    let report = if data.dry_run {
+        ConnectionCommandReport::dry_run(
+            data.runtime_home,
+            connection,
+            data.current_report,
+            init_planned_changes(&data, &target),
+            &data.host_plan.user_actions,
+        )?
     } else {
-        data.verification
-            .map(|verification| {
-                init_first_run_user_actions(
-                    &connection_status_actions(None, &verification.report),
-                    data.host_kind,
-                    data.init_mode,
-                )
-            })
-            .unwrap_or_else(|| {
-                init_first_run_user_actions(
-                    &data.host_plan.user_actions,
-                    data.host_kind,
-                    data.init_mode,
-                )
-            })
+        let verification = data.verification.ok_or_else(|| {
+            ConnectionCommandError::runtime(
+                "applied init requires one canonical verification report",
+            )
+        })?;
+        ConnectionCommandReport::from_verification(
+            CommandOperation::Init,
+            Some(true),
+            data.runtime_home,
+            connection,
+            &verification.report,
+        )
     };
-    let guard_status = if data.guard_installation.is_some() {
-        "configured"
-    } else {
-        "planned"
-    };
-    let guard_state = if data.guard_installation.is_some() {
-        GuardOperationalState::init(guard_status, data.init_mode, data.integration)
-    } else {
-        GuardOperationalState::planned(data.init_mode, data.integration)
-    };
-    let mcp_config_state = init_mcp_config_state(data.verification, Some(data.host_plan));
-    let project_state = if data.project_id.is_some() {
-        "registered"
-    } else {
-        "planned"
-    };
-    let mut primary_next_action =
-        primary_connection_action(&actions, data.verification, None, &guard_state, None, &[]);
-    if let Some(action) = primary_next_action.as_mut() {
-        attach_init_verify_command(action, data.host_kind, data.intent, data.repo_root);
+    render_command_report(data.format, &report)
+}
+
+fn init_planned_changes(data: &InitOutput<'_>, target: &str) -> Vec<PlannedConnectionChange> {
+    let mut changes = Vec::new();
+    if data.profile_action == "planned" {
+        changes.push(PlannedConnectionChange::new(
+            "create",
+            path_text(data.runtime_home),
+        ));
     }
-    let repo_file_changes = init_repo_file_changes(&data);
-    match data.format {
-        OutputFormat::Text => Ok(render_init_text_output(&data, &actions, &repo_file_changes)),
-        OutputFormat::Json => {
-            let value = json!({
-                "action": "init",
-                "status": data.status.as_str(),
-                "operation_mode": if data.status == AgentResultStatus::DryRun { "dry_run" } else { "apply" },
-                "disclosure": cooperative_host_decision_disclosure_json(),
-                "states": connection_states_json(
-                    if data.status == AgentResultStatus::DryRun { "planned" } else { data.status.as_str() },
-                    project_state,
-                    mcp_config_state.as_str(),
-                    &guard_state,
-                    has_reload_action(&actions),
-                ),
-                "host": public_host_label(data.host_kind),
-                "selected_profile": data.init_mode.profile_value(),
-                "control_surface": guard_state.control_surface_json(),
-                "runtime_home": path_text(data.runtime_home),
-                "repo_root": path_text(data.repo_root),
-                "profile": {
-                    "status": data.profile_action,
-                },
-                "connection": {
-                    "connection_id": data.connection_id,
-                    "host_kind": data.host_kind.as_str(),
-                    "connection_intent": data.intent.as_str(),
-                    "host_scope": data.host_scope.as_str(),
-                    "mode": CONNECTION_MODE_WORKFLOW,
-                    "project_id": data.project_id,
-                    "config_target": target,
-                },
-                "mcp": {
-                    "command": &data.host_plan.entry.command,
-                    "args": &data.host_plan.entry.args,
-                    "env": &data.host_plan.entry.env,
-                    "config_target": target,
-                },
-                "planned_change": planned_change,
-                "repo_file_changes": repo_file_changes_json(&repo_file_changes),
-                "changed_repo_files": changed_repo_files_json(&repo_file_changes),
-                "generated_files": generated_files_json(&data.integration.generated_files),
-                "retired_files": retired_files_json(&data.integration.retired_files),
-                "host_hook_commands": host_hook_commands_json(&data.integration.host_hook_commands),
-                "hook_root_resolution": hook_root_resolution_json(&data.integration.host_hook_commands),
-                "guard_installation": {
-                    "guard_installation_id": &data.integration.guard_installation_id,
-                    "manifest_state": guard_status,
-                    "policy_hash": &data.integration.policy_hash,
-                    "recorded": data.guard_installation.is_some(),
-                },
-                "host_hook": guard_state.to_json(),
-                "verification": data.verification.map(verification_json),
-                "checks": init_checks_json(data.verification, guard_status, &guard_state),
-                "actions": actions_json_values(&actions),
-                "primary_next_action": primary_next_action.map(|action| action.to_json()),
-            });
-            serde_json::to_string_pretty(&value)
-                .map(|text| format!("{text}\n"))
-                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+    if data.project_id.is_none() {
+        changes.push(PlannedConnectionChange::new(
+            "register",
+            path_text(data.repo_root),
+        ));
+    }
+    if data.host_plan.change != PlannedChange::Noop {
+        changes.push(PlannedConnectionChange::new(
+            planned_change_text(data.host_plan.change),
+            target,
+        ));
+    }
+    for change in init_repo_file_changes(data) {
+        if !change.status.is_actual() {
+            changes.push(PlannedConnectionChange::new(
+                change.status.as_str(),
+                change.path,
+            ));
         }
     }
+    changes.sort_by(|left, right| {
+        left.target()
+            .cmp(right.target())
+            .then_with(|| left.change().cmp(right.change()))
+    });
+    changes.dedup();
+    changes
 }
 
 fn init_repo_file_changes(data: &InitOutput<'_>) -> Vec<RepoFileChange> {
     let mut changes = BTreeMap::new();
-    if let Some(status) = repo_file_change_from_host_plan(data.host_plan.change, data.status) {
+    if let Some(status) = repo_file_change_from_host_plan(data.host_plan.change, data.dry_run) {
         if let Some(path) = repo_relative_host_target_path(data.host_plan, data.repo_root) {
             insert_repo_file_change(&mut changes, path, status);
         }
@@ -462,9 +451,8 @@ fn repo_file_change_from_retirement_status(
 
 fn repo_file_change_from_host_plan(
     change: PlannedChange,
-    status: AgentResultStatus,
+    dry_run: bool,
 ) -> Option<RepoFileChangeStatus> {
-    let dry_run = status == AgentResultStatus::DryRun;
     match (dry_run, change) {
         (true, PlannedChange::Create) => Some(RepoFileChangeStatus::PlannedCreate),
         (true, PlannedChange::Update) => Some(RepoFileChangeStatus::PlannedUpdate),
@@ -576,17 +564,6 @@ fn connection_mcp_config_state(
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
-        .unwrap_or_else(|| "unknown".to_owned())
-}
-
-fn init_mcp_config_state(
-    verification: Option<&VerificationReport>,
-    plan: Option<&HostPlan>,
-) -> String {
-    if let Some(verification) = verification {
-        return verification.host.managed_config.as_str().to_owned();
-    }
-    plan.map(|plan| format!("planned_{}", planned_change_text(plan.change)))
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
@@ -847,24 +824,6 @@ fn attach_connection_verify_command(
     let Some(command) = connection_verify_command(connection, projects) else {
         return;
     };
-    set_verify_command(action, command);
-}
-
-fn attach_init_verify_command(
-    action: &mut PrimaryNextAction,
-    host_kind: HostKind,
-    intent: ConnectionIntent,
-    repo_root: &Path,
-) {
-    if !next_action_should_verify(&action.id) {
-        return;
-    }
-    let command = format!(
-        "volicord connection verify {}{} --repo {}",
-        public_host_label(host_kind),
-        intent_flag_suffix(intent),
-        repo_root.display()
-    );
     set_verify_command(action, command);
 }
 

@@ -45,21 +45,20 @@ use crate::cli::{
     ConnectionRemoveArgs, ConnectionSelectArgs, InitArgs,
 };
 use crate::guard_integration::audit::{
-    combine_optional_file_states, file_state_rank, guard_file_findings_for_installation,
-    guard_manifest_binding_valid_for_installation, GuardFileFindings,
+    guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
+    GuardFileFindings,
 };
 use crate::guard_integration::{
-    apply_guard_integration, apply_guard_migration_protection, guard_has_prompt_capture_commands,
-    guard_installation_upsert, lifecycle_phase_names, plan_guard_integration,
-    record_guard_installation, FilePlanStatus, GeneratedFilePlan, GuardIntegrationError,
+    apply_guard_integration, apply_guard_migration_protection, guard_installation_upsert,
+    plan_guard_integration, record_guard_installation, FilePlanStatus, GuardIntegrationError,
     GuardIntegrationPlan, GuardIntegrationPlanRequest,
 };
 use crate::host_integration::{
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
     verification::Verification,
-    ConnectionIntent, HostAdapter, HostConfigError, HostIntegrationFileKind, HostKind,
-    HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope, HostTarget,
-    InstallationProfile, PlannedChange, ProjectContext, UserAction, UserActionKind,
+    ConnectionIntent, HostAdapter, HostConfigError, HostIntegrationFileKind, HostKind, HostPlan,
+    HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange,
+    ProjectContext, UserAction, UserActionKind,
 };
 use crate::{
     registration::ADMIN_METADATA_JSON,
@@ -86,8 +85,9 @@ use args::{
 use mcp_process::mcp_launch_from_host_plan;
 use output::{
     render_connection_output, render_connection_plan_output,
-    render_connection_remove_dry_run_output, render_connections_output, render_init_output,
-    ConnectionOutput, ConnectionPlanOutput, ConnectionRemovePlan, InitOutput,
+    render_connection_remove_dry_run_output, render_connections_output,
+    render_current_connection_output, render_init_output, CommandOperation, ConnectionOutput,
+    ConnectionPlanOutput, ConnectionRemovePlan, InitOutput,
 };
 use persisted_state::{
     decode_persisted_object, persisted_object_state_json,
@@ -103,9 +103,8 @@ use service::{
     ProvisionConnectionRequest,
 };
 use verification::{
-    agent_result_status, connection_status_actions, current_status_report,
-    effective_connection_report, report_with_user_actions, verify_connection, AgentResultStatus,
-    VerificationReport,
+    connection_status_actions, current_status_report, effective_connection_report,
+    verify_connection, AgentResultStatus, VerificationReport,
 };
 
 const PATH_ENV: &str = "PATH";
@@ -188,13 +187,10 @@ pub fn run_init_command(
         },
         process,
     )?;
-    let status = outcome.status;
-    let rendered_output = render_init_output(InitOutput {
+    let rendered = render_init_output(InitOutput {
         format: init_output_format(&parsed),
-        status,
+        dry_run: outcome.dry_run,
         host_kind: outcome.host_kind,
-        init_mode: outcome.init_mode,
-        intent: outcome.intent,
         host_scope: outcome.host_scope,
         runtime_home: &outcome.runtime_home,
         repo_root: &outcome.repo_root,
@@ -202,18 +198,18 @@ pub fn run_init_command(
         project_id: outcome.project_id.as_deref(),
         host_plan: &outcome.host_plan,
         verification: outcome.verification.as_ref(),
+        current_report: outcome.current_report.as_ref(),
         integration: &outcome.integration,
-        guard_installation: outcome.guard_installation.as_ref(),
         profile_action: outcome.profile_action,
     })?;
-    init_output_result(status, rendered_output)
+    command_output_result(rendered.status, rendered.output)
 }
 
-fn init_output_result(
-    status: AgentResultStatus,
+fn command_output_result(
+    status: volicord_types::ConnectionStatus,
     rendered_output: String,
 ) -> Result<String, ConnectionCommandError> {
-    if status == AgentResultStatus::Failed {
+    if status == volicord_types::ConnectionStatus::Failed {
         Err(ConnectionCommandError::FailureOutput(rendered_output))
     } else {
         Ok(rendered_output)
@@ -238,7 +234,7 @@ pub fn run_connect_command(
             render_connection_plan_output(ConnectionPlanOutput {
                 format: connection_output_format(&parsed),
                 action: "connection_add",
-                status: AgentResultStatus::DryRun,
+                status: AgentResultStatus::ActionRequired,
                 runtime_home: &plan.runtime_home,
                 connection_id: &plan.connection_id,
                 host_kind: plan.host_kind,
@@ -334,54 +330,38 @@ fn command_connection_status(
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
-    let report = effective_connection_report(&connection)?;
+    let mut report = effective_connection_report(&connection)?;
     let persisted_metadata_corrupt = decode_persisted_object(&connection.metadata_json).is_none();
     if persisted_metadata_corrupt {
-        let user_actions = connection_status_actions(None, &report);
-        return render_connection_output(ConnectionOutput {
-            format: connection_output_format(&parsed),
-            action: "status",
-            status: AgentResultStatus::ActionRequired,
-            runtime_home: &runtime_home,
-            host_kind: parse_host_kind(&connection.host_kind)?,
-            guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
-            user_actions,
-            connection: &connection,
-            projects: &projects,
-            affected_repo_root: None,
-            verification: None,
-            current_report: Some(report),
-            current_host: None,
-            plan: None,
-        });
+        report = verification::connection_metadata_failure_report(&report)?;
+        let rendered = render_current_connection_output(
+            connection_output_format(&parsed),
+            CommandOperation::Status,
+            &runtime_home,
+            &connection,
+            &selected_project.project.repo_root,
+            &report,
+        )?;
+        return command_output_result(rendered.status, rendered.output);
     }
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
-    let (current_host, report) = current_status_report(
+    let (_, report) = current_status_report(
         &runtime_home,
         &connection,
         Some(&host_plan),
         &projects,
         process,
     )?;
-    let user_actions = connection_status_actions(current_host.as_ref(), &report);
-    let status = agent_result_status(report.status());
-    render_connection_output(ConnectionOutput {
-        format: connection_output_format(&parsed),
-        action: "status",
-        status,
-        runtime_home: &runtime_home,
-        host_kind: parse_host_kind(&connection.host_kind)?,
-        guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
-        user_actions,
-        connection: &connection,
-        projects: &projects,
-        affected_repo_root: None,
-        verification: None,
-        current_report: Some(report),
-        current_host,
-        plan: None,
-    })
+    let rendered = render_current_connection_output(
+        connection_output_format(&parsed),
+        CommandOperation::Status,
+        &runtime_home,
+        &connection,
+        &selected_project.project.repo_root,
+        &report,
+    )?;
+    command_output_result(rendered.status, rendered.output)
 }
 
 fn command_connection_verify(
@@ -399,6 +379,7 @@ fn command_connection_verify(
         )));
     }
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
+    let selected_repo_root = selected_project.project.repo_root.clone();
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
     let launch = mcp_launch_from_host_plan(&host_plan, Some(&selected_project.project.repo_root));
@@ -416,23 +397,15 @@ fn command_connection_verify(
         &host_plan.fingerprint,
         Some(&verification.report),
     )?;
-    let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
-    render_connection_output(ConnectionOutput {
-        format: connection_output_format(&parsed),
-        action: "verified",
-        status: verification.status(),
-        runtime_home: &runtime_home,
-        host_kind: parse_host_kind(&connection.host_kind)?,
-        guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
-        user_actions: connection_status_actions(None, &verification.report),
-        connection: &connection,
-        projects: &projects,
-        affected_repo_root: None,
-        verification: Some(&verification),
-        current_report: None,
-        current_host: None,
-        plan: Some(&host_plan),
-    })
+    let rendered = render_current_connection_output(
+        connection_output_format(&parsed),
+        CommandOperation::Verify,
+        &runtime_home,
+        &connection,
+        &selected_repo_root,
+        &verification.report,
+    )?;
+    command_output_result(rendered.status, rendered.output)
 }
 
 fn command_connection_mode(
@@ -967,28 +940,6 @@ fn existing_host_plan(
         .map_err(Into::into)
 }
 
-fn init_first_run_user_actions(
-    existing: &[UserAction],
-    host_kind: HostKind,
-    init_mode: InitMode,
-) -> Vec<UserAction> {
-    let mut actions = existing.to_vec();
-    let _ = init_mode;
-    if !actions
-        .iter()
-        .any(|action| action.kind == UserActionKind::ReloadRequired)
-    {
-        actions.push(UserAction::new(
-            UserActionKind::ReloadRequired,
-            format!(
-                "Restart or reload {} so it loads the Volicord MCP and host hook configuration",
-                public_host_label(host_kind)
-            ),
-        ));
-    }
-    actions
-}
-
 fn stable_id(prefix: &str, parts: &[&str]) -> String {
     let mut hasher = Sha256::new();
     for part in parts {
@@ -1060,120 +1011,6 @@ impl GuardOperationalState {
             broken_files: Vec::new(),
             missing_required_hooks: Vec::new(),
             unresolved_blockers: Vec::new(),
-        }
-    }
-
-    fn planned(init_mode: InitMode, integration: &GuardIntegrationPlan) -> Self {
-        let installation_state = "planned".to_owned();
-        let observation_state = "not_observed".to_owned();
-        let configuration_state = guard_configuration_state(
-            &installation_state,
-            !integration.missing_required_hooks.is_empty(),
-        );
-        let effective_state = guard_effective_state(
-            init_mode.guard_value(),
-            &configuration_state,
-            &observation_state,
-        );
-        Self {
-            mode_state: init_mode.guard_value().to_owned(),
-            guard_profile_state: integration.guard_profile.clone(),
-            installation_state,
-            configuration_state,
-            observation_state: observation_state.clone(),
-            effective_state,
-            generated_config_verified: false,
-            direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
-            files_state: "planned".to_owned(),
-            agents_block_state: generated_file_kind_state(
-                &integration.generated_files,
-                HostIntegrationFileKind::AgentsManagedBlock,
-            ),
-            policy_file_state: generated_file_kind_state(
-                &integration.generated_files,
-                HostIntegrationFileKind::VolicordPolicy,
-            ),
-            rule_instruction_state: planned_rule_instruction_state(init_mode, integration),
-            hook_config_state: planned_hook_config_state(init_mode, integration),
-            hook_observed_state: observation_state,
-            last_observed_at: None,
-            last_guard_event_at: None,
-            prompt_capture_state: planned_prompt_capture_state(init_mode, integration).to_owned(),
-            missing_files: Vec::new(),
-            stale_files: Vec::new(),
-            broken_files: Vec::new(),
-            missing_required_hooks: lifecycle_phase_names(&integration.missing_required_hooks)
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            unresolved_blockers: Vec::new(),
-        }
-    }
-
-    fn init(health: &str, init_mode: InitMode, integration: &GuardIntegrationPlan) -> Self {
-        let missing_required_hooks = lifecycle_phase_names(&integration.missing_required_hooks)
-            .into_iter()
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        let hook_observed_state = if health == "active" {
-            "observed".to_owned()
-        } else {
-            "not_observed".to_owned()
-        };
-        let configuration_state =
-            guard_configuration_state(health, !missing_required_hooks.is_empty());
-        let observation_state = guard_observation_state(&hook_observed_state);
-        let effective_state = guard_effective_state(
-            init_mode.guard_value(),
-            &configuration_state,
-            &observation_state,
-        );
-        let required_hooks_missing = !missing_required_hooks.is_empty();
-        Self {
-            mode_state: init_mode.guard_value().to_owned(),
-            guard_profile_state: integration.guard_profile.clone(),
-            installation_state: health.to_owned(),
-            configuration_state,
-            observation_state,
-            effective_state,
-            generated_config_verified: integration.generated_files.iter().all(|file| {
-                matches!(
-                    file.status,
-                    FilePlanStatus::Unchanged | FilePlanStatus::Created | FilePlanStatus::Updated
-                )
-            }),
-            direct_file_write_matcher_coverage: integration.direct_file_write_matcher_coverage,
-            files_state: "installed".to_owned(),
-            agents_block_state: generated_file_kind_state(
-                &integration.generated_files,
-                HostIntegrationFileKind::AgentsManagedBlock,
-            ),
-            policy_file_state: generated_file_kind_state(
-                &integration.generated_files,
-                HostIntegrationFileKind::VolicordPolicy,
-            ),
-            rule_instruction_state: planned_rule_instruction_state(init_mode, integration),
-            hook_config_state: planned_hook_config_state(init_mode, integration),
-            hook_observed_state: hook_observed_state.clone(),
-            last_observed_at: None,
-            last_guard_event_at: None,
-            prompt_capture_state: init_prompt_capture_state(
-                init_mode,
-                integration,
-                health,
-                &hook_observed_state,
-            )
-            .to_owned(),
-            missing_files: Vec::new(),
-            stale_files: Vec::new(),
-            broken_files: Vec::new(),
-            missing_required_hooks,
-            unresolved_blockers: guard_blockers_for_state(
-                init_mode.guard_value(),
-                health,
-                health == "active",
-                required_hooks_missing,
-            ),
         }
     }
 
@@ -1273,110 +1110,6 @@ impl GuardOperationalState {
         } else {
             "missing"
         }
-    }
-}
-
-fn generated_file_kind_state(files: &[GeneratedFilePlan], kind: HostIntegrationFileKind) -> String {
-    files
-        .iter()
-        .filter(|file| file.kind == kind)
-        .map(|file| file.status.as_str())
-        .reduce(combine_file_states)
-        .unwrap_or("not_configured")
-        .to_owned()
-}
-
-fn combine_file_states(left: &'static str, right: &'static str) -> &'static str {
-    if file_state_rank(right) > file_state_rank(left) {
-        right
-    } else {
-        left
-    }
-}
-
-fn planned_rule_instruction_state(
-    _init_mode: InitMode,
-    integration: &GuardIntegrationPlan,
-) -> String {
-    let state = generated_file_kind_state(
-        &integration.generated_files,
-        HostIntegrationFileKind::HostRuleInstruction,
-    );
-    if state != "not_configured" {
-        state
-    } else if integration.capabilities.rule_file_support {
-        "not_configured".to_owned()
-    } else {
-        "unsupported_by_host".to_owned()
-    }
-}
-
-fn planned_hook_config_state(_init_mode: InitMode, integration: &GuardIntegrationPlan) -> String {
-    let config_state = generated_file_kind_state(
-        &integration.generated_files,
-        HostIntegrationFileKind::HostHookConfig,
-    );
-    let dispatch_state = generated_file_kind_state(
-        &integration.generated_files,
-        HostIntegrationFileKind::HostHookDispatch,
-    );
-    let wrapper_state = generated_file_kind_state(
-        &integration.generated_files,
-        HostIntegrationFileKind::HostHookWrapper,
-    );
-    let state = combine_optional_file_states(
-        &combine_optional_file_states(&config_state, &dispatch_state),
-        &wrapper_state,
-    );
-    if state != "not_configured" {
-        state
-    } else if integration.missing_required_hooks.is_empty() {
-        "not_recorded".to_owned()
-    } else {
-        "missing_required_hooks".to_owned()
-    }
-}
-
-fn planned_prompt_capture_state(
-    _init_mode: InitMode,
-    integration: &GuardIntegrationPlan,
-) -> &'static str {
-    if !integration.capabilities.user_prompt_submit_hook {
-        return PromptCaptureStatus::UnsupportedByHost.as_str();
-    }
-    if !guard_has_prompt_capture_commands(&integration.policy)
-        || integration
-            .missing_required_hooks
-            .contains(&HostLifecyclePhase::UserPromptSubmit)
-    {
-        return PromptCaptureStatus::NotConfigured.as_str();
-    }
-    if !integration.missing_required_hooks.is_empty() {
-        return PromptCaptureStatus::Degraded.as_str();
-    }
-    PromptCaptureStatus::Configured.as_str()
-}
-
-fn init_prompt_capture_state(
-    init_mode: InitMode,
-    integration: &GuardIntegrationPlan,
-    manifest_state: &str,
-    hook_observed_state: &str,
-) -> &'static str {
-    let planned = planned_prompt_capture_state(init_mode, integration);
-    if !matches!(
-        planned,
-        "configured" | "observed" | "active" | "reload_required"
-    ) {
-        return planned;
-    }
-    match manifest_state {
-        "active" if hook_observed_state == "observed" => PromptCaptureStatus::Observed.as_str(),
-        "active" => PromptCaptureStatus::Configured.as_str(),
-        "reload_required" => PromptCaptureStatus::ReloadRequired.as_str(),
-        "configured" => PromptCaptureStatus::Configured.as_str(),
-        "degraded" | "stale" | "broken" => PromptCaptureStatus::Degraded.as_str(),
-        _ => PromptCaptureStatus::Unavailable.as_str(),
     }
 }
 
@@ -1860,7 +1593,7 @@ mod init_status_tests {
         let output = "rendered failed init".to_owned();
 
         assert_eq!(
-            init_output_result(AgentResultStatus::Failed, output.clone()),
+            command_output_result(volicord_types::ConnectionStatus::Failed, output.clone()),
             Err(ConnectionCommandError::FailureOutput(output))
         );
     }
@@ -1868,19 +1601,18 @@ mod init_status_tests {
     #[test]
     fn non_failure_init_statuses_use_success_channel() {
         for status in [
-            AgentResultStatus::Complete,
-            AgentResultStatus::ActionRequired,
-            AgentResultStatus::DryRun,
+            volicord_types::ConnectionStatus::Complete,
+            volicord_types::ConnectionStatus::ActionRequired,
         ] {
             let output = format!("rendered {} init", status.as_str());
-            assert_eq!(init_output_result(status, output.clone()), Ok(output));
+            assert_eq!(command_output_result(status, output.clone()), Ok(output));
         }
     }
 }
 
 #[cfg(test)]
 mod persisted_metadata_tests {
-    use std::{ffi::OsString, path::PathBuf};
+    use std::{collections::BTreeMap, ffi::OsString, io, path::PathBuf};
 
     use volicord_store::{
         agent_connections::agent_connection_record,
@@ -1934,6 +1666,44 @@ mod persisted_metadata_tests {
         }
     }
 
+    fn tree_snapshot(root: &Path) -> io::Result<BTreeMap<PathBuf, Vec<u8>>> {
+        fn visit(
+            root: &Path,
+            path: &Path,
+            snapshot: &mut BTreeMap<PathBuf, Vec<u8>>,
+        ) -> io::Result<()> {
+            let mut entries = fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
+            entries.sort_by_key(std::fs::DirEntry::file_name);
+            for entry in entries {
+                let path = entry.path();
+                let relative = path
+                    .strip_prefix(root)
+                    .expect("snapshot entry remains under its root")
+                    .to_path_buf();
+                let file_type = entry.file_type()?;
+                if file_type.is_dir() {
+                    snapshot.insert(relative, vec![0]);
+                    visit(root, &path, snapshot)?;
+                } else if file_type.is_symlink() {
+                    let mut bytes = vec![2];
+                    bytes.extend_from_slice(fs::read_link(&path)?.to_string_lossy().as_bytes());
+                    snapshot.insert(relative, bytes);
+                } else {
+                    let mut bytes = vec![1];
+                    bytes.extend_from_slice(&fs::read(path)?);
+                    snapshot.insert(relative, bytes);
+                }
+            }
+            Ok(())
+        }
+
+        let mut snapshot = BTreeMap::new();
+        if root.exists() {
+            visit(root, root, &mut snapshot)?;
+        }
+        Ok(snapshot)
+    }
+
     #[test]
     fn stored_connection_metadata_never_defaults_after_decode_failure() {
         assert!(parse_metadata("{").is_err());
@@ -1982,17 +1752,30 @@ mod persisted_metadata_tests {
             shared: false,
             json: true,
         };
-        let _verification = run_connection_command(
+        let verification = run_connection_command(
             ConnectionArgs {
                 command: ConnectionCommand::Verify(select_args()),
             },
             &repo_root,
             &mut process,
-        )?;
+        );
+        let output = match verification {
+            Err(ConnectionCommandError::FailureOutput(output)) => output,
+            other => panic!("failed verify must use the operational output channel: {other:?}"),
+        };
+        let output: Value = serde_json::from_str(&output)?;
         let repaired =
             agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
                 .expect("verification should preserve the selected connection");
-        assert!(repaired.verification_report()?.is_some());
+        let persisted = repaired
+            .verification_report()?
+            .expect("verify should persist one canonical report");
+        assert_eq!(output["status"], persisted.status().as_str());
+        assert_eq!(output["checks"], serde_json::to_value(persisted.checks())?);
+        assert_eq!(
+            output["actions"],
+            serde_json::to_value(persisted.actions())?
+        );
         Ok(())
     }
 
@@ -2009,6 +1792,8 @@ mod persisted_metadata_tests {
         };
         let registry_path = volicord_store::sqlite::registry_db_path(fixture.runtime_home_path());
         let registry_before = fs::read(&registry_path)?;
+        let runtime_before = tree_snapshot(fixture.runtime_home_path())?;
+        let repository_before = tree_snapshot(&repo_root)?;
 
         let output = run_connection_command(
             ConnectionArgs {
@@ -2021,13 +1806,21 @@ mod persisted_metadata_tests {
             },
             &repo_root,
             &mut process,
-        )?;
+        );
 
+        let output = match output {
+            Err(ConnectionCommandError::FailureOutput(output)) => output,
+            other => panic!("failed status must use the operational output channel: {other:?}"),
+        };
         let output: Value = serde_json::from_str(&output)?;
+        assert_eq!(output["operation"], "status");
+        assert_eq!(output["dry_run"], false);
         assert_eq!(output["status"], "failed");
         assert_eq!(process.preflight_calls, 0);
         assert_eq!(process.stdio_calls, 0);
         assert_eq!(fs::read(registry_path)?, registry_before);
+        assert_eq!(tree_snapshot(fixture.runtime_home_path())?, runtime_before);
+        assert_eq!(tree_snapshot(&repo_root)?, repository_before);
         Ok(())
     }
 }
