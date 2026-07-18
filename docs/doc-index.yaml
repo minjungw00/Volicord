@@ -1694,8 +1694,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1715,6 +1715,7 @@ documents:
   - runtime-location separation among source repository, installation files, Runtime Home, Product
     Repository, and external MCP host configuration
   - managed MCP and host-hook child-process binding to the Runtime Home selected by init
+  - authoritative MCP runtime-session ownership across Registry and Project databases
   - clone-portable shared host configuration Runtime Home forwarding boundary
   - ordinary MCP server term versus Volicord product, implementation, CLI, and adapter labels
   - explicit integration files allowed in Product Repositories
@@ -1767,8 +1768,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -1782,6 +1783,7 @@ documents:
   canonical_for:
   - '`volicord mcp --stdio` process command and preflight contract'
   - managed stdio startup, binding validation, lifecycle, framing, and shutdown
+  - authoritative operational milestone ordering, persistence, and managed-host evidence boundaries
   - static runtime-compact tool schemas and public tool list
   - MCP public input and output projections without hidden Core context
   - known-tool argument, lifecycle, and adapter-precondition failure shapes
@@ -2626,6 +2628,7 @@ documents:
   - canonical project time-floor and commit timestamp relationships
   - Agent Connection, project membership, and Codex binding records
   - single nullable canonical Agent Connection verification report persistence
+  - authoritative MCP runtime sessions, integration revisions, and project session ownership
   - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
   - strict UserAction request and immutable CLI resolution records
@@ -2728,8 +2731,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2739,7 +2742,7 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and ordered seven-value enabled-capability list'
+  - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and ordered eight-value enabled-capability list'
   - one canonical SQLite format and fail-closed exact-open validation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - unsupported-contract, corruption, unavailable, and fresh-recreation storage boundaries
@@ -2777,6 +2780,7 @@ documents:
   canonical_for:
   - Codex `record`, personal/shared, managed stdio MCP, and CLI inbox first-release connection surface
   - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
+  - typed integration revisions and authoritative managed-host operational-session evidence
   - exact `PlatformEnvironment` value set and independent WSL2 identity
   - exact `PlatformReleaseCoordinate` shape and pinned WSL2 distribution/image binding
   - '`ManagedHostBinding` fields, deterministic canonical encoding, and domain-separated digest'

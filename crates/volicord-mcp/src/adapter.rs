@@ -37,6 +37,16 @@ pub struct McpDerivedInvocationContext {
     pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
+/// Runtime-owned host correlation passed from the stdio lifecycle to project binding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManagedAgentSessionBinding {
+    pub(crate) runtime_session_id: String,
+    pub(crate) session_id: String,
+    pub(crate) host_session_id: String,
+    pub(crate) host_thread_id: String,
+    pub(crate) host_turn_id: String,
+}
+
 impl McpDerivedInvocationContext {
     fn core_invocation(&self) -> InvocationContext {
         let mut invocation = InvocationContext::new(
@@ -892,7 +902,7 @@ impl McpAdapter {
         &self,
         tool_name: &str,
         params: Value,
-        session_id: Option<&str>,
+        _session_id: Option<&str>,
     ) -> Result<PreparedMcpArguments<T>, McpAdapterError>
     where
         T: serde::de::DeserializeOwned,
@@ -908,49 +918,52 @@ impl McpAdapter {
             optional_string_field(object, "project_selector", tool_name)?;
         let arguments = self.decode_params(tool_name, params)?;
         let selected_project_id = self.select_project(requested_project_selector.as_deref())?;
-        if let Some(session_id) = session_id {
-            if self.storage_capability_for_project(&selected_project_id)?
-                == McpStorageCapability::ReadWrite
-            {
-                self.ensure_agent_session_binding(&selected_project_id, session_id)?;
-            }
-        }
         Ok(PreparedMcpArguments {
             arguments,
             project_id: selected_project_id,
         })
     }
 
+    pub(crate) fn ensure_agent_session_binding_for_tool(
+        &self,
+        tool_name: &str,
+        params: &Value,
+        binding: &ManagedAgentSessionBinding,
+    ) -> Result<(), McpAdapterError> {
+        if !PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
+            return Ok(());
+        }
+        let object = params
+            .as_object()
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: tool_name.to_owned(),
+                message: "tool arguments must be an object".to_owned(),
+            })?;
+        let requested_project_selector =
+            optional_string_field(object, "project_selector", tool_name)?;
+        let project_id = self.select_project(requested_project_selector.as_deref())?;
+        if self.storage_capability_for_project(&project_id)? == McpStorageCapability::ReadWrite {
+            self.ensure_agent_session_binding(&project_id, binding)?;
+        }
+        Ok(())
+    }
+
     fn ensure_agent_session_binding(
         &self,
         project_id: &ProjectId,
-        session_id: &str,
+        binding: &ManagedAgentSessionBinding,
     ) -> Result<(), McpAdapterError> {
-        let connection = current_enabled_connection(
+        let _connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
             "managed stdio session binding",
         )?;
-        validate_managed_stdio_session_id(session_id).map_err(|_| {
+        validate_managed_stdio_session_id(&binding.session_id).map_err(|_| {
             McpAdapterError::Environment(
                 "managed_stdio_session_identity_invalid: managed stdio requires a canonical internal session coordinate"
                     .to_owned(),
             )
         })?;
-        if let Some(existing) = agent_session(&self.runtime_home, project_id.as_str(), session_id)
-            .map_err(McpAdapterError::Store)?
-        {
-            if existing.connection_internal_id != self.context.connection_internal_id.as_str()
-                || existing.host_kind != connection.host_kind
-            {
-                return Err(McpAdapterError::Environment(
-                    "managed_stdio_session_ownership_conflict: existing session ownership does not match this managed stdio connection"
-                        .to_owned(),
-                ));
-            }
-            return Ok(());
-        }
-
         let validated_receipt = self
             .validated_receipt_for_project(project_id)?
             .ok_or_else(|| {
@@ -978,34 +991,36 @@ impl McpAdapter {
             .guard_installation
             .as_ref()
             .map(|installation| installation.guard_installation_id.clone());
-        let guard_mode = integration_profile.as_str().to_owned();
-        let started_at = CoreProjectStore::open(&self.runtime_home, project_id)
+        let observed_at = CoreProjectStore::open(&self.runtime_home, project_id)
             .and_then(|store| store.current_timestamp())
             .map_err(McpAdapterError::Store)?;
         let insert_result = insert_agent_session(
             &self.runtime_home,
             project_id.as_str(),
             AgentSessionInsert {
-                session_id: session_id.to_owned(),
+                session_id: binding.session_id.clone(),
+                runtime_session_id: binding.runtime_session_id.clone(),
                 connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
                 guard_installation_id,
-                host_kind: connection.host_kind.clone(),
-                guard_mode,
-                started_at,
-                metadata_json: "{}".to_owned(),
+                host_session_id: binding.host_session_id.clone(),
+                host_thread_id: binding.host_thread_id.clone(),
+                host_turn_id: binding.host_turn_id.clone(),
+                observed_at,
             },
         );
         match insert_result {
             Ok(_) => Ok(()),
             Err(error) => {
                 let Some(existing) =
-                    agent_session(&self.runtime_home, project_id.as_str(), session_id)
+                    agent_session(&self.runtime_home, project_id.as_str(), &binding.session_id)
                         .map_err(McpAdapterError::Store)?
                 else {
                     return Err(McpAdapterError::Store(error));
                 };
                 if existing.connection_internal_id != self.context.connection_internal_id.as_str()
-                    || existing.host_kind != connection.host_kind
+                    || existing.runtime_session_id != binding.runtime_session_id
+                    || existing.host_session_id != binding.host_session_id
+                    || existing.host_thread_id != binding.host_thread_id
                 {
                     return Err(McpAdapterError::Environment(
                         "managed_stdio_session_ownership_conflict: concurrently created session ownership does not match this managed stdio connection"

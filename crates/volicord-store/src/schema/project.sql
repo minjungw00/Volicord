@@ -807,13 +807,22 @@ CREATE INDEX idx_authority_events_hash_chain
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
+  runtime_session_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
-  guard_installation_id TEXT,
-  host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
+  project_integration_revision TEXT NOT NULL CHECK (
+    length(project_integration_revision) = 71
+    AND substr(project_integration_revision, 1, 7) = 'sha256:'
+    AND substr(project_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  host_session_id TEXT NOT NULL CHECK (length(trim(host_session_id)) > 0),
+  host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
+  last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
   started_at TEXT NOT NULL,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
+  last_observed_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id),
+  UNIQUE (project_id, session_id, connection_internal_id),
+  UNIQUE (project_id, runtime_session_id, host_session_id),
+  CHECK (last_observed_at >= started_at),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
@@ -831,7 +840,8 @@ CREATE TABLE guard_events (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, guard_event_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
 );
 
 CREATE TABLE prompt_captures (
@@ -846,7 +856,8 @@ CREATE TABLE prompt_captures (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, prompt_capture_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
 );
 
 CREATE TABLE unrecorded_changes (
@@ -881,12 +892,15 @@ CREATE TABLE unrecorded_changes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 
 CREATE INDEX idx_agent_sessions_connection
   ON agent_sessions (project_id, connection_internal_id);
+CREATE INDEX idx_agent_sessions_runtime_revision
+  ON agent_sessions (project_id, runtime_session_id, project_integration_revision, last_observed_at);
 CREATE INDEX idx_guard_events_session
   ON guard_events (project_id, session_id, occurred_at);
 CREATE INDEX idx_guard_events_connection
@@ -942,7 +956,8 @@ CREATE TABLE expected_writes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 

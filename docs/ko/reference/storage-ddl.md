@@ -129,7 +129,7 @@ projection, fixture, DDL 계약 테스트, 문서 목록은 이 생성 아티팩
 
 ## `registry.sqlite`
 
-`registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 별칭, Agent Connection 기록, Connection Projects 멤버십, 호스트 훅 설치 기록, 호스트 설정 목록을 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
+`registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 별칭, Agent Connection 기록, Connection Projects 멤버십, 권위 있는 MCP runtime session과 프로젝트 예약, 호스트 훅 설치 기록, 호스트 설정 목록을 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
 
 <!-- canonical-storage-sql: registry start -->
 ```sql
@@ -242,6 +242,103 @@ CREATE UNIQUE INDEX idx_agent_connections_target_unscoped
     server_name
   )
   WHERE project_internal_id IS NULL;
+
+CREATE TABLE mcp_runtime_sessions (
+  runtime_session_id TEXT PRIMARY KEY,
+  connection_internal_id TEXT NOT NULL,
+  session_source TEXT NOT NULL CHECK (session_source IN ('managed_host', 'cli_preflight')),
+  connection_integration_revision TEXT NOT NULL CHECK (
+    length(connection_integration_revision) = 71
+    AND substr(connection_integration_revision, 1, 7) = 'sha256:'
+    AND substr(connection_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  observed_host_executable_version TEXT,
+  client_name TEXT,
+  client_version TEXT,
+  negotiated_protocol_version TEXT,
+  process_id INTEGER NOT NULL CHECK (process_id > 0),
+  process_started_at TEXT NOT NULL,
+  initialize_completed_at TEXT,
+  initialized_notification_at TEXT,
+  tools_list_observed_at TEXT,
+  required_tools_present INTEGER CHECK (required_tools_present IN (0, 1)),
+  last_safe_read_only_tool_call_at TEXT,
+  last_observed_at TEXT NOT NULL,
+  terminal_protocol_failure_code TEXT,
+  terminal_protocol_failure_details TEXT,
+  graceful_close_at TEXT,
+  UNIQUE (runtime_session_id, connection_internal_id),
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE RESTRICT,
+  CHECK (
+    (client_name IS NULL AND client_version IS NULL)
+    OR (client_name IS NOT NULL AND client_version IS NOT NULL)
+  ),
+  CHECK (
+    (initialize_completed_at IS NULL AND negotiated_protocol_version IS NULL AND client_name IS NULL)
+    OR (initialize_completed_at IS NOT NULL AND negotiated_protocol_version IS NOT NULL AND client_name IS NOT NULL)
+  ),
+  CHECK (
+    (tools_list_observed_at IS NULL AND required_tools_present IS NULL)
+    OR (tools_list_observed_at IS NOT NULL AND required_tools_present IS NOT NULL)
+  ),
+  CHECK (initialized_notification_at IS NULL OR initialize_completed_at IS NOT NULL),
+  CHECK (last_safe_read_only_tool_call_at IS NULL OR initialized_notification_at IS NOT NULL),
+  CHECK (
+    (terminal_protocol_failure_code IS NULL AND terminal_protocol_failure_details IS NULL)
+    OR terminal_protocol_failure_code IS NOT NULL
+  ),
+  CHECK (terminal_protocol_failure_code IS NULL OR graceful_close_at IS NULL),
+  CHECK (last_observed_at >= process_started_at),
+  CHECK (initialize_completed_at IS NULL OR initialize_completed_at >= process_started_at),
+  CHECK (initialized_notification_at IS NULL OR initialized_notification_at >= initialize_completed_at),
+  CHECK (tools_list_observed_at IS NULL OR tools_list_observed_at >= initialize_completed_at),
+  CHECK (last_safe_read_only_tool_call_at IS NULL OR last_safe_read_only_tool_call_at >= initialized_notification_at),
+  CHECK (terminal_protocol_failure_code IS NULL OR last_observed_at >= process_started_at),
+  CHECK (graceful_close_at IS NULL OR graceful_close_at >= process_started_at)
+);
+
+CREATE INDEX idx_mcp_runtime_sessions_current_revision
+  ON mcp_runtime_sessions (
+    connection_internal_id,
+    session_source,
+    connection_integration_revision,
+    last_observed_at
+  );
+CREATE INDEX idx_mcp_runtime_sessions_successful_managed
+  ON mcp_runtime_sessions (
+    connection_internal_id,
+    connection_integration_revision,
+    last_safe_read_only_tool_call_at
+  )
+  WHERE session_source = 'managed_host'
+    AND initialized_notification_at IS NOT NULL
+    AND required_tools_present = 1
+    AND last_safe_read_only_tool_call_at IS NOT NULL;
+
+CREATE TABLE mcp_runtime_project_session_bindings (
+  runtime_session_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  project_internal_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  host_session_id TEXT NOT NULL,
+  bound_at TEXT NOT NULL,
+  PRIMARY KEY (runtime_session_id, host_session_id),
+  UNIQUE (project_internal_id, session_id),
+  FOREIGN KEY (runtime_session_id, connection_internal_id)
+    REFERENCES mcp_runtime_sessions (runtime_session_id, connection_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (project_internal_id)
+    REFERENCES projects (project_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id, project_internal_id)
+    REFERENCES connection_projects (connection_internal_id, project_internal_id)
+    ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_mcp_runtime_project_bindings_project
+  ON mcp_runtime_project_session_bindings (project_internal_id, connection_internal_id, bound_at);
 
 CREATE TABLE managed_host_authority (
   connection_internal_id TEXT NOT NULL,
@@ -1155,13 +1252,22 @@ CREATE INDEX idx_authority_events_hash_chain
 CREATE TABLE agent_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
+  runtime_session_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
-  guard_installation_id TEXT,
-  host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
+  project_integration_revision TEXT NOT NULL CHECK (
+    length(project_integration_revision) = 71
+    AND substr(project_integration_revision, 1, 7) = 'sha256:'
+    AND substr(project_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  host_session_id TEXT NOT NULL CHECK (length(trim(host_session_id)) > 0),
+  host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
+  last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
   started_at TEXT NOT NULL,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
+  last_observed_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id),
+  UNIQUE (project_id, session_id, connection_internal_id),
+  UNIQUE (project_id, runtime_session_id, host_session_id),
+  CHECK (last_observed_at >= started_at),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
@@ -1179,7 +1285,8 @@ CREATE TABLE guard_events (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, guard_event_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
 );
 
 CREATE TABLE prompt_captures (
@@ -1194,7 +1301,8 @@ CREATE TABLE prompt_captures (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, prompt_capture_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
 );
 
 CREATE TABLE unrecorded_changes (
@@ -1229,12 +1337,15 @@ CREATE TABLE unrecorded_changes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 
 CREATE INDEX idx_agent_sessions_connection
   ON agent_sessions (project_id, connection_internal_id);
+CREATE INDEX idx_agent_sessions_runtime_revision
+  ON agent_sessions (project_id, runtime_session_id, project_integration_revision, last_observed_at);
 CREATE INDEX idx_guard_events_session
   ON guard_events (project_id, session_id, occurred_at);
 CREATE INDEX idx_guard_events_connection
@@ -1290,7 +1401,8 @@ CREATE TABLE expected_writes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 

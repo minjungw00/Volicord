@@ -12,9 +12,10 @@ Core 메서드, Codex 구성, 저장 효과, 릴리스 증거는 각각의 집�
 | 표면 | 안정성 |
 |---|---|
 | `volicord mcp --stdio`, 초기화, `tools/list`, `tools/call`, 응답 wrapping | `stable` |
+| 권위 있는 runtime-session lifecycle milestone | `stable` |
 | stable 프로세스와 메서드 집합에 나열하지 않은 pre-1.0 추가 표면 | `beta` |
 | 프로세스 binding 값과 생성 구성 세부사항 | `internal` |
-| 시작과 프로토콜 진단 | `diagnostic` |
+| Host 실행 파일 version, MCP client name/version, best-effort protocol metric | `diagnostic` |
 
 ## 프로세스 모델
 
@@ -55,6 +56,32 @@ JSON은 `-32700`, 잘못된 요청은 `-32600`, 알 수 없는 메서드는 `-32
 `initialize`가 `tools/list`와 `tools/call`보다 먼저 와야 합니다. 프로세스는 지원 MCP
 protocol version만 협상하고 `notifications/initialized`를 받습니다. 초기화 전 호출,
 반복 initialize, batch 입력, 지원하지 않는 version은 Core 전에 실패합니다.
+
+## 권위 있는 Lifecycle 기록
+
+프로세스는 Agent Connection을 해결한 뒤 thread metadata를 검증하거나 protocol message를
+읽기 전에 Registry runtime session을 만듭니다. 이 row는 Volicord가 생성한 process
+launch, Connection, `managed_host` 또는 `cli_preflight` source, 현재 Connection 통합
+revision, process ID, process 시작 시각을 식별합니다. CLI preflight row는
+managed-host 운영 check를 충족하지 않습니다.
+
+어댑터는 성공한 `initialize`를 응답보다 먼저 영속 기록하고, 유효한
+`notifications/initialized`를 ready 상태 진입 전에 기록하며, 실제 `tools/list` 응답을
+반환하기 전에 매번 기록합니다. Discovery 사실은 생성된 그 응답에 현재 Connection
+mode가 요구하는 모든 도구가 있었는지를 나타냅니다. 중복 initialized notification은
+첫 번째 유효 관찰 뒤 멱등입니다.
+
+성공한 `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` 완료는
+도구 결과를 내보내기 전에 안전/읽기 전용 milestone을 갱신합니다. 관찰할 수 있는 fatal
+transport failure와 EOF에 따른 graceful close는 각 terminal 사실을 기록합니다. 권위
+있는 Store 쓰기가 실패하면 해당 protocol 성공을 내보내지 않습니다.
+`diagnostics.sqlite`의 제한된 쓰기는 계속 best effort이며 이 사실을 조회할 때 사용하지
+않습니다.
+
+협상한 protocol version은 권위 있는 protocol data입니다. `clientInfo` name/version과
+관찰한 host 실행 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며
+client identity, host identity, compatibility, allowlist membership을 증명하지 않습니다.
+Session은 실제로 기록한 협력적 protocol 동작만 증명합니다.
 
 ## 도구 검색
 
@@ -101,7 +128,7 @@ identity, credential은 받지 않습니다.
 
 ## 종료와 재연결
 
-EOF는 처리 중인 응답 뒤 loop를 닫습니다. 새 프로세스는 시작 검증과 MCP 초기화를 다시
+EOF는 처리 중인 응답 뒤 loop를 닫고 graceful close를 기록합니다. 새 프로세스는 시작 검증과 MCP 초기화를 다시
 수행하며 이전 프로세스의 연결, 프로젝트, receipt, 현재 상태를 상속하지 않습니다.
 
 ## 관련 담당 문서

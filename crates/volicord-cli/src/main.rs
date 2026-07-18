@@ -46,31 +46,48 @@ fn main() {
             connection_id,
             project_id,
         }) => {
-            if volicord_mcp::managed_host_authority_preparation_required_from_env(
+            let observed_host_executable_version =
+                if volicord_mcp::managed_host_authority_preparation_required_from_env(
+                    &connection_id,
+                    project_id.as_deref(),
+                    false,
+                ) {
+                    match prepare_bound_mcp_authority(
+                        &connection_id,
+                        project_id.as_deref(),
+                        &current_dir,
+                    ) {
+                        Ok(version) => version,
+                        Err(error) => {
+                            eprintln!("error: {error}");
+                            process::exit(1);
+                        }
+                    }
+                } else {
+                    None
+                };
+            if let Err(error) = volicord_mcp::run_stdio_from_env(
                 &connection_id,
                 project_id.as_deref(),
-                false,
+                observed_host_executable_version,
             ) {
-                if let Err(error) =
-                    prepare_bound_mcp_authority(&connection_id, project_id.as_deref(), &current_dir)
-                {
-                    eprintln!("error: {error}");
-                    process::exit(1);
-                }
-            }
-            if let Err(error) =
-                volicord_mcp::run_stdio_from_env(&connection_id, project_id.as_deref())
-            {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
         }
         Err(CliError::McpRepositoryStdio { host }) => {
-            if let Err(error) = prepare_repository_mcp_authority(host, &current_dir) {
-                eprintln!("error: {error}");
-                process::exit(1);
-            }
-            if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(host) {
+            let observed_host_executable_version =
+                match prepare_repository_mcp_authority(host, &current_dir) {
+                    Ok(version) => version,
+                    Err(error) => {
+                        eprintln!("error: {error}");
+                        process::exit(1);
+                    }
+                };
+            if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(
+                host,
+                observed_host_executable_version,
+            ) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -103,7 +120,7 @@ fn prepare_bound_mcp_authority(
     connection_id: &str,
     project_id: Option<&str>,
     current_dir: &Path,
-) -> Result<(), CliError> {
+) -> Result<Option<String>, CliError> {
     let runtime_home = resolve_runtime_home(|name| env::var_os(name), current_dir)?;
     prepare_managed_stdio_authority(&runtime_home, connection_id, project_id)
         .map_err(CliError::from)
@@ -112,7 +129,7 @@ fn prepare_bound_mcp_authority(
 fn prepare_repository_mcp_authority(
     host: volicord_mcp::RepositoryDiscoveryHost,
     current_dir: &Path,
-) -> Result<(), CliError> {
+) -> Result<Option<String>, CliError> {
     let runtime_home = volicord_mcp::resolve_repository_discovery_runtime_home(
         |name| env::var_os(name),
         current_dir,
@@ -126,13 +143,14 @@ fn prepare_repository_mcp_authority(
         Some(resolution.project_id.as_str()),
         true,
     ) {
-        prepare_managed_stdio_authority(
+        return prepare_managed_stdio_authority(
             &runtime_home,
             resolution.connection_internal_id.as_str(),
             Some(resolution.project_id.as_str()),
-        )?;
+        )
+        .map_err(CliError::from);
     }
-    Ok(())
+    Ok(None)
 }
 
 fn run_cli<I, S, F>(args: I, env_var: F, current_dir: &Path) -> Result<String, CliError>

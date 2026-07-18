@@ -16,6 +16,9 @@ use super::{
 pub(super) struct GuardEnvelope {
     pub(super) event_id: String,
     pub(super) session_id: Option<String>,
+    pub(super) host_session_id: String,
+    pub(super) host_thread_id: String,
+    pub(super) host_turn_id: String,
     pub(super) connection_id: String,
     pub(super) guard_installation_id: Option<String>,
     pub(super) host_kind: String,
@@ -93,12 +96,17 @@ pub(super) fn guard_envelope(
             })
             .unwrap_or_else(|| DEFAULT_INTEGRATION_PROFILE.to_owned()),
     )?;
-    if host_kind == "codex" {
-        let native_turn_id =
-            consistent_exact_event_string(&input.raw_value, &[&["turn_id"]], "native turn id")?;
-        validate_managed_host_native_session_id(native_turn_id).map_err(|error| {
+    let host_session_id = managed_native_session_id(&host_kind, &input.raw_value)?.to_owned();
+    let host_thread_id =
+        consistent_exact_event_string(&input.raw_value, &[&["thread_id"]], "native thread id")?
+            .to_owned();
+    let host_turn_id =
+        consistent_exact_event_string(&input.raw_value, &[&["turn_id"]], "native turn id")?
+            .to_owned();
+    for value in [&host_session_id, &host_thread_id, &host_turn_id] {
+        validate_managed_host_native_session_id(value).map_err(|error| {
             GuardCommandError::Usage(format!(
-                "managed Codex event has an invalid turn id: {error}"
+                "managed Codex event has invalid correlation metadata: {error}"
             ))
         })?;
     }
@@ -137,6 +145,9 @@ pub(super) fn guard_envelope(
     Ok(GuardEnvelope {
         event_id,
         session_id,
+        host_session_id,
+        host_thread_id,
+        host_turn_id,
         connection_id,
         guard_installation_id,
         host_kind,

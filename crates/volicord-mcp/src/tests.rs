@@ -46,6 +46,10 @@ use volicord_store::guards::{
     agent_session, insert_agent_session, upsert_guard_installation, AgentSessionInsert,
     GuardInstallationUpsert,
 };
+use volicord_store::operational_sessions::{
+    mcp_runtime_session, start_mcp_runtime_session, McpRuntimeSessionStart,
+};
+use volicord_store::sqlite::{open_registry_database_read_only, registry_db_path};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
     UserActionFixture,
@@ -53,7 +57,8 @@ use volicord_test_support::core_fixtures::{
 use volicord_test_support::TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING;
 use volicord_types::{
     AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, IntegrationProfile,
-    OperationCategory, ResidualRiskInput, StagedArtifactHandle, CODEX_MANAGED_MCP_CLIENT_NAME,
+    McpRuntimeSessionSource, OperationCategory, ResidualRiskInput, StagedArtifactHandle,
+    CODEX_MANAGED_MCP_CLIENT_NAME,
 };
 
 use super::*;
@@ -1768,163 +1773,6 @@ fn managed_codex_launch_stays_effect_free_until_exact_call_binding() -> Result<(
 }
 
 #[test]
-fn managed_stdio_reuses_only_an_exact_preseeded_agent_session() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-managed-preseed-exact")?;
-    let native_session_id = CODEX_TEST_SESSION_ID;
-    let session_id = managed_stdio_session_id(fixture.connection_id(), native_session_id)?;
-    let seeded = insert_agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        AgentSessionInsert {
-            session_id: session_id.clone(),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            host_kind: "codex".to_owned(),
-            guard_mode: "record".to_owned(),
-            started_at: "2026-07-14T00:00:00Z".to_owned(),
-            metadata_json: json!({"source": "managed_preseed_exact"}).to_string(),
-        },
-    )?;
-    let before_core = fixture.counts()?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({})),
-        initialized_notification(),
-        tools_call(2, "volicord.status", json!({ "detail": "workflow" })),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-            _ => None,
-        },
-    )?;
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 2);
-    let status = volicord_response_from_tool(&responses[1])?;
-    assert_eq!(status["base"]["response_kind"], "result");
-    assert_eq!(status["base"]["effect_kind"], "read_only");
-    assert_eq!(fixture.counts()?, before_core);
-    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 1);
-    assert_eq!(
-        agent_session(
-            fixture.runtime_home_path(),
-            fixture.project_id(),
-            &session_id,
-        )?,
-        Some(seeded)
-    );
-    let diagnostic = read_diagnostic_session(fixture.runtime_home_path(), Some(&session_id))?
-        .expect("the exact status call should create its bounded diagnostic session");
-    assert_eq!(diagnostic.totals.tool_call_count, 1);
-    assert_eq!(diagnostic.totals.core_committed_count, 0);
-    Ok(())
-}
-
-#[test]
-fn managed_stdio_preseed_conflicts_fail_before_any_effect() -> Result<(), Box<dyn Error>> {
-    let label = "connection";
-    let existing_connection_id = "connection_fixture_other";
-    let fixture = CoreFixture::new(&format!("mcp-stdio-managed-preseed-{label}"))?;
-    let native_session_id = format!("thread_preseed_conflict_{label}");
-    let session_id = managed_stdio_session_id(fixture.connection_id(), native_session_id.as_str())?;
-    ensure_agent_connection(
-        fixture.runtime_home_path(),
-        AgentConnectionRegistration {
-            connection_internal_id: existing_connection_id.to_owned(),
-            host_kind: "codex".to_owned(),
-            intent: CONNECTION_INTENT_SHARED.to_owned(),
-            host_scope: HOST_SCOPE_PROJECT.to_owned(),
-            server_name: format!("volicord-test-{label}"),
-            config_target: fixture
-                .runtime_home_path()
-                .join(format!("agent-connections/{label}"))
-                .display()
-                .to_string(),
-            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            enabled: true,
-            managed_fingerprint: format!("fixture:{label}"),
-            verification_report_json: None,
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    add_connection_project(
-        fixture.runtime_home_path(),
-        ConnectionProjectRegistration {
-            connection_internal_id: existing_connection_id.to_owned(),
-            project_id: fixture.project_id().to_owned(),
-        },
-    )?;
-    insert_agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        AgentSessionInsert {
-            session_id: session_id.clone(),
-            connection_internal_id: existing_connection_id.to_owned(),
-            guard_installation_id: None,
-            host_kind: "codex".to_owned(),
-            guard_mode: "record".to_owned(),
-            started_at: "2026-07-14T00:00:00Z".to_owned(),
-            metadata_json: json!({"source": "managed_preseed_conflict"}).to_string(),
-        },
-    )?;
-    let before_core = fixture.counts()?;
-    let before_state_version = read_only_state_version(&fixture)?;
-    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request(1, json!({})),
-        initialized_notification(),
-        tools_call_with_codex_metadata(
-            2,
-            "volicord.status",
-            json!({ "detail": "workflow" }),
-            native_session_id.as_str(),
-            CODEX_TEST_THREAD_ID,
-            CODEX_TEST_TURN_ID,
-        ),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-            _ => None,
-        },
-    )?;
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 2, "{label}");
-    assert_eq!(responses[1]["error"]["code"], -32602, "{label}");
-    assert!(!serde_json::to_string(&responses)?.contains(native_session_id.as_str()));
-    assert_eq!(fixture.counts()?, before_core, "{label}");
-    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
-    assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
-        before_agent_sessions
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "tool_invocations")?,
-        before_tool_invocations
-    );
-    assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&session_id))?.is_none());
-    Ok(())
-}
-
-#[test]
 fn managed_codex_tools_list_buffers_metrics_until_call_binding() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-managed-tools-list-binding")?;
     let adapter = project_bound_adapter(&fixture)?;
@@ -1952,6 +1800,70 @@ fn managed_codex_tools_list_buffers_metrics_until_call_binding() -> Result<(), B
     assert!(responses[1]["result"]["tools"].is_array());
     assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
     assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_data(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-authoritative-runtime-milestones")?;
+    let mut initialize = initialize_request(1, json!({}));
+    initialize["params"]["clientInfo"]["name"] = json!("future-cooperative-client");
+    initialize["params"]["clientInfo"]["version"] = json!("999.0-preview+custom");
+    let input = Cursor::new(json_lines(&[
+        initialize,
+        initialized_notification(),
+        initialized_notification(),
+        request(2, "tools/list", json!({})),
+        tools_call_with_codex_metadata(
+            3,
+            STATUS_TOOL_NAME,
+            json!({ "detail": "workflow" }),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            CODEX_TEST_TURN_ID,
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            _ => None,
+        },
+    )?;
+    assert_eq!(stdio_responses(&output)?.len(), 3);
+    let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
+    let runtime_session_id = registry.query_row(
+        "SELECT runtime_session_id
+           FROM mcp_runtime_sessions
+          WHERE connection_internal_id = ?1 AND session_source = 'managed_host'
+          ORDER BY process_started_at DESC, runtime_session_id DESC
+          LIMIT 1",
+        [fixture.connection_id()],
+        |row| row.get::<_, String>(0),
+    )?;
+    let runtime = mcp_runtime_session(fixture.runtime_home_path(), &runtime_session_id)?
+        .expect("authoritative runtime session");
+    assert_eq!(
+        runtime.client_name.as_deref(),
+        Some("future-cooperative-client")
+    );
+    assert_eq!(
+        runtime.client_version.as_deref(),
+        Some("999.0-preview+custom")
+    );
+    assert!(runtime.initialize_completed_at.is_some());
+    assert!(runtime.initialized_notification_at.is_some());
+    assert_eq!(runtime.required_tools_present, Some(true));
+    assert!(runtime.last_safe_read_only_tool_call_at.is_some());
+    assert!(runtime.graceful_close_at.is_some());
+    assert!(runtime.terminal_protocol_failure_code.is_none());
     Ok(())
 }
 
@@ -2049,13 +1961,11 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
     let fixture = CoreFixture::new("mcp-stdio-codex-binding-immutable")?;
     let native_session_id = "native.session.root";
     let native_thread_id = "native.thread.root";
-    let protocol_sentinel = "protocol.must.not.persist";
     let capability_sentinel = "capability.must.not.persist";
     let initialize_sentinel = "initialize.payload.must.not.persist";
     let client_extension_sentinel = "client.extension.must.not.persist";
     let tool_payload_sentinel = "tool.payload.must.not.persist";
     let mut initialize = initialize_request(1, json!({}));
-    initialize["params"]["protocolVersion"] = json!(protocol_sentinel);
     initialize["params"]["capabilities"]["future_capability"] = json!(capability_sentinel);
     initialize["params"]["future_initialize_field"] = json!(initialize_sentinel);
     initialize["params"]["clientInfo"]["future_client_field"] = json!(client_extension_sentinel);
@@ -2125,7 +2035,6 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
         "turn.two",
         "native.thread.other",
         "native.session.other",
-        protocol_sentinel,
         capability_sentinel,
         initialize_sentinel,
         client_extension_sentinel,
@@ -2186,56 +2095,6 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
     assert_eq!(responses.len(), 2);
     assert_eq!(responses[1]["error"]["code"], -32602);
     assert!(!serde_json::to_string(&responses)?.contains("thread invalid marker"));
-    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
-    assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
-        before_agent_sessions
-    );
-    assert_eq!(
-        read_only_table_count(&fixture, "tool_invocations")?,
-        before_tool_invocations
-    );
-    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
-    Ok(())
-}
-
-#[test]
-fn rejected_codex_client_identity_has_zero_durable_identity_or_core_effect(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-rejected-codex-client-identity")?;
-    let rejected_name = "rejected.client.identity.sentinel";
-    let rejected_version = "rejected.version.identity.sentinel";
-    let before = fixture.counts()?;
-    let before_state_version = read_only_state_version(&fixture)?;
-    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
-    let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
-    let input = Cursor::new(json_lines(&[
-        initialize_request_with_client_info(1, json!({}), rejected_name, rejected_version),
-        initialized_notification(),
-        tools_call_with_codex_metadata(
-            2,
-            "volicord.status",
-            json!({"detail":"workflow"}),
-            CODEX_TEST_SESSION_ID,
-            CODEX_TEST_THREAD_ID,
-            CODEX_TEST_TURN_ID,
-        ),
-    ])?);
-    let mut output = Vec::new();
-
-    run_stdio_with_env_marker(
-        project_bound_adapter(&fixture)?,
-        BufReader::new(input),
-        &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
-    )?;
-
-    let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 2);
-    assert_eq!(responses[1]["error"]["code"], -32602);
-    assert!(!serde_json::to_string(&responses)?.contains(rejected_name));
-    assert!(!serde_json::to_string(&responses)?.contains(rejected_version));
-    assert_eq!(fixture.counts()?, before);
     assert_eq!(read_only_state_version(&fixture)?, before_state_version);
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
@@ -4857,17 +4716,29 @@ fn ensure_user_channel_test_session(fixture: &CoreFixture) -> Result<(), Box<dyn
         return Ok(());
     }
     let started_at = fixture.store()?.current_timestamp()?;
+    let runtime_session_id = start_mcp_runtime_session(
+        fixture.runtime_home_path(),
+        McpRuntimeSessionStart {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: None,
+            process_id: 42,
+            process_started_at: started_at.clone(),
+        },
+    )?
+    .runtime_session_id;
     insert_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionInsert {
             session_id,
+            runtime_session_id,
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_kind: "codex".to_owned(),
-            guard_mode: IntegrationProfile::Record.as_str().to_owned(),
-            started_at,
-            metadata_json: "{}".to_owned(),
+            host_session_id: "user-channel-test-session".to_owned(),
+            host_thread_id: "user-channel-test-thread".to_owned(),
+            host_turn_id: "user-channel-test-turn".to_owned(),
+            observed_at: started_at,
         },
     )?;
     Ok(())

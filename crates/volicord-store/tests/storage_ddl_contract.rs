@@ -23,10 +23,10 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 36);
-    assert_eq!(metadata.columns.len(), 474);
-    assert_eq!(metadata.indexes.len(), 62);
-    assert_eq!(metadata.constraints.len(), 36);
+    assert_eq!(metadata.tables.len(), 38);
+    assert_eq!(metadata.columns.len(), 501);
+    assert_eq!(metadata.indexes.len(), 66);
+    assert_eq!(metadata.constraints.len(), 38);
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -59,11 +59,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:73b80faf24dc880d18c78007ccc15540c2fe96e50e44ec4a2f421fd956bd7def"
+        "sha256:8e32fd05e4e951568e833ffd24634cc739beee87d9944bc8f29546d93259bed2"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:4397dca3b75485907d64b9a5889a15d0528c34cb01a0e514551b19bc0bda7459"
+        "sha256:4bd4a9136c594f3dddb34ecaeea592d29591059d13a7830043113ebfa132ebe2"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -97,12 +97,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:73b80faf24dc880d18c78007ccc15540c2fe96e50e44ec4a2f421fd956bd7def\",",
+            "{\"canonical_ddl_digest\":\"sha256:8e32fd05e4e951568e833ffd24634cc739beee87d9944bc8f29546d93259bed2\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
-            "\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:4397dca3b75485907d64b9a5889a15d0528c34cb01a0e514551b19bc0bda7459\"}"
+            "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
+            "\"integrity_constraints_digest\":\"sha256:4bd4a9136c594f3dddb34ecaeea592d29591059d13a7830043113ebfa132ebe2\"}"
         )
     );
     Ok(())

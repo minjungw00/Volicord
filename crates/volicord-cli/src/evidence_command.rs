@@ -977,7 +977,11 @@ fn validate_active_guard_installation(
     )?
     .ok_or_else(|| EvidenceCommandError::runtime("guard session is not registered"))?;
     if session.connection_internal_id != connection_id
-        || session.guard_installation_id.as_deref() != Some(installation_id)
+        || !volicord_store::guards::agent_session_matches_current_integration(
+            &context.runtime_home,
+            &session,
+            Some(installation_id),
+        )?
     {
         return Err(EvidenceCommandError::runtime(
             "guard session does not match the registered connection and installation",

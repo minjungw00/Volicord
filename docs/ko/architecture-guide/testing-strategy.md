@@ -29,6 +29,8 @@
 - 행 없음 또는 비적격 operation result에서 유지되는
   `OPERATION_RESULT_UNAVAILABLE`
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
+- 권위 있는 MCP runtime-session source 분리, milestone ordering, 현재 revision,
+  프로젝트 binding, diagnostics 비권위성
 - Guard 관찰과 미기록 변경 suppression 결과
 - 지원되지 않는 Codex 아티팩트와 구성 drift 동작
 

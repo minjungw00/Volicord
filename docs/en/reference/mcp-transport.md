@@ -13,9 +13,10 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 | Surface | Stability |
 |---|---|
 | `volicord mcp --stdio`, initialization, `tools/list`, `tools/call`, and response wrapping | `stable` |
+| Authoritative runtime-session lifecycle milestones | `stable` |
 | Pre-1.0 additions not listed in the stable process and method set | `beta` |
 | Process-binding values and generated configuration details | `internal` |
-| Startup and protocol diagnostics | `diagnostic` |
+| Host executable version, MCP client name/version, and best-effort protocol metrics | `diagnostic` |
 
 ## Process Model
 
@@ -60,6 +61,36 @@ return `-32603`. Responses preserve the request `id`.
 the supported MCP protocol version and then accepts
 `notifications/initialized`. Calls before initialization, repeated initialize,
 batch input, and unsupported versions fail before Core.
+
+## Authoritative Lifecycle Recording
+
+After resolving the Agent Connection, the process creates a Registry runtime
+session before validating thread metadata or reading a protocol message. The
+row identifies this Volicord-generated process launch, its Connection,
+`managed_host` or `cli_preflight` source, current connection integration
+revision, process ID, and process-start time. A CLI preflight row never
+satisfies a managed-host operational check.
+
+The adapter durably records successful `initialize` before returning its
+response, records a valid `notifications/initialized` before entering ready
+state, and records each actual `tools/list` response before returning it. The
+discovery fact says whether that generated response contained every tool
+required by the current Connection mode. Duplicate initialized notifications
+are idempotent after the first valid observation.
+
+Successful `volicord.status`, `volicord.get_operation_result`, and
+`volicord.check_close` completions update the safe/read-only milestone before
+the tool result is emitted. Observable fatal transport failure and EOF-driven
+graceful close record their terminal facts. An authoritative Store failure
+withholds the corresponding protocol success. Bounded writes to
+`diagnostics.sqlite` remain best effort and are never consulted for these
+facts.
+
+The negotiated protocol version is authoritative protocol data. `clientInfo`
+name/version and an observed host executable version are diagnostic fields;
+they are accepted as bounded future values and do not prove client identity,
+host identity, compatibility, or allowlist membership. The session proves
+only the cooperative protocol behavior it actually records.
 
 ## Tool Discovery
 
@@ -108,7 +139,8 @@ Guard prompt observations, when present, remain non-authority observations.
 
 ## Shutdown And Reconnection
 
-EOF closes the loop after in-flight response handling. A new process repeats
+EOF closes the loop after in-flight response handling and records graceful
+close. A new process repeats
 startup validation and MCP initialization; it inherits no connection, project,
 receipt, or current state from the previous process.
 

@@ -8,8 +8,8 @@ and canonical SQL remain with [Storage DDL](storage-ddl.md).
 
 | Location | Purpose |
 |---|---|
-| `registry.sqlite` | Runtime Home identity, installation profile, projects, aliases, Agent Connections, explicit project memberships, and managed Codex binding/verification metadata. |
-| project `state.sqlite` | Project-local Core state, replay, authority events, UserAction, evidence, artifacts, continuity, Guard observations, and reconciliation. |
+| `registry.sqlite` | Runtime Home identity, installation profile, projects, aliases, Agent Connections, explicit project memberships, managed Codex binding/verification metadata, and authoritative MCP runtime sessions. |
+| project `state.sqlite` | Project-local Core state, replay, authority events, UserAction, evidence, artifacts, continuity, project Agent Sessions, Guard observations, and reconciliation. |
 | artifact store | Bytes and safe notices referenced by persistent artifact rows. |
 | `diagnostics.sqlite` | Bounded non-authority operability counters. |
 
@@ -30,7 +30,7 @@ repair, importer dispatch, or format inference.
 This diagnostics manifest is not the authority `StorageManifest`, and the
 diagnostics database never uses a numeric schema version as a compatibility
 identity. Reads do not create it. Diagnostics failure cannot change a Core or
-User Channel result.
+User Channel result. Operational MCP evidence is never read from this database.
 
 ## Record Families
 
@@ -41,6 +41,10 @@ Registry records include:
 - project registrations and aliases;
 - Agent Connections and Connection Projects memberships;
 - at most one canonical connection verification report per Agent Connection;
+- MCP runtime sessions and their process, initialization, discovery, safe-call,
+  terminal-failure, and graceful-close facts;
+- cross-database reservations that bind one runtime/host session to one
+  Connection Project;
 - canonical `ManagedHostBinding` identity, generated-artifact identity, and
   current verification receipt coordinates.
 
@@ -54,10 +58,48 @@ Project-state records include:
   summaries, observations, and producers;
 - `UserActionRequest`, immutable `UserActionResolution`, and project continuity;
 - expected writes, Guard observations, prompt observations, and unrecorded
-  changes used by reconciliation.
+  changes used by reconciliation;
+- project Agent Sessions that reference a Registry runtime session, retain
+  host session/thread/latest-turn correlation, and carry the current project
+  integration revision.
 
 Prompt-related Guard records are observations only. They are not a UserAction
 resolution, user answer, verification basis, or authority source.
+
+## Authoritative Operational Sessions
+
+`mcp_runtime_sessions` is Agent Connection-owned application state. Volicord
+creates its opaque `runtime_session_id` when the MCP process starts, before
+host thread metadata exists. `session_source` is exactly `managed_host` or
+`cli_preflight`; a CLI row can be inspected but can never satisfy a
+managed-host operational-evidence lookup.
+
+The connection integration revision is a domain-separated canonical digest of
+the Connection identity, host kind, intent, scope, mode, server name,
+configuration target, and exact managed-configuration fingerprint. The
+managed fingerprint includes the current server command and entry. Observed
+host version, executable digest, support-catalog coordinates, release
+evidence, certified capability sets, and MCP client name/version are excluded.
+Host and client version fields remain diagnostic observations, not identity or
+allowlist inputs.
+
+Milestone timestamps and facts express lifecycle state without a redundant
+status enum. Store records successful `initialize`, the initialized
+notification, every actual `tools/list` result and required-tool-set fact, a
+successful designated safe/read-only Volicord call, terminal protocol failure,
+and graceful close. A protocol success is not emitted when its authoritative
+Store write fails. Best-effort diagnostics remain separate and cannot make an
+otherwise valid tool result fail.
+
+Project `agent_sessions` are the project-local correlation projection. Each
+row names one runtime session and Connection, carries a project integration
+revision that adds the current workflow-policy fingerprint and Guard ownership
+pair, and keeps only the host session, thread, and latest turn needed for
+workflow and Guard correlation. Composite project foreign keys prevent a
+downstream Guard row from pairing a session with another Connection. Registry
+`mcp_runtime_project_session_bindings` supplies the uniqueness boundary that a
+foreign key cannot express across separate SQLite databases, so one
+runtime/host session cannot be reused for another project.
 
 ## Identity And Ownership
 

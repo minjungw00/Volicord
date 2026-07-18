@@ -8,8 +8,8 @@
 
 | 위치 | 목적 |
 |---|---|
-| `registry.sqlite` | Runtime Home identity, 설치 profile, 프로젝트, alias, Agent Connection, 명시적 프로젝트 membership, 관리 Codex binding/검증 metadata |
-| 프로젝트 `state.sqlite` | 프로젝트 로컬 Core 상태, replay, authority event, UserAction, evidence, artifact, continuity, Guard 관찰, 조정 |
+| `registry.sqlite` | Runtime Home identity, 설치 profile, 프로젝트, alias, Agent Connection, 명시적 프로젝트 membership, 관리 Codex binding/검증 metadata, 권위 있는 MCP runtime session |
+| 프로젝트 `state.sqlite` | 프로젝트 로컬 Core 상태, replay, authority event, UserAction, evidence, artifact, continuity, 프로젝트 Agent Session, Guard 관찰, 조정 |
 | artifact store | 영속 artifact row가 참조하는 bytes와 안전 notice |
 | `diagnostics.sqlite` | 제한된 비권한 operability counter |
 
@@ -29,7 +29,7 @@ canonical schema digest와 `contract_id=volicord.sqlite.diagnostics`로 식별�
 이 diagnostics 매니페스트는 권한 `StorageManifest`가 아니며 diagnostics 데이터베이스는
 숫자 schema version을 compatibility identity로 사용하지 않습니다. 읽기는 이
 데이터베이스를 만들지 않습니다. Diagnostics 실패는 Core 또는 User Channel 결과를 바꿀
-수 없습니다.
+수 없습니다. 운영 MCP evidence는 이 데이터베이스에서 읽지 않습니다.
 
 ## 기록 계열
 
@@ -40,6 +40,9 @@ Registry 기록에는 다음이 포함됩니다.
 - 프로젝트 등록과 alias
 - Agent Connection과 Connection Projects membership
 - Agent Connection마다 최대 하나의 정규 연결 검증 보고서
+- MCP runtime session과 그 process, initialization, discovery, 안전 호출, terminal
+  failure, graceful close 사실
+- runtime/host session 하나를 Connection Project 하나에 결속하는 데이터베이스 간 예약
 - 정규 `ManagedHostBinding` identity, 생성 artifact identity, 현재 검증 receipt 좌표
 
 프로젝트 상태 기록에는 다음이 포함됩니다.
@@ -51,9 +54,41 @@ Registry 기록에는 다음이 포함됩니다.
   producer
 - `UserActionRequest`, immutable `UserActionResolution`, project continuity
 - 조정에 쓰는 expected write, Guard 관찰, prompt 관찰, unrecorded change
+- Registry runtime session을 참조하고 host session/thread/latest-turn 상관관계와 현재
+  프로젝트 통합 revision을 보관하는 프로젝트 Agent Session
 
 Prompt 관련 Guard 기록은 관찰일 뿐입니다. UserAction resolution, 사용자 답,
 verification basis, 권한 출처가 아닙니다.
+
+## 권위 있는 운영 Session
+
+`mcp_runtime_sessions`는 Agent Connection 소유 application state입니다. Volicord는 host
+thread metadata가 생기기 전 MCP process 시작 시점에 opaque `runtime_session_id`를
+만듭니다. `session_source`는 정확히 `managed_host` 또는 `cli_preflight`입니다. CLI row는
+검사할 수 있지만 managed-host 운영 evidence 조회를 충족할 수 없습니다.
+
+Connection 통합 revision은 Connection identity, host kind, intent, scope, mode, server
+name, configuration target, 정확한 managed-configuration fingerprint를 domain-separated
+canonical digest로 만든 값입니다. Managed fingerprint에는 현재 server command와 entry가
+포함됩니다. 관찰한 host version, executable digest, support-catalog 좌표, release
+evidence, certified capability set, MCP client name/version은 제외합니다. Host와 client
+version 필드는 identity나 allowlist 입력이 아닌 diagnostic 관찰로만 남습니다.
+
+Milestone timestamp와 사실로 lifecycle 상태를 표현하며 중복 status enum은 저장하지
+않습니다. Store는 성공한 `initialize`, initialized notification, 실제 `tools/list`마다의
+응답과 required-tool-set 사실, 지정된 안전/읽기 전용 Volicord 호출 성공, terminal
+protocol failure, graceful close를 기록합니다. 권위 있는 Store 쓰기가 실패하면 protocol
+성공을 내보내지 않습니다. Best-effort diagnostics는 분리되어 있으며 정상적인 도구 결과를
+실패시킬 수 없습니다.
+
+프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 runtime
+session 하나와 Connection을 이름 붙이고, 현재 workflow-policy fingerprint와 Guard
+ownership pair를 더한 프로젝트 통합 revision을 보관하며, workflow와 Guard 상관관계에
+필요한 host session, thread, latest turn만 유지합니다. 복합 프로젝트 foreign key는
+하위 Guard row가 session을 다른 Connection과 조합하지 못하게 합니다. 분리된 SQLite
+데이터베이스 사이에는 foreign key를 만들 수 없으므로 Registry의
+`mcp_runtime_project_session_bindings`가 uniqueness 경계를 제공하며 runtime/host session
+하나를 다른 프로젝트에서 재사용하지 못하게 합니다.
 
 ## Identity와 소유권
 

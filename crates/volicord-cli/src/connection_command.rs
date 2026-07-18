@@ -983,7 +983,7 @@ pub fn prepare_managed_stdio_authority(
     runtime_home: &Path,
     connection_id: &str,
     selected_project_id: Option<&str>,
-) -> Result<(), ConnectionCommandError> {
+) -> Result<Option<String>, ConnectionCommandError> {
     let connection = agent_connection_record(runtime_home, connection_id)?.ok_or_else(|| {
         managed_authority_error(
             "host_receipt_connection_missing",
@@ -1038,6 +1038,10 @@ pub fn prepare_managed_stdio_authority(
     })?;
     let verifier_build_digest = strict_raw_artifact(&verifier_path, platform.environment)?.digest;
     let process = ProductionConnectionProcess;
+    let observed_host_executable_version = CodexAdapter::new(codex_environment(&process))
+        .detect()
+        .ok()
+        .and_then(|detection| detection.host_version);
     let authority_context = ManagedAuthorityPreparationContext {
         platform: &platform,
         parent: &parent,
@@ -1054,7 +1058,7 @@ pub fn prepare_managed_stdio_authority(
             &authority_context,
         )?;
     }
-    Ok(())
+    Ok(observed_host_executable_version)
 }
 
 struct ManagedAuthorityPreparationContext<'a> {

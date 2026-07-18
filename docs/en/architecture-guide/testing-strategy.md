@@ -30,6 +30,8 @@ Durable tests should cover, as applicable:
 - missing or ineligible operation-result rows remaining
   `OPERATION_RESULT_UNAVAILABLE`;
 - MCP rejection of hidden context and CLI-only UserAction resolution;
+- authoritative MCP runtime-session source separation, milestone ordering,
+  current revisions, project binding, and diagnostics non-authority;
 - Guard observation and unrecorded-change suppression outcomes; and
 - unsupported Codex artifact and configuration drift behavior.
 

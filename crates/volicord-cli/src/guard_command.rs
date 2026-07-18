@@ -608,20 +608,29 @@ fn ensure_required_session(
         return Ok(());
     }
     if phase == GuardPhase::PromptCapture || envelope.session_id.is_some() {
+        let runtime_session =
+            volicord_store::operational_sessions::single_open_current_managed_runtime_session(
+                runtime_home,
+                &envelope.connection_id,
+            )?
+            .ok_or_else(|| {
+                GuardCommandError::Runtime(
+                    "managed Guard event requires one open current managed MCP runtime session"
+                        .to_owned(),
+                )
+            })?;
         insert_agent_session(
             runtime_home,
             &project.project_id,
             AgentSessionInsert {
                 session_id: session_id.to_owned(),
+                runtime_session_id: runtime_session.runtime_session_id,
                 connection_internal_id: envelope.connection_id.clone(),
                 guard_installation_id: envelope.guard_installation_id.clone(),
-                host_kind: envelope.host_kind.clone(),
-                guard_mode: envelope.guard_mode.clone(),
-                started_at: envelope.occurred_at.clone(),
-                metadata_json: json!({
-                    "source": "volicord_guard_cli"
-                })
-                .to_string(),
+                host_session_id: envelope.host_session_id.clone(),
+                host_thread_id: envelope.host_thread_id.clone(),
+                host_turn_id: envelope.host_turn_id.clone(),
+                observed_at: envelope.occurred_at.clone(),
             },
         )?;
     }
@@ -643,7 +652,8 @@ fn validate_existing_connection_session_binding(
         return Ok(());
     };
     if existing.connection_internal_id != envelope.connection_id
-        || existing.host_kind != envelope.host_kind
+        || existing.host_session_id != envelope.host_session_id
+        || existing.host_thread_id != envelope.host_thread_id
     {
         return Err(GuardCommandError::Runtime(
             "managed_stdio_session_ownership_conflict: existing session ownership does not match this Agent Connection"

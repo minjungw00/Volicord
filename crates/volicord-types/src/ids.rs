@@ -58,6 +58,10 @@ macro_rules! opaque_string_type {
 opaque_string_type!(ProjectId, "Opaque project identifier.");
 opaque_string_type!(TaskId, "Opaque Task identifier.");
 opaque_string_type!(AgentConnectionId, "Opaque Agent Connection identifier.");
+opaque_string_type!(
+    McpRuntimeSessionId,
+    "Opaque MCP Runtime Session identifier."
+);
 opaque_string_type!(AgentSessionId, "Opaque Agent Session identifier.");
 opaque_string_type!(
     GuardInstallationId,
@@ -146,6 +150,8 @@ pub enum DurableIdKind {
     Event,
     /// Core-generated Agent Session ids.
     AgentSession,
+    /// Store-generated MCP Runtime Session ids.
+    McpRuntimeSession,
     /// Core-generated host-hook installation ids.
     GuardInstallation,
     /// Core-generated host-hook event ids.
@@ -188,6 +194,7 @@ impl DurableIdKind {
             Self::Run => "run_",
             Self::Event => "evt_",
             Self::AgentSession => "session_",
+            Self::McpRuntimeSession => "mcp_runtime_",
             Self::GuardInstallation => "guard_installation_",
             Self::GuardEvent => "guard_event_",
             Self::PromptCapture => "prompt_capture_",
@@ -217,6 +224,7 @@ impl fmt::Display for DurableIdKind {
             Self::Run => "run",
             Self::Event => "event",
             Self::AgentSession => "agent_session",
+            Self::McpRuntimeSession => "mcp_runtime_session",
             Self::GuardInstallation => "guard_installation",
             Self::GuardEvent => "guard_event",
             Self::PromptCapture => "prompt_capture",

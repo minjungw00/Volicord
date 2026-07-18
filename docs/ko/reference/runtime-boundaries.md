@@ -9,7 +9,7 @@
 | 구성 요소 | 경계 |
 |---|---|
 | Product Repository | 사용자 제품 파일과 명시적인 관리 프로젝트 구성을 담는 정규 Git 작업 트리입니다. |
-| Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 관리 binding metadata, 런타임 소유 아티팩트입니다. |
+| Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 권위 있는 운영 session, 관리 binding metadata, 런타임 소유 아티팩트입니다. |
 | Volicord 설치 | 선택한 `volicord` 실행 파일과 build identity입니다. Runtime Home이 아닙니다. |
 | 관리 Codex 구성 | 정확한 관리 stdio 프로세스를 시작하는 사용자 또는 프로젝트 소유 구성입니다. Core 권한이 아닙니다. |
 | `volicord mcp --stdio` | 현재 Agent Connection 하나에 결속된 로컬 자식 프로세스 하나입니다. 네트워크 서비스가 아닙니다. |
@@ -84,15 +84,25 @@ WSL2에서는 초기화 전에 Runtime Home 또는 가장 가까운 기존 상�
 열지 않습니다. 정확한 시작, binding, protocol 동작은 [MCP 전송](mcp-transport.md)이
 담당합니다.
 
-프로세스 하나는 활성 Agent Connection 하나에 결속됩니다. 프로젝트 집합은 저장된
+프로세스 하나는 활성 Agent Connection 하나에 결속되며 process 시작 시 Volicord가
+생성한 새 Registry runtime-session ID를 받습니다. 프로젝트 집합은 저장된
 allowlist 또는 명시적으로 선택한 구성원입니다. 임의의 파일시스템 인접성에서 권한을
 검색하지 않습니다.
+
+Registry는 process lifecycle milestone과 프로젝트 간 runtime/host session 예약을
+담당합니다. 각 프로젝트 데이터베이스는 프로젝트 Agent Session과 host
+session/thread/turn 상관관계를 담당합니다. 분리된 데이터베이스 파일 사이에는 SQLite
+foreign key를 집행할 수 없으므로 Store는 프로젝트 쓰기 전에 Registry owner를 검증하고
+프로젝트 간 uniqueness에는 Registry 예약을 사용합니다. `diagnostics.sqlite`는 분리된
+best-effort carrier이며 운영 권한 출처로 사용하지 않습니다.
 
 ## 위치와 권한 경계
 
 - Product Repository 쓰기에는 계속 해당 Core 권한이 필요합니다.
 - Runtime Home 쓰기 접근은 Product Repository 쓰기 권한이 아닙니다.
 - 관리 구성은 사용자 판단, 쓰기 티켓, host attestation, Core receipt가 아닙니다.
+- 운영 runtime session은 기록한 협력적 protocol 동작만 증명하며 host 또는 client
+  identity를 증명하지 않습니다.
 - 통합 구성을 제거해도 프로젝트 권한 데이터를 삭제하지 않습니다.
 - 내보내기와 릴리스 검증 출력은 유지 문서나 Runtime Home trust input이 아니라 명시적인
   외부 출력 위치에 둡니다.

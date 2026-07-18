@@ -14,6 +14,7 @@
   전달 경로, 플랫폼 환경 값
 - 정규 `ConnectionVerificationReport`, 닫힌 상태 값, 결정적 집계, 엄격한 인코딩,
   보고서 부재 projection
+- Connection과 프로젝트 통합 revision, 권위 있는 managed-host 운영 session evidence
 - `ManagedHostBinding` 필드, 정규 인코딩, digest 의미
 - `HostVerificationReceipt` 필드와 Core가 영수증을 소비하기 전에 수행하는 검증
 - Codex 어댑터의 탐색, 설치, 검증, repair, 제거 책임
@@ -45,7 +46,7 @@
 
 | 표면 | 안정성 | 계약 |
 |---|---|---|
-| 최초 릴리스 값 집합, `ConnectionVerificationReport`, `PlatformEnvironment`, `ManagedHostBinding` 필드와 digest, `HostVerificationReceipt` 필드 | `stable` | 정확한 경계 계약입니다. |
+| 최초 릴리스 값 집합, `ConnectionVerificationReport`, 통합 revision, 권위 있는 운영 session evidence, `PlatformEnvironment`, `ManagedHostBinding` 필드와 digest, `HostVerificationReceipt` 필드 | `stable` | 정확한 경계 계약입니다. |
 | Codex 탐색, 관리 설치, 검증, repair, 제거, 설정 불일치 결과의 의미 | `stable` | 관찰 가능한 계약을 유지하면서 구현을 바꿀 수 있습니다. |
 | 어댑터 모듈, 파일시스템 helper, encoder, Store query helper | `internal` | 안정된 경계를 보존해야 하지만 공개 표면은 아닙니다. |
 | 사람이 읽는 검증, 저하 상태, repair 안내 | `diagnostic` | Machine-readable 범주, 사유, typed 필드가 권위 있는 값입니다. |
@@ -142,6 +143,32 @@ Check는 `id`의 UTF-8 byte 오름차순으로 정렬합니다. Action도 `id`�
 운영 호환성은 어댑터가 실제로 수행한 check와 관찰한 host 동작에서 보고합니다.
 `complete`는 정확한 host artifact의 release certification, 운영체제 집행, 행위자
 identity 증명, correctness 증명, 조작 방지 기록을 뜻하지 않습니다.
+
+## 통합 Revision과 운영 Evidence
+
+현재 Connection 통합 revision은 타입이 지정되고 domain-separated된 canonical SHA-256
+digest입니다. Basis는 Agent Connection identity, host kind, intent, scope, mode, server
+name, configuration target, 현재의 정확한 managed-configuration fingerprint입니다. 이
+fingerprint는 관리 server command와 entry를 포함합니다. Revision 구성은 관찰한 host
+version, executable digest, support-catalog 좌표, release evidence, certified capability
+set을 읽지 않습니다.
+
+Managed-host runtime session은 성공한 initialization, initialized notification, 현재
+필수 tool set을 포함한 실제 `tools/list` 응답, 지정된 안전/읽기 전용 Volicord 호출의
+성공을 영속 기록한 뒤에만 해당 현재 revision의 운영 evidence를 충족합니다. 조회는
+`session_source=managed_host`만 받으므로 CLI self-test나 preflight session은 충족할 수
+없습니다. Terminal protocol failure가 있는 row는 성공 evidence로 선택하지 않습니다.
+
+프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
+fingerprint와 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
+부재를 더합니다. 프로젝트 Agent Session은 이 revision을 보관하며 다른 Connection이나
+프로젝트에 다시 결속할 수 없습니다.
+
+이 기록은 현재 구성에서 관찰한 협력적 protocol 동작을 보여 줍니다. MCP client
+name/version과 관찰한 host executable version은 diagnostic 관찰이며 제한 안의 임의의
+미래 값을 받고 identity 증명이나 allowlist 입력으로 사용하지 않습니다. 나중 검증은 현재
+관찰한 host version이 성공 session의 version과 다르면 새 관찰을 요청할 수 있지만 version
+비교로 host binary를 인증하거나 금지하지 않습니다.
 
 <a id="external-contract-linkage"></a>
 

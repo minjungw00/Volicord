@@ -5,7 +5,7 @@ use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
 use sha2::{Digest, Sha256};
-use volicord_types::{ManagedMcpClientInfo, CODEX_MANAGED_MCP_CLIENT_NAME};
+use volicord_types::ManagedMcpClientInfo;
 
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
@@ -31,12 +31,14 @@ where
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StdioRunOptions {
     launch_origin: McpLaunchOrigin,
+    observed_host_executable_version: Option<String>,
 }
 
 impl Default for StdioRunOptions {
     fn default() -> Self {
         Self {
             launch_origin: McpLaunchOrigin::ManualCli,
+            observed_host_executable_version: None,
         }
     }
 }
@@ -52,43 +54,93 @@ where
     W: Write,
 {
     reject_invalid_managed_marker(options.launch_origin)?;
-    if options.launch_origin == McpLaunchOrigin::ManagedHost {
-        adapter.validate_managed_host_authority_startup()?;
-    }
     let mut state = ConnectionState::for_launch_origin(options.launch_origin);
-    validate_managed_stdio_session_ownership(&adapter, &state)?;
-    if !state.codex_binding.is_pending() && !state.managed_stdio_binding_active {
-        let _ = start_transport_diagnostic_session(&adapter, &state);
-    }
-    for line in reader.lines() {
-        let line = line.map_err(McpAdapterError::Io)?;
-        if line.trim().is_empty() {
-            continue;
-        }
+    let process_started_at = authoritative_observation_timestamp();
+    let source = if options.launch_origin == McpLaunchOrigin::ManagedHost {
+        McpRuntimeSessionSource::ManagedHost
+    } else {
+        McpRuntimeSessionSource::CliPreflight
+    };
+    let runtime_session = start_mcp_runtime_session(
+        &adapter.runtime_home,
+        McpRuntimeSessionStart {
+            connection_internal_id: adapter.context.connection_internal_id.as_str().to_owned(),
+            session_source: source,
+            observed_host_executable_version: options.observed_host_executable_version,
+            process_id: std::process::id(),
+            process_started_at,
+        },
+    )
+    .map_err(McpAdapterError::Store)?;
+    state.runtime_session_id = runtime_session.runtime_session_id;
 
-        let message: Value = match serde_json::from_str(&line) {
-            Ok(message) => message,
-            Err(error) => {
-                write_json_line(
-                    &mut writer,
-                    json_rpc_error(Value::Null, -32700, "Parse error", Some(error.to_string())),
-                )?;
+    let transport_result = (|| {
+        if options.launch_origin == McpLaunchOrigin::ManagedHost {
+            adapter.validate_managed_host_authority_startup()?;
+        }
+        validate_managed_stdio_session_ownership(&adapter, &state)?;
+        if !state.codex_binding.is_pending() && !state.managed_stdio_binding_active {
+            let _ = start_transport_diagnostic_session(&adapter, &state);
+        }
+        for line in reader.lines() {
+            let line = line.map_err(McpAdapterError::Io)?;
+            if line.trim().is_empty() {
                 continue;
             }
-        };
 
-        if let Some(response) = handle_json_rpc_message(&adapter, &mut state, message)? {
-            write_json_line(&mut writer, response)?;
+            let message: Value = match serde_json::from_str(&line) {
+                Ok(message) => message,
+                Err(error) => {
+                    write_json_line(
+                        &mut writer,
+                        json_rpc_error(Value::Null, -32700, "Parse error", Some(error.to_string())),
+                    )?;
+                    continue;
+                }
+            };
+
+            if let Some(response) = handle_json_rpc_message(&adapter, &mut state, message)? {
+                write_json_line(&mut writer, response)?;
+            }
+        }
+
+        writer.flush().map_err(McpAdapterError::Io)
+    })();
+
+    match transport_result {
+        Ok(()) => {
+            record_mcp_graceful_close(
+                &adapter.runtime_home,
+                &state.runtime_session_id,
+                &authoritative_observation_timestamp(),
+            )
+            .map_err(McpAdapterError::Store)?;
+            Ok(())
+        }
+        Err(error) => {
+            record_mcp_terminal_protocol_failure(
+                &adapter.runtime_home,
+                &state.runtime_session_id,
+                "mcp_transport_failure",
+                None,
+                &authoritative_observation_timestamp(),
+            )
+            .map_err(McpAdapterError::Store)?;
+            Err(error)
         }
     }
+}
 
-    writer.flush().map_err(McpAdapterError::Io)
+fn authoritative_observation_timestamp() -> String {
+    UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(SystemTime::now()))
+        .to_canonical_string()
 }
 
 /// Runs the MCP stdio adapter from process environment and stdin/stdout.
 pub fn run_stdio_from_env(
     connection_id: &str,
     project_id: Option<&str>,
+    observed_host_executable_version: Option<String>,
 ) -> Result<(), McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
@@ -120,7 +172,10 @@ pub fn run_stdio_from_env(
         adapter,
         stdin.lock(),
         stdout.lock(),
-        StdioRunOptions { launch_origin },
+        StdioRunOptions {
+            launch_origin,
+            observed_host_executable_version,
+        },
     )
 }
 
@@ -131,6 +186,7 @@ pub fn run_stdio_from_env(
 /// local Runtime Home before the transport starts.
 pub fn run_stdio_discover_repository_from_env(
     host: RepositoryDiscoveryHost,
+    observed_host_executable_version: Option<String>,
 ) -> Result<(), McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     let runtime_home = resolve_repository_discovery_runtime_home(process_env_var, &current_dir)?;
@@ -150,7 +206,10 @@ pub fn run_stdio_discover_repository_from_env(
         adapter,
         stdin.lock(),
         stdout.lock(),
-        StdioRunOptions { launch_origin },
+        StdioRunOptions {
+            launch_origin,
+            observed_host_executable_version,
+        },
     )
 }
 
@@ -256,7 +315,15 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     let launch_origin = classify_launch_origin_for_adapter(&adapter, &env_var);
-    run_stdio_with_options(adapter, reader, writer, StdioRunOptions { launch_origin })
+    run_stdio_with_options(
+        adapter,
+        reader,
+        writer,
+        StdioRunOptions {
+            launch_origin,
+            observed_host_executable_version: None,
+        },
+    )
 }
 
 /// Runs MCP startup validation from process environment.
@@ -282,6 +349,24 @@ where
     let detail_project_id = project_id.map(ProjectId::new);
     let inspection =
         McpConnectionStartupInspection::resolve(&runtime_home, connection_id, detail_project_id)?;
+    let started_at = authoritative_observation_timestamp();
+    let session = start_mcp_runtime_session(
+        &runtime_home,
+        McpRuntimeSessionStart {
+            connection_internal_id: connection_id.to_owned(),
+            session_source: McpRuntimeSessionSource::CliPreflight,
+            observed_host_executable_version: None,
+            process_id: std::process::id(),
+            process_started_at: started_at,
+        },
+    )
+    .map_err(McpAdapterError::Store)?;
+    record_mcp_graceful_close(
+        &runtime_home,
+        &session.runtime_session_id,
+        &authoritative_observation_timestamp(),
+    )
+    .map_err(McpAdapterError::Store)?;
     Ok(inspection.preflight_report())
 }
 
@@ -513,7 +598,12 @@ pub(crate) enum ConnectionPhase {
 enum CodexManagedBinding {
     NotApplicable,
     Pending,
-    Bound { thread_digest: [u8; 32] },
+    Bound {
+        thread_digest: [u8; 32],
+        host_session_id: String,
+        host_thread_id: String,
+        host_turn_id: String,
+    },
 }
 
 impl CodexManagedBinding {
@@ -527,6 +617,7 @@ pub(crate) struct ConnectionState {
     pub(crate) phase: ConnectionPhase,
     pub(crate) client_info: Option<ManagedMcpClientInfo>,
     pub(crate) session_id: String,
+    pub(crate) runtime_session_id: String,
     pub(crate) managed_stdio_binding_active: bool,
     pub(crate) launch_origin: &'static str,
     status_method_call_count: u64,
@@ -540,6 +631,7 @@ impl Default for ConnectionState {
             phase: ConnectionPhase::AwaitingInitialize,
             client_info: None,
             session_id: String::new(),
+            runtime_session_id: String::new(),
             managed_stdio_binding_active: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
             status_method_call_count: 0,
@@ -553,6 +645,25 @@ impl ConnectionState {
     fn managed_session_id(&self) -> Option<&str> {
         self.managed_stdio_binding_active
             .then_some(self.session_id.as_str())
+    }
+
+    fn managed_agent_session_binding(&self) -> Option<ManagedAgentSessionBinding> {
+        let CodexManagedBinding::Bound {
+            host_session_id,
+            host_thread_id,
+            host_turn_id,
+            ..
+        } = &self.codex_binding
+        else {
+            return None;
+        };
+        Some(ManagedAgentSessionBinding {
+            runtime_session_id: self.runtime_session_id.clone(),
+            session_id: self.session_id.clone(),
+            host_session_id: host_session_id.clone(),
+            host_thread_id: host_thread_id.clone(),
+            host_turn_id: host_turn_id.clone(),
+        })
     }
 
     fn for_launch_origin(launch_origin: McpLaunchOrigin) -> Self {
@@ -610,7 +721,7 @@ pub(crate) fn handle_json_rpc_message(
             handle_json_rpc_request(adapter, state, request).map(Some)
         }
         Ok(ClientMessage::Notification(notification)) => {
-            handle_json_rpc_notification(state, notification);
+            handle_json_rpc_notification(adapter, state, notification)?;
             Ok(None)
         }
         Err(error) => Ok(Some(json_rpc_error(
@@ -682,15 +793,25 @@ pub(crate) fn valid_request_id(value: &Value) -> Result<Value, JsonRpcFailure> {
 }
 
 pub(crate) fn handle_json_rpc_notification(
+    adapter: &McpAdapter,
     state: &mut ConnectionState,
     notification: JsonRpcNotification,
-) {
+) -> Result<(), McpAdapterError> {
     if notification.method == "notifications/initialized"
         && state.phase == ConnectionPhase::AwaitingInitialized
         && notification_params_are_object_or_absent(notification.params.as_ref())
     {
+        if !state.runtime_session_id.is_empty() {
+            record_mcp_initialized_notification(
+                &adapter.runtime_home,
+                &state.runtime_session_id,
+                &authoritative_observation_timestamp(),
+            )
+            .map_err(McpAdapterError::Store)?;
+        }
         state.phase = ConnectionPhase::Ready;
     }
+    Ok(())
 }
 
 pub(crate) fn notification_params_are_object_or_absent(params: Option<&Value>) -> bool {
@@ -713,6 +834,16 @@ pub(crate) fn handle_json_rpc_request(
                 Ok(initialize_params) => initialize_params,
                 Err(error) => return Ok(error),
             };
+            if !state.runtime_session_id.is_empty() {
+                record_mcp_initialize(
+                    &adapter.runtime_home,
+                    &state.runtime_session_id,
+                    &initialize_params.client_info,
+                    SUPPORTED_PROTOCOL_VERSION,
+                    &authoritative_observation_timestamp(),
+                )
+                .map_err(McpAdapterError::Store)?;
+            }
             state.client_info = Some(initialize_params.client_info);
             state.phase = ConnectionPhase::AwaitingInitialized;
             if !state.codex_binding.is_pending() && state.managed_stdio_binding_active {
@@ -736,7 +867,17 @@ pub(crate) fn handle_json_rpc_request(
             }
             match adapter.tools() {
                 Ok(tools) => {
+                    let required_tools_present = required_tool_set_present(adapter, &tools)?;
                     let result = json!({ "tools": tools });
+                    if !state.runtime_session_id.is_empty() {
+                        record_mcp_tools_list(
+                            &adapter.runtime_home,
+                            &state.runtime_session_id,
+                            required_tools_present,
+                            &authoritative_observation_timestamp(),
+                        )
+                        .map_err(McpAdapterError::Store)?;
+                    }
                     let serialized_bytes = serde_json::to_vec(&result)
                         .ok()
                         .and_then(|bytes| u64::try_from(bytes.len()).ok());
@@ -775,6 +916,34 @@ pub(crate) fn handle_json_rpc_request(
     }))
 }
 
+fn required_tool_set_present(
+    adapter: &McpAdapter,
+    tools: &[crate::tool_registry::McpToolDefinition],
+) -> Result<bool, McpAdapterError> {
+    let connection = agent_connection_record_read_only(
+        &adapter.runtime_home,
+        adapter.context.connection_internal_id.as_str(),
+    )
+    .map_err(McpAdapterError::Store)?
+    .ok_or_else(|| {
+        McpAdapterError::Environment("tools/list Agent Connection disappeared".to_owned())
+    })?;
+    let expected_methods: &[&str] = match connection.mode.as_str() {
+        CONNECTION_MODE_WORKFLOW => &PUBLIC_METHOD_TOOL_NAMES,
+        CONNECTION_MODE_READ_ONLY => &READ_ONLY_METHOD_TOOL_NAMES,
+        _ => {
+            return Err(McpAdapterError::Environment(
+                "tools/list Agent Connection has an invalid mode".to_owned(),
+            ))
+        }
+    };
+    let actual = tools.iter().map(|tool| tool.name).collect::<BTreeSet<_>>();
+    Ok(expected_methods
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .all(|tool_name| actual.contains(tool_name)))
+}
+
 pub(crate) fn lifecycle_error(state: ConnectionPhase, request: &JsonRpcRequest) -> Option<Value> {
     match state {
         ConnectionPhase::AwaitingInitialize if request.method != "initialize" => Some(
@@ -809,20 +978,17 @@ fn bind_codex_managed_tool_call(
     if matches!(state.codex_binding, CodexManagedBinding::NotApplicable) {
         return Ok(());
     }
-    if state.client_info.as_ref().map(ManagedMcpClientInfo::name)
-        != Some(CODEX_MANAGED_MCP_CLIENT_NAME)
-    {
-        return Err("managed Codex tools/call requires the Codex MCP client identity");
-    }
-
     let binding =
         codex_managed_call_binding(params, adapter.context.connection_internal_id.as_str())?;
-    match &state.codex_binding {
+    match &mut state.codex_binding {
         CodexManagedBinding::Pending => {
             let mut candidate = state.clone();
             candidate.session_id = binding.session_id;
             candidate.codex_binding = CodexManagedBinding::Bound {
                 thread_digest: binding.thread_digest,
+                host_session_id: binding.host_session_id,
+                host_thread_id: binding.host_thread_id,
+                host_turn_id: binding.host_turn_id,
             };
             candidate.managed_stdio_binding_active = true;
             validate_managed_stdio_session_ownership(adapter, &candidate).map_err(|_| {
@@ -831,10 +997,12 @@ fn bind_codex_managed_tool_call(
             *state = candidate;
             Ok(())
         }
-        CodexManagedBinding::Bound { thread_digest }
-            if state.session_id == binding.session_id
-                && *thread_digest == binding.thread_digest =>
-        {
+        CodexManagedBinding::Bound {
+            thread_digest,
+            host_turn_id,
+            ..
+        } if state.session_id == binding.session_id && *thread_digest == binding.thread_digest => {
+            *host_turn_id = binding.host_turn_id;
             Ok(())
         }
         CodexManagedBinding::Bound { .. } => {
@@ -848,6 +1016,9 @@ fn bind_codex_managed_tool_call(
 struct CodexManagedCallBinding {
     session_id: String,
     thread_digest: [u8; 32],
+    host_session_id: String,
+    host_thread_id: String,
+    host_turn_id: String,
 }
 
 fn codex_managed_call_binding(
@@ -868,7 +1039,7 @@ fn codex_managed_call_binding(
         .ok_or("managed Codex tools/call requires object params._meta.x-codex-turn-metadata")?;
     let native_session_id = codex_turn_metadata_id(turn_metadata, "session_id")?;
     let nested_thread_id = codex_turn_metadata_id(turn_metadata, "thread_id")?;
-    let _turn_id = codex_turn_metadata_id(turn_metadata, "turn_id")?;
+    let turn_id = codex_turn_metadata_id(turn_metadata, "turn_id")?;
     validate_managed_host_native_session_id(flat_thread_id)
         .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?;
     if flat_thread_id != nested_thread_id {
@@ -880,6 +1051,9 @@ fn codex_managed_call_binding(
         session_id: managed_stdio_session_id(connection_internal_id, native_session_id)
             .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?,
         thread_digest,
+        host_session_id: native_session_id.to_owned(),
+        host_thread_id: nested_thread_id.to_owned(),
+        host_turn_id: turn_id.to_owned(),
     })
 }
 
@@ -950,11 +1124,12 @@ mod codex_call_binding_tests {
 
         let mut next_turn = valid_params();
         next_turn["_meta"][CODEX_TURN_METADATA_KEY]["turn_id"] = json!("turn.beta");
-        assert_eq!(
-            codex_managed_call_binding(&next_turn, "connection.alpha")
-                .expect("turn changes do not change the session/thread binding"),
-            first
-        );
+        let next = codex_managed_call_binding(&next_turn, "connection.alpha")
+            .expect("turn changes do not change the session/thread binding");
+        assert_eq!(next.session_id, first.session_id);
+        assert_eq!(next.thread_digest, first.thread_digest);
+        assert_eq!(next.host_thread_id, first.host_thread_id);
+        assert_eq!(next.host_turn_id, "turn.beta");
     }
 
     #[test]
@@ -1065,11 +1240,21 @@ fn validate_initialize_params(
     params: Option<Value>,
 ) -> Result<ValidatedInitializeParams, Value> {
     let object = required_object_params(id, params, "initialize")?;
-    if !matches!(object.get("protocolVersion"), Some(Value::String(_))) {
-        return Err(invalid_params_response(
-            id,
-            "initialize params.protocolVersion must be a string",
-        ));
+    match object.get("protocolVersion") {
+        Some(Value::String(protocol_version)) if protocol_version == SUPPORTED_PROTOCOL_VERSION => {
+        }
+        Some(Value::String(_)) => {
+            return Err(invalid_params_response(
+                id,
+                "initialize params.protocolVersion is not supported",
+            ));
+        }
+        _ => {
+            return Err(invalid_params_response(
+                id,
+                "initialize params.protocolVersion must be a string",
+            ));
+        }
     }
     if !matches!(object.get("capabilities"), Some(Value::Object(_))) {
         return Err(invalid_params_response(
@@ -1257,6 +1442,10 @@ pub(crate) fn call_tool_result(
     }
     let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
 
+    if let Some(binding) = state.managed_agent_session_binding() {
+        adapter.ensure_agent_session_binding_for_tool(tool_name, &arguments, &binding)?;
+    }
+
     let session_id = state.managed_session_id().map(str::to_owned);
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
         match adapter.call_tool_for_session(tool_name, arguments, session_id.as_deref()) {
@@ -1402,6 +1591,17 @@ pub(crate) fn call_tool_result(
         } else {
             DiagnosticOutcome::Success
         };
+    if diagnostic_outcome == DiagnosticOutcome::Success
+        && READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
+        && !state.runtime_session_id.is_empty()
+    {
+        record_mcp_safe_read_only_tool_call(
+            &adapter.runtime_home,
+            &state.runtime_session_id,
+            &authoritative_observation_timestamp(),
+        )
+        .map_err(McpAdapterError::Store)?;
+    }
     let response = tool_call_result_from_output(output);
     record_tool_diagnostic_best_effort(
         adapter,
@@ -2371,7 +2571,7 @@ fn validate_managed_stdio_session_ownership(
                 .to_owned(),
         ));
     }
-    let connection = agent_connection_record_read_only(
+    let _connection = agent_connection_record_read_only(
         &adapter.runtime_home,
         adapter.context.connection_internal_id.as_str(),
     )
@@ -2402,7 +2602,7 @@ fn validate_managed_stdio_session_ownership(
             .map_err(McpAdapterError::Store)?
         {
             if existing.connection_internal_id != adapter.context.connection_internal_id.as_str()
-                || existing.host_kind != connection.host_kind
+                || existing.runtime_session_id != state.runtime_session_id
             {
                 return Err(McpAdapterError::Environment(
                     "managed_stdio_session_ownership_conflict: existing session ownership does not match this managed stdio connection"

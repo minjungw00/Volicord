@@ -9,7 +9,7 @@ managed Codex configuration, and the stdio MCP child process.
 | Component | Boundary |
 |---|---|
 | Product Repository | The canonical Git work tree containing user product files and explicitly managed project configuration. |
-| Volicord Runtime Home | Local registry, project state, managed-binding metadata, and runtime-owned artifacts. |
+| Volicord Runtime Home | Local registry, project state, authoritative operational sessions, managed-binding metadata, and runtime-owned artifacts. |
 | Volicord installation | The selected `volicord` executable and its build identity. It is not the Runtime Home. |
 | Managed Codex configuration | User- or project-owned configuration that starts the exact managed stdio process. It is not Core authority. |
 | `volicord mcp --stdio` | One local child process bound to one current Agent Connection. It is not a network service. |
@@ -90,9 +90,18 @@ and writes responses to stdout. It opens no TCP, HTTP, Unix-domain socket, or
 other network transport listener. Exact startup, binding, and protocol behavior
 belongs to [MCP Transport](mcp-transport.md).
 
-One process is bound to one enabled Agent Connection. Its project set is the
+One process is bound to one enabled Agent Connection and receives a new
+Volicord-generated Registry runtime-session ID at process start. Its project set is the
 stored allowlist or an explicitly selected member. It does not discover
 authority from arbitrary filesystem proximity.
+
+The Registry owns process lifecycle milestones and cross-project runtime/host
+session reservations. Each project database owns its project Agent Session and
+host session/thread/turn correlation. Because SQLite cannot enforce a foreign
+key between those separate database files, Store validates the Registry owner
+before a project write and uses the Registry reservation for cross-project
+uniqueness. `diagnostics.sqlite` is a separate best-effort carrier and is never
+an operational authority source.
 
 ## Location And Authority Boundaries
 
@@ -100,6 +109,8 @@ authority from arbitrary filesystem proximity.
 - Runtime Home write access is not Product Repository write permission.
 - Managed configuration is not a user decision, Write Ticket, host attestation,
   or Core receipt.
+- An operational runtime session proves only its recorded cooperative protocol
+  behavior; it does not prove host or client identity.
 - Removing integration configuration does not delete project authority data.
 - Export and release-validation output belongs in an explicit external output
   location, not maintained docs or Runtime Home trust input.

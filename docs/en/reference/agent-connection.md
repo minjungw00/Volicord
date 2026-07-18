@@ -15,6 +15,8 @@ This document owns:
   transport, user-action delivery path, and platform-environment values;
 - the canonical `ConnectionVerificationReport`, its closed status values,
   deterministic aggregation, strict encoding, and missing-report projection;
+- connection and project integration revisions and authoritative managed-host
+  operational-session evidence;
 - `ManagedHostBinding` fields, canonical encoding, and digest meaning;
 - `HostVerificationReceipt` fields and the checks Core performs before
   consuming a receipt;
@@ -49,7 +51,7 @@ Labels follow the canonical vocabulary in
 
 | Surface | Stability | Contract |
 |---|---|---|
-| First-release value sets, `ConnectionVerificationReport`, `PlatformEnvironment`, `ManagedHostBinding` fields and digest, and `HostVerificationReceipt` fields | `stable` | These are exact boundary contracts. |
+| First-release value sets, `ConnectionVerificationReport`, integration revisions, authoritative operational-session evidence, `PlatformEnvironment`, `ManagedHostBinding` fields and digest, and `HostVerificationReceipt` fields | `stable` | These are exact boundary contracts. |
 | Codex discovery, managed installation, verification, repair, uninstall, and drift result semantics | `stable` | Implementations may change without changing the observable contract. |
 | Adapter modules, filesystem helpers, encoders, and Store query helpers | `internal` | They must preserve the stable boundary but are not public surfaces. |
 | Human-readable verification, degraded-state, and repair guidance | `diagnostic` | Machine-readable categories, reasons, and typed fields remain authoritative. |
@@ -155,6 +157,37 @@ Operational compatibility is reported from the checks that the adapter
 actually performed and the host behavior it observed. `complete` does not mean
 release certification of exact host artifacts, operating-system enforcement,
 actor identity proof, correctness proof, or tamper-proof recording.
+
+## Integration Revisions And Operational Evidence
+
+The current connection integration revision is a typed, domain-separated
+canonical SHA-256 digest. Its basis is the Agent Connection identity, host
+kind, intent, scope, mode, server name, configuration target, and current exact
+managed-configuration fingerprint. That fingerprint covers the managed server
+command and entry. Revision construction does not read the observed host
+version, executable digest, support-catalog coordinate, release evidence, or
+certified capability set.
+
+A managed-host runtime session satisfies operational evidence for that current
+revision only after it has durably recorded successful initialization, the
+initialized notification, an actual `tools/list` response containing the
+required current tool set, and a successful designated safe/read-only
+Volicord call. The lookup accepts only `session_source=managed_host`; a CLI
+self-test or preflight session cannot satisfy it. A terminal protocol failure
+prevents that row from being selected as successful evidence.
+
+The project integration revision extends the connection revision with the
+current project workflow-policy fingerprint and the current Guard installation
+identity/policy hash, or the explicit absence of Guard ownership. Project
+Agent Sessions retain that revision and cannot be rebound across a Connection
+or project.
+
+These records demonstrate observed cooperative protocol behavior for current
+configuration. MCP client name/version and observed host executable version
+are diagnostic observations, accept arbitrary bounded future values, and are
+not identity proof or allowlist inputs. A later verification may request a new
+observation when the currently observed host version differs, but version
+comparison does not certify or prohibit a host binary.
 
 <a id="external-contract-linkage"></a>
 
