@@ -23,10 +23,14 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 38);
-    assert_eq!(metadata.columns.len(), 501);
-    assert_eq!(metadata.indexes.len(), 66);
-    assert_eq!(metadata.constraints.len(), 38);
+    assert_eq!(metadata.tables.len(), 37);
+    assert_eq!(metadata.columns.len(), 490);
+    assert_eq!(metadata.indexes.len(), 65);
+    assert_eq!(metadata.constraints.len(), 37);
+    assert!(!metadata
+        .tables
+        .iter()
+        .any(|table| table.name == "managed_host_authority"));
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -59,11 +63,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:8e32fd05e4e951568e833ffd24634cc739beee87d9944bc8f29546d93259bed2"
+        "sha256:7df3f370c579ffe84d93b330740486ac26a53994026272c581829c5d55308ab1"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:4bd4a9136c594f3dddb34ecaeea592d29591059d13a7830043113ebfa132ebe2"
+        "sha256:82f31dd6bf1016eff316f4bd67444a40171d40c6ce50270f9544f61dc33cc4e5"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -97,12 +101,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:8e32fd05e4e951568e833ffd24634cc739beee87d9944bc8f29546d93259bed2\",",
+            "{\"canonical_ddl_digest\":\"sha256:7df3f370c579ffe84d93b330740486ac26a53994026272c581829c5d55308ab1\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:4bd4a9136c594f3dddb34ecaeea592d29591059d13a7830043113ebfa132ebe2\"}"
+            "\"integrity_constraints_digest\":\"sha256:82f31dd6bf1016eff316f4bd67444a40171d40c6ce50270f9544f61dc33cc4e5\"}"
         )
     );
     Ok(())
@@ -207,20 +211,20 @@ fn malformed_manifests_are_corrupt_and_well_formed_unknown_is_unsupported(
 }
 
 #[test]
-fn prior_fragmented_connection_schema_requires_runtime_home_reinitialization(
+fn prior_host_receipt_authorization_schema_requires_runtime_home_reinitialization(
 ) -> Result<(), Box<dyn Error>> {
     let current = current_storage_manifest()?;
     let prior = StorageManifest::new(
         STORAGE_CONTRACT_ID,
-        "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb",
-        "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec",
+        "sha256:8e32fd05e4e951568e833ffd24634cc739beee87d9944bc8f29546d93259bed2",
+        "sha256:4bd4a9136c594f3dddb34ecaeea592d29591059d13a7830043113ebfa132ebe2",
         current.enabled_capabilities.clone(),
     )?;
     let registry = canonical_registry()?;
     insert_registry_owner(&registry, &canonical_json_string(&prior)?)?;
 
     let error = validate_registry_schema(&registry)
-        .expect_err("the prior Agent Connection schema must not be opened or migrated");
+        .expect_err("the prior host-receipt authorization schema must not be opened or migrated");
     assert_eq!(
         error.classification().route,
         StoreFailureRoute::UnsupportedContract

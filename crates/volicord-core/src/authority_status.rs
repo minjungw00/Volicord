@@ -302,7 +302,7 @@ fn authority_next_actor(action: Option<&NextActionSummary>) -> AuthorityNextActo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_test_support::{core_fixtures::CoreFixture, test_host_receipt_fixture};
+    use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::{ActorSource, OperationCategory};
 
     use crate::{CoreService, InvocationContext};
@@ -349,20 +349,17 @@ mod tests {
         fixture: &CoreFixture,
         operation_category: OperationCategory,
     ) -> InvocationContext {
-        let receipt = test_host_receipt_fixture(fixture.project_id(), fixture.connection_id());
         InvocationContext::new(
             ProjectId::new(fixture.project_id()),
             ActorSource::agent_connection(fixture.connection_id()),
             operation_category,
-            volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            "",
         )
-        .with_validated_host_receipt(
-            crate::validate_host_verification_receipt(
-                receipt.receipt,
-                &receipt.current,
-                &receipt.validation_time,
-            )
-            .expect("typed host receipt fixture should validate"),
+        .with_validated_agent_session(
+            crate::agent_session::validated_agent_session_for_test(
+                fixture.connection_id(),
+                fixture.project_id(),
+            ),
         )
     }
 

@@ -8,7 +8,7 @@ stop.
 
 It does not claim that a release cell ran or passed. Exact finalized-artifact
 results belong to [Host Release Evidence](host-release-evidence.md), while
-managed binding and receipt semantics belong to
+managed operational-session authorization belongs to
 [Agent Connection](agent-connection.md).
 
 <a id="surface-stability"></a>
@@ -79,16 +79,16 @@ The exact first-release WSL2 coordinate is:
 | `/etc/os-release` `VERSION_ID` | `24.04` |
 | `platform_release_coordinate.environment_image` | `Ubuntu-24.04-LTS-WSL2` |
 
-The product observes the distribution name, operating-system identity, WSL2
-kernel boundary, and filesystem type. The support-catalog image value is the
-exact coordinate registered for those observed distribution facts; an entry
-for another image cannot authorize this coordinate.
+Platform checks observe the distribution name, operating-system identity, WSL2
+kernel boundary, and filesystem type. Release evidence binds its image
+coordinate to those observed distribution facts. That release coordinate is
+not an operational authorization credential.
 
 The WSL2 runtime boundary must establish WSL2 explicitly and requires
 `target_triple=x86_64-unknown-linux-gnu`. An ordinary Linux `target_os` result
-is insufficient. Its `ManagedHostBinding` and
-`HostVerificationReceipt` bind `platform_environment=wsl2`; neither can be
-reused under `linux` or `native_windows`.
+is insufficient. Operational Connection and session records remain local to
+their Runtime Home and platform environment; they are not converted to
+`linux` or `native_windows` authority.
 
 The Product Repository, Runtime Home, Codex executable, Volicord executable,
 managed Codex configuration, and every generated managed artifact must resolve
@@ -96,8 +96,8 @@ inside that distribution's Linux ext4 filesystem. A different distribution,
 image, or filesystem is not inferred to be equivalent.
 
 The following WSL topologies are unsupported and must fail with a
-machine-readable unsupported-environment reason before installation or receipt
-use:
+machine-readable unsupported-environment reason before installation or managed
+launch:
 
 - WSL1
 - Codex on Windows with Volicord, the repository, or Runtime Home in WSL2
@@ -106,13 +106,14 @@ use:
 - a Product Repository or Runtime Home on `/mnt/c`, `/mnt/d`, another
   `/mnt/*` path, or another DrvFS mount
 - conversion or inference between Windows and Linux paths, PIDs, environment
-  values, process bindings, or receipts
-- reuse of a native Windows receipt in WSL2 or a WSL2 receipt on native Windows
-- a distribution not named by the current WSL2 support entry
+  values, Connections, runtime sessions, or project sessions
+- reuse of native Windows Runtime Home session records in WSL2 or WSL2 session
+  records on native Windows
+- a distribution outside the current first-release WSL2 coordinate
 
-A WSL shutdown or restart invalidates live process identity. A binding or
-receipt whose process or freshness coordinates no longer match is stale and
-must be rejected before a fresh verify flow produces a new receipt.
+A WSL shutdown or restart ends the live managed runtime session. Its project
+sessions cannot authorize later calls; a new managed MCP lifecycle records a
+new runtime session and project sessions.
 
 Unsupported topology is machine-readable. `unsupported_wsl1` identifies WSL1;
 `unsupported_wsl_cross_topology` identifies inconsistent WSL kernel/environment
@@ -133,8 +134,7 @@ checking, linting, tests, and release-validation contract tests.
 Runtime prerequisites are:
 
 - a finalized Volicord executable for the selected exact target and platform environment;
-- an exact Codex executable whose artifact digest, target triple, platform coordinate, profile,
-  and required capabilities match an embedded support-catalog entry;
+- an available Codex executable able to launch the managed configuration;
 - SQLite support supplied by the Volicord build;
 - filesystem operations required by the selected native platform or WSL2
   adapter; and
@@ -146,21 +146,23 @@ ID spelling follows [External Contracts](external-contracts.md#shared-git-object
 
 ## Executable And Process Requirements
 
-The administrative process must resolve and execute the exact Codex artifact
-that setup and verification bind. Command-name discovery alone never
-establishes support. Verification hashes the resolved executable, matches the
-exact embedded support-catalog entry for the current target and platform, records the process and
-capability observations required by the binding, and emits a receipt only
-after all adapter checks succeed.
+The administrative process must resolve and execute the configured Codex
+executable. Verification may report the observed executable and host version
+as diagnostics, but does not hash it for authorization, compare it with a
+support catalog, or issue an authorization receipt. Executable availability
+does not establish agent, host, binary, operating-system-user, or human
+identity.
 
 The managed Codex configuration must launch the intended Volicord executable
-with managed stdio MCP. The adapter validates the exact command, arguments,
-forwarded environment, configuration target, process binding, required
-capabilities, and platform environment through the canonical
-`ManagedHostBinding`. Empty and absent environment values are distinct.
+with managed stdio MCP. The adapter validates the managed entry, command,
+arguments, forwarded Runtime Home, configuration target, and platform
+prerequisites. Managed launch markers are cooperative routing context, not
+credentials. Empty and absent environment values are distinct.
 
-Executable identity, configuration identity, process identity, and receipt
-freshness are independent checks. Matching one does not supply another.
+Executable, configuration, process, client, and version observations are
+diagnostic or setup facts. None supplies runtime authorization; authorization
+uses the current Connection, project membership, mode, and Store-owned managed
+runtime/project sessions.
 
 ## Runtime Home Requirements
 
@@ -188,16 +190,17 @@ Runtime Home path in the shared file.
 The repository path must:
 
 - be non-empty and resolve under the current platform's canonical path rules;
-- identify the same repository used by the managed binding and receipt;
+- identify the repository currently registered for the selected Connection;
 - allow only the writes required by the requested install, repair, or uninstall
   operation;
 - remain within the same platform environment as Codex, Volicord, and the
   Runtime Home; and
 - for WSL2, resolve on the distribution ext4 filesystem outside `/mnt/*`.
 
-Moving the repository, changing its canonical identity, or changing the
-connection scope makes a prior binding or receipt mismatched. Verification is
-required again; callers must not rewrite the old coordinates implicitly.
+Moving the repository, changing its canonical identity, changing Connection
+scope, or advancing its integration revision makes prior project sessions
+stale. A new managed MCP project session is required; callers must not rewrite
+old coordinates implicitly.
 
 ## Codex Configuration Requirements
 
@@ -207,9 +210,11 @@ managed entry. Setup must preserve unrelated user configuration and reject an
 unowned collision rather than overwrite it.
 
 Personal and shared configuration locations are adapter-owned details. Core
-and Store receive only canonical binding data and typed verification receipts;
-they do not read Codex configuration files, tokenize shell commands, inspect
-wrapper markers, or infer a platform path.
+receives only `ValidatedAgentSession`; it does not read Codex configuration
+files, tokenize shell commands, inspect wrapper markers, or infer a platform
+path. Store owns the Connection, membership, integration revision, managed
+runtime session, and project session records from which MCP validates that
+boundary.
 
 Repair may recreate only adapter-owned configuration and typed recoverable
 values after reporting the detected reason. Uninstall removes only the exact
@@ -218,11 +223,19 @@ currently owned entry and refuses a changed or unowned entry.
 ## Managed MCP Environment Requirements
 
 The managed process uses stdio exclusively for the public MCP transport. It
-must receive the exact project, connection, Runtime Home, host, profile,
-binding, and platform coordinates required by the current managed launch
-contract. Missing, empty, duplicated, conflicting, or unrecognized required
-coordinates are rejected; they are not guessed from the current directory,
-neighboring configuration, or another connection.
+must receive the Connection and Runtime Home from the managed launch context;
+a personal entry may also carry its exact project. Repository-portable shared
+discovery resolves a registered current clone without embedding machine-local
+IDs. Missing, empty, conflicting, or unrecognized required launch context is
+rejected; it is not guessed from another Connection. The host and profile
+markers select this cooperative path but do not authorize a tool call.
+
+On initialize, MCP records one managed-host runtime session with bounded client
+name/version and optional host version diagnostics. On each project tool call,
+it records or selects the project session and validates current Connection
+enablement, membership, mode, runtime/project session ownership, and both
+integration revisions before constructing Core context. Arbitrary bounded
+client and host versions do not change this result.
 
 Secrets and unrelated ambient environment values are not copied into managed
 configuration. Diagnostics must not print tokens, complete sensitive payloads,
@@ -230,18 +243,16 @@ or unredacted sensitive absolute paths.
 
 ## Stop Criteria
 
-Installation, verification, repair, managed launch, or receipt use must stop
+Installation, verification, repair, managed launch, or project call must stop
 when any applicable condition is present:
 
 - the host or profile is not exact `codex` and `record`;
 - the platform environment is absent, ambiguous, or outside the four-value set;
 - the target triple is absent, unknown, or incompatible with the platform environment;
-- the exact Codex artifact, target triple, platform environment, profile, and
-  required capabilities have no exact embedded support-catalog entry;
 - release publication is attempted without a current passing evidence entry for
   every required target/environment cell;
-- the executable, process, binding, configuration, project, connection,
-  policy, capability, or freshness coordinates disagree;
+- the managed configuration, project, Connection, membership, mode, runtime
+  session, project session, or current integration revisions disagree;
 - managed configuration is malformed, unowned, or has drifted outside the
   repairable owner boundary;
 - a persisted typed setup action or other required owner value is corrupt;
@@ -253,13 +264,13 @@ when any applicable condition is present:
 
 The result must preserve the applicable `Rejected`, `Unavailable`, `Corrupt`,
 or `UnsupportedContract` category and its domain reason. It must not create a
-default binding, synthetic receipt, fallback host, inferred platform, or
+default session, synthetic authorization, fallback host, inferred platform, or
 partial success.
 
 ## Adjacent Owners
 
 - First-release included and excluded surfaces: [Scope](scope.md).
-- Binding, receipt, persisted setup action, and adapter/Core boundaries:
+- Operational session, persisted setup action, and adapter/Core boundaries:
   [Agent Connection](agent-connection.md).
 - Exact artifact and platform evidence: [Host Release Evidence](host-release-evidence.md).
 - Runtime path and repository boundaries: [Runtime Boundaries](runtime-boundaries.md).

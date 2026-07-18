@@ -5,7 +5,7 @@ mod support;
 use std::{collections::BTreeSet, error::Error, fs, path::PathBuf, process::Command};
 
 use serde_json::{json, Value};
-use volicord_core::{validate_host_verification_receipt, CoreService, InvocationContext};
+use volicord_core::{CoreService, InvocationContext};
 use volicord_mcp::{
     ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
 };
@@ -16,12 +16,11 @@ use volicord_store::{
     },
     core_pipeline::StorageEffectCounts,
 };
-use volicord_test_support::{core_fixtures::CoreFixture, test_host_receipt_fixture};
+use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
-    ActorSource, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME,
-    PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME,
+    ActorSource, AgentConnectionId, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME,
+    INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME,
     REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
-    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 use support::{
@@ -166,7 +165,7 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
 }
 
 #[test]
-fn repository_discovery_stdio_rejects_unverified_managed_host_without_effects(
+fn repository_discovery_stdio_starts_from_managed_configuration_without_certification(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-repository-discovery")?;
     let repo_root = fixture.repo_root();
@@ -181,15 +180,17 @@ fn repository_discovery_stdio_rejects_unverified_managed_host_without_effects(
         ChildStdin::WriteAndClose(tools_list_messages(1, 2)?),
     )?;
 
-    assert_eq!(output.status.code(), Some(1));
-    assert_eq!(captured_stdout(&output), "");
-    assert!(captured_stderr(&output).contains("managed_host_configuration_stale"));
+    assert_success_captured(&output);
+    assert_eq!(captured_stderr(&output), "");
+    let responses = responses_by_id(&output.stdout)?;
+    assert_eq!(responses[&1]["result"]["protocolVersion"], "2025-11-25");
+    assert!(responses[&2]["result"]["tools"].is_array());
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_host_receipt(
+fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_managed_session(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-stdio")?;
     let before = fixture.counts()?;
@@ -297,8 +298,8 @@ fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_host_re
     );
     assert_eq!(project_list["projects"][0]["available"], true);
 
-    assert_host_receipt_missing(&responses[&4]);
-    assert_host_receipt_missing(&responses[&5]);
+    assert_agent_session_missing(&responses[&4]);
+    assert_agent_session_missing(&responses[&5]);
 
     for (id, path) in [(6, "/connection_id"), (7, "/unexpected")] {
         assert!(responses[&id].get("error").is_none());
@@ -357,14 +358,14 @@ fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_host_re
         reconnect_responses[&11]["result"]["protocolVersion"],
         "2025-11-25"
     );
-    assert_host_receipt_missing(&reconnect_responses[&12]);
+    assert_agent_session_missing(&reconnect_responses[&12]);
     assert_eq!(fixture.counts()?, before);
 
     Ok(())
 }
 
 #[test]
-fn volicord_mcp_subcommand_stdio_rejects_user_action_without_host_receipt_and_effects(
+fn volicord_mcp_subcommand_stdio_rejects_user_action_without_managed_session_and_effects(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-cli-inbox-recovery")?;
     let (task_id, state_version) = fixture.create_task("cli_inbox_recovery")?;
@@ -386,7 +387,7 @@ fn volicord_mcp_subcommand_stdio_rejects_user_action_without_host_receipt_and_ef
     assert_eq!(captured_stderr(&output), "");
     let responses = responses_by_id(&output.stdout)?;
     assert_eq!(responses.len(), 2);
-    assert_host_receipt_missing(&responses[&2]);
+    assert_agent_session_missing(&responses[&2]);
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -438,7 +439,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
 }
 
 #[test]
-fn volicord_mcp_subcommand_suppresses_notifications_and_rejects_core_without_host_receipt(
+fn volicord_mcp_subcommand_suppresses_notifications_and_rejects_core_without_managed_session(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-notification-suppression")?;
     let before = fixture.counts()?;
@@ -489,7 +490,7 @@ fn volicord_mcp_subcommand_suppresses_notifications_and_rejects_core_without_hos
     );
     assert!(responses[&2]["result"]["tools"].is_array());
     assert!(responses[&3]["result"]["tools"].is_array());
-    assert_host_receipt_missing(&responses[&4]);
+    assert_agent_session_missing(&responses[&4]);
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -556,11 +557,21 @@ impl McpFixture {
     }
 
     fn create_task(&self, suffix: &str) -> Result<(String, u64), Box<dyn Error>> {
-        let host = test_host_receipt_fixture(self.project_id(), self.connection_id());
-        let receipt =
-            validate_host_verification_receipt(host.receipt, &host.current, &host.validation_time)
-                .expect("the typed MCP host-receipt fixture must validate");
-        let response = CoreService::new(self.runtime_home_path()).intake(
+        let core = CoreService::new(self.runtime_home_path());
+        let session = volicord_test_support::seed_test_agent_session(
+            self.runtime_home_path(),
+            self.project_id(),
+            self.connection_id(),
+            None,
+        )?;
+        let validated = core.validate_agent_session(
+            AgentConnectionId::new(self.connection_id()),
+            ProjectId::new(self.project_id()),
+            session.runtime_session_id,
+            session.project_session_id,
+            OperationCategory::AgentWorkflow,
+        )?;
+        let response = core.intake(
             self.fixture.intake_request(
                 &format!("req_mcp_bin_{suffix}_task"),
                 &format!("idem_mcp_bin_{suffix}_task"),
@@ -571,9 +582,9 @@ impl McpFixture {
                 ProjectId::new(self.project_id()),
                 ActorSource::agent_connection(self.connection_id()),
                 OperationCategory::AgentWorkflow,
-                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+                "",
             )
-            .with_validated_host_receipt(receipt),
+            .with_validated_agent_session(validated),
         )?;
         let task_id = response.response_value["task_ref"]["record_id"]
             .as_str()
@@ -586,11 +597,11 @@ impl McpFixture {
     }
 }
 
-fn assert_host_receipt_missing(response: &Value) {
+fn assert_agent_session_missing(response: &Value) {
     assert_eq!(response["error"]["code"], -32602);
     assert!(response["error"]["data"]
         .as_str()
-        .is_some_and(|data| data.contains("host_receipt_missing")));
+        .is_some_and(|data| data.contains("agent_session_missing")));
 }
 
 fn status_arguments(project_selector: Option<&str>) -> Value {

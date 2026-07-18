@@ -1,8 +1,8 @@
 # 에이전트 호스트 설정
 
 관리 Codex Agent Connection을 설치, 검증, 복구, 제거할 때 이 가이드를 사용합니다.
-정확한 명령 계약은 [관리 CLI](../reference/admin-cli.md), 정확한 binding과 receipt
-형태는 [Agent Connection](../reference/agent-connection.md)이 담당합니다.
+정확한 명령 계약은 [관리 CLI](../reference/admin-cli.md), 관리 운영 session 경계는
+[Agent Connection](../reference/agent-connection.md)이 담당합니다.
 
 ## 지원 설정
 
@@ -45,8 +45,9 @@ volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
 ```
 
-`verify`는 선택한 관리 binding을 검증하고 모든 필수 사실이 현재 상태일 때만 담당
-문서가 정의한 receipt를 기록합니다. `status`는 진단이며 빠진 증거를 승격하지 않습니다.
+`verify`는 선택한 관리 구성을 검사하고 현재 3상태 보고서를 반환합니다. 런타임 권한을
+발급하지 않습니다. 권한은 MCP project 호출마다 현재 Connection, membership, mode,
+권위 있는 관리 runtime/project session을 기준으로 검증합니다.
 
 직접 프로세스 사전 점검에는 정확한 저장 식별자를 사용합니다.
 
@@ -54,9 +55,9 @@ volicord connection list --repo "<repo>"
 volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
-일반 관리 동작에서는 생성된 Codex 구성이 binding을 제공해
-`volicord mcp --stdio`를 시작합니다. cwd에서 binding을 추론하거나 주변 저장소를
-검색하지 않습니다.
+일반 관리 동작에서는 생성된 Codex 구성이 launch 맥락을 제공해
+`volicord mcp --stdio`를 시작합니다. Marker는 협력적 routing 입력일 뿐 credential이
+아닙니다. cwd에서 personal Connection을 추론하거나 주변 저장소를 검색하지 않습니다.
 
 ## UserAction 경계
 

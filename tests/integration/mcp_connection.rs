@@ -64,17 +64,17 @@ fn read_only_tools_expose_only_read_operations_and_project_discovery() {
 }
 
 #[test]
-fn production_adapter_rejects_a_missing_current_host_receipt_before_core(
+fn production_adapter_rejects_missing_current_managed_session_before_core(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-integration-receipt-required")?;
+    let fixture = CoreFixture::new("mcp-integration-session-required")?;
     let adapter = adapter(&fixture)?;
     let before = fixture.counts()?;
 
     let error = adapter
         .call_tool("volicord.status", json!({}))
-        .expect_err("a production adapter must require current managed-host authority");
+        .expect_err("a production adapter must require a current managed Agent Session");
 
-    assert!(error.to_string().contains("host_receipt_missing"));
+    assert!(error.to_string().contains("agent_session_missing"));
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -214,7 +214,7 @@ fn explicit_project_outside_allowlist_is_rejected_before_core() -> Result<(), Bo
 }
 
 #[test]
-fn explicit_allowed_project_still_requires_current_host_authority() -> Result<(), Box<dyn Error>> {
+fn explicit_allowed_project_still_requires_current_managed_session() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-integration-explicit-project")?;
     let second_project_id = "project_mcp_second";
     add_project(&fixture, second_project_id, true)?;
@@ -225,9 +225,9 @@ fn explicit_allowed_project_still_requires_current_host_authority() -> Result<()
             "volicord.status",
             json!({ "project_selector": second_project_id }),
         )
-        .expect_err("an allowed selector must not bypass managed-host authority");
+        .expect_err("an allowed selector must not bypass managed Agent Session authority");
 
-    assert!(error.to_string().contains("host_receipt_missing"));
+    assert!(error.to_string().contains("agent_session_missing"));
     Ok(())
 }
 

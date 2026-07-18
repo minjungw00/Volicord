@@ -123,14 +123,14 @@ exact product behavior, API behavior, storage effects, schemas, security
 guarantees, and Core authority semantics still route to their Reference owners.
 
 For managed-host claims, classify each statement separately as environment
-applicability, setup or configuration state, canonical binding, verification
-receipt, or release evidence. Check those layers against
+applicability, setup or configuration state, operational session authority, or
+release evidence. Check those layers against
 [System Requirements](../reference/system-requirements.md),
-[Agent Connection](../reference/agent-connection.md#host-verification-receipt),
+[Agent Connection](../reference/agent-connection.md#validated-agent-session),
 and [Host Release Evidence](../reference/host-release-evidence.md). A setup,
 configuration, implementation, fixture, or test fact does not establish a
-strict current receipt, and a receipt does not replace exact-final-artifact
-release evidence.
+current managed session, and session authorization does not replace
+exact-final-artifact release evidence.
 
 For API and Reference examples, check method-local consistency, request and
 response shape, field names, required fields, nullability, enum-like values,
@@ -272,7 +272,7 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 
 The test command validates canonical checked-in bytes, embedded/on-disk catalog
 equality, separate contract parsing, explicit test-only descriptor separation,
-negative cases, exact runtime support lookup, the non-embedding boundary,
+negative cases, exact release-catalog lookup, the non-embedding boundary,
 release-target consistency, and evidence-to-catalog cross-checking. It accepts
 empty or reviewed populated support catalogs and empty, partial, or complete
 evidence manifests when their static contracts are valid. It does not execute
@@ -386,8 +386,8 @@ evidence fails as `not_run`; non-passing evidence, a changed runner coordinate,
 changed Codex or Volicord artifact,
 changed scenario driver, mismatched scenario evidence, or topology mismatch
 fails the selected job. Static contract validity is not a release-success
-decision: an empty catalog blocks runtime lookup, capture, and production
-publication; missing, partial, failed, unavailable, or `not_run` required
+decision: an empty catalog blocks capture and production publication; missing,
+partial, failed, unavailable, or `not_run` required
 evidence blocks the applicable replay or production completeness gate.
 
 Ordinary `.github/workflows/ci.yml` runs static contract tests only. Pull

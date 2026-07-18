@@ -107,7 +107,7 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   담당자입니다.
 - 담당해야 하는 정보: 초점이 맞춰진 성공 경로, 최소 명령, 첫 실행에 필요한 설정
   프롬프트 또는 `action_required` 인계, 예상 성공 점검, 설정에 실패했을 때 이어서
-  볼 문서입니다. 설정 성공과 정확한 결속·영수증 검증은 분리해야 합니다.
+  볼 문서입니다. 설정 성공과 현재 운영 session 권한은 분리해야 합니다.
 - 담당하지 않아야 하는 정보: 전체 호스트 행렬, 모든 설정 및 제거 방식, 완전한
   CLI 플래그 동작, 완전한 문제 해결 목록, MCP 전송 계약, API 메서드 참조입니다.
 - 허용되는 그림: 선택적인 선형 단계 그림입니다. 전체 구성 요소 지도나 문제 해결
@@ -117,8 +117,8 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   설정은 [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md),
   정확한 명령 또는 프로세스 동작은 [관리 CLI](../reference/admin-cli.md)와
   [MCP 전송](../reference/mcp-transport.md)으로 보냅니다. 환경과 설정 적용 가능성은
-  [시스템 요구사항](../reference/system-requirements.md), 정규 연결 결속과 영수증 검증은
-  [Agent Connection](../reference/agent-connection.md#host-verification-receipt)으로 보냅니다.
+  [시스템 요구사항](../reference/system-requirements.md), 현재 Connection/session 권한은
+  [Agent Connection](../reference/agent-connection.md#validated-agent-session)으로 보냅니다.
 
 ## 에이전트 호스트 설정 가이드
 
@@ -129,17 +129,17 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
 - 의도한 독자: 관리되는 Codex record 설정을 다루는 운영자, 에이전트 통합 담당자,
   에이전트입니다.
 - 담당해야 하는 정보: 운영자 선택지, 관리 설정 경로, 가이드 수준의 사전 점검,
-  구성과 연결 준비 상태 흐름, 설정 성공과 영수증 검증을 구분하는 가이드 수준의
+  구성과 연결 준비 상태 흐름, 설정 성공과 session 권한을 구분하는 가이드 수준의
   설명, 관리 지침 경계, 안전한 제거 흐름입니다.
 - 담당하지 않아야 하는 정보: 정확한 CLI 출력 계약, 전체 문제 해결 목록, MCP
   프로토콜 줄 목록, 호스트 내부 신뢰 처리, 전체 환경 적용 가능성 규칙, 저장소
-  DDL, 정확한 영수증이나 릴리스 증거 계약, API 스키마 의미입니다.
+  DDL, 정확한 session이나 릴리스 증거 계약, API 스키마 의미입니다.
 - 허용되는 그림: 가이드 수준에 머무르는 호스트 설정 흐름도, 설정 경계 지도, 검증
   경로 그림입니다.
 - 더 깊은 문서로 연결하는 방식: 명령 세부사항은 [관리 CLI](../reference/admin-cli.md),
   로컬 MCP 프로세스 세부사항은 [MCP 전송](../reference/mcp-transport.md), 위치와
-  저장소 경계는 [런타임 경계](../reference/runtime-boundaries.md), 연결 개념과 영수증
-  검증은 [Agent Connection](../reference/agent-connection.md#host-verification-receipt),
+  저장소 경계는 [런타임 경계](../reference/runtime-boundaries.md), 연결 개념과 session
+  권한은 [Agent Connection](../reference/agent-connection.md#validated-agent-session),
   API 표면은 [API 메서드](../reference/api/methods.md), 릴리스
   주장 증거는 [호스트 릴리스 증거](../reference/host-release-evidence.md), 환경 적용
   가능성은 [시스템 요구사항](../reference/system-requirements.md), 복구 세부사항은

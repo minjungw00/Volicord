@@ -51,12 +51,13 @@ x86_64-unknown-linux-gnu / wsl2
 
 Each cell executes the closed scenario catalog against exact finalized Codex
 and Volicord executable digests in its own exact environment. No platform result
-substitutes for another. Runtime lookup tests the embedded
-`CodexSupportCatalog` without release evidence. Release validation tests the
+substitutes for another. Release validation tests the retained
+`CodexSupportCatalog` and the
 external `CodexReleaseEvidenceManifest`, including deterministic parsing and
 cross-checking against the catalog. The evidence manifest may contain zero
 through six entries and must report only actual attempts. A `passed` result is
-release evidence only for its exact catalog coordinates and Volicord digest.
+release evidence only for its exact catalog coordinates and Volicord digest;
+runtime authorization does not consume either contract.
 
 Repository-native workflow tests parse `.github/workflows/release.yml` and
 cross-check it against the five-target/six-cell contract. They require one raw

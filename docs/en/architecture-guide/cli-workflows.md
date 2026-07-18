@@ -11,7 +11,7 @@ CLI. Exact command behavior belongs to
 | parse and normalize | CLI command DTOs reject unknown or conflicting input |
 | resolve context | Runtime Home, canonical Product Repository, project, and Agent Connection selection |
 | plan | read-only inspection builds exact proposed file and Store changes |
-| validate | canonical binding, external contract, storage, and policy checks |
+| validate | managed configuration, Connection, session, storage, and policy checks |
 | commit | one owner-defined atomic filesystem/Store boundary |
 | render | text or one JSON document from the structured result |
 
@@ -21,23 +21,22 @@ Parsing and rendering must not become alternate Core or Store authorities.
 
 `init` accepts only Codex, `record`, and personal/shared scope. The CLI resolves
 current canonical inputs, asks the Codex adapter to build a
-`ManagedHostBinding`, previews exact managed changes, and applies only after all
-preconditions pass. Repair reuses that flow; remove deletes only matching
+managed configuration, previews exact managed changes, and applies only after
+all preconditions pass. Repair reuses that flow; remove deletes only matching
 managed content.
 
 A shared configuration forwards `VOLICORD_HOME` and starts managed stdio. A
-personal configuration remains user-owned. Host-specific file syntax and
-artifact inspection stay in the adapter; Core receives only canonical types and
-a typed verification receipt.
+personal configuration remains user-owned. Host-specific file syntax stays in
+the adapter. Core receives only a current `ValidatedAgentSession` produced from
+Store-owned operational records.
 
 ## Connection Verification
 
-`connection verify` performs current adapter inspection, matches the exact
-artifact and platform against the embedded support catalog, validates the
-complete binding, and issues
-a `HostVerificationReceipt` only on success. The CLI then asks Core to validate
-the receipt against current stored state. Diagnostic status never promotes
-missing evidence.
+`connection verify` performs current adapter and managed-configuration
+inspection and returns the canonical three-state report. It does not hash the
+host executable, consult release-certification catalogs, issue an authorization
+receipt, or create an agent session. Authoritative managed runtime and project
+sessions are recorded only by managed MCP lifecycle handling.
 
 ## Project And Policy Workflows
 
@@ -73,8 +72,8 @@ diagnostic metadata are not parsed back into authority state.
 - Codex-specific configuration remains in the adapter.
 - No command starts a network transport.
 - No noninteractive command supplies user judgment.
-- Runtime lookup uses only the embedded support catalog. Release claims require
-  the separate exact six-cell evidence manifest to match that catalog.
+- Client and host version observations are diagnostics and never authorization
+  credentials. Release claims remain a separate exact six-cell evidence flow.
 
 ## Related Routes
 

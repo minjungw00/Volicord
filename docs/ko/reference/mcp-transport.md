@@ -14,7 +14,7 @@ Core 메서드, Codex 구성, 저장 효과, 릴리스 증거는 각각의 집�
 | `volicord mcp --stdio`, 초기화, `tools/list`, `tools/call`, 응답 wrapping | `stable` |
 | 권위 있는 runtime-session lifecycle milestone | `stable` |
 | stable 프로세스와 메서드 집합에 나열하지 않은 pre-1.0 추가 표면 | `beta` |
-| 프로세스 binding 값과 생성 구성 세부사항 | `internal` |
+| 관리 시작 marker와 생성 구성 세부사항 | `internal` |
 | Host 실행 파일 version, MCP client name/version, best-effort protocol metric | `diagnostic` |
 
 ## 프로세스 모델
@@ -29,8 +29,9 @@ volicord mcp --stdio --discover-repository --host codex
 volicord mcp --check --connection <connection_id> [--project <project_id>]
 ```
 
-결속 형태는 정확한 저장 식별자를 사용합니다. 저장소 검색은 정규 공유 Codex binding
-전용이며 정확한 Runtime Home과 정규 Git 작업 트리에서 identity를 해결합니다. cwd만으로
+결속 형태는 생성된 관리 entry의 정확한 저장 식별자를 사용합니다. 저장소 검색은 정규
+공유 Codex entry 전용이며 정확한 Runtime Home과 정규 Git 작업 트리에서 Connection과
+프로젝트를 해결합니다. cwd만으로
 연결을 추론하거나 주변 저장소를 검색하거나 다른 host selector를 받지 않습니다.
 `--check`는 stdio loop에 들어가지 않고 사전 점검만 수행합니다.
 
@@ -39,12 +40,17 @@ volicord mcp --check --connection <connection_id> [--project <project_id>]
 `VOLICORD_HOME`은 [런타임 경계](runtime-boundaries.md)에 따라 Runtime Home을
 선택합니다. 공유 구성은 머신 로컬 경로를 내장하지 않고 값을 전달합니다.
 
-MCP 요청을 읽기 전에 어댑터는 현재 `ExternalContractDescriptor`,
-`ManagedHostBinding`, 선택한 연결, 허용 프로젝트, Runtime Home/Product Repository
-분리, 정확한 `StorageManifest`, 필요한 저장 읽기 가능성을 검증합니다. 알 수 없는
-descriptor, 지원하지 않는 아티팩트, 손상된 기록, 모호한 선택, 사용할 수 없는 저장소에는
-[실패 모델](failure-model.md)을 적용합니다. 시작은 다른 형식을 탐색하거나 빠진 필드를
-채우거나 다른 전송을 시작하지 않습니다.
+MCP 요청을 읽기 전에 어댑터는 Volicord가 생성한 관리 시작/구성 맥락에서 정확한 등록
+Connection을 해결합니다. Connection 활성 상태, 선택한 프로젝트의 현재 membership,
+Runtime Home/Product Repository 분리, 현재 `StorageManifest`, 필요한 저장 읽기 가능성을
+검증합니다. 관리 시작 marker는 협력적인 process source를 분류하지만 client, host,
+actor, human identity를 증명하지 않습니다. 손상된 기록, 모호한 선택, 사용할 수 없는
+저장소에는 [실패 모델](failure-model.md)을 적용합니다.
+
+시작 경로는 parent executable을 hash하거나, 내장 support catalog를 조회하거나, platform
+release coordinate를 비교하거나, 검증 receipt를 발급 또는 읽거나, client/host version을
+allowlist 입력으로 사용하지 않습니다. 릴리스 인증은 production runtime 권한 밖에
+남습니다.
 
 ## MCP wire 동작
 
@@ -82,6 +88,23 @@ transport failure와 EOF에 따른 graceful close는 각 terminal 사실을 기�
 관찰한 host 실행 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며
 client identity, host identity, compatibility, allowlist membership을 증명하지 않습니다.
 Session은 실제로 기록한 협력적 protocol 동작만 증명합니다.
+
+## 호출별 Session 권한
+
+프로젝트 도구의 Core 호출 맥락을 만들기 전에 어댑터는 권위 있는 현재 Registry runtime
+session과 프로젝트 `agent_sessions` row를 검증합니다. Connection이 존재하고 활성
+상태여야 하며 프로젝트가 존재하고 Connection Project로 남아 있어야 합니다. Runtime
+session은 해당 Connection 소유의 `managed_host` session이어야 합니다. 프로젝트 session은
+그 runtime session, Connection, 프로젝트에 속해야 합니다. 두 통합 revision은 현재
+Connection과 프로젝트 입력에 일치해야 하며 현재 Connection mode가 요청한 operation
+category를 허용해야 합니다.
+
+Core는 직렬화할 수 없는 `ValidatedAgentSession` 하나를 받습니다. Connection ID는
+`ActorSource::AgentConnection`과 정확히 같아야 하며 project ID는 모든 프로젝트 범위
+호출과 일치해야 합니다. 감사용 `verification_basis`는 로컬에서
+`connection:<connection_id>/session:<project_session_id>/revision:<project_integration_revision>`
+형태로 만듭니다. 이 값은 운영 소유권 기록이며 certificate, receipt, identity proof,
+trusted host digest가 아닙니다. 릴리스 증거나 이전 권한 기록으로 fallback하지 않습니다.
 
 ## 도구 검색
 
@@ -129,7 +152,7 @@ identity, credential은 받지 않습니다.
 ## 종료와 재연결
 
 EOF는 처리 중인 응답 뒤 loop를 닫고 graceful close를 기록합니다. 새 프로세스는 시작 검증과 MCP 초기화를 다시
-수행하며 이전 프로세스의 연결, 프로젝트, receipt, 현재 상태를 상속하지 않습니다.
+수행하며 이전 프로세스의 연결, 프로젝트, session 권한, 현재 상태를 상속하지 않습니다.
 
 ## 관련 담당 문서
 

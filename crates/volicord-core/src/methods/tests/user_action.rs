@@ -1565,24 +1565,19 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
     assert_eq!(resumed.operation_result_ref, original.operation_result_ref);
     assert_eq!(harness.counts()?, after_origin);
 
-    let mut rotated_host = test_host_receipt_fixture(PROJECT_ID, CONNECTION_ID);
-    let rotated_binding_digest =
-        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-    rotated_host.receipt.binding_digest = rotated_binding_digest.to_owned();
-    rotated_host.current.binding_digest = rotated_binding_digest.to_owned();
-    let rotated_receipt = crate::validate_host_verification_receipt(
-        rotated_host.receipt,
-        &rotated_host.current,
-        &rotated_host.validation_time,
-    )
-    .expect("the rotated typed host receipt fixture should validate");
     let rotated_basis = InvocationContext::new(
         ProjectId::new(PROJECT_ID),
         ActorSource::agent_connection(CONNECTION_ID),
         OperationCategory::AgentWorkflow,
-        volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        "",
     )
-    .with_validated_host_receipt(rotated_receipt);
+    .with_validated_agent_session(
+        crate::agent_session::validated_agent_session_for_test_with_project_session(
+            CONNECTION_ID,
+            PROJECT_ID,
+            "agent_rotated_project_session",
+        ),
+    );
     let changed_workspace = invocation(OperationCategory::AgentWorkflow)
         .with_git_workspace_context(crate::GitWorkspaceContext {
             git_common_dir: "/tmp/volicord-resume-changed-workspace.git".to_owned(),

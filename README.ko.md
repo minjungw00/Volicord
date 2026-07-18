@@ -74,10 +74,11 @@ volicord connection verify codex --shared --repo /path/to/your-product-repo
 없습니다. 현재 호스트에서 `volicord.list_projects`와 `volicord.status`를 사용할 수
 있는지도 확인합니다.
 
-`complete` 결과는 이 설정 경로의 준비 상태만 성립시킵니다. 정확한 Codex record 연결은
-현재 프로젝트, 연결, 플랫폼, 아티팩트, 실행 파일, policy, capability 요구사항에 결속된
-정규 결속과 엄격한 검증 영수증으로 나타냅니다. 정확한 계약은
-[`HostVerificationReceipt` 계약](docs/ko/reference/agent-connection.md#host-verification-receipt)을
+`complete` 결과는 이 설정 경로의 준비 상태만 성립시킵니다. 관리 MCP 호출에서
+Volicord는 현재 등록 Connection, project membership, mode, 권위 있는
+runtime/project session을 기준으로 권한을 확인합니다. 이는 로컬에서 관찰한 협력적
+session 경계이며 binary, host, client, actor, 운영체제 사용자, human identity 증명이
+아닙니다. [`ValidatedAgentSession`](docs/ko/reference/agent-connection.md#validated-agent-session)을
 보세요.
 
 ### 3. 에이전트를 통해 작업

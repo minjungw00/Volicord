@@ -166,7 +166,7 @@ pub fn validate_managed_mcp_client_info_field(
     Ok(())
 }
 
-/// Closed, validated identity reported by one successful managed MCP initialize.
+/// Bounded diagnostic client information reported by one successful managed MCP initialize.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedMcpClientInfo {
     name: String,

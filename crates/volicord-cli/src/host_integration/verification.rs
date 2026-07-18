@@ -1,7 +1,7 @@
 use serde::Serialize;
 use volicord_types::FailureCategory;
 
-use super::{codex::ManagedHostEvidence, UserAction};
+use super::UserAction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -264,7 +264,6 @@ pub struct Verification {
     pub diagnostic: Option<String>,
     pub failure_category: Option<FailureCategory>,
     pub failure_reason: Option<String>,
-    pub(crate) managed_host_evidence: Option<ManagedHostEvidence>,
     pub user_actions: Vec<UserAction>,
 }
 
@@ -635,7 +634,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -658,7 +656,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -681,7 +678,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -704,7 +700,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -727,7 +722,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -750,7 +744,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -773,7 +766,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -796,7 +788,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -819,7 +810,6 @@ impl Verification {
             diagnostic: None,
             failure_category: None,
             failure_reason: None,
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }
@@ -842,7 +832,6 @@ impl Verification {
             diagnostic: None,
             failure_category: Some(FailureCategory::UnsupportedContract),
             failure_reason: Some(reason.into()),
-            managed_host_evidence: None,
             user_actions: Vec::new(),
         }
     }

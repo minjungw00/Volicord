@@ -45,12 +45,12 @@ target triple, 플랫폼 및 릴리스 좌표, profile, 검증된 capability만 
 외부 증거 manifest는 목표 형태 placeholder가 아니라 사실에 맞는 보고입니다.
 Entry를 0~6개 담을 수 있습니다. 적격 시도가 없는 필수 셀에는 entry가 없습니다.
 통과 결과는 정확한 카탈로그 좌표와 Volicord digest의 릴리스 증거만 성립시키며 다른
-셀이나 아티팩트로 전파되지 않습니다. 런타임 조회는 내장 카탈로그만 읽고 빈
-카탈로그에서는 fail closed로 동작합니다.
+셀이나 아티팩트로 전파되지 않습니다. 운영 런타임 권한 경로는 어느 릴리스 계약도
+읽지 않습니다.
 
-review는 digest를 재계산하고 두 닫힌 형태를 검증합니다. production은 담당 문서가
-정의한 정확한 지원 정책만 사용하며 `unsupported_host_artifact`에 대해 fail
-closed로 동작합니다. 릴리스 증거는 사용하지 않습니다.
+Review는 digest를 재계산하고 두 닫힌 형태를 검증합니다. 릴리스 게시는
+`unsupported_host_artifact`에 대해 fail closed로 동작합니다. 운영 MCP, CLI, Core,
+Store 권한은 카탈로그나 릴리스 증거를 사용하지 않습니다.
 
 ## 결과
 

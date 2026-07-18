@@ -15,7 +15,7 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 | `volicord mcp --stdio`, initialization, `tools/list`, `tools/call`, and response wrapping | `stable` |
 | Authoritative runtime-session lifecycle milestones | `stable` |
 | Pre-1.0 additions not listed in the stable process and method set | `beta` |
-| Process-binding values and generated configuration details | `internal` |
+| Managed launch markers and generated configuration details | `internal` |
 | Host executable version, MCP client name/version, and best-effort protocol metrics | `diagnostic` |
 
 ## Process Model
@@ -30,9 +30,10 @@ volicord mcp --stdio --discover-repository --host codex
 volicord mcp --check --connection <connection_id> [--project <project_id>]
 ```
 
-The bound form uses exact stored identifiers. Repository discovery is only for
-the canonical shared Codex binding and resolves identity from the exact Runtime
-Home and canonical Git work tree. It does not infer a connection from cwd
+The bound form uses exact stored identifiers from the generated managed entry.
+Repository discovery is only for the canonical shared Codex entry and resolves
+the Connection and project from the exact Runtime Home and canonical Git work
+tree. It does not infer a connection from cwd
 alone, scan nearby repositories, or accept another host selector. `--check`
 performs preflight without entering the stdio loop.
 
@@ -42,13 +43,19 @@ performs preflight without entering the stdio loop.
 [Runtime Boundaries](runtime-boundaries.md). Shared configuration forwards the
 value without embedding a machine-local path.
 
-Before reading MCP requests, the adapter validates the current
-`ExternalContractDescriptor`, `ManagedHostBinding`, selected connection,
-allowed projects, Runtime Home/Product Repository separation, exact
-`StorageManifest`, and required storage readability. Unknown descriptors,
-unsupported artifacts, corrupt records, ambiguous selection, and unavailable
-storage use the [Failure Model](failure-model.md). Startup never probes another
-format, fills a missing field, or starts a different transport.
+Before reading MCP requests, the adapter resolves the exact registered
+Connection from the Volicord-generated managed launch/configuration context and
+validates that it is enabled, its selected projects are current members, the
+Runtime Home and Product Repository are separated, the `StorageManifest` is
+current, and required storage is readable. Managed launch markers classify the
+cooperative process source but do not prove client, host, actor, or human
+identity. Corrupt records, ambiguous selection, and unavailable storage use the
+[Failure Model](failure-model.md).
+
+Startup does not hash the parent executable, consult an embedded support
+catalog, compare a platform release coordinate, issue or load a verification
+receipt, or use client or host version as an allowlist input. Release
+certification remains outside production runtime authorization.
 
 ## MCP Wire Behavior
 
@@ -91,6 +98,26 @@ name/version and an observed host executable version are diagnostic fields;
 they are accepted as bounded future values and do not prove client identity,
 host identity, compatibility, or allowlist membership. The session proves
 only the cooperative protocol behavior it actually records.
+
+## Per-Call Session Authorization
+
+Before constructing Core invocation context for a project tool, the adapter
+validates the authoritative current Registry runtime session and project
+`agent_sessions` row. The Connection must exist and be enabled; the project
+must exist and remain a Connection Project; the runtime session must be a
+`managed_host` session owned by that Connection; and the project session must
+belong to that runtime session, Connection, and project. Both integration
+revisions must match their current Connection and project inputs, and the
+current Connection mode must allow the requested operation category.
+
+Core receives one non-serializable `ValidatedAgentSession`. Its Connection ID
+must exactly match `ActorSource::AgentConnection`, and its project ID must
+match every project-scoped invocation. The audit `verification_basis` is
+derived locally as
+`connection:<connection_id>/session:<project_session_id>/revision:<project_integration_revision>`.
+This value records operational ownership; it is not a certificate, receipt,
+identity proof, or trusted host digest. There is no fallback to release
+evidence or a previous authorization record.
 
 ## Tool Discovery
 
@@ -142,7 +169,7 @@ Guard prompt observations, when present, remain non-authority observations.
 EOF closes the loop after in-flight response handling and records graceful
 close. A new process repeats
 startup validation and MCP initialization; it inherits no connection, project,
-receipt, or current state from the previous process.
+session authorization, or current state from the previous process.
 
 ## Related Owners
 

@@ -76,16 +76,16 @@ approve, or decide unless the applicable contract owner supports the exact
 claim. Volicord presentation must not imply stronger scope, security, runtime,
 or Core authority guarantees than the linked Reference owner defines.
 
-Keep administrative acceptance, binding validation, receipt validation, and
-release evidence separate. A command can accept `host_kind=codex`, a setup path
-can meet its prerequisites, and an exact binding can produce a successful
-receipt. Each fact remains within that named scope. Configuration presence, a
-passing fixture, or a terminal-side MCP check cannot substitute for a strict
-current receipt, and a receipt cannot substitute for exact release-artifact
-evidence. Route environment and setup applicability to
-[System Requirements](../reference/system-requirements.md), canonical binding
-and receipt meaning to
-[Agent Connection](../reference/agent-connection.md#host-verification-receipt),
+Keep administrative acceptance, managed configuration, operational session
+authorization, and release evidence separate. A command can accept
+`host_kind=codex`, a setup path can meet its prerequisites, and a current
+managed MCP runtime/project session can authorize an allowed project call.
+Each fact remains within that named scope. Configuration presence, a passing
+fixture, or a terminal-side MCP check cannot substitute for current session
+validation, and session validation cannot substitute for exact
+release-artifact evidence. Route environment and setup applicability to
+[System Requirements](../reference/system-requirements.md), operational session
+meaning to [Agent Connection](../reference/agent-connection.md#validated-agent-session),
 and final-artifact evidence and release claims to
 [Host Release Evidence](../reference/host-release-evidence.md).
 
@@ -151,7 +151,7 @@ their contracts into brand material:
 | Administrative CLI commands, arguments, output, host setup, and command/API boundary | [Administrative CLI](../reference/admin-cli.md) |
 | Local MCP adapter process startup, stdio transport, protocol handling, and response wrapping | [MCP Transport](../reference/mcp-transport.md) |
 | Environment applicability and prerequisites for an accepted `HOST` value, configuration, or setup path | [System Requirements](../reference/system-requirements.md) |
-| Canonical Agent Connection binding and verification receipt | [Agent Connection](../reference/agent-connection.md#host-verification-receipt) |
+| Current Agent Connection operational-session authorization | [Agent Connection](../reference/agent-connection.md#validated-agent-session) |
 | Exact-final-artifact host evidence and release-claim evaluation | [Host Release Evidence](../reference/host-release-evidence.md) |
 | Documentation owner routing and metadata | [Documentation Policy](documentation-policy.md), [doc-index.yaml](../../doc-index.yaml) |
 | Bilingual terminology and identifier preservation | [Translation Policy](translation-policy.md), [Terminology Map](../../terminology-map.yaml) |

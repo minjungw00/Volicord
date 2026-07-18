@@ -8,6 +8,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use rusqlite::{Connection, OptionalExtension};
@@ -24,13 +25,17 @@ use volicord_store::{
         InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
+    guards::{
+        agent_session_matches_current_integration, guard_health_record, insert_agent_session,
+        AgentSessionInsert,
+    },
+    operational_sessions::{start_mcp_runtime_session, McpRuntimeSessionStart},
     sqlite::open_project_state_database,
+    StoreResult,
 };
 use volicord_types::{
-    AgentConnectionId, CodexCapability, CurrentHostReceiptContext, HostKind,
-    HostVerificationReceipt, HostVerificationResult, IntegrationProfile, PlatformEnvironment,
-    PlatformReleaseCoordinate, ProjectId, TypeBoundary, UtcTimestamp,
-    HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
+    managed_stdio_session_id, AgentRuntimeSessionId, AgentSessionId, McpRuntimeSessionSource,
+    TypeBoundary,
 };
 
 pub mod fixtures {
@@ -48,66 +53,81 @@ pub mod golden {
 /// Non-product invocation label for local-user and negative-path test fixtures.
 pub const TEST_FIXTURE_INVOCATION_BINDING_BASIS: &str = "test_fixture_binding";
 
-/// Complete typed receipt/current-context fixture for Core authorization tests.
-#[derive(Debug, Clone)]
-pub struct TestHostReceiptFixture {
-    pub receipt: HostVerificationReceipt,
-    pub current: CurrentHostReceiptContext,
-    pub validation_time: UtcTimestamp,
+static TEST_AGENT_SESSION_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+/// Coordinates created through the same authoritative Store APIs as a managed MCP session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestAgentSessionFixture {
+    pub runtime_session_id: AgentRuntimeSessionId,
+    pub project_session_id: AgentSessionId,
+    pub host_session_id: String,
+    pub host_thread_id: String,
+    pub host_turn_id: String,
 }
 
-/// Builds one exact typed managed-host fixture without filesystem or process authority claims.
-pub fn test_host_receipt_fixture(project_id: &str, connection_id: &str) -> TestHostReceiptFixture {
-    const RAW_DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const PREFIXED_DIGEST: &str =
-        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    let capabilities = vec![
-        CodexCapability::ManagedStdioMcp,
-        CodexCapability::PersonalManagedBinding,
-        CodexCapability::RecordWorkflow,
-        CodexCapability::SharedManagedBinding,
-    ];
-    let receipt = HostVerificationReceipt {
-        contract_id: HOST_VERIFICATION_RECEIPT_CONTRACT_ID.to_owned(),
-        project_id: ProjectId::new(project_id),
-        connection_id: AgentConnectionId::new(connection_id),
-        host_kind: HostKind::Codex,
-        integration_profile: IntegrationProfile::Record,
-        platform_environment: PlatformEnvironment::Linux,
-        platform_release_coordinate: PlatformReleaseCoordinate::Native,
-        required_capabilities: capabilities.clone(),
-        verified_capabilities: capabilities.clone(),
-        binding_digest: PREFIXED_DIGEST.to_owned(),
-        generated_artifacts_digest: PREFIXED_DIGEST.to_owned(),
-        executable_digest: RAW_DIGEST.to_owned(),
-        policy_digest: PREFIXED_DIGEST.to_owned(),
-        verifier_build_digest: RAW_DIGEST.to_owned(),
-        observed_at: UtcTimestamp::parse("2026-01-01T00:00:00Z")
-            .expect("fixture timestamp is valid"),
-        expires_at: UtcTimestamp::parse("2027-01-01T00:00:00Z")
-            .expect("fixture timestamp is valid"),
-        result: HostVerificationResult::Verified,
-    };
-    let current = CurrentHostReceiptContext {
-        project_id: receipt.project_id.clone(),
-        connection_id: receipt.connection_id.clone(),
-        host_kind: receipt.host_kind,
-        integration_profile: receipt.integration_profile,
-        platform_environment: receipt.platform_environment,
-        platform_release_coordinate: receipt.platform_release_coordinate.clone(),
-        required_capabilities: capabilities,
-        binding_digest: receipt.binding_digest.clone(),
-        generated_artifacts_digest: receipt.generated_artifacts_digest.clone(),
-        executable_digest: receipt.executable_digest.clone(),
-        policy_digest: receipt.policy_digest.clone(),
-        verifier_build_digest: receipt.verifier_build_digest.clone(),
-    };
-    TestHostReceiptFixture {
-        receipt,
-        current,
-        validation_time: UtcTimestamp::parse("2026-06-18T00:00:00Z")
-            .expect("fixture timestamp is valid"),
+/// Seeds one real managed runtime/project session for adapter and Core tests.
+pub fn seed_test_agent_session(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    connection_id: &str,
+    guard_installation_id: Option<&str>,
+) -> StoreResult<TestAgentSessionFixture> {
+    let health = guard_health_record(runtime_home.as_ref(), project_id, connection_id)?;
+    if let Some(existing) = health.latest_session.as_ref() {
+        if agent_session_matches_current_integration(
+            runtime_home.as_ref(),
+            existing,
+            guard_installation_id,
+        )? {
+            return Ok(TestAgentSessionFixture {
+                runtime_session_id: AgentRuntimeSessionId::new(&existing.runtime_session_id),
+                project_session_id: AgentSessionId::new(&existing.session_id),
+                host_session_id: existing.host_session_id.clone(),
+                host_thread_id: existing.host_thread_id.clone(),
+                host_turn_id: existing.last_host_turn_id.clone(),
+            });
+        }
     }
+    let sequence = TEST_AGENT_SESSION_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let host_session_id = format!("test-session-{sequence}");
+    let host_thread_id = format!("test-thread-{sequence}");
+    let host_turn_id = format!("test-turn-{sequence}");
+    let project_session_id = managed_stdio_session_id(connection_id, &host_session_id)
+        .expect("generated test host session identity must be valid");
+    let store = CoreProjectStore::open(runtime_home.as_ref(), &project_id.into())?;
+    let observed_at = store.current_timestamp()?;
+    let runtime_session_id = start_mcp_runtime_session(
+        runtime_home.as_ref(),
+        McpRuntimeSessionStart {
+            connection_internal_id: connection_id.to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: Some("future-host-version-9999.0".to_owned()),
+            process_id: std::process::id(),
+            process_started_at: observed_at.clone(),
+        },
+    )?
+    .runtime_session_id;
+    insert_agent_session(
+        runtime_home,
+        project_id,
+        AgentSessionInsert {
+            session_id: project_session_id.clone(),
+            runtime_session_id: runtime_session_id.clone(),
+            connection_internal_id: connection_id.to_owned(),
+            guard_installation_id: guard_installation_id.map(str::to_owned),
+            host_session_id: host_session_id.clone(),
+            host_thread_id: host_thread_id.clone(),
+            host_turn_id: host_turn_id.clone(),
+            observed_at,
+        },
+    )?;
+    Ok(TestAgentSessionFixture {
+        runtime_session_id: AgentRuntimeSessionId::new(runtime_session_id),
+        project_session_id: AgentSessionId::new(project_session_id),
+        host_session_id,
+        host_thread_id,
+        host_turn_id,
+    })
 }
 
 /// Returns a candidate disposable runtime-home path without creating it.

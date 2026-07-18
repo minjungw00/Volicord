@@ -4,9 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use toml_edit::Item;
-use volicord_types::FailureCategory;
-
 use crate::host_integration::process::{CommandRunner, ProductionCommandRunner};
 use crate::host_integration::verification::{
     HostExecutableStatus, HostGateStatus, ManagedConfigStatus, ProjectTrustStatus, Verification,
@@ -18,11 +15,9 @@ use crate::host_integration::{
     HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange,
     ProjectContext, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
 };
+use toml_edit::Item;
 
 use super::{
-    binding::{
-        managed_host_evidence_for_plan, EmbeddedCodexSupportCatalogPolicy, ManagedHostEvidenceError,
-    },
     capabilities,
     config::{document_from_snapshot, parse_document, upsert_server_table, validate_mcp_command},
     executable::{
@@ -49,7 +44,6 @@ pub struct CodexEnvironment {
 pub struct CodexAdapter<R = ProductionCommandRunner> {
     env: CodexEnvironment,
     runner: RefCell<R>,
-    support_catalog: EmbeddedCodexSupportCatalogPolicy,
 }
 
 impl CodexAdapter<ProductionCommandRunner> {
@@ -63,7 +57,6 @@ impl<R: CommandRunner> CodexAdapter<R> {
         Self {
             env,
             runner: RefCell::new(runner),
-            support_catalog: EmbeddedCodexSupportCatalogPolicy,
         }
     }
 
@@ -323,22 +316,6 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             }
             return Ok(verification.merge_user_actions(&plan.user_actions));
         }
-        let _availability_evidence =
-            match managed_host_evidence_for_plan(plan, &executable, &self.support_catalog) {
-                Ok(evidence) => evidence,
-                Err(error) => {
-                    let mut verification =
-                        verification_from_managed_host_evidence_error(&error, host_version);
-                    if let Some(overlay) = managed_evaluation.host_policy_overlay {
-                        verification = verification.with_host_policy_overlay(overlay);
-                    }
-                    if plan.host_scope == HostScope::Project {
-                        verification = verification
-                            .with_project_trust(project_trust_for_plan(&self.env, plan));
-                    }
-                    return Ok(verification.merge_user_actions(&plan.user_actions));
-                }
-            };
         if plan.host_scope == HostScope::Project {
             let project_trust = project_trust_for_plan(&self.env, plan);
             let mut verification = match project_trust.status {
@@ -425,25 +402,6 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
         write_if_fresh(target, document.to_string().as_bytes(), &snapshot)?;
         Ok(remove_effect(request, PlannedChange::Remove))
     }
-}
-
-fn verification_from_managed_host_evidence_error(
-    error: &ManagedHostEvidenceError,
-    host_version: Option<String>,
-) -> Verification {
-    let details = error.to_string();
-    let verification = match error.category() {
-        FailureCategory::UnsupportedContract => {
-            Verification::unsupported_contract(error.reason(), details)
-        }
-        FailureCategory::Unavailable => Verification::unavailable(details),
-        _ => Verification::rejected(details),
-    };
-    verification
-        .with_managed_config(ManagedConfigStatus::Match)
-        .with_host_executable(HostExecutableStatus::Available)
-        .with_host_version(host_version)
-        .with_failure(error.category(), error.reason())
 }
 
 #[derive(Debug, Clone, Copy)]

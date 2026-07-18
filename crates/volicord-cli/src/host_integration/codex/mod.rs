@@ -1,5 +1,4 @@
 mod adapter;
-mod binding;
 mod config;
 mod executable;
 mod identity;
@@ -10,10 +9,6 @@ use std::path::{Path, PathBuf};
 use crate::host_integration::HostCapabilities;
 
 pub use adapter::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest};
-pub(crate) use binding::{
-    issue_host_verification_receipt, managed_host_evidence_for_live_process,
-    EmbeddedCodexSupportCatalogPolicy, HostVerificationReceiptIssue, ManagedHostEvidence,
-};
 pub(crate) use identity::managed_identity_evaluation_for_plan;
 pub(crate) use trust::project_trust_diagnostic;
 

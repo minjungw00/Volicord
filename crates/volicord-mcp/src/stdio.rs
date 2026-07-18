@@ -75,9 +75,6 @@ where
     state.runtime_session_id = runtime_session.runtime_session_id;
 
     let transport_result = (|| {
-        if options.launch_origin == McpLaunchOrigin::ManagedHost {
-            adapter.validate_managed_host_authority_startup()?;
-        }
         validate_managed_stdio_session_ownership(&adapter, &state)?;
         if !state.codex_binding.is_pending() && !state.managed_stdio_binding_active {
             let _ = start_transport_diagnostic_session(&adapter, &state);
@@ -211,24 +208,6 @@ pub fn run_stdio_discover_repository_from_env(
             observed_host_executable_version,
         },
     )
-}
-
-/// Returns whether the current process environment denotes one exact managed
-/// Codex stdio launch whose live parent may establish host authority.
-///
-/// CLI verification children and invalid or manual marker shapes return false.
-pub fn managed_host_authority_preparation_required_from_env(
-    connection_id: &str,
-    project_id: Option<&str>,
-    repository_discovery_descriptor: bool,
-) -> bool {
-    classify_launch_origin_with_descriptor(
-        process_env_var,
-        connection_id,
-        project_id,
-        Some(CODEX_HOST_VALUE),
-        repository_discovery_descriptor,
-    ) == McpLaunchOrigin::ManagedHost
 }
 
 fn reject_invalid_managed_marker(launch_origin: McpLaunchOrigin) -> Result<(), McpAdapterError> {
@@ -642,11 +621,6 @@ impl Default for ConnectionState {
 }
 
 impl ConnectionState {
-    fn managed_session_id(&self) -> Option<&str> {
-        self.managed_stdio_binding_active
-            .then_some(self.session_id.as_str())
-    }
-
     fn managed_agent_session_binding(&self) -> Option<ManagedAgentSessionBinding> {
         let CodexManagedBinding::Bound {
             host_session_id,
@@ -1442,13 +1416,20 @@ pub(crate) fn call_tool_result(
     }
     let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
 
-    if let Some(binding) = state.managed_agent_session_binding() {
-        adapter.ensure_agent_session_binding_for_tool(tool_name, &arguments, &binding)?;
+    let binding = state.managed_agent_session_binding();
+    if let Some(binding) = binding.as_ref() {
+        adapter.ensure_agent_session_binding_for_tool(tool_name, &arguments, binding)?;
     }
 
-    let session_id = state.managed_session_id().map(str::to_owned);
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
-        match adapter.call_tool_for_session(tool_name, arguments, session_id.as_deref()) {
+        let call_result = if let Some(binding) = binding.as_ref() {
+            adapter.call_tool_for_session(tool_name, arguments, Some(binding.coordinates()))
+        } else if adapter.has_default_agent_session() {
+            adapter.call_tool(tool_name, arguments)
+        } else {
+            adapter.call_tool_for_session(tool_name, arguments, None)
+        };
+        match call_result {
             Ok(response) if tool_name == REQUEST_USER_ACTION_TOOL_NAME => {
                 let pending_response = response.clone();
                 match user_action_tool_output(adapter, response) {
@@ -1510,8 +1491,7 @@ pub(crate) fn call_tool_result(
             }
         }
     } else {
-        let response = match adapter.call_adapter_tool(tool_name, arguments, session_id.as_deref())
-        {
+        let response = match adapter.call_adapter_tool(tool_name, arguments, None) {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
                 let response = tool_execution_error_result(tool_name, &error);
@@ -1926,11 +1906,14 @@ fn finalize_mutation_output(
     detail: Option<MutationDetailLevel>,
     output: ToolCallOutput,
 ) -> Result<ToolCallOutput, McpAdapterError> {
+    let binding = state.managed_agent_session_binding();
     finalize_mutation_output_with_refresh(tool_name, detail, output, |context| {
         adapter.refresh_authority_status(
             &context.project_id,
             &context.task_id,
-            state.managed_session_id(),
+            binding
+                .as_ref()
+                .map(ManagedAgentSessionBinding::coordinates),
         )
     })
 }
@@ -3128,23 +3111,38 @@ mod mutation_output_tests {
         fixture: &CoreFixture,
         operation_category: OperationCategory,
     ) -> InvocationContext {
-        let host = volicord_test_support::test_host_receipt_fixture(
+        let guard = guard_health_record(
+            fixture.runtime_home_path(),
             fixture.project_id(),
             fixture.connection_id(),
-        );
-        let receipt = volicord_core::validate_host_verification_receipt(
-            host.receipt,
-            &host.current,
-            &host.validation_time,
         )
-        .expect("the typed MCP host-receipt fixture must validate");
+        .expect("guard authority fixture must load");
+        let session = volicord_test_support::seed_test_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+            guard
+                .guard_installation
+                .as_ref()
+                .map(|installation| installation.guard_installation_id.as_str()),
+        )
+        .expect("managed Agent Session fixture must seed");
+        let validated = CoreService::new(fixture.runtime_home_path())
+            .validate_agent_session(
+                AgentConnectionId::new(fixture.connection_id()),
+                ProjectId::new(fixture.project_id()),
+                session.runtime_session_id,
+                session.project_session_id,
+                operation_category,
+            )
+            .expect("managed Agent Session fixture must validate");
         InvocationContext::new(
             ProjectId::new(fixture.project_id()),
             ActorSource::agent_connection(fixture.connection_id()),
             operation_category,
-            volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            "",
         )
-        .with_validated_host_receipt(receipt)
+        .with_validated_agent_session(validated)
     }
 
     fn committed_intake_with_receipt(

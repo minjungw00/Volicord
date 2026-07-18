@@ -52,7 +52,7 @@ flowchart LR
 ```
 
 The `volicord-mcp` adapter library may use Store directly for startup
-inspection, Agent Connection context, binding validation, and request-time
+inspection, Agent Connection context, session validation, and request-time
 project routing. That direct Store use is not an alternate implementation of
 public Volicord method semantics; public method execution routes through Core.
 
@@ -66,15 +66,15 @@ the public method execution path.
 
 | Workspace member | Guide-level role |
 |---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, and host-feature implementation types, plus the embedded Codex support-catalog parser and non-embedding external release-evidence parser. |
-| `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, artifact storage, inspection, immutable host-verification receipts, export snapshots, and storage-error implementation. |
+| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, and host-feature implementation types, plus temporarily retained release-certification parsers that production runtime authorization does not consume. |
+| `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, Agent Connection runtime/project sessions, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, and managed stdio MCP process handoff. |
 | `crates/volicord-platform-fs` | Internal safe facade for platform-native filesystem namespace operations and read-only canonical Git common-directory/worktree snapshots shared by Store owner validation and local adapters. It does not own managed-file policy or public product behavior. |
 | `crates/volicord-mcp` | MCP adapter library for startup validation, tool listing, `tools/call` decoding and dispatch, managed stdio framing, and Core invocation. |
 | `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
-| `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection binding, operation-category, and public schema snapshot tests. |
+| `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection session, operation-category, and public schema snapshot tests. |
 | `tests/release-validation` | Canonical five-target/six-cell release contract, actual-file Codex support-entry generation, immutable build-artifact and complete publish-input continuity checks, deterministic external verified release indexing, external release-evidence path, shared release scenarios, catalog cross-checks, and exact target/environment Codex release cells. It owns no production runtime behavior. |
 | `xtask` | Repository maintenance tooling for documentation validation; it is outside Volicord runtime architecture. |
 
@@ -112,8 +112,9 @@ canonical internal model. Core and Store do not branch on external format
 versions, host configuration syntax, shell syntax, generated wrappers, or
 platform command strings. Store opens only the database whose manifest and
 canonical SQL digests match the current release contract. The Codex adapter
-owns managed configuration and artifact verification and supplies Core with a
-typed verification receipt.
+owns managed configuration and diagnostic observations. MCP validates current
+Store-owned runtime/project sessions and supplies Core with a typed
+`ValidatedAgentSession`.
 
 The exact descriptor, failure, storage, Agent Connection, and release-cell
 contracts remain in [External Contracts](../reference/external-contracts.md),
@@ -130,7 +131,7 @@ contracts remain in [External Contracts](../reference/external-contracts.md),
 | Runtime Home and Product Repository | `Volicord Runtime Home` holds Volicord runtime records and artifact data as storage/runtime owners define them. `Product Repository` holds user product files and explicit integration files where owner documents allow them. | [Storage and Transactions](storage-and-transactions.md), [Runtime Home and Product Repository separation](decisions/runtime-home-and-product-repository.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md). |
 | Store commit boundary | Core method planners choose read-only, no-effect, dry-run, staging, or committed branches. Store applies normal committed Core mutations through its transaction boundary and keeps artifact staging separate from normal Core mutation commit. Core authority meaning stays with Core owners; exact storage records and effects stay with storage owners. | [Storage and Transactions](storage-and-transactions.md), [Request Lifecycle](request-lifecycle.md), [Core Model](../reference/core-model.md), [Storage](../reference/storage.md), and [Storage Effects](../reference/storage-effects.md). |
 | MCP adapter boundary | `volicord mcp --stdio` is the public transport entry path. `volicord-mcp` resolves Runtime Home and Agent Connection context, validates startup/session facts, exposes owner-defined tools by connection mode, selects permitted projects, decodes `tools/call`, derives adapter-managed local invocation facts, calls Core, and wraps Core JSON as MCP content. | [Request Lifecycle](request-lifecycle.md), [Source Map](source-map.md), [MCP Transport](../reference/mcp-transport.md), and [Agent Connection](../reference/agent-connection.md). |
-| Administrative CLI and Codex adapter | The CLI owns Codex configuration discovery, managed binding installation, verification receipts, repair, uninstall, platform-environment checks, and stdio MCP launch. Core consumes the typed receipt and canonical binding identity without understanding Codex configuration or process syntax. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), [Administrative CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
+| Administrative CLI and Codex adapter | The CLI owns Codex configuration discovery, managed-entry installation, diagnostic verification, repair, uninstall, platform-environment checks, and stdio MCP launch. It does not issue runtime authorization. MCP derives the Core session boundary from current Store-owned operational records without treating configuration or process syntax as identity. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), [Administrative CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
 | Codex release validation | Shared scenarios run in six independent target/environment cells covering all five published targets. Each cell binds an exact target, Codex artifact, environment, and capability set; a missing cell remains unexecuted rather than inferred from another cell. Production crates must not depend on test-package artifacts as runtime trust. | [Host Release Evidence](../reference/host-release-evidence.md), [Testing Strategy](testing-strategy.md), and [Validation](../maintain/validation.md). |
 | Platform filesystem facade | `volicord-platform-fs` isolates platform-native namespace primitives and canonical read-only Git common-directory/worktree discovery behind safe Rust results. Sharing that primitive keeps stored owner validation, integration placement, and Core invocation binding on one worktree definition. The crate does not decide which files are managed, whether a replacement or write is authorized, whether a post-operation state is valid, or what recovery and diagnostics mean. Those responsibilities remain with Store, the calling adapter, Core, and focused Reference owners. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
 | Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |

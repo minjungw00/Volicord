@@ -109,13 +109,13 @@ Volicord 표기, 공식 한영 브랜드 문구, 구성 요소 표현, 테스트
 시각 원칙, 주장 제한을 확인합니다. 정확한 제품 동작, API 동작, 저장 효과,
 스키마, 보안 보장, Core 권한 의미가 계속 참조 담당 문서로 연결되는지 확인합니다.
 
-관리 호스트 주장은 각 문장을 환경 적용 가능성, 설정 또는 구성 상태, 정규 결속,
-검증 영수증, 릴리스 증거로 나누어 검토합니다. 각 계층은
+관리 호스트 주장은 각 문장을 환경 적용 가능성, 설정 또는 구성 상태, 운영 session
+권한, 릴리스 증거로 나누어 검토합니다. 각 계층은
 [시스템 요구사항](../reference/system-requirements.md),
-[Agent Connection](../reference/agent-connection.md#host-verification-receipt),
+[Agent Connection](../reference/agent-connection.md#validated-agent-session),
 [호스트 릴리스 증거](../reference/host-release-evidence.md)를 기준으로 확인합니다. 설정,
-구성, 구현, 픽스처, 테스트에 관한 사실은 엄격한 현재 영수증을 성립시키지 않으며,
-영수증은 정확한 최종 아티팩트 릴리스 증거를 대신하지 않습니다.
+구성, 구현, fixture, 테스트에 관한 사실은 현재 관리 session을 성립시키지 않으며,
+session 권한은 정확한 최종 아티팩트 릴리스 증거를 대신하지 않습니다.
 
 API와 참조 예시는 필요할 때 메서드 안의 정합성, 요청과 응답 형태, 필드 이름,
 필수 필드, `null` 허용 여부, enum 형태 값, `state_version`, 참조, 아티팩트
@@ -243,7 +243,7 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 ```
 
 테스트 명령은 정규 체크인 byte, 내장 카탈로그와 디스크 카탈로그의 일치, 분리된
-계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례, 정확한 런타임 지원
+계약 parsing, 명시적인 테스트 전용 설명자 분리, 부정 사례, 정확한 릴리스 카탈로그
 조회, 외부 증거 비포함 경계, 릴리스 target 일관성, 증거와 카탈로그의 교차 대조를
 검증합니다. 정적 계약이 유효하면 비어 있거나 검토된 entry가 있는 지원 카탈로그와
 비어 있거나 일부 또는 전체 셀을 담은 증거 manifest를 허용합니다. 최종 확정
@@ -349,8 +349,8 @@ cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell
 entry와 기존 체크인 통과 증거를 요구합니다. 증거가 없으면 `not_run`으로 실패합니다.
 증거가 통과 상태가 아니거나, runner 좌표, Codex 또는 Volicord 아티팩트, scenario
 driver, 시나리오 증거, 토폴로지가 달라도 선택한 job이 실패합니다. 정적 계약의
-유효성은 릴리스 성공 판단이 아닙니다. 빈 카탈로그는 런타임 조회, 후보 생성, 운영
-게시를 차단하고, 누락되거나 일부만 있거나 실패, 사용 불가, `not_run`인 필수 증거는
+유효성은 릴리스 성공 판단이 아닙니다. 빈 카탈로그는 후보 생성과 운영 게시를
+차단하고, 누락되거나 일부만 있거나 실패, 사용 불가, `not_run`인 필수 증거는
 적용되는 재실행 또는 운영 완전성 게이트를 차단합니다.
 
 일반 `.github/workflows/ci.yml`은 정적 계약 테스트만 실행합니다.

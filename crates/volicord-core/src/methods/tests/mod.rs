@@ -28,7 +28,7 @@ use volicord_store::{
     workflow_records::{project_write_authority_fingerprint, ProjectWorkflowPolicyUpsert},
 };
 use volicord_test_support::{
-    test_host_receipt_fixture, TempRuntimeHome,
+    TempRuntimeHome,
     TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use volicord_types::CloseMutationIntent;
@@ -438,7 +438,22 @@ fn invocation_with_session(
     operation_category: OperationCategory,
     session_id: &str,
 ) -> InvocationContext {
-    invocation(operation_category).with_session_id(session_id.to_owned())
+    if operation_category == OperationCategory::UserOnly {
+        return invocation(operation_category).with_session_id(session_id.to_owned());
+    }
+    InvocationContext::new(
+        ProjectId::new(PROJECT_ID),
+        actor_source_for_operation_category(operation_category),
+        operation_category,
+        "",
+    )
+    .with_validated_agent_session(
+        crate::agent_session::validated_agent_session_for_test_with_project_session(
+            CONNECTION_ID,
+            PROJECT_ID,
+            session_id,
+        ),
+    )
 }
 
 fn actor_source_for_operation_category(operation_category: OperationCategory) -> ActorSource {
@@ -461,30 +476,20 @@ fn invocation_with_actor(
         actor_source.clone(),
         operation_category,
         if matches!(actor_source, ActorSource::AgentConnection(_)) {
-            volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+            ""
         } else {
             VERIFICATION_BASIS_TEST_FIXTURE_BINDING
         },
     );
     match actor_source {
-        ActorSource::AgentConnection(connection_id) => invocation.with_validated_host_receipt(
-            validated_fixture_host_receipt(PROJECT_ID, connection_id.as_str()),
+        ActorSource::AgentConnection(connection_id) => invocation.with_validated_agent_session(
+            crate::agent_session::validated_agent_session_for_test(
+                connection_id.as_str(),
+                PROJECT_ID,
+            ),
         ),
         _ => invocation,
     }
-}
-
-fn validated_fixture_host_receipt(
-    project_id: &str,
-    connection_id: &str,
-) -> crate::ValidatedHostVerificationReceipt {
-    let fixture = test_host_receipt_fixture(project_id, connection_id);
-    crate::validate_host_verification_receipt(
-        fixture.receipt,
-        &fixture.current,
-        &fixture.validation_time,
-    )
-    .expect("typed host receipt fixture should validate")
 }
 
 fn create_close_ready_task(
@@ -518,9 +523,10 @@ fn assert_verified_invocation(response: &PipelineResponse, operation_category: O
     assert_eq!(
         verified.verification_basis,
         if operation_category == OperationCategory::UserOnly {
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()
         } else {
-            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            crate::agent_session::validated_agent_session_for_test(CONNECTION_ID, PROJECT_ID)
+                .verification_basis()
         }
     );
 }

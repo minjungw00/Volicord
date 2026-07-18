@@ -11,13 +11,15 @@ Codex -> stdio MCP -> public argument DTO -> Core request -> plan
       -> MCP projection -> Codex
 ```
 
-1. stdio 프로세스가 정확한 외부 descriptor, 관리 binding, 연결, 프로젝트 선택,
-   StorageManifest, 저장 읽기 가능성을 검증합니다.
+1. stdio 프로세스가 관리 launch 맥락을 해석하고 Connection과 프로젝트 선택을
+   검증하며 정확한 StorageManifest를 열고 권위 있는 runtime/project session을
+   기록합니다.
 2. JSON-RPC가 lifecycle, method 이름, 공개 argument 객체를 검증합니다.
-3. MCP adapter가 숨긴 envelope 또는 invocation 필드를 거부하고 서버 소유 context에서
+3. MCP adapter는 각 project tool 호출마다 숨은 envelope 또는 invocation 필드를
+   거부하고 현재 관리 runtime/project session을 검증한 뒤 서버 소유 context에서
    완전한 Core 요청을 만듭니다.
-4. Core 공통 preflight가 actor, operation category, project, replay identity,
-   expected state, 현재 Task context, 구조 입력을 검증합니다.
+4. Core 공통 preflight가 typed Agent Session, actor, operation category, project,
+   replay identity, expected state, 현재 Task context, 구조 입력을 검증합니다.
 5. 메서드 planner가 일관된 snapshot 하나를 읽고 typed outcome과 정확한 제안 효과를
    만듭니다.
 6. 읽기 전용 분기는 변경 없이 반환합니다. Mutation 분기는 commit 전제 조건을 다시

@@ -59,8 +59,8 @@ opaque_string_type!(ProjectId, "Opaque project identifier.");
 opaque_string_type!(TaskId, "Opaque Task identifier.");
 opaque_string_type!(AgentConnectionId, "Opaque Agent Connection identifier.");
 opaque_string_type!(
-    McpRuntimeSessionId,
-    "Opaque MCP Runtime Session identifier."
+    AgentRuntimeSessionId,
+    "Opaque Agent Runtime Session identifier."
 );
 opaque_string_type!(AgentSessionId, "Opaque Agent Session identifier.");
 opaque_string_type!(

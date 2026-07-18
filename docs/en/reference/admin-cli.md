@@ -134,8 +134,8 @@ unambiguous. The only accepted explicit value is `codex`.
 | `action_required` | Durable setup may exist, but a named user or Codex action remains. |
 | `failed` | The operation failed and reports a machine-readable cause. |
 
-`complete` is not a release-cell pass, Core authority receipt, host attestation,
-or proof that an active Codex session exposed tools.
+`complete` is not a release-cell pass, Core invocation authorization, host
+attestation, or proof that an active Codex session exposed tools.
 
 Connection verification serializes the canonical
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report).
@@ -148,9 +148,10 @@ context; it never adds `dry_run` to either closed status set.
 
 A personal connection writes only user-owned managed Codex configuration. A
 shared connection writes the supported project-owned Codex entry and forwards
-`VOLICORD_HOME` without embedding a machine-local path. The exact canonical
-`ManagedHostBinding`, digests, drift rules, repair, receipt, and uninstall
-boundary belong to [Agent Connection](agent-connection.md).
+`VOLICORD_HOME` without embedding a machine-local path. The exact managed-entry
+markers, drift rules, repair, launch context, and uninstall boundary belong to
+[Agent Connection](agent-connection.md). Configuration markers select the
+cooperative launch path; they are not credentials or identity evidence.
 
 ## MCP Commands
 

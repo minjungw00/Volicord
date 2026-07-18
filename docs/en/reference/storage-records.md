@@ -8,7 +8,7 @@ and canonical SQL remain with [Storage DDL](storage-ddl.md).
 
 | Location | Purpose |
 |---|---|
-| `registry.sqlite` | Runtime Home identity, installation profile, projects, aliases, Agent Connections, explicit project memberships, managed Codex binding/verification metadata, and authoritative MCP runtime sessions. |
+| `registry.sqlite` | Runtime Home identity, installation profile, projects, aliases, Agent Connections, explicit project memberships, canonical connection verification reports, and authoritative MCP runtime sessions. |
 | project `state.sqlite` | Project-local Core state, replay, authority events, UserAction, evidence, artifacts, continuity, project Agent Sessions, Guard observations, and reconciliation. |
 | artifact store | Bytes and safe notices referenced by persistent artifact rows. |
 | `diagnostics.sqlite` | Bounded non-authority operability counters. |
@@ -44,9 +44,7 @@ Registry records include:
 - MCP runtime sessions and their process, initialization, discovery, safe-call,
   terminal-failure, and graceful-close facts;
 - cross-database reservations that bind one runtime/host session to one
-  Connection Project;
-- canonical `ManagedHostBinding` identity, generated-artifact identity, and
-  current verification receipt coordinates.
+  Connection Project.
 
 Project-state records include:
 
@@ -100,6 +98,20 @@ downstream Guard row from pairing a session with another Connection. Registry
 `mcp_runtime_project_session_bindings` supplies the uniqueness boundary that a
 foreign key cannot express across separate SQLite databases, so one
 runtime/host session cannot be reused for another project.
+
+Runtime authorization reads these current records directly. It accepts only an
+enabled Connection, a current Connection Project membership, a
+`session_source=managed_host` runtime session for that Connection, and a
+project Agent Session owned by the same runtime session, Connection, and
+project. The stored Connection and project integration revisions must equal the
+revisions derived from current owner inputs. The Connection mode must allow the
+requested operation category. `cli_preflight` rows, diagnostic version fields,
+and best-effort diagnostics cannot satisfy this boundary.
+
+Registry storage has no managed-host binding, executable digest, verifier-build
+digest, support-catalog coordinate, or host-verification-receipt record. A
+Runtime Home containing a removed runtime-authorization table belongs to a
+different `StorageManifest` and is rejected without migration.
 
 ## Identity And Ownership
 

@@ -11,7 +11,7 @@
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
-| `crates/volicord-types/src/codex_support_catalog.rs`와 `contracts/codex-support-catalog.json` | 내장 exact Codex 런타임 지원 정책. |
+| `crates/volicord-types/src/codex_support_catalog.rs`와 `contracts/codex-support-catalog.json` | 임시로 유지하는 릴리스 인증 카탈로그 소스. 운영 런타임 권한은 이를 사용하지 않습니다. |
 | `crates/volicord-types/src/codex_release_evidence.rs` | 증거를 포함하지 않는 엄격한 외부 릴리스 증거 타입과 parsing. |
 | `crates/volicord-types/src/tool_names.rs` | 공개 MCP 도구 이름 레지스트리. |
 
@@ -37,6 +37,7 @@
 | `crates/volicord-core/src/pipeline.rs` | 공통 사전 점검, replay, plan 선택, 응답, commit 조율. |
 | `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. |
 | `crates/volicord-core/src/policy/` | 재사용 접근, workflow, evidence, continuity, write-ticket, close-readiness 정책. |
+| `crates/volicord-core/src/agent_session.rs` | 현재 Connection, project membership, mode, 관리 runtime/project session 검증. |
 | `crates/volicord-core/src/authority_status.rs` | typed status와 authority receipt 대응. |
 
 ## CLI와 Codex 어댑터
@@ -45,7 +46,7 @@
 |---|---|
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
-| `crates/volicord-cli/src/host_integration/codex/` | Codex 구성, 실행 파일 식별, trust fact, 검증. |
+| `crates/volicord-cli/src/host_integration/codex/` | Codex 관리 구성, 진단용 실행 파일 관찰, 연결 검증. |
 | `crates/volicord-cli/src/guard_command/` | Guard 이벤트 디코딩과 bounded 관찰. |
 | `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |

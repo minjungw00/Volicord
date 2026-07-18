@@ -533,6 +533,7 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 
 | Check area | Authority meaning |
 |---|---|
+| Agent session | An Agent Connection call requires a current validated managed-host runtime/project session. Its Connection must match `ActorSource::AgentConnection`, its project must match the project-scoped operation, its integration revisions must be current, and the Connection mode must allow the operation category. This proves locally observed cooperative session ownership and project authorization, not binary, actor, or human identity. |
 | Scope | The requested work, write, evidence claim, or close claim must fit the current `Task` scope and current Change Unit. |
 | Task control | The effective control level must be current for the authoritative project policy. A changed normalized write-authority fingerprint marks the active Task for reevaluation and makes missing or mismatched active ticket bindings stale even when the control and final-acceptance ranks do not rise. A stricter policy can also raise the active Task before its next write, while policy relaxation never lowers it automatically. |
 | Workspace | For a Git-bound Change Unit, write preparation must match the recorded common directory, worktree identity, branch or detached HEAD, HEAD SHA, and workspace fingerprint. A mismatch requires explicit retarget/rebaseline. |

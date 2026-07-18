@@ -124,7 +124,7 @@ pub struct InvocationContext {
     pub actor_source: ActorSource,
     pub operation_category: OperationCategory,
     pub invocation_binding_basis: String,
-    pub validated_host_receipt: Option<crate::ValidatedHostVerificationReceipt>,
+    pub validated_agent_session: Option<crate::ValidatedAgentSession>,
     pub session_id: Option<String>,
     pub git_workspace_context: Option<GitWorkspaceContext>,
 }
@@ -142,18 +142,15 @@ impl InvocationContext {
             actor_source,
             operation_category,
             invocation_binding_basis: invocation_binding_basis.into(),
-            validated_host_receipt: None,
+            validated_agent_session: None,
             session_id: None,
             git_workspace_context: None,
         }
     }
 
-    /// Adds the typed receipt that the adapter validated against current host facts.
-    pub fn with_validated_host_receipt(
-        mut self,
-        receipt: crate::ValidatedHostVerificationReceipt,
-    ) -> Self {
-        self.validated_host_receipt = Some(receipt);
+    /// Adds the current Agent Session that Core validated for this operation.
+    pub fn with_validated_agent_session(mut self, session: crate::ValidatedAgentSession) -> Self {
+        self.validated_agent_session = Some(session);
         self
     }
 
@@ -1947,7 +1944,7 @@ mod tests {
         sqlite::{open_project_state_database, open_registry_database, registry_db_path},
     };
     use volicord_test_support::{
-        test_host_receipt_fixture, TempRuntimeHome,
+        TempRuntimeHome,
         TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
     use volicord_types::{
@@ -2923,23 +2920,18 @@ mod tests {
             actor_source.clone(),
             operation_category,
             if matches!(actor_source, ActorSource::AgentConnection(_)) {
-                volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+                ""
             } else {
                 VERIFICATION_BASIS_TEST_FIXTURE_BINDING
             },
         );
         match actor_source {
-            ActorSource::AgentConnection(connection_id) => {
-                let fixture = test_host_receipt_fixture(PROJECT_ID, connection_id.as_str());
-                invocation.with_validated_host_receipt(
-                    crate::validate_host_verification_receipt(
-                        fixture.receipt,
-                        &fixture.current,
-                        &fixture.validation_time,
-                    )
-                    .expect("typed host receipt fixture should validate"),
-                )
-            }
+            ActorSource::AgentConnection(connection_id) => invocation.with_validated_agent_session(
+                crate::agent_session::validated_agent_session_for_test(
+                    connection_id.as_str(),
+                    PROJECT_ID,
+                ),
+            ),
             _ => invocation,
         }
     }

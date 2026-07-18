@@ -92,9 +92,9 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- An exact external contract descriptor, host artifact, or other boundary
-  format is not an exact registered supported contract. No fallback adapter,
-  decoder, artifact, version, or closest-known format is selected.
+- An exact external contract descriptor or other boundary format is not an
+  exact registered supported contract. No fallback adapter, decoder, version,
+  or closest-known format is selected.
 
 Required failure category:
 - `unsupported_contract`
@@ -102,8 +102,7 @@ Required failure category:
 Required details:
 - Use the applicable `ToolError.details.reason` value from
   [API error details](error-details.md#reason), including
-  `unsupported_external_contract` or `unsupported_host_artifact` for those
-  domains.
+  `unsupported_external_contract` for that domain.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`

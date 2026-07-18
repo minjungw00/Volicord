@@ -13,8 +13,8 @@ use volicord_cli::{
     changes_command::{run_changes_command, ChangesCommandError},
     cli::{Cli, Command as CliCommand, McpArgs, PolicyCommand as CliPolicyCommand},
     connection_command::{
-        prepare_managed_stdio_authority, run_connection_command, run_init_command,
-        ConnectionCommandError, ProductionConnectionProcess,
+        run_connection_command, run_init_command, ConnectionCommandError,
+        ProductionConnectionProcess,
     },
     diagnostics_command::{run_diagnostics_command, DiagnosticsCommandError},
     doctor_command::{run_doctor_command, DoctorCommandError},
@@ -46,48 +46,15 @@ fn main() {
             connection_id,
             project_id,
         }) => {
-            let observed_host_executable_version =
-                if volicord_mcp::managed_host_authority_preparation_required_from_env(
-                    &connection_id,
-                    project_id.as_deref(),
-                    false,
-                ) {
-                    match prepare_bound_mcp_authority(
-                        &connection_id,
-                        project_id.as_deref(),
-                        &current_dir,
-                    ) {
-                        Ok(version) => version,
-                        Err(error) => {
-                            eprintln!("error: {error}");
-                            process::exit(1);
-                        }
-                    }
-                } else {
-                    None
-                };
-            if let Err(error) = volicord_mcp::run_stdio_from_env(
-                &connection_id,
-                project_id.as_deref(),
-                observed_host_executable_version,
-            ) {
+            if let Err(error) =
+                volicord_mcp::run_stdio_from_env(&connection_id, project_id.as_deref(), None)
+            {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
         }
         Err(CliError::McpRepositoryStdio { host }) => {
-            let observed_host_executable_version =
-                match prepare_repository_mcp_authority(host, &current_dir) {
-                    Ok(version) => version,
-                    Err(error) => {
-                        eprintln!("error: {error}");
-                        process::exit(1);
-                    }
-                };
-            if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(
-                host,
-                observed_host_executable_version,
-            ) {
+            if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(host, None) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -114,43 +81,6 @@ fn main() {
             process::exit(exit_code);
         }
     }
-}
-
-fn prepare_bound_mcp_authority(
-    connection_id: &str,
-    project_id: Option<&str>,
-    current_dir: &Path,
-) -> Result<Option<String>, CliError> {
-    let runtime_home = resolve_runtime_home(|name| env::var_os(name), current_dir)?;
-    prepare_managed_stdio_authority(&runtime_home, connection_id, project_id)
-        .map_err(CliError::from)
-}
-
-fn prepare_repository_mcp_authority(
-    host: volicord_mcp::RepositoryDiscoveryHost,
-    current_dir: &Path,
-) -> Result<Option<String>, CliError> {
-    let runtime_home = volicord_mcp::resolve_repository_discovery_runtime_home(
-        |name| env::var_os(name),
-        current_dir,
-    )
-    .map_err(|error| CliError::runtime(error.to_string()))?;
-    let resolution =
-        volicord_mcp::RepositoryDiscoveryResolution::resolve(&runtime_home, current_dir, host)
-            .map_err(|error| CliError::runtime(error.to_string()))?;
-    if volicord_mcp::managed_host_authority_preparation_required_from_env(
-        resolution.connection_internal_id.as_str(),
-        Some(resolution.project_id.as_str()),
-        true,
-    ) {
-        return prepare_managed_stdio_authority(
-            &runtime_home,
-            resolution.connection_internal_id.as_str(),
-            Some(resolution.project_id.as_str()),
-        )
-        .map_err(CliError::from);
-    }
-    Ok(None)
 }
 
 fn run_cli<I, S, F>(args: I, env_var: F, current_dir: &Path) -> Result<String, CliError>

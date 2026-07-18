@@ -131,7 +131,7 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 | `action_required` | 오래 유지되는 설정이 있을 수 있지만 이름 붙은 사용자 또는 Codex 동작이 남았습니다. |
 | `failed` | 동작이 실패했고 기계 판독 원인을 보고합니다. |
 
-`complete`는 릴리스 셀 통과, Core 권한 receipt, host attestation, 활성 Codex 세션의
+`complete`는 릴리스 셀 통과, Core 호출 권한, host attestation, 활성 Codex 세션의
 도구 노출 증명이 아닙니다.
 
 연결 검증은 정규
@@ -145,8 +145,9 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 
 개인 연결은 사용자 소유 관리 Codex 구성만 씁니다. 공유 연결은 지원되는 프로젝트 소유
 Codex 항목을 쓰고 머신 로컬 경로를 내장하지 않은 채 `VOLICORD_HOME`을 전달합니다.
-정확한 정규 `ManagedHostBinding`, digest, drift, 복구, receipt, uninstall 경계는
-[Agent Connection](agent-connection.md)이 담당합니다.
+정확한 관리 entry marker, drift, 복구, launch 맥락, uninstall 경계는
+[Agent Connection](agent-connection.md)이 담당합니다. 구성 marker는 협력적 launch
+경로를 선택할 뿐 credential이나 identity 증거가 아닙니다.
 
 ## MCP 명령
 

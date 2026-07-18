@@ -63,10 +63,11 @@ git diff --check
 ```
 
 Release-support changes also require the exact finalized artifact workflow and
-all six target/environment cells across `linux`, `macos`, `native_windows`, and `wsl2`. Keep embedded
-runtime policy separate from external release evidence. The evidence manifest
-may honestly contain zero through six entries; only exact passing evidence
-matching the support catalog satisfies its release cell.
+all six target/environment cells across `linux`, `macos`, `native_windows`, and
+`wsl2`. Keep the retained release catalog separate from external release
+evidence. The evidence manifest may honestly contain zero through six entries;
+only exact passing evidence matching the catalog satisfies its release cell.
+Production runtime authorization consumes neither contract.
 
 ## Handoff
 

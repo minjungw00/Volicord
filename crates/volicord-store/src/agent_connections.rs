@@ -17,10 +17,6 @@ use crate::{
         guard_installation_from_conn, upsert_guard_installation_in_transaction,
         GuardInstallationRecord, GuardInstallationUpsert,
     },
-    managed_host_authority::{
-        delete_managed_host_authority_for_connection_in_transaction,
-        delete_managed_host_authority_for_membership_in_transaction,
-    },
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
         registry_db_path,
@@ -568,10 +564,6 @@ fn write_agent_connection(
             ));
         }
         let enabled = registration.enabled || (preserve_existing_enabled && existing.enabled);
-        delete_managed_host_authority_for_connection_in_transaction(
-            &tx,
-            &registration.connection_internal_id,
-        )?;
         tx.execute(
             "UPDATE agent_connections
                 SET mode = ?2,
@@ -785,9 +777,6 @@ pub fn set_connection_enabled(
     require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, connection_internal_id)?;
     reject_generic_pending_host_cleanup_mutation(&connection)?;
-    if connection.enabled != enabled {
-        delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
-    }
     let changed = tx.execute(
         "UPDATE agent_connections
             SET enabled = ?2,
@@ -823,10 +812,7 @@ pub fn set_connection_mode(
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
-    let connection = require_agent_connection(&tx, connection_internal_id)?;
-    if connection.mode != mode {
-        delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
-    }
+    require_agent_connection(&tx, connection_internal_id)?;
     let changed = tx.execute(
         "UPDATE agent_connections
             SET verification_report_json = CASE WHEN mode = ?2 THEN verification_report_json ELSE NULL END,
@@ -934,7 +920,6 @@ pub fn remove_agent_connection_if_unused(
         return Ok(false);
     }
 
-    delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
     let changed = tx.execute(
         "DELETE FROM agent_connections WHERE connection_internal_id = ?1",
         [connection_internal_id],
@@ -1009,11 +994,6 @@ pub fn remove_connection_project(
         tx.commit()?;
         return Ok(false);
     };
-    delete_managed_host_authority_for_membership_in_transaction(
-        &tx,
-        &connection.connection_internal_id,
-        &project.project_internal_id,
-    )?;
     let changed = tx.execute(
         "DELETE FROM connection_projects
           WHERE connection_internal_id = ?1
@@ -1289,10 +1269,6 @@ pub fn activate_staged_connection(
                 project_id,
                 connection_internal_id,
             )?;
-            delete_managed_host_authority_for_connection_in_transaction(
-                &tx,
-                &retired_connection.connection_internal_id,
-            )?;
             tx.execute(
                 "UPDATE agent_connections
                     SET enabled = 0,
@@ -1313,11 +1289,6 @@ pub fn activate_staged_connection(
                 detail: "pending host cleanup gained another project membership".to_owned(),
             });
         } else if let Some(project) = raw_project_record_from_conn(&tx, &retired.project_id)? {
-            delete_managed_host_authority_for_membership_in_transaction(
-                &tx,
-                &retired_connection.connection_internal_id,
-                &project.project_internal_id,
-            )?;
             tx.execute(
                 "DELETE FROM connection_projects
                   WHERE connection_internal_id = ?1
@@ -1330,7 +1301,6 @@ pub fn activate_staged_connection(
         }
     }
 
-    delete_managed_host_authority_for_connection_in_transaction(&tx, connection_internal_id)?;
     tx.execute(
         "UPDATE agent_connections
             SET enabled = 1,
@@ -1408,11 +1378,6 @@ pub fn complete_pending_host_cleanup<E>(
         pending_connection_ids,
     )?;
     for connection_id in pending_connection_ids {
-        delete_managed_host_authority_for_membership_in_transaction(
-            &tx,
-            connection_id,
-            &project.project_internal_id,
-        )?;
         tx.execute(
             "DELETE FROM connection_projects
               WHERE connection_internal_id = ?1

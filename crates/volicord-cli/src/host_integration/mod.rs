@@ -226,16 +226,24 @@ impl ManagedServerEntry {
             "mcp".to_owned(),
             "--stdio".to_owned(),
             "--connection".to_owned(),
-            connection_id,
+            connection_id.clone(),
         ];
         if let Some(project_id) = project_id {
             args.push("--project".to_owned());
             args.push(project_id.to_owned());
         }
+        let mut env = BTreeMap::from([
+            ("VOLICORD_MCP_LAUNCH".to_owned(), "managed_host".to_owned()),
+            ("VOLICORD_MCP_HOST".to_owned(), "codex".to_owned()),
+            ("VOLICORD_MCP_CONNECTION_ID".to_owned(), connection_id),
+        ]);
+        if let Some(project_id) = project_id {
+            env.insert("VOLICORD_MCP_PROJECT_ID".to_owned(), project_id.to_owned());
+        }
         Self {
             command: mcp_command.display().to_string(),
             args,
-            env: BTreeMap::new(),
+            env,
             env_vars: vec!["VOLICORD_HOME".to_owned()],
         }
     }
@@ -521,14 +529,36 @@ pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
     {
         return true;
     }
-    if entry.args.len() != 4
-        || !entry.env.is_empty()
+    if !matches!(entry.args.len(), 4 | 6)
         || entry.env_vars != ["VOLICORD_HOME"]
         || entry.args[0] != "mcp"
         || entry.args[1] != "--stdio"
         || entry.args[2] != "--connection"
         || entry.args[3].trim().is_empty()
     {
+        return false;
+    }
+    let expected_env = BTreeMap::from([
+        ("VOLICORD_MCP_LAUNCH".to_owned(), "managed_host".to_owned()),
+        ("VOLICORD_MCP_HOST".to_owned(), "codex".to_owned()),
+        (
+            "VOLICORD_MCP_CONNECTION_ID".to_owned(),
+            entry.args[3].clone(),
+        ),
+    ]);
+    let expected_env = if entry.args.len() == 6
+        && entry.args[4] == "--project"
+        && !entry.args[5].trim().is_empty()
+    {
+        let mut expected_env = expected_env;
+        expected_env.insert("VOLICORD_MCP_PROJECT_ID".to_owned(), entry.args[5].clone());
+        expected_env
+    } else if entry.args.len() == 4 {
+        expected_env
+    } else {
+        return false;
+    };
+    if entry.env != expected_env {
         return false;
     }
     let command = Path::new(&entry.command);

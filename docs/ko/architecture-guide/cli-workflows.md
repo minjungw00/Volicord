@@ -10,7 +10,7 @@
 | parse와 normalize | CLI command DTO가 알 수 없거나 충돌하는 입력을 거부합니다. |
 | context 해결 | Runtime Home, 정규 Product Repository, project, Agent Connection을 선택합니다. |
 | plan | 읽기 전용 검사가 정확한 파일과 Store 변경안을 만듭니다. |
-| validate | 정규 binding, 외부 계약, 저장소, policy를 검사합니다. |
+| validate | 관리 구성, Connection, session, 저장소, policy를 검사합니다. |
 | commit | 담당 문서가 정의한 원자적 filesystem/Store 경계를 사용합니다. |
 | render | 구조화된 결과에서 text 또는 JSON 문서 하나를 만듭니다. |
 
@@ -19,20 +19,20 @@ Parsing과 rendering은 다른 Core 또는 Store 권한이 되면 안 됩니다.
 ## Codex 설정
 
 `init`은 Codex, `record`, 개인/공유 범위만 받습니다. CLI는 현재 정규 입력을 해결하고
-Codex adapter에 `ManagedHostBinding` 생성을 요청하며 정확한 관리 변경을 미리 본 뒤
-모든 전제 조건이 통과해야 적용합니다. 복구는 같은 흐름을 다시 사용하고 제거는 일치하는
-관리 내용만 삭제합니다.
+Codex adapter에 관리 구성 생성을 요청하며 정확한 관리 변경을 미리 본 뒤 모든 전제
+조건이 통과해야 적용합니다. 복구는 같은 흐름을 다시 사용하고 제거는 일치하는 관리
+내용만 삭제합니다.
 
 공유 구성은 `VOLICORD_HOME`을 전달하고 관리 stdio를 시작합니다. 개인 구성은 사용자
-소유로 남습니다. 호스트별 파일 문법과 artifact 검사는 adapter에 남고 Core는 정규 type과
-typed 검증 receipt만 받습니다.
+소유로 남습니다. 호스트별 파일 문법은 adapter에 남습니다. Core는 Store가 소유한
+운영 기록에서 만든 현재 `ValidatedAgentSession`만 받습니다.
 
 ## 연결 검증
 
-`connection verify`는 현재 adapter 검사, 내장 지원 카탈로그의 정확한 artifact 및
-platform 일치, 완전한 binding 검증을 수행하고 성공할 때만 `HostVerificationReceipt`를
-발급합니다. CLI는 이어서 Core에 현재 저장 상태를 기준으로 receipt 검증을 요청합니다.
-진단 status는 빠진 증거를 승격하지 않습니다.
+`connection verify`는 현재 adapter와 관리 구성을 검사하고 정규 3상태 보고서를
+반환합니다. 호스트 실행 파일을 hash하거나 릴리스 인증 카탈로그를 조회하거나 권한
+receipt를 발급하거나 agent session을 만들지 않습니다. 권위 있는 관리 runtime/project
+session은 관리 MCP lifecycle 처리에서만 기록합니다.
 
 ## 프로젝트와 정책 흐름
 
@@ -68,8 +68,8 @@ form 대신 영속 데이터 오류로 실패합니다.
 - Codex별 구성은 adapter에 남습니다.
 - 어떤 명령도 네트워크 전송을 시작하지 않습니다.
 - 비대화형 명령은 사용자 판단을 제출하지 않습니다.
-- 런타임 조회는 내장 지원 카탈로그만 사용합니다. 릴리스 주장은 target-aware한 별도의 정확한
-  4플랫폼 증거 manifest가 그 카탈로그와 일치할 때만 성립합니다.
+- Client와 host version 관찰은 diagnostic일 뿐 권한 credential이 아닙니다. 릴리스
+  주장은 별도의 정확한 6셀 증거 흐름에 남습니다.
 
 ## 관련 경로
 

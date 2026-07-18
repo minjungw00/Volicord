@@ -78,11 +78,12 @@ command. A terminal-side MCP check does not by itself prove that the active host
 session exposes Volicord tools. In the active host, confirm that
 `volicord.list_projects` and `volicord.status` are available.
 
-A `complete` result establishes readiness for this setup path only. The exact
-Codex record connection is represented by a canonical binding and a strict
-verification receipt bound to the current project, connection, platform,
-artifacts, executable, policy, and capability requirements. See the
-[`HostVerificationReceipt` contract](docs/en/reference/agent-connection.md#host-verification-receipt).
+A `complete` result establishes readiness for this setup path only. During a
+managed MCP call, Volicord authorizes the current registered Connection,
+project membership, mode, and authoritative runtime/project session. This is a
+locally observed cooperative-session boundary, not binary, host, client, actor,
+operating-system-user, or human identity proof. See
+[`ValidatedAgentSession`](docs/en/reference/agent-connection.md#validated-agent-session).
 
 ### 3. Work Through The Agent
 

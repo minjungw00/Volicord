@@ -13,20 +13,17 @@ use volicord_types::{
     UserChannelAvailability, UtcTimestamp,
 };
 
+mod agent_session;
 mod authority_status;
-mod host_receipt;
 
 mod methods;
 pub mod pipeline;
 mod policy;
 
+pub use agent_session::{AgentSessionValidationError, ValidatedAgentSession};
 pub use authority_status::{
     validate_authority_status, AuthorityStatusExpectation, AuthorityStatusValidationError,
     ValidatedAuthorityStatus,
-};
-pub use host_receipt::{
-    validate_host_verification_receipt, HostReceiptValidationError,
-    ValidatedHostVerificationReceipt,
 };
 pub use pipeline::{
     dry_run_response, method_result_base, method_result_value, rejected_response, tool_error,

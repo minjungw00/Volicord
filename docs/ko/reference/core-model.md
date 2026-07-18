@@ -536,6 +536,7 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 
 | 확인 영역 | 권한 의미 |
 |---|---|
+| Agent session | Agent Connection 호출에는 현재 검증된 managed-host runtime/project session이 필요합니다. Connection은 `ActorSource::AgentConnection`과 일치하고, 프로젝트는 프로젝트 범위 동작과 일치하며, 통합 revision은 현재 상태이고, Connection mode가 operation category를 허용해야 합니다. 이는 로컬에서 관찰한 협력적 session 소유권과 프로젝트 권한을 증명하며 binary, actor, human identity를 증명하지 않습니다. |
 | 범위 | 요청한 작업, 쓰기, 증거 주장, 닫기 주장은 현재 적용 `Task` 범위와 현재 적용 Change Unit에 맞아야 합니다. |
 | Task 통제 | 유효 통제 수준은 권위 있는 프로젝트 정책에 대해 현재 상태여야 합니다. 정규화된 쓰기 권한 fingerprint가 바뀌면 통제와 최종 수락 순위가 높아지지 않아도 활성 `Task`에 재평가 표시를 만들고 결속이 없거나 일치하지 않는 활성 티켓을 오래된 상태로 만듭니다. 더 엄격한 정책은 다음 쓰기 전에 활성 `Task` 수준도 높일 수 있지만 정책 완화가 자동으로 낮추지는 않습니다. |
 | Workspace | Git에 결합된 Change Unit은 쓰기 준비 때 기록한 common directory, worktree identity, branch 또는 detached HEAD, HEAD SHA, workspace fingerprint가 현재 값과 일치해야 합니다. 다르면 명시적 retarget/rebaseline이 필요합니다. |

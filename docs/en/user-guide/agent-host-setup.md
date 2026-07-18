@@ -2,8 +2,8 @@
 
 Use this guide to install, verify, repair, or remove the managed Codex Agent
 Connection. The exact command contract belongs to
-[Administrative CLI](../reference/admin-cli.md), and exact binding and receipt
-shapes belong to [Agent Connection](../reference/agent-connection.md).
+[Administrative CLI](../reference/admin-cli.md), and the managed operational
+session boundary belongs to [Agent Connection](../reference/agent-connection.md).
 
 ## Supported Setup
 
@@ -47,9 +47,10 @@ volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
 ```
 
-`verify` validates the selected managed binding and records the owner-defined
-receipt only when all required facts are current. `status` is diagnostic and
-does not upgrade missing evidence.
+`verify` inspects the selected managed configuration and returns its current
+three-state report. It does not issue runtime authorization. Authorization is
+validated per MCP project call from the current Connection, membership, mode,
+and authoritative managed runtime/project sessions.
 
 For a direct process preflight, use the exact stored identifiers:
 
@@ -57,9 +58,10 @@ For a direct process preflight, use the exact stored identifiers:
 volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 ```
 
-Normal managed operation starts `volicord mcp --stdio` with the binding supplied
-by the generated Codex configuration. Do not infer a binding from cwd or scan
-for a nearby repository.
+Normal managed operation starts `volicord mcp --stdio` with the launch context
+supplied by the generated Codex configuration. Its markers are cooperative
+routing inputs, not credentials. Do not infer a personal Connection from cwd or
+scan for a nearby repository.
 
 ## UserAction Boundary
 

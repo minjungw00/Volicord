@@ -205,36 +205,6 @@ CREATE TABLE mcp_runtime_project_session_bindings (
 CREATE INDEX idx_mcp_runtime_project_bindings_project
   ON mcp_runtime_project_session_bindings (project_internal_id, connection_internal_id, bound_at);
 
-CREATE TABLE managed_host_authority (
-  connection_internal_id TEXT NOT NULL,
-  project_internal_id TEXT NOT NULL,
-  external_contract_descriptor_json TEXT NOT NULL,
-  managed_host_binding_json TEXT NOT NULL,
-  binding_digest TEXT NOT NULL
-    CHECK (length(binding_digest) = 71 AND substr(binding_digest, 1, 7) = 'sha256:'),
-  generated_artifacts_json TEXT NOT NULL,
-  generated_artifacts_digest TEXT NOT NULL
-    CHECK (length(generated_artifacts_digest) = 71 AND substr(generated_artifacts_digest, 1, 7) = 'sha256:'),
-  host_verification_receipt_json TEXT NOT NULL,
-  observed_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (connection_internal_id, project_internal_id),
-  FOREIGN KEY (connection_internal_id)
-    REFERENCES agent_connections (connection_internal_id)
-    ON DELETE RESTRICT,
-  FOREIGN KEY (project_internal_id)
-    REFERENCES projects (project_internal_id)
-    ON DELETE RESTRICT,
-  FOREIGN KEY (connection_internal_id, project_internal_id)
-    REFERENCES connection_projects (connection_internal_id, project_internal_id)
-    ON DELETE RESTRICT,
-  CHECK (observed_at < expires_at)
-);
-
-CREATE INDEX idx_managed_host_authority_expiry
-  ON managed_host_authority (expires_at);
-
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,

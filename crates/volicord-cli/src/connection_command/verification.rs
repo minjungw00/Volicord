@@ -6,8 +6,7 @@ use volicord_store::agent_connections::{
 };
 use volicord_types::{
     ConnectionAction, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckId,
-    ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport, HostVerificationReceipt,
-    UtcTimestamp,
+    ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport, UtcTimestamp,
 };
 
 #[cfg(test)]
@@ -148,7 +147,6 @@ pub(in crate::connection_command) struct VerificationReport {
     pub(in crate::connection_command) preflight: VerificationStep,
     pub(in crate::connection_command) handshake: VerificationStep,
     pub(in crate::connection_command) _tools: Vec<String>,
-    pub(in crate::connection_command) _receipt: Option<HostVerificationReceipt>,
 }
 
 pub(in crate::connection_command) fn verify_connection(
@@ -206,7 +204,6 @@ pub(in crate::connection_command) fn verify_connection(
         host_plan_requires_active_tool_exposure(host_plan),
     )?;
     let status = agent_result_status(report.status());
-    let receipt = None;
     Ok(VerificationReport {
         status,
         report,
@@ -214,7 +211,6 @@ pub(in crate::connection_command) fn verify_connection(
         preflight,
         handshake: handshake.step,
         _tools: handshake.tools,
-        _receipt: receipt,
     })
 }
 

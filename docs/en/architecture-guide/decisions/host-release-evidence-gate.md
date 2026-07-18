@@ -49,12 +49,12 @@ The external evidence manifest is an honest report, not a target-shaped
 placeholder. It may contain zero through six entries. A required cell with no
 qualifying attempt has no entry. A passing result establishes release evidence
 only for its exact catalog coordinates and Volicord digest; results never
-propagate between cells or artifacts. Runtime lookup reads only the embedded
-catalog and fails closed when it is empty.
+propagate between cells or artifacts. The production runtime authorization
+path does not read either release contract.
 
-Review recomputes digests and validates both closed shapes. Production consumes
-only owner-defined support policy and fails closed for
-`unsupported_host_artifact`; it never consumes release evidence.
+Review recomputes digests and validates both closed shapes. Release publication
+fails closed for `unsupported_host_artifact`; operational MCP, CLI, Core, and
+Store authorization never consumes the catalog or release evidence.
 
 ## Consequences
 

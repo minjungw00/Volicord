@@ -6,7 +6,7 @@ Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 �
 
 이 문서는 릴리스 셀이 실제로 실행되거나 통과했다고 주장하지 않습니다. 정확히
 최종 확정된 아티팩트의 결과는 [호스트 릴리스 증거](host-release-evidence.md)가,
-관리형 binding과 영수증 의미는 [Agent Connection](agent-connection.md)이 담당합니다.
+관리 운영 session 권한은 [Agent Connection](agent-connection.md)이 담당합니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
@@ -75,35 +75,34 @@ triple은 실제 셀 실행을 대신하지 않습니다.
 | `/etc/os-release` `VERSION_ID` | `24.04` |
 | `platform_release_coordinate.environment_image` | `Ubuntu-24.04-LTS-WSL2` |
 
-제품은 배포판 이름, 운영체제 identity, WSL2 커널 경계, 파일 시스템 종류를
-관찰합니다. 지원 카탈로그 이미지 값은 관찰한 배포판 사실에 등록된 정확한 좌표이며,
-다른 이미지의 entry는 이 좌표를 승인할 수 없습니다.
+플랫폼 점검은 배포판 이름, 운영체제 identity, WSL2 커널 경계, 파일 시스템 종류를
+관찰합니다. 릴리스 증거는 그 관찰된 배포판 사실에 image 좌표를 결속합니다. 이
+릴리스 좌표는 운영 권한 credential이 아닙니다.
 
 WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인하고
 `target_triple=x86_64-unknown-linux-gnu`를 요구해야 합니다. 일반 Linux `target_os`
-결과만으로는 부족합니다. `ManagedHostBinding`과
-`HostVerificationReceipt`는 `platform_environment=wsl2`를 결속하며 `linux`나
-`native_windows`에서 재사용할 수 없습니다.
+결과만으로는 부족합니다. 운영 Connection과 session 기록은 해당 Runtime Home과
+플랫폼 환경에만 남으며 `linux`나 `native_windows` 권한으로 변환하지 않습니다.
 
 Product Repository, Runtime Home, Codex 실행 파일, Volicord 실행 파일, 관리
 Codex 설정, 생성된 모든 관리 아티팩트는 해당 배포판의 Linux ext4 파일 시스템
 내부로 해석되어야 합니다. 다른 배포판, 이미지, 파일 시스템을 동등하다고
 추정하지 않습니다.
 
-다음 WSL 토폴로지는 지원하지 않으며 설치 또는 영수증 사용 전에 machine-readable
+다음 WSL 토폴로지는 지원하지 않으며 설치 또는 관리 launch 전에 machine-readable
 unsupported-environment reason으로 실패해야 합니다.
 
 - WSL1
 - Codex는 Windows에서, Volicord·저장소·Runtime Home 중 하나는 WSL2에서 실행하는 구성
 - Codex는 WSL2에서, Volicord 프로세스·저장소·Runtime Home 중 하나는 네이티브 Windows에 두는 구성
 - Product Repository나 Runtime Home을 `/mnt/c`, `/mnt/d`, 다른 `/mnt/*` 경로 또는 DrvFS mount에 두는 구성
-- Windows와 Linux 경로, PID, 환경 값, process binding 또는 영수증을 변환하거나 서로 같다고 추정하는 동작
-- 네이티브 Windows 영수증을 WSL2에서 사용하거나 WSL2 영수증을 네이티브 Windows에서 사용하는 동작
-- 현재 WSL2 지원 entry가 명시하지 않은 배포판
+- Windows와 Linux 경로, PID, 환경 값, Connection, runtime session 또는 project session을 변환하거나 서로 같다고 추정하는 동작
+- 네이티브 Windows Runtime Home session 기록을 WSL2에서 사용하거나 WSL2 session 기록을 네이티브 Windows에서 사용하는 동작
+- 현재 최초 릴리스 WSL2 좌표 밖의 배포판
 
-WSL 종료나 재시작은 살아 있는 프로세스 identity를 무효화합니다. 프로세스 또는
-최신성 좌표가 더 이상 맞지 않는 binding과 영수증은 stale로 거절해야 하며, 새
-verify 흐름을 통해 새 영수증을 만들어야 합니다.
+WSL 종료나 재시작은 살아 있는 관리 runtime session을 끝냅니다. 그 project session은
+이후 호출에 권한을 줄 수 없으며, 새로운 관리 MCP lifecycle이 새 runtime session과
+project session을 기록해야 합니다.
 
 지원하지 않는 토폴로지는 기계 판독할 수 있습니다. `unsupported_wsl1`은 WSL1,
 `unsupported_wsl_cross_topology`는 서로 맞지 않는 WSL 커널/환경 사실,
@@ -124,7 +123,7 @@ workspace 빌드와 테스트에는 저장소가 선언한 Rust 도구 체인이
 런타임 전제 조건은 다음과 같습니다.
 
 - 선택한 정확한 target 및 플랫폼 환경용으로 최종 확정된 Volicord 실행 파일
-- 현재 target triple, 플랫폼 좌표, `record` profile, 필수 capability와 정확히 일치하는 내장 지원 카탈로그 entry에 등록된 Codex 실행 파일
+- 관리 구성을 시작할 수 있는 사용 가능한 Codex 실행 파일
 - Volicord 빌드가 제공하는 SQLite 지원
 - 선택한 네이티브 플랫폼 또는 WSL2 adapter가 요구하는 파일 시스템 동작
 - 관리형 MCP 프로세스 경계를 보존하는 stdio pipe
@@ -135,19 +134,19 @@ workflow가 Git 객체 ID를 제공하거나 검증할 때, 또는 선택한 Pro
 
 ## 실행 파일과 프로세스 요구사항
 
-관리 프로세스는 설정과 검증이 결속할 정확한 Codex 아티팩트를 찾아 실행할 수
-있어야 합니다. 명령 이름을 찾은 것만으로는 지원이 성립하지 않습니다. 검증은
-해석한 실행 파일을 hash하고, 현재 target 및 플랫폼의 정확한 내장 지원 카탈로그 entry와
-대조하며, binding이 요구하는 프로세스와 capability 관찰을 기록하고, 모든 adapter
-점검이 성공한 뒤에만 영수증을 발행합니다.
+관리 프로세스는 구성된 Codex 실행 파일을 찾아 실행할 수 있어야 합니다. 검증은 관찰한
+실행 파일과 host version을 diagnostic으로 보고할 수 있지만 권한을 위해 hash하거나
+지원 카탈로그와 대조하거나 권한 receipt를 발급하지 않습니다. 실행 파일 사용 가능성은
+agent, host, binary, 운영체제 사용자, human identity를 성립시키지 않습니다.
 
 관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야
-합니다. adapter는 정규 `ManagedHostBinding`을 통해 정확한 command, arguments,
-forwarded environment, configuration target, process binding, required capabilities와
-platform environment를 검증합니다. 비어 있는 환경 값과 없는 환경 값은 다릅니다.
+합니다. adapter는 관리 entry, command, arguments, 전달된 Runtime Home, configuration
+target, 플랫폼 전제 조건을 검증합니다. 관리 launch marker는 협력적 routing
+맥락이지 credential이 아닙니다. 비어 있는 환경 값과 없는 환경 값은 다릅니다.
 
-실행 파일 identity, 설정 identity, 프로세스 identity와 영수증 최신성은 서로
-독립된 점검입니다. 하나의 일치가 다른 점검을 대신하지 않습니다.
+실행 파일, 설정, 프로세스, client, version 관찰은 diagnostic 또는 설정 사실입니다.
+어느 것도 런타임 권한을 공급하지 않습니다. 권한은 현재 Connection, project
+membership, mode, Store가 소유한 관리 runtime/project session을 사용합니다.
 
 ## Runtime Home 요구사항
 
@@ -174,14 +173,14 @@ connection은 저장소에 이식 가능한 관리 Codex 설정을 설치하고,
 저장소 경로는 다음 조건을 만족해야 합니다.
 
 - 비어 있지 않고 현재 플랫폼의 정규 경로 규칙으로 해석됩니다.
-- 관리 binding 및 영수증이 사용하는 같은 저장소를 식별합니다.
+- 선택한 Connection에 현재 등록된 저장소를 식별합니다.
 - 요청한 install, repair 또는 uninstall 동작에 필요한 쓰기만 허용합니다.
 - Codex, Volicord와 Runtime Home과 같은 플랫폼 환경에 있습니다.
 - WSL2에서는 `/mnt/*` 밖의 배포판 ext4 파일 시스템으로 해석됩니다.
 
-저장소 이동, 정규 identity 변경 또는 connection scope 변경은 이전 binding이나
-영수증을 불일치 상태로 만듭니다. 다시 검증해야 하며 호출자가 이전 좌표를
-암묵적으로 고쳐 쓰면 안 됩니다.
+저장소 이동, 정규 identity 변경, Connection scope 변경 또는 integration revision
+증가는 이전 project session을 stale로 만듭니다. 새로운 관리 MCP project session이
+필요하며 호출자가 이전 좌표를 암묵적으로 고쳐 쓰면 안 됩니다.
 
 ## Codex 설정 요구사항
 
@@ -189,10 +188,11 @@ Codex adapter는 관리 항목의 탐색, 엄격한 parsing, 정규 projection, 
 검증, drift 탐지, repair와 안전한 uninstall을 담당합니다. 설정은 관련 없는 사용자
 설정을 보존하고, 소유하지 않은 충돌을 덮어쓰지 않고 거절해야 합니다.
 
-personal 및 shared 설정 위치는 adapter가 담당하는 세부사항입니다. Core와 Store는
-정규 binding 데이터와 typed 검증 영수증만 받습니다. Codex 설정 파일을 읽거나,
-셸 명령을 tokenization하거나, wrapper marker를 검사하거나, 플랫폼 경로를 추정하지
-않습니다.
+personal 및 shared 설정 위치는 adapter가 담당하는 세부사항입니다. Core는
+`ValidatedAgentSession`만 받으며 Codex 설정 파일을 읽거나, 셸 명령을 tokenization하거나,
+wrapper marker를 검사하거나, 플랫폼 경로를 추정하지 않습니다. Store는 MCP가 이
+경계를 검증할 때 사용하는 Connection, membership, integration revision, 관리 runtime
+session, project session 기록을 담당합니다.
 
 Repair는 탐지한 reason을 보고한 뒤 adapter가 소유한 설정과 복구 가능한 typed
 값만 다시 만들 수 있습니다. Uninstall은 정확히 현재 소유한 항목만 제거하며,
@@ -200,26 +200,32 @@ Repair는 탐지한 reason을 보고한 뒤 adapter가 소유한 설정과 복�
 
 ## 관리형 MCP 환경 요구사항
 
-관리 프로세스의 공개 MCP transport는 stdio뿐입니다. 현재 관리 launch 계약이
-요구하는 정확한 project, connection, Runtime Home, host, profile, binding과 플랫폼
-좌표를 받아야 합니다. 필수 좌표가 없거나, 비었거나, 중복되거나, 충돌하거나,
-알 수 없으면 거절합니다. 현재 디렉터리, 이웃 설정이나 다른 connection에서
-추정하지 않습니다.
+관리 프로세스의 공개 MCP transport는 stdio뿐입니다. 관리 launch 맥락에서
+Connection과 Runtime Home을 받아야 하며 personal entry는 정확한 project도 담을 수
+있습니다. 저장소에 이식 가능한 shared discovery는 머신 로컬 ID를 넣지 않고 등록된
+현재 clone을 해석합니다. 필수 launch 맥락이 없거나 비었거나 충돌하거나 알 수 없으면
+거절하며 다른 Connection에서 추정하지 않습니다. Host/profile marker는 이 협력적
+경로를 선택할 뿐 tool 호출을 승인하지 않습니다.
+
+Initialize 때 MCP는 제한된 client name/version과 선택적 host version diagnostic을
+포함한 managed-host runtime session 하나를 기록합니다. 각 project tool 호출에서는
+project session을 기록하거나 선택하고, Core 맥락을 만들기 전에 현재 Connection
+활성화, membership, mode, runtime/project session 소유권, 두 integration revision을
+검증합니다. 제한 안의 임의 client/host version은 이 결과를 바꾸지 않습니다.
 
 비밀과 관련 없는 ambient 환경 값은 관리 설정에 복사하지 않습니다. 진단은 token,
 전체 민감 payload 또는 가리지 않은 민감 절대 경로를 출력하면 안 됩니다.
 
 ## 중단 기준
 
-다음 조건 중 적용되는 것이 있으면 설치, 검증, repair, 관리 launch 또는 영수증
+다음 조건 중 적용되는 것이 있으면 설치, 검증, repair, 관리 launch 또는 project 호출을
 사용을 중단해야 합니다.
 
 - 호스트와 profile이 정확히 `codex`, `record`가 아닙니다.
 - 플랫폼 환경이 없거나 모호하거나 네 값 집합 밖입니다.
 - target triple이 없거나 알 수 없거나 플랫폼 환경과 일치하지 않습니다.
-- 정확한 Codex 아티팩트, target triple, 플랫폼 환경, profile, 필수 capability와 일치하는 내장 지원 카탈로그 entry가 없습니다.
 - 모든 필수 target/environment 셀에 현재 통과 증거가 없는 상태에서 릴리스 게시를 시도합니다.
-- 실행 파일, 프로세스, binding, 설정, project, connection, policy, capability 또는 최신성 좌표가 일치하지 않습니다.
+- 관리 설정, project, Connection, membership, mode, runtime session, project session 또는 현재 integration revision이 일치하지 않습니다.
 - 관리 설정이 손상되었거나 소유하지 않은 항목이거나 repair 가능한 담당 경계 밖으로 drift했습니다.
 - 저장된 typed 설정 행동이나 필요한 다른 담당 값이 손상되었습니다.
 - 네이티브 Windows/WSL2 교차, WSL1, `/mnt/*`, DrvFS 또는 지원하지 않는 WSL 배포판이 관찰됩니다.
@@ -228,13 +234,13 @@ Repair는 탐지한 reason을 보고한 뒤 adapter가 소유한 설정과 복�
 - 필수 읽기나 플랫폼 primitive를 사용할 수 없습니다.
 
 결과는 해당 `Rejected`, `Unavailable`, `Corrupt` 또는 `UnsupportedContract` 범주와
-도메인 reason을 보존해야 합니다. 기본 binding, 합성 영수증, fallback 호스트,
+도메인 reason을 보존해야 합니다. 기본 session, 합성 권한, fallback 호스트,
 추정 플랫폼 또는 부분 성공을 만들면 안 됩니다.
 
 ## 인접 담당 문서
 
 - 최초 릴리스 포함 및 제외 표면: [범위](scope.md)
-- binding, 영수증, 저장된 설정 행동 및 adapter/Core 경계: [Agent Connection](agent-connection.md)
+- 운영 session, 저장된 설정 행동 및 adapter/Core 경계: [Agent Connection](agent-connection.md)
 - 정확한 아티팩트 및 플랫폼 증거: [호스트 릴리스 증거](host-release-evidence.md)
 - 런타임 경로 및 저장소 경계: [런타임 경계](runtime-boundaries.md)
 - SQLite 형식 수용: [저장소 버전 관리](storage-versioning.md)

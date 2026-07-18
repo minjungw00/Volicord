@@ -3,8 +3,8 @@ use std::{error::Error, fs, path::Path};
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use volicord_core::{
-    rejected_response, tool_error, validate_host_verification_receipt, Clock, CoreService,
-    InvocationContext, UserChannelInboxProjectionRequest,
+    rejected_response, tool_error, Clock, CoreService, InvocationContext,
+    UserChannelInboxProjectionRequest,
 };
 use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
@@ -14,20 +14,17 @@ use volicord_test_support::core_fixtures::{
     ObservationUserActionFixture, ResolveUserActionFixture, TaskOwnerJsonColumn,
     UpdateScopeFixture, UserActionFixture, DEFAULT_PRODUCT_PATH,
 };
-use volicord_test_support::{
-    test_host_receipt_fixture,
-    TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-};
+use volicord_test_support::TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING;
 use volicord_types::{
-    AcceptanceCriterionId, ActorSource, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind,
-    ArtifactRef, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind,
-    ErrorCode, EvidenceAssuranceLevel, EvidenceClaimId, EvidenceObservationInput,
-    EvidenceRelevanceStatus, EvidenceSourceKind, EvidenceTarget, JsonObject, JudgmentKind,
-    JudgmentResolutionOutcome, OperationCategory, ProjectId, ResidualRiskInput, ResponseKind,
-    RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusRequest, TaskId,
-    UserActionBasis, UserActionOptionAction, UserActionRequestBody, UserActionRequiredFor,
-    UserActionResolutionBody, UtcTimestamp, WriteTicketId,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    AcceptanceCriterionId, ActorSource, AgentConnectionId, ArtifactInput, ArtifactInputId,
+    ArtifactInputSourceKind, ArtifactRef, ChangeUnitOperation, CloseAssessmentInput, CloseIntent,
+    CloseReason, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceClaimId,
+    EvidenceObservationInput, EvidenceRelevanceStatus, EvidenceSourceKind, EvidenceTarget,
+    JsonObject, JudgmentKind, JudgmentResolutionOutcome, OperationCategory, ProjectId,
+    ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef,
+    StatusRequest, TaskId, UserActionBasis, UserActionOptionAction, UserActionRequestBody,
+    UserActionRequiredFor, UserActionResolutionBody, UtcTimestamp, WriteTicketId,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
 #[test]
@@ -249,6 +246,7 @@ fn direct_public_request_parsing_rejects_invocation_authority_fields() -> Result
 fn structured_store_unavailability_does_not_expose_sql_or_local_paths() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("store_unavailable")?;
+    let invocation = invocation(&fixture, OperationCategory::Read);
     fs::remove_file(
         fixture
             .runtime_home_path()
@@ -259,7 +257,7 @@ fn structured_store_unavailability_does_not_expose_sql_or_local_paths() -> Resul
 
     let response = core(&fixture).status(
         fixture.status_request("req_missing_state_db", None),
-        invocation(&fixture, OperationCategory::Read),
+        invocation,
     )?;
 
     assert_rejected_code(&response.response_value, "MCP_UNAVAILABLE");
@@ -3836,7 +3834,7 @@ fn invocation_with_actor(
     operation_category: OperationCategory,
 ) -> InvocationContext {
     let verification_basis = if matches!(actor_source, ActorSource::AgentConnection(_)) {
-        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+        ""
     } else if operation_category == OperationCategory::UserOnly {
         VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
     } else {
@@ -3849,15 +3847,33 @@ fn invocation_with_actor(
         verification_basis,
     );
     match actor_source {
-        ActorSource::AgentConnection(connection_id) => {
-            let host = test_host_receipt_fixture(fixture.project_id(), connection_id.as_str());
-            let receipt = validate_host_verification_receipt(
-                host.receipt,
-                &host.current,
-                &host.validation_time,
+        ActorSource::AgentConnection(_) => {
+            let guard = volicord_store::guards::guard_health_record(
+                fixture.runtime_home_path(),
+                fixture.project_id(),
+                fixture.connection_id(),
             )
-            .expect("the typed conformance host receipt fixture must validate");
-            invocation.with_validated_host_receipt(receipt)
+            .expect("conformance guard authority fixture must load");
+            let session = volicord_test_support::seed_test_agent_session(
+                fixture.runtime_home_path(),
+                fixture.project_id(),
+                fixture.connection_id(),
+                guard
+                    .guard_installation
+                    .as_ref()
+                    .map(|installation| installation.guard_installation_id.as_str()),
+            )
+            .expect("conformance managed Agent Session fixture must seed");
+            let validated = CoreService::new(fixture.runtime_home_path())
+                .validate_agent_session(
+                    AgentConnectionId::new(fixture.connection_id()),
+                    ProjectId::new(fixture.project_id()),
+                    session.runtime_session_id,
+                    session.project_session_id,
+                    operation_category,
+                )
+                .expect("conformance managed Agent Session fixture must validate");
+            invocation.with_validated_agent_session(validated)
         }
         _ => invocation,
     }

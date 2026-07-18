@@ -9,7 +9,7 @@ managed Codex configuration, and the stdio MCP child process.
 | Component | Boundary |
 |---|---|
 | Product Repository | The canonical Git work tree containing user product files and explicitly managed project configuration. |
-| Volicord Runtime Home | Local registry, project state, authoritative operational sessions, managed-binding metadata, and runtime-owned artifacts. |
+| Volicord Runtime Home | Local registry, project state, authoritative operational sessions, and runtime-owned artifacts. |
 | Volicord installation | The selected `volicord` executable and its build identity. It is not the Runtime Home. |
 | Managed Codex configuration | User- or project-owned configuration that starts the exact managed stdio process. It is not Core authority. |
 | `volicord mcp --stdio` | One local child process bound to one current Agent Connection. It is not a network service. |
@@ -55,8 +55,10 @@ stored records remain normalized repository-relative identities.
 
 A personal connection writes user-owned managed configuration. A shared
 connection writes project-owned configuration and forwards `VOLICORD_HOME`
-without embedding a machine-local Runtime Home path. Both encode the canonical
-`ManagedHostBinding` selected by [Agent Connection](agent-connection.md).
+without embedding a machine-local Runtime Home path. The generated command,
+arguments, and managed launch markers select the registered Connection and its
+optional project at startup. They are cooperative launch context, not identity
+credentials.
 
 Inside WSL2, the Codex executable, Volicord executable, configuration target,
 and each generated managed artifact are independently resolved and checked for
@@ -64,14 +66,14 @@ the same distribution ext4 boundary. A repository root on ext4 does not
 authorize a nested file on another mount.
 
 Configuration presence does not prove Codex trust, reload, initialization,
-tool discovery, current receipt, or release-cell status. Those facts remain
-separate.
+tool discovery, a current operational session, or release-cell status. Those
+facts remain separate.
 
 ## Volicord Runtime Home
 
 The Runtime Home contains only Volicord-owned runtime state: registry storage,
-per-project storage, managed-binding metadata, and runtime-managed artifact
-bytes. It is selected explicitly or through the platform rule owned by
+per-project storage, authoritative operational sessions, and runtime-managed
+artifact bytes. It is selected explicitly or through the platform rule owned by
 [Administrative CLI](admin-cli.md#runtime-home-selection).
 
 The Runtime Home must not be placed inside a Product Repository. Product files,
@@ -107,10 +109,11 @@ an operational authority source.
 
 - Product Repository writes still require the applicable Core authority.
 - Runtime Home write access is not Product Repository write permission.
-- Managed configuration is not a user decision, Write Ticket, host attestation,
-  or Core receipt.
-- An operational runtime session proves only its recorded cooperative protocol
-  behavior; it does not prove host or client identity.
+- Managed configuration and its launch markers are not a user decision, Write
+  Ticket, host attestation, client identity, or human identity.
+- A validated operational session proves only locally observed cooperative
+  session ownership and current project authorization. It does not prove a
+  binary, host, client, actor, or human identity.
 - Removing integration configuration does not delete project authority data.
 - Export and release-validation output belongs in an explicit external output
   location, not maintained docs or Runtime Home trust input.

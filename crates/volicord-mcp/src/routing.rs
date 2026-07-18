@@ -10,10 +10,7 @@ pub struct McpConnectionContext {
     pub runtime_home: PathBuf,
     pub connection_internal_id: AgentConnectionId,
     pub mode: AgentConnectionMode,
-    pub(crate) invocation_binding_basis: String,
     pub project_allowlist: Option<Vec<ProjectId>>,
-    #[cfg(test)]
-    pub(crate) test_host_receipt_fixture: bool,
 }
 
 impl McpConnectionContext {
@@ -25,12 +22,6 @@ impl McpConnectionContext {
         let connection_internal_id = connection_id.into();
         let (context, _, _) = resolve_connection_context(runtime_home, &connection_internal_id)?;
         Ok(context)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_test_host_receipt_fixture(mut self) -> Self {
-        self.test_host_receipt_fixture = true;
-        self
     }
 
     /// Narrows this adapter context to a transport-owned project allowlist.
@@ -308,10 +299,7 @@ impl McpConnectionStartupInspection {
             runtime_home: self.runtime_home.clone(),
             connection_internal_id: self.connection_internal_id.clone(),
             mode: self.mode,
-            invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
             project_allowlist: None,
-            #[cfg(test)]
-            test_host_receipt_fixture: false,
         }
     }
 
@@ -563,10 +551,7 @@ pub(crate) fn resolve_connection_context(
         runtime_home,
         connection_internal_id: AgentConnectionId::new(connection.connection_internal_id.clone()),
         mode,
-        invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
         project_allowlist: None,
-        #[cfg(test)]
-        test_host_receipt_fixture: false,
     };
     Ok((context, connection, projects))
 }

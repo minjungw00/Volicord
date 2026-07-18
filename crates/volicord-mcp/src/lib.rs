@@ -11,7 +11,6 @@ mod adapter;
 mod build_info;
 mod constants;
 mod errors;
-mod host_authority;
 mod prelude;
 mod repository_discovery;
 mod routing;
@@ -22,7 +21,7 @@ mod tests;
 mod tool_registry;
 mod util;
 
-pub use adapter::{McpAdapter, McpAdapterBoundary, McpDerivedInvocationContext};
+pub use adapter::{McpAdapter, McpAdapterBoundary};
 pub use build_info::{build_id, build_info, BuildInfo};
 pub use constants::{
     ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
@@ -36,10 +35,9 @@ pub use routing::{
     RepositoryDiscoveryResolution,
 };
 pub use stdio::{
-    managed_host_authority_preparation_required_from_env, preflight_check,
-    resolve_repository_discovery_runtime_home, resolve_runtime_home, resolve_runtime_home_from_env,
-    run_preflight_check_from_env, run_stdio, run_stdio_discover_repository_from_env,
-    run_stdio_from_env,
+    preflight_check, resolve_repository_discovery_runtime_home, resolve_runtime_home,
+    resolve_runtime_home_from_env, run_preflight_check_from_env, run_stdio,
+    run_stdio_discover_repository_from_env, run_stdio_from_env,
 };
 pub use tool_registry::{
     adapter_utility_tools, mcp_tools, mcp_tools_for_mode, public_method_tools, McpToolAnnotations,

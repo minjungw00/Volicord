@@ -1,6 +1,5 @@
 use std::sync::atomic::AtomicU64;
 
-use volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING;
 pub use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, CHECK_CLOSE_TOOL_NAME, CLOSE_TASK_TOOL_NAME,
     GET_OPERATION_RESULT_TOOL_NAME, INTAKE_TOOL_NAME, LIST_PROJECTS_TOOL_NAME,
@@ -12,8 +11,6 @@ pub use volicord_types::{
 
 pub(crate) const SUPPORTED_PROTOCOL_VERSION: &str = "2025-11-25";
 pub(crate) const SERVER_NAME: &str = "volicord-mcp";
-pub(crate) const DEFAULT_INVOCATION_BINDING_BASIS: &str =
-    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING;
 pub(crate) const DEFAULT_LOCALE: &str = "en-US";
 pub(crate) static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 

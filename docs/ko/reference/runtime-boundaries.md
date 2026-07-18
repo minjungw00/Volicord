@@ -9,7 +9,7 @@
 | 구성 요소 | 경계 |
 |---|---|
 | Product Repository | 사용자 제품 파일과 명시적인 관리 프로젝트 구성을 담는 정규 Git 작업 트리입니다. |
-| Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 권위 있는 운영 session, 관리 binding metadata, 런타임 소유 아티팩트입니다. |
+| Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 권위 있는 운영 session, 런타임 소유 아티팩트입니다. |
 | Volicord 설치 | 선택한 `volicord` 실행 파일과 build identity입니다. Runtime Home이 아닙니다. |
 | 관리 Codex 구성 | 정확한 관리 stdio 프로세스를 시작하는 사용자 또는 프로젝트 소유 구성입니다. Core 권한이 아닙니다. |
 | `volicord mcp --stdio` | 현재 Agent Connection 하나에 결속된 로컬 자식 프로세스 하나입니다. 네트워크 서비스가 아닙니다. |
@@ -51,20 +51,20 @@ WSL2에서는 정규 Linux 형태의 경로만으로 충분하지 않습니다. 
 ## 관리 Codex 구성
 
 개인 연결은 사용자 소유 관리 구성을 씁니다. 공유 연결은 프로젝트 소유 구성을 쓰고
-머신 로컬 Runtime Home 경로를 내장하지 않은 채 `VOLICORD_HOME`을 전달합니다. 둘 다
-[Agent Connection](agent-connection.md)이 선택한 정규 `ManagedHostBinding`을
-encode합니다.
+머신 로컬 Runtime Home 경로를 내장하지 않은 채 `VOLICORD_HOME`을 전달합니다. 생성된
+명령, 인자, 관리 시작 marker는 시작 시 등록된 Connection과 선택적 프로젝트를
+선택합니다. 이 값은 협력적인 시작 맥락이며 identity credential이 아닙니다.
 
 WSL2에서는 Codex 실행 파일, Volicord 실행 파일, 설정 대상, 생성된 각 관리
 아티팩트를 독립적으로 해석하고 같은 배포판 ext4 경계를 확인합니다. 저장소
 root가 ext4에 있다는 사실은 다른 mount의 중첩 파일을 승인하지 않습니다.
 
-구성이 있다고 Codex 신뢰, 다시 불러오기, 초기화, 도구 검색, 현재 receipt, 릴리스 셀
-상태가 증명되지는 않습니다. 이 사실들은 서로 분리됩니다.
+구성이 있다고 Codex 신뢰, 다시 불러오기, 초기화, 도구 검색, 현재 운영 session,
+릴리스 셀 상태가 증명되지는 않습니다. 이 사실들은 서로 분리됩니다.
 
 ## Volicord Runtime Home
 
-Runtime Home은 registry 저장소, 프로젝트별 저장소, 관리 binding metadata, 런타임
+Runtime Home은 registry 저장소, 프로젝트별 저장소, 권위 있는 운영 session, 런타임
 관리 아티팩트 bytes 같은 Volicord 소유 런타임 상태만 담습니다. 명시적 선택 또는
 [관리 CLI](admin-cli.md#runtime-home-selection)의 플랫폼 규칙으로 선택합니다.
 
@@ -100,9 +100,10 @@ best-effort carrier이며 운영 권한 출처로 사용하지 않습니다.
 
 - Product Repository 쓰기에는 계속 해당 Core 권한이 필요합니다.
 - Runtime Home 쓰기 접근은 Product Repository 쓰기 권한이 아닙니다.
-- 관리 구성은 사용자 판단, 쓰기 티켓, host attestation, Core receipt가 아닙니다.
-- 운영 runtime session은 기록한 협력적 protocol 동작만 증명하며 host 또는 client
-  identity를 증명하지 않습니다.
+- 관리 구성과 시작 marker는 사용자 판단, 쓰기 티켓, host attestation, client
+  identity, human identity가 아닙니다.
+- 검증된 운영 session은 로컬에서 관찰한 협력적 session 소유권과 현재 프로젝트 권한만
+  증명합니다. Binary, host, client, actor, human identity를 증명하지 않습니다.
 - 통합 구성을 제거해도 프로젝트 권한 데이터를 삭제하지 않습니다.
 - 내보내기와 릴리스 검증 출력은 유지 문서나 Runtime Home trust input이 아니라 명시적인
   외부 출력 위치에 둡니다.

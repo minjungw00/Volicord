@@ -359,9 +359,9 @@ pub(crate) fn validate_persisted_manifest(
         Ok(manifest)
             if manifest.contract_id == volicord_types::STORAGE_CONTRACT_ID
                 && manifest.canonical_ddl_digest
-                    == "sha256:e689f217124e8c915dbfdb81ba3c336cc9a336dbb1aecfcaa1972da89cf083eb"
+                    == "sha256:8e32fd05e4e951568e833ffd24634cc739beee87d9944bc8f29546d93259bed2"
                 && manifest.integrity_constraints_digest
-                    == "sha256:20231d647d77d53a11af31a3f00ac54b7a0168a594b02d32ea40f951057922ec"
+                    == "sha256:4bd4a9136c594f3dddb34ecaeea592d29591059d13a7830043113ebfa132ebe2"
                 && manifest.enabled_capabilities == expected.enabled_capabilities =>
         {
             let actual = canonical_json_string(&manifest).map_err(|error| {

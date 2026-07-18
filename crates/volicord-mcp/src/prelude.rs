@@ -50,8 +50,9 @@ pub(crate) use volicord_store::{
 pub(crate) use volicord_types::{
     managed_stdio_session_id, mcp_request_schema, mcp_response_schema,
     validate_managed_host_native_session_id, validate_managed_stdio_session_id, ActorSource,
-    AgentConnectionId, AgentConnectionMode, AuthorityReceipt, CheckCloseRequest, CloseTaskRequest,
-    EffectKind, ErrorCode, GetOperationResultRequest, IdempotencyKey, IntakeRequest,
+    AgentConnectionId, AgentConnectionMode, AgentRuntimeSessionId, AgentSessionId,
+    AuthorityReceipt, CheckCloseRequest, CloseTaskRequest, EffectKind, ErrorCode,
+    GetOperationResultRequest, IdempotencyKey, IntakeRequest, IntegrationProfile,
     McpAuthoritativeRefreshFailure, McpCheckCloseArguments, McpCloseTaskArguments,
     McpGetOperationResultArguments, McpIntakeArguments, McpMutationEffectSummary,
     McpMutationFullResponse, McpMutationPostEffectFailure, McpMutationProjectionErrorCode,

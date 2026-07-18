@@ -3,7 +3,6 @@ use volicord_store::core_pipeline::ProjectStateHeader;
 use volicord_types::{
     canonical_git_object_id, is_canonical_sha256_digest, ActorSource, ErrorCode, OperationCategory,
     ToolEnvelope, ToolError, ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE,
-    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
 };
 
 use crate::pipeline::{tool_error, InvocationContext, MethodPolicy, VerifiedInvocationContext};
@@ -32,12 +31,14 @@ pub(crate) fn derive_verified_invocation(
         ));
     }
     validate_actor_source(&invocation.actor_source, policy.operation_category)?;
-    if invocation.invocation_binding_basis.trim().is_empty() {
+    if !matches!(invocation.actor_source, ActorSource::AgentConnection(_))
+        && invocation.invocation_binding_basis.trim().is_empty()
+    {
         return Err(invocation_context_mismatch_error(
             "invocation.invocation_binding_basis",
         ));
     }
-    let verification_basis = verified_binding_basis(invocation)?;
+    let (verification_basis, session_id) = verified_binding_basis(invocation)?;
     let mut git_workspace_context = invocation.git_workspace_context.clone();
     if let Some(workspace) = git_workspace_context.as_mut() {
         validate_git_workspace_context(workspace)?;
@@ -49,33 +50,41 @@ pub(crate) fn derive_verified_invocation(
         operation_category: invocation.operation_category,
         verification_basis,
         assurance_level: actor_assurance_level(&invocation.actor_source).to_owned(),
-        session_id: invocation.session_id.clone(),
+        session_id,
         git_workspace_context,
     })
 }
 
-fn verified_binding_basis(invocation: &InvocationContext) -> Result<String, ToolError> {
-    match (&invocation.actor_source, &invocation.validated_host_receipt) {
+fn verified_binding_basis(
+    invocation: &InvocationContext,
+) -> Result<(String, Option<String>), ToolError> {
+    match (
+        &invocation.actor_source,
+        &invocation.validated_agent_session,
+    ) {
         (ActorSource::AgentConnection(connection_id), Some(validated)) => {
-            let receipt = validated.receipt();
-            if invocation.invocation_binding_basis
-                != VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
-                || receipt.project_id != invocation.project_id
-                || receipt.connection_id.as_str() != connection_id.as_str()
+            if validated.project_id() != &invocation.project_id
+                || validated.connection_id() != connection_id
             {
                 return Err(invocation_context_mismatch_error(
-                    "invocation.validated_host_receipt",
+                    "invocation.validated_agent_session",
                 ));
             }
-            Ok(receipt.binding_digest.clone())
+            Ok((
+                validated.verification_basis(),
+                Some(validated.project_session_id().as_str().to_owned()),
+            ))
         }
         (ActorSource::AgentConnection(_), None) => Err(invocation_context_mismatch_error(
-            "invocation.validated_host_receipt",
+            "invocation.validated_agent_session",
         )),
         (_, Some(_)) => Err(invocation_context_mismatch_error(
-            "invocation.validated_host_receipt",
+            "invocation.validated_agent_session",
         )),
-        (_, None) => Ok(invocation.invocation_binding_basis.trim().to_owned()),
+        (_, None) => Ok((
+            invocation.invocation_binding_basis.trim().to_owned(),
+            invocation.session_id.clone(),
+        )),
     }
 }
 
@@ -213,16 +222,8 @@ fn actor_source_mismatch_error(
 #[cfg(test)]
 mod tests {
     use super::{validate_git_workspace_context, verified_binding_basis};
-    use crate::{
-        pipeline::{GitWorkspaceContext, InvocationContext},
-        validate_host_verification_receipt,
-    };
-    use volicord_types::{
-        AgentConnectionId, CodexCapability, CurrentHostReceiptContext, HostKind,
-        HostVerificationReceipt, HostVerificationResult, IntegrationProfile, PlatformEnvironment,
-        PlatformReleaseCoordinate, ProjectId, UtcTimestamp, HOST_VERIFICATION_RECEIPT_CONTRACT_ID,
-        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
-    };
+    use crate::pipeline::{GitWorkspaceContext, InvocationContext};
+    use volicord_types::ProjectId;
 
     fn workspace_context(head_sha: &str) -> GitWorkspaceContext {
         GitWorkspaceContext {
@@ -262,12 +263,12 @@ mod tests {
     }
 
     #[test]
-    fn static_managed_stdio_label_cannot_authorize_without_a_typed_receipt() {
+    fn caller_label_cannot_authorize_without_a_validated_session() {
         let invocation = InvocationContext::new(
             ProjectId::new("project-a"),
             volicord_types::ActorSource::agent_connection("connection-a"),
             volicord_types::OperationCategory::Read,
-            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            "mcp_stdio_connection_binding",
         );
 
         let error = verified_binding_basis(&invocation).unwrap_err();
@@ -280,13 +281,13 @@ mod tests {
                 .details
                 .and_then(|details| details.get("field").cloned()),
             Some(serde_json::Value::String(
-                "invocation.validated_host_receipt".to_owned()
+                "invocation.validated_agent_session".to_owned()
             ))
         );
     }
 
     #[test]
-    fn alternate_agent_connection_label_cannot_bypass_a_typed_receipt() {
+    fn alternate_agent_connection_label_cannot_bypass_a_validated_session() {
         let invocation = InvocationContext::new(
             ProjectId::new("project-a"),
             volicord_types::ActorSource::agent_connection("connection-a"),
@@ -304,73 +305,28 @@ mod tests {
                 .details
                 .and_then(|details| details.get("field").cloned()),
             Some(serde_json::Value::String(
-                "invocation.validated_host_receipt".to_owned()
+                "invocation.validated_agent_session".to_owned()
             ))
         );
     }
 
     #[test]
-    fn validated_managed_receipt_supplies_the_exact_binding_identity() {
-        const RAW: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        const PREFIXED: &str =
-            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let capabilities = vec![
-            CodexCapability::ManagedStdioMcp,
-            CodexCapability::PersonalManagedBinding,
-            CodexCapability::RecordWorkflow,
-            CodexCapability::SharedManagedBinding,
-        ];
-        let receipt = HostVerificationReceipt {
-            contract_id: HOST_VERIFICATION_RECEIPT_CONTRACT_ID.to_owned(),
-            project_id: ProjectId::new("project-a"),
-            connection_id: AgentConnectionId::new("connection-a"),
-            host_kind: HostKind::Codex,
-            integration_profile: IntegrationProfile::Record,
-            platform_environment: PlatformEnvironment::Linux,
-            platform_release_coordinate: PlatformReleaseCoordinate::Native,
-            required_capabilities: capabilities.clone(),
-            verified_capabilities: capabilities.clone(),
-            binding_digest: PREFIXED.to_owned(),
-            generated_artifacts_digest: PREFIXED.to_owned(),
-            executable_digest: RAW.to_owned(),
-            policy_digest: PREFIXED.to_owned(),
-            verifier_build_digest: RAW.to_owned(),
-            observed_at: UtcTimestamp::parse("2026-07-17T01:00:00Z")
-                .expect("fixture observation timestamp is valid"),
-            expires_at: UtcTimestamp::parse("2026-07-17T01:05:00Z")
-                .expect("fixture expiry timestamp is valid"),
-            result: HostVerificationResult::Verified,
-        };
-        let current = CurrentHostReceiptContext {
-            project_id: receipt.project_id.clone(),
-            connection_id: receipt.connection_id.clone(),
-            host_kind: receipt.host_kind,
-            integration_profile: receipt.integration_profile,
-            platform_environment: receipt.platform_environment,
-            platform_release_coordinate: receipt.platform_release_coordinate.clone(),
-            required_capabilities: capabilities,
-            binding_digest: receipt.binding_digest.clone(),
-            generated_artifacts_digest: receipt.generated_artifacts_digest.clone(),
-            executable_digest: receipt.executable_digest.clone(),
-            policy_digest: receipt.policy_digest.clone(),
-            verifier_build_digest: receipt.verifier_build_digest.clone(),
-        };
-        let now = UtcTimestamp::parse("2026-07-17T01:01:00Z")
-            .expect("fixture current timestamp is valid");
-        let validated = validate_host_verification_receipt(receipt, &current, &now)
-            .expect("matching fixture receipt must validate");
+    fn validated_session_supplies_the_current_operational_identity() {
+        let validated =
+            crate::agent_session::validated_agent_session_for_test("connection-a", "project-a");
         let invocation = InvocationContext::new(
             ProjectId::new("project-a"),
             volicord_types::ActorSource::agent_connection("connection-a"),
             volicord_types::OperationCategory::Read,
-            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            "",
         )
-        .with_validated_host_receipt(validated);
+        .with_validated_agent_session(validated);
 
-        assert_eq!(
-            verified_binding_basis(&invocation)
-                .expect("validated fixture receipt must authorize the binding"),
-            PREFIXED
-        );
+        let (basis, session_id) = verified_binding_basis(&invocation)
+            .expect("validated fixture session must authorize the invocation");
+        assert!(basis.starts_with(
+            "connection:connection-a/session:agent_test_project_session/revision:sha256:"
+        ));
+        assert_eq!(session_id.as_deref(), Some("agent_test_project_session"));
     }
 }

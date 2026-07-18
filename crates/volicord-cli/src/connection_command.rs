@@ -1,15 +1,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt, fs,
-    io::{self, Read},
     path::{Path, PathBuf},
-    time::SystemTime,
 };
 
-use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use volicord_platform_fs::{observe_local_platform_boundary, observe_parent_process_binding};
 use volicord_store::{
     agent_connections::{
         activate_staged_connection, add_connection_project, agent_connection_record,
@@ -35,15 +31,13 @@ use volicord_store::{
         guard_health_record, guard_installation_observation_is_current, list_guard_installations,
         GuardInstallationRecord,
     },
-    managed_host_authority::{upsert_managed_host_authority, ManagedHostAuthorityUpsert},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     workflow_records::ProjectWorkflowPolicyAuthorityApply,
     StoreError,
 };
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, current_managed_host_binding_external_descriptor,
-    host_hook_capability_managed_artifacts, GeneratedManagedArtifact, GuardInstallationStatus,
-    IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
+    canonical_json_sha256, canonical_json_string, GuardInstallationStatus, IntegrationProfile,
+    ProjectId, PromptCaptureStatus, UtcTimestamp,
 };
 
 use crate::cli::{
@@ -61,12 +55,7 @@ use crate::guard_integration::{
     GuardIntegrationError, GuardIntegrationPlan, GuardIntegrationPlanRequest,
 };
 use crate::host_integration::{
-    codex::{
-        issue_host_verification_receipt, managed_host_evidence_for_live_process,
-        managed_identity_evaluation_for_plan, CodexAdapter, CodexEnvironment,
-        CodexExistingPlanRequest, EmbeddedCodexSupportCatalogPolicy, HostVerificationReceiptIssue,
-    },
-    process::canonical_existing_platform_path,
+    codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
     verification::{
         ActiveToolExposureStatus, HostMcpCommandDiagnostic, HostMcpCommandLaunchMode,
         HostRuntimeObservationStatus, ProjectTrustStatus, Verification,
@@ -973,331 +962,6 @@ fn existing_host_plan(
             mode: &connection.mode,
         })
         .map_err(Into::into)
-}
-
-/// Issues and persists the current managed Codex authority for one live stdio parent.
-///
-/// The caller invokes this only for an actual managed-host startup. Availability
-/// probes and CLI verification children do not establish live process authority.
-pub fn prepare_managed_stdio_authority(
-    runtime_home: &Path,
-    connection_id: &str,
-    selected_project_id: Option<&str>,
-) -> Result<Option<String>, ConnectionCommandError> {
-    let connection = agent_connection_record(runtime_home, connection_id)?.ok_or_else(|| {
-        managed_authority_error(
-            "host_receipt_connection_missing",
-            format!("Agent Connection {connection_id} is not registered"),
-        )
-    })?;
-    if !connection.enabled {
-        return Err(managed_authority_error(
-            "host_receipt_connection_disabled",
-            format!("Agent Connection {connection_id} is disabled"),
-        ));
-    }
-    if connection.host_kind != HOST_KIND_CODEX {
-        return Err(managed_authority_error(
-            "unsupported_host_contract",
-            format!(
-                "managed stdio authority supports only Codex, not {}",
-                connection.host_kind
-            ),
-        ));
-    }
-
-    let projects = list_connection_projects(runtime_home, connection_id)?;
-    let selected = projects
-        .iter()
-        .filter(|project| {
-            selected_project_id.is_none_or(|selected| {
-                selected == project.project_id || selected == project.project_internal_id
-            })
-        })
-        .collect::<Vec<_>>();
-    if selected.is_empty() {
-        return Err(managed_authority_error(
-            "host_receipt_project_missing",
-            selected_project_id.map_or_else(
-                || format!("Agent Connection {connection_id} has no allowed project"),
-                |project_id| {
-                    format!(
-                        "project {project_id} is not allowed for Agent Connection {connection_id}"
-                    )
-                },
-            ),
-        ));
-    }
-
-    let platform = observe_local_platform_boundary()
-        .map_err(|error| managed_authority_error(error.reason(), error.detail().to_owned()))?;
-    let parent = observe_parent_process_binding()
-        .map_err(|error| managed_authority_error(error.reason(), error.detail().to_owned()))?;
-    let verifier_path = std::env::current_exe().map_err(|error| {
-        managed_authority_error("verifier_build_unavailable", error.to_string())
-    })?;
-    let verifier_build_digest = strict_raw_artifact(&verifier_path, platform.environment)?.digest;
-    let process = ProductionConnectionProcess;
-    let observed_host_executable_version = CodexAdapter::new(codex_environment(&process))
-        .detect()
-        .ok()
-        .and_then(|detection| detection.host_version);
-    let authority_context = ManagedAuthorityPreparationContext {
-        platform: &platform,
-        parent: &parent,
-        verifier_build_digest: &verifier_build_digest,
-    };
-
-    for project in selected {
-        prepare_project_managed_stdio_authority(
-            runtime_home,
-            &connection,
-            &projects,
-            project,
-            &process,
-            &authority_context,
-        )?;
-    }
-    Ok(observed_host_executable_version)
-}
-
-struct ManagedAuthorityPreparationContext<'a> {
-    platform: &'a volicord_platform_fs::LocalPlatformBoundary,
-    parent: &'a volicord_types::ProcessBinding,
-    verifier_build_digest: &'a str,
-}
-
-fn prepare_project_managed_stdio_authority(
-    runtime_home: &Path,
-    connection: &AgentConnectionRecord,
-    projects: &[ConnectionProjectRecord],
-    project: &ConnectionProjectRecord,
-    process: &impl ConnectionProcess,
-    authority: &ManagedAuthorityPreparationContext<'_>,
-) -> Result<(), ConnectionCommandError> {
-    let plan = existing_host_plan(connection, runtime_home, process, Some(project))?;
-    let identity = managed_identity_evaluation_for_plan(&plan)?;
-    if identity.status != crate::host_integration::verification::ManagedConfigStatus::Match {
-        return Err(managed_authority_error(
-            "managed_host_configuration_stale",
-            format!(
-                "Codex managed configuration for connection {} and project {} is {}",
-                connection.connection_internal_id,
-                project.project_id,
-                identity.status.as_str()
-            ),
-        ));
-    }
-
-    let installations = list_guard_installations(
-        runtime_home,
-        &connection.connection_internal_id,
-        Some(&project.project_id),
-    )?;
-    let [installation] = installations.as_slice() else {
-        return Err(managed_authority_error(
-            "managed_artifact_inventory_ambiguous",
-            format!(
-                "connection {} and project {} require exactly one current Guard installation, found {}",
-                connection.connection_internal_id,
-                project.project_id,
-                installations.len()
-            ),
-        ));
-    };
-    require_current_guard_artifacts(runtime_home, installation, connection, projects)?;
-
-    let capability: Value =
-        serde_json::from_str(&installation.host_capability_json).map_err(|_| {
-            managed_authority_error(
-                "managed_artifact_inventory_corrupt",
-                "the current Guard capability is not typed JSON",
-            )
-        })?;
-    let coordinates = host_hook_capability_managed_artifacts(&capability).ok_or_else(|| {
-        managed_authority_error(
-            "managed_artifact_inventory_corrupt",
-            "the current Guard capability has an unknown or incomplete artifact inventory",
-        )
-    })?;
-    let mut artifacts = coordinates
-        .iter()
-        .map(|coordinate| {
-            strict_raw_artifact(Path::new(&coordinate.path), authority.platform.environment)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let HostTarget::File(configuration_path) = &plan.target else {
-        return Err(managed_authority_error(
-            "configuration_target_invalid",
-            "the managed Codex configuration target is not a file",
-        ));
-    };
-    artifacts.push(strict_raw_artifact(
-        configuration_path,
-        authority.platform.environment,
-    )?);
-
-    require_current_guard_artifacts(runtime_home, installation, connection, projects)?;
-    let second_artifacts = artifacts
-        .iter()
-        .map(|artifact| {
-            strict_raw_artifact(Path::new(&artifact.path), authority.platform.environment)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    if artifacts != second_artifacts
-        || managed_identity_evaluation_for_plan(&plan)?.status
-            != crate::host_integration::verification::ManagedConfigStatus::Match
-    {
-        return Err(managed_authority_error(
-            "managed_artifact_inventory_changed",
-            "managed Codex artifacts changed while live authority was being established",
-        ));
-    }
-
-    let evidence = managed_host_evidence_for_live_process(
-        &plan,
-        authority.parent.clone(),
-        authority.platform.target_triple,
-        authority.platform.environment,
-        authority.platform.release_coordinate.clone(),
-        artifacts,
-        &EmbeddedCodexSupportCatalogPolicy,
-    )
-    .map_err(|error| managed_authority_error(error.reason(), error.to_string()))?;
-    let store =
-        CoreProjectStore::open_read_only(runtime_home, &ProjectId::new(&project.project_id))?;
-    let policy = store.project_workflow_policy()?.ok_or_else(|| {
-        managed_authority_error(
-            "host_receipt_policy_missing",
-            format!(
-                "project {} has no authoritative workflow policy",
-                project.project_id
-            ),
-        )
-    })?;
-    let observed_at = UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now()));
-    let expires_at = observed_at.checked_add(Duration::hours(24)).map_err(|_| {
-        managed_authority_error(
-            "host_receipt_expiry_unrepresentable",
-            "the receipt expiry cannot be represented as canonical UTC",
-        )
-    })?;
-    let receipt = issue_host_verification_receipt(HostVerificationReceiptIssue {
-        project_id: &project.project_id,
-        connection_id: &connection.connection_internal_id,
-        evidence: &evidence,
-        policy_digest: &policy.policy_fingerprint,
-        verifier_build_digest: authority.verifier_build_digest,
-        observed_at,
-        expires_at,
-    })
-    .map_err(|error| managed_authority_error(error.reason(), error.to_string()))?;
-    upsert_managed_host_authority(
-        runtime_home,
-        ManagedHostAuthorityUpsert {
-            connection_internal_id: connection.connection_internal_id.clone(),
-            project_internal_id: project.project_id.clone(),
-            external_contract_descriptor: current_managed_host_binding_external_descriptor(),
-            managed_host_binding: evidence.binding,
-            generated_artifacts: evidence.generated_artifacts,
-            host_verification_receipt: receipt,
-        },
-    )?;
-    Ok(())
-}
-
-fn require_current_guard_artifacts(
-    runtime_home: &Path,
-    installation: &GuardInstallationRecord,
-    connection: &AgentConnectionRecord,
-    projects: &[ConnectionProjectRecord],
-) -> Result<(), ConnectionCommandError> {
-    if !host_hook_capability_binding_valid_for_installation(installation, connection, projects) {
-        return Err(managed_authority_error(
-            "managed_artifact_inventory_owner_mismatch",
-            "the current Guard artifact inventory is not bound to this connection and project",
-        ));
-    }
-    let findings =
-        guard_file_findings_for_installation(runtime_home, installation, connection, projects);
-    if !findings.generated_config_verified()
-        || !findings.missing_required_hooks.is_empty()
-        || !findings.missing_files.is_empty()
-        || !findings.stale_files.is_empty()
-        || !findings.broken_files.is_empty()
-    {
-        return Err(managed_authority_error(
-            "managed_artifact_inventory_stale",
-            format!(
-                "Guard artifacts are not current (missing={}, stale={}, broken={}, missing_hooks={})",
-                findings.missing_files.len(),
-                findings.stale_files.len(),
-                findings.broken_files.len(),
-                findings.missing_required_hooks.len()
-            ),
-        ));
-    }
-    Ok(())
-}
-
-fn strict_raw_artifact(
-    path: &Path,
-    platform: volicord_types::PlatformEnvironment,
-) -> Result<GeneratedManagedArtifact, ConnectionCommandError> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| {
-        managed_authority_error(
-            "managed_artifact_unavailable",
-            format!(
-                "managed artifact {} is unavailable: {error}",
-                path.display()
-            ),
-        )
-    })?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(managed_authority_error(
-            "managed_artifact_not_regular_file",
-            format!(
-                "managed artifact {} must be a regular non-symlink file",
-                path.display()
-            ),
-        ));
-    }
-    let canonical_path = canonical_existing_platform_path(path, platform)
-        .map_err(|error| managed_authority_error("managed_artifact_path_invalid", error))?;
-    let digest = sha256_regular_file(path).map_err(|error| {
-        managed_authority_error(
-            "managed_artifact_unavailable",
-            format!(
-                "managed artifact {} could not be read: {error}",
-                path.display()
-            ),
-        )
-    })?;
-    Ok(GeneratedManagedArtifact {
-        path: canonical_path,
-        digest,
-    })
-}
-
-fn sha256_regular_file(path: &Path) -> io::Result<String> {
-    let mut file = fs::File::open(path)?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = file.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
-}
-
-fn managed_authority_error(
-    reason: &'static str,
-    detail: impl Into<String>,
-) -> ConnectionCommandError {
-    ConnectionCommandError::runtime(format!("{reason}: {}", detail.into()))
 }
 
 fn init_first_run_user_actions(

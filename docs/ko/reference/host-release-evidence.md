@@ -1,14 +1,15 @@
 # 호스트 릴리스 증거
 
-이 문서는 Codex 런타임 지원 정책과 정확히 최종 확정된 아티팩트의 릴리스 증거를
-엄격히 분리하는 계약을 담당합니다. 실행 파일에 포함하는 `CodexSupportCatalog`,
+이 문서는 릴리스 전용 Codex 인증 카탈로그와 정확히 최종 확정된 아티팩트의 릴리스
+증거 관계를 담당합니다. 실행 파일에 포함하는 `CodexSupportCatalog`,
 외부 `CodexReleaseEvidenceManifest`, 정확한 target/environment 셀, 필수 릴리스 검증
 시나리오, 변경 불가능한 raw Volicord 빌드 아티팩트, 사실에 맞는 셀 실행 상태,
 한 번만 빌드하는 게시 경계를 정의합니다.
 
-관리 호스트 설정, receipt 의미, 런타임 신뢰, 운영체제 전제 조건은 정의하지
-않습니다. 해당 계약은 각각의 집중 담당 문서에 남습니다. 릴리스 검증 fixture와
-결과는 테스트 및 릴리스 증거이며 운영 런타임의 신뢰 입력이 아닙니다.
+관리 호스트 설정, 운영 session 권한, 런타임 신뢰, 운영체제 전제 조건은 정의하지
+않습니다. 해당 계약은 각각의 집중 담당 문서에 남습니다. 릴리스 검증 카탈로그,
+fixture, 결과는 테스트 및 릴리스 증거이며 운영 런타임 권한 경로는 이를 가져오거나
+조회하지 않습니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
@@ -25,8 +26,8 @@ runner module과 fixture 배치는 `internal`입니다.
 
 ## `CodexSupportCatalog`
 
-실행 파일은 아래의 정확한 닫힌 형태와 필드 순서를 가진 런타임 정책 카탈로그 하나를
-포함합니다.
+릴리스 인증 소스는 아래의 정확한 닫힌 형태와 필드 순서를 가진 엄격한 카탈로그 하나를
+유지합니다.
 
 ```yaml
 CodexSupportCatalog:
@@ -42,23 +43,24 @@ CodexSupportEntry:
   verified_capabilities: CodexCapability[]
 ```
 
-`codex_artifact_digest`는 런타임 정책이 허용하는 정확히 최종 확정된 Codex 실행
+`codex_artifact_digest`는 릴리스 인증 대상으로 선택한 정확히 최종 확정된 Codex 실행
 파일 byte의 raw 64자 소문자 16진수 SHA-256입니다. 첫 릴리스 entry는
-[Agent Connection](agent-connection.md#platform-environment)이 담당하는 정확한
+[시스템 요구사항](system-requirements.md#first-release-environment-matrix)이 담당하는 정확한
 게시 target, 플랫폼 및 릴리스 좌표, 정확한 `integration_profile=record`, 정규 순서의
 정확한 `FirstReleaseCodexCapabilities`를 사용합니다. 결정론적 identity는 정확히
 `(codex_artifact_digest, target_triple, platform_environment, integration_profile)`입니다.
-Entry는 이 identity에 따라 중복 없이 정렬하며 카탈로그에는 검토된 런타임 지원
+Entry는 이 identity에 따라 중복 없이 정렬하며 카탈로그에는 검토된 릴리스 인증
 entry를 0~6개 둘 수 있습니다. 모든 entry는 아래 릴리스 target 계약의 실제 필수 셀에
-대응해야 합니다. 운영체제 이름만으로 지원 identity를 만들 수 없습니다. 빈
-카탈로그는 모든 Codex 아티팩트를 거절합니다.
+대응해야 합니다. 운영체제 이름만으로 릴리스 셀 identity를 만들 수 없습니다. 빈
+카탈로그는 릴리스 인증을 차단합니다.
 
 이 카탈로그에는 Volicord 실행 파일 digest, 검증 결과, 시나리오 상태, 증거 경로,
 workflow run 식별자, 릴리스 셀 timestamp, 최종 Volicord 실행 파일 byte에서
 파생되는 다른 값을 넣지 않습니다. 알 수 없는 구성원, 중복 JSON key, 잘못된
 digest, 비정규 필드 순서, 담당 문서의 닫힌 집합 밖 값은 카탈로그를 무효화합니다.
-런타임 조회는 이 내장 카탈로그만 읽고 digest, target triple, 플랫폼 환경, 릴리스
-좌표, profile, 전체 capability가 정확히 일치하도록 요구합니다. 릴리스 증거는 읽지 않습니다.
+릴리스 검증은 digest, target triple, 플랫폼 환경, 릴리스 좌표, profile, 전체
+capability가 정확히 일치하도록 요구합니다. 운영 MCP, CLI, Core, Store 권한 경로는
+이 조회를 수행하지 않습니다.
 
 카탈로그 identity는 릴리스 증거와 독립적이며 아래에 선언한 정규 `record` 및
 `list` 인코딩을 사용합니다.
@@ -209,9 +211,20 @@ wsl2_native_windows_receipt_reuse_rejection
 
 ### 증거 Digest
 
-증거는 [Agent Connection](agent-connection.md#canonical-binding-encoding)의
-정확한 `u32be`, `blob`, `string`, `list`, `record` primitive을
-사용합니다. Nullable 값은 다음 primitive을 추가합니다.
+증거는 다음의 정확한 primitive을 사용합니다.
+
+```text
+u32be(n)     = n as exactly four unsigned big-endian bytes
+blob(b)      = u32be(byte_length(b)) || b
+string(s)    = blob(UTF8(s))
+list(items)  = u32be(item_count) || blob(item_1_encoding) || ...
+record(fields in declared order)
+              = u32be(field_count)
+                || string(field_1_name) || blob(field_1_encoding)
+                || ...
+```
+
+Nullable 값은 다음 primitive을 추가합니다.
 
 ```text
 nullable(null)  = 0x00
@@ -254,7 +267,7 @@ digest인지 확인해야 합니다. 명령 이름, 경로, 버전 범위, 패�
 실행 파일 byte가 달라지면 새 빌드 아티팩트와 새 검증이 필요하며 metadata나 증거를
 편집해 복구할 수 없습니다.
 
-런타임 지원에는 정확한 `CodexSupportEntry` 대조만 필요합니다. 릴리스 자격에는
+릴리스 셀 후보 생성에는 정확한 `CodexSupportEntry` 대조가 필요합니다. 릴리스 자격에는
 같은 Codex 좌표, 실제 실행한 정확한 Volicord digest, 완전한 runner 및 시나리오
 metadata, `validation_result=passed`를 가진 외부 증거 entry가 추가로 필요합니다.
 
@@ -310,16 +323,13 @@ Volicord 빌드를 실행하지 않고 raw 파일을 패키징하며, 업로드 
 않습니다. 건너뛰거나 대기 중인 self-hosted job, 빠진 Codex 아티팩트, 없거나 불완전한
 증거, 사용할 수 없는 WSL2 실행, digest 변경, 누락 target은 게시를 차단합니다.
 
-현재 `ProcessBinding.executable_digest`, `PlatformEnvironment`,
-`PlatformReleaseCoordinate`, `integration_profile=record`, 전체 정규
-`CodexCapability` 집합과 정확히 일치하는 지원 카탈로그 entry가 있을 때만
-아티팩트를 런타임 지원 대상으로 등록합니다. Receipt의 `executable_digest`,
-플랫폼, 릴리스 좌표, 프로필, `required_capabilities`, `verified_capabilities`도 같은
-정책 좌표와 같아야 합니다. 알 수 없는 digest나 플랫폼·릴리스 좌표·프로필·
-capability 불일치는 machine-readable reason `unsupported_host_artifact`를
-반환합니다. 명령 이름,
-넓은 버전 범위, 인접 아티팩트, fixture, capability 부분집합이나 상위집합 일치로
-지원을 추론하면 안 됩니다.
+Codex 아티팩트는 digest, `PlatformEnvironment`, `PlatformReleaseCoordinate`,
+`integration_profile=record`, 전체 정규 `CodexCapability` 집합과 정확히 일치하는
+지원 카탈로그 entry가 있을 때만 릴리스 셀에 사용할 수 있습니다. 알 수 없는 digest나
+플랫폼·릴리스 좌표·프로필·capability 불일치는 릴리스 검증 reason
+`unsupported_host_artifact`를 반환합니다. 운영 런타임 권한은 이 reason을 사용하지
+않으며 아티팩트, 명령 이름, 버전 범위, 경로, fixture, capability 집합에서 권한을
+추론하지 않습니다.
 
 <a id="canonical-checked-in-contracts"></a>
 ## 체크인하는 기준 계약
@@ -338,7 +348,7 @@ target 또는 환경, target/environment 불일치를 거절합니다. GitHub Ac
 JSON을 직접 읽을 수 없는 릴리스 및 CI workflow 값과 binary packaging matrix는
 일관성 테스트로 이 계약과 대조합니다.
 
-런타임 지원 정책 원본은 다음 파일입니다.
+유지 중인 릴리스 인증 카탈로그 원본은 다음 파일입니다.
 
 ```text
 crates/volicord-types/contracts/codex-support-catalog.json
@@ -347,8 +357,8 @@ crates/volicord-types/contracts/codex-support-catalog.json
 실행 파일에는 이 파일만 포함합니다. 이 원본에는 릴리스 결과, Volicord digest,
 runner metadata, 증거 위치, workflow 식별자, 릴리스 셀 timestamp를 넣으면 안
 됩니다. Fixture, 생성 상수, 문서 표, 런타임 데이터베이스, 릴리스 증거 파일이 두
-번째 런타임 지원 목록 역할을 해도 안 됩니다. 체크인 원본은 비어 있거나 검토된
-지원 entry를 담을 수 있습니다. 정적 계약 검증은 내장 값과 디스크 값을 의미적으로
+번째 릴리스 인증 목록 역할을 해도 안 됩니다. 체크인 원본은 비어 있거나 검토된
+entry를 담을 수 있습니다. 정적 계약 검증은 내장 값과 디스크 값을 의미적으로
 정확히 대조하고, 체크인 byte가 compact 정규 serialization 뒤에 최종 LF 하나를
 붙인 값과 같도록 요구하며, 순서, 중복 여부, 닫힌 값, 릴리스 target 일관성을
 검증합니다. 이 검사는 릴리스 완료를 성립시키지 않습니다.
@@ -363,7 +373,7 @@ tests/release-validation/contracts/codex-release-evidence-manifest.json
 만들고 review한 entry만 최대 6개까지 포함합니다. Entry는 정확한
 `(codex_artifact_digest, target_triple, platform_environment, integration_profile)`
 identity에 따라 중복 없이 정렬합니다. 정적 계약 검증은 운영 parser와 정규
-serializer를 사용하고, 각 entry를 런타임 지원 카탈로그 및 릴리스 target 계약과
+serializer를 사용하고, 각 entry를 릴리스 인증 카탈로그 및 릴리스 target 계약과
 교차 대조하며, 모호한 릴리스 셀과 일관되지 않은 아티팩트 결속을 거절합니다. 계약상
 유효한 모든 채움 상태를 허용하지만, 일부 또는 전체 형태를 릴리스 성공으로 해석하지
 않습니다. Entry가 없는 필수 셀의 파생 상태는 `not_run`입니다. 원본은 placeholder
@@ -444,8 +454,8 @@ workflow run과 attempt를 포함합니다. Manifest digest와 정규 증거 dig
 
 검증기는 같은 입력에 대해 결정론적으로 색인을 serialize하고 create-new 출력
 방식을 사용합니다. 색인은 릴리스에 첨부할 수 있지만 Volicord 실행 파일 밖에
-남습니다. 운영 코드는 이를 `CodexSupportCatalog`, 런타임 지원 입력, receipt,
-credential, Core 권한 record로 내장하거나 사용하면 안 됩니다.
+남습니다. 운영 코드는 이를 `CodexSupportCatalog`, 런타임 권한 입력, credential,
+Core 권한 record로 내장하거나 사용하면 안 됩니다.
 
 <a id="explicit-test-only-descriptor"></a>
 ## 명시적인 테스트 전용 설명자
@@ -465,10 +475,10 @@ TestOnlyCodexDescriptor:
 
 Marker는 정확한 boolean `true`여야 합니다. 이 설명자는 테스트 빌드에서 parsing,
 routing, 부정 사례, 어댑터 projection을 실행할 때 사용할 수 있습니다. 두 계약
-loader와 모든 운영 지원 조회는 이 설명자를 거절합니다. 이 설명자는
+loader와 릴리스 인증 조회는 이 설명자를 거절합니다. 이 설명자는
 `validation_result=passed`를 만들거나 호스트 아티팩트 및 capability를 등록할 수
 없습니다. 테스트 fixture, 테스트 전용 주입, 복사한 entry, 저장소 테스트 통과는
-런타임 신뢰가 아니며 최종 확정 아티팩트 증거도 아닙니다.
+런타임 권한이 아니며 최종 확정 아티팩트 증거도 아닙니다.
 
 <a id="independent-platform-cells"></a>
 ## 독립 target/environment 셀
@@ -495,7 +505,7 @@ loader와 모든 운영 지원 조회는 이 설명자를 거절합니다. 이 �
 <a id="wsl2-cell-boundary"></a>
 ### WSL2 셀 경계
 
-WSL2 셀은 런타임 정책과 외부 증거에 함께 고정된 Ubuntu LTS 이미지 하나를
+WSL2 셀은 릴리스 카탈로그와 외부 증거에 함께 고정된 Ubuntu LTS 이미지 하나를
 사용합니다. Codex,
 Volicord, `Product Repository`, `Volicord Runtime Home`은 모두 같은 WSL2 배포판
 안에서 실행합니다. `Product Repository`와 `Volicord Runtime Home`은 배포판의
@@ -556,9 +566,9 @@ assertion만 제공합니다. 플랫폼별 단축 경로가 공유 시나리오�
 
 | 상태 | 의미 | 릴리스 영향 |
 |---|---|---|
-| `passed` | 정확히 최종 확정된 Codex와 Volicord 아티팩트를 정확한 셀 환경에서 실행했고, 모든 필수 시나리오가 통과했으며, 증거가 완전하고 모든 결속이 정확합니다. | 이 정확한 정책 entry와 Volicord digest의 릴리스 증거만 충족합니다. 런타임 지원은 계속 내장 카탈로그에서 나옵니다. |
-| `failed` | 셀이 하나 이상의 필수 assertion을 실패로 분류할 만큼 실행되었거나 아티팩트 또는 증거 무결성 검사가 실패했습니다. | 전체 여섯 셀 릴리스 주장을 막으며 런타임 정책을 바꾸지 않습니다. |
-| `unavailable` | 필수 runner, 호스트, credential, 환경, 그 밖의 실행 전제 조건을 사용할 수 없어 전체 시나리오 모음의 통과나 실패를 확정하지 못했습니다. | 전체 여섯 셀 릴리스 주장을 막으며 런타임 정책을 바꾸지 않습니다. |
+| `passed` | 정확히 최종 확정된 Codex와 Volicord 아티팩트를 정확한 셀 환경에서 실행했고, 모든 필수 시나리오가 통과했으며, 증거가 완전하고 모든 결속이 정확합니다. | 이 정확한 카탈로그 entry와 Volicord digest의 릴리스 증거만 충족하며 런타임 권한을 부여하지 않습니다. |
+| `failed` | 셀이 하나 이상의 필수 assertion을 실패로 분류할 만큼 실행되었거나 아티팩트 또는 증거 무결성 검사가 실패했습니다. | 전체 여섯 셀 릴리스 주장을 막으며 런타임 권한에 영향을 주지 않습니다. |
+| `unavailable` | 필수 runner, 호스트, credential, 환경, 그 밖의 실행 전제 조건을 사용할 수 없어 전체 시나리오 모음의 통과나 실패를 확정하지 못했습니다. | 전체 여섯 셀 릴리스 주장을 막으며 런타임 권한에 영향을 주지 않습니다. |
 
 `not_run`은 증거 manifest에 해당 target/environment/profile 셀 entry가 없을 때의
 파생 셀 상태입니다. `validation_evidence.validation_result` 값이 아니며 placeholder
@@ -596,7 +606,7 @@ tests/release-validation/
     wsl2/
 ```
 
-공유 타입 crate는 엄격한 런타임 카탈로그 parsing과 embedding, 정확한 지원 조회,
+공유 타입 crate는 엄격한 릴리스 카탈로그 parsing과 embedding, 정확한 조회,
 외부 원본을 포함하지 않는 엄격한 외부 증거 parsing을 담당합니다. 릴리스 검증의
 `contracts/` 경로는 기준 외부 경로와 교차 계약 검증을 담당합니다.
 `fixtures/`에는 명시적 테스트 전용 설명자와 크기가 제한된 테스트 입력만 둡니다.
@@ -637,7 +647,7 @@ entry 하나를 표준 출력에 기록합니다. 릴리스 결과나 Volicord d
 후보의 Codex 좌표는 내장 지원 카탈로그에 이미 있어야 합니다. 상태가 `failed` 또는
 `unavailable`인 후보는 보존한 뒤 실패로 종료하며 두 기준 계약을 편집하거나
 승격하지 않습니다. `--target TARGET --platform PLATFORM`은 차단 재실행 게이트이며
-해당 정확한 필수 셀에 런타임 정책과 일치하는 체크인 `passed` 증거 entry가 이미
+해당 정확한 필수 셀에 릴리스 카탈로그와 일치하는 체크인 `passed` 증거 entry가 이미
 있을 때만 성공합니다.
 항목이 없으면 `not_run`으로 실패하고 체크인 상태가 `failed` 또는
 `unavailable`이어도 실패합니다. 릴리스 workflow는 시나리오 카탈로그를 두 번째로
@@ -650,9 +660,8 @@ entry 하나를 표준 출력에 기록합니다. 릴리스 결과나 Volicord d
 중복된 증거, source 또는 digest 불일치, 필수 릴리스 셀 하나에 정확히 대응되어
 사용될 수 없는 지원 entry를 모두 거부합니다. 현재 계약에는 지원되는 비릴리스 환경
 표시가 없으므로 그런 entry도 유효하지 않습니다. 정적 계약 검증은 카탈로그가 비어
-있지 않거나 증거가 완전하기를 요구하지 않습니다. 카탈로그가 비어 있으면 런타임
-조회는 여전히 모든 아티팩트를 거절하고, 후보 생성에는 정확한 지원 entry가
-필요하며, 체크인 재실행에는 선택한 셀의 정확한 통과 증거가 필요합니다. 운영
+있지 않거나 증거가 완전하기를 요구하지 않습니다. 후보 생성에는 정확한 카탈로그
+entry가 필요하며, 체크인 재실행에는 선택한 셀의 정확한 통과 증거가 필요합니다. 운영
 검증기는 완전한 통과 bundle을 요구합니다.
 
 후보 생성기와 게이트는 다음 순서로 점검합니다.
@@ -853,20 +862,18 @@ workflow 출력이 되지 않도록 driver stdout과 stderr를 숨깁니다.
 <a id="trust-and-owner-boundaries"></a>
 ## 신뢰 및 담당 경계
 
-내장 지원 카탈로그는 정확한 런타임 정책을 다룹니다. 외부 릴리스 증거 manifest는
-릴리스 판단을 뒷받침하며 실행 파일 입력이 되지 않습니다. 두 계약 모두 사용자를
-attest하거나, receipt에 서명하거나, Core 권한을 부여하거나, 호스트 격리를
-증명하거나, 런타임 credential이 되지 않습니다. 운영 런타임 신뢰는 현재 관리
-binding, 현재 Store 상태, 내장 지원 정책, 해당 런타임 담당 문서가 정의한 검증
-receipt 계약에서만 나옵니다. 릴리스 fixture와 증거를 운영 신뢰 입력으로 불러오면
-안 됩니다.
+유지 중인 지원 카탈로그와 외부 릴리스 증거 manifest는 릴리스 인증만 다룹니다. 두
+계약 모두 사용자를 attest하거나 Core 권한을 부여하거나 호스트 격리를 증명하거나
+런타임 credential이 되지 않습니다. 운영 런타임 권한은 현재 등록 Connection,
+project membership, mode, 권위 있는 관리 runtime/project session에서 나옵니다.
+릴리스 카탈로그, fixture, 증거를 운영 권한 입력으로 불러오면 안 됩니다.
 
 이웃 담당 문서:
 
 - 첫 릴리스 제품 범위: [범위](scope.md).
 - 운영체제 및 WSL2 전제 조건: [시스템 요구사항](system-requirements.md).
 - 외부 설명자와 공통 Git 객체 ID 규칙: [외부 계약](external-contracts.md).
-- 관리 binding 및 receipt 의미: [Agent Connection](agent-connection.md).
+- 관리 운영 session 의미: [Agent Connection](agent-connection.md).
 - install, verify, repair, uninstall 동작: [관리 CLI](admin-cli.md).
 - 호스트 신뢰 및 비보장: [보안](security.md).
 - 미지원 계약 범주 의미: [실패 모델](failure-model.md).

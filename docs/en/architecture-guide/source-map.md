@@ -11,7 +11,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
-| `crates/volicord-types/src/codex_support_catalog.rs` and `contracts/codex-support-catalog.json` | Embedded exact Codex runtime support policy. |
+| `crates/volicord-types/src/codex_support_catalog.rs` and `contracts/codex-support-catalog.json` | Temporarily retained release-certification catalog source; production runtime authorization does not consume it. |
 | `crates/volicord-types/src/codex_release_evidence.rs` | Strict external release-evidence types and parsing without evidence embedding. |
 | `crates/volicord-types/src/tool_names.rs` | Public MCP tool-name registry. |
 
@@ -37,6 +37,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/pipeline.rs` | Common preflight, replay, plan selection, response, and commit orchestration. |
 | `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. |
 | `crates/volicord-core/src/policy/` | Reusable access, workflow, evidence, continuity, write-ticket, and close-readiness policy. |
+| `crates/volicord-core/src/agent_session.rs` | Current Connection, project membership, mode, and managed runtime/project-session validation. |
 | `crates/volicord-core/src/authority_status.rs` | Typed status and authority-receipt correspondence. |
 
 ## CLI And Codex Adapter
@@ -45,7 +46,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
-| `crates/volicord-cli/src/host_integration/codex/` | Codex configuration, executable identity, trust facts, and verification. |
+| `crates/volicord-cli/src/host_integration/codex/` | Codex managed configuration, diagnostic executable observations, and connection verification. |
 | `crates/volicord-cli/src/guard_command/` | Guard event decoding and bounded observations. |
 | `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | Diagnostic fact collection and rendering. |

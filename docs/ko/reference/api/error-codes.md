@@ -89,17 +89,15 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 정확한 외부 계약 설명자, 호스트 아티팩트, 그 밖의 경계 형식이 정확히 등록된 지원
-  계약이 아닙니다. fallback 어댑터, decoder, 아티팩트, 버전, 가장 가까운 알려진
-  형식을 선택하지 않습니다.
+- 정확한 외부 계약 설명자나 그 밖의 경계 형식이 정확히 등록된 지원 계약이 아닙니다.
+  fallback 어댑터, decoder, 버전, 가장 가까운 알려진 형식을 선택하지 않습니다.
 
 필수 실패 범주:
 - `unsupported_contract`
 
 필수 세부사항:
 - 해당 도메인에는 [API 오류 세부사항](error-details.md#reason)의
-  `ToolError.details.reason` 값을 사용합니다. 외부 계약과 호스트 아티팩트 도메인은 각각
-  `unsupported_external_contract`, `unsupported_host_artifact`를 사용합니다.
+  `ToolError.details.reason` 값 `unsupported_external_contract`를 사용합니다.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`

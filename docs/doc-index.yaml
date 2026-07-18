@@ -529,8 +529,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -716,8 +716,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -749,8 +749,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1067,7 +1067,7 @@ documents:
   path_en: docs/en/architecture-guide/decisions/host-release-evidence-gate.md
   path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
   kind: explanation
-  summary: Architecture decision separating the embedded Codex runtime support catalog from build-once exact finalized Codex and Volicord release evidence across five published targets and six independent cells.
+  summary: Architecture decision separating the retained release-certification Codex catalog from build-once exact finalized Codex and Volicord release evidence across five published targets and six independent cells, with no production runtime consumption.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1290,8 +1290,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1324,8 +1324,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1434,8 +1434,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1456,10 +1456,10 @@ documents:
   - Runtime Home, Product Repository, and Codex configuration access prerequisites
   - independent WSL2 release-cell topology, ext4 boundary, platform identity, and unsupported
     Windows/WSL crossings
-  - exact first-release WSL2 Ubuntu distribution and support-catalog image coordinate
-  - exact Codex artifact eligibility without minimum-version or command-name inference
-  - managed Codex binding, receipt, executable, process, and platform-environment prerequisites
-  - managed stdio MCP launch-environment prerequisites
+  - exact first-release WSL2 Ubuntu distribution and release-evidence image coordinate
+  - Codex executable availability with version and path observations limited to diagnostics
+  - managed Codex configuration, operational-session, executable, process, and platform-environment prerequisites
+  - managed stdio MCP launch and current runtime/project-session prerequisites
   - stop criteria for unsupported, corrupt, mismatched, stale, or unavailable environments
   depends_on:
   - reference.runtime-boundaries
@@ -1474,7 +1474,7 @@ documents:
   path_en: docs/en/reference/host-release-evidence.md
   path_ko: docs/ko/reference/host-release-evidence.md
   kind: reference
-  summary: Separate embedded target-aware Codex runtime support policy from build-once external exact Codex and Volicord release evidence, complete-bundle verification, deterministic external release indexing, and same-bytes publication across five targets and six independent cells.
+  summary: Release-only contract for the retained target-aware Codex certification catalog, build-once external exact Codex and Volicord release evidence, complete-bundle verification, deterministic external release indexing, and same-bytes publication across five targets and six independent cells.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1496,8 +1496,8 @@ documents:
   - machine-readable published-target and required-cell release contract
   - immutable raw build-artifact metadata, artifact naming, source revision, binary digest, and same-bytes publication flow
   - exact artifact-digest, target-triple, platform-environment, and integration-profile identity
-  - exact `CodexSupportCatalog` and `CodexSupportEntry` runtime-policy shapes and identity digest
-  - runtime-policy prohibition on Volicord artifact digests and release-execution fields
+  - exact retained release-certification `CodexSupportCatalog` and `CodexSupportEntry` shapes and identity digest
+  - catalog prohibition on Volicord artifact digests and release-execution fields
   - exact external `CodexReleaseEvidenceManifest`, `CodexReleaseEvidenceEntry`, and validation-evidence shapes
   - deterministic actual-file `CodexSupportEntry` generation without release results or Volicord digests
   - complete production release-bundle verification and empty-catalog rejection
@@ -1505,9 +1505,9 @@ documents:
   - checked-in canonical support-catalog and release-evidence sources and update procedure
   - non-embedding boundary for external release evidence
   - release-evidence cross-checking against the embedded support catalog
-  - machine-readable `unsupported_host_artifact` result for unregistered exact artifacts
+  - machine-readable release-validation `unsupported_host_artifact` result for unregistered exact artifacts
   - five published binary targets and six independent release cells without cross-target or cross-environment inference
-  - explicit test-only Codex descriptors that cannot establish runtime support
+  - explicit test-only Codex descriptors that cannot establish release evidence or runtime authority
   - shared install, verify, drift, repair, uninstall, restart, move, write, suppression, and rejection scenarios
   - WSL2 Ubuntu LTS, ext4, all-inside topology, restart, DrvFS, and cross-topology validation
   - exact passed, failed, unavailable, and not_run cell status meanings
@@ -1660,8 +1660,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1808,8 +1808,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1825,7 +1825,7 @@ documents:
   - Core authority, Write Ticket, UserAction, Guard observation, and display boundaries
   - Agent Connection, process, actor source, and user-identity non-inference
   - managed stdio process topology without a network-listener guarantee
-  - exact artifact release evidence and verification-receipt non-attestation boundary
+  - release evidence and operational-session non-attestation boundaries
   - historical operation-result access and private-content boundary
   depends_on:
   - reference.host-release-evidence
@@ -2760,7 +2760,7 @@ documents:
   path_ko: docs/ko/reference/agent-connection.md
   kind: reference
   summary: Reference contract for the Codex record Agent Connection, canonical verification report,
-    managed binding, host verification receipt, platform environment, and adapter/Core boundary.
+    integration revisions, managed runtime/project sessions, `ValidatedAgentSession`, and adapter/Core boundary.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -2783,11 +2783,11 @@ documents:
   - typed integration revisions and authoritative managed-host operational-session evidence
   - exact `PlatformEnvironment` value set and independent WSL2 identity
   - exact `PlatformReleaseCoordinate` shape and pinned WSL2 distribution/image binding
-  - '`ManagedHostBinding` fields, deterministic canonical encoding, and domain-separated digest'
-  - Codex discovery, install, verify, repair, uninstall, drift, executable, process, and artifact responsibilities
-  - exact `HostVerificationReceipt` fields, freshness, project/connection/policy/binding/capability binding
-  - Core receipt validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
-  - exact embedded Codex support-catalog eligibility and `unsupported_host_artifact`
+  - exact `ValidatedAgentSession` fields and ten current Connection/project/session authorization invariants
+  - Codex discovery, install, verify, repair, uninstall, drift, launch-context, and diagnostic responsibilities
+  - deterministic connection/session/revision audit basis without receipt or artifact digests
+  - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
+  - production runtime independence from release catalogs, executable hashes, and client or host versions
   - report-contained connection actions without an independent persisted status or action array
   - first-release managed-host threat model and non-signing boundary
   depends_on:
@@ -2986,8 +2986,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -3067,8 +3067,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-24'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-18'
+  last_verified_on: '2026-07-18'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3

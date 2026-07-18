@@ -459,21 +459,17 @@ mod tests {
 
     use rusqlite::OptionalExtension;
     use serde_json::Value;
-    use volicord_core::{validate_host_verification_receipt, CoreService, InvocationContext};
+    use volicord_core::{CoreService, InvocationContext};
     use volicord_store::diagnostics::{
         diagnostics_db_path, record_diagnostic_event, record_workflow_metric_event,
         start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind,
         DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
         WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     };
-    use volicord_test_support::{
-        core_fixtures::{CoreFixture, UserActionFixture},
-        test_host_receipt_fixture,
-    };
+    use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
     use volicord_types::{
-        managed_stdio_session_id, ActorSource, IntegrationProfile, JudgmentKind, MethodName,
-        ObservationConfidence, OperationCategory, ProjectId,
-        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        managed_stdio_session_id, ActorSource, AgentConnectionId, IntegrationProfile, JudgmentKind,
+        MethodName, ObservationConfidence, OperationCategory, ProjectId,
     };
 
     use crate::cli::{DiagnosticsSessionArgs, DiagnosticsWorkflowMetricsArgs};
@@ -803,17 +799,29 @@ mod tests {
     fn diagnostics_cannot_change_authority_state_evidence_close_assurance_or_user_actions() {
         let fixture = CoreFixture::new("diagnostics-authority-isolation").expect("fixture");
         let core = CoreService::new(fixture.runtime_home_path());
-        let host = test_host_receipt_fixture(fixture.project_id(), fixture.connection_id());
-        let receipt =
-            validate_host_verification_receipt(host.receipt, &host.current, &host.validation_time)
-                .expect("typed host receipt fixture should validate");
+        let session = volicord_test_support::seed_test_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+            None,
+        )
+        .expect("managed Agent Session fixture should seed");
+        let validated = core
+            .validate_agent_session(
+                AgentConnectionId::new(fixture.connection_id()),
+                ProjectId::new(fixture.project_id()),
+                session.runtime_session_id,
+                session.project_session_id,
+                OperationCategory::AgentWorkflow,
+            )
+            .expect("managed Agent Session fixture should validate");
         let invocation = InvocationContext::new(
             ProjectId::new(fixture.project_id()),
             ActorSource::agent_connection(fixture.connection_id()),
             OperationCategory::AgentWorkflow,
-            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            "",
         )
-        .with_validated_host_receipt(receipt);
+        .with_validated_agent_session(validated);
         let intake = core
             .intake(
                 fixture.intake_request("req_diag_intake", "idem_diag_intake", false, Some(0)),

@@ -425,9 +425,6 @@ pub enum StatusDetailLevel {
 /// Controlled registration-basis value for local administrative registration.
 pub const VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION: &str = "local_admin_registration";
 
-/// Controlled adapter-binding basis value for MCP stdio sessions.
-pub const VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING: &str = "mcp_stdio_connection_binding";
-
 /// Controlled adapter-binding basis value for direct CLI invocation.
 pub const VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL: &str = "cli_direct_user_channel";
 

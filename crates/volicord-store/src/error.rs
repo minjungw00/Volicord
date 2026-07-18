@@ -318,8 +318,8 @@ impl StoreError {
                 category: "unsupported_external_contract",
                 retryable: false,
                 database_kind: Some("registry"),
-                entity: Some("managed_host_authority"),
-                field: Some("external_contract_descriptor_json"),
+                entity: None,
+                field: None,
                 owner_state_error: None,
             },
             Self::SchemaInvariant { database_kind, .. } => StoreFailureClassification {

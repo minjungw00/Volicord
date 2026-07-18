@@ -47,7 +47,7 @@ flowchart LR
   host -. 공개 API 밖의 제품 파일 도구 .-> product
 ```
 
-`volicord-mcp` 어댑터 라이브러리는 시작 검사, Agent Connection 맥락, binding 검증,
+`volicord-mcp` 어댑터 라이브러리는 시작 검사, Agent Connection 맥락, session 검증,
 요청 시점 project routing을 위해 Store를 직접 사용할 수 있습니다.
 이 직접 Store
 사용은 공개 Volicord 메서드 의미를 구현하는 다른 경로가 아닙니다. 공개 메서드
@@ -62,15 +62,15 @@ flowchart LR
 
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시, 호스트 기능 구현 타입과 내장 Codex 지원 카탈로그 parser, 외부 증거를 포함하지 않는 릴리스 증거 parser. |
-| `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, 변경 불가능한 호스트 검증 영수증, 내보내기 스냅샷, 저장소 오류 구현. |
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시, 호스트 기능 구현 타입과 운영 런타임 권한에서 사용하지 않는 임시 릴리스 인증 parser. |
+| `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, Agent Connection runtime/project session, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, 관리형 stdio MCP 프로세스 인계를 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
 | `crates/volicord-platform-fs` | 플랫폼 고유 파일시스템 이름 공간 연산과 Store 소유자 검증 및 로컬 어댑터가 공유하는 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 파일 정책이나 공개 제품 동작을 담당하지 않습니다. |
 | `crates/volicord-mcp` | 시작 검증, 도구 목록, `tools/call` 디코딩과 디스패치, 관리형 표준 입출력 프레이밍, Core 호출을 위한 MCP 어댑터 라이브러리. |
 | `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
 | `tests/conformance` | Core 쪽 API와 공유 픽스처를 통한 기준 범위 교차 메서드 시나리오. |
-| `tests/integration` | MCP, Core, Store, Agent Connection 바인딩, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
+| `tests/integration` | MCP, Core, Store, Agent Connection session, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
 | `tests/release-validation` | 기준 target 다섯 개/셀 여섯 개 릴리스 계약, 실제 파일 기반 Codex 지원 entry 생성, 변경 불가능한 빌드 아티팩트와 전체 게시 입력의 연속성 점검, 결정론적 외부 verified release index 생성, 외부 릴리스 증거 경로, 공유 릴리스 시나리오, 카탈로그 교차 점검, 정확한 target/environment Codex 릴리스 셀. 운영 런타임 동작을 담당하지 않습니다. |
 | `xtask` | 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처 밖에 있습니다. |
 
@@ -104,7 +104,8 @@ flowchart LR
 Core와 Store는 외부 형식 버전, 호스트 설정 문법, 셸 문법, 생성 wrapper,
 플랫폼 명령 문자열에 따라 분기하지 않습니다. Store는 매니페스트와 정규 SQL
 digest가 현재 릴리스 계약과 일치하는 데이터베이스만 엽니다. Codex 어댑터는 관리
-설정과 아티팩트 검증을 담당하고 타입이 지정된 검증 영수증을 Core에 제공합니다.
+설정과 진단 관찰을 담당합니다. MCP는 Store가 소유한 현재 runtime/project session을
+검증하고 typed `ValidatedAgentSession`을 Core에 제공합니다.
 
 정확한 descriptor, 실패, 저장소, Agent Connection, 릴리스 셀 계약은
 [외부 계약](../reference/external-contracts.md),
@@ -121,7 +122,7 @@ digest가 현재 릴리스 계약과 일치하는 데이터베이스만 엽니�
 | Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
 | Store 커밋 경계 | Core 메서드 계획 코드는 읽기 전용, 효과 없음, dry-run, 스테이징, 커밋 분기를 고릅니다. Store는 정상 커밋된 Core 변이를 트랜잭션 경계에서 적용하고, 아티팩트 스테이징을 정상 Core 변이 커밋과 분리합니다. Core 권한 의미는 Core 담당 문서에, 정확한 저장소 기록과 효과는 저장소 담당 문서에 남습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [요청 생명주기](request-lifecycle.md), [Core 모델](../reference/core-model.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md). |
 | MCP 어댑터 경계 | `volicord mcp --stdio`가 공개 전송 진입 경로입니다. `volicord-mcp`는 Runtime Home과 Agent Connection 맥락을 해석하고, 시작 및 세션 정보를 검증합니다. 연결 모드에 맞는 도구를 노출하고 허용된 프로젝트를 선택합니다. `tools/call`을 디코딩하고 로컬 호출 정보를 도출한 뒤 Core를 호출하며, Core JSON을 MCP 콘텐츠로 감쌉니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
-| 관리 CLI와 Codex 어댑터 | CLI는 Codex 설정 탐색, 관리형 binding 설치, 검증 영수증, 복구, 제거, 플랫폼 환경 검사, stdio MCP 실행을 담당합니다. Core는 Codex 설정이나 프로세스 문법을 이해하지 않고 타입이 지정된 영수증과 정규 binding identity만 소비합니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
+| 관리 CLI와 Codex 어댑터 | CLI는 Codex 설정 탐색, 관리 entry 설치, 진단 검증, 복구, 제거, 플랫폼 환경 검사, stdio MCP 실행을 담당하며 런타임 권한을 발급하지 않습니다. MCP는 설정이나 프로세스 문법을 identity로 취급하지 않고 Store가 소유한 현재 운영 기록에서 Core session 경계를 도출합니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
 | Codex 릴리스 검증 | 공유 시나리오는 게시 target 다섯 개를 모두 포괄하는 서로 독립적인 target/environment 셀 여섯 개에서 실행됩니다. 각 셀은 정확한 target, Codex 아티팩트, 환경, capability 집합에 결속되며 누락된 셀은 다른 셀에서 추론하지 않고 미실행으로 남습니다. 운영 crate는 테스트 패키지 아티팩트를 런타임 신뢰 입력으로 사용하지 않습니다. | [호스트 릴리스 증거](../reference/host-release-evidence.md), [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
 | 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 플랫폼 고유 이름 공간 기본 연산과 정규 읽기 전용 Git common-directory/worktree 탐색을 안전한 Rust 결과 뒤에 격리합니다. 이 primitive를 공유해 저장된 소유자 검증, integration 배치, Core 호출 binding이 같은 worktree 정의를 사용합니다. 어떤 파일을 관리하는지, 교체나 쓰기가 승인되었는지, 연산 후 상태가 유효한지, 복구와 진단이 무엇을 뜻하는지는 결정하지 않습니다. 그 책임은 Store, 호출하는 adapter, Core, 집중 Reference 담당 문서에 남습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
 | 테스트와 검증 | 구현 테스트는 담당 문서가 정의한 사실을 적절한 계층에서 검증합니다. 테스트, 픽스처, 생성 스냅샷, 문서 점검은 제품 계약 담당 문서가 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |

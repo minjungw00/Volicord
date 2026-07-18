@@ -16,7 +16,8 @@ Volicord는 협력적 로컬 권한 기록입니다. 담당 문서가 정의한 
 - Core 또는 Store commit 전 엄격한 typed validation
 - 명시적인 Task, scope, Change Unit, 쓰기 티켓, evidence, UserAction, 닫기 상태 전이
 - 담당 문서가 정의한 거부 분기의 무효과 동작
-- 담당 문서가 요구하는 정규 digest와 정확한 receipt 비교
+- Agent Connection 호출을 위한 현재 Connection, 프로젝트 membership, mode, 권위 있는
+  managed-host session 검증
 - Runtime Home과 Product Repository 분리
 - `resolved_by_actor_source=local_user`인 CLI 전용 UserAction 해결
 - 네트워크 listener가 없는 관리 stdio MCP
@@ -39,8 +40,14 @@ Guard의 prompt 관련 관찰은 사용자 답이 되지 않습니다. 저장 re
 
 관리 Codex 프로세스와 `volicord`는 로컬 사용자의 운영체제 계정으로 실행됩니다.
 Volicord는 그 OS 사용자를 인증하거나 프로세스 identity를 사람 identity로 바꾸지
-않습니다. 연결 검증은 현재 `HostVerificationReceipt`가 나타내는 담당 문서의 정확한
-binding 검사만 증명합니다.
+않습니다. Agent 권한은 로컬에서 관찰한 협력적 runtime/project session 소유권, 현재
+Connection Project membership, 현재 통합 revision, 현재 Connection mode가 허용한 범위만
+증명합니다.
+
+실행 파일 bytes와 경로, process identity, client name/version, host version, 환경 값,
+host thread/turn metadata는 actor 또는 human identity credential이 아닙니다. Thread와 turn
+metadata는 지원 workflow를 연결할 수 있지만 Connection이나 프로젝트 권한을 넓힐 수
+없습니다.
 
 지원 MCP 프로세스는 stdin/stdout을 사용하고 네트워크 전송 listener를 열지 않습니다.
 이는 프로세스 topology 사실이며 네트워크 sandboxing이 아닙니다. Codex나 tool은
@@ -52,8 +59,9 @@ Product Repository 파일은 사용자 제품 데이터입니다. Runtime Home r
 권한 기록입니다. 관리 Codex 구성은 프로세스를 시작하지만 권한, 승인, 쓰기 티켓,
 Codex가 이를 읽었다는 증명이 아닙니다.
 
-릴리스 셀과 검증 receipt는 정확한 아티팩트 증거입니다. Core 권한을 부여하거나 사용자를
-식별하거나 미래의 모든 실행을 증명하지 않습니다.
+릴리스 셀은 외부 아티팩트 증거이며 Core 권한을 부여하거나 사용자를 식별하거나 runtime
+실행을 증명하지 않습니다. Production runtime 권한은 릴리스 증거나 정확한 executable
+digest를 조회하지 않습니다.
 
 <a id="historical-operation-result-access"></a>
 ## 과거 operation result 접근
@@ -84,6 +92,7 @@ Volicord는 다음을 보장하지 않습니다.
 - filesystem, process, shell, command, network, credential, secret 격리
 - Codex가 guidance, tool description, 관리 지침을 따름
 - process, path, timing, prompt, observation 데이터에서 actor 귀속
+- client name/version, host version, 환경 값, 로컬 session metadata에서 actor 귀속
 - Product Repository 변경의 완전한 탐지 또는 예방
 - 정확성, 테스트 충분성, QA, 배포 준비, 사람 검토
 - 수락이 필요할 때 닫기 상태가 최종 사용자 수락을 대신함

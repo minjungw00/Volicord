@@ -17,6 +17,7 @@ use crate::stdio::{
     MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
+    adapter::{AgentSessionCoordinates, ManagedAgentSessionBinding},
     routing::McpStorageCapability,
     tool_registry::{
         canonical_tool_examples, compact_runtime_schema, mcp_tool_naming_style,
@@ -42,23 +43,16 @@ use volicord_store::diagnostics::{
     diagnostics_db_path, read_diagnostic_session, read_workflow_metric_aggregates,
     WorkflowMetricAggregateRow,
 };
-use volicord_store::guards::{
-    agent_session, insert_agent_session, upsert_guard_installation, AgentSessionInsert,
-    GuardInstallationUpsert,
-};
-use volicord_store::operational_sessions::{
-    mcp_runtime_session, start_mcp_runtime_session, McpRuntimeSessionStart,
-};
+use volicord_store::guards::{agent_session, upsert_guard_installation, GuardInstallationUpsert};
+use volicord_store::operational_sessions::mcp_runtime_session;
 use volicord_store::sqlite::{open_registry_database_read_only, registry_db_path};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
     UserActionFixture,
 };
-use volicord_test_support::TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING;
 use volicord_types::{
     AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, IntegrationProfile,
-    McpRuntimeSessionSource, OperationCategory, ResidualRiskInput, StagedArtifactHandle,
-    CODEX_MANAGED_MCP_CLIENT_NAME,
+    OperationCategory, ResidualRiskInput, StagedArtifactHandle, CODEX_MANAGED_MCP_CLIENT_NAME,
 };
 
 use super::*;
@@ -2273,11 +2267,7 @@ fn mcp_status_succeeds_with_readonly_storage() -> Result<(), Box<dyn Error>> {
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response = adapter.call_tool_for_session(
-        STATUS_TOOL_NAME,
-        json!({ "detail": "workflow" }),
-        Some("session_readonly_status"),
-    )?;
+    let response = adapter.call_tool(STATUS_TOOL_NAME, json!({ "detail": "workflow" }))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
@@ -2293,16 +2283,12 @@ fn mcp_status_succeeds_with_readonly_storage() -> Result<(), Box<dyn Error>> {
 fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-readonly-status-version")?;
     let before_version = read_only_state_version(&fixture)?;
-    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
     let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let adapter = adapter(&fixture)?;
+    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response = adapter.call_tool_for_session(
-        STATUS_TOOL_NAME,
-        json!({ "detail": "full" }),
-        Some("session_readonly_status_no_write"),
-    )?;
+    let response = adapter.call_tool(STATUS_TOOL_NAME, json!({ "detail": "full" }))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(read_only_state_version(&fixture)?, before_version);
@@ -2564,11 +2550,7 @@ fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response = adapter.call_tool_for_session(
-        INTAKE_TOOL_NAME,
-        intake_args(None),
-        Some("session_readonly_write_reject"),
-    )?;
+    let response = adapter.call_tool(INTAKE_TOOL_NAME, intake_args(None))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
@@ -4259,95 +4241,113 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
 
 fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
     let context =
-        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-            .with_test_host_receipt_fixture();
-    Ok(McpAdapter::new(fixture.runtime_home_path(), context))
+        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+    let guard = guard_health_record(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?;
+    let session = volicord_test_support::seed_test_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        guard
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_installation_id.as_str()),
+    )?;
+    Ok(
+        McpAdapter::new(fixture.runtime_home_path(), context).with_managed_agent_session_binding(
+            ManagedAgentSessionBinding {
+                runtime_session_id: session.runtime_session_id.as_str().to_owned(),
+                session_id: session.project_session_id.as_str().to_owned(),
+                host_session_id: session.host_session_id,
+                host_thread_id: session.host_thread_id,
+                host_turn_id: session.host_turn_id,
+            },
+        ),
+    )
 }
 
 fn test_agent_invocation(
     fixture: &CoreFixture,
     operation_category: OperationCategory,
 ) -> InvocationContext {
-    let host = volicord_test_support::test_host_receipt_fixture(
+    let guard = guard_health_record(
+        fixture.runtime_home_path(),
         fixture.project_id(),
         fixture.connection_id(),
-    );
-    let receipt = volicord_core::validate_host_verification_receipt(
-        host.receipt,
-        &host.current,
-        &host.validation_time,
     )
-    .expect("the typed MCP host-receipt fixture must validate");
+    .expect("guard authority fixture must load");
+    let session = volicord_test_support::seed_test_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        guard
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_installation_id.as_str()),
+    )
+    .expect("managed Agent Session fixture must seed");
+    let validated = CoreService::new(fixture.runtime_home_path())
+        .validate_agent_session(
+            AgentConnectionId::new(fixture.connection_id()),
+            ProjectId::new(fixture.project_id()),
+            session.runtime_session_id,
+            session.project_session_id,
+            operation_category,
+        )
+        .expect("managed Agent Session fixture must validate");
     InvocationContext::new(
         ProjectId::new(fixture.project_id()),
         ActorSource::agent_connection(fixture.connection_id()),
         operation_category,
-        volicord_types::VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        "",
     )
-    .with_validated_host_receipt(receipt)
+    .with_validated_agent_session(validated)
 }
 
 #[test]
-fn production_managed_startup_rejects_a_missing_current_host_receipt() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp-managed-host-receipt-required")?;
+fn project_tool_rejects_missing_managed_session_coordinates() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-managed-agent-session-required")?;
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
     let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
 
     let error = adapter
-        .validate_managed_host_authority_startup()
-        .expect_err("a static managed stdio label must not establish authority");
-    assert!(error.to_string().contains("host_receipt_missing"));
+        .call_tool(STATUS_TOOL_NAME, json!({"detail": "workflow"}))
+        .expect_err("project tools require current managed session coordinates");
+    assert!(error.to_string().contains("agent_session_missing"));
     Ok(())
 }
 
 #[test]
-fn session_binding_without_guard_rejects_missing_current_host_receipt_before_insert(
+fn invented_session_coordinates_do_not_authorize_or_insert_a_project_session(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-session-binding-host-receipt-required")?;
+    let fixture = CoreFixture::new("mcp-invented-session-not-authority")?;
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
     let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
-    let session_id = managed_stdio_session_id(fixture.connection_id(), CODEX_TEST_SESSION_ID)?;
     let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
 
     let error = adapter
         .call_tool_for_session(
             STATUS_TOOL_NAME,
             json!({"detail": "workflow"}),
-            Some(&session_id),
+            Some(AgentSessionCoordinates {
+                runtime_session_id: "mcp_invented_runtime",
+                project_session_id: "agent_invented_session",
+            }),
         )
-        .expect_err("session binding must require current typed host authority");
+        .expect_err("caller-invented coordinates must not establish session authority");
 
-    assert!(error.to_string().contains("host_receipt_missing"));
+    assert!(error
+        .to_string()
+        .contains("agent_runtime_session_not_current"));
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
         before_sessions
     );
-    assert!(agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .is_none());
-    Ok(())
-}
-
-#[test]
-fn production_adapter_does_not_treat_the_fixture_label_as_host_authority(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-fixture-label-not-authority")?;
-    let mut context =
-        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
-    context.invocation_binding_basis = VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned();
-    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
-
-    let error = adapter
-        .validate_managed_host_authority_startup()
-        .expect_err("a fixture string must not bypass production host authority validation");
-
-    assert!(error.to_string().contains("host_receipt_missing"));
     Ok(())
 }
 
@@ -4380,16 +4380,30 @@ fn adapter_for_additional_connection(
             project_id: fixture.project_id().to_owned(),
         },
     )?;
-    let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
-        .with_test_host_receipt_fixture();
-    Ok(McpAdapter::new(fixture.runtime_home_path(), context))
+    let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?;
+    let session = volicord_test_support::seed_test_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        connection_id,
+        None,
+    )?;
+    Ok(
+        McpAdapter::new(fixture.runtime_home_path(), context).with_managed_agent_session_binding(
+            ManagedAgentSessionBinding {
+                runtime_session_id: session.runtime_session_id.as_str().to_owned(),
+                session_id: session.project_session_id.as_str().to_owned(),
+                host_session_id: session.host_session_id,
+                host_thread_id: session.host_thread_id,
+                host_turn_id: session.host_turn_id,
+            },
+        ),
+    )
 }
 
 fn project_bound_adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
-            .with_project_allowlist(vec![ProjectId::new(fixture.project_id())])
-            .with_test_host_receipt_fixture();
+            .with_project_allowlist(vec![ProjectId::new(fixture.project_id())]);
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }
 
@@ -4703,59 +4717,14 @@ fn add_allowed_project(fixture: &CoreFixture, project_id: &str) -> Result<(), Bo
     Ok(())
 }
 
-fn ensure_user_channel_test_session(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
-    let session_id =
-        managed_stdio_session_id(fixture.connection_id(), "user-channel-test-session")?;
-    if agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        &session_id,
-    )?
-    .is_some()
-    {
-        return Ok(());
-    }
-    let started_at = fixture.store()?.current_timestamp()?;
-    let runtime_session_id = start_mcp_runtime_session(
-        fixture.runtime_home_path(),
-        McpRuntimeSessionStart {
-            connection_internal_id: fixture.connection_id().to_owned(),
-            session_source: McpRuntimeSessionSource::ManagedHost,
-            observed_host_executable_version: None,
-            process_id: 42,
-            process_started_at: started_at.clone(),
-        },
-    )?
-    .runtime_session_id;
-    insert_agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        AgentSessionInsert {
-            session_id,
-            runtime_session_id,
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            host_session_id: "user-channel-test-session".to_owned(),
-            host_thread_id: "user-channel-test-thread".to_owned(),
-            host_turn_id: "user-channel-test-turn".to_owned(),
-            observed_at: started_at,
-        },
-    )?;
-    Ok(())
-}
-
 fn create_pending_product_action(
     fixture: &CoreFixture,
 ) -> Result<(String, PipelineResponse), Box<dyn Error>> {
-    ensure_user_channel_test_session(fixture)?;
     let setup_adapter = adapter(fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
-    let session_id =
-        managed_stdio_session_id(fixture.connection_id(), "user-channel-test-session")?;
-    let response = setup_adapter.call_tool_for_session(
+    let response = setup_adapter.call_tool(
         "volicord.request_user_action",
         product_action_args(fixture, &task_id, state_version),
-        Some(&session_id),
     )?;
     Ok((task_id, response))
 }

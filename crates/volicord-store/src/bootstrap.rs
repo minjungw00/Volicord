@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use volicord_types::{UtcTimestamp, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON};
 
 use crate::{
-    managed_host_authority::delete_managed_host_authority_for_project_in_transaction,
     runtime_home::{
         normalize_lexical_path, paths_equal_for_boundary, validate_project_home_boundary,
         validate_runtime_home_product_repository, RuntimePathBoundaryError,
@@ -774,7 +773,6 @@ pub fn forget_project(runtime_home: impl AsRef<Path>, project_ref: &str) -> Stor
         return Ok(false);
     };
     let tx = crate::sqlite::begin_immediate_transaction(&mut conn)?;
-    delete_managed_host_authority_for_project_in_transaction(&tx, &current.project_internal_id)?;
     tx.execute(
         "DELETE FROM project_aliases WHERE project_internal_id = ?1",
         [current.project_internal_id.as_str()],

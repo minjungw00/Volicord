@@ -11,13 +11,16 @@ Codex -> stdio MCP -> public argument DTO -> Core request -> plan
       -> MCP projection -> Codex
 ```
 
-1. The stdio process validates its exact external descriptor, managed binding,
-   connection, project selection, StorageManifest, and readable storage.
+1. The stdio process resolves its managed launch context, validates the
+   Connection and project selection, opens the exact StorageManifest, and
+   records the authoritative runtime and project sessions.
 2. JSON-RPC validates lifecycle, method name, and public argument object.
-3. The MCP adapter rejects hidden envelope or invocation fields and builds the
-   complete Core request from server-owned context.
-4. Core common preflight validates actor, operation category, project, replay
-   identity, expected state, current Task context, and structural input.
+3. For each project tool call, the MCP adapter rejects hidden envelope or
+   invocation fields, validates the current managed runtime/project session,
+   and builds the complete Core request from server-owned context.
+4. Core common preflight validates the typed Agent Session, actor, operation
+   category, project, replay identity, expected state, current Task context,
+   and structural input.
 5. The method planner reads one coherent snapshot and produces a typed outcome
    plus exact proposed effects.
 6. Read-only branches return without mutation. Mutation branches revalidate

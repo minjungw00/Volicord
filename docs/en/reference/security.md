@@ -19,7 +19,8 @@ Within the owner-defined local boundary, Volicord guarantees:
 - explicit Task, scope, Change Unit, Write Ticket, evidence, UserAction, and
   close-state transitions;
 - no-effect behavior for owner-defined rejection branches;
-- canonical digests and exact receipt comparison where their owners require it;
+- current Connection, project membership, mode, and authoritative managed-host
+  session validation for Agent Connection calls;
 - Runtime Home and Product Repository separation;
 - CLI-only UserAction resolution with `resolved_by_actor_source=local_user`;
 - managed stdio MCP without a network listener; and
@@ -46,9 +47,15 @@ basis all validate.
 
 The managed Codex process and `volicord` run under the local user's operating-
 system account. Volicord does not authenticate that OS user or turn process
-identity into human identity. Connection verification proves only the exact
-owner-defined binding checks represented by a current
-`HostVerificationReceipt`.
+identity into human identity. Agent authorization proves only locally observed
+cooperative runtime/project session ownership, current Connection Project
+membership, current integration revisions, and permission under the current
+Connection mode.
+
+Executable bytes, executable paths, process identity, client name/version,
+host version, environment values, and host thread/turn metadata are not actor
+or human identity credentials. Thread and turn metadata may correlate the
+supported workflow, but cannot widen Connection or project authority.
 
 The supported MCP process uses stdin/stdout and opens no network transport
 listener. This is a process topology fact, not network sandboxing: Codex or
@@ -60,8 +67,9 @@ Product Repository files are user product data. Runtime Home rows are Volicord
 authority records. Managed Codex configuration starts a process but is not
 authority, approval, a Write Ticket, or proof that Codex loaded it.
 
-Release cells and verification receipts are exact artifact evidence. They do
-not grant Core authority, identify a user, or prove all future executions.
+Release cells are external artifact evidence and do not grant Core authority,
+identify a user, or prove a runtime execution. Production runtime authorization
+does not consult release evidence or exact executable digests.
 
 <a id="historical-operation-result-access"></a>
 ## Historical Operation-Result Access
@@ -95,6 +103,8 @@ Volicord does not guarantee:
 - filesystem, process, shell, command, network, credential, or secret isolation;
 - that Codex honors guidance, tool descriptions, or managed instructions;
 - actor attribution from process, path, timing, prompt, or observation data;
+- actor attribution from client name/version, host version, environment values,
+  or local session metadata;
 - complete detection or prevention of Product Repository changes;
 - correctness, test sufficiency, QA, deployment readiness, or human review;
 - that Close Status replaces final user acceptance where acceptance is required;

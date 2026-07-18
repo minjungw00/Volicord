@@ -60,9 +60,10 @@ git diff --check
 ```
 
 release 지원 변경은 정확한 최종 아티팩트 workflow와 `linux`, `macos`,
-`native_windows`, `wsl2`에 걸친 target/environment 셀 여섯 개도 요구합니다. 내장 런타임 정책과 외부 릴리스 증거를
-분리합니다. 증거 manifest에는 사실대로 entry를 0~6개 둘 수 있으며 지원
-카탈로그와 정확히 일치하는 통과 증거만 해당 릴리스 셀을 충족합니다.
+`native_windows`, `wsl2`에 걸친 target/environment 셀 여섯 개도 요구합니다. 유지
+중인 릴리스 카탈로그와 외부 릴리스 증거를 분리합니다. 증거 manifest에는 사실대로
+entry를 0~6개 둘 수 있으며 카탈로그와 정확히 일치하는 통과 증거만 해당 릴리스
+셀을 충족합니다. 운영 런타임 권한은 어느 계약도 사용하지 않습니다.
 
 ## 인계
 

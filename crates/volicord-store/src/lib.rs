@@ -17,7 +17,6 @@ pub mod evidence_capture;
 pub mod export;
 pub mod guards;
 pub mod inspection;
-pub mod managed_host_authority;
 pub mod operational_sessions;
 pub mod runtime_home;
 pub mod schema;

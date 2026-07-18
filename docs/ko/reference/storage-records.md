@@ -8,7 +8,7 @@
 
 | 위치 | 목적 |
 |---|---|
-| `registry.sqlite` | Runtime Home identity, 설치 profile, 프로젝트, alias, Agent Connection, 명시적 프로젝트 membership, 관리 Codex binding/검증 metadata, 권위 있는 MCP runtime session |
+| `registry.sqlite` | Runtime Home identity, 설치 profile, 프로젝트, alias, Agent Connection, 명시적 프로젝트 membership, 정규 연결 검증 보고서, 권위 있는 MCP runtime session |
 | 프로젝트 `state.sqlite` | 프로젝트 로컬 Core 상태, replay, authority event, UserAction, evidence, artifact, continuity, 프로젝트 Agent Session, Guard 관찰, 조정 |
 | artifact store | 영속 artifact row가 참조하는 bytes와 안전 notice |
 | `diagnostics.sqlite` | 제한된 비권한 operability counter |
@@ -43,7 +43,6 @@ Registry 기록에는 다음이 포함됩니다.
 - MCP runtime session과 그 process, initialization, discovery, 안전 호출, terminal
   failure, graceful close 사실
 - runtime/host session 하나를 Connection Project 하나에 결속하는 데이터베이스 간 예약
-- 정규 `ManagedHostBinding` identity, 생성 artifact identity, 현재 검증 receipt 좌표
 
 프로젝트 상태 기록에는 다음이 포함됩니다.
 
@@ -89,6 +88,18 @@ ownership pair를 더한 프로젝트 통합 revision을 보관하며, workflow�
 데이터베이스 사이에는 foreign key를 만들 수 없으므로 Registry의
 `mcp_runtime_project_session_bindings`가 uniqueness 경계를 제공하며 runtime/host session
 하나를 다른 프로젝트에서 재사용하지 못하게 합니다.
+
+Runtime 권한은 이 현재 기록을 직접 읽습니다. 활성 Connection, 현재 Connection Project
+membership, 그 Connection의 `session_source=managed_host` runtime session, 같은 runtime
+session·Connection·프로젝트 소유의 프로젝트 Agent Session만 허용합니다. 저장된
+Connection과 프로젝트 통합 revision은 현재 담당 입력에서 도출한 revision과 같아야
+합니다. Connection mode는 요청한 operation category를 허용해야 합니다.
+`cli_preflight` row, diagnostic version 필드, best-effort diagnostics는 이 경계를 충족할 수
+없습니다.
+
+Registry 저장소에는 관리 host binding, executable digest, verifier-build digest,
+support-catalog coordinate, host-verification-receipt 기록이 없습니다. 제거된 runtime 권한
+테이블을 담은 Runtime Home은 다른 `StorageManifest`에 속하므로 migration 없이 거부합니다.
 
 ## Identity와 소유권
 
