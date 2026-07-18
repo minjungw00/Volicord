@@ -1,12 +1,14 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_types::{ConnectionVerificationReport, UtcTimestamp};
+use volicord_types::{
+    guard_manifest_from_json, ConnectionVerificationReport, IntegrationRevision, UtcTimestamp,
+};
 
 use crate::{
     bootstrap::{
@@ -15,8 +17,11 @@ use crate::{
     },
     guards::{
         guard_installation_from_conn, upsert_guard_installation_in_transaction,
-        GuardInstallationRecord, GuardInstallationUpsert,
+        validate_guard_installation_upsert_binding,
+        validate_stored_guard_installation_manifest_binding, GuardInstallationRecord,
+        GuardInstallationUpsert,
     },
+    operational_sessions::connection_integration_revision,
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
         registry_db_path,
@@ -100,6 +105,7 @@ pub struct AgentConnectionRecord {
     pub mode: String,
     pub enabled: bool,
     pub managed_fingerprint: String,
+    pub integration_generation: i64,
     pub verification_report_json: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -224,6 +230,42 @@ pub struct ConnectionProjectRemovalOutcome {
     pub membership_removed: bool,
     pub connection_removed: bool,
     pub remaining_project_count: usize,
+}
+
+/// One prevalidated Guard manifest rebind in a Connection mode transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionModeGuardManifestRebind {
+    pub guard_installation_id: String,
+    pub project_id: String,
+    pub expected_manifest_json: String,
+    pub manifest_json: String,
+}
+
+/// Store-owned input for one atomic Connection mode revision transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionModeTransition {
+    pub connection_internal_id: String,
+    pub expected_mode: String,
+    pub expected_integration_revision: IntegrationRevision,
+    pub mode: String,
+    pub guard_manifests: Vec<ConnectionModeGuardManifestRebind>,
+}
+
+/// Whether an atomic Connection mode request changed durable state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionModeTransitionKind {
+    Unchanged,
+    Updated,
+}
+
+/// Result of one atomic Connection mode revision transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionModeTransitionOutcome {
+    pub kind: ConnectionModeTransitionKind,
+    pub connection: AgentConnectionRecord,
+    pub previous_integration_revision: IntegrationRevision,
+    pub current_integration_revision: IntegrationRevision,
+    pub rebound_guard_installation_ids: Vec<String>,
 }
 
 /// Current dynamic project-access facts for one connection/project pair.
@@ -571,20 +613,25 @@ fn write_agent_connection(
                 "connection_internal_id is already bound to a different host target",
             ));
         }
+        if existing.mode != registration.mode {
+            return Err(conflict(
+                "agent_connection",
+                &registration.connection_internal_id,
+                "an established Connection mode can change only through the atomic mode-transition API",
+            ));
+        }
         let enabled = registration.enabled || (preserve_existing_enabled && existing.enabled);
         tx.execute(
             "UPDATE agent_connections
-                SET mode = ?2,
-                    enabled = ?3,
-                    managed_fingerprint = ?4,
-                    verification_report_json = ?5,
-                    metadata_json = ?6,
+                SET enabled = ?2,
+                    managed_fingerprint = ?3,
+                    verification_report_json = ?4,
+                    metadata_json = ?5,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                    project_internal_id = ?7
+                    project_internal_id = ?6
               WHERE connection_internal_id = ?1",
             params![
                 registration.connection_internal_id,
-                registration.mode,
                 enabled_as_i64(enabled),
                 registration.managed_fingerprint,
                 registration.verification_report_json,
@@ -757,6 +804,7 @@ fn list_raw_agent_connections_from_conn(
             mode,
             enabled,
             managed_fingerprint,
+            integration_generation,
             verification_report_json,
             created_at,
             updated_at,
@@ -808,40 +856,295 @@ pub fn set_connection_enabled(
     })
 }
 
-/// Updates one Agent Connection mode.
-pub fn set_connection_mode(
+/// Rebinds one Connection and every owned Guard manifest as one mode revision transition.
+pub fn transition_connection_mode(
     runtime_home: impl AsRef<Path>,
-    connection_internal_id: &str,
-    mode: &str,
-) -> StoreResult<AgentConnectionRecord> {
-    validate_identifier("connection_internal_id", connection_internal_id)?;
-    validate_connection_mode(mode)?;
-    let registry_path = registry_db_path(runtime_home);
+    input: ConnectionModeTransition,
+) -> StoreResult<ConnectionModeTransitionOutcome> {
+    validate_identifier("connection_internal_id", &input.connection_internal_id)?;
+    validate_connection_mode(&input.expected_mode)?;
+    validate_connection_mode(&input.mode)?;
+    let mut guard_ids = BTreeSet::new();
+    let mut project_ids = BTreeSet::new();
+    for rebind in &input.guard_manifests {
+        validate_identifier("guard_installation_id", &rebind.guard_installation_id)?;
+        validate_project_id(&rebind.project_id)?;
+        if !guard_ids.insert(rebind.guard_installation_id.clone()) {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "duplicate Guard Installation in mode-transition inventory: {}",
+                    rebind.guard_installation_id
+                ),
+            });
+        }
+        if !project_ids.insert(rebind.project_id.clone()) {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "duplicate project in mode-transition inventory: {}",
+                    rebind.project_id
+                ),
+            });
+        }
+    }
+
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
-    require_agent_connection(&tx, connection_internal_id)?;
-    let changed = tx.execute(
-        "UPDATE agent_connections
-            SET verification_report_json = CASE WHEN mode = ?2 THEN verification_report_json ELSE NULL END,
-                mode = ?2,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-          WHERE connection_internal_id = ?1",
-        params![connection_internal_id, mode],
-    )?;
-    if changed == 0 {
-        return Err(StoreError::NotFound {
+    let connection = require_agent_connection(&tx, &input.connection_internal_id)?;
+    reject_generic_pending_host_cleanup_mutation(&connection)?;
+    let previous_revision = connection_integration_revision(&connection)?;
+    if connection.mode != input.expected_mode
+        || previous_revision != input.expected_integration_revision
+    {
+        return Err(StoreError::Conflict {
             entity: "agent_connection",
-            id: connection_internal_id.to_owned(),
+            id: input.connection_internal_id,
+            detail:
+                "Connection mode or integration revision changed after mode-transition preflight"
+                    .to_owned(),
         });
     }
-    tx.commit()?;
 
-    agent_connection_record_from_conn(&conn, connection_internal_id)?.ok_or_else(|| {
-        StoreError::NotFound {
-            entity: "agent_connection",
-            id: connection_internal_id.to_owned(),
+    if connection.mode == input.mode {
+        if !input.guard_manifests.is_empty() {
+            return Err(StoreError::InvalidInput {
+                detail: "a no-op mode transition must not include Guard manifest mutations"
+                    .to_owned(),
+            });
         }
+        return Ok(ConnectionModeTransitionOutcome {
+            kind: ConnectionModeTransitionKind::Unchanged,
+            connection,
+            previous_integration_revision: previous_revision.clone(),
+            current_integration_revision: previous_revision,
+            rebound_guard_installation_ids: Vec::new(),
+        });
+    }
+
+    let memberships =
+        list_connection_projects_from_conn(&tx, &runtime_home, &input.connection_internal_id)?;
+    let memberships_by_project = memberships
+        .iter()
+        .map(|membership| (membership.project_id.as_str(), membership))
+        .collect::<BTreeMap<_, _>>();
+
+    let stored_guard_ids = {
+        let mut statement = tx.prepare(
+            "SELECT guard_installation_id
+               FROM guard_installations
+              WHERE connection_internal_id = ?1
+              ORDER BY guard_installation_id",
+        )?;
+        let rows = statement.query_map([&input.connection_internal_id], |row| row.get(0))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row?);
+        }
+        ids
+    };
+    if stored_guard_ids.len() != memberships.len()
+        || input.guard_manifests.len() != memberships.len()
+        || stored_guard_ids.iter().collect::<BTreeSet<_>>()
+            != input
+                .guard_manifests
+                .iter()
+                .map(|rebind| &rebind.guard_installation_id)
+                .collect::<BTreeSet<_>>()
+        || memberships_by_project
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            != input
+                .guard_manifests
+                .iter()
+                .map(|rebind| rebind.project_id.as_str())
+                .collect::<BTreeSet<_>>()
+    {
+        return Err(StoreError::Conflict {
+            entity: "guard_installation",
+            id: input.connection_internal_id.clone(),
+            detail: "mode-transition inventory must contain exactly one current Guard Installation for every Connection Project"
+                .to_owned(),
+        });
+    }
+
+    let mut candidate_connection = connection.clone();
+    candidate_connection.mode.clone_from(&input.mode);
+    candidate_connection.integration_generation = candidate_connection
+        .integration_generation
+        .checked_add(1)
+        .ok_or_else(|| StoreError::InvalidInput {
+            detail: "Agent Connection integration generation is exhausted".to_owned(),
+        })?;
+    let candidate_revision = connection_integration_revision(&candidate_connection)?;
+    let rebinds_by_id = input
+        .guard_manifests
+        .iter()
+        .map(|rebind| (rebind.guard_installation_id.as_str(), rebind))
+        .collect::<BTreeMap<_, _>>();
+
+    for guard_installation_id in &stored_guard_ids {
+        let rebind = rebinds_by_id
+            .get(guard_installation_id.as_str())
+            .expect("complete inventory was checked");
+        let membership = memberships_by_project
+            .get(rebind.project_id.as_str())
+            .expect("complete project inventory was checked");
+        let installation =
+            guard_installation_from_conn(&tx, guard_installation_id)?.ok_or_else(|| {
+                StoreError::NotFound {
+                    entity: "guard_installation",
+                    id: guard_installation_id.clone(),
+                }
+            })?;
+        if installation.project_internal_id != membership.project_internal_id
+            || installation.project_id != membership.project_id
+            || installation.manifest_json != rebind.expected_manifest_json
+        {
+            return Err(StoreError::Conflict {
+                entity: "guard_installation",
+                id: guard_installation_id.clone(),
+                detail:
+                    "Guard Installation owner or manifest changed after mode-transition preflight"
+                        .to_owned(),
+            });
+        }
+        validate_stored_guard_installation_manifest_binding(
+            &installation,
+            &connection,
+            &membership.project.repo_root,
+        )?;
+
+        let mut expected_manifest =
+            guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
+                StoreError::corrupt_owner_state_json(
+                    "guard_installations",
+                    guard_installation_id.clone(),
+                    "manifest_json",
+                )
+            })?;
+        expected_manifest.integration_revision = candidate_revision.clone();
+        let expected_candidate_json =
+            serde_json::to_string(&expected_manifest).map_err(|error| {
+                StoreError::InvalidInput {
+                    detail: format!("candidate Guard manifest could not be serialized: {error}"),
+                }
+            })?;
+        if rebind.manifest_json != expected_candidate_json {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "candidate Guard manifest {} must replace only the Connection integration revision",
+                    guard_installation_id
+                ),
+            });
+        }
+        validate_guard_installation_upsert_binding(
+            &GuardInstallationUpsert {
+                guard_installation_id: rebind.guard_installation_id.clone(),
+                connection_internal_id: input.connection_internal_id.clone(),
+                project_id: rebind.project_id.clone(),
+                manifest_json: rebind.manifest_json.clone(),
+            },
+            &candidate_connection,
+            &membership.project,
+        )?;
+    }
+
+    let changed = tx.execute(
+        "UPDATE agent_connections
+            SET verification_report_json = NULL,
+                mode = ?2,
+                integration_generation = integration_generation + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE connection_internal_id = ?1
+            AND mode = ?3
+            AND integration_generation = ?4",
+        params![
+            input.connection_internal_id,
+            input.mode,
+            input.expected_mode,
+            connection.integration_generation,
+        ],
+    )?;
+    if changed != 1 {
+        return Err(StoreError::Conflict {
+            entity: "agent_connection",
+            id: input.connection_internal_id,
+            detail: "Connection mode changed during the atomic transition".to_owned(),
+        });
+    }
+
+    for guard_installation_id in &stored_guard_ids {
+        let rebind = rebinds_by_id
+            .get(guard_installation_id.as_str())
+            .expect("complete inventory was checked");
+        let membership = memberships_by_project
+            .get(rebind.project_id.as_str())
+            .expect("complete project inventory was checked");
+        let changed = tx.execute(
+            "UPDATE guard_installations
+                SET manifest_json = ?2,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              WHERE guard_installation_id = ?1
+                AND connection_internal_id = ?3
+                AND project_internal_id = ?4
+                AND manifest_json = ?5",
+            params![
+                rebind.guard_installation_id,
+                rebind.manifest_json,
+                input.connection_internal_id,
+                membership.project_internal_id,
+                rebind.expected_manifest_json,
+            ],
+        )?;
+        if changed != 1 {
+            return Err(StoreError::Conflict {
+                entity: "guard_installation",
+                id: guard_installation_id.clone(),
+                detail: "Guard manifest changed during the atomic mode transition".to_owned(),
+            });
+        }
+    }
+
+    let connection = require_agent_connection(&tx, &input.connection_internal_id)?;
+    let current_revision = connection_integration_revision(&connection)?;
+    if current_revision != candidate_revision {
+        return Err(StoreError::Conflict {
+            entity: "agent_connection",
+            id: input.connection_internal_id,
+            detail: "committed candidate Connection revision did not match preflight".to_owned(),
+        });
+    }
+    for guard_installation_id in &stored_guard_ids {
+        let rebind = rebinds_by_id
+            .get(guard_installation_id.as_str())
+            .expect("complete inventory was checked");
+        let membership = memberships_by_project
+            .get(rebind.project_id.as_str())
+            .expect("complete project inventory was checked");
+        let installation =
+            guard_installation_from_conn(&tx, guard_installation_id)?.ok_or_else(|| {
+                StoreError::NotFound {
+                    entity: "guard_installation",
+                    id: guard_installation_id.clone(),
+                }
+            })?;
+        validate_stored_guard_installation_manifest_binding(
+            &installation,
+            &connection,
+            &membership.project.repo_root,
+        )?;
+    }
+
+    tx.commit()?;
+    Ok(ConnectionModeTransitionOutcome {
+        kind: ConnectionModeTransitionKind::Updated,
+        connection,
+        previous_integration_revision: previous_revision,
+        current_integration_revision: current_revision,
+        rebound_guard_installation_ids: stored_guard_ids,
     })
 }
 
@@ -1987,6 +2290,7 @@ pub(crate) fn raw_agent_connection_record_from_conn(
             mode,
             enabled,
             managed_fingerprint,
+            integration_generation,
             verification_report_json,
             created_at,
             updated_at,
@@ -2015,16 +2319,25 @@ fn agent_connection_record_from_row(
         mode: row.get(7)?,
         enabled: row.get::<_, i64>(8)? == 1,
         managed_fingerprint: row.get(9)?,
-        verification_report_json: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
-        metadata_json: row.get(13)?,
+        integration_generation: row.get(10)?,
+        verification_report_json: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+        metadata_json: row.get(14)?,
     })
 }
 
 fn validate_stored_agent_connection(
     connection: AgentConnectionRecord,
 ) -> StoreResult<AgentConnectionRecord> {
+    if connection.integration_generation < 0 {
+        return Err(StoreError::CorruptOwnerStateJson {
+            database_kind: "registry",
+            table: "agent_connections",
+            record_ref: connection.connection_internal_id.clone(),
+            logical_column: "integration_generation",
+        });
+    }
     connection.verification_report()?;
     validate_stored_agent_connection_json_object(
         &connection.connection_internal_id,
@@ -2234,10 +2547,20 @@ mod tests {
         let fixture = registry_fixture("connection-register")?;
 
         let created = ensure_agent_connection(fixture.runtime_home.path(), connection("conn_a"))?;
+        assert!(matches!(
+            ensure_agent_connection(
+                fixture.runtime_home.path(),
+                AgentConnectionRegistration {
+                    mode: CONNECTION_MODE_READ_ONLY.to_owned(),
+                    ..connection("conn_a")
+                },
+            ),
+            Err(StoreError::Conflict { .. })
+        ));
         let updated = ensure_agent_connection(
             fixture.runtime_home.path(),
             AgentConnectionRegistration {
-                mode: CONNECTION_MODE_READ_ONLY.to_owned(),
+                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
                 enabled: false,
                 managed_fingerprint: "fingerprint-updated".to_owned(),
                 verification_report_json: Some(report_json(&verification_report())?),
@@ -2250,7 +2573,7 @@ mod tests {
         let listed = list_agent_connections(fixture.runtime_home.path())?;
 
         assert_eq!(created.connection_internal_id, "conn_a");
-        assert_eq!(updated.mode, CONNECTION_MODE_READ_ONLY);
+        assert_eq!(updated.mode, CONNECTION_MODE_WORKFLOW);
         assert!(!updated.enabled);
         assert_eq!(updated.managed_fingerprint, "fingerprint-updated");
         assert_eq!(read, updated);
@@ -3140,11 +3463,12 @@ mod tests {
             "conn_newer",
             &pending_host_cleanup,
             |_| {
-                set_connection_mode(
+                let transition = mode_transition_input(
                     fixture.runtime_home.path(),
                     "conn_staged",
                     CONNECTION_MODE_READ_ONLY,
                 )?;
+                transition_connection_mode(fixture.runtime_home.path(), transition)?;
                 Ok::<(), StoreError>(())
             },
         )?;
@@ -3672,6 +3996,388 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn mode_transition_rebinds_guard_manifest_and_no_op_preserves_state(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-mode-transition")?;
+        let report = report_json(&verification_report())?;
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                verification_report_json: Some(report.clone()),
+                ..connection("conn_mode")
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_mode".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_mode",
+                "conn_mode",
+                PROJECT_ID,
+            ),
+        )?;
+
+        let before_connection =
+            agent_connection_record(fixture.runtime_home.path(), "conn_mode")?.expect("connection");
+        let before_guard =
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_mode")?
+                .expect("Guard Installation");
+        let before_manifest = guard_manifest_from_json(&before_guard.manifest_json)?;
+        let transition = mode_transition_input(
+            fixture.runtime_home.path(),
+            "conn_mode",
+            CONNECTION_MODE_READ_ONLY,
+        )?;
+        let outcome = transition_connection_mode(fixture.runtime_home.path(), transition)?;
+
+        assert_eq!(outcome.kind, ConnectionModeTransitionKind::Updated);
+        assert_eq!(outcome.connection.mode, CONNECTION_MODE_READ_ONLY);
+        assert_eq!(
+            outcome.connection.integration_generation,
+            before_connection.integration_generation + 1
+        );
+        assert!(outcome.connection.verification_report_json.is_none());
+        assert_ne!(
+            outcome.previous_integration_revision,
+            outcome.current_integration_revision
+        );
+        assert_eq!(
+            outcome.rebound_guard_installation_ids,
+            ["guard_mode".to_owned()]
+        );
+        let after_guard =
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_mode")?
+                .expect("Guard Installation");
+        let after_manifest = guard_manifest_from_json(&after_guard.manifest_json)?;
+        let mut expected_manifest = before_manifest.clone();
+        expected_manifest.integration_revision = outcome.current_integration_revision.clone();
+        assert_eq!(after_manifest, expected_manifest);
+        assert_eq!(before_manifest.policy_hash, after_manifest.policy_hash);
+        assert_eq!(
+            before_manifest.runtime_commands,
+            after_manifest.runtime_commands
+        );
+        assert_eq!(before_manifest.managed_files, after_manifest.managed_files);
+        assert_eq!(
+            before_manifest.required_hook_phases,
+            after_manifest.required_hook_phases
+        );
+
+        let connection_with_report = update_agent_connection_verification_report(
+            fixture.runtime_home.path(),
+            "conn_mode",
+            &outcome.connection.managed_fingerprint,
+            Some(&verification_report()),
+        )?;
+        let guard_before_no_op =
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_mode")?
+                .expect("Guard Installation");
+        let no_op = transition_connection_mode(
+            fixture.runtime_home.path(),
+            ConnectionModeTransition {
+                connection_internal_id: "conn_mode".to_owned(),
+                expected_mode: CONNECTION_MODE_READ_ONLY.to_owned(),
+                expected_integration_revision: connection_integration_revision(
+                    &connection_with_report,
+                )?,
+                mode: CONNECTION_MODE_READ_ONLY.to_owned(),
+                guard_manifests: Vec::new(),
+            },
+        )?;
+        assert_eq!(no_op.kind, ConnectionModeTransitionKind::Unchanged);
+        assert_eq!(
+            no_op.connection.integration_generation,
+            connection_with_report.integration_generation
+        );
+        assert_eq!(
+            no_op.connection.updated_at,
+            connection_with_report.updated_at
+        );
+        assert_eq!(
+            no_op.connection.verification_report_json.as_deref(),
+            Some(report.as_str())
+        );
+        assert_eq!(
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_mode")?
+                .expect("Guard Installation"),
+            guard_before_no_op
+        );
+        assert_eq!(before_connection.mode, CONNECTION_MODE_WORKFLOW);
+        Ok(())
+    }
+
+    #[test]
+    fn mode_transition_updates_every_project_or_rolls_back_all_candidates(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-mode-multi-project")?;
+        register_additional_project(
+            &fixture,
+            PRIOR_OTHER_PROJECT_ID,
+            "mode-multi-project-other-repo",
+        )?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_multi_mode"))?;
+        for (project_id, guard_id, policy_hash) in [
+            (PROJECT_ID, "guard_mode_a", TEST_POLICY_HASH),
+            (
+                PRIOR_OTHER_PROJECT_ID,
+                "guard_mode_b",
+                "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            ),
+        ] {
+            add_connection_project(
+                fixture.runtime_home.path(),
+                ConnectionProjectRegistration {
+                    connection_internal_id: "conn_multi_mode".to_owned(),
+                    project_id: project_id.to_owned(),
+                },
+            )?;
+            crate::guards::upsert_guard_installation(
+                fixture.runtime_home.path(),
+                guard_installation_upsert_with_policy_hash(
+                    fixture.runtime_home.path(),
+                    guard_id,
+                    "conn_multi_mode",
+                    project_id,
+                    policy_hash,
+                ),
+            )?;
+        }
+
+        let transition = mode_transition_input(
+            fixture.runtime_home.path(),
+            "conn_multi_mode",
+            CONNECTION_MODE_READ_ONLY,
+        )?;
+        let before = transition
+            .guard_manifests
+            .iter()
+            .map(|rebind| {
+                (
+                    rebind.guard_installation_id.clone(),
+                    guard_manifest_from_json(&rebind.expected_manifest_json)
+                        .expect("canonical manifest"),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let outcome = transition_connection_mode(fixture.runtime_home.path(), transition)?;
+        assert_eq!(outcome.rebound_guard_installation_ids.len(), 2);
+        for guard_id in ["guard_mode_a", "guard_mode_b"] {
+            let manifest = guard_manifest_from_json(
+                &crate::guards::guard_installation(fixture.runtime_home.path(), guard_id)?
+                    .expect("Guard Installation")
+                    .manifest_json,
+            )?;
+            let original = &before[guard_id];
+            assert_eq!(
+                manifest.integration_revision,
+                outcome.current_integration_revision
+            );
+            assert_eq!(manifest.project_id, original.project_id);
+            assert_eq!(manifest.policy_hash, original.policy_hash);
+            assert_eq!(manifest.runtime_commands, original.runtime_commands);
+            assert_eq!(manifest.managed_files, original.managed_files);
+        }
+
+        let rollback_fixture = registry_fixture("connection-mode-multi-rollback")?;
+        register_additional_project(
+            &rollback_fixture,
+            PRIOR_OTHER_PROJECT_ID,
+            "mode-multi-rollback-other-repo",
+        )?;
+        ensure_agent_connection(
+            rollback_fixture.runtime_home.path(),
+            connection("conn_multi_rollback"),
+        )?;
+        for (project_id, guard_id) in [
+            (PROJECT_ID, "guard_rollback_a"),
+            (PRIOR_OTHER_PROJECT_ID, "guard_rollback_b"),
+        ] {
+            add_connection_project(
+                rollback_fixture.runtime_home.path(),
+                ConnectionProjectRegistration {
+                    connection_internal_id: "conn_multi_rollback".to_owned(),
+                    project_id: project_id.to_owned(),
+                },
+            )?;
+            crate::guards::upsert_guard_installation(
+                rollback_fixture.runtime_home.path(),
+                guard_installation_upsert(
+                    rollback_fixture.runtime_home.path(),
+                    guard_id,
+                    "conn_multi_rollback",
+                    project_id,
+                ),
+            )?;
+        }
+        let mut invalid = mode_transition_input(
+            rollback_fixture.runtime_home.path(),
+            "conn_multi_rollback",
+            CONNECTION_MODE_READ_ONLY,
+        )?;
+        invalid.guard_manifests[1].manifest_json =
+            invalid.guard_manifests[1].expected_manifest_json.clone();
+        let before_connection =
+            agent_connection_record(rollback_fixture.runtime_home.path(), "conn_multi_rollback")?
+                .expect("connection");
+        let before_manifests = invalid
+            .guard_manifests
+            .iter()
+            .map(|rebind| {
+                (
+                    rebind.guard_installation_id.clone(),
+                    rebind.expected_manifest_json.clone(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert!(transition_connection_mode(rollback_fixture.runtime_home.path(), invalid).is_err());
+        assert_eq!(
+            agent_connection_record(rollback_fixture.runtime_home.path(), "conn_multi_rollback")?
+                .expect("connection"),
+            before_connection
+        );
+        for (guard_id, manifest_json) in before_manifests {
+            assert_eq!(
+                crate::guards::guard_installation(rollback_fixture.runtime_home.path(), &guard_id)?
+                    .expect("Guard Installation")
+                    .manifest_json,
+                manifest_json
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn mode_transition_rejects_missing_stale_duplicate_and_owner_mismatched_inventory(
+    ) -> Result<(), Box<dyn Error>> {
+        let missing = registry_fixture("connection-mode-missing-guard")?;
+        ensure_agent_connection(
+            missing.runtime_home.path(),
+            connection("conn_missing_guard"),
+        )?;
+        add_connection_project(
+            missing.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_missing_guard".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        let missing_connection =
+            agent_connection_record(missing.runtime_home.path(), "conn_missing_guard")?
+                .expect("connection");
+        let missing_error = transition_connection_mode(
+            missing.runtime_home.path(),
+            ConnectionModeTransition {
+                connection_internal_id: "conn_missing_guard".to_owned(),
+                expected_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                expected_integration_revision: connection_integration_revision(
+                    &missing_connection,
+                )?,
+                mode: CONNECTION_MODE_READ_ONLY.to_owned(),
+                guard_manifests: Vec::new(),
+            },
+        )
+        .expect_err("missing Guard Installation must fail");
+        assert!(matches!(missing_error, StoreError::Conflict { .. }));
+        assert_eq!(
+            agent_connection_record(missing.runtime_home.path(), "conn_missing_guard")?
+                .expect("connection")
+                .mode,
+            CONNECTION_MODE_WORKFLOW
+        );
+
+        let fixture = registry_fixture("connection-mode-invalid-inventory")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_invalid_mode"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_invalid_mode".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_invalid_mode",
+                "conn_invalid_mode",
+                PROJECT_ID,
+            ),
+        )?;
+        let valid = mode_transition_input(
+            fixture.runtime_home.path(),
+            "conn_invalid_mode",
+            CONNECTION_MODE_READ_ONLY,
+        )?;
+
+        let mut incomplete = valid.clone();
+        incomplete.guard_manifests.clear();
+        assert!(matches!(
+            transition_connection_mode(fixture.runtime_home.path(), incomplete),
+            Err(StoreError::Conflict { .. })
+        ));
+
+        let mut stale = valid.clone();
+        stale.expected_integration_revision =
+            IntegrationRevision::parse(format!("sha256:{}", "f".repeat(64)))?;
+        assert!(matches!(
+            transition_connection_mode(fixture.runtime_home.path(), stale),
+            Err(StoreError::Conflict { .. })
+        ));
+
+        let mut duplicate = valid.clone();
+        duplicate
+            .guard_manifests
+            .push(duplicate.guard_manifests[0].clone());
+        assert!(matches!(
+            transition_connection_mode(fixture.runtime_home.path(), duplicate),
+            Err(StoreError::InvalidInput { .. })
+        ));
+
+        let installation =
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_invalid_mode")?
+                .expect("Guard Installation");
+        let mut mismatched = guard_manifest_from_json(&installation.manifest_json)?;
+        mismatched.connection_id = volicord_types::AgentConnectionId::new("conn_other");
+        let registry = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        registry.execute(
+            "UPDATE guard_installations SET manifest_json = ?2 WHERE guard_installation_id = ?1",
+            params!["guard_invalid_mode", serde_json::to_string(&mismatched)?],
+        )?;
+        drop(registry);
+        assert!(transition_connection_mode(fixture.runtime_home.path(), valid.clone()).is_err());
+        assert_eq!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_invalid_mode")?
+                .expect("connection")
+                .mode,
+            CONNECTION_MODE_WORKFLOW
+        );
+
+        let registry = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        registry.execute(
+            "UPDATE guard_installations SET manifest_json = '{}' WHERE guard_installation_id = ?1",
+            ["guard_invalid_mode"],
+        )?;
+        drop(registry);
+        let mut malformed = valid;
+        malformed.guard_manifests[0].expected_manifest_json = "{}".to_owned();
+        assert!(transition_connection_mode(fixture.runtime_home.path(), malformed).is_err());
+        assert_eq!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_invalid_mode")?
+                .expect("connection")
+                .mode,
+            CONNECTION_MODE_WORKFLOW
+        );
+        Ok(())
+    }
+
     struct RegistryFixture {
         runtime_home: TempRuntimeHome,
     }
@@ -3891,6 +4597,22 @@ mod tests {
         connection_internal_id: &str,
         project_id: &str,
     ) -> GuardInstallationUpsert {
+        guard_installation_upsert_with_policy_hash(
+            runtime_home,
+            guard_installation_id,
+            connection_internal_id,
+            project_id,
+            TEST_POLICY_HASH,
+        )
+    }
+
+    fn guard_installation_upsert_with_policy_hash(
+        runtime_home: &Path,
+        guard_installation_id: &str,
+        connection_internal_id: &str,
+        project_id: &str,
+        policy_hash: &str,
+    ) -> GuardInstallationUpsert {
         let repo_root = project_record_for_execution(runtime_home, project_id)
             .expect("fixture project lookup")
             .expect("fixture project")
@@ -3907,8 +4629,54 @@ mod tests {
                 project_id,
                 &repo_root,
                 guard_installation_id,
-                TEST_POLICY_HASH,
+                policy_hash,
             ),
         }
+    }
+
+    fn mode_transition_input(
+        runtime_home: &Path,
+        connection_internal_id: &str,
+        mode: &str,
+    ) -> StoreResult<ConnectionModeTransition> {
+        let connection = agent_connection_record(runtime_home, connection_internal_id)?
+            .expect("fixture connection");
+        let expected_revision = connection_integration_revision(&connection)?;
+        let mut candidate_connection = connection.clone();
+        candidate_connection.mode = mode.to_owned();
+        candidate_connection.integration_generation += 1;
+        let candidate_revision = connection_integration_revision(&candidate_connection)?;
+        let guard_manifests =
+            crate::guards::list_guard_installations(runtime_home, connection_internal_id, None)?
+                .into_iter()
+                .map(|installation| {
+                    let mut manifest = guard_manifest_from_json(&installation.manifest_json)
+                        .map_err(|_| {
+                            StoreError::corrupt_owner_state_json(
+                                "guard_installations",
+                                installation.guard_installation_id.clone(),
+                                "manifest_json",
+                            )
+                        })?;
+                    manifest.integration_revision = candidate_revision.clone();
+                    Ok(ConnectionModeGuardManifestRebind {
+                        guard_installation_id: installation.guard_installation_id,
+                        project_id: installation.project_id,
+                        expected_manifest_json: installation.manifest_json,
+                        manifest_json: serde_json::to_string(&manifest).map_err(|error| {
+                            StoreError::InvalidInput {
+                                detail: format!("fixture manifest serialization failed: {error}"),
+                            }
+                        })?,
+                    })
+                })
+                .collect::<StoreResult<Vec<_>>>()?;
+        Ok(ConnectionModeTransition {
+            connection_internal_id: connection_internal_id.to_owned(),
+            expected_mode: connection.mode,
+            expected_integration_revision: expected_revision,
+            mode: mode.to_owned(),
+            guard_manifests,
+        })
     }
 }

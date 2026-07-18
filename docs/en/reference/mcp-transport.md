@@ -130,7 +130,10 @@ be non-null-bound to the same runtime, Connection, project, and host session.
 Both integration revisions must match their current Connection and project
 inputs, and the current Connection mode must allow the requested operation
 category. An unbound Guard-only session retains Guard history but cannot
-authorize a tool call.
+authorize a tool call. Every real mode transition advances the Store-owned
+Connection integration generation, so runtime sessions, project Agent Sessions,
+and Guard events from every earlier generation remain historical even if the
+Connection later returns to the same mode value.
 
 Core receives one non-serializable `ValidatedAgentSession`. Its Connection ID
 must exactly match `ActorSource::AgentConnection`, and its project ID must

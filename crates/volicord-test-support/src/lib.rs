@@ -17,8 +17,9 @@ use tempfile::{Builder, TempDir};
 use volicord_store::{
     agent_connections::{
         add_connection_project, agent_connection_record_read_only, ensure_agent_connection,
-        AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW,
-        HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
+        transition_connection_mode, AgentConnectionRegistration, ConnectionModeGuardManifestRebind,
+        ConnectionModeTransition, ConnectionModeTransitionOutcome, ConnectionProjectRegistration,
+        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
     },
     bootstrap::{
         initialize_runtime_home, register_project, write_installation_profile,
@@ -26,14 +27,15 @@ use volicord_store::{
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     guards::{
-        agent_session_matches_current_integration, guard_health_record, upsert_agent_session,
-        AgentSessionUpsert,
+        agent_session_matches_current_integration, guard_health_record, list_guard_installations,
+        upsert_agent_session, upsert_guard_installation, AgentSessionUpsert,
+        GuardInstallationUpsert,
     },
     operational_sessions::{
         connection_integration_revision, start_mcp_runtime_session, McpRuntimeSessionStart,
     },
     sqlite::open_project_state_database,
-    StoreResult,
+    StoreError, StoreResult,
 };
 use volicord_types::{
     managed_stdio_session_id, AgentConnectionId, AgentRuntimeSessionId, AgentSessionId,
@@ -211,6 +213,90 @@ pub fn test_guard_manifest_json(
         required_hook_phases: GuardHookPhase::REQUIRED.to_vec(),
     };
     serde_json::to_string(&manifest).expect("canonical fixture Guard manifest")
+}
+
+/// Installs a strict fixture Guard manifest when needed and performs the same
+/// atomic mode transition used by production callers.
+pub fn transition_test_connection_mode(
+    runtime_home: impl AsRef<Path>,
+    repo_root: &Path,
+    project_id: &str,
+    connection_id: &str,
+    mode: &str,
+) -> StoreResult<ConnectionModeTransitionOutcome> {
+    let runtime_home = runtime_home.as_ref();
+    let mut installations =
+        list_guard_installations(runtime_home, connection_id, Some(project_id))?;
+    if installations.is_empty() {
+        let guard_installation_id = format!("guard_test_{project_id}");
+        upsert_guard_installation(
+            runtime_home,
+            GuardInstallationUpsert {
+                guard_installation_id: guard_installation_id.clone(),
+                connection_internal_id: connection_id.to_owned(),
+                project_id: project_id.to_owned(),
+                manifest_json: test_guard_manifest_json(
+                    runtime_home,
+                    repo_root,
+                    project_id,
+                    connection_id,
+                    &guard_installation_id,
+                    "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                ),
+            },
+        )?;
+        installations = list_guard_installations(runtime_home, connection_id, Some(project_id))?;
+    }
+    let connection = agent_connection_record_read_only(runtime_home, connection_id)?
+        .expect("fixture connection");
+    let expected_revision = connection_integration_revision(&connection)?;
+    if connection.mode == mode {
+        return transition_connection_mode(
+            runtime_home,
+            ConnectionModeTransition {
+                connection_internal_id: connection_id.to_owned(),
+                expected_mode: connection.mode,
+                expected_integration_revision: expected_revision,
+                mode: mode.to_owned(),
+                guard_manifests: Vec::new(),
+            },
+        );
+    }
+    let mut candidate_connection = connection.clone();
+    candidate_connection.mode = mode.to_owned();
+    candidate_connection.integration_generation = candidate_connection
+        .integration_generation
+        .checked_add(1)
+        .ok_or_else(|| StoreError::InvalidInput {
+            detail: "Agent Connection integration generation is exhausted".to_owned(),
+        })?;
+    let candidate_revision = connection_integration_revision(&candidate_connection)?;
+    let guard_manifests = installations
+        .into_iter()
+        .map(|installation| {
+            let mut manifest =
+                volicord_types::guard_manifest_from_json(&installation.manifest_json)
+                    .expect("fixture Guard manifest");
+            manifest.integration_revision = candidate_revision.clone();
+            ConnectionModeGuardManifestRebind {
+                guard_installation_id: installation.guard_installation_id,
+                project_id: installation.project_id,
+                expected_manifest_json: installation.manifest_json,
+                manifest_json: serde_json::to_string(&manifest)
+                    .expect("fixture Guard manifest serialization"),
+            }
+        })
+        .collect();
+    transition_connection_mode(
+        runtime_home,
+        ConnectionModeTransition {
+            connection_internal_id: connection_id.to_owned(),
+            expected_mode: connection.mode,
+            expected_integration_revision: expected_revision,
+            mode: mode.to_owned(),
+            guard_manifests,
+        },
+    )
 }
 
 /// Seeds one real managed runtime/project session for adapter and Core tests.

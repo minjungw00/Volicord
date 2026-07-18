@@ -453,6 +453,7 @@ fn inspection_connection_revision(
         server_name: &connection.server_name,
         config_target: &connection.config_target,
         managed_configuration_fingerprint: &connection.managed_fingerprint,
+        integration_generation: connection.integration_generation,
     })
 }
 

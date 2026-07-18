@@ -371,6 +371,7 @@ fn assert_exact_manifest_and_artifacts(
         mode: connection.mode.clone(),
         enabled: connection.enabled,
         managed_fingerprint: connection.managed_fingerprint.clone(),
+        integration_generation: connection.integration_generation,
         verification_report_json: connection.verification_report_json.clone(),
         created_at: connection.created_at.clone(),
         updated_at: connection.updated_at.clone(),

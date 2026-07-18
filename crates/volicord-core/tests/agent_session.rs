@@ -3,12 +3,14 @@ use std::error::Error;
 use rusqlite::params;
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::{
-    agent_connections::{set_connection_enabled, set_connection_mode, CONNECTION_MODE_READ_ONLY},
+    agent_connections::{set_connection_enabled, CONNECTION_MODE_READ_ONLY},
     guards::{upsert_agent_session, AgentSessionUpsert},
     operational_sessions::{start_mcp_runtime_session, McpRuntimeSessionStart},
     sqlite::registry_db_path,
 };
-use volicord_test_support::{core_fixtures::CoreFixture, seed_test_agent_session};
+use volicord_test_support::{
+    core_fixtures::CoreFixture, seed_test_agent_session, transition_test_connection_mode,
+};
 use volicord_types::{
     managed_stdio_session_id, ActorSource, AgentConnectionId, AgentRuntimeSessionId,
     AgentSessionId, FailureCategory, McpRuntimeSessionSource, OperationCategory, ProjectId,
@@ -166,8 +168,10 @@ fn disabled_connection_and_disallowed_mode_fail_closed() -> Result<(), Box<dyn E
     assert_eq!(error.reason(), "agent_connection_not_enabled");
 
     let readonly_fixture = CoreFixture::new("core-agent-session-readonly-mode")?;
-    set_connection_mode(
+    transition_test_connection_mode(
         readonly_fixture.runtime_home_path(),
+        &readonly_fixture.product_repo_path(),
+        readonly_fixture.project_id(),
         readonly_fixture.connection_id(),
         CONNECTION_MODE_READ_ONLY,
     )?;
@@ -199,8 +203,10 @@ fn stale_connection_and_project_revisions_fail_closed() -> Result<(), Box<dyn Er
         connection_fixture.connection_id(),
         None,
     )?;
-    set_connection_mode(
+    transition_test_connection_mode(
         connection_fixture.runtime_home_path(),
+        &connection_fixture.product_repo_path(),
+        connection_fixture.project_id(),
         connection_fixture.connection_id(),
         CONNECTION_MODE_READ_ONLY,
     )?;

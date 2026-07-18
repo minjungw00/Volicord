@@ -212,6 +212,7 @@ CREATE TABLE agent_connections (
   mode TEXT NOT NULL CHECK (mode IN ('read_only', 'workflow')),
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   managed_fingerprint TEXT NOT NULL,
+  integration_generation INTEGER NOT NULL DEFAULT 0 CHECK (integration_generation >= 0),
   verification_report_json TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
@@ -387,10 +388,11 @@ Registry constraints:
 - `project_aliases` maps aliases to `project_internal_id` values. Alias rows are registry selection aids, not project-local Core authority records.
 - `projects.state_db_path` is retained as a stored column. Store application-level current-registration validation must confirm it equals `project_home/state.sqlite` before operational `ProjectRecord` lookup or listing, writable project-state open, Agent Connection project routing, Core execution, project-store reuse, or MCP project availability.
 - `projects.status` is storage-owned and valid only as `active`.
-- `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, an optional canonical verification report JSON value, metadata, and timestamps.
+- `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, a Store-owned integration generation, an optional canonical verification report JSON value, metadata, and timestamps.
 - `agent_connections.intent` is constrained to `personal` or `shared` for the current `host_kind=codex` contract.
 - The current Codex connection contract uses `host_kind=codex` and a `host_scope` of `user` or `project` according to its connection intent.
 - `agent_connections.mode` is constrained to `read_only` or `workflow`.
+- `agent_connections.integration_generation` is a nonnegative Store-owned input to the Connection integration revision. A successful real mode transition increments it exactly once in the same Registry transaction that updates the mode and all owned Guard manifests. A same-mode no-op does not increment it.
 - `agent_connections.verification_report_json` is SQL null when no completed report exists. A non-null value stores one strict canonical `ConnectionVerificationReport`, including its derived status and actions; absent optional members are omitted rather than encoded as explicit null. Store does not persist those components independently.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, and required hook phases. It describes Volicord ownership only; it is not a host-capability certificate, lifecycle status, OS-level enforcement proof, or write-prevention proof. File state is audited from the manifest and current files, while observation state is derived from current-owned `guard_events`.

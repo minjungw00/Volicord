@@ -10,13 +10,9 @@ use volicord_mcp::{
     ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
 };
 use volicord_store::{
-    agent_connections::{
-        agent_connection_record, ensure_agent_connection, AgentConnectionRegistration,
-        CONNECTION_MODE_READ_ONLY,
-    },
-    core_pipeline::StorageEffectCounts,
+    agent_connections::CONNECTION_MODE_READ_ONLY, core_pipeline::StorageEffectCounts,
 };
-use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
 use volicord_types::{
     ActorSource, AgentConnectionId, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME,
     INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME,
@@ -534,23 +530,12 @@ impl McpFixture {
     }
 
     fn set_connection_mode(&self, mode: &str) -> Result<(), Box<dyn Error>> {
-        let existing = agent_connection_record(self.runtime_home_path(), self.connection_id())?
-            .expect("fixture connection should exist");
-        ensure_agent_connection(
+        transition_test_connection_mode(
             self.runtime_home_path(),
-            AgentConnectionRegistration {
-                connection_internal_id: existing.connection_internal_id,
-                host_kind: existing.host_kind,
-                intent: existing.intent,
-                host_scope: existing.host_scope,
-                server_name: existing.server_name,
-                config_target: existing.config_target,
-                mode: mode.to_owned(),
-                enabled: existing.enabled,
-                managed_fingerprint: existing.managed_fingerprint,
-                verification_report_json: existing.verification_report_json,
-                metadata_json: existing.metadata_json,
-            },
+            &self.repo_root(),
+            self.project_id(),
+            self.connection_id(),
+            mode,
         )?;
         Ok(())
     }

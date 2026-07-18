@@ -13,13 +13,15 @@ use volicord_store::{
         connection_metadata_has_pending_host_cleanup_for_project, ensure_agent_connection,
         ensure_staged_agent_connection, list_agent_connections,
         list_agent_connections_for_diagnostics, list_connection_projects,
-        list_connection_projects_for_diagnostics, remove_connection_project, set_connection_mode,
-        staged_connection_migration_state, update_agent_connection_verification_report,
-        AgentConnectionRecord, AgentConnectionRegistration, ConnectionProjectRecord,
-        ConnectionProjectRegistration, ConnectionProjectRemovalOutcome, PendingHostCleanupError,
-        StagedConnectionMigrationState, SupersededConnectionProject, CONNECTION_INTENT_PERSONAL,
-        CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
-        HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
+        list_connection_projects_for_diagnostics, remove_connection_project,
+        staged_connection_migration_state, transition_connection_mode,
+        update_agent_connection_verification_report, AgentConnectionRecord,
+        AgentConnectionRegistration, ConnectionModeGuardManifestRebind, ConnectionModeTransition,
+        ConnectionModeTransitionKind, ConnectionProjectRecord, ConnectionProjectRegistration,
+        ConnectionProjectRemovalOutcome, PendingHostCleanupError, StagedConnectionMigrationState,
+        SupersededConnectionProject, CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED,
+        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
+        HOST_SCOPE_USER,
     },
     bootstrap::{
         ensure_project_for_repo, initialize_runtime_home, installation_profile,
@@ -31,6 +33,7 @@ use volicord_store::{
         guard_health_record, guard_observation_summary, list_guard_installations,
         GuardInstallationRecord,
     },
+    operational_sessions::connection_integration_revision,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     workflow_records::ProjectWorkflowPolicyAuthorityApply,
     StoreError,
@@ -84,7 +87,7 @@ use args::{
 };
 use mcp_process::mcp_launch_from_host_plan;
 use output::{
-    render_connection_output, render_connection_plan_output,
+    render_connection_mode_output, render_connection_output, render_connection_plan_output,
     render_connection_remove_dry_run_output, render_connections_output,
     render_current_connection_output, render_init_output, CommandOperation, ConnectionOutput,
     ConnectionPlanOutput, ConnectionRemovePlan, InitOutput,
@@ -418,30 +421,131 @@ fn command_connection_mode(
     let parsed = ParsedConnectionOptions::from(args);
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
     let selector = connection_selector(&parsed, current_dir, process)?;
-    let (connection, _) = select_connection(&runtime_home, &selector)?;
-    let connection = set_connection_mode(&runtime_home, &connection.connection_internal_id, &mode)?;
-    let actions = vec![UserAction::new(
-        UserActionKind::ReloadRequired,
-        "Restart or reload the host so it refreshes the Volicord tool list for the selected mode",
-    )];
-    let projects = list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
-    render_connection_output(ConnectionOutput {
-        format: connection_output_format(&parsed),
-        action: "mode_updated",
-        status: AgentResultStatus::ActionRequired,
-        runtime_home: &runtime_home,
-        host_kind: parse_host_kind(&connection.host_kind)?,
-        guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
-        user_actions: actions,
-        connection: &connection,
-        projects: &projects,
-        affected_repo_root: None,
-        verification: None,
-        current_report: None,
-        current_host: None,
-        plan: None,
-        removal_outcome: None,
-    })
+    let (connection, projects) = select_connection(&runtime_home, &selector)?;
+    let expected_revision = connection_integration_revision(&connection)?;
+    let guard_manifests = if connection.mode == mode {
+        Vec::new()
+    } else {
+        preflight_mode_guard_rebinds(&runtime_home, &connection, &projects, &mode)?
+    };
+    let outcome = transition_connection_mode(
+        &runtime_home,
+        ConnectionModeTransition {
+            connection_internal_id: connection.connection_internal_id.clone(),
+            expected_mode: connection.mode.clone(),
+            expected_integration_revision: expected_revision,
+            mode,
+            guard_manifests,
+        },
+    )?;
+    let actions = match outcome.kind {
+        ConnectionModeTransitionKind::Unchanged => Vec::new(),
+        ConnectionModeTransitionKind::Updated => vec![UserAction::new(
+            UserActionKind::ReloadRequired,
+            format!(
+                "Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision {}",
+                outcome.current_integration_revision.as_str()
+            ),
+        )],
+    };
+    render_connection_mode_output(
+        connection_output_format(&parsed),
+        &runtime_home,
+        &outcome,
+        &projects,
+        &actions,
+    )
+}
+
+fn preflight_mode_guard_rebinds(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    projects: &[ConnectionProjectRecord],
+    mode: &str,
+) -> Result<Vec<ConnectionModeGuardManifestRebind>, ConnectionCommandError> {
+    let mut candidate_connection = connection.clone();
+    candidate_connection.mode = mode.to_owned();
+    candidate_connection.integration_generation = candidate_connection
+        .integration_generation
+        .checked_add(1)
+        .ok_or_else(|| StoreError::InvalidInput {
+            detail: "Agent Connection integration generation is exhausted".to_owned(),
+        })?;
+    let candidate_revision = connection_integration_revision(&candidate_connection)?;
+    let mut rebinds = Vec::with_capacity(projects.len());
+
+    for project in projects {
+        let repair = owning_init_repair_command(connection, &project.project.repo_root);
+        let installations = list_guard_installations(
+            runtime_home,
+            &connection.connection_internal_id,
+            Some(&project.project_id),
+        )
+        .map_err(|error| {
+            ConnectionCommandError::runtime(format!(
+                "cannot change the Connection mode because the Guard Installation for {} is malformed or unavailable: {error}; repair it by rerunning `{repair}`",
+                project.project.repo_root.display()
+            ))
+        })?;
+        let [installation] = installations.as_slice() else {
+            return Err(ConnectionCommandError::runtime(format!(
+                "cannot change the Connection mode because {} must have exactly one current Guard Installation; repair it by rerunning `{repair}`",
+                project.project.repo_root.display()
+            )));
+        };
+        if !guard_manifest_binding_valid_for_installation(installation, connection, projects) {
+            return Err(ConnectionCommandError::runtime(format!(
+                "cannot change the Connection mode because Guard Installation {} is not owned by the selected Connection and project; repair it by rerunning `{repair}`",
+                installation.guard_installation_id
+            )));
+        }
+        let mut manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|error| {
+            ConnectionCommandError::runtime(format!(
+                "cannot change the Connection mode because Guard Installation {} is malformed: {error}; repair it by rerunning `{repair}`",
+                installation.guard_installation_id
+            ))
+        })?;
+        manifest.integration_revision = candidate_revision.clone();
+        let manifest_json = serde_json::to_string(&manifest).map_err(|error| {
+            ConnectionCommandError::runtime(format!(
+                "could not construct the candidate Guard manifest for {}: {error}",
+                installation.guard_installation_id
+            ))
+        })?;
+        let candidate_installation = GuardInstallationRecord {
+            manifest_json: manifest_json.clone(),
+            ..installation.clone()
+        };
+        if !guard_manifest_binding_valid_for_installation(
+            &candidate_installation,
+            &candidate_connection,
+            projects,
+        ) {
+            return Err(ConnectionCommandError::runtime(format!(
+                "candidate Guard manifest {} does not match the requested Connection revision; repair the current installation by rerunning `{repair}`",
+                installation.guard_installation_id
+            )));
+        }
+        rebinds.push(ConnectionModeGuardManifestRebind {
+            guard_installation_id: installation.guard_installation_id.clone(),
+            project_id: project.project_id.clone(),
+            expected_manifest_json: installation.manifest_json.clone(),
+            manifest_json,
+        });
+    }
+    Ok(rebinds)
+}
+
+fn owning_init_repair_command(connection: &AgentConnectionRecord, repo_root: &Path) -> String {
+    let shared = if connection.intent == CONNECTION_INTENT_SHARED {
+        " --shared"
+    } else {
+        ""
+    };
+    format!(
+        "volicord init{shared} --host codex --repo \"{}\" --profile record",
+        repo_root.display()
+    )
 }
 
 fn command_connection_remove(

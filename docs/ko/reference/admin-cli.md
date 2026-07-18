@@ -122,6 +122,24 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 호스트를 생략하면 현재 맥락이 모호하지 않을 때만 사용합니다. 명시적으로 받는 유일한 값은
 `codex`입니다.
 
+`volicord connection mode`는 Connection mode와 소유한 모든 프로젝트 범위 Guard
+manifest를 revision 전환 하나로 다룹니다. CLI는 변경 전에 모든 Connection Project마다
+현재 상태의 엄격히 유효한 Guard Installation이 정확히 하나씩 있는지 확인하고, 각 후보
+manifest에서 Connection integration revision만 교체합니다. Inventory가 누락되거나,
+중복되거나, stale이거나, malformed이거나, 소유자가 일치하지 않으면 담당 `volicord init`
+명령을 다시 실행하라는 복구 안내와 함께 실패합니다. 그다음 Store는 Registry transaction
+하나에서 Connection mode를 변경하고 integration generation을 한 번 증가시키며, 저장된
+검증 보고서를 비우고, 모든 후보 manifest를 다시 결속합니다. 충돌이나 쓰기 실패가 하나라도
+발생하면 여러 프로젝트를 가진 personal Connection을 포함해 전환 전체를 rollback합니다.
+
+현재 mode를 다시 선택하면 정확한 no-op입니다. Registry row, timestamp, report,
+generation, manifest, host configuration, Product Repository file을 전혀 바꾸지 않으며 reload
+action도 내보내지 않습니다. 실제 전환이 성공해도 host configuration이나 Product Repository
+file을 다시 쓰지 않고, 기존 managed host를 새 revision에 맞춰 reload해야 하므로 정확히 하나의
+`ReloadRequired` action을 내보냅니다. 이전 runtime session, 프로젝트 Agent Session, Guard
+event는 이력으로 남지만 현재 check를 충족하지 못하며, 나중에 이전에 사용한 mode로 돌아가도
+다시 현재 상태가 되지 않습니다.
+
 `volicord connection remove`는 선택한 Connection Project membership과 그 프로젝트
 범위 Registry binding 및 Guard Installation을 Store transaction 하나에서 제거합니다.
 다른 membership이 남으면 Agent Connection, connection 전체 runtime session, 다른

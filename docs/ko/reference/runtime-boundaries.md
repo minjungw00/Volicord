@@ -64,6 +64,12 @@ root가 ext4에 있다는 사실은 다른 mount의 중첩 파일을 승인하�
 구성이 있다고 Codex 신뢰, 다시 불러오기, 초기화, 도구 검색, 안전한 도구 동작,
 Guard 관찰, 현재 운영 session이 증명되지는 않습니다. 이 사실들은 서로 분리됩니다.
 
+Connection mode 전환은 관리 Codex configuration이나 Product Repository file을 다시 쓰지
+않습니다. 일관된 revision 전환은 Connection mode와 generation, verification report,
+소유한 모든 엄격한 Guard manifest의 integration revision이라는 Registry 상태에만
+한정됩니다. 실제 전환 뒤 CLI는 새 managed host가 현재 runtime evidence를 만들 수 있도록
+reload action 하나를 내보내며, 같은 mode의 no-op에서는 내보내지 않습니다.
+
 Runtime Home의 Guard manifest는 위 파일 가운데 정확한 Guard-managed subset과 typed
 runtime command에 대한 소유 inventory입니다. Managed script entry는 모든 플랫폼에서 executable
 동작을 요구하지만 파일시스템 조사와 permission 복구는 플랫폼별로 수행합니다. Manifest는

@@ -193,8 +193,12 @@ verification does not issue a runtime authorization credential.
 The current Connection integration revision is a typed, domain-separated
 canonical SHA-256 digest. Its basis is the Agent Connection identity, host
 kind, intent, scope, mode, server name, configuration target, and current exact
-managed-configuration fingerprint. That fingerprint covers the managed server
-command and entry.
+managed-configuration fingerprint, plus the nonnegative Store-owned integration
+generation. That fingerprint covers the managed server command and entry. The
+generation begins at zero and increments exactly once for each successful real
+mode transition; a same-mode no-op leaves it unchanged. Therefore returning to
+a previously used mode still creates a new revision and cannot make evidence
+from that earlier mode generation current again.
 
 Revision construction excludes observed host version, executable path or
 cryptographic identity, allowlist coordinates, claimed capability sets, and
@@ -221,6 +225,15 @@ claims. A crashed process may leave an apparently open row, and multiple
 cooperative Codex processes may be current concurrently. Neither condition
 blocks Guard correlation: no runtime is guessed from open rows, and different
 host sessions bind independently.
+
+A real Connection mode transition is one Registry transaction over the
+Connection and the strict manifest of every owned Guard Installation. The
+transaction changes only the mode, integration generation, stored verification
+report, manifest integration revisions, and affected Registry timestamps. It
+does not change Guard commands, managed-file inventories, policy hashes, host
+configuration, or Product Repository files. All candidates must be complete,
+current, and owner-matched before any write; otherwise no transition is
+committed.
 
 These records demonstrate locally observed cooperative protocol/session
 ownership under current configuration. They do not identify a binary, host,

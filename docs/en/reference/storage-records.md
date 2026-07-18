@@ -76,11 +76,22 @@ managed-host operational-evidence lookup.
 
 The connection integration revision is a domain-separated canonical digest of
 the Connection identity, host kind, intent, scope, mode, server name,
-configuration target, and exact managed-configuration fingerprint. The
-managed fingerprint includes the current server command and entry. Host and
-client version fields are excluded and remain diagnostic observations, not
-identity or allowlist inputs. The fingerprint contains no host executable
-identity or provenance inputs.
+configuration target, exact managed-configuration fingerprint, and nonnegative
+Store-owned integration generation. The managed fingerprint includes the
+current server command and entry. Host and client version fields are excluded
+and remain diagnostic observations, not identity or allowlist inputs. The
+fingerprint contains no host executable identity or provenance inputs. Store
+increments the generation exactly once in each successful real mode transition
+and never for a same-mode no-op, so a later return to an earlier mode cannot
+revive earlier runtime, session, or Guard evidence.
+
+A real mode transition atomically changes the Connection mode and generation,
+clears its verification report, and replaces only the integration revision in
+every owned strict Guard manifest. The complete current manifest inventory must
+match one-for-one with Connection Project membership before mutation. Missing,
+duplicate, stale, malformed, owner-mismatched, or partially writable inventory
+causes the whole Registry transaction to fail without a partial Connection or
+manifest update.
 
 Milestone timestamps and facts express lifecycle state without a redundant
 status enum. Store records successful `initialize`, the initialized

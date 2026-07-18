@@ -211,7 +211,7 @@ fn validate_connection_preflight_report(
             expect_report_field(&report, "effective_tool_mode", "workflow")?;
         }
         CONNECTION_MODE_READ_ONLY => {
-            expect_report_field(&report, "project_state_write", "readonly")?;
+            expect_report_field(&report, "project_state_write", "passed")?;
             expect_report_field(&report, "effective_tool_mode", "read_only")?;
         }
         other => return Err(format!("unsupported connection mode: {other}")),
@@ -584,6 +584,16 @@ mod tests {
             CONNECTION_MODE_WORKFLOW
         )
         .is_err());
+        let read_only = report.replace("mode: workflow", "mode: read_only").replace(
+            "effective_tool_mode: workflow",
+            "effective_tool_mode: read_only",
+        );
+        assert!(validate_connection_preflight_report(
+            &read_only,
+            "connection_fixture",
+            CONNECTION_MODE_READ_ONLY
+        )
+        .is_ok());
         assert!(validate_connection_preflight_report(
             &report.replace(
                 "tools_list_schema_validation: passed",

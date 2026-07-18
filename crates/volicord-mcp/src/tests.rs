@@ -4444,23 +4444,12 @@ fn install_record_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
 }
 
 fn set_mode(fixture: &CoreFixture, mode: &str) -> Result<(), Box<dyn Error>> {
-    let existing = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
-        .expect("fixture connection should exist");
-    ensure_agent_connection(
+    volicord_test_support::transition_test_connection_mode(
         fixture.runtime_home_path(),
-        AgentConnectionRegistration {
-            connection_internal_id: existing.connection_internal_id,
-            host_kind: existing.host_kind,
-            intent: existing.intent,
-            host_scope: existing.host_scope,
-            server_name: existing.server_name,
-            config_target: existing.config_target,
-            mode: mode.to_owned(),
-            enabled: existing.enabled,
-            managed_fingerprint: existing.managed_fingerprint,
-            verification_report_json: existing.verification_report_json,
-            metadata_json: existing.metadata_json,
-        },
+        &fixture.product_repo_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        mode,
     )?;
     Ok(())
 }

@@ -41,6 +41,7 @@ pub struct ConnectionIntegrationRevisionBasis<'a> {
     pub server_name: &'a str,
     pub config_target: &'a str,
     pub managed_configuration_fingerprint: &'a str,
+    pub integration_generation: i64,
 }
 
 /// Current project-owned additions to a connection integration revision.
@@ -107,6 +108,7 @@ impl IntegrationRevision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntegrationRevisionError {
     EmptyField(&'static str),
+    InvalidGeneration,
     InvalidDigest,
     CanonicalEncoding,
 }
@@ -118,6 +120,9 @@ impl fmt::Display for IntegrationRevisionError {
                 formatter,
                 "integration revision field {field} must not be empty"
             ),
+            Self::InvalidGeneration => {
+                formatter.write_str("integration revision generation must be nonnegative")
+            }
             Self::InvalidDigest => {
                 formatter.write_str("integration revision digest must be canonical sha256")
             }
@@ -165,6 +170,9 @@ fn validate_connection_basis(
     ] {
         require_nonempty(field, value)?;
     }
+    if basis.integration_generation < 0 {
+        return Err(IntegrationRevisionError::InvalidGeneration);
+    }
     Ok(())
 }
 
@@ -204,6 +212,7 @@ mod tests {
             server_name: "volicord",
             config_target: "/config/config.toml",
             managed_configuration_fingerprint: fingerprint,
+            integration_generation: 0,
         }
     }
 
@@ -218,6 +227,19 @@ mod tests {
             first,
             IntegrationRevision::for_connection(connection_basis("managed:b"))
                 .expect("changed configuration")
+        );
+        let mut next_generation = connection_basis("managed:a");
+        next_generation.integration_generation = 1;
+        assert_ne!(
+            first,
+            IntegrationRevision::for_connection(next_generation).expect("next generation")
+        );
+
+        let mut invalid_generation = connection_basis("managed:a");
+        invalid_generation.integration_generation = -1;
+        assert_eq!(
+            IntegrationRevision::for_connection(invalid_generation),
+            Err(IntegrationRevisionError::InvalidGeneration)
         );
 
         let project_basis = ProjectIntegrationRevisionBasis {

@@ -175,8 +175,12 @@ credential을 발급하지 않습니다.
 
 현재 Connection 통합 revision은 타입이 지정되고 domain-separated된 canonical SHA-256
 digest입니다. Basis는 Agent Connection identity, host kind, intent, scope, mode, server
-name, configuration target, 현재의 정확한 managed-configuration fingerprint입니다. 이
-fingerprint는 관리 server command와 entry를 포함합니다.
+name, configuration target, 현재의 정확한 managed-configuration fingerprint와 Store 소유
+비음수 integration generation입니다. 이 fingerprint는 관리 server command와 entry를
+포함합니다. Generation은 0에서 시작하고 실제 mode 전환이 성공할 때마다 정확히 한 번
+증가하며, 같은 mode를 지정한 no-op에서는 그대로 유지됩니다. 따라서 이전에 사용한 mode로
+돌아가더라도 새 revision이 만들어지고 그 이전 mode generation의 evidence는 다시 현재 상태가
+될 수 없습니다.
 
 Revision 구성은 관찰한 host version, executable path 또는 암호학적 identity, allowlist
 좌표, 주장된 capability set, MCP client name/version을 제외합니다. 이 값은 권한을 바꿀
@@ -200,6 +204,13 @@ Runtime row는 lease나 liveness 주장이 아니라 process의 이력 관찰입
 열린 것처럼 보이는 row를 남길 수 있고 여러 협력적 Codex process가 동시에 현재 상태일 수
 있습니다. 어느 경우도 Guard 상관관계를 막지 않습니다. 열린 row에서 runtime을 추측하지
 않고 서로 다른 host session은 독립적으로 결속합니다.
+
+실제 Connection mode 전환은 Connection과 소유한 모든 Guard Installation의 엄격한
+manifest를 아우르는 Registry transaction 하나입니다. 이 transaction은 mode, integration
+generation, 저장된 verification report, manifest integration revision, 영향을 받은 Registry
+timestamp만 바꿉니다. Guard command, managed-file inventory, policy hash, host
+configuration, Product Repository file은 바꾸지 않습니다. 모든 후보가 완전하고 현재 상태이며
+소유자가 일치해야 쓰기를 시작하고, 그렇지 않으면 전환을 commit하지 않습니다.
 
 이 기록은 현재 구성 아래 로컬에서 관찰한 협력적 protocol/session 소유권을 보여
 줍니다. Binary, host, client, actor, 운영체제 사용자, human identity를 식별하지

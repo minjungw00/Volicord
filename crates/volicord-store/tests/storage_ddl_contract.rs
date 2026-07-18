@@ -24,7 +24,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 37);
-    assert_eq!(metadata.columns.len(), 481);
+    assert_eq!(metadata.columns.len(), 482);
     assert_eq!(metadata.indexes.len(), 64);
     assert_eq!(metadata.constraints.len(), 37);
     let agent_connection_columns = metadata
@@ -36,6 +36,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         .map(|column| column.name.as_str())
         .collect::<Vec<_>>();
     assert!(agent_connection_columns.contains(&"verification_report_json"));
+    assert!(agent_connection_columns.contains(&"integration_generation"));
     assert!(!agent_connection_columns.contains(&"last_verification_status"));
     assert!(!agent_connection_columns.contains(&"last_user_actions_json"));
     let agent_session_columns = metadata
@@ -82,11 +83,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:57b07a6589c7f6c0ef97a4b3fe5aeaccc124abc7ad21a290c13634a27057176d"
+        "sha256:73ee4020f39d43134ce3dbce74c64243c6fc35c4f6910aa3b927bcf45de6e0d9"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:f0a91ebbff6aea4a01ee2bda4bde7f5e19f9bbcd2b326bb9ad74198987811c18"
+        "sha256:6f7cc21d2070888dbbe26803671644cbc3ad4bce52347e5015d4fb91fa4d1d9e"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -120,12 +121,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:57b07a6589c7f6c0ef97a4b3fe5aeaccc124abc7ad21a290c13634a27057176d\",",
+            "{\"canonical_ddl_digest\":\"sha256:73ee4020f39d43134ce3dbce74c64243c6fc35c4f6910aa3b927bcf45de6e0d9\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:f0a91ebbff6aea4a01ee2bda4bde7f5e19f9bbcd2b326bb9ad74198987811c18\"}"
+            "\"integrity_constraints_digest\":\"sha256:6f7cc21d2070888dbbe26803671644cbc3ad4bce52347e5015d4fb91fa4d1d9e\"}"
         )
     );
     Ok(())

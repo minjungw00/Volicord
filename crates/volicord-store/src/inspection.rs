@@ -105,6 +105,7 @@ pub struct AgentConnectionInspectionRecord {
     pub mode: String,
     pub enabled: bool,
     pub managed_fingerprint: String,
+    pub integration_generation: i64,
     pub verification_report_json: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -630,6 +631,7 @@ fn read_agent_connection_rows(
                 mode,
                 enabled,
                 managed_fingerprint,
+                integration_generation,
                 verification_report_json,
                 created_at,
                 updated_at,
@@ -652,10 +654,11 @@ fn read_agent_connection_rows(
                 mode: row.get(7)?,
                 enabled: row.get::<_, i64>(8)? == 1,
                 managed_fingerprint: row.get(9)?,
-                verification_report_json: row.get(10)?,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
-                metadata_json: row.get(13)?,
+                integration_generation: row.get(10)?,
+                verification_report_json: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                metadata_json: row.get(14)?,
             })
         })
         .map_err(sqlite_unreadable)?;
@@ -833,6 +836,12 @@ fn validate_agent_connection_row(
         "agent_connections.managed_fingerprint",
         &connection.managed_fingerprint,
     )?;
+    if connection.integration_generation < 0 {
+        return Err(InspectionIssue::Malformed(format!(
+            "agent_connections.integration_generation for {} must be nonnegative",
+            connection.connection_internal_id,
+        )));
+    }
     if let Some(text) = connection.verification_report_json.as_deref() {
         let report = serde_json::from_str::<ConnectionVerificationReport>(text).map_err(|error| {
             InspectionIssue::Malformed(format!(

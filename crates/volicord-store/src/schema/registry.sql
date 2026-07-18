@@ -62,6 +62,7 @@ CREATE TABLE agent_connections (
   mode TEXT NOT NULL CHECK (mode IN ('read_only', 'workflow')),
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   managed_fingerprint TEXT NOT NULL,
+  integration_generation INTEGER NOT NULL DEFAULT 0 CHECK (integration_generation >= 0),
   verification_report_json TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,

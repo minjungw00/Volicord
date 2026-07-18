@@ -71,6 +71,13 @@ Configuration presence does not prove Codex trust, reload, initialization,
 tool discovery, safe tool behavior, Guard observations, or a current
 operational session. Those facts remain separate.
 
+A Connection mode transition does not rewrite managed Codex configuration or
+Product Repository files. Its coherent revision transition is confined to
+Registry state: the Connection mode and generation, verification report, and
+the integration revision in every owned strict Guard manifest. The CLI emits
+one reload action after a real transition so a newly started managed host can
+establish current runtime evidence; a same-mode no-op emits none.
+
 The Runtime Home Guard manifest is an ownership inventory for its exact
 Guard-managed subset of those files and its typed runtime commands. Managed script entries
 require executable behavior on every platform, while filesystem inspection and

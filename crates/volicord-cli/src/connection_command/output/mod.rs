@@ -269,6 +269,77 @@ pub(super) fn render_connection_output(
     }
 }
 
+pub(super) fn render_connection_mode_output(
+    format: OutputFormat,
+    runtime_home: &Path,
+    outcome: &volicord_store::agent_connections::ConnectionModeTransitionOutcome,
+    projects: &[ConnectionProjectRecord],
+    actions: &[UserAction],
+) -> Result<String, ConnectionCommandError> {
+    let changed = outcome.kind == ConnectionModeTransitionKind::Updated;
+    let action = if changed {
+        "mode_updated"
+    } else {
+        "mode_unchanged"
+    };
+    let status = if changed {
+        AgentResultStatus::ActionRequired
+    } else {
+        AgentResultStatus::Complete
+    };
+    match format {
+        OutputFormat::Text => {
+            let mut output = format!(
+                "Agent Connection mode {} for Codex\n\nStatus:\n  Result: {}\n  Mode: {}\n  Previous integration revision: {}\n  Current integration revision: {}\n  Guard manifests rebound: {}\n\nRepositories:\n",
+                if changed { "updated" } else { "unchanged" },
+                status.as_str(),
+                public_mode_text(&outcome.connection.mode),
+                outcome.previous_integration_revision.as_str(),
+                outcome.current_integration_revision.as_str(),
+                outcome.rebound_guard_installation_ids.len(),
+            );
+            for project in projects {
+                output.push_str(&format!("  {}\n", project.project.repo_root.display()));
+            }
+            output.push_str("\nNext:\n");
+            if let Some(next) = actions.first() {
+                output.push_str(&format!("  1. {}\n", next.message));
+            } else {
+                output.push_str("  none\n");
+            }
+            Ok(output)
+        }
+        OutputFormat::Json => {
+            let project_ids = projects
+                .iter()
+                .map(|project| project.project_id.clone())
+                .collect::<Vec<_>>();
+            let value = json!({
+                "action": action,
+                "status": status.as_str(),
+                "runtime_home": path_text(runtime_home),
+                "connection": {
+                    "connection_id": outcome.connection.connection_internal_id,
+                    "host_kind": outcome.connection.host_kind,
+                    "connection_intent": outcome.connection.intent,
+                    "host_scope": outcome.connection.host_scope,
+                    "mode": outcome.connection.mode,
+                    "enabled": outcome.connection.enabled,
+                    "connected_projects": project_ids,
+                },
+                "transition": if changed { "updated" } else { "unchanged" },
+                "previous_integration_revision": outcome.previous_integration_revision,
+                "current_integration_revision": outcome.current_integration_revision,
+                "rebound_guard_installation_ids": outcome.rebound_guard_installation_ids,
+                "actions": actions_json_values(actions),
+            });
+            serde_json::to_string_pretty(&value)
+                .map(|text| format!("{text}\n"))
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+        }
+    }
+}
+
 pub(super) fn render_current_connection_output(
     format: OutputFormat,
     operation: CommandOperation,

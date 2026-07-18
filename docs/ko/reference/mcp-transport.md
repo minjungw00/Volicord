@@ -116,7 +116,10 @@ Project로 남아 있어야 합니다. Runtime session은 해당 Connection 소�
 가지고 동일한 runtime, Connection, 프로젝트, host session에 속해야 합니다. 두 통합
 revision은 현재 Connection과 프로젝트 입력에 일치해야 하며 현재 Connection mode가 요청한
 operation category를 허용해야 합니다. 결속되지 않은 Guard-only session은 Guard 이력을
-보관하지만 도구 호출을 승인할 수 없습니다.
+보관하지만 도구 호출을 승인할 수 없습니다. 실제 mode 전환마다 Store 소유 Connection
+integration generation이 증가하므로, 이전 모든 generation의 runtime session, 프로젝트
+Agent Session, Guard event는 나중에 Connection이 같은 mode 값으로 돌아가더라도 이력으로
+남습니다.
 
 Core는 직렬화할 수 없는 `ValidatedAgentSession` 하나를 받습니다. Connection ID는
 `ActorSource::AgentConnection`과 정확히 같아야 하며 project ID는 모든 프로젝트 범위

@@ -386,7 +386,6 @@ pub(crate) fn upsert_guard_installation_in_transaction(
     conn: &Connection,
     input: &GuardInstallationUpsert,
 ) -> StoreResult<()> {
-    validate_guard_installation_upsert(input)?;
     let runtime_home_id = require_runtime_home_id(conn)?;
     let connection_id = input.connection_internal_id.as_str();
     let connection = agent_connection_record_from_conn(conn, connection_id)?.ok_or_else(|| {
@@ -402,7 +401,7 @@ pub(crate) fn upsert_guard_installation_in_transaction(
         }
     })?;
     require_connection_project_membership(conn, connection_id, &project.project_internal_id)?;
-    validate_guard_installation_binding(input, &connection, &project)?;
+    validate_guard_installation_upsert_binding(input, &connection, &project)?;
 
     if let Some(existing_id) = guard_installation_id_for_scope(
         conn,
@@ -2188,6 +2187,15 @@ fn validate_guard_installation_upsert(input: &GuardInstallationUpsert) -> StoreR
             .to_owned(),
     })?;
     Ok(())
+}
+
+pub(crate) fn validate_guard_installation_upsert_binding(
+    input: &GuardInstallationUpsert,
+    connection: &AgentConnectionRecord,
+    project: &ProjectRecord,
+) -> StoreResult<()> {
+    validate_guard_installation_upsert(input)?;
+    validate_guard_installation_binding(input, connection, project)
 }
 
 fn validate_guard_installation_binding(

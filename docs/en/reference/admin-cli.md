@@ -125,6 +125,27 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 When the host is omitted, the command uses it only if the current context is
 unambiguous. The only accepted explicit value is `codex`.
 
+`volicord connection mode` treats Connection mode and every owned
+project-scoped Guard manifest as one revision transition. Before mutation, the
+CLI requires exactly one current, strictly valid Guard Installation for every
+Connection Project and prepares each candidate manifest by replacing only its
+Connection integration revision. Missing, duplicate, stale, malformed, or
+owner-mismatched inventory fails with a repair instruction to rerun the owning
+`volicord init` command. The Store then updates the Connection mode, increments
+its integration generation once, clears the stored verification report, and
+rebinds all candidate manifests in one Registry transaction. Any conflict or
+write failure rolls back the whole transition, including multi-project
+personal Connections.
+
+Selecting the current mode is an exact no-op: it changes no Registry row,
+timestamp, report, generation, manifest, host configuration, or Product
+Repository file, and emits no reload action. A successful real transition also
+does not rewrite host configuration or Product Repository files; it emits
+exactly one `ReloadRequired` action because the existing managed host must be
+reloaded against the new revision. Prior runtime sessions, project Agent
+Sessions, and Guard events remain historical and cannot satisfy current checks,
+including when a later transition returns to a previously used mode.
+
 `volicord connection remove` removes the selected Connection Project
 membership and its project-scoped Registry bindings and Guard Installation in
 one Store transaction. If other memberships remain, the Agent Connection,

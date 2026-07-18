@@ -9,13 +9,12 @@ use volicord_mcp::{
 };
 use volicord_store::{
     agent_connections::{
-        add_connection_project, agent_connection_record, ensure_agent_connection,
-        AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
+        add_connection_project, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
         CONNECTION_MODE_WORKFLOW,
     },
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
 };
-use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
 use volicord_types::{
     AgentConnectionMode, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME,
     RECONCILE_CHANGES_TOOL_NAME, REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME,
@@ -238,23 +237,12 @@ fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
 }
 
 fn set_connection_mode(fixture: &CoreFixture, mode: &str) -> Result<(), Box<dyn Error>> {
-    let existing = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
-        .expect("fixture connection should exist");
-    ensure_agent_connection(
+    transition_test_connection_mode(
         fixture.runtime_home_path(),
-        AgentConnectionRegistration {
-            connection_internal_id: existing.connection_internal_id,
-            host_kind: existing.host_kind,
-            intent: existing.intent,
-            host_scope: existing.host_scope,
-            server_name: existing.server_name,
-            config_target: existing.config_target,
-            mode: mode.to_owned(),
-            enabled: existing.enabled,
-            managed_fingerprint: existing.managed_fingerprint,
-            verification_report_json: existing.verification_report_json,
-            metadata_json: existing.metadata_json,
-        },
+        &fixture.product_repo_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        mode,
     )?;
     Ok(())
 }

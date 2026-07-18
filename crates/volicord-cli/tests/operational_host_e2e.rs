@@ -59,11 +59,232 @@ fn main() {
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     fresh_operation_version_transition_and_read_only_status()?;
+    connection_mode_transition_rebinds_guard_revision()?;
+    connection_mode_preflight_failure_preserves_connection()?;
     connection_removal_after_operational_observations()?;
     dry_run_has_no_mutation()?;
     protocol_failures_are_authoritative()?;
     local_process_and_configuration_failures_are_structured()?;
     guard_failures_are_current_and_structured()?;
+    Ok(())
+}
+
+fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::new("operational-connection-mode-transition")?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&init, 0, "init", "action_required")?;
+
+    let before_no_op = fixture.registry_snapshot();
+    let no_op = fixture.run_connection_mode("workflow", FUTURE_VERSION, true)?;
+    assert_eq!(no_op.status.code(), Some(0));
+    assert!(no_op.stderr.is_empty());
+    let no_op: Value = serde_json::from_slice(&no_op.stdout)?;
+    assert_eq!(no_op["action"], "mode_unchanged");
+    assert_eq!(no_op["status"], "complete");
+    assert_eq!(no_op["transition"], "unchanged");
+    assert_eq!(no_op["actions"], json!([]));
+    assert_eq!(
+        no_op["previous_integration_revision"],
+        no_op["current_integration_revision"]
+    );
+    let after_no_op = fixture.registry_snapshot();
+    assert_eq!(
+        after_no_op.agent_connections, before_no_op.agent_connections,
+        "mode no-op changed the Connection row or verification report"
+    );
+    assert_eq!(
+        after_no_op.guard_installations, before_no_op.guard_installations,
+        "mode no-op changed a Guard manifest or timestamp"
+    );
+
+    let connection_id = before_no_op.agent_connections[0]
+        .connection_internal_id
+        .clone();
+    let project_id = before_no_op.projects[0].project_id.clone();
+    let workflow_manifest =
+        guard_manifest_from_json(&before_no_op.guard_installations[0].manifest_json)?;
+    fixture.run_successful_managed_mcp_with_guard(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        "future.session.mode.workflow.old",
+        &workflow_manifest,
+    )?;
+    assert_connection_report(
+        &fixture.run_connection("verify", FUTURE_VERSION, true)?,
+        0,
+        "verify",
+        "complete",
+    )?;
+
+    let repository_before = fixture.repository_snapshot()?;
+    let read_only = fixture.run_connection_mode("read-only", FUTURE_VERSION, true)?;
+    assert_eq!(
+        read_only.status.code(),
+        Some(0),
+        "mode transition failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&read_only.stdout),
+        String::from_utf8_lossy(&read_only.stderr)
+    );
+    assert!(read_only.stderr.is_empty());
+    let read_only_report: Value = serde_json::from_slice(&read_only.stdout)?;
+    assert_eq!(read_only_report["action"], "mode_updated");
+    assert_eq!(read_only_report["status"], "action_required");
+    assert_eq!(read_only_report["connection"]["mode"], "read_only");
+    assert_eq!(read_only_report["transition"], "updated");
+    assert_ne!(
+        read_only_report["previous_integration_revision"],
+        read_only_report["current_integration_revision"]
+    );
+    assert_eq!(
+        read_only_report["rebound_guard_installation_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        read_only_report["actions"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+
+    let read_only_snapshot = fixture.registry_snapshot();
+    assert_eq!(read_only_snapshot.agent_connections[0].mode, "read_only");
+    assert!(read_only_snapshot.agent_connections[0]
+        .verification_report_json
+        .is_none());
+    let read_only_manifest =
+        guard_manifest_from_json(&read_only_snapshot.guard_installations[0].manifest_json)?;
+    assert_manifest_rebound_only(&workflow_manifest, &read_only_manifest);
+    assert_eq!(
+        read_only_manifest.integration_revision.as_str(),
+        read_only_report["current_integration_revision"]
+            .as_str()
+            .expect("current revision")
+    );
+    assert!(
+        latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?.is_none()
+    );
+
+    let pending = fixture.run_connection("status", FUTURE_VERSION, true)?;
+    let pending = assert_connection_report(&pending, 0, "status", "action_required")?;
+    assert_check(&pending, "guard_files", "passed", None);
+    assert_check(&pending, "guard_observation", "pending", None);
+    assert_check(&pending, "host_session", "pending", None);
+    assert_check(&pending, "required_tools", "pending", None);
+    assert_check(&pending, "tool_round_trip", "pending", None);
+
+    let read_only_tools = fixture.run_managed_tools_list_names(&connection_id, &project_id)?;
+    assert!(read_only_tools.contains(&"volicord.list_projects".to_owned()));
+    assert!(!read_only_tools.contains(&"volicord.intake".to_owned()));
+    fixture
+        .run_current_guard_phases(&read_only_manifest, "future.session.mode.read-only.current")?;
+    assert_unbound_agent_session(&fixture, "future.session.mode.read-only.current")?;
+    fixture.run_successful_managed_mcp(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        "future.session.mode.read-only.current",
+    )?;
+    assert_connection_report(
+        &fixture.run_connection("verify", FUTURE_VERSION, true)?,
+        0,
+        "verify",
+        "complete",
+    )?;
+
+    let repository_before_workflow = fixture.repository_snapshot()?;
+    let workflow = fixture.run_connection_mode("workflow", FUTURE_VERSION, true)?;
+    assert_eq!(
+        workflow.status.code(),
+        Some(0),
+        "mode transition failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&workflow.stdout),
+        String::from_utf8_lossy(&workflow.stderr)
+    );
+    assert!(workflow.stderr.is_empty());
+    let workflow_report: Value = serde_json::from_slice(&workflow.stdout)?;
+    assert_eq!(workflow_report["status"], "action_required");
+    assert_eq!(workflow_report["connection"]["mode"], "workflow");
+    assert_eq!(fixture.repository_snapshot()?, repository_before_workflow);
+    let workflow_snapshot = fixture.registry_snapshot();
+    let current_workflow_manifest =
+        guard_manifest_from_json(&workflow_snapshot.guard_installations[0].manifest_json)?;
+    assert_manifest_rebound_only(&read_only_manifest, &current_workflow_manifest);
+    assert!(
+        latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?.is_none()
+    );
+    let pending = fixture.run_connection("status", FUTURE_VERSION, true)?;
+    let pending = assert_connection_report(&pending, 0, "status", "action_required")?;
+    assert_check(&pending, "guard_files", "passed", None);
+    assert_check(&pending, "guard_observation", "pending", None);
+
+    let workflow_tools = fixture.run_managed_tools_list_names(&connection_id, &project_id)?;
+    assert!(workflow_tools.contains(&"volicord.intake".to_owned()));
+    fixture.run_current_guard_phases(
+        &current_workflow_manifest,
+        "future.session.mode.workflow.current",
+    )?;
+    assert_unbound_agent_session(&fixture, "future.session.mode.workflow.current")?;
+    fixture.run_successful_managed_mcp(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        "future.session.mode.workflow.current",
+    )?;
+    assert_connection_report(
+        &fixture.run_connection("verify", FUTURE_VERSION, true)?,
+        0,
+        "verify",
+        "complete",
+    )?;
+
+    let removed = fixture.run_connection("remove", FUTURE_VERSION, true)?;
+    assert_eq!(removed.status.code(), Some(0));
+    assert!(removed.stderr.is_empty());
+    let removed: Value = serde_json::from_slice(&removed.stdout)?;
+    assert_eq!(removed["connection_removed"], true);
+    Ok(())
+}
+
+fn connection_mode_preflight_failure_preserves_connection() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::new("operational-connection-mode-preflight-failure")?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&init, 0, "init", "action_required")?;
+    let before = fixture.registry_snapshot().agent_connections[0].clone();
+    let registry = rusqlite::Connection::open(fixture.runtime_home.join("registry.sqlite"))?;
+    registry.execute("DELETE FROM guard_installations", [])?;
+    drop(registry);
+
+    let failed = fixture.run_connection_mode("read-only", FUTURE_VERSION, true)?;
+    assert_ne!(failed.status.code(), Some(0));
+    assert!(failed.stdout.is_empty());
+    let error = String::from_utf8(failed.stderr)?;
+    assert!(error.contains("exactly one current Guard Installation"));
+    assert!(error.contains("volicord init"));
+    let after = fixture.registry_snapshot().agent_connections[0].clone();
+    assert_eq!(after, before);
+    Ok(())
+}
+
+fn assert_manifest_rebound_only(before: &GuardManifest, after: &GuardManifest) {
+    let mut expected = before.clone();
+    expected.integration_revision = after.integration_revision.clone();
+    assert_eq!(after, &expected);
+    assert_ne!(before.integration_revision, after.integration_revision);
+}
+
+fn assert_unbound_agent_session(
+    fixture: &OperationalFixture,
+    host_session_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
+    let runtime_session_id: Option<String> = project_state.query_row(
+        "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
+        [host_session_id],
+        |row| row.get(0),
+    )?;
+    assert!(runtime_session_id.is_none());
     Ok(())
 }
 
@@ -537,6 +758,51 @@ impl OperationalFixture {
         Ok(command.output()?)
     }
 
+    fn run_connection_mode(
+        &self,
+        mode: &str,
+        version: &str,
+        json: bool,
+    ) -> Result<Output, Box<dyn Error>> {
+        let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), version);
+        command
+            .arg("connection")
+            .arg("mode")
+            .arg("codex")
+            .arg(mode)
+            .arg("--repo")
+            .arg(&self.repo_root);
+        if json {
+            command.arg("--json");
+        }
+        Ok(command.output()?)
+    }
+
+    fn run_managed_tools_list_names(
+        &self,
+        connection_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let output = self.run_managed_mcp_messages(
+            connection_id,
+            Some(project_id),
+            json_lines(&[
+                initialize_request(FUTURE_VERSION),
+                initialized_notification(),
+                tools_list_request(),
+            ])?,
+        )?;
+        assert_eq!(output.status.code(), Some(0));
+        assert!(output.stderr.is_empty());
+        let responses = json_rpc_responses(&output.stdout)?;
+        Ok(responses[1]["result"]["tools"]
+            .as_array()
+            .expect("tools/list array")
+            .iter()
+            .map(|tool| tool["name"].as_str().expect("tool name").to_owned())
+            .collect())
+    }
+
     fn run_successful_managed_mcp(
         &self,
         connection_id: &str,
@@ -973,7 +1239,12 @@ fn assert_connection_report(
     );
     let report: Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(report["operation"], operation);
-    assert_eq!(report["status"], status);
+    assert_eq!(
+        report["status"],
+        status,
+        "unexpected report status: {}",
+        serde_json::to_string_pretty(&report).unwrap_or_default()
+    );
     assert_compact_public_shape(&report);
     Ok(report)
 }

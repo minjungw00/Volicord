@@ -2,9 +2,9 @@ use std::error::Error;
 
 use volicord_store::{
     agent_connections::{
-        add_connection_project, ensure_agent_connection, set_connection_mode,
-        AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_INTENT_SHARED,
-        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
+        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+        ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
+        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
     },
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
@@ -19,7 +19,7 @@ use volicord_store::{
         McpRuntimeSessionStart,
     },
 };
-use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
 use volicord_types::{managed_stdio_session_id, ManagedMcpClientInfo, McpRuntimeSessionSource};
 
 const START: &str = "2026-07-18T00:00:00Z";
@@ -113,8 +113,10 @@ fn latest_queries_expose_partial_current_and_stale_managed_observations(
         managed
     );
 
-    set_connection_mode(
+    transition_test_connection_mode(
         fixture.runtime_home_path(),
+        &fixture.product_repo_path(),
+        fixture.project_id(),
         fixture.connection_id(),
         CONNECTION_MODE_READ_ONLY,
     )?;

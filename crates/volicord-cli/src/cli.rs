@@ -93,7 +93,7 @@ impl ConnectionMode {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Workflow => "workflow",
-            Self::ReadOnly => "read-only",
+            Self::ReadOnly => "read_only",
         }
     }
 }

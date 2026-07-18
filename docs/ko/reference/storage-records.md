@@ -68,11 +68,21 @@ thread metadata가 생기기 전 MCP process 시작 시점에 opaque `runtime_se
 검사할 수 있지만 managed-host 운영 evidence 조회를 충족할 수 없습니다.
 
 Connection 통합 revision은 Connection identity, host kind, intent, scope, mode, server
-name, configuration target, 정확한 managed-configuration fingerprint를 domain-separated
-canonical digest로 만든 값입니다. Managed fingerprint에는 현재 server command와 entry가
-포함됩니다. Host와 client version 필드는 제외하며 identity나 allowlist 입력이 아닌
-diagnostic 관찰로만 남습니다. 이 fingerprint에는 host executable identity나 provenance
-입력이 없습니다.
+name, configuration target, 정확한 managed-configuration fingerprint, Store 소유 비음수
+integration generation을 domain-separated canonical digest로 만든 값입니다. Managed
+fingerprint에는 현재 server command와 entry가 포함됩니다. Host와 client version 필드는
+제외하며 identity나 allowlist 입력이 아닌 diagnostic 관찰로만 남습니다. 이 fingerprint에는
+host executable identity나 provenance 입력이 없습니다. Store는 실제 mode 전환이 성공할
+때마다 generation을 정확히 한 번 증가시키고 같은 mode의 no-op에서는 증가시키지 않습니다.
+따라서 나중에 이전 mode로 돌아가도 과거 runtime, session, Guard evidence가 되살아나지
+않습니다.
+
+실제 mode 전환은 Connection mode와 generation을 바꾸고 verification report를 비우며,
+소유한 모든 엄격한 Guard manifest에서 integration revision만 교체하는 작업을 원자적으로
+수행합니다. 변경 전에 완전한 현재 manifest inventory가 Connection Project membership과
+일대일로 일치해야 합니다. 누락, 중복, stale, malformed, owner mismatch, 일부 쓰기 실패가
+있으면 Connection이나 manifest를 일부만 갱신하지 않고 Registry transaction 전체가
+실패합니다.
 
 Milestone timestamp와 사실로 lifecycle 상태를 표현하며 중복 status enum은 저장하지
 않습니다. Store는 성공한 `initialize`, initialized notification, 실제 `tools/list`마다의
