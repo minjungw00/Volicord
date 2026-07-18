@@ -10,17 +10,15 @@ use volicord_store::{
     },
 };
 use volicord_types::{
-    ActorSource, AgentSafeUserActionRequestSummary, GuardDecision, PromptCaptureStatus, TaskId,
-    UserActionRequestId, UserActionStatus, UtcTimestamp,
+    guard_manifest_from_json, ActorSource, AgentSafeUserActionRequestSummary, GuardDecision,
+    PromptCaptureStatus, TaskId, UserActionRequestId, UserActionStatus, UtcTimestamp,
 };
-
-use crate::guard_integration::host_hook_capability_has_exact_current_shape;
 
 use super::{
     args::GuardInput,
     current_policy_hash,
     envelope::{event_string, GuardEnvelope},
-    json_error, sha256_text, stable_id, GuardCommandError,
+    sha256_text, stable_id, GuardCommandError,
 };
 
 pub(super) type GuardPendingUserActionSummary = AgentSafeUserActionRequestSummary;
@@ -35,43 +33,27 @@ pub(super) fn prompt_capture_availability_for_event(
     let Some(installation) = record.guard_installation.as_ref() else {
         return Ok(availability);
     };
+    let manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
+        GuardCommandError::Runtime("stored Guard manifest is not current input".to_owned())
+    })?;
     if envelope
         .guard_installation_id
         .as_deref()
         .is_some_and(|id| id != installation.guard_installation_id)
         || installation.connection_internal_id != envelope.connection_id
-        || installation.host_kind != envelope.host_kind
-        || installation.guard_mode != envelope.guard_mode
-        || installation.project_id.as_deref() != Some(project.project_id.as_str())
+        || manifest.host_kind.as_str() != envelope.host_kind
+        || manifest.integration_profile.as_str() != envelope.guard_mode
+        || installation.project_id != project.project_id
     {
         availability.status = PromptCaptureStatus::Unavailable;
         return Ok(availability);
     }
-    let expected_policy_hash = expected_policy_hash(&installation.host_capability_json)?;
-    match (
-        current_policy_hash(project)?,
-        expected_policy_hash.as_deref(),
-    ) {
-        (Some(current), Some(expected)) if current == expected => {}
-        (Some(_), Some(_)) => availability.status = PromptCaptureStatus::ReloadRequired,
-        (None, Some(_)) => availability.status = PromptCaptureStatus::NotConfigured,
-        _ => {}
+    match current_policy_hash(project)? {
+        Some(current) if current == manifest.policy_hash.as_str() => {}
+        Some(_) => availability.status = PromptCaptureStatus::ReloadRequired,
+        None => availability.status = PromptCaptureStatus::NotConfigured,
     }
     Ok(availability)
-}
-
-fn expected_policy_hash(host_capability_json: &str) -> Result<Option<String>, GuardCommandError> {
-    let value = serde_json::from_str::<Value>(host_capability_json).map_err(json_error)?;
-    if !host_hook_capability_has_exact_current_shape(&value) {
-        return Err(GuardCommandError::Runtime(
-            "stored host-hook capability is not current input".to_owned(),
-        ));
-    }
-    Ok(value
-        .get("policy_hash")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned))
 }
 
 fn record_prompt_capture(

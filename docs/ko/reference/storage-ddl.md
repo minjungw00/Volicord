@@ -344,29 +344,8 @@ CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
-  project_internal_id TEXT,
-  host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
-  host_capability_json TEXT NOT NULL DEFAULT '{}',
-  installation_status TEXT NOT NULL
-    CHECK (installation_status IN (
-      'absent',
-      'configured',
-      'reload_required',
-      'active',
-      'degraded',
-      'stale',
-      'broken'
-    )),
-  installed_at TEXT,
-  last_checked_at TEXT NOT NULL,
-  first_seen_at TEXT,
-  last_seen_at TEXT,
-  last_seen_phase TEXT,
-  observed_host_kind TEXT,
-  observed_policy_hash TEXT,
-  observed_binary_version TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
+  project_internal_id TEXT NOT NULL,
+  manifest_json TEXT NOT NULL CHECK (json_valid(manifest_json) AND json_type(manifest_json) = 'object'),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (runtime_home_id) REFERENCES runtime_home (runtime_home_id) ON DELETE RESTRICT,
@@ -380,14 +359,8 @@ CREATE INDEX idx_guard_installations_connection
   ON guard_installations (connection_internal_id);
 CREATE INDEX idx_guard_installations_project
   ON guard_installations (project_internal_id);
-CREATE INDEX idx_guard_installations_status
-  ON guard_installations (installation_status);
 CREATE UNIQUE INDEX idx_guard_installations_scope_project
-  ON guard_installations (connection_internal_id, project_internal_id, guard_mode)
-  WHERE project_internal_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_guard_installations_scope_global
-  ON guard_installations (connection_internal_id, guard_mode)
-  WHERE project_internal_id IS NULL;
+  ON guard_installations (connection_internal_id, project_internal_id);
 ```
 <!-- canonical-storage-sql: registry end -->
 
@@ -405,7 +378,7 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.verification_report_json`은 완료된 보고서가 없으면 SQL null입니다. Null이 아닌 값은 파생 상태와 action을 포함하는 엄격한 정규 `ConnectionVerificationReport` 하나를 저장합니다. Store는 그 구성 요소를 독립적으로 영속 저장하지 않습니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
-- `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 project 범위에 대한 Codex Record Guard 설정 생명주기 상태와 구성 metadata를 저장합니다. 내부 `guard_mode`는 정확히 `record`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 이 행은 expected-write 상관관계와 reconciliation을 지원하지만 공개 Core Guard health projection, OS 수준 집행 증명, 쓰기 방지 증명은 아닙니다.
+- `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase에 결속됩니다. 이 객체는 Volicord 소유권만 설명하며 host capability 인증서, lifecycle 상태, OS 수준 집행 증명, 쓰기 방지 증명이 아닙니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 현재 소유권의 `guard_events`에서 도출합니다.
 
 ## 프로젝트 `state.sqlite`
 
@@ -1246,8 +1219,19 @@ CREATE TABLE guard_events (
   guard_event_id TEXT NOT NULL,
   session_id TEXT,
   connection_internal_id TEXT NOT NULL,
-  guard_installation_id TEXT,
-  event_kind TEXT NOT NULL,
+  guard_installation_id TEXT NOT NULL,
+  policy_hash TEXT NOT NULL CHECK (
+    length(policy_hash) = 71
+    AND substr(policy_hash, 1, 7) = 'sha256:'
+    AND substr(policy_hash, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  integration_revision TEXT NOT NULL CHECK (
+    length(integration_revision) = 71
+    AND substr(integration_revision, 1, 7) = 'sha256:'
+    AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  event_kind TEXT NOT NULL CHECK (event_kind IN ('pre_tool', 'post_tool', 'prompt_capture')),
+  contract_status TEXT NOT NULL CHECK (contract_status IN ('compatible', 'malformed', 'incompatible')),
   decision TEXT NOT NULL CHECK (decision IN ('allow', 'deny', 'warn', 'inject_context')),
   subject_json TEXT NOT NULL DEFAULT '{}',
   result_json TEXT NOT NULL DEFAULT '{}',
@@ -1495,7 +1479,7 @@ CREATE TABLE project_workflow_policies (
   행은 호출자 권한이 아니며 현재 연결, Git 작업 공간, User Channel 요구사항을
   우회하지 않습니다.
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`는 프로젝트별 Codex Record Guard 및 조정 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
-- `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 호스트 판단 요청을 기록하며 OS 수준 집행 증명이 아닙니다.
+- `guard_events`는 모든 관찰을 필수 typed hook phase, Guard 설치, 정확한 policy hash, integration revision에 결속합니다. 현재 소유권의 `compatible` event만 필수 phase를 충족하고, 현재 `malformed` 또는 `incompatible` event는 Guard observation check를 실패시키며, 이전 hash나 revision은 현재 check를 충족하지 않습니다. `decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한되며 이 값은 OS 수준 집행 증명이 아니라 로컬 호스트 판단 요청을 기록합니다.
 - `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 일치한 행은 일치한 Guard 관찰 이벤트, 일치 경로 JSON, `matched_at`을 가져야 하고, 대기 행은 이 일치 필드를 가지면 안 됩니다.
 - `unrecorded_changes.status`는 `unresolved` 또는 `resolved`로 제한됩니다. 해결된 행은 해결 JSON, `resolved_at`, `resolved_by_actor_source`를 가져야 하고, 미해결 행은 이 해결 필드를 가지면 안 됩니다.
 

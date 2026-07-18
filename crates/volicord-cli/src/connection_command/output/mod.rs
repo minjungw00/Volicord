@@ -335,10 +335,11 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
                 )
             })
     };
-    let guard_status = data
-        .guard_installation
-        .map(|guard| guard.installation_status.as_str())
-        .unwrap_or(GuardInstallationStatus::Configured.as_str());
+    let guard_status = if data.guard_installation.is_some() {
+        "configured"
+    } else {
+        "planned"
+    };
     let guard_state = if data.guard_installation.is_some() {
         GuardOperationalState::init(guard_status, data.init_mode, data.integration)
     } else {
@@ -403,7 +404,7 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
                 "hook_root_resolution": hook_root_resolution_json(&data.integration.host_hook_commands),
                 "guard_installation": {
                     "guard_installation_id": &data.integration.guard_installation_id,
-                    "installation_status": guard_status,
+                    "manifest_state": guard_status,
                     "policy_hash": &data.integration.policy_hash,
                     "recorded": data.guard_installation.is_some(),
                 },

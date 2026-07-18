@@ -2726,9 +2726,9 @@ pub(crate) fn read_managed_text(
 
 pub(crate) fn plan_managed_file_retirement(
     repo_root: &Path,
-    capability_file: &Value,
+    manifest_file: &Value,
 ) -> Result<ManagedFileRetirementPlan, GuardIntegrationError> {
-    let kind_text = capability_file
+    let kind_text = manifest_file
         .get("kind")
         .and_then(Value::as_str)
         .ok_or_else(|| {
@@ -2739,7 +2739,7 @@ pub(crate) fn plan_managed_file_retirement(
             "retirement metadata contains unsupported file kind {kind_text}"
         ))
     })?;
-    let path = capability_file
+    let path = manifest_file
         .get("path")
         .and_then(Value::as_str)
         .map(PathBuf::from)
@@ -2757,7 +2757,7 @@ pub(crate) fn plan_managed_file_retirement(
             replacement: None,
         });
     };
-    let expected_hash = capability_file
+    let expected_hash = manifest_file
         .get("content_hash")
         .and_then(Value::as_str)
         .ok_or_else(|| {
@@ -2766,9 +2766,9 @@ pub(crate) fn plan_managed_file_retirement(
                 path.display()
             ))
         })?;
-    let replacement = match capability_file.get("ownership").and_then(Value::as_str) {
+    let replacement = match manifest_file.get("ownership").and_then(Value::as_str) {
         Some("managed_block") => {
-            let start = capability_file
+            let start = manifest_file
                 .get("managed_marker_start")
                 .and_then(Value::as_str)
                 .ok_or_else(|| {
@@ -2776,7 +2776,7 @@ pub(crate) fn plan_managed_file_retirement(
                         "managed-block retirement is missing start marker",
                     )
                 })?;
-            let end = capability_file
+            let end = manifest_file
                 .get("managed_marker_end")
                 .and_then(Value::as_str)
                 .ok_or_else(|| {
@@ -2796,7 +2796,7 @@ pub(crate) fn plan_managed_file_retirement(
         }
         Some("managed_script") => {
             if sha256_text(existing) != expected_hash
-                || !managed_script_retirement_metadata_matches_content(capability_file, existing)
+                || !managed_script_retirement_metadata_matches_content(manifest_file, existing)
             {
                 return Err(retirement_changed_error(&path));
             }

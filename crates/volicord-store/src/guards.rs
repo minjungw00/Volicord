@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -8,25 +9,24 @@ use serde::Deserialize;
 use serde_json::Value;
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_types::{
-    canonical_json_sha256, host_hook_capability_has_exact_current_shape,
-    host_hook_capability_matches_owner_binding, managed_stdio_session_id,
-    validate_managed_host_native_session_id, GuardDecision, GuardInstallationStatus,
-    HostHookCapabilityOwnerBinding, HostKind, IntegrationProfile, IntegrationRevision,
+    canonical_json_sha256, guard_manifest_from_json, guard_manifest_matches_owner_binding,
+    managed_stdio_session_id, validate_managed_host_native_session_id, GuardDecision,
+    GuardHookContractStatus, GuardHookPhase, GuardManifestOwnerBinding, IntegrationRevision,
     ProjectIntegrationRevisionBasis, PromptCaptureStatus, UnrecordedChangeStatus, UtcTimestamp,
-    HOST_HOOK_CAPABILITY_SCHEMA,
 };
 
 use crate::{
     agent_connections::{
-        agent_connection_record_read_only, is_agent_connection_project_allowed,
-        AgentConnectionRecord,
+        agent_connection_record_from_conn, agent_connection_record_read_only,
+        is_agent_connection_project_allowed, AgentConnectionRecord,
     },
     bootstrap::{
         project_record_for_execution, project_record_for_execution_read_only,
         raw_project_record_from_conn, ProjectRecord,
     },
     operational_sessions::{
-        bind_mcp_runtime_project_session, current_managed_mcp_runtime_session_for_connection,
+        bind_mcp_runtime_project_session, connection_integration_revision,
+        current_managed_mcp_runtime_session_for_connection,
     },
     sqlite::{
         begin_immediate_transaction, open_project_state_database,
@@ -36,8 +36,6 @@ use crate::{
     StoreError, StoreResult,
 };
 
-const KNOWN_GUARD_OBSERVATION_PHASES: &[&str] = &["pre_tool", "post_tool", "prompt_capture"];
-
 /// Maximum prior post-tool Guard events considered for one exact correlation window.
 pub const POST_TOOL_CORRELATION_EVENT_LIMIT: usize = 512;
 
@@ -46,20 +44,8 @@ pub const POST_TOOL_CORRELATION_EVENT_LIMIT: usize = 512;
 pub struct GuardInstallationUpsert {
     pub guard_installation_id: String,
     pub connection_internal_id: String,
-    pub project_id: Option<String>,
-    pub host_kind: String,
-    pub guard_mode: String,
-    pub host_capability_json: String,
-    pub installation_status: String,
-    pub installed_at: Option<String>,
-    pub last_checked_at: String,
-    pub first_seen_at: Option<String>,
-    pub last_seen_at: Option<String>,
-    pub last_seen_phase: Option<String>,
-    pub observed_host_kind: Option<String>,
-    pub observed_policy_hash: Option<String>,
-    pub observed_binary_version: Option<String>,
-    pub metadata_json: String,
+    pub project_id: String,
+    pub manifest_json: String,
 }
 
 /// Guard installation row stored in `registry.sqlite`.
@@ -68,125 +54,11 @@ pub struct GuardInstallationRecord {
     pub guard_installation_id: String,
     pub runtime_home_id: String,
     pub connection_internal_id: String,
-    pub project_id: Option<String>,
-    pub project_internal_id: Option<String>,
-    pub host_kind: String,
-    pub guard_mode: String,
-    pub host_capability_json: String,
-    pub installation_status: String,
-    pub installed_at: Option<String>,
-    pub last_checked_at: String,
-    pub first_seen_at: Option<String>,
-    pub last_seen_at: Option<String>,
-    pub last_seen_phase: Option<String>,
-    pub observed_host_kind: Option<String>,
-    pub observed_policy_hash: Option<String>,
-    pub observed_binary_version: Option<String>,
-    pub metadata_json: String,
+    pub project_id: String,
+    pub project_internal_id: String,
+    pub manifest_json: String,
     pub created_at: String,
     pub updated_at: String,
-}
-
-/// Stored guard-observation facts evaluated against the current installation capability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GuardObservationMatch<'a> {
-    pub guard_installation_id: &'a str,
-    pub host_kind: &'a str,
-    pub host_capability_json: &'a str,
-    pub last_seen_at: Option<&'a str>,
-    pub last_seen_phase: Option<&'a str>,
-    pub observed_host_kind: Option<&'a str>,
-    pub observed_policy_hash: Option<&'a str>,
-}
-
-impl<'a> From<&'a GuardInstallationRecord> for GuardObservationMatch<'a> {
-    fn from(installation: &'a GuardInstallationRecord) -> Self {
-        Self {
-            guard_installation_id: &installation.guard_installation_id,
-            host_kind: &installation.host_kind,
-            host_capability_json: &installation.host_capability_json,
-            last_seen_at: installation.last_seen_at.as_deref(),
-            last_seen_phase: installation.last_seen_phase.as_deref(),
-            observed_host_kind: installation.observed_host_kind.as_deref(),
-            observed_policy_hash: installation.observed_policy_hash.as_deref(),
-        }
-    }
-}
-
-/// Returns whether persisted observation metadata matches the exact canonical capability.
-///
-/// Invalid timestamps, stale host or policy identity, unknown lifecycle phases, and phases not
-/// configured by the current capability all fail closed.
-pub fn guard_observation_matches_current_capability(
-    observation: GuardObservationMatch<'_>,
-) -> StoreResult<bool> {
-    let GuardObservationMatch {
-        guard_installation_id,
-        host_kind,
-        host_capability_json,
-        last_seen_at,
-        last_seen_phase,
-        observed_host_kind,
-        observed_policy_hash,
-    } = observation;
-    let Some(last_seen_at) = last_seen_at else {
-        return Ok(false);
-    };
-    UtcTimestamp::from_str(last_seen_at).map_err(|_| {
-        StoreError::corrupt_owner_state_json(
-            "guard_installations",
-            guard_installation_id.to_owned(),
-            "last_seen_at",
-        )
-    })?;
-    if observed_host_kind != Some(host_kind) {
-        return Ok(false);
-    }
-    let capability = serde_json::from_str::<Value>(host_capability_json).map_err(|_| {
-        StoreError::corrupt_owner_state_json(
-            "guard_installations",
-            guard_installation_id.to_owned(),
-            "host_capability_json",
-        )
-    })?;
-    if !host_hook_capability_has_exact_current_shape(&capability) {
-        return Err(StoreError::corrupt_owner_state_value(
-            "guard_installations",
-            guard_installation_id.to_owned(),
-            "host_capability_json",
-        ));
-    }
-    if observed_policy_hash != capability["policy_hash"].as_str() {
-        return Ok(false);
-    }
-    let Some(last_seen_phase) = last_seen_phase else {
-        return Ok(false);
-    };
-    Ok(KNOWN_GUARD_OBSERVATION_PHASES.contains(&last_seen_phase)
-        && capability["commands"]
-            .as_object()
-            .is_some_and(|commands| commands.contains_key(last_seen_phase)))
-}
-
-/// Returns whether one stored installation has a current matching hook observation.
-pub fn guard_installation_observation_is_current(
-    installation: &GuardInstallationRecord,
-) -> StoreResult<bool> {
-    guard_observation_matches_current_capability(installation.into())
-}
-
-/// Validated guard hook observation for one registered installation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GuardInstallationObservation {
-    pub guard_installation_id: String,
-    pub connection_internal_id: String,
-    pub project_id: String,
-    pub host_kind: String,
-    pub guard_mode: String,
-    pub observed_policy_hash: String,
-    pub observed_binary_version: Option<String>,
-    pub observed_phase: String,
-    pub observed_at: String,
 }
 
 /// Agent Session insert input.
@@ -223,8 +95,11 @@ pub struct GuardEventInsert {
     pub guard_event_id: String,
     pub session_id: Option<String>,
     pub connection_internal_id: String,
-    pub guard_installation_id: Option<String>,
+    pub guard_installation_id: String,
+    pub policy_hash: String,
+    pub integration_revision: String,
     pub event_kind: String,
+    pub contract_status: String,
     pub decision: String,
     pub subject_json: String,
     pub result_json: String,
@@ -239,8 +114,11 @@ pub struct GuardEventRecord {
     pub guard_event_id: String,
     pub session_id: Option<String>,
     pub connection_internal_id: String,
-    pub guard_installation_id: Option<String>,
+    pub guard_installation_id: String,
+    pub policy_hash: String,
+    pub integration_revision: String,
     pub event_kind: String,
+    pub contract_status: String,
     pub decision: String,
     pub subject_json: String,
     pub result_json: String,
@@ -440,7 +318,33 @@ pub struct GuardHealthRecord {
     pub latest_event: Option<GuardEventRecord>,
     /// Every guard event at the exact greatest observed UTC instant.
     pub co_latest_events: Vec<GuardEventRecord>,
+    pub observation: Option<GuardObservationSummary>,
     pub unresolved_unrecorded_changes: Vec<UnrecordedChangeRecord>,
+}
+
+/// Guard events projected only for the current installation manifest ownership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuardObservationSummary {
+    pub required_phases: Vec<String>,
+    pub observed_phases: Vec<String>,
+    pub incompatible_event_ids: Vec<String>,
+    pub last_observed_at: Option<String>,
+}
+
+impl GuardObservationSummary {
+    pub fn all_required_phases_observed(&self) -> bool {
+        self.incompatible_event_ids.is_empty()
+            && self
+                .required_phases
+                .iter()
+                .all(|phase| self.observed_phases.contains(phase))
+    }
+
+    pub fn prompt_capture_observed(&self) -> bool {
+        self.observed_phases
+            .iter()
+            .any(|phase| phase == GuardHookPhase::PromptCapture.as_str())
+    }
 }
 
 /// Derived prompt-observation availability for one project and Agent Connection.
@@ -485,45 +389,33 @@ pub(crate) fn upsert_guard_installation_in_transaction(
     validate_guard_installation_upsert(input)?;
     let runtime_home_id = require_runtime_home_id(conn)?;
     let connection_id = input.connection_internal_id.as_str();
-    let connection = require_connection(conn, connection_id)?;
-    let project = input
-        .project_id
-        .as_deref()
-        .map(|project_id| {
-            let project = raw_project_record_from_conn(conn, project_id)?.ok_or_else(|| {
-                StoreError::NotFound {
-                    entity: "project",
-                    id: project_id.to_owned(),
-                }
-            })?;
-            require_connection_project_membership(
-                conn,
-                connection_id,
-                &project.project_internal_id,
-            )?;
-            Ok::<ProjectRecord, StoreError>(project)
-        })
-        .transpose()?;
-    validate_guard_installation_binding(
-        input,
-        &connection,
-        project.as_ref().map(|project| project.repo_root.as_path()),
-    )?;
-    let project_internal_id = project
-        .as_ref()
-        .map(|project| project.project_internal_id.clone());
+    let connection = agent_connection_record_from_conn(conn, connection_id)?.ok_or_else(|| {
+        StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_id.to_owned(),
+        }
+    })?;
+    let project = raw_project_record_from_conn(conn, &input.project_id)?.ok_or_else(|| {
+        StoreError::NotFound {
+            entity: "project",
+            id: input.project_id.clone(),
+        }
+    })?;
+    require_connection_project_membership(conn, connection_id, &project.project_internal_id)?;
+    validate_guard_installation_binding(input, &connection, &project)?;
 
     if let Some(existing_id) = guard_installation_id_for_scope(
         conn,
         &input.connection_internal_id,
-        project_internal_id.as_deref(),
-        &input.guard_mode,
+        &project.project_internal_id,
     )? {
         if existing_id != input.guard_installation_id {
             return Err(StoreError::Conflict {
                 entity: "guard_installation",
                 id: input.guard_installation_id.clone(),
-                detail: "connection/project/guard_mode scope is already recorded by another guard_installation_id".to_owned(),
+                detail:
+                    "connection/project scope is already recorded by another guard_installation_id"
+                        .to_owned(),
             });
         }
     }
@@ -533,19 +425,7 @@ pub(crate) fn upsert_guard_installation_in_transaction(
             runtime_home_id,
             connection_internal_id,
             project_internal_id,
-            host_kind,
-            guard_mode,
-            host_capability_json,
-            installation_status,
-            installed_at,
-            last_checked_at,
-            first_seen_at,
-            last_seen_at,
-            last_seen_phase,
-            observed_host_kind,
-            observed_policy_hash,
-            observed_binary_version,
-            metadata_json,
+            manifest_json,
             created_at,
             updated_at
         )
@@ -555,18 +435,6 @@ pub(crate) fn upsert_guard_installation_in_transaction(
             ?3,
             ?4,
             ?5,
-            ?6,
-            ?7,
-            ?8,
-            ?9,
-            ?10,
-            ?11,
-            ?12,
-            ?13,
-            ?14,
-            ?15,
-            ?16,
-            ?17,
             strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
             strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
         )
@@ -574,46 +442,14 @@ pub(crate) fn upsert_guard_installation_in_transaction(
             runtime_home_id = excluded.runtime_home_id,
             connection_internal_id = excluded.connection_internal_id,
             project_internal_id = excluded.project_internal_id,
-            host_kind = excluded.host_kind,
-            guard_mode = excluded.guard_mode,
-            host_capability_json = excluded.host_capability_json,
-            installation_status = CASE
-                WHEN guard_installations.installation_status = 'active'
-                 AND excluded.installation_status = 'configured'
-                 AND guard_installations.host_capability_json = excluded.host_capability_json
-                 AND guard_installations.host_kind = excluded.host_kind
-                 AND guard_installations.guard_mode = excluded.guard_mode
-                THEN guard_installations.installation_status
-                ELSE excluded.installation_status
-            END,
-            installed_at = excluded.installed_at,
-            last_checked_at = excluded.last_checked_at,
-            first_seen_at = COALESCE(excluded.first_seen_at, first_seen_at),
-            last_seen_at = COALESCE(excluded.last_seen_at, last_seen_at),
-            last_seen_phase = COALESCE(excluded.last_seen_phase, last_seen_phase),
-            observed_host_kind = COALESCE(excluded.observed_host_kind, observed_host_kind),
-            observed_policy_hash = COALESCE(excluded.observed_policy_hash, observed_policy_hash),
-            observed_binary_version = COALESCE(excluded.observed_binary_version, observed_binary_version),
-            metadata_json = excluded.metadata_json,
+            manifest_json = excluded.manifest_json,
             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         params![
             &input.guard_installation_id,
             runtime_home_id,
             &input.connection_internal_id,
-            project_internal_id.as_deref(),
-            &input.host_kind,
-            &input.guard_mode,
-            &input.host_capability_json,
-            &input.installation_status,
-            input.installed_at.as_deref(),
-            &input.last_checked_at,
-            input.first_seen_at.as_deref(),
-            input.last_seen_at.as_deref(),
-            input.last_seen_phase.as_deref(),
-            input.observed_host_kind.as_deref(),
-            input.observed_policy_hash.as_deref(),
-            input.observed_binary_version.as_deref(),
-            &input.metadata_json,
+            &project.project_internal_id,
+            &input.manifest_json,
         ],
     )?;
     Ok(())
@@ -667,31 +503,14 @@ pub fn list_guard_installations(
             gi.runtime_home_id,
             gi.connection_internal_id,
             gi.project_internal_id,
-            p.project_internal_id,
-            gi.host_kind,
-            gi.guard_mode,
-            gi.host_capability_json,
-            gi.installation_status,
-            gi.installed_at,
-            gi.last_checked_at,
-            gi.first_seen_at,
-            gi.last_seen_at,
-            gi.last_seen_phase,
-            gi.observed_host_kind,
-            gi.observed_policy_hash,
-            gi.observed_binary_version,
-            gi.metadata_json,
+            json_extract(gi.manifest_json, '$.project_id'),
+            gi.manifest_json,
             gi.created_at,
             gi.updated_at
          FROM guard_installations AS gi
-         LEFT JOIN projects AS p
-           ON p.project_internal_id = gi.project_internal_id
         WHERE gi.connection_internal_id = ?1
-          AND (
-            (?2 IS NULL AND gi.project_internal_id IS NULL)
-            OR gi.project_internal_id = ?2
-          )
-        ORDER BY gi.guard_mode, gi.guard_installation_id",
+          AND (?2 IS NULL OR gi.project_internal_id = ?2)
+        ORDER BY gi.guard_installation_id",
     )?;
     let rows = stmt.query_map(
         params![connection_internal_id, project_internal_id],
@@ -701,88 +520,6 @@ pub fn list_guard_installations(
         .into_iter()
         .map(validate_decoded_guard_installation)
         .collect()
-}
-
-/// Records a validated guard hook observation and promotes healthy configured installations.
-pub fn observe_guard_installation(
-    runtime_home: impl AsRef<Path>,
-    input: GuardInstallationObservation,
-) -> StoreResult<Option<GuardInstallationRecord>> {
-    validate_guard_installation_observation(&input)?;
-
-    let runtime_home = runtime_home.as_ref().to_path_buf();
-    let registry_path = registry_db_path(&runtime_home);
-    if !registry_path.exists() {
-        return Ok(None);
-    }
-    let mut conn = open_registry_database(&registry_path)?;
-    let Some(project) = raw_project_record_from_conn(&conn, &input.project_id)? else {
-        return Ok(None);
-    };
-    let Some(existing) = guard_installation_from_conn(&conn, &input.guard_installation_id)? else {
-        return Ok(None);
-    };
-    let owning_project = existing
-        .project_id
-        .as_deref()
-        .map(|project_id| raw_project_record_from_conn(&conn, project_id))
-        .transpose()?
-        .flatten()
-        .ok_or_else(|| {
-            StoreError::corrupt_owner_state_json(
-                "guard_installations",
-                existing.guard_installation_id.clone(),
-                "host_capability_json",
-            )
-        })?;
-    let connection = require_connection(&conn, &input.connection_internal_id)?;
-    validate_stored_guard_installation_binding_fields(
-        &existing,
-        &connection.host_kind,
-        &connection.intent,
-        &owning_project.repo_root,
-    )?;
-    if existing.connection_internal_id != input.connection_internal_id
-        || existing.project_internal_id.as_deref() != Some(project.project_internal_id.as_str())
-        || existing.host_kind != input.host_kind
-        || existing.guard_mode != input.guard_mode
-        || expected_policy_hash(&existing.host_capability_json)?.as_deref()
-            != Some(input.observed_policy_hash.as_str())
-    {
-        return Ok(None);
-    }
-    require_connection_project_membership(
-        &conn,
-        &input.connection_internal_id,
-        &project.project_internal_id,
-    )?;
-    let next_installation_status = guard_status_after_observation(&existing)?;
-
-    let tx = begin_immediate_transaction(&mut conn)?;
-    tx.execute(
-        "UPDATE guard_installations
-            SET installation_status = ?2,
-                first_seen_at = COALESCE(first_seen_at, ?3),
-                last_seen_at = ?3,
-                last_seen_phase = ?4,
-                observed_host_kind = ?5,
-                observed_policy_hash = ?6,
-                observed_binary_version = ?7,
-                last_checked_at = ?3,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-          WHERE guard_installation_id = ?1",
-        params![
-            input.guard_installation_id,
-            next_installation_status,
-            input.observed_at,
-            input.observed_phase,
-            input.host_kind,
-            input.observed_policy_hash,
-            input.observed_binary_version,
-        ],
-    )?;
-    tx.commit()?;
-    guard_installation(&runtime_home, &input.guard_installation_id)
 }
 
 /// Inserts one project-scoped Agent Session row.
@@ -836,9 +573,9 @@ pub fn insert_agent_session(
                 .ok_or_else(|| StoreError::NotFound {
                     entity: "guard_installation",
                     id: guard_installation_id.to_owned(),
-                })?;
+            })?;
             if installation.connection_internal_id != input.connection_internal_id
-                || installation.project_id.as_deref() != Some(project_id)
+                || installation.project_id != project_id
             {
                 return Err(StoreError::Conflict {
                     entity: "guard_installation",
@@ -847,7 +584,11 @@ pub fn insert_agent_session(
                         .to_owned(),
                 });
             }
-            Ok((installation.guard_installation_id, expected_policy_hash(&installation.host_capability_json)?.expect("current capability has policy hash")))
+            let manifest = current_guard_manifest(&installation)?;
+            Ok((
+                installation.guard_installation_id,
+                manifest.policy_hash.into_inner(),
+            ))
         })
         .transpose()?;
     let mut project = open_guard_project(&runtime_home, project_id, &input.connection_internal_id)?;
@@ -984,14 +725,14 @@ pub fn agent_session_matches_current_integration(
                     }
                 })?;
             if installation.connection_internal_id != session.connection_internal_id
-                || installation.project_id.as_deref() != Some(session.project_id.as_str())
+                || installation.project_id != session.project_id
             {
                 return Ok(None);
             }
+            let manifest = current_guard_manifest(&installation)?;
             Ok(Some((
                 installation.guard_installation_id,
-                expected_policy_hash(&installation.host_capability_json)?
-                    .expect("current capability has policy hash"),
+                manifest.policy_hash.into_inner(),
             )))
         })
         .transpose()?
@@ -1038,6 +779,27 @@ pub fn insert_guard_event(
     input: GuardEventInsert,
 ) -> StoreResult<GuardEventRecord> {
     validate_guard_event_insert(&input)?;
+    let runtime_home = runtime_home.as_ref();
+    let installation =
+        guard_installation(runtime_home, &input.guard_installation_id)?.ok_or_else(|| {
+            StoreError::NotFound {
+                entity: "guard_installation",
+                id: input.guard_installation_id.clone(),
+            }
+        })?;
+    let manifest = current_guard_manifest(&installation)?;
+    if installation.connection_internal_id != input.connection_internal_id
+        || installation.project_id != project_id
+        || manifest.policy_hash.as_str() != input.policy_hash
+        || manifest.integration_revision.as_str() != input.integration_revision
+    {
+        return Err(StoreError::Conflict {
+            entity: "guard_event",
+            id: input.guard_event_id,
+            detail: "Guard event ownership does not match the current installation manifest"
+                .to_owned(),
+        });
+    }
     let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
     validate_optional_session_scope(
         &project.conn,
@@ -1053,21 +815,27 @@ pub fn insert_guard_event(
             session_id,
             connection_internal_id,
             guard_installation_id,
+            policy_hash,
+            integration_revision,
             event_kind,
+            contract_status,
             decision,
             subject_json,
             result_json,
             occurred_at,
             metadata_json
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             project.project.project_id,
             input.guard_event_id,
             input.session_id,
             input.connection_internal_id,
             input.guard_installation_id,
+            input.policy_hash,
+            input.integration_revision,
             input.event_kind,
+            input.contract_status,
             input.decision,
             input.subject_json,
             input.result_json,
@@ -1747,6 +1515,10 @@ pub fn guard_health_record(
     let latest_session = latest_agent_session(&runtime_home, project_id, connection_internal_id)?;
     let co_latest_events = latest_guard_events(&runtime_home, project_id, connection_internal_id)?;
     let latest_event = co_latest_events.first().cloned();
+    let observation = guard_installation
+        .as_ref()
+        .map(|installation| guard_observation_summary(&runtime_home, project_id, installation))
+        .transpose()?;
     let unresolved_unrecorded_changes = list_unresolved_unrecorded_changes(
         &runtime_home,
         project_id,
@@ -1759,7 +1531,89 @@ pub fn guard_health_record(
         latest_session,
         latest_event,
         co_latest_events,
+        observation,
         unresolved_unrecorded_changes,
+    })
+}
+
+/// Derives current Guard observation facts from events with exact manifest ownership.
+pub fn guard_observation_summary(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    installation: &GuardInstallationRecord,
+) -> StoreResult<GuardObservationSummary> {
+    validate_identifier("project_id", project_id)?;
+    let manifest = current_guard_manifest(installation)?;
+    let required_phases = manifest
+        .required_hook_phases
+        .iter()
+        .map(|phase| phase.as_str().to_owned())
+        .collect::<Vec<_>>();
+    let Some(project) = open_project_for_read(runtime_home, project_id)? else {
+        return Ok(GuardObservationSummary {
+            required_phases,
+            observed_phases: Vec::new(),
+            incompatible_event_ids: Vec::new(),
+            last_observed_at: None,
+        });
+    };
+    let mut stmt = project.conn.prepare(
+        "SELECT guard_event_id, event_kind, contract_status, occurred_at
+           FROM guard_events
+          WHERE project_id = ?1
+            AND connection_internal_id = ?2
+            AND guard_installation_id = ?3
+            AND policy_hash = ?4
+            AND integration_revision = ?5
+          ORDER BY volicord_utc_seconds(occurred_at),
+                   volicord_utc_subsec_nanos(occurred_at),
+                   guard_event_id",
+    )?;
+    let rows = stmt.query_map(
+        params![
+            project.project.project_id,
+            installation.connection_internal_id,
+            installation.guard_installation_id,
+            manifest.policy_hash.as_str(),
+            manifest.integration_revision.as_str(),
+        ],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        },
+    )?;
+    let mut observed_phases = BTreeSet::new();
+    let mut incompatible_event_ids = Vec::new();
+    let mut last_observed_at = None;
+    for row in rows {
+        let (event_id, phase, contract_status, occurred_at) = row?;
+        GuardHookPhase::from_str(&phase).map_err(|_| {
+            StoreError::corrupt_owner_state_value("guard_events", event_id.clone(), "event_kind")
+        })?;
+        if contract_status == GuardHookContractStatus::Compatible.as_str() {
+            observed_phases.insert(phase);
+        } else if contract_status == GuardHookContractStatus::Malformed.as_str()
+            || contract_status == GuardHookContractStatus::Incompatible.as_str()
+        {
+            incompatible_event_ids.push(event_id);
+        } else {
+            return Err(StoreError::corrupt_owner_state_value(
+                "guard_events",
+                event_id,
+                "contract_status",
+            ));
+        }
+        last_observed_at = Some(occurred_at);
+    }
+    Ok(GuardObservationSummary {
+        required_phases,
+        observed_phases: observed_phases.into_iter().collect(),
+        incompatible_event_ids,
+        last_observed_at,
     })
 }
 
@@ -1788,7 +1642,10 @@ pub fn post_tool_guard_events_for_session_since(
                 session_id,
                 connection_internal_id,
                 guard_installation_id,
+                policy_hash,
+                integration_revision,
                 event_kind,
+                contract_status,
                 decision,
                 subject_json,
                 result_json,
@@ -1898,90 +1755,37 @@ pub fn prompt_capture_availability(
         StoreError::corrupt_owner_state_json(
             "guard_installations",
             installation.guard_installation_id.clone(),
-            "host_capability_json",
+            "manifest_json",
         )
     })?;
-    validate_stored_guard_installation_capability_binding(
+    validate_stored_guard_installation_manifest_binding(
         installation,
         connection,
         &record.project_repo_root,
     )?;
-    let facts = prompt_capture_capability_facts(&installation.host_capability_json)?;
-    let policy_hash_matches_observation = installation
-        .observed_policy_hash
-        .as_deref()
-        .zip(facts.expected_policy_hash.as_deref())
-        .is_some_and(|(observed, expected)| observed == expected);
-    let observation_is_current = guard_installation_observation_is_current(installation)?;
-    let status = if !facts.host_supports_prompt_capture {
-        PromptCaptureStatus::UnsupportedByHost
-    } else if !facts.prompt_capture_configured {
+    let manifest = current_guard_manifest(installation)?;
+    let prompt_capture_configured = manifest
+        .required_hook_phases
+        .contains(&GuardHookPhase::PromptCapture);
+    let observation = record.observation.as_ref();
+    let policy_hash_matches_observation =
+        observation.is_some_and(|summary| !summary.observed_phases.is_empty());
+    let status = if !prompt_capture_configured {
         PromptCaptureStatus::NotConfigured
-    } else if matches!(
-        installation.installation_status.as_str(),
-        "broken" | "stale" | "degraded"
-    ) {
+    } else if observation.is_some_and(|summary| !summary.incompatible_event_ids.is_empty()) {
         PromptCaptureStatus::Degraded
-    } else if installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
-        || (installation.observed_policy_hash.is_some() && !policy_hash_matches_observation)
-    {
-        PromptCaptureStatus::ReloadRequired
-    } else if installation.installation_status == GuardInstallationStatus::Active.as_str()
-        && observation_is_current
-        && installation.last_seen_phase.as_deref() == Some("prompt_capture")
-    {
+    } else if observation.is_some_and(GuardObservationSummary::prompt_capture_observed) {
         PromptCaptureStatus::Active
-    } else if installation.installation_status == GuardInstallationStatus::Active.as_str()
-        && observation_is_current
-    {
+    } else if observation.is_some_and(|summary| !summary.observed_phases.is_empty()) {
         PromptCaptureStatus::Observed
-    } else if matches!(
-        installation.installation_status.as_str(),
-        "configured" | "active"
-    ) {
-        PromptCaptureStatus::Configured
     } else {
-        PromptCaptureStatus::Unavailable
+        PromptCaptureStatus::Configured
     };
     Ok(PromptCaptureAvailability {
         status,
-        host_supports_prompt_capture: facts.host_supports_prompt_capture,
-        prompt_capture_configured: facts.prompt_capture_configured,
-        policy_hash_matches_observation,
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PromptCaptureCapabilityFacts {
-    expected_policy_hash: Option<String>,
-    host_supports_prompt_capture: bool,
-    prompt_capture_configured: bool,
-}
-
-fn prompt_capture_capability_facts(
-    host_capability_json: &str,
-) -> StoreResult<PromptCaptureCapabilityFacts> {
-    let value = current_host_capability_value(host_capability_json)?;
-    let expected_policy_hash = Some(
-        value
-            .get("policy_hash")
-            .and_then(Value::as_str)
-            .expect("validated host capability has a policy_hash")
-            .to_owned(),
-    );
-    let host_supports_prompt_capture = value
-        .get("host_capabilities")
-        .and_then(|capabilities| capabilities.get("user_prompt_submit_hook"))
-        .and_then(Value::as_bool)
-        .expect("validated host capability has user_prompt_submit_hook");
-    let prompt_capture_configured = value
-        .get("commands")
-        .and_then(Value::as_object)
-        .is_some_and(|commands| commands.contains_key("prompt_capture"));
-    Ok(PromptCaptureCapabilityFacts {
-        expected_policy_hash,
-        host_supports_prompt_capture,
+        host_supports_prompt_capture: true,
         prompt_capture_configured,
+        policy_hash_matches_observation,
     })
 }
 
@@ -1992,9 +1796,6 @@ fn selected_guard_installation(
 ) -> StoreResult<Option<GuardInstallationRecord>> {
     let mut records =
         list_guard_installations(runtime_home, connection_internal_id, Some(project_id))?;
-    if records.is_empty() {
-        records = list_guard_installations(runtime_home, connection_internal_id, None)?;
-    }
     Ok(records.pop())
 }
 
@@ -2072,7 +1873,10 @@ fn latest_guard_events(
                 session_id,
                 connection_internal_id,
                 guard_installation_id,
+                policy_hash,
+                integration_revision,
                 event_kind,
+                contract_status,
                 decision,
                 subject_json,
                 result_json,
@@ -2096,7 +1900,10 @@ fn latest_guard_events(
             session_id,
             connection_internal_id,
             guard_installation_id,
+            policy_hash,
+            integration_revision,
             event_kind,
+            contract_status,
             decision,
             subject_json,
             result_json,
@@ -2240,34 +2047,6 @@ fn require_runtime_home_id(conn: &Connection) -> StoreResult<String> {
     })
 }
 
-struct GuardConnectionBinding {
-    host_kind: String,
-    intent: String,
-}
-
-fn require_connection(
-    conn: &Connection,
-    connection_internal_id: &str,
-) -> StoreResult<GuardConnectionBinding> {
-    conn.query_row(
-        "SELECT host_kind, intent
-           FROM agent_connections
-          WHERE connection_internal_id = ?1",
-        [connection_internal_id],
-        |row| {
-            Ok(GuardConnectionBinding {
-                host_kind: row.get(0)?,
-                intent: row.get(1)?,
-            })
-        },
-    )
-    .optional()?
-    .ok_or_else(|| StoreError::NotFound {
-        entity: "agent_connection",
-        id: connection_internal_id.to_owned(),
-    })
-}
-
 fn require_connection_project_membership(
     conn: &Connection,
     connection_internal_id: &str,
@@ -2294,19 +2073,14 @@ fn require_connection_project_membership(
 fn guard_installation_id_for_scope(
     conn: &Connection,
     connection_internal_id: &str,
-    project_internal_id: Option<&str>,
-    guard_mode: &str,
+    project_internal_id: &str,
 ) -> StoreResult<Option<String>> {
     conn.query_row(
         "SELECT guard_installation_id
            FROM guard_installations
           WHERE connection_internal_id = ?1
-            AND guard_mode = ?2
-            AND (
-                (?3 IS NULL AND project_internal_id IS NULL)
-                OR project_internal_id = ?3
-            )",
-        params![connection_internal_id, guard_mode, project_internal_id],
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project_internal_id],
         |row| row.get(0),
     )
     .optional()
@@ -2316,83 +2090,55 @@ fn guard_installation_id_for_scope(
 fn validate_guard_installation_upsert(input: &GuardInstallationUpsert) -> StoreResult<()> {
     validate_identifier("guard_installation_id", &input.guard_installation_id)?;
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
-    if let Some(project_id) = &input.project_id {
-        validate_identifier("project_id", project_id)?;
-    }
-    validate_host_kind(&input.host_kind)?;
-    validate_guard_mode(&input.guard_mode)?;
-    validate_guard_installation_status(&input.installation_status)?;
-    validate_host_hook_capability_json(
-        "guard_installations.host_capability_json",
-        &input.host_capability_json,
-    )?;
-    if let Some(installed_at) = &input.installed_at {
-        validate_timestamp_text("installed_at", installed_at)?;
-    }
-    validate_timestamp_text("last_checked_at", &input.last_checked_at)?;
-    if let Some(first_seen_at) = &input.first_seen_at {
-        validate_timestamp_text("first_seen_at", first_seen_at)?;
-    }
-    if let Some(last_seen_at) = &input.last_seen_at {
-        validate_timestamp_text("last_seen_at", last_seen_at)?;
-    }
-    if let Some(last_seen_phase) = &input.last_seen_phase {
-        validate_guard_hook_phase("last_seen_phase", last_seen_phase)?;
-    }
-    if let Some(observed_host_kind) = &input.observed_host_kind {
-        validate_host_kind(observed_host_kind)?;
-    }
-    if let Some(observed_policy_hash) = &input.observed_policy_hash {
-        validate_identifier("observed_policy_hash", observed_policy_hash)?;
-    }
-    if let Some(observed_binary_version) = &input.observed_binary_version {
-        validate_identifier("observed_binary_version", observed_binary_version)?;
-    }
-    validate_json_object("guard_installations.metadata_json", &input.metadata_json)
+    validate_identifier("project_id", &input.project_id)?;
+    guard_manifest_from_json(&input.manifest_json).map_err(|_| StoreError::InvalidInput {
+        detail: "guard_installations.manifest_json must be one canonical current Guard manifest"
+            .to_owned(),
+    })?;
+    Ok(())
 }
 
 fn validate_guard_installation_binding(
     input: &GuardInstallationUpsert,
-    connection: &GuardConnectionBinding,
-    project_repo_root: Option<&Path>,
+    connection: &AgentConnectionRecord,
+    project: &ProjectRecord,
 ) -> StoreResult<()> {
-    let capability = serde_json::from_str::<Value>(&input.host_capability_json).map_err(|_| {
-        StoreError::InvalidInput {
-            detail: "guard_installations.host_capability_json must be current capability JSON"
-                .to_owned(),
-        }
+    let manifest =
+        guard_manifest_from_json(&input.manifest_json).map_err(|_| StoreError::InvalidInput {
+            detail:
+                "guard_installations.manifest_json must be one canonical current Guard manifest"
+                    .to_owned(),
+        })?;
+    let manifest_value = serde_json::to_value(manifest).map_err(|_| StoreError::InvalidInput {
+        detail: "Guard manifest cannot be represented as canonical JSON".to_owned(),
     })?;
     let reject = |detail: &str| StoreError::InvalidInput {
-        detail: format!("guard installation capability binding mismatch: {detail}"),
+        detail: format!("Guard installation manifest binding mismatch: {detail}"),
     };
-    let project_git_info_exclude_path = project_repo_root
-        .map(project_git_info_exclude_path)
-        .transpose()
-        .map_err(|_| reject("owning project Git layout is not safely resolvable"))?
-        .flatten();
-    if !host_hook_capability_matches_owner_binding(
-        &capability,
-        HostHookCapabilityOwnerBinding {
-            row_host_kind: &input.host_kind,
-            row_guard_mode: &input.guard_mode,
+    let project_git_info_exclude_path = project_git_info_exclude_path(&project.repo_root)
+        .map_err(|_| reject("owning project Git layout is not safely resolvable"))?;
+    let integration_revision = connection_integration_revision(connection)?;
+    if !guard_manifest_matches_owner_binding(
+        &manifest_value,
+        GuardManifestOwnerBinding {
             row_guard_installation_id: &input.guard_installation_id,
-            connection_internal_id: &input.connection_internal_id,
+            row_connection_id: &input.connection_internal_id,
+            row_project_id: &input.project_id,
             connection_host_kind: &connection.host_kind,
-            connection_intent: &connection.intent,
-            project_repo_root,
+            connection_integration_revision: integration_revision.as_str(),
+            project_repo_root: &project.repo_root,
             project_git_info_exclude_path: project_git_info_exclude_path.as_deref(),
         },
     ) {
         return Err(reject(
-            "capability facts must match the row and owning Agent Connection",
+            "manifest facts must match the row and owning Agent Connection",
         ));
     }
     Ok(())
 }
 
-/// Validates that a stored exact canonical capability is bound to its owner row and
-/// owning Agent Connection before any capability facts are consumed.
-pub fn validate_stored_guard_installation_capability_binding(
+/// Validates that a stored canonical Guard manifest is bound to its owner row.
+pub fn validate_stored_guard_installation_manifest_binding(
     installation: &GuardInstallationRecord,
     connection: &AgentConnectionRecord,
     project_repo_root: &Path,
@@ -2401,48 +2147,35 @@ pub fn validate_stored_guard_installation_capability_binding(
         return Err(StoreError::corrupt_owner_state_json(
             "guard_installations",
             installation.guard_installation_id.clone(),
-            "host_capability_json",
+            "manifest_json",
         ));
     }
-    validate_stored_guard_installation_binding_fields(
-        installation,
-        &connection.host_kind,
-        &connection.intent,
-        project_repo_root,
-    )
-}
-
-fn validate_stored_guard_installation_binding_fields(
-    installation: &GuardInstallationRecord,
-    connection_host_kind: &str,
-    connection_intent: &str,
-    project_repo_root: &Path,
-) -> StoreResult<()> {
-    let corrupt_capability = || {
+    let corrupt_manifest = || {
         StoreError::corrupt_owner_state_json(
             "guard_installations",
             installation.guard_installation_id.clone(),
-            "host_capability_json",
+            "manifest_json",
         )
     };
-    let capability = current_host_capability_value(&installation.host_capability_json)
-        .map_err(|_| corrupt_capability())?;
+    let manifest = current_guard_manifest(installation).map_err(|_| corrupt_manifest())?;
+    let manifest_value = serde_json::to_value(manifest).map_err(|_| corrupt_manifest())?;
     let project_git_info_exclude_path =
-        project_git_info_exclude_path(project_repo_root).map_err(|_| corrupt_capability())?;
-    if !host_hook_capability_matches_owner_binding(
-        &capability,
-        HostHookCapabilityOwnerBinding {
-            row_host_kind: &installation.host_kind,
-            row_guard_mode: &installation.guard_mode,
+        project_git_info_exclude_path(project_repo_root).map_err(|_| corrupt_manifest())?;
+    let integration_revision =
+        connection_integration_revision(connection).map_err(|_| corrupt_manifest())?;
+    if !guard_manifest_matches_owner_binding(
+        &manifest_value,
+        GuardManifestOwnerBinding {
             row_guard_installation_id: &installation.guard_installation_id,
-            connection_internal_id: &installation.connection_internal_id,
-            connection_host_kind,
-            connection_intent,
-            project_repo_root: Some(project_repo_root),
+            row_connection_id: &installation.connection_internal_id,
+            row_project_id: &installation.project_id,
+            connection_host_kind: &connection.host_kind,
+            connection_integration_revision: integration_revision.as_str(),
+            project_repo_root,
             project_git_info_exclude_path: project_git_info_exclude_path.as_deref(),
         },
     ) {
-        return Err(corrupt_capability());
+        return Err(corrupt_manifest());
     }
     Ok(())
 }
@@ -2450,22 +2183,6 @@ fn validate_stored_guard_installation_binding_fields(
 fn project_git_info_exclude_path(repo_root: &Path) -> std::io::Result<Option<PathBuf>> {
     resolve_git_worktree_layout(repo_root)
         .map(|layout| layout.map(|layout| layout.common_dir.join("info").join("exclude")))
-}
-
-fn validate_guard_installation_observation(
-    input: &GuardInstallationObservation,
-) -> StoreResult<()> {
-    validate_identifier("guard_installation_id", &input.guard_installation_id)?;
-    validate_identifier("connection_internal_id", &input.connection_internal_id)?;
-    validate_identifier("project_id", &input.project_id)?;
-    validate_host_kind(&input.host_kind)?;
-    validate_guard_mode(&input.guard_mode)?;
-    validate_identifier("observed_policy_hash", &input.observed_policy_hash)?;
-    if let Some(version) = &input.observed_binary_version {
-        validate_identifier("observed_binary_version", version)?;
-    }
-    validate_guard_hook_phase("observed_phase", &input.observed_phase)?;
-    validate_timestamp_text("observed_at", &input.observed_at)
 }
 
 fn validate_agent_session_insert(input: &AgentSessionInsert) -> StoreResult<()> {
@@ -2493,10 +2210,19 @@ fn validate_guard_event_insert(input: &GuardEventInsert) -> StoreResult<()> {
         validate_identifier("session_id", session_id)?;
     }
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
-    if let Some(guard_installation_id) = &input.guard_installation_id {
-        validate_identifier("guard_installation_id", guard_installation_id)?;
-    }
-    validate_identifier("event_kind", &input.event_kind)?;
+    validate_identifier("guard_installation_id", &input.guard_installation_id)?;
+    volicord_types::PolicyHash::parse(input.policy_hash.clone()).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "guard_events.policy_hash must be canonical".to_owned(),
+        }
+    })?;
+    IntegrationRevision::parse(input.integration_revision.clone()).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "guard_events.integration_revision must be canonical".to_owned(),
+        }
+    })?;
+    validate_guard_hook_phase("event_kind", &input.event_kind)?;
+    validate_guard_hook_contract_status(&input.contract_status)?;
     validate_guard_decision(&input.decision)?;
     validate_json_object("guard_events.subject_json", &input.subject_json)?;
     validate_json_object("guard_events.result_json", &input.result_json)?;
@@ -2651,27 +2377,9 @@ fn strict_stored_timestamp(
     Ok(timestamp)
 }
 
-fn validate_host_kind(value: &str) -> StoreResult<()> {
-    HostKind::from_str(value)
-        .map(|_| ())
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("host_kind is not usable: {error}"),
-        })
-}
-
-fn validate_guard_mode(value: &str) -> StoreResult<()> {
-    if value == IntegrationProfile::Record.as_str() {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: "integration profile must be record".to_owned(),
-        })
-    }
-}
-
 fn validate_guard_hook_phase(field: &'static str, value: &str) -> StoreResult<()> {
     validate_identifier(field, value)?;
-    if KNOWN_GUARD_OBSERVATION_PHASES.contains(&value) {
+    if GuardHookPhase::from_str(value).is_ok() {
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
@@ -2697,22 +2405,18 @@ fn validate_guard_decision(value: &str) -> StoreResult<()> {
     }
 }
 
-fn validate_guard_installation_status(value: &str) -> StoreResult<()> {
+fn validate_guard_hook_contract_status(value: &str) -> StoreResult<()> {
     if [
-        GuardInstallationStatus::Absent.as_str(),
-        GuardInstallationStatus::Configured.as_str(),
-        GuardInstallationStatus::ReloadRequired.as_str(),
-        GuardInstallationStatus::Active.as_str(),
-        GuardInstallationStatus::Degraded.as_str(),
-        GuardInstallationStatus::Stale.as_str(),
-        GuardInstallationStatus::Broken.as_str(),
+        GuardHookContractStatus::Compatible.as_str(),
+        GuardHookContractStatus::Malformed.as_str(),
+        GuardHookContractStatus::Incompatible.as_str(),
     ]
     .contains(&value)
     {
         Ok(())
     } else {
         Err(StoreError::InvalidInput {
-            detail: "installation_status must be absent, configured, reload_required, active, degraded, stale, or broken".to_owned(),
+            detail: "contract_status must be compatible, malformed, or incompatible".to_owned(),
         })
     }
 }
@@ -2741,19 +2445,6 @@ fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
     } else {
         Err(StoreError::InvalidInput {
             detail: format!("{field} must be a JSON object"),
-        })
-    }
-}
-
-fn validate_host_hook_capability_json(field: &'static str, text: &str) -> StoreResult<()> {
-    let value = serde_json::from_str::<Value>(text).map_err(|_| StoreError::InvalidInput {
-        detail: format!("{field} must be exact current capability JSON"),
-    })?;
-    if host_hook_capability_has_exact_current_shape(&value) {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: format!("{field} must match {HOST_HOOK_CAPABILITY_SCHEMA}"),
         })
     }
 }
@@ -2791,40 +2482,13 @@ fn decode_canonical_string_array(text: &str) -> Result<Vec<String>, ()> {
     Ok(values)
 }
 
-fn expected_policy_hash(host_capability_json: &str) -> StoreResult<Option<String>> {
-    let value = current_host_capability_value(host_capability_json)?;
-    Ok(Some(
-        value["policy_hash"]
-            .as_str()
-            .expect("validated host capability has a policy_hash")
+fn current_guard_manifest(
+    installation: &GuardInstallationRecord,
+) -> StoreResult<volicord_types::GuardManifest> {
+    guard_manifest_from_json(&installation.manifest_json).map_err(|_| StoreError::InvalidInput {
+        detail: "guard_installations.manifest_json must be one canonical current Guard manifest"
             .to_owned(),
-    ))
-}
-
-fn guard_status_after_observation(installation: &GuardInstallationRecord) -> StoreResult<String> {
-    current_host_capability_value(&installation.host_capability_json)?;
-    let status = match installation.installation_status.as_str() {
-        "configured" | "reload_required" | "active" => GuardInstallationStatus::Active.as_str(),
-        _ => installation.installation_status.as_str(),
-    };
-    Ok(status.to_owned())
-}
-
-fn current_host_capability_value(host_capability_json: &str) -> StoreResult<Value> {
-    let value = serde_json::from_str::<Value>(host_capability_json).map_err(|_| {
-        StoreError::InvalidInput {
-            detail: "guard_installations.host_capability_json must be current capability JSON"
-                .to_owned(),
-        }
-    })?;
-    if !host_hook_capability_has_exact_current_shape(&value) {
-        return Err(StoreError::InvalidInput {
-            detail: format!(
-                "guard_installations.host_capability_json must use {HOST_HOOK_CAPABILITY_SCHEMA}"
-            ),
-        });
-    }
-    Ok(value)
+    })
 }
 
 fn validate_session_scope(
@@ -2875,25 +2539,11 @@ pub(crate) fn guard_installation_from_conn(
             gi.runtime_home_id,
             gi.connection_internal_id,
             gi.project_internal_id,
-            p.project_internal_id,
-            gi.host_kind,
-            gi.guard_mode,
-            gi.host_capability_json,
-            gi.installation_status,
-            gi.installed_at,
-            gi.last_checked_at,
-            gi.first_seen_at,
-            gi.last_seen_at,
-            gi.last_seen_phase,
-            gi.observed_host_kind,
-            gi.observed_policy_hash,
-            gi.observed_binary_version,
-            gi.metadata_json,
+            json_extract(gi.manifest_json, '$.project_id'),
+            gi.manifest_json,
             gi.created_at,
             gi.updated_at
          FROM guard_installations AS gi
-         LEFT JOIN projects AS p
-           ON p.project_internal_id = gi.project_internal_id
         WHERE gi.guard_installation_id = ?1",
             [guard_installation_id],
             guard_installation_from_row,
@@ -2903,39 +2553,26 @@ pub(crate) fn guard_installation_from_conn(
 }
 
 fn guard_installation_from_row(row: &Row<'_>) -> rusqlite::Result<GuardInstallationRecord> {
-    let project_internal_id = row.get::<_, Option<String>>(3)?;
     Ok(GuardInstallationRecord {
         guard_installation_id: row.get(0)?,
         runtime_home_id: row.get(1)?,
         connection_internal_id: row.get(2)?,
+        project_internal_id: row.get(3)?,
         project_id: row.get(4)?,
-        project_internal_id,
-        host_kind: row.get(5)?,
-        guard_mode: row.get(6)?,
-        host_capability_json: row.get(7)?,
-        installation_status: row.get(8)?,
-        installed_at: row.get(9)?,
-        last_checked_at: row.get(10)?,
-        first_seen_at: row.get(11)?,
-        last_seen_at: row.get(12)?,
-        last_seen_phase: row.get(13)?,
-        observed_host_kind: row.get(14)?,
-        observed_policy_hash: row.get(15)?,
-        observed_binary_version: row.get(16)?,
-        metadata_json: row.get(17)?,
-        created_at: row.get(18)?,
-        updated_at: row.get(19)?,
+        manifest_json: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
     })
 }
 
 fn validate_decoded_guard_installation(
     installation: GuardInstallationRecord,
 ) -> StoreResult<GuardInstallationRecord> {
-    current_host_capability_value(&installation.host_capability_json).map_err(|_| {
+    current_guard_manifest(&installation).map_err(|_| {
         StoreError::corrupt_owner_state_json(
             "guard_installations",
             installation.guard_installation_id.clone(),
-            "host_capability_json",
+            "manifest_json",
         )
     })?;
     Ok(installation)
@@ -3006,7 +2643,10 @@ fn guard_event_from_conn(
             session_id,
             connection_internal_id,
             guard_installation_id,
+            policy_hash,
+            integration_revision,
             event_kind,
+            contract_status,
             decision,
             subject_json,
             result_json,
@@ -3040,12 +2680,15 @@ fn guard_event_from_row(row: &Row<'_>) -> rusqlite::Result<GuardEventRecord> {
         session_id: row.get(2)?,
         connection_internal_id: row.get(3)?,
         guard_installation_id: row.get(4)?,
-        event_kind: row.get(5)?,
-        decision: row.get(6)?,
-        subject_json: row.get(7)?,
-        result_json: row.get(8)?,
-        occurred_at: row.get(9)?,
-        metadata_json: row.get(10)?,
+        policy_hash: row.get(5)?,
+        integration_revision: row.get(6)?,
+        event_kind: row.get(7)?,
+        contract_status: row.get(8)?,
+        decision: row.get(9)?,
+        subject_json: row.get(10)?,
+        result_json: row.get(11)?,
+        occurred_at: row.get(12)?,
+        metadata_json: row.get(13)?,
     })
 }
 
@@ -3309,6 +2952,155 @@ where
 }
 
 #[cfg(test)]
+pub(crate) fn test_guard_manifest_json(
+    connection: &AgentConnectionRecord,
+    project_id: &str,
+    repo_root: &Path,
+    guard_installation_id: &str,
+    policy_hash: &str,
+) -> String {
+    use volicord_types::{
+        AgentConnectionId, GuardCommand, GuardCommandSet, GuardHookPhase, GuardInstallationId,
+        GuardManifest, HostKind, IntegrationProfile, ManagedFileExpectation, PolicyHash, ProjectId,
+        GUARD_MANIFEST_SCHEMA,
+    };
+
+    let integration_revision = connection_integration_revision(connection).expect("test revision");
+    let command = |phase: GuardHookPhase| GuardCommand {
+        command: repo_root.join("bin/volicord").display().to_string(),
+        args: vec![
+            "_hook".to_owned(),
+            phase.command_name().to_owned(),
+            "--repo".to_owned(),
+            repo_root.display().to_string(),
+            "--connection".to_owned(),
+            connection.connection_internal_id.clone(),
+            "--guard-installation".to_owned(),
+            guard_installation_id.to_owned(),
+            "--host".to_owned(),
+            "codex".to_owned(),
+            "--integration-profile".to_owned(),
+            "record".to_owned(),
+            "--policy-hash".to_owned(),
+            policy_hash.to_owned(),
+            "--host-output".to_owned(),
+            "codex".to_owned(),
+        ],
+    };
+    let hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    let block = |kind: &str, path: PathBuf| ManagedFileExpectation {
+        kind: kind.to_owned(),
+        path: path.display().to_string(),
+        content_hash: hash.to_owned(),
+        ownership: "managed_block".to_owned(),
+        managed_marker_start: Some("VOLICORD_START".to_owned()),
+        managed_marker_end: Some("VOLICORD_END".to_owned()),
+        managed_marker: None,
+        executable_required: None,
+        managed_script_role: None,
+        managed_script_command: None,
+        host_kind: None,
+        phase: None,
+        purpose: None,
+        connection_id: None,
+        guard_installation_id: None,
+        policy_hash: None,
+        host_output: None,
+    };
+    let json_file = |kind: &str, path: PathBuf| ManagedFileExpectation {
+        kind: kind.to_owned(),
+        path: path.display().to_string(),
+        content_hash: hash.to_owned(),
+        ownership: "managed_json".to_owned(),
+        managed_marker_start: None,
+        managed_marker_end: None,
+        managed_marker: None,
+        executable_required: None,
+        managed_script_role: None,
+        managed_script_command: None,
+        host_kind: None,
+        phase: None,
+        purpose: None,
+        connection_id: None,
+        guard_installation_id: None,
+        policy_hash: None,
+        host_output: None,
+    };
+    let script = |phase: GuardHookPhase| ManagedFileExpectation {
+        kind: "host_hook_wrapper".to_owned(),
+        path: repo_root
+            .join(format!(".codex/hooks/volicord-{}.sh", phase.command_name()))
+            .display()
+            .to_string(),
+        content_hash: hash.to_owned(),
+        ownership: "managed_script".to_owned(),
+        managed_marker_start: None,
+        managed_marker_end: None,
+        managed_marker: Some("VOLICORD_MANAGED_HOOK_WRAPPER".to_owned()),
+        executable_required: Some(true),
+        managed_script_role: None,
+        managed_script_command: Some("/test/volicord _hook".to_owned()),
+        host_kind: Some("codex".to_owned()),
+        phase: Some(phase.as_str().to_owned()),
+        purpose: Some("guard".to_owned()),
+        connection_id: Some(connection.connection_internal_id.clone()),
+        guard_installation_id: Some(guard_installation_id.to_owned()),
+        policy_hash: Some(policy_hash.to_owned()),
+        host_output: Some("codex".to_owned()),
+    };
+    let mut files = vec![
+        block("agents_managed_block", repo_root.join("AGENTS.md")),
+        json_file("volicord_policy", repo_root.join(".volicord/policy.json")),
+        json_file("host_hook_config", repo_root.join(".codex/hooks.json")),
+        ManagedFileExpectation {
+            kind: "host_hook_dispatch".to_owned(),
+            path: repo_root
+                .join(".codex/hooks/volicord-dispatch.sh")
+                .display()
+                .to_string(),
+            content_hash: hash.to_owned(),
+            ownership: "managed_script".to_owned(),
+            managed_marker_start: None,
+            managed_marker_end: None,
+            managed_marker: Some("VOLICORD_MANAGED_HOOK_WRAPPER".to_owned()),
+            executable_required: Some(true),
+            managed_script_role: Some("codex_dispatch".to_owned()),
+            managed_script_command: None,
+            host_kind: Some("codex".to_owned()),
+            phase: Some("dispatch".to_owned()),
+            purpose: None,
+            connection_id: None,
+            guard_installation_id: None,
+            policy_hash: None,
+            host_output: None,
+        },
+        block(
+            "host_rule_instruction",
+            repo_root.join(".codex/rules/volicord.rules"),
+        ),
+    ];
+    files.extend(GuardHookPhase::REQUIRED.into_iter().map(script));
+    let manifest = GuardManifest {
+        schema: GUARD_MANIFEST_SCHEMA.to_owned(),
+        guard_installation_id: GuardInstallationId::new(guard_installation_id),
+        connection_id: AgentConnectionId::new(&connection.connection_internal_id),
+        project_id: ProjectId::new(project_id),
+        host_kind: HostKind::Codex,
+        integration_profile: IntegrationProfile::Record,
+        policy_hash: PolicyHash::parse(policy_hash).expect("test policy hash"),
+        integration_revision,
+        runtime_commands: GuardCommandSet {
+            pre_tool: command(GuardHookPhase::PreTool),
+            post_tool: command(GuardHookPhase::PostTool),
+            prompt_capture: command(GuardHookPhase::PromptCapture),
+        },
+        managed_files: files,
+        required_hook_phases: GuardHookPhase::REQUIRED.to_vec(),
+    };
+    serde_json::to_string(&manifest).expect("test manifest")
+}
+
+#[cfg(test)]
 mod tests {
     use std::{error::Error, path::Path};
 
@@ -3330,9 +3122,6 @@ mod tests {
 
     const TEST_POLICY_HASH: &str =
         "sha256:0000000000000000000000000000000000000000000000000000000000000000";
-    const TEST_CONTENT_HASH: &str =
-        "sha256:1111111111111111111111111111111111111111111111111111111111111111";
-
     fn start_guard_runtime(
         runtime_home: &Path,
         connection_id: &str,
@@ -3352,155 +3141,6 @@ mod tests {
     }
 
     #[test]
-    fn capability_consumers_reject_unsupported_input_without_inference() {
-        for capability in [
-            r#"{"schema":"unsupported-host-capability","policy_hash":"sha256:old"}"#,
-            r#"{"policy_hash":"sha256:missing-schema"}"#,
-        ] {
-            assert!(prompt_capture_capability_facts(capability).is_err());
-            assert!(expected_policy_hash(capability).is_err());
-        }
-    }
-
-    #[test]
-    fn persisted_capability_corruption_is_not_reported_as_a_stale_observation() {
-        for (capability, expected_json_error) in [
-            ("not-json", true),
-            (r#"{"schema":"unsupported-host-capability"}"#, false),
-        ] {
-            let error = guard_observation_matches_current_capability(GuardObservationMatch {
-                guard_installation_id: "guard_corrupt",
-                host_kind: "codex",
-                host_capability_json: capability,
-                last_seen_at: Some("2026-06-30T00:01:00Z"),
-                last_seen_phase: Some("pre_tool"),
-                observed_host_kind: Some("codex"),
-                observed_policy_hash: Some(TEST_POLICY_HASH),
-            })
-            .expect_err("corrupt persisted capability must fail closed");
-            assert_eq!(
-                matches!(error, StoreError::CorruptOwnerStateJson { .. }),
-                expected_json_error
-            );
-            assert_eq!(
-                error.classification().route,
-                crate::StoreFailureRoute::PersistedDataCorrupt
-            );
-        }
-    }
-
-    fn test_host_capability(
-        policy_hash: &str,
-        repo_root: &Path,
-        connection_id: &str,
-        guard_installation_id: &str,
-    ) -> String {
-        let command = |phase: &str| {
-            serde_json::json!({
-                "command": repo_root.join(".volicord/bin/volicord"),
-                "args": [
-                    "_hook", phase,
-                    "--repo", repo_root,
-                    "--connection", connection_id,
-                    "--guard-installation", guard_installation_id,
-                    "--host", "codex",
-                    "--integration-profile", "record",
-                    "--policy-hash", policy_hash,
-                    "--host-output", "codex",
-                ],
-            })
-        };
-        let wrapper = |phase: &str, command_name: &str| {
-            serde_json::json!({
-                "kind": "host_hook_wrapper",
-                "path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
-                "status": "unchanged",
-                "content_hash": TEST_CONTENT_HASH,
-                "ownership": "managed_script",
-                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                "executable_required": true,
-                "managed_script_command": "exec volicord",
-                "host_kind": "codex",
-                "phase": phase,
-                "purpose": "guard",
-                "connection_id": connection_id,
-                "guard_installation_id": guard_installation_id,
-                "policy_hash": policy_hash,
-                "host_output": "codex",
-            })
-        };
-        serde_json::json!({
-            "schema": HOST_HOOK_CAPABILITY_SCHEMA,
-            "policy_hash": policy_hash,
-            "selected_profile": "record",
-            "connection_intent": "shared",
-            "direct_file_write_matcher_coverage": true,
-            "host_capabilities": {
-                "stdio_mcp": true,
-                "pre_tool_hook": true,
-                "post_tool_hook": true,
-                "user_prompt_submit_hook": true,
-                "rule_file_support": true,
-                "project_local_configuration": true,
-            },
-            "files": [
-                {
-                    "kind": "agents_managed_block",
-                    "path": repo_root.join("AGENTS.md"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_block",
-                    "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
-                    "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE",
-                },
-                {
-                    "kind": "volicord_policy",
-                    "path": repo_root.join(".volicord/policy.json"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_json",
-                },
-                {
-                    "kind": "host_hook_config",
-                    "path": repo_root.join(".codex/hooks.json"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_json",
-                },
-                {
-                    "kind": "host_hook_dispatch",
-                    "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_script",
-                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                    "executable_required": true,
-                    "managed_script_role": "codex_dispatch",
-                    "host_kind": "codex",
-                    "phase": "dispatch",
-                },
-                wrapper("pre_tool", "pre-tool"),
-                wrapper("post_tool", "post-tool"),
-                wrapper("prompt_capture", "prompt-capture"),
-                {
-                    "kind": "host_rule_instruction",
-                    "path": repo_root.join(".codex/rules/volicord.rules"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_block",
-                    "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
-                    "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
-                },
-            ],
-            "commands": {
-                "pre_tool": command("pre-tool"),
-                "post_tool": command("post-tool"),
-                "prompt_capture": command("prompt-capture"),
-            },
-        })
-        .to_string()
-    }
-    #[test]
     fn guard_records_round_trip_and_unrecorded_changes_resolve() -> Result<(), Box<dyn Error>> {
         let fixture = GuardFixture::new("guard-round-trip")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
@@ -3508,35 +3148,31 @@ mod tests {
             project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
                 .expect("fixture project should exist")
                 .repo_root;
+        let connection =
+            agent_connection_record_read_only(fixture.runtime_home.path(), "conn_guard_a")?
+                .expect("fixture connection should exist");
+        let integration_revision = connection_integration_revision(&connection)?
+            .as_str()
+            .to_owned();
 
         let installation = upsert_guard_installation(
             fixture.runtime_home.path(),
             GuardInstallationUpsert {
                 guard_installation_id: "guard_installation_a".to_owned(),
                 connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: Some("project_guard_a".to_owned()),
-                host_kind: "codex".to_owned(),
-                guard_mode: "record".to_owned(),
-                host_capability_json: test_host_capability(
-                    TEST_POLICY_HASH,
+                project_id: "project_guard_a".to_owned(),
+                manifest_json: test_guard_manifest_json(
+                    &connection,
+                    "project_guard_a",
                     &repo_root,
-                    "conn_guard_a",
                     "guard_installation_a",
+                    TEST_POLICY_HASH,
                 ),
-                installation_status: "active".to_owned(),
-                installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
-                last_checked_at: "2026-06-30T00:01:00Z".to_owned(),
-                first_seen_at: Some("2026-06-30T00:01:00Z".to_owned()),
-                last_seen_at: Some("2026-06-30T00:01:00Z".to_owned()),
-                last_seen_phase: Some("pre_tool".to_owned()),
-                observed_host_kind: Some("codex".to_owned()),
-                observed_policy_hash: Some(TEST_POLICY_HASH.to_owned()),
-                observed_binary_version: Some("test".to_owned()),
-                metadata_json: "{}".to_owned(),
             },
         )?;
-        assert_eq!(installation.project_id.as_deref(), Some("project_guard_a"));
-        assert_eq!(installation.guard_mode, "record");
+        assert_eq!(installation.project_id, "project_guard_a");
+        let manifest = guard_manifest_from_json(&installation.manifest_json)?;
+        assert_eq!(manifest.policy_hash.as_str(), TEST_POLICY_HASH);
 
         let runtime_session_id = start_guard_runtime(
             fixture.runtime_home.path(),
@@ -3568,8 +3204,11 @@ mod tests {
                 guard_event_id: "guard_event_a".to_owned(),
                 session_id: Some(session_id.clone()),
                 connection_internal_id: "conn_guard_a".to_owned(),
-                guard_installation_id: Some("guard_installation_a".to_owned()),
-                event_kind: "write_attempt".to_owned(),
+                guard_installation_id: "guard_installation_a".to_owned(),
+                policy_hash: TEST_POLICY_HASH.to_owned(),
+                integration_revision,
+                event_kind: "pre_tool".to_owned(),
+                contract_status: "compatible".to_owned(),
                 decision: "warn".to_owned(),
                 subject_json: r#"{"path":"src/lib.rs"}"#.to_owned(),
                 result_json: r#"{"message":"record context first"}"#.to_owned(),
@@ -3737,6 +3376,30 @@ mod tests {
         let fixture = GuardFixture::new("guard-scope")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
         fixture.add_project_connection("project_guard_b", "conn_guard_b", "repo-b")?;
+        let project_a =
+            project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
+                .expect("fixture project A should exist");
+        let connection_a =
+            agent_connection_record_read_only(fixture.runtime_home.path(), "conn_guard_a")?
+                .expect("fixture connection A should exist");
+        let integration_revision = connection_integration_revision(&connection_a)?
+            .as_str()
+            .to_owned();
+        upsert_guard_installation(
+            fixture.runtime_home.path(),
+            GuardInstallationUpsert {
+                guard_installation_id: "guard_installation_a".to_owned(),
+                connection_internal_id: "conn_guard_a".to_owned(),
+                project_id: "project_guard_a".to_owned(),
+                manifest_json: test_guard_manifest_json(
+                    &connection_a,
+                    "project_guard_a",
+                    &project_a.repo_root,
+                    "guard_installation_a",
+                    TEST_POLICY_HASH,
+                ),
+            },
+        )?;
 
         let runtime_session_id = start_guard_runtime(
             fixture.runtime_home.path(),
@@ -3792,8 +3455,11 @@ mod tests {
                 guard_event_id: "guard_event_cross".to_owned(),
                 session_id: None,
                 connection_internal_id: "conn_guard_a".to_owned(),
-                guard_installation_id: None,
-                event_kind: "cross_project_attempt".to_owned(),
+                guard_installation_id: "guard_installation_a".to_owned(),
+                policy_hash: TEST_POLICY_HASH.to_owned(),
+                integration_revision,
+                event_kind: "pre_tool".to_owned(),
+                contract_status: "compatible".to_owned(),
                 decision: "deny".to_owned(),
                 subject_json: "{}".to_owned(),
                 result_json: "{}".to_owned(),
@@ -3804,10 +3470,11 @@ mod tests {
         .expect_err("connection from project A must not write guard events into project B");
         assert!(matches!(
             error,
-            StoreError::NotFound {
-                entity: "connection_project",
-                ..
-            }
+            StoreError::Conflict { .. }
+                | StoreError::NotFound {
+                    entity: "connection_project",
+                    ..
+                }
         ));
 
         let error = upsert_guard_installation(
@@ -3815,27 +3482,16 @@ mod tests {
             GuardInstallationUpsert {
                 guard_installation_id: "guard_installation_cross".to_owned(),
                 connection_internal_id: "conn_guard_a".to_owned(),
-                project_id: Some("project_guard_b".to_owned()),
-                host_kind: "codex".to_owned(),
-                guard_mode: "record".to_owned(),
-                host_capability_json: test_host_capability(
-                    TEST_POLICY_HASH,
+                project_id: "project_guard_b".to_owned(),
+                manifest_json: test_guard_manifest_json(
+                    &connection_a,
+                    "project_guard_b",
                     &project_record_for_execution(fixture.runtime_home.path(), "project_guard_b")?
                         .expect("fixture project B should exist")
                         .repo_root,
-                    "conn_guard_a",
                     "guard_installation_cross",
+                    TEST_POLICY_HASH,
                 ),
-                installation_status: "active".to_owned(),
-                installed_at: None,
-                last_checked_at: "2026-06-30T01:03:00Z".to_owned(),
-                first_seen_at: None,
-                last_seen_at: None,
-                last_seen_phase: None,
-                observed_host_kind: None,
-                observed_policy_hash: None,
-                observed_binary_version: None,
-                metadata_json: "{}".to_owned(),
             },
         )
         .expect_err("connection from project A must not write project-B installation scope");
@@ -3847,6 +3503,117 @@ mod tests {
             }
         ));
 
+        Ok(())
+    }
+
+    #[test]
+    fn guard_observation_is_owned_by_current_policy_hash_and_integration_revision(
+    ) -> Result<(), Box<dyn Error>> {
+        const OLD_POLICY_HASH: &str =
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+        const CURRENT_POLICY_HASH: &str =
+            "sha256:3333333333333333333333333333333333333333333333333333333333333333";
+        let fixture = GuardFixture::new("guard-current-observation")?;
+        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
+        let project = project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
+            .expect("fixture project");
+        let connection =
+            agent_connection_record_read_only(fixture.runtime_home.path(), "conn_guard_a")?
+                .expect("fixture connection");
+        let revision = connection_integration_revision(&connection)?
+            .as_str()
+            .to_owned();
+        let upsert = |policy_hash: &str| {
+            upsert_guard_installation(
+                fixture.runtime_home.path(),
+                GuardInstallationUpsert {
+                    guard_installation_id: "guard_installation_a".to_owned(),
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    project_id: "project_guard_a".to_owned(),
+                    manifest_json: test_guard_manifest_json(
+                        &connection,
+                        "project_guard_a",
+                        &project.repo_root,
+                        "guard_installation_a",
+                        policy_hash,
+                    ),
+                },
+            )
+        };
+        let insert_phase = |policy_hash: &str,
+                            phase: GuardHookPhase,
+                            suffix: &str,
+                            contract_status: &str|
+         -> StoreResult<GuardEventRecord> {
+            insert_guard_event(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                GuardEventInsert {
+                    guard_event_id: format!("guard_event_{suffix}"),
+                    session_id: None,
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    guard_installation_id: "guard_installation_a".to_owned(),
+                    policy_hash: policy_hash.to_owned(),
+                    integration_revision: revision.clone(),
+                    event_kind: phase.as_str().to_owned(),
+                    contract_status: contract_status.to_owned(),
+                    decision: "allow".to_owned(),
+                    subject_json: "{}".to_owned(),
+                    result_json: "{}".to_owned(),
+                    occurred_at: "2026-07-18T00:00:00Z".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )
+        };
+
+        let old = upsert(OLD_POLICY_HASH)?;
+        for phase in GuardHookPhase::REQUIRED {
+            insert_phase(
+                OLD_POLICY_HASH,
+                phase,
+                &format!("old_{}", phase.as_str()),
+                GuardHookContractStatus::Compatible.as_str(),
+            )?;
+        }
+        assert!(
+            guard_observation_summary(fixture.runtime_home.path(), "project_guard_a", &old,)?
+                .all_required_phases_observed()
+        );
+
+        let current = upsert(CURRENT_POLICY_HASH)?;
+        let pending =
+            guard_observation_summary(fixture.runtime_home.path(), "project_guard_a", &current)?;
+        assert!(pending.observed_phases.is_empty());
+        assert!(!pending.all_required_phases_observed());
+
+        for phase in GuardHookPhase::REQUIRED {
+            insert_phase(
+                CURRENT_POLICY_HASH,
+                phase,
+                &format!("current_{}", phase.as_str()),
+                GuardHookContractStatus::Compatible.as_str(),
+            )?;
+        }
+        assert!(guard_observation_summary(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            &current,
+        )?
+        .all_required_phases_observed());
+
+        insert_phase(
+            CURRENT_POLICY_HASH,
+            GuardHookPhase::PreTool,
+            "malformed_current",
+            GuardHookContractStatus::Malformed.as_str(),
+        )?;
+        let failed =
+            guard_observation_summary(fixture.runtime_home.path(), "project_guard_a", &current)?;
+        assert_eq!(
+            failed.incompatible_event_ids,
+            ["guard_event_malformed_current"]
+        );
+        assert!(!failed.all_required_phases_observed());
         Ok(())
     }
 

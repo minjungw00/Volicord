@@ -40,6 +40,8 @@ Registry records include:
 - installation and executable selection;
 - project registrations and aliases;
 - Agent Connections and Connection Projects memberships;
+- stable project-scoped Guard installation identities and their canonical typed
+  Guard manifests;
 - at most one canonical connection verification report per Agent Connection;
 - MCP runtime sessions and their process, initialization, discovery, safe-call,
   terminal-failure, and graceful-close facts;
@@ -168,6 +170,27 @@ Request-user-action resume may read only the original agent-safe request result
 and a separately refreshed safe current projection.
 
 ## Guard And Reconciliation Records
+
+Each Registry `guard_installations` row retains only stable installation and
+owner identity, canonical `manifest_json`, and creation/update timestamps. The
+manifest is strict and owner-bound. It carries the exact policy hash,
+integration revision, typed runtime commands, complete Volicord-managed file
+expectations, and required typed hook phases. It is neither a host-capability
+certificate nor an installation-status state machine.
+
+Policy commands and runtime commands are intentionally different projections.
+The canonical policy commands omit `--policy-hash`; after hashing that policy,
+runtime commands add `--policy-hash <exact-hash>`. Hook wrappers and the Guard
+manifest use the same typed runtime commands. Audit compares their shared owner
+fields and command segments individually and never compares the two complete
+command objects for equality.
+
+Project `guard_events` bind every observation to the Guard installation,
+policy hash, integration revision, typed hook phase, and contract status.
+Current compatible events derive `guard_observation`; older hashes or revisions
+remain historical and cannot satisfy it. A current malformed or incompatible
+event makes that check fail. Prompt capture remains a fact within the same
+observation summary, not a separate installation state.
 
 Expected-write and unrecorded-change records are project-local. Guard
 suppression reads only bounded canonical correlation data and returns the exact

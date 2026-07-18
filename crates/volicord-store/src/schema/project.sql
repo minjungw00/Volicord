@@ -831,8 +831,19 @@ CREATE TABLE guard_events (
   guard_event_id TEXT NOT NULL,
   session_id TEXT,
   connection_internal_id TEXT NOT NULL,
-  guard_installation_id TEXT,
-  event_kind TEXT NOT NULL,
+  guard_installation_id TEXT NOT NULL,
+  policy_hash TEXT NOT NULL CHECK (
+    length(policy_hash) = 71
+    AND substr(policy_hash, 1, 7) = 'sha256:'
+    AND substr(policy_hash, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  integration_revision TEXT NOT NULL CHECK (
+    length(integration_revision) = 71
+    AND substr(integration_revision, 1, 7) = 'sha256:'
+    AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  event_kind TEXT NOT NULL CHECK (event_kind IN ('pre_tool', 'post_tool', 'prompt_capture')),
+  contract_status TEXT NOT NULL CHECK (contract_status IN ('compatible', 'malformed', 'incompatible')),
   decision TEXT NOT NULL CHECK (decision IN ('allow', 'deny', 'warn', 'inject_context')),
   subject_json TEXT NOT NULL DEFAULT '{}',
   result_json TEXT NOT NULL DEFAULT '{}',

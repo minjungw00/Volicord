@@ -131,26 +131,16 @@ fn guard_checks_json_values(guard_state: &GuardOperationalState) -> Vec<Value> {
             "summary": format!("Codex Record Guard files are {}", guard_state.files_state),
         }),
         json!({
-            "id": "guard_hooks",
-            "status": if guard_state.host_hook_guard_available() {
-                "passed"
-            } else if guard_state.missing_required_hooks.is_empty() {
-                "pending"
-            } else {
-                "failed"
-            },
-            "summary": format!("Codex Record Guard is {}", guard_state.effective_state),
-        }),
-        json!({
-            "id": "prompt_capture",
-            "status": match guard_state.prompt_capture_state.as_str() {
-                "active" | "observed" | "configured" => "passed",
-                "reload_required" => "pending",
-                _ => "failed",
+            "id": "guard_observation",
+            "status": match guard_state.hook_observed_state.as_str() {
+                "observed" => "passed",
+                "failed" => "failed",
+                _ => "pending",
             },
             "summary": format!(
-                "Codex prompt observation is {}; UserAction resolution is CLI inbox only",
-                guard_state.prompt_capture_state
+                "Codex Record Guard observation is {}; prompt capture is {}",
+                guard_state.hook_observed_state,
+                guard_state.prompt_capture_state,
             ),
         }),
     ]

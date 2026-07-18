@@ -143,12 +143,15 @@ The current Codex connection report contains these operational checks:
 | `required_tools` | The current managed-host `tools/list` observation contains every tool required by the current mode. | The current session has no tool-list observation, or its host-version observation is stale. | The current managed host actually omitted required tools or returned invalid tool-list data. |
 | `tool_round_trip` | The current managed-host session completed a safe read-only Volicord tool call. | No such current observation exists, or its host-version observation is stale. | The current session recorded an actual protocol or contract incompatibility. |
 | `project_trust` | Project trust is satisfied, or no separate project trust applies. | A normal Codex trust or reload action remains. | The trust configuration is malformed or contradictory and cannot be resolved by the normal action. |
+| `guard_files` | Every current Guard manifest file expectation matches, including canonical content, owner fields, markers, wrapper runtime commands, and required executable behavior. | A newly applied configuration still needs the normal host reload step. | A required managed file is missing, malformed, content- or ownership-mismatched, or lacks required executable behavior. |
+| `guard_observation` | Every required typed hook phase was observed for the manifest's exact policy hash and integration revision. Prompt capture is reported as a detail of this check. | Files are valid, but one or more current required phases have not yet been observed. Older policy-hash or integration-revision events do not satisfy the check. | A current Guard event reports a malformed or incompatible hook contract. |
 
 The CLI MCP self-test creates only `session_source=cli_preflight`; it never
-satisfies `host_session`, `required_tools`, or `tool_round_trip`. Guard audit
-facts may temporarily appear as the additional required checks `guard_files`,
-`guard_hooks`, and `prompt_capture`, but they use only the same
-`passed | pending | failed` check status set.
+satisfies `host_session`, `required_tools`, or `tool_round_trip`. Guard uses
+only `guard_files` and `guard_observation` as top-level operational checks.
+The strict Guard manifest describes Volicord-managed files, runtime commands,
+policy ownership, and required phases; it does not certify host capability or
+store a Guard installation lifecycle status.
 
 Any bounded Codex version is eligible for these behavioral checks. A changed
 version makes the current host observation pending until Codex is reloaded and

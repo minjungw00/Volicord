@@ -552,30 +552,81 @@ impl GuardDecision {
     }
 }
 
-/// Local host-hook installation lifecycle status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+/// Guard hook phase owned by the current installation manifest and observation contract.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
-pub enum GuardInstallationStatus {
-    Absent,
-    Configured,
-    ReloadRequired,
-    Active,
-    Degraded,
-    Stale,
-    Broken,
+pub enum GuardHookPhase {
+    PreTool,
+    PostTool,
+    PromptCapture,
 }
 
-impl GuardInstallationStatus {
-    /// Returns the stable value name for this host-hook installation status.
+impl GuardHookPhase {
+    /// All hook phases required by the current Guard contract.
+    pub const REQUIRED: [Self; 3] = [Self::PreTool, Self::PostTool, Self::PromptCapture];
+
+    /// Returns the stable stored and policy key for this phase.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Absent => "absent",
-            Self::Configured => "configured",
-            Self::ReloadRequired => "reload_required",
-            Self::Active => "active",
-            Self::Degraded => "degraded",
-            Self::Stale => "stale",
-            Self::Broken => "broken",
+            Self::PreTool => "pre_tool",
+            Self::PostTool => "post_tool",
+            Self::PromptCapture => "prompt_capture",
+        }
+    }
+
+    /// Returns the exact internal command name for this phase.
+    pub const fn command_name(self) -> &'static str {
+        match self {
+            Self::PreTool => "pre-tool",
+            Self::PostTool => "post-tool",
+            Self::PromptCapture => "prompt-capture",
+        }
+    }
+}
+
+impl FromStr for GuardHookPhase {
+    type Err = GuardHookPhaseParseError;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw {
+            "pre_tool" => Ok(Self::PreTool),
+            "post_tool" => Ok(Self::PostTool),
+            "prompt_capture" => Ok(Self::PromptCapture),
+            _ => Err(GuardHookPhaseParseError),
+        }
+    }
+}
+
+/// Error returned when a Guard hook phase is not part of the current contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuardHookPhaseParseError;
+
+impl fmt::Display for GuardHookPhaseParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Guard hook phase must be pre_tool, post_tool, or prompt_capture")
+    }
+}
+
+impl Error for GuardHookPhaseParseError {}
+
+/// Compatibility result recorded for one actual Guard hook event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardHookContractStatus {
+    Compatible,
+    Malformed,
+    Incompatible,
+}
+
+impl GuardHookContractStatus {
+    /// Returns the stable stored value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Compatible => "compatible",
+            Self::Malformed => "malformed",
+            Self::Incompatible => "incompatible",
         }
     }
 }

@@ -501,9 +501,6 @@ fn apply_init_provisioning(
         cleanup_resume,
         apply_guard_integration(integration).map_err(ConnectionCommandError::from),
     )?;
-    let integration_profile = plan.init_mode.integration_profile();
-    let installation_status =
-        initial_guard_installation_status(integration_profile, &host_plan, &integration);
     let (guard_installation, pending_host_cleanup_connections) = if cleanup_resume {
         let guard_installation = migration_cleanup_step(
             &plan,
@@ -511,10 +508,7 @@ fn apply_init_provisioning(
             is_integration_migration,
             record_guard_installation(
                 &plan.runtime_home,
-                plan.host_kind,
-                integration_profile,
-                installation_status,
-                &connection.connection_internal_id,
+                &connection,
                 &project.project_id,
                 &integration,
             )
@@ -526,15 +520,8 @@ fn apply_init_provisioning(
             &plan,
             &superseded_integrations,
             is_integration_migration,
-            guard_installation_upsert(
-                plan.host_kind,
-                integration_profile,
-                installation_status,
-                &connection.connection_internal_id,
-                &project.project_id,
-                &integration,
-            )
-            .map_err(ConnectionCommandError::from),
+            guard_installation_upsert(&connection, &project.project_id, &integration)
+                .map_err(ConnectionCommandError::from),
         )?;
         let (activated_connection, guard_installation, pending) = migration_transition_step(
             &plan,
@@ -559,10 +546,7 @@ fn apply_init_provisioning(
                 is_integration_migration,
                 record_guard_installation(
                     &plan.runtime_home,
-                    plan.host_kind,
-                    integration_profile,
-                    installation_status,
-                    &connection.connection_internal_id,
+                    &connection,
                     &project.project_id,
                     &integration,
                 )
@@ -1290,9 +1274,6 @@ mod init_planning_tests {
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
-    use crate::guard_integration::capability::{
-        host_hook_capability_has_exact_current_shape, host_hook_capability_json,
-    };
 
     struct PlanningProcess {
         current_exe: PathBuf,
@@ -1380,7 +1361,7 @@ mod init_planning_tests {
     }
 
     #[test]
-    fn normal_init_planning_validates_the_capability_before_apply(
+    fn normal_init_planning_validates_command_projection_before_apply(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("init-capability-preflight")?;
         let repo_root = create_empty_product_repository(&fixture)?;
@@ -1394,9 +1375,14 @@ mod init_planning_tests {
             },
             &process,
         )?;
-        let capability: Value =
-            serde_json::from_str(&host_hook_capability_json(&plan.integration)?)?;
-        assert!(host_hook_capability_has_exact_current_shape(&capability));
+        for phase in volicord_types::GuardHookPhase::REQUIRED {
+            let policy = plan.integration.policy_commands.get(phase);
+            let runtime = plan.integration.runtime_commands.get(phase);
+            assert_eq!(policy.args.len(), 14);
+            assert_eq!(runtime.args.len(), 16);
+            assert_eq!(&runtime.args[..12], &policy.args[..12]);
+            assert_eq!(&runtime.args[14..], &policy.args[12..]);
+        }
         assert!(runtime_home_record_read_only(fixture.path())?.is_none());
         assert!(!fixture.registry_db_path().exists());
         assert_no_planned_files_exist(&plan);

@@ -359,29 +359,8 @@ CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
-  project_internal_id TEXT,
-  host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
-  host_capability_json TEXT NOT NULL DEFAULT '{}',
-  installation_status TEXT NOT NULL
-    CHECK (installation_status IN (
-      'absent',
-      'configured',
-      'reload_required',
-      'active',
-      'degraded',
-      'stale',
-      'broken'
-    )),
-  installed_at TEXT,
-  last_checked_at TEXT NOT NULL,
-  first_seen_at TEXT,
-  last_seen_at TEXT,
-  last_seen_phase TEXT,
-  observed_host_kind TEXT,
-  observed_policy_hash TEXT,
-  observed_binary_version TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
+  project_internal_id TEXT NOT NULL,
+  manifest_json TEXT NOT NULL CHECK (json_valid(manifest_json) AND json_type(manifest_json) = 'object'),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (runtime_home_id) REFERENCES runtime_home (runtime_home_id) ON DELETE RESTRICT,
@@ -395,14 +374,8 @@ CREATE INDEX idx_guard_installations_connection
   ON guard_installations (connection_internal_id);
 CREATE INDEX idx_guard_installations_project
   ON guard_installations (project_internal_id);
-CREATE INDEX idx_guard_installations_status
-  ON guard_installations (installation_status);
 CREATE UNIQUE INDEX idx_guard_installations_scope_project
-  ON guard_installations (connection_internal_id, project_internal_id, guard_mode)
-  WHERE project_internal_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_guard_installations_scope_global
-  ON guard_installations (connection_internal_id, guard_mode)
-  WHERE project_internal_id IS NULL;
+  ON guard_installations (connection_internal_id, project_internal_id);
 ```
 <!-- canonical-storage-sql: registry end -->
 
@@ -420,7 +393,7 @@ Registry constraints:
 - `agent_connections.mode` is constrained to `read_only` or `workflow`.
 - `agent_connections.verification_report_json` is SQL null when no completed report exists. A non-null value stores one strict canonical `ConnectionVerificationReport`, including its derived status and actions. Store does not persist those components independently.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
-- `guard_installations` stores Codex Record Guard setup lifecycle state for one Runtime Home, Agent Connection, and optional project scope. Its internal `guard_mode` is exactly `record`. Its `installation_status` values are `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, and `broken`. These rows support expected-write correlation and reconciliation; they are not public Core guard-health projections, OS-level enforcement proof, or write-prevention proof.
+- `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, and required hook phases. It describes Volicord ownership only; it is not a host-capability certificate, lifecycle status, OS-level enforcement proof, or write-prevention proof. File state is audited from the manifest and current files, while observation state is derived from current-owned `guard_events`.
 
 ## Project `state.sqlite`
 
@@ -1261,8 +1234,19 @@ CREATE TABLE guard_events (
   guard_event_id TEXT NOT NULL,
   session_id TEXT,
   connection_internal_id TEXT NOT NULL,
-  guard_installation_id TEXT,
-  event_kind TEXT NOT NULL,
+  guard_installation_id TEXT NOT NULL,
+  policy_hash TEXT NOT NULL CHECK (
+    length(policy_hash) = 71
+    AND substr(policy_hash, 1, 7) = 'sha256:'
+    AND substr(policy_hash, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  integration_revision TEXT NOT NULL CHECK (
+    length(integration_revision) = 71
+    AND substr(integration_revision, 1, 7) = 'sha256:'
+    AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  event_kind TEXT NOT NULL CHECK (event_kind IN ('pre_tool', 'post_tool', 'prompt_capture')),
+  contract_status TEXT NOT NULL CHECK (contract_status IN ('compatible', 'malformed', 'incompatible')),
   decision TEXT NOT NULL CHECK (decision IN ('allow', 'deny', 'warn', 'inject_context')),
   subject_json TEXT NOT NULL DEFAULT '{}',
   result_json TEXT NOT NULL DEFAULT '{}',
@@ -1520,7 +1504,7 @@ Project-state constraints:
   `git_workspace_context_json`. Replay rows are not caller authority and do not
   bypass current connection, Git workspace, or User Channel requirements.
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, and `unrecorded_changes` are project-local Codex Record Guard and reconciliation records. They repeat `connection_internal_id` for connection scoping and use project-local keys so records do not leak across projects.
-- `guard_events.decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`. These values record local host decision requests; they are not OS-level enforcement proof.
+- `guard_events` binds every observation to a required typed hook phase, Guard installation, exact policy hash, and integration revision. Only current-owned `compatible` events satisfy a required phase; current `malformed` or `incompatible` events fail the Guard observation check, and older hashes or revisions do not satisfy it. `decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`; these values record local host decision requests, not OS-level enforcement proof.
 - `expected_writes.status` is constrained to `pending` or `matched`, and `path_policy` is constrained to `exact_paths`. Matched rows must carry the matched Guard observation event, matched paths JSON, and `matched_at`; pending rows must not carry those matched fields.
 - `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields.
 

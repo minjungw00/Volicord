@@ -989,156 +989,31 @@ fn reconcile_changes_request(
 fn record_guard_installation(
     harness: &MethodHarness,
     suffix: &str,
-    guard_mode: &str,
-    installation_status: &str,
-    host_capability_json: &str,
+    _profile: &str,
+    _legacy_fixture_state: &str,
+    _legacy_fixture_json: &str,
 ) -> Result<String, Box<dyn Error>> {
+    const POLICY_HASH: &str =
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000";
     let guard_installation_id = format!("guard_installation_{suffix}");
-    let host_capability_json = if host_capability_json == "{}" {
-        record_guard_capability_json(harness, &guard_installation_id)
-    } else {
-        host_capability_json.to_owned()
-    };
+    let repo_root = harness._runtime_home.product_repo_path("repo");
     upsert_guard_installation(
         &harness.runtime_home_path,
         GuardInstallationUpsert {
             guard_installation_id: guard_installation_id.clone(),
             connection_internal_id: CONNECTION_ID.to_owned(),
-            project_id: Some(PROJECT_ID.to_owned()),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: guard_mode.to_owned(),
-            host_capability_json,
-            installation_status: installation_status.to_owned(),
-            installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
-            last_checked_at: "2026-06-30T00:01:00Z".to_owned(),
-            first_seen_at: (installation_status == "active")
-                .then(|| "2026-06-30T00:02:00Z".to_owned()),
-            last_seen_at: (installation_status == "active")
-                .then(|| "2026-06-30T00:02:00Z".to_owned()),
-            last_seen_phase: (installation_status == "active").then(|| "pre_tool".to_owned()),
-            observed_host_kind: (installation_status == "active")
-                .then(|| HOST_KIND_CODEX.to_owned()),
-            observed_policy_hash: (installation_status == "active")
-                .then(|| "sha256:guardedfixture".to_owned()),
-            observed_binary_version: (installation_status == "active")
-                .then(|| "0.0.0-test".to_owned()),
-            metadata_json: "{}".to_owned(),
+            project_id: PROJECT_ID.to_owned(),
+            manifest_json: volicord_test_support::test_guard_manifest_json(
+                &harness.runtime_home_path,
+                &repo_root,
+                PROJECT_ID,
+                CONNECTION_ID,
+                &guard_installation_id,
+                POLICY_HASH,
+            ),
         },
     )?;
     Ok(guard_installation_id)
-}
-
-fn record_guard_capability_json(harness: &MethodHarness, guard_installation_id: &str) -> String {
-    const POLICY_HASH: &str =
-        "sha256:0000000000000000000000000000000000000000000000000000000000000000";
-    const CONTENT_HASH: &str =
-        "sha256:1111111111111111111111111111111111111111111111111111111111111111";
-    let repo_root = harness._runtime_home.product_repo_path("repo");
-    let command_path = harness.runtime_home_path.join("bin/volicord");
-    let command = |phase: &str| {
-        json!({
-            "command": command_path,
-            "args": [
-                "_hook", phase,
-                "--repo", repo_root,
-                "--connection", CONNECTION_ID,
-                "--guard-installation", guard_installation_id,
-                "--host", "codex",
-                "--integration-profile", "record",
-                "--policy-hash", POLICY_HASH,
-                "--host-output", "codex"
-            ]
-        })
-    };
-    let wrapper = |phase: &str, command_name: &str| {
-        json!({
-            "kind": "host_hook_wrapper",
-            "path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
-            "status": "unchanged",
-            "content_hash": CONTENT_HASH,
-            "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-            "executable_required": true,
-            "managed_script_command": "exec volicord",
-            "host_kind": "codex",
-            "phase": phase,
-            "purpose": "guard",
-            "connection_id": CONNECTION_ID,
-            "guard_installation_id": guard_installation_id,
-            "policy_hash": POLICY_HASH,
-            "host_output": "codex"
-        })
-    };
-    json!({
-        "schema": volicord_types::HOST_HOOK_CAPABILITY_SCHEMA,
-        "policy_hash": POLICY_HASH,
-        "selected_profile": "record",
-        "connection_intent": "shared",
-        "direct_file_write_matcher_coverage": false,
-        "host_capabilities": {
-            "stdio_mcp": true,
-            "pre_tool_hook": true,
-            "post_tool_hook": true,
-            "user_prompt_submit_hook": true,
-            "rule_file_support": true,
-            "project_local_configuration": true
-        },
-        "files": [
-            {
-                "kind": "agents_managed_block",
-                "path": repo_root.join("AGENTS.md"),
-                "status": "unchanged",
-                "content_hash": CONTENT_HASH,
-                "ownership": "managed_block",
-                "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
-                "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE"
-            },
-            {
-                "kind": "volicord_policy",
-                "path": repo_root.join(".volicord/policy.json"),
-                "status": "unchanged",
-                "content_hash": CONTENT_HASH,
-                "ownership": "managed_json"
-            },
-            {
-                "kind": "host_hook_config",
-                "path": repo_root.join(".codex/hooks.json"),
-                "status": "unchanged",
-                "content_hash": CONTENT_HASH,
-                "ownership": "managed_json"
-            },
-            {
-                "kind": "host_hook_dispatch",
-                "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-                "status": "unchanged",
-                "content_hash": CONTENT_HASH,
-                "ownership": "managed_script",
-                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                "executable_required": true,
-                "managed_script_role": "codex_dispatch",
-                "host_kind": "codex",
-                "phase": "dispatch"
-            },
-            wrapper("pre_tool", "pre-tool"),
-            wrapper("post_tool", "post-tool"),
-            wrapper("prompt_capture", "prompt-capture"),
-            {
-                "kind": "host_rule_instruction",
-                "path": repo_root.join(".codex/rules/volicord.rules"),
-                "status": "unchanged",
-                "content_hash": CONTENT_HASH,
-                "ownership": "managed_block",
-                "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
-                "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES"
-            }
-        ],
-        "commands": {
-            "pre_tool": command("pre-tool"),
-            "post_tool": command("post-tool"),
-            "prompt_capture": command("prompt-capture")
-        }
-    })
-    .to_string()
 }
 
 fn hex_bytes(bytes: &[u8]) -> String {

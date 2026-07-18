@@ -1,11 +1,12 @@
 use std::{collections::BTreeMap, path::Path};
+use volicord_types::GuardCommandSet;
 
 use crate::{
     guard_integration::{
         files::GeneratedFilePlan,
         hooks::{
-            plan_codex_dispatch_wrapper_file, plan_hook_wrapper_files, GuardCommandSpec,
-            HostHookCommand, HostHookPurpose,
+            plan_codex_dispatch_wrapper_file, plan_hook_wrapper_files, HostHookCommand,
+            HostHookPurpose,
         },
         GuardIntegrationError,
     },
@@ -18,7 +19,7 @@ pub(crate) struct HostGeneratedFilesRequest<'a> {
     pub(crate) host_kind: HostKind,
     pub(crate) runtime_home: &'a Path,
     pub(crate) repo_root: &'a Path,
-    pub(crate) commands: &'a BTreeMap<String, GuardCommandSpec>,
+    pub(crate) commands: &'a GuardCommandSet,
     pub(crate) host_commands: &'a BTreeMap<String, HostHookCommand>,
     pub(crate) phases: &'a [HostLifecyclePhase],
     pub(crate) purpose: HostHookPurpose,

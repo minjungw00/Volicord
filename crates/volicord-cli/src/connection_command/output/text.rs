@@ -218,8 +218,7 @@ fn canonical_check_label(id: &str) -> &'static str {
         "tool_round_trip" => "Tool round trip",
         "project_trust" => "Project trust",
         "guard_files" => "Guard files",
-        "guard_hooks" => "Guard hooks",
-        "prompt_capture" => "Prompt capture",
+        "guard_observation" => "Guard observation",
         "verification_not_run" => "Verification",
         _ => "Connection check",
     }

@@ -3,8 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_json::{json, Value};
-use volicord_types::IntegrationProfile;
+use serde_json::Value;
+use volicord_types::{GuardCommand, GuardCommandSet, IntegrationProfile};
 
 use crate::{
     guard_integration::{
@@ -14,15 +14,11 @@ use crate::{
     },
     host_integration::{
         HostIntegrationFileKind, HostKind, HostLifecyclePhase, MANAGED_WRAPPER_ENV,
-        MANAGED_WRAPPER_VALUE, REQUIRED_GUARD_PHASES,
+        MANAGED_WRAPPER_VALUE,
     },
 };
 
-#[derive(Debug, Clone)]
-pub(crate) struct GuardCommandSpec {
-    pub(crate) command: String,
-    pub(crate) args: Vec<String>,
-}
+pub(crate) type GuardCommandSpec = GuardCommand;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HostHookCommand {
@@ -105,19 +101,14 @@ pub(crate) fn plan_hook_wrapper_files(
     repo_root: &Path,
     runtime_home: &Path,
     host_kind: HostKind,
-    guard_commands: &BTreeMap<String, GuardCommandSpec>,
+    guard_commands: &GuardCommandSet,
     phases: &[HostLifecyclePhase],
     purpose: HostHookPurpose,
 ) -> Result<Vec<GeneratedFilePlan>, GuardIntegrationError> {
     phases
         .iter()
         .map(|phase| {
-            let guard_command = guard_commands.get(phase.policy_key()).ok_or_else(|| {
-                GuardIntegrationError::runtime(format!(
-                    "missing generated host-hook command for {}",
-                    phase.policy_key()
-                ))
-            })?;
+            let guard_command = command_for_phase(guard_commands, *phase);
             plan_hook_wrapper_file(
                 repo_root,
                 runtime_home,
@@ -229,68 +220,53 @@ pub(crate) fn guard_command_specs(
     host_kind: HostKind,
     profile: IntegrationProfile,
     policy_hash: Option<&str>,
-) -> BTreeMap<String, GuardCommandSpec> {
-    REQUIRED_GUARD_PHASES
-        .into_iter()
-        .map(|phase| {
-            let mut args = vec![
-                "_hook".to_owned(),
-                phase.command_name().to_owned(),
-                "--repo".to_owned(),
-                path_text(repo_root),
-                "--connection".to_owned(),
-                connection_id.to_owned(),
-                "--guard-installation".to_owned(),
-                guard_installation_id.to_owned(),
-                "--host".to_owned(),
-                public_host_label(host_kind).to_owned(),
-                "--integration-profile".to_owned(),
-                profile.as_str().to_owned(),
-            ];
-            if let Some(policy_hash) = policy_hash {
-                args.push("--policy-hash".to_owned());
-                args.push(policy_hash.to_owned());
-            }
-            args.push("--host-output".to_owned());
-            args.push("codex".to_owned());
-            (
-                phase.policy_key().to_owned(),
-                GuardCommandSpec {
-                    command: path_text(volicord_command),
-                    args,
-                },
-            )
-        })
-        .collect()
+) -> GuardCommandSet {
+    let command = |phase: HostLifecyclePhase| {
+        let mut args = vec![
+            "_hook".to_owned(),
+            phase.command_name().to_owned(),
+            "--repo".to_owned(),
+            path_text(repo_root),
+            "--connection".to_owned(),
+            connection_id.to_owned(),
+            "--guard-installation".to_owned(),
+            guard_installation_id.to_owned(),
+            "--host".to_owned(),
+            public_host_label(host_kind).to_owned(),
+            "--integration-profile".to_owned(),
+            profile.as_str().to_owned(),
+        ];
+        if let Some(policy_hash) = policy_hash {
+            args.push("--policy-hash".to_owned());
+            args.push(policy_hash.to_owned());
+        }
+        args.push("--host-output".to_owned());
+        args.push("codex".to_owned());
+        GuardCommandSpec {
+            command: path_text(volicord_command),
+            args,
+        }
+    };
+    GuardCommandSet {
+        pre_tool: command(HostLifecyclePhase::PreTool),
+        post_tool: command(HostLifecyclePhase::PostTool),
+        prompt_capture: command(HostLifecyclePhase::UserPromptSubmit),
+    }
 }
 
 pub(crate) fn guard_command_specs_json(
-    commands: &BTreeMap<String, GuardCommandSpec>,
+    commands: &GuardCommandSet,
 ) -> Result<Value, GuardIntegrationError> {
-    if commands.len() != REQUIRED_GUARD_PHASES.len() {
-        return Err(GuardIntegrationError::runtime(
-            "Guard command serialization requires the exact Guard phases",
-        ));
+    serde_json::to_value(commands)
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
+}
+
+fn command_for_phase(commands: &GuardCommandSet, phase: HostLifecyclePhase) -> &GuardCommandSpec {
+    match phase {
+        HostLifecyclePhase::PreTool => &commands.pre_tool,
+        HostLifecyclePhase::PostTool => &commands.post_tool,
+        HostLifecyclePhase::UserPromptSubmit => &commands.prompt_capture,
     }
-    let commands = REQUIRED_GUARD_PHASES
-        .iter()
-        .map(|phase| {
-            let spec = commands.get(phase.policy_key()).ok_or_else(|| {
-                GuardIntegrationError::runtime(format!(
-                    "Guard command serialization requires {}",
-                    phase.policy_key()
-                ))
-            })?;
-            Ok((
-                phase.policy_key().to_owned(),
-                json!({
-                    "command": &spec.command,
-                    "args": &spec.args,
-                }),
-            ))
-        })
-        .collect::<Result<serde_json::Map<_, _>, GuardIntegrationError>>()?;
-    Ok(Value::Object(commands))
 }
 
 pub(crate) fn guard_command_line(spec: &GuardCommandSpec) -> String {

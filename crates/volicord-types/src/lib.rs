@@ -13,7 +13,7 @@ pub mod codex_release_evidence;
 pub mod codex_support_catalog;
 pub mod connection_verification;
 pub mod external_contract;
-pub mod host_capability;
+pub mod guard_manifest;
 pub mod ids;
 pub mod integration_revision;
 pub mod managed_host_contract;
@@ -31,7 +31,7 @@ pub use codex_release_evidence::*;
 pub use codex_support_catalog::*;
 pub use connection_verification::*;
 pub use external_contract::*;
-pub use host_capability::*;
+pub use guard_manifest::*;
 pub use ids::*;
 pub use integration_revision::*;
 pub use managed_host_contract::*;
@@ -206,9 +206,8 @@ mod tests {
             json!("inject_context")
         );
         assert_eq!(
-            serde_json::to_value(GuardInstallationStatus::ReloadRequired)
-                .expect("guard status serializes"),
-            json!("reload_required")
+            serde_json::to_value(GuardHookPhase::PromptCapture).expect("Guard phase serializes"),
+            json!("prompt_capture")
         );
         assert_eq!(
             serde_json::to_value(GuardConfigurationStatus::Configured)

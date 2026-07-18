@@ -976,7 +976,14 @@ impl McpAdapter {
         )
         .map_err(McpAdapterError::Store)?;
         if let Some(installation) = guard.guard_installation.as_ref() {
-            if installation.guard_mode != IntegrationProfile::Record.as_str() {
+            let manifest = volicord_types::guard_manifest_from_json(&installation.manifest_json)
+                .map_err(|_| {
+                    McpAdapterError::Environment(
+                        "managed_stdio_session_manifest_invalid: current Guard installation manifest is malformed"
+                            .to_owned(),
+                    )
+                })?;
+            if manifest.integration_profile != IntegrationProfile::Record {
                 return Err(McpAdapterError::Environment(
                     "managed_stdio_session_profile_mismatch: current Guard installation is not the Record profile"
                         .to_owned(),

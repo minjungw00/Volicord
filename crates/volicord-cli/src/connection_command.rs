@@ -28,7 +28,7 @@ use volicord_store::{
     },
     core_pipeline::CoreProjectStore,
     guards::{
-        guard_health_record, guard_installation_observation_is_current, list_guard_installations,
+        guard_health_record, guard_observation_summary, list_guard_installations,
         GuardInstallationRecord,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
@@ -36,8 +36,8 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, ConnectionVerificationError,
-    GuardInstallationStatus, IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
+    canonical_json_sha256, canonical_json_string, guard_manifest_from_json,
+    ConnectionVerificationError, IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
 };
 
 use crate::cli::{
@@ -46,13 +46,13 @@ use crate::cli::{
 };
 use crate::guard_integration::audit::{
     combine_optional_file_states, file_state_rank, guard_file_findings_for_installation,
-    host_hook_capability_binding_valid_for_installation, GuardFileFindings,
+    guard_manifest_binding_valid_for_installation, GuardFileFindings,
 };
 use crate::guard_integration::{
     apply_guard_integration, apply_guard_migration_protection, guard_has_prompt_capture_commands,
-    guard_installation_upsert, initial_guard_installation_status, lifecycle_phase_names,
-    plan_guard_integration, record_guard_installation, FilePlanStatus, GeneratedFilePlan,
-    GuardIntegrationError, GuardIntegrationPlan, GuardIntegrationPlanRequest,
+    guard_installation_upsert, lifecycle_phase_names, plan_guard_integration,
+    record_guard_installation, FilePlanStatus, GeneratedFilePlan, GuardIntegrationError,
+    GuardIntegrationPlan, GuardIntegrationPlanRequest,
 };
 use crate::host_integration::{
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
@@ -1115,7 +1115,7 @@ impl GuardOperationalState {
             .into_iter()
             .map(str::to_owned)
             .collect::<Vec<_>>();
-        let hook_observed_state = if health == GuardInstallationStatus::Active.as_str() {
+        let hook_observed_state = if health == "active" {
             "observed".to_owned()
         } else {
             "not_observed".to_owned()
@@ -1171,7 +1171,7 @@ impl GuardOperationalState {
             unresolved_blockers: guard_blockers_for_state(
                 init_mode.guard_value(),
                 health,
-                health == GuardInstallationStatus::Active.as_str(),
+                health == "active",
                 required_hooks_missing,
             ),
         }
@@ -1360,7 +1360,7 @@ fn planned_prompt_capture_state(
 fn init_prompt_capture_state(
     init_mode: InitMode,
     integration: &GuardIntegrationPlan,
-    installation_status: &str,
+    manifest_state: &str,
     hook_observed_state: &str,
 ) -> &'static str {
     let planned = planned_prompt_capture_state(init_mode, integration);
@@ -1370,7 +1370,7 @@ fn init_prompt_capture_state(
     ) {
         return planned;
     }
-    match installation_status {
+    match manifest_state {
         "active" if hook_observed_state == "observed" => PromptCaptureStatus::Observed.as_str(),
         "active" => PromptCaptureStatus::Configured.as_str(),
         "reload_required" => PromptCaptureStatus::ReloadRequired.as_str(),
@@ -1403,6 +1403,7 @@ fn guard_state_for_connection(
 
     let mut findings = GuardFileFindings::default();
     let mut every_observation_current = true;
+    let mut any_incompatible_observation = false;
     let mut every_prompt_capture_observed = true;
     let mut last_observed_at = None;
     for installation in &installations {
@@ -1410,16 +1411,19 @@ fn guard_state_for_connection(
             guard_file_findings_for_installation(runtime_home, installation, connection, projects);
         findings.merge(installation_findings);
         let binding_is_current =
-            host_hook_capability_binding_valid_for_installation(installation, connection, projects);
+            guard_manifest_binding_valid_for_installation(installation, connection, projects);
+        let observation =
+            guard_observation_summary(runtime_home, &installation.project_id, installation)?;
         let observation_is_current =
-            binding_is_current && guard_installation_observation_is_current(installation)?;
+            binding_is_current && observation.all_required_phases_observed();
+        any_incompatible_observation |= !observation.incompatible_event_ids.is_empty();
         every_observation_current &= observation_is_current;
-        every_prompt_capture_observed &= observation_is_current
-            && installation.last_seen_phase.as_deref() == Some("prompt_capture");
+        every_prompt_capture_observed &=
+            observation_is_current && observation.prompt_capture_observed();
         last_observed_at = max_optional_utc_timestamp(
             last_observed_at,
-            installation.last_seen_at.as_deref(),
-            "guard_installations.last_seen_at",
+            observation.last_observed_at.as_deref(),
+            "guard_events.occurred_at",
         )?;
     }
     findings.sort_dedup();
@@ -1427,38 +1431,25 @@ fn guard_state_for_connection(
     let observed = every_observation_current;
     let prompt_capture_observed = every_prompt_capture_observed;
     let mode_state = guard_mode_state(&installations);
-    let installation_state = if !findings.broken_files.is_empty()
-        || installations.iter().any(|installation| {
-            installation.installation_status == GuardInstallationStatus::Broken.as_str()
-        }) {
-        GuardInstallationStatus::Broken.as_str()
+    let installation_state = if !findings.broken_files.is_empty() {
+        "broken"
     } else if !findings.missing_files.is_empty() {
         "files_missing"
-    } else if !findings.stale_files.is_empty()
-        || installations.iter().any(|installation| {
-            installation.installation_status == GuardInstallationStatus::Stale.as_str()
-        })
-    {
-        GuardInstallationStatus::Stale.as_str()
-    } else if !findings.missing_required_hooks.is_empty()
-        || installations.iter().any(|installation| {
-            installation.installation_status == GuardInstallationStatus::Degraded.as_str()
-        })
-    {
-        GuardInstallationStatus::Degraded.as_str()
-    } else if installations.iter().any(|installation| {
-        installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
-    }) {
-        GuardInstallationStatus::ReloadRequired.as_str()
-    } else if installations.iter().any(|installation| {
-        installation.installation_status == GuardInstallationStatus::Active.as_str()
-    }) {
-        GuardInstallationStatus::Active.as_str()
+    } else if !findings.stale_files.is_empty() {
+        "stale"
+    } else if !findings.missing_required_hooks.is_empty() {
+        "degraded"
     } else {
-        GuardInstallationStatus::Configured.as_str()
+        "configured"
     };
 
-    let hook_observed_state = if observed { "observed" } else { "not_observed" };
+    let hook_observed_state = if any_incompatible_observation {
+        "failed"
+    } else if observed {
+        "observed"
+    } else {
+        "not_observed"
+    };
     let configuration_state = guard_configuration_state(
         installation_state,
         !findings.missing_required_hooks.is_empty(),
@@ -1475,11 +1466,7 @@ fn guard_state_for_connection(
         "broken" | "stale" | "degraded" | "files_missing"
     ) {
         PromptCaptureStatus::Degraded.as_str()
-    } else if installation_state == GuardInstallationStatus::ReloadRequired.as_str() {
-        PromptCaptureStatus::ReloadRequired.as_str()
-    } else if installation_state == GuardInstallationStatus::Active.as_str()
-        && prompt_capture_observed
-    {
+    } else if prompt_capture_observed {
         PromptCaptureStatus::Active.as_str()
     } else if observed {
         PromptCaptureStatus::Observed.as_str()
@@ -1543,12 +1530,16 @@ fn guard_state_for_connection(
 fn guard_mode_state(installations: &[GuardInstallationRecord]) -> String {
     let mut modes = installations
         .iter()
-        .map(|installation| installation.guard_mode.as_str())
+        .map(|installation| {
+            guard_manifest_from_json(&installation.manifest_json)
+                .map(|manifest| manifest.integration_profile.as_str().to_owned())
+                .unwrap_or_else(|_| "invalid".to_owned())
+        })
         .collect::<Vec<_>>();
     modes.sort_unstable();
     modes.dedup();
     if modes.len() == 1 {
-        modes[0].to_owned()
+        modes[0].clone()
     } else {
         "mixed".to_owned()
     }
@@ -1561,15 +1552,15 @@ fn guard_configuration_state(installation_state: &str, missing_required_hooks: b
             "not_configured" | "files_missing" | "stale" | "broken"
         )
     {
-        return GuardInstallationStatus::Degraded.as_str().to_owned();
+        return "degraded".to_owned();
     }
     match installation_state {
-        "not_configured" | "files_missing" => GuardInstallationStatus::Absent.as_str(),
-        "active" | "configured" => GuardInstallationStatus::Configured.as_str(),
-        "reload_required" => GuardInstallationStatus::ReloadRequired.as_str(),
-        "degraded" => GuardInstallationStatus::Degraded.as_str(),
-        "stale" => GuardInstallationStatus::Stale.as_str(),
-        "broken" => GuardInstallationStatus::Broken.as_str(),
+        "not_configured" | "files_missing" => "absent",
+        "active" | "configured" => "configured",
+        "reload_required" => "reload_required",
+        "degraded" => "degraded",
+        "stale" => "stale",
+        "broken" => "broken",
         other => other,
     }
     .to_owned()
@@ -1578,6 +1569,7 @@ fn guard_configuration_state(installation_state: &str, missing_required_hooks: b
 fn guard_observation_state(hook_observed_state: &str) -> String {
     match hook_observed_state {
         "observed" => "observed",
+        "failed" => "failed",
         "disabled" => "not_observed",
         _ => "not_observed",
     }
@@ -1593,6 +1585,7 @@ fn guard_effective_state(
         "absent" => "inactive",
         "broken" => "broken",
         "stale" | "degraded" => "degraded",
+        "configured" if observation_state == "failed" => "degraded",
         "configured" if observation_state == "observed" => "active",
         "configured" | "reload_required" => "action_required",
         _ => "action_required",

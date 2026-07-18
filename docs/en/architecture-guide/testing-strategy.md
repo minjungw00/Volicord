@@ -32,6 +32,12 @@ Durable tests should cover, as applicable:
 - MCP rejection of hidden context and CLI-only UserAction resolution;
 - authoritative MCP runtime-session source separation, milestone ordering,
   current revisions, project binding, and diagnostics non-authority;
+- Guard manifest exact-shape and owner binding, hash-free policy commands versus
+  hash-bound runtime commands, wrapper/file drift, platform-independent script
+  executable expectations, current-owned hook observations, and older-event
+  exclusion;
+- repeated Guard initialization with stable identities and preservation of
+  unrelated repository content;
 - Guard observation and unrecorded-change suppression outcomes; and
 - unsupported Codex artifact and configuration drift behavior.
 

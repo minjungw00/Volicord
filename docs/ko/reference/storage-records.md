@@ -39,6 +39,7 @@ Registry 기록에는 다음이 포함됩니다.
 - 설치와 실행 파일 선택
 - 프로젝트 등록과 alias
 - Agent Connection과 Connection Projects membership
+- 프로젝트 범위의 안정적인 Guard 설치 identity와 정규 typed Guard manifest
 - Agent Connection마다 최대 하나의 정규 연결 검증 보고서
 - MCP runtime session과 그 process, initialization, discovery, 안전 호출, terminal
   failure, graceful close 사실
@@ -154,6 +155,24 @@ Request-user-action resume은 원래 agent-safe 요청 결과와 별도로 새�
 projection만 읽을 수 있습니다.
 
 ## Guard와 조정 기록
+
+Registry의 각 `guard_installations` row는 안정적인 설치/소유자 identity, 정규
+`manifest_json`, 생성/갱신 timestamp만 유지합니다. Manifest는 엄격하고 소유자에
+결속되며 정확한 policy hash, integration revision, typed runtime command, 전체
+Volicord managed-file 기대값, 필수 typed hook phase를 담습니다. 이 객체는 host capability
+인증서도 설치 status 상태 기계도 아닙니다.
+
+Policy command와 runtime command는 의도적으로 서로 다른 projection입니다. 정규 policy
+command에는 `--policy-hash`가 없고, 그 policy를 hash한 뒤 runtime command에
+`--policy-hash <exact-hash>`를 추가합니다. Hook wrapper와 Guard manifest는 같은 typed
+runtime command를 사용합니다. Audit은 공유 소유자 field와 command segment를 개별적으로
+비교하며 두 전체 command 객체의 동등성을 비교하지 않습니다.
+
+프로젝트 `guard_events`는 모든 관찰을 Guard 설치, policy hash, integration revision,
+typed hook phase, contract status에 결속합니다. 현재의 compatible event만
+`guard_observation`을 도출하며 이전 hash나 revision은 이력을 유지하되 현재 check를
+충족하지 못합니다. 현재 malformed 또는 incompatible event가 있으면 이 check는
+실패합니다. Prompt capture는 별도 설치 상태가 아니라 같은 관찰 summary의 사실입니다.
 
 Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guard suppression은
 제한된 정규 correlation 데이터만 읽고 정확한 `SuppressionOutcome`을 반환합니다. Store

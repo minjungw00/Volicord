@@ -23,19 +23,20 @@ use volicord_cli::{
     policy_command::run_policy_command,
 };
 use volicord_store::{
-    agent_connections::update_agent_connection_verification_report,
+    agent_connections::{update_agent_connection_verification_report, AgentConnectionRecord},
     core_pipeline::CoreProjectStore,
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
+    operational_sessions::connection_integration_revision,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    canonical_json_sha256, host_hook_capability_has_exact_current_shape,
-    host_hook_capability_managed_artifacts, host_hook_capability_matches_owner_binding,
-    HostHookCapabilityOwnerBinding, ProjectId,
+    canonical_json_sha256, guard_manifest_has_exact_current_shape,
+    guard_manifest_managed_artifacts, guard_manifest_matches_owner_binding,
+    GuardManifestOwnerBinding, ProjectId,
 };
 
 const GENERATED_SHAPE_ERROR: &str =
-    "generated host-hook capability does not match the current exact shape";
+    "generated Guard manifest does not match the current exact shape";
 
 #[derive(Debug)]
 struct FakeConnectionProcess {
@@ -119,7 +120,7 @@ struct OwnedIds {
 }
 
 #[test]
-fn fresh_record_init_persists_exact_owner_bound_capability_and_managed_artifacts(
+fn fresh_record_init_persists_exact_owner_bound_manifest_and_managed_artifacts(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = TempRuntimeHome::new("cli-record-init-fresh")?;
     let repo_root = create_git_repo(&fixture, "repo")?;
@@ -135,8 +136,8 @@ fn fresh_record_init_persists_exact_owner_bound_capability_and_managed_artifacts
     assert_eq!(snapshot.projects[0].repo_root, repo_root);
     assert_eq!(snapshot.connection_projects[0].project_id, ids.project_id);
 
-    let capability = assert_exact_capability_and_artifacts(&snapshot, &repo_root)?;
-    assert_capability_commands_bind_policy_hash(&capability);
+    let manifest = assert_exact_manifest_and_artifacts(&snapshot, &repo_root)?;
+    assert_manifest_commands_bind_policy_hash(&manifest);
     assert_valid_policy_without_policy_hash_args(&repo_root)?;
     assert_codex_config_is_user_owned(&snapshot, &process, &repo_root)?;
     assert_authoritative_policy_matches_file(fixture.path(), &ids.project_id, &repo_root)?;
@@ -187,8 +188,8 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     let repaired_ids = assert_single_owned_records(&repaired);
     assert_eq!(repaired_ids, seeded_ids);
     assert_unavailable_codex_verification(&repaired)?;
-    let repaired_capability = assert_exact_capability_and_artifacts(&repaired, &repo_root)?;
-    assert_capability_commands_bind_policy_hash(&repaired_capability);
+    let repaired_manifest = assert_exact_manifest_and_artifacts(&repaired, &repo_root)?;
+    assert_manifest_commands_bind_policy_hash(&repaired_manifest);
     assert_eq!(managed_artifact_bytes(&repaired)?, managed_bytes);
     assert_eq!(fs::read_to_string(&unrelated_path)?, unrelated_content);
 
@@ -200,11 +201,11 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     assert_eq!(replayed_ids, seeded_ids);
     assert_unavailable_codex_verification(&replayed)?;
     assert_eq!(
-        replayed.guard_installations[0].host_capability_json,
-        repaired.guard_installations[0].host_capability_json
+        replayed.guard_installations[0].manifest_json,
+        repaired.guard_installations[0].manifest_json
     );
-    let replayed_capability = assert_exact_capability_and_artifacts(&replayed, &repo_root)?;
-    assert_capability_commands_bind_policy_hash(&replayed_capability);
+    let replayed_manifest = assert_exact_manifest_and_artifacts(&replayed, &repo_root)?;
+    assert_manifest_commands_bind_policy_hash(&replayed_manifest);
     assert_valid_policy_without_policy_hash_args(&repo_root)?;
     assert_authoritative_policy_matches_file(fixture.path(), &seeded_ids.project_id, &repo_root)?;
     assert_eq!(managed_artifact_bytes(&replayed)?, managed_bytes);
@@ -338,14 +339,8 @@ fn assert_single_owned_records(snapshot: &RegistryInspectionSnapshot) -> OwnedId
         guard.connection_internal_id,
         connection.connection_internal_id
     );
-    assert_eq!(
-        guard.project_internal_id.as_deref(),
-        Some(project.project_internal_id.as_str())
-    );
-    assert_eq!(
-        guard.project_id.as_deref(),
-        Some(project.project_id.as_str())
-    );
+    assert_eq!(guard.project_internal_id, project.project_internal_id);
+    assert_eq!(guard.project_id, project.project_id);
     OwnedIds {
         installation_id: installation.installation_id.clone(),
         project_id: project.project_id.clone(),
@@ -355,25 +350,42 @@ fn assert_single_owned_records(snapshot: &RegistryInspectionSnapshot) -> OwnedId
     }
 }
 
-fn assert_exact_capability_and_artifacts(
+fn assert_exact_manifest_and_artifacts(
     snapshot: &RegistryInspectionSnapshot,
     repo_root: &Path,
 ) -> Result<Value, Box<dyn Error>> {
     let connection = &snapshot.agent_connections[0];
     let guard = &snapshot.guard_installations[0];
-    let capability: Value = serde_json::from_str(&guard.host_capability_json)?;
-    assert!(host_hook_capability_has_exact_current_shape(&capability));
-    assert!(host_hook_capability_matches_owner_binding(
-        &capability,
-        HostHookCapabilityOwnerBinding {
-            row_host_kind: &guard.host_kind,
-            row_guard_mode: &guard.guard_mode,
+    let manifest: Value = serde_json::from_str(&guard.manifest_json)?;
+    assert!(guard_manifest_has_exact_current_shape(&manifest));
+    let connection_record = AgentConnectionRecord {
+        connection_internal_id: connection.connection_internal_id.clone(),
+        host_kind: connection.host_kind.clone(),
+        intent: connection.intent.clone(),
+        host_scope: connection.host_scope.clone(),
+        project_internal_id: connection.project_internal_id.clone(),
+        server_name: connection.server_name.clone(),
+        config_target: connection.config_target.clone(),
+        mode: connection.mode.clone(),
+        enabled: connection.enabled,
+        managed_fingerprint: connection.managed_fingerprint.clone(),
+        verification_report_json: connection.verification_report_json.clone(),
+        created_at: connection.created_at.clone(),
+        updated_at: connection.updated_at.clone(),
+        metadata_json: connection.metadata_json.clone(),
+    };
+    let integration_revision = connection_integration_revision(&connection_record)?;
+    let exclude_path = repo_root.join(".git/info/exclude");
+    assert!(guard_manifest_matches_owner_binding(
+        &manifest,
+        GuardManifestOwnerBinding {
             row_guard_installation_id: &guard.guard_installation_id,
-            connection_internal_id: &connection.connection_internal_id,
+            row_connection_id: &guard.connection_internal_id,
+            row_project_id: &guard.project_id,
             connection_host_kind: &connection.host_kind,
-            connection_intent: &connection.intent,
-            project_repo_root: Some(repo_root),
-            project_git_info_exclude_path: Some(&repo_root.join(".git/info/exclude")),
+            connection_integration_revision: integration_revision.as_str(),
+            project_repo_root: repo_root,
+            project_git_info_exclude_path: Some(&exclude_path),
         }
     ));
 
@@ -415,7 +427,9 @@ fn assert_exact_capability_and_artifacts(
             ("git_info_exclude", "managed_block"),
         ),
     ]);
-    let files = capability["files"].as_array().expect("capability files");
+    let files = manifest["managed_files"]
+        .as_array()
+        .expect("manifest managed files");
     assert_eq!(files.len(), expected.len());
     for file in files {
         let path = PathBuf::from(file["path"].as_str().expect("managed path"));
@@ -430,32 +444,32 @@ fn assert_exact_capability_and_artifacts(
             path.display()
         );
     }
-    for artifact in host_hook_capability_managed_artifacts(&capability)
-        .expect("exact capability artifact inventory")
+    for artifact in
+        guard_manifest_managed_artifacts(&manifest).expect("exact manifest artifact inventory")
     {
         let bytes = fs::read(&artifact.path)?;
         assert_eq!(format!("{:x}", Sha256::digest(bytes)), artifact.digest);
     }
-    Ok(capability)
+    Ok(manifest)
 }
 
-fn assert_capability_commands_bind_policy_hash(capability: &Value) {
-    let policy_hash = capability["policy_hash"].as_str().expect("policy hash");
-    let commands = capability["commands"]
+fn assert_manifest_commands_bind_policy_hash(manifest: &Value) {
+    let policy_hash = manifest["policy_hash"].as_str().expect("policy hash");
+    let commands = manifest["runtime_commands"]
         .as_object()
-        .expect("capability commands");
+        .expect("manifest commands");
     assert_eq!(commands.len(), 3);
     for command in commands.values() {
         let args = command["args"]
             .as_array()
-            .expect("capability command args")
+            .expect("manifest command args")
             .iter()
             .map(|value| value.as_str().expect("string arg"))
             .collect::<Vec<_>>();
         let index = args
             .iter()
             .position(|arg| *arg == "--policy-hash")
-            .expect("capability command policy hash flag");
+            .expect("manifest command policy hash flag");
         assert_eq!(args.get(index + 1), Some(&policy_hash));
     }
 }
@@ -522,10 +536,9 @@ fn assert_authoritative_policy_matches_file(
 fn managed_artifact_bytes(
     snapshot: &RegistryInspectionSnapshot,
 ) -> Result<BTreeMap<String, Vec<u8>>, Box<dyn Error>> {
-    let capability: Value =
-        serde_json::from_str(&snapshot.guard_installations[0].host_capability_json)?;
-    host_hook_capability_managed_artifacts(&capability)
-        .expect("exact capability artifact inventory")
+    let manifest: Value = serde_json::from_str(&snapshot.guard_installations[0].manifest_json)?;
+    guard_manifest_managed_artifacts(&manifest)
+        .expect("exact manifest artifact inventory")
         .into_iter()
         .map(|artifact| Ok((artifact.path.clone(), fs::read(artifact.path)?)))
         .collect()

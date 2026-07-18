@@ -5,12 +5,12 @@ use std::{
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use volicord_types::IntegrationProfile;
+use volicord_types::{GuardCommandSet, IntegrationProfile};
 
 use crate::{
     guard_integration::{
         files::{read_managed_text, VOLICORD_POLICY_FILE, VOLICORD_POLICY_SCHEMA},
-        hooks::{guard_command_specs_json, GuardCommandSpec},
+        hooks::guard_command_specs_json,
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
@@ -157,7 +157,7 @@ pub(crate) fn policy_json(
     profile: IntegrationProfile,
     context: LocalPolicyContext<'_>,
     mcp_entry: &ManagedServerEntry,
-    guard_commands: &BTreeMap<String, GuardCommandSpec>,
+    guard_commands: &GuardCommandSet,
 ) -> Result<Value, GuardIntegrationError> {
     validate_policy_mcp_environment(&mcp_entry.env)?;
     let commands = guard_command_specs_json(guard_commands)?;

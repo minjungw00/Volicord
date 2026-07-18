@@ -24,8 +24,8 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 37);
-    assert_eq!(metadata.columns.len(), 490);
-    assert_eq!(metadata.indexes.len(), 65);
+    assert_eq!(metadata.columns.len(), 481);
+    assert_eq!(metadata.indexes.len(), 63);
     assert_eq!(metadata.constraints.len(), 37);
     assert!(!metadata
         .tables
@@ -63,11 +63,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:7df3f370c579ffe84d93b330740486ac26a53994026272c581829c5d55308ab1"
+        "sha256:fb07028d7c2d8617b183352bfdab8861c5a5c8dd3ca02acd40f9bbc0eaf9509c"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:82f31dd6bf1016eff316f4bd67444a40171d40c6ce50270f9544f61dc33cc4e5"
+        "sha256:fc41b9b69b373ca09deaa8e60e7067c796bb71f825c3743b1ec24d260310e5f1"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -101,12 +101,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:7df3f370c579ffe84d93b330740486ac26a53994026272c581829c5d55308ab1\",",
+            "{\"canonical_ddl_digest\":\"sha256:fb07028d7c2d8617b183352bfdab8861c5a5c8dd3ca02acd40f9bbc0eaf9509c\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:82f31dd6bf1016eff316f4bd67444a40171d40c6ce50270f9544f61dc33cc4e5\"}"
+            "\"integrity_constraints_digest\":\"sha256:fc41b9b69b373ca09deaa8e60e7067c796bb71f825c3743b1ec24d260310e5f1\"}"
         )
     );
     Ok(())

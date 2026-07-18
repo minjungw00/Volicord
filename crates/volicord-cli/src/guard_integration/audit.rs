@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -15,7 +11,9 @@ use volicord_store::{
     },
 };
 use volicord_types::{
-    host_hook_capability_matches_owner_binding, HostHookCapabilityOwnerBinding, ProjectId,
+    guard_manifest_from_json, guard_manifest_matches_owner_binding,
+    ConnectionIntegrationRevisionBasis, GuardCommandSet, GuardHookPhase, GuardManifestOwnerBinding,
+    IntegrationRevision, ProjectId,
 };
 
 use crate::host_integration::{
@@ -28,9 +26,7 @@ use crate::host_integration::{
 
 use super::{
     git_exclude::git_exclude_path,
-    host_hook_capability_has_exact_current_shape,
     policy::{required_guard_phase_names, validate_policy_schema},
-    HOST_HOOK_CAPABILITY_SCHEMA,
 };
 
 pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
@@ -149,7 +145,7 @@ impl GuardFileFindings {
             .push(status == HookWrapperResolutionStatus::Ok);
         if status != HookWrapperResolutionStatus::Ok {
             self.stale_files
-                .push("host_hook_capability_json:hook_path_safety".to_owned());
+                .push("manifest_json:hook_path_safety".to_owned());
         }
     }
 
@@ -266,14 +262,12 @@ pub(crate) fn file_state_rank(value: &str) -> u8 {
 
 #[derive(Debug, Clone, Copy)]
 struct GuardAuthorityContext<'a> {
-    host_kind: &'a str,
-    guard_mode: &'a str,
     guard_installation_id: &'a str,
     connection_internal_id: &'a str,
+    project_id: &'a str,
     connection_host_kind: &'a str,
-    connection_intent: &'a str,
-    project_repo_roots: &'a [PathBuf],
-    projectless_owner: bool,
+    connection_integration_revision: &'a str,
+    project_repo_root: &'a Path,
 }
 
 pub(crate) fn guard_file_findings_for_installation(
@@ -284,45 +278,32 @@ pub(crate) fn guard_file_findings_for_installation(
 ) -> GuardFileFindings {
     let matched_projects = projects
         .iter()
-        .filter(|project| {
-            installation
-                .project_internal_id
-                .as_deref()
-                .is_some_and(|id| id == project.project_internal_id)
-                || (installation.project_internal_id.is_none()
-                    && installation
-                        .project_id
-                        .as_deref()
-                        .is_some_and(|id| id == project.project_id))
-        })
+        .filter(|project| installation.project_internal_id == project.project_internal_id)
         .collect::<Vec<_>>();
-    let project_repo_roots = if matched_projects.len() == 1 {
-        vec![matched_projects[0].project.repo_root.clone()]
-    } else {
-        Vec::new()
+    let Ok(revision) =
+        volicord_store::operational_sessions::connection_integration_revision(connection)
+    else {
+        return broken_manifest_findings();
+    };
+    let [project] = matched_projects.as_slice() else {
+        return broken_manifest_findings();
     };
     let context = GuardAuthorityContext {
-        host_kind: &installation.host_kind,
-        guard_mode: &installation.guard_mode,
         guard_installation_id: &installation.guard_installation_id,
         connection_internal_id: &connection.connection_internal_id,
+        project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
-        connection_intent: &connection.intent,
-        project_repo_roots: &project_repo_roots,
-        projectless_owner: installation.project_internal_id.is_none()
-            && installation.project_id.is_none(),
+        connection_integration_revision: revision.as_str(),
+        project_repo_root: &project.project.repo_root,
     };
-    let mut findings =
-        guard_file_findings_with_context(&installation.host_capability_json, Some(context));
-    if let [project] = matched_projects.as_slice() {
-        audit_authoritative_project_policy(
-            runtime_home,
-            &project.project.project_id,
-            &project.project.repo_root,
-            &connection.intent,
-            &mut findings,
-        );
-    }
+    let mut findings = guard_file_findings_with_context(&installation.manifest_json, Some(context));
+    audit_authoritative_project_policy(
+        runtime_home,
+        &project.project.project_id,
+        &project.project.repo_root,
+        &connection.intent,
+        &mut findings,
+    );
     findings
 }
 
@@ -354,45 +335,34 @@ fn audit_authoritative_project_policy(
     }
 }
 
-pub(crate) fn host_hook_capability_binding_valid_for_installation(
+pub(crate) fn guard_manifest_binding_valid_for_installation(
     installation: &GuardInstallationRecord,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
 ) -> bool {
-    let matched_repo_roots = projects
+    let matched_projects = projects
         .iter()
-        .filter(|project| {
-            installation
-                .project_internal_id
-                .as_deref()
-                .is_some_and(|id| id == project.project_internal_id)
-                || (installation.project_internal_id.is_none()
-                    && installation
-                        .project_id
-                        .as_deref()
-                        .is_some_and(|id| id == project.project_id))
-        })
-        .map(|project| project.project.repo_root.clone())
+        .filter(|project| installation.project_internal_id == project.project_internal_id)
         .collect::<Vec<_>>();
-    let project_repo_roots = if matched_repo_roots.len() == 1 {
-        matched_repo_roots
-    } else {
-        Vec::new()
+    let [project] = matched_projects.as_slice() else {
+        return false;
+    };
+    let Ok(revision) =
+        volicord_store::operational_sessions::connection_integration_revision(connection)
+    else {
+        return false;
     };
     let context = GuardAuthorityContext {
-        host_kind: &installation.host_kind,
-        guard_mode: &installation.guard_mode,
         guard_installation_id: &installation.guard_installation_id,
         connection_internal_id: &connection.connection_internal_id,
+        project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
-        connection_intent: &connection.intent,
-        project_repo_roots: &project_repo_roots,
-        projectless_owner: installation.project_internal_id.is_none()
-            && installation.project_id.is_none(),
+        connection_integration_revision: revision.as_str(),
+        project_repo_root: &project.project.repo_root,
     };
-    serde_json::from_str::<Value>(&installation.host_capability_json)
+    serde_json::from_str::<Value>(&installation.manifest_json)
         .ok()
-        .is_some_and(|value| host_hook_capability_matches_authority_context(&value, context))
+        .is_some_and(|value| guard_manifest_matches_authority_context(&value, context))
 }
 
 pub(crate) fn guard_file_findings_for_inspection(
@@ -400,115 +370,104 @@ pub(crate) fn guard_file_findings_for_inspection(
     connection: &AgentConnectionInspectionRecord,
     projects: &[ProjectInspectionRecord],
 ) -> GuardFileFindings {
-    let matched_repo_roots = projects
+    let matched_projects = projects
         .iter()
-        .filter(|project| {
-            installation
-                .project_internal_id
-                .as_deref()
-                .is_some_and(|id| id == project.project_internal_id)
-                || (installation.project_internal_id.is_none()
-                    && installation
-                        .project_id
-                        .as_deref()
-                        .is_some_and(|id| id == project.project_id))
-        })
-        .map(|project| project.repo_root.clone())
+        .filter(|project| installation.project_internal_id == project.project_internal_id)
         .collect::<Vec<_>>();
-    let project_repo_roots = if matched_repo_roots.len() == 1 {
-        matched_repo_roots
-    } else {
-        Vec::new()
+    let [project] = matched_projects.as_slice() else {
+        return broken_manifest_findings();
+    };
+    let Ok(revision) = inspection_connection_revision(connection) else {
+        return broken_manifest_findings();
     };
     let context = GuardAuthorityContext {
-        host_kind: &installation.host_kind,
-        guard_mode: &installation.guard_mode,
         guard_installation_id: &installation.guard_installation_id,
         connection_internal_id: &connection.connection_internal_id,
+        project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
-        connection_intent: &connection.intent,
-        project_repo_roots: &project_repo_roots,
-        projectless_owner: installation.project_internal_id.is_none()
-            && installation.project_id.is_none(),
+        connection_integration_revision: revision.as_str(),
+        project_repo_root: &project.repo_root,
     };
-    guard_file_findings_with_context(&installation.host_capability_json, Some(context))
+    guard_file_findings_with_context(&installation.manifest_json, Some(context))
 }
 
-pub(crate) fn host_hook_capability_binding_valid_for_inspection(
+pub(crate) fn guard_manifest_binding_valid_for_inspection(
     installation: &GuardInstallationInspectionRecord,
     connection: &AgentConnectionInspectionRecord,
     projects: &[ProjectInspectionRecord],
 ) -> bool {
-    let matched_repo_roots = projects
+    let matched_projects = projects
         .iter()
-        .filter(|project| {
-            installation
-                .project_internal_id
-                .as_deref()
-                .is_some_and(|id| id == project.project_internal_id)
-                || (installation.project_internal_id.is_none()
-                    && installation
-                        .project_id
-                        .as_deref()
-                        .is_some_and(|id| id == project.project_id))
-        })
-        .map(|project| project.repo_root.clone())
+        .filter(|project| installation.project_internal_id == project.project_internal_id)
         .collect::<Vec<_>>();
-    let project_repo_roots = if matched_repo_roots.len() == 1 {
-        matched_repo_roots
-    } else {
-        Vec::new()
+    let [project] = matched_projects.as_slice() else {
+        return false;
+    };
+    let Ok(revision) = inspection_connection_revision(connection) else {
+        return false;
     };
     let context = GuardAuthorityContext {
-        host_kind: &installation.host_kind,
-        guard_mode: &installation.guard_mode,
         guard_installation_id: &installation.guard_installation_id,
         connection_internal_id: &connection.connection_internal_id,
+        project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
-        connection_intent: &connection.intent,
-        project_repo_roots: &project_repo_roots,
-        projectless_owner: installation.project_internal_id.is_none()
-            && installation.project_id.is_none(),
+        connection_integration_revision: revision.as_str(),
+        project_repo_root: &project.repo_root,
     };
-    serde_json::from_str::<Value>(&installation.host_capability_json)
+    serde_json::from_str::<Value>(&installation.manifest_json)
         .ok()
-        .is_some_and(|value| host_hook_capability_matches_authority_context(&value, context))
+        .is_some_and(|value| guard_manifest_matches_authority_context(&value, context))
 }
 
-fn host_hook_capability_matches_authority_context(
+fn guard_manifest_matches_authority_context(
     value: &Value,
     context: GuardAuthorityContext<'_>,
 ) -> bool {
-    let (project_repo_root, project_git_info_exclude_path) = match context.project_repo_roots {
-        [repo_root] => {
-            let Ok(git_info_exclude_path) = git_exclude_path(repo_root) else {
-                return false;
-            };
-            (Some(repo_root.as_path()), git_info_exclude_path)
-        }
-        [] if context.projectless_owner => (None, None),
-        _ => return false,
+    let project_git_info_exclude_path = match git_exclude_path(context.project_repo_root) {
+        Ok(path) => path,
+        Err(_) => return false,
     };
-    host_hook_capability_matches_owner_binding(
+    guard_manifest_matches_owner_binding(
         value,
-        HostHookCapabilityOwnerBinding {
-            row_host_kind: context.host_kind,
-            row_guard_mode: context.guard_mode,
+        GuardManifestOwnerBinding {
             row_guard_installation_id: context.guard_installation_id,
-            connection_internal_id: context.connection_internal_id,
+            row_connection_id: context.connection_internal_id,
+            row_project_id: context.project_id,
             connection_host_kind: context.connection_host_kind,
-            connection_intent: context.connection_intent,
-            project_repo_root,
+            connection_integration_revision: context.connection_integration_revision,
+            project_repo_root: context.project_repo_root,
             project_git_info_exclude_path: project_git_info_exclude_path.as_deref(),
         },
     )
 }
 
-pub(crate) fn missing_required_hooks_from_capability_json(capability_json: &str) -> Vec<String> {
-    serde_json::from_str::<Value>(capability_json)
+fn inspection_connection_revision(
+    connection: &AgentConnectionInspectionRecord,
+) -> Result<IntegrationRevision, volicord_types::IntegrationRevisionError> {
+    IntegrationRevision::for_connection(ConnectionIntegrationRevisionBasis {
+        connection_internal_id: &connection.connection_internal_id,
+        host_kind: &connection.host_kind,
+        intent: &connection.intent,
+        host_scope: &connection.host_scope,
+        mode: &connection.mode,
+        server_name: &connection.server_name,
+        config_target: &connection.config_target,
+        managed_configuration_fingerprint: &connection.managed_fingerprint,
+    })
+}
+
+fn broken_manifest_findings() -> GuardFileFindings {
+    let mut findings = GuardFileFindings::default();
+    findings
+        .broken_files
+        .push("manifest_json:binding".to_owned());
+    findings
+}
+
+pub(crate) fn missing_required_hooks_from_manifest_json(manifest_json: &str) -> Vec<String> {
+    guard_manifest_from_json(manifest_json)
         .ok()
-        .filter(host_hook_capability_has_exact_current_shape)
-        .map(|value| missing_required_hooks_from_capability(&value))
+        .map(|manifest| missing_required_hooks_from_manifest(&manifest))
         .unwrap_or_else(|| {
             required_guard_phase_names()
                 .into_iter()
@@ -518,150 +477,69 @@ pub(crate) fn missing_required_hooks_from_capability_json(capability_json: &str)
 }
 
 fn guard_file_findings_with_context(
-    capability_json: &str,
+    manifest_json: &str,
     context: Option<GuardAuthorityContext<'_>>,
 ) -> GuardFileFindings {
     let mut findings = GuardFileFindings::default();
-    let Ok(value) = serde_json::from_str::<Value>(capability_json) else {
-        findings
-            .broken_files
-            .push("host_hook_capability_json".to_owned());
+    let Ok(manifest) = guard_manifest_from_json(manifest_json) else {
+        findings.broken_files.push("manifest_json".to_owned());
         findings.record_hook_path_status(
             HookWrapperResolutionStatus::MetadataMissing,
-            json!({ "source": "host_hook_capability_json" }),
+            json!({ "source": "manifest_json" }),
         );
         return findings;
     };
-    if !record_host_hook_capability_schema(&value, &mut findings) {
-        return findings;
-    }
-    if !host_hook_capability_has_exact_current_shape(&value) {
+    let value = serde_json::to_value(&manifest).expect("typed Guard manifest serializes");
+    if context.is_some_and(|context| !guard_manifest_matches_authority_context(&value, context)) {
         findings
             .broken_files
-            .push("host_hook_capability_json:shape".to_owned());
-        findings.hook_path_safety_statuses.push(
-            HookWrapperResolutionStatus::MetadataMissing
-                .as_str()
-                .to_owned(),
-        );
-        findings.hook_path_safety_details.push(json!({
-            "source": "host_hook_capability_json",
-            "reason": "invalid_shape",
-            "expected_schema": HOST_HOOK_CAPABILITY_SCHEMA,
-        }));
-        findings.hook_cwd_independent_values.push(false);
-        findings.hook_subdirectory_safe_values.push(false);
-        return findings;
-    }
-    if context
-        .is_some_and(|context| !host_hook_capability_matches_authority_context(&value, context))
-    {
-        findings
-            .broken_files
-            .push("host_hook_capability_json:binding".to_owned());
+            .push("manifest_json:binding".to_owned());
         findings.hook_path_safety_statuses.push(
             HookWrapperResolutionStatus::AuthorityMismatch
                 .as_str()
                 .to_owned(),
         );
         findings.hook_path_safety_details.push(json!({
-            "source": "host_hook_capability_json",
+            "source": "manifest_json",
             "reason": "owner_binding_mismatch",
         }));
         findings.hook_cwd_independent_values.push(false);
         findings.hook_subdirectory_safe_values.push(false);
         return findings;
     }
-    findings.prompt_capture_configured = value
-        .get("commands")
-        .and_then(|commands| commands.get("prompt_capture"))
-        .is_some_and(Value::is_object);
-    findings.prompt_capture_host_supported = value
-        .get("host_capabilities")
-        .and_then(|capabilities| capabilities.get("user_prompt_submit_hook"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    findings.rule_file_supported = value
-        .get("host_capabilities")
-        .and_then(|capabilities| capabilities.get("rule_file_support"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    if let Some(value) = nonempty_json_string(&value, "selected_profile") {
-        findings.guard_profiles.push(value);
-    }
+    findings.prompt_capture_configured = manifest
+        .required_hook_phases
+        .contains(&GuardHookPhase::PromptCapture);
+    findings.prompt_capture_host_supported = true;
+    findings.rule_file_supported = manifest
+        .managed_files
+        .iter()
+        .any(|file| file.kind == "host_rule_instruction");
+    findings
+        .guard_profiles
+        .push(manifest.integration_profile.as_str().to_owned());
     findings
         .direct_file_write_matcher_coverage_values
-        .push(bool_json_field(
-            &value,
-            "direct_file_write_matcher_coverage",
-        ));
-    findings.missing_required_hooks = missing_required_hooks_from_capability(&value);
+        .push(true);
+    findings.missing_required_hooks = missing_required_hooks_from_manifest(&manifest);
 
-    let files = value
-        .get("files")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten();
-    for file in files {
-        verify_guard_file(file, &value, &mut findings);
+    for expectation in &manifest.managed_files {
+        let file = serde_json::to_value(expectation).expect("typed file expectation serializes");
+        verify_guard_file(&file, &value, &mut findings);
     }
     findings
 }
 
-fn host_hook_capability_schema_is_current(value: &Value) -> bool {
-    value.get("schema").and_then(Value::as_str) == Some(HOST_HOOK_CAPABILITY_SCHEMA)
-}
-
-fn record_host_hook_capability_schema(value: &Value, findings: &mut GuardFileFindings) -> bool {
-    if host_hook_capability_schema_is_current(value) {
-        return true;
-    }
-
-    findings
-        .broken_files
-        .push("host_hook_capability_json:schema".to_owned());
-    findings.hook_path_safety_statuses.push(
-        HookWrapperResolutionStatus::MetadataMissing
-            .as_str()
-            .to_owned(),
-    );
-    findings.hook_path_safety_details.push(json!({
-        "source": "host_hook_capability_json",
-        "reason": "invalid_schema",
-        "expected_schema": HOST_HOOK_CAPABILITY_SCHEMA,
-    }));
-    findings.hook_cwd_independent_values.push(false);
-    findings.hook_subdirectory_safe_values.push(false);
-    false
-}
-
-fn nonempty_json_string(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-}
-
-fn bool_json_field(value: &Value, key: &str) -> bool {
-    value.get(key).and_then(Value::as_bool).unwrap_or(false)
-}
-
-fn missing_required_hooks_from_capability(capability: &Value) -> Vec<String> {
-    let capabilities = capability.get("host_capabilities");
-    required_guard_phase_names()
+fn missing_required_hooks_from_manifest(manifest: &volicord_types::GuardManifest) -> Vec<String> {
+    REQUIRED_GUARD_PHASES
         .into_iter()
-        .filter(|required_hook| {
-            capabilities
-                .and_then(|capabilities| capabilities.get(*required_hook))
-                .and_then(Value::as_bool)
-                != Some(true)
-        })
-        .map(str::to_owned)
+        .zip(GuardHookPhase::REQUIRED)
+        .filter(|(_, phase)| !manifest.required_hook_phases.contains(phase))
+        .map(|(phase, _)| phase.capability_name().to_owned())
         .collect()
 }
 
-fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileFindings) {
+fn verify_guard_file(file: &Value, manifest: &Value, findings: &mut GuardFileFindings) {
     let kind = file
         .get("kind")
         .and_then(Value::as_str)
@@ -669,7 +547,7 @@ fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileF
     let Some(path_text) = file.get("path").and_then(Value::as_str) else {
         findings
             .broken_files
-            .push("host_hook_capability_json:files.path".to_owned());
+            .push("manifest_json:managed_files.path".to_owned());
         if let Some(kind) = kind {
             findings.set_kind_state(kind, "broken");
         }
@@ -702,7 +580,7 @@ fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileF
         Some("managed_json") => verify_managed_json_file(
             file,
             kind,
-            capability,
+            manifest,
             path_text,
             &text,
             expected_hash,
@@ -711,7 +589,7 @@ fn verify_guard_file(file: &Value, capability: &Value, findings: &mut GuardFileF
         Some("managed_script") => verify_managed_script_file(
             file,
             kind,
-            capability,
+            manifest,
             ManagedFileRead {
                 path,
                 path_text,
@@ -781,7 +659,7 @@ fn verify_managed_block_file(
 fn verify_managed_json_file(
     file: &Value,
     kind: Option<HostIntegrationFileKind>,
-    capability: &Value,
+    manifest: &Value,
     path_text: &str,
     text: &str,
     expected_hash: &str,
@@ -826,8 +704,7 @@ fn verify_managed_json_file(
             return;
         }
     };
-    let Some(connection_intent) = capability.get("connection_intent").and_then(Value::as_str)
-    else {
+    let Some(connection_intent) = policy.get("connection_intent").and_then(Value::as_str) else {
         findings.broken_files.push(path_text.to_owned());
         if let Some(kind) = kind {
             findings.set_kind_state(kind, "broken");
@@ -841,7 +718,7 @@ fn verify_managed_json_file(
         }
         return;
     }
-    let expected_policy_hash = capability
+    let expected_policy_hash = manifest
         .get("policy_hash")
         .and_then(Value::as_str)
         .unwrap_or_default();
@@ -859,17 +736,59 @@ fn verify_managed_json_file(
             return;
         }
     }
-    if policy
-        .get("host_hook")
-        .and_then(|guard| guard.get("commands"))
-        != capability.get("commands")
-    {
+    let owner_fields_match = policy.get("connection_id").and_then(Value::as_str)
+        == manifest.get("connection_id").and_then(Value::as_str)
+        && policy.get("guard_installation_id").and_then(Value::as_str)
+            == manifest
+                .get("guard_installation_id")
+                .and_then(Value::as_str)
+        && policy.get("host").and_then(Value::as_str)
+            == manifest.get("host_kind").and_then(Value::as_str)
+        && policy.get("selected_profile").and_then(Value::as_str)
+            == manifest.get("integration_profile").and_then(Value::as_str)
+        && policy.get("repo_root").and_then(Value::as_str)
+            == manifest
+                .get("runtime_commands")
+                .and_then(|commands| commands.get("pre_tool"))
+                .and_then(|command| command.get("args"))
+                .and_then(Value::as_array)
+                .and_then(|args| args.get(3))
+                .and_then(Value::as_str);
+    if !owner_fields_match || !policy_runtime_commands_match(&policy, manifest) {
         findings.stale_files.push(path_text.to_owned());
         state = "stale";
     }
     if let Some(kind) = kind {
         findings.set_kind_state(kind, state);
     }
+}
+
+fn policy_runtime_commands_match(policy: &Value, manifest: &Value) -> bool {
+    let Some(policy_commands) = policy
+        .get("host_hook")
+        .and_then(|hook| hook.get("commands"))
+        .and_then(|value| serde_json::from_value::<GuardCommandSet>(value.clone()).ok())
+    else {
+        return false;
+    };
+    let Some(runtime_commands) = manifest
+        .get("runtime_commands")
+        .and_then(|value| serde_json::from_value::<GuardCommandSet>(value.clone()).ok())
+    else {
+        return false;
+    };
+    GuardHookPhase::REQUIRED.into_iter().all(|phase| {
+        let policy_command = policy_commands.get(phase);
+        let runtime_command = runtime_commands.get(phase);
+        runtime_command.args.len() == 16
+            && policy_command.args.len() == 14
+            && policy_command.command == runtime_command.command
+            && policy_command.args[..12] == runtime_command.args[..12]
+            && policy_command.args[12..] == runtime_command.args[14..]
+            && runtime_command.args[12] == "--policy-hash"
+            && manifest.get("policy_hash").and_then(Value::as_str)
+                == Some(runtime_command.args[13].as_str())
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -883,7 +802,7 @@ struct ManagedFileRead<'a> {
 fn verify_managed_script_file(
     file: &Value,
     kind: Option<HostIntegrationFileKind>,
-    capability: &Value,
+    manifest: &Value,
     managed: ManagedFileRead<'_>,
     findings: &mut GuardFileFindings,
 ) {
@@ -931,7 +850,7 @@ fn verify_managed_script_file(
         findings.stale_files.push(path_text.to_owned());
         state = "stale";
     }
-    let expected_policy_hash = capability
+    let expected_policy_hash = manifest
         .get("policy_hash")
         .and_then(Value::as_str)
         .unwrap_or_default();
@@ -1360,4 +1279,135 @@ pub(crate) fn script_is_executable(path: &Path) -> bool {
 #[cfg(not(unix))]
 pub(crate) fn script_is_executable(_path: &Path) -> bool {
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use serde_json::Value;
+    use volicord_store::{
+        agent_connections::agent_connection_record_read_only,
+        operational_sessions::connection_integration_revision,
+    };
+    use volicord_test_support::core_fixtures::CoreFixture;
+    use volicord_types::IntegrationProfile;
+
+    use super::{guard_file_findings_with_context, GuardAuthorityContext};
+    use crate::{
+        guard_integration::{
+            apply_guard_integration,
+            manifest::guard_manifest_json,
+            plan::{plan_guard_integration, GuardIntegrationPlanRequest},
+        },
+        host_integration::{ConnectionIntent, HostKind, ManagedServerEntry},
+    };
+
+    #[test]
+    fn manifest_audit_accepts_projection_and_detects_owned_file_drift(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("guard-manifest-audit")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let unrelated_path = repo_root.join("README.user.md");
+        fs::write(&unrelated_path, "user-owned\n")?;
+        let volicord_command = fixture.runtime_home_path().join("bin/volicord");
+        let mcp_entry = ManagedServerEntry::new_project_bound(
+            fixture.connection_id(),
+            Some(fixture.project_id()),
+            &volicord_command,
+        );
+        let plan = plan_guard_integration(GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Record,
+            runtime_home: fixture.runtime_home_path(),
+            volicord_command: &volicord_command,
+            repo_root: &repo_root,
+            connection_id: fixture.connection_id(),
+            guard_installation_id: "guard_manifest_audit",
+            mcp_entry: &mcp_entry,
+            connection_intent: ConnectionIntent::Shared,
+        })?;
+        let connection = agent_connection_record_read_only(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+        )?
+        .expect("fixture connection");
+        let revision = connection_integration_revision(&connection)?;
+        let manifest_json = guard_manifest_json(&connection, fixture.project_id(), &plan)?;
+        apply_guard_integration(plan)?;
+        let context = GuardAuthorityContext {
+            guard_installation_id: "guard_manifest_audit",
+            connection_internal_id: fixture.connection_id(),
+            project_id: fixture.project_id(),
+            connection_host_kind: &connection.host_kind,
+            connection_integration_revision: revision.as_str(),
+            project_repo_root: &repo_root,
+        };
+
+        let valid = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert!(valid.generated_config_verified());
+        assert!(valid.stale_files.is_empty());
+        assert!(valid.broken_files.is_empty());
+
+        let policy_path = repo_root.join(".volicord/policy.json");
+        let policy_text = fs::read_to_string(&policy_path)?;
+        let mut policy: Value = serde_json::from_str(&policy_text)?;
+        policy["connection_intent"] = Value::String("personal".to_owned());
+        fs::write(&policy_path, serde_json::to_string(&policy)?)?;
+        let changed_policy = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert!(
+            changed_policy
+                .stale_files
+                .contains(&policy_path.display().to_string())
+                || changed_policy
+                    .broken_files
+                    .contains(&policy_path.display().to_string())
+        );
+        fs::write(&policy_path, policy_text)?;
+
+        let wrapper_path = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
+        let wrapper_text = fs::read_to_string(&wrapper_path)?;
+        let changed_wrapper_text = wrapper_text.replacen("exec ", "exec false # ", 1);
+        assert_ne!(changed_wrapper_text, wrapper_text);
+        fs::write(&wrapper_path, changed_wrapper_text)?;
+        let changed_wrapper = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert!(
+            changed_wrapper
+                .stale_files
+                .contains(&wrapper_path.display().to_string())
+                || changed_wrapper
+                    .broken_files
+                    .contains(&wrapper_path.display().to_string())
+        );
+        fs::write(&wrapper_path, wrapper_text)?;
+
+        let hook_config_path = repo_root.join(".codex/hooks.json");
+        let hook_config_text = fs::read_to_string(&hook_config_path)?;
+        fs::write(&hook_config_path, "not-json")?;
+        let malformed = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert!(malformed
+            .broken_files
+            .contains(&hook_config_path.display().to_string()));
+        fs::write(&hook_config_path, hook_config_text)?;
+
+        let missing_path = repo_root.join(".codex/rules/volicord.rules");
+        fs::remove_file(&missing_path)?;
+        let missing = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert!(missing
+            .missing_files
+            .contains(&missing_path.display().to_string()));
+
+        let mut owner_mismatch: Value = serde_json::from_str(&manifest_json)?;
+        owner_mismatch["connection_id"] = Value::String("connection_other".to_owned());
+        let owner_mismatch = guard_file_findings_with_context(
+            &serde_json::to_string(&owner_mismatch)?,
+            Some(context),
+        );
+        assert!(owner_mismatch
+            .broken_files
+            .contains(&"manifest_json".to_owned()));
+        assert_eq!(fs::read_to_string(unrelated_path)?, "user-owned\n");
+        Ok(())
+    }
 }

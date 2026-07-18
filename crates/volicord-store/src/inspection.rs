@@ -5,7 +5,7 @@ use std::{
 
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
-use volicord_types::{ConnectionVerificationReport, GuardInstallationStatus, IntegrationProfile};
+use volicord_types::{guard_manifest_from_json, ConnectionVerificationReport};
 
 use crate::{
     agent_connections::{
@@ -125,21 +125,9 @@ pub struct ConnectionProjectInspectionRecord {
 pub struct GuardInstallationInspectionRecord {
     pub guard_installation_id: String,
     pub connection_internal_id: String,
-    pub project_internal_id: Option<String>,
-    pub project_id: Option<String>,
-    pub host_kind: String,
-    pub guard_mode: String,
-    pub host_capability_json: String,
-    pub installation_status: String,
-    pub installed_at: Option<String>,
-    pub last_checked_at: String,
-    pub first_seen_at: Option<String>,
-    pub last_seen_at: Option<String>,
-    pub last_seen_phase: Option<String>,
-    pub observed_host_kind: Option<String>,
-    pub observed_policy_hash: Option<String>,
-    pub observed_binary_version: Option<String>,
-    pub metadata_json: String,
+    pub project_internal_id: String,
+    pub project_id: String,
+    pub manifest_json: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -744,48 +732,24 @@ fn read_guard_installation_rows(
                 gi.guard_installation_id,
                 gi.connection_internal_id,
                 gi.project_internal_id,
-                gi.host_kind,
-                gi.guard_mode,
-                gi.host_capability_json,
-                gi.installation_status,
-                gi.installed_at,
-                gi.last_checked_at,
-                gi.first_seen_at,
-                gi.last_seen_at,
-                gi.last_seen_phase,
-                gi.observed_host_kind,
-                gi.observed_policy_hash,
-                gi.observed_binary_version,
-                gi.metadata_json,
+                json_extract(gi.manifest_json, '$.project_id'),
+                gi.manifest_json,
                 gi.created_at,
                 gi.updated_at
              FROM guard_installations AS gi
-             ORDER BY gi.connection_internal_id, gi.guard_mode, gi.guard_installation_id",
+             ORDER BY gi.connection_internal_id, gi.guard_installation_id",
         )
         .map_err(sqlite_unreadable)?;
     let rows = stmt
         .query_map([], |row| {
-            let project_internal_id = row.get::<_, Option<String>>(2)?;
             Ok(GuardInstallationInspectionRecord {
                 guard_installation_id: row.get(0)?,
                 connection_internal_id: row.get(1)?,
-                project_id: project_internal_id.clone(),
-                project_internal_id,
-                host_kind: row.get(3)?,
-                guard_mode: row.get(4)?,
-                host_capability_json: row.get(5)?,
-                installation_status: row.get(6)?,
-                installed_at: row.get(7)?,
-                last_checked_at: row.get(8)?,
-                first_seen_at: row.get(9)?,
-                last_seen_at: row.get(10)?,
-                last_seen_phase: row.get(11)?,
-                observed_host_kind: row.get(12)?,
-                observed_policy_hash: row.get(13)?,
-                observed_binary_version: row.get(14)?,
-                metadata_json: row.get(15)?,
-                created_at: row.get(16)?,
-                updated_at: row.get(17)?,
+                project_internal_id: row.get(2)?,
+                project_id: row.get(3)?,
+                manifest_json: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
             })
         })
         .map_err(sqlite_unreadable)?;
@@ -937,56 +901,23 @@ fn validate_guard_installation_row(
             installation.connection_internal_id
         )));
     }
-    if let Some(project_internal_id) = &installation.project_internal_id {
-        require_nonempty(
-            "guard_installations.project_internal_id",
-            project_internal_id,
-        )?;
-        if !project_ids.contains(project_internal_id.as_str()) {
-            return Err(InspectionIssue::Malformed(format!(
-                "guard_installations references missing project_internal_id {project_internal_id}"
-            )));
-        }
-    }
-    validate_host_kind_value(&installation.host_kind)?;
-    validate_guard_mode_value(&installation.guard_mode)?;
-    validate_guard_installation_status_value(&installation.installation_status)?;
-    validate_json_object(
-        "guard_installations.host_capability_json",
-        &installation.host_capability_json,
-    )?;
-    validate_json_object(
-        "guard_installations.metadata_json",
-        &installation.metadata_json,
-    )?;
     require_nonempty(
-        "guard_installations.last_checked_at",
-        &installation.last_checked_at,
+        "guard_installations.project_internal_id",
+        &installation.project_internal_id,
     )?;
-    if let Some(first_seen_at) = &installation.first_seen_at {
-        require_nonempty("guard_installations.first_seen_at", first_seen_at)?;
+    if !project_ids.contains(installation.project_internal_id.as_str()) {
+        return Err(InspectionIssue::Malformed(format!(
+            "guard_installations references missing project_internal_id {}",
+            installation.project_internal_id
+        )));
     }
-    if let Some(last_seen_at) = &installation.last_seen_at {
-        require_nonempty("guard_installations.last_seen_at", last_seen_at)?;
-    }
-    if let Some(last_seen_phase) = &installation.last_seen_phase {
-        require_nonempty("guard_installations.last_seen_phase", last_seen_phase)?;
-    }
-    if let Some(observed_host_kind) = &installation.observed_host_kind {
-        validate_host_kind_value(observed_host_kind)?;
-    }
-    if let Some(observed_policy_hash) = &installation.observed_policy_hash {
-        require_nonempty(
-            "guard_installations.observed_policy_hash",
-            observed_policy_hash,
-        )?;
-    }
-    if let Some(observed_binary_version) = &installation.observed_binary_version {
-        require_nonempty(
-            "guard_installations.observed_binary_version",
-            observed_binary_version,
-        )?;
-    }
+    require_nonempty("guard_installations.project_id", &installation.project_id)?;
+    guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
+        InspectionIssue::Malformed(
+            "guard_installations.manifest_json is not a canonical current Guard manifest"
+                .to_owned(),
+        )
+    })?;
     require_nonempty("guard_installations.created_at", &installation.created_at)?;
     require_nonempty("guard_installations.updated_at", &installation.updated_at)?;
     Ok(())
@@ -1006,16 +937,6 @@ fn validate_host_kind_scope(host_kind: &str, host_scope: &str) -> Result<(), Ins
     }
 }
 
-fn validate_host_kind_value(host_kind: &str) -> Result<(), InspectionIssue> {
-    if host_kind == HOST_KIND_CODEX {
-        Ok(())
-    } else {
-        Err(InspectionIssue::Malformed(format!(
-            "guard_installations.host_kind is not supported: {host_kind}"
-        )))
-    }
-}
-
 fn validate_connection_intent(intent: &str) -> Result<(), InspectionIssue> {
     if matches!(
         intent,
@@ -1025,35 +946,6 @@ fn validate_connection_intent(intent: &str) -> Result<(), InspectionIssue> {
     } else {
         Err(InspectionIssue::Malformed(format!(
             "agent_connections.intent is not supported: {intent}"
-        )))
-    }
-}
-
-fn validate_guard_mode_value(mode: &str) -> Result<(), InspectionIssue> {
-    if mode == IntegrationProfile::Record.as_str() {
-        Ok(())
-    } else {
-        Err(InspectionIssue::Malformed(format!(
-            "guard_installations.guard_mode is not a supported integration profile: {mode}"
-        )))
-    }
-}
-
-fn validate_guard_installation_status_value(status: &str) -> Result<(), InspectionIssue> {
-    if matches!(
-        status,
-        value if value == GuardInstallationStatus::Absent.as_str()
-            || value == GuardInstallationStatus::Configured.as_str()
-            || value == GuardInstallationStatus::ReloadRequired.as_str()
-            || value == GuardInstallationStatus::Active.as_str()
-            || value == GuardInstallationStatus::Degraded.as_str()
-            || value == GuardInstallationStatus::Stale.as_str()
-            || value == GuardInstallationStatus::Broken.as_str()
-    ) {
-        Ok(())
-    } else {
-        Err(InspectionIssue::Malformed(format!(
-            "guard_installations.installation_status is not supported: {status}"
         )))
     }
 }

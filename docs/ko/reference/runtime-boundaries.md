@@ -30,7 +30,9 @@ WSL2에서는 정규 Linux 형태의 경로만으로 충분하지 않습니다. 
 
 - 공유 Codex 항목의 `.codex/config.toml`
 - 프로젝트 소유 workflow policy의 `.volicord/policy.json`
+- Guard hook 구성, dispatch/phase wrapper, rule instruction
 - `AGENTS.md`의 Volicord 관리 블록
+- 선택적인 `.git/info/exclude` 관리 블록
 
 설정, 복구, 제거는 관련 없는 파일 내용을 보존합니다. Volicord가 경로를 관찰할 수
 있다는 이유로 제품 source, build output, test output, 사용자 구성이 Runtime Home
@@ -61,6 +63,12 @@ root가 ext4에 있다는 사실은 다른 mount의 중첩 파일을 승인하�
 
 구성이 있다고 Codex 신뢰, 다시 불러오기, 초기화, 도구 검색, 현재 운영 session,
 릴리스 셀 상태가 증명되지는 않습니다. 이 사실들은 서로 분리됩니다.
+
+Runtime Home의 Guard manifest는 위 파일 가운데 정확한 Guard-managed subset과 typed
+runtime command에 대한 소유 inventory입니다. Managed script entry는 모든 플랫폼에서 executable
+동작을 요구하지만 파일시스템 조사와 permission 복구는 플랫폼별로 수행합니다. Manifest는
+관련 없는 repository content의 소유권을 주장하지 않으며 host capability 또는 runtime
+인증도 아닙니다.
 
 운영 연결 검증은 `PATH`에서 실제 `codex` 명령을 찾고 플랫폼 topology 규칙에 따라 관찰한
 실행 파일 경로를 canonicalize한 뒤 version 명령을 실행합니다. Path와 version

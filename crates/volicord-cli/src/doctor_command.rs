@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use volicord_store::{
     agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
     core_pipeline::CoreProjectStore,
-    guards::{guard_observation_matches_current_capability, GuardObservationMatch},
+    guards::{guard_installation, guard_observation_summary},
     inspection::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
         InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
@@ -20,18 +20,18 @@ use volicord_store::{
     StoreError, StoreFailureRoute,
 };
 use volicord_types::{
-    canonical_json_sha256, GuardInstallationStatus, IntegrationProfile, ProjectId, SummaryCard,
+    canonical_json_sha256, guard_manifest_from_json, GuardHookPhase, IntegrationProfile, ProjectId,
+    SummaryCard,
 };
 
 use crate::{
     cli::DoctorArgs,
     guard_integration::audit::{
         all_recorded_values_true, guard_file_findings_for_inspection,
-        host_hook_capability_binding_valid_for_inspection,
-        missing_required_hooks_from_capability_json, GuardFileFindings,
+        guard_manifest_binding_valid_for_inspection, missing_required_hooks_from_manifest_json,
+        GuardFileFindings,
     },
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
-    guard_integration::host_hook_capability_has_exact_current_shape,
     guard_integration::policy::validate_policy_schema,
     host_integration::HostKind,
     policy_command::read_validated_policy_file,
@@ -940,11 +940,13 @@ fn inspect_integration_intent_drift(
         }
 
         let guard_matches = active_installations.iter().any(|installation| {
+            let manifest = guard_manifest_from_json(&installation.manifest_json).ok();
             installation.guard_installation_id == policy.guard_installation_id
                 && installation.connection_internal_id == policy.connection_id
-                && installation.guard_mode == IntegrationProfile::Record.as_str()
-                && installation.project_internal_id.as_deref()
-                    == Some(project.project_internal_id.as_str())
+                && manifest.as_ref().is_some_and(|manifest| {
+                    manifest.integration_profile == IntegrationProfile::Record
+                })
+                && installation.project_internal_id == project.project_internal_id
         });
         if !guard_matches {
             push_bounded_intent_finding(
@@ -1199,16 +1201,14 @@ fn active_guard_installations(
             }) else {
                 return false;
             };
-            installation
-                .project_internal_id
-                .as_deref()
-                .is_none_or(|project_internal_id| {
-                    connection.project_internal_id.as_deref() == Some(project_internal_id)
-                        || snapshot.connection_projects.iter().any(|membership| {
-                            membership.connection_internal_id == connection.connection_internal_id
-                                && membership.project_internal_id == project_internal_id
-                        })
-                })
+            {
+                let project_internal_id = installation.project_internal_id.as_str();
+                connection.project_internal_id.as_deref() == Some(project_internal_id)
+                    || snapshot.connection_projects.iter().any(|membership| {
+                        membership.connection_internal_id == connection.connection_internal_id
+                            && membership.project_internal_id == project_internal_id
+                    })
+            }
         })
         .cloned()
         .collect()
@@ -1304,26 +1304,8 @@ fn inspect_guard_installations(
     let installations = active_guard_installations(snapshot);
     if installations.is_empty() {
         for (id, summary) in [
-            (
-                "guard_files_installed",
-                "no Codex Record Guard installation is recorded",
-            ),
-            (
-                "guard_host_reload_required",
-                "no Guard installation needs host reload",
-            ),
-            (
-                "guard_hook_observed",
-                "no Guard hook observation is recorded",
-            ),
-            (
-                "guard_required_hooks_supported",
-                "no Guard capability record is available",
-            ),
-            (
-                "guard_status_active",
-                "no Guard installation status is recorded",
-            ),
+            ("guard_files", "no Codex Record Guard manifest is recorded"),
+            ("guard_observation", "no Guard observation is recorded"),
         ] {
             checks.push(DiagnosticCheck::skipped(id, summary));
         }
@@ -1342,25 +1324,17 @@ fn inspect_guard_installations(
                     },
                 })),
         );
-        checks.push(
-            DiagnosticCheck::skipped(
-                "prompt_capture_available",
-                "no Guard prompt-capture availability is recorded",
-            )
-            .with_details(json!({
-                "state": "not_recorded",
-                "configured": 0,
-                "observed": 0,
-            })),
-        );
         return;
     }
 
     let invalid_scope_count = installations
         .iter()
         .filter(|installation| {
-            installation.host_kind != HostKind::Codex.as_str()
-                || installation.guard_mode != IntegrationProfile::Record.as_str()
+            guard_manifest_from_json(&installation.manifest_json).is_err_and(|_| true)
+                || guard_manifest_from_json(&installation.manifest_json).is_ok_and(|manifest| {
+                    manifest.host_kind.as_str() != HostKind::Codex.as_str()
+                        || manifest.integration_profile != IntegrationProfile::Record
+                })
         })
         .count();
     let binding_valid_installations = installations
@@ -1373,7 +1347,7 @@ fn inspect_guard_installations(
                     connection.connection_internal_id == installation.connection_internal_id
                 })
                 .is_some_and(|connection| {
-                    host_hook_capability_binding_valid_for_inspection(
+                    guard_manifest_binding_valid_for_inspection(
                         installation,
                         connection,
                         &snapshot.projects,
@@ -1403,20 +1377,38 @@ fn inspect_guard_installations(
     let missing_required_hooks = binding_valid_installations
         .iter()
         .flat_map(|installation| {
-            missing_required_hooks_from_capability_json(&installation.host_capability_json)
+            missing_required_hooks_from_manifest_json(&installation.manifest_json)
         })
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    let observed_count = binding_valid_installations
+    let observation_summaries = binding_valid_installations
         .iter()
-        .filter(|installation| guard_observation_current(installation))
+        .filter_map(|installation| guard_observation(snapshot, installation))
+        .collect::<Vec<_>>();
+    let observed_count = observation_summaries
+        .iter()
+        .filter(|summary| summary.all_required_phases_observed())
+        .count();
+    let incompatible_observations = observation_summaries
+        .iter()
+        .map(|summary| summary.incompatible_event_ids.len())
+        .sum::<usize>();
+    let prompt_capture_configured = binding_valid_installations
+        .iter()
+        .filter(|installation| guard_prompt_capture_configured(&installation.manifest_json))
+        .count();
+    let prompt_capture_observed = observation_summaries
+        .iter()
+        .filter(|summary| summary.prompt_capture_observed())
         .count();
     let host_hooks_active = invalid_scope_count == 0
         && binding_invalid_count == 0
         && missing_required_hooks.is_empty()
         && observed_count == installations.len()
-        && installations.iter().all(guard_effective_active)
+        && installations
+            .iter()
+            .all(|installation| guard_effective_active(snapshot, installation))
         && file_findings.generated_config_verified()
         && file_findings.direct_file_write_matcher_coverage();
     let selected_profile = if invalid_scope_count == 0 {
@@ -1445,7 +1437,10 @@ fn inspect_guard_installations(
         },
     })));
 
-    let file_problem = !file_findings.missing_files.is_empty()
+    let file_problem = invalid_scope_count > 0
+        || binding_invalid_count > 0
+        || !missing_required_hooks.is_empty()
+        || !file_findings.missing_files.is_empty()
         || !file_findings.stale_files.is_empty()
         || !file_findings.broken_files.is_empty();
     let file_check = if file_problem {
@@ -1458,17 +1453,26 @@ fn inspect_guard_installations(
                 command: Some("volicord init --host codex --repo PATH --profile record".to_owned()),
             },
         );
-        DiagnosticCheck::warning(
-            "guard_files_installed",
+        DiagnosticCheck::failed(
+            "guard_files",
             "one or more Codex Record Guard files are missing, stale, or broken",
         )
     } else {
-        DiagnosticCheck::passed(
-            "guard_files_installed",
-            "Codex Record Guard files are installed",
-        )
+        DiagnosticCheck::passed("guard_files", "Codex Record Guard files are installed")
     };
-    checks.push(file_check.with_details(doctor_guard_file_details(&file_findings)));
+    let mut file_details = doctor_guard_file_details(&file_findings);
+    if let Some(details) = file_details.as_object_mut() {
+        details.insert(
+            "missing_required_hooks".to_owned(),
+            json!(missing_required_hooks),
+        );
+        details.insert("binding_invalid".to_owned(), json!(binding_invalid_count));
+        details.insert(
+            "outside_release_scope".to_owned(),
+            json!(invalid_scope_count),
+        );
+    }
+    checks.push(file_check.with_details(file_details));
 
     if !matches!(
         file_findings.hook_path_safety_state().as_str(),
@@ -1488,142 +1492,44 @@ fn inspect_guard_installations(
         );
     }
 
-    let reload_required = installations.iter().any(|installation| {
-        installation.installation_status == GuardInstallationStatus::ReloadRequired.as_str()
-    });
-    if reload_required {
-        checks.push(
-            DiagnosticCheck::warning(
-                "guard_host_reload_required",
-                "one or more Guard installations need a Codex reload",
-            )
-            .with_details(json!({ "reload_required": true })),
-        );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "reload_guard_host".to_owned(),
-                instruction:
-                    "Restart or reload Codex so it loads the current Volicord Guard configuration."
-                        .to_owned(),
-                command: None,
-            },
-        );
-    } else {
-        checks.push(DiagnosticCheck::passed(
-            "guard_host_reload_required",
-            "no Guard installation requires a Codex reload",
-        ));
-    }
-
-    if invalid_scope_count == 0 && binding_invalid_count == 0 && missing_required_hooks.is_empty() {
-        checks.push(DiagnosticCheck::passed(
-            "guard_required_hooks_supported",
-            "required Codex Record Guard capabilities are recorded",
-        ));
-    } else {
-        checks.push(
-            DiagnosticCheck::warning(
-                "guard_required_hooks_supported",
-                "one or more Codex Record Guard capabilities are missing or invalid",
-            )
-            .with_details(json!({
-                "missing_required_hooks": missing_required_hooks,
-                "binding_invalid": binding_invalid_count,
-                "outside_release_scope": invalid_scope_count,
-            })),
-        );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_guard_required_hooks".to_owned(),
-                instruction:
-                    "Reinstall the managed Codex Record Guard configuration for the affected repository."
-                        .to_owned(),
-                command: Some(
-                    "volicord init --host codex --repo PATH --profile record".to_owned(),
-                ),
-            },
-        );
-    }
-
-    if binding_invalid_count == 0 && observed_count == installations.len() {
+    if binding_invalid_count == 0
+        && incompatible_observations == 0
+        && observed_count == installations.len()
+    {
         checks.push(
             DiagnosticCheck::passed(
-                "guard_hook_observed",
-                "Codex Record Guard hooks were observed",
+                "guard_observation",
+                "all current Codex Record Guard hook phases were observed",
             )
             .with_details(json!({
                 "observed": observed_count,
                 "installations": installations.len(),
+                "incompatible_events": incompatible_observations,
+                "prompt_capture_configured": prompt_capture_configured,
+                "prompt_capture_observed": prompt_capture_observed,
             })),
         );
     } else {
-        checks.push(
-            DiagnosticCheck::warning(
-                "guard_hook_observed",
-                "one or more Codex Record Guard installations have no current observation",
+        let observation_check = if incompatible_observations > 0 {
+            DiagnosticCheck::failed(
+                "guard_observation",
+                "a current Guard event reported a malformed or incompatible hook contract",
             )
-            .with_details(json!({
-                "observed": observed_count,
-                "installations": installations.len(),
-                "binding_invalid": binding_invalid_count,
-            })),
-        );
+        } else {
+            DiagnosticCheck::warning(
+                "guard_observation",
+                "one or more Codex Record Guard installations are awaiting current hook observations",
+            )
+        };
+        checks.push(observation_check.with_details(json!({
+            "observed": observed_count,
+            "installations": installations.len(),
+            "binding_invalid": binding_invalid_count,
+            "incompatible_events": incompatible_observations,
+            "prompt_capture_configured": prompt_capture_configured,
+            "prompt_capture_observed": prompt_capture_observed,
+        })));
     }
-
-    let installation_refs = installations.iter().collect::<Vec<_>>();
-    let status_counts = guard_status_counts_for_refs(&installation_refs);
-    let unhealthy = installations.iter().any(|installation| {
-        matches!(
-            installation.installation_status.as_str(),
-            "broken" | "stale" | "degraded"
-        )
-    });
-    if unhealthy || binding_invalid_count > 0 {
-        checks.push(
-            DiagnosticCheck::warning(
-                "guard_status_active",
-                "one or more Codex Record Guard installations are unhealthy",
-            )
-            .with_details(json!({
-                "status_counts": status_counts,
-                "binding_invalid": binding_invalid_count,
-            })),
-        );
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_guard_status".to_owned(),
-                instruction: "Repair or reinstall the affected Codex Record Guard integration."
-                    .to_owned(),
-                command: Some("volicord init --host codex --repo PATH --profile record".to_owned()),
-            },
-        );
-    } else if installations.iter().all(guard_effective_active) {
-        checks.push(
-            DiagnosticCheck::passed(
-                "guard_status_active",
-                "effective Codex Record Guard status is active",
-            )
-            .with_details(json!({ "status_counts": status_counts })),
-        );
-    } else {
-        checks.push(
-            DiagnosticCheck::warning(
-                "guard_status_active",
-                "Codex Record Guard is configured but not currently observed",
-            )
-            .with_details(json!({ "status_counts": status_counts })),
-        );
-    }
-
-    inspect_prompt_capture_availability(
-        &installations,
-        &binding_valid_installations,
-        binding_invalid_count,
-        checks,
-    );
 }
 
 fn doctor_guard_file_details(findings: &GuardFileFindings) -> Value {
@@ -1647,7 +1553,7 @@ fn doctor_guard_file_states(findings: &GuardFileFindings) -> BTreeMap<String, St
     if findings
         .broken_files
         .iter()
-        .any(|file| file == "host_hook_capability_json")
+        .any(|file| file == "manifest_json")
     {
         return states;
     }
@@ -1663,175 +1569,54 @@ fn doctor_guard_file_states(findings: &GuardFileFindings) -> BTreeMap<String, St
     states
 }
 
-fn current_host_capability(capability_json: &str) -> Option<Value> {
-    serde_json::from_str::<Value>(capability_json)
+fn guard_observation(
+    snapshot: &RegistryInspectionSnapshot,
+    installation: &volicord_store::inspection::GuardInstallationInspectionRecord,
+) -> Option<volicord_store::guards::GuardObservationSummary> {
+    guard_installation(
+        &snapshot.runtime_home.runtime_home_path,
+        &installation.guard_installation_id,
+    )
+    .ok()
+    .flatten()
+    .and_then(|record| {
+        guard_observation_summary(
+            &snapshot.runtime_home.runtime_home_path,
+            &installation.project_id,
+            &record,
+        )
         .ok()
-        .filter(host_hook_capability_has_exact_current_shape)
+    })
 }
 
 fn guard_observation_current(
+    snapshot: &RegistryInspectionSnapshot,
     installation: &volicord_store::inspection::GuardInstallationInspectionRecord,
 ) -> bool {
-    guard_observation_matches_current_capability(GuardObservationMatch {
-        guard_installation_id: &installation.guard_installation_id,
-        host_kind: &installation.host_kind,
-        host_capability_json: &installation.host_capability_json,
-        last_seen_at: installation.last_seen_at.as_deref(),
-        last_seen_phase: installation.last_seen_phase.as_deref(),
-        observed_host_kind: installation.observed_host_kind.as_deref(),
-        observed_policy_hash: installation.observed_policy_hash.as_deref(),
-    })
-    .unwrap_or(false)
+    guard_observation(snapshot, installation)
+        .is_some_and(|summary| summary.all_required_phases_observed())
 }
 
 fn guard_configuration_healthy(
     installation: &volicord_store::inspection::GuardInstallationInspectionRecord,
 ) -> bool {
-    matches!(
-        installation.installation_status.as_str(),
-        "active" | "configured"
-    ) && missing_required_hooks_from_capability_json(&installation.host_capability_json).is_empty()
+    guard_manifest_from_json(&installation.manifest_json).is_ok()
+        && missing_required_hooks_from_manifest_json(&installation.manifest_json).is_empty()
 }
 
 fn guard_effective_active(
+    snapshot: &RegistryInspectionSnapshot,
     installation: &volicord_store::inspection::GuardInstallationInspectionRecord,
 ) -> bool {
-    guard_configuration_healthy(installation) && guard_observation_current(installation)
+    guard_configuration_healthy(installation) && guard_observation_current(snapshot, installation)
 }
 
-fn inspect_prompt_capture_availability(
-    installations: &[volicord_store::inspection::GuardInstallationInspectionRecord],
-    binding_valid_installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
-    binding_invalid_count: usize,
-    checks: &mut Vec<DiagnosticCheck>,
-) {
-    if installations.is_empty() {
-        checks.push(
-            DiagnosticCheck::skipped(
-                "prompt_capture_available",
-                "no Guard prompt-capture installation is recorded",
-            )
-            .with_details(json!({
-                "state": "not_recorded",
-                "configured": 0,
-                "observed": 0,
-            })),
-        );
-        return;
-    }
-    let configured = binding_valid_installations
-        .iter()
-        .filter(|installation| guard_prompt_capture_configured(&installation.host_capability_json))
-        .count();
-    let host_supported = binding_valid_installations
-        .iter()
-        .filter(|installation| {
-            guard_prompt_capture_host_supported(&installation.host_capability_json)
-        })
-        .count();
-    let observed = binding_valid_installations
-        .iter()
-        .filter(|installation| {
-            guard_observation_current(installation)
-                && guard_prompt_capture_configured(&installation.host_capability_json)
-        })
-        .count();
-    if binding_invalid_count > 0 {
-        checks.push(
-            DiagnosticCheck::warning(
-                "prompt_capture_available",
-                "Guard prompt-capture ownership is invalid for one or more installations",
-            )
-            .with_details(json!({
-                "state": "binding_invalid",
-                "configured": configured,
-                "observed": observed,
-                "host_supported": host_supported,
-                "binding_invalid": binding_invalid_count,
-            })),
-        );
-    } else if host_supported == 0 {
-        checks.push(
-            DiagnosticCheck::warning(
-                "prompt_capture_available",
-                "Codex does not report prompt-capture support for the recorded Guard installation",
-            )
-            .with_details(json!({
-                "state": "unsupported_by_host",
-                "configured": configured,
-                "observed": observed,
-                "host_supported": host_supported,
-            })),
-        );
-    } else if observed > 0 {
-        checks.push(
-            DiagnosticCheck::passed("prompt_capture_available", "prompt capture is available")
-                .with_details(json!({
-                    "state": "available",
-                    "configured": configured,
-                    "observed": observed,
-                    "host_supported": host_supported,
-                })),
-        );
-    } else if configured > 0 {
-        checks.push(
-            DiagnosticCheck::warning(
-                "prompt_capture_available",
-                "Guard prompt capture is configured but no current hook observation is recorded",
-            )
-            .with_details(json!({
-                "state": "configured_unobserved",
-                "configured": configured,
-                "observed": observed,
-                "host_supported": host_supported,
-            })),
-        );
-    } else {
-        checks.push(
-            DiagnosticCheck::warning(
-                "prompt_capture_available",
-                "Guard prompt capture is not configured for one or more installations",
-            )
-            .with_details(json!({
-                "state": "not_configured",
-                "configured": configured,
-                "observed": observed,
-                "host_supported": host_supported,
-            })),
-        );
-    }
-}
-
-fn guard_prompt_capture_configured(capability_json: &str) -> bool {
-    current_host_capability(capability_json)
-        .and_then(|value| value.get("prompt_capture").and_then(Value::as_bool))
-        .unwrap_or(false)
-}
-
-fn guard_prompt_capture_host_supported(capability_json: &str) -> bool {
-    current_host_capability(capability_json)
-        .and_then(|value| {
-            value
-                .get("host_capabilities")
-                .and_then(|capabilities| capabilities.get("user_prompt_submit_hook"))
-                .and_then(Value::as_bool)
-        })
-        .unwrap_or(false)
-}
-
-fn guard_status_counts_for_refs(
-    installations: &[&volicord_store::inspection::GuardInstallationInspectionRecord],
-) -> serde_json::Map<String, Value> {
-    let mut counts = serde_json::Map::new();
-    for installation in installations {
-        let count = counts
-            .get(&installation.installation_status)
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-            + 1;
-        counts.insert(installation.installation_status.clone(), json!(count));
-    }
-    counts
+fn guard_prompt_capture_configured(manifest_json: &str) -> bool {
+    guard_manifest_from_json(manifest_json).is_ok_and(|manifest| {
+        manifest
+            .required_hook_phases
+            .contains(&GuardHookPhase::PromptCapture)
+    })
 }
 
 fn inspect_installation_profile<F>(
@@ -2246,11 +2031,11 @@ fn doctor_compact_check_rows(
         ("Profile", doctor_selected_profile_from_checks(checks)),
         (
             "Guard files",
-            doctor_check_state(checks, "guard_files_installed").to_owned(),
+            doctor_check_state(checks, "guard_files").to_owned(),
         ),
         (
             "Hook observation",
-            doctor_check_state(checks, "guard_hook_observed").to_owned(),
+            doctor_check_state(checks, "guard_observation").to_owned(),
         ),
         ("Prompt capture", doctor_prompt_capture_status(checks)),
         (
@@ -2327,18 +2112,18 @@ fn doctor_states_json(
         "post_tool_correlation_available": doctor_host_hook_guard_available(checks),
         "bypass_detection_active": false,
         "prompt_capture_available": doctor_prompt_capture_available(checks),
-        "guard_configuration": doctor_check_state(checks, "guard_required_hooks_supported"),
-        "guard_observation": doctor_check_state(checks, "guard_hook_observed"),
-        "guard_effective": doctor_check_state(checks, "guard_status_active"),
-        "guard_files": doctor_check_state(checks, "guard_files_installed"),
+        "guard_configuration": doctor_check_state(checks, "guard_files"),
+        "guard_observation": doctor_check_state(checks, "guard_observation"),
+        "guard_effective": doctor_check_state(checks, "guard_observation"),
+        "guard_files": doctor_check_state(checks, "guard_files"),
         "agents_managed_block": doctor_guard_file_kind_state(checks, "agents_managed_block"),
         "volicord_policy_file": doctor_guard_file_kind_state(checks, "volicord_policy"),
         "rule_instruction_config": doctor_guard_file_kind_state(checks, "host_rule_instruction"),
         "hook_config": doctor_guard_file_kind_state(checks, "host_hook_config"),
         "required_hook_phases": doctor_required_hook_phases_state(checks),
         "missing_required_hooks": doctor_missing_required_hooks_value(checks),
-        "guard_hook_observed": doctor_check_state(checks, "guard_hook_observed"),
-        "guard_status": doctor_check_state(checks, "guard_status_active"),
+        "guard_hook_observed": doctor_check_state(checks, "guard_observation"),
+        "guard_status": doctor_check_state(checks, "guard_observation"),
         "prompt_capture": doctor_prompt_capture_health(checks),
         "prompt_capture_status": doctor_prompt_capture_status(checks),
         "host_reload_required": doctor_host_reload_required(checks, actions),
@@ -2448,13 +2233,13 @@ fn doctor_check_state(checks: &[DiagnosticCheck], id: &str) -> &'static str {
 fn doctor_guard_file_kind_state(checks: &[DiagnosticCheck], kind: &str) -> String {
     checks
         .iter()
-        .find(|check| check.id == "guard_files_installed")
+        .find(|check| check.id == "guard_files")
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get("file_states"))
         .and_then(|states| states.get(kind))
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .unwrap_or_else(|| match check_status(checks, "guard_files_installed") {
+        .unwrap_or_else(|| match check_status(checks, "guard_files") {
             Some("skipped") | None => "not_checked".to_owned(),
             _ => "not_configured".to_owned(),
         })
@@ -2463,7 +2248,7 @@ fn doctor_guard_file_kind_state(checks: &[DiagnosticCheck], kind: &str) -> Strin
 fn doctor_guard_file_bool_detail(checks: &[DiagnosticCheck], key: &str) -> bool {
     checks
         .iter()
-        .find(|check| check.id == "guard_files_installed")
+        .find(|check| check.id == "guard_files")
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get(key))
         .and_then(Value::as_bool)
@@ -2477,7 +2262,7 @@ fn doctor_generated_config_verified_state(checks: &[DiagnosticCheck]) -> bool {
 fn doctor_hook_path_safety_state(checks: &[DiagnosticCheck]) -> String {
     checks
         .iter()
-        .find(|check| check.id == "guard_files_installed")
+        .find(|check| check.id == "guard_files")
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get("hook_path_safety"))
         .and_then(Value::as_str)
@@ -2539,7 +2324,7 @@ fn doctor_control_surface_bool(checks: &[DiagnosticCheck], key: &str) -> bool {
 }
 
 fn doctor_required_hook_phases_state(checks: &[DiagnosticCheck]) -> &'static str {
-    match check_status(checks, "guard_required_hooks_supported") {
+    match check_status(checks, "guard_files") {
         Some("passed") => "configured",
         Some("warning") | Some("failed") => "missing",
         Some("skipped") => "not_checked",
@@ -2550,7 +2335,7 @@ fn doctor_required_hook_phases_state(checks: &[DiagnosticCheck]) -> &'static str
 fn doctor_missing_required_hooks_value(checks: &[DiagnosticCheck]) -> Vec<String> {
     checks
         .iter()
-        .find(|check| check.id == "guard_required_hooks_supported")
+        .find(|check| check.id == "guard_files")
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get("missing_required_hooks"))
         .and_then(Value::as_array)
@@ -2562,22 +2347,37 @@ fn doctor_missing_required_hooks_value(checks: &[DiagnosticCheck]) -> Vec<String
 }
 
 fn doctor_prompt_capture_health(checks: &[DiagnosticCheck]) -> &'static str {
-    if check_status(checks, "prompt_capture_available").is_none() {
+    if check_status(checks, "guard_observation").is_none() {
         "not_checked"
     } else {
-        doctor_check_state(checks, "prompt_capture_available")
+        doctor_check_state(checks, "guard_observation")
     }
 }
 
 fn doctor_prompt_capture_status(checks: &[DiagnosticCheck]) -> String {
     checks
         .iter()
-        .find(|check| check.id == "prompt_capture_available")
+        .find(|check| check.id == "guard_observation")
         .and_then(|check| check.details.as_ref())
-        .and_then(|details| details.get("state"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| "not_checked".to_owned())
+        .map(|details| {
+            let configured = details
+                .get("prompt_capture_configured")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let observed = details
+                .get("prompt_capture_observed")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            if observed > 0 {
+                "available"
+            } else if configured > 0 {
+                "configured_unobserved"
+            } else {
+                "not_configured"
+            }
+        })
+        .unwrap_or("not_checked")
+        .to_owned()
 }
 
 fn doctor_host_hook_guard_available(checks: &[DiagnosticCheck]) -> bool {

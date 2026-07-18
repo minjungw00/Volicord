@@ -1144,7 +1144,7 @@ pub fn activate_staged_connection(
     validate_identifier("connection_internal_id", connection_internal_id)?;
     validate_project_id(project_id)?;
     if guard_upsert.connection_internal_id != connection_internal_id
-        || guard_upsert.project_id.as_deref() != Some(project_id)
+        || guard_upsert.project_id != project_id
     {
         return Err(StoreError::InvalidInput {
             detail: "the staged guard installation must match the requested connection and project"
@@ -1176,12 +1176,6 @@ pub fn activate_staged_connection(
     require_runtime_home(&tx, &registry_path)?;
     let staged_connection = require_agent_connection(&tx, connection_internal_id)?;
     reject_generic_pending_host_cleanup_mutation(&staged_connection)?;
-    if guard_upsert.host_kind != staged_connection.host_kind {
-        return Err(StoreError::InvalidInput {
-            detail: "the staged guard installation host must match the requested connection"
-                .to_owned(),
-        });
-    }
     let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
     let expected_superseded = superseded
         .iter()
@@ -2162,8 +2156,6 @@ mod tests {
     const TARGET_OTHER_PROJECT_ID: &str = "project_c";
     const TEST_POLICY_HASH: &str =
         "sha256:0000000000000000000000000000000000000000000000000000000000000000";
-    const TEST_CONTENT_HASH: &str =
-        "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
     #[test]
     fn agent_connection_registration_updates_and_lists() -> Result<(), Box<dyn Error>> {
@@ -2801,7 +2793,7 @@ mod tests {
         assert!(activated.enabled);
         assert!(disabled_superseded.is_empty());
         assert_eq!(installation.connection_internal_id, "conn_staged");
-        assert_eq!(installation.project_id.as_deref(), Some(PROJECT_ID));
+        assert_eq!(installation.project_id, PROJECT_ID);
         let prior = agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
             .expect("prior connection remains as history");
         assert!(prior.enabled);
@@ -3358,126 +3350,20 @@ mod tests {
             .expect("fixture project lookup")
             .expect("fixture project")
             .repo_root;
-        let command = |phase: &str| {
-            serde_json::json!({
-                "command": runtime_home.join("bin/volicord"),
-                "args": [
-                    "_hook", phase,
-                    "--repo", repo_root,
-                    "--connection", connection_internal_id,
-                    "--guard-installation", guard_installation_id,
-                    "--host", "codex",
-                    "--integration-profile", "record",
-                    "--policy-hash", TEST_POLICY_HASH,
-                    "--host-output", "codex",
-                ],
-            })
-        };
-        let wrapper = |phase: &str, command_name: &str| {
-            serde_json::json!({
-                "kind": "host_hook_wrapper",
-                "path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
-                "status": "unchanged",
-                "content_hash": TEST_CONTENT_HASH,
-                "ownership": "managed_script",
-                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                "executable_required": true,
-                "managed_script_command": "exec volicord",
-                "host_kind": "codex",
-                "phase": phase,
-                "purpose": "guard",
-                "connection_id": connection_internal_id,
-                "guard_installation_id": guard_installation_id,
-                "policy_hash": TEST_POLICY_HASH,
-                "host_output": "codex",
-            })
-        };
-        let capability = serde_json::json!({
-            "schema": volicord_types::HOST_HOOK_CAPABILITY_SCHEMA,
-            "policy_hash": TEST_POLICY_HASH,
-            "selected_profile": "record",
-            "connection_intent": "personal",
-            "direct_file_write_matcher_coverage": false,
-            "host_capabilities": {
-                "stdio_mcp": true,
-                "pre_tool_hook": true,
-                "post_tool_hook": true,
-                "user_prompt_submit_hook": true,
-                "rule_file_support": true,
-                "project_local_configuration": true,
-            },
-            "files": [
-                {
-                    "kind": "agents_managed_block",
-                    "path": repo_root.join("AGENTS.md"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_block",
-                    "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
-                    "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE",
-                },
-                {
-                    "kind": "volicord_policy",
-                    "path": repo_root.join(".volicord/policy.json"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_json",
-                },
-                {
-                    "kind": "host_hook_config",
-                    "path": repo_root.join(".codex/hooks.json"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_json",
-                },
-                {
-                    "kind": "host_hook_dispatch",
-                    "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_script",
-                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                    "executable_required": true,
-                    "managed_script_role": "codex_dispatch",
-                    "host_kind": "codex",
-                    "phase": "dispatch",
-                },
-                wrapper("pre_tool", "pre-tool"),
-                wrapper("post_tool", "post-tool"),
-                wrapper("prompt_capture", "prompt-capture"),
-                {
-                    "kind": "host_rule_instruction",
-                    "path": repo_root.join(".codex/rules/volicord.rules"),
-                    "status": "unchanged",
-                    "content_hash": TEST_CONTENT_HASH,
-                    "ownership": "managed_block",
-                    "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
-                    "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
-                },
-            ],
-            "commands": {
-                "pre_tool": command("pre-tool"),
-                "post_tool": command("post-tool"),
-                "prompt_capture": command("prompt-capture"),
-            },
-        });
+        let connection = agent_connection_record_read_only(runtime_home, connection_internal_id)
+            .expect("fixture connection lookup")
+            .expect("fixture connection");
         GuardInstallationUpsert {
             guard_installation_id: guard_installation_id.to_owned(),
             connection_internal_id: connection_internal_id.to_owned(),
-            project_id: Some(project_id.to_owned()),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "record".to_owned(),
-            host_capability_json: capability.to_string(),
-            installation_status: "configured".to_owned(),
-            installed_at: None,
-            last_checked_at: "2026-07-13T00:00:00Z".to_owned(),
-            first_seen_at: None,
-            last_seen_at: None,
-            last_seen_phase: None,
-            observed_host_kind: None,
-            observed_policy_hash: None,
-            observed_binary_version: None,
-            metadata_json: "{}".to_owned(),
+            project_id: project_id.to_owned(),
+            manifest_json: crate::guards::test_guard_manifest_json(
+                &connection,
+                project_id,
+                &repo_root,
+                guard_installation_id,
+                TEST_POLICY_HASH,
+            ),
         }
     }
 }

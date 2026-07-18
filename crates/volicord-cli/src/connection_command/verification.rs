@@ -625,20 +625,10 @@ fn guard_checks(
     } else {
         ConnectionCheckStatus::Failed
     };
-    let hooks_status = if guard.missing_required_hooks.is_empty() && guard.generated_config_verified
-    {
-        if guard.hook_observed_state == "observed" {
-            ConnectionCheckStatus::Passed
-        } else {
-            ConnectionCheckStatus::Pending
-        }
-    } else {
-        ConnectionCheckStatus::Failed
-    };
-    let prompt_status = match guard.prompt_capture_state.as_str() {
-        "active" | "observed" => ConnectionCheckStatus::Passed,
-        "configured" | "reload_required" => ConnectionCheckStatus::Pending,
-        _ => ConnectionCheckStatus::Failed,
+    let observation_status = match guard.hook_observed_state.as_str() {
+        "observed" => ConnectionCheckStatus::Passed,
+        "failed" => ConnectionCheckStatus::Failed,
+        _ => ConnectionCheckStatus::Pending,
     };
     let facts = json!({
         "generated_config_verified": guard.generated_config_verified,
@@ -667,26 +657,14 @@ fn guard_checks(
             guard.last_observed_at.as_deref(),
         )?,
         canonical_check(
-            "guard_hooks",
-            hooks_status,
-            match hooks_status {
-                ConnectionCheckStatus::Passed => "guard_hooks_passed",
-                ConnectionCheckStatus::Pending => "guard_hooks_observation_pending",
-                ConnectionCheckStatus::Failed => "guard_hooks_failed",
+            "guard_observation",
+            observation_status,
+            match observation_status {
+                ConnectionCheckStatus::Passed => "guard_observation_passed",
+                ConnectionCheckStatus::Pending => "guard_observation_pending",
+                ConnectionCheckStatus::Failed => "guard_observation_failed",
             },
-            "Guard hook configuration and observation were checked",
-            Some(facts.clone()),
-            guard.last_observed_at.as_deref(),
-        )?,
-        canonical_check(
-            "prompt_capture",
-            prompt_status,
-            match prompt_status {
-                ConnectionCheckStatus::Passed => "prompt_capture_passed",
-                ConnectionCheckStatus::Pending => "prompt_capture_pending",
-                ConnectionCheckStatus::Failed => "prompt_capture_failed",
-            },
-            "Guard prompt capture was checked",
+            "Current Guard hook phases were checked",
             Some(facts),
             guard.last_observed_at.as_deref(),
         )?,
@@ -754,7 +732,7 @@ fn actions_for_checks(
                     ),
                 );
             }
-            ("guard_files" | "guard_hooks" | "prompt_capture", ConnectionCheckStatus::Pending) => {
+            ("guard_files" | "guard_observation", ConnectionCheckStatus::Pending) => {
                 actions.insert(
                     "reload_guard",
                     (
@@ -763,7 +741,7 @@ fn actions_for_checks(
                     ),
                 );
             }
-            ("guard_files" | "guard_hooks" | "prompt_capture", ConnectionCheckStatus::Failed) => {
+            ("guard_files" | "guard_observation", ConnectionCheckStatus::Failed) => {
                 actions.insert(
                     "repair_guard",
                     (
@@ -1106,7 +1084,7 @@ mod tests {
             .expect("MCP check"),
         ];
         checks.extend(session_checks);
-        for id in ["guard_files", "guard_hooks", "prompt_capture"] {
+        for id in ["guard_files", "guard_observation"] {
             checks.push(
                 canonical_check(
                     id,

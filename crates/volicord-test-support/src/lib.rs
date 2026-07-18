@@ -16,9 +16,9 @@ use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
 use volicord_store::{
     agent_connections::{
-        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
-        ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX,
-        HOST_SCOPE_PROJECT,
+        add_connection_project, agent_connection_record_read_only, ensure_agent_connection,
+        AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW,
+        HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
     },
     bootstrap::{
         initialize_runtime_home, register_project, write_installation_profile,
@@ -29,13 +29,17 @@ use volicord_store::{
         agent_session_matches_current_integration, guard_health_record, insert_agent_session,
         AgentSessionInsert,
     },
-    operational_sessions::{start_mcp_runtime_session, McpRuntimeSessionStart},
+    operational_sessions::{
+        connection_integration_revision, start_mcp_runtime_session, McpRuntimeSessionStart,
+    },
     sqlite::open_project_state_database,
     StoreResult,
 };
 use volicord_types::{
-    managed_stdio_session_id, AgentRuntimeSessionId, AgentSessionId, McpRuntimeSessionSource,
-    TypeBoundary,
+    managed_stdio_session_id, AgentConnectionId, AgentRuntimeSessionId, AgentSessionId,
+    GuardCommand, GuardCommandSet, GuardHookPhase, GuardInstallationId, GuardManifest, HostKind,
+    IntegrationProfile, ManagedFileExpectation, McpRuntimeSessionSource, PolicyHash, ProjectId,
+    TypeBoundary, GUARD_MANIFEST_SCHEMA,
 };
 
 pub mod fixtures {
@@ -63,6 +67,150 @@ pub struct TestAgentSessionFixture {
     pub host_session_id: String,
     pub host_thread_id: String,
     pub host_turn_id: String,
+}
+
+/// Builds a strict canonical Guard manifest for shared implementation fixtures.
+pub fn test_guard_manifest_json(
+    runtime_home: impl AsRef<Path>,
+    repo_root: &Path,
+    project_id: &str,
+    connection_id: &str,
+    guard_installation_id: &str,
+    policy_hash: &str,
+) -> String {
+    let runtime_home = runtime_home.as_ref();
+    let connection = agent_connection_record_read_only(runtime_home, connection_id)
+        .expect("fixture connection lookup")
+        .expect("fixture connection");
+    let integration_revision =
+        connection_integration_revision(&connection).expect("fixture integration revision");
+    let command_path = runtime_home.join("bin/volicord").display().to_string();
+    let command = |phase: GuardHookPhase| GuardCommand {
+        command: command_path.clone(),
+        args: vec![
+            "_hook".to_owned(),
+            phase.command_name().to_owned(),
+            "--repo".to_owned(),
+            repo_root.display().to_string(),
+            "--connection".to_owned(),
+            connection_id.to_owned(),
+            "--guard-installation".to_owned(),
+            guard_installation_id.to_owned(),
+            "--host".to_owned(),
+            "codex".to_owned(),
+            "--integration-profile".to_owned(),
+            "record".to_owned(),
+            "--policy-hash".to_owned(),
+            policy_hash.to_owned(),
+            "--host-output".to_owned(),
+            "codex".to_owned(),
+        ],
+    };
+    let hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    let managed = |kind: &str, path: PathBuf, ownership: &str| ManagedFileExpectation {
+        kind: kind.to_owned(),
+        path: path.display().to_string(),
+        content_hash: hash.to_owned(),
+        ownership: ownership.to_owned(),
+        managed_marker_start: (ownership == "managed_block").then(|| "VOLICORD_START".to_owned()),
+        managed_marker_end: (ownership == "managed_block").then(|| "VOLICORD_END".to_owned()),
+        managed_marker: None,
+        executable_required: None,
+        managed_script_role: None,
+        managed_script_command: None,
+        host_kind: None,
+        phase: None,
+        purpose: None,
+        connection_id: None,
+        guard_installation_id: None,
+        policy_hash: None,
+        host_output: None,
+    };
+    let wrapper = |phase: GuardHookPhase| ManagedFileExpectation {
+        kind: "host_hook_wrapper".to_owned(),
+        path: repo_root
+            .join(format!(".codex/hooks/volicord-{}.sh", phase.command_name()))
+            .display()
+            .to_string(),
+        content_hash: hash.to_owned(),
+        ownership: "managed_script".to_owned(),
+        managed_marker_start: None,
+        managed_marker_end: None,
+        managed_marker: Some("VOLICORD_MANAGED_HOOK_WRAPPER".to_owned()),
+        executable_required: Some(true),
+        managed_script_role: None,
+        managed_script_command: Some("exec volicord".to_owned()),
+        host_kind: Some("codex".to_owned()),
+        phase: Some(phase.as_str().to_owned()),
+        purpose: Some("guard".to_owned()),
+        connection_id: Some(connection_id.to_owned()),
+        guard_installation_id: Some(guard_installation_id.to_owned()),
+        policy_hash: Some(policy_hash.to_owned()),
+        host_output: Some("codex".to_owned()),
+    };
+    let mut managed_files = vec![
+        managed(
+            "agents_managed_block",
+            repo_root.join("AGENTS.md"),
+            "managed_block",
+        ),
+        managed(
+            "volicord_policy",
+            repo_root.join(".volicord/policy.json"),
+            "managed_json",
+        ),
+        managed(
+            "host_hook_config",
+            repo_root.join(".codex/hooks.json"),
+            "managed_json",
+        ),
+        ManagedFileExpectation {
+            kind: "host_hook_dispatch".to_owned(),
+            path: repo_root
+                .join(".codex/hooks/volicord-dispatch.sh")
+                .display()
+                .to_string(),
+            content_hash: hash.to_owned(),
+            ownership: "managed_script".to_owned(),
+            managed_marker_start: None,
+            managed_marker_end: None,
+            managed_marker: Some("VOLICORD_MANAGED_HOOK_WRAPPER".to_owned()),
+            executable_required: Some(true),
+            managed_script_role: Some("codex_dispatch".to_owned()),
+            managed_script_command: None,
+            host_kind: Some("codex".to_owned()),
+            phase: Some("dispatch".to_owned()),
+            purpose: None,
+            connection_id: None,
+            guard_installation_id: None,
+            policy_hash: None,
+            host_output: None,
+        },
+        managed(
+            "host_rule_instruction",
+            repo_root.join(".codex/rules/volicord.rules"),
+            "managed_block",
+        ),
+    ];
+    managed_files.extend(GuardHookPhase::REQUIRED.into_iter().map(wrapper));
+    let manifest = GuardManifest {
+        schema: GUARD_MANIFEST_SCHEMA.to_owned(),
+        guard_installation_id: GuardInstallationId::new(guard_installation_id),
+        connection_id: AgentConnectionId::new(connection_id),
+        project_id: ProjectId::new(project_id),
+        host_kind: HostKind::Codex,
+        integration_profile: IntegrationProfile::Record,
+        policy_hash: PolicyHash::parse(policy_hash).expect("fixture policy hash"),
+        integration_revision,
+        runtime_commands: GuardCommandSet {
+            pre_tool: command(GuardHookPhase::PreTool),
+            post_tool: command(GuardHookPhase::PostTool),
+            prompt_capture: command(GuardHookPhase::PromptCapture),
+        },
+        managed_files,
+        required_hook_phases: GuardHookPhase::REQUIRED.to_vec(),
+    };
+    serde_json::to_string(&manifest).expect("canonical fixture Guard manifest")
 }
 
 /// Seeds one real managed runtime/project session for adapter and Core tests.

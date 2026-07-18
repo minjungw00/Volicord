@@ -14,16 +14,15 @@ use volicord_store::{
         WorkflowMetricDecision, WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     },
     guards::{
-        agent_session, guard_event, insert_agent_session, insert_guard_event,
-        observe_guard_installation, AgentSessionInsert, GuardEventInsert,
-        GuardInstallationObservation,
+        agent_session, guard_event, guard_installation, insert_agent_session, insert_guard_event,
+        AgentSessionInsert, GuardEventInsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
 };
 use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, IntegrationProfile,
-    ObservationConfidence, UtcTimestamp,
+    canonical_json_bare_sha256, canonical_json_bytes, guard_manifest_from_json, GuardDecision,
+    GuardHookContractStatus, IntegrationProfile, ObservationConfidence, UtcTimestamp,
 };
 
 use crate::cli::{HookArgs, HookCommand};
@@ -171,8 +170,6 @@ where
     if phase == GuardPhase::PromptCapture {
         let _ = start_guard_diagnostic_session_best_effort(&runtime_home, &project, &envelope);
     }
-    let _activation =
-        observe_guard_installation_activation(&runtime_home, &project, &envelope, phase, &options)?;
     let mut phase_result = match phase {
         GuardPhase::PreTool => {
             phase::pre_tool::handle_pre_tool(&runtime_home, &project, &envelope, &input)?
@@ -193,9 +190,9 @@ where
         &project,
         &envelope,
         phase,
-        phase_result.decision,
         subject,
-        phase_result.result.clone(),
+        &phase_result,
+        &options,
     )?;
     if let Some(expected_write) = phase_result.expected_write {
         persist_expected_write(&runtime_home, &project, expected_write)?;
@@ -258,7 +255,7 @@ fn replayed_guard_phase_result(
     let existing_source = guard_event_source_payload_sha256(
         existing.session_id.as_deref(),
         &existing.connection_internal_id,
-        existing.guard_installation_id.as_deref(),
+        Some(existing.guard_installation_id.as_str()),
         &existing.event_kind,
         &existing.subject_json,
     )?;
@@ -663,43 +660,6 @@ fn validate_existing_connection_session_binding(
     Ok(())
 }
 
-fn observe_guard_installation_activation(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-    phase: GuardPhase,
-    options: &GuardOptions,
-) -> Result<Option<volicord_store::guards::GuardInstallationRecord>, GuardCommandError> {
-    let Some(guard_installation_id) = envelope.guard_installation_id.clone() else {
-        return Ok(None);
-    };
-    let Some(observed_policy_hash) = current_policy_hash(project)? else {
-        return Ok(None);
-    };
-    if options
-        .policy_hash
-        .as_deref()
-        .is_some_and(|expected| expected != observed_policy_hash)
-    {
-        return Ok(None);
-    }
-    observe_guard_installation(
-        runtime_home,
-        GuardInstallationObservation {
-            guard_installation_id,
-            connection_internal_id: envelope.connection_id.clone(),
-            project_id: project.project_id.clone(),
-            host_kind: envelope.host_kind.clone(),
-            guard_mode: envelope.guard_mode.clone(),
-            observed_policy_hash,
-            observed_binary_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
-            observed_phase: phase.event_kind().to_owned(),
-            observed_at: envelope.occurred_at.clone(),
-        },
-    )
-    .map_err(Into::into)
-}
-
 fn current_policy_hash(project: &ProjectRecord) -> Result<Option<String>, GuardCommandError> {
     let policy_path = project.repo_root.join(VOLICORD_POLICY_FILE);
     let text = match fs::read_to_string(&policy_path) {
@@ -728,10 +688,37 @@ fn persist_guard_event(
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     phase: GuardPhase,
-    decision: GuardDecision,
     subject: Value,
-    result: Value,
+    phase_result: &GuardPhaseResult,
+    options: &GuardOptions,
 ) -> Result<(), GuardCommandError> {
+    let guard_installation_id = envelope.guard_installation_id.as_deref().ok_or_else(|| {
+        GuardCommandError::Runtime("Guard event has no installation identity".to_owned())
+    })?;
+    let installation =
+        guard_installation(runtime_home, guard_installation_id)?.ok_or_else(|| {
+            GuardCommandError::Runtime(format!(
+                "Guard installation {guard_installation_id} is not registered"
+            ))
+        })?;
+    let manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
+        GuardCommandError::Runtime("current Guard installation manifest is malformed".to_owned())
+    })?;
+    let current_policy_hash = current_policy_hash(project)?.ok_or_else(|| {
+        GuardCommandError::Runtime("current Guard policy file is missing".to_owned())
+    })?;
+    if installation.connection_internal_id != envelope.connection_id
+        || installation.project_id != project.project_id
+        || manifest.policy_hash.as_str() != current_policy_hash
+        || options
+            .policy_hash
+            .as_deref()
+            .is_some_and(|hash| hash != manifest.policy_hash.as_str())
+    {
+        return Err(GuardCommandError::Runtime(
+            "Guard event ownership does not match the current policy and manifest".to_owned(),
+        ));
+    }
     let subject_json = object_text(subject)?;
     let source_payload_sha256 = guard_event_source_payload_sha256(
         envelope.session_id.as_deref(),
@@ -744,11 +731,14 @@ fn persist_guard_event(
         guard_event_id: envelope.event_id.clone(),
         session_id: envelope.session_id.clone(),
         connection_internal_id: envelope.connection_id.clone(),
-        guard_installation_id: envelope.guard_installation_id.clone(),
+        guard_installation_id: guard_installation_id.to_owned(),
+        policy_hash: manifest.policy_hash.as_str().to_owned(),
+        integration_revision: manifest.integration_revision.as_str().to_owned(),
         event_kind: phase.event_kind().to_owned(),
-        decision: decision.as_str().to_owned(),
+        contract_status: GuardHookContractStatus::Compatible.as_str().to_owned(),
+        decision: phase_result.decision.as_str().to_owned(),
         subject_json,
-        result_json: object_text(result)?,
+        result_json: object_text(phase_result.result.clone())?,
         occurred_at: envelope.occurred_at.clone(),
         metadata_json: json!({
             "source": "volicord_guard_cli",
@@ -1137,47 +1127,61 @@ fn canonical_value_sha256(value: &Value) -> String {
 fn guard_event_insert_payload_sha256(
     input: &GuardEventInsert,
 ) -> Result<String, GuardCommandError> {
-    guard_event_payload_sha256(
-        input.session_id.as_deref(),
-        &input.connection_internal_id,
-        input.guard_installation_id.as_deref(),
-        &input.event_kind,
-        &input.decision,
-        &input.subject_json,
-    )
+    guard_event_payload_sha256(GuardEventPayload {
+        session_id: input.session_id.as_deref(),
+        connection_id: &input.connection_internal_id,
+        guard_installation_id: &input.guard_installation_id,
+        event_kind: &input.event_kind,
+        decision: &input.decision,
+        subject_json: &input.subject_json,
+        policy_hash: &input.policy_hash,
+        integration_revision: &input.integration_revision,
+        contract_status: &input.contract_status,
+    })
 }
 
 fn guard_event_record_payload_sha256(
     record: &volicord_store::guards::GuardEventRecord,
 ) -> Result<String, GuardCommandError> {
-    guard_event_payload_sha256(
-        record.session_id.as_deref(),
-        &record.connection_internal_id,
-        record.guard_installation_id.as_deref(),
-        &record.event_kind,
-        &record.decision,
-        &record.subject_json,
-    )
+    guard_event_payload_sha256(GuardEventPayload {
+        session_id: record.session_id.as_deref(),
+        connection_id: &record.connection_internal_id,
+        guard_installation_id: &record.guard_installation_id,
+        event_kind: &record.event_kind,
+        decision: &record.decision,
+        subject_json: &record.subject_json,
+        policy_hash: &record.policy_hash,
+        integration_revision: &record.integration_revision,
+        contract_status: &record.contract_status,
+    })
 }
 
-fn guard_event_payload_sha256(
-    session_id: Option<&str>,
-    connection_id: &str,
-    guard_installation_id: Option<&str>,
-    event_kind: &str,
-    decision: &str,
-    subject_json: &str,
-) -> Result<String, GuardCommandError> {
+struct GuardEventPayload<'a> {
+    session_id: Option<&'a str>,
+    connection_id: &'a str,
+    guard_installation_id: &'a str,
+    event_kind: &'a str,
+    decision: &'a str,
+    subject_json: &'a str,
+    policy_hash: &'a str,
+    integration_revision: &'a str,
+    contract_status: &'a str,
+}
+
+fn guard_event_payload_sha256(payload: GuardEventPayload<'_>) -> Result<String, GuardCommandError> {
     let source_sha256 = guard_event_source_payload_sha256(
-        session_id,
-        connection_id,
-        guard_installation_id,
-        event_kind,
-        subject_json,
+        payload.session_id,
+        payload.connection_id,
+        Some(payload.guard_installation_id),
+        payload.event_kind,
+        payload.subject_json,
     )?;
     Ok(canonical_value_sha256(&json!({
         "source_sha256": source_sha256,
-        "decision": decision,
+        "decision": payload.decision,
+        "policy_hash": payload.policy_hash,
+        "integration_revision": payload.integration_revision,
+        "contract_status": payload.contract_status,
     })))
 }
 

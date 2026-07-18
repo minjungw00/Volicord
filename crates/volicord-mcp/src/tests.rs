@@ -4,7 +4,6 @@ use std::{
     ffi::OsString,
     fs,
     io::{BufReader, Cursor},
-    path::Path,
 };
 
 #[cfg(unix)]
@@ -51,8 +50,8 @@ use volicord_test_support::core_fixtures::{
     UserActionFixture,
 };
 use volicord_types::{
-    AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, IntegrationProfile,
-    OperationCategory, ResidualRiskInput, StagedArtifactHandle, CODEX_MANAGED_MCP_CLIENT_NAME,
+    AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, OperationCategory,
+    ResidualRiskInput, StagedArtifactHandle, CODEX_MANAGED_MCP_CLIENT_NAME,
 };
 
 use super::*;
@@ -4421,253 +4420,24 @@ fn managed_codex_stdio_env(
     }
 }
 
-fn mcp_fixture_codex_hook_command(command_name: &str) -> String {
-    format!(
-        "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}'"
-    )
-}
-
-fn mcp_fixture_guard_command_args(
-    repo_root: &Path,
-    connection_internal_id: &str,
-    guard_installation_id: &str,
-    command_name: &str,
-    policy_hash: Option<&str>,
-) -> Vec<String> {
-    let mut args = vec![
-        "_hook".to_owned(),
-        command_name.to_owned(),
-        "--repo".to_owned(),
-        repo_root.display().to_string(),
-        "--connection".to_owned(),
-        connection_internal_id.to_owned(),
-        "--guard-installation".to_owned(),
-        guard_installation_id.to_owned(),
-        "--host".to_owned(),
-        "codex".to_owned(),
-        "--integration-profile".to_owned(),
-        "record".to_owned(),
-    ];
-    if let Some(policy_hash) = policy_hash {
-        args.push("--policy-hash".to_owned());
-        args.push(policy_hash.to_owned());
-    }
-    args.extend(["--host-output".to_owned(), "codex".to_owned()]);
-    args
-}
-
-fn mcp_fixture_shell_word(value: &str) -> String {
-    if !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
-    {
-        return value.to_owned();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn mcp_fixture_guard_command_line(
-    repo_root: &Path,
-    connection_internal_id: &str,
-    guard_installation_id: &str,
-    command_name: &str,
-    policy_hash: &str,
-) -> String {
-    std::iter::once("volicord".to_owned())
-        .chain(mcp_fixture_guard_command_args(
-            repo_root,
-            connection_internal_id,
-            guard_installation_id,
-            command_name,
-            Some(policy_hash),
-        ))
-        .map(|value| mcp_fixture_shell_word(&value))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn mcp_fixture_policy_command(
-    repo_root: &Path,
-    connection_internal_id: &str,
-    guard_installation_id: &str,
-    command_name: &str,
-    policy_hash: &str,
-) -> Value {
-    json!({
-        "command": repo_root.join(".volicord/bin/volicord"),
-        "args": mcp_fixture_guard_command_args(
-            repo_root,
-            connection_internal_id,
-            guard_installation_id,
-            command_name,
-            Some(policy_hash),
-        ),
-    })
-}
-
 fn install_record_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
     let repo_root = fixture.product_repo_path();
     let guard_installation_id = "guard_installation_mcp_record";
     let policy_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
-    let content_hash = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
-    let phases = [
-        ("pre_tool_hook", "pre_tool", "pre-tool"),
-        ("post_tool_hook", "post_tool", "post-tool"),
-        (
-            "user_prompt_submit_hook",
-            "prompt_capture",
-            "prompt-capture",
-        ),
-    ];
-    let host_hook_commands = phases
-        .iter()
-        .map(|(phase, policy_key, command_name)| {
-            json!({
-                "host_kind": "codex",
-                "phase": phase,
-                "purpose": "guard",
-                "policy_key": policy_key,
-                "command_shape": "shell_command_string",
-                "command": mcp_fixture_codex_hook_command(command_name),
-                "args": null,
-                "expected_wrapper_path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-                "expected_phase_wrapper_path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")),
-                "root_resolution_basis": "git_work_tree",
-                "hook_command_path_basis": "git_root_runtime",
-                "cwd_independent": true,
-                "subdirectory_safe": true,
-                "wrapper_resolution_status": "ok",
-                "verification": {
-                    "basis_verified_by": "repo_root_git_marker",
-                    "host_contract_source": "codex_hook_command_string",
-                },
-            })
-        })
-        .collect::<Vec<_>>();
-    let mut files = host_hook_commands
-        .iter()
-        .map(|command| {
-            let command_name = command["policy_key"]
-                .as_str()
-                .and_then(|policy_key| match policy_key {
-                    "pre_tool" => Some("pre-tool"),
-                    "post_tool" => Some("post-tool"),
-                    "prompt_capture" => Some("prompt-capture"),
-                    _ => None,
-                })
-                .expect("known policy key");
-            json!({
-                "kind": "host_hook_wrapper",
-                "path": command["expected_phase_wrapper_path"],
-                "status": "unchanged",
-                "content_hash": content_hash,
-                "ownership": "managed_script",
-                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-                "executable_required": true,
-                "managed_script_command": mcp_fixture_guard_command_line(
-                    &repo_root,
-                    fixture.connection_id(),
-                    guard_installation_id,
-                    command_name,
-                    policy_hash,
-                ),
-                "host_kind": "codex",
-                "phase": command["policy_key"],
-                "purpose": "guard",
-                "connection_id": fixture.connection_id(),
-                "guard_installation_id": guard_installation_id,
-                "policy_hash": policy_hash,
-                "host_output": "codex",
-            })
-        })
-        .collect::<Vec<_>>();
-    files.extend([
-        json!({
-            "kind": "agents_managed_block",
-            "path": repo_root.join("AGENTS.md"),
-            "status": "unchanged",
-            "content_hash": content_hash,
-            "ownership": "managed_block",
-            "managed_marker_start": "# BEGIN VOLICORD MANAGED AGENT GUIDANCE",
-            "managed_marker_end": "# END VOLICORD MANAGED AGENT GUIDANCE",
-        }),
-        json!({
-            "kind": "volicord_policy",
-            "path": repo_root.join(".volicord/policy.json"),
-            "status": "unchanged",
-            "content_hash": content_hash,
-            "ownership": "managed_json",
-        }),
-        json!({
-            "kind": "host_hook_dispatch",
-            "path": repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-            "status": "unchanged",
-            "content_hash": content_hash,
-            "ownership": "managed_script",
-            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
-            "executable_required": true,
-            "managed_script_role": "codex_dispatch",
-            "host_kind": "codex",
-            "phase": "dispatch",
-        }),
-        json!({
-            "kind": "host_hook_config",
-            "path": repo_root.join(".codex/hooks.json"),
-            "status": "unchanged",
-            "content_hash": content_hash,
-            "ownership": "managed_json",
-        }),
-        json!({
-            "kind": "host_rule_instruction",
-            "path": repo_root.join(".codex/rules/volicord.rules"),
-            "status": "unchanged",
-            "content_hash": content_hash,
-            "ownership": "managed_block",
-            "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
-            "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
-        }),
-    ]);
     upsert_guard_installation(
         fixture.runtime_home_path(),
         GuardInstallationUpsert {
             guard_installation_id: guard_installation_id.to_owned(),
             connection_internal_id: fixture.connection_id().to_owned(),
-            project_id: Some(fixture.project_id().to_owned()),
-            host_kind: "codex".to_owned(),
-            guard_mode: IntegrationProfile::Record.as_str().to_owned(),
-            host_capability_json: json!({
-                "schema": "volicord-host-hook-capability",
-                "policy_hash": policy_hash,
-                "selected_profile": "record",
-                "connection_intent": "shared",
-                "direct_file_write_matcher_coverage": false,
-                "host_capabilities": {
-                    "stdio_mcp": true,
-                    "pre_tool_hook": true,
-                    "post_tool_hook": true,
-                    "user_prompt_submit_hook": true,
-                    "rule_file_support": true,
-                    "project_local_configuration": true,
-                },
-                "files": files,
-                "commands": {
-                    "pre_tool": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "pre-tool", policy_hash),
-                    "post_tool": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "post-tool", policy_hash),
-                    "prompt_capture": mcp_fixture_policy_command(&repo_root, fixture.connection_id(), guard_installation_id, "prompt-capture", policy_hash),
-                },
-            })
-            .to_string(),
-            installation_status: "configured".to_owned(),
-            installed_at: Some("2026-06-30T00:00:00Z".to_owned()),
-            last_checked_at: "2026-06-30T00:00:00Z".to_owned(),
-            first_seen_at: None,
-            last_seen_at: None,
-            last_seen_phase: None,
-            observed_host_kind: None,
-            observed_policy_hash: None,
-            observed_binary_version: None,
-            metadata_json: "{}".to_owned(),
+            project_id: fixture.project_id().to_owned(),
+            manifest_json: volicord_test_support::test_guard_manifest_json(
+                fixture.runtime_home_path(),
+                &repo_root,
+                fixture.project_id(),
+                fixture.connection_id(),
+                guard_installation_id,
+                policy_hash,
+            ),
         },
     )?;
     Ok(())

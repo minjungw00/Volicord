@@ -132,11 +132,14 @@ Check는 `id`의 UTF-8 byte 오름차순으로 정렬합니다. Action도 같은
 | `required_tools` | 현재 managed-host `tools/list` 관찰에 현재 mode의 모든 필수 도구가 있습니다. | 현재 session에 도구 목록 관찰이 없거나 host-version 관찰이 오래되었습니다. | 현재 managed host에서 필수 도구가 실제로 빠졌거나 도구 목록 데이터가 유효하지 않습니다. |
 | `tool_round_trip` | 현재 managed-host session이 안전한 읽기 전용 Volicord 도구 호출을 완료했습니다. | 그런 현재 관찰이 없거나 host-version 관찰이 오래되었습니다. | 현재 session이 실제 protocol 또는 contract 비호환을 기록했습니다. |
 | `project_trust` | 프로젝트 신뢰가 충족되었거나 별도 프로젝트 신뢰가 적용되지 않습니다. | 일반 Codex 신뢰 또는 reload 동작이 남았습니다. | 신뢰 구성이 malformed 또는 모순 상태이고 일반 동작으로 해결할 수 없습니다. |
+| `guard_files` | 정규 content, 소유자 field, marker, wrapper runtime command, 필수 executable 동작을 포함해 현재 Guard manifest의 모든 파일 기대값이 일치합니다. | 새로 적용한 구성이 일반 host reload 단계를 기다립니다. | 필수 managed file이 없거나 malformed이거나 content/ownership이 다르거나 필수 executable 동작을 충족하지 않습니다. |
+| `guard_observation` | Manifest의 정확한 policy hash와 integration revision에 대해 모든 필수 typed hook phase를 관찰했습니다. Prompt capture는 이 check의 detail로 보고합니다. | 파일은 유효하지만 현재 필수 phase 하나 이상을 아직 관찰하지 못했습니다. 이전 policy hash나 integration revision의 event는 이 check를 충족하지 않습니다. | 현재 Guard event가 malformed 또는 incompatible hook contract를 보고했습니다. |
 
 CLI MCP self-test는 `session_source=cli_preflight`만 만듭니다. 따라서
-`host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다. Guard audit
-사실은 당분간 추가 필수 check인 `guard_files`, `guard_hooks`, `prompt_capture`로 나타날 수
-있지만, 이 check도 동일한 `passed | pending | failed` 상태 집합만 사용합니다.
+`host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다. Guard는 최상위
+운영 check로 `guard_files`와 `guard_observation`만 사용합니다. 엄격한 Guard manifest는
+Volicord가 관리하는 파일, runtime command, policy ownership, 필수 phase를 설명할 뿐 host
+capability를 인증하거나 Guard 설치 lifecycle 상태를 저장하지 않습니다.
 
 제한 안의 모든 Codex version은 이 동작 check의 대상이 될 수 있습니다. Version이 바뀌면
 Codex를 reload하고 다시 관찰할 때까지 현재 host 관찰이 pending이 됩니다. 이를 지원하지

@@ -2,6 +2,7 @@
 
 use std::{error::Error, fmt};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{canonical_json_sha256, is_canonical_sha256_digest};
@@ -59,7 +60,9 @@ struct DomainRevisionBasis<'a, T> {
 }
 
 /// A validated canonical SHA-256 integration revision.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(transparent)]
 pub struct IntegrationRevision(String);
 

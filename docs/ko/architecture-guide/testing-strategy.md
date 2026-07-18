@@ -31,6 +31,10 @@
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
 - 권위 있는 MCP runtime-session source 분리, milestone ordering, 현재 revision,
   프로젝트 binding, diagnostics 비권위성
+- Guard manifest의 exact shape와 owner binding, hash가 없는 policy command와 hash에
+  결속된 runtime command의 구분, wrapper/file drift, 플랫폼 독립적인 script executable
+  기대값, 현재 소유권의 hook 관찰, 이전 event 제외
+- 안정적인 identity를 유지하는 반복 Guard 초기화와 관련 없는 repository content 보존
 - Guard 관찰과 미기록 변경 suppression 결과
 - 지원되지 않는 Codex 아티팩트와 구성 drift 동작
 

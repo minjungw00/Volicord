@@ -19,13 +19,14 @@ use crate::values::{
     EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState,
     EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState, EvidenceProducerKind,
     EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus,
-    FailureCategory, GuaranteeClass, GuaranteeLevel, GuardDecision, GuardInstallationStatus,
-    HostKind, IntegrationProfile, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome,
-    MethodName, NextActionKind, NextActionPresentationRole, NonGuarantee, ObservationConfidence,
-    ObservedEffectKind, OperationCategory, PlannedBlockerSourceKind, ProjectContinuityKind,
-    ProjectContinuityStatus, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
-    RedactionState, ResponseKind, RunKind, StateRecordKind, StatusCloseState, TaskControlLevel,
-    TaskLifecyclePhase, TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeConfidence,
+    FailureCategory, GuaranteeClass, GuaranteeLevel, GuardDecision, GuardHookContractStatus,
+    GuardHookPhase, HostKind, IntegrationProfile, JudgmentKind, JudgmentPresentation,
+    JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionPresentationRole,
+    NonGuarantee, ObservationConfidence, ObservedEffectKind, OperationCategory,
+    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
+    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, RedactionState, ResponseKind,
+    RunKind, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
+    TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeConfidence,
     UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus,
     UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
     UserActionStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
@@ -474,21 +475,17 @@ pub enum SourceRef {
     UserContext(UserContextSource),
 }
 
-/// Registry-scoped host-hook installation and host capability record.
+/// Registry-scoped typed Guard installation manifest record.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GuardInstallation {
     pub guard_installation_id: GuardInstallationId,
     pub runtime_home_id: String,
     pub connection_id: AgentConnectionId,
-    pub project_id: RequiredNullable<ProjectId>,
-    pub host_kind: HostKind,
-    pub integration_profile: IntegrationProfile,
-    pub host_capability: JsonObject,
-    pub installation_status: GuardInstallationStatus,
-    pub installed_at: RequiredNullable<UtcTimestamp>,
-    pub last_checked_at: UtcTimestamp,
-    pub metadata: JsonObject,
+    pub project_id: ProjectId,
+    pub manifest: crate::GuardManifest,
+    pub created_at: UtcTimestamp,
+    pub updated_at: UtcTimestamp,
 }
 
 /// Project-scoped Agent Session record for host-observed operation.
@@ -513,8 +510,11 @@ pub struct GuardEvent {
     pub project_id: ProjectId,
     pub session_id: RequiredNullable<AgentSessionId>,
     pub connection_id: AgentConnectionId,
-    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
-    pub event_kind: String,
+    pub guard_installation_id: GuardInstallationId,
+    pub policy_hash: crate::PolicyHash,
+    pub integration_revision: crate::IntegrationRevision,
+    pub event_kind: GuardHookPhase,
+    pub contract_status: GuardHookContractStatus,
     pub decision: GuardDecision,
     pub subject: JsonObject,
     pub result: JsonObject,

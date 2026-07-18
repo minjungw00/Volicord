@@ -25,8 +25,8 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, AcceptancePolicy, ProjectId,
-    RequestedControlLevel, TaskControlLevel, TaskMode,
+    canonical_json_sha256, canonical_json_string, guard_manifest_from_json, AcceptancePolicy,
+    ProjectId, RequestedControlLevel, TaskControlLevel, TaskMode,
 };
 
 use crate::{
@@ -424,21 +424,25 @@ fn validate_policy_bindings(
             "policy guard installation is not recorded",
         )
     })?;
-    if guard.connection_internal_id != connection_id
-        || guard.project_id.as_deref() != Some(project_id)
-    {
+    let manifest = guard_manifest_from_json(&guard.manifest_json).map_err(|_| {
+        binding_mismatch(
+            "$.guard_installation_id",
+            "recorded Guard manifest is malformed",
+        )
+    })?;
+    if guard.connection_internal_id != connection_id || guard.project_id != project_id {
         return Err(binding_mismatch(
             "$.guard_installation_id",
             "policy guard installation is not bound to the selected connection and project",
         ));
     }
-    if public_store_host(&guard.host_kind) != policy["host"].as_str().expect("validated host") {
+    if manifest.host_kind.as_str() != policy["host"].as_str().expect("validated host") {
         return Err(binding_mismatch(
             "$.host",
             "policy host does not match the recorded guard installation",
         ));
     }
-    if guard.guard_mode
+    if manifest.integration_profile.as_str()
         != policy["selected_profile"]
             .as_str()
             .expect("validated selected profile")

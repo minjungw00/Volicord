@@ -29,8 +29,8 @@ use volicord_store::{
     bootstrap::{ProjectRecord, ACTIVE_PROJECT_STATUS},
     core_pipeline::{CoreProjectStore, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptInsert},
     guards::{
-        agent_session, guard_event, guard_installation,
-        validate_stored_guard_installation_capability_binding, GuardEventRecord,
+        agent_session, guard_event, guard_installation, guard_observation_summary,
+        validate_stored_guard_installation_manifest_binding, GuardEventRecord,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
@@ -921,8 +921,9 @@ fn validate_exact_guard_scope(
         || pre.connection_internal_id != intent.record.requesting_connection_internal_id
         || pre.session_id.is_none()
         || pre.session_id != post.session_id
-        || pre.guard_installation_id.is_none()
         || pre.guard_installation_id != post.guard_installation_id
+        || pre.policy_hash != post.policy_hash
+        || pre.integration_revision != post.integration_revision
     {
         return Err(EvidenceCommandError::runtime(
             "pre/post events do not have the exact registered connection, session, and guard installation",
@@ -941,9 +942,7 @@ fn validate_exact_guard_scope(
         context,
         &pre.connection_internal_id,
         pre.session_id.as_deref().expect("checked session"),
-        pre.guard_installation_id
-            .as_deref()
-            .expect("checked installation"),
+        &pre.guard_installation_id,
     )
 }
 
@@ -956,20 +955,30 @@ fn validate_active_guard_installation(
     let installation = guard_installation(&context.runtime_home, installation_id)?
         .ok_or_else(|| EvidenceCommandError::runtime("guard installation is not registered"))?;
     if installation.connection_internal_id != connection_id
-        || installation.project_id.as_deref() != Some(context.project.project_id.as_str())
-        || installation.installation_status != "active"
+        || installation.project_id != context.project.project_id
     {
         return Err(EvidenceCommandError::runtime(
-            "guard installation is not active for this connection and project",
+            "guard installation is not current for this connection and project",
         ));
     }
     let connection = agent_connection_record_read_only(&context.runtime_home, connection_id)?
         .ok_or_else(|| EvidenceCommandError::runtime("guard connection is not registered"))?;
-    validate_stored_guard_installation_capability_binding(
+    validate_stored_guard_installation_manifest_binding(
         &installation,
         &connection,
         &context.project.repo_root,
     )?;
+    if !guard_observation_summary(
+        &context.runtime_home,
+        &context.project.project_id,
+        &installation,
+    )?
+    .all_required_phases_observed()
+    {
+        return Err(EvidenceCommandError::runtime(
+            "current Guard phases have not all been observed",
+        ));
+    }
     let session = agent_session(
         &context.runtime_home,
         &context.project.project_id,

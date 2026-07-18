@@ -209,29 +209,8 @@ CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
-  project_internal_id TEXT,
-  host_kind TEXT NOT NULL CHECK (length(trim(host_kind)) > 0),
-  guard_mode TEXT NOT NULL CHECK (guard_mode = 'record'),
-  host_capability_json TEXT NOT NULL DEFAULT '{}',
-  installation_status TEXT NOT NULL
-    CHECK (installation_status IN (
-      'absent',
-      'configured',
-      'reload_required',
-      'active',
-      'degraded',
-      'stale',
-      'broken'
-    )),
-  installed_at TEXT,
-  last_checked_at TEXT NOT NULL,
-  first_seen_at TEXT,
-  last_seen_at TEXT,
-  last_seen_phase TEXT,
-  observed_host_kind TEXT,
-  observed_policy_hash TEXT,
-  observed_binary_version TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
+  project_internal_id TEXT NOT NULL,
+  manifest_json TEXT NOT NULL CHECK (json_valid(manifest_json) AND json_type(manifest_json) = 'object'),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (runtime_home_id) REFERENCES runtime_home (runtime_home_id) ON DELETE RESTRICT,
@@ -245,11 +224,5 @@ CREATE INDEX idx_guard_installations_connection
   ON guard_installations (connection_internal_id);
 CREATE INDEX idx_guard_installations_project
   ON guard_installations (project_internal_id);
-CREATE INDEX idx_guard_installations_status
-  ON guard_installations (installation_status);
 CREATE UNIQUE INDEX idx_guard_installations_scope_project
-  ON guard_installations (connection_internal_id, project_internal_id, guard_mode)
-  WHERE project_internal_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_guard_installations_scope_global
-  ON guard_installations (connection_internal_id, guard_mode)
-  WHERE project_internal_id IS NULL;
+  ON guard_installations (connection_internal_id, project_internal_id);

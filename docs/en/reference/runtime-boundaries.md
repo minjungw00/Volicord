@@ -31,7 +31,9 @@ Explicitly requested managed files may include:
 
 - `.codex/config.toml` for the shared Codex entry;
 - `.volicord/policy.json` for project-owned workflow policy; and
-- the Volicord-managed block in `AGENTS.md`.
+- Guard hook configuration, dispatch and phase wrappers, and rule instructions;
+- the Volicord-managed block in `AGENTS.md`; and
+- the optional managed block in `.git/info/exclude`.
 
 Setup, repair, and removal preserve unrelated file content. Product source,
 build output, test output, and user configuration do not become Runtime Home
@@ -68,6 +70,13 @@ authorize a nested file on another mount.
 Configuration presence does not prove Codex trust, reload, initialization,
 tool discovery, a current operational session, or release-cell status. Those
 facts remain separate.
+
+The Runtime Home Guard manifest is an ownership inventory for its exact
+Guard-managed subset of those files and its typed runtime commands. Managed script entries
+require executable behavior on every platform, while filesystem inspection and
+permission repair remain platform-specific. The manifest does not claim
+ownership of unrelated repository content and is not host-capability or runtime
+certification.
 
 Operational connection verification discovers the actual `codex` command on
 `PATH`, canonicalizes the observed executable path under the platform topology
