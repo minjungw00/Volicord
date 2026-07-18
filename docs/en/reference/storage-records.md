@@ -77,11 +77,10 @@ managed-host operational-evidence lookup.
 The connection integration revision is a domain-separated canonical digest of
 the Connection identity, host kind, intent, scope, mode, server name,
 configuration target, and exact managed-configuration fingerprint. The
-managed fingerprint includes the current server command and entry. Observed
-host version, executable digest, support-catalog coordinates, release
-evidence, certified capability sets, and MCP client name/version are excluded.
-Host and client version fields remain diagnostic observations, not identity or
-allowlist inputs.
+managed fingerprint includes the current server command and entry. Host and
+client version fields are excluded and remain diagnostic observations, not
+identity or allowlist inputs. The fingerprint contains no host executable
+identity or provenance inputs.
 
 Milestone timestamps and facts express lifecycle state without a redundant
 status enum. Store records successful `initialize`, the initialized
@@ -110,10 +109,9 @@ revisions derived from current owner inputs. The Connection mode must allow the
 requested operation category. `cli_preflight` rows, diagnostic version fields,
 and best-effort diagnostics cannot satisfy this boundary.
 
-Registry storage has no managed-host binding, executable digest, verifier-build
-digest, support-catalog coordinate, or host-verification-receipt record. A
-Runtime Home containing a removed runtime-authorization table belongs to a
-different `StorageManifest` and is rejected without migration.
+Registry storage authorizes managed operations only through the rows above. A
+Runtime Home with a noncurrent authorization schema belongs to a different
+`StorageManifest` and is rejected without migration.
 
 ## Identity And Ownership
 

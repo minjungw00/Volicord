@@ -95,11 +95,10 @@ Field meanings:
 | `integrity_constraints_digest` | The independent digest of the deterministic canonical encoding of all generated integrity constraints. |
 | `enabled_capabilities` | The complete, sorted, duplicate-free capability set enabled by the format. Missing capabilities are not inferred. |
 
-The manifest uses the descriptor principles owned by
-[External Contracts](external-contracts.md): identity is exact, capability
-absence is meaningful, and format selection does not use numeric comparison,
-field-presence inference, decoder probing, or fallback. The physical manifest
-representation and its SQLite placement belong to [Storage DDL](storage-ddl.md).
+Manifest identity is exact, capability absence is meaningful, and format
+selection does not use numeric comparison, field-presence inference, decoder
+probing, or fallback. The physical manifest representation and its SQLite
+placement belong to [Storage DDL](storage-ddl.md).
 
 Only the manifest generated from the current canonical SQL is supported. A
 producer emits one deterministic canonical manifest encoding. Map or set
@@ -127,14 +126,12 @@ policy records are read and before any mutation is possible.
 
 Failure classification follows [Failure Model](failure-model.md):
 
-- A missing, unknown, previous, or otherwise non-current well-formed storage
-  contract is `UnsupportedContract` (`unsupported_contract`) with the
-  machine-readable reason `unsupported_external_contract`.
-- A database that declares the current manifest but whose manifest encoding,
-  schema objects, constraints, digests, or typed owner state violate that
-  contract is `Corrupt` (`corrupt`).
+- A missing, unknown, previous, or otherwise non-current storage contract is
+  `Corrupt` (`corrupt`), as is a database whose manifest encoding, schema
+  objects, constraints, digests, or typed owner state violates the current
+  contract.
 - An I/O, locking, or environmental failure that prevents the checks without
-  establishing either condition is `Unavailable` (`unavailable`).
+  establishing corruption is `Unavailable` (`unavailable`).
 
 These failures are fail-closed. Store does not try another manifest, decoder,
 profile, or SQL inventory; fill missing fields; ignore extra objects; or open a
@@ -332,8 +329,6 @@ that recreation.
 
 ## Owner Links
 
-- External descriptor and exact contract-selection rules:
-  [External Contracts](external-contracts.md)
 - Cross-surface failure categories and no-default rules:
   [Failure Model](failure-model.md)
 - Exact SQLite tables, columns, indexes, foreign keys, and constraints:

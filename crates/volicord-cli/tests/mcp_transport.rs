@@ -165,8 +165,7 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
 }
 
 #[test]
-fn repository_discovery_stdio_starts_from_managed_configuration_without_certification(
-) -> Result<(), Box<dyn Error>> {
+fn repository_discovery_stdio_starts_from_managed_configuration() -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-repository-discovery")?;
     let repo_root = fixture.repo_root();
     fs::create_dir(repo_root.join(".git"))?;

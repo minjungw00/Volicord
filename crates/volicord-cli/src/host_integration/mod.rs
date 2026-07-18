@@ -8,9 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
-pub use volicord_types::{
-    ConfigurationTargetOwner as HostScope, HostKind, ManagedConnectionScope as ConnectionIntent,
-};
+pub use volicord_types::{ConnectionIntent, HostKind, HostScope};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserActionKind {

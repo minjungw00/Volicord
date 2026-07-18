@@ -84,7 +84,7 @@ impl AgentSessionValidationError {
     fn store(error: StoreError) -> Self {
         let category = match error.classification().route {
             StoreFailureRoute::PersistedDataCorrupt => FailureCategory::Corrupt,
-            StoreFailureRoute::UnsupportedContract => FailureCategory::UnsupportedContract,
+            StoreFailureRoute::InvalidEnvironment => FailureCategory::Rejected,
             StoreFailureRoute::InvocationContextMismatch => FailureCategory::Rejected,
             StoreFailureRoute::OperationalUnavailable => FailureCategory::Unavailable,
         };

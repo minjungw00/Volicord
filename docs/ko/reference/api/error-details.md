@@ -85,7 +85,6 @@
 | 공개 코드와 도메인 | `ToolError.category` | `details.reason` | 의미 담당 문서 |
 |---|---|---|---|
 | `volicord.prepare_write`의 `NO_ACTIVE_CHANGE_UNIT` | `rejected` | `current_change_unit_required` | [`volicord.prepare_write`](method-prepare-write.md) |
-| 알 수 없는 외부 설명자 또는 경계 계약의 `UNSUPPORTED_CONTRACT` | `unsupported_contract` | `unsupported_external_contract` | [외부 계약](../external-contracts.md) |
 
 사유는 도메인 원인을 좁힐 뿐 필수 실패 범주나 공개 코드를 대신하거나 바꾸지 않습니다.
 이 값들은 표시 텍스트, fallback 선택자, alias, 다른 계약을 decode할 권한이 아닙니다.

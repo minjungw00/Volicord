@@ -240,7 +240,7 @@ mod tests {
         let basis = connection_basis("managed:exact-entry");
         let revision = IntegrationRevision::for_connection(basis.clone()).expect("valid basis");
         let _diagnostic_host_version = "future-host-999.1";
-        let _diagnostic_executable_digest = format!("sha256:{}", "f".repeat(64));
+        let _diagnostic_executable_path = "/diagnostic/host/path";
         assert_eq!(
             revision,
             IntegrationRevision::for_connection(basis).expect("observation-independent basis")

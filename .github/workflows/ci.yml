@@ -73,14 +73,14 @@ jobs:
       - name: Check MCP Agent Connection contract
         run: cargo test --locked -p volicord-integration-tests --test mcp_connection
 
-      - name: Check Codex release manifest contract
-        run: cargo test --locked -p volicord-release-validation-tests --all-targets --all-features
+      - name: Check release integrity
+        run: cargo test --locked -p volicord-release-integrity-tests --all-targets --all-features
 
       - name: Run workspace tests
         run: cargo test --locked --workspace --all-targets --all-features
 
   host-hook-capability-native-windows:
-    name: Host-hook capability unit tests (native Windows; not release-cell evidence)
+    name: Host-hook capability unit tests (native Windows)
     runs-on: windows-2022
     steps:
       - name: Check out repository
@@ -96,46 +96,3 @@ jobs:
 
       - name: Check strict executable requirements
         run: cargo test --locked -p volicord-types exact_record_capability_requires_executable_only_for_dispatch_and_wrappers --lib
-
-  codex-release-cell-contracts:
-    name: Codex ${{ matrix.target_triple }} / ${{ matrix.platform_environment }} definition (static only; never a cell pass)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target_triple: x86_64-unknown-linux-gnu
-            platform_environment: linux
-            os: ubuntu-24.04
-            test: platform_contract_linux
-          - target_triple: aarch64-unknown-linux-gnu
-            platform_environment: linux
-            os: ubuntu-24.04-arm
-            test: platform_contract_linux
-          - target_triple: aarch64-apple-darwin
-            platform_environment: macos
-            os: macos-15
-            test: platform_contract_macos
-          - target_triple: x86_64-apple-darwin
-            platform_environment: macos
-            os: macos-15-intel
-            test: platform_contract_macos
-          - target_triple: x86_64-pc-windows-msvc
-            platform_environment: native_windows
-            os: windows-2022
-            test: platform_contract_native_windows
-          - target_triple: x86_64-unknown-linux-gnu
-            platform_environment: wsl2
-            os: ubuntu-24.04
-            test: platform_contract_wsl2
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        run: |
-          rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
-          rustup default "${{ env.RUST_VERSION }}"
-
-      - name: Validate the static definition without executing or recording a platform cell
-        run: cargo test --locked -p volicord-release-validation-tests --lib "tests::${{ matrix.test }}" -- --exact

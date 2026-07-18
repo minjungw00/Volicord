@@ -27,10 +27,6 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(metadata.columns.len(), 481);
     assert_eq!(metadata.indexes.len(), 63);
     assert_eq!(metadata.constraints.len(), 37);
-    assert!(!metadata
-        .tables
-        .iter()
-        .any(|table| table.name == "managed_host_authority"));
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -174,8 +170,7 @@ fn current_manifest_tampering_is_corrupt() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn malformed_manifests_are_corrupt_and_well_formed_unknown_is_unsupported(
-) -> Result<(), Box<dyn Error>> {
+fn malformed_and_noncurrent_manifests_are_corrupt() -> Result<(), Box<dyn Error>> {
     let current = current_storage_manifest()?;
     let unknown = StorageManifest::new(
         "volicord.sqlite.unknown",
@@ -204,32 +199,9 @@ fn malformed_manifests_are_corrupt_and_well_formed_unknown_is_unsupported(
         .expect_err("well-formed noncurrent storage contract must be rejected");
     assert_eq!(
         error.classification().route,
-        StoreFailureRoute::UnsupportedContract,
+        StoreFailureRoute::PersistedDataCorrupt,
         "well-formed noncurrent manifest: {error}"
     );
-    Ok(())
-}
-
-#[test]
-fn prior_host_receipt_authorization_schema_requires_runtime_home_reinitialization(
-) -> Result<(), Box<dyn Error>> {
-    let current = current_storage_manifest()?;
-    let prior = StorageManifest::new(
-        STORAGE_CONTRACT_ID,
-        "sha256:8e32fd05e4e951568e833ffd24634cc739beee87d9944bc8f29546d93259bed2",
-        "sha256:4bd4a9136c594f3dddb34ecaeea592d29591059d13a7830043113ebfa132ebe2",
-        current.enabled_capabilities.clone(),
-    )?;
-    let registry = canonical_registry()?;
-    insert_registry_owner(&registry, &canonical_json_string(&prior)?)?;
-
-    let error = validate_registry_schema(&registry)
-        .expect_err("the prior host-receipt authorization schema must not be opened or migrated");
-    assert_eq!(
-        error.classification().route,
-        StoreFailureRoute::UnsupportedContract
-    );
-    assert!(error.to_string().contains("reinitialize the Runtime Home"));
     Ok(())
 }
 

@@ -67,9 +67,10 @@ Product Repository files are user product data. Runtime Home rows are Volicord
 authority records. Managed Codex configuration starts a process but is not
 authority, approval, a Write Ticket, or proof that Codex loaded it.
 
-Release cells are external artifact evidence and do not grant Core authority,
-identify a user, or prove a runtime execution. Production runtime authorization
-does not consult release evidence or exact executable digests.
+Behavioral connection observations do not grant Core authority, identify a
+user, certify executable provenance or identity, or prove future host behavior.
+Production runtime authorization does not consult executable digests or host
+version allowlists.
 
 <a id="historical-operation-result-access"></a>
 ## Historical Operation-Result Access

@@ -11,8 +11,8 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
-| `crates/volicord-types/src/codex_support_catalog.rs` and `contracts/codex-support-catalog.json` | Temporarily retained release-certification catalog source; production runtime authorization does not consume it. |
-| `crates/volicord-types/src/codex_release_evidence.rs` | Strict external release-evidence types and parsing without evidence embedding. |
+| `crates/volicord-types/src/platform.rs` | Shared platform-environment and platform-path types. |
+| `crates/volicord-types/src/host_configuration.rs` | Shared connection-intent and host-scope configuration types. |
 | `crates/volicord-types/src/tool_names.rs` | Public MCP tool-name registry. |
 
 ## Store
@@ -67,7 +67,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
-| `tests/release-validation/` | Exact finalized Codex and Volicord artifact validation, the five-target/six-cell contract, immutable raw-build and publication continuity, and the external release-evidence manifest. `src/pipeline.rs` verifies build metadata, cell evidence artifacts, and the complete publish input set. |
+| `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and release-workflow integrity tests. |
 | `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store, and request helpers. |
 
 Update this map when a durable responsibility moves. Do not list removed,

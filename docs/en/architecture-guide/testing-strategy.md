@@ -10,12 +10,12 @@ contracts, preserve removed surfaces, or justify broader support claims.
 | Unit test | Pure parsing, canonical encoding, closed values, and policy decisions. |
 | Crate integration test | Adapter boundaries, Store reads/writes, process behavior, and strict persisted-record rejection. |
 | Conformance test | Public cross-method outcomes, error categories, replay, effects, and projections. |
-| Release-validation cell | Exact finalized Codex artifact behavior on one platform environment. |
+| Release-integrity test | Volicord target, version, package, checksum, and workflow invariants. |
 | Documentation check | Owner routing, links, terminology, parity, examples, and generated-source drift. |
 
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
-prove a real Codex artifact or platform support.
+prove behavior of a real Codex installation or platform support.
 
 ## Required Boundary Coverage
 
@@ -39,51 +39,27 @@ Durable tests should cover, as applicable:
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;
 - Guard observation and unrecorded-change suppression outcomes; and
-- unsupported Codex artifact and configuration drift behavior.
+- Codex configuration drift and behavior-probe failure reporting.
 
-## Codex Release Validation
+## Release Integrity And Optional Host Smoke
 
-Release support is six independent target/environment cells covering every
-published binary target:
+The durable release test package is `tests/release-integrity`. It verifies all
+five published Volicord targets, version consistency, canonical text bytes,
+package and archive shape, packaged-binary identity, checksum output, and the
+ordinary build and package structure in the release workflow.
 
-```text
-x86_64-unknown-linux-gnu / linux
-aarch64-unknown-linux-gnu / linux
-aarch64-apple-darwin / macos
-x86_64-apple-darwin / macos
-x86_64-pc-windows-msvc / native_windows
-x86_64-unknown-linux-gnu / wsl2
-```
+Repository tests and release workflows do not certify a Codex executable or
+maintain an exact-host allowlist. Runtime connection verification instead
+checks the managed configuration, MCP initialization, required tools, safe tool
+round trips, and Guard observations defined by
+[Agent Connection](../reference/agent-connection.md).
 
-Each cell executes the closed scenario catalog against exact finalized Codex
-and Volicord executable digests in its own exact environment. No platform result
-substitutes for another. Release validation tests the retained
-`CodexSupportCatalog` and the
-external `CodexReleaseEvidenceManifest`, including deterministic parsing and
-cross-checking against the catalog. The evidence manifest may contain zero
-through six entries and must report only actual attempts. A `passed` result is
-release evidence only for its exact catalog coordinates and Volicord digest;
-runtime authorization does not consume either contract.
-
-Repository-native workflow tests parse `.github/workflows/release.yml` and
-cross-check it against the five-target/six-cell contract. They require one raw
-build matrix, exact build-artifact downloads in every cell, shared Linux x86-64
-provenance for native Linux and WSL2, all required cell dependencies at
-publication, no Volicord rebuild in publication, complete digest-bound evidence,
-the final verifier immediately before packaging, external verified-index
-staging, and archive-member rehashing. Synthetic complete-bundle tests create
-real temporary Codex and Volicord files and calculate their digests. They cover
-deterministic catalog generation and verified indexing plus empty production
-catalogs, incomplete and `not_run` evidence, duplicate evidence, source-revision
-and artifact-digest mismatches, and missing target or environment cells. The
-release integrity gate separately rejects changed raw binaries, build metadata
-mismatches, unused or ambiguous catalog entries, incomplete cell evidence, and
-unvalidated publish inputs.
-
-Mock, fixture, rebuilt, selected, or neighboring artifacts cannot replace the
-final bytes. Failed, unavailable, and not-run scenarios remain explicit in the
-evidence rules owned by
-[Host Release Evidence](../reference/host-release-evidence.md).
+A real-Codex run is optional operational smoke. It may report the bounded host
+version as a diagnostic and repeat the observation when that version changes.
+Its result applies only to the behavior observed in that configuration and
+environment; it does not prove executable provenance, identity, future host
+behavior, human identity, or runtime authority. Missing smoke infrastructure
+does not block the ordinary Volicord release checks.
 
 ## Documentation Validation
 

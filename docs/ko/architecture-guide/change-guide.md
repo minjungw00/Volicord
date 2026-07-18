@@ -22,7 +22,7 @@
 | MCP 생명주기, 디코딩, 도구 목록, projection | `volicord-mcp` | MCP Transport와 API 소유자 |
 | 관리 명령 또는 CLI 받은 편지함 | `volicord-cli` | Administrative CLI와 User Action 소유자 |
 | Codex 설정 또는 검증 | Codex 어댑터와 connection 명령 | Agent Connection, Security, System Requirements |
-| release 지원 주장 | `tests/release-validation` | Host Release Evidence |
+| 릴리스 빌드 또는 패키지 무결성 | `tests/release-integrity`, 릴리스 workflow | 검증 |
 | 문서 경로 또는 용어 | `docs/doc-index.yaml`, 문서 쌍 | 문서와 번역 정책 |
 
 첫 release 어댑터 표면은 `personal`, `shared` 관리 stdio 연결을 사용하는 Codex Record
@@ -59,11 +59,9 @@ cargo run -p xtask -- docs-check
 git diff --check
 ```
 
-release 지원 변경은 정확한 최종 아티팩트 workflow와 `linux`, `macos`,
-`native_windows`, `wsl2`에 걸친 target/environment 셀 여섯 개도 요구합니다. 유지
-중인 릴리스 카탈로그와 외부 릴리스 증거를 분리합니다. 증거 manifest에는 사실대로
-entry를 0~6개 둘 수 있으며 카탈로그와 정확히 일치하는 통과 증거만 해당 릴리스
-셀을 충족합니다. 운영 런타임 권한은 어느 계약도 사용하지 않습니다.
+릴리스 변경은 일반 release-integrity 패키지와 변경에 해당하는 빌드, 패키지,
+checksum, 플랫폼, workflow 점검도 요구합니다. 실제 Codex smoke 실행은 선택적인 운영
+관찰이며 실행 파일 identity, 출처, 지원 또는 권한 게이트가 되면 안 됩니다.
 
 ## 인계
 

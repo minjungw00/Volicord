@@ -638,9 +638,7 @@ documents:
   - architecture-guide.decisions.index
   - architecture-guide.architecture
   - architecture-guide.change-guide
-  - architecture-guide.decision.host-release-evidence-gate
   - reference.index
-  - reference.host-release-evidence
   - reference.api.methods
 - doc_id: architecture-guide.codebase-tour
   path_en: docs/en/architecture-guide/codebase-tour.md
@@ -699,14 +697,12 @@ documents:
   - implement
   depends_on:
   - architecture-guide.architecture
-  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.codebase-tour
   - architecture-guide.cli-workflows
   - architecture-guide.request-lifecycle
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
   - reference.index
-  - reference.host-release-evidence
 - doc_id: architecture-guide.cli-workflows
   path_en: docs/en/architecture-guide/cli-workflows.md
   path_ko: docs/ko/architecture-guide/cli-workflows.md
@@ -732,7 +728,6 @@ documents:
   depends_on:
   - architecture-guide.architecture
   - architecture-guide.source-map
-  - architecture-guide.decision.host-release-evidence-gate
   - reference.admin-cli
   - reference.agent-connection
   - reference.mcp-transport
@@ -859,11 +854,9 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.architecture
   - architecture-guide.change-guide
-  - architecture-guide.decision.host-release-evidence-gate
   - reference.index
   - reference.conformance
   - reference.system-requirements
-  - reference.host-release-evidence
   - reference.mcp-transport
   - reference.api.method-record-run
   - reference.api.method-request-user-action
@@ -901,7 +894,6 @@ documents:
   - architecture-guide.decision.observation-confidence-boundary
   - architecture-guide.decision.external-user-judgment-authority
   - architecture-guide.decision.static-compact-mcp-tool-list
-  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.evidence-capture-producer-finalization
   - architecture-guide.decision.operation-result-retrieval
   - architecture-guide.decision.unified-user-action-request-resolution
@@ -1063,35 +1055,7 @@ documents:
   - reference.mcp-transport
   - reference.admin-cli
   - reference.agent-connection
-- doc_id: architecture-guide.decision.host-release-evidence-gate
-  path_en: docs/en/architecture-guide/decisions/host-release-evidence-gate.md
-  path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
-  kind: explanation
-  summary: Architecture decision separating the retained release-certification Codex catalog from build-once exact finalized Codex and Volicord release evidence across five published targets and six independent cells, with no production runtime consumption.
-  normative_level: guide
-  translation_policy: semantic_parity
-  owner_area: architecture_guide
-  created_on: '2026-07-14'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - release maintainers
-  - reviewers
-  journeys:
-  - implement
-  - maintain
-  depends_on:
-  - reference.host-release-evidence
-  - reference.system-requirements
-  - reference.agent-connection
-  - reference.mcp-transport
-  - reference.security
-  - reference.storage-records
-  - maintain.validation
+
 - doc_id: architecture-guide.decision.operation-result-retrieval
   path_en: docs/en/architecture-guide/decisions/operation-result-retrieval.md
   path_ko: docs/ko/architecture-guide/decisions/operation-result-retrieval.md
@@ -1185,7 +1149,6 @@ documents:
   - reference.api.method-record-run
   - reference.core-model
   - reference.agent-connection
-  - reference.host-release-evidence
   - reference.security
   - reference.storage-records
   - reference.storage-ddl
@@ -1343,12 +1306,10 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
-  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decisions.index
   - architecture-guide.architecture
   - reference.index
   - reference.system-requirements
-  - reference.host-release-evidence
   - reference.admin-cli
   - reference.agent-connection
   - reference.api.schema-state
@@ -1384,7 +1345,6 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
-  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decisions.index
   - architecture-guide.change-guide
   - reference.runtime-boundaries
@@ -1392,12 +1352,10 @@ documents:
   - reference.mcp-transport
   - reference.core-model
   - reference.security
-  - reference.host-release-evidence
   - reference.api.methods
   - reference.storage
   - reference.storage-effects
   - reference.storage-versioning
-  - reference.external-contracts
   - reference.failure-model
 - doc_id: reference.index
   path_en: docs/en/reference/README.md
@@ -1429,13 +1387,13 @@ documents:
   path_en: docs/en/reference/system-requirements.md
   path_ko: docs/ko/reference/system-requirements.md
   kind: reference
-  summary: Reference contract for five published binary targets, six required cells across four platform environments, WSL2 topology, executable and filesystem prerequisites, managed stdio, and fail-closed stop criteria.
+  summary: Reference contract for five published binary targets, four platform environments, WSL2 topology, executable and filesystem prerequisites, managed stdio, and fail-closed stop criteria.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1449,14 +1407,14 @@ documents:
   - install
   - operate
   canonical_for:
-  - exact five-target and six-cell first-release environment matrix
+  - exact five-target and four-value platform-environment matrix
   - exact `linux`, `macos`, `native_windows`, and `wsl2` platform-environment prerequisite boundaries
-  - separation of eligible environment prerequisites from actually executed release-cell evidence
-  - Rust, Cargo, Codex artifact, executable, process, filesystem, and stdio prerequisites
+  - separation of platform prerequisites from optional behavioral host observations
+  - Rust, Cargo, Codex executable, process, filesystem, and stdio prerequisites
   - Runtime Home, Product Repository, and Codex configuration access prerequisites
-  - independent WSL2 release-cell topology, ext4 boundary, platform identity, and unsupported
+  - independent WSL2 topology, ext4 boundary, platform identity, and unsupported
     Windows/WSL crossings
-  - exact first-release WSL2 Ubuntu distribution and release-evidence image coordinate
+  - exact first-release WSL2 Ubuntu distribution identity
   - Codex executable availability with version and path observations limited to diagnostics
   - managed Codex configuration, operational-session, executable, process, and platform-environment prerequisites
   - managed stdio MCP launch and current runtime/project-session prerequisites
@@ -1466,61 +1424,10 @@ documents:
   - reference.admin-cli
   - reference.mcp-transport
   - reference.agent-connection
-  - reference.host-release-evidence
   - reference.external-contracts
   - reference.failure-model
   - reference.storage-versioning
-- doc_id: reference.host-release-evidence
-  path_en: docs/en/reference/host-release-evidence.md
-  path_ko: docs/ko/reference/host-release-evidence.md
-  kind: reference
-  summary: Release-only contract for the retained target-aware Codex certification catalog, build-once external exact Codex and Volicord release evidence, complete-bundle verification, deterministic external release indexing, and same-bytes publication across five targets and six independent cells.
-  normative_level: contract
-  translation_policy: semantic_parity
-  owner_area: agent_connection
-  created_on: '2026-07-14'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
-  applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  primary_audience:
-  - implementers
-  - agent integrators
-  - release maintainers
-  - reviewers
-  journeys:
-  - implement
-  - maintain
-  canonical_for:
-  - machine-readable published-target and required-cell release contract
-  - immutable raw build-artifact metadata, artifact naming, source revision, binary digest, and same-bytes publication flow
-  - exact artifact-digest, target-triple, platform-environment, and integration-profile identity
-  - exact retained release-certification `CodexSupportCatalog` and `CodexSupportEntry` shapes and identity digest
-  - catalog prohibition on Volicord artifact digests and release-execution fields
-  - exact external `CodexReleaseEvidenceManifest`, `CodexReleaseEvidenceEntry`, and validation-evidence shapes
-  - deterministic actual-file `CodexSupportEntry` generation without release results or Volicord digests
-  - complete production release-bundle verification and empty-catalog rejection
-  - exact external `VerifiedReleaseIndex` shape, deterministic ordering, create-new output, and runtime non-consumption
-  - checked-in canonical support-catalog and release-evidence sources and update procedure
-  - non-embedding boundary for external release evidence
-  - release-evidence cross-checking against the embedded support catalog
-  - machine-readable release-validation `unsupported_host_artifact` result for unregistered exact artifacts
-  - five published binary targets and six independent release cells without cross-target or cross-environment inference
-  - explicit test-only Codex descriptors that cannot establish release evidence or runtime authority
-  - shared install, verify, drift, repair, uninstall, restart, move, write, suppression, and rejection scenarios
-  - WSL2 Ubuntu LTS, ext4, all-inside topology, restart, DrvFS, and cross-topology validation
-  - exact passed, failed, unavailable, and not_run cell status meanings
-  - release-validation contract, fixture, scenario, Codex host, and platform ownership layout
-  depends_on:
-  - reference.system-requirements
-  - reference.agent-connection
-  - reference.mcp-transport
-  - reference.admin-cli
-  - reference.security
-  - reference.external-contracts
-  - reference.failure-model
-  - maintain.validation
+
 - doc_id: reference.scope
   path_en: docs/en/reference/scope.md
   path_ko: docs/ko/reference/scope.md
@@ -1554,21 +1461,19 @@ documents:
   - reference.admin-cli
   - reference.agent-connection
   - reference.system-requirements
-  - reference.host-release-evidence
   - reference.external-contracts
   - reference.failure-model
 - doc_id: reference.external-contracts
   path_en: docs/en/reference/external-contracts.md
   path_ko: docs/ko/reference/external-contracts.md
   kind: reference
-  summary: Reference contract for external contract descriptors, exact adapter-registry selection,
-    the canonical internal-model boundary, compatibility windows, and shared Git object-ID validation.
+  summary: Reference contract for shared Git object-ID validation and canonicalization.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1579,14 +1484,8 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`ExternalContractDescriptor` shape and field meanings'
-  - exact boundary adapter-registry selection by `contract_id + schema_digest`
-  - canonical external-format decoding into one Core and Store internal model
-  - '`unsupported_external_contract` and prohibited inference, fallback, and numeric-version dispatch'
-  - one current canonical external output contract
-  - pre-1.0 current-only and post-1.0 current-plus-immediately-previous compatibility policy with
-    adapter sunset metadata
   - shared 40- or 64-character Git object-ID validation and lowercase canonicalization
+  - rejection of malformed boundary input without decoder probing or fallback interpretation
   depends_on:
   - reference.failure-model
 - doc_id: reference.failure-model
@@ -1611,10 +1510,10 @@ documents:
   - implement
   - operate
   canonical_for:
-  - exact `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`, `Corrupt`, and `UnsupportedContract`
+  - exact `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`, and `Corrupt`
     category meanings and machine-readable identifiers
   - structural rejection versus policy non-allow boundary
-  - unavailable versus degraded and corrupt versus unsupported-contract boundaries
+  - unavailable versus degraded and rejected versus corrupt boundaries
   - fail-closed persisted authority, policy, and typed-data corruption handling
   - prohibition on synthetic identifiers, fabricated records, fallback formats, and default-value
     conflation
@@ -1650,7 +1549,6 @@ documents:
   - reference.failure-model
   - reference.runtime-boundaries
   - reference.api.schema-state
-  - reference.host-release-evidence
 - doc_id: reference.core-model
   path_en: docs/en/reference/core-model.md
   path_ko: docs/ko/reference/core-model.md
@@ -1758,7 +1656,6 @@ documents:
   - reference.mcp-transport
   - reference.api.methods
   - reference.api.schema-value-sets
-  - reference.host-release-evidence
 - doc_id: reference.mcp-transport
   path_en: docs/en/reference/mcp-transport.md
   path_ko: docs/ko/reference/mcp-transport.md
@@ -1798,7 +1695,6 @@ documents:
   - reference.api.schema-value-sets
   - reference.storage
   - reference.storage-records
-  - reference.host-release-evidence
 - doc_id: reference.security
   path_en: docs/en/reference/security.md
   path_ko: docs/ko/reference/security.md
@@ -1825,10 +1721,9 @@ documents:
   - Core authority, Write Ticket, UserAction, Guard observation, and display boundaries
   - Agent Connection, process, actor source, and user-identity non-inference
   - managed stdio process topology without a network-listener guarantee
-  - release evidence and operational-session non-attestation boundaries
+  - executable and version observations plus operational-session non-attestation boundaries
   - historical operation-result access and private-content boundary
   depends_on:
-  - reference.host-release-evidence
   - reference.storage-records
 - doc_id: reference.glossary
   path_en: docs/en/reference/glossary.md
@@ -2453,7 +2348,7 @@ documents:
   - operate
   canonical_for:
   - public `ErrorCode` identifiers and meanings
-  - '`PERSISTED_DATA_CORRUPT` and `UNSUPPORTED_CONTRACT` public meanings'
+  - '`PERSISTED_DATA_CORRUPT` and `VALIDATION_FAILED` public meanings'
   - public error-code and required failure-category relationships
   depends_on:
   - reference.failure-model
@@ -2485,7 +2380,7 @@ documents:
   - '`STATE_VERSION_CONFLICT` conflict selection'
   - stale-state conflict behavior
   - idempotency request-hash conflict behavior
-  - corruption and unsupported-contract error precedence
+  - rejection, corruption, and unavailable-error precedence
   depends_on:
   - reference.failure-model
   - reference.api.error-codes
@@ -2515,7 +2410,7 @@ documents:
   - rejected response branch routing
   - blocked result response branch routing
   - '`dry_run` preview response branch routing'
-  - API routing for `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`, `Corrupt`, and `UnsupportedContract`
+  - API routing for `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`, and `Corrupt`
   depends_on:
   - reference.failure-model
   - reference.api.schema-core
@@ -2575,9 +2470,7 @@ documents:
   - machine-readable error detail constraints
   depends_on:
   - reference.failure-model
-  - reference.external-contracts
   - reference.agent-connection
-  - reference.host-release-evidence
   - reference.api.error-codes
 - doc_id: reference.storage
   path_en: docs/en/reference/storage.md
@@ -2633,7 +2526,6 @@ documents:
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
   - strict UserAction request and immutable CLI resolution records
   depends_on:
-  - reference.host-release-evidence
   - reference.mcp-transport
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
@@ -2745,12 +2637,11 @@ documents:
   - '`StorageManifest` shape, exact `volicord.sqlite.canonical` identity, and ordered eight-value enabled-capability list'
   - one canonical SQLite format and fail-closed exact-open validation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
-  - unsupported-contract, corruption, unavailable, and fresh-recreation storage boundaries
+  - noncurrent-contract corruption, unavailable, and fresh-recreation storage boundaries
   - canonical Core UTC clock and persisted project-time floor
   - atomic state-version, immutable event, write-ticket, and transaction ordering
   - idempotency, strict replay rows, and exact operation-result retrieval
   depends_on:
-  - reference.external-contracts
   - reference.failure-model
   - reference.storage-ddl
   - reference.storage-records
@@ -2783,18 +2674,16 @@ documents:
   - direct CLI projection of canonical verification checks and actions without a nested report or duplicate status tree
   - typed integration revisions and authoritative managed-host operational-session evidence
   - exact `PlatformEnvironment` value set and independent WSL2 identity
-  - exact `PlatformReleaseCoordinate` shape and pinned WSL2 distribution/image binding
+  - pinned WSL2 distribution identity and filesystem boundary
   - exact `ValidatedAgentSession` fields and ten current Connection/project/session authorization invariants
   - Codex discovery, install, verify, repair, uninstall, drift, launch-context, and diagnostic responsibilities
-  - deterministic connection/session/revision audit basis without receipt or artifact digests
+  - deterministic connection/session/revision audit basis without executable identity inputs
   - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
-  - production runtime independence from release catalogs, executable hashes, and client or host versions
+  - production runtime independence from exact-host allowlists, executable hashes, and client or host versions
   - report-contained connection actions without an independent persisted status or action array
   - first-release managed-host threat model and non-signing boundary
   depends_on:
-  - reference.host-release-evidence
   - reference.mcp-transport
-  - reference.external-contracts
   - reference.failure-model
   - reference.system-requirements
   - reference.runtime-boundaries
@@ -3004,7 +2893,7 @@ documents:
     and Maintain document families.
   - Inclusion and exclusion boundaries for major document families.
   - Diagram-role and deeper-document linking guidance for major maintained documents.
-  - Reader-guide separation of managed setup success, connection readiness, feature status, and release evidence.
+  - Reader-guide separation of managed setup success, behavioral connection verification, and feature status.
   depends_on:
   - maintain.documentation-policy
   - maintain.translation-policy
@@ -3017,7 +2906,6 @@ documents:
   - reference.system-requirements
   - reference.agent-connection
   - reference.api.schema-value-sets
-  - reference.host-release-evidence
 - doc_id: maintain.diagram-policy
   path_en: docs/en/maintain/diagram-policy.md
   path_ko: docs/ko/maintain/diagram-policy.md
@@ -3085,8 +2973,8 @@ documents:
   - Volicord brand spelling and Korean pronunciation guidance.
   - Official bilingual Volicord brand copy, tagline, descriptor, mnemonic, and core-message presentation.
   - Volicord voice guidance and claim-boundary discipline for documentation and generated repository guidance.
-  - Separation of accepted host values, managed setup, connection readiness, feature-specific support,
-    and exact-final-artifact release claims.
+  - Separation of accepted host values, managed setup, behavioral connection verification,
+    and feature-specific support.
   - Volicord product/system, Core, CLI identifier, MCP adapter identifier, Runtime Home label, and domain-concept
     presentation boundaries.
   - Project-local visual identity principles and initial project tokens for Volicord presentation.
@@ -3102,7 +2990,6 @@ documents:
   - reference.system-requirements
   - reference.agent-connection
   - reference.api.schema-value-sets
-  - reference.host-release-evidence
 - doc_id: maintain.translation-policy
   path_en: docs/en/maintain/translation-policy.md
   path_ko: docs/ko/maintain/translation-policy.md
@@ -3136,13 +3023,13 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, actual-file support-catalog generation, build-once six-cell release verification and indexing, Rust checks, and result reporting.
+  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, generic release integrity, optional host smoke, Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -3158,10 +3045,10 @@ documents:
   - contract-boundary and generated-source drift checks
   - durable repository-test and one-time audit reporting boundaries
   - representative-user Codex onboarding usability validation
-  - exact finalized artifact validation for five published targets and six independent environment cells
-  - build-once raw-artifact provenance, complete release-cell evidence, and same-bytes package verification
-  - operator sequence for deterministic support-entry generation, complete-bundle verification, and external verified-index publication
-  - honest zero-to-six-entry external release-evidence review and unavailable-attempt reporting
+  - generic five-target, version, canonical-byte, package, checksum, and workflow integrity validation
+  - optional real-Codex smoke as an operational observation outside the ordinary release result
+  - behavioral host verification through configuration, MCP initialization, required tools, safe tool round trips, and Guard observations
+  - diagnostic host-version changes as a reason to renew observation without executable certification
   - Rust formatting, lint, test, diff, repository-hygiene, and skipped-validation reporting
   depends_on:
   - maintain.documentation-policy
@@ -3171,7 +3058,6 @@ documents:
   - terminology.map
   - architecture-guide.testing-strategy
   - reference.mcp-transport
-  - reference.host-release-evidence
   - reference.api.method-prepare-evidence-capture
   - reference.api.method-record-run
   - reference.storage-effects

@@ -152,11 +152,10 @@ not_allowed
 unavailable
 degraded
 corrupt
-unsupported_contract
 ```
 
 이 식별자는 각각 정확히 `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`,
-`Corrupt`, `UnsupportedContract`에 대응합니다. 의미 경계는
+`Corrupt`에 대응합니다. 의미 경계는
 [실패 모델](../failure-model.md)이 담당합니다.
 
 `ToolError.category`는 이 값 집합을 사용하는 필수 제어 필드입니다. 실패 범주는

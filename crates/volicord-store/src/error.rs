@@ -69,11 +69,6 @@ pub enum StoreError {
         actual_storage_profile: String,
         expected_storage_profile: &'static str,
     },
-    /// A persisted external payload names no exact current boundary adapter.
-    UnsupportedExternalContract {
-        contract_id: String,
-        reason: &'static str,
-    },
     /// An opened database does not satisfy a required schema invariant.
     SchemaInvariant {
         database_kind: &'static str,
@@ -164,7 +159,7 @@ impl StoreError {
                 owner_state_error: None,
             },
             Self::UnsupportedPlatformEnvironment { reason, .. } => StoreFailureClassification {
-                route: StoreFailureRoute::UnsupportedContract,
+                route: StoreFailureRoute::InvalidEnvironment,
                 category: reason,
                 retryable: false,
                 database_kind: None,
@@ -305,21 +300,12 @@ impl StoreError {
                 owner_state_error: None,
             },
             Self::UnsupportedStorageProfile { database_kind, .. } => StoreFailureClassification {
-                route: StoreFailureRoute::UnsupportedContract,
+                route: StoreFailureRoute::PersistedDataCorrupt,
                 category: "unsupported_storage_profile",
                 retryable: false,
                 database_kind: Some(database_kind),
                 entity: None,
                 field: Some("storage_profile"),
-                owner_state_error: None,
-            },
-            Self::UnsupportedExternalContract { .. } => StoreFailureClassification {
-                route: StoreFailureRoute::UnsupportedContract,
-                category: "unsupported_external_contract",
-                retryable: false,
-                database_kind: Some("registry"),
-                entity: None,
-                field: None,
                 owner_state_error: None,
             },
             Self::SchemaInvariant { database_kind, .. } => StoreFailureClassification {
@@ -338,9 +324,9 @@ impl StoreError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreFailureRoute {
     OperationalUnavailable,
+    InvalidEnvironment,
     InvocationContextMismatch,
     PersistedDataCorrupt,
-    UnsupportedContract,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -538,13 +524,6 @@ impl fmt::Display for StoreError {
                 formatter,
                 "unsupported storage profile for {database_kind}: found {actual_storage_profile}, expected {expected_storage_profile}; explicitly reinitialize the Runtime Home"
             ),
-            Self::UnsupportedExternalContract {
-                contract_id,
-                reason,
-            } => write!(
-                formatter,
-                "{reason}: unsupported external contract {contract_id}"
-            ),
             Self::SchemaInvariant {
                 database_kind,
                 detail,
@@ -572,7 +551,6 @@ impl Error for StoreError {
             | Self::CorruptOwnerStateValue { .. }
             | Self::CorruptStoredValue { .. }
             | Self::UnsupportedStorageProfile { .. }
-            | Self::UnsupportedExternalContract { .. }
             | Self::SchemaInvariant { .. } => None,
         }
     }
@@ -612,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_storage_profile_has_an_unsupported_contract_route() {
+    fn unknown_storage_profile_is_persisted_data_corruption() {
         let error = StoreError::unsupported_storage_profile(
             "registry",
             "unknown-contract",
@@ -621,7 +599,7 @@ mod tests {
 
         assert_eq!(
             error.classification().route,
-            StoreFailureRoute::UnsupportedContract
+            StoreFailureRoute::PersistedDataCorrupt
         );
     }
 }

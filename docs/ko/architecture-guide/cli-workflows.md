@@ -37,8 +37,8 @@ Codex adapter에 관리 구성 생성을 요청하며 정확한 관리 변경을
 `connection status`는 활성 probe를 실행하거나 파일, 보고서, 관찰, timestamp를 쓰지
 않고 현재 파일과 Store 관찰을 읽습니다. `connection verify`는 현재 adapter와 관리 구성을
 검사하고 허용된 로컬 probe를 실행한 뒤 실제 managed-host 및 Guard 관찰을 읽고 Store
-담당 경로로 보고서를 최대 하나 commit합니다. 호스트 실행 파일을 hash하거나 릴리스 인증
-카탈로그를 조회하거나 권한 receipt를 발급하거나 host 활동을 꾸며 내거나 managed-host
+담당 경로로 보고서를 최대 하나 commit합니다. 호스트 실행 파일을 hash하거나 정확한
+호스트 allowlist를 조회하거나 실행 파일 attestation을 발급하거나 host 활동을 꾸며 내거나 managed-host
 agent session을 만들지 않습니다. 권위 있는 관리 runtime/project session은 관리 MCP
 lifecycle 처리에서만 기록합니다.
 

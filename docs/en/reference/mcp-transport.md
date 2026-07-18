@@ -3,7 +3,7 @@
 This document owns the first-release local MCP process boundary: managed stdio
 startup, strict binding, JSON-RPC lifecycle, tool discovery, public argument
 projection, response wrapping, and shutdown. Core methods, Codex configuration,
-storage effects, and release evidence remain with their focused owners.
+connection verification, and storage effects remain with their focused owners.
 
 <a id="surface-stability"></a>
 ## Surface Stability
@@ -52,10 +52,9 @@ cooperative process source but do not prove client, host, actor, or human
 identity. Corrupt records, ambiguous selection, and unavailable storage use the
 [Failure Model](failure-model.md).
 
-Startup does not hash the parent executable, consult an embedded support
-catalog, compare a platform release coordinate, issue or load a verification
-receipt, or use client or host version as an allowlist input. Release
-certification remains outside production runtime authorization.
+Startup does not hash the parent executable, consult an exact-host allowlist,
+derive a platform executable identity, issue or load an executable attestation,
+or use client or host version as an authorization input.
 
 ## MCP Wire Behavior
 

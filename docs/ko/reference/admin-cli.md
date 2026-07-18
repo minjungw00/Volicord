@@ -46,10 +46,10 @@ volicord inbox
 
 `volicord doctor --json`은 missing, invalid, unavailable, corrupt, stale 관찰을
 서로 구분합니다. `states.installation_profile` 값은 `present`, `missing`, `invalid`,
-`unavailable`, `corrupt`, `unsupported_contract`, `not_checked`, `unknown` 중 하나이며
+`unavailable`, `corrupt`, `not_checked`, `unknown` 중 하나이며
 이 조건들을 하나의 값으로 합치지 않습니다. `project_policy_authority` finding은
 `authority_missing`,
-`authority_corrupt`, `authority_unavailable`, `authority_unsupported_contract`,
+`authority_corrupt`, `authority_unavailable`,
 `managed_file_missing`, `managed_file_invalid`, `managed_file_unavailable`,
 `managed_file_stale` 중 하나를 사용합니다. `managed_file_stale`은 두 복사본이 각각
 유효하지만 기준 fingerprint가 서로 다르다는 뜻입니다. 복구 동작을 제안할 수는 있지만
@@ -131,8 +131,8 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 | `action_required` | 오래 유지되는 설정이 있을 수 있지만 이름 붙은 사용자 또는 Codex 동작이 남았습니다. |
 | `failed` | 동작이 실패했고 기계 판독 원인을 보고합니다. |
 
-`complete`는 릴리스 셀 통과, Core 호출 권한, host attestation, 활성 Codex 세션의
-도구 노출 증명이 아닙니다.
+`complete`는 Core 호출 권한, 실행 파일 attestation, 보고서의 check와 관찰을 벗어난
+행동에 대한 주장이 아닙니다.
 
 `volicord init`, `volicord connection status`,
 `volicord connection verify`는 `ConnectionCommandReport` 하나를 직렬화합니다.
@@ -239,7 +239,7 @@ volicord export authority-bundle --output "<path>" --repo "<repo>"
 ```
 
 내보내기는 담당 문서가 정의한 권한 번들을 새 경로나 명시적으로 허용된 출력 경로에
-씁니다. 프로젝트 권한 상태를 바꾸거나 릴리스 증거를 만들지 않습니다.
+씁니다. 프로젝트 권한 상태를 바꾸지 않습니다.
 
 ## 변경 조정
 

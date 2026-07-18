@@ -8,17 +8,14 @@
 //! adapter behavior.
 
 pub mod canonical;
-mod codex_contract;
-pub mod codex_release_evidence;
-pub mod codex_support_catalog;
 pub mod connection_verification;
-pub mod external_contract;
 pub mod guard_manifest;
+pub mod host_configuration;
 pub mod ids;
 pub mod integration_revision;
-pub mod managed_host_contract;
 pub mod managed_mcp_client_info;
 pub mod methods;
+pub mod platform;
 pub mod presentation;
 pub mod release_target;
 pub mod schema;
@@ -27,16 +24,14 @@ pub mod tool_names;
 pub mod values;
 
 pub use canonical::*;
-pub use codex_release_evidence::*;
-pub use codex_support_catalog::*;
 pub use connection_verification::*;
-pub use external_contract::*;
 pub use guard_manifest::*;
+pub use host_configuration::*;
 pub use ids::*;
 pub use integration_revision::*;
-pub use managed_host_contract::*;
 pub use managed_mcp_client_info::*;
 pub use methods::*;
+pub use platform::*;
 pub use presentation::*;
 pub use release_target::*;
 pub use schema::*;

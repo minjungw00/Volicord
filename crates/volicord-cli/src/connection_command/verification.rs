@@ -1195,20 +1195,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_release_support_catalog_cannot_block_operational_checks() {
-        let catalog = volicord_types::CodexSupportCatalog::from_entries(Vec::new())
-            .expect("empty release-validation catalog");
-        assert!(catalog.entries().is_empty());
-        let host = host("version-not-in-any-catalog");
-        let session = managed_session("version-not-in-any-catalog", true);
-        let checks = host_session_checks(&host, "revision_current", Some(&session), Some(&session))
-            .expect("operational checks");
-        assert!(checks
-            .iter()
-            .all(|check| check.status() == ConnectionCheckStatus::Passed));
-    }
-
-    #[test]
     fn fresh_setup_without_host_observation_is_action_required() {
         let host = host("unlisted-future-version");
         let mut checks = vec![

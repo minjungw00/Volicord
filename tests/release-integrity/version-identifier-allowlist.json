@@ -43,30 +43,6 @@
       "reason": "Git owns the porcelain output format identifier."
     },
     {
-      "path": "crates/volicord-types/src/external_contract.rs",
-      "needle": "contract-v1",
-      "classification": "negative_test",
-      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
-    },
-    {
-      "path": "crates/volicord-types/src/external_contract.rs",
-      "needle": "contract-v2",
-      "classification": "negative_test",
-      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
-    },
-    {
-      "path": "crates/volicord-types/src/external_contract.rs",
-      "needle": "contract-v01",
-      "classification": "negative_test",
-      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
-    },
-    {
-      "path": "crates/volicord-types/src/external_contract.rs",
-      "needle": "contract-v0",
-      "classification": "negative_test",
-      "reason": "The strict descriptor test rejects numeric compatibility suffixes."
-    },
-    {
       "path": "crates/volicord-types/src/ids.rs",
       "needle": "uuid_v4",
       "classification": "external_standard",
@@ -91,30 +67,6 @@
       "reason": "The documentation-maintenance catalog, not a product compatibility contract, owns this schema key."
     },
     {
-      "path": "docs/en/reference/external-contracts.md",
-      "needle": "-v1",
-      "classification": "negative_documentation_example",
-      "reason": "The canonical contract owner explicitly prohibits this suffix."
-    },
-    {
-      "path": "docs/en/reference/external-contracts.md",
-      "needle": "-v2",
-      "classification": "negative_documentation_example",
-      "reason": "The canonical contract owner explicitly prohibits this suffix."
-    },
-    {
-      "path": "docs/ko/reference/external-contracts.md",
-      "needle": "-v1",
-      "classification": "negative_documentation_example",
-      "reason": "The canonical contract owner explicitly prohibits this suffix."
-    },
-    {
-      "path": "docs/ko/reference/external-contracts.md",
-      "needle": "-v2",
-      "classification": "negative_documentation_example",
-      "reason": "The canonical contract owner explicitly prohibits this suffix."
-    },
-    {
       "path": "docs/en/user-guide/installation.md",
       "needle": "v0.8.0",
       "classification": "release_tag_example",
@@ -125,24 +77,6 @@
       "needle": "v0.8.0",
       "classification": "release_tag_example",
       "reason": "The installer example uses the repository's externally visible release-tag syntax."
-    },
-    {
-      "path": "tests/release-validation/src/io.rs",
-      "needle": "--porcelain=v1",
-      "classification": "external_standard",
-      "reason": "Git owns the porcelain output format identifier."
-    },
-    {
-      "path": "tests/release-validation/src/tests.rs",
-      "needle": "actions/upload-artifact@v4",
-      "classification": "third_party_api",
-      "reason": "The workflow structure test matches GitHub Actions-owned artifact action release identifiers."
-    },
-    {
-      "path": "tests/release-validation/src/tests.rs",
-      "needle": "actions/download-artifact@v4",
-      "classification": "third_party_api",
-      "reason": "The workflow structure test matches GitHub Actions-owned artifact action release identifiers."
     },
     {
       "path": "xtask/tests/docs_check.rs",

@@ -8,11 +8,6 @@ use std::{
 };
 
 use serde_json::Value;
-use volicord_release_validation_tests::contracts::{
-    load_checked_in_contracts, parse_codex_release_evidence_manifest, parse_codex_support_catalog,
-    parse_release_target_contract, serialize_codex_release_evidence_manifest,
-    serialize_codex_support_catalog, serialize_release_target_contract,
-};
 use volicord_store::schema::{
     current_storage_manifest, generated_schema_metadata, PROJECT_STATE_SCHEMA_SQL,
     REGISTRY_SCHEMA_SQL,
@@ -25,12 +20,6 @@ const CANONICAL_SCHEMA_SQL_PATHS: &[&str] = &[
     "crates/volicord-store/src/schema/project.sql",
 ];
 
-const RELEASE_CANONICAL_PATHS: &[&str] = &[
-    "crates/volicord-types/contracts/codex-support-catalog.json",
-    "tests/release-validation/contracts/codex-release-evidence-manifest.json",
-    "tests/release-validation/contracts/release-targets.json",
-];
-
 const SNAPSHOT_CANONICAL_PATHS: &[&str] = &[
     "tests/integration/snapshots/api_request_schema_contract.json",
     "tests/integration/snapshots/mcp_read_only_tools_contract.json",
@@ -41,17 +30,17 @@ const RAW_DIGEST_TEXT_PATHS: &[&str] = &["tests/agent-evaluation/fixtures/catalo
 
 const LF_ONLY_NON_CANONICAL_PATHS: &[&str] = &[
     "tests/agent-evaluation/fixtures/catalog.json",
-    "tests/release-validation/contracts/version-identifier-allowlist.json",
+    "tests/release-integrity/version-identifier-allowlist.json",
 ];
 
 const LF_JSON_DIRECTORIES: &[&str] = &[
-    "crates/volicord-types/contracts",
-    "tests/release-validation/contracts",
+    "tests/agent-evaluation/fixtures",
     "tests/integration/snapshots",
+    "tests/release-integrity",
 ];
 
 #[test]
-fn canonical_contract_files_are_lf_and_match_deterministic_serialization() {
+fn canonical_repository_files_are_lf_and_match_deterministic_serialization() {
     let root = repository_root();
     let attributes = root.join(".gitattributes");
     assert!(attributes.is_file(), "root .gitattributes is missing");
@@ -59,9 +48,6 @@ fn canonical_contract_files_are_lf_and_match_deterministic_serialization() {
 
     for relative_path in lf_controlled_paths(&root) {
         assert_lf_only(&root.join(relative_path));
-    }
-    for relative_path in RELEASE_CANONICAL_PATHS {
-        assert_release_contract_is_canonical(&root, relative_path);
     }
     for relative_path in SNAPSHOT_CANONICAL_PATHS {
         assert_pretty_json_is_canonical(&root.join(relative_path));
@@ -74,29 +60,6 @@ fn canonical_contract_files_are_lf_and_match_deterministic_serialization() {
 #[test]
 fn canonical_byte_validation_accepts_lf_and_rejects_crlf() {
     let root = repository_root();
-    let lf_repository = tempfile::tempdir().expect("create LF contract repository");
-    copy_release_contracts(&root, lf_repository.path());
-    load_checked_in_contracts(lf_repository.path()).expect("LF canonical contracts must pass");
-
-    for relative_path in RELEASE_CANONICAL_PATHS {
-        let crlf_repository = tempfile::tempdir().expect("create CRLF contract repository");
-        copy_release_contracts(&root, crlf_repository.path());
-        let path = crlf_repository.path().join(relative_path);
-        let canonical = fs::read(&path).expect("read canonical contract");
-        let crlf = crlf_mutation(&canonical);
-        assert!(
-            crlf.contains(&b'\r'),
-            "CRLF mutation must add carriage returns"
-        );
-        fs::write(&path, crlf).expect("write CRLF contract copy");
-
-        let error = load_checked_in_contracts(crlf_repository.path())
-            .expect_err("CRLF contract bytes must be non-canonical");
-        assert!(
-            error.contains("one final LF"),
-            "unexpected canonical-byte error for {relative_path}: {error}"
-        );
-    }
 
     for relative_path in CANONICAL_SCHEMA_SQL_PATHS {
         let canonical = fs::read(root.join(relative_path)).expect("read canonical schema SQL");
@@ -206,11 +169,6 @@ fn autocrlf_checkout_preserves_canonical_contract_bytes() {
             "isolated autocrlf checkout changed {relative_path}"
         );
     }
-    load_checked_in_contracts(&checkout)
-        .expect("autocrlf checkout must retain canonical release-contract bytes");
-    for relative_path in RELEASE_CANONICAL_PATHS {
-        assert_release_contract_is_canonical(&checkout, relative_path);
-    }
     for relative_path in SNAPSHOT_CANONICAL_PATHS {
         assert_pretty_json_is_canonical(&checkout.join(relative_path));
     }
@@ -223,7 +181,7 @@ fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .expect("release-validation package is below repository root")
+        .expect("release-integrity package is below repository root")
         .to_path_buf()
 }
 
@@ -263,9 +221,8 @@ fn assert_canonical_path_registry_is_complete(root: &Path) {
         .collect::<Vec<_>>();
     discovered.sort();
 
-    let mut registered = RELEASE_CANONICAL_PATHS
+    let mut registered = SNAPSHOT_CANONICAL_PATHS
         .iter()
-        .chain(SNAPSHOT_CANONICAL_PATHS)
         .map(|path| (*path).to_owned())
         .collect::<Vec<_>>();
     registered.sort();
@@ -350,36 +307,6 @@ fn validate_canonical_text_bytes(bytes: &[u8]) -> Result<(), &'static str> {
     Ok(())
 }
 
-fn assert_release_contract_is_canonical(root: &Path, relative_path: &str) {
-    let path = root.join(relative_path);
-    let checked_in =
-        fs::read(&path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
-    let canonical = match relative_path {
-        "crates/volicord-types/contracts/codex-support-catalog.json" => {
-            let contract = parse_codex_support_catalog(&checked_in).expect("parse support catalog");
-            serialize_codex_support_catalog(&contract).expect("serialize support catalog")
-        }
-        "tests/release-validation/contracts/codex-release-evidence-manifest.json" => {
-            let contract = parse_codex_release_evidence_manifest(&checked_in)
-                .expect("parse release-evidence manifest");
-            serialize_codex_release_evidence_manifest(&contract)
-                .expect("serialize release-evidence manifest")
-        }
-        "tests/release-validation/contracts/release-targets.json" => {
-            let contract =
-                parse_release_target_contract(&checked_in).expect("parse release targets");
-            serialize_release_target_contract(&contract).expect("serialize release targets")
-        }
-        _ => panic!("unregistered canonical release contract: {relative_path}"),
-    };
-    assert_eq!(
-        checked_in,
-        with_final_lf(canonical),
-        "{} does not match deterministic serialization plus one final LF",
-        path.display()
-    );
-}
-
 fn assert_pretty_json_is_canonical(path: &Path) {
     let checked_in =
         fs::read(path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
@@ -410,17 +337,6 @@ fn crlf_mutation(bytes: &[u8]) -> Vec<u8> {
         mutated.push(*byte);
     }
     mutated
-}
-
-fn copy_release_contracts(source_root: &Path, destination_root: &Path) {
-    copy_paths(
-        source_root,
-        destination_root,
-        &RELEASE_CANONICAL_PATHS
-            .iter()
-            .map(|path| (*path).to_owned())
-            .collect::<Vec<_>>(),
-    );
 }
 
 fn copy_paths(source_root: &Path, destination_root: &Path, relative_paths: &[String]) {

@@ -133,15 +133,15 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   설명, 관리 지침 경계, 안전한 제거 흐름입니다.
 - 담당하지 않아야 하는 정보: 정확한 CLI 출력 계약, 전체 문제 해결 목록, MCP
   프로토콜 줄 목록, 호스트 내부 신뢰 처리, 전체 환경 적용 가능성 규칙, 저장소
-  DDL, 정확한 session이나 릴리스 증거 계약, API 스키마 의미입니다.
+  DDL, 정확한 session 계약, API 스키마 의미입니다.
 - 허용되는 그림: 가이드 수준에 머무르는 호스트 설정 흐름도, 설정 경계 지도, 검증
   경로 그림입니다.
 - 더 깊은 문서로 연결하는 방식: 명령 세부사항은 [관리 CLI](../reference/admin-cli.md),
   로컬 MCP 프로세스 세부사항은 [MCP 전송](../reference/mcp-transport.md), 위치와
   저장소 경계는 [런타임 경계](../reference/runtime-boundaries.md), 연결 개념과 session
   권한은 [Agent Connection](../reference/agent-connection.md#validated-agent-session),
-  API 표면은 [API 메서드](../reference/api/methods.md), 릴리스
-  주장 증거는 [호스트 릴리스 증거](../reference/host-release-evidence.md), 환경 적용
+  API 표면은 [API 메서드](../reference/api/methods.md), 행동 기반 호스트 검증은
+  [Agent Connection](../reference/agent-connection.md), 환경 적용
   가능성은 [시스템 요구사항](../reference/system-requirements.md), 복구 세부사항은
   [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md)로 보냅니다.
 

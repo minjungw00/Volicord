@@ -4,15 +4,15 @@
 있는 플랫폼 환경, WSL2 토폴로지, 실행 파일과 파일 시스템 전제 조건, Runtime
 Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 조건을 정의합니다.
 
-이 문서는 릴리스 셀이 실제로 실행되거나 통과했다고 주장하지 않습니다. 정확히
-최종 확정된 아티팩트의 결과는 [호스트 릴리스 증거](host-release-evidence.md)가,
-관리 운영 session 권한은 [Agent Connection](agent-connection.md)이 담당합니다.
+일반 빌드, 패키지, checksum, 플랫폼, 게시 검증은
+[검증](../maintain/validation.md)이, 관리 운영 session 권한은
+[Agent Connection](agent-connection.md)이 담당합니다. Volicord는 Codex 실행 파일의
+identity나 출처를 인증하지 않습니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-네 `PlatformEnvironment` 값, 게시 target triple 다섯 개, 필수 target/environment 셀
-여섯 개, 정확한 최초 릴리스 WSL2 배포판/이미지 좌표,
+네 `PlatformEnvironment` 값, 게시 target triple 다섯 개, 정확한 최초 릴리스 WSL2 배포판 좌표,
 WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제 조건, 중단 기준은 안정
 계약입니다. 그 밖의 runner 이미지, 패키지 관리자 명령, 실행 파일 위치와 진단
 문구는 다른 담당 문서가 안정으로 지정하지 않는 한 릴리스 또는 구현
@@ -21,8 +21,8 @@ WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제 조건, 중단 기�
 <a id="first-release-environment-matrix"></a>
 ## 최초 릴리스 환경 행렬
 
-Volicord는 binary target 다섯 개를 게시하며 서로 독립적인 릴리스 환경 셀 여섯
-개를 요구합니다.
+Volicord는 binary target 다섯 개를 게시합니다. 해당 binary가 지원하는 실행 환경은
+다음과 같습니다.
 
 | `target_triple` | `platform_environment` | 필수 경계 |
 |---|---|---|
@@ -33,13 +33,10 @@ Volicord는 binary target 다섯 개를 게시하며 서로 독립적인 릴리�
 | `x86_64-pc-windows-msvc` | `native_windows` | 모든 구성요소가 native x86-64 Windows에서 실행됩니다. WSL 좌표는 사용할 수 없습니다. |
 | `x86_64-unknown-linux-gnu` | `wsl2` | 모든 구성요소가 아래 조건을 만족하는 같은 WSL2 배포판 내부에서 실행되고 그 Linux 파일 시스템을 사용합니다. |
 
-환경에 대한 릴리스 지원 주장은 정확한 내장 `CodexSupportEntry`에 실제 실행한
-Volicord digest와 `validation_evidence.validation_result=passed`를 담은 외부
-`CodexReleaseEvidenceEntry`가 정확히 대응할 때만 성립합니다. 한 행의 통과는 다른
-행을 성립시키지 않습니다. 같은 x86-64 Linux binary를 검증하더라도 native Linux와
-WSL2는 별도 셀입니다. macOS 및 Linux의 한 architecture도 다른 architecture를
-대신할 수 없습니다. 저장소 테스트, 교차 컴파일, 패키징이나 비슷한 target
-triple은 실제 셀 실행을 대신하지 않습니다.
+Target 호환성은 Volicord 플랫폼 제약이며 Codex 아티팩트 인증이 아닙니다. 같은
+x86-64 Linux binary를 실행하더라도 native Linux와 WSL2는 별도 환경입니다. 한
+architecture나 환경은 다른 환경의 런타임 전제 조건을 성립시키지 않습니다. 릴리스
+패키징은 계속 게시 target을 각각 빌드하고 점검합니다.
 
 모든 행의 최초 릴리스 제품 표면은 다음과 같습니다.
 
@@ -73,11 +70,10 @@ triple은 실제 셀 실행을 대신하지 않습니다.
 | `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
-| `platform_release_coordinate.environment_image` | `Ubuntu-24.04-LTS-WSL2` |
 
 플랫폼 점검은 배포판 이름, 운영체제 identity, WSL2 커널 경계, 파일 시스템 종류를
-관찰합니다. 릴리스 증거는 그 관찰된 배포판 사실에 image 좌표를 결속합니다. 이
-릴리스 좌표는 운영 권한 credential이 아닙니다.
+관찰합니다. 이 관찰은 지원 토폴로지를 집행할 뿐 실행 파일 identity나 운영 권한
+credential이 아닙니다.
 
 WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인하고
 `target_triple=x86_64-unknown-linux-gnu`를 요구해야 합니다. 일반 Linux `target_os`
@@ -108,8 +104,8 @@ project session을 기록해야 합니다.
 `unsupported_wsl_cross_topology`는 서로 맞지 않는 WSL 커널/환경 사실,
 `unsupported_wsl2_distribution`은 배포판 좌표 불일치,
 `unsupported_wsl2_filesystem`은 ext4가 아닌 구성요소를 뜻합니다. 이 결과는
-`UnsupportedContract`입니다. 커널, 배포판, 파일 시스템을 관찰할 수 없으면
-`Unavailable`로 남으며, 지원하지 않는 환경이나 네이티브 환경으로 바꾸지
+`Rejected` 환경 결과입니다. 커널, 배포판, 파일 시스템을 관찰할 수 없으면
+`Unavailable`로 남으며, 거절된 환경이나 네이티브 환경으로 바꾸지
 않습니다.
 
 <a id="toolchain-requirements"></a>
@@ -117,8 +113,7 @@ project session을 기록해야 합니다.
 
 workspace 빌드와 테스트에는 저장소가 선언한 Rust 도구 체인이 필요합니다. 현재
 유지되는 workspace는 Rust 1.85 이상 호환 stable Rust를 대상으로 합니다. 포맷,
-검사, lint, 테스트와 릴리스 검증 계약 테스트에는 같은 도구 체인의 Cargo를
-사용합니다.
+검사, lint, 테스트에는 같은 도구 체인의 Cargo를 사용합니다.
 
 런타임 전제 조건은 다음과 같습니다.
 
@@ -136,7 +131,7 @@ workflow가 Git 객체 ID를 제공하거나 검증할 때, 또는 선택한 Pro
 
 관리 프로세스는 구성된 Codex 실행 파일을 찾아 실행할 수 있어야 합니다. 검증은 관찰한
 실행 파일과 host version을 diagnostic으로 보고할 수 있지만 권한을 위해 hash하거나
-지원 카탈로그와 대조하거나 권한 receipt를 발급하지 않습니다. 실행 파일 사용 가능성은
+정확한 호스트 allowlist와 대조하거나 실행 파일 attestation을 발급하지 않습니다. 실행 파일 사용 가능성은
 agent, host, binary, 운영체제 사용자, human identity를 성립시키지 않습니다.
 
 관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야
@@ -224,7 +219,6 @@ project session을 기록하거나 선택하고, Core 맥락을 만들기 전에
 - 호스트와 profile이 정확히 `codex`, `record`가 아닙니다.
 - 플랫폼 환경이 없거나 모호하거나 네 값 집합 밖입니다.
 - target triple이 없거나 알 수 없거나 플랫폼 환경과 일치하지 않습니다.
-- 모든 필수 target/environment 셀에 현재 통과 증거가 없는 상태에서 릴리스 게시를 시도합니다.
 - 관리 설정, project, Connection, membership, mode, runtime session, project session 또는 현재 integration revision이 일치하지 않습니다.
 - 관리 설정이 손상되었거나 소유하지 않은 항목이거나 repair 가능한 담당 경계 밖으로 drift했습니다.
 - 저장된 typed 설정 행동이나 필요한 다른 담당 값이 손상되었습니다.
@@ -233,15 +227,15 @@ project session을 기록하거나 선택하고, Core 맥락을 만들기 전에
 - 관리형 stdio를 구성할 수 없습니다.
 - 필수 읽기나 플랫폼 primitive를 사용할 수 없습니다.
 
-결과는 해당 `Rejected`, `Unavailable`, `Corrupt` 또는 `UnsupportedContract` 범주와
-도메인 reason을 보존해야 합니다. 기본 session, 합성 권한, fallback 호스트,
-추정 플랫폼 또는 부분 성공을 만들면 안 됩니다.
+결과는 해당 `Rejected`, `Unavailable`, `Corrupt` 범주와 도메인 reason을 보존해야
+합니다. 기본 session, 합성 권한, fallback 호스트, 추정 플랫폼 또는 부분 성공을
+만들면 안 됩니다.
 
 ## 인접 담당 문서
 
 - 최초 릴리스 포함 및 제외 표면: [범위](scope.md)
 - 운영 session, 저장된 설정 행동 및 adapter/Core 경계: [Agent Connection](agent-connection.md)
-- 정확한 아티팩트 및 플랫폼 증거: [호스트 릴리스 증거](host-release-evidence.md)
+- 빌드, 패키지, 플랫폼, 릴리스 검증: [검증](../maintain/validation.md)
 - 런타임 경로 및 저장소 경계: [런타임 경계](runtime-boundaries.md)
 - SQLite 형식 수용: [저장소 버전 관리](storage-versioning.md)
 - 제품 전체 실패 의미: [실패 모델](failure-model.md)

@@ -30,7 +30,6 @@
 | 공개 `ErrorCode` | 세부 항목 |
 |---|---|
 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
-| `UNSUPPORTED_CONTRACT` | [`UNSUPPORTED_CONTRACT`](#errorcode-unsupported-contract) |
 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
@@ -79,25 +78,8 @@
 
 경계:
 - 형식이 잘못된 신뢰할 수 없는 요청 데이터는 이 코드를 사용합니다. 지원되는 영속 담당
-  계약의 저장 데이터가 유효하지 않으면 `PERSISTED_DATA_CORRUPT`, 정확한 외부 계약이나
-  호스트 아티팩트를 지원하지 않으면 `UNSUPPORTED_CONTRACT`를 사용합니다.
-
-<a id="errorcode-unsupported-contract"></a>
-### `UNSUPPORTED_CONTRACT`
-
-사용 위치:
-- `ToolRejectedResponse.errors[]`
-
-조건:
-- 정확한 외부 계약 설명자나 그 밖의 경계 형식이 정확히 등록된 지원 계약이 아닙니다.
-  fallback 어댑터, decoder, 버전, 가장 가까운 알려진 형식을 선택하지 않습니다.
-
-필수 실패 범주:
-- `unsupported_contract`
-
-필수 세부사항:
-- 해당 도메인에는 [API 오류 세부사항](error-details.md#reason)의
-  `ToolError.details.reason` 값 `unsupported_external_contract`를 사용합니다.
+  계약의 저장 데이터가 유효하지 않으면 `PERSISTED_DATA_CORRUPT`, 신뢰할 수 없는 경계
+  입력이 유효하지 않으면 `VALIDATION_FAILED`를 사용합니다.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`
@@ -137,14 +119,14 @@
 
 조건:
 - 필요한 Core, MCP, Store, 담당 상태 조회, Agent Connection에 현재 접근할 수 없고,
-  사용할 수 있는 데이터가 영속 데이터 손상이나 미지원 계약을 확정하지 않습니다.
+  사용할 수 있는 데이터가 영속 데이터 손상이나 다른 결정적 거부를 확정하지 않습니다.
 
 필수 실패 범주:
 - `unavailable`
 
 경계:
-- 알려진 영속 데이터 손상은 `PERSISTED_DATA_CORRUPT`, 알 수 없는 정확한 경계 계약은
-  `UNSUPPORTED_CONTRACT`를 사용합니다.
+- 알려진 영속 데이터 손상은 `PERSISTED_DATA_CORRUPT`, 알 수 없는 경계 입력은
+  `VALIDATION_FAILED`를 사용합니다.
 
 <a id="errorcode-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`

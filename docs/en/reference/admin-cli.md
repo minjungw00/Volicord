@@ -46,12 +46,12 @@ are usage errors. Administrative command names are not public API method names.
 
 `volicord doctor --json` keeps missing, invalid, unavailable, corrupt, and stale
 observations distinct. Its `states.installation_profile` value is `present`,
-`missing`, `invalid`, `unavailable`, `corrupt`, `unsupported_contract`,
-`not_checked`, or `unknown`; it never combines those conditions. A
+`missing`, `invalid`, `unavailable`, `corrupt`, `not_checked`, or `unknown`; it
+never combines those conditions. A
 `project_policy_authority` finding uses
 `authority_missing`, `authority_corrupt`, `authority_unavailable`,
-`authority_unsupported_contract`, `managed_file_missing`,
-`managed_file_invalid`, `managed_file_unavailable`, or `managed_file_stale`.
+`managed_file_missing`, `managed_file_invalid`, `managed_file_unavailable`, or
+`managed_file_stale`.
 `managed_file_stale` means both copies were individually valid but their
 canonical fingerprints differed. Repair actions may be offered, but doctor
 does not substitute a default policy or rewrite either authority copy. The
@@ -134,8 +134,8 @@ unambiguous. The only accepted explicit value is `codex`.
 | `action_required` | Durable setup may exist, but a named user or Codex action remains. |
 | `failed` | The operation failed and reports a machine-readable cause. |
 
-`complete` is not a release-cell pass, Core invocation authorization, host
-attestation, or proof that an active Codex session exposed tools.
+`complete` is not Core invocation authorization, executable attestation, or a
+claim about behavior beyond the checks and observations in the report.
 
 `volicord init`, `volicord connection status`, and
 `volicord connection verify` serialize one `ConnectionCommandReport`:

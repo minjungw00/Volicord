@@ -6,26 +6,26 @@ topology, executable and filesystem prerequisites, Runtime Home and Product
 Repository placement, and the conditions that require setup or validation to
 stop.
 
-It does not claim that a release cell ran or passed. Exact finalized-artifact
-results belong to [Host Release Evidence](host-release-evidence.md), while
-managed operational-session authorization belongs to
-[Agent Connection](agent-connection.md).
+Ordinary build, package, checksum, platform, and publication validation belongs
+to [Validation](../maintain/validation.md), while managed operational-session
+authorization belongs to [Agent Connection](agent-connection.md). Volicord does
+not certify the identity or provenance of a Codex executable.
 
 <a id="surface-stability"></a>
 ## Surface Stability
 
-The four `PlatformEnvironment` values, five published target triples, six
-required target/environment cells, the exact first-release WSL2
-distribution/image coordinate, WSL2 topology and ext4 boundary, managed stdio
-MCP prerequisite, and stop criteria are stable contracts. Other runner images,
-package-manager commands, executable locations, and diagnostic prose are
-release or implementation details unless another owner marks them stable.
+The four `PlatformEnvironment` values, five published target triples, the exact
+first-release WSL2 distribution coordinate, WSL2 topology and ext4 boundary,
+managed stdio MCP prerequisite, and stop criteria are stable contracts. Other
+runner images, package-manager commands, executable locations, and diagnostic
+prose are release or implementation details unless another owner marks them
+stable.
 
 <a id="first-release-environment-matrix"></a>
 ## First-Release Environment Matrix
 
-Volicord publishes five binary targets and requires six independent release
-environment cells:
+Volicord publishes five binary targets. The supported execution environments
+for those binaries are:
 
 | `target_triple` | `platform_environment` | Required boundary |
 |---|---|---|
@@ -36,14 +36,11 @@ environment cells:
 | `x86_64-pc-windows-msvc` | `native_windows` | Every component executes as native x86-64 Windows components. WSL coordinates are ineligible. |
 | `x86_64-unknown-linux-gnu` | `wsl2` | Every component executes inside the same supported WSL2 distribution and uses its Linux filesystem as specified below. |
 
-An environment is eligible for a release claim only when its exact embedded
-`CodexSupportEntry` has a matching external `CodexReleaseEvidenceEntry` with
-`validation_evidence.validation_result=passed` and the exact exercised Volicord
-digest. A pass in one row does not establish another row. Native Linux and WSL2
-remain distinct even when they validate the same x86-64 Linux binary. Likewise,
-one macOS or Linux architecture cannot establish the other. Repository tests,
-cross-compilation, packaging, or a compatible-looking target triple do not
-substitute for an executed cell.
+Target compatibility is a Volicord platform constraint, not a Codex artifact
+certification. Native Linux and WSL2 remain distinct environments even when
+they execute the same x86-64 Linux binary. One architecture or environment
+does not establish the runtime prerequisites of another. Release packaging
+still builds and checks every published target independently.
 
 The first-release product surface in every row is:
 
@@ -77,12 +74,11 @@ The exact first-release WSL2 coordinate is:
 | `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
-| `platform_release_coordinate.environment_image` | `Ubuntu-24.04-LTS-WSL2` |
 
 Platform checks observe the distribution name, operating-system identity, WSL2
-kernel boundary, and filesystem type. Release evidence binds its image
-coordinate to those observed distribution facts. That release coordinate is
-not an operational authorization credential.
+kernel boundary, and filesystem type. Those observations enforce the supported
+topology; they are not executable identity or operational authorization
+credentials.
 
 The WSL2 runtime boundary must establish WSL2 explicitly and requires
 `target_triple=x86_64-unknown-linux-gnu`. An ordinary Linux `target_os` result
@@ -119,9 +115,9 @@ Unsupported topology is machine-readable. `unsupported_wsl1` identifies WSL1;
 `unsupported_wsl_cross_topology` identifies inconsistent WSL kernel/environment
 facts; `unsupported_wsl2_distribution` identifies a distribution-coordinate
 mismatch; and `unsupported_wsl2_filesystem` identifies a non-ext4 component.
-These are `UnsupportedContract` outcomes. An unavailable kernel, distribution,
-or filesystem observation remains `Unavailable`; it is not converted into an
-unsupported or native environment.
+These are `Rejected` environment outcomes. An unavailable kernel, distribution,
+or filesystem observation remains `Unavailable`; it is not converted into a
+rejected or native environment.
 
 <a id="toolchain-requirements"></a>
 ## Toolchain Requirements
@@ -129,7 +125,7 @@ unsupported or native environment.
 Building and testing the workspace requires the Rust toolchain declared by the
 repository. The maintained workspace currently targets Rust 1.85 or newer
 compatible stable Rust. Use Cargo from the same toolchain for formatting,
-checking, linting, tests, and release-validation contract tests.
+checking, linting, and tests.
 
 Runtime prerequisites are:
 
@@ -148,8 +144,8 @@ ID spelling follows [External Contracts](external-contracts.md#shared-git-object
 
 The administrative process must resolve and execute the configured Codex
 executable. Verification may report the observed executable and host version
-as diagnostics, but does not hash it for authorization, compare it with a
-support catalog, or issue an authorization receipt. Executable availability
+as diagnostics, but does not hash it for authorization, compare it with an
+exact-host allowlist, or issue an executable attestation. Executable availability
 does not establish agent, host, binary, operating-system-user, or human
 identity.
 
@@ -249,8 +245,6 @@ when any applicable condition is present:
 - the host or profile is not exact `codex` and `record`;
 - the platform environment is absent, ambiguous, or outside the four-value set;
 - the target triple is absent, unknown, or incompatible with the platform environment;
-- release publication is attempted without a current passing evidence entry for
-  every required target/environment cell;
 - the managed configuration, project, Connection, membership, mode, runtime
   session, project session, or current integration revisions disagree;
 - managed configuration is malformed, unowned, or has drifted outside the
@@ -262,17 +256,16 @@ when any applicable condition is present:
 - managed stdio cannot be established; or
 - a required read or platform primitive is unavailable.
 
-The result must preserve the applicable `Rejected`, `Unavailable`, `Corrupt`,
-or `UnsupportedContract` category and its domain reason. It must not create a
-default session, synthetic authorization, fallback host, inferred platform, or
-partial success.
+The result must preserve the applicable `Rejected`, `Unavailable`, or `Corrupt`
+category and its domain reason. It must not create a default session, synthetic
+authorization, fallback host, inferred platform, or partial success.
 
 ## Adjacent Owners
 
 - First-release included and excluded surfaces: [Scope](scope.md).
 - Operational session, persisted setup action, and adapter/Core boundaries:
   [Agent Connection](agent-connection.md).
-- Exact artifact and platform evidence: [Host Release Evidence](host-release-evidence.md).
+- Build, package, platform, and release validation: [Validation](../maintain/validation.md).
 - Runtime path and repository boundaries: [Runtime Boundaries](runtime-boundaries.md).
 - SQLite format acceptance: [Storage Versioning](storage-versioning.md).
 - Product-wide failure meanings: [Failure Model](failure-model.md).

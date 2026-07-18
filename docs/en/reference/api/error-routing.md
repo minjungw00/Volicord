@@ -68,7 +68,6 @@ Display wording belongs to [Template Bodies](../template-bodies.md) only. It doe
 | `unavailable` | If the required operation or read cannot continue, use `ToolRejectedResponse` with the applicable unavailable public code. |
 | `degraded` | If the core operation truthfully continues, expose the incomplete auxiliary component in the successful method result's owner-defined diagnostic. Do not reject that same operation with a `ToolError(category=degraded)`. |
 | `corrupt` | A dependent operation uses `ToolRejectedResponse` with `PERSISTED_DATA_CORRUPT` and fails closed before policy or effects. |
-| `unsupported_contract` | A dependent operation uses `ToolRejectedResponse` with `UNSUPPORTED_CONTRACT`; no fallback contract or artifact is selected. |
 
 The category is required machine-readable classification. It does not replace
 the public code or domain `details.reason` owned by
@@ -81,7 +80,7 @@ the public code or domain `details.reason` owned by
 | Condition | Detail section |
 |---|---|
 | request validation fails before proceed | [Request validation failure](#rejected-request-validation-failure) |
-| persisted owner data is corrupt or an exact contract is unsupported | [Precondition failure](#rejected-precondition-failure) |
+| persisted owner data is corrupt | [Precondition failure](#rejected-precondition-failure) |
 | precondition fails before commit | [Precondition failure](#rejected-precondition-failure) |
 | state or idempotency conflict | [State or idempotency conflict](#rejected-state-or-idempotency-conflict) |
 | `dry_run=true` pre-preview failure | [`dry_run=true` pre-preview failure](#rejected-dry-run-pre-preview-failure) |
@@ -94,8 +93,7 @@ Condition:
 
 Boundary:
 - This is malformed untrusted input with `category=rejected`. Persisted trusted
-  owner-data corruption and unsupported exact contracts use their distinct
-  categories and codes instead.
+  owner-data corruption uses its distinct category and code instead.
 
 Route:
 - `ToolRejectedResponse.errors[]`.

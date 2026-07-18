@@ -123,14 +123,13 @@ exact product behavior, API behavior, storage effects, schemas, security
 guarantees, and Core authority semantics still route to their Reference owners.
 
 For managed-host claims, classify each statement separately as environment
-applicability, setup or configuration state, operational session authority, or
-release evidence. Check those layers against
+applicability, setup or configuration state, behavioral connection verification,
+or operational session authority. Check those layers against
 [System Requirements](../reference/system-requirements.md),
-[Agent Connection](../reference/agent-connection.md#validated-agent-session),
-and [Host Release Evidence](../reference/host-release-evidence.md). A setup,
-configuration, implementation, fixture, or test fact does not establish a
-current managed session, and session authorization does not replace
-exact-final-artifact release evidence.
+and [Agent Connection](../reference/agent-connection.md#validated-agent-session).
+A setup, configuration, implementation, fixture, or test fact does not establish
+a current managed session. A successful observation describes the tested behavior;
+it does not certify executable identity or future cooperative-host behavior.
 
 For API and Reference examples, check method-local consistency, request and
 response shape, field names, required fields, nullability, enum-like values,
@@ -239,198 +238,38 @@ Record results outside maintained documentation. Do not commit participant
 notes, screenshots, recordings, credentials, transcripts, Runtime Homes, or
 fabricated completion claims.
 
-## Codex Release-Validation Review
+## Release And Host Smoke Validation
 
-Release validation is limited to the exact finalized Codex and Volicord artifacts and the
-six exact target/environment cells across `linux`, `macos`, `native_windows`, and `wsl2` defined
-by [Host Release Evidence](../reference/host-release-evidence.md). A selected
-cell must run the owner-defined closed scenario catalog and publish the exact
-bounded evidence shape. Repository tests, configuration fixtures, another
-platform's result, or a copied evidence entry cannot make a cell pass.
+Volicord release validation covers the ordinary five-target build, package,
+checksum, binary-smoke, platform, Docker, and publication paths. It does not
+certify a Codex executable, its provenance, or its identity, and it does not
+maintain an exact-host allowlist.
 
-Run live validation only in a disposable Product Repository, Runtime Home, and
-external result location. Keep credentials, prompts, transcripts, tokens,
-screenshots, and runtime data out of the repository. Report a missing runner
-or prerequisite as `unavailable`, and a cell with no qualifying attempt as
-`not_run`.
-
-## Exact Host Release Evidence Gate
-
-The authoritative [`CodexSupportCatalog`](../reference/host-release-evidence.md#codex-support-catalog),
-[`CodexReleaseEvidenceManifest`](../reference/host-release-evidence.md#codex-release-evidence-manifest),
-exact-artifact rule, independent target/environment cells, required scenarios, and cell
-status meanings belong to Host Release Evidence.
-Maintainers do not redefine those contracts in a runbook or infer a release
-claim from CLI text.
-
-When the test-only `tests/release-validation` package is present, run:
+The durable repository checks for release packaging are:
 
 ```sh
-cargo test --locked -p volicord-release-validation-tests --all-targets --all-features
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --status
+cargo test --locked -p volicord-release-integrity-tests --all-targets --all-features
 ```
 
-The test command validates canonical checked-in bytes, embedded/on-disk catalog
-equality, separate contract parsing, explicit test-only descriptor separation,
-negative cases, exact release-catalog lookup, the non-embedding boundary,
-release-target consistency, and evidence-to-catalog cross-checking. It accepts
-empty or reviewed populated support catalogs and empty, partial, or complete
-evidence manifests when their static contracts are valid. It does not execute
-finalized artifacts, assess release completeness, or make any platform cell
-`passed`. The status command reports the actual or derived external-evidence
-status of all six cells without executing them; every absent entry is reported
-as `not_run`.
+These tests protect target coverage, version consistency, canonical text bytes,
+archive shape, packaged-binary identity, and checksum output. They do not grant
+runtime authority or establish support for a particular Codex build.
 
-Canonical textual contracts use LF repository bytes. The root `.gitattributes`
-enforces identical LF checkout bytes across supported platforms independently of
-a runner's global `core.autocrlf` setting. A contract file containing CRLF is
-non-canonical and the exact-byte contract gate rejects it.
+An optional smoke run with a real Codex installation may exercise managed
+configuration, MCP initialization, required-tool discovery, safe tool round
+trips, and Guard observations. Treat its result as an operational observation
+for that configuration and environment. A reported Codex version is diagnostic;
+a version change may justify repeating the observation, but neither the version
+nor executable bytes are a certification or authorization input. Missing smoke
+infrastructure is reported as skipped or unavailable and does not change the
+ordinary Volicord release result.
 
-The executable command and all exact input meanings are owned by the
-[executable release-cell gate](../reference/host-release-evidence.md#executable-release-cell-gate).
-Use this release sequence without substituting artifacts or hand-authoring a
-digest or passing result:
-
-1. Obtain the exact Codex executable for every environment intended for support.
-2. For each file, run `codex-release-cell-gate --generate-support-entry` with
-   its exact target, environment, `record` profile, and declared capabilities.
-3. Review the deterministic output and commit the canonical support catalog.
-4. Build every published Volicord target once from that catalog and source revision.
-5. Run every required release cell against those exact Codex and downloaded
-   Volicord binary bytes.
-6. Run `--verify-publish-evidence` over the complete build and evidence roots to
-   create a new external `verified-release-index.json`.
-7. Publish the same validated binary bytes and attach that verified index.
-
-For example, the proposed-entry command has this shape and prints the JSON
-entry without editing the catalog:
-
-```sh
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --generate-support-entry --codex-path CODEX_PATH --target TARGET --platform PLATFORM --profile record --capabilities managed_stdio_mcp,personal_managed_binding,record_workflow,shared_managed_binding
-```
-
-Provision the following runner boundaries before a live invocation:
-
-| Target/environment cell | Release runner prerequisite |
-|---|---|
-| `x86_64-unknown-linux-gnu` / `linux` | Self-hosted x86-64 native Linux runner labeled `self-hosted`, `volicord-release`, `linux`, `native-linux`, `x64`; neither WSL nor a container. |
-| `aarch64-unknown-linux-gnu` / `linux` | Self-hosted AArch64 native Linux runner labeled `self-hosted`, `volicord-release`, `linux`, `native-linux`, `arm64`; neither WSL nor a container. |
-| `aarch64-apple-darwin` / `macos` | Self-hosted Apple Silicon native macOS runner labeled `self-hosted`, `volicord-release`, `macos`, `native-macos`, `arm64`. |
-| `x86_64-apple-darwin` / `macos` | Self-hosted Intel x86-64 native macOS runner labeled `self-hosted`, `volicord-release`, `macos`, `native-macos`, `x64`. |
-| `x86_64-pc-windows-msvc` / `native_windows` | Self-hosted x86-64 native Windows runner labeled `self-hosted`, `volicord-release`, `windows`, `native-windows`, `x64`. |
-| `x86_64-unknown-linux-gnu` / `wsl2` | Self-hosted x86-64 native Windows supervisor labeled `self-hosted`, `volicord-release`, `windows`, `wsl2`, `ubuntu-24.04`, `x64`, with the exact `Ubuntu-24.04` WSL2 distribution already installed. An Ubuntu GitHub runner is not this boundary. |
-
-Each runner service preprovisions the exact finalized Codex path, platform
-scenario driver, and environment-image coordinate through the owner-defined
-environment variables. It does not select the Volicord release candidate.
-`RUNNER_NAME` comes from the runner service, while
-`VOLICORD_CODEX_RELEASE_SOURCE_REVISION` names the exact build revision. The workflow downloads the
-target-specific immutable raw build artifact, verifies its revision and digest,
-and sets `VOLICORD_CODEX_RELEASE_VOLICORD_PATH` to that path. It also creates
-fresh external evidence and work roots and an absent `VOLICORD_HOME` below the
-work root. The WSL2 supervisor transfers the downloaded Linux x86-64 bytes to a
-distinct ext4 path inside `Ubuntu-24.04`, verifies the digest inside WSL2, and
-uses a native Windows scenario coordinator that can survive and verify
-`wsl_shutdown_restart`.
-
-For the first qualifying attempt or any recapture, set
-`VOLICORD_CODEX_RELEASE_CANDIDATE_CELL_PATH` to a distinct absent external path
-on each runner, then run exactly one matching producer command in each
-independent environment:
-
-```sh
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-unknown-linux-gnu --platform linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate aarch64-apple-darwin --platform macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-apple-darwin --platform macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-pc-windows-msvc --platform native_windows
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --capture-candidate x86_64-unknown-linux-gnu --platform wsl2
-```
-
-Capture requires the exact Codex coordinates to exist in the embedded support
-catalog, but it does not require pre-existing passing evidence. It executes the
-complete platform catalog, records the exact runner and both artifact
-coordinates, and writes only a create-new, external one-entry candidate
-manifest. It does not edit or promote either canonical contract. A `failed` or `unavailable` candidate
-is retained for review, but the producer exits unsuccessfully. A missing runner
-leaves the attempt unrun; a missing artifact, driver, environment coordinate, or topology
-prerequisite prevents a qualifying capture. Report these outcomes exactly
-rather than rerouting a job to another runner.
-
-For checked-in replay or an independent audit, review the six candidate
-manifests and replace the external evidence source
-from the [canonical checked-in contracts](../reference/host-release-evidence.md#canonical-checked-in-contracts)
-as one release operation, in the canonical exact-identity order.
-Do not append historical entries, copy evidence between cells, edit a result
-into `passed`, load a test-only descriptor, or treat candidate output as
-checked-in evidence before review. Re-run the contract tests against the
-reviewed manifest.
-
-Then run the blocking replay command once in each same independent environment.
-This manual replay route is separate from the production release workflow,
-which validates each downloaded build once and verifies the fresh evidence
-without executing the scenario catalog a second time:
-
-```sh
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-unknown-linux-gnu --platform linux
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target aarch64-apple-darwin --platform macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-apple-darwin --platform macos
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-pc-windows-msvc --platform native_windows
-cargo run --locked -p volicord-release-validation-tests --bin codex-release-cell-gate -- --target x86_64-unknown-linux-gnu --platform wsl2
-```
-
-The replay gate requires an exact embedded support entry and existing checked-in
-passing evidence before it delegates the full platform catalog. Missing
-evidence fails as `not_run`; non-passing evidence, a changed runner coordinate,
-changed Codex or Volicord artifact,
-changed scenario driver, mismatched scenario evidence, or topology mismatch
-fails the selected job. Static contract validity is not a release-success
-decision: an empty catalog blocks capture and production publication; missing,
-partial, failed, unavailable, or `not_run` required
-evidence blocks the applicable replay or production completeness gate.
-
-Ordinary `.github/workflows/ci.yml` runs static contract tests only. Pull
-requests to `.github/workflows/release.yml` also skip live jobs. The release
-workflow builds each of the five targets once and uploads the raw executable,
-target, source revision, and digest metadata. A tag push or manual workflow
-dispatch schedules the five native jobs and the independent Windows-supervised
-WSL2 job against those artifacts. `publish-release` depends on all six cells
-and the build matrix. It strictly verifies all five builds, all six passing
-manifests, and all retained scenario evidence before packaging the raw binaries
-and rehashing each extracted archive member. Immediately before packaging, the
-same final verifier writes the external verified release index; the workflow
-stages that index as a release asset and never embeds it in a Volicord binary.
-A queued, skipped, unavailable,
-failed, or `not_run` cell, missing evidence, or digest mismatch blocks
-publication.
-
-For each target, finalize the Codex executable and the single raw Volicord build
-artifact after every publisher-controlled byte change, calculate both SHA-256
-digests, and run the downloaded Volicord bytes in every matching
-[independent platform cell](../reference/host-release-evidence.md#independent-platform-cells).
-Run the complete
-[required scenario set](../reference/host-release-evidence.md#required-release-validation-scenarios),
-then reopen and rehash both executables. Only the digest-verified WSL2 ext4 copy
-may relocate a candidate. A rebuilt, unverified copy, differently processed,
-or other-platform executable cannot substitute for those bytes. Packaging may
-wrap the validated binary, but the archive member must retain its digest.
-
-Execute all six contract cells independently in their owner-defined environments. Record the actual
-[cell execution status](../reference/host-release-evidence.md#cell-execution-status).
-If the runner or another prerequisite is absent, report `unavailable`; if no
-qualifying attempt occurred, report `not_run`. Neither is a pass. Never copy a
-Linux result into WSL2, a native-Windows result into WSL2, or any artifact or
-capability result into another cell. Never substitute Linux x86-64 for Linux
-AArch64 or Intel macOS for Apple Silicon in either direction. A missing or
-non-passing cell blocks the complete release claim.
-
-Report the exact command and runner coordinates for each platform, the
-owner-defined cell coordinates and evidence digests, every required scenario
-outcome, and the actual status of all six cells. Report skipped or unavailable
-execution with its reason; do not omit a cell or summarize `not_run` as
-`passed`. Repository tests and release working output are not production
-runtime trust inputs.
+Run live smoke only with disposable Product Repository and Runtime Home paths.
+Keep credentials, prompts, transcripts, tokens, screenshots, and runtime data
+outside the repository. Preserve the cooperative-host boundaries in
+[Agent Connection](../reference/agent-connection.md): successful behavior does
+not prove human identity, process identity, future host behavior, or policy
+compliance outside the observed round trips.
 
 ## Rust Implementation Validation
 

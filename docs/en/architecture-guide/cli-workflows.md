@@ -43,8 +43,8 @@ active probes or writing files, reports, observations, or timestamps.
 `connection verify` performs current adapter and managed-configuration
 inspection, runs permitted local probes, reads actual managed-host and Guard
 observations, and commits at most one report through the Store owner. It does
-not hash the host executable, consult release-certification catalogs, issue an
-authorization receipt, fabricate host activity, or create a managed-host agent
+not hash the host executable, consult an exact-host allowlist, issue an
+executable attestation, fabricate host activity, or create a managed-host agent
 session. Authoritative managed runtime and project sessions are recorded only
 by managed MCP lifecycle handling.
 
@@ -84,8 +84,8 @@ authority state.
 - Codex-specific configuration remains in the adapter.
 - No command starts a network transport.
 - No noninteractive command supplies user judgment.
-- Client and host version observations are diagnostics and never authorization
-  credentials. Release claims remain a separate exact six-cell evidence flow.
+- Client and host version observations are diagnostics and never authorization,
+  executable identity, provenance, or support credentials.
 
 ## Related Routes
 

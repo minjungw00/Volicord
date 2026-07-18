@@ -434,7 +434,6 @@ mod tests {
                     "disclosure",
                     "host_gate",
                     "approval",
-                    "mcp_handshake_allowed",
                     "generated_config_verified",
                     "configuration_health",
                     "effective_health",

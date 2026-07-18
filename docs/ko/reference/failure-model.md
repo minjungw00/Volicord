@@ -11,7 +11,7 @@ repair 명령은 정의하지 않습니다. 그 세부사항은 영향을 받는
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-여섯 범주의 의미, machine-readable identifier, 영속 권한 및 정책 데이터의
+다섯 범주의 의미, machine-readable identifier, 영속 권한 및 정책 데이터의
 fail-closed 규칙, 기본값 합치기 금지 규칙은 stable 계약입니다. 사람이 읽는 표시
 문구와 도메인별 진단 세부사항은 집중 담당 문서가 달리 정하지 않는 한
 diagnostic입니다.
@@ -24,10 +24,9 @@ diagnostic입니다.
 |---|---|---|
 | `Rejected` | `rejected` | 요청 형태 또는 필수 맥락이 구조적으로 유효하지 않아 정책 평가나 성공 동작 분기로 진행하지 못했습니다. |
 | `NotAllowed` | `not_allowed` | 구조적으로 유효한 요청과 완전한 필수 맥락이 정책 평가에 도달했지만 정책이 요청한 동작을 허용하지 않았습니다. |
-| `Unavailable` | `unavailable` | 동작, 보조 capability, 필수 조회를 현재 수행할 수 없지만 사용 가능한 데이터가 계약 손상이나 미지원 외부 계약을 확정하지는 않습니다. |
+| `Unavailable` | `unavailable` | 동작, 보조 capability, 필수 조회를 현재 수행할 수 없지만 사용 가능한 데이터가 영속 계약 손상을 확정하지는 않습니다. |
 | `Degraded` | `degraded` | 핵심 동작은 계속할 수 있지만 명시적으로 식별된 검증, 진단, 보조 정보 구성 요소가 불완전합니다. |
 | `Corrupt` | `corrupt` | 영속되었거나 신뢰되는 담당 데이터가 선언된 스키마, type, canonical encoding, 필드 간 계약을 위반합니다. |
-| `UnsupportedContract` | `unsupported_contract` | 외부 descriptor 또는 경계 형식을 정확한 지원 계약으로 인식할 수 없습니다. |
 
 기계 판독 결과나 진단은 정확한 범주 식별자를 담아야 합니다. 도메인이 같은 범주
 안에서 원인을 구분한다면 도메인 담당 문서가 정의한 사유 식별자도 담아야 합니다.
@@ -48,17 +47,14 @@ diagnostic입니다.
 빠진 부분과 그 영향을 계속 보이게 해야 합니다.
 
 지원되는 영속 또는 신뢰 계약을 따른다고 표시된 데이터가 그 계약을 위반하면
-`Corrupt`입니다. 경계 계약 자체가 정확한 지원 계약이 아니면
-`UnsupportedContract`입니다. 알 수 없는 외부 설명자는
-[외부 계약](external-contracts.md)의 `unsupported_external_contract` 사유를
-사용하며 지원되는 형태로 추정하지 않습니다. 아직 영속 담당 상태가 되지 않은
-신뢰할 수 없는 요청의 형태가 잘못된 경우는 `Corrupt`가 아니라 `Rejected`입니다.
+`Corrupt`입니다. 아직 영속 담당 상태가 되지 않은 신뢰할 수 없는 경계 입력이
+잘못되었거나 알려지지 않은 경우는 `Corrupt`가 아니라 `Rejected`이며 지원되는
+형태로 추정하지 않습니다.
 
-설치된 Codex 실행 파일이나 version은 외부 계약이 아닙니다. 따라서 알 수 없거나
-certification되지 않은 Codex version을 `UnsupportedContract`로 분류하지 않습니다. 연결
-검증은 동작 probe를 수행하고 실제 `passed`, `pending`, `failed` 결과를 보고합니다. 실행
-파일을 찾거나 실행하지 못한 경우 일반 실패 범주 경계에서는 `Unavailable`, 연결
-보고서에서는 실패한 `host_executable` check입니다.
+설치된 Codex 실행 파일이나 version은 외부 계약이 아니며 인증됨 또는 인증되지 않음
+상태가 없습니다. 연결 검증은 동작 probe를 수행하고 실제 `passed`, `pending`, `failed`
+결과를 보고합니다. 실행 파일을 찾거나 실행하지 못한 경우 일반 실패 범주 경계에서는
+`Unavailable`, 연결 보고서에서는 실패한 `host_executable` check입니다.
 
 관리 connection command report는 필수 check가 하나 이상 실패한 typed 운영 결과에만
 `failed`를 사용합니다. Host 관찰이 pending이면 `action_required`이며 `Degraded`,
@@ -71,7 +67,6 @@ CLI 오류 채널에 남깁니다.
 - `Unavailable`은 비어 있는 성공 결과가 아닙니다.
 - `Degraded`는 완전한 검증이나 제한 없는 성공 상태가 아닙니다.
 - `Corrupt`는 선택적인 값의 부재가 아닙니다.
-- `UnsupportedContract`는 가장 가까운 알려진 형식을 선택할 권한이 아닙니다.
 - `NotAllowed`는 구조적 거부가 아닙니다.
 
 ## 영속 권한 및 정책 데이터
@@ -119,8 +114,6 @@ migration, 추정, 암묵적 교체하면 안 됩니다.
 
 이웃 담당 문서:
 
-- 외부 설명자 선택과 `unsupported_external_contract`:
-  [외부 계약](external-contracts.md).
 - 공개 API 응답 분기와 공개 코드: [API 오류](api/errors.md).
 - 영속 기록 계약: [저장 기록](storage-records.md).
 - 메서드별 저장 효과와 효과 없음 분기: [저장 효과](storage-effects.md).

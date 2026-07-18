@@ -205,14 +205,6 @@ pub struct RuntimeProductPlatformFacts {
 pub fn validate_runtime_product_platform_facts(
     facts: &RuntimeProductPlatformFacts,
 ) -> Result<(), RuntimePathBoundaryError> {
-    facts
-        .boundary
-        .release_coordinate
-        .validate_for(facts.boundary.environment)
-        .map_err(|error| RuntimePathBoundaryError::UnsupportedEnvironment {
-            reason: error.reason(),
-            detail: "the observed platform release coordinate is not canonical".to_owned(),
-        })?;
     if facts.boundary.environment != PlatformEnvironment::Wsl2 {
         return Ok(());
     }
@@ -793,7 +785,7 @@ mod tests {
     };
 
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::{PlatformEnvironment, PlatformReleaseCoordinate, ReleaseTargetTriple};
+    use volicord_types::{PlatformEnvironment, ReleaseTargetTriple};
 
     use super::{
         resolve_runtime_home, validate_runtime_home_product_repository,
@@ -824,7 +816,6 @@ mod tests {
             boundary: LocalPlatformBoundary {
                 target_triple: ReleaseTargetTriple::X86_64UnknownLinuxGnu,
                 environment: PlatformEnvironment::Wsl2,
-                release_coordinate: PlatformReleaseCoordinate::first_release_wsl2(),
             },
             runtime_home_filesystem: PathFilesystemKind::LinuxExt4,
             product_repository_filesystem: PathFilesystemKind::LinuxExt4,
@@ -868,7 +859,6 @@ mod tests {
                 boundary: LocalPlatformBoundary {
                     target_triple,
                     environment,
-                    release_coordinate: PlatformReleaseCoordinate::Native,
                 },
                 runtime_home_filesystem: PathFilesystemKind::Other,
                 product_repository_filesystem: PathFilesystemKind::Other,

@@ -9,8 +9,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    validate_canonical_platform_path, PlatformEnvironment, PlatformReleaseCoordinate,
-    ProcessBinding, ReleaseTargetTriple, PINNED_WSL2_DISTRIBUTION_ID,
+    PlatformEnvironment, ReleaseTargetTriple, PINNED_WSL2_DISTRIBUTION_ID,
     PINNED_WSL2_DISTRIBUTION_NAME, PINNED_WSL2_DISTRIBUTION_VERSION,
 };
 
@@ -28,36 +27,7 @@ pub struct LocalPlatformBoundary {
     pub target_triple: ReleaseTargetTriple,
     /// Exact independent release environment.
     pub environment: PlatformEnvironment,
-    /// Exact native or pinned WSL2 release coordinate.
-    pub release_coordinate: PlatformReleaseCoordinate,
 }
-
-/// Machine-readable failure while observing the live MCP parent process.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProcessBindingObservationError {
-    reason: &'static str,
-    detail: String,
-}
-
-impl ProcessBindingObservationError {
-    /// Returns the stable failure reason.
-    pub const fn reason(&self) -> &'static str {
-        self.reason
-    }
-
-    /// Returns bounded implementation-facing detail.
-    pub fn detail(&self) -> &str {
-        &self.detail
-    }
-}
-
-impl fmt::Display for ProcessBindingObservationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.reason, self.detail)
-    }
-}
-
-impl std::error::Error for ProcessBindingObservationError {}
 
 /// Filesystem kind observed for one canonical path or its nearest existing ancestor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,7 +107,6 @@ pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, Platfo
     Ok(LocalPlatformBoundary {
         target_triple,
         environment: PlatformEnvironment::Macos,
-        release_coordinate: PlatformReleaseCoordinate::Native,
     })
 }
 
@@ -148,7 +117,6 @@ pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, Platfo
     Ok(LocalPlatformBoundary {
         target_triple,
         environment: PlatformEnvironment::NativeWindows,
-        release_coordinate: PlatformReleaseCoordinate::Native,
     })
 }
 
@@ -200,339 +168,6 @@ pub fn observe_path_filesystem(_path: &Path) -> Result<PathFilesystemKind, Platf
     Ok(PathFilesystemKind::Other)
 }
 
-/// Observes the exact live parent process of the current managed stdio MCP process.
-pub fn observe_parent_process_binding() -> Result<ProcessBinding, ProcessBindingObservationError> {
-    let platform = observe_local_platform_boundary()
-        .map_err(|error| process_observation_error(error.reason(), error.detail()))?;
-    let parent_id = parent_process_id()?;
-    process_binding_for_id(parent_id, platform.environment)
-}
-
-#[cfg(target_os = "linux")]
-fn parent_process_id() -> Result<u64, ProcessBindingObservationError> {
-    let stat = read_process_text(Path::new("/proc/self/stat"), "parent_process_unavailable")?;
-    linux_stat_field(&stat, 1, "parent_process_unavailable")?
-        .parse::<u64>()
-        .map_err(|error| process_observation_error("parent_process_unavailable", error))
-        .and_then(require_process_id)
-}
-
-#[cfg(target_os = "linux")]
-fn process_binding_for_id(
-    process_id: u64,
-    platform: PlatformEnvironment,
-) -> Result<ProcessBinding, ProcessBindingObservationError> {
-    let stat_path = PathBuf::from(format!("/proc/{process_id}/stat"));
-    let stat = read_process_text(&stat_path, "process_start_token_unavailable")?;
-    let start_time = linux_stat_field(&stat, 19, "process_start_token_unavailable")?;
-    if !start_time.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(process_observation_error(
-            "process_start_token_invalid",
-            "Linux process start time is not decimal",
-        ));
-    }
-    let executable = fs::canonicalize(format!("/proc/{process_id}/exe"))
-        .map_err(|error| process_observation_error("process_executable_unavailable", error))?;
-    let executable_path = canonical_process_path(&executable, platform)?;
-    let executable_digest = sha256_regular_file(&executable)?;
-    let boot_id = read_process_text(
-        Path::new("/proc/sys/kernel/random/boot_id"),
-        "platform_instance_token_unavailable",
-    )?;
-    let boot_id = boot_id.trim();
-    if boot_id.is_empty() || boot_id.chars().any(char::is_control) {
-        return Err(process_observation_error(
-            "platform_instance_token_invalid",
-            "Linux boot ID is empty or contains control characters",
-        ));
-    }
-    Ok(ProcessBinding {
-        process_id,
-        process_start_token: format!("linux-proc-start:{start_time}"),
-        platform_instance_token: format!("linux-boot-id:{boot_id}"),
-        executable_path,
-        executable_digest,
-    })
-}
-
-#[cfg(target_os = "macos")]
-fn parent_process_id() -> Result<u64, ProcessBindingObservationError> {
-    command_one_line(
-        "/bin/ps",
-        &["-o", "ppid=", "-p", &std::process::id().to_string()],
-        "parent_process_unavailable",
-    )?
-    .trim()
-    .parse::<u64>()
-    .map_err(|error| process_observation_error("parent_process_unavailable", error))
-    .and_then(require_process_id)
-}
-
-#[cfg(target_os = "macos")]
-fn process_binding_for_id(
-    process_id: u64,
-    platform: PlatformEnvironment,
-) -> Result<ProcessBinding, ProcessBindingObservationError> {
-    let pid = process_id.to_string();
-    let executable_text = command_one_line(
-        "/bin/ps",
-        &["-o", "comm=", "-p", &pid],
-        "process_executable_unavailable",
-    )?;
-    let executable = fs::canonicalize(executable_text.trim())
-        .map_err(|error| process_observation_error("process_executable_unavailable", error))?;
-    let executable_path = canonical_process_path(&executable, platform)?;
-    let start = command_one_line(
-        "/bin/ps",
-        &["-o", "lstart=", "-p", &pid],
-        "process_start_token_unavailable",
-    )?;
-    let boot = command_one_line(
-        "/usr/sbin/sysctl",
-        &["-n", "kern.boottime"],
-        "platform_instance_token_unavailable",
-    )?;
-    Ok(ProcessBinding {
-        process_id,
-        process_start_token: bounded_process_token("macos-process-start", &start)?,
-        platform_instance_token: bounded_process_token("macos-boot-time", &boot)?,
-        executable_path,
-        executable_digest: sha256_regular_file(&executable)?,
-    })
-}
-
-#[cfg(windows)]
-fn parent_process_id() -> Result<u64, ProcessBindingObservationError> {
-    let script = format!(
-        "$p=Get-CimInstance Win32_Process -Filter \"ProcessId={}\"; [Console]::Out.Write($p.ParentProcessId)",
-        std::process::id()
-    );
-    command_one_line(
-        "powershell.exe",
-        &["-NoProfile", "-NonInteractive", "-Command", &script],
-        "parent_process_unavailable",
-    )?
-    .trim()
-    .parse::<u64>()
-    .map_err(|error| process_observation_error("parent_process_unavailable", error))
-    .and_then(require_process_id)
-}
-
-#[cfg(windows)]
-fn process_binding_for_id(
-    process_id: u64,
-    platform: PlatformEnvironment,
-) -> Result<ProcessBinding, ProcessBindingObservationError> {
-    let script = format!(
-        "$p=Get-CimInstance Win32_Process -Filter \"ProcessId={process_id}\"; [Console]::Out.WriteLine($p.ExecutablePath); [Console]::Out.Write($p.CreationDate.ToUniversalTime().ToString('O'))"
-    );
-    let output = command_output(
-        "powershell.exe",
-        &["-NoProfile", "-NonInteractive", "-Command", &script],
-        "process_executable_unavailable",
-    )?;
-    let mut lines = output.lines();
-    let executable_text = lines.next().unwrap_or_default();
-    let creation = lines.next().unwrap_or_default();
-    if lines.next().is_some() || executable_text.is_empty() || creation.is_empty() {
-        return Err(process_observation_error(
-            "process_executable_unavailable",
-            "Windows process observation returned an invalid envelope",
-        ));
-    }
-    let executable = fs::canonicalize(executable_text)
-        .map_err(|error| process_observation_error("process_executable_unavailable", error))?;
-    let executable_path = canonical_process_path(&executable, platform)?;
-    let boot = command_one_line(
-        "powershell.exe",
-        &[
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "[Console]::Out.Write((Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('O'))",
-        ],
-        "platform_instance_token_unavailable",
-    )?;
-    Ok(ProcessBinding {
-        process_id,
-        process_start_token: bounded_process_token("windows-process-start", creation)?,
-        platform_instance_token: bounded_process_token("windows-boot-time", &boot)?,
-        executable_path,
-        executable_digest: sha256_regular_file(&executable)?,
-    })
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn parent_process_id() -> Result<u64, ProcessBindingObservationError> {
-    Err(process_observation_error(
-        "unsupported_platform_environment",
-        "parent-process observation is unavailable on this target",
-    ))
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn process_binding_for_id(
-    _process_id: u64,
-    _platform: PlatformEnvironment,
-) -> Result<ProcessBinding, ProcessBindingObservationError> {
-    Err(process_observation_error(
-        "unsupported_platform_environment",
-        "process-binding observation is unavailable on this target",
-    ))
-}
-
-#[cfg(target_os = "linux")]
-fn linux_stat_field<'a>(
-    stat: &'a str,
-    index: usize,
-    reason: &'static str,
-) -> Result<&'a str, ProcessBindingObservationError> {
-    let closing = stat
-        .rfind(')')
-        .ok_or_else(|| process_observation_error(reason, "Linux process stat is malformed"))?;
-    stat[closing + 1..]
-        .split_whitespace()
-        .nth(index)
-        .ok_or_else(|| process_observation_error(reason, "Linux process stat is incomplete"))
-}
-
-#[cfg(target_os = "linux")]
-fn read_process_text(
-    path: &Path,
-    reason: &'static str,
-) -> Result<String, ProcessBindingObservationError> {
-    fs::read_to_string(path).map_err(|error| process_observation_error(reason, error))
-}
-
-#[cfg(any(target_os = "macos", windows))]
-fn command_one_line(
-    program: &str,
-    args: &[&str],
-    reason: &'static str,
-) -> Result<String, ProcessBindingObservationError> {
-    let output = command_output(program, args, reason)?;
-    let value = output.trim_end_matches(['\r', '\n']);
-    if value.is_empty() || value.contains(['\r', '\n']) {
-        return Err(process_observation_error(
-            reason,
-            "process observation command did not return exactly one line",
-        ));
-    }
-    Ok(value.to_owned())
-}
-
-#[cfg(any(target_os = "macos", windows))]
-fn command_output(
-    program: &str,
-    args: &[&str],
-    reason: &'static str,
-) -> Result<String, ProcessBindingObservationError> {
-    let output = std::process::Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|error| process_observation_error(reason, error))?;
-    if !output.status.success() || !output.stderr.is_empty() {
-        return Err(process_observation_error(
-            reason,
-            format!("process observation command failed with {}", output.status),
-        ));
-    }
-    String::from_utf8(output.stdout).map_err(|error| process_observation_error(reason, error))
-}
-
-#[cfg(any(target_os = "macos", windows))]
-fn bounded_process_token(
-    prefix: &str,
-    value: &str,
-) -> Result<String, ProcessBindingObservationError> {
-    let value = value.trim();
-    let token = format!("{prefix}:{value}");
-    if value.is_empty() || token.len() > 256 || token.chars().any(char::is_control) {
-        return Err(process_observation_error(
-            "process_token_invalid",
-            "process token is empty, oversized, or contains control characters",
-        ));
-    }
-    Ok(token)
-}
-
-fn require_process_id(process_id: u64) -> Result<u64, ProcessBindingObservationError> {
-    if process_id == 0 {
-        Err(process_observation_error(
-            "parent_process_unavailable",
-            "the observed parent process ID is zero",
-        ))
-    } else {
-        Ok(process_id)
-    }
-}
-
-fn canonical_process_path(
-    path: &Path,
-    platform: PlatformEnvironment,
-) -> Result<String, ProcessBindingObservationError> {
-    #[cfg(windows)]
-    let text = {
-        let raw = path.to_str().ok_or_else(|| {
-            process_observation_error("process_executable_path_invalid", "path is not UTF-8")
-        })?;
-        let raw = raw.strip_prefix(r"\\?\").unwrap_or(raw);
-        let mut normalized = raw.replace('\\', "/");
-        if let Some(first) = normalized.get_mut(0..1) {
-            first.make_ascii_uppercase();
-        }
-        normalized
-    };
-    #[cfg(not(windows))]
-    let text = path
-        .to_str()
-        .ok_or_else(|| {
-            process_observation_error("process_executable_path_invalid", "path is not UTF-8")
-        })?
-        .to_owned();
-    validate_canonical_platform_path(platform, &text).map_err(|error| {
-        process_observation_error(error.reason(), "process executable path is not canonical")
-    })?;
-    Ok(text)
-}
-
-fn sha256_regular_file(path: &Path) -> Result<String, ProcessBindingObservationError> {
-    use std::io::Read;
-
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|error| process_observation_error("process_executable_unavailable", error))?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(process_observation_error(
-            "process_executable_unavailable",
-            "process executable is not a regular non-symlink file",
-        ));
-    }
-    let mut file = fs::File::open(path)
-        .map_err(|error| process_observation_error("process_executable_unavailable", error))?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = file
-            .read(&mut buffer)
-            .map_err(|error| process_observation_error("process_executable_unavailable", error))?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
-}
-
-fn process_observation_error(
-    reason: &'static str,
-    detail: impl fmt::Display,
-) -> ProcessBindingObservationError {
-    ProcessBindingObservationError {
-        reason,
-        detail: detail.to_string(),
-    }
-}
-
 #[cfg(target_os = "linux")]
 struct LinuxPlatformFacts<'a> {
     kernel_release: &'a str,
@@ -556,7 +191,6 @@ fn classify_linux_platform_boundary(
         return Ok(LocalPlatformBoundary {
             target_triple,
             environment: PlatformEnvironment::Linux,
-            release_coordinate: PlatformReleaseCoordinate::Native,
         });
     }
     if !(kernel.contains("wsl2") || kernel.contains("microsoft-standard")) {
@@ -593,13 +227,12 @@ fn classify_linux_platform_boundary(
     if !target_triple.supports_environment(PlatformEnvironment::Wsl2) {
         return Err(unsupported_platform(
             "unsupported_wsl2_target",
-            format!("target {target_triple} has no WSL2 release cell"),
+            format!("target {target_triple} cannot run in the supported WSL2 environment"),
         ));
     }
     Ok(LocalPlatformBoundary {
         target_triple,
         environment: PlatformEnvironment::Wsl2,
-        release_coordinate: PlatformReleaseCoordinate::first_release_wsl2(),
     })
 }
 
@@ -628,7 +261,7 @@ fn current_release_target_triple() -> Result<ReleaseTargetTriple, PlatformBounda
     target.ok_or_else(|| {
         unsupported_platform(
             "unsupported_release_target",
-            "this executable target is not a published Volicord binary target",
+            "this executable target is not a supported Volicord binary target",
         )
     })
 }
@@ -1423,7 +1056,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn injected_platform_facts_accept_only_the_pinned_wsl2_coordinate() {
+    fn injected_platform_facts_accept_only_the_pinned_wsl2_distribution() {
         let exact = classify_linux_platform_boundary(
             ReleaseTargetTriple::X86_64UnknownLinuxGnu,
             LinuxPlatformFacts {
@@ -1434,11 +1067,6 @@ mod tests {
         )
         .expect("exact WSL2 facts should be supported");
         assert_eq!(exact.environment, PlatformEnvironment::Wsl2);
-        assert_eq!(
-            exact.release_coordinate,
-            PlatformReleaseCoordinate::first_release_wsl2()
-        );
-
         for (name, id, version) in [
             ("Ubuntu-22.04", "ubuntu", "22.04"),
             ("Debian", "debian", "12"),
@@ -1497,8 +1125,6 @@ mod tests {
             native.target_triple,
             ReleaseTargetTriple::Aarch64UnknownLinuxGnu
         );
-        assert_eq!(native.release_coordinate, PlatformReleaseCoordinate::Native);
-
         let arm_wsl2 = classify_linux_platform_boundary(
             ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
             LinuxPlatformFacts {
@@ -1507,7 +1133,7 @@ mod tests {
                 os_release: Some("ID=ubuntu\nVERSION_ID=24.04\n".to_owned()),
             },
         )
-        .expect_err("Linux AArch64 must not satisfy the x86-64 WSL2 cell");
+        .expect_err("Linux AArch64 must not satisfy the x86-64 WSL2 environment");
         assert_eq!(arm_wsl2.reason(), "unsupported_wsl2_target");
     }
 

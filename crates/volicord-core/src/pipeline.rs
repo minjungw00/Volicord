@@ -1851,23 +1851,17 @@ pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
     }
     let code = match classification.route {
         StoreFailureRoute::OperationalUnavailable => ErrorCode::McpUnavailable,
+        StoreFailureRoute::InvalidEnvironment => ErrorCode::ValidationFailed,
         StoreFailureRoute::InvocationContextMismatch => ErrorCode::InvocationContextMismatch,
         StoreFailureRoute::PersistedDataCorrupt => ErrorCode::PersistedDataCorrupt,
-        StoreFailureRoute::UnsupportedContract => ErrorCode::UnsupportedContract,
     };
-    if code == ErrorCode::UnsupportedContract {
-        details.insert(
-            "reason".to_owned(),
-            Value::String("unsupported_external_contract".to_owned()),
-        );
-    }
     let message = match code {
+        ErrorCode::ValidationFailed => "platform environment is invalid",
         ErrorCode::McpUnavailable => "Core storage is unavailable",
         ErrorCode::InvocationContextMismatch => {
             "project binding or invocation context does not match registration"
         }
         ErrorCode::PersistedDataCorrupt => "persisted owner data violates its declared contract",
-        ErrorCode::UnsupportedContract => "the exact storage contract is not supported",
         _ => "Core storage is unavailable",
     };
     tool_error(code, message, classification.retryable, Some(details))
@@ -1889,32 +1883,31 @@ fn no_active_task_error() -> ToolError {
 fn error_precedence(code: ErrorCode) -> u8 {
     match code {
         ErrorCode::ValidationFailed => 1,
-        ErrorCode::UnsupportedContract => 2,
-        ErrorCode::PersistedDataCorrupt => 3,
-        ErrorCode::StateVersionConflict => 4,
-        ErrorCode::McpUnavailable => 5,
-        ErrorCode::InvocationContextMismatch => 6,
-        ErrorCode::NoActiveTask => 7,
-        ErrorCode::NoActiveChangeUnit => 8,
-        ErrorCode::BaselineStale => 9,
-        ErrorCode::ScopeRequired => 10,
-        ErrorCode::ScopeViolation => 11,
-        ErrorCode::WriteTicketRequired => 12,
-        ErrorCode::WriteTicketInvalid => 13,
-        ErrorCode::ApprovalDenied => 14,
-        ErrorCode::ApprovalExpired => 15,
-        ErrorCode::ApprovalRequired => 16,
-        ErrorCode::DecisionUnresolved => 17,
-        ErrorCode::AutonomyBoundaryExceeded => 18,
-        ErrorCode::DecisionRequired => 19,
-        ErrorCode::CapabilityInsufficient => 20,
-        ErrorCode::EvidenceInsufficient => 21,
-        ErrorCode::ResidualRiskNotVisible => 22,
-        ErrorCode::AcceptanceRequired => 23,
-        ErrorCode::ProjectionStale => 24,
-        ErrorCode::ArtifactMissing => 25,
-        ErrorCode::ValidatorFailed => 26,
-        ErrorCode::OperationResultUnavailable => 27,
+        ErrorCode::PersistedDataCorrupt => 2,
+        ErrorCode::StateVersionConflict => 3,
+        ErrorCode::McpUnavailable => 4,
+        ErrorCode::InvocationContextMismatch => 5,
+        ErrorCode::NoActiveTask => 6,
+        ErrorCode::NoActiveChangeUnit => 7,
+        ErrorCode::BaselineStale => 8,
+        ErrorCode::ScopeRequired => 9,
+        ErrorCode::ScopeViolation => 10,
+        ErrorCode::WriteTicketRequired => 11,
+        ErrorCode::WriteTicketInvalid => 12,
+        ErrorCode::ApprovalDenied => 13,
+        ErrorCode::ApprovalExpired => 14,
+        ErrorCode::ApprovalRequired => 15,
+        ErrorCode::DecisionUnresolved => 16,
+        ErrorCode::AutonomyBoundaryExceeded => 17,
+        ErrorCode::DecisionRequired => 18,
+        ErrorCode::CapabilityInsufficient => 19,
+        ErrorCode::EvidenceInsufficient => 20,
+        ErrorCode::ResidualRiskNotVisible => 21,
+        ErrorCode::AcceptanceRequired => 22,
+        ErrorCode::ProjectionStale => 23,
+        ErrorCode::ArtifactMissing => 24,
+        ErrorCode::ValidatorFailed => 25,
+        ErrorCode::OperationResultUnavailable => 26,
     }
 }
 

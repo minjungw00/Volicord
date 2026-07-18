@@ -26,8 +26,8 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 - 관리 명령 문법, 출력, 종료 코드: [관리 CLI](admin-cli.md)
 - 정확한 데이터베이스 테이블이나 저장 효과:
   [저장소 기록](storage-records.md), [저장 효과](storage-effects.md)
-- 릴리스 셀 실행과 정확한 아티팩트 증거:
-  [호스트 릴리스 증거](host-release-evidence.md)
+- 일반 빌드, 패키지, 플랫폼, 릴리스 검증:
+  [검증](../maintain/validation.md)
 - 운영체제 배치와 파일시스템 전제 조건: [시스템 요구사항](system-requirements.md)
 - Core `UserActionRequest`와 `UserActionResolution` 스키마:
   [API User Action 스키마](api/schema-user-action.md)
@@ -167,7 +167,7 @@ projection합니다. 이 보고서를 중첩하거나 집계 상태를 반복하
 timestamp를 바꾸지 않습니다.
 
 운영 호환성은 어댑터가 실제로 수행한 check와 관찰한 동작에서 보고합니다. `complete`는
-정확한 host artifact의 release certification, 운영체제 집행, actor identity 증명,
+실행 파일 identity나 출처를 인증하지 않으며 운영체제 집행, actor identity 증명,
 correctness 증명, 조작 방지 기록을 뜻하지 않습니다. 연결 검증은 runtime 권한
 credential을 발급하지 않습니다.
 
@@ -178,9 +178,9 @@ digest입니다. Basis는 Agent Connection identity, host kind, intent, scope, m
 name, configuration target, 현재의 정확한 managed-configuration fingerprint입니다. 이
 fingerprint는 관리 server command와 entry를 포함합니다.
 
-Revision 구성은 관찰한 host version, executable path/digest, support-catalog 좌표,
-release evidence, certified capability set, MCP client name/version을 제외합니다. 이 값은
-권한을 바꿀 수 없습니다.
+Revision 구성은 관찰한 host version, executable path 또는 암호학적 identity, allowlist
+좌표, 주장된 capability set, MCP client name/version을 제외합니다. 이 값은 권한을 바꿀
+수 없습니다.
 
 각 MCP process 시작은 host thread metadata가 생기기 전에 불투명 Registry runtime
 session ID를 만듭니다. `session_source`는 정확히 `managed_host` 또는
@@ -228,8 +228,7 @@ struct ValidatedAgentSession {
 10. Client name/version과 host version을 권한에 사용하지 않습니다.
 
 어댑터는 프로젝트 도구를 호출할 때마다 Core 호출 맥락을 만들기 전에 권위 있는 runtime
-및 프로젝트 row를 검증합니다. Receipt, release-evidence, compatibility, fallback 경로는
-없습니다.
+및 프로젝트 row를 검증합니다. 대체 권한, compatibility, fallback 경로는 없습니다.
 
 Core는 감사 basis를 결정적으로 만듭니다.
 
@@ -253,9 +252,9 @@ Codex 어댑터는 host별 구성 조사와 변경을 담당합니다.
 - 현재 정규 입력으로 담당 문서가 정의한 관리 상태 repair
 - 일치하는 Volicord 관리 상태만 제거
 
-Runtime 권한은 parent executable을 hash하거나, platform release coordinate를 비교하거나,
-내장 support catalog를 조회하거나, binding/verifier-build digest를 계산하거나, host 검증
-receipt를 발급·읽기·검증하지 않습니다. 알아볼 수 있는 command name, process path,
+Runtime 권한은 parent executable을 hash하거나, 플랫폼 실행 파일 identity를 도출하거나,
+정확한 호스트 allowlist를 조회하거나, 실행 파일 identity digest를 계산하거나, 실행 파일
+attestation을 발급·검증하지 않습니다. 알아볼 수 있는 command name, process path,
 version string, 환경 값, local session은 actor identity가 아닙니다. 관리 시작 맥락과
 권위 있는 Store session은 위의 협력적 소유권 경계만 세웁니다.
 
@@ -288,7 +287,7 @@ revocation을 추가하지 않습니다.
 - 관리 stdio MCP 동작: [MCP 전송](mcp-transport.md)
 - 설치, 검증, repair, 제거 명령: [관리 CLI](admin-cli.md)
 - 플랫폼 셀과 WSL2 배치: [시스템 요구사항](system-requirements.md)
-- 정확한 Codex 릴리스 아티팩트와 release-only capability:
-  [호스트 릴리스 증거](host-release-evidence.md)
+- 일반 빌드, 패키지, 플랫폼, 릴리스 검증:
+  [검증](../maintain/validation.md)
 - Runtime Home 및 Product Repository 경계: [런타임 경계](runtime-boundaries.md)
 - 보안 보장과 비보장: [보안](security.md)

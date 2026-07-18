@@ -143,7 +143,6 @@ enum ProjectPolicyAuthorityState {
     AuthorityMissing,
     AuthorityCorrupt,
     AuthorityUnavailable,
-    AuthorityUnsupportedContract,
     ManagedFileMissing,
     ManagedFileInvalid,
     ManagedFileUnavailable,
@@ -157,7 +156,6 @@ impl ProjectPolicyAuthorityState {
             Self::AuthorityMissing => "authority_missing",
             Self::AuthorityCorrupt => "authority_corrupt",
             Self::AuthorityUnavailable => "authority_unavailable",
-            Self::AuthorityUnsupportedContract => "authority_unsupported_contract",
             Self::ManagedFileMissing => "managed_file_missing",
             Self::ManagedFileInvalid => "managed_file_invalid",
             Self::ManagedFileUnavailable => "managed_file_unavailable",
@@ -222,9 +220,9 @@ where
             inspect_project_policy_authority(&runtime_home, snapshot, &mut checks, &mut actions);
         }
         DatabaseInspection::Unsupported { path, detail } => {
-            absent_profile_state = "unsupported_contract";
+            absent_profile_state = "corrupt";
             absent_profile_summary =
-                "installation profile cannot be read from an unsupported registry";
+                "installation profile cannot be read from an invalid registry schema";
             checks.push(
                 DiagnosticCheck::failed(
                     "registry",
@@ -1166,10 +1164,8 @@ fn project_policy_authority_state(
 fn project_policy_store_failure_state(error: &StoreError) -> ProjectPolicyAuthorityState {
     match error.classification().route {
         StoreFailureRoute::PersistedDataCorrupt => ProjectPolicyAuthorityState::AuthorityCorrupt,
-        StoreFailureRoute::UnsupportedContract => {
-            ProjectPolicyAuthorityState::AuthorityUnsupportedContract
-        }
         StoreFailureRoute::OperationalUnavailable
+        | StoreFailureRoute::InvalidEnvironment
         | StoreFailureRoute::InvocationContextMismatch => {
             ProjectPolicyAuthorityState::AuthorityUnavailable
         }
@@ -2183,7 +2179,6 @@ fn doctor_installation_profile_state(checks: &[DiagnosticCheck]) -> &'static str
             "invalid" => "invalid",
             "unavailable" => "unavailable",
             "corrupt" => "corrupt",
-            "unsupported_contract" => "unsupported_contract",
             _ => "unknown",
         };
     }
@@ -2575,8 +2570,6 @@ mod tests {
             .with_details(json!({ "state": "unavailable" }));
         let corrupt = DiagnosticCheck::failed("installation_profile", "corrupt")
             .with_details(json!({ "state": "corrupt" }));
-        let unsupported = DiagnosticCheck::failed("installation_profile", "unsupported")
-            .with_details(json!({ "state": "unsupported_contract" }));
         let unknown = DiagnosticCheck::failed("installation_profile", "unspecified");
 
         assert_eq!(doctor_installation_profile_state(&[missing]), "missing");
@@ -2586,20 +2579,12 @@ mod tests {
             "unavailable"
         );
         assert_eq!(doctor_installation_profile_state(&[corrupt]), "corrupt");
-        assert_eq!(
-            doctor_installation_profile_state(&[unsupported]),
-            "unsupported_contract"
-        );
         assert_eq!(doctor_installation_profile_state(&[unknown]), "unknown");
     }
 
     #[test]
-    fn policy_authority_store_failures_keep_corrupt_unsupported_and_unavailable_distinct() {
+    fn policy_authority_store_failures_keep_corrupt_and_unavailable_distinct() {
         let corrupt = StoreError::corrupt_stored_json("project_state", "policy_json");
-        let unsupported = StoreError::UnsupportedExternalContract {
-            contract_id: "external.unknown".to_owned(),
-            reason: "unsupported_external_contract",
-        };
         let unavailable = StoreError::Io(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             "denied",
@@ -2608,10 +2593,6 @@ mod tests {
         assert_eq!(
             project_policy_store_failure_state(&corrupt),
             ProjectPolicyAuthorityState::AuthorityCorrupt
-        );
-        assert_eq!(
-            project_policy_store_failure_state(&unsupported),
-            ProjectPolicyAuthorityState::AuthorityUnsupportedContract
         );
         assert_eq!(
             project_policy_store_failure_state(&unavailable),

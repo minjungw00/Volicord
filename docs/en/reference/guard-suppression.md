@@ -147,5 +147,5 @@ Durable contract tests cover:
 - Product path normalization: [Runtime Boundaries](runtime-boundaries.md).
 - Failure category meanings: [Failure Model](failure-model.md).
 - Write-ticket and Run state shapes: [API State Schemas](api/schema-state.md).
-- Guard release scenario: [Host Release Evidence](host-release-evidence.md).
+- Guard implementation tests and optional host smoke: [Testing Strategy](../architecture-guide/testing-strategy.md).
 - Security and diagnostic non-guarantees: [Security](security.md).

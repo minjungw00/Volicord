@@ -86,7 +86,6 @@ following code and domain combinations require the listed value:
 | Public code and domain | `ToolError.category` | `details.reason` | Meaning owner |
 |---|---|---|---|
 | `NO_ACTIVE_CHANGE_UNIT` from `volicord.prepare_write` | `rejected` | `current_change_unit_required` | [`volicord.prepare_write`](method-prepare-write.md) |
-| `UNSUPPORTED_CONTRACT` for an unknown external descriptor or boundary contract | `unsupported_contract` | `unsupported_external_contract` | [External Contracts](../external-contracts.md) |
 
 The reason narrows the domain cause; it does not replace or change the required
 failure category or public code. These values are not display text, fallback

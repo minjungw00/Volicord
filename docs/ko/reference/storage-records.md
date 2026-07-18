@@ -70,9 +70,9 @@ thread metadata가 생기기 전 MCP process 시작 시점에 opaque `runtime_se
 Connection 통합 revision은 Connection identity, host kind, intent, scope, mode, server
 name, configuration target, 정확한 managed-configuration fingerprint를 domain-separated
 canonical digest로 만든 값입니다. Managed fingerprint에는 현재 server command와 entry가
-포함됩니다. 관찰한 host version, executable digest, support-catalog 좌표, release
-evidence, certified capability set, MCP client name/version은 제외합니다. Host와 client
-version 필드는 identity나 allowlist 입력이 아닌 diagnostic 관찰로만 남습니다.
+포함됩니다. Host와 client version 필드는 제외하며 identity나 allowlist 입력이 아닌
+diagnostic 관찰로만 남습니다. 이 fingerprint에는 host executable identity나 provenance
+입력이 없습니다.
 
 Milestone timestamp와 사실로 lifecycle 상태를 표현하며 중복 status enum은 저장하지
 않습니다. Store는 성공한 `initialize`, initialized notification, 실제 `tools/list`마다의
@@ -98,9 +98,9 @@ Connection과 프로젝트 통합 revision은 현재 담당 입력에서 도출�
 `cli_preflight` row, diagnostic version 필드, best-effort diagnostics는 이 경계를 충족할 수
 없습니다.
 
-Registry 저장소에는 관리 host binding, executable digest, verifier-build digest,
-support-catalog coordinate, host-verification-receipt 기록이 없습니다. 제거된 runtime 권한
-테이블을 담은 Runtime Home은 다른 `StorageManifest`에 속하므로 migration 없이 거부합니다.
+Registry 저장소는 위의 row만으로 managed operation에 권한을 부여합니다. 현재가 아닌
+권한 schema를 담은 Runtime Home은 다른 `StorageManifest`에 속하므로 migration 없이
+거부합니다.
 
 ## Identity와 소유권
 

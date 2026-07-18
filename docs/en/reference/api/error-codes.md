@@ -32,7 +32,6 @@ Adjacent owners:
 | Public `ErrorCode` | Detail section |
 |---|---|
 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
-| `UNSUPPORTED_CONTRACT` | [`UNSUPPORTED_CONTRACT`](#errorcode-unsupported-contract) |
 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
@@ -81,28 +80,7 @@ Required failure category:
 
 Boundary:
 - Malformed untrusted request data uses this code. A supported persisted owner
-  contract whose stored data is invalid uses `PERSISTED_DATA_CORRUPT`; an exact
-  external contract or host artifact that is not supported uses
-  `UNSUPPORTED_CONTRACT`.
-
-<a id="errorcode-unsupported-contract"></a>
-### `UNSUPPORTED_CONTRACT`
-
-Used in:
-- `ToolRejectedResponse.errors[]`
-
-Condition:
-- An exact external contract descriptor or other boundary format is not an
-  exact registered supported contract. No fallback adapter, decoder, version,
-  or closest-known format is selected.
-
-Required failure category:
-- `unsupported_contract`
-
-Required details:
-- Use the applicable `ToolError.details.reason` value from
-  [API error details](error-details.md#reason), including
-  `unsupported_external_contract` for that domain.
+  contract whose stored data is invalid uses `PERSISTED_DATA_CORRUPT`; unsupported untrusted boundary input remains `VALIDATION_FAILED`.
 
 <a id="errorcode-persisted-data-corrupt"></a>
 ### `PERSISTED_DATA_CORRUPT`
@@ -144,14 +122,13 @@ Used in:
 Condition:
 - Required Core, MCP, Store, owner-state read, or Agent Connection reachability
   is currently unavailable, and the available data does not establish corrupt
-  persisted data or an unsupported contract.
+  persisted data or another deterministic rejection.
 
 Required failure category:
 - `unavailable`
 
 Boundary:
-- Known persisted-data corruption uses `PERSISTED_DATA_CORRUPT`. An unknown
-  exact boundary contract uses `UNSUPPORTED_CONTRACT`.
+- Known persisted-data corruption uses `PERSISTED_DATA_CORRUPT`. Unknown boundary input is rejected with `VALIDATION_FAILED`.
 
 <a id="errorcode-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`

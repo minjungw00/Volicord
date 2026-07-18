@@ -13,7 +13,7 @@ Those details remain with the focused owner for the affected surface.
 <a id="surface-stability"></a>
 ## Surface Stability
 
-The six category meanings, their machine-readable identifiers, persisted
+The five category meanings, their machine-readable identifiers, persisted
 authority and policy fail-closed rules, and no-default-conflation rules are
 stable contracts. Human display text and domain-specific diagnostic details
 are diagnostic unless their focused owner says otherwise.
@@ -27,10 +27,9 @@ category identifiers:
 |---|---|---|
 | `Rejected` | `rejected` | The request shape or required context is structurally invalid, so the requested operation does not proceed to policy evaluation or its successful operation branch. |
 | `NotAllowed` | `not_allowed` | A structurally valid request and complete required context reached policy evaluation, and policy did not allow the requested operation. |
-| `Unavailable` | `unavailable` | The operation, auxiliary capability, or required read cannot currently be performed, while the available data does not establish contract corruption or an unsupported external contract. |
+| `Unavailable` | `unavailable` | The operation, auxiliary capability, or required read cannot currently be performed, while the available data does not establish persisted contract corruption. |
 | `Degraded` | `degraded` | The core operation can continue, but an explicitly identified verification, diagnostic, or auxiliary-information component is incomplete. |
 | `Corrupt` | `corrupt` | Persisted or trusted owner data violates its declared schema, type, canonical encoding, or cross-field contract. |
-| `UnsupportedContract` | `unsupported_contract` | An external descriptor or boundary format is not recognized as an exact supported contract. |
 
 A machine-readable result or diagnostic must carry the exact category
 identifier and, when the domain distinguishes causes within that category, a
@@ -52,19 +51,15 @@ auxiliary verification or information source is incomplete, the category is
 `Degraded`; the missing part and its effect must remain visible.
 
 `Corrupt` applies when data that claims to follow a supported persisted or
-trusted contract violates that contract. `UnsupportedContract` applies when
-the boundary contract itself is not an exact supported contract. Unknown
-external descriptors use the [External Contracts](external-contracts.md)
-reason `unsupported_external_contract`; they are not guessed into a supported
-shape. A malformed untrusted request that has not become persisted owner state
-is `Rejected`, not `Corrupt`.
+trusted contract violates that contract. A malformed or unknown untrusted
+boundary input that has not become persisted owner state is `Rejected`, not
+`Corrupt`, and is not guessed into a supported shape.
 
-An installed Codex executable or version is not an external contract. An
-unknown or uncertified Codex version therefore does not select
-`UnsupportedContract`; connection verification runs the behavioral probes and
-reports their actual `passed`, `pending`, or `failed` results. Failure to find
-or run the executable is `Unavailable` at a general failure-category boundary
-and a failed `host_executable` connection check.
+An installed Codex executable or version is not an external contract and has
+no certified or uncertified state. Connection verification runs behavioral
+probes and reports their actual `passed`, `pending`, or `failed` results.
+Failure to find or run the executable is `Unavailable` at a general
+failure-category boundary and a failed `host_executable` connection check.
 
 The administrative connection command report uses `failed` only for a typed
 operational result with at least one failed required check. Pending host
@@ -78,7 +73,6 @@ No category implies another. In particular:
 - `Unavailable` is not an empty successful result.
 - `Degraded` is not full verification or an unqualified success state.
 - `Corrupt` is not a missing optional value.
-- `UnsupportedContract` is not permission to select the closest known format.
 - `NotAllowed` is not structural rejection.
 
 ## Persisted authority and policy data
@@ -130,8 +124,6 @@ those projections while preserving this category meaning.
 
 Adjacent owners:
 
-- External descriptor selection and `unsupported_external_contract`:
-  [External Contracts](external-contracts.md).
 - Public API branch routing and public codes: [API Errors](api/errors.md).
 - Persisted record contracts: [Storage Records](storage-records.md).
 - Method-to-storage effects and no-effect branches:

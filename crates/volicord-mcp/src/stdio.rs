@@ -1020,7 +1020,7 @@ fn codex_managed_call_binding(
         return Err("managed Codex tools/call thread metadata is inconsistent");
     }
     let thread_digest =
-        codex_thread_binding_digest(connection_internal_id, native_session_id, nested_thread_id);
+        codex_thread_identity_digest(connection_internal_id, native_session_id, nested_thread_id);
     Ok(CodexManagedCallBinding {
         session_id: managed_stdio_session_id(connection_internal_id, native_session_id)
             .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?,
@@ -1044,7 +1044,7 @@ fn codex_turn_metadata_id<'a>(
     Ok(value)
 }
 
-fn codex_thread_binding_digest(
+fn codex_thread_identity_digest(
     connection_internal_id: &str,
     native_session_id: &str,
     native_thread_id: &str,

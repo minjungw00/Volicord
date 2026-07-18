@@ -714,8 +714,7 @@ pub(crate) fn concise_store_reason(error: &StoreError) -> String {
         } => {
             format!("unsupported storage profile {actual_storage_profile}")
         }
-        StoreError::UnsupportedExternalContract { reason, .. }
-        | StoreError::UnsupportedPlatformEnvironment { reason, .. }
+        StoreError::UnsupportedPlatformEnvironment { reason, .. }
         | StoreError::PlatformEnvironmentUnavailable { reason, .. } => (*reason).to_owned(),
         StoreError::Sqlite(_) | StoreError::Io(_) => "storage access failed".to_owned(),
     }

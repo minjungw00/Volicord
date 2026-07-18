@@ -1,4 +1,4 @@
-//! Exact published binary target identities used by Codex support contracts.
+//! Published Volicord binary target identities.
 
 use std::{error::Error, fmt, str::FromStr};
 
@@ -41,7 +41,7 @@ impl ReleaseTargetTriple {
         }
     }
 
-    /// Returns whether this exact target can execute in the environment cell.
+    /// Returns whether this target can execute in the operating environment.
     pub const fn supports_environment(self, environment: PlatformEnvironment) -> bool {
         matches!(
             (self, environment),
@@ -60,7 +60,7 @@ impl ReleaseTargetTriple {
         )
     }
 
-    /// Returns the architecture label required from the validating runner.
+    /// Returns the target architecture label.
     pub const fn architecture(self) -> &'static str {
         match self {
             Self::X86_64UnknownLinuxGnu | Self::X86_64AppleDarwin | Self::X86_64PcWindowsMsvc => {
@@ -109,7 +109,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exact_targets_reject_cross_architecture_and_cross_environment_use() {
+    fn targets_reject_cross_architecture_and_cross_environment_use() {
         assert!(ReleaseTargetTriple::X86_64UnknownLinuxGnu
             .supports_environment(PlatformEnvironment::Wsl2));
         assert!(!ReleaseTargetTriple::Aarch64UnknownLinuxGnu

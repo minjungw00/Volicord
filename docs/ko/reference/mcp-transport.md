@@ -2,7 +2,7 @@
 
 이 문서는 최초 릴리스의 로컬 MCP 프로세스 경계인 관리 stdio 시작, 엄격한 binding,
 JSON-RPC lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 담당합니다.
-Core 메서드, Codex 구성, 저장 효과, 릴리스 증거는 각각의 집중 담당 문서에 남습니다.
+Core 메서드, Codex 구성, 연결 검증, 저장 효과는 각각의 집중 담당 문서에 남습니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
@@ -47,10 +47,9 @@ Runtime Home/Product Repository 분리, 현재 `StorageManifest`, 필요한 저�
 actor, human identity를 증명하지 않습니다. 손상된 기록, 모호한 선택, 사용할 수 없는
 저장소에는 [실패 모델](failure-model.md)을 적용합니다.
 
-시작 경로는 parent executable을 hash하거나, 내장 support catalog를 조회하거나, platform
-release coordinate를 비교하거나, 검증 receipt를 발급 또는 읽거나, client/host version을
-allowlist 입력으로 사용하지 않습니다. 릴리스 인증은 production runtime 권한 밖에
-남습니다.
+시작 경로는 parent executable을 hash하거나, 정확한 호스트 allowlist를 조회하거나,
+플랫폼 실행 파일 identity를 도출하거나, 실행 파일 attestation을 발급 또는 읽거나,
+client/host version을 권한 입력으로 사용하지 않습니다.
 
 ## MCP wire 동작
 
@@ -109,7 +108,7 @@ Core는 직렬화할 수 없는 `ValidatedAgentSession` 하나를 받습니다. 
 호출과 일치해야 합니다. 감사용 `verification_basis`는 로컬에서
 `connection:<connection_id>/session:<project_session_id>/revision:<project_integration_revision>`
 형태로 만듭니다. 이 값은 운영 소유권 기록이며 certificate, receipt, identity proof,
-trusted host digest가 아닙니다. 릴리스 증거나 이전 권한 기록으로 fallback하지 않습니다.
+trusted host digest가 아닙니다. 이전 권한 기록으로 fallback하지 않습니다.
 
 ## 도구 검색
 

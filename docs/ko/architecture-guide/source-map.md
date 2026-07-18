@@ -11,8 +11,8 @@
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
-| `crates/volicord-types/src/codex_support_catalog.rs`와 `contracts/codex-support-catalog.json` | 임시로 유지하는 릴리스 인증 카탈로그 소스. 운영 런타임 권한은 이를 사용하지 않습니다. |
-| `crates/volicord-types/src/codex_release_evidence.rs` | 증거를 포함하지 않는 엄격한 외부 릴리스 증거 타입과 parsing. |
+| `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
+| `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
 | `crates/volicord-types/src/tool_names.rs` | 공개 MCP 도구 이름 레지스트리. |
 
 ## Store
@@ -67,7 +67,7 @@
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
-| `tests/release-validation/` | 정확한 최종 Codex 및 Volicord 아티팩트 검증, target 다섯 개/셀 여섯 개 계약, 변경 불가능한 raw 빌드와 게시 연속성, 외부 릴리스 증거 manifest. `src/pipeline.rs`는 빌드 metadata, 셀 증거 아티팩트, 완전한 게시 입력 집합을 검증합니다. |
+| `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 릴리스 workflow 무결성 테스트. |
 | `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store, 요청 도우미. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를

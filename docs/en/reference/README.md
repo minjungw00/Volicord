@@ -7,7 +7,7 @@ This README is route-only. It does not define term meanings, terminology metadat
 ## Start Here
 
 - Environment prerequisites before installation: [System Requirements](system-requirements.md).
-- Exact-final-artifact managed-host release validation: [Host Release Evidence](host-release-evidence.md).
+- Managed-host behavioral verification: [Agent Connection](agent-connection.md); ordinary release integrity: [Validation](../maintain/validation.md).
 - Executable preparation and verification tutorial: [Installation](../user-guide/installation.md).
 - Product/system boundaries: [Scope](scope.md), [Core Model](core-model.md), [Runtime Boundaries](runtime-boundaries.md), and [Security](security.md).
 - External-format compatibility, exact adapter selection, and shared Git object-ID validation: [External Contracts](external-contracts.md).
@@ -21,7 +21,7 @@ This README is route-only. It does not define term meanings, terminology metadat
 - Conservative recorded-change suppression outcomes and diagnostics: [Guard Recorded-Change Suppression](guard-suppression.md).
 - Storage families: [Storage](storage.md), which routes to records, DDL, effects, artifacts, and versioning.
 - Connection, projection, and display routes: [Agent Connection Reference](agent-connection.md) for Agent Connection, Connection Projects, and current connection context, [Runtime Boundaries](runtime-boundaries.md) for User Channel and runtime-location boundaries, [Security](security.md) for operation-category non-guarantees, [Projection and Templates](projection-and-templates.md), and [Template Bodies](template-bodies.md).
-- Quality and verification routes: [Conformance](conformance.md), [Design Quality](design-quality.md), [Host Release Evidence](host-release-evidence.md) for the fixed release gate and independent audit, and the relevant method or Core owner for the question.
+- Quality and verification routes: [Conformance](conformance.md), [Design Quality](design-quality.md), [Agent Connection](agent-connection.md) for behavioral host observations, and the relevant method or Core owner for the question.
 
 ## Common Crossings
 
@@ -30,7 +30,7 @@ This README is route-only. It does not define term meanings, terminology metadat
 - Write ticket meaning and non-substitution rules belong in [Core Model](core-model.md); policy application and Guard candidate behavior belong in [Administrative CLI](admin-cli.md); issue, current-policy reevaluation, and reuse belong in [Prepare-write method](api/method-prepare-write.md); consumption and the independent current-policy check belong in [Record-run method](api/method-record-run.md); the `write_authority_fingerprint` field and scope belong in [State Schemas](api/schema-state.md); persistence and storage-profile boundaries belong in [Storage Effects](storage-effects.md) and [Storage Versioning](storage-versioning.md); security non-guarantees belong in [Security](security.md).
 - User-action inbox CLI behavior belongs in [Administrative CLI](admin-cli.md); User Channel versus Agent Connection boundaries belong in [Agent Connection Reference](agent-connection.md); inbox item shape belongs in [User Action Schemas](api/schema-user-action.md).
 - Public error code meaning belongs in [API Error Codes](api/error-codes.md); error precedence belongs in [API Error Precedence](api/error-precedence.md); response branch routing belongs in [API Error Routing](api/error-routing.md); machine-readable error details belong in [API Error Details](api/error-details.md).
-- External descriptor identity, exact registry matching, compatibility windows, and Git object-ID canonicalization belong in [External Contracts](external-contracts.md); the cross-surface distinction among rejection, policy non-allow, unavailability, degradation, corruption, and unsupported contracts belongs in [Failure Model](failure-model.md). API response projection remains with the API error owners.
+- Shared Git object-ID validation and canonicalization belong in [External Contracts](external-contracts.md); the cross-surface distinction among rejection, policy non-allow, unavailability, degradation, and corruption belongs in [Failure Model](failure-model.md). API response projection remains with the API error owners.
 - Recorded-change suppression outcome, scan budget, fail-safe paths, and reason identifiers belong in [Guard Recorded-Change Suppression](guard-suppression.md).
 - Administrative `volicord` commands are local bootstrap commands, not public Volicord API methods; `volicord mcp --stdio` exposes the public method set through MCP stdio without owning a second method list.
 - Terminology lookup starts with the [Glossary](glossary.md) for selected reader-facing terms and [`docs/terminology-map.yaml`](../../terminology-map.yaml) for structured terminology and identifier controls.

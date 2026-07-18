@@ -59,9 +59,9 @@ Product Repository 파일은 사용자 제품 데이터입니다. Runtime Home r
 권한 기록입니다. 관리 Codex 구성은 프로세스를 시작하지만 권한, 승인, 쓰기 티켓,
 Codex가 이를 읽었다는 증명이 아닙니다.
 
-릴리스 셀은 외부 아티팩트 증거이며 Core 권한을 부여하거나 사용자를 식별하거나 runtime
-실행을 증명하지 않습니다. Production runtime 권한은 릴리스 증거나 정확한 executable
-digest를 조회하지 않습니다.
+행동 기반 연결 관찰은 Core 권한을 부여하거나 사용자를 식별하거나 실행 파일 출처 또는
+identity를 인증하거나 미래 호스트 행동을 증명하지 않습니다. Production runtime 권한은
+executable digest나 host version allowlist를 조회하지 않습니다.
 
 <a id="historical-operation-result-access"></a>
 ## 과거 operation result 접근

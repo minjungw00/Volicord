@@ -1724,7 +1724,6 @@ pub enum FailureCategory {
     Unavailable,
     Degraded,
     Corrupt,
-    UnsupportedContract,
 }
 
 impl FailureCategory {
@@ -1736,7 +1735,6 @@ impl FailureCategory {
             Self::Unavailable => "unavailable",
             Self::Degraded => "degraded",
             Self::Corrupt => "corrupt",
-            Self::UnsupportedContract => "unsupported_contract",
         }
     }
 }
@@ -1746,7 +1744,6 @@ impl FailureCategory {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
     ValidationFailed,
-    UnsupportedContract,
     PersistedDataCorrupt,
     StateVersionConflict,
     McpUnavailable,
@@ -1778,7 +1775,6 @@ impl ErrorCode {
     /// Returns the failure category carried by a public `ToolError` with this code.
     pub const fn failure_category(self) -> FailureCategory {
         match self {
-            Self::UnsupportedContract => FailureCategory::UnsupportedContract,
             Self::PersistedDataCorrupt => FailureCategory::Corrupt,
             Self::McpUnavailable
             | Self::OperationResultUnavailable
@@ -1828,7 +1824,6 @@ mod tests {
             (FailureCategory::Unavailable, "unavailable"),
             (FailureCategory::Degraded, "degraded"),
             (FailureCategory::Corrupt, "corrupt"),
-            (FailureCategory::UnsupportedContract, "unsupported_contract"),
         ] {
             assert_eq!(category.as_str(), expected);
             assert_eq!(
@@ -1840,10 +1835,6 @@ mod tests {
 
     #[test]
     fn public_error_codes_select_one_explicit_failure_category() {
-        assert_eq!(
-            ErrorCode::UnsupportedContract.failure_category(),
-            FailureCategory::UnsupportedContract
-        );
         assert_eq!(
             ErrorCode::PersistedDataCorrupt.failure_category(),
             FailureCategory::Corrupt

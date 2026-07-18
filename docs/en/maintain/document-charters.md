@@ -151,8 +151,8 @@ Document: [Agent Host Setup](../user-guide/agent-host-setup.md)
   boundaries, and safe removal flow.
 - Should not own: Exact CLI output contracts, full troubleshooting catalogs,
   MCP protocol line lists, host-internal trust behavior, full environment
-  applicability rules, exact session or release-evidence contracts, storage
-  DDL, or API schema meaning.
+  applicability rules, exact session-authorization contracts, storage DDL, or
+  API schema meaning.
 - Acceptable diagrams: Host setup flow diagrams, configuration boundary maps,
   and verification path diagrams that stay at guide level.
 - Link deeper by: Sending command detail to [Administrative CLI](../reference/admin-cli.md),
@@ -161,9 +161,8 @@ Document: [Agent Host Setup](../user-guide/agent-host-setup.md)
   [Runtime Boundaries](../reference/runtime-boundaries.md), connection concepts
   and session authorization to
   [Agent Connection](../reference/agent-connection.md#validated-agent-session),
-  API surfaces to [API Methods](../reference/api/methods.md),
-  release-claim evidence to
-  [Host Release Evidence](../reference/host-release-evidence.md), environment
+  API surfaces to [API Methods](../reference/api/methods.md), behavioral host
+  verification to [Agent Connection](../reference/agent-connection.md), environment
   applicability to [System Requirements](../reference/system-requirements.md),
   and recovery detail to
   [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md).

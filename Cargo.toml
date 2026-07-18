@@ -10,7 +10,7 @@ members = [
     "tests/conformance",
     "tests/agent-evaluation",
     "tests/integration",
-    "tests/release-validation",
+    "tests/release-integrity",
     "xtask",
 ]
 resolver = "2"

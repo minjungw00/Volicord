@@ -7,7 +7,7 @@
 ## 먼저 볼 곳
 
 - 설치 전 환경 전제 조건: [시스템 요구사항](system-requirements.md).
-- 정확한 최종 아티팩트 관리 호스트 릴리스 검증: [호스트 릴리스 증거](host-release-evidence.md).
+- 관리 호스트 행동 검증: [Agent Connection](agent-connection.md), 일반 릴리스 무결성: [검증](../maintain/validation.md).
 - 실행 파일 준비와 검증 튜토리얼: [설치](../user-guide/installation.md).
 - 제품/시스템 경계: [범위](scope.md), [Core 모델](core-model.md), [런타임 경계](runtime-boundaries.md), [보안](security.md).
 - 외부 형식 호환성, 정확한 어댑터 선택, 공통 Git 객체 ID 검증: [외부 계약](external-contracts.md).
@@ -21,7 +21,7 @@
 - 보수적인 기록 변경 억제 결과와 진단: [Guard 기록 변경 억제](guard-suppression.md).
 - 저장소 묶음: [저장소](storage.md). 기록, DDL, 효과, 아티팩트, 버전 관리로 안내합니다.
 - 연결, 상태 보기, 표시 경로: Agent Connection, Connection Projects, 현재 연결 맥락은 [Agent Connection 참조](agent-connection.md), User Channel과 런타임 위치 경계는 [런타임 경계](runtime-boundaries.md), 작업 범주 비보장은 [보안](security.md), 상태 보기는 [상태 보기와 템플릿](projection-and-templates.md), 렌더링 문구는 [템플릿 본문](template-bodies.md)에 있습니다.
-- 품질과 검증 경로: [적합성](conformance.md), [설계 품질](design-quality.md), 고정 릴리스 게이트와 독립 audit은 [호스트 릴리스 증거](host-release-evidence.md), 그 밖에는 질문에 맞는 메서드 또는 Core 담당 문서.
+- 품질과 검증 경로: [적합성](conformance.md), [설계 품질](design-quality.md), 행동 기반 호스트 관찰은 [Agent Connection](agent-connection.md), 그 밖에는 질문에 맞는 메서드 또는 Core 담당 문서.
 
 ## 자주 갈리는 경로
 
@@ -30,7 +30,7 @@
 - 쓰기 티켓 의미와 대체 금지 규칙은 [Core 모델](core-model.md)에, 정책 적용과 Guard 후보 동작은 [관리 CLI](admin-cli.md)에 있습니다. 발급, 현재 정책 재평가, 재사용은 [쓰기 준비 메서드](api/method-prepare-write.md)가, 소비와 독립적인 현재 정책 검사는 [실행 기록 메서드](api/method-record-run.md)가 담당합니다. `write_authority_fingerprint` 필드와 범위는 [상태 스키마](api/schema-state.md)에, 영속 효과와 저장소 프로필 경계는 [저장 효과](storage-effects.md)와 [저장소 버전 관리](storage-versioning.md)에, 보안 비보장은 [보안](security.md)에 있습니다.
 - 사용자 행동 inbox CLI 동작은 [관리 CLI](admin-cli.md)에, User Channel과 Agent Connection 경계는 [Agent Connection 참조](agent-connection.md)에, inbox item 형태는 [사용자 행동 스키마](api/schema-user-action.md)에 있습니다.
 - 공개 오류 코드 의미는 [API 오류 코드](api/error-codes.md)에, 오류 우선순위는 [API 오류 우선순위](api/error-precedence.md)에, 응답 분기 처리 경로는 [API 오류 처리 경로](api/error-routing.md)에, 기계 판독용 오류 세부사항은 [API 오류 세부사항](api/error-details.md)에 있습니다.
-- 외부 설명자 identity, 정확한 registry 대조, 호환성 범위, Git 객체 ID canonicalization은 [외부 계약](external-contracts.md)이 담당합니다. 구조적 거부, 정책상 비허용, 사용 불가, 저하, 손상, 미지원 계약을 여러 표면에서 구분하는 의미는 [실패 모델](failure-model.md)이 담당하며, API 응답 표시는 계속 API 오류 담당 문서에 남습니다.
+- 공통 Git 객체 ID 검증과 canonicalization은 [외부 계약](external-contracts.md)이 담당합니다. 구조적 거부, 정책상 비허용, 사용 불가, 저하, 손상을 여러 표면에서 구분하는 의미는 [실패 모델](failure-model.md)이 담당하며, API 응답 표시는 계속 API 오류 담당 문서에 남습니다.
 - 기록 변경 억제 결과, scan budget, fail-safe 경로와 reason 식별자는 [Guard 기록 변경 억제](guard-suppression.md)가 담당합니다.
 - 관리용 `volicord` 명령은 로컬 부트스트랩 명령이며 공개 Volicord API 메서드가 아닙니다. `volicord mcp --stdio`는 별도의 두 번째 메서드 목록을 담당하지 않고 MCP stdio를 통해 공개 메서드 집합을 노출합니다.
 - 용어 조회는 선별된 독자용 용어를 다루는 [용어집](glossary.md)에서 시작하고, 구조화 용어와 식별자 통제는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을 사용합니다.

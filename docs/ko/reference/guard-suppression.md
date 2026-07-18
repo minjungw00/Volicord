@@ -140,5 +140,5 @@ machine-readable Guard 응답은 결과를 계속 담고 진단 영속화를 사
 - 제품 경로 정규화: [런타임 경계](runtime-boundaries.md)
 - 실패 범주 의미: [실패 모델](failure-model.md)
 - write-ticket 및 Run 상태 형태: [API 상태 스키마](api/schema-state.md)
-- Guard 릴리스 시나리오: [호스트 릴리스 증거](host-release-evidence.md)
+- Guard 구현 테스트와 선택적 호스트 smoke: [테스트 전략](../architecture-guide/testing-strategy.md)
 - 보안 및 진단 비보장: [보안](security.md)

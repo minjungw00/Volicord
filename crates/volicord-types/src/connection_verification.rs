@@ -835,7 +835,6 @@ mod tests {
     fn obsolete_status_values_are_rejected() {
         for obsolete in [
             "not_verified",
-            "unsupported_contract",
             "missing",
             "changed",
             "rejected",

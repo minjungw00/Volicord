@@ -67,7 +67,6 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 | `unavailable` | 필수 동작이나 조회를 계속할 수 없으면 적용되는 사용 불가 공개 코드와 함께 `ToolRejectedResponse`를 사용합니다. |
 | `degraded` | 핵심 동작을 진실하게 계속하면 성공 메서드 결과에서 담당자가 정의한 진단으로 불완전한 보조 구성 요소를 드러냅니다. 같은 동작을 `ToolError(category=degraded)`로 거절하지 않습니다. |
 | `corrupt` | 종속 동작은 `PERSISTED_DATA_CORRUPT`를 담은 `ToolRejectedResponse`를 사용하고 정책이나 효과 전에 닫힌 실패로 중단합니다. |
-| `unsupported_contract` | 종속 동작은 `UNSUPPORTED_CONTRACT`를 담은 `ToolRejectedResponse`를 사용하며 fallback 계약이나 아티팩트를 선택하지 않습니다. |
 
 범주는 필수 기계 판독 분류입니다. 공개 코드나
 [API 오류 세부사항](error-details.md#reason)이 담당하는 도메인 `details.reason`을 대신하지
@@ -80,7 +79,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 | 조건 | 세부 항목 |
 |---|---|
 | 요청 검증이 진행 전에 실패 | [요청 검증 실패](#rejected-request-validation-failure) |
-| 영속 담당 데이터 손상 또는 정확한 계약 미지원 | [선행조건 실패](#rejected-precondition-failure) |
+| 영속 담당 데이터 손상 | [선행조건 실패](#rejected-precondition-failure) |
 | 선행조건이 커밋 전에 실패 | [선행조건 실패](#rejected-precondition-failure) |
 | 상태 또는 멱등성 충돌 | [상태 또는 멱등성 충돌](#rejected-state-or-idempotency-conflict) |
 | `dry_run=true` 미리보기 전 실패 | [`dry_run=true` 미리보기 전 실패](#rejected-dry-run-pre-preview-failure) |
@@ -93,7 +92,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 
 경계:
 - 신뢰할 수 없는 입력의 형태가 잘못된 `category=rejected` 조건입니다. 영속 신뢰 담당
-  데이터 손상과 미지원 정확한 계약은 서로 다른 범주와 코드를 사용합니다.
+  데이터 손상은 별도의 범주와 코드를 사용합니다.
 
 응답 경로:
 - `ToolRejectedResponse.errors[]`.

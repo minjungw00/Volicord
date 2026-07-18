@@ -6,7 +6,7 @@ use std::{
 
 use serde::Deserialize;
 
-const ALLOWLIST_PATH: &str = "tests/release-validation/contracts/version-identifier-allowlist.json";
+const ALLOWLIST_PATH: &str = "tests/release-integrity/version-identifier-allowlist.json";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -28,7 +28,7 @@ fn numeric_version_identifiers_are_explicitly_classified() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .expect("release-validation package must live under tests/");
+        .expect("release-integrity package must live under tests/");
     let allowlist_text = fs::read_to_string(root.join(ALLOWLIST_PATH)).expect("read allowlist");
     let allowlist: Allowlist =
         serde_json::from_str(&allowlist_text).expect("strict allowlist JSON");

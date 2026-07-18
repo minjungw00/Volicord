@@ -38,7 +38,7 @@ fn production_core_contains_no_host_adapter_implementation_knowledge() {
     inspect_source_tree(&source, &mut violations);
     assert!(
         violations.is_empty(),
-        "Core must consume typed host receipts without adapter implementation knowledge:\n{}",
+        "Core must consume typed invocation context without adapter implementation knowledge:\n{}",
         violations.join("\n")
     );
 }

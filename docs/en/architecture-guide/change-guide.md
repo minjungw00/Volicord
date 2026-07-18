@@ -24,7 +24,7 @@ focused Reference owner, not by current code or this guide.
 | MCP lifecycle, decoding, tool list, or projection | `volicord-mcp` | MCP Transport and API owners |
 | Administrative command or CLI inbox | `volicord-cli` | Administrative CLI and User Action owners |
 | Codex setup or verification | Codex adapter and connection command | Agent Connection, Security, System Requirements |
-| Release support claim | `tests/release-validation` | Host Release Evidence |
+| Release build or package integrity | `tests/release-integrity`, release workflow | Validation |
 | Documentation route or terminology | `docs/doc-index.yaml`, paired docs | documentation and translation policies |
 
 The first-release adapter surface is Codex Record profile with `personal` and
@@ -62,12 +62,10 @@ cargo run -p xtask -- docs-check
 git diff --check
 ```
 
-Release-support changes also require the exact finalized artifact workflow and
-all six target/environment cells across `linux`, `macos`, `native_windows`, and
-`wsl2`. Keep the retained release catalog separate from external release
-evidence. The evidence manifest may honestly contain zero through six entries;
-only exact passing evidence matching the catalog satisfies its release cell.
-Production runtime authorization consumes neither contract.
+Release changes also require the generic release-integrity package and the
+ordinary build, package, checksum, platform, and workflow checks applicable to
+the change. A real-Codex smoke run is optional operational observation and must
+not become an executable identity, provenance, support, or authorization gate.
 
 ## Handoff
 

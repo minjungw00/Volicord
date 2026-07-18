@@ -148,11 +148,10 @@ not_allowed
 unavailable
 degraded
 corrupt
-unsupported_contract
 ```
 
 These identifiers correspond exactly to `Rejected`, `NotAllowed`,
-`Unavailable`, `Degraded`, `Corrupt`, and `UnsupportedContract`. Their semantic
+`Unavailable`, `Degraded`, and `Corrupt`. Their semantic
 boundaries are owned by the [Failure Model](../failure-model.md).
 
 `ToolError.category` is a required controlled field with this value set. A

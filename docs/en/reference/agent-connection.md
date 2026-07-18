@@ -31,8 +31,8 @@ This document does not own:
 - exact database tables or storage effects; see
   [Storage Records](storage-records.md) and
   [Storage Effects](storage-effects.md);
-- release-cell execution or exact artifact evidence; see
-  [Host Release Evidence](host-release-evidence.md);
+- ordinary build, package, platform, and release validation; see
+  [Validation](../maintain/validation.md);
 - operating-system topology and filesystem prerequisites; see
   [System Requirements](system-requirements.md);
 - Core `UserActionRequest` and `UserActionResolution` schemas; see
@@ -183,10 +183,10 @@ facts and current observations, but that read does not persist the projection
 or modify any timestamp.
 
 Operational compatibility is reported from checks the adapter actually
-performed and behavior it observed. `complete` does not mean exact-artifact
-release certification, operating-system enforcement, actor identity proof,
-correctness proof, or tamper-proof recording. Connection verification does not
-issue a runtime authorization credential.
+performed and behavior it observed. `complete` does not certify executable
+identity or provenance and does not mean operating-system enforcement, actor
+identity proof, correctness proof, or tamper-proof recording. Connection
+verification does not issue a runtime authorization credential.
 
 ## Integration Revisions And Operational Sessions
 
@@ -197,8 +197,8 @@ managed-configuration fingerprint. That fingerprint covers the managed server
 command and entry.
 
 Revision construction excludes observed host version, executable path or
-digest, support-catalog coordinates, release evidence, certified capability
-sets, and MCP client name/version. Those values cannot change authorization.
+cryptographic identity, allowlist coordinates, claimed capability sets, and
+MCP client name/version. Those values cannot change authorization.
 
 Each MCP process start creates an opaque Registry runtime-session ID before
 host thread metadata exists. `session_source` is exactly `managed_host` or
@@ -252,8 +252,8 @@ It is created only after validating all of the following current facts:
 10. client name/version and host version are ignored for authorization.
 
 The adapter validates the authoritative runtime and project rows on every
-project tool call before constructing Core invocation context. There is no
-receipt path, release-evidence path, compatibility path, or fallback.
+project tool call before constructing Core invocation context. No alternate
+authorization, compatibility, or fallback path exists.
 
 Core derives the audit basis deterministically:
 
@@ -278,12 +278,12 @@ The Codex adapter owns host-specific configuration inspection and mutation:
 - repair owner-defined managed state from current canonical inputs; and
 - uninstall only matching Volicord-managed state.
 
-Runtime authorization does not hash the parent executable, compare a platform
-release coordinate, consult an embedded support catalog, calculate a binding or
-verifier-build digest, or issue/load/validate a host verification receipt. A
-recognizable command name, process path, version string, environment value, or
-local session is not actor identity. Managed launch context and authoritative
-Store sessions establish only the cooperative ownership boundary above.
+Runtime authorization does not hash the parent executable, derive a platform
+executable identity, consult an exact-host allowlist, calculate an executable
+identity digest, or issue or validate an executable attestation. A recognizable
+command name, process path, version string, environment value, or local session
+is not actor identity. Managed launch context and authoritative Store sessions
+establish only the cooperative ownership boundary above.
 
 Repair does not overwrite unrelated Codex configuration or silently change the
 selected project, Connection, intent, profile, or platform environment.
@@ -318,8 +318,8 @@ revocation.
   [Administrative CLI](admin-cli.md).
 - Platform cells and WSL2 topology:
   [System Requirements](system-requirements.md).
-- Exact Codex release artifacts and release-only capabilities:
-  [Host Release Evidence](host-release-evidence.md).
+- Ordinary build, package, platform, and release validation:
+  [Validation](../maintain/validation.md).
 - Runtime and repository path boundaries:
   [Runtime Boundaries](runtime-boundaries.md).
 - Security guarantees and non-guarantees: [Security](security.md).

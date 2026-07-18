@@ -68,8 +68,8 @@ the same distribution ext4 boundary. A repository root on ext4 does not
 authorize a nested file on another mount.
 
 Configuration presence does not prove Codex trust, reload, initialization,
-tool discovery, a current operational session, or release-cell status. Those
-facts remain separate.
+tool discovery, safe tool behavior, Guard observations, or a current
+operational session. Those facts remain separate.
 
 The Runtime Home Guard manifest is an ownership inventory for its exact
 Guard-managed subset of those files and its typed runtime commands. Managed script entries
@@ -82,8 +82,8 @@ Operational connection verification discovers the actual `codex` command on
 `PATH`, canonicalizes the observed executable path under the platform topology
 rules, and runs its version command. It records only path and version
 diagnostics. It does not resolve a package-native artifact, hash executable
-bytes, compare a release coordinate, or require the version to appear in a
-support catalog.
+bytes, derive a platform executable identity, or require the version to appear in an
+exact-host allowlist.
 
 ## Volicord Runtime Home
 
@@ -93,7 +93,7 @@ artifact bytes. It is selected explicitly or through the platform rule owned by
 [Administrative CLI](admin-cli.md#runtime-home-selection).
 
 The Runtime Home must not be placed inside a Product Repository. Product files,
-maintained docs, generated release evidence, test results, screenshots,
+maintained docs, release working output, test results, screenshots,
 credentials, and transcripts are not Runtime Home records.
 
 Inside WSL2, validation checks the Runtime Home or its nearest existing

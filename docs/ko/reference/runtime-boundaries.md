@@ -61,8 +61,8 @@ WSL2에서는 Codex 실행 파일, Volicord 실행 파일, 설정 대상, 생성
 아티팩트를 독립적으로 해석하고 같은 배포판 ext4 경계를 확인합니다. 저장소
 root가 ext4에 있다는 사실은 다른 mount의 중첩 파일을 승인하지 않습니다.
 
-구성이 있다고 Codex 신뢰, 다시 불러오기, 초기화, 도구 검색, 현재 운영 session,
-릴리스 셀 상태가 증명되지는 않습니다. 이 사실들은 서로 분리됩니다.
+구성이 있다고 Codex 신뢰, 다시 불러오기, 초기화, 도구 검색, 안전한 도구 동작,
+Guard 관찰, 현재 운영 session이 증명되지는 않습니다. 이 사실들은 서로 분리됩니다.
 
 Runtime Home의 Guard manifest는 위 파일 가운데 정확한 Guard-managed subset과 typed
 runtime command에 대한 소유 inventory입니다. Managed script entry는 모든 플랫폼에서 executable
@@ -73,7 +73,7 @@ runtime command에 대한 소유 inventory입니다. Managed script entry는 모
 운영 연결 검증은 `PATH`에서 실제 `codex` 명령을 찾고 플랫폼 topology 규칙에 따라 관찰한
 실행 파일 경로를 canonicalize한 뒤 version 명령을 실행합니다. Path와 version
 diagnostic만 기록합니다. Package-native artifact를 해석하거나 executable bytes를
-hash하거나 release coordinate를 비교하거나 version이 support catalog에 있어야 한다고
+hash하거나 플랫폼 실행 파일 identity를 도출하거나 version이 정확한 호스트 allowlist에 있어야 한다고
 요구하지 않습니다.
 
 ## Volicord Runtime Home
@@ -82,8 +82,8 @@ Runtime Home은 registry 저장소, 프로젝트별 저장소, 권위 있는 운
 관리 아티팩트 bytes 같은 Volicord 소유 런타임 상태만 담습니다. 명시적 선택 또는
 [관리 CLI](admin-cli.md#runtime-home-selection)의 플랫폼 규칙으로 선택합니다.
 
-Runtime Home은 Product Repository 안에 두면 안 됩니다. 제품 파일, 유지 문서, 생성
-릴리스 증거, 테스트 결과, 스크린샷, 자격 증명, 대화 기록은 Runtime Home 기록이
+Runtime Home은 Product Repository 안에 두면 안 됩니다. 제품 파일, 유지 문서, 릴리스
+작업 출력, 테스트 결과, 스크린샷, 자격 증명, 대화 기록은 Runtime Home 기록이
 아닙니다.
 
 WSL2에서는 초기화 전에 Runtime Home 또는 가장 가까운 기존 상위 경로가 정확한
