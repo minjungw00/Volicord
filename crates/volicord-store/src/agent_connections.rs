@@ -1910,7 +1910,7 @@ pub(crate) fn agent_connection_record_from_conn(
         .transpose()
 }
 
-fn raw_agent_connection_record_from_conn(
+pub(crate) fn raw_agent_connection_record_from_conn(
     conn: &Connection,
     connection_internal_id: &str,
 ) -> StoreResult<Option<AgentConnectionRecord>> {

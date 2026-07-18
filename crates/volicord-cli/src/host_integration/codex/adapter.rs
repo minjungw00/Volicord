@@ -5,29 +5,23 @@ use std::{
 };
 
 use crate::host_integration::process::{CommandRunner, ProductionCommandRunner};
-use crate::host_integration::verification::{
-    HostExecutableStatus, HostGateStatus, ManagedConfigStatus, ProjectTrustStatus, Verification,
-};
+use crate::host_integration::verification::{ManagedConfigStatus, Verification};
 use crate::host_integration::{
     config_edit::{read_text_snapshot, write_if_fresh},
     validate_managed_server_entry_schema, validated_server_name, ConnectionIntent, HostAdapter,
     HostConfigError, HostConflict, HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan,
     HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange,
-    ProjectContext, UserAction, UserActionKind, DEFAULT_MCP_COMMAND,
+    ProjectContext, DEFAULT_MCP_COMMAND,
 };
 use toml_edit::Item;
 
 use super::{
     capabilities,
     config::{document_from_snapshot, parse_document, upsert_server_table, validate_mcp_command},
-    executable::{
-        codex_executable_availability, verification_from_executable_unavailable,
-        CodexExecutableAvailability,
-    },
+    executable::{codex_executable_availability, CodexExecutableAvailability},
     identity::{
         classify_existing_codex_entry, codex_managed_identity_fingerprint,
         codex_managed_server_entry, evaluate_codex_managed_identity,
-        verification_from_managed_status,
     },
     trust::project_trust_for_plan,
 };
@@ -37,7 +31,6 @@ pub struct CodexEnvironment {
     pub home: Option<PathBuf>,
     pub codex_home: Option<PathBuf>,
     pub path: Option<OsString>,
-    pub native_executable: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -219,13 +212,8 @@ impl<R: CommandRunner> CodexAdapter<R> {
         Ok(home.join(".codex"))
     }
 
-    fn executable_availability(&self, config_target: &Path) -> CodexExecutableAvailability {
-        codex_executable_availability(
-            &self.runner,
-            self.env.path.as_ref(),
-            self.env.native_executable.as_deref(),
-            config_target,
-        )
+    fn executable_availability(&self, _config_target: &Path) -> CodexExecutableAvailability {
+        codex_executable_availability(&self.runner, self.env.path.as_ref())
     }
 }
 
@@ -274,96 +262,32 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
     }
 
     fn verify(&mut self, plan: &HostPlan) -> Result<Verification, HostConfigError> {
-        if let Some(conflict) = plan.conflicts.first() {
-            return Ok(Verification::changed(conflict.message.clone())
-                .merge_user_actions(&plan.user_actions));
-        }
         let config_target = match &plan.target {
             HostTarget::File(target) => target.as_path(),
             _ => Path::new("unknown Codex configuration target"),
         };
         let executable = self.executable_availability(config_target);
-        let host_version = executable.host_version.clone();
-        let managed_evaluation = evaluate_codex_managed_identity(plan)?;
-        let managed = managed_evaluation.status;
-        if managed != ManagedConfigStatus::Match {
-            let mut verification = verification_from_managed_status(
-                managed,
-                format!(
-                    "Codex managed MCP server entry is {} for {}",
-                    managed.as_str(),
-                    plan.server_name
-                ),
-            )
-            .with_host_executable(executable.status)
-            .with_host_version(host_version);
-            if let Some(overlay) = managed_evaluation.host_policy_overlay {
-                verification = verification.with_host_policy_overlay(overlay);
-            }
-            if let Some(diagnostic) = executable.diagnostic {
-                verification = verification.with_diagnostic(diagnostic);
-            }
-            return Ok(verification.merge_user_actions(&plan.user_actions));
-        }
-        if !executable.is_available() {
-            let mut verification = verification_from_executable_unavailable(executable);
-            if let Some(overlay) = managed_evaluation.host_policy_overlay {
-                verification = verification.with_host_policy_overlay(overlay);
-            }
-            if plan.host_scope == HostScope::Project {
-                verification =
-                    verification.with_project_trust(project_trust_for_plan(&self.env, plan));
-            }
-            return Ok(verification.merge_user_actions(&plan.user_actions));
-        }
-        if plan.host_scope == HostScope::Project {
-            let project_trust = project_trust_for_plan(&self.env, plan);
-            let mut verification = match project_trust.status {
-                ProjectTrustStatus::Trusted => Verification::configured_ready(
-                    "Codex managed configuration is present, Codex executable is available, and Codex project trust is trusted",
-                )
-                .with_host_executable(HostExecutableStatus::Available)
-                .with_host_gate(HostGateStatus::Ready)
-                .with_mcp_handshake_allowed(true),
-                ProjectTrustStatus::Untrusted => {
-                    Verification::action_required(
-                        "Codex managed configuration is present, Codex executable is available, and Codex project trust is untrusted",
-                    )
-                    .with_host_executable(HostExecutableStatus::Available)
-                    .with_host_gate(HostGateStatus::ActionRequired)
-                    .with_mcp_handshake_allowed(true)
-                    .with_user_actions(vec![UserAction::new(
-                        UserActionKind::HostTrustRequired,
-                        "Codex project trust is untrusted in the Codex user configuration",
-                    )])
-                }
-                ProjectTrustStatus::Missing
-                | ProjectTrustStatus::Unknown
-                | ProjectTrustStatus::Unreadable
-                | ProjectTrustStatus::Malformed => Verification::configured_ready(
-                    "Codex managed configuration is present and Codex executable is available; Codex project trust is not confirmed from the user configuration",
-                )
-                .with_host_executable(HostExecutableStatus::Available)
-                .with_host_gate(HostGateStatus::Unknown)
-                .with_mcp_handshake_allowed(true),
+        let mut managed_evaluation = evaluate_codex_managed_identity(plan)?;
+        if let Some(conflict) = plan.conflicts.first() {
+            managed_evaluation.status = match conflict.kind {
+                HostConflictKind::UnmanagedNameCollision => ManagedConfigStatus::Unmanaged,
+                _ => ManagedConfigStatus::Changed,
             };
-            if let Some(overlay) = managed_evaluation.host_policy_overlay {
-                verification = verification.with_host_policy_overlay(overlay);
-            }
-            verification = verification.with_project_trust(project_trust);
-            verification = verification.with_host_version(host_version);
-            return Ok(verification.merge_user_actions(&plan.user_actions));
+            managed_evaluation.details = conflict.message.clone();
         }
-        let mut verification = Verification::configured_ready(
-            "Codex managed configuration is present, Codex executable is available, and no separate project trust gate applies",
-        )
-        .with_host_executable(HostExecutableStatus::Available)
-        .with_host_version(host_version)
-        .with_mcp_handshake_allowed(true);
-        if let Some(overlay) = managed_evaluation.host_policy_overlay {
-            verification = verification.with_host_policy_overlay(overlay);
-        }
-        Ok(verification.merge_user_actions(&plan.user_actions))
+        let project_trust = (plan.host_scope == HostScope::Project)
+            .then(|| project_trust_for_plan(&self.env, plan));
+        Ok(Verification {
+            config_target: config_target.display().to_string(),
+            managed_config: managed_evaluation.status,
+            managed_config_details: managed_evaluation.details,
+            host_executable: executable.status,
+            executable_path: executable.executable_path,
+            host_version: executable.host_version,
+            host_executable_code: executable.code,
+            host_executable_details: executable.details,
+            project_trust,
+        })
     }
 
     fn remove(&mut self, request: HostRemoveRequest) -> Result<HostEffect, HostConfigError> {

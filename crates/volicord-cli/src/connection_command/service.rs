@@ -617,7 +617,7 @@ fn apply_init_provisioning(
         ),
     )?;
     let user_actions = init_first_run_user_actions(
-        &verification.host.user_actions,
+        &connection_status_actions(None, &verification.report),
         plan.host_kind,
         plan.init_mode,
     );
@@ -625,9 +625,11 @@ fn apply_init_provisioning(
         &plan,
         &superseded_integrations,
         is_integration_migration,
-        report_with_user_actions(&verification.report, &user_actions),
+        Ok(report_with_user_actions(
+            &verification.report,
+            &user_actions,
+        )),
     )?;
-    verification.status = agent_result_status(verification.report.status());
     connection = migration_post_transition_step(
         &plan,
         &superseded_integrations,
@@ -640,9 +642,10 @@ fn apply_init_provisioning(
         )
         .map_err(ConnectionCommandError::from),
     )?;
-    let status = if verification.status == AgentResultStatus::Complete && user_actions.is_empty() {
+    let status = if verification.status() == AgentResultStatus::Complete && user_actions.is_empty()
+    {
         AgentResultStatus::Complete
-    } else if verification.status == AgentResultStatus::Failed {
+    } else if verification.status() == AgentResultStatus::Failed {
         AgentResultStatus::Failed
     } else {
         AgentResultStatus::ActionRequired

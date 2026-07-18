@@ -2,19 +2,19 @@ use std::error::Error;
 
 use volicord_store::{
     agent_connections::{
-        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
-        ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
-        HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
+        add_connection_project, ensure_agent_connection, set_connection_mode,
+        AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_INTENT_SHARED,
+        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
     },
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
     guards::{insert_agent_session, AgentSessionInsert},
     operational_sessions::{
-        current_managed_mcp_runtime_session_for_connection,
-        latest_successful_managed_runtime_session, mcp_runtime_session, record_mcp_initialize,
-        record_mcp_initialized_notification, record_mcp_safe_read_only_tool_call,
-        record_mcp_terminal_protocol_failure, record_mcp_tools_list, start_mcp_runtime_session,
-        McpRuntimeSessionStart,
+        current_managed_mcp_runtime_session_for_connection, latest_current_managed_runtime_session,
+        latest_managed_runtime_session, latest_successful_managed_runtime_session,
+        mcp_runtime_session, record_mcp_initialize, record_mcp_initialized_notification,
+        record_mcp_safe_read_only_tool_call, record_mcp_terminal_protocol_failure,
+        record_mcp_tools_list, start_mcp_runtime_session, McpRuntimeSessionStart,
     },
 };
 use volicord_test_support::core_fixtures::CoreFixture;
@@ -90,6 +90,41 @@ fn managed_host_and_cli_preflight_sessions_are_distinct_authority_sources(
         )?
         .expect("managed observation")
         .runtime_session_id,
+        managed
+    );
+    Ok(())
+}
+
+#[test]
+fn latest_queries_expose_partial_current_and_stale_managed_observations(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-session-current-and-stale")?;
+    let managed = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+
+    assert_eq!(
+        latest_current_managed_runtime_session(
+            fixture.runtime_home_path(),
+            fixture.connection_id()
+        )?
+        .expect("partial current managed session")
+        .runtime_session_id,
+        managed
+    );
+
+    set_connection_mode(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+        CONNECTION_MODE_READ_ONLY,
+    )?;
+    assert!(latest_current_managed_runtime_session(
+        fixture.runtime_home_path(),
+        fixture.connection_id()
+    )?
+    .is_none());
+    assert_eq!(
+        latest_managed_runtime_session(fixture.runtime_home_path(), fixture.connection_id())?
+            .expect("stale managed session remains diagnostic evidence")
+            .runtime_session_id,
         managed
     );
     Ok(())

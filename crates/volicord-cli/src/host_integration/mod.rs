@@ -15,12 +15,14 @@ pub use volicord_types::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserActionKind {
     HostTrustRequired,
-    ProjectApprovalRequired,
+    RepairManagedConfig,
+    InstallOrRepairCodex,
+    RepairMcpServer,
+    ReloadHost,
+    UseVolicordTool,
+    ReloadGuard,
+    RepairGuard,
     ReloadRequired,
-    ManagedHostStartupNotObserved,
-    ManagedHostToolsListNotObserved,
-    ActiveToolExposureUnconfirmed,
-    ManagedHostStorageDegraded,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

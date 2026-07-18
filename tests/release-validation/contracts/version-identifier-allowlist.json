@@ -37,12 +37,6 @@
       "reason": "Git owns the porcelain output format identifier."
     },
     {
-      "path": "crates/volicord-cli/src/host_integration/process.rs",
-      "needle": "WindowsPowerShell/v1.0/powershell.exe",
-      "classification": "external_standard",
-      "reason": "Windows owns the installed Windows PowerShell path."
-    },
-    {
       "path": "crates/volicord-mcp/build.rs",
       "needle": "--porcelain=v1",
       "classification": "external_standard",

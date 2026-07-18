@@ -92,7 +92,7 @@ impl ConnectionProcess for FakeConnectionProcess {
             success: true,
             status_code: Some(0),
             stdout: format!(
-                "configuration: valid\ntransport: stdio\nconnection_id: {connection_id}\nmode: workflow\nenabled: true\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: workflow\n"
+                "configuration: valid\ntransport: stdio\nconnection_id: {connection_id}\nmode: workflow\nenabled: true\nregistry_read: passed\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: workflow\ntools_list_schema_validation: passed\n"
             ),
             stderr: String::new(),
         })
@@ -284,10 +284,20 @@ fn assert_unavailable_codex_verification(
             .find(|check| check["id"] == id)
             .unwrap_or_else(|| panic!("missing check {id}"))
     };
-    assert_eq!(check("host")["details"]["managed_config"], "match");
-    assert_eq!(check("host")["details"]["executable"], "unavailable");
-    assert_eq!(check("cli_mcp_preflight")["status"], "passed");
-    assert_eq!(check("cli_mcp_handshake")["status"], "pending");
+    assert_eq!(check("managed_config")["status"], "passed");
+    assert_eq!(
+        check("managed_config")["details"]["observed_state"],
+        "match"
+    );
+    assert_eq!(check("host_executable")["status"], "failed");
+    assert_eq!(
+        check("host_executable")["code"],
+        "host_executable_not_found"
+    );
+    assert_eq!(check("mcp_server")["status"], "failed");
+    assert_eq!(check("host_session")["status"], "pending");
+    assert_eq!(check("required_tools")["status"], "pending");
+    assert_eq!(check("tool_round_trip")["status"], "pending");
     Ok(())
 }
 

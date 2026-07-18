@@ -27,7 +27,7 @@ diagnostic입니다.
 | `Unavailable` | `unavailable` | 동작, 보조 capability, 필수 조회를 현재 수행할 수 없지만 사용 가능한 데이터가 계약 손상이나 미지원 외부 계약을 확정하지는 않습니다. |
 | `Degraded` | `degraded` | 핵심 동작은 계속할 수 있지만 명시적으로 식별된 검증, 진단, 보조 정보 구성 요소가 불완전합니다. |
 | `Corrupt` | `corrupt` | 영속되었거나 신뢰되는 담당 데이터가 선언된 스키마, type, canonical encoding, 필드 간 계약을 위반합니다. |
-| `UnsupportedContract` | `unsupported_contract` | 외부 계약, 호스트 아티팩트, 그 밖의 경계 형식을 정확히 등록된 계약으로 인식하거나 지원할 수 없습니다. |
+| `UnsupportedContract` | `unsupported_contract` | 외부 descriptor 또는 경계 형식을 정확한 지원 계약으로 인식할 수 없습니다. |
 
 기계 판독 결과나 진단은 정확한 범주 식별자를 담아야 합니다. 도메인이 같은 범주
 안에서 원인을 구분한다면 도메인 담당 문서가 정의한 사유 식별자도 담아야 합니다.
@@ -53,6 +53,12 @@ diagnostic입니다.
 [외부 계약](external-contracts.md)의 `unsupported_external_contract` 사유를
 사용하며 지원되는 형태로 추정하지 않습니다. 아직 영속 담당 상태가 되지 않은
 신뢰할 수 없는 요청의 형태가 잘못된 경우는 `Corrupt`가 아니라 `Rejected`입니다.
+
+설치된 Codex 실행 파일이나 version은 외부 계약이 아닙니다. 따라서 알 수 없거나
+certification되지 않은 Codex version을 `UnsupportedContract`로 분류하지 않습니다. 연결
+검증은 동작 probe를 수행하고 실제 `passed`, `pending`, `failed` 결과를 보고합니다. 실행
+파일을 찾거나 실행하지 못한 경우 일반 실패 범주 경계에서는 `Unavailable`, 연결
+보고서에서는 실패한 `host_executable` check입니다.
 
 어느 범주도 다른 범주의 의미를 포함하지 않습니다. 특히 다음 규칙을 지킵니다.
 

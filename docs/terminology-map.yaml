@@ -32,8 +32,8 @@ canonical_for:
   - "Terminology routing for compact MCP runtime schemas and owner-method-bearing `next_action` projections."
   - "Terminology boundaries among Agent Connection, Connection Projects, User Channel, `actor_source`, `operation_category`, and write ticket."
   - "Terminology routing for the canonical `ConnectionVerificationReport`, its closed aggregate and check statuses, and report-contained actions."
-  - "Terminology routing for exact Codex managed bindings, verification receipts, and embedded support entries."
-  - "Terminology routing that separates embedded target-aware Codex runtime support catalogs from build-once external exact-final-artifact release evidence and same-bytes publication across five published targets and six independent release cells."
+  - "Terminology routing for release-validation-only Codex managed bindings, verification receipts, and support entries."
+  - "Terminology routing that keeps Codex support catalogs and exact-final-artifact evidence in release validation, outside operational connection eligibility, while preserving build-once same-bytes publication across five published targets and six independent release cells."
   - "Terminology routing for `ExternalContractDescriptor`, exact external-contract registry identity, `unsupported_external_contract`, and shared Git object-ID wording."
   - "Terminology routing for the product-wide `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`, `Corrupt`, and `UnsupportedContract` failure categories."
   - "Preferred verification criteria wording for user-visible criteria used to check work."
@@ -2325,6 +2325,8 @@ terms:
       - "Use only `passed`, `pending`, and `failed` for required check status."
       - "Keep connection-verification user instructions inside the report's `actions` array."
       - "Do not use `dry_run` or adapter lifecycle facts as connection or check statuses."
+      - "Use the required operational check IDs `managed_config`, `host_executable`, `mcp_server`, `host_session`, `required_tools`, `tool_round_trip`, and `project_trust`; Guard audit may temporarily add `guard_files`, `guard_hooks`, and `prompt_capture`."
+      - "Codex path/version and MCP client version are diagnostic facts, never allowlist or exact-artifact eligibility inputs."
   host_release_evidence:
     category: "technical_concept"
     en: "Codex release evidence"
@@ -2374,10 +2376,10 @@ terms:
       - en: "docs/en/maintain/validation.md"
         ko: "docs/ko/maintain/validation.md"
     notes:
-      - "Use for the strict separation between embedded target-aware exact Codex runtime support policy and external finalized Codex and Volicord artifact evidence across five published targets and six independent environment cells."
+      - "Use for release-validation-only Codex support data and external finalized Codex and Volicord artifact evidence across five published targets and six independent environment cells."
       - "An external evidence manifest may honestly contain zero through six cells; only an exact passed evidence entry that matches the artifact digest, target triple, platform environment, integration profile, and support catalog establishes release eligibility for its own coordinates."
       - "Every published Volicord target is built once; each required cell consumes that raw build artifact, and publication packages the same executable bytes after complete passing evidence is verified."
-      - "Runtime support comes only from the embedded support catalog and never from external release evidence."
+      - "Operational Agent Connection verification and runtime authorization never consume the support catalog or external release evidence."
       - "Release evidence is not Core authority, runtime identity, user identity, or host attestation."
   record_profile:
     category: "product_concept"
@@ -3400,7 +3402,8 @@ terms:
       - en: "docs/en/reference/external-contracts.md"
         ko: "docs/ko/reference/external-contracts.md"
     notes:
-      - "Use the exact type and field identifiers and preserve the managed-host-binding digest domain."
+      - "Use the exact type and field identifiers only in release-validation contract contexts and preserve the managed-host-binding digest domain there."
+      - "Do not use `ManagedHostBinding` in operational Agent Connection verification or runtime authorization."
   host_verification_receipt:
     category: "technical_concept"
     en: "HostVerificationReceipt"
@@ -3432,6 +3435,7 @@ terms:
         ko: "docs/ko/reference/host-release-evidence.md"
     notes:
       - "Receipt wording must not imply signing, attestation, user identity, or independent Core authority."
+      - "This type is retained for release-validation contracts only; operational Agent Connection verification does not issue, store, load, or validate it."
   codex_support_catalog:
     category: "technical_concept"
     en: "CodexSupportCatalog"
@@ -3444,7 +3448,7 @@ terms:
     preserve_identifier: true
     ko_reference: "`CodexSupportCatalog`"
     ko_user: "Codex 지원 카탈로그"
-    ko_explanation: "Volicord 실행 파일에 내장되어 정확한 Codex 아티팩트 digest, target triple, 플랫폼 환경, capability, integration profile의 런타임 지원 정책만 정의하는 카탈로그"
+    ko_explanation: "릴리스 검증에서 정확한 Codex 아티팩트 digest, target triple, 플랫폼 환경, capability, integration profile을 대조하는 카탈로그"
     preserve_as_identifier:
       - "CodexSupportCatalog"
       - "CodexSupportEntry"
@@ -3462,7 +3466,7 @@ terms:
       - en: "docs/en/reference/system-requirements.md"
         ko: "docs/ko/reference/system-requirements.md"
     notes:
-      - "Runtime support lookup consumes only this embedded catalog; external release evidence cannot add or widen support."
+      - "Release validation may consume this catalog; operational Agent Connection verification and runtime authorization do not."
       - "The catalog contains no Volicord artifact digest, release result, evidence path, workflow identifier, or release-cell timestamp."
   codex_release_evidence_manifest:
     category: "technical_concept"

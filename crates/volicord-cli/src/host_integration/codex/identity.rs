@@ -6,21 +6,17 @@ use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
 };
 
-use crate::host_integration::verification::{
-    HostConfigurationStatus, HostPolicyOverlayDiagnostic, HostPolicyOverlayEntryDiagnostic,
-    ManagedConfigStatus, Verification,
-};
+use crate::host_integration::verification::ManagedConfigStatus;
 use crate::host_integration::{
     config_edit::read_text_snapshot, managed_configuration_digest, HostConfigError, HostConflict,
     HostConflictKind, HostKind, HostPlan, HostScope, HostTarget, ManagedServerEntry, PlannedChange,
 };
 
-use super::{config::parse_document, CODEX_TOOL_APPROVAL_OVERLAY_KIND};
+use super::config::parse_document;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedCodexManagedIdentity {
     managed_entry: ManagedServerEntry,
-    host_policy_overlay: Option<HostPolicyOverlayDiagnostic>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +28,7 @@ enum CodexManagedIdentityProblem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CodexManagedIdentityEvaluation {
     pub(crate) status: ManagedConfigStatus,
-    pub(crate) host_policy_overlay: Option<HostPolicyOverlayDiagnostic>,
+    pub(crate) details: String,
 }
 
 pub(super) fn codex_managed_server_entry(
@@ -95,8 +91,9 @@ fn parse_codex_managed_identity(
     if table.iter().any(|(key, _)| !allowed_keys.contains(&key)) {
         return Err(CodexManagedIdentityProblem::Unmanaged);
     }
-    let host_policy_overlay =
-        codex_tool_approval_overlay(table).ok_or(CodexManagedIdentityProblem::Unmanaged)?;
+    if !codex_tool_approval_overlay_is_valid(table) {
+        return Err(CodexManagedIdentityProblem::Unmanaged);
+    }
     let command = table
         .get("command")
         .and_then(Item::as_str)
@@ -152,7 +149,6 @@ fn parse_codex_managed_identity(
     }
     Ok(ParsedCodexManagedIdentity {
         managed_entry: entry,
-        host_policy_overlay,
     })
 }
 
@@ -176,57 +172,35 @@ fn has_codex_managed_identity_markers(entry: &ManagedServerEntry) -> bool {
 
 pub(super) fn accepted_codex_tool_approval_overlay_item(item: &Item) -> Option<Item> {
     let table = item.as_table()?;
-    codex_tool_approval_overlay(table).flatten()?;
-    table.get("tools").cloned()
+    let tools = table.get("tools")?;
+    codex_tool_approval_overlay_is_valid(table).then(|| tools.clone())
 }
 
-fn codex_tool_approval_overlay(table: &Table) -> Option<Option<HostPolicyOverlayDiagnostic>> {
+fn codex_tool_approval_overlay_is_valid(table: &Table) -> bool {
     let Some(item) = table.get("tools") else {
-        return Some(None);
+        return true;
     };
-    let tools = item.as_table()?;
-    let mut approvals = BTreeMap::new();
+    let Some(tools) = item.as_table() else {
+        return false;
+    };
     for (tool_name, item) in tools.iter() {
         if !is_known_volicord_tool(tool_name) {
-            return None;
+            return false;
         }
-        let tool = item.as_table()?;
+        let Some(tool) = item.as_table() else {
+            return false;
+        };
         if tool.iter().any(|(key, _)| key != "approval_mode") {
-            return None;
+            return false;
         }
-        let approval = tool.get("approval_mode").and_then(Item::as_str)?;
+        let Some(approval) = tool.get("approval_mode").and_then(Item::as_str) else {
+            return false;
+        };
         if approval.trim().is_empty() {
-            return None;
+            return false;
         }
-        approvals.insert(tool_name.to_owned(), approval.to_owned());
     }
-    let entries = approvals
-        .into_iter()
-        .map(|(tool, approval_mode)| HostPolicyOverlayEntryDiagnostic {
-            tool,
-            approval_mode,
-        })
-        .collect::<Vec<_>>();
-    let tools = entries
-        .iter()
-        .map(|entry| entry.tool.clone())
-        .collect::<Vec<_>>();
-    let tool_count = entries.len();
-    Some(Some(HostPolicyOverlayDiagnostic {
-        present: true,
-        accepted: true,
-        kind: CODEX_TOOL_APPROVAL_OVERLAY_KIND.to_owned(),
-        tool_count,
-        tools,
-        entries,
-        details: if tool_count == 0 {
-            "Codex tool approval policy overlay is present and accepted".to_owned()
-        } else {
-            format!(
-                "Codex tool approval policy overlay is present and accepted for {tool_count} Volicord tool(s)"
-            )
-        },
-    }))
+    true
 }
 
 fn is_known_volicord_tool(tool_name: &str) -> bool {
@@ -247,36 +221,58 @@ pub(super) fn evaluate_codex_managed_identity(
     let HostTarget::File(target) = &plan.target else {
         return Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Unknown,
-            host_policy_overlay: None,
+            details: "Codex managed configuration target is not a file".to_owned(),
         });
     };
-    let (_, text) = read_text_snapshot(target)?;
+    let (_, text) = match read_text_snapshot(target) {
+        Ok(snapshot) => snapshot,
+        Err(HostConfigError::Malformed(details)) => {
+            return Ok(CodexManagedIdentityEvaluation {
+                status: ManagedConfigStatus::Malformed,
+                details,
+            });
+        }
+        Err(error) => {
+            return Ok(CodexManagedIdentityEvaluation {
+                status: ManagedConfigStatus::Unavailable,
+                details: error.to_string(),
+            });
+        }
+    };
     let Some(text) = text else {
         return Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Missing,
-            host_policy_overlay: None,
+            details: "Codex configuration target does not exist".to_owned(),
         });
     };
     let document = match parse_document(Some(&text), target) {
         Ok(document) => document,
         Err(error) => {
             return match error {
-                HostConfigError::Malformed(_) => Ok(CodexManagedIdentityEvaluation {
+                HostConfigError::Malformed(details) => Ok(CodexManagedIdentityEvaluation {
                     status: ManagedConfigStatus::Malformed,
-                    host_policy_overlay: None,
+                    details,
                 }),
                 other => Err(other),
             };
         }
     };
-    let Some(item) = document
-        .get("mcp_servers")
-        .and_then(Item::as_table)
-        .and_then(|servers| servers.get(&plan.server_name))
-    else {
+    let Some(servers) = document.get("mcp_servers") else {
         return Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Missing,
-            host_policy_overlay: None,
+            details: "Codex configuration has no mcp_servers table".to_owned(),
+        });
+    };
+    let Some(servers) = servers.as_table() else {
+        return Ok(CodexManagedIdentityEvaluation {
+            status: ManagedConfigStatus::Malformed,
+            details: "Codex mcp_servers configuration is not a table".to_owned(),
+        });
+    };
+    let Some(item) = servers.get(&plan.server_name) else {
+        return Ok(CodexManagedIdentityEvaluation {
+            status: ManagedConfigStatus::Missing,
+            details: format!("Codex mcp_servers table has no {} entry", plan.server_name),
         });
     };
     match parse_codex_managed_identity(item) {
@@ -293,36 +289,21 @@ pub(super) fn evaluate_codex_managed_identity(
                 } else {
                     ManagedConfigStatus::Changed
                 },
-                host_policy_overlay: parsed.host_policy_overlay,
+                details: if fingerprint == plan.fingerprint {
+                    "Codex managed MCP server entry matches the canonical configuration".to_owned()
+                } else {
+                    "Codex managed MCP server entry differs from the canonical configuration"
+                        .to_owned()
+                },
             })
         }
         Err(CodexManagedIdentityProblem::Unmanaged) => Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Unmanaged,
-            host_policy_overlay: None,
+            details: "Codex MCP server name is owned by a non-Volicord entry".to_owned(),
         }),
         Err(CodexManagedIdentityProblem::Malformed) => Ok(CodexManagedIdentityEvaluation {
             status: ManagedConfigStatus::Malformed,
-            host_policy_overlay: None,
+            details: "Codex managed MCP server entry is malformed".to_owned(),
         }),
-    }
-}
-
-pub(super) fn verification_from_managed_status(
-    status: ManagedConfigStatus,
-    details: String,
-) -> Verification {
-    match status {
-        ManagedConfigStatus::Missing => Verification::missing(details),
-        ManagedConfigStatus::Unmanaged => {
-            Verification::changed(details).with_managed_config(ManagedConfigStatus::Unmanaged)
-        }
-        ManagedConfigStatus::Changed => Verification::changed(details),
-        ManagedConfigStatus::Malformed => Verification::failed(details)
-            .with_managed_config(ManagedConfigStatus::Malformed)
-            .with_host_configuration(HostConfigurationStatus::Malformed),
-        ManagedConfigStatus::Match => Verification::configured_ready(details),
-        ManagedConfigStatus::NotApplicable | ManagedConfigStatus::Unknown => {
-            Verification::unknown(details)
-        }
     }
 }

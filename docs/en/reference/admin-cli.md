@@ -143,6 +143,25 @@ Its check and action arrays are not accompanied by an independent connection
 status or setup-action state. `--dry-run` is reported as operation mode or plan
 context; it never adds `dry_run` to either closed status set.
 
+`volicord connection status` is read-only. It projects current managed
+configuration, trust, Guard audit, integration revision, and managed-host
+session observations together with the last active executable and MCP-server
+probe. It neither launches a process nor persists a refreshed report.
+
+`volicord connection verify` actively discovers `codex`, runs the version
+command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test that
+performs `initialize`, `tools/list`, required-tool validation, and a safe
+read-only `volicord.list_projects` call. It then reads current managed-host
+observations and persists exactly one canonical report. The CLI self-test is
+not a managed-host session.
+
+`volicord init` and `volicord connection add` keep a successfully written valid
+setup even when a later operational check fails. They do not roll back managed
+configuration because Codex is unavailable or the self-test fails. A fresh
+valid setup with no managed-host observation is `action_required` and includes
+the typed reload and first-use actions required to obtain those observations.
+No Codex version or executable digest is an eligibility allowlist.
+
 <a id="external-host-configuration"></a>
 ## Managed Codex Configuration
 

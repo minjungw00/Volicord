@@ -36,8 +36,8 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, GuardInstallationStatus, IntegrationProfile,
-    ProjectId, PromptCaptureStatus, UtcTimestamp,
+    canonical_json_sha256, canonical_json_string, ConnectionVerificationError,
+    GuardInstallationStatus, IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
 };
 
 use crate::cli::{
@@ -56,10 +56,7 @@ use crate::guard_integration::{
 };
 use crate::host_integration::{
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
-    verification::{
-        ActiveToolExposureStatus, HostMcpCommandDiagnostic, HostMcpCommandLaunchMode,
-        HostRuntimeObservationStatus, ProjectTrustStatus, Verification,
-    },
+    verification::Verification,
     ConnectionIntent, HostAdapter, HostConfigError, HostIntegrationFileKind, HostKind,
     HostLifecyclePhase, HostPlan, HostPlanRequest, HostRemoveRequest, HostScope, HostTarget,
     InstallationProfile, PlannedChange, ProjectContext, UserAction, UserActionKind,
@@ -106,14 +103,12 @@ use service::{
     ProvisionConnectionRequest,
 };
 use verification::{
-    agent_result_status, connection_status_actions, current_status_host_diagnostic,
-    effective_connection_report, report_with_user_actions, status_with_current_diagnostics,
-    verify_connection, AgentResultStatus, McpPreflightDiagnostics, VerificationReport,
-    VerificationStep,
+    agent_result_status, connection_status_actions, current_status_report,
+    effective_connection_report, report_with_user_actions, verify_connection, AgentResultStatus,
+    VerificationReport,
 };
 
 const PATH_ENV: &str = "PATH";
-const CODEX_NATIVE_EXECUTABLE_ENV: &str = "VOLICORD_CODEX_NATIVE_EXECUTABLE";
 const AGENT_METADATA_CREATED_BY: &str = "volicord_cli_agent_connection";
 const AGENT_RUNTIME_HOME_ID: &str = "runtime_home_agent";
 const INIT_METADATA_CREATED_BY: &str = "volicord_cli_init";
@@ -170,6 +165,12 @@ impl From<GuardIntegrationError> for ConnectionCommandError {
 
 impl From<HostConfigError> for ConnectionCommandError {
     fn from(error: HostConfigError) -> Self {
+        Self::runtime(error.to_string())
+    }
+}
+
+impl From<ConnectionVerificationError> for ConnectionCommandError {
+    fn from(error: ConnectionVerificationError) -> Self {
         Self::runtime(error.to_string())
     }
 }
@@ -256,7 +257,7 @@ pub fn run_connect_command(
             render_connection_output(ConnectionOutput {
                 format: connection_output_format(&parsed),
                 action: "connected",
-                status: outcome.verification.status,
+                status: outcome.verification.status(),
                 runtime_home: &outcome.runtime_home,
                 host_kind: parse_host_kind(&outcome.connection.host_kind)?,
                 guard_state: outcome.guard_state,
@@ -264,9 +265,10 @@ pub fn run_connect_command(
                 projects: &outcome.projects,
                 affected_repo_root: Some(&outcome.affected_repo_root),
                 verification: Some(&outcome.verification),
+                current_report: None,
                 current_host: None,
                 plan: Some(&outcome.host_plan),
-                user_actions: outcome.verification.host.user_actions.clone(),
+                user_actions: connection_status_actions(None, &outcome.verification.report),
             })
         }
     }
@@ -348,13 +350,14 @@ fn command_connection_status(
             projects: &projects,
             affected_repo_root: None,
             verification: None,
+            current_report: Some(report),
             current_host: None,
             plan: None,
         });
     }
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
-    let current_host = current_status_host_diagnostic(
+    let (current_host, report) = current_status_report(
         &runtime_home,
         &connection,
         Some(&host_plan),
@@ -362,11 +365,7 @@ fn command_connection_status(
         process,
     )?;
     let user_actions = connection_status_actions(current_host.as_ref(), &report);
-    let status = status_with_current_diagnostics(
-        agent_result_status(report.status()),
-        &user_actions,
-        current_host.as_ref(),
-    );
+    let status = agent_result_status(report.status());
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "status",
@@ -379,6 +378,7 @@ fn command_connection_status(
         projects: &projects,
         affected_repo_root: None,
         verification: None,
+        current_report: Some(report),
         current_host,
         plan: None,
     })
@@ -420,15 +420,16 @@ fn command_connection_verify(
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "verified",
-        status: verification.status,
+        status: verification.status(),
         runtime_home: &runtime_home,
         host_kind: parse_host_kind(&connection.host_kind)?,
         guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
-        user_actions: verification.host.user_actions.clone(),
+        user_actions: connection_status_actions(None, &verification.report),
         connection: &connection,
         projects: &projects,
         affected_repo_root: None,
         verification: Some(&verification),
+        current_report: None,
         current_host: None,
         plan: Some(&host_plan),
     })
@@ -462,6 +463,7 @@ fn command_connection_mode(
         projects: &projects,
         affected_repo_root: None,
         verification: None,
+        current_report: None,
         current_host: None,
         plan: None,
     })
@@ -529,6 +531,7 @@ fn command_connection_remove(
         projects: &remaining_projects,
         affected_repo_root: Some(&selected_project.project.repo_root),
         verification: None,
+        current_report: None,
         current_host: None,
         plan: host_plan.as_ref(),
     })
@@ -1838,9 +1841,6 @@ fn codex_environment(process: &impl ConnectionProcess) -> CodexEnvironment {
         home: process.env_var("HOME").map(PathBuf::from),
         codex_home: process.env_var("CODEX_HOME").map(PathBuf::from),
         path: process.env_var(PATH_ENV),
-        native_executable: process
-            .env_var(CODEX_NATIVE_EXECUTABLE_ENV)
-            .map(PathBuf::from),
     }
 }
 
@@ -1900,6 +1900,8 @@ mod persisted_metadata_tests {
     #[derive(Debug)]
     struct DiagnosticProcess {
         runtime_home: PathBuf,
+        preflight_calls: usize,
+        stdio_calls: usize,
     }
 
     impl ConnectionProcess for DiagnosticProcess {
@@ -1918,6 +1920,7 @@ mod persisted_metadata_tests {
             _connection_id: &str,
             _project_id: Option<&str>,
         ) -> Result<ConnectionProcessOutput, String> {
+            self.preflight_calls += 1;
             Ok(ConnectionProcessOutput {
                 success: false,
                 status_code: Some(1),
@@ -1933,6 +1936,7 @@ mod persisted_metadata_tests {
             _connection_id: &str,
             _mode: &str,
         ) -> Result<McpVerification, String> {
+            self.stdio_calls += 1;
             Ok(McpVerification::failed("fixture handshake unavailable"))
         }
     }
@@ -1964,6 +1968,8 @@ mod persisted_metadata_tests {
 
         let mut process = DiagnosticProcess {
             runtime_home: fixture.runtime_home_path().to_path_buf(),
+            preflight_calls: 0,
+            stdio_calls: 0,
         };
         let list = run_connections_command(
             ConnectionListArgs {
@@ -1994,6 +2000,41 @@ mod persisted_metadata_tests {
             agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
                 .expect("verification should preserve the selected connection");
         assert!(repaired.verification_report()?.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn connection_status_is_read_only_and_does_not_probe_processes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("connection-status-read-only")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let mut process = DiagnosticProcess {
+            runtime_home: fixture.runtime_home_path().to_path_buf(),
+            preflight_calls: 0,
+            stdio_calls: 0,
+        };
+        let registry_path = volicord_store::sqlite::registry_db_path(fixture.runtime_home_path());
+        let registry_before = fs::read(&registry_path)?;
+
+        let output = run_connection_command(
+            ConnectionArgs {
+                command: ConnectionCommand::Status(ConnectionSelectArgs {
+                    host: Some(crate::cli::CodexHost::Codex),
+                    repo: Some(repo_root.clone()),
+                    shared: false,
+                    json: true,
+                }),
+            },
+            &repo_root,
+            &mut process,
+        )?;
+
+        let output: Value = serde_json::from_str(&output)?;
+        assert_eq!(output["status"], "failed");
+        assert_eq!(process.preflight_calls, 0);
+        assert_eq!(process.stdio_calls, 0);
+        assert_eq!(fs::read(registry_path)?, registry_before);
         Ok(())
     }
 }

@@ -10,7 +10,7 @@ use volicord_types::{
 };
 
 use crate::{
-    agent_connections::{agent_connection_record_from_conn, AgentConnectionRecord},
+    agent_connections::{raw_agent_connection_record_from_conn, AgentConnectionRecord},
     bootstrap::raw_project_record_from_conn,
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
@@ -93,7 +93,7 @@ pub fn start_mcp_runtime_session(
                 detail: format!("could not generate MCP runtime session id: {error}"),
             })?;
         let tx = begin_immediate_transaction(&mut conn)?;
-        let connection = agent_connection_record_from_conn(&tx, &input.connection_internal_id)?
+        let connection = raw_agent_connection_record_from_conn(&tx, &input.connection_internal_id)?
             .ok_or_else(|| StoreError::NotFound {
                 entity: "agent_connection",
                 id: input.connection_internal_id.clone(),
@@ -176,12 +176,10 @@ pub fn current_managed_mcp_runtime_session_for_connection(
             detail: "runtime session is not a managed-host launch owned by the expected Agent Connection".to_owned(),
         });
     }
-    let connection =
-        agent_connection_record_from_conn(&conn, connection_internal_id)?.ok_or_else(|| {
-            StoreError::NotFound {
-                entity: "agent_connection",
-                id: connection_internal_id.to_owned(),
-            }
+    let connection = raw_agent_connection_record_from_conn(&conn, connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
         })?;
     if connection_integration_revision(&connection)?.as_str()
         != session.connection_integration_revision
@@ -487,12 +485,10 @@ pub fn latest_successful_managed_runtime_session(
         return Ok(None);
     }
     let conn = open_registry_database_read_only(path)?;
-    let connection =
-        agent_connection_record_from_conn(&conn, connection_internal_id)?.ok_or_else(|| {
-            StoreError::NotFound {
-                entity: "agent_connection",
-                id: connection_internal_id.to_owned(),
-            }
+    let connection = raw_agent_connection_record_from_conn(&conn, connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
         })?;
     let revision = connection_integration_revision(&connection)?;
     conn.query_row(
@@ -518,6 +514,69 @@ pub fn latest_successful_managed_runtime_session(
     .and_then(|record| record.map(validate_runtime_session).transpose())
 }
 
+/// Returns the latest managed-host observation for a Connection, including an
+/// older integration revision or a session that stopped before all milestones.
+/// CLI preflight sessions are structurally excluded.
+pub fn latest_managed_runtime_session(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+) -> StoreResult<Option<McpRuntimeSessionRecord>> {
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    conn.query_row(
+        &format!(
+            "{RUNTIME_SESSION_SELECT}
+          WHERE connection_internal_id = ?1
+            AND session_source = 'managed_host'
+          ORDER BY last_observed_at DESC, runtime_session_id DESC
+          LIMIT 1"
+        ),
+        params![connection_internal_id],
+        runtime_session_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+    .and_then(|record| record.map(validate_runtime_session).transpose())
+}
+
+/// Returns the latest managed-host observation for the Connection's current
+/// integration revision, whether complete, in progress, or terminally failed.
+/// CLI preflight sessions are structurally excluded.
+pub fn latest_current_managed_runtime_session(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+) -> StoreResult<Option<McpRuntimeSessionRecord>> {
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    let connection = raw_agent_connection_record_from_conn(&conn, connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+        })?;
+    let revision = connection_integration_revision(&connection)?;
+    conn.query_row(
+        &format!(
+            "{RUNTIME_SESSION_SELECT}
+          WHERE connection_internal_id = ?1
+            AND session_source = 'managed_host'
+            AND connection_integration_revision = ?2
+          ORDER BY last_observed_at DESC, runtime_session_id DESC
+          LIMIT 1"
+        ),
+        params![connection_internal_id, revision.as_str()],
+        runtime_session_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+    .and_then(|record| record.map(validate_runtime_session).transpose())
+}
+
 /// Resolves the single open managed-host runtime for current Guard correlation.
 /// Zero matches return `None`; concurrent matches are ambiguous and fail closed.
 pub fn single_open_current_managed_runtime_session(
@@ -529,12 +588,10 @@ pub fn single_open_current_managed_runtime_session(
         return Ok(None);
     }
     let conn = open_registry_database_read_only(path)?;
-    let connection =
-        agent_connection_record_from_conn(&conn, connection_internal_id)?.ok_or_else(|| {
-            StoreError::NotFound {
-                entity: "agent_connection",
-                id: connection_internal_id.to_owned(),
-            }
+    let connection = raw_agent_connection_record_from_conn(&conn, connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
         })?;
     let revision = connection_integration_revision(&connection)?;
     let mut stmt = conn.prepare(&format!(

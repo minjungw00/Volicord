@@ -1811,8 +1811,8 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
         request(2, "tools/list", json!({})),
         tools_call_with_codex_metadata(
             3,
-            STATUS_TOOL_NAME,
-            json!({ "detail": "workflow" }),
+            LIST_PROJECTS_TOOL_NAME,
+            json!({}),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
             CODEX_TEST_TURN_ID,

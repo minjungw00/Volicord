@@ -85,13 +85,18 @@ discovery fact says whether that generated response contained every tool
 required by the current Connection mode. Duplicate initialized notifications
 are idempotent after the first valid observation.
 
-Successful `volicord.status`, `volicord.get_operation_result`, and
-`volicord.check_close` completions update the safe/read-only milestone before
-the tool result is emitted. Observable fatal transport failure and EOF-driven
-graceful close record their terminal facts. An authoritative Store failure
-withholds the corresponding protocol success. Bounded writes to
-`diagnostics.sqlite` remain best effort and are never consulted for these
-facts.
+Successful `volicord.status`, `volicord.get_operation_result`,
+`volicord.check_close`, and `volicord.list_projects` completions update the
+safe/read-only milestone before the tool result is emitted. Observable fatal
+transport failure and EOF-driven graceful close record their terminal facts.
+An authoritative Store failure withholds the corresponding protocol success.
+Bounded writes to `diagnostics.sqlite` remain best effort and are never
+consulted for these facts.
+
+Connection verification starts a separate `cli_preflight` process and calls
+`volicord.list_projects` as its designated safe read-only round trip. That
+process validates the server surface, but its lifecycle facts cannot satisfy a
+`managed_host` operational check or authorize a Connection call.
 
 The negotiated protocol version is authoritative protocol data. `clientInfo`
 name/version and an observed host executable version are diagnostic fields;

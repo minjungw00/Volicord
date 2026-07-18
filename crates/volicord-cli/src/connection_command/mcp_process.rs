@@ -12,7 +12,8 @@ use std::{
 use serde_json::{json, Value};
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
 use volicord_types::{
-    ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
+    ADAPTER_UTILITY_TOOL_NAMES, LIST_PROJECTS_TOOL_NAME, READ_ONLY_METHOD_TOOL_NAMES,
+    WORKFLOW_METHOD_TOOL_NAMES,
 };
 
 use crate::host_integration::{HostPlan, HostScope};
@@ -123,14 +124,36 @@ pub struct McpVerification {
 impl McpVerification {
     pub(super) fn passed(tools: Vec<String>) -> Self {
         Self {
-            step: VerificationStep::passed(format!("tools/list returned {} tools", tools.len())),
+            step: VerificationStep::passed_with_code(
+                "mcp_server_ready",
+                format!(
+                    "MCP initialize, tools/list, required-tool validation, and designated read-only tool call succeeded; tools/list returned {} tools",
+                    tools.len()
+                ),
+            ),
             tools,
         }
     }
 
     pub(super) fn failed(details: impl Into<String>) -> Self {
+        let details = details.into();
+        let code = if details.contains("failed to launch")
+            || details.contains("process exited before")
+        {
+            "mcp_server_process_failed"
+        } else if details.contains("initialize") || details.contains("MCP handshake timed out") {
+            "mcp_server_initialize_failed"
+        } else if details.contains("tools/list") || details.contains("required tool") {
+            "mcp_server_tools_list_failed"
+        } else if details.contains("designated read-only")
+            || details.contains(LIST_PROJECTS_TOOL_NAME)
+        {
+            "mcp_server_safe_call_failed"
+        } else {
+            "mcp_server_protocol_failed"
+        };
         Self {
-            step: VerificationStep::failed(details),
+            step: VerificationStep::failed_with_code(code, details),
             tools: Vec::new(),
         }
     }
@@ -147,17 +170,25 @@ pub(super) fn run_connection_preflight(
     match process.run_preflight(launch, runtime_home, connection_id, project_id) {
         Ok(output) if output.success => {
             match validate_connection_preflight_report(&output.stdout, connection_id, mode) {
-                Ok(diagnostics) => VerificationStep::passed("volicord mcp preflight passed")
-                    .with_preflight_diagnostics(diagnostics),
-                Err(message) => VerificationStep::failed(message),
+                Ok(diagnostics) => VerificationStep::passed_with_code(
+                    "mcp_server_preflight_passed",
+                    "volicord mcp preflight passed",
+                )
+                .with_preflight_diagnostics(diagnostics),
+                Err(message) => {
+                    VerificationStep::failed_with_code("mcp_server_preflight_invalid", message)
+                }
             }
         }
-        Ok(output) => VerificationStep::failed(format!(
-            "volicord mcp preflight failed with status {}; stderr: {}",
-            status_text(output.status_code),
-            compact_stream(&output.stderr)
-        )),
-        Err(message) => VerificationStep::failed(message),
+        Ok(output) => VerificationStep::failed_with_code(
+            "mcp_server_preflight_failed",
+            format!(
+                "volicord mcp preflight failed with status {}; stderr: {}",
+                status_text(output.status_code),
+                compact_stream(&output.stderr)
+            ),
+        ),
+        Err(message) => VerificationStep::failed_with_code("mcp_server_process_failed", message),
     }
 }
 
@@ -172,6 +203,20 @@ fn validate_connection_preflight_report(
     expect_report_field(&report, "connection_id", connection_id)?;
     expect_report_field(&report, "mode", mode)?;
     expect_report_field(&report, "enabled", "true")?;
+    expect_report_field(&report, "registry_read", "passed")?;
+    expect_report_field(&report, "project_state_read", "passed")?;
+    match mode {
+        CONNECTION_MODE_WORKFLOW => {
+            expect_report_field(&report, "project_state_write", "passed")?;
+            expect_report_field(&report, "effective_tool_mode", "workflow")?;
+        }
+        CONNECTION_MODE_READ_ONLY => {
+            expect_report_field(&report, "project_state_write", "readonly")?;
+            expect_report_field(&report, "effective_tool_mode", "read_only")?;
+        }
+        other => return Err(format!("unsupported connection mode: {other}")),
+    }
+    expect_report_field(&report, "tools_list_schema_validation", "passed")?;
     Ok(McpPreflightDiagnostics::from_preflight_report(&report))
 }
 
@@ -281,43 +326,77 @@ fn verify_mcp_stdio_process(
         }
     });
 
-    write_json_line(
-        &mut stdin,
-        json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-11-25",
-                "capabilities": {},
-                "clientInfo": {"name": "volicord-cli", "version": env!("CARGO_PKG_VERSION")}
-            }
-        }),
-    )?;
-    let initialize = read_json_response(&rx, deadline)?;
-    validate_initialize_response(&initialize)?;
-    write_json_line(
-        &mut stdin,
-        json!({
-            "jsonrpc": "2.0",
-            "method": "notifications/initialized",
-            "params": {}
-        }),
-    )?;
-    write_json_line(
-        &mut stdin,
-        json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/list",
-            "params": {}
-        }),
-    )?;
-    let tools = validate_tools_response(&read_json_response(&rx, deadline)?)?;
-    validate_tools_for_mode(mode, &tools)?;
+    let exchange = (|| -> Result<Vec<String>, String> {
+        write_json_line(
+            &mut stdin,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "clientInfo": {"name": "volicord-cli", "version": env!("CARGO_PKG_VERSION")}
+                }
+            }),
+        )?;
+        let initialize = read_json_response(&rx, deadline)
+            .map_err(|error| format!("MCP initialize failed: {error}"))?;
+        validate_initialize_response(&initialize)
+            .map_err(|error| format!("MCP initialize failed: {error}"))?;
+        write_json_line(
+            &mut stdin,
+            json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {}
+            }),
+        )?;
+        write_json_line(
+            &mut stdin,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {}
+            }),
+        )?;
+        let tools_response = read_json_response(&rx, deadline)
+            .map_err(|error| format!("MCP tools/list failed: {error}"))?;
+        let tools = validate_tools_response(&tools_response)
+            .map_err(|error| format!("MCP tools/list failed: {error}"))?;
+        validate_tools_for_mode(mode, &tools)
+            .map_err(|error| format!("MCP tools/list failed: {error}"))?;
+        write_json_line(
+            &mut stdin,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": LIST_PROJECTS_TOOL_NAME,
+                    "arguments": {}
+                }
+            }),
+        )?;
+        let safe_response = read_json_response(&rx, deadline)
+            .map_err(|error| format!("MCP designated read-only tool call failed: {error}"))?;
+        validate_safe_tool_response(&safe_response)
+            .map_err(|error| format!("MCP designated read-only tool call failed: {error}"))?;
+        Ok(tools)
+    })();
     drop(stdin);
-    terminate_child(&mut child, deadline)?;
-    Ok(McpVerification::passed(tools))
+    match exchange {
+        Ok(tools) => {
+            terminate_child(&mut child, deadline)?;
+            Ok(McpVerification::passed(tools))
+        }
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(error)
+        }
+    }
 }
 
 fn write_json_line(writer: &mut impl Write, value: Value) -> Result<(), String> {
@@ -381,6 +460,25 @@ fn validate_tools_response(value: &Value) -> Result<Vec<String>, String> {
         names.push(name.to_owned());
     }
     Ok(names)
+}
+
+fn validate_safe_tool_response(value: &Value) -> Result<(), String> {
+    if value.get("error").is_some() {
+        return Err(format!(
+            "MCP designated read-only {} call returned error: {value}",
+            LIST_PROJECTS_TOOL_NAME
+        ));
+    }
+    let result = value
+        .get("result")
+        .ok_or_else(|| "MCP designated read-only tool response missing result".to_owned())?;
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return Err(format!(
+            "MCP designated read-only {} call returned isError: {value}",
+            LIST_PROJECTS_TOOL_NAME
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn validate_tools_for_mode(mode: &str, tools: &[String]) -> Result<(), String> {
@@ -469,5 +567,47 @@ mod tests {
                 .and_then(|(_, value)| value),
             Some(std::ffi::OsStr::new("/selected/runtime-home"))
         );
+    }
+
+    #[test]
+    fn preflight_requires_current_storage_and_tool_schema_checks() {
+        let report = "configuration: valid\ntransport: stdio\nconnection_id: connection_fixture\nmode: workflow\nenabled: true\nregistry_read: passed\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: workflow\ntools_list_schema_validation: passed\n";
+        assert!(validate_connection_preflight_report(
+            report,
+            "connection_fixture",
+            CONNECTION_MODE_WORKFLOW
+        )
+        .is_ok());
+        assert!(validate_connection_preflight_report(
+            &report.replace("registry_read: passed\n", ""),
+            "connection_fixture",
+            CONNECTION_MODE_WORKFLOW
+        )
+        .is_err());
+        assert!(validate_connection_preflight_report(
+            &report.replace(
+                "tools_list_schema_validation: passed",
+                "tools_list_schema_validation: failed"
+            ),
+            "connection_fixture",
+            CONNECTION_MODE_WORKFLOW
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn safe_tool_call_rejects_json_rpc_and_tool_errors() {
+        assert!(validate_safe_tool_response(
+            &json!({"jsonrpc": "2.0", "id": 3, "result": {"content": []}})
+        )
+        .is_ok());
+        assert!(validate_safe_tool_response(
+            &json!({"jsonrpc": "2.0", "id": 3, "error": {"code": -32603}})
+        )
+        .is_err());
+        assert!(validate_safe_tool_response(
+            &json!({"jsonrpc": "2.0", "id": 3, "result": {"isError": true}})
+        )
+        .is_err());
     }
 }

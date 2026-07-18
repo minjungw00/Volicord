@@ -77,12 +77,17 @@ managed-host 운영 check를 충족하지 않습니다.
 mode가 요구하는 모든 도구가 있었는지를 나타냅니다. 중복 initialized notification은
 첫 번째 유효 관찰 뒤 멱등입니다.
 
-성공한 `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` 완료는
-도구 결과를 내보내기 전에 안전/읽기 전용 milestone을 갱신합니다. 관찰할 수 있는 fatal
-transport failure와 EOF에 따른 graceful close는 각 terminal 사실을 기록합니다. 권위
-있는 Store 쓰기가 실패하면 해당 protocol 성공을 내보내지 않습니다.
-`diagnostics.sqlite`의 제한된 쓰기는 계속 best effort이며 이 사실을 조회할 때 사용하지
-않습니다.
+성공한 `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`,
+`volicord.list_projects` 완료는 도구 결과를 내보내기 전에 안전/읽기 전용 milestone을
+갱신합니다. 관찰할 수 있는 fatal transport failure와 EOF에 따른 graceful close는 각
+terminal 사실을 기록합니다. 권위 있는 Store 쓰기가 실패하면 해당 protocol 성공을
+내보내지 않습니다. `diagnostics.sqlite`의 제한된 쓰기는 계속 best effort이며 이 사실을
+조회할 때 사용하지 않습니다.
+
+연결 검증은 별도의 `cli_preflight` process를 시작하고 지정된 안전한 읽기 전용 round
+trip으로 `volicord.list_projects`를 호출합니다. 이 process는 server 표면을 검증하지만
+그 lifecycle 사실은 `managed_host` 운영 check를 충족하거나 Connection 호출을 승인할 수
+없습니다.
 
 협상한 protocol version은 권위 있는 protocol data입니다. `clientInfo` name/version과
 관찰한 host 실행 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며

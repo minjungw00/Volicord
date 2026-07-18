@@ -69,6 +69,13 @@ Configuration presence does not prove Codex trust, reload, initialization,
 tool discovery, a current operational session, or release-cell status. Those
 facts remain separate.
 
+Operational connection verification discovers the actual `codex` command on
+`PATH`, canonicalizes the observed executable path under the platform topology
+rules, and runs its version command. It records only path and version
+diagnostics. It does not resolve a package-native artifact, hash executable
+bytes, compare a release coordinate, or require the version to appear in a
+support catalog.
+
 ## Volicord Runtime Home
 
 The Runtime Home contains only Volicord-owned runtime state: registry storage,

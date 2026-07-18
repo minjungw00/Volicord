@@ -17,6 +17,7 @@ pub(crate) fn project_trust_diagnostic(
     let Some(config_path) = codex_user_config_path(env) else {
         return ProjectTrustDiagnostic {
             status: ProjectTrustStatus::Unknown,
+            code: "project_trust_config_unavailable".to_owned(),
             config_path: String::new(),
             repo_root: repo_root.display().to_string(),
             details: "CODEX_HOME was not set and HOME was unavailable, so Codex user configuration could not be located".to_owned(),
@@ -29,6 +30,7 @@ pub(crate) fn project_trust_diagnostic(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return ProjectTrustDiagnostic {
                 status: ProjectTrustStatus::Missing,
+                code: "project_trust_config_missing".to_owned(),
                 config_path: config_path_text,
                 repo_root: repo_root_text,
                 details: "Codex user configuration file was not found".to_owned(),
@@ -37,6 +39,7 @@ pub(crate) fn project_trust_diagnostic(
         Err(error) => {
             return ProjectTrustDiagnostic {
                 status: ProjectTrustStatus::Unreadable,
+                code: "project_trust_config_unreadable".to_owned(),
                 config_path: config_path_text,
                 repo_root: repo_root_text,
                 details: format!("Codex user configuration could not be read: {error}"),
@@ -48,6 +51,7 @@ pub(crate) fn project_trust_diagnostic(
         Err(_) => {
             return ProjectTrustDiagnostic {
                 status: ProjectTrustStatus::Malformed,
+                code: "project_trust_config_malformed".to_owned(),
                 config_path: config_path_text,
                 repo_root: repo_root_text,
                 details: "Codex user configuration is malformed TOML".to_owned(),
@@ -57,6 +61,7 @@ pub(crate) fn project_trust_diagnostic(
     let Some(projects) = document.get("projects").and_then(Item::as_table) else {
         return ProjectTrustDiagnostic {
             status: ProjectTrustStatus::Missing,
+            code: "project_trust_entry_missing".to_owned(),
             config_path: config_path_text,
             repo_root: repo_root_text,
             details: "Codex user configuration has no matching projects table entry".to_owned(),
@@ -65,6 +70,7 @@ pub(crate) fn project_trust_diagnostic(
     let Some((project_path, project_item)) = matching_project_entry(projects, repo_root) else {
         return ProjectTrustDiagnostic {
             status: ProjectTrustStatus::Missing,
+            code: "project_trust_entry_missing".to_owned(),
             config_path: config_path_text,
             repo_root: repo_root_text,
             details: "Codex user configuration has no matching project trust entry".to_owned(),
@@ -73,16 +79,17 @@ pub(crate) fn project_trust_diagnostic(
     let Some(table) = project_item.as_table() else {
         return ProjectTrustDiagnostic {
             status: ProjectTrustStatus::Malformed,
+            code: "project_trust_entry_malformed".to_owned(),
             config_path: config_path_text,
             repo_root: repo_root_text,
             details: format!("Codex project trust entry is not a table: {project_path}"),
         };
     };
     let trust_level = table.get("trust_level").and_then(Item::as_str);
-    let status = match trust_level {
-        Some("trusted") => ProjectTrustStatus::Trusted,
-        Some("untrusted") => ProjectTrustStatus::Untrusted,
-        Some(_) | None => ProjectTrustStatus::Unknown,
+    let (status, code) = match trust_level {
+        Some("trusted") => (ProjectTrustStatus::Trusted, "project_trust_satisfied"),
+        Some("untrusted") => (ProjectTrustStatus::Untrusted, "project_trust_required"),
+        Some(_) | None => (ProjectTrustStatus::Malformed, "project_trust_value_invalid"),
     };
     let details = match status {
         ProjectTrustStatus::Trusted => "Codex user configuration marks the project trusted",
@@ -98,6 +105,7 @@ pub(crate) fn project_trust_diagnostic(
     };
     ProjectTrustDiagnostic {
         status,
+        code: code.to_owned(),
         config_path: config_path_text,
         repo_root: repo_root_text,
         details: details.to_owned(),
@@ -111,6 +119,7 @@ pub(super) fn project_trust_for_plan(
     let HostTarget::File(target) = &plan.target else {
         return ProjectTrustDiagnostic {
             status: ProjectTrustStatus::Unknown,
+            code: "project_trust_target_invalid".to_owned(),
             config_path: String::new(),
             repo_root: String::new(),
             details: "Codex project trust could not be checked for a non-file target".to_owned(),
@@ -119,6 +128,7 @@ pub(super) fn project_trust_for_plan(
     let Some(repo_root) = target.parent().and_then(Path::parent) else {
         return ProjectTrustDiagnostic {
             status: ProjectTrustStatus::Unknown,
+            code: "project_trust_repo_root_unavailable".to_owned(),
             config_path: String::new(),
             repo_root: String::new(),
             details: "Codex project trust could not be checked because the repository root was unavailable".to_owned(),

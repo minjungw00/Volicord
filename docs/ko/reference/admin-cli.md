@@ -140,6 +140,22 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 두지 않습니다. `--dry-run`은 작업 모드 또는 계획 맥락으로 보고하며 어느 닫힌 상태
 집합에도 `dry_run`을 추가하지 않습니다.
 
+`volicord connection status`는 읽기 전용입니다. 현재 관리 구성, 신뢰, Guard audit,
+통합 revision, managed-host session 관찰을 마지막 활성 executable/MCP server probe와
+함께 projection합니다. Process를 시작하거나 새 보고서를 영속하지 않습니다.
+
+`volicord connection verify`는 `codex`를 활성 탐색하고 version 명령을 실행한 뒤
+`volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. Self-test는
+`initialize`, `tools/list`, 필수 도구 검증, 안전한 읽기 전용
+`volicord.list_projects` 호출을 수행합니다. 그런 다음 현재 managed-host 관찰을 읽고 정규
+보고서 하나만 영속합니다. CLI self-test는 managed-host session이 아닙니다.
+
+`volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
+유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리
+구성을 rollback하지 않습니다. Managed-host 관찰이 아직 없는 새 유효 설정은
+`action_required`이며, 관찰을 얻는 데 필요한 typed reload/first-use action을 담습니다.
+Codex version이나 executable digest를 eligibility allowlist로 사용하지 않습니다.
+
 <a id="external-host-configuration"></a>
 ## 관리 Codex 구성
 

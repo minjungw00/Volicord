@@ -12,8 +12,6 @@ pub use adapter::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest};
 pub(crate) use identity::managed_identity_evaluation_for_plan;
 pub(crate) use trust::project_trust_diagnostic;
 
-const CODEX_TOOL_APPROVAL_OVERLAY_KIND: &str = "codex_tool_approval";
-
 pub fn capabilities() -> HostCapabilities {
     HostCapabilities {
         stdio_mcp: true,

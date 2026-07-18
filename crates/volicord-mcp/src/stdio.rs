@@ -1572,7 +1572,8 @@ pub(crate) fn call_tool_result(
             DiagnosticOutcome::Success
         };
     if diagnostic_outcome == DiagnosticOutcome::Success
-        && READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
+        && (READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
+            || tool_name == LIST_PROJECTS_TOOL_NAME)
         && !state.runtime_session_id.is_empty()
     {
         record_mcp_safe_read_only_tool_call(

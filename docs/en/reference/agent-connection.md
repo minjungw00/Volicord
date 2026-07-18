@@ -132,6 +132,28 @@ derived and cannot disagree with the checks:
 2. otherwise any `pending` check produces `status=action_required`;
 3. otherwise `status=complete`.
 
+The current Codex connection report contains these operational checks:
+
+| Check ID | `passed` | `pending` | `failed` |
+|---|---|---|---|
+| `managed_config` | The selected target contains the canonical managed entry. | Never used after an active inspection. | The required entry is missing, malformed, owned by another entry, changed, or unavailable to inspect. Details name the target and the precise cause. |
+| `host_executable` | `codex` was discovered on `PATH` and its version command succeeded. | The read-only status path has no prior active probe to project. | Discovery or the version command failed. Path and version are diagnostic only. |
+| `mcp_server` | The Volicord CLI self-test passed preflight, `initialize`, `tools/list`, the current required-tool set, and a safe read-only `volicord.list_projects` call. | Never used after an active self-test. | Process startup, storage preflight, initialization, tool discovery, required-tool validation, or the safe call failed. |
+| `host_session` | A `managed_host` session for the current integration revision completed `initialize`. | No managed-host use was observed, only an older revision was observed, initialization is still absent, or the Codex version changed after the observation. | The current session recorded an actual initialization or protocol failure. |
+| `required_tools` | The current managed-host `tools/list` observation contains every tool required by the current mode. | The current session has no tool-list observation, or its host-version observation is stale. | The current managed host actually omitted required tools or returned invalid tool-list data. |
+| `tool_round_trip` | The current managed-host session completed a safe read-only Volicord tool call. | No such current observation exists, or its host-version observation is stale. | The current session recorded an actual protocol or contract incompatibility. |
+| `project_trust` | Project trust is satisfied, or no separate project trust applies. | A normal Codex trust or reload action remains. | The trust configuration is malformed or contradictory and cannot be resolved by the normal action. |
+
+The CLI MCP self-test creates only `session_source=cli_preflight`; it never
+satisfies `host_session`, `required_tools`, or `tool_round_trip`. Guard audit
+facts may temporarily appear as the additional required checks `guard_files`,
+`guard_hooks`, and `prompt_capture`, but they use only the same
+`passed | pending | failed` check status set.
+
+Any bounded Codex version is eligible for these behavioral checks. A changed
+version makes the current host observation pending until Codex is reloaded and
+observed again; it is not an unsupported-host or failed-artifact result.
+
 `dry_run` is an operation mode, never a connection or check status.
 Configuration matching, executable availability, protocol and host versions,
 capability observations, and observation timestamps belong in check facts;

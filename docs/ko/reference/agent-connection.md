@@ -121,6 +121,27 @@ Check는 `id`의 UTF-8 byte 오름차순으로 정렬합니다. Action도 같은
 2. 그렇지 않고 `pending` check가 하나라도 있으면 `status=action_required`입니다.
 3. 그렇지 않으면 `status=complete`입니다.
 
+현재 Codex 연결 보고서에는 다음 운영 check가 들어갑니다.
+
+| Check ID | `passed` | `pending` | `failed` |
+|---|---|---|---|
+| `managed_config` | 선택한 대상에 정규 관리 entry가 있습니다. | 활성 조사 뒤에는 사용하지 않습니다. | 필수 entry가 없거나, malformed이거나, 다른 entry가 이름을 소유하거나, 변경되었거나, 조사할 수 없습니다. Details에는 대상과 정확한 원인을 기록합니다. |
+| `host_executable` | `PATH`에서 `codex`를 찾았고 version 명령이 성공했습니다. | 읽기 전용 status 경로에서 projection할 이전 활성 probe가 없습니다. | 탐색 또는 version 명령이 실패했습니다. Path와 version은 diagnostic일 뿐입니다. |
+| `mcp_server` | Volicord CLI self-test가 preflight, `initialize`, `tools/list`, 현재 필수 도구 집합, 안전한 읽기 전용 `volicord.list_projects` 호출을 통과했습니다. | 활성 self-test 뒤에는 사용하지 않습니다. | Process 시작, storage preflight, 초기화, 도구 검색, 필수 도구 검증, 안전 호출 중 하나가 실패했습니다. |
+| `host_session` | 현재 통합 revision의 `managed_host` session이 `initialize`를 완료했습니다. | Managed-host 사용을 관찰하지 못했거나, 이전 revision만 관찰했거나, 초기화 관찰이 아직 없거나, 관찰 뒤 Codex version이 바뀌었습니다. | 현재 session이 실제 초기화 또는 protocol 실패를 기록했습니다. |
+| `required_tools` | 현재 managed-host `tools/list` 관찰에 현재 mode의 모든 필수 도구가 있습니다. | 현재 session에 도구 목록 관찰이 없거나 host-version 관찰이 오래되었습니다. | 현재 managed host에서 필수 도구가 실제로 빠졌거나 도구 목록 데이터가 유효하지 않습니다. |
+| `tool_round_trip` | 현재 managed-host session이 안전한 읽기 전용 Volicord 도구 호출을 완료했습니다. | 그런 현재 관찰이 없거나 host-version 관찰이 오래되었습니다. | 현재 session이 실제 protocol 또는 contract 비호환을 기록했습니다. |
+| `project_trust` | 프로젝트 신뢰가 충족되었거나 별도 프로젝트 신뢰가 적용되지 않습니다. | 일반 Codex 신뢰 또는 reload 동작이 남았습니다. | 신뢰 구성이 malformed 또는 모순 상태이고 일반 동작으로 해결할 수 없습니다. |
+
+CLI MCP self-test는 `session_source=cli_preflight`만 만듭니다. 따라서
+`host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다. Guard audit
+사실은 당분간 추가 필수 check인 `guard_files`, `guard_hooks`, `prompt_capture`로 나타날 수
+있지만, 이 check도 동일한 `passed | pending | failed` 상태 집합만 사용합니다.
+
+제한 안의 모든 Codex version은 이 동작 check의 대상이 될 수 있습니다. Version이 바뀌면
+Codex를 reload하고 다시 관찰할 때까지 현재 host 관찰이 pending이 됩니다. 이를 지원하지
+않는 host나 실패한 artifact 결과로 분류하지 않습니다.
+
 `dry_run`은 작업 mode이며 연결 상태나 check 상태가 아닙니다. 구성 일치, 실행 파일
 가용성, protocol/host version, capability 관찰, 관찰 timestamp는 check 사실에 두며
 별도 공개 또는 영속 상태 enum을 만들지 않습니다.

@@ -62,6 +62,12 @@ root가 ext4에 있다는 사실은 다른 mount의 중첩 파일을 승인하�
 구성이 있다고 Codex 신뢰, 다시 불러오기, 초기화, 도구 검색, 현재 운영 session,
 릴리스 셀 상태가 증명되지는 않습니다. 이 사실들은 서로 분리됩니다.
 
+운영 연결 검증은 `PATH`에서 실제 `codex` 명령을 찾고 플랫폼 topology 규칙에 따라 관찰한
+실행 파일 경로를 canonicalize한 뒤 version 명령을 실행합니다. Path와 version
+diagnostic만 기록합니다. Package-native artifact를 해석하거나 executable bytes를
+hash하거나 release coordinate를 비교하거나 version이 support catalog에 있어야 한다고
+요구하지 않습니다.
+
 ## Volicord Runtime Home
 
 Runtime Home은 registry 저장소, 프로젝트별 저장소, 권위 있는 운영 session, 런타임

@@ -30,7 +30,7 @@ category identifiers:
 | `Unavailable` | `unavailable` | The operation, auxiliary capability, or required read cannot currently be performed, while the available data does not establish contract corruption or an unsupported external contract. |
 | `Degraded` | `degraded` | The core operation can continue, but an explicitly identified verification, diagnostic, or auxiliary-information component is incomplete. |
 | `Corrupt` | `corrupt` | Persisted or trusted owner data violates its declared schema, type, canonical encoding, or cross-field contract. |
-| `UnsupportedContract` | `unsupported_contract` | An external contract, host artifact, or other boundary format is not recognized or supported by an exact registered contract. |
+| `UnsupportedContract` | `unsupported_contract` | An external descriptor or boundary format is not recognized as an exact supported contract. |
 
 A machine-readable result or diagnostic must carry the exact category
 identifier and, when the domain distinguishes causes within that category, a
@@ -58,6 +58,13 @@ external descriptors use the [External Contracts](external-contracts.md)
 reason `unsupported_external_contract`; they are not guessed into a supported
 shape. A malformed untrusted request that has not become persisted owner state
 is `Rejected`, not `Corrupt`.
+
+An installed Codex executable or version is not an external contract. An
+unknown or uncertified Codex version therefore does not select
+`UnsupportedContract`; connection verification runs the behavioral probes and
+reports their actual `passed`, `pending`, or `failed` results. Failure to find
+or run the executable is `Unavailable` at a general failure-category boundary
+and a failed `host_executable` connection check.
 
 No category implies another. In particular:
 

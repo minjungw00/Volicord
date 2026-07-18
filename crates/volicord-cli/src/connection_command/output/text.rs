@@ -178,61 +178,29 @@ fn append_compact_repositories(output: &mut String, projects: &[ConnectionProjec
 
 fn compact_connection_checks(
     data: &ConnectionOutput<'_>,
-    mcp_config_state: &str,
+    _mcp_config_state: &str,
     primary_next_action: Option<&PrimaryNextAction>,
 ) -> Vec<(&'static str, String)> {
-    if let Some(verification) = data.verification {
-        let mut checks = vec![("MCP configuration", mcp_config_state.to_owned())];
-        append_host_policy_overlay_compact_check(&mut checks, &verification.host);
-        append_host_trust_compact_check(&mut checks, &verification.host);
-        checks.extend([
-            (
-                "CLI MCP preflight",
-                verification.preflight.status.as_str().to_owned(),
-            ),
-            (
-                "CLI MCP handshake",
-                verification.handshake.status.as_str().to_owned(),
-            ),
-        ]);
-        append_preflight_storage_compact_checks(&mut checks, &verification.preflight);
-        append_host_runtime_compact_checks(&mut checks, &verification.host);
-        checks.push((
-            "Host follow-up",
-            host_follow_up_text(data.status, primary_next_action).to_owned(),
-        ));
-        return checks;
-    }
-    let mut checks = vec![
-        (
-            "Stored connection",
-            format!(
-                "{}, mode {}, last verification {}",
-                enabled_text(data.connection.enabled),
-                public_mode_text(&data.connection.mode),
-                compact_agent_status_text(data.status)
-            ),
-        ),
-        ("Current MCP configuration", mcp_config_state.to_owned()),
-    ];
-    if let Some(host) = &data.current_host {
-        append_host_policy_overlay_compact_check(&mut checks, host);
-        append_host_trust_compact_check(&mut checks, host);
-    }
-    checks.extend([
-        (
-            "Last CLI MCP preflight",
-            stored_verification_step_status(data.connection, "cli_mcp_preflight"),
-        ),
-        (
-            "Last CLI MCP handshake",
-            stored_verification_step_status(data.connection, "cli_mcp_handshake"),
-        ),
-    ]);
-    append_stored_preflight_storage_compact_checks(&mut checks, data.connection);
-    if let Some(host) = &data.current_host {
-        append_host_runtime_compact_checks(&mut checks, host);
-    }
+    let report = data
+        .verification
+        .map(|verification| verification.report.clone())
+        .or_else(|| data.current_report.clone())
+        .or_else(|| effective_connection_report(data.connection).ok());
+    let mut checks = report
+        .map(|report| {
+            report
+                .checks()
+                .iter()
+                .map(|check| {
+                    let value = check
+                        .code()
+                        .map(|code| format!("{} ({code})", check.status().as_str()))
+                        .unwrap_or_else(|| check.status().as_str().to_owned());
+                    (canonical_check_label(check.id().as_str()), value)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     checks.push((
         "Host follow-up",
         host_follow_up_text(data.status, primary_next_action).to_owned(),
@@ -240,128 +208,20 @@ fn compact_connection_checks(
     checks
 }
 
-fn append_host_policy_overlay_compact_check(
-    checks: &mut Vec<(&'static str, String)>,
-    host: &Verification,
-) {
-    if let Some(overlay) = &host.host_policy_overlay {
-        checks.push((
-            "Codex tool approval policy",
-            if overlay.accepted {
-                "present".to_owned()
-            } else {
-                "unaccepted".to_owned()
-            },
-        ));
-    }
-}
-
-fn append_host_trust_compact_check(checks: &mut Vec<(&'static str, String)>, host: &Verification) {
-    if let Some(trust) = &host.project_trust {
-        checks.push(("Codex project trust", project_trust_text(trust.status)));
-    }
-}
-
-fn append_host_runtime_compact_checks(
-    checks: &mut Vec<(&'static str, String)>,
-    host: &Verification,
-) {
-    if let Some(runtime) = &host.host_runtime {
-        checks.push((
-            "Managed Codex MCP startup",
-            host_runtime_text(runtime.managed_host_startup),
-        ));
-        checks.push((
-            "Managed Codex tools/list",
-            host_runtime_text(runtime.managed_host_tools_list),
-        ));
-        checks.push((
-            "Managed Codex tool call",
-            host_runtime_text(runtime.managed_host_tool_call),
-        ));
-        checks.push((
-            "Active Codex tool exposure",
-            active_tool_exposure_text(runtime.active_tool_exposure),
-        ));
-        if let Some(storage) = &runtime.managed_host_storage {
-            checks.push((
-                "Managed host storage read",
-                diagnostic_value_text(&storage.storage_read),
-            ));
-            checks.push((
-                "Managed host storage write",
-                diagnostic_value_text(&storage.storage_write),
-            ));
-            checks.push((
-                "Managed host effective tools",
-                diagnostic_value_text(&storage.effective_tool_mode),
-            ));
-        }
-    }
-    if let Some(command) = &host.host_mcp_command {
-        checks.push(("Host MCP command", host_mcp_command_text(command)));
-    }
-}
-
-fn append_preflight_storage_compact_checks(
-    checks: &mut Vec<(&'static str, String)>,
-    preflight: &VerificationStep,
-) {
-    if let Some(diagnostics) = &preflight.preflight_diagnostics {
-        append_storage_compact_checks(checks, diagnostics);
-    }
-}
-
-fn append_stored_preflight_storage_compact_checks(
-    checks: &mut Vec<(&'static str, String)>,
-    connection: &AgentConnectionRecord,
-) {
-    if let Some(diagnostics) = stored_preflight_diagnostics(connection) {
-        append_storage_compact_checks(checks, &diagnostics);
-    }
-}
-
-fn append_storage_compact_checks(
-    checks: &mut Vec<(&'static str, String)>,
-    diagnostics: &McpPreflightDiagnostics,
-) {
-    checks.extend([
-        (
-            "CLI MCP storage read",
-            diagnostic_value_text(&diagnostics.storage_read),
-        ),
-        (
-            "CLI MCP storage write",
-            diagnostic_value_text(&diagnostics.storage_write),
-        ),
-        (
-            "CLI MCP effective tools",
-            diagnostic_value_text(&diagnostics.effective_tool_mode),
-        ),
-    ]);
-}
-
-fn project_trust_text(status: ProjectTrustStatus) -> String {
-    status.as_str().replace('_', " ")
-}
-
-fn host_mcp_command_text(command: &HostMcpCommandDiagnostic) -> String {
-    match command.mode {
-        HostMcpCommandLaunchMode::AbsolutePath => command
-            .command
-            .as_deref()
-            .map(|command| format!("uses absolute path {command}"))
-            .unwrap_or_else(|| "uses an absolute path".to_owned()),
-        HostMcpCommandLaunchMode::PathResolved => command
-            .command
-            .as_deref()
-            .map(|command| format!("uses {command} from the Codex host PATH"))
-            .unwrap_or_else(|| "uses a command from the Codex host PATH".to_owned()),
-        HostMcpCommandLaunchMode::RemoteExecutor => {
-            "uses a remote or executor-backed launch environment".to_owned()
-        }
-        HostMcpCommandLaunchMode::Unknown => "launch mode unknown".to_owned(),
-        HostMcpCommandLaunchMode::Malformed => "configuration malformed".to_owned(),
+fn canonical_check_label(id: &str) -> &'static str {
+    match id {
+        "managed_config" => "Managed MCP configuration",
+        "host_executable" => "Codex executable",
+        "mcp_server" => "Volicord MCP server",
+        "host_session" => "Managed host session",
+        "required_tools" => "Required tools",
+        "tool_round_trip" => "Tool round trip",
+        "project_trust" => "Project trust",
+        "guard_files" => "Guard files",
+        "guard_hooks" => "Guard hooks",
+        "prompt_capture" => "Prompt capture",
+        "verification_not_run" => "Verification",
+        _ => "Connection check",
     }
 }
 
@@ -567,22 +427,6 @@ fn enabled_text(enabled: bool) -> &'static str {
     } else {
         "disabled"
     }
-}
-
-fn stored_verification_step_status(connection: &AgentConnectionRecord, step: &str) -> String {
-    connection
-        .verification_report()
-        .ok()
-        .flatten()
-        .and_then(|report| {
-            report
-                .checks()
-                .iter()
-                .find(|check| check.id().as_str() == step)
-                .map(|check| check.status().as_str().to_owned())
-        })
-        .unwrap_or_else(|| "pending".to_owned())
-        .replace('_', " ")
 }
 
 fn connection_limits_text(profile: &str) -> &'static str {
@@ -959,12 +803,9 @@ fn init_next_steps(data: &InitOutput<'_>, actions: &[UserAction]) -> Vec<InitNex
 }
 
 fn init_actions_include_trust_or_approval(actions: &[UserAction]) -> bool {
-    actions.iter().any(|action| {
-        matches!(
-            action.kind,
-            UserActionKind::HostTrustRequired | UserActionKind::ProjectApprovalRequired
-        )
-    })
+    actions
+        .iter()
+        .any(|action| matches!(action.kind, UserActionKind::HostTrustRequired))
 }
 
 fn init_verify_command(host_kind: HostKind, intent: ConnectionIntent, repo_root: &Path) -> String {

@@ -122,6 +122,7 @@ pub(super) struct ConnectionOutput<'a> {
     pub(super) projects: &'a [ConnectionProjectRecord],
     pub(super) affected_repo_root: Option<&'a Path>,
     pub(super) verification: Option<&'a VerificationReport>,
+    pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
     pub(super) current_host: Option<Verification>,
     pub(super) plan: Option<&'a HostPlan>,
     pub(super) user_actions: Vec<UserAction>,
@@ -149,49 +150,17 @@ pub(super) enum ConnectionRemovePlan<'a> {
     MembershipOnly,
 }
 
-fn diagnostic_value_text(value: &str) -> String {
-    match value {
-        "read_only_degraded" => "read-only degraded".to_owned(),
-        "read_only" => "read-only".to_owned(),
-        "read_write" => "read-write".to_owned(),
-        _ => value.replace('_', " "),
-    }
-}
-
-fn host_runtime_text(status: HostRuntimeObservationStatus) -> String {
-    status.as_str().replace('_', " ")
-}
-
-fn active_tool_exposure_text(status: ActiveToolExposureStatus) -> String {
-    status.as_str().replace('_', " ")
-}
-
-fn stored_preflight_diagnostics(
-    connection: &AgentConnectionRecord,
-) -> Option<McpPreflightDiagnostics> {
-    let report = connection.verification_report().ok().flatten()?;
-    let details = report
-        .checks()
-        .iter()
-        .find(|check| check.id().as_str() == "cli_mcp_preflight")?
-        .details()?
-        .as_object();
-    Some(McpPreflightDiagnostics {
-        storage_read: details.get("storage_read")?.as_str()?.to_owned(),
-        storage_write: details.get("storage_write")?.as_str()?.to_owned(),
-        effective_tool_mode: details.get("effective_tool_mode")?.as_str()?.to_owned(),
-    })
-}
-
 fn user_action_id(kind: UserActionKind) -> &'static str {
     match kind {
         UserActionKind::HostTrustRequired => "host_trust_required",
-        UserActionKind::ProjectApprovalRequired => "project_approval_required",
+        UserActionKind::RepairManagedConfig => "repair_managed_config",
+        UserActionKind::InstallOrRepairCodex => "install_or_repair_codex",
+        UserActionKind::RepairMcpServer => "repair_mcp_server",
+        UserActionKind::ReloadHost => "reload_host",
+        UserActionKind::UseVolicordTool => "use_volicord_tool",
+        UserActionKind::ReloadGuard => "reload_guard",
+        UserActionKind::RepairGuard => "repair_guard",
         UserActionKind::ReloadRequired => "reload_required",
-        UserActionKind::ManagedHostStartupNotObserved => "managed_host_startup_not_observed",
-        UserActionKind::ManagedHostToolsListNotObserved => "managed_host_tools_list_not_observed",
-        UserActionKind::ActiveToolExposureUnconfirmed => "active_tool_exposure_unconfirmed",
-        UserActionKind::ManagedHostStorageDegraded => "managed_host_storage_degraded",
     }
 }
 
@@ -235,6 +204,10 @@ pub(super) fn render_connection_output(
         }
         OutputFormat::Json => {
             let projected_user_actions = Some(data.user_actions.as_slice());
+            let displayed_report = data
+                .verification
+                .map(|verification| &verification.report)
+                .or(data.current_report.as_ref());
             let mut value = json!({
                 "action": data.action,
                 "status": data.status.as_str(),
@@ -253,13 +226,16 @@ pub(super) fn render_connection_output(
                 "checks": checks_json(
                     data.connection,
                     data.verification,
-                    data.current_host.as_ref(),
+                    data.current_report.as_ref(),
                     &data.guard_state,
                 ),
-                "actions": actions_json_values(&data.user_actions),
+                "actions": displayed_report
+                    .and_then(|report| serde_json::to_value(report.actions()).ok())
+                    .unwrap_or_else(|| actions_json_values(&data.user_actions)),
                 "primary_next_action": primary_next_action.as_ref().map(|action| action.to_json()),
                 "host_hook": data.guard_state.to_json(),
-                "verification": data.verification.map(verification_json),
+                "verification": displayed_report
+                    .and_then(|report| serde_json::to_value(report).ok()),
             });
             if let Some(card) = &summary_card {
                 value
@@ -346,7 +322,7 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
         data.verification
             .map(|verification| {
                 init_first_run_user_actions(
-                    &verification.host.user_actions,
+                    &connection_status_actions(None, &verification.report),
                     data.host_kind,
                     data.init_mode,
                 )
@@ -666,11 +642,7 @@ fn primary_connection_action(
         if verification.host.host_executable.as_str() == "unavailable" {
             return Some(PrimaryNextAction::new(
                 "path_binary_not_found",
-                verification
-                    .host
-                    .diagnostic
-                    .clone()
-                    .unwrap_or_else(|| verification.host.details.clone()),
+                verification.host.host_executable_details.clone(),
             ));
         }
     }
@@ -842,11 +814,13 @@ fn primary_connection_action(
 fn prioritized_connection_action(actions: &[UserAction]) -> Option<&UserAction> {
     [
         UserActionKind::HostTrustRequired,
-        UserActionKind::ProjectApprovalRequired,
-        UserActionKind::ManagedHostStartupNotObserved,
-        UserActionKind::ManagedHostToolsListNotObserved,
-        UserActionKind::ActiveToolExposureUnconfirmed,
-        UserActionKind::ManagedHostStorageDegraded,
+        UserActionKind::RepairManagedConfig,
+        UserActionKind::InstallOrRepairCodex,
+        UserActionKind::RepairMcpServer,
+        UserActionKind::ReloadHost,
+        UserActionKind::UseVolicordTool,
+        UserActionKind::ReloadGuard,
+        UserActionKind::RepairGuard,
         UserActionKind::ReloadRequired,
     ]
     .into_iter()

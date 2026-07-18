@@ -34,50 +34,16 @@ pub(in crate::connection_command) fn init_checks_json(
     guard_status: &str,
     guard_state: &GuardOperationalState,
 ) -> Value {
-    let mut checks = verification
-        .and_then(|report| serde_json::to_value(report.report.checks()).ok())
-        .and_then(|value| value.as_array().cloned())
-        .unwrap_or_default();
+    if let Some(report) = verification {
+        return serde_json::to_value(report.report.checks()).unwrap_or(Value::Array(Vec::new()));
+    }
+    let mut checks = Vec::new();
     checks.push(json!({
         "id": "guard_installation",
         "status": if guard_status == "passed" { "passed" } else if guard_status == "failed" { "failed" } else { "pending" },
         "summary": "Codex Record Guard installation status",
     }));
-    checks.push(json!({
-        "id": "guard_files",
-        "status": match guard_state.files_state.as_str() {
-            "installed" => "passed",
-            "planned" | "not_configured" => "pending",
-            _ => "failed",
-        },
-        "summary": format!("Codex Record Guard files are {}", guard_state.files_state),
-    }));
-    checks.push(json!({
-        "id": "guard_hooks",
-        "status": if guard_state.host_hook_guard_available() {
-            "passed"
-        } else if guard_state.missing_required_hooks.is_empty() {
-            "pending"
-        } else {
-            "failed"
-        },
-        "summary": format!(
-            "Codex Record Guard effective state is {}",
-            guard_state.effective_state
-        ),
-    }));
-    checks.push(json!({
-        "id": "prompt_capture",
-        "status": match guard_state.prompt_capture_state.as_str() {
-            "active" | "observed" | "configured" => "passed",
-            "reload_required" => "pending",
-            _ => "failed",
-        },
-        "summary": format!(
-            "Codex prompt observation is {} and UserAction resolution remains CLI inbox only",
-            guard_state.prompt_capture_state
-        ),
-    }));
+    checks.extend(guard_checks_json_values(guard_state));
     Value::Array(checks)
 }
 pub(in crate::connection_command) fn connection_states_json(
@@ -139,17 +105,17 @@ pub(in crate::connection_command) fn actions_json_values(actions: &[UserAction])
 pub(in crate::connection_command) fn checks_json(
     connection: &AgentConnectionRecord,
     verification: Option<&VerificationReport>,
-    _current_host: Option<&Verification>,
-    guard_state: &GuardOperationalState,
+    current_report: Option<&volicord_types::ConnectionVerificationReport>,
+    _guard_state: &GuardOperationalState,
 ) -> Value {
     let report = verification
         .map(|verification| verification.report.clone())
+        .or_else(|| current_report.cloned())
         .or_else(|| effective_connection_report(connection).ok());
-    let mut checks = report
+    let checks = report
         .and_then(|report| serde_json::to_value(report.checks()).ok())
         .and_then(|value| value.as_array().cloned())
         .unwrap_or_default();
-    checks.extend(guard_checks_json_values(guard_state));
     Value::Array(checks)
 }
 
