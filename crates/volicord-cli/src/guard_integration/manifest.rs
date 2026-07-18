@@ -183,13 +183,15 @@ fn path_text(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, fs};
+    use std::{collections::BTreeSet, fs, path::PathBuf};
 
     use volicord_store::agent_connections::agent_connection_record_read_only;
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::{guard_manifest_from_json, GuardHookPhase, IntegrationProfile};
 
-    use super::{guard_manifest_json, record_guard_installation};
+    use super::{
+        guard_manifest_has_exact_current_shape, guard_manifest_json, record_guard_installation,
+    };
     use crate::{
         guard_integration::{
             apply_guard_integration,
@@ -272,25 +274,68 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             GuardHookPhase::REQUIRED.into_iter().collect()
         );
+        let managed_scripts = manifest
+            .managed_files
+            .iter()
+            .filter(|file| file.ownership == "managed_script")
+            .map(|file| {
+                (
+                    PathBuf::from(&file.path),
+                    file.kind.clone(),
+                    file.phase.clone().expect("managed script phase"),
+                )
+            })
+            .collect::<BTreeSet<_>>();
         assert_eq!(
-            manifest
-                .managed_files
-                .iter()
-                .filter(|file| file.ownership == "managed_script")
-                .count(),
-            4
+            managed_scripts,
+            BTreeSet::from([
+                (
+                    repo_root.join(".codex/hooks/volicord-dispatch.sh"),
+                    "host_hook_dispatch".to_owned(),
+                    "dispatch".to_owned(),
+                ),
+                (
+                    repo_root.join(".codex/hooks/volicord-pre-tool.sh"),
+                    "host_hook_wrapper".to_owned(),
+                    "pre_tool".to_owned(),
+                ),
+                (
+                    repo_root.join(".codex/hooks/volicord-post-tool.sh"),
+                    "host_hook_wrapper".to_owned(),
+                    "post_tool".to_owned(),
+                ),
+                (
+                    repo_root.join(".codex/hooks/volicord-prompt-capture.sh"),
+                    "host_hook_wrapper".to_owned(),
+                    "prompt_capture".to_owned(),
+                ),
+            ])
         );
         assert!(manifest
             .managed_files
             .iter()
             .filter(|file| file.ownership == "managed_script")
             .all(|file| file.executable_required == Some(true)));
-        let manifest_value = serde_json::to_value(&manifest)?;
+        assert!(manifest
+            .managed_files
+            .iter()
+            .filter(|file| file.ownership != "managed_script")
+            .all(|file| file.executable_required.is_none()));
+
+        let mut manifest_value = serde_json::to_value(&manifest)?;
         assert!(manifest_value["managed_files"]
             .as_array()
             .expect("manifest managed files")
             .iter()
             .all(|file| file.get("status").is_none()));
+        let script = manifest_value["managed_files"]
+            .as_array_mut()
+            .expect("manifest managed files")
+            .iter_mut()
+            .find(|file| file["ownership"] == "managed_script")
+            .expect("managed script entry");
+        script["executable_required"] = serde_json::Value::Bool(false);
+        assert!(!guard_manifest_has_exact_current_shape(&manifest_value));
 
         let applied = apply_guard_integration(plan)?;
         let first = record_guard_installation(

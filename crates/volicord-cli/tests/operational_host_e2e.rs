@@ -779,11 +779,34 @@ fn assert_current_guard_projection(
     for file in &manifest.managed_files {
         assert!(Path::new(&file.path).is_file(), "missing {}", file.path);
         if file.ownership == "managed_script" {
-            assert_eq!(file.executable_required, Some(cfg!(unix)));
+            assert_eq!(file.executable_required, Some(true));
+        } else {
+            assert_eq!(file.executable_required, None);
         }
     }
+    assert_platform_script_permissions(manifest);
     Ok(())
 }
+
+#[cfg(unix)]
+fn assert_platform_script_permissions(manifest: &GuardManifest) {
+    use std::os::unix::fs::PermissionsExt;
+
+    for file in manifest
+        .managed_files
+        .iter()
+        .filter(|file| file.ownership == "managed_script")
+    {
+        let mode = fs::metadata(&file.path)
+            .unwrap_or_else(|error| panic!("failed to inspect {}: {error}", file.path))
+            .permissions()
+            .mode();
+        assert_ne!(mode & 0o100, 0, "script is not executable: {}", file.path);
+    }
+}
+
+#[cfg(not(unix))]
+fn assert_platform_script_permissions(_manifest: &GuardManifest) {}
 
 fn assert_connection_report(
     output: &Output,
