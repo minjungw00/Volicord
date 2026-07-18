@@ -79,8 +79,8 @@ jobs:
       - name: Run workspace tests
         run: cargo test --locked --workspace --all-targets --all-features
 
-  host-hook-capability-native-windows:
-    name: Host-hook capability unit tests (native Windows)
+  operational-host-native-windows:
+    name: Operational host tests (native Windows)
     runs-on: windows-2022
     steps:
       - name: Check out repository
@@ -91,8 +91,17 @@ jobs:
           rustup toolchain install "${{ env.RUST_VERSION }}" --profile minimal
           rustup default "${{ env.RUST_VERSION }}"
 
-      - name: Check platform-independent capability generation
-        run: cargo test --locked -p volicord-cli successfully_returned_plan_generates_an_exact_current_capability --lib
+      - name: Check operational session storage
+        run: cargo test --locked -p volicord-store --test operational_sessions
 
-      - name: Check strict executable requirements
-        run: cargo test --locked -p volicord-types exact_record_capability_requires_executable_only_for_dispatch_and_wrappers --lib
+      - name: Check Guard manifest projection
+        run: cargo test --locked -p volicord-cli manifest_preserves_policy_and_runtime_command_forms_without_status_state --lib
+
+      - name: Check initialization and Guard managed files
+        run: cargo test --locked -p volicord-cli --test init_record_regression
+
+      - name: Check operational host process behavior
+        run: cargo test --locked -p volicord-cli --test operational_host_e2e
+
+      - name: Check binary report behavior
+        run: cargo test --locked -p volicord-cli --test binary_admin

@@ -1,4 +1,10 @@
-use std::{collections::BTreeSet, ffi::OsString, fmt, fs, path::Path, time::Instant};
+use std::{
+    collections::BTreeSet,
+    ffi::OsString,
+    fmt, fs,
+    path::Path,
+    time::{Instant, SystemTime},
+};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
@@ -125,7 +131,20 @@ where
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let input = read_guard_input(options.event_file.as_deref())?;
     let project = resolve_guard_project(&runtime_home, current_dir, &options, &input.raw_value)?;
-    let envelope = guard_envelope(phase, &options, &input, &project)?;
+    let envelope = match guard_envelope(phase, &options, &input, &project) {
+        Ok(envelope) => envelope,
+        Err(error) => {
+            record_guard_hook_contract_failure(
+                &runtime_home,
+                &project,
+                phase,
+                &options,
+                &input,
+                GuardHookContractStatus::Malformed,
+            )?;
+            return Err(error);
+        }
+    };
     let input = protect_managed_guard_input(input, &envelope)?;
     validate_existing_connection_session_binding(&runtime_home, &project, &envelope)?;
     let subject = guard_subject(phase, &input, &envelope, &project);
@@ -228,6 +247,104 @@ where
         stderr: rendered.stderr,
         exit_code: rendered.exit_code,
     })
+}
+
+fn record_guard_hook_contract_failure(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    phase: GuardPhase,
+    options: &GuardOptions,
+    input: &GuardInput,
+    contract_status: GuardHookContractStatus,
+) -> Result<(), GuardCommandError> {
+    let Some(connection_id) = options.connection_id.as_deref() else {
+        return Ok(());
+    };
+    let Some(guard_installation_id) = options.guard_installation_id.as_deref() else {
+        return Ok(());
+    };
+    let Some(installation) = guard_installation(runtime_home, guard_installation_id)? else {
+        return Ok(());
+    };
+    let manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
+        GuardCommandError::Runtime("current Guard installation manifest is malformed".to_owned())
+    })?;
+    let current_policy_hash = current_policy_hash(project)?;
+    let current_owner = installation.connection_internal_id == connection_id
+        && installation.project_id == project.project_id
+        && manifest.connection_id.as_str() == connection_id
+        && manifest.guard_installation_id.as_str() == guard_installation_id
+        && manifest.project_id.as_str() == project.project_id
+        && current_policy_hash.as_deref() == Some(manifest.policy_hash.as_str())
+        && options
+            .policy_hash
+            .as_deref()
+            .is_none_or(|hash| hash == manifest.policy_hash.as_str());
+    if !current_owner {
+        return Ok(());
+    }
+
+    let event_id = stable_id(
+        "guard_event",
+        &[
+            phase.command_name(),
+            connection_id,
+            &project.project_id,
+            &input.raw_sha256,
+            contract_status.as_str(),
+        ],
+    );
+    if guard_event(runtime_home, &project.project_id, &event_id)?.is_some() {
+        return Ok(());
+    }
+    let occurred_at =
+        UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now())).to_canonical_string();
+    let subject_json = object_text(json!({
+        "lifecycle_phase": phase.event_kind(),
+        "host_kind": manifest.host_kind.as_str(),
+        "connection_id": connection_id,
+        "project_id": project.project_id,
+        "repo_root": project.repo_root.display().to_string(),
+        "raw_event_sha256": input.raw_sha256,
+        "raw_event": input.redacted_value,
+    }))?;
+    let source_payload_sha256 = guard_event_source_payload_sha256(
+        None,
+        connection_id,
+        Some(guard_installation_id),
+        phase.event_kind(),
+        &subject_json,
+    )?;
+    insert_guard_event(
+        runtime_home,
+        &project.project_id,
+        GuardEventInsert {
+            guard_event_id: event_id,
+            session_id: None,
+            connection_internal_id: connection_id.to_owned(),
+            guard_installation_id: guard_installation_id.to_owned(),
+            policy_hash: manifest.policy_hash.as_str().to_owned(),
+            integration_revision: manifest.integration_revision.as_str().to_owned(),
+            event_kind: phase.event_kind().to_owned(),
+            contract_status: contract_status.as_str().to_owned(),
+            decision: GuardDecision::Warn.as_str().to_owned(),
+            subject_json,
+            result_json: object_text(json!({
+                "decision": GuardDecision::Warn.as_str(),
+                "allowed": false,
+                "contract_status": contract_status.as_str(),
+                "enforcement_level": "cooperative_guard",
+            }))?,
+            occurred_at,
+            metadata_json: json!({
+                "source": "volicord_guard_cli",
+                "source_payload_sha256": source_payload_sha256,
+                "cooperative_guard": true,
+            })
+            .to_string(),
+        },
+    )?;
+    Ok(())
 }
 
 fn render_guard_command_output(

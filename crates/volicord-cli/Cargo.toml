@@ -32,3 +32,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 [[bin]]
 name = "volicord"
 path = "src/main.rs"
+
+[[test]]
+name = "operational_host_e2e"
+path = "tests/operational_host_e2e.rs"
+harness = false

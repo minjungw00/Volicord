@@ -106,12 +106,14 @@ where
 
     match transport_result {
         Ok(()) => {
-            record_mcp_graceful_close(
-                &adapter.runtime_home,
-                &state.runtime_session_id,
-                &authoritative_observation_timestamp(),
-            )
-            .map_err(McpAdapterError::Store)?;
+            if !state.terminal_protocol_failure_recorded {
+                record_mcp_graceful_close(
+                    &adapter.runtime_home,
+                    &state.runtime_session_id,
+                    &authoritative_observation_timestamp(),
+                )
+                .map_err(McpAdapterError::Store)?;
+            }
             Ok(())
         }
         Err(error) => {
@@ -600,6 +602,7 @@ pub(crate) struct ConnectionState {
     pub(crate) managed_stdio_binding_active: bool,
     pub(crate) launch_origin: &'static str,
     status_method_call_count: u64,
+    terminal_protocol_failure_recorded: bool,
     codex_binding: CodexManagedBinding,
     deferred_tools_list_serialized_bytes: Option<u64>,
 }
@@ -614,6 +617,7 @@ impl Default for ConnectionState {
             managed_stdio_binding_active: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
             status_method_call_count: 0,
+            terminal_protocol_failure_recorded: false,
             codex_binding: CodexManagedBinding::NotApplicable,
             deferred_tools_list_serialized_bytes: None,
         }
@@ -797,6 +801,54 @@ pub(crate) fn handle_json_rpc_request(
     state: &mut ConnectionState,
     request: JsonRpcRequest,
 ) -> Result<Value, McpAdapterError> {
+    let method = request.method.clone();
+    let safe_tool_name = if method == "tools/call" {
+        request
+            .params
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|params| params.get("name"))
+            .and_then(Value::as_str)
+            .filter(|name| {
+                READ_ONLY_METHOD_TOOL_NAMES.contains(name) || *name == LIST_PROJECTS_TOOL_NAME
+            })
+            .map(str::to_owned)
+    } else {
+        None
+    };
+    let response = handle_json_rpc_request_inner(adapter, state, request)?;
+    let failure = if method == "initialize" && response.get("error").is_some() {
+        Some((
+            "mcp_initialize_failed",
+            "managed-host initialize returned a JSON-RPC error",
+        ))
+    } else if method == "tools/list" && response.get("error").is_some() {
+        Some((
+            "mcp_tools_list_failed",
+            "managed-host tools/list returned a JSON-RPC error",
+        ))
+    } else if safe_tool_name.is_some()
+        && state.managed_stdio_binding_active
+        && safe_tool_call_response_failed(&response)
+    {
+        Some((
+            "mcp_safe_tool_call_failed",
+            "managed-host designated read-only tool call returned an error",
+        ))
+    } else {
+        None
+    };
+    if let Some((code, details)) = failure {
+        record_current_session_protocol_failure(adapter, state, code, details)?;
+    }
+    Ok(response)
+}
+
+fn handle_json_rpc_request_inner(
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+    request: JsonRpcRequest,
+) -> Result<Value, McpAdapterError> {
     if let Some(error) = lifecycle_error(state.phase, &request) {
         return Ok(error);
     }
@@ -888,6 +940,36 @@ pub(crate) fn handle_json_rpc_request(
         "id": response_id,
         "result": result
     }))
+}
+
+fn safe_tool_call_response_failed(response: &Value) -> bool {
+    response.get("error").is_some()
+        || (response.pointer("/result/isError").and_then(Value::as_bool) == Some(true)
+            && response
+                .pointer("/result/structuredContent/code")
+                .and_then(Value::as_str)
+                != Some("MCP_INVALID_ARGUMENTS"))
+}
+
+fn record_current_session_protocol_failure(
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+    code: &str,
+    details: &str,
+) -> Result<(), McpAdapterError> {
+    if state.runtime_session_id.is_empty() || state.terminal_protocol_failure_recorded {
+        return Ok(());
+    }
+    record_mcp_terminal_protocol_failure(
+        &adapter.runtime_home,
+        &state.runtime_session_id,
+        code,
+        Some(details),
+        &authoritative_observation_timestamp(),
+    )
+    .map_err(McpAdapterError::Store)?;
+    state.terminal_protocol_failure_recorded = true;
+    Ok(())
 }
 
 fn required_tool_set_present(
