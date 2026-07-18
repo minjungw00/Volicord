@@ -87,8 +87,13 @@ volicord connection remove codex --shared --repo "<repo>" --dry-run
 volicord connection remove codex --shared --repo "<repo>"
 ```
 
-제거는 결과가 이름 붙인 Volicord 관리 통합 자료만 삭제합니다. Product Repository,
-Runtime Home의 권한 기록, 관련 없는 Codex 구성을 삭제하지 않습니다.
+제거는 결과가 이름 붙인 Volicord 관리 통합 자료만 삭제합니다. 여기에는 선택한
+membership의 Registry binding과 Guard Installation이 포함됩니다. 다른 저장소
+membership이 남아 있는 동안 Agent Connection과 connection 전체 runtime session은
+유지되며, 마지막 membership은 일치하는 host configuration을 제거한 뒤 이 행들도
+삭제합니다. 프로젝트 로컬 Agent Session, Guard 및 workflow 이력, evidence와 그 밖의
+권한 기록은 유지합니다. Product Repository, 다른 저장소, 관련 없는 Codex 구성은
+보존합니다.
 
 ## 관련 가이드
 

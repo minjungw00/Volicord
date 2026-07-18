@@ -118,7 +118,9 @@ best-effort carrier이며 운영 권한 출처로 사용하지 않습니다.
   identity, human identity가 아닙니다.
 - 검증된 운영 session은 로컬에서 관찰한 협력적 session 소유권과 현재 프로젝트 권한만
   증명합니다. Binary, host, client, actor, human identity를 증명하지 않습니다.
-- 통합 구성을 제거해도 프로젝트 권한 데이터를 삭제하지 않습니다.
+- 명시적인 connection 제거는 저장소 담당자가 정한 Connection 소유 Registry 통합 행만
+  삭제합니다. 프로젝트 등록이나 프로젝트 로컬 Agent Session, Guard 및 workflow 이력,
+  evidence와 그 밖의 권한 데이터는 삭제하지 않습니다.
 - 내보내기와 릴리스 검증 출력은 유지 문서나 Runtime Home trust input이 아니라 명시적인
   외부 출력 위치에 둡니다.
 

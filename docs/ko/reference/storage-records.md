@@ -102,6 +102,19 @@ Registry 저장소는 위의 row만으로 managed operation에 권한을 부여�
 권한 schema를 담은 Runtime Home은 다른 `StorageManifest`에 속하므로 migration 없이
 거부합니다.
 
+명시적인 Connection Project 제거는 이 행들을 Connection 소유 Registry 통합 상태로
+다룹니다. Store는 선택한 membership의 `mcp_runtime_project_session_bindings`, 프로젝트
+범위 `guard_installations`, `connection_projects` 행을 원자적으로 삭제합니다. 다른
+membership이 남으면 Agent Connection, 모든 `mcp_runtime_sessions` 행, 다른 프로젝트의
+binding과 Guard Installation을 유지합니다. Membership이 하나도 남지 않으면 Connection
+소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 runtime session과
+`agent_connections` 행을 삭제합니다. 프로젝트 등록, installation profile, Runtime Home
+기록, 모든 프로젝트 `state.sqlite` 행은 이 삭제 집합에 포함되지 않습니다.
+
+유지된 프로젝트 로컬 Agent Session과 Guard 또는 workflow 이력은 이후 권한이 되지
+않습니다. Runtime 권한은 계속 위에서 설명한 현재 Registry membership, runtime session,
+project-session 검증을 요구합니다.
+
 ## Identity와 소유권
 
 저장 식별자는 정확하고 비어 있지 않은 담당자 값입니다. Store는 표시 text에서 식별자를

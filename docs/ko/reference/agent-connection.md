@@ -262,6 +262,16 @@ Repair는 관련 없는 Codex 구성을 덮어쓰거나 선택한 프로젝트, 
 profile, 플랫폼 환경을 암묵적으로 바꾸지 않습니다. 제거는 현재 관리 identity가
 Volicord 소유와 계속 일치하는 내용만 삭제합니다.
 
+명시적인 connection 제거 명령은 Connection 소유 Registry 통합 상태도 폐기합니다.
+Membership 하나를 제거하면 해당 Registry project-session binding과 Guard
+Installation을 삭제합니다. 여러 프로젝트를 가진 personal Connection은 마지막
+membership이 제거될 때까지 connection 전체 runtime session과 다른 프로젝트 소유 행을
+유지합니다. 마지막 membership 제거는 남은 Registry project-session binding, Guard
+Installation, runtime session, Agent Connection을 모두 삭제합니다. 프로젝트 로컬 Agent
+Session, Guard 관찰, workflow 이력, evidence와 그 밖의 권한 기록은 Product Repository의
+과거 상태로 유지됩니다. 현재 Registry membership과 현재 검증된 runtime/project
+session이 없으면 이 과거 기록은 이후 호출에 권한을 부여할 수 없습니다.
+
 ## 위협 모델
 
 신뢰 대상:

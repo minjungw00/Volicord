@@ -13,13 +13,13 @@ use volicord_store::{
         connection_metadata_has_pending_host_cleanup_for_project, ensure_agent_connection,
         ensure_staged_agent_connection, list_agent_connections,
         list_agent_connections_for_diagnostics, list_connection_projects,
-        list_connection_projects_for_diagnostics, remove_agent_connection_if_unused,
-        remove_connection_project, set_connection_mode, staged_connection_migration_state,
-        update_agent_connection_verification_report, AgentConnectionRecord,
-        AgentConnectionRegistration, ConnectionProjectRecord, ConnectionProjectRegistration,
-        PendingHostCleanupError, StagedConnectionMigrationState, SupersededConnectionProject,
-        CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
-        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
+        list_connection_projects_for_diagnostics, remove_connection_project, set_connection_mode,
+        staged_connection_migration_state, update_agent_connection_verification_report,
+        AgentConnectionRecord, AgentConnectionRegistration, ConnectionProjectRecord,
+        ConnectionProjectRegistration, ConnectionProjectRemovalOutcome, PendingHostCleanupError,
+        StagedConnectionMigrationState, SupersededConnectionProject, CONNECTION_INTENT_PERSONAL,
+        CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
+        HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
     },
     bootstrap::{
         ensure_project_for_repo, initialize_runtime_home, installation_profile,
@@ -264,6 +264,7 @@ pub fn run_connect_command(
                 current_report: None,
                 current_host: None,
                 plan: Some(&outcome.host_plan),
+                removal_outcome: None,
                 user_actions: connection_status_actions(None, &outcome.verification.report),
             })
         }
@@ -439,6 +440,7 @@ fn command_connection_mode(
         current_report: None,
         current_host: None,
         plan: None,
+        removal_outcome: None,
     })
 }
 
@@ -479,26 +481,26 @@ fn command_connection_remove(
         );
     }
 
-    remove_connection_project(
+    if let Some(host_plan) = &host_plan {
+        remove_host_configuration(host_plan, &connection, process)?;
+    }
+    let removal_outcome = remove_connection_project(
         &runtime_home,
         &connection.connection_internal_id,
         &selected_project.project_id,
     )?;
-    let remaining_projects =
-        list_connection_projects(&runtime_home, &connection.connection_internal_id)?;
-    if remaining_projects.is_empty() {
-        if let Some(host_plan) = &host_plan {
-            remove_host_configuration(host_plan, &connection, process)?;
-        }
-        remove_agent_connection_if_unused(&runtime_home, &connection.connection_internal_id)?;
-    }
+    let remaining_projects = if removal_outcome.connection_removed {
+        Vec::new()
+    } else {
+        list_connection_projects(&runtime_home, &connection.connection_internal_id)?
+    };
     render_connection_output(ConnectionOutput {
         format: connection_output_format(&parsed),
         action: "removed",
         status: AgentResultStatus::Complete,
         runtime_home: &runtime_home,
         host_kind: parse_host_kind(&connection.host_kind)?,
-        guard_state: guard_state_for_connection(&runtime_home, &connection, &remaining_projects)?,
+        guard_state: GuardOperationalState::not_configured(),
         user_actions: Vec::new(),
         connection: &connection,
         projects: &remaining_projects,
@@ -507,6 +509,7 @@ fn command_connection_remove(
         current_report: None,
         current_host: None,
         plan: host_plan.as_ref(),
+        removal_outcome: Some(&removal_outcome),
     })
 }
 

@@ -123,6 +123,7 @@ pub(super) struct ConnectionOutput<'a> {
     pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
     pub(super) current_host: Option<Verification>,
     pub(super) plan: Option<&'a HostPlan>,
+    pub(super) removal_outcome: Option<&'a ConnectionProjectRemovalOutcome>,
     pub(super) user_actions: Vec<UserAction>,
 }
 
@@ -243,6 +244,23 @@ pub(super) fn render_connection_output(
                         "summary_card".to_owned(),
                         serde_json::to_value(card).expect("summary card should serialize to JSON"),
                     );
+            }
+            if let Some(outcome) = data.removal_outcome {
+                let object = value
+                    .as_object_mut()
+                    .expect("connection output should be a JSON object");
+                object.insert(
+                    "membership_removed".to_owned(),
+                    Value::Bool(outcome.membership_removed),
+                );
+                object.insert(
+                    "connection_removed".to_owned(),
+                    Value::Bool(outcome.connection_removed),
+                );
+                object.insert(
+                    "remaining_project_count".to_owned(),
+                    Value::from(outcome.remaining_project_count),
+                );
             }
             serde_json::to_string_pretty(&value)
                 .map(|text| format!("{text}\n"))

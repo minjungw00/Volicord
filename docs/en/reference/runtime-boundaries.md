@@ -130,7 +130,10 @@ an operational authority source.
 - A validated operational session proves only locally observed cooperative
   session ownership and current project authorization. It does not prove a
   binary, host, client, actor, or human identity.
-- Removing integration configuration does not delete project authority data.
+- Explicit connection removal deletes only the connection-owned Registry
+  integration rows selected by the storage owners. It does not delete project
+  registrations or project-local Agent Sessions, Guard and workflow history,
+  evidence, or other authority data.
 - Export and release-validation output belongs in an explicit external output
   location, not maintained docs or Runtime Home trust input.
 

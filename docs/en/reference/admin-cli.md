@@ -125,6 +125,24 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 When the host is omitted, the command uses it only if the current context is
 unambiguous. The only accepted explicit value is `codex`.
 
+`volicord connection remove` removes the selected Connection Project
+membership and its project-scoped Registry bindings and Guard Installation in
+one Store transaction. If other memberships remain, the Agent Connection,
+connection-wide runtime sessions, other memberships, and their Registry rows
+remain, and shared host configuration is not changed. For the last membership,
+the CLI validates the plan, removes the matching managed host entry first, and
+then commits the Registry transaction that removes the remaining bindings,
+Guard Installations, runtime sessions, membership, and Agent Connection. An
+absent owned host entry is a no-op so a retry can finish Registry cleanup.
+
+Host-removal failure occurs before Registry mutation. A later Registry failure
+rolls back the complete Registry transaction, leaving the membership and Agent
+Connection selectable for retry even though host removal may already have
+succeeded. `--dry-run` changes neither Registry state, host configuration, nor
+Product Repository content. Removal output includes `membership_removed`,
+`connection_removed`, and `remaining_project_count` so membership-only removal
+is distinct from complete Agent Connection removal.
+
 <a id="agent-connection-result-states"></a>
 ### Connection Result States
 

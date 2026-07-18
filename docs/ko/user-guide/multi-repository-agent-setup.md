@@ -53,8 +53,11 @@ volicord connection remove codex --repo /path/to/billing-api --dry-run
 volicord connection remove codex --repo /path/to/billing-api
 ```
 
-Codex를 다시 시작하기 전에 남은 membership을 다시 확인합니다. 제거는 다른 Product
-Repository나 관련 없는 Runtime Home 기록을 삭제하면 안 됩니다.
+Codex를 다시 시작하기 전에 남은 membership을 다시 확인합니다. 이 명령은 선택한
+membership의 Registry binding과 Guard Installation을 삭제하지만 Agent Connection,
+runtime session, 공유 host configuration, 다른 membership의 통합 행은 유지합니다.
+Agent Connection과 일치하는 host configuration은 마지막 membership에서만 제거합니다.
+다른 Product Repository와 그 프로젝트 로컬 이력은 유지합니다.
 
 ## 경계
 

@@ -113,6 +113,22 @@ Registry storage authorizes managed operations only through the rows above. A
 Runtime Home with a noncurrent authorization schema belongs to a different
 `StorageManifest` and is rejected without migration.
 
+Explicit Connection Project removal treats these rows as connection-owned
+Registry integration state. The Store atomically deletes the selected
+membership's `mcp_runtime_project_session_bindings`, project-scoped
+`guard_installations`, and `connection_projects` row. If memberships remain,
+it retains the Agent Connection, every `mcp_runtime_sessions` row, and other
+projects' bindings and Guard Installations. If none remain, it deletes every
+remaining binding and Guard Installation owned by the Connection, then its
+runtime sessions and `agent_connections` row. Project registrations,
+installation profiles, Runtime Home records, and all project `state.sqlite`
+rows remain outside this deletion set.
+
+Retained project-local Agent Sessions and Guard or workflow history do not
+become future authority. Runtime authorization still requires the current
+Registry membership, runtime session, and project-session validation described
+above.
+
 ## Identity And Ownership
 
 Stored identifiers are exact, non-empty owner values. Store does not trim,

@@ -54,8 +54,12 @@ volicord connection remove codex --repo /path/to/billing-api --dry-run
 volicord connection remove codex --repo /path/to/billing-api
 ```
 
-Recheck the remaining membership before restarting Codex. Removal must not
-delete the other Product Repository or unrelated Runtime Home records.
+Recheck the remaining membership before restarting Codex. The command removes
+the selected membership's Registry binding and Guard Installation but retains
+the Agent Connection, its runtime sessions, shared host configuration, and the
+other membership's integration rows. The Agent Connection and matching host
+configuration are removed only with the last membership. Other Product
+Repositories and their project-local history remain.
 
 ## Boundaries
 

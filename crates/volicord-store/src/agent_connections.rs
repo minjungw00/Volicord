@@ -218,6 +218,14 @@ pub struct ConnectionProjectRecord {
     pub project: ProjectRecord,
 }
 
+/// Result of one atomic Connection Project removal transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionProjectRemovalOutcome {
+    pub membership_removed: bool,
+    pub connection_removed: bool,
+    pub remaining_project_count: usize,
+}
+
 /// Current dynamic project-access facts for one connection/project pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentConnectionProjectAccess {
@@ -896,38 +904,6 @@ pub fn update_agent_connection_verification_report(
     })
 }
 
-/// Removes an Agent Connection only when no project memberships remain.
-pub fn remove_agent_connection_if_unused(
-    runtime_home: impl AsRef<Path>,
-    connection_internal_id: &str,
-) -> StoreResult<bool> {
-    validate_identifier("connection_internal_id", connection_internal_id)?;
-    let registry_path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
-    let tx = begin_immediate_transaction(&mut conn)?;
-    require_runtime_home(&tx, &registry_path)?;
-    require_agent_connection(&tx, connection_internal_id)?;
-
-    let membership_count: i64 = tx.query_row(
-        "SELECT COUNT(*)
-           FROM connection_projects
-          WHERE connection_internal_id = ?1",
-        [connection_internal_id],
-        |row| row.get(0),
-    )?;
-    if membership_count != 0 {
-        tx.commit()?;
-        return Ok(false);
-    }
-
-    let changed = tx.execute(
-        "DELETE FROM agent_connections WHERE connection_internal_id = ?1",
-        [connection_internal_id],
-    )?;
-    tx.commit()?;
-    Ok(changed > 0)
-}
-
 /// Adds a registered project to a connection allowlist.
 pub fn add_connection_project(
     runtime_home: impl AsRef<Path>,
@@ -976,25 +952,62 @@ pub fn add_connection_project(
     })
 }
 
-/// Removes one project from a connection allowlist.
+/// Atomically removes one Connection Project and its connection-owned Registry
+/// integration state.
 pub fn remove_connection_project(
     runtime_home: impl AsRef<Path>,
     connection_internal_id: &str,
     project_id: &str,
-) -> StoreResult<bool> {
+) -> StoreResult<ConnectionProjectRemovalOutcome> {
     validate_identifier("connection_internal_id", connection_internal_id)?;
     validate_project_id(project_id)?;
     let runtime_home = runtime_home.as_ref().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
+    require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, connection_internal_id)?;
     reject_generic_pending_host_cleanup_mutation(&connection)?;
-    let Some(project) = raw_project_record_from_conn(&tx, project_id)? else {
-        tx.commit()?;
-        return Ok(false);
-    };
-    let changed = tx.execute(
+    let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
+    let membership_exists: i64 = tx.query_row(
+        "SELECT EXISTS (
+            SELECT 1
+              FROM connection_projects
+             WHERE connection_internal_id = ?1
+               AND project_internal_id = ?2
+        )",
+        params![
+            connection.connection_internal_id,
+            project.project_internal_id
+        ],
+        |row| row.get(0),
+    )?;
+    if membership_exists == 0 {
+        return Err(StoreError::NotFound {
+            entity: "connection_project",
+            id: format!("{connection_internal_id}/{project_id}"),
+        });
+    }
+
+    tx.execute(
+        "DELETE FROM mcp_runtime_project_session_bindings
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![
+            connection.connection_internal_id,
+            project.project_internal_id
+        ],
+    )?;
+    tx.execute(
+        "DELETE FROM guard_installations
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![
+            connection.connection_internal_id,
+            project.project_internal_id
+        ],
+    )?;
+    let membership_removed = tx.execute(
         "DELETE FROM connection_projects
           WHERE connection_internal_id = ?1
             AND project_internal_id = ?2",
@@ -1003,8 +1016,62 @@ pub fn remove_connection_project(
             project.project_internal_id
         ],
     )?;
+    if membership_removed != 1 {
+        return Err(StoreError::NotFound {
+            entity: "connection_project",
+            id: format!("{connection_internal_id}/{project_id}"),
+        });
+    }
+
+    let remaining_project_count: i64 = tx.query_row(
+        "SELECT COUNT(*)
+           FROM connection_projects
+          WHERE connection_internal_id = ?1",
+        [&connection.connection_internal_id],
+        |row| row.get(0),
+    )?;
+    let remaining_project_count =
+        usize::try_from(remaining_project_count).map_err(|_| StoreError::SchemaInvariant {
+            database_kind: "registry",
+            detail: "connection membership count cannot be represented as usize".to_owned(),
+        })?;
+
+    let connection_removed = remaining_project_count == 0;
+    if connection_removed {
+        tx.execute(
+            "DELETE FROM mcp_runtime_project_session_bindings
+              WHERE connection_internal_id = ?1",
+            [&connection.connection_internal_id],
+        )?;
+        tx.execute(
+            "DELETE FROM guard_installations
+              WHERE connection_internal_id = ?1",
+            [&connection.connection_internal_id],
+        )?;
+        tx.execute(
+            "DELETE FROM mcp_runtime_sessions
+              WHERE connection_internal_id = ?1",
+            [&connection.connection_internal_id],
+        )?;
+        let removed = tx.execute(
+            "DELETE FROM agent_connections
+              WHERE connection_internal_id = ?1",
+            [&connection.connection_internal_id],
+        )?;
+        if removed != 1 {
+            return Err(StoreError::NotFound {
+                entity: "agent_connection",
+                id: connection_internal_id.to_owned(),
+            });
+        }
+    }
+
     tx.commit()?;
-    Ok(changed > 0)
+    Ok(ConnectionProjectRemovalOutcome {
+        membership_removed: true,
+        connection_removed,
+        remaining_project_count,
+    })
 }
 
 /// Adds one staged project binding and guard installation, retires or disables
@@ -2144,11 +2211,16 @@ mod tests {
     use std::error::Error;
 
     use volicord_test_support::TempRuntimeHome;
+    use volicord_types::McpRuntimeSessionSource;
 
     use super::*;
     use crate::bootstrap::{
         initialize_runtime_home, project_record_for_execution, register_project,
         ProjectRegistration, ACTIVE_PROJECT_STATUS,
+    };
+    use crate::operational_sessions::{
+        bind_mcp_runtime_project_session, mcp_runtime_session, start_mcp_runtime_session,
+        McpRuntimeSessionRecord, McpRuntimeSessionStart,
     };
 
     const PROJECT_ID: &str = "project_a";
@@ -2557,15 +2629,17 @@ mod tests {
             PROJECT_ID
         )?);
 
-        assert!(remove_connection_project(
-            fixture.runtime_home.path(),
-            "conn_project",
-            PROJECT_ID
-        )?);
-        assert!(remove_agent_connection_if_unused(
-            fixture.runtime_home.path(),
-            "conn_project"
-        )?);
+        let removal =
+            remove_connection_project(fixture.runtime_home.path(), "conn_project", PROJECT_ID)?;
+        assert_eq!(
+            removal,
+            ConnectionProjectRemovalOutcome {
+                membership_removed: true,
+                connection_removed: true,
+                remaining_project_count: 0,
+            }
+        );
+        assert!(agent_connection_record(fixture.runtime_home.path(), "conn_project")?.is_none());
         Ok(())
     }
 
@@ -2705,11 +2779,11 @@ mod tests {
                 PROJECT_ID,
             ),
         )?;
-        assert!(remove_connection_project(
+        delete_connection_project_membership_for_test(
             fixture.runtime_home.path(),
             "conn_staged",
-            PROJECT_ID
-        )?);
+            PROJECT_ID,
+        )?;
         let conflict = activate_staged_connection(
             fixture.runtime_home.path(),
             "conn_staged",
@@ -2853,11 +2927,11 @@ mod tests {
                 PROJECT_ID,
             ),
         )?;
-        assert!(remove_connection_project(
+        delete_connection_project_membership_for_test(
             fixture.runtime_home.path(),
             "conn_staged",
-            PROJECT_ID
-        )?);
+            PROJECT_ID,
+        )?;
 
         let conflict = activate_staged_connection(
             fixture.runtime_home.path(),
@@ -3186,8 +3260,382 @@ mod tests {
     }
 
     #[test]
-    fn connection_cannot_be_removed_while_projects_remain() -> Result<(), Box<dyn Error>> {
-        let fixture = registry_fixture("connection-remove-blocked")?;
+    fn last_membership_removal_cleans_initialized_registry_state() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-remove-initialized")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_initialized"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_initialized".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_initialized",
+                "conn_initialized",
+                PROJECT_ID,
+            ),
+        )?;
+        let cli_session = start_test_runtime_session(
+            &fixture,
+            "conn_initialized",
+            McpRuntimeSessionSource::CliPreflight,
+            41,
+        )?;
+
+        let outcome =
+            remove_connection_project(fixture.runtime_home.path(), "conn_initialized", PROJECT_ID)?;
+
+        assert_eq!(
+            outcome,
+            ConnectionProjectRemovalOutcome {
+                membership_removed: true,
+                connection_removed: true,
+                remaining_project_count: 0,
+            }
+        );
+        assert!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_initialized")?.is_none()
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_initialized"
+        )?
+        .is_none());
+        assert!(
+            mcp_runtime_session(fixture.runtime_home.path(), &cli_session.runtime_session_id)?
+                .is_none()
+        );
+        assert_eq!(
+            registry_connection_row_count(&fixture, "connection_projects", "conn_initialized")?,
+            0
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn last_membership_removal_cleans_bound_runtime_state_and_retains_unrelated_rows(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-remove-bound-runtime")?;
+        register_additional_project(
+            &fixture,
+            PRIOR_OTHER_PROJECT_ID,
+            "remove-bound-runtime-other-repo",
+        )?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_selected"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_selected".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_selected",
+                "conn_selected",
+                PROJECT_ID,
+            ),
+        )?;
+        let selected_session = start_test_runtime_session(
+            &fixture,
+            "conn_selected",
+            McpRuntimeSessionSource::ManagedHost,
+            42,
+        )?;
+        bind_mcp_runtime_project_session(
+            fixture.runtime_home.path(),
+            &selected_session.runtime_session_id,
+            "conn_selected",
+            PROJECT_ID,
+            "session_selected",
+            "host_selected",
+            "2026-07-19T00:00:01Z",
+        )?;
+
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                config_target: "/tmp/volicord-test-unrelated.toml".to_owned(),
+                ..connection("conn_unrelated")
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_unrelated".to_owned(),
+                project_id: PRIOR_OTHER_PROJECT_ID.to_owned(),
+            },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_unrelated",
+                "conn_unrelated",
+                PRIOR_OTHER_PROJECT_ID,
+            ),
+        )?;
+        let unrelated_session = start_test_runtime_session(
+            &fixture,
+            "conn_unrelated",
+            McpRuntimeSessionSource::ManagedHost,
+            43,
+        )?;
+        bind_mcp_runtime_project_session(
+            fixture.runtime_home.path(),
+            &unrelated_session.runtime_session_id,
+            "conn_unrelated",
+            PRIOR_OTHER_PROJECT_ID,
+            "session_unrelated",
+            "host_unrelated",
+            "2026-07-19T00:00:01Z",
+        )?;
+
+        let outcome =
+            remove_connection_project(fixture.runtime_home.path(), "conn_selected", PROJECT_ID)?;
+
+        assert!(outcome.connection_removed);
+        assert!(mcp_runtime_session(
+            fixture.runtime_home.path(),
+            &selected_session.runtime_session_id
+        )?
+        .is_none());
+        assert_eq!(
+            registry_connection_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_selected"
+            )?,
+            0
+        );
+        assert_eq!(
+            registry_connection_row_count(&fixture, "guard_installations", "conn_selected")?,
+            0
+        );
+        assert!(agent_connection_record(fixture.runtime_home.path(), "conn_unrelated")?.is_some());
+        assert!(mcp_runtime_session(
+            fixture.runtime_home.path(),
+            &unrelated_session.runtime_session_id
+        )?
+        .is_some());
+        assert_eq!(
+            registry_connection_row_count(&fixture, "connection_projects", "conn_unrelated")?,
+            1
+        );
+        assert_eq!(
+            registry_connection_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_unrelated"
+            )?,
+            1
+        );
+        assert_eq!(
+            registry_connection_row_count(&fixture, "guard_installations", "conn_unrelated")?,
+            1
+        );
+        assert!(
+            project_record_for_execution(fixture.runtime_home.path(), PRIOR_OTHER_PROJECT_ID)?
+                .is_some()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn membership_only_removal_keeps_connection_wide_and_other_project_state(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-remove-one-membership")?;
+        register_additional_project(
+            &fixture,
+            PRIOR_OTHER_PROJECT_ID,
+            "remove-one-membership-other-repo",
+        )?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_multi"))?;
+        for project_id in [PROJECT_ID, PRIOR_OTHER_PROJECT_ID] {
+            add_connection_project(
+                fixture.runtime_home.path(),
+                ConnectionProjectRegistration {
+                    connection_internal_id: "conn_multi".to_owned(),
+                    project_id: project_id.to_owned(),
+                },
+            )?;
+        }
+        for (guard_id, project_id) in [
+            ("guard_multi_selected", PROJECT_ID),
+            ("guard_multi_retained", PRIOR_OTHER_PROJECT_ID),
+        ] {
+            crate::guards::upsert_guard_installation(
+                fixture.runtime_home.path(),
+                guard_installation_upsert(
+                    fixture.runtime_home.path(),
+                    guard_id,
+                    "conn_multi",
+                    project_id,
+                ),
+            )?;
+        }
+        let runtime_session = start_test_runtime_session(
+            &fixture,
+            "conn_multi",
+            McpRuntimeSessionSource::ManagedHost,
+            44,
+        )?;
+        for (project_id, session_id, host_session_id) in [
+            (PROJECT_ID, "session_multi_selected", "host_multi_selected"),
+            (
+                PRIOR_OTHER_PROJECT_ID,
+                "session_multi_retained",
+                "host_multi_retained",
+            ),
+        ] {
+            bind_mcp_runtime_project_session(
+                fixture.runtime_home.path(),
+                &runtime_session.runtime_session_id,
+                "conn_multi",
+                project_id,
+                session_id,
+                host_session_id,
+                "2026-07-19T00:00:01Z",
+            )?;
+        }
+
+        let outcome =
+            remove_connection_project(fixture.runtime_home.path(), "conn_multi", PROJECT_ID)?;
+
+        assert_eq!(
+            outcome,
+            ConnectionProjectRemovalOutcome {
+                membership_removed: true,
+                connection_removed: false,
+                remaining_project_count: 1,
+            }
+        );
+        assert!(agent_connection_record(fixture.runtime_home.path(), "conn_multi")?.is_some());
+        assert!(mcp_runtime_session(
+            fixture.runtime_home.path(),
+            &runtime_session.runtime_session_id
+        )?
+        .is_some());
+        assert_eq!(
+            registry_connection_row_count(&fixture, "connection_projects", "conn_multi")?,
+            1
+        );
+        assert_eq!(
+            registry_connection_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_multi"
+            )?,
+            1
+        );
+        assert_eq!(
+            registry_connection_row_count(&fixture, "guard_installations", "conn_multi")?,
+            1
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_multi_selected"
+        )?
+        .is_none());
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_multi_retained"
+        )?
+        .is_some());
+        let remaining = list_connection_projects(fixture.runtime_home.path(), "conn_multi")?;
+        assert_eq!(remaining[0].project_id, PRIOR_OTHER_PROJECT_ID);
+        Ok(())
+    }
+
+    #[test]
+    fn pending_cleanup_conflict_preserves_all_removal_inputs() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-remove-pending-conflict")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_pending"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_pending".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_pending",
+                "conn_pending",
+                PROJECT_ID,
+            ),
+        )?;
+        let runtime_session = start_test_runtime_session(
+            &fixture,
+            "conn_pending",
+            McpRuntimeSessionSource::ManagedHost,
+            45,
+        )?;
+        bind_mcp_runtime_project_session(
+            fixture.runtime_home.path(),
+            &runtime_session.runtime_session_id,
+            "conn_pending",
+            PROJECT_ID,
+            "session_pending",
+            "host_pending",
+            "2026-07-19T00:00:01Z",
+        )?;
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database(&registry_path)?;
+        conn.execute(
+            "UPDATE agent_connections SET metadata_json = ?2 WHERE connection_internal_id = ?1",
+            params![
+                "conn_pending",
+                r#"{"pending_host_cleanup":{"project_id":"project_b","replacement_connection_id":"conn_replacement"}}"#
+            ],
+        )?;
+        drop(conn);
+
+        let error =
+            remove_connection_project(fixture.runtime_home.path(), "conn_pending", PROJECT_ID)
+                .expect_err("pending host cleanup must block generic removal");
+
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        assert_eq!(
+            registry_connection_row_count(&fixture, "connection_projects", "conn_pending")?,
+            1
+        );
+        assert_eq!(
+            registry_connection_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_pending"
+            )?,
+            1
+        );
+        assert_eq!(
+            registry_connection_row_count(&fixture, "guard_installations", "conn_pending")?,
+            1
+        );
+        assert_eq!(
+            registry_connection_row_count(&fixture, "mcp_runtime_sessions", "conn_pending")?,
+            1
+        );
+        assert!(agent_connection_record_for_diagnostics(
+            fixture.runtime_home.path(),
+            "conn_pending"
+        )?
+        .is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn missing_connection_project_removal_is_explicit_and_has_no_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-remove-missing-membership")?;
         ensure_agent_connection(fixture.runtime_home.path(), connection("conn_blocked"))?;
         add_connection_project(
             fixture.runtime_home.path(),
@@ -3196,12 +3644,30 @@ mod tests {
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
+        register_additional_project(
+            &fixture,
+            PRIOR_OTHER_PROJECT_ID,
+            "remove-missing-membership-other-repo",
+        )?;
 
-        assert!(!remove_agent_connection_if_unused(
+        let error = remove_connection_project(
             fixture.runtime_home.path(),
-            "conn_blocked"
-        )?);
+            "conn_blocked",
+            PRIOR_OTHER_PROJECT_ID,
+        )
+        .expect_err("a missing selected membership must not be reported as removed");
+        assert!(matches!(
+            error,
+            StoreError::NotFound {
+                entity: "connection_project",
+                ..
+            }
+        ));
         assert!(agent_connection_record(fixture.runtime_home.path(), "conn_blocked")?.is_some());
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_blocked")?.len(),
+            1
+        );
         Ok(())
     }
 
@@ -3223,6 +3689,84 @@ mod tests {
             },
         )?;
         Ok(RegistryFixture { runtime_home })
+    }
+
+    fn register_additional_project(
+        fixture: &RegistryFixture,
+        project_id: &str,
+        repo_name: &str,
+    ) -> StoreResult<ProjectRecord> {
+        register_project(
+            fixture.runtime_home.path(),
+            ProjectRegistration {
+                project_id: project_id.to_owned(),
+                repo_root: fixture.runtime_home.create_product_repo(repo_name)?,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )
+    }
+
+    fn start_test_runtime_session(
+        fixture: &RegistryFixture,
+        connection_internal_id: &str,
+        session_source: McpRuntimeSessionSource,
+        process_id: u32,
+    ) -> StoreResult<McpRuntimeSessionRecord> {
+        start_mcp_runtime_session(
+            fixture.runtime_home.path(),
+            McpRuntimeSessionStart {
+                connection_internal_id: connection_internal_id.to_owned(),
+                session_source,
+                observed_host_executable_version: None,
+                process_id,
+                process_started_at: "2026-07-19T00:00:00Z".to_owned(),
+            },
+        )
+    }
+
+    fn registry_connection_row_count(
+        fixture: &RegistryFixture,
+        table: &str,
+        connection_internal_id: &str,
+    ) -> StoreResult<i64> {
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database_read_only(&registry_path)?;
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE connection_internal_id = ?1"),
+            [connection_internal_id],
+            |row| row.get(0),
+        )
+        .map_err(StoreError::from)
+    }
+
+    fn delete_connection_project_membership_for_test(
+        runtime_home: &Path,
+        connection_internal_id: &str,
+        project_id: &str,
+    ) -> StoreResult<()> {
+        let registry_path = registry_db_path(runtime_home);
+        let conn = open_registry_database(&registry_path)?;
+        let project = raw_project_record_from_conn(&conn, project_id)?.ok_or_else(|| {
+            StoreError::NotFound {
+                entity: "project",
+                id: project_id.to_owned(),
+            }
+        })?;
+        let changed = conn.execute(
+            "DELETE FROM connection_projects
+              WHERE connection_internal_id = ?1
+                AND project_internal_id = ?2",
+            params![connection_internal_id, project.project_internal_id],
+        )?;
+        if changed != 1 {
+            return Err(StoreError::NotFound {
+                entity: "connection_project",
+                id: format!("{connection_internal_id}/{project_id}"),
+            });
+        }
+        Ok(())
     }
 
     fn assert_staged_activation_rejects_non_rebasable_marker(

@@ -311,6 +311,21 @@ Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범
 outcome만 저장합니다. 이 기록은 prompt, file, answer, command 본문을 저장하지
 않습니다.
 
+## 관리 Connection 제거
+
+승인된 `volicord connection remove` 적용은 immediate Registry transaction 하나를
+사용합니다. Agent Connection과 선택한 membership을 검증하고 pending-host-cleanup
+충돌을 거부한 뒤, 선택한 membership의 Registry project-session binding과 Guard
+Installation, membership을 삭제하고 commit 전에 남은 membership 수를 계산합니다.
+Membership이 남으면 connection 전체 runtime session과 다른 프로젝트 행은 바꾸지
+않습니다. Membership이 남지 않으면 Connection 소유의 남은 binding과 Guard
+Installation, 모든 Connection 소유 MCP runtime session, Agent Connection도 삭제합니다.
+
+거절되거나 실패한 Store transaction은 Registry에 효과를 남기지 않습니다. Dry run은
+Registry, host configuration, Product Repository에 효과가 없습니다. 프로젝트 로컬 Agent
+Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖의 프로젝트
+권한 행은 이 관리 삭제에 포함되지 않습니다.
+
 <a id="method-effects"></a>
 ## 메서드 저장 효과 요약
 

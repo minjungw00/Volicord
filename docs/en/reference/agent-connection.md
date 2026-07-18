@@ -290,6 +290,17 @@ selected project, Connection, intent, profile, or platform environment.
 Uninstall removes only content whose current managed identity still matches
 Volicord ownership.
 
+An explicit connection-removal command also retires connection-owned Registry
+integration state. Removing one membership deletes its Registry project-session
+bindings and Guard Installation. A multi-project personal Connection remains,
+with its connection-wide runtime sessions and other projects' owned rows, until
+its last membership is removed. Last-membership removal deletes all remaining
+Registry project-session bindings, Guard Installations, runtime sessions, and
+the Agent Connection. Project-local Agent Sessions, Guard observations,
+workflow history, evidence, and other authority records remain historical
+Product Repository state. They cannot authorize a later call without a current
+Registry membership and a current validated runtime/project session.
+
 ## Threat Model
 
 Trusted:

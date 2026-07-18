@@ -319,6 +319,23 @@ Workflow metrics writes store aggregate counters, durations, serialized tool
 byte counts, and categorical outcomes only. These records never contain prompt,
 file, answer, or command bodies.
 
+## Administrative Connection Removal
+
+An accepted `volicord connection remove` apply uses one immediate Registry
+transaction. It validates the Agent Connection and selected membership, rejects
+pending-host-cleanup conflicts, deletes the selected membership's Registry
+project-session bindings and Guard Installation, deletes the membership, and
+counts remaining memberships before commit. With remaining memberships it has
+no effect on connection-wide runtime sessions or other projects' rows. With no
+remaining membership it additionally deletes every remaining connection-owned
+binding and Guard Installation, every connection-owned MCP runtime session, and
+the Agent Connection.
+
+A rejected or failed Store transaction has no Registry effect. Dry run has no
+Registry, host-configuration, or Product Repository effect. Project-local
+Agent Sessions, Guard and workflow history, evidence, authority events, replay,
+and other project authority rows are never part of this administrative deletion.
+
 <a id="method-effects"></a>
 ## Method effect summary
 

@@ -93,8 +93,13 @@ volicord connection remove codex --shared --repo "<repo>"
 ```
 
 Removal deletes only Volicord-managed integration material named by the result.
-It does not delete the Product Repository, Runtime Home authority records, or
-unrelated Codex configuration.
+That includes the selected membership's Registry bindings and Guard
+Installation. The Agent Connection and its connection-wide runtime sessions
+remain while another repository membership exists; the last membership removes
+them after matching host configuration is removed. Project-local Agent
+Sessions, Guard and workflow history, evidence, and other authority records are
+retained. The Product Repository, other repositories, and unrelated Codex
+configuration are preserved.
 
 ## Related Guides
 

@@ -119,9 +119,22 @@ fn append_compact_host_configuration(
 }
 
 fn render_compact_remove_text(data: &ConnectionOutput<'_>, host: &str) -> String {
-    let remaining = data.projects.len();
+    let outcome = data
+        .removal_outcome
+        .expect("remove output requires a Store removal outcome");
+    let remaining = outcome.remaining_project_count;
+    let title = if outcome.connection_removed {
+        format!("Agent Connection removed for {host}")
+    } else {
+        format!("Repository membership removed for {host}")
+    };
+    let connection_state = if outcome.connection_removed {
+        "removed"
+    } else {
+        "retained"
+    };
     let mut output = format!(
-        "Agent Connection removed for {host}\n\nStatus:\n  Connection: removed from selected repository\n  Mode: {}\n  Remaining repositories: {}\n\n",
+        "{title}\n\nStatus:\n  Membership: removed\n  Agent Connection: {connection_state}\n  Mode: {}\n  Remaining repositories: {}\n\n",
         public_mode_text(&data.connection.mode),
         remaining
     );
@@ -134,16 +147,23 @@ fn render_compact_remove_text(data: &ConnectionOutput<'_>, host: &str) -> String
             output.push_str(&format!("  {}\n", project.project.repo_root.display()));
         }
     }
-    output.push_str("\nRemoved:\n  Selected repository membership\n");
-    if data.plan.is_some() && remaining == 0 {
+    output.push_str(
+        "\nRemoved:\n  Selected repository membership\n  Selected Registry session binding and Guard Installation\n",
+    );
+    if outcome.connection_removed {
         output.push_str(
-            "  Matching managed host configuration\n  Running host processes may keep cached configuration until they reload.\n",
+            "  Connection-owned Registry runtime sessions and Agent Connection\n  Matching managed host configuration\n  Running host processes may keep cached configuration until they reload.\n",
+        );
+        output.push_str(
+            "\nRetained:\n  Project-local workflow and Guard history in repository state\n",
         );
     } else {
-        output.push_str("  Host configuration kept for remaining connected repositories\n");
+        output.push_str(
+            "\nRetained:\n  Agent Connection and connection-wide runtime sessions\n  Host configuration and remaining repositories\n  Project-local workflow and Guard history in repository state\n",
+        );
     }
     output.push_str("\nNext:\n");
-    if data.plan.is_some() && remaining == 0 {
+    if outcome.connection_removed {
         output.push_str(&format!(
             "  1. Restart or reload {host} if a running host still shows cached Volicord tools.\n"
         ));

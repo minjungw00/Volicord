@@ -122,6 +122,22 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 호스트를 생략하면 현재 맥락이 모호하지 않을 때만 사용합니다. 명시적으로 받는 유일한 값은
 `codex`입니다.
 
+`volicord connection remove`는 선택한 Connection Project membership과 그 프로젝트
+범위 Registry binding 및 Guard Installation을 Store transaction 하나에서 제거합니다.
+다른 membership이 남으면 Agent Connection, connection 전체 runtime session, 다른
+membership과 그 Registry 행을 유지하며 공유 host configuration은 바꾸지 않습니다.
+마지막 membership이면 CLI가 plan을 검증하고 일치하는 관리 host entry를 먼저 제거한 뒤,
+남은 binding, Guard Installation, runtime session, membership, Agent Connection을
+제거하는 Registry transaction을 commit합니다. 소유한 host entry가 이미 없으면 no-op으로
+처리하므로 재시도에서 Registry 정리를 마칠 수 있습니다.
+
+Host 제거 실패는 Registry 변경 전에 발생합니다. 그 뒤 Registry 실패가 발생하면 Registry
+transaction 전체를 rollback하여, host 제거가 이미 성공했더라도 membership과 Agent
+Connection을 재시도에서 다시 선택할 수 있게 유지합니다. `--dry-run`은 Registry 상태,
+host configuration, Product Repository 내용을 모두 바꾸지 않습니다. 제거 출력은
+`membership_removed`, `connection_removed`, `remaining_project_count`를 포함하여
+membership만 제거한 경우와 Agent Connection을 완전히 제거한 경우를 구분합니다.
+
 <a id="agent-connection-result-states"></a>
 ### 연결 결과 상태
 

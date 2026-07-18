@@ -55,10 +55,76 @@ fn main() {
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     fresh_operation_version_transition_and_read_only_status()?;
+    connection_removal_after_operational_observations()?;
     dry_run_has_no_mutation()?;
     protocol_failures_are_authoritative()?;
     local_process_and_configuration_failures_are_structured()?;
     guard_failures_are_current_and_structured()?;
+    Ok(())
+}
+
+fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::new("operational-connection-removal")?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&init, 0, "init", "action_required")?;
+    let before = fixture.registry_snapshot();
+    let connection_id = before.agent_connections[0].connection_internal_id.clone();
+    let project_id = before.projects[0].project_id.clone();
+    let config_target = PathBuf::from(&before.agent_connections[0].config_target);
+    let manifest = guard_manifest_from_json(&before.guard_installations[0].manifest_json)?;
+    fixture.run_successful_managed_mcp_with_guard(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        "future.session.connection.removal",
+        &manifest,
+    )?;
+    let repository_before = fixture.repository_snapshot()?;
+    let project_state_path = fixture.project_state_db_path();
+    let project_state = rusqlite::Connection::open(&project_state_path)?;
+    let agent_sessions_before: i64 =
+        project_state.query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?;
+    let guard_events_before: i64 =
+        project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
+    assert!(agent_sessions_before > 0);
+    assert!(guard_events_before > 0);
+    drop(project_state);
+
+    let output = fixture.run_connection("remove", FUTURE_VERSION, true)?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(report["membership_removed"], true);
+    assert_eq!(report["connection_removed"], true);
+    assert_eq!(report["remaining_project_count"], 0);
+    let after = fixture.registry_snapshot();
+    assert!(after.agent_connections.is_empty());
+    assert!(after.connection_projects.is_empty());
+    assert!(after.guard_installations.is_empty());
+    let registry = rusqlite::Connection::open(&after.path)?;
+    for table in [
+        "mcp_runtime_project_session_bindings",
+        "mcp_runtime_sessions",
+    ] {
+        let count: i64 = registry.query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE connection_internal_id = ?1"),
+            [&connection_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(count, 0, "{table} retained removed Connection rows");
+    }
+    let project_state = rusqlite::Connection::open(project_state_path)?;
+    let agent_sessions_after: i64 =
+        project_state.query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?;
+    let guard_events_after: i64 =
+        project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
+    assert_eq!(agent_sessions_after, agent_sessions_before);
+    assert_eq!(guard_events_after, guard_events_before);
+    assert_eq!(fixture.repository_snapshot()?, repository_before);
+    assert!(!fs::read_to_string(config_target)
+        .unwrap_or_default()
+        .contains("mcp_servers.volicord"));
     Ok(())
 }
 
