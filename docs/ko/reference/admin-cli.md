@@ -147,6 +147,20 @@ file을 다시 쓰지 않고, 기존 managed host를 새 revision에 맞춰 relo
 event는 이력으로 남지만 현재 check를 충족하지 못하며, 나중에 이전에 사용한 mode로 돌아가도
 다시 현재 상태가 되지 않습니다.
 
+`volicord init`이 선택한 프로젝트의 Connection을 교체할 때 migration은 superseded
+membership보다 먼저 그 프로젝트의 Registry project-session binding과 Guard
+Installation을 폐기합니다. Superseded Connection에 다른 프로젝트가 있으면 이 순서의
+폐기, replacement membership과 Guard Installation, replacement 활성화를 Registry
+transaction 하나에서 commit합니다. 기존 Connection, 다른 membership과 그 child row,
+connection 전체 runtime session은 유지합니다. Superseded Connection의 마지막
+프로젝트라면 기존 Connection을 비활성화하고 host 정리가 성공할 때까지 membership,
+binding, Guard Installation, 정확한 pending-host-cleanup marker를 유지합니다. Host 정리가
+실패하면 이 완전한 재시도 inventory를 바꾸지 않은 채 `partial_application`을 보고합니다.
+Host 정리 뒤의 최종 Registry transaction은 replacement, marker, membership inventory를
+다시 검증하고 기존 프로젝트 소유 행과 membership을 폐기한 뒤 marker를 지웁니다. 소유한
+host entry가 이미 없으면 no-op이므로 replay는 두 Connection의 현재 행을 중복 생성하지
+않고 Registry 정리를 마칠 수 있습니다.
+
 `volicord connection remove`는 선택한 Connection Project membership과 그 프로젝트
 범위 Registry binding 및 Guard Installation을 Store transaction 하나에서 제거합니다.
 다른 membership이 남으면 Agent Connection, connection 전체 runtime session, 다른

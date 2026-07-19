@@ -137,14 +137,21 @@ Registry 저장소는 위의 row만으로 managed operation에 권한을 부여�
 권한 schema를 담은 Runtime Home은 다른 `StorageManifest`에 속하므로 migration 없이
 거부합니다.
 
-명시적인 Connection Project 제거는 이 행들을 Connection 소유 Registry 통합 상태로
-다룹니다. Store는 선택한 membership의 `mcp_runtime_project_session_bindings`, 프로젝트
-범위 `guard_installations`, `connection_projects` 행을 원자적으로 삭제합니다. 다른
-membership이 남으면 Agent Connection, 모든 `mcp_runtime_sessions` 행, 다른 프로젝트의
-binding과 Guard Installation을 유지합니다. Membership이 하나도 남지 않으면 Connection
-소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 runtime session과
-`agent_connections` 행을 삭제합니다. 프로젝트 등록, installation profile, Runtime Home
-기록, 모든 프로젝트 `state.sqlite` 행은 이 삭제 집합에 포함되지 않습니다.
+Connection Project 폐기는 이 행들을 Connection 소유 Registry 통합 상태로 다룹니다.
+명시적 제거와 migration은 선택한 membership의
+`mcp_runtime_project_session_bindings`, 프로젝트 범위 `guard_installations`,
+`connection_projects` 행 순서로 원자적으로 삭제합니다. 여러 프로젝트를 가진 superseded
+Connection에 membership이 남으면 Agent Connection, 모든 `mcp_runtime_sessions` 행, 다른
+프로젝트의 binding과 Guard Installation을 유지합니다. 명시적으로 마지막 membership을
+제거하면 Connection 소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 runtime
+session과 `agent_connections` 행을 삭제합니다.
+
+마지막 프로젝트 migration은 host 정리와 최종 Registry 재검증이 성공할 때까지 비활성
+기존 membership, 그 binding과 Guard Installation, pending-host-cleanup marker를 하나의
+재시도 inventory로 유지합니다. 최종 정리는 이 프로젝트 소유 행과 membership을 함께
+삭제하고 marker를 지우지만, membership이 없는 비활성 과거 Connection과 그 connection 전체
+runtime session은 유지합니다. 프로젝트 등록, installation profile, Runtime Home 기록,
+모든 프로젝트 `state.sqlite` 행은 어떤 폐기 집합에도 포함되지 않습니다.
 
 유지된 프로젝트 로컬 Agent Session과 Guard 또는 workflow 이력은 이후 권한이 되지
 않습니다. Runtime 권한은 계속 위에서 설명한 현재 Registry membership, runtime session,

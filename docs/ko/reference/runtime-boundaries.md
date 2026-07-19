@@ -135,9 +135,12 @@ signal이 아니므로 crash 뒤 열린 것처럼 남은 row와 concurrent proce
 - 변경 불가능한 Connection 통합 instance ID와 integration generation은 Runtime Home
   lifecycle 좌표입니다. Host나 actor identity, release certification, security
   credential, 호출자가 고르는 값이 아닙니다.
-- 명시적인 connection 제거는 저장소 담당자가 정한 Connection 소유 Registry 통합 행만
-  삭제합니다. 프로젝트 등록이나 프로젝트 로컬 Agent Session, Guard 및 workflow 이력,
-  evidence와 그 밖의 권한 데이터는 삭제하지 않습니다.
+- 명시적 제거와 Connection migration은 저장소 담당자가 정한 순서로 선택한
+  connection/project 소유 Registry 통합 행만 폐기합니다. 마지막 프로젝트의 pending
+  migration은 host 정리가 성공할 때까지 이 완전한 Registry inventory를 유지합니다. 어느
+  경로도 프로젝트 등록이나 프로젝트 로컬 Agent Session, Guard 및 workflow 이력,
+  evidence와 그 밖의 권한 데이터를 삭제하지 않으며, 유지된 이력은 현재 Registry
+  소유권이 없으면 현재 호출에 권한을 부여할 수 없습니다.
 - 내보내기와 릴리스 검증 출력은 유지 문서나 Runtime Home trust input이 아니라 명시적인
   외부 출력 위치에 둡니다.
 

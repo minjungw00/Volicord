@@ -319,22 +319,39 @@ Workflow metrics writes store aggregate counters, durations, serialized tool
 byte counts, and categorical outcomes only. These records never contain prompt,
 file, answer, or command bodies.
 
-## Administrative Connection Removal
+## Administrative Connection Project Retirement
 
 An accepted `volicord connection remove` apply uses one immediate Registry
 transaction. It validates the Agent Connection and selected membership, rejects
 pending-host-cleanup conflicts, deletes the selected membership's Registry
-project-session bindings and Guard Installation, deletes the membership, and
+project-session bindings, then its Guard Installation and membership, and
 counts remaining memberships before commit. With remaining memberships it has
 no effect on connection-wide runtime sessions or other projects' rows. With no
 remaining membership it additionally deletes every remaining connection-owned
 binding and Guard Installation, every connection-owned MCP runtime session, and
 the Agent Connection.
 
+Connection migration uses the same owner-ordered project retirement. A
+multi-project superseded Connection loses only the selected project's bindings,
+Guard Installation, and membership in the same Registry transaction that
+activates the replacement membership, Guard Installation, and Connection. Its
+other projects' rows and connection-wide runtime sessions remain.
+
+A last-project superseded Connection instead remains disabled with its complete
+membership, bindings, Guard Installation, and pending-host-cleanup marker while
+external cleanup is pending or fails. After successful cleanup, one final
+Registry transaction revalidates the exact replacement, marker, and membership
+inventory, retires the project-owned rows before the membership, and clears the
+marker. Revalidation failure leaves that complete Registry inventory unchanged
+for retry. The disabled zero-membership historical Connection and its
+connection-wide runtime sessions remain after successful migration cleanup.
+
 A rejected or failed Store transaction has no Registry effect. Dry run has no
 Registry, host-configuration, or Product Repository effect. Project-local
 Agent Sessions, Guard and workflow history, evidence, authority events, replay,
-and other project authority rows are never part of this administrative deletion.
+and other project authority rows are never part of this administrative
+retirement. Retained historical rows cannot authorize a current call without
+current Registry ownership.
 
 <a id="method-effects"></a>
 ## Method effect summary

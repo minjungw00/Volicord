@@ -27,18 +27,23 @@ use volicord_cli::{
 };
 use volicord_store::{
     agent_connections::{
-        agent_connection_record, update_agent_connection_verification_report,
-        AgentConnectionRecord, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
+        agent_connection_record, connection_metadata_contains_pending_host_cleanup_key,
+        update_agent_connection_verification_report, AgentConnectionRecord,
+        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
     },
     core_pipeline::CoreProjectStore,
+    guards::{agent_session, upsert_agent_session, AgentSessionUpsert},
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
-    operational_sessions::connection_integration_revision,
+    operational_sessions::{
+        connection_integration_revision, mcp_runtime_session, start_mcp_runtime_session,
+        McpRuntimeSessionStart,
+    },
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
     canonical_json_sha256, guard_manifest_has_exact_current_shape,
     guard_manifest_managed_artifacts, guard_manifest_matches_owner_binding,
-    GuardManifestOwnerBinding, ProjectId,
+    GuardManifestOwnerBinding, McpRuntimeSessionSource, ProjectId,
 };
 
 const GENERATED_SHAPE_ERROR: &str =
@@ -56,8 +61,12 @@ struct FakeConnectionProcess {
 
 impl FakeConnectionProcess {
     fn new(fixture: &TempRuntimeHome) -> Result<Self, Box<dyn Error>> {
-        let codex_home = fixture.path().join("fake-codex-home");
-        let isolated_path = fixture.path().join("isolated-path");
+        Self::named(fixture, "fake")
+    }
+
+    fn named(fixture: &TempRuntimeHome, name: &str) -> Result<Self, Box<dyn Error>> {
+        let codex_home = fixture.path().join(format!("{name}-codex-home"));
+        let isolated_path = fixture.path().join(format!("{name}-isolated-path"));
         fs::create_dir_all(&codex_home)?;
         fs::create_dir_all(&isolated_path)?;
         Ok(Self {
@@ -371,6 +380,207 @@ fn multi_project_init_replay_preserves_selected_read_only_connection_and_other_m
     Ok(())
 }
 
+#[test]
+fn init_migration_retires_bound_project_state_from_a_multi_project_connection(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-bound-multi-project-migration")?;
+    let selected_repo = create_git_repo(&fixture, "repo-selected")?;
+    let retained_repo = create_git_repo(&fixture, "repo-retained")?;
+    let mut prior_process = FakeConnectionProcess::named(&fixture, "prior")?;
+
+    assert_failed_init_with_recorded_guard(&run_record_init(&selected_repo, &mut prior_process)?);
+    assert_failed_init_with_recorded_guard(&run_record_init(&retained_repo, &mut prior_process)?);
+    let before = registry_snapshot(fixture.path());
+    assert_eq!(before.agent_connections.len(), 1);
+    assert_eq!(before.connection_projects.len(), 2);
+    let prior_connection = before.agent_connections[0].clone();
+    let selected_project_id = project_id_for_repo(&before, &selected_repo)?;
+    let retained_project_id = project_id_for_repo(&before, &retained_repo)?;
+    let selected_guard_id = guard_id_for_project(
+        &before,
+        &prior_connection.connection_internal_id,
+        &selected_project_id,
+    )?;
+    let retained_guard_id = guard_id_for_project(
+        &before,
+        &prior_connection.connection_internal_id,
+        &retained_project_id,
+    )?;
+    let (runtime_id, selected_session_id) = seed_managed_project_session(
+        fixture.path(),
+        &prior_connection.connection_internal_id,
+        &selected_project_id,
+        &selected_guard_id,
+        5001,
+        "init.migration.selected",
+    )?;
+    seed_project_session_on_runtime(
+        fixture.path(),
+        &runtime_id,
+        &prior_connection.connection_internal_id,
+        &retained_project_id,
+        &retained_guard_id,
+        "init.migration.retained",
+        "2026-07-19T00:00:02Z",
+    )?;
+
+    let mut replacement_process = FakeConnectionProcess::named(&fixture, "replacement")?;
+    let migration = run_record_init_outcome(&selected_repo, &mut replacement_process)?;
+    assert_failed_init_with_recorded_guard(&migration);
+    assert!(migration["migration"].is_null());
+    assert!(!migration["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("FOREIGN KEY"));
+
+    let after = registry_snapshot(fixture.path());
+    assert_eq!(after.agent_connections.len(), 2);
+    assert_eq!(after.connection_projects.len(), 2);
+    assert_eq!(after.guard_installations.len(), 2);
+    assert_eq!(after.runtime_project_session_bindings.len(), 1);
+    assert_eq!(
+        after.runtime_project_session_bindings[0].connection_internal_id,
+        prior_connection.connection_internal_id
+    );
+    assert_eq!(
+        after.runtime_project_session_bindings[0].project_internal_id,
+        retained_project_id
+    );
+    let retained_prior = after
+        .agent_connections
+        .iter()
+        .find(|connection| {
+            connection.connection_internal_id == prior_connection.connection_internal_id
+        })
+        .expect("prior multi-project Connection remains");
+    assert!(retained_prior.enabled);
+    assert_eq!(
+        retained_prior.integration_instance_id,
+        prior_connection.integration_instance_id
+    );
+    assert_eq!(
+        retained_prior.integration_generation,
+        prior_connection.integration_generation
+    );
+    assert!(mcp_runtime_session(fixture.path(), &runtime_id)?.is_some());
+    assert!(agent_session(fixture.path(), &selected_project_id, &selected_session_id,)?.is_some());
+
+    let replay = run_record_init(&selected_repo, &mut replacement_process)?;
+    assert_failed_init_with_recorded_guard(&replay);
+    let replayed = registry_snapshot(fixture.path());
+    assert_eq!(replayed.agent_connections.len(), 2);
+    assert_eq!(replayed.connection_projects.len(), 2);
+    assert_eq!(replayed.guard_installations.len(), 2);
+    assert_eq!(replayed.runtime_project_session_bindings.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn init_migration_retains_bound_cleanup_inventory_until_host_cleanup_replay(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-bound-pending-cleanup")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut prior_process = FakeConnectionProcess::named(&fixture, "prior")?;
+    assert_failed_init_with_recorded_guard(&run_record_init(&repo_root, &mut prior_process)?);
+    let before = registry_snapshot(fixture.path());
+    let prior_connection = before.agent_connections[0].clone();
+    let project_id = project_id_for_repo(&before, &repo_root)?;
+    let guard_id = guard_id_for_project(
+        &before,
+        &prior_connection.connection_internal_id,
+        &project_id,
+    )?;
+    let (runtime_id, project_session_id) = seed_managed_project_session(
+        fixture.path(),
+        &prior_connection.connection_internal_id,
+        &project_id,
+        &guard_id,
+        5002,
+        "init.cleanup.pending",
+    )?;
+    let prior_config_target = PathBuf::from(&prior_connection.config_target);
+    fs::write(&prior_config_target, "malformed = [\n")?;
+
+    let mut replacement_process = FakeConnectionProcess::named(&fixture, "replacement")?;
+    let failed_cleanup = run_record_init_outcome(&repo_root, &mut replacement_process)?;
+    assert_eq!(
+        failed_cleanup["migration"]["state"], "partial_application",
+        "unexpected migration output: {failed_cleanup}"
+    );
+    assert_eq!(
+        failed_cleanup["migration"]["registry_transition"],
+        "applied"
+    );
+    assert_eq!(
+        failed_cleanup["migration"]["prior_connection_inventory"],
+        "disabled_pending_host_cleanup"
+    );
+    assert!(!failed_cleanup["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("FOREIGN KEY"));
+
+    let pending = registry_snapshot(fixture.path());
+    assert_eq!(pending.agent_connections.len(), 2);
+    assert_eq!(pending.connection_projects.len(), 2);
+    assert_eq!(pending.guard_installations.len(), 2);
+    assert_eq!(pending.runtime_project_session_bindings.len(), 1);
+    let pending_prior = pending
+        .agent_connections
+        .iter()
+        .find(|connection| {
+            connection.connection_internal_id == prior_connection.connection_internal_id
+        })
+        .expect("disabled prior Connection remains");
+    assert!(!pending_prior.enabled);
+    assert!(connection_metadata_contains_pending_host_cleanup_key(
+        &pending_prior.metadata_json
+    ));
+    assert!(mcp_runtime_session(fixture.path(), &runtime_id)?.is_some());
+    assert!(agent_session(fixture.path(), &project_id, &project_session_id)?.is_some());
+
+    fs::remove_file(&prior_config_target)?;
+    let cleanup_replay = run_record_init_outcome(&repo_root, &mut replacement_process)?;
+    assert_failed_init_with_recorded_guard(&cleanup_replay);
+    assert!(cleanup_replay["migration"].is_null());
+    assert!(!cleanup_replay["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("FOREIGN KEY"));
+
+    let cleaned = registry_snapshot(fixture.path());
+    assert_eq!(cleaned.agent_connections.len(), 2);
+    assert_eq!(
+        cleaned.connection_projects.len(),
+        1,
+        "cleanup replay did not retire inventory: {cleanup_replay}"
+    );
+    assert_eq!(cleaned.guard_installations.len(), 1);
+    assert!(cleaned.runtime_project_session_bindings.is_empty());
+    let historical_prior = cleaned
+        .agent_connections
+        .iter()
+        .find(|connection| {
+            connection.connection_internal_id == prior_connection.connection_internal_id
+        })
+        .expect("zero-membership prior Connection remains as history");
+    assert!(!historical_prior.enabled);
+    assert!(!connection_metadata_contains_pending_host_cleanup_key(
+        &historical_prior.metadata_json
+    ));
+    assert!(mcp_runtime_session(fixture.path(), &runtime_id)?.is_some());
+    assert!(agent_session(fixture.path(), &project_id, &project_session_id)?.is_some());
+
+    let replay = run_record_init(&repo_root, &mut replacement_process)?;
+    assert_failed_init_with_recorded_guard(&replay);
+    let replayed = registry_snapshot(fixture.path());
+    assert_eq!(replayed.agent_connections.len(), 2);
+    assert_eq!(replayed.connection_projects.len(), 1);
+    assert_eq!(replayed.guard_installations.len(), 1);
+    assert!(replayed.runtime_project_session_bindings.is_empty());
+    Ok(())
+}
+
 fn run_record_init(
     repo_root: &Path,
     process: &mut FakeConnectionProcess,
@@ -415,6 +625,115 @@ fn run_record_init(
     };
     assert!(!output.contains(GENERATED_SHAPE_ERROR));
     Ok(serde_json::from_str(&output)?)
+}
+
+fn run_record_init_outcome(
+    repo_root: &Path,
+    process: &mut FakeConnectionProcess,
+) -> Result<Value, Box<dyn Error>> {
+    let output = match run_init_command(
+        InitArgs {
+            host: CodexHost::Codex,
+            repo: repo_root.to_path_buf(),
+            shared: false,
+            profile: RecordProfile::Record,
+            home: None,
+            mcp_command: None,
+            dry_run: false,
+            json: true,
+        },
+        repo_root,
+        process,
+    ) {
+        Ok(output) | Err(ConnectionCommandError::FailureOutput(output)) => output,
+        Err(error) => return Err(error.into()),
+    };
+    assert!(!output.contains(GENERATED_SHAPE_ERROR));
+    Ok(serde_json::from_str(&output)?)
+}
+
+fn project_id_for_repo(
+    snapshot: &RegistryInspectionSnapshot,
+    repo_root: &Path,
+) -> Result<String, Box<dyn Error>> {
+    snapshot
+        .projects
+        .iter()
+        .find(|project| project.repo_root == repo_root)
+        .map(|project| project.project_id.clone())
+        .ok_or_else(|| format!("missing project for {}", repo_root.display()).into())
+}
+
+fn guard_id_for_project(
+    snapshot: &RegistryInspectionSnapshot,
+    connection_internal_id: &str,
+    project_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    snapshot
+        .guard_installations
+        .iter()
+        .find(|guard| {
+            guard.connection_internal_id == connection_internal_id && guard.project_id == project_id
+        })
+        .map(|guard| guard.guard_installation_id.clone())
+        .ok_or_else(|| {
+            format!("missing Guard Installation for {connection_internal_id}/{project_id}").into()
+        })
+}
+
+fn seed_managed_project_session(
+    runtime_home: &Path,
+    connection_internal_id: &str,
+    project_id: &str,
+    guard_installation_id: &str,
+    process_id: u32,
+    host_session_id: &str,
+) -> Result<(String, String), Box<dyn Error>> {
+    let runtime = start_mcp_runtime_session(
+        runtime_home,
+        McpRuntimeSessionStart {
+            connection_internal_id: connection_internal_id.to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: Some("999.0.0".to_owned()),
+            process_id,
+            process_started_at: "2026-07-19T00:00:00Z".to_owned(),
+        },
+    )?;
+    let session = seed_project_session_on_runtime(
+        runtime_home,
+        &runtime.runtime_session_id,
+        connection_internal_id,
+        project_id,
+        guard_installation_id,
+        host_session_id,
+        "2026-07-19T00:00:01Z",
+    )?;
+    Ok((runtime.runtime_session_id, session))
+}
+
+fn seed_project_session_on_runtime(
+    runtime_home: &Path,
+    runtime_session_id: &str,
+    connection_internal_id: &str,
+    project_id: &str,
+    guard_installation_id: &str,
+    host_session_id: &str,
+    observed_at: &str,
+) -> Result<String, Box<dyn Error>> {
+    Ok(upsert_agent_session(
+        runtime_home,
+        project_id,
+        AgentSessionUpsert {
+            runtime_session_id: Some(runtime_session_id.to_owned()),
+            connection_internal_id: connection_internal_id.to_owned(),
+            guard_installation_id: Some(guard_installation_id.to_owned()),
+            host_session_id: host_session_id.to_owned(),
+            host_thread_id: format!("thread.{host_session_id}"),
+            host_turn_id: format!("turn.{host_session_id}"),
+            observed_at: observed_at.to_owned(),
+        },
+    )?
+    .session_id)
 }
 
 fn run_record_init_dry_run(

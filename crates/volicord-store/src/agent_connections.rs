@@ -1312,59 +1312,12 @@ pub fn remove_connection_project(
     let connection = require_agent_connection(&tx, connection_internal_id)?;
     reject_generic_pending_host_cleanup_mutation(&connection)?;
     let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
-    let membership_exists: i64 = tx.query_row(
-        "SELECT EXISTS (
-            SELECT 1
-              FROM connection_projects
-             WHERE connection_internal_id = ?1
-               AND project_internal_id = ?2
-        )",
-        params![
-            connection.connection_internal_id,
-            project.project_internal_id
-        ],
-        |row| row.get(0),
+    retire_connection_project_state_in_transaction(
+        &tx,
+        &connection.connection_internal_id,
+        &project.project_internal_id,
+        project_id,
     )?;
-    if membership_exists == 0 {
-        return Err(StoreError::NotFound {
-            entity: "connection_project",
-            id: format!("{connection_internal_id}/{project_id}"),
-        });
-    }
-
-    tx.execute(
-        "DELETE FROM mcp_runtime_project_session_bindings
-          WHERE connection_internal_id = ?1
-            AND project_internal_id = ?2",
-        params![
-            connection.connection_internal_id,
-            project.project_internal_id
-        ],
-    )?;
-    tx.execute(
-        "DELETE FROM guard_installations
-          WHERE connection_internal_id = ?1
-            AND project_internal_id = ?2",
-        params![
-            connection.connection_internal_id,
-            project.project_internal_id
-        ],
-    )?;
-    let membership_removed = tx.execute(
-        "DELETE FROM connection_projects
-          WHERE connection_internal_id = ?1
-            AND project_internal_id = ?2",
-        params![
-            connection.connection_internal_id,
-            project.project_internal_id
-        ],
-    )?;
-    if membership_removed != 1 {
-        return Err(StoreError::NotFound {
-            entity: "connection_project",
-            id: format!("{connection_internal_id}/{project_id}"),
-        });
-    }
 
     let remaining_project_count: i64 = tx.query_row(
         "SELECT COUNT(*)
@@ -1692,15 +1645,12 @@ pub fn activate_staged_connection(
                 id: retired_connection.connection_internal_id,
                 detail: "pending host cleanup gained another project membership".to_owned(),
             });
-        } else if let Some(project) = raw_project_record_from_conn(&tx, &retired.project_id)? {
-            tx.execute(
-                "DELETE FROM connection_projects
-                  WHERE connection_internal_id = ?1
-                    AND project_internal_id = ?2",
-                params![
-                    retired_connection.connection_internal_id,
-                    project.project_internal_id
-                ],
+        } else {
+            retire_connection_project_state_in_transaction(
+                &tx,
+                &retired_connection.connection_internal_id,
+                &project.project_internal_id,
+                project_id,
             )?;
         }
     }
@@ -1782,21 +1732,28 @@ pub fn complete_pending_host_cleanup<E>(
         pending_connection_ids,
     )?;
     for connection_id in pending_connection_ids {
-        tx.execute(
-            "DELETE FROM connection_projects
-              WHERE connection_internal_id = ?1
-                AND project_internal_id = ?2",
-            params![connection_id, project.project_internal_id],
+        retire_connection_project_state_in_transaction(
+            &tx,
+            connection_id,
+            &project.project_internal_id,
+            project_id,
         )?;
         let connection = require_agent_connection(&tx, connection_id)?;
         let metadata_json = metadata_without_pending_host_cleanup(&connection.metadata_json)?;
-        tx.execute(
+        let updated = tx.execute(
             "UPDATE agent_connections
                 SET metadata_json = ?2,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
               WHERE connection_internal_id = ?1",
             params![connection_id, metadata_json],
         )?;
+        if updated != 1 {
+            return Err(StoreError::NotFound {
+                entity: "agent_connection",
+                id: connection_id.clone(),
+            }
+            .into());
+        }
     }
     tx.commit()?;
     Ok(())
@@ -1831,6 +1788,27 @@ fn validate_pending_host_cleanup_inventory_in_transaction<E>(
     replacement_connection_id: &str,
     pending_connection_ids: &[String],
 ) -> Result<(), PendingHostCleanupError<E>> {
+    let replacement = require_agent_connection(tx, replacement_connection_id)?;
+    let replacement_project_count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM connection_projects
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![replacement_connection_id, project.project_internal_id],
+        |row| row.get(0),
+    )?;
+    if !replacement.enabled
+        || replacement_project_count != 1
+        || connection_metadata_contains_pending_host_cleanup_key(&replacement.metadata_json)
+    {
+        return Err(StoreError::Conflict {
+            entity: "connection_project",
+            id: format!("{replacement_connection_id}/{project_id}"),
+            detail: "pending host cleanup replacement is no longer one enabled current membership"
+                .to_owned(),
+        }
+        .into());
+    }
+
     for connection_id in pending_connection_ids {
         let connection = require_agent_connection(tx, connection_id)?;
         let total_project_count: i64 = tx.query_row(
@@ -1862,6 +1840,55 @@ fn validate_pending_host_cleanup_inventory_in_transaction<E>(
             }
             .into());
         }
+    }
+    Ok(())
+}
+
+fn retire_connection_project_state_in_transaction(
+    tx: &Connection,
+    connection_internal_id: &str,
+    project_internal_id: &str,
+    project_id: &str,
+) -> StoreResult<()> {
+    let membership_count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM connection_projects
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project_internal_id],
+        |row| row.get(0),
+    )?;
+    if membership_count != 1 {
+        return Err(StoreError::NotFound {
+            entity: "connection_project",
+            id: format!("{connection_internal_id}/{project_id}"),
+        });
+    }
+
+    tx.execute(
+        "DELETE FROM mcp_runtime_project_session_bindings
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project_internal_id],
+    )?;
+    tx.execute(
+        "DELETE FROM guard_installations
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project_internal_id],
+    )?;
+    let membership_removed = tx.execute(
+        "DELETE FROM connection_projects
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project_internal_id],
+    )?;
+    if membership_removed != 1 {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: "registry",
+            detail: format!(
+                "connection project retirement removed {membership_removed} memberships for {connection_internal_id}/{project_id}"
+            ),
+        });
     }
     Ok(())
 }
@@ -3222,6 +3249,20 @@ mod tests {
             },
         )?;
         set_connection_enabled(fixture.runtime_home.path(), "conn_disabled", false)?;
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                config_target: "/tmp/conn-replacement-config.toml".to_owned(),
+                ..connection("conn_replacement")
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_replacement".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
 
         let error = complete_pending_host_cleanup(
             fixture.runtime_home.path(),
@@ -3288,6 +3329,45 @@ mod tests {
                 project_id: PRIOR_OTHER_PROJECT_ID.to_owned(),
             },
         )?;
+        for (guard_id, project_id) in [
+            ("guard_prior_selected", PROJECT_ID),
+            ("guard_prior_retained", PRIOR_OTHER_PROJECT_ID),
+        ] {
+            crate::guards::upsert_guard_installation(
+                fixture.runtime_home.path(),
+                guard_installation_upsert(
+                    fixture.runtime_home.path(),
+                    guard_id,
+                    "conn_prior",
+                    project_id,
+                ),
+            )?;
+        }
+        let prior_runtime = start_test_runtime_session(
+            &fixture,
+            "conn_prior",
+            McpRuntimeSessionSource::ManagedHost,
+            46,
+        )?;
+        let mut prior_project_sessions = Vec::new();
+        for (project_id, guard_id, host_session_id) in [
+            (PROJECT_ID, "guard_prior_selected", "host_prior_selected"),
+            (
+                PRIOR_OTHER_PROJECT_ID,
+                "guard_prior_retained",
+                "host_prior_retained",
+            ),
+        ] {
+            prior_project_sessions.push(upsert_test_agent_session(
+                &fixture,
+                &prior_runtime.runtime_session_id,
+                "conn_prior",
+                project_id,
+                guard_id,
+                host_session_id,
+                "2026-07-19T00:00:01Z",
+            )?);
+        }
         ensure_agent_connection(
             fixture.runtime_home.path(),
             AgentConnectionRegistration {
@@ -3440,6 +3520,51 @@ mod tests {
         let prior_projects = list_connection_projects(fixture.runtime_home.path(), "conn_prior")?;
         assert_eq!(prior_projects.len(), 1);
         assert_eq!(prior_projects[0].project_id, PRIOR_OTHER_PROJECT_ID);
+        assert!(mcp_runtime_session(
+            fixture.runtime_home.path(),
+            &prior_runtime.runtime_session_id
+        )?
+        .is_some());
+        for session in prior_project_sessions {
+            assert!(crate::guards::agent_session(
+                fixture.runtime_home.path(),
+                if session.host_session_id == "host_prior_selected" {
+                    PROJECT_ID
+                } else {
+                    PRIOR_OTHER_PROJECT_ID
+                },
+                &session.session_id,
+            )?
+            .is_some());
+        }
+        assert_eq!(
+            registry_connection_project_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_prior",
+                PROJECT_ID,
+            )?,
+            0
+        );
+        assert_eq!(
+            registry_connection_project_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_prior",
+                PRIOR_OTHER_PROJECT_ID,
+            )?,
+            1
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_prior_selected"
+        )?
+        .is_none());
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_prior_retained"
+        )?
+        .is_some());
         let staged_projects = list_connection_projects(fixture.runtime_home.path(), "conn_staged")?;
         assert_eq!(staged_projects.len(), 2);
         assert!(staged_projects
@@ -3467,6 +3592,30 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_prior_pending",
+                "conn_prior",
+                PROJECT_ID,
+            ),
+        )?;
+        let prior_runtime = start_test_runtime_session(
+            &fixture,
+            "conn_prior",
+            McpRuntimeSessionSource::ManagedHost,
+            47,
+        )?;
+        let prior_agent_session = upsert_test_agent_session(
+            &fixture,
+            &prior_runtime.runtime_session_id,
+            "conn_prior",
+            PROJECT_ID,
+            "guard_prior_pending",
+            "host_prior_pending",
+            "2026-07-19T00:00:01Z",
         )?;
         let staged_registration = AgentConnectionRegistration {
             connection_internal_id: "conn_staged".to_owned(),
@@ -3586,6 +3735,20 @@ mod tests {
             list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
             1
         );
+        assert_eq!(
+            registry_connection_project_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_prior",
+                PROJECT_ID,
+            )?,
+            1
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_prior_pending"
+        )?
+        .is_some());
         assert!(
             agent_connection_record(fixture.runtime_home.path(), "conn_staged")?
                 .expect("activated connection")
@@ -3698,6 +3861,20 @@ mod tests {
             list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
             1
         );
+        assert_eq!(
+            registry_connection_project_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_prior",
+                PROJECT_ID,
+            )?,
+            1
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_prior_pending"
+        )?
+        .is_some());
         let revalidation_failure = complete_pending_host_cleanup(
             fixture.runtime_home.path(),
             PROJECT_ID,
@@ -3728,10 +3905,34 @@ mod tests {
             list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
             1
         );
+        assert_eq!(
+            registry_connection_project_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_prior",
+                PROJECT_ID,
+            )?,
+            1
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_prior_pending"
+        )?
+        .is_some());
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let registry = open_registry_database(&registry_path)?;
+        let prior = require_agent_connection(&registry, "conn_prior")?;
+        let restored_metadata =
+            metadata_with_pending_host_cleanup(&prior.metadata_json, PROJECT_ID, "conn_staged")?;
+        registry.execute(
+            "UPDATE agent_connections SET metadata_json = ?2 WHERE connection_internal_id = ?1",
+            params!["conn_prior", restored_metadata],
+        )?;
+        drop(registry);
         complete_pending_host_cleanup(
             fixture.runtime_home.path(),
             PROJECT_ID,
-            "conn_newer",
+            "conn_staged",
             &pending_host_cleanup,
             |_| {
                 let transition = mode_transition_input(
@@ -3744,6 +3945,37 @@ mod tests {
             },
         )?;
         assert!(list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.is_empty());
+        assert_eq!(
+            registry_connection_project_row_count(
+                &fixture,
+                "mcp_runtime_project_session_bindings",
+                "conn_prior",
+                PROJECT_ID,
+            )?,
+            0
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_prior_pending"
+        )?
+        .is_none());
+        assert!(mcp_runtime_session(
+            fixture.runtime_home.path(),
+            &prior_runtime.runtime_session_id
+        )?
+        .is_some());
+        assert!(crate::guards::agent_session(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            &prior_agent_session.session_id,
+        )?
+        .is_some());
+        let retired = agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
+            .expect("disabled zero-membership connection remains as history");
+        assert!(!retired.enabled);
+        assert!(!connection_metadata_contains_pending_host_cleanup_key(
+            &retired.metadata_json
+        ));
         let after_cleanup = agent_connection_record(fixture.runtime_home.path(), "conn_staged")?
             .expect("replacement connection after cleanup");
         assert_eq!(
@@ -3783,6 +4015,30 @@ mod tests {
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_prior_chain",
+                "conn_prior",
+                PROJECT_ID,
+            ),
+        )?;
+        let prior_runtime = start_test_runtime_session(
+            &fixture,
+            "conn_prior",
+            McpRuntimeSessionSource::ManagedHost,
+            48,
+        )?;
+        let prior_agent_session = upsert_test_agent_session(
+            &fixture,
+            &prior_runtime.runtime_session_id,
+            "conn_prior",
+            PROJECT_ID,
+            "guard_prior_chain",
+            "host_prior_chain",
+            "2026-07-19T00:00:01Z",
+        )?;
         for (connection_id, target) in [
             ("conn_middle", "/tmp/volicord-test-middle.toml"),
             ("conn_next", "/tmp/volicord-test-next.toml"),
@@ -3813,6 +4069,21 @@ mod tests {
             ),
         )?;
         assert_eq!(first_pending, ["conn_prior"]);
+        let middle_runtime = start_test_runtime_session(
+            &fixture,
+            "conn_middle",
+            McpRuntimeSessionSource::ManagedHost,
+            49,
+        )?;
+        let middle_agent_session = upsert_test_agent_session(
+            &fixture,
+            &middle_runtime.runtime_session_id,
+            "conn_middle",
+            PROJECT_ID,
+            "guard_middle",
+            "host_middle_chain",
+            "2026-07-19T00:00:02Z",
+        )?;
 
         let (_, _, rebased_pending) = activate_staged_connection(
             fixture.runtime_home.path(),
@@ -3857,6 +4128,47 @@ mod tests {
             &["conn_prior".to_owned(), "conn_middle".to_owned()],
             |_| Ok::<(), StoreError>(()),
         )?;
+        for connection_id in ["conn_prior", "conn_middle"] {
+            assert!(
+                list_connection_projects(fixture.runtime_home.path(), connection_id)?.is_empty()
+            );
+            assert_eq!(
+                registry_connection_project_row_count(
+                    &fixture,
+                    "mcp_runtime_project_session_bindings",
+                    connection_id,
+                    PROJECT_ID,
+                )?,
+                0
+            );
+        }
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_prior_chain"
+        )?
+        .is_none());
+        assert!(
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_middle")?
+                .is_none()
+        );
+        assert!(mcp_runtime_session(
+            fixture.runtime_home.path(),
+            &prior_runtime.runtime_session_id
+        )?
+        .is_some());
+        assert!(mcp_runtime_session(
+            fixture.runtime_home.path(),
+            &middle_runtime.runtime_session_id
+        )?
+        .is_some());
+        for session in [prior_agent_session, middle_agent_session] {
+            assert!(crate::guards::agent_session(
+                fixture.runtime_home.path(),
+                PROJECT_ID,
+                &session.session_id,
+            )?
+            .is_some());
+        }
         Ok(())
     }
 
@@ -4766,6 +5078,30 @@ mod tests {
         )
     }
 
+    fn upsert_test_agent_session(
+        fixture: &RegistryFixture,
+        runtime_session_id: &str,
+        connection_internal_id: &str,
+        project_id: &str,
+        guard_installation_id: &str,
+        host_session_id: &str,
+        observed_at: &str,
+    ) -> StoreResult<crate::guards::AgentSessionRecord> {
+        crate::guards::upsert_agent_session(
+            fixture.runtime_home.path(),
+            project_id,
+            crate::guards::AgentSessionUpsert {
+                runtime_session_id: Some(runtime_session_id.to_owned()),
+                connection_internal_id: connection_internal_id.to_owned(),
+                guard_installation_id: Some(guard_installation_id.to_owned()),
+                host_session_id: host_session_id.to_owned(),
+                host_thread_id: format!("thread.{host_session_id}"),
+                host_turn_id: format!("turn.{host_session_id}"),
+                observed_at: observed_at.to_owned(),
+            },
+        )
+    }
+
     fn registry_connection_row_count(
         fixture: &RegistryFixture,
         table: &str,
@@ -4776,6 +5112,30 @@ mod tests {
         conn.query_row(
             &format!("SELECT COUNT(*) FROM {table} WHERE connection_internal_id = ?1"),
             [connection_internal_id],
+            |row| row.get(0),
+        )
+        .map_err(StoreError::from)
+    }
+
+    fn registry_connection_project_row_count(
+        fixture: &RegistryFixture,
+        table: &str,
+        connection_internal_id: &str,
+        project_id: &str,
+    ) -> StoreResult<i64> {
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database_read_only(&registry_path)?;
+        let project = raw_project_record_from_conn(&conn, project_id)?.ok_or_else(|| {
+            StoreError::NotFound {
+                entity: "project",
+                id: project_id.to_owned(),
+            }
+        })?;
+        conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM {table} WHERE connection_internal_id = ?1 AND project_internal_id = ?2"
+            ),
+            params![connection_internal_id, project.project_internal_id],
             |row| row.get(0),
         )
         .map_err(StoreError::from)

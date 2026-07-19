@@ -361,6 +361,18 @@ workflow history, evidence, and other authority records remain historical
 Product Repository state. They cannot authorize a later call without a current
 Registry membership and a current validated runtime/project session.
 
+Connection migration uses the same project-scoped Registry retirement order.
+For a superseded multi-project Connection, it removes only the selected
+project's runtime/project bindings, Guard Installation, and membership in the
+atomic replacement activation transaction. For a superseded last-project
+Connection, it keeps the old Connection disabled with that complete project
+inventory and a pending-host-cleanup marker until external cleanup succeeds.
+The final Registry transaction revalidates the replacement and exact retained
+inventory before deleting the bindings, Guard Installation, and membership and
+clearing the marker. Cleanup or revalidation failure leaves the inventory
+intact for retry; successful cleanup retains the disabled zero-membership
+historical Connection and its connection-wide runtime sessions.
+
 ## Threat Model
 
 Trusted:

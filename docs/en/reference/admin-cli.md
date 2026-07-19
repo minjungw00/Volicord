@@ -154,6 +154,22 @@ reloaded against the new revision. Prior runtime sessions, project Agent
 Sessions, and Guard events remain historical and cannot satisfy current checks,
 including when a later transition returns to a previously used mode.
 
+When `volicord init` replaces the selected project's Connection, migration
+retires that project's Registry project-session bindings and Guard Installation
+before its superseded membership. For a superseded multi-project Connection,
+that ordered retirement, the replacement membership and Guard Installation,
+and replacement activation commit in one Registry transaction; the old
+Connection, its other memberships and child rows, and connection-wide runtime
+sessions remain. For a superseded last-project Connection, migration instead
+disables the old Connection and retains its membership, bindings, Guard
+Installation, and exact pending-host-cleanup marker until host cleanup succeeds.
+Cleanup failure reports `partial_application` with that complete retry inventory
+unchanged. After host cleanup, a final Registry transaction revalidates the
+replacement, marker, and membership inventory, retires the old project-owned
+rows and membership, and clears the marker. An already absent owned host entry
+is a no-op, so replay can finish Registry cleanup without duplicating either
+Connection's current rows.
+
 `volicord connection remove` removes the selected Connection Project
 membership and its project-scoped Registry bindings and Guard Installation in
 one Store transaction. If other memberships remain, the Agent Connection,

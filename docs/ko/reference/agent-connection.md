@@ -321,6 +321,16 @@ Session, Guard 관찰, workflow 이력, evidence와 그 밖의 권한 기록은 
 과거 상태로 유지됩니다. 현재 Registry membership과 현재 검증된 runtime/project
 session이 없으면 이 과거 기록은 이후 호출에 권한을 부여할 수 없습니다.
 
+Connection migration은 같은 프로젝트 범위 Registry 폐기 순서를 사용합니다. 여러
+프로젝트를 가진 superseded Connection에서는 원자적 replacement 활성화 transaction 안에서
+선택한 프로젝트의 runtime/project binding, Guard Installation, membership만 제거합니다.
+마지막 프로젝트를 가진 superseded Connection에서는 외부 정리가 성공할 때까지 기존
+Connection을 비활성화하고 그 프로젝트의 완전한 inventory와 pending-host-cleanup marker를
+유지합니다. 최종 Registry transaction은 replacement와 정확한 유지 inventory를 다시
+검증한 뒤 binding, Guard Installation, membership을 삭제하고 marker를 지웁니다. 정리나
+재검증이 실패하면 inventory를 온전히 유지하여 재시도할 수 있으며, 정리가 성공해도
+membership이 없는 비활성 과거 Connection과 그 connection 전체 runtime session은 유지합니다.
+
 ## 위협 모델
 
 신뢰 대상:

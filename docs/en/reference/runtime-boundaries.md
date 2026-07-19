@@ -150,10 +150,13 @@ is never an operational authority source.
 - The immutable Connection integration-instance ID and integration generation
   are Runtime Home lifecycle coordinates. They are not host or actor identity,
   release certification, security credentials, or caller-selected values.
-- Explicit connection removal deletes only the connection-owned Registry
-  integration rows selected by the storage owners. It does not delete project
-  registrations or project-local Agent Sessions, Guard and workflow history,
-  evidence, or other authority data.
+- Explicit removal and Connection migration retire only the selected
+  connection/project-owned Registry integration rows in storage-owner order.
+  Pending last-project migration retains that complete Registry inventory until
+  host cleanup succeeds. Neither path deletes project registrations or
+  project-local Agent Sessions, Guard and workflow history, evidence, or other
+  authority data; retained history cannot authorize a current call without
+  current Registry ownership.
 - Export and release-validation output belongs in an explicit external output
   location, not maintained docs or Runtime Home trust input.
 

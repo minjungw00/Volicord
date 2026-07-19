@@ -155,16 +155,24 @@ Registry storage authorizes managed operations only through the rows above. A
 Runtime Home with a noncurrent authorization schema belongs to a different
 `StorageManifest` and is rejected without migration.
 
-Explicit Connection Project removal treats these rows as connection-owned
-Registry integration state. The Store atomically deletes the selected
-membership's `mcp_runtime_project_session_bindings`, project-scoped
-`guard_installations`, and `connection_projects` row. If memberships remain,
-it retains the Agent Connection, every `mcp_runtime_sessions` row, and other
-projects' bindings and Guard Installations. If none remain, it deletes every
-remaining binding and Guard Installation owned by the Connection, then its
-runtime sessions and `agent_connections` row. Project registrations,
-installation profiles, Runtime Home records, and all project `state.sqlite`
-rows remain outside this deletion set.
+Connection Project retirement treats these rows as connection-owned Registry
+integration state. Explicit removal and migration atomically delete the
+selected membership's `mcp_runtime_project_session_bindings`, project-scoped
+`guard_installations`, and then the `connection_projects` row. If a superseded
+multi-project Connection retains memberships, its Agent Connection, every
+`mcp_runtime_sessions` row, and other projects' bindings and Guard Installations
+remain. Explicit final-membership removal deletes every remaining binding and
+Guard Installation owned by the Connection, then its runtime sessions and
+`agent_connections` row.
+
+Last-project migration instead keeps the disabled old membership, its bindings
+and Guard Installation, and the pending-host-cleanup marker as one retry
+inventory until host cleanup and final Registry revalidation succeed. Final
+cleanup deletes those project-owned rows and membership together and clears the
+marker, while the disabled zero-membership historical Connection and its
+connection-wide runtime sessions remain. Project registrations, installation
+profiles, Runtime Home records, and all project `state.sqlite` rows remain
+outside every retirement set.
 
 Retained project-local Agent Sessions and Guard or workflow history do not
 become future authority. Runtime authorization still requires the current

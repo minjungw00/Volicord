@@ -1018,7 +1018,10 @@ fn existing_host_plan(
     let host_kind = parse_host_kind(&connection.host_kind)?;
     let host_scope = parse_host_scope(&connection.host_scope)?;
     let connection_intent = parse_connection_intent(&connection.intent)?;
-    let metadata = parse_metadata(&connection.metadata_json)?;
+    let metadata = parse_metadata(
+        &connection.metadata_json,
+        selected_project.map(|project| project.project_id.as_str()),
+    )?;
     let mcp_command = metadata
         .get("mcp_command")
         .map(PathBuf::from)
@@ -1551,7 +1554,10 @@ fn metadata_json_base() -> Result<String, ConnectionCommandError> {
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
 
-fn parse_metadata(text: &str) -> Result<BTreeMap<String, String>, ConnectionCommandError> {
+fn parse_metadata(
+    text: &str,
+    pending_cleanup_project_id: Option<&str>,
+) -> Result<BTreeMap<String, String>, ConnectionCommandError> {
     let value = serde_json::from_str::<Value>(text).map_err(|_| {
         ConnectionCommandError::runtime(
             "PERSISTED_CONNECTION_METADATA_CORRUPT: metadata_json is not valid JSON",
@@ -1562,8 +1568,12 @@ fn parse_metadata(text: &str) -> Result<BTreeMap<String, String>, ConnectionComm
             "PERSISTED_CONNECTION_METADATA_CORRUPT: metadata_json is not an object",
         )
     })?;
+    let has_valid_pending_cleanup = pending_cleanup_project_id.is_some_and(|project_id| {
+        connection_metadata_has_pending_host_cleanup_for_project(text, project_id)
+    });
     object
         .iter()
+        .filter(|(key, _)| !(has_valid_pending_cleanup && key.as_str() == "pending_host_cleanup"))
         .map(|(key, value)| {
             value
                 .as_str()
@@ -1814,10 +1824,27 @@ mod persisted_metadata_tests {
 
     #[test]
     fn stored_connection_metadata_never_defaults_after_decode_failure() {
-        assert!(parse_metadata("{").is_err());
-        assert!(parse_metadata("[]").is_err());
-        assert!(parse_metadata(r#"{"created_by":42}"#).is_err());
-        assert!(parse_metadata("{}").expect("empty typed map").is_empty());
+        assert!(parse_metadata("{", None).is_err());
+        assert!(parse_metadata("[]", None).is_err());
+        assert!(parse_metadata(r#"{"created_by":42}"#, None).is_err());
+        assert!(parse_metadata("{}", None)
+            .expect("empty typed map")
+            .is_empty());
+        let pending_cleanup = r#"{
+            "created_by":"volicord_cli_agent_connection",
+            "pending_host_cleanup":{
+                "project_id":"project_fixture",
+                "replacement_connection_id":"conn_replacement"
+            }
+        }"#;
+        assert_eq!(
+            parse_metadata(pending_cleanup, Some("project_fixture"))
+                .expect("exact pending cleanup marker")
+                .get("created_by")
+                .map(String::as_str),
+            Some("volicord_cli_agent_connection")
+        );
+        assert!(parse_metadata(pending_cleanup, Some("project_other")).is_err());
     }
 
     #[test]

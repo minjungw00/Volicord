@@ -311,20 +311,35 @@ Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범
 outcome만 저장합니다. 이 기록은 prompt, file, answer, command 본문을 저장하지
 않습니다.
 
-## 관리 Connection 제거
+## 관리 Connection Project 폐기
 
 승인된 `volicord connection remove` 적용은 immediate Registry transaction 하나를
 사용합니다. Agent Connection과 선택한 membership을 검증하고 pending-host-cleanup
 충돌을 거부한 뒤, 선택한 membership의 Registry project-session binding과 Guard
-Installation, membership을 삭제하고 commit 전에 남은 membership 수를 계산합니다.
+Installation, membership 순서로 삭제하고 commit 전에 남은 membership 수를 계산합니다.
 Membership이 남으면 connection 전체 runtime session과 다른 프로젝트 행은 바꾸지
 않습니다. Membership이 남지 않으면 Connection 소유의 남은 binding과 Guard
 Installation, 모든 Connection 소유 MCP runtime session, Agent Connection도 삭제합니다.
 
+Connection migration도 같은 소유자 순서의 프로젝트 폐기를 사용합니다. 여러 프로젝트를
+가진 superseded Connection에서는 replacement membership, Guard Installation,
+Connection을 활성화하는 같은 Registry transaction 안에서 선택한 프로젝트의 binding,
+Guard Installation, membership만 제거합니다. 다른 프로젝트 행과 connection 전체 runtime
+session은 유지합니다.
+
+마지막 프로젝트를 가진 superseded Connection은 외부 정리가 대기 중이거나 실패하는 동안
+membership, binding, Guard Installation, pending-host-cleanup marker의 완전한 inventory와
+함께 비활성 상태로 남습니다. 정리가 성공한 뒤 최종 Registry transaction 하나에서 정확한
+replacement, marker, membership inventory를 다시 검증하고 프로젝트 소유 행을 membership보다
+먼저 폐기한 뒤 marker를 지웁니다. 재검증이 실패하면 완전한 Registry inventory를 바꾸지 않아
+재시도할 수 있습니다. 정리가 성공한 뒤에도 membership이 없는 비활성 과거 Connection과 그
+connection 전체 runtime session은 유지합니다.
+
 거절되거나 실패한 Store transaction은 Registry에 효과를 남기지 않습니다. Dry run은
 Registry, host configuration, Product Repository에 효과가 없습니다. 프로젝트 로컬 Agent
 Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖의 프로젝트
-권한 행은 이 관리 삭제에 포함되지 않습니다.
+권한 행은 이 관리 폐기에 포함되지 않습니다. 유지된 과거 행은 현재 Registry 소유권이 없으면
+현재 호출에 권한을 부여할 수 없습니다.
 
 <a id="method-effects"></a>
 ## 메서드 저장 효과 요약
