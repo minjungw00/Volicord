@@ -3318,33 +3318,27 @@ pub(crate) fn test_guard_manifest_json(
     policy_hash: &str,
 ) -> String {
     use volicord_types::{
-        AgentConnectionId, GuardCommand, GuardCommandSet, GuardHookPhase, GuardInstallationId,
-        GuardManifest, HostKind, IntegrationProfile, ManagedFileExpectation, PolicyHash, ProjectId,
-        GUARD_MANIFEST_SCHEMA,
+        AgentConnectionId, GuardCommandAbsolutePath, GuardCommandInvocationSet,
+        GuardCommandProjection, GuardHookPhase, GuardInstallationId, GuardManifest, HostKind,
+        IntegrationProfile, ManagedFileExpectation, PolicyHash, ProjectId, GUARD_MANIFEST_SCHEMA,
     };
 
     let integration_revision = connection_integration_revision(connection).expect("test revision");
-    let command = |phase: GuardHookPhase| GuardCommand {
-        command: repo_root.join("bin/volicord").display().to_string(),
-        args: vec![
-            "_hook".to_owned(),
-            phase.command_name().to_owned(),
-            "--repo".to_owned(),
-            repo_root.display().to_string(),
-            "--connection".to_owned(),
-            connection.connection_internal_id.clone(),
-            "--guard-installation".to_owned(),
-            guard_installation_id.to_owned(),
-            "--host".to_owned(),
-            "codex".to_owned(),
-            "--integration-profile".to_owned(),
-            "record".to_owned(),
-            "--policy-hash".to_owned(),
-            policy_hash.to_owned(),
-            "--host-output".to_owned(),
-            "codex".to_owned(),
-        ],
-    };
+    let typed_policy_hash = PolicyHash::parse(policy_hash).expect("test policy hash");
+    let runtime_commands = GuardCommandInvocationSet::new(
+        GuardCommandAbsolutePath::from_path(&repo_root.join("bin/volicord"))
+            .expect("test command path"),
+        GuardCommandAbsolutePath::from_path(repo_root).expect("test repository path"),
+        AgentConnectionId::new(&connection.connection_internal_id),
+        GuardInstallationId::new(guard_installation_id),
+        HostKind::Codex,
+        IntegrationProfile::Record,
+        Some(typed_policy_hash.clone()),
+        HostKind::Codex,
+    )
+    .expect("test Guard invocation set")
+    .to_commands(GuardCommandProjection::Runtime)
+    .expect("test runtime command projection");
     let hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
     let block = |kind: &str, path: PathBuf| ManagedFileExpectation {
         kind: kind.to_owned(),
@@ -3445,13 +3439,9 @@ pub(crate) fn test_guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: HostKind::Codex,
         integration_profile: IntegrationProfile::Record,
-        policy_hash: PolicyHash::parse(policy_hash).expect("test policy hash"),
+        policy_hash: typed_policy_hash,
         integration_revision,
-        runtime_commands: GuardCommandSet {
-            pre_tool: command(GuardHookPhase::PreTool),
-            post_tool: command(GuardHookPhase::PostTool),
-            prompt_capture: command(GuardHookPhase::PromptCapture),
-        },
+        runtime_commands,
         managed_files: files,
         required_hook_phases: GuardHookPhase::REQUIRED.to_vec(),
     };

@@ -9,8 +9,9 @@ use volicord_store::{
     core_pipeline::CoreProjectStore,
 };
 use volicord_types::{
-    guard_manifest_from_json, guard_manifest_matches_owner_binding, GuardCommandSet,
-    GuardHookPhase, GuardManifestOwnerBinding, IntegrationProfile, PolicyHash, ProjectId,
+    guard_manifest_from_json, guard_manifest_matches_owner_binding, GuardCommandInvocationSet,
+    GuardCommandSet, GuardHookPhase, GuardManifestOwnerBinding, IntegrationProfile, PolicyHash,
+    ProjectId,
 };
 
 use crate::{
@@ -33,8 +34,8 @@ use crate::{
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
-        host_capabilities, ConnectionIntent, HostIntegrationFileKind, HostKind, HostLifecyclePhase,
-        ManagedServerEntry, REQUIRED_GUARD_PHASES,
+        guard_phase_capability_name, host_capabilities, ConnectionIntent, HostIntegrationFileKind,
+        HostKind, ManagedServerEntry,
     },
 };
 
@@ -109,7 +110,7 @@ pub(crate) fn plan_guard_integration(
         host_kind,
         profile,
         None,
-    );
+    )?;
     let mut policy = policy_json(
         host_kind,
         profile,
@@ -134,12 +135,12 @@ pub(crate) fn plan_guard_integration(
         guard_installation_id,
         host_kind,
         profile,
-        Some(policy_hash.as_str()),
-    );
+        Some(&policy_hash),
+    )?;
     let host_hook_commands = host_hook_command_specs(
         host_kind,
         repo_root,
-        &REQUIRED_GUARD_PHASES,
+        &GuardHookPhase::REQUIRED,
         HostHookPurpose::Guard,
     )?;
     let prior_policy = recorded_local_policy(repo_root)?;
@@ -166,7 +167,7 @@ pub(crate) fn plan_guard_integration(
         repo_root,
         commands: &runtime_commands,
         host_commands: &host_hook_commands,
-        phases: &REQUIRED_GUARD_PHASES,
+        phases: &GuardHookPhase::REQUIRED,
         purpose: HostHookPurpose::Guard,
     })?);
     let retired_files = plan_retired_files(
@@ -218,17 +219,14 @@ pub(crate) fn plan_guard_integration(
 fn validate_generated_guard_plan(
     plan: GuardIntegrationPlan,
 ) -> Result<GuardIntegrationPlan, GuardIntegrationError> {
-    let projection_matches = GuardHookPhase::REQUIRED.into_iter().all(|phase| {
-        let policy = plan.policy_commands.get(phase);
-        let runtime = plan.runtime_commands.get(phase);
-        policy.command == runtime.command
-            && policy.args.len() == 14
-            && runtime.args.len() == 16
-            && runtime.args[..12] == policy.args[..12]
-            && runtime.args[12] == "--policy-hash"
-            && runtime.args[13] == plan.policy_hash.as_str()
-            && runtime.args[14..] == policy.args[12..]
-    });
+    let policy = GuardCommandInvocationSet::from_policy_commands(&plan.policy_commands);
+    let runtime =
+        GuardCommandInvocationSet::from_runtime_commands(&plan.runtime_commands, &plan.policy_hash);
+    let projection_matches = policy
+        .as_ref()
+        .ok()
+        .zip(runtime.as_ref().ok())
+        .is_some_and(|(policy, runtime)| policy.fields_match_except_policy_hash(runtime));
     if !projection_matches {
         return Err(GuardIntegrationError::runtime(
             "generated Guard plan does not preserve the policy/runtime command projection contract",
@@ -385,11 +383,11 @@ fn plan_retired_files_from_manifest(
 
 fn guard_hooks_unsupported_message(
     host_kind: HostKind,
-    missing_required_hooks: &[HostLifecyclePhase],
+    missing_required_hooks: &[GuardHookPhase],
 ) -> String {
     let missing = missing_required_hooks
         .iter()
-        .map(|phase| phase.capability_name())
+        .map(|phase| guard_phase_capability_name(*phase))
         .collect::<Vec<_>>()
         .join(", ");
     format!(

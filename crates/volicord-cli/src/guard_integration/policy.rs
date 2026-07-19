@@ -5,7 +5,9 @@ use std::{
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use volicord_types::{GuardCommandSet, IntegrationProfile};
+use volicord_types::{
+    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, IntegrationProfile,
+};
 
 use crate::{
     guard_integration::{
@@ -13,7 +15,9 @@ use crate::{
         hooks::guard_command_specs_json,
         public_host_label, GuardIntegrationError,
     },
-    host_integration::{ConnectionIntent, HostKind, ManagedServerEntry, REQUIRED_GUARD_PHASES},
+    host_integration::{
+        guard_phase_capability_name, ConnectionIntent, HostKind, ManagedServerEntry,
+    },
 };
 
 pub(crate) const POLICY_STORAGE_SCOPE: &str = "local_overlay";
@@ -40,7 +44,6 @@ const POLICY_TOP_LEVEL_KEYS: &[&str] = &[
 ];
 const POLICY_MCP_KEYS: &[&str] = &["command", "args", "env"];
 const POLICY_HOST_HOOK_KEYS: &[&str] = &["enabled", "commands"];
-const POLICY_HOOK_PHASE_KEYS: &[&str] = &["pre_tool", "post_tool", "prompt_capture"];
 const POLICY_HOOK_COMMAND_KEYS: &[&str] = &["command", "args"];
 const POLICY_WORKFLOW_KEYS: &[&str] = &[
     "default_direct_control",
@@ -347,9 +350,10 @@ pub(crate) fn validate_workflow_policy(
         "$.host_hook.commands",
         "policy schema requires host_hook.commands as an object",
     )?;
+    let phase_keys = GuardHookPhase::REQUIRED.map(GuardHookPhase::as_str);
     validate_exact_object_keys(
         commands,
-        POLICY_HOOK_PHASE_KEYS,
+        &phase_keys,
         "$.host_hook.commands",
         "host_hook.commands",
     )?;
@@ -383,6 +387,39 @@ pub(crate) fn validate_workflow_policy(
                 ),
             ));
         }
+    }
+    let command_set = serde_json::from_value::<GuardCommandSet>(Value::Object(commands.clone()))
+        .map_err(|_| {
+            validation_issue(
+                "POLICY_VALUE_INVALID",
+                "$.host_hook.commands",
+                "policy schema requires the exact current Guard command set",
+            )
+        })?;
+    let invocations =
+        GuardCommandInvocationSet::from_policy_commands(&command_set).map_err(|_| {
+            validation_issue(
+                "POLICY_BINDING_MISMATCH",
+                "$.host_hook.commands",
+                "policy schema requires exact hash-free Guard policy commands",
+            )
+        })?;
+    let invocation = invocations.get(GuardHookPhase::PreTool);
+    let command_binding_matches = object.get("repo_root").and_then(Value::as_str)
+        == Some(invocation.repo_root.as_str())
+        && object.get("connection_id").and_then(Value::as_str)
+            == Some(invocation.connection_id.as_str())
+        && object.get("guard_installation_id").and_then(Value::as_str)
+            == Some(invocation.guard_installation_id.as_str())
+        && object.get("host").and_then(Value::as_str) == Some(invocation.host_kind.as_str())
+        && object.get("selected_profile").and_then(Value::as_str)
+            == Some(invocation.integration_profile.as_str());
+    if !command_binding_matches {
+        return Err(validation_issue(
+            "POLICY_BINDING_MISMATCH",
+            "$.host_hook.commands",
+            "policy Guard commands must match the policy owner fields",
+        ));
     }
     if !enabled {
         return Err(validation_issue(
@@ -619,9 +656,9 @@ fn secret_like_env_key(key: &str) -> bool {
 }
 
 pub(crate) fn required_guard_phase_names() -> Vec<&'static str> {
-    REQUIRED_GUARD_PHASES
+    GuardHookPhase::REQUIRED
         .iter()
-        .map(|phase| phase.capability_name())
+        .map(|phase| guard_phase_capability_name(*phase))
         .collect()
 }
 

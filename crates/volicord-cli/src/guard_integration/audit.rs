@@ -12,16 +12,17 @@ use volicord_store::{
 };
 use volicord_types::{
     guard_manifest_from_json, guard_manifest_matches_owner_binding,
-    ConnectionIntegrationRevisionBasis, GuardCommandSet, GuardHookPhase, GuardManifestOwnerBinding,
-    IntegrationRevision, ProjectId,
+    ConnectionIntegrationRevisionBasis, GuardCommand, GuardCommandInvocation,
+    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManifestOwnerBinding,
+    IntegrationRevision, PolicyHash, ProjectId,
 };
 
 use crate::host_integration::{
     contracts::{
         contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
     },
-    HostIntegrationFileKind, HostKind, HostLifecyclePhase, MANAGED_WRAPPER_ENV,
-    MANAGED_WRAPPER_VALUE, REQUIRED_GUARD_PHASES,
+    guard_phase_capability_name, HostIntegrationFileKind, HostKind, MANAGED_WRAPPER_ENV,
+    MANAGED_WRAPPER_VALUE,
 };
 
 use super::{
@@ -533,11 +534,10 @@ fn guard_file_findings_with_context(
 }
 
 fn missing_required_hooks_from_manifest(manifest: &volicord_types::GuardManifest) -> Vec<String> {
-    REQUIRED_GUARD_PHASES
+    GuardHookPhase::REQUIRED
         .into_iter()
-        .zip(GuardHookPhase::REQUIRED)
-        .filter(|(_, phase)| !manifest.required_hook_phases.contains(phase))
-        .map(|(phase, _)| phase.capability_name().to_owned())
+        .filter(|phase| !manifest.required_hook_phases.contains(phase))
+        .map(|phase| guard_phase_capability_name(phase).to_owned())
         .collect()
 }
 
@@ -738,8 +738,18 @@ fn verify_managed_json_file(
             return;
         }
     }
-    let owner_fields_match = policy.get("connection_id").and_then(Value::as_str)
-        == manifest.get("connection_id").and_then(Value::as_str)
+    let command_owner_fields_match = policy_command_invocations(&policy)
+        .zip(runtime_command_invocations(manifest))
+        .is_some_and(|(policy_commands, runtime_commands)| {
+            let policy_command = policy_commands.get(GuardHookPhase::PreTool);
+            let runtime_command = runtime_commands.get(GuardHookPhase::PreTool);
+            policy_command.repo_root == runtime_command.repo_root
+                && policy.get("repo_root").and_then(Value::as_str)
+                    == Some(policy_command.repo_root.as_str())
+        });
+    let owner_fields_match = command_owner_fields_match
+        && policy.get("connection_id").and_then(Value::as_str)
+            == manifest.get("connection_id").and_then(Value::as_str)
         && policy.get("guard_installation_id").and_then(Value::as_str)
             == manifest
                 .get("guard_installation_id")
@@ -747,15 +757,7 @@ fn verify_managed_json_file(
         && policy.get("host").and_then(Value::as_str)
             == manifest.get("host_kind").and_then(Value::as_str)
         && policy.get("selected_profile").and_then(Value::as_str)
-            == manifest.get("integration_profile").and_then(Value::as_str)
-        && policy.get("repo_root").and_then(Value::as_str)
-            == manifest
-                .get("runtime_commands")
-                .and_then(|commands| commands.get("pre_tool"))
-                .and_then(|command| command.get("args"))
-                .and_then(Value::as_array)
-                .and_then(|args| args.get(3))
-                .and_then(Value::as_str);
+            == manifest.get("integration_profile").and_then(Value::as_str);
     if !owner_fields_match || !policy_runtime_commands_match(&policy, manifest) {
         findings.stale_files.push(path_text.to_owned());
         state = "stale";
@@ -766,31 +768,25 @@ fn verify_managed_json_file(
 }
 
 fn policy_runtime_commands_match(policy: &Value, manifest: &Value) -> bool {
-    let Some(policy_commands) = policy
+    policy_command_invocations(policy)
+        .zip(runtime_command_invocations(manifest))
+        .is_some_and(|(policy, runtime)| policy.fields_match_except_policy_hash(&runtime))
+}
+
+fn policy_command_invocations(policy: &Value) -> Option<GuardCommandInvocationSet> {
+    let commands = policy
         .get("host_hook")
         .and_then(|hook| hook.get("commands"))
-        .and_then(|value| serde_json::from_value::<GuardCommandSet>(value.clone()).ok())
-    else {
-        return false;
-    };
-    let Some(runtime_commands) = manifest
+        .and_then(|value| serde_json::from_value::<GuardCommandSet>(value.clone()).ok())?;
+    GuardCommandInvocationSet::from_policy_commands(&commands).ok()
+}
+
+fn runtime_command_invocations(manifest: &Value) -> Option<GuardCommandInvocationSet> {
+    let commands = manifest
         .get("runtime_commands")
-        .and_then(|value| serde_json::from_value::<GuardCommandSet>(value.clone()).ok())
-    else {
-        return false;
-    };
-    GuardHookPhase::REQUIRED.into_iter().all(|phase| {
-        let policy_command = policy_commands.get(phase);
-        let runtime_command = runtime_commands.get(phase);
-        runtime_command.args.len() == 16
-            && policy_command.args.len() == 14
-            && policy_command.command == runtime_command.command
-            && policy_command.args[..12] == runtime_command.args[..12]
-            && policy_command.args[12..] == runtime_command.args[14..]
-            && runtime_command.args[12] == "--policy-hash"
-            && manifest.get("policy_hash").and_then(Value::as_str)
-                == Some(runtime_command.args[13].as_str())
-    })
+        .and_then(|value| serde_json::from_value::<GuardCommandSet>(value.clone()).ok())?;
+    let policy_hash = PolicyHash::parse(manifest.get("policy_hash")?.as_str()?).ok()?;
+    GuardCommandInvocationSet::from_runtime_commands(&commands, &policy_hash).ok()
 }
 
 #[derive(Clone, Copy)]
@@ -1026,10 +1022,10 @@ pub(crate) fn is_volicord_codex_hook_config(value: &Value) -> bool {
     let Some(contract) = contract_for(HostKind::Codex) else {
         return false;
     };
-    if hooks.len() != REQUIRED_GUARD_PHASES.len() {
+    if hooks.len() != GuardHookPhase::REQUIRED.len() {
         return false;
     }
-    let phases: &[HostLifecyclePhase] = &REQUIRED_GUARD_PHASES;
+    let phases: &[GuardHookPhase] = &GuardHookPhase::REQUIRED;
     phases.iter().all(|phase| {
         let Some(event) = hook_event_for_phase(contract, *phase) else {
             return false;
@@ -1044,7 +1040,7 @@ pub(crate) fn is_volicord_codex_hook_config(value: &Value) -> bool {
     })
 }
 
-fn is_volicord_codex_hook_group(phase: HostLifecyclePhase, group: &Value) -> bool {
+fn is_volicord_codex_hook_group(phase: GuardHookPhase, group: &Value) -> bool {
     let Some(group) = group.as_object() else {
         return false;
     };
@@ -1057,7 +1053,7 @@ fn is_volicord_codex_hook_group(phase: HostLifecyclePhase, group: &Value) -> boo
             .is_some_and(|handler| is_volicord_codex_hook_handler(phase, handler))
 }
 
-fn is_volicord_codex_hook_handler(phase: HostLifecyclePhase, handler: &Value) -> bool {
+fn is_volicord_codex_hook_handler(phase: GuardHookPhase, handler: &Value) -> bool {
     let Some(object) = handler.as_object() else {
         return false;
     };
@@ -1066,18 +1062,11 @@ fn is_volicord_codex_hook_handler(phase: HostLifecyclePhase, handler: &Value) ->
             .get("command")
             .and_then(Value::as_str)
             .is_some_and(|command| {
-                let direct_guard = command
-                    .contains(&format!("volicord _hook {}", phase.command_name()))
-                    && command.contains("--connection")
-                    && command.contains("--guard-installation")
-                    && command.contains("--host codex")
-                    && command.contains("--host-output codex");
-                let wrapper = command.contains(&format!(
+                command.contains(&format!(
                     ".codex/hooks/volicord-{}.sh",
                     phase.command_name()
                 )) || (command.contains(CODEX_DISPATCH_WRAPPER)
-                    && command.contains(phase.command_name()));
-                direct_guard || wrapper
+                    && command.contains(phase.command_name()))
             })
 }
 
@@ -1142,61 +1131,38 @@ fn generated_shell_words(command: &str) -> Option<Vec<String>> {
 }
 
 fn generated_managed_command_shape_verified(file: &Value, command: &str) -> bool {
-    let Some(purpose) = file.get("purpose").and_then(Value::as_str) else {
+    if file.get("purpose").and_then(Value::as_str) != Some("guard") {
         return false;
-    };
+    }
     let Some(words) = generated_shell_words(command) else {
         return false;
     };
-    if !words
-        .first()
-        .is_some_and(|word| !word.is_empty() && Path::new(word).is_absolute())
-    {
+    let Some((executable, args)) = words.split_first() else {
         return false;
-    }
-    let required_options = [
-        "--repo",
-        "--connection",
-        "--guard-installation",
-        "--host",
-        "--integration-profile",
-        "--policy-hash",
-        "--host-output",
-    ];
-    let argument_start = match purpose {
-        "guard" => {
-            let Some(phase_key) = file.get("phase").and_then(Value::as_str) else {
-                return false;
-            };
-            let Some(phase) = REQUIRED_GUARD_PHASES
-                .into_iter()
-                .find(|phase| phase.policy_key() == phase_key)
-            else {
-                return false;
-            };
-            if words.get(1).map(String::as_str) != Some("_hook")
-                || words.get(2).map(String::as_str) != Some(phase.command_name())
-            {
-                return false;
-            }
-            3
-        }
-        _ => return false,
     };
-    if words.len() != argument_start + required_options.len() * 2 {
+    let command = GuardCommand {
+        command: executable.clone(),
+        args: args.to_vec(),
+    };
+    let Some(policy_hash) = file
+        .get("policy_hash")
+        .and_then(Value::as_str)
+        .and_then(|value| PolicyHash::parse(value).ok())
+    else {
         return false;
-    }
-    let arguments = &words[argument_start..];
-    required_options.into_iter().all(|option| {
-        arguments
-            .chunks_exact(2)
-            .filter(|pair| pair[0] == option)
-            .count()
-            == 1
-            && arguments
-                .chunks_exact(2)
-                .any(|pair| pair[0] == option && !pair[1].is_empty() && !pair[1].starts_with("--"))
-    })
+    };
+    let Ok(invocation) =
+        GuardCommandInvocation::from_runtime_command_with_policy_hash(&command, &policy_hash)
+    else {
+        return false;
+    };
+    file.get("phase").and_then(Value::as_str) == Some(invocation.phase.as_str())
+        && file.get("host_kind").and_then(Value::as_str) == Some(invocation.host_kind.as_str())
+        && file.get("connection_id").and_then(Value::as_str)
+            == Some(invocation.connection_id.as_str())
+        && file.get("guard_installation_id").and_then(Value::as_str)
+            == Some(invocation.guard_installation_id.as_str())
+        && file.get("host_output").and_then(Value::as_str) == Some(invocation.host_output.as_str())
 }
 
 fn has_current_managed_process_binding(content: &str) -> bool {
@@ -1352,9 +1318,35 @@ mod tests {
         assert!(valid.stale_files.is_empty());
         assert!(valid.broken_files.is_empty());
 
+        let mut hash_mismatch_manifest: Value = serde_json::from_str(&manifest_json)?;
+        hash_mismatch_manifest["runtime_commands"]["post_tool"]["args"][13] = Value::String(
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        );
+        let hash_mismatch = guard_file_findings_with_context(
+            &serde_json::to_string(&hash_mismatch_manifest)?,
+            Some(context),
+        );
+        assert!(hash_mismatch
+            .broken_files
+            .contains(&"manifest_json".to_owned()));
+
         let policy_path = repo_root.join(".volicord/policy.json");
         let policy_text = fs::read_to_string(&policy_path)?;
         let mut policy: Value = serde_json::from_str(&policy_text)?;
+        policy["host_hook"]["commands"]["post_tool"]["args"][5] =
+            Value::String("connection_other".to_owned());
+        fs::write(&policy_path, serde_json::to_string(&policy)?)?;
+        let command_owner_mismatch =
+            guard_file_findings_with_context(&manifest_json, Some(context));
+        assert!(
+            command_owner_mismatch
+                .stale_files
+                .contains(&policy_path.display().to_string())
+                || command_owner_mismatch
+                    .broken_files
+                    .contains(&policy_path.display().to_string())
+        );
+        policy = serde_json::from_str(&policy_text)?;
         policy["connection_intent"] = Value::String("personal".to_owned());
         fs::write(&policy_path, serde_json::to_string(&policy)?)?;
         let changed_policy = guard_file_findings_with_context(&manifest_json, Some(context));

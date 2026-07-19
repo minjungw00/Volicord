@@ -187,7 +187,9 @@ mod tests {
 
     use volicord_store::agent_connections::agent_connection_record_read_only;
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{guard_manifest_from_json, GuardHookPhase, IntegrationProfile};
+    use volicord_types::{
+        guard_manifest_from_json, GuardCommandInvocation, GuardHookPhase, IntegrationProfile,
+    };
 
     use super::{
         guard_manifest_has_exact_current_shape, guard_manifest_json, record_guard_installation,
@@ -255,6 +257,23 @@ mod tests {
             assert_eq!(
                 hook_wrapper_exec_command(&wrapper.content),
                 Some(expected_command.as_str())
+            );
+            let invocation = GuardCommandInvocation::from_runtime_command(runtime)?;
+            assert_eq!(
+                hook_wrapper_comment_value(&wrapper.content, "connection_id"),
+                Some(invocation.connection_id.as_str())
+            );
+            assert_eq!(
+                hook_wrapper_comment_value(&wrapper.content, "guard_installation_id"),
+                Some(invocation.guard_installation_id.as_str())
+            );
+            assert_eq!(
+                hook_wrapper_comment_value(&wrapper.content, "policy_hash"),
+                invocation.policy_hash.as_ref().map(|hash| hash.as_str())
+            );
+            assert_eq!(
+                hook_wrapper_comment_value(&wrapper.content, "host_output"),
+                Some(invocation.host_output.as_str())
             );
         }
 

@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 
 use serde_json::{json, Value};
+use volicord_types::GuardHookPhase;
 
 use crate::{
     guard_integration::{
@@ -16,7 +17,7 @@ use crate::{
         contracts::{
             contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
         },
-        HostIntegrationFileKind, HostKind, HostLifecyclePhase, REQUIRED_GUARD_PHASES,
+        guard_phase_capability_name, HostIntegrationFileKind, HostKind,
     },
 };
 
@@ -26,7 +27,7 @@ const CODEX_RULE_END_MARKER: &str = "# END VOLICORD MANAGED CODEX RULES";
 pub(crate) fn plan_codex_hook_file(
     repo_root: &Path,
     hook_commands: &BTreeMap<String, HostHookCommand>,
-    phases: &[HostLifecyclePhase],
+    phases: &[GuardHookPhase],
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let contract = contract_for(HostKind::Codex).ok_or_else(|| {
         GuardIntegrationError::runtime(
@@ -39,13 +40,13 @@ pub(crate) fn plan_codex_hook_file(
             let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
                 GuardIntegrationError::runtime(format!(
                     "GUARD_HOOKS_UNSUPPORTED: Codex contract is missing {} hook event data",
-                    phase.capability_name()
+                    guard_phase_capability_name(*phase)
                 ))
             })?;
-            let hook_command = hook_commands.get(phase.policy_key()).ok_or_else(|| {
+            let hook_command = hook_commands.get(phase.as_str()).ok_or_else(|| {
                 GuardIntegrationError::runtime(format!(
                     "missing generated hook command for {}",
-                    phase.policy_key()
+                    phase.as_str()
                 ))
             })?;
             let mut group = serde_json::Map::new();
@@ -87,15 +88,15 @@ pub(crate) fn plan_codex_rule_file(
     repo_root: &Path,
     hook_commands: &BTreeMap<String, HostHookCommand>,
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
-    if hook_commands.len() != REQUIRED_GUARD_PHASES.len() {
+    if hook_commands.len() != GuardHookPhase::REQUIRED.len() {
         return Err(GuardIntegrationError::runtime(
             "Codex rule generation requires the exact Guard hook phases",
         ));
     }
-    let mut command_lines = Vec::with_capacity(REQUIRED_GUARD_PHASES.len());
-    let mut hook_scripts = Vec::with_capacity(REQUIRED_GUARD_PHASES.len());
-    for phase in REQUIRED_GUARD_PHASES {
-        let command = hook_commands.get(phase.policy_key()).ok_or_else(|| {
+    let mut command_lines = Vec::with_capacity(GuardHookPhase::REQUIRED.len());
+    let mut hook_scripts = Vec::with_capacity(GuardHookPhase::REQUIRED.len());
+    for phase in GuardHookPhase::REQUIRED {
+        let command = hook_commands.get(phase.as_str()).ok_or_else(|| {
             GuardIntegrationError::runtime(
                 "Codex rule generation requires the exact Guard hook phases",
             )
@@ -167,7 +168,7 @@ pub(crate) fn plan_codex_rule_file(
 }
 
 fn codex_hook_handler_value(
-    phase: HostLifecyclePhase,
+    phase: GuardHookPhase,
     command: &HostHookCommand,
 ) -> Result<Value, GuardIntegrationError> {
     let HostHookCommandShape::ShellCommandString { command_text, .. } =
@@ -177,9 +178,9 @@ fn codex_hook_handler_value(
     handler.insert("command".to_owned(), Value::String(command_text.clone()));
     handler.insert("timeout".to_owned(), Value::Number(30.into()));
     let status_message = match phase {
-        HostLifecyclePhase::PreTool => Some("Checking Volicord write"),
-        HostLifecyclePhase::PostTool => Some("Recording Volicord write"),
-        HostLifecyclePhase::UserPromptSubmit => None,
+        GuardHookPhase::PreTool => Some("Checking Volicord write"),
+        GuardHookPhase::PostTool => Some("Recording Volicord write"),
+        GuardHookPhase::PromptCapture => None,
     };
     if let Some(status_message) = status_message {
         handler.insert(

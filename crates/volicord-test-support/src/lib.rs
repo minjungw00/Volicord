@@ -38,10 +38,10 @@ use volicord_store::{
     StoreError, StoreResult,
 };
 use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, GuardCommand, GuardCommandSet,
-    GuardHookPhase, GuardInstallationId, GuardManifest, HostKind, IntegrationProfile,
-    ManagedFileExpectation, McpRuntimeSessionSource, PolicyHash, ProjectId, TypeBoundary,
-    GUARD_MANIFEST_SCHEMA,
+    AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, GuardCommandAbsolutePath,
+    GuardCommandInvocationSet, GuardCommandProjection, GuardHookPhase, GuardInstallationId,
+    GuardManifest, HostKind, IntegrationProfile, ManagedFileExpectation, McpRuntimeSessionSource,
+    PolicyHash, ProjectId, TypeBoundary, GUARD_MANIFEST_SCHEMA,
 };
 
 pub mod fixtures {
@@ -86,28 +86,21 @@ pub fn test_guard_manifest_json(
         .expect("fixture connection");
     let integration_revision =
         connection_integration_revision(&connection).expect("fixture integration revision");
-    let command_path = runtime_home.join("bin/volicord").display().to_string();
-    let command = |phase: GuardHookPhase| GuardCommand {
-        command: command_path.clone(),
-        args: vec![
-            "_hook".to_owned(),
-            phase.command_name().to_owned(),
-            "--repo".to_owned(),
-            repo_root.display().to_string(),
-            "--connection".to_owned(),
-            connection_id.to_owned(),
-            "--guard-installation".to_owned(),
-            guard_installation_id.to_owned(),
-            "--host".to_owned(),
-            "codex".to_owned(),
-            "--integration-profile".to_owned(),
-            "record".to_owned(),
-            "--policy-hash".to_owned(),
-            policy_hash.to_owned(),
-            "--host-output".to_owned(),
-            "codex".to_owned(),
-        ],
-    };
+    let typed_policy_hash = PolicyHash::parse(policy_hash).expect("fixture policy hash");
+    let runtime_commands = GuardCommandInvocationSet::new(
+        GuardCommandAbsolutePath::from_path(&runtime_home.join("bin/volicord"))
+            .expect("fixture command path"),
+        GuardCommandAbsolutePath::from_path(repo_root).expect("fixture repository path"),
+        AgentConnectionId::new(connection_id),
+        GuardInstallationId::new(guard_installation_id),
+        HostKind::Codex,
+        IntegrationProfile::Record,
+        Some(typed_policy_hash.clone()),
+        HostKind::Codex,
+    )
+    .expect("fixture Guard invocation set")
+    .to_commands(GuardCommandProjection::Runtime)
+    .expect("fixture runtime command projection");
     let hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
     let managed = |kind: &str, path: PathBuf, ownership: &str| ManagedFileExpectation {
         kind: kind.to_owned(),
@@ -202,13 +195,9 @@ pub fn test_guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: HostKind::Codex,
         integration_profile: IntegrationProfile::Record,
-        policy_hash: PolicyHash::parse(policy_hash).expect("fixture policy hash"),
+        policy_hash: typed_policy_hash,
         integration_revision,
-        runtime_commands: GuardCommandSet {
-            pre_tool: command(GuardHookPhase::PreTool),
-            post_tool: command(GuardHookPhase::PostTool),
-            prompt_capture: command(GuardHookPhase::PromptCapture),
-        },
+        runtime_commands,
         managed_files,
         required_hook_phases: GuardHookPhase::REQUIRED.to_vec(),
     };

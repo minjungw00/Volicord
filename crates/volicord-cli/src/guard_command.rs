@@ -28,7 +28,8 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_bytes, guard_manifest_from_json, GuardDecision,
-    GuardHookContractStatus, IntegrationProfile, ObservationConfidence, UtcTimestamp,
+    GuardHookContractStatus, GuardHookPhase, IntegrationProfile, ObservationConfidence,
+    UtcTimestamp,
 };
 
 use crate::cli::{HookArgs, HookCommand};
@@ -50,7 +51,7 @@ mod render;
 mod tool_observation;
 mod write_ticket;
 
-use args::{guard_options, read_guard_input, GuardInput, GuardOptions, GuardPhase};
+use args::{guard_options, read_guard_input, GuardInput, GuardOptions};
 use envelope::{
     event_path_field, event_string, guard_envelope, is_managed_builtin_host,
     managed_native_session_id, GuardEnvelope,
@@ -122,9 +123,9 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     let (phase, options) = match args.command {
-        HookCommand::PreTool(options) => (GuardPhase::PreTool, options),
-        HookCommand::PostTool(options) => (GuardPhase::PostTool, options),
-        HookCommand::PromptCapture(options) => (GuardPhase::PromptCapture, options),
+        HookCommand::PreTool(options) => (GuardHookPhase::PreTool, options),
+        HookCommand::PostTool(options) => (GuardHookPhase::PostTool, options),
+        HookCommand::PromptCapture(options) => (GuardHookPhase::PromptCapture, options),
     };
     let diagnostic_started = Instant::now();
     let options = guard_options(options);
@@ -148,7 +149,7 @@ where
     bind_guard_envelope(&runtime_home, &project, phase, &input, &mut envelope)?;
     let input = protect_managed_guard_input(input, &envelope)?;
     let subject = guard_subject(phase, &input, &envelope, &project);
-    if phase == GuardPhase::PostTool {
+    if phase == GuardHookPhase::PostTool {
         if let Some(replayed) =
             replayed_guard_phase_result(&runtime_home, &project, &envelope, phase, &subject)?
         {
@@ -185,17 +186,17 @@ where
             });
         }
     }
-    if phase == GuardPhase::PromptCapture {
+    if phase == GuardHookPhase::PromptCapture {
         let _ = start_guard_diagnostic_session_best_effort(&runtime_home, &project, &envelope);
     }
     let mut phase_result = match phase {
-        GuardPhase::PreTool => {
+        GuardHookPhase::PreTool => {
             phase::pre_tool::handle_pre_tool(&runtime_home, &project, &envelope, &input)?
         }
-        GuardPhase::PostTool => {
+        GuardHookPhase::PostTool => {
             phase::post_tool::handle_post_tool(&runtime_home, &project, &envelope, &input)?
         }
-        GuardPhase::PromptCapture => {
+        GuardHookPhase::PromptCapture => {
             let (decision, result, _exits_failure) =
                 handle_prompt_capture(&runtime_home, &project, &envelope, &input)?;
             GuardPhaseResult::new(decision, result)
@@ -251,7 +252,7 @@ where
 fn record_guard_hook_contract_failure(
     runtime_home: &Path,
     project: &ProjectRecord,
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     options: &GuardOptions,
     input: &GuardInput,
     contract_status: GuardHookContractStatus,
@@ -299,7 +300,7 @@ fn record_guard_hook_contract_failure(
     let occurred_at =
         UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now())).to_canonical_string();
     let subject_json = object_text(json!({
-        "lifecycle_phase": phase.event_kind(),
+        "lifecycle_phase": phase.as_str(),
         "host_kind": manifest.host_kind.as_str(),
         "connection_id": connection_id,
         "project_id": project.project_id,
@@ -311,7 +312,7 @@ fn record_guard_hook_contract_failure(
         None,
         connection_id,
         Some(guard_installation_id),
-        phase.event_kind(),
+        phase.as_str(),
         &subject_json,
     )?;
     insert_guard_event(
@@ -324,7 +325,7 @@ fn record_guard_hook_contract_failure(
             guard_installation_id: guard_installation_id.to_owned(),
             policy_hash: manifest.policy_hash.as_str().to_owned(),
             integration_revision: manifest.integration_revision.as_str().to_owned(),
-            event_kind: phase.event_kind().to_owned(),
+            event_kind: phase.as_str().to_owned(),
             contract_status: contract_status.as_str().to_owned(),
             decision: GuardDecision::Warn.as_str().to_owned(),
             subject_json,
@@ -347,7 +348,7 @@ fn record_guard_hook_contract_failure(
 }
 
 fn render_guard_command_output(
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     decision: GuardDecision,
     envelope: &GuardEnvelope,
     result: Value,
@@ -362,7 +363,7 @@ fn replayed_guard_phase_result(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     subject: &Value,
 ) -> Result<Option<GuardPhaseResult>, GuardCommandError> {
     let Some(existing) = guard_event(runtime_home, &project.project_id, &envelope.event_id)? else {
@@ -379,7 +380,7 @@ fn replayed_guard_phase_result(
         envelope.session_id.as_deref(),
         &envelope.connection_id,
         envelope.guard_installation_id.as_deref(),
-        phase.event_kind(),
+        phase.as_str(),
         &object_text(subject.clone())?,
     )?;
     if existing_source != requested_source {
@@ -415,7 +416,7 @@ fn record_guard_diagnostic_best_effort(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     started: Instant,
     request_bytes: u64,
     result: &Value,
@@ -435,7 +436,7 @@ fn record_guard_diagnostic_best_effort(
         .pointer("/recorded_change_suppression_outcome/status")
         .and_then(Value::as_str)
         == Some("unavailable");
-    let prompt_capture_recorded = phase == GuardPhase::PromptCapture
+    let prompt_capture_recorded = phase == GuardHookPhase::PromptCapture
         && result
             .get("recognized_user_action_command")
             .is_some_and(|value| !value.is_null());
@@ -444,7 +445,7 @@ fn record_guard_diagnostic_best_effort(
             .pointer("/recognized_user_action_command/replayed")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-    let product_file_write_count = (phase == GuardPhase::PostTool
+    let product_file_write_count = (phase == GuardHookPhase::PostTool
         && result
             .pointer("/tool/changed_paths")
             .and_then(Value::as_array)
@@ -520,7 +521,7 @@ fn start_guard_diagnostic_session_best_effort(
 fn record_guard_workflow_metrics_best_effort(
     runtime_home: &Path,
     envelope: &GuardEnvelope,
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     decision: GuardDecision,
     result: &Value,
     _repeated: bool,
@@ -551,7 +552,7 @@ fn record_guard_workflow_metrics_best_effort(
     };
 
     match phase {
-        GuardPhase::PreTool => {
+        GuardHookPhase::PreTool => {
             let confidence = result
                 .pointer("/tool/confidence")
                 .and_then(Value::as_str)
@@ -590,7 +591,7 @@ fn record_guard_workflow_metrics_best_effort(
                 );
             }
         }
-        GuardPhase::PostTool => {
+        GuardHookPhase::PostTool => {
             let confidence = result
                 .pointer("/tool/confidence")
                 .and_then(Value::as_str)
@@ -651,7 +652,7 @@ fn record_guard_workflow_metrics_best_effort(
                 );
             }
         }
-        GuardPhase::PromptCapture => {}
+        GuardHookPhase::PromptCapture => {}
     }
 }
 
@@ -710,7 +711,7 @@ fn resolve_guard_project(
 fn bind_guard_envelope(
     runtime_home: &Path,
     project: &ProjectRecord,
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     input: &GuardInput,
     envelope: &mut GuardEnvelope,
 ) -> Result<(), GuardCommandError> {
@@ -783,7 +784,7 @@ fn persist_guard_event(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     subject: Value,
     phase_result: &GuardPhaseResult,
     options: &GuardOptions,
@@ -820,7 +821,7 @@ fn persist_guard_event(
         envelope.session_id.as_deref(),
         &envelope.connection_id,
         envelope.guard_installation_id.as_deref(),
-        phase.event_kind(),
+        phase.as_str(),
         &subject_json,
     )?;
     let input = GuardEventInsert {
@@ -830,7 +831,7 @@ fn persist_guard_event(
         guard_installation_id: guard_installation_id.to_owned(),
         policy_hash: manifest.policy_hash.as_str().to_owned(),
         integration_revision: manifest.integration_revision.as_str().to_owned(),
-        event_kind: phase.event_kind().to_owned(),
+        event_kind: phase.as_str().to_owned(),
         contract_status: GuardHookContractStatus::Compatible.as_str().to_owned(),
         decision: phase_result.decision.as_str().to_owned(),
         subject_json,
@@ -859,13 +860,13 @@ fn persist_guard_event(
 }
 
 fn guard_subject(
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     input: &GuardInput,
     envelope: &GuardEnvelope,
     project: &ProjectRecord,
 ) -> Value {
     json!({
-        "lifecycle_phase": phase.event_kind(),
+        "lifecycle_phase": phase.as_str(),
         "host_kind": envelope.host_kind,
         "connection_id": envelope.connection_id,
         "project_id": project.project_id,

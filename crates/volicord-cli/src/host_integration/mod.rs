@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
+use volicord_types::GuardHookPhase;
 pub use volicord_types::{ConnectionIntent, HostKind, HostScope};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,16 +102,16 @@ pub struct HostCapabilities {
 }
 
 impl HostCapabilities {
-    pub fn supports_phase(self, phase: HostLifecyclePhase) -> bool {
+    pub fn supports_phase(self, phase: GuardHookPhase) -> bool {
         match phase {
-            HostLifecyclePhase::PreTool => self.pre_tool_hook,
-            HostLifecyclePhase::PostTool => self.post_tool_hook,
-            HostLifecyclePhase::UserPromptSubmit => self.user_prompt_submit_hook,
+            GuardHookPhase::PreTool => self.pre_tool_hook,
+            GuardHookPhase::PostTool => self.post_tool_hook,
+            GuardHookPhase::PromptCapture => self.user_prompt_submit_hook,
         }
     }
 
-    pub fn missing_required_hook_phases(self) -> Vec<HostLifecyclePhase> {
-        REQUIRED_GUARD_PHASES
+    pub fn missing_required_hook_phases(self) -> Vec<GuardHookPhase> {
+        GuardHookPhase::REQUIRED
             .iter()
             .copied()
             .filter(|phase| !self.supports_phase(*phase))
@@ -118,45 +119,13 @@ impl HostCapabilities {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostLifecyclePhase {
-    PreTool,
-    PostTool,
-    UserPromptSubmit,
-}
-
-impl HostLifecyclePhase {
-    pub fn policy_key(self) -> &'static str {
-        match self {
-            Self::PreTool => "pre_tool",
-            Self::PostTool => "post_tool",
-            Self::UserPromptSubmit => "prompt_capture",
-        }
-    }
-
-    pub fn command_name(self) -> &'static str {
-        match self {
-            Self::PreTool => "pre-tool",
-            Self::PostTool => "post-tool",
-            Self::UserPromptSubmit => "prompt-capture",
-        }
-    }
-
-    pub fn capability_name(self) -> &'static str {
-        match self {
-            Self::PreTool => "pre_tool_hook",
-            Self::PostTool => "post_tool_hook",
-            Self::UserPromptSubmit => "user_prompt_submit_hook",
-        }
+pub fn guard_phase_capability_name(phase: GuardHookPhase) -> &'static str {
+    match phase {
+        GuardHookPhase::PreTool => "pre_tool_hook",
+        GuardHookPhase::PostTool => "post_tool_hook",
+        GuardHookPhase::PromptCapture => "user_prompt_submit_hook",
     }
 }
-
-pub const REQUIRED_GUARD_PHASES: [HostLifecyclePhase; 3] = [
-    HostLifecyclePhase::PreTool,
-    HostLifecyclePhase::PostTool,
-    HostLifecyclePhase::UserPromptSubmit,
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

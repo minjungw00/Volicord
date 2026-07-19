@@ -11,31 +11,6 @@ use crate::cli::{HookEventArgs, HookOutput};
 use super::{redact_event_value, sha256_text, GuardCommandError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum GuardPhase {
-    PreTool,
-    PostTool,
-    PromptCapture,
-}
-
-impl GuardPhase {
-    pub(super) fn event_kind(self) -> &'static str {
-        match self {
-            Self::PreTool => "pre_tool",
-            Self::PostTool => "post_tool",
-            Self::PromptCapture => "prompt_capture",
-        }
-    }
-
-    pub(super) fn command_name(self) -> &'static str {
-        match self {
-            Self::PreTool => "pre-tool",
-            Self::PostTool => "post-tool",
-            Self::PromptCapture => "prompt-capture",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum OutputFormat {
     VolicordJson,
     Text,

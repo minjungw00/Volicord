@@ -2,8 +2,9 @@ use std::{fmt, path::Path};
 
 use serde_json::Value;
 use toml_edit::DocumentMut;
+use volicord_types::GuardHookPhase;
 
-use super::{HostKind, HostLifecyclePhase};
+use super::HostKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostContractConfigKind {
@@ -24,7 +25,7 @@ impl HostContractConfigKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HostHookEventContract {
-    pub phase: HostLifecyclePhase,
+    pub phase: GuardHookPhase,
     pub event_name: &'static str,
     pub write_matcher_tokens: &'static [&'static str],
 }
@@ -70,17 +71,17 @@ const CODEX_WRITE_MATCHERS: [&str; 5] = ["Bash", "apply_patch", "Edit", "Write",
 
 const CODEX_HOOK_EVENTS: [HostHookEventContract; 3] = [
     HostHookEventContract {
-        phase: HostLifecyclePhase::PreTool,
+        phase: GuardHookPhase::PreTool,
         event_name: "PreToolUse",
         write_matcher_tokens: &CODEX_WRITE_MATCHERS,
     },
     HostHookEventContract {
-        phase: HostLifecyclePhase::PostTool,
+        phase: GuardHookPhase::PostTool,
         event_name: "PostToolUse",
         write_matcher_tokens: &CODEX_WRITE_MATCHERS,
     },
     HostHookEventContract {
-        phase: HostLifecyclePhase::UserPromptSubmit,
+        phase: GuardHookPhase::PromptCapture,
         event_name: "UserPromptSubmit",
         write_matcher_tokens: &[],
     },
@@ -99,7 +100,7 @@ pub fn contract_for(_host_kind: HostKind) -> Option<&'static HostIntegrationCont
 
 pub fn hook_event_for_phase(
     contract: &HostIntegrationContract,
-    phase: HostLifecyclePhase,
+    phase: GuardHookPhase,
 ) -> Option<&'static HostHookEventContract> {
     contract
         .hook_config_shape

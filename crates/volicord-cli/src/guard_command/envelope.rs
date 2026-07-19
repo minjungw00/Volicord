@@ -3,10 +3,12 @@ use std::{path::Path, str::FromStr, time::SystemTime};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
 use volicord_store::bootstrap::ProjectRecord;
-use volicord_types::{validate_managed_host_native_session_id, HostKind, IntegrationProfile};
+use volicord_types::{
+    validate_managed_host_native_session_id, GuardHookPhase, HostKind, IntegrationProfile,
+};
 
 use super::{
-    args::{GuardInput, GuardOptions, GuardPhase},
+    args::{GuardInput, GuardOptions},
     GuardCommandError, DEFAULT_INTEGRATION_PROFILE,
 };
 
@@ -36,7 +38,7 @@ pub(super) fn event_path_field<'a>(event: &'a Value, paths: &[&[&str]]) -> Optio
 }
 
 pub(super) fn guard_envelope(
-    _phase: GuardPhase,
+    _phase: GuardHookPhase,
     options: &GuardOptions,
     input: &GuardInput,
     _project: &ProjectRecord,

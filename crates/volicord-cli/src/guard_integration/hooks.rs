@@ -4,7 +4,11 @@ use std::{
 };
 
 use serde_json::Value;
-use volicord_types::{GuardCommand, GuardCommandSet, IntegrationProfile};
+use volicord_types::{
+    AgentConnectionId, GuardCommand, GuardCommandAbsolutePath, GuardCommandInvocation,
+    GuardCommandInvocationSet, GuardCommandProjection, GuardCommandSet, GuardHookPhase,
+    GuardInstallationId, IntegrationProfile, PolicyHash,
+};
 
 use crate::{
     guard_integration::{
@@ -13,8 +17,7 @@ use crate::{
         public_host_label, GuardIntegrationError, HookWrapperResolutionStatus,
     },
     host_integration::{
-        HostIntegrationFileKind, HostKind, HostLifecyclePhase, MANAGED_WRAPPER_ENV,
-        MANAGED_WRAPPER_VALUE,
+        HostIntegrationFileKind, HostKind, MANAGED_WRAPPER_ENV, MANAGED_WRAPPER_VALUE,
     },
 };
 
@@ -23,7 +26,7 @@ pub(crate) type GuardCommandSpec = GuardCommand;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HostHookCommand {
     pub(crate) host_kind: HostKind,
-    pub(crate) phase: HostLifecyclePhase,
+    pub(crate) phase: GuardHookPhase,
     pub(crate) purpose: HostHookPurpose,
     pub(crate) generated_command_shape: HostHookCommandShape,
     pub(crate) expected_wrapper_path: PathBuf,
@@ -78,13 +81,13 @@ pub(crate) fn plan_hook_wrapper_files(
     runtime_home: &Path,
     host_kind: HostKind,
     guard_commands: &GuardCommandSet,
-    phases: &[HostLifecyclePhase],
+    phases: &[GuardHookPhase],
     purpose: HostHookPurpose,
 ) -> Result<Vec<GeneratedFilePlan>, GuardIntegrationError> {
     phases
         .iter()
         .map(|phase| {
-            let guard_command = command_for_phase(guard_commands, *phase);
+            let guard_command = guard_commands.get(*phase);
             plan_hook_wrapper_file(
                 repo_root,
                 runtime_home,
@@ -101,14 +104,24 @@ pub(crate) fn plan_hook_wrapper_file(
     repo_root: &Path,
     runtime_home: &Path,
     host_kind: HostKind,
-    phase: HostLifecyclePhase,
+    phase: GuardHookPhase,
     purpose: HostHookPurpose,
     guard_command: &GuardCommandSpec,
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
+    let invocation =
+        GuardCommandInvocation::from_runtime_command(guard_command).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "generated Guard runtime command is malformed: {error}"
+            ))
+        })?;
+    if invocation.phase != phase || invocation.host_kind != host_kind {
+        return Err(GuardIntegrationError::runtime(
+            "generated Guard runtime command does not match its wrapper phase and host",
+        ));
+    }
     let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
     let path = repo_root.join(&relative_path);
-    let content =
-        hook_wrapper_script_content(runtime_home, host_kind, phase, purpose, guard_command);
+    let content = hook_wrapper_script_content(runtime_home, purpose, &invocation);
     plan_managed_script_file(
         repo_root,
         &path,
@@ -133,7 +146,7 @@ pub(crate) fn plan_codex_dispatch_wrapper_file(
 pub(crate) fn host_hook_command_specs(
     host_kind: HostKind,
     repo_root: &Path,
-    phases: &[HostLifecyclePhase],
+    phases: &[GuardHookPhase],
     purpose: HostHookPurpose,
 ) -> Result<BTreeMap<String, HostHookCommand>, GuardIntegrationError> {
     if host_kind == HostKind::Codex && !codex_hook_root_available(repo_root)? {
@@ -146,7 +159,7 @@ pub(crate) fn host_hook_command_specs(
         .copied()
         .map(|phase| {
             let command = host_hook_command_spec(host_kind, repo_root, phase, purpose)?;
-            Ok((phase.policy_key().to_owned(), command))
+            Ok((phase.as_str().to_owned(), command))
         })
         .collect()
 }
@@ -154,7 +167,7 @@ pub(crate) fn host_hook_command_specs(
 pub(crate) fn host_hook_command_spec(
     host_kind: HostKind,
     repo_root: &Path,
-    phase: HostLifecyclePhase,
+    phase: GuardHookPhase,
     purpose: HostHookPurpose,
 ) -> Result<HostHookCommand, GuardIntegrationError> {
     let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
@@ -195,39 +208,39 @@ pub(crate) fn guard_command_specs(
     guard_installation_id: &str,
     host_kind: HostKind,
     profile: IntegrationProfile,
-    policy_hash: Option<&str>,
-) -> GuardCommandSet {
-    let command = |phase: HostLifecyclePhase| {
-        let mut args = vec![
-            "_hook".to_owned(),
-            phase.command_name().to_owned(),
-            "--repo".to_owned(),
-            path_text(repo_root),
-            "--connection".to_owned(),
-            connection_id.to_owned(),
-            "--guard-installation".to_owned(),
-            guard_installation_id.to_owned(),
-            "--host".to_owned(),
-            public_host_label(host_kind).to_owned(),
-            "--integration-profile".to_owned(),
-            profile.as_str().to_owned(),
-        ];
-        if let Some(policy_hash) = policy_hash {
-            args.push("--policy-hash".to_owned());
-            args.push(policy_hash.to_owned());
-        }
-        args.push("--host-output".to_owned());
-        args.push("codex".to_owned());
-        GuardCommandSpec {
-            command: path_text(volicord_command),
-            args,
-        }
+    policy_hash: Option<&PolicyHash>,
+) -> Result<GuardCommandSet, GuardIntegrationError> {
+    let invocations = GuardCommandInvocationSet::new(
+        GuardCommandAbsolutePath::from_path(volicord_command).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "generated Guard executable path is invalid: {error}"
+            ))
+        })?,
+        GuardCommandAbsolutePath::from_path(repo_root).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "generated Guard repository path is invalid: {error}"
+            ))
+        })?,
+        AgentConnectionId::new(connection_id),
+        GuardInstallationId::new(guard_installation_id),
+        host_kind,
+        profile,
+        policy_hash.cloned(),
+        HostKind::Codex,
+    )
+    .map_err(|error| {
+        GuardIntegrationError::runtime(format!("generated Guard command is invalid: {error}"))
+    })?;
+    let projection = if policy_hash.is_some() {
+        GuardCommandProjection::Runtime
+    } else {
+        GuardCommandProjection::Policy
     };
-    GuardCommandSet {
-        pre_tool: command(HostLifecyclePhase::PreTool),
-        post_tool: command(HostLifecyclePhase::PostTool),
-        prompt_capture: command(HostLifecyclePhase::UserPromptSubmit),
-    }
+    invocations.to_commands(projection).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "failed to serialize generated Guard command: {error}"
+        ))
+    })
 }
 
 pub(crate) fn guard_command_specs_json(
@@ -235,14 +248,6 @@ pub(crate) fn guard_command_specs_json(
 ) -> Result<Value, GuardIntegrationError> {
     serde_json::to_value(commands)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
-}
-
-fn command_for_phase(commands: &GuardCommandSet, phase: HostLifecyclePhase) -> &GuardCommandSpec {
-    match phase {
-        HostLifecyclePhase::PreTool => &commands.pre_tool,
-        HostLifecyclePhase::PostTool => &commands.post_tool,
-        HostLifecyclePhase::UserPromptSubmit => &commands.prompt_capture,
-    }
 }
 
 pub(crate) fn guard_command_line(spec: &GuardCommandSpec) -> String {
@@ -282,7 +287,7 @@ fn hook_root_unsupported_message(
 
 fn hook_wrapper_relative_path(
     host_kind: HostKind,
-    phase: HostLifecyclePhase,
+    phase: GuardHookPhase,
 ) -> Result<PathBuf, GuardIntegrationError> {
     let _ = host_kind;
     let base = PathBuf::from(".codex").join("hooks");
@@ -293,7 +298,7 @@ fn codex_dispatch_wrapper_relative_path() -> PathBuf {
     PathBuf::from(CODEX_DISPATCH_WRAPPER)
 }
 
-pub(crate) fn codex_guard_hook_script(phase: HostLifecyclePhase) -> String {
+pub(crate) fn codex_guard_hook_script(phase: GuardHookPhase) -> String {
     let dispatch_relative_text = path_text(&codex_dispatch_wrapper_relative_path());
     format!(
         "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{dispatch_relative_text}\" {}",
@@ -312,22 +317,26 @@ pub(crate) fn codex_hook_root_available(repo_root: &Path) -> Result<bool, GuardI
 
 fn hook_wrapper_script_content(
     runtime_home: &Path,
-    host_kind: HostKind,
-    phase: HostLifecyclePhase,
     purpose: HostHookPurpose,
-    guard_command: &GuardCommandSpec,
+    invocation: &GuardCommandInvocation,
 ) -> String {
-    let command_line = guard_command_line(guard_command);
-    let connection_id = arg_after(&guard_command.args, "--connection").unwrap_or("unknown");
-    let guard_installation_id =
-        arg_after(&guard_command.args, "--guard-installation").unwrap_or("unknown");
-    let policy_hash = arg_after(&guard_command.args, "--policy-hash").unwrap_or("unknown");
-    let host_output = arg_after(&guard_command.args, "--host-output").unwrap_or("none");
+    let guard_command = invocation
+        .to_runtime_command()
+        .expect("a parsed runtime invocation retains its canonical policy hash");
+    let command_line = guard_command_line(&guard_command);
+    let connection_id = invocation.connection_id.as_str();
+    let guard_installation_id = invocation.guard_installation_id.as_str();
+    let policy_hash = invocation
+        .policy_hash
+        .as_ref()
+        .expect("a parsed runtime invocation retains its canonical policy hash")
+        .as_str();
+    let host_output = invocation.host_output.as_str();
     let runtime_home = shell_word(&path_text(runtime_home));
     format!(
         "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind={}\n# phase={}\n# purpose={purpose}\n# connection_id={connection_id}\n# guard_installation_id={guard_installation_id}\n# policy_hash={policy_hash}\n# host_output={host_output}\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME={runtime_home}\n{MANAGED_WRAPPER_ENV}={MANAGED_WRAPPER_VALUE}\nexport VOLICORD_HOME\nexport {MANAGED_WRAPPER_ENV}\nexec {command_line}\n",
-        public_host_label(host_kind),
-        phase.policy_key(),
+        public_host_label(invocation.host_kind),
+        invocation.phase.as_str(),
         purpose = purpose.as_str(),
     )
 }
@@ -376,12 +385,6 @@ fn codex_dispatch_wrapper_script_content() -> String {
         ),
         HOOK_WRAPPER_MARKER
     )
-}
-
-fn arg_after<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.windows(2)
-        .find(|pair| pair[0] == name)
-        .map(|pair| pair[1].as_str())
 }
 
 fn path_text(path: &Path) -> String {

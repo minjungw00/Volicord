@@ -1,5 +1,5 @@
 use std::{collections::BTreeMap, path::Path};
-use volicord_types::GuardCommandSet;
+use volicord_types::{GuardCommandSet, GuardHookPhase};
 
 use crate::{
     guard_integration::{
@@ -10,7 +10,7 @@ use crate::{
         },
         GuardIntegrationError,
     },
-    host_integration::{HostKind, HostLifecyclePhase},
+    host_integration::HostKind,
 };
 
 pub(crate) mod codex;
@@ -21,7 +21,7 @@ pub(crate) struct HostGeneratedFilesRequest<'a> {
     pub(crate) repo_root: &'a Path,
     pub(crate) commands: &'a GuardCommandSet,
     pub(crate) host_commands: &'a BTreeMap<String, HostHookCommand>,
-    pub(crate) phases: &'a [HostLifecyclePhase],
+    pub(crate) phases: &'a [GuardHookPhase],
     pub(crate) purpose: HostHookPurpose,
 }
 

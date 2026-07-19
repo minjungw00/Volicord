@@ -1,12 +1,13 @@
 use serde_json::{json, Value};
-use volicord_types::GuardDecision;
+use volicord_types::{GuardDecision, GuardHookPhase, HostKind};
 
 use crate::disclosure::{
     cooperative_host_decision_disclosure_json, COOPERATIVE_DECISION_DISCLOSURE_TEXT,
 };
+use crate::host_integration::contracts::{contract_for, hook_event_for_phase};
 
 use super::{
-    args::{GuardPhase, OutputFormat},
+    args::OutputFormat,
     context::{ActiveWriteTicketSummary, GuardReason, GuardStateSummary},
     json_error,
     mutation::PathAssessment,
@@ -24,7 +25,7 @@ pub(super) struct RenderedGuardOutput {
 }
 
 pub(super) fn render_guard_output(
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     decision: GuardDecision,
     envelope: &super::envelope::GuardEnvelope,
     result: Value,
@@ -36,7 +37,7 @@ pub(super) fn render_guard_output(
             stdout: format!(
                 "{}\\n",
                 serde_json::to_string_pretty(&json!({
-                    "phase": phase.event_kind(),
+                    "phase": phase.as_str(),
                     "decision": decision.as_str(),
                     "allowed": decision != GuardDecision::Deny,
                     "disclosure": cooperative_host_decision_disclosure_json(),
@@ -69,30 +70,33 @@ pub(super) fn render_guard_output(
 }
 
 fn render_codex_output(
-    phase: GuardPhase,
+    phase: GuardHookPhase,
     decision: GuardDecision,
     result: Value,
 ) -> Result<RenderedGuardOutput, GuardCommandError> {
-    let event_name = match phase {
-        GuardPhase::PreTool => "PreToolUse",
-        GuardPhase::PostTool => "PostToolUse",
-        GuardPhase::PromptCapture => "UserPromptSubmit",
-    };
+    let event_name = contract_for(HostKind::Codex)
+        .and_then(|contract| hook_event_for_phase(contract, phase))
+        .map(|event| event.event_name)
+        .ok_or_else(|| {
+            GuardCommandError::Runtime(
+                "Codex host contract is missing the current Guard hook phase".to_owned(),
+            )
+        })?;
     let context = match phase {
-        GuardPhase::PromptCapture => result
+        GuardHookPhase::PromptCapture => result
             .get("model_context")
             .and_then(Value::as_str)
             .map(str::to_owned),
-        GuardPhase::PostTool if decision != GuardDecision::Allow => Some(
+        GuardHookPhase::PostTool if decision != GuardDecision::Allow => Some(
             "Volicord recorded a post-tool Guard warning. Inspect the hook result and reconcile unrecorded Product Repository changes before close."
                 .to_owned(),
         ),
-        GuardPhase::PreTool if matches!(decision, GuardDecision::Warn | GuardDecision::InjectContext) => {
+        GuardHookPhase::PreTool if matches!(decision, GuardDecision::Warn | GuardDecision::InjectContext) => {
             first_reason_message(&result)
         }
         _ => None,
     };
-    let value = if phase == GuardPhase::PreTool && decision == GuardDecision::Deny {
+    let value = if phase == GuardHookPhase::PreTool && decision == GuardDecision::Deny {
         Some(json!({
             "hookSpecificOutput": {
                 "hookEventName": event_name,
