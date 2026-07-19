@@ -47,10 +47,10 @@ impl fmt::Display for ProjectAgentSessionIdError {
                 "project Agent Session requires a canonical project integration revision"
             }
             Self::InvalidNativeSessionId => {
-                "project Agent Session requires an exact native session identity"
+                "project Agent Session requires an exact host-native session correlation coordinate"
             }
             Self::InvalidSessionId => {
-                "project Agent Session identity must use the canonical internal digest coordinate"
+                "project Agent Session must use the canonical internal digest coordinate"
             }
         })
     }
@@ -117,7 +117,7 @@ pub fn validate_project_agent_session_id(
     Ok(())
 }
 
-/// One field in the closed managed MCP initialized-client identity pair.
+/// One field in the closed managed MCP initialized-client information pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedMcpClientInfoField {
     Name,
@@ -134,7 +134,7 @@ impl ManagedMcpClientInfoField {
     }
 }
 
-/// Validation failure for one managed MCP initialized-client identity field.
+/// Validation failure for one managed MCP initialized-client information field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ManagedMcpClientInfoError {
     field: ManagedMcpClientInfoField,

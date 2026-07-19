@@ -28,8 +28,8 @@ fn hidden_guard_help_lists_only_codex_record_phases() -> Result<(), Box<dyn Erro
 }
 
 #[test]
-fn hidden_guard_rejects_removed_phase_before_setup() -> Result<(), Box<dyn Error>> {
-    let output = run(&["_hook", "removed-phase", "--help"])?;
+fn hidden_guard_rejects_unknown_guard_phase_before_setup() -> Result<(), Box<dyn Error>> {
+    let output = run(&["_hook", "unknown-phase", "--help"])?;
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr)?;
     assert!(stderr.contains("unrecognized subcommand"));

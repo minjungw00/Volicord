@@ -154,7 +154,7 @@ impl InvocationContext {
         self
     }
 
-    /// Adds adapter-owned session identity when the transport has one.
+    /// Adds the adapter-owned session correlation coordinate when the transport has one.
     pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
         let session_id = session_id.into();
         self.session_id = (!session_id.trim().is_empty()).then_some(session_id);

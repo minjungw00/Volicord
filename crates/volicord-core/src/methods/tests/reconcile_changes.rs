@@ -4,7 +4,7 @@ use super::*;
 fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_not_product", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_not_product")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "reconcile_not_product")?;
     let after_evidence = record_close_evidence(
@@ -180,7 +180,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
 fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_local", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_local")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_local")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change_with_paths(&harness, &task_id, "reconcile_local", "[]")?;
@@ -284,7 +284,7 @@ fn reconcile_changes_local_recovery_reports_no_unresolved_findings_read_only(
 fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_judgment_dry", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_judgment_dry")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_judgment_dry")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_judgment_dry")?;
@@ -393,7 +393,7 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
 fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotency(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_multi_origin", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_multi_origin")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_multi_origin")?;
     let first_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_multi_origin_a")?;
@@ -484,7 +484,7 @@ fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotenc
 #[test]
 fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_accept", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_accept")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_accept")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_accept")?;
@@ -593,7 +593,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
 fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_blocker(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_local_accept", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_local_accept")?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "reconcile_local_accept")?;
     let after_evidence = record_close_evidence(
@@ -720,7 +720,7 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
 fn reconcile_changes_rejects_agent_supplied_system_resolution_basis() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_reject", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_reject")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_reject")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_reject")?;
@@ -769,7 +769,7 @@ fn reconcile_changes_rejects_agent_supplied_system_resolution_basis() -> Result<
 fn reconcile_changes_rejects_agent_direct_accepted_by_user_without_judgment(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_agent_accept", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_agent_accept")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_agent_accept")?;
     let unrecorded_change_id =
         insert_guarded_unrecorded_change(&harness, &task_id, "reconcile_agent_accept")?;
@@ -846,7 +846,7 @@ fn reconcile_changes_rejects_mismatched_invocation_project() -> Result<(), Box<d
 fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_invalid", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_invalid")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_invalid")?;
     let unrecorded_change_id = insert_guarded_unrecorded_change_with_paths(
         &harness,
@@ -882,7 +882,7 @@ fn reconcile_changes_resolves_invalid_observation_deterministically() -> Result<
 #[test]
 fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_cross", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_cross")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "reconcile_cross")?;
     let main_change_id = insert_guarded_unrecorded_change_with_paths(
         &harness,
@@ -928,7 +928,7 @@ fn reconcile_changes_isolates_other_projects() -> Result<(), Box<dyn Error>> {
 #[test]
 fn reconcile_changes_resolves_deterministic_active_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    record_guard_installation(&harness, "reconcile_ticket", "record", "active", "{}")?;
+    record_guard_installation(&harness, "reconcile_ticket")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "reconcile_ticket")?;
     let prepare = harness.service.prepare_write(
         prepare_write_request(

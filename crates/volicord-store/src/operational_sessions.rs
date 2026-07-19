@@ -224,7 +224,7 @@ pub(crate) struct McpRuntimeProjectSessionReservation<'a> {
     pub connection_internal_id: &'a str,
     pub project_id: &'a str,
     pub asserted_guard_installation_id: Option<&'a str>,
-    pub expected_identity: &'a crate::guards::ProjectAgentSessionIdentity,
+    pub expected_coordinates: &'a crate::guards::ProjectAgentSessionCoordinates,
     pub host_session_id: &'a str,
     pub bound_at: &'a str,
 }
@@ -240,7 +240,7 @@ pub(crate) fn reserve_mcp_runtime_project_session(
         connection_internal_id,
         project_id,
         asserted_guard_installation_id,
-        expected_identity,
+        expected_coordinates,
         host_session_id,
         bound_at,
     } = input;
@@ -255,7 +255,8 @@ pub(crate) fn reserve_mcp_runtime_project_session(
     }
     validate_managed_host_native_session_id(host_session_id).map_err(|_| {
         StoreError::InvalidInput {
-            detail: "host_session_id must be valid managed-host identity metadata".to_owned(),
+            detail: "host_session_id must be valid host-native session correlation metadata"
+                .to_owned(),
         }
     })?;
     let runtime_home = runtime_home.as_ref();
@@ -303,22 +304,22 @@ pub(crate) fn reserve_mcp_runtime_project_session(
             detail: "project is not a current member of the Agent Connection".to_owned(),
         });
     }
-    let identity = crate::guards::current_project_agent_session_identity(
+    let coordinates = crate::guards::current_project_agent_session_coordinates(
         runtime_home,
         project_id,
         connection_internal_id,
         asserted_guard_installation_id,
         host_session_id,
     )?;
-    if identity != *expected_identity {
+    if coordinates != *expected_coordinates {
         return Err(StoreError::Conflict {
             entity: "agent_session",
-            id: expected_identity.session_id.clone(),
-            detail: "current project Agent Session identity changed before Registry reservation"
+            id: expected_coordinates.session_id.clone(),
+            detail: "current project Agent Session coordinates changed before Registry reservation"
                 .to_owned(),
         });
     }
-    let session_id = identity.session_id.as_str();
+    let session_id = coordinates.session_id.as_str();
     let existing_project_session = tx
         .query_row(
             "SELECT runtime_session_id, connection_internal_id,
@@ -347,7 +348,7 @@ pub(crate) fn reserve_mcp_runtime_project_session(
     {
         if existing_runtime == runtime_session_id
             && existing_connection == connection_internal_id
-            && existing_revision == identity.project_integration_revision
+            && existing_revision == coordinates.project_integration_revision
             && existing_host_session == host_session_id
         {
             tx.commit()?;
@@ -355,8 +356,8 @@ pub(crate) fn reserve_mcp_runtime_project_session(
                 runtime_session_id: runtime_session_id.to_owned(),
                 connection_internal_id: connection_internal_id.to_owned(),
                 project_id: project.project_internal_id,
-                session_id: identity.session_id,
-                project_integration_revision: identity.project_integration_revision,
+                session_id: coordinates.session_id,
+                project_integration_revision: coordinates.project_integration_revision,
                 host_session_id: host_session_id.to_owned(),
                 bound_at: existing_bound_at,
             });
@@ -400,7 +401,7 @@ pub(crate) fn reserve_mcp_runtime_project_session(
             connection_internal_id,
             project.project_internal_id,
             session_id,
-            identity.project_integration_revision,
+            coordinates.project_integration_revision,
             host_session_id,
             bound_at
         ],
@@ -410,8 +411,8 @@ pub(crate) fn reserve_mcp_runtime_project_session(
         runtime_session_id: runtime_session_id.to_owned(),
         connection_internal_id: connection_internal_id.to_owned(),
         project_id: project.project_internal_id,
-        session_id: identity.session_id,
-        project_integration_revision: identity.project_integration_revision,
+        session_id: coordinates.session_id,
+        project_integration_revision: coordinates.project_integration_revision,
         host_session_id: host_session_id.to_owned(),
         bound_at: bound_at.to_owned(),
     })

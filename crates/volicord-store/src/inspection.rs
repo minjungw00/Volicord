@@ -868,12 +868,12 @@ fn read_runtime_project_session_binding_rows(
         )
         .map_err(|_| {
             InspectionIssue::Malformed(
-                "runtime binding Agent Session identity is invalid".to_owned(),
+                "runtime binding Agent Session coordinate is invalid".to_owned(),
             )
         })?;
         if expected != binding.session_id {
             return Err(InspectionIssue::Malformed(
-                "runtime binding Agent Session identity is noncanonical".to_owned(),
+                "runtime binding Agent Session coordinate is noncanonical".to_owned(),
             ));
         }
         bindings.push(binding);

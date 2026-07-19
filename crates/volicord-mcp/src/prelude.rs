@@ -36,7 +36,7 @@ pub(crate) use volicord_store::{
         WorkflowMetricKind, WorkflowMetricOutcome,
     },
     guards::{
-        bind_agent_session_runtime, current_project_agent_session_identity,
+        bind_agent_session_runtime, current_project_agent_session_coordinates,
         list_guard_installations, AgentSessionRuntimeBinding,
     },
     operational_sessions::{

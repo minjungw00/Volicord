@@ -13,7 +13,7 @@ use volicord_store::{
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
     guards::{
-        agent_session, bind_agent_session_runtime, current_project_agent_session_identity,
+        agent_session, bind_agent_session_runtime, current_project_agent_session_coordinates,
         observe_agent_session, AgentSessionObservation, AgentSessionRuntimeBinding,
     },
     operational_sessions::{
@@ -294,7 +294,7 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
         }
     )
     .is_err());
-    let rejected_identity = current_project_agent_session_identity(
+    let rejected_coordinates = current_project_agent_session_coordinates(
         fixture.runtime_home_path(),
         fixture.project_id(),
         other_connection,
@@ -304,13 +304,13 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
     assert!(agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        &rejected_identity.session_id,
+        &rejected_coordinates.session_id,
     )?
     .is_none());
     assert!(mcp_runtime_project_session_binding(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        &rejected_identity.session_id,
+        &rejected_coordinates.session_id,
     )?
     .is_none());
 
@@ -377,7 +377,7 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         input(&runtime_session_id, "host.turn.second")
     )
     .is_err());
-    let second_identity = current_project_agent_session_identity(
+    let second_coordinates = current_project_agent_session_coordinates(
         fixture.runtime_home_path(),
         second_project,
         fixture.connection_id(),
@@ -387,14 +387,14 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
     let unbound = agent_session(
         fixture.runtime_home_path(),
         second_project,
-        &second_identity.session_id,
+        &second_coordinates.session_id,
     )?
     .expect("Phase 1 anchor remains after natural Registry uniqueness conflict");
     assert!(unbound.runtime_session_id.is_none());
     assert!(mcp_runtime_project_session_binding(
         fixture.runtime_home_path(),
         second_project,
-        &second_identity.session_id,
+        &second_coordinates.session_id,
     )?
     .is_none());
 
@@ -404,7 +404,7 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         second_project,
         input(&non_conflicting_runtime, "host.turn.recovery"),
     )?;
-    assert_eq!(attached.session_id, second_identity.session_id);
+    assert_eq!(attached.session_id, second_coordinates.session_id);
     assert_eq!(
         attached.runtime_session_id.as_deref(),
         Some(non_conflicting_runtime.as_str())
@@ -681,7 +681,7 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
     let fixture = CoreFixture::new("operational-preflight-no-binding")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
     let host_session = "host.session.preflight";
-    let identity = current_project_agent_session_identity(
+    let coordinates = current_project_agent_session_coordinates(
         fixture.runtime_home_path(),
         fixture.project_id(),
         fixture.connection_id(),
@@ -705,13 +705,13 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
     assert!(agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        &identity.session_id,
+        &coordinates.session_id,
     )?
     .is_none());
     assert!(mcp_runtime_project_session_binding(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        &identity.session_id,
+        &coordinates.session_id,
     )?
     .is_none());
     Ok(())

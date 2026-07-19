@@ -988,9 +988,6 @@ fn reconcile_changes_request(
 fn record_guard_installation(
     harness: &MethodHarness,
     suffix: &str,
-    _profile: &str,
-    _legacy_fixture_state: &str,
-    _legacy_fixture_json: &str,
 ) -> Result<String, Box<dyn Error>> {
     const POLICY_HASH: &str =
         "sha256:0000000000000000000000000000000000000000000000000000000000000000";

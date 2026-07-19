@@ -343,13 +343,14 @@ fn agent_workflow_public_projections_use_only_exact_safe_pending_summaries(
 }
 
 #[test]
-fn legacy_full_form_request_result_is_corrupt_before_replay_or_first_page(
+fn noncanonical_full_form_request_result_is_corrupt_before_replay_or_first_page(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_full_form")?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "noncanonical_full_form")?;
     let request = user_action_request(
-        "req_legacy_full_form",
-        "idem_legacy_full_form",
+        "req_noncanonical_full_form",
+        "idem_noncanonical_full_form",
         false,
         Some(2),
         &task_id,
@@ -378,8 +379,8 @@ fn legacy_full_form_request_result_is_corrupt_before_replay_or_first_page(
         })
         .expect("committed response must identify its request")
         .to_owned();
-    let mut legacy = committed.response_value.clone();
-    let legacy_inbox_item = legacy.get("inbox_item").cloned().unwrap_or_else(|| {
+    let mut noncanonical = committed.response_value.clone();
+    let noncanonical_inbox_item = noncanonical.get("inbox_item").cloned().unwrap_or_else(|| {
         json!({
             "user_action_request_id": request_id,
             "request_ref": {
@@ -447,15 +448,15 @@ fn legacy_full_form_request_result_is_corrupt_before_replay_or_first_page(
             "expires_at": null
         })
     });
-    legacy
+    noncanonical
         .as_object_mut()
         .expect("committed response must be an object")
-        .insert("inbox_item".to_owned(), legacy_inbox_item);
+        .insert("inbox_item".to_owned(), noncanonical_inbox_item);
     let response_json = replace_stored_response(
         &harness,
         MethodName::RequestUserAction,
-        "idem_legacy_full_form",
-        &legacy,
+        "idem_noncanonical_full_form",
+        &noncanonical,
     )?;
     let operation_result_ref =
         operation_result_ref_for_stored_bytes(operation_result_ref, &response_json);
@@ -470,7 +471,7 @@ fn legacy_full_form_request_result_is_corrupt_before_replay_or_first_page(
         .service
         .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
     let first_page = harness.service.get_operation_result(
-        operation_result_request("req_legacy_full_form_page", operation_result_ref),
+        operation_result_request("req_noncanonical_full_form_page", operation_result_ref),
         invocation(OperationCategory::Read),
     )?;
 
@@ -493,11 +494,12 @@ fn legacy_full_form_request_result_is_corrupt_before_replay_or_first_page(
 }
 
 #[test]
-fn legacy_state_summary_is_corrupt_before_replay_or_first_page() -> Result<(), Box<dyn Error>> {
+fn noncanonical_state_summary_is_corrupt_before_replay_or_first_page() -> Result<(), Box<dyn Error>>
+{
     let harness = MethodHarness::new()?;
     let request = intake_request(
-        "req_legacy_state_summary",
-        "idem_legacy_state_summary",
+        "req_noncanonical_state_summary",
+        "idem_noncanonical_state_summary",
         false,
         Some(0),
         RequestedMode::Work,
@@ -510,8 +512,8 @@ fn legacy_state_summary_is_corrupt_before_replay_or_first_page() -> Result<(), B
         .operation_result_ref
         .clone()
         .expect("committed agent workflow result must expose an operation-result ref");
-    let mut legacy = committed.response_value.clone();
-    let state = legacy["state"]
+    let mut noncanonical = committed.response_value.clone();
+    let state = noncanonical["state"]
         .as_object_mut()
         .expect("intake response must expose a StateSummary");
     state.remove("pending_user_action_summaries");
@@ -519,8 +521,8 @@ fn legacy_state_summary_is_corrupt_before_replay_or_first_page() -> Result<(), B
     let response_json = replace_stored_response(
         &harness,
         MethodName::Intake,
-        "idem_legacy_state_summary",
-        &legacy,
+        "idem_noncanonical_state_summary",
+        &noncanonical,
     )?;
     let operation_result_ref =
         operation_result_ref_for_stored_bytes(operation_result_ref, &response_json);
@@ -535,7 +537,7 @@ fn legacy_state_summary_is_corrupt_before_replay_or_first_page() -> Result<(), B
         .service
         .intake(request, invocation(OperationCategory::AgentWorkflow))?;
     let first_page = harness.service.get_operation_result(
-        operation_result_request("req_legacy_state_summary_page", operation_result_ref),
+        operation_result_request("req_noncanonical_state_summary_page", operation_result_ref),
         invocation(OperationCategory::Read),
     )?;
 

@@ -431,7 +431,7 @@ pub const VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL: &str = "cli_direct_user_ch
 /// Baseline actor assurance level for cooperative Agent Connection provenance.
 pub const ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE: &str = "agent_connection_cooperative";
 
-/// Host family supported by the release Agent Connection contract.
+/// Host family accepted by the current Agent Connection contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HostKind {
     Codex,
@@ -627,52 +627,6 @@ impl GuardHookContractStatus {
             Self::Compatible => "compatible",
             Self::Malformed => "malformed",
             Self::Incompatible => "incompatible",
-        }
-    }
-}
-
-/// Derived local host-hook configuration health.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum GuardConfigurationStatus {
-    Absent,
-    Configured,
-    ReloadRequired,
-    Degraded,
-    Stale,
-    Broken,
-}
-
-impl GuardConfigurationStatus {
-    /// Returns the stable value name for this host-hook configuration status.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Absent => "absent",
-            Self::Configured => "configured",
-            Self::ReloadRequired => "reload_required",
-            Self::Degraded => "degraded",
-            Self::Stale => "stale",
-            Self::Broken => "broken",
-        }
-    }
-}
-
-/// Derived local host-hook runtime-observation health.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum GuardObservationStatus {
-    NotObserved,
-    Observed,
-    StaleObservation,
-}
-
-impl GuardObservationStatus {
-    /// Returns the stable value name for this host-hook observation status.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::NotObserved => "not_observed",
-            Self::Observed => "observed",
-            Self::StaleObservation => "stale_observation",
         }
     }
 }

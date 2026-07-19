@@ -227,7 +227,7 @@ mod managed_marker_protocol_order_tests {
     use super::*;
 
     #[test]
-    fn repository_descriptor_is_codex_launch_provenance_but_not_session_identity() {
+    fn repository_descriptor_is_codex_launch_provenance_but_not_session_correlation() {
         assert_eq!(
             classify_launch_origin_with_descriptor(
                 |_| None,
@@ -1090,13 +1090,17 @@ fn codex_managed_call_binding(
     let native_session_id = codex_turn_metadata_id(turn_metadata, "session_id")?;
     let nested_thread_id = codex_turn_metadata_id(turn_metadata, "thread_id")?;
     let turn_id = codex_turn_metadata_id(turn_metadata, "turn_id")?;
-    validate_managed_host_native_session_id(flat_thread_id)
-        .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?;
+    validate_managed_host_native_session_id(flat_thread_id).map_err(|_| {
+        "managed Codex tools/call contains invalid host-native session correlation metadata"
+    })?;
     if flat_thread_id != nested_thread_id {
         return Err("managed Codex tools/call thread metadata is inconsistent");
     }
-    let thread_digest =
-        codex_thread_identity_digest(connection_internal_id, native_session_id, nested_thread_id);
+    let thread_digest = codex_thread_correlation_digest(
+        connection_internal_id,
+        native_session_id,
+        nested_thread_id,
+    );
     Ok(CodexManagedCallBinding {
         thread_digest,
         host_session_id: native_session_id.to_owned(),
@@ -1113,12 +1117,13 @@ fn codex_turn_metadata_id<'a>(
         .get(field)
         .and_then(Value::as_str)
         .ok_or("managed Codex tools/call requires string session, thread, and turn metadata")?;
-    validate_managed_host_native_session_id(value)
-        .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?;
+    validate_managed_host_native_session_id(value).map_err(|_| {
+        "managed Codex tools/call contains invalid host-native session correlation metadata"
+    })?;
     Ok(value)
 }
 
-fn codex_thread_identity_digest(
+fn codex_thread_correlation_digest(
     connection_internal_id: &str,
     native_session_id: &str,
     native_thread_id: &str,
@@ -2632,7 +2637,7 @@ fn validate_managed_stdio_session_ownership(
     } = &state.codex_binding
     else {
         return Err(McpAdapterError::Environment(
-            "managed_host_native_session_identity_invalid: active managed stdio binding has no host identity"
+            "managed_host_session_correlation_invalid: active managed stdio binding has no host-native session correlation"
                 .to_owned(),
         ));
     };
@@ -2649,13 +2654,13 @@ fn validate_managed_stdio_session_ownership(
     })?;
     validate_managed_host_native_session_id(host_session_id).map_err(|_| {
         McpAdapterError::Environment(
-            "managed_host_native_session_identity_invalid: active managed stdio binding has invalid native session identity"
+            "managed_host_session_correlation_invalid: active managed stdio binding has invalid host-native session correlation"
                 .to_owned(),
         )
     })?;
     validate_managed_host_native_session_id(host_thread_id).map_err(|_| {
         McpAdapterError::Environment(
-            "managed_host_native_session_identity_invalid: active managed stdio binding has invalid native thread identity"
+            "managed_host_session_correlation_invalid: active managed stdio binding has invalid host-native thread correlation"
                 .to_owned(),
         )
     })?;

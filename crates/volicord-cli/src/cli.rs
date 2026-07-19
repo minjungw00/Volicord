@@ -571,7 +571,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn declaration_rejects_removed_hosts_and_missing_values() {
+    fn declaration_rejects_unknown_hosts_and_missing_values() {
         let host_error =
             Cli::try_parse_from(["volicord", "init", "--host", "unsupported", "--repo", "."])
                 .expect_err("the host value set must stay closed");
@@ -583,10 +583,10 @@ mod tests {
     }
 
     #[test]
-    fn removed_release_surfaces_have_no_command_or_value_aliases() {
+    fn noncanonical_cli_surfaces_have_no_command_or_value_aliases() {
         for command in ["serve", "storage", "_final-output"] {
             let error = Cli::try_parse_from(["volicord", command])
-                .expect_err("removed commands must not remain as hidden aliases");
+                .expect_err("noncanonical commands must not be accepted as hidden aliases");
             assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
         }
 
@@ -604,7 +604,8 @@ mod tests {
             ],
             vec!["volicord", "mcp", "--stdio", "--local-http"],
         ] {
-            Cli::try_parse_from(args).expect_err("removed values and transports must be rejected");
+            Cli::try_parse_from(args)
+                .expect_err("noncanonical values and transports must be rejected");
         }
     }
 

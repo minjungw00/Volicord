@@ -868,12 +868,12 @@ impl McpAdapter {
                     .as_object()
                     .ok_or_else(|| McpAdapterError::ToolExecution {
                         tool_name: tool_name.to_owned(),
-                        message: "volicord.list_projects arguments must be an object".to_owned(),
+                        message: format!("{LIST_PROJECTS_TOOL_NAME} arguments must be an object"),
                     })?;
                 if !object.is_empty() {
                     return Err(McpAdapterError::ToolExecution {
                         tool_name: tool_name.to_owned(),
-                        message: "volicord.list_projects does not accept arguments".to_owned(),
+                        message: format!("{LIST_PROJECTS_TOOL_NAME} does not accept arguments"),
                     });
                 }
                 let result = self.list_projects_result()?;
@@ -887,9 +887,9 @@ impl McpAdapter {
         let connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
-            "volicord.list_projects",
+            LIST_PROJECTS_TOOL_NAME,
         )?;
-        let availabilities = self.allowed_project_availabilities("volicord.list_projects")?;
+        let availabilities = self.allowed_project_availabilities(LIST_PROJECTS_TOOL_NAME)?;
         let items = availabilities
             .iter()
             .map(|project| ListProjectItem {
@@ -901,7 +901,7 @@ impl McpAdapter {
             .collect::<Vec<_>>();
         let mode = parse_connection_mode(&connection.mode).map_err(|error| {
             McpAdapterError::ToolExecution {
-                tool_name: "volicord.list_projects".to_owned(),
+                tool_name: LIST_PROJECTS_TOOL_NAME.to_owned(),
                 message: error.to_string(),
             }
         })?;
@@ -1037,7 +1037,7 @@ impl McpAdapter {
             .map_err(McpAdapterError::Store)?
             .session_id
         } else {
-            current_project_agent_session_identity(
+            current_project_agent_session_coordinates(
                 &self.runtime_home,
                 project_id.as_str(),
                 self.context.connection_internal_id.as_str(),

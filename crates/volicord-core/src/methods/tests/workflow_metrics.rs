@@ -304,7 +304,7 @@ fn user_roundtrip_metric_counts_one_committed_resolution() -> Result<(), Box<dyn
 fn confirmed_invalid_observation_records_one_false_positive() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let session_id = start_metrics_session(&harness, "session_core_reconcile_metrics")?;
-    record_guard_installation(&harness, "core_reconcile_metrics", "record", "active", "{}")?;
+    record_guard_installation(&harness, "core_reconcile_metrics")?;
     let (task_id, _) = create_task_with_change_unit(&harness, "core_reconcile_metrics")?;
     insert_guarded_unrecorded_change_with_paths(
         &harness,

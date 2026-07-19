@@ -20,7 +20,7 @@ use volicord_store::{
         WorkflowMetricDecision, WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     },
     guards::{
-        current_project_agent_session_identity, guard_event, guard_installation,
+        current_project_agent_session_coordinates, guard_event, guard_installation,
         insert_guard_event, observe_agent_session, AgentSessionObservation, GuardEventInsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
@@ -714,14 +714,14 @@ fn bind_guard_envelope(
     input: &GuardInput,
     envelope: &mut GuardEnvelope,
 ) -> Result<(), GuardCommandError> {
-    let identity = current_project_agent_session_identity(
+    let coordinates = current_project_agent_session_coordinates(
         runtime_home,
         &project.project_id,
         &envelope.connection_id,
         envelope.guard_installation_id.as_deref(),
         &envelope.host_session_id,
     )?;
-    envelope.guard_installation_id = identity.guard_installation_id;
+    envelope.guard_installation_id = coordinates.guard_installation_id;
     let session = observe_agent_session(
         runtime_home,
         &project.project_id,
@@ -734,8 +734,8 @@ fn bind_guard_envelope(
             observed_at: envelope.occurred_at.clone(),
         },
     )?;
-    if session.session_id != identity.session_id
-        || session.project_integration_revision != identity.project_integration_revision
+    if session.session_id != coordinates.session_id
+        || session.project_integration_revision != coordinates.project_integration_revision
     {
         return Err(GuardCommandError::Runtime(
             "Store returned a project Agent Session outside the derived current revision"

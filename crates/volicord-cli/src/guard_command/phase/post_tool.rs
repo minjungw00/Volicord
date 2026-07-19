@@ -25,6 +25,7 @@ use volicord_store::{
 use volicord_types::{
     canonical_git_object_id, canonical_json_bare_sha256, GuardDecision, ProjectId, TaskId,
     UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis, WriteTicketValidityBasis,
+    RECORD_RUN_TOOL_NAME,
 };
 
 use super::GuardPhaseResult;
@@ -291,7 +292,7 @@ fn record_post_tool_correlation(
     observation: &ToolObservation,
     observed_changes: &ObservedChanges,
 ) -> Result<PostToolCorrelation, GuardCommandError> {
-    if observation.tool_name.as_deref() == Some("volicord.record_run") {
+    if observation.tool_name.as_deref() == Some(RECORD_RUN_TOOL_NAME) {
         return Ok(PostToolCorrelation {
             matched_expected_writes: Vec::new(),
             ticket_backed_observations: Vec::new(),

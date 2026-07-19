@@ -1663,9 +1663,13 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
 }
 
 #[test]
-fn origin_resume_rejects_tampered_safe_or_legacy_projection_without_effect(
+fn origin_resume_rejects_tampered_or_noncanonical_inbox_projection_without_effect(
 ) -> Result<(), Box<dyn Error>> {
-    for variant in ["summary_id", "summary_status", "legacy_inbox"] {
+    for variant in [
+        "summary_id",
+        "summary_status",
+        "noncanonical_inbox_projection",
+    ] {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) =
             create_task_with_change_unit(&harness, &format!("origin_tamper_{variant}"))?;
@@ -1692,13 +1696,13 @@ fn origin_resume_rejects_tampered_safe_or_legacy_projection_without_effect(
             "summary_status" => {
                 tampered["user_action_request_summary"]["status"] = json!("resolved");
             }
-            "legacy_inbox" => {
+            "noncanonical_inbox_projection" => {
                 tampered
                     .as_object_mut()
                     .expect("request result should be an object")
                     .insert(
                         "inbox_item".to_owned(),
-                        json!({"question": "Legacy model-visible question"}),
+                        json!({"question": "Noncanonical model-visible question"}),
                     );
             }
             _ => unreachable!(),

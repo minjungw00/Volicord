@@ -72,7 +72,7 @@ impl RepositoryDiscoveryDescriptor {
 
     /// Validates the complete repository-visible process entry.
     ///
-    /// The exact shape intentionally has no local connection/project identity,
+    /// The exact shape intentionally has no local Connection/project lifecycle coordinates,
     /// literal Runtime Home path, absolute executable, or unrelated environment
     /// fields. It carries only the host-native parent `VOLICORD_HOME` reference.
     pub fn validate_entry(

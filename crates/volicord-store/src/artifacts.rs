@@ -859,7 +859,7 @@ mod tests {
     #[test]
     fn persistent_body_verifier_rejects_project_home_relative_prefix() -> Result<(), Box<dyn Error>>
     {
-        let fixture = TempRuntimeHome::new("persistent-body-obsolete-prefix")?;
+        let fixture = TempRuntimeHome::new("persistent-body-noncanonical-prefix")?;
         let artifact_store_root = fixture.path().join("artifacts");
         let body_dir = artifact_store_root.join("tmp");
         fs::create_dir_all(&body_dir)?;

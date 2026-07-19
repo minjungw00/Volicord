@@ -20,8 +20,8 @@ use volicord_store::{
     StoreError, StoreFailureRoute,
 };
 use volicord_types::{
-    canonical_json_sha256, guard_manifest_from_json, GuardHookPhase, GuardManagedArtifactKind,
-    IntegrationProfile, ProjectId, SummaryCard,
+    canonical_json_sha256, guard_manifest_from_json, ConnectionCheckKind, GuardHookPhase,
+    GuardManagedArtifactKind, IntegrationProfile, ProjectId, SummaryCard,
 };
 
 use crate::{
@@ -42,6 +42,9 @@ use crate::{
     },
     summary_card::{render_summary_card_text, DIAGNOSTIC_SUMMARY_GUARANTEE},
 };
+
+const GUARD_FILES_CHECK_ID: &str = ConnectionCheckKind::GuardFiles.as_str();
+const GUARD_OBSERVATION_CHECK_ID: &str = ConnectionCheckKind::GuardObservation.as_str();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DoctorCommandError {
@@ -1300,8 +1303,14 @@ fn inspect_guard_installations(
     let installations = active_guard_installations(snapshot);
     if installations.is_empty() {
         for (id, summary) in [
-            ("guard_files", "no Codex Record Guard manifest is recorded"),
-            ("guard_observation", "no Guard observation is recorded"),
+            (
+                GUARD_FILES_CHECK_ID,
+                "no Codex Record Guard manifest is recorded",
+            ),
+            (
+                GUARD_OBSERVATION_CHECK_ID,
+                "no Guard observation is recorded",
+            ),
         ] {
             checks.push(DiagnosticCheck::skipped(id, summary));
         }
@@ -1452,11 +1461,14 @@ fn inspect_guard_installations(
             },
         );
         DiagnosticCheck::failed(
-            "guard_files",
+            GUARD_FILES_CHECK_ID,
             "one or more Codex Record Guard files are missing, stale, or broken",
         )
     } else {
-        DiagnosticCheck::passed("guard_files", "Codex Record Guard files are installed")
+        DiagnosticCheck::passed(
+            GUARD_FILES_CHECK_ID,
+            "Codex Record Guard files are installed",
+        )
     };
     let mut file_details = doctor_guard_file_details(&file_findings);
     if let Some(details) = file_details.as_object_mut() {
@@ -1496,7 +1508,7 @@ fn inspect_guard_installations(
     {
         checks.push(
             DiagnosticCheck::passed(
-                "guard_observation",
+                GUARD_OBSERVATION_CHECK_ID,
                 "all current Codex Record Guard hook phases were observed",
             )
             .with_details(json!({
@@ -1510,12 +1522,12 @@ fn inspect_guard_installations(
     } else {
         let observation_check = if incompatible_observations > 0 {
             DiagnosticCheck::failed(
-                "guard_observation",
+                GUARD_OBSERVATION_CHECK_ID,
                 "a current Guard event reported a malformed or incompatible hook contract",
             )
         } else {
             DiagnosticCheck::warning(
-                "guard_observation",
+                GUARD_OBSERVATION_CHECK_ID,
                 "one or more Codex Record Guard installations are awaiting current hook observations",
             )
         };
@@ -2095,11 +2107,11 @@ fn doctor_compact_check_rows(
         ("Profile", doctor_selected_profile_from_checks(checks)),
         (
             "Guard files",
-            doctor_check_state(checks, "guard_files").to_owned(),
+            doctor_check_state(checks, GUARD_FILES_CHECK_ID).to_owned(),
         ),
         (
             "Hook observation",
-            doctor_check_state(checks, "guard_observation").to_owned(),
+            doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID).to_owned(),
         ),
         ("Prompt capture", doctor_prompt_capture_status(checks)),
         (
@@ -2176,18 +2188,30 @@ fn doctor_states_json(
         "post_tool_correlation_available": doctor_host_hook_guard_available(checks),
         "bypass_detection_active": false,
         "prompt_capture_available": doctor_prompt_capture_available(checks),
-        "guard_configuration": doctor_check_state(checks, "guard_files"),
-        "guard_observation": doctor_check_state(checks, "guard_observation"),
-        "guard_effective": doctor_check_state(checks, "guard_observation"),
-        "guard_files": doctor_check_state(checks, "guard_files"),
-        "agents_managed_block": doctor_guard_file_kind_state(checks, "agents_managed_block"),
-        "volicord_policy_file": doctor_guard_file_kind_state(checks, "volicord_policy"),
-        "rule_instruction_config": doctor_guard_file_kind_state(checks, "host_rule_instruction"),
-        "hook_config": doctor_guard_file_kind_state(checks, "host_hook_config"),
+        "guard_configuration": doctor_check_state(checks, GUARD_FILES_CHECK_ID),
+        "guard_observation": doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID),
+        "guard_effective": doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID),
+        "guard_files": doctor_check_state(checks, GUARD_FILES_CHECK_ID),
+        "agents_managed_block": doctor_guard_file_kind_state(
+            checks,
+            GuardManagedArtifactKind::AgentsManagedBlock.as_str(),
+        ),
+        "volicord_policy_file": doctor_guard_file_kind_state(
+            checks,
+            GuardManagedArtifactKind::VolicordPolicy.as_str(),
+        ),
+        "rule_instruction_config": doctor_guard_file_kind_state(
+            checks,
+            GuardManagedArtifactKind::HostRuleInstruction.as_str(),
+        ),
+        "hook_config": doctor_guard_file_kind_state(
+            checks,
+            GuardManagedArtifactKind::HostHookConfig.as_str(),
+        ),
         "required_hook_phases": doctor_required_hook_phases_state(checks),
         "missing_required_hooks": doctor_missing_required_hooks_value(checks),
-        "guard_hook_observed": doctor_check_state(checks, "guard_observation"),
-        "guard_status": doctor_check_state(checks, "guard_observation"),
+        "guard_hook_observed": doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID),
+        "guard_status": doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID),
         "prompt_capture": doctor_prompt_capture_health(checks),
         "prompt_capture_status": doctor_prompt_capture_status(checks),
         "host_reload_required": doctor_host_reload_required(checks, actions),
@@ -2296,13 +2320,13 @@ fn doctor_check_state(checks: &[DiagnosticCheck], id: &str) -> &'static str {
 fn doctor_guard_file_kind_state(checks: &[DiagnosticCheck], kind: &str) -> String {
     checks
         .iter()
-        .find(|check| check.id == "guard_files")
+        .find(|check| check.id == GUARD_FILES_CHECK_ID)
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get("file_states"))
         .and_then(|states| states.get(kind))
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .unwrap_or_else(|| match check_status(checks, "guard_files") {
+        .unwrap_or_else(|| match check_status(checks, GUARD_FILES_CHECK_ID) {
             Some("skipped") | None => "not_checked".to_owned(),
             _ => "not_configured".to_owned(),
         })
@@ -2311,7 +2335,7 @@ fn doctor_guard_file_kind_state(checks: &[DiagnosticCheck], kind: &str) -> Strin
 fn doctor_guard_file_bool_detail(checks: &[DiagnosticCheck], key: &str) -> bool {
     checks
         .iter()
-        .find(|check| check.id == "guard_files")
+        .find(|check| check.id == GUARD_FILES_CHECK_ID)
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get(key))
         .and_then(Value::as_bool)
@@ -2325,7 +2349,7 @@ fn doctor_generated_config_verified_state(checks: &[DiagnosticCheck]) -> bool {
 fn doctor_hook_path_safety_state(checks: &[DiagnosticCheck]) -> String {
     checks
         .iter()
-        .find(|check| check.id == "guard_files")
+        .find(|check| check.id == GUARD_FILES_CHECK_ID)
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get("hook_path_safety"))
         .and_then(Value::as_str)
@@ -2387,7 +2411,7 @@ fn doctor_control_surface_bool(checks: &[DiagnosticCheck], key: &str) -> bool {
 }
 
 fn doctor_required_hook_phases_state(checks: &[DiagnosticCheck]) -> &'static str {
-    match check_status(checks, "guard_files") {
+    match check_status(checks, GUARD_FILES_CHECK_ID) {
         Some("passed") => "configured",
         Some("warning") | Some("failed") => "missing",
         Some("skipped") => "not_checked",
@@ -2398,7 +2422,7 @@ fn doctor_required_hook_phases_state(checks: &[DiagnosticCheck]) -> &'static str
 fn doctor_missing_required_hooks_value(checks: &[DiagnosticCheck]) -> Vec<String> {
     checks
         .iter()
-        .find(|check| check.id == "guard_files")
+        .find(|check| check.id == GUARD_FILES_CHECK_ID)
         .and_then(|check| check.details.as_ref())
         .and_then(|details| details.get("missing_required_hooks"))
         .and_then(Value::as_array)
@@ -2410,17 +2434,17 @@ fn doctor_missing_required_hooks_value(checks: &[DiagnosticCheck]) -> Vec<String
 }
 
 fn doctor_prompt_capture_health(checks: &[DiagnosticCheck]) -> &'static str {
-    if check_status(checks, "guard_observation").is_none() {
+    if check_status(checks, GUARD_OBSERVATION_CHECK_ID).is_none() {
         "not_checked"
     } else {
-        doctor_check_state(checks, "guard_observation")
+        doctor_check_state(checks, GUARD_OBSERVATION_CHECK_ID)
     }
 }
 
 fn doctor_prompt_capture_status(checks: &[DiagnosticCheck]) -> String {
     checks
         .iter()
-        .find(|check| check.id == "guard_observation")
+        .find(|check| check.id == GUARD_OBSERVATION_CHECK_ID)
         .and_then(|check| check.details.as_ref())
         .map(|details| {
             let configured = details

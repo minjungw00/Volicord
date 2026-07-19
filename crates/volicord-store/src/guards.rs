@@ -84,9 +84,9 @@ pub struct AgentSessionRuntimeBinding {
     pub observed_at: String,
 }
 
-/// Store-derived current project Agent Session identity.
+/// Store-derived current project Agent Session lifecycle coordinates.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectAgentSessionIdentity {
+pub struct ProjectAgentSessionCoordinates {
     pub session_id: String,
     pub project_integration_revision: String,
     pub guard_installation_id: Option<String>,
@@ -539,14 +539,14 @@ pub fn list_guard_installations(
         .collect()
 }
 
-/// Derives the only current project Agent Session identity for native host metadata.
-pub fn current_project_agent_session_identity(
+/// Derives the only current project Agent Session coordinates for host-native correlation metadata.
+pub fn current_project_agent_session_coordinates(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
     connection_internal_id: &str,
     asserted_guard_installation_id: Option<&str>,
     host_session_id: &str,
-) -> StoreResult<ProjectAgentSessionIdentity> {
+) -> StoreResult<ProjectAgentSessionCoordinates> {
     validate_identifier("project_id", project_id)?;
     validate_identifier("connection_internal_id", connection_internal_id)?;
     if let Some(guard_installation_id) = asserted_guard_installation_id {
@@ -554,7 +554,8 @@ pub fn current_project_agent_session_identity(
     }
     validate_managed_host_native_session_id(host_session_id).map_err(|_| {
         StoreError::InvalidInput {
-            detail: "host_session_id must be valid managed-host identity metadata".to_owned(),
+            detail: "host_session_id must be valid host-native session correlation metadata"
+                .to_owned(),
         }
     })?;
     let runtime_home = runtime_home.as_ref();
@@ -659,9 +660,9 @@ pub fn current_project_agent_session_identity(
         host_session_id,
     )
     .map_err(|error| StoreError::InvalidInput {
-        detail: format!("project Agent Session identity could not be derived: {error}"),
+        detail: format!("project Agent Session coordinates could not be derived: {error}"),
     })?;
-    Ok(ProjectAgentSessionIdentity {
+    Ok(ProjectAgentSessionCoordinates {
         session_id,
         project_integration_revision: project_revision.into_inner(),
         guard_installation_id: guard_ownership.map(|value| value.0),
@@ -677,7 +678,7 @@ pub fn observe_agent_session(
     validate_agent_session_observation(&input)?;
     let runtime_home = runtime_home.as_ref().to_path_buf();
     let observed_at = canonical_agent_session_observed_at(&input.observed_at)?;
-    let identity = current_project_agent_session_identity(
+    let coordinates = current_project_agent_session_coordinates(
         &runtime_home,
         project_id,
         &input.connection_internal_id,
@@ -687,7 +688,7 @@ pub fn observe_agent_session(
     establish_agent_session_anchor(
         &runtime_home,
         project_id,
-        &identity,
+        &coordinates,
         AgentSessionAnchorInput {
             requested_runtime_session_id: None,
             connection_internal_id: &input.connection_internal_id,
@@ -729,7 +730,7 @@ pub fn bind_agent_session_runtime(
                 .to_owned(),
         });
     }
-    let identity = current_project_agent_session_identity(
+    let coordinates = current_project_agent_session_coordinates(
         &runtime_home,
         project_id,
         &input.connection_internal_id,
@@ -741,7 +742,7 @@ pub fn bind_agent_session_runtime(
     establish_agent_session_anchor(
         &runtime_home,
         project_id,
-        &identity,
+        &coordinates,
         AgentSessionAnchorInput {
             requested_runtime_session_id: Some(&input.runtime_session_id),
             connection_internal_id: &input.connection_internal_id,
@@ -752,7 +753,7 @@ pub fn bind_agent_session_runtime(
         },
     )?;
 
-    // Phase 2: reserve only the exact current identity validated by Phase 1.
+    // Phase 2: reserve only the exact current coordinates validated by Phase 1.
     reserve_mcp_runtime_project_session(
         &runtime_home,
         McpRuntimeProjectSessionReservation {
@@ -760,7 +761,7 @@ pub fn bind_agent_session_runtime(
             connection_internal_id: &input.connection_internal_id,
             project_id,
             asserted_guard_installation_id: input.guard_installation_id.as_deref(),
-            expected_identity: &identity,
+            expected_coordinates: &coordinates,
             host_session_id: &input.host_session_id,
             bound_at: &observed_at,
         },
@@ -770,7 +771,7 @@ pub fn bind_agent_session_runtime(
     attach_agent_session_runtime(
         &runtime_home,
         project_id,
-        &identity,
+        &coordinates,
         &input.runtime_session_id,
         &input.connection_internal_id,
         &input.host_session_id,
@@ -791,7 +792,7 @@ struct AgentSessionAnchorInput<'a> {
 fn establish_agent_session_anchor(
     runtime_home: &Path,
     project_id: &str,
-    identity: &ProjectAgentSessionIdentity,
+    coordinates: &ProjectAgentSessionCoordinates,
     input: AgentSessionAnchorInput<'_>,
 ) -> StoreResult<AgentSessionRecord> {
     let mut project = open_guard_project(runtime_home, project_id, input.connection_internal_id)?;
@@ -808,18 +809,18 @@ fn establish_agent_session_anchor(
             .optional()?;
         if attached_session_id
             .as_deref()
-            .is_some_and(|session_id| session_id != identity.session_id)
+            .is_some_and(|session_id| session_id != coordinates.session_id)
         {
             return Err(StoreError::Conflict {
                 entity: "agent_session",
-                id: identity.session_id.clone(),
+                id: coordinates.session_id.clone(),
                 detail: "managed runtime is already attached to another project Agent Session"
                     .to_owned(),
             });
         }
     }
     if let Some(existing) =
-        agent_session_from_conn(&tx, &project.project.project_id, &identity.session_id)?
+        agent_session_from_conn(&tx, &project.project.project_id, &coordinates.session_id)?
     {
         if existing.connection_internal_id != input.connection_internal_id
             || existing.host_session_id != input.host_session_id
@@ -827,8 +828,8 @@ fn establish_agent_session_anchor(
         {
             return Err(StoreError::Conflict {
                 entity: "agent_session",
-                id: identity.session_id.clone(),
-                detail: "Agent Session is already bound to another Connection or host identity"
+                id: coordinates.session_id.clone(),
+                detail: "Agent Session is already bound to another Connection or host-native session correlation"
                     .to_owned(),
             });
         }
@@ -839,15 +840,15 @@ fn establish_agent_session_anchor(
             if existing_runtime != requested_runtime {
                 return Err(StoreError::Conflict {
                     entity: "agent_session",
-                    id: identity.session_id.clone(),
+                    id: coordinates.session_id.clone(),
                     detail: "Agent Session is already attached to another runtime".to_owned(),
                 });
             }
         }
-        if existing.project_integration_revision != identity.project_integration_revision {
+        if existing.project_integration_revision != coordinates.project_integration_revision {
             return Err(StoreError::Conflict {
                 entity: "agent_session",
-                id: identity.session_id.clone(),
+                id: coordinates.session_id.clone(),
                 detail: "Agent Session integration revision is immutable".to_owned(),
             });
         }
@@ -885,7 +886,7 @@ fn establish_agent_session_anchor(
               WHERE project_id = ?1 AND session_id = ?2",
             params![
                 project.project.project_id,
-                identity.session_id,
+                coordinates.session_id,
                 last_host_turn_id,
                 first_observed_at,
                 last_observed_at,
@@ -900,9 +901,9 @@ fn establish_agent_session_anchor(
             ) VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
             params![
                 project.project.project_id,
-                identity.session_id,
+                coordinates.session_id,
                 input.connection_internal_id,
-                identity.project_integration_revision,
+                coordinates.project_integration_revision,
                 input.host_session_id,
                 input.host_thread_id,
                 input.host_turn_id,
@@ -915,14 +916,14 @@ fn establish_agent_session_anchor(
     agent_session_by_conn(
         &project.conn,
         &project.project.project_id,
-        &identity.session_id,
+        &coordinates.session_id,
     )
 }
 
 fn attach_agent_session_runtime(
     runtime_home: &Path,
     project_id: &str,
-    identity: &ProjectAgentSessionIdentity,
+    coordinates: &ProjectAgentSessionCoordinates,
     runtime_session_id: &str,
     connection_internal_id: &str,
     host_session_id: &str,
@@ -930,20 +931,21 @@ fn attach_agent_session_runtime(
 ) -> StoreResult<AgentSessionRecord> {
     let mut project = open_guard_project(runtime_home, project_id, connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
-    let existing = agent_session_from_conn(&tx, &project.project.project_id, &identity.session_id)?
-        .ok_or_else(|| StoreError::Conflict {
-            entity: "agent_session",
-            id: identity.session_id.clone(),
-            detail: "validated project Agent Session anchor is no longer present".to_owned(),
-        })?;
+    let existing =
+        agent_session_from_conn(&tx, &project.project.project_id, &coordinates.session_id)?
+            .ok_or_else(|| StoreError::Conflict {
+                entity: "agent_session",
+                id: coordinates.session_id.clone(),
+                detail: "validated project Agent Session anchor is no longer present".to_owned(),
+            })?;
     if existing.connection_internal_id != connection_internal_id
         || existing.host_session_id != host_session_id
         || existing.host_thread_id != host_thread_id
-        || existing.project_integration_revision != identity.project_integration_revision
+        || existing.project_integration_revision != coordinates.project_integration_revision
     {
         return Err(StoreError::Conflict {
             entity: "agent_session",
-            id: identity.session_id.clone(),
+            id: coordinates.session_id.clone(),
             detail: "project Agent Session anchor ownership changed before runtime attachment"
                 .to_owned(),
         });
@@ -953,7 +955,7 @@ fn attach_agent_session_runtime(
         Some(_) => {
             return Err(StoreError::Conflict {
                 entity: "agent_session",
-                id: identity.session_id.clone(),
+                id: coordinates.session_id.clone(),
                 detail: "Agent Session is already attached to another runtime".to_owned(),
             })
         }
@@ -964,7 +966,7 @@ fn attach_agent_session_runtime(
                   WHERE project_id = ?1 AND session_id = ?2 AND runtime_session_id IS NULL",
                 params![
                     project.project.project_id,
-                    identity.session_id,
+                    coordinates.session_id,
                     runtime_session_id
                 ],
             )?;
@@ -974,7 +976,7 @@ fn attach_agent_session_runtime(
     agent_session_by_conn(
         &project.conn,
         &project.project.project_id,
-        &identity.session_id,
+        &coordinates.session_id,
     )
 }
 
@@ -1015,19 +1017,19 @@ pub fn agent_session_matches_current_integration(
         Err(StoreError::Conflict { .. } | StoreError::NotFound { .. }) => return Ok(false),
         Err(error) => return Err(error),
     };
-    let identity = match current_project_agent_session_identity(
+    let coordinates = match current_project_agent_session_coordinates(
         runtime_home,
         &session.project_id,
         &session.connection_internal_id,
         guard_installation_id,
         &session.host_session_id,
     ) {
-        Ok(identity) => identity,
+        Ok(coordinates) => coordinates,
         Err(StoreError::Conflict { .. } | StoreError::NotFound { .. }) => return Ok(false),
         Err(error) => return Err(error),
     };
-    Ok(identity.session_id == session.session_id
-        && identity.project_integration_revision == session.project_integration_revision)
+    Ok(coordinates.session_id == session.session_id
+        && coordinates.project_integration_revision == session.project_integration_revision)
 }
 
 /// Inserts one project-scoped guard event row.
@@ -2493,7 +2495,7 @@ fn validate_agent_session_metadata(
         ("host_turn_id", host_turn_id),
     ] {
         validate_managed_host_native_session_id(value).map_err(|_| StoreError::InvalidInput {
-            detail: format!("{field} must be valid managed-host identity metadata"),
+            detail: format!("{field} must be valid host-native session correlation metadata"),
         })?;
     }
     validate_timestamp_text("observed_at", observed_at)
@@ -3466,7 +3468,7 @@ mod tests {
             "2026-07-19T00:00:00Z",
         )?;
         let observed_at = "2026-07-19T00:00:01Z";
-        let identity = current_project_agent_session_identity(
+        let coordinates = current_project_agent_session_coordinates(
             fixture.runtime_home.path(),
             "project_guard_a",
             "conn_guard_a",
@@ -3477,7 +3479,7 @@ mod tests {
         establish_agent_session_anchor(
             fixture.runtime_home.path(),
             "project_guard_a",
-            &identity,
+            &coordinates,
             AgentSessionAnchorInput {
                 requested_runtime_session_id: Some(&runtime_session_id),
                 connection_internal_id: "conn_guard_a",
@@ -3494,7 +3496,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a",
                 project_id: "project_guard_a",
                 asserted_guard_installation_id: None,
-                expected_identity: &identity,
+                expected_coordinates: &coordinates,
                 host_session_id: "session_guard_a",
                 bound_at: observed_at,
             },
@@ -3503,7 +3505,7 @@ mod tests {
         let unbound = agent_session(
             fixture.runtime_home.path(),
             "project_guard_a",
-            &identity.session_id,
+            &coordinates.session_id,
         )?
         .expect("Phase 1 anchor");
         assert!(unbound.runtime_session_id.is_none());
@@ -3511,7 +3513,7 @@ mod tests {
             crate::operational_sessions::mcp_runtime_project_session_binding(
                 fixture.runtime_home.path(),
                 "project_guard_a",
-                &identity.session_id,
+                &coordinates.session_id,
             )?
             .is_some()
         );
@@ -3539,14 +3541,14 @@ mod tests {
         let project_conn = open_project_state_database(&project.state_db_path)?;
         let project_count: i64 = project_conn.query_row(
             "SELECT COUNT(*) FROM agent_sessions WHERE session_id = ?1",
-            [&identity.session_id],
+            [&coordinates.session_id],
             |row| row.get(0),
         )?;
         assert_eq!(project_count, 1);
         let registry_conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
         let binding_count: i64 = registry_conn.query_row(
             "SELECT COUNT(*) FROM mcp_runtime_project_session_bindings WHERE session_id = ?1",
-            [&identity.session_id],
+            [&coordinates.session_id],
             |row| row.get(0),
         )?;
         assert_eq!(binding_count, 1);
@@ -3568,7 +3570,7 @@ mod tests {
         assert!(matches!(changed_owner, StoreError::Conflict { .. }));
         let binding_count_after: i64 = registry_conn.query_row(
             "SELECT COUNT(*) FROM mcp_runtime_project_session_bindings WHERE session_id = ?1",
-            [&identity.session_id],
+            [&coordinates.session_id],
             |row| row.get(0),
         )?;
         assert_eq!(binding_count_after, 1);
@@ -3586,7 +3588,7 @@ mod tests {
             "2026-07-19T00:00:00Z",
         )?;
         let observed_at = "2026-07-19T00:00:01Z";
-        let old_identity = current_project_agent_session_identity(
+        let prior_coordinates = current_project_agent_session_coordinates(
             fixture.runtime_home.path(),
             "project_guard_a",
             "conn_guard_a",
@@ -3596,7 +3598,7 @@ mod tests {
         establish_agent_session_anchor(
             fixture.runtime_home.path(),
             "project_guard_a",
-            &old_identity,
+            &prior_coordinates,
             AgentSessionAnchorInput {
                 requested_runtime_session_id: Some(&runtime_session_id),
                 connection_internal_id: "conn_guard_a",
@@ -3629,7 +3631,7 @@ mod tests {
                 connection_internal_id: "conn_guard_a",
                 project_id: "project_guard_a",
                 asserted_guard_installation_id: None,
-                expected_identity: &old_identity,
+                expected_coordinates: &prior_coordinates,
                 host_session_id: "session_guard_a",
                 bound_at: observed_at,
             },
@@ -3640,14 +3642,14 @@ mod tests {
             crate::operational_sessions::mcp_runtime_project_session_binding(
                 fixture.runtime_home.path(),
                 "project_guard_a",
-                &old_identity.session_id,
+                &prior_coordinates.session_id,
             )?
             .is_none()
         );
         let old_anchor = agent_session(
             fixture.runtime_home.path(),
             "project_guard_a",
-            &old_identity.session_id,
+            &prior_coordinates.session_id,
         )?
         .expect("historical unbound anchor");
         assert!(old_anchor.runtime_session_id.is_none());
@@ -3665,7 +3667,7 @@ mod tests {
                 observed_at: "2026-07-19T00:00:02Z".to_owned(),
             },
         )?;
-        assert_ne!(current.session_id, old_identity.session_id);
+        assert_ne!(current.session_id, prior_coordinates.session_id);
         assert!(current.runtime_session_id.is_some());
         Ok(())
     }

@@ -226,9 +226,12 @@ fn malformed_and_noncurrent_manifests_are_corrupt() -> Result<(), Box<dyn Error>
         current.integrity_constraints_digest.clone(),
         current.enabled_capabilities.clone(),
     )?;
-    for (index, persisted) in ["{}".to_owned(), json!("legacy_numeric_profile").to_string()]
-        .into_iter()
-        .enumerate()
+    for (index, persisted) in [
+        "{}".to_owned(),
+        json!("unsupported_numeric_profile_shape").to_string(),
+    ]
+    .into_iter()
+    .enumerate()
     {
         let registry = canonical_registry()?;
         insert_registry_owner(&registry, &persisted)?;
@@ -370,7 +373,12 @@ fn ordinary_open_rejects_a_tampered_manifest_before_returning_a_write_handle(
     let runtime_home = TempRuntimeHome::new("manifest-before-write")?;
     let path = runtime_home.project_state_db_path("project_manifest");
     let conn = open_project_state_database(&path)?;
-    insert_project_owner(&conn, json!("legacy_numeric_profile").to_string().as_str())?;
+    insert_project_owner(
+        &conn,
+        json!("unsupported_numeric_profile_shape")
+            .to_string()
+            .as_str(),
+    )?;
     drop(conn);
 
     let error = open_project_state_database(&path)

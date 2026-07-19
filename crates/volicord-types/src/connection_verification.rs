@@ -874,11 +874,15 @@ mod tests {
     }
 
     #[test]
-    fn unknown_and_removed_report_kinds_fail() {
+    fn unknown_and_noncanonical_report_kinds_fail() {
         for value in ["unknown_check", "mcp_handshake", "host"] {
             assert!(serde_json::from_value::<ConnectionCheckKind>(json!(value)).is_err());
         }
-        for value in ["unknown_action", "reload_required", "legacy_reload"] {
+        for value in [
+            "unknown_action",
+            "reload_required",
+            "unsupported_reload_action",
+        ] {
             assert!(serde_json::from_value::<ConnectionActionKind>(json!(value)).is_err());
         }
 
@@ -890,11 +894,11 @@ mod tests {
             "persisted reports must reject unknown check kinds"
         );
 
-        let mut removed_action = serde_json::to_value(&report).unwrap();
-        removed_action["actions"][0]["id"] = json!("reload_required");
+        let mut noncanonical_action = serde_json::to_value(&report).unwrap();
+        noncanonical_action["actions"][0]["id"] = json!("reload_required");
         assert!(
-            serde_json::from_value::<ConnectionVerificationReport>(removed_action).is_err(),
-            "persisted reports must reject removed action kinds"
+            serde_json::from_value::<ConnectionVerificationReport>(noncanonical_action).is_err(),
+            "persisted reports must reject noncanonical action kinds"
         );
     }
 
@@ -1086,8 +1090,8 @@ mod tests {
     }
 
     #[test]
-    fn obsolete_status_values_are_rejected() {
-        for obsolete in [
+    fn noncanonical_status_values_are_rejected() {
+        for noncanonical in [
             "not_verified",
             "missing",
             "changed",
@@ -1100,8 +1104,8 @@ mod tests {
             "degraded",
             "dry_run",
         ] {
-            assert!(serde_json::from_value::<ConnectionStatus>(json!(obsolete)).is_err());
-            assert!(serde_json::from_value::<ConnectionCheckStatus>(json!(obsolete)).is_err());
+            assert!(serde_json::from_value::<ConnectionStatus>(json!(noncanonical)).is_err());
+            assert!(serde_json::from_value::<ConnectionCheckStatus>(json!(noncanonical)).is_err());
         }
     }
 

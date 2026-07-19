@@ -12,7 +12,8 @@ use volicord_types::{
     PersistedUserActionRequest, ProjectEnforcementProfile, RunId, StagedArtifactHandleId, TaskId,
     UserActionBasis, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
     UserActionOptionAction, UserActionRequestBody, UserActionResolutionBody, UserActionStatus,
-    UtcTimestamp, MAX_CONTINUITY_PAGE_SIZE,
+    UtcTimestamp, MAX_CONTINUITY_PAGE_SIZE, RECONCILE_CHANGES_TOOL_NAME,
+    REQUEST_USER_ACTION_TOOL_NAME,
 };
 
 use crate::{
@@ -3091,7 +3092,7 @@ fn decode_user_action_request_record(
     })?;
     if !matches!(
         raw.source_method.as_str(),
-        "volicord.request_user_action" | "volicord.reconcile_changes"
+        REQUEST_USER_ACTION_TOOL_NAME | RECONCILE_CHANGES_TOOL_NAME
     ) {
         return Err(StoreError::corrupt_owner_state_value(
             "user_action_requests",

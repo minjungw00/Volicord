@@ -17,12 +17,12 @@ struct RustToken<'a> {
 
 const FORBIDDEN_HOST_IMPLEMENTATION_MARKERS: &[(&str, &str)] = &[
     ("codex", "Codex-specific implementation knowledge"),
-    ("claude", "removed host implementation knowledge"),
+    ("claude", "unsupported host implementation knowledge"),
     (".codex", "host configuration path knowledge"),
     ("hooks.json", "host configuration filename knowledge"),
     ("config.toml", "host configuration filename knowledge"),
     ("_hook", "host hook command knowledge"),
-    ("_final-output", "removed host command knowledge"),
+    ("_final-output", "unsupported host command knowledge"),
     ("managed_marker", "generated wrapper marker knowledge"),
     ("wrapper_path", "generated wrapper path knowledge"),
     (

@@ -20,7 +20,7 @@ use support::binary_fixture::{run_child, ChildStdin};
 use volicord_store::agent_connections::AgentConnectionRecord;
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
-    current_project_agent_session_identity,
+    current_project_agent_session_coordinates,
 };
 use volicord_store::inspection::{
     inspect_runtime_home, AgentConnectionInspectionRecord, DatabaseInspection,
@@ -121,7 +121,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
         reused_native_session,
         &workflow_manifest,
     )?;
-    let workflow_session_id = current_project_agent_session_identity(
+    let workflow_session_id = current_project_agent_session_coordinates(
         &fixture.runtime_home,
         &project_id,
         &connection_id,
@@ -241,7 +241,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert!(read_only_tools.contains(&"volicord.list_projects".to_owned()));
     assert!(!read_only_tools.contains(&"volicord.intake".to_owned()));
     fixture.run_current_guard_phases(&read_only_manifest, reused_native_session)?;
-    let read_only_session_id = current_project_agent_session_identity(
+    let read_only_session_id = current_project_agent_session_coordinates(
         &fixture.runtime_home,
         &project_id,
         &connection_id,
@@ -293,7 +293,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     let workflow_tools = fixture.run_managed_tools_list_names(&connection_id, &project_id)?;
     assert!(workflow_tools.contains(&"volicord.intake".to_owned()));
     fixture.run_current_guard_phases(&current_workflow_manifest, reused_native_session)?;
-    let current_workflow_session_id = current_project_agent_session_identity(
+    let current_workflow_session_id = current_project_agent_session_coordinates(
         &fixture.runtime_home,
         &project_id,
         &connection_id,
@@ -386,7 +386,7 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
         reused_native_session,
         &manifest,
     )?;
-    let historical_session_id = current_project_agent_session_identity(
+    let historical_session_id = current_project_agent_session_coordinates(
         &fixture.runtime_home,
         &project_id,
         &connection_id,
@@ -456,7 +456,7 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
         reused_native_session,
         &recreated_manifest,
     )?;
-    let recreated_session_id = current_project_agent_session_identity(
+    let recreated_session_id = current_project_agent_session_coordinates(
         &fixture.runtime_home,
         &project_id,
         &recreated_connection_id,
@@ -529,7 +529,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
         native_session,
         &manifest,
     )?;
-    let current_session_id = current_project_agent_session_identity(
+    let current_session_id = current_project_agent_session_coordinates(
         &fixture.runtime_home,
         &project_id,
         &connection_id,
@@ -698,7 +698,7 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
         assert_check(&complete_report, check_id, "passed", None);
     }
     assert_eq!(complete_report["actions"], json!([]));
-    assert_compact_public_shape(&complete_report);
+    assert_canonical_connection_command_shape(&complete_report);
 
     let before_status = fixture.content_snapshot()?;
     let repeated = fixture.run_connection("status", FUTURE_VERSION, true)?;
@@ -1142,7 +1142,7 @@ impl OperationalFixture {
             thread::sleep(Duration::from_millis(10));
         }
         self.run_current_guard_phases(manifest, native_session)?;
-        let current_session_id = current_project_agent_session_identity(
+        let current_session_id = current_project_agent_session_coordinates(
             &self.runtime_home,
             project_id,
             connection_id,
@@ -1568,11 +1568,11 @@ fn assert_connection_report(
         "unexpected report status: {}",
         serde_json::to_string_pretty(&report).unwrap_or_default()
     );
-    assert_compact_public_shape(&report);
+    assert_canonical_connection_command_shape(&report);
     Ok(report)
 }
 
-fn assert_compact_public_shape(report: &Value) {
+fn assert_canonical_connection_command_shape(report: &Value) {
     let object = report.as_object().expect("connection report object");
     let mut expected = BTreeSet::from([
         "actions",
@@ -1594,7 +1594,7 @@ fn assert_compact_public_shape(report: &Value) {
         object.keys().map(String::as_str).collect::<BTreeSet<_>>(),
         expected
     );
-    for forbidden in [
+    for noncanonical_field in [
         "states",
         "verification",
         "verification_report",
@@ -1611,8 +1611,8 @@ fn assert_compact_public_shape(report: &Value) {
         "disclosure",
     ] {
         assert!(
-            !json_key_exists(report, forbidden),
-            "unexpected {forbidden}"
+            !json_key_exists(report, noncanonical_field),
+            "noncanonical connection-command field {noncanonical_field}"
         );
     }
     assert_eq!(report["limits"].as_array().map(Vec::len), Some(1));

@@ -2007,7 +2007,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_transport_requires_bound_valid_native_session_identity() {
+    fn managed_transport_requires_bound_valid_native_session_correlation() {
         let fixture = TempRuntimeHome::new("diagnostics-managed-native-session").expect("fixture");
         let session_id = managed_session_id("native-session");
 
@@ -2022,7 +2022,7 @@ mod tests {
         cli_inbox.transport = DiagnosticTransport::CliInbox;
         cli_inbox.host_kind = None;
         start_diagnostic_session(fixture.path(), cli_inbox)
-            .expect("CLI inbox session identities are not host-bound");
+            .expect("CLI inbox sessions do not require host-native correlation");
 
         let malformed = start("not a native id");
         assert!(matches!(

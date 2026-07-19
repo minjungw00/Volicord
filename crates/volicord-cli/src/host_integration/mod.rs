@@ -169,50 +169,6 @@ pub fn guard_phase_capability_name(phase: GuardHookPhase) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostIntegrationFileKind {
-    VolicordPolicy,
-    GitInfoExclude,
-    HostMcpConfig,
-    HostHookConfig,
-    HostHookDispatch,
-    HostHookWrapper,
-    HostRuleInstruction,
-    AgentsManagedBlock,
-}
-
-impl HostIntegrationFileKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::VolicordPolicy => "volicord_policy",
-            Self::GitInfoExclude => "git_info_exclude",
-            Self::HostMcpConfig => "host_mcp_config",
-            Self::HostHookConfig => "host_hook_config",
-            Self::HostHookDispatch => "host_hook_dispatch",
-            Self::HostHookWrapper => "host_hook_wrapper",
-            Self::HostRuleInstruction => "host_rule_instruction",
-            Self::AgentsManagedBlock => "agents_managed_block",
-        }
-    }
-}
-
-impl From<volicord_types::GuardManagedArtifact> for HostIntegrationFileKind {
-    fn from(artifact: volicord_types::GuardManagedArtifact) -> Self {
-        use volicord_types::GuardManagedArtifact;
-
-        match artifact {
-            GuardManagedArtifact::VolicordPolicy => Self::VolicordPolicy,
-            GuardManagedArtifact::GitInfoExclude => Self::GitInfoExclude,
-            GuardManagedArtifact::HostHookConfig => Self::HostHookConfig,
-            GuardManagedArtifact::HostHookDispatch => Self::HostHookDispatch,
-            GuardManagedArtifact::HostHookWrapper(_) => Self::HostHookWrapper,
-            GuardManagedArtifact::HostRuleInstruction => Self::HostRuleInstruction,
-            GuardManagedArtifact::AgentsManagedBlock => Self::AgentsManagedBlock,
-        }
-    }
-}
-
 pub fn host_capabilities(host_kind: HostKind) -> HostCapabilities {
     match host_kind {
         HostKind::Codex => codex::capabilities(),

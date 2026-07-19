@@ -1689,7 +1689,7 @@ impl ProjectMutation<'_> {
         validate_json_text("user_action_requests.metadata_json", &input.metadata_json)?;
         if !matches!(
             input.source_method.as_str(),
-            "volicord.request_user_action" | "volicord.reconcile_changes"
+            REQUEST_USER_ACTION_TOOL_NAME | RECONCILE_CHANGES_TOOL_NAME
         ) {
             return Err(StoreError::InvalidInput {
                 detail: "user-action request source_method is not an allowed creator".to_owned(),

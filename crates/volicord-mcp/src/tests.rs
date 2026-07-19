@@ -1628,7 +1628,7 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
             Some("codex"),
         ),
         McpLaunchOrigin::ManualCli,
-        "an ambient host-native marker is not a managed launch identity"
+        "an ambient host-native marker is not managed launch correlation evidence"
     );
     let valid_codex = markers(&[
         ("VOLICORD_MCP_LAUNCH", "managed_host"),
@@ -2033,7 +2033,7 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
     ] {
         assert!(
             !persisted.contains(raw),
-            "raw native identity leaked: {raw}"
+            "raw host-native session correlation metadata leaked: {raw}"
         );
     }
     Ok(())
@@ -2156,7 +2156,7 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
     }
     assert!(responses[4]["result"].is_object());
 
-    let rejected = current_project_agent_session_identity(
+    let rejected = current_project_agent_session_coordinates(
         fixture.runtime_home_path(),
         fixture.project_id(),
         fixture.connection_id(),
@@ -2168,7 +2168,7 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
         agent_session(fixture.runtime_home_path(), fixture.project_id(), &rejected,)?.is_none()
     );
 
-    let accepted = current_project_agent_session_identity(
+    let accepted = current_project_agent_session_coordinates(
         fixture.runtime_home_path(),
         fixture.project_id(),
         fixture.connection_id(),
@@ -4054,7 +4054,7 @@ fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), B
 }
 
 #[test]
-fn stdio_rejects_tampered_safe_summaries_and_legacy_full_forms_before_delivery(
+fn stdio_rejects_tampered_summaries_and_noncanonical_full_form_before_delivery(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-pending-form-fail-closed")?;
     let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
@@ -4065,15 +4065,15 @@ fn stdio_rejects_tampered_safe_summaries_and_legacy_full_forms_before_delivery(
         json!("uar_not_in_the_trusted_projection");
     let mut invalid_summary = pending_response.clone();
     invalid_summary.response_value["user_action_request_summary"]["next_actor"] = json!("agent");
-    let mut legacy_full_form = pending_response.clone();
-    legacy_full_form.response_value["inbox_item"] = json!({
-        "form": {"question": "legacy model-visible form must not be trusted"}
+    let mut noncanonical_full_form = pending_response.clone();
+    noncanonical_full_form.response_value["inbox_item"] = json!({
+        "form": {"question": "noncanonical model-visible form must not be trusted"}
     });
 
     for (case, response) in [
         ("mismatched_id", mismatched_id),
         ("invalid_summary", invalid_summary),
-        ("legacy_full_form", legacy_full_form),
+        ("noncanonical_full_form", noncanonical_full_form),
     ] {
         let error = crate::stdio::user_action_tool_output(&adapter(&fixture)?, response)
             .expect_err("untrusted public pending data must fail before delivery");
