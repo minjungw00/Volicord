@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -13,33 +17,32 @@ use volicord_store::{
 use volicord_types::{
     guard_manifest_from_json, guard_manifest_matches_owner_binding,
     ConnectionIntegrationRevisionBasis, GuardCommand, GuardCommandInvocation,
-    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManifestOwnerBinding,
-    IntegrationRevision, PolicyHash, ProjectId,
+    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManagedArtifact,
+    GuardManagedArtifactKind, GuardManifestOwnerBinding, IntegrationProfile, IntegrationRevision,
+    ManagedFileExpectation, ProjectId,
 };
 
 use crate::host_integration::{
     contracts::{
         contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
     },
-    guard_phase_capability_name, HostIntegrationFileKind, HostKind, MANAGED_WRAPPER_ENV,
-    MANAGED_WRAPPER_VALUE,
+    guard_phase_capability_name, HostKind, MANAGED_WRAPPER_ENV, MANAGED_WRAPPER_VALUE,
 };
 
 use super::{
     git_exclude::git_exclude_path,
-    policy::{required_guard_phase_names, validate_policy_schema},
+    policy::{required_guard_phase_names, validate_policy_schema, validate_workflow_policy},
 };
 
 pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
-pub(crate) const CODEX_DISPATCH_WRAPPER: &str = ".codex/hooks/volicord-dispatch.sh";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum HookWrapperResolutionStatus {
-    Ok,
+    MetadataMissing,
+    AuthorityMismatch,
     PolicyHashMismatch,
     HostOutputMismatch,
-    AuthorityMismatch,
-    MetadataMissing,
+    Ok,
 }
 
 impl HookWrapperResolutionStatus {
@@ -54,16 +57,39 @@ impl HookWrapperResolutionStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum GuardArtifactIssue {
+    Missing,
+    Malformed,
+    ContentMismatch,
+    OwnershipMismatch,
+    PermissionMismatch,
+    HookContractMismatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GuardArtifactFinding {
+    pub(crate) artifact: GuardManagedArtifact,
+    pub(crate) path: PathBuf,
+    pub(crate) issue: GuardArtifactIssue,
+    pub(crate) details: Option<Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum GuardManifestIssue {
+    Malformed,
+    OwnershipMismatch,
+}
+
 #[derive(Debug, Default)]
-pub(crate) struct GuardFileFindings {
-    pub(crate) missing_files: Vec<String>,
-    pub(crate) stale_files: Vec<String>,
-    pub(crate) broken_files: Vec<String>,
-    pub(crate) file_kind_states: BTreeMap<String, String>,
-    pub(crate) guard_profiles: Vec<String>,
+pub(crate) struct GuardAuditFacts {
+    pub(crate) findings: Vec<GuardArtifactFinding>,
+    pub(crate) manifest_issues: Vec<GuardManifestIssue>,
+    audited_artifacts: BTreeSet<GuardManagedArtifact>,
+    pub(crate) guard_profiles: Vec<IntegrationProfile>,
     pub(crate) direct_file_write_matcher_coverage_values: Vec<bool>,
-    pub(crate) missing_required_hooks: Vec<String>,
-    pub(crate) hook_path_safety_statuses: Vec<String>,
+    pub(crate) missing_required_phases: Vec<GuardHookPhase>,
+    pub(crate) hook_path_safety_statuses: Vec<HookWrapperResolutionStatus>,
     pub(crate) hook_path_safety_details: Vec<Value>,
     pub(crate) hook_cwd_independent_values: Vec<bool>,
     pub(crate) hook_subdirectory_safe_values: Vec<bool>,
@@ -72,19 +98,16 @@ pub(crate) struct GuardFileFindings {
     pub(crate) rule_file_supported: bool,
 }
 
-impl GuardFileFindings {
-    pub(crate) fn merge(&mut self, other: GuardFileFindings) {
-        self.missing_files.extend(other.missing_files);
-        self.stale_files.extend(other.stale_files);
-        self.broken_files.extend(other.broken_files);
-        for (kind, state) in other.file_kind_states {
-            self.set_kind_state_text(&kind, &state);
-        }
+impl GuardAuditFacts {
+    pub(crate) fn merge(&mut self, other: GuardAuditFacts) {
+        self.findings.extend(other.findings);
+        self.manifest_issues.extend(other.manifest_issues);
+        self.audited_artifacts.extend(other.audited_artifacts);
         self.guard_profiles.extend(other.guard_profiles);
         self.direct_file_write_matcher_coverage_values
             .extend(other.direct_file_write_matcher_coverage_values);
-        self.missing_required_hooks
-            .extend(other.missing_required_hooks);
+        self.missing_required_phases
+            .extend(other.missing_required_phases);
         self.hook_path_safety_statuses
             .extend(other.hook_path_safety_statuses);
         self.hook_path_safety_details
@@ -99,110 +122,98 @@ impl GuardFileFindings {
     }
 
     pub(crate) fn sort_dedup(&mut self) {
-        self.missing_files.sort();
-        self.missing_files.dedup();
-        self.stale_files.sort();
-        self.stale_files.dedup();
-        self.broken_files.sort();
-        self.broken_files.dedup();
+        self.findings.sort_by(|left, right| {
+            (&left.artifact, &left.path, left.issue).cmp(&(
+                &right.artifact,
+                &right.path,
+                right.issue,
+            ))
+        });
+        self.findings.dedup_by(|left, right| {
+            left.artifact == right.artifact && left.path == right.path && left.issue == right.issue
+        });
+        self.manifest_issues.sort();
+        self.manifest_issues.dedup();
         self.guard_profiles.sort();
         self.guard_profiles.dedup();
-        self.missing_required_hooks.sort();
-        self.missing_required_hooks.dedup();
-        self.hook_path_safety_statuses
-            .sort_by_key(|status| hook_path_status_rank(status));
+        self.missing_required_phases.sort();
+        self.missing_required_phases.dedup();
+        self.hook_path_safety_statuses.sort();
         self.hook_path_safety_statuses.dedup();
     }
 
-    fn set_kind_state(&mut self, kind: HostIntegrationFileKind, state: &str) {
-        self.set_kind_state_text(kind.as_str(), state);
+    fn record_finding(
+        &mut self,
+        artifact: GuardManagedArtifact,
+        path: impl Into<PathBuf>,
+        issue: GuardArtifactIssue,
+    ) {
+        self.findings.push(GuardArtifactFinding {
+            artifact,
+            path: path.into(),
+            issue,
+            details: None,
+        });
     }
 
-    fn set_kind_state_text(&mut self, kind: &str, state: &str) {
-        let update = self
-            .file_kind_states
-            .get(kind)
-            .is_none_or(|current| file_state_rank(state) > file_state_rank(current));
-        if update {
-            self.file_kind_states
-                .insert(kind.to_owned(), state.to_owned());
-        }
+    fn record_manifest_issue(&mut self, issue: GuardManifestIssue) {
+        self.manifest_issues.push(issue);
     }
 
-    pub(crate) fn kind_state(&self, kind: HostIntegrationFileKind) -> &str {
-        self.file_kind_states
-            .get(kind.as_str())
-            .map(String::as_str)
-            .unwrap_or("not_configured")
+    pub(crate) fn affected_paths(&self) -> Vec<PathBuf> {
+        let mut paths = self
+            .findings
+            .iter()
+            .map(|finding| finding.path.clone())
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths.dedup();
+        paths
+    }
+
+    pub(crate) fn artifact_kind_audited(&self, kind: GuardManagedArtifactKind) -> bool {
+        self.audited_artifacts
+            .iter()
+            .any(|artifact| artifact.kind() == kind)
+    }
+
+    pub(crate) fn artifact_issues(
+        &self,
+        kind: GuardManagedArtifactKind,
+    ) -> BTreeSet<GuardArtifactIssue> {
+        self.findings
+            .iter()
+            .filter(|finding| finding.artifact.kind() == kind)
+            .map(|finding| finding.issue)
+            .collect()
     }
 
     fn record_hook_path_status(&mut self, status: HookWrapperResolutionStatus, detail: Value) {
-        self.hook_path_safety_statuses
-            .push(status.as_str().to_owned());
+        self.hook_path_safety_statuses.push(status);
         self.hook_path_safety_details.push(detail);
         self.hook_cwd_independent_values
             .push(status == HookWrapperResolutionStatus::Ok);
         self.hook_subdirectory_safe_values
             .push(status == HookWrapperResolutionStatus::Ok);
-        if status != HookWrapperResolutionStatus::Ok {
-            self.stale_files
-                .push("manifest_json:hook_path_safety".to_owned());
-        }
-    }
-
-    pub(crate) fn rule_instruction_state(&self, guard_disabled: bool) -> String {
-        if guard_disabled {
-            return "not_applicable".to_owned();
-        }
-        let state = self.kind_state(HostIntegrationFileKind::HostRuleInstruction);
-        if state != "not_configured" {
-            state.to_owned()
-        } else if self.rule_file_supported {
-            "not_configured".to_owned()
-        } else {
-            "unsupported_by_host".to_owned()
-        }
-    }
-
-    pub(crate) fn hook_config_state(&self, guard_disabled: bool) -> String {
-        if guard_disabled {
-            return "disabled".to_owned();
-        }
-        let state = combine_optional_file_states(
-            &combine_optional_file_states(
-                self.kind_state(HostIntegrationFileKind::HostHookConfig),
-                self.kind_state(HostIntegrationFileKind::HostHookDispatch),
-            ),
-            self.kind_state(HostIntegrationFileKind::HostHookWrapper),
-        );
-        if state != "not_configured" {
-            state
-        } else if self.missing_required_hooks.is_empty() {
-            "not_recorded".to_owned()
-        } else {
-            "missing_required_hooks".to_owned()
-        }
     }
 
     pub(crate) fn generated_config_verified(&self) -> bool {
-        self.missing_files.is_empty()
-            && self.stale_files.is_empty()
-            && self.broken_files.is_empty()
-            && self.kind_state(HostIntegrationFileKind::VolicordPolicy) == "installed"
-            && self.kind_state(HostIntegrationFileKind::HostHookConfig) == "installed"
-            && matches!(
-                self.kind_state(HostIntegrationFileKind::HostHookDispatch),
-                "not_configured" | "installed"
-            )
-            && self.kind_state(HostIntegrationFileKind::HostHookWrapper) == "installed"
+        self.findings.is_empty()
+            && self.manifest_issues.is_empty()
+            && volicord_types::GUARD_MANAGED_ARTIFACT_SPECS
+                .iter()
+                .filter(|spec| !spec.optional_under_git_owner)
+                .all(|spec| self.audited_artifacts.contains(&spec.artifact))
     }
 
     pub(crate) fn hook_path_safety_state(&self) -> String {
         self.hook_path_safety_statuses
             .iter()
-            .filter(|status| status.as_str() != HookWrapperResolutionStatus::Ok.as_str())
-            .min_by_key(|status| hook_path_status_rank(status))
-            .cloned()
+            .filter(|status| **status != HookWrapperResolutionStatus::Ok)
+            .min()
+            .copied()
+            .map(HookWrapperResolutionStatus::as_str)
+            .map(str::to_owned)
             .unwrap_or_else(|| {
                 if self.hook_path_safety_statuses.is_empty() {
                     "not_recorded".to_owned()
@@ -218,47 +229,8 @@ impl GuardFileFindings {
     }
 }
 
-fn hook_path_status_rank(status: &str) -> u8 {
-    match status {
-        "ok" => 100,
-        "metadata_missing" => 0,
-        "authority_mismatch" => 1,
-        "policy_hash_mismatch" => 2,
-        "host_output_mismatch" => 3,
-        "relative_path_unsafe" => 4,
-        "absolute_path_stale" => 5,
-        "placeholder_unsupported" => 6,
-        "dispatch_missing" => 7,
-        "wrapper_missing" => 8,
-        "wrapper_not_executable" => 9,
-        _ => 10,
-    }
-}
-
 pub(crate) fn all_recorded_values_true(values: &[bool]) -> bool {
     !values.is_empty() && values.iter().all(|value| *value)
-}
-
-pub(crate) fn combine_optional_file_states(left: &str, right: &str) -> String {
-    if file_state_rank(right) > file_state_rank(left) {
-        right.to_owned()
-    } else {
-        left.to_owned()
-    }
-}
-
-pub(crate) fn file_state_rank(value: &str) -> u8 {
-    match value {
-        "broken" => 8,
-        "missing" => 7,
-        "stale" => 6,
-        "updated" | "created" => 5,
-        "planned_update" | "planned_create" => 4,
-        "unchanged" | "installed" => 3,
-        "disabled" => 2,
-        "unsupported_by_host" | "not_applicable" => 1,
-        _ => 0,
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -276,7 +248,7 @@ pub(crate) fn guard_file_findings_for_installation(
     installation: &GuardInstallationRecord,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
-) -> GuardFileFindings {
+) -> GuardAuditFacts {
     let matched_projects = projects
         .iter()
         .filter(|project| installation.project_internal_id == project.project_internal_id)
@@ -313,26 +285,37 @@ fn audit_authoritative_project_policy(
     project_id: &str,
     repo_root: &Path,
     connection_intent: &str,
-    findings: &mut GuardFileFindings,
+    findings: &mut GuardAuditFacts,
 ) {
-    let path = repo_root.join(super::files::VOLICORD_POLICY_FILE);
-    let path_text = path.display().to_string();
-    let valid = (|| {
-        let store =
-            CoreProjectStore::open_read_only(runtime_home, &ProjectId::new(project_id)).ok()?;
-        let authority = store.project_workflow_policy().ok()??;
-        let text = super::files::read_managed_text(repo_root, &path).ok()??;
-        let policy = serde_json::from_str::<Value>(&text).ok()?;
-        validate_policy_schema(&policy, connection_intent).ok()?;
-        let fingerprint = policy_hash(&policy).ok()?;
-        (authority.policy_schema == super::files::VOLICORD_POLICY_SCHEMA
-            && fingerprint == authority.policy_fingerprint)
-            .then_some(())
+    let artifact = GuardManagedArtifact::VolicordPolicy;
+    let path = artifact
+        .expected_path(repo_root, None)
+        .expect("the Guard policy has a repository-owned path");
+    let issue = (|| {
+        let store = CoreProjectStore::open_read_only(runtime_home, &ProjectId::new(project_id))
+            .map_err(|_| GuardArtifactIssue::OwnershipMismatch)?;
+        let authority = store
+            .project_workflow_policy()
+            .map_err(|_| GuardArtifactIssue::OwnershipMismatch)?
+            .ok_or(GuardArtifactIssue::OwnershipMismatch)?;
+        let text = super::files::read_managed_text(repo_root, &path)
+            .map_err(|_| GuardArtifactIssue::Malformed)?
+            .ok_or(GuardArtifactIssue::Missing)?;
+        let policy =
+            serde_json::from_str::<Value>(&text).map_err(|_| GuardArtifactIssue::Malformed)?;
+        validate_policy_schema(&policy, connection_intent)
+            .map_err(|_| GuardArtifactIssue::Malformed)?;
+        let fingerprint = policy_hash(&policy).map_err(|_| GuardArtifactIssue::Malformed)?;
+        if authority.policy_schema != super::files::VOLICORD_POLICY_SCHEMA
+            || fingerprint != authority.policy_fingerprint
+        {
+            return Err(GuardArtifactIssue::OwnershipMismatch);
+        }
+        Ok(())
     })()
-    .is_some();
-    if !valid {
-        findings.broken_files.push(path_text);
-        findings.set_kind_state(HostIntegrationFileKind::VolicordPolicy, "broken");
+    .err();
+    if let Some(issue) = issue {
+        findings.record_finding(artifact, path, issue);
     }
 }
 
@@ -370,7 +353,7 @@ pub(crate) fn guard_file_findings_for_inspection(
     installation: &GuardInstallationInspectionRecord,
     connection: &AgentConnectionInspectionRecord,
     projects: &[ProjectInspectionRecord],
-) -> GuardFileFindings {
+) -> GuardAuditFacts {
     let matched_projects = projects
         .iter()
         .filter(|project| installation.project_internal_id == project.project_internal_id)
@@ -459,11 +442,9 @@ fn inspection_connection_revision(
     })
 }
 
-fn broken_manifest_findings() -> GuardFileFindings {
-    let mut findings = GuardFileFindings::default();
-    findings
-        .broken_files
-        .push("manifest_json:binding".to_owned());
+fn broken_manifest_findings() -> GuardAuditFacts {
+    let mut findings = GuardAuditFacts::default();
+    findings.record_manifest_issue(GuardManifestIssue::OwnershipMismatch);
     findings
 }
 
@@ -482,10 +463,10 @@ pub(crate) fn missing_required_hooks_from_manifest_json(manifest_json: &str) -> 
 fn guard_file_findings_with_context(
     manifest_json: &str,
     context: Option<GuardAuthorityContext<'_>>,
-) -> GuardFileFindings {
-    let mut findings = GuardFileFindings::default();
+) -> GuardAuditFacts {
+    let mut findings = GuardAuditFacts::default();
     let Ok(manifest) = guard_manifest_from_json(manifest_json) else {
-        findings.broken_files.push("manifest_json".to_owned());
+        findings.record_manifest_issue(GuardManifestIssue::Malformed);
         findings.record_hook_path_status(
             HookWrapperResolutionStatus::MetadataMissing,
             json!({ "source": "manifest_json" }),
@@ -494,14 +475,10 @@ fn guard_file_findings_with_context(
     };
     let value = serde_json::to_value(&manifest).expect("typed Guard manifest serializes");
     if context.is_some_and(|context| !guard_manifest_matches_authority_context(&value, context)) {
+        findings.record_manifest_issue(GuardManifestIssue::OwnershipMismatch);
         findings
-            .broken_files
-            .push("manifest_json:binding".to_owned());
-        findings.hook_path_safety_statuses.push(
-            HookWrapperResolutionStatus::AuthorityMismatch
-                .as_str()
-                .to_owned(),
-        );
+            .hook_path_safety_statuses
+            .push(HookWrapperResolutionStatus::AuthorityMismatch);
         findings.hook_path_safety_details.push(json!({
             "source": "manifest_json",
             "reason": "owner_binding_mismatch",
@@ -517,224 +494,147 @@ fn guard_file_findings_with_context(
     findings.rule_file_supported = manifest
         .managed_files
         .iter()
-        .any(|file| file.kind == "host_rule_instruction");
-    findings
-        .guard_profiles
-        .push(manifest.integration_profile.as_str().to_owned());
+        .any(|file| file.artifact() == volicord_types::GuardManagedArtifact::HostRuleInstruction);
+    findings.guard_profiles.push(manifest.integration_profile);
     findings
         .direct_file_write_matcher_coverage_values
         .push(true);
-    findings.missing_required_hooks = missing_required_hooks_from_manifest(&manifest);
+    findings.missing_required_phases = missing_required_phases_from_manifest(&manifest);
 
     for expectation in &manifest.managed_files {
-        let file = serde_json::to_value(expectation).expect("typed file expectation serializes");
-        verify_guard_file(&file, &value, &mut findings);
+        findings.audited_artifacts.insert(expectation.artifact());
+        verify_guard_file(expectation, &manifest, &mut findings);
     }
     findings
 }
 
 fn missing_required_hooks_from_manifest(manifest: &volicord_types::GuardManifest) -> Vec<String> {
-    GuardHookPhase::REQUIRED
+    missing_required_phases_from_manifest(manifest)
         .into_iter()
-        .filter(|phase| !manifest.required_hook_phases.contains(phase))
         .map(|phase| guard_phase_capability_name(phase).to_owned())
         .collect()
 }
 
-fn verify_guard_file(file: &Value, manifest: &Value, findings: &mut GuardFileFindings) {
-    let kind = file
-        .get("kind")
-        .and_then(Value::as_str)
-        .and_then(host_integration_file_kind_from_str);
-    let Some(path_text) = file.get("path").and_then(Value::as_str) else {
-        findings
-            .broken_files
-            .push("manifest_json:managed_files.path".to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
-        return;
-    };
-    let path = Path::new(path_text);
+fn missing_required_phases_from_manifest(
+    manifest: &volicord_types::GuardManifest,
+) -> Vec<GuardHookPhase> {
+    GuardHookPhase::REQUIRED
+        .into_iter()
+        .filter(|phase| !manifest.required_hook_phases.contains(phase))
+        .collect()
+}
+
+fn verify_guard_file(
+    file: &ManagedFileExpectation,
+    manifest: &volicord_types::GuardManifest,
+    findings: &mut GuardAuditFacts,
+) {
+    let artifact = file.artifact();
+    let path = file.path();
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            findings.missing_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "missing");
-            }
+            findings.record_finding(artifact, path, GuardArtifactIssue::Missing);
             return;
         }
         Err(_) => {
-            findings.broken_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "broken");
-            }
+            findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
             return;
         }
     };
-    let expected_hash = file
-        .get("content_hash")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    match file.get("ownership").and_then(Value::as_str) {
-        Some("managed_block") => verify_managed_block_file(file, kind, path_text, &text, findings),
-        Some("managed_json") => verify_managed_json_file(
-            file,
-            kind,
-            manifest,
-            path_text,
-            &text,
-            expected_hash,
-            findings,
-        ),
-        Some("managed_script") => verify_managed_script_file(
-            file,
-            kind,
-            manifest,
-            ManagedFileRead {
-                path,
-                path_text,
-                text: &text,
-                expected_hash,
-            },
-            findings,
-        ),
-        _ => {
-            findings.broken_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "broken");
-            }
+    match file {
+        ManagedFileExpectation::GitInfoExclude { .. }
+        | ManagedFileExpectation::HostRuleInstruction { .. }
+        | ManagedFileExpectation::AgentsManagedBlock { .. } => {
+            verify_managed_block_file(file, &text, findings)
+        }
+        ManagedFileExpectation::VolicordPolicy { .. }
+        | ManagedFileExpectation::HostHookConfig { .. } => {
+            verify_managed_json_file(file, manifest, &text, findings)
+        }
+        ManagedFileExpectation::HostHookDispatch { .. }
+        | ManagedFileExpectation::HostHookWrapper { .. } => {
+            verify_managed_script_file(file, manifest, &text, findings)
         }
     }
 }
 
 fn verify_managed_block_file(
-    file: &Value,
-    kind: Option<HostIntegrationFileKind>,
-    path_text: &str,
+    file: &ManagedFileExpectation,
     text: &str,
-    findings: &mut GuardFileFindings,
+    findings: &mut GuardAuditFacts,
 ) {
-    let Some(start_marker) = file.get("managed_marker_start").and_then(Value::as_str) else {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
-        return;
-    };
-    let Some(end_marker) = file.get("managed_marker_end").and_then(Value::as_str) else {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+    let artifact = file.artifact();
+    let path = file.path();
+    let Some((start_marker, end_marker)) = file.block_markers() else {
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     };
     if marker_count(text, start_marker) != 1 || marker_count(text, end_marker) != 1 {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     }
     let Some(block) = managed_block_slice(text, start_marker, end_marker) else {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     };
-    let expected_hash = file
-        .get("content_hash")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if sha256_text(block) != expected_hash {
-        findings.stale_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "stale");
-        }
-    } else if let Some(kind) = kind {
-        findings.set_kind_state(kind, "installed");
+    if sha256_text(block) != file.content_hash().as_str() {
+        findings.record_finding(artifact, path, GuardArtifactIssue::ContentMismatch);
     }
 }
 
 fn verify_managed_json_file(
-    file: &Value,
-    kind: Option<HostIntegrationFileKind>,
-    manifest: &Value,
-    path_text: &str,
+    file: &ManagedFileExpectation,
+    manifest: &volicord_types::GuardManifest,
     text: &str,
-    expected_hash: &str,
-    findings: &mut GuardFileFindings,
+    findings: &mut GuardAuditFacts,
 ) {
-    let mut state = "installed";
-    if sha256_text(text) != expected_hash {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
+    let artifact = file.artifact();
+    let path = file.path();
+    if sha256_text(text) != file.content_hash().as_str() {
+        findings.record_finding(artifact, path, GuardArtifactIssue::ContentMismatch);
     }
-    if file.get("kind").and_then(Value::as_str) == Some("host_hook_config") {
+    if artifact == GuardManagedArtifact::HostHookConfig {
         match serde_json::from_str::<Value>(text) {
             Ok(value) if is_volicord_codex_hook_config(&value) => {}
             Ok(_) | Err(_) => {
-                findings.broken_files.push(path_text.to_owned());
-                if let Some(kind) = kind {
-                    findings.set_kind_state(kind, "broken");
-                }
+                findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
                 return;
             }
         }
         let validation =
             validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, text);
         if validation.is_err() {
-            findings.stale_files.push(path_text.to_owned());
-            state = "stale";
-        }
-    }
-    if file.get("kind").and_then(Value::as_str) != Some("volicord_policy") {
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, state);
+            findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
         }
         return;
     }
     let policy = match serde_json::from_str::<Value>(text) {
         Ok(policy) => policy,
         Err(_) => {
-            findings.broken_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "broken");
-            }
+            findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
             return;
         }
     };
     let Some(connection_intent) = policy.get("connection_intent").and_then(Value::as_str) else {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     };
-    if validate_policy_schema(&policy, connection_intent).is_err() {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
+    if let Err(issue) = validate_workflow_policy(&policy, Some(connection_intent)) {
+        if issue.code == "POLICY_BINDING_MISMATCH" {
+            findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
+        } else {
+            findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
+            return;
         }
-        return;
     }
-    let expected_policy_hash = manifest
-        .get("policy_hash")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
     match policy_hash(&policy) {
-        Ok(actual) if actual == expected_policy_hash => {}
+        Ok(actual) if actual == manifest.policy_hash.as_str() => {}
         Ok(_) => {
-            findings.stale_files.push(path_text.to_owned());
-            state = "stale";
+            findings.record_finding(artifact, path, GuardArtifactIssue::ContentMismatch);
         }
         Err(_) => {
-            findings.broken_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "broken");
-            }
+            findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
             return;
         }
     }
@@ -749,25 +649,18 @@ fn verify_managed_json_file(
         });
     let owner_fields_match = command_owner_fields_match
         && policy.get("connection_id").and_then(Value::as_str)
-            == manifest.get("connection_id").and_then(Value::as_str)
+            == Some(manifest.connection_id.as_str())
         && policy.get("guard_installation_id").and_then(Value::as_str)
-            == manifest
-                .get("guard_installation_id")
-                .and_then(Value::as_str)
-        && policy.get("host").and_then(Value::as_str)
-            == manifest.get("host_kind").and_then(Value::as_str)
+            == Some(manifest.guard_installation_id.as_str())
+        && policy.get("host").and_then(Value::as_str) == Some(manifest.host_kind.as_str())
         && policy.get("selected_profile").and_then(Value::as_str)
-            == manifest.get("integration_profile").and_then(Value::as_str);
+            == Some(manifest.integration_profile.as_str());
     if !owner_fields_match || !policy_runtime_commands_match(&policy, manifest) {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    if let Some(kind) = kind {
-        findings.set_kind_state(kind, state);
+        findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
     }
 }
 
-fn policy_runtime_commands_match(policy: &Value, manifest: &Value) -> bool {
+fn policy_runtime_commands_match(policy: &Value, manifest: &volicord_types::GuardManifest) -> bool {
     policy_command_invocations(policy)
         .zip(runtime_command_invocations(manifest))
         .is_some_and(|(policy, runtime)| policy.fields_match_except_policy_hash(&runtime))
@@ -781,171 +674,140 @@ fn policy_command_invocations(policy: &Value) -> Option<GuardCommandInvocationSe
     GuardCommandInvocationSet::from_policy_commands(&commands).ok()
 }
 
-fn runtime_command_invocations(manifest: &Value) -> Option<GuardCommandInvocationSet> {
-    let commands = manifest
-        .get("runtime_commands")
-        .and_then(|value| serde_json::from_value::<GuardCommandSet>(value.clone()).ok())?;
-    let policy_hash = PolicyHash::parse(manifest.get("policy_hash")?.as_str()?).ok()?;
-    GuardCommandInvocationSet::from_runtime_commands(&commands, &policy_hash).ok()
-}
-
-#[derive(Clone, Copy)]
-struct ManagedFileRead<'a> {
-    path: &'a Path,
-    path_text: &'a str,
-    text: &'a str,
-    expected_hash: &'a str,
+fn runtime_command_invocations(
+    manifest: &volicord_types::GuardManifest,
+) -> Option<GuardCommandInvocationSet> {
+    GuardCommandInvocationSet::from_runtime_commands(
+        &manifest.runtime_commands,
+        &manifest.policy_hash,
+    )
+    .ok()
 }
 
 fn verify_managed_script_file(
-    file: &Value,
-    kind: Option<HostIntegrationFileKind>,
-    manifest: &Value,
-    managed: ManagedFileRead<'_>,
-    findings: &mut GuardFileFindings,
+    file: &ManagedFileExpectation,
+    manifest: &volicord_types::GuardManifest,
+    text: &str,
+    findings: &mut GuardAuditFacts,
 ) {
-    let ManagedFileRead {
-        path,
-        path_text,
-        text,
-        expected_hash,
-    } = managed;
-    let mut state = "installed";
-    if file.get("managed_marker").and_then(Value::as_str) != Some(HOOK_WRAPPER_MARKER)
+    let artifact = file.artifact();
+    let path = file.path();
+    let marker = match file {
+        ManagedFileExpectation::HostHookDispatch { managed_marker, .. }
+        | ManagedFileExpectation::HostHookWrapper { managed_marker, .. } => managed_marker,
+        _ => {
+            findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
+            return;
+        }
+    };
+    if marker != HOOK_WRAPPER_MARKER
         || !text
             .lines()
             .any(|line| line == format!("# {HOOK_WRAPPER_MARKER}"))
     {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     }
-    if kind == Some(HostIntegrationFileKind::HostHookDispatch) {
-        verify_managed_dispatch_script_file(file, kind, managed, findings);
+    if matches!(file, ManagedFileExpectation::HostHookDispatch { .. }) {
+        verify_managed_dispatch_script_file(file, text, findings);
         return;
     }
     if !has_current_managed_process_binding(text) {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     }
-    let Some(expected_command) = file
-        .get("managed_script_command")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
+    let ManagedFileExpectation::HostHookWrapper {
+        managed_script_command: expected_command,
+        host_kind,
+        phase,
+        purpose,
+        connection_id,
+        guard_installation_id,
+        policy_hash,
+        host_output,
+        executable_required,
+        ..
+    } = file
     else {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     };
     if hook_wrapper_exec_command(text) != Some(expected_command) {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
+        findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
     }
-    let expected_policy_hash = manifest
-        .get("policy_hash")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let expected_host_output = file
-        .get("host_output")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
     if !generated_managed_command_shape_verified(file, expected_command) {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
-        return;
+        findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
     }
-    if !expected_policy_hash.is_empty()
-        && hook_wrapper_comment_value(text, "policy_hash") != Some(expected_policy_hash)
+    if policy_hash != &manifest.policy_hash
+        || hook_wrapper_comment_value(text, "policy_hash") != Some(policy_hash.as_str())
     {
-        findings.stale_files.push(path_text.to_owned());
+        findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
         findings.record_hook_path_status(
             HookWrapperResolutionStatus::PolicyHashMismatch,
-            json!({ "path": path_text, "expected_policy_hash": expected_policy_hash }),
+            json!({ "path": path.display().to_string(), "expected_policy_hash": policy_hash.as_str() }),
         );
-        state = "stale";
     }
-    if !expected_host_output.is_empty()
-        && hook_wrapper_comment_value(text, "host_output") != Some(expected_host_output)
-    {
-        findings.stale_files.push(path_text.to_owned());
+    if hook_wrapper_comment_value(text, "host_output") != Some(host_output.as_str()) {
+        findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
         findings.record_hook_path_status(
             HookWrapperResolutionStatus::HostOutputMismatch,
-            json!({ "path": path_text, "expected_host_output": expected_host_output }),
+            json!({ "path": path.display().to_string(), "expected_host_output": host_output.as_str() }),
         );
-        state = "stale";
     }
-    for key in [
-        "host_kind",
-        "phase",
-        "purpose",
-        "connection_id",
-        "guard_installation_id",
-    ] {
-        let Some(expected) = file.get(key).and_then(Value::as_str) else {
-            findings.broken_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "broken");
-            }
-            return;
-        };
+    let owner_fields = [
+        ("host_kind", host_kind.as_str()),
+        ("phase", phase.as_str()),
+        (
+            "purpose",
+            match purpose {
+                volicord_types::GuardManagedScriptPurpose::Guard => "guard",
+            },
+        ),
+        ("connection_id", connection_id.as_str()),
+        ("guard_installation_id", guard_installation_id.as_str()),
+    ];
+    for (key, expected) in owner_fields {
         if hook_wrapper_comment_value(text, key) != Some(expected) {
-            findings.stale_files.push(path_text.to_owned());
+            findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
             findings.record_hook_path_status(
                 HookWrapperResolutionStatus::AuthorityMismatch,
-                json!({ "path": path_text, "field": key, "expected": expected }),
+                json!({ "path": path.display().to_string(), "field": key, "expected": expected }),
             );
-            state = "stale";
         }
     }
-    if sha256_text(text) != expected_hash {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
+    if sha256_text(text) != file.content_hash().as_str() {
+        findings.record_finding(artifact, path, GuardArtifactIssue::ContentMismatch);
     }
-    if file
-        .get("executable_required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        && !script_is_executable(path)
-    {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    if let Some(kind) = kind {
-        findings.set_kind_state(kind, state);
+    if *executable_required && !script_is_executable(path) {
+        findings.record_finding(artifact, path, GuardArtifactIssue::PermissionMismatch);
     }
 }
 
 fn verify_managed_dispatch_script_file(
-    file: &Value,
-    kind: Option<HostIntegrationFileKind>,
-    managed: ManagedFileRead<'_>,
-    findings: &mut GuardFileFindings,
+    file: &ManagedFileExpectation,
+    text: &str,
+    findings: &mut GuardAuditFacts,
 ) {
-    let ManagedFileRead {
-        path,
-        path_text,
-        text,
-        expected_hash,
-    } = managed;
-    let mut state = "installed";
-    if file.get("managed_script_role").and_then(Value::as_str) != Some("codex_dispatch")
-        || hook_wrapper_comment_value(text, "host_kind") != Some("codex")
+    let artifact = file.artifact();
+    let path = file.path();
+    let ManagedFileExpectation::HostHookDispatch {
+        managed_script_role,
+        host_kind,
+        phase,
+        executable_required,
+        ..
+    } = file
+    else {
+        findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
+        return;
+    };
+    if *managed_script_role != volicord_types::GuardManagedScriptRole::CodexDispatch
+        || hook_wrapper_comment_value(text, "host_kind") != Some(host_kind.as_str())
         || hook_wrapper_comment_value(text, "phase") != Some("dispatch")
         || hook_wrapper_comment_value(text, "script_role") != Some("codex_dispatch")
+        || *phase != volicord_types::GuardDispatchPhase::Dispatch
     {
-        findings.broken_files.push(path_text.to_owned());
-        if let Some(kind) = kind {
-            findings.set_kind_state(kind, "broken");
-        }
+        findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
         return;
     }
     for required in [
@@ -955,42 +817,15 @@ fn verify_managed_dispatch_script_file(
         "exec \"$wrapper\"",
     ] {
         if !text.contains(required) {
-            findings.broken_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "broken");
-            }
+            findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
             return;
         }
     }
-    if sha256_text(text) != expected_hash {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
+    if sha256_text(text) != file.content_hash().as_str() {
+        findings.record_finding(artifact, path, GuardArtifactIssue::ContentMismatch);
     }
-    if file
-        .get("executable_required")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        && !script_is_executable(path)
-    {
-        findings.stale_files.push(path_text.to_owned());
-        state = "stale";
-    }
-    if let Some(kind) = kind {
-        findings.set_kind_state(kind, state);
-    }
-}
-
-fn host_integration_file_kind_from_str(value: &str) -> Option<HostIntegrationFileKind> {
-    match value {
-        "volicord_policy" => Some(HostIntegrationFileKind::VolicordPolicy),
-        "git_info_exclude" => Some(HostIntegrationFileKind::GitInfoExclude),
-        "host_mcp_config" => Some(HostIntegrationFileKind::HostMcpConfig),
-        "host_hook_config" => Some(HostIntegrationFileKind::HostHookConfig),
-        "host_hook_dispatch" => Some(HostIntegrationFileKind::HostHookDispatch),
-        "host_hook_wrapper" => Some(HostIntegrationFileKind::HostHookWrapper),
-        "host_rule_instruction" => Some(HostIntegrationFileKind::HostRuleInstruction),
-        "agents_managed_block" => Some(HostIntegrationFileKind::AgentsManagedBlock),
-        _ => None,
+    if *executable_required && !script_is_executable(path) {
+        findings.record_finding(artifact, path, GuardArtifactIssue::PermissionMismatch);
     }
 }
 
@@ -1057,6 +892,10 @@ fn is_volicord_codex_hook_handler(phase: GuardHookPhase, handler: &Value) -> boo
     let Some(object) = handler.as_object() else {
         return false;
     };
+    let dispatch_wrapper = GuardManagedArtifact::HostHookDispatch
+        .spec()
+        .repository_relative_path()
+        .expect("the Guard dispatch artifact has a repository-relative path");
     object.get("type").and_then(Value::as_str) == Some("command")
         && object
             .get("command")
@@ -1065,7 +904,7 @@ fn is_volicord_codex_hook_handler(phase: GuardHookPhase, handler: &Value) -> boo
                 command.contains(&format!(
                     ".codex/hooks/volicord-{}.sh",
                     phase.command_name()
-                )) || (command.contains(CODEX_DISPATCH_WRAPPER)
+                )) || (command.contains(dispatch_wrapper.to_string_lossy().as_ref())
                     && command.contains(phase.command_name()))
             })
 }
@@ -1130,8 +969,21 @@ fn generated_shell_words(command: &str) -> Option<Vec<String>> {
     Some(words)
 }
 
-fn generated_managed_command_shape_verified(file: &Value, command: &str) -> bool {
-    if file.get("purpose").and_then(Value::as_str) != Some("guard") {
+fn generated_managed_command_shape_verified(file: &ManagedFileExpectation, command: &str) -> bool {
+    let ManagedFileExpectation::HostHookWrapper {
+        purpose,
+        policy_hash,
+        phase,
+        host_kind,
+        connection_id,
+        guard_installation_id,
+        host_output,
+        ..
+    } = file
+    else {
+        return false;
+    };
+    if *purpose != volicord_types::GuardManagedScriptPurpose::Guard {
         return false;
     }
     let Some(words) = generated_shell_words(command) else {
@@ -1144,25 +996,16 @@ fn generated_managed_command_shape_verified(file: &Value, command: &str) -> bool
         command: executable.clone(),
         args: args.to_vec(),
     };
-    let Some(policy_hash) = file
-        .get("policy_hash")
-        .and_then(Value::as_str)
-        .and_then(|value| PolicyHash::parse(value).ok())
-    else {
-        return false;
-    };
     let Ok(invocation) =
-        GuardCommandInvocation::from_runtime_command_with_policy_hash(&command, &policy_hash)
+        GuardCommandInvocation::from_runtime_command_with_policy_hash(&command, policy_hash)
     else {
         return false;
     };
-    file.get("phase").and_then(Value::as_str) == Some(invocation.phase.as_str())
-        && file.get("host_kind").and_then(Value::as_str) == Some(invocation.host_kind.as_str())
-        && file.get("connection_id").and_then(Value::as_str)
-            == Some(invocation.connection_id.as_str())
-        && file.get("guard_installation_id").and_then(Value::as_str)
-            == Some(invocation.guard_installation_id.as_str())
-        && file.get("host_output").and_then(Value::as_str) == Some(invocation.host_output.as_str())
+    *phase == invocation.phase
+        && *host_kind == invocation.host_kind
+        && connection_id == &invocation.connection_id
+        && guard_installation_id == &invocation.guard_installation_id
+        && *host_output == invocation.host_output
 }
 
 fn has_current_managed_process_binding(content: &str) -> bool {
@@ -1259,9 +1102,12 @@ mod tests {
         operational_sessions::connection_integration_revision,
     };
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::IntegrationProfile;
+    use volicord_types::{GuardHookPhase, GuardManagedArtifact, IntegrationProfile};
 
-    use super::{guard_file_findings_with_context, GuardAuthorityContext};
+    use super::{
+        guard_file_findings_with_context, GuardArtifactIssue, GuardAuditFacts,
+        GuardAuthorityContext, GuardManifestIssue,
+    };
     use crate::{
         guard_integration::{
             apply_guard_integration,
@@ -1312,11 +1158,19 @@ mod tests {
             connection_integration_revision: revision.as_str(),
             project_repo_root: &repo_root,
         };
+        let has_issue = |facts: &GuardAuditFacts,
+                         artifact: GuardManagedArtifact,
+                         path: &std::path::Path,
+                         issue: GuardArtifactIssue| {
+            facts.findings.iter().any(|finding| {
+                finding.artifact == artifact && finding.path == path && finding.issue == issue
+            })
+        };
 
         let valid = guard_file_findings_with_context(&manifest_json, Some(context));
         assert!(valid.generated_config_verified());
-        assert!(valid.stale_files.is_empty());
-        assert!(valid.broken_files.is_empty());
+        assert!(valid.findings.is_empty());
+        assert!(valid.manifest_issues.is_empty());
 
         let mut hash_mismatch_manifest: Value = serde_json::from_str(&manifest_json)?;
         hash_mismatch_manifest["runtime_commands"]["post_tool"]["args"][13] = Value::String(
@@ -1327,37 +1181,32 @@ mod tests {
             Some(context),
         );
         assert!(hash_mismatch
-            .broken_files
-            .contains(&"manifest_json".to_owned()));
+            .manifest_issues
+            .contains(&GuardManifestIssue::Malformed));
 
         let policy_path = repo_root.join(".volicord/policy.json");
         let policy_text = fs::read_to_string(&policy_path)?;
         let mut policy: Value = serde_json::from_str(&policy_text)?;
-        policy["host_hook"]["commands"]["post_tool"]["args"][5] =
-            Value::String("connection_other".to_owned());
+        policy["connection_id"] = Value::String("connection_other".to_owned());
         fs::write(&policy_path, serde_json::to_string(&policy)?)?;
         let command_owner_mismatch =
             guard_file_findings_with_context(&manifest_json, Some(context));
-        assert!(
-            command_owner_mismatch
-                .stale_files
-                .contains(&policy_path.display().to_string())
-                || command_owner_mismatch
-                    .broken_files
-                    .contains(&policy_path.display().to_string())
-        );
+        assert!(has_issue(
+            &command_owner_mismatch,
+            GuardManagedArtifact::VolicordPolicy,
+            &policy_path,
+            GuardArtifactIssue::OwnershipMismatch,
+        ));
         policy = serde_json::from_str(&policy_text)?;
         policy["connection_intent"] = Value::String("personal".to_owned());
         fs::write(&policy_path, serde_json::to_string(&policy)?)?;
         let changed_policy = guard_file_findings_with_context(&manifest_json, Some(context));
-        assert!(
-            changed_policy
-                .stale_files
-                .contains(&policy_path.display().to_string())
-                || changed_policy
-                    .broken_files
-                    .contains(&policy_path.display().to_string())
-        );
+        assert!(has_issue(
+            &changed_policy,
+            GuardManagedArtifact::VolicordPolicy,
+            &policy_path,
+            GuardArtifactIssue::ContentMismatch,
+        ));
         fs::write(&policy_path, policy_text)?;
 
         let wrapper_path = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
@@ -1366,31 +1215,74 @@ mod tests {
         assert_ne!(changed_wrapper_text, wrapper_text);
         fs::write(&wrapper_path, changed_wrapper_text)?;
         let changed_wrapper = guard_file_findings_with_context(&manifest_json, Some(context));
-        assert!(
-            changed_wrapper
-                .stale_files
-                .contains(&wrapper_path.display().to_string())
-                || changed_wrapper
-                    .broken_files
-                    .contains(&wrapper_path.display().to_string())
-        );
-        fs::write(&wrapper_path, wrapper_text)?;
+        assert!(has_issue(
+            &changed_wrapper,
+            GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool),
+            &wrapper_path,
+            GuardArtifactIssue::HookContractMismatch,
+        ));
+        assert!(has_issue(
+            &changed_wrapper,
+            GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool),
+            &wrapper_path,
+            GuardArtifactIssue::ContentMismatch,
+        ));
+        fs::write(&wrapper_path, &wrapper_text)?;
+
+        let wrapper_without_marker =
+            fs::read_to_string(&wrapper_path)?.replace("# VOLICORD_MANAGED_HOOK_WRAPPER\n", "");
+        fs::write(&wrapper_path, wrapper_without_marker)?;
+        let missing_marker = guard_file_findings_with_context(&manifest_json, Some(context));
+        assert!(has_issue(
+            &missing_marker,
+            GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool),
+            &wrapper_path,
+            GuardArtifactIssue::Malformed,
+        ));
+        fs::write(&wrapper_path, &wrapper_text)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut permissions = fs::metadata(&wrapper_path)?.permissions();
+            let original_mode = permissions.mode();
+            permissions.set_mode(original_mode & !0o111);
+            fs::set_permissions(&wrapper_path, permissions)?;
+            let permission_mismatch =
+                guard_file_findings_with_context(&manifest_json, Some(context));
+            assert!(has_issue(
+                &permission_mismatch,
+                GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool),
+                &wrapper_path,
+                GuardArtifactIssue::PermissionMismatch,
+            ));
+            let mut permissions = fs::metadata(&wrapper_path)?.permissions();
+            permissions.set_mode(original_mode);
+            fs::set_permissions(&wrapper_path, permissions)?;
+        }
 
         let hook_config_path = repo_root.join(".codex/hooks.json");
         let hook_config_text = fs::read_to_string(&hook_config_path)?;
         fs::write(&hook_config_path, "not-json")?;
         let malformed = guard_file_findings_with_context(&manifest_json, Some(context));
-        assert!(malformed
-            .broken_files
-            .contains(&hook_config_path.display().to_string()));
+        assert!(has_issue(
+            &malformed,
+            GuardManagedArtifact::HostHookConfig,
+            &hook_config_path,
+            GuardArtifactIssue::Malformed,
+        ));
         fs::write(&hook_config_path, hook_config_text)?;
 
         let missing_path = repo_root.join(".codex/rules/volicord.rules");
         fs::remove_file(&missing_path)?;
         let missing = guard_file_findings_with_context(&manifest_json, Some(context));
-        assert!(missing
-            .missing_files
-            .contains(&missing_path.display().to_string()));
+        assert!(has_issue(
+            &missing,
+            GuardManagedArtifact::HostRuleInstruction,
+            &missing_path,
+            GuardArtifactIssue::Missing,
+        ));
 
         let mut owner_mismatch: Value = serde_json::from_str(&manifest_json)?;
         owner_mismatch["connection_id"] = Value::String("connection_other".to_owned());
@@ -1399,8 +1291,8 @@ mod tests {
             Some(context),
         );
         assert!(owner_mismatch
-            .broken_files
-            .contains(&"manifest_json".to_owned()));
+            .manifest_issues
+            .contains(&GuardManifestIssue::Malformed));
         assert_eq!(fs::read_to_string(unrelated_path)?, "user-owned\n");
         Ok(())
     }

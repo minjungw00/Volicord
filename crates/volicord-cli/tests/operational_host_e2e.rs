@@ -32,7 +32,8 @@ use volicord_store::operational_sessions::{
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    guard_manifest_from_json, GuardHookPhase, GuardManifest, McpRuntimeSessionSource,
+    guard_manifest_from_json, GuardHookPhase, GuardManagedOwnership, GuardManifest,
+    McpRuntimeSessionSource,
 };
 
 const FUTURE_VERSION: &str = "999.0.0";
@@ -1500,11 +1501,11 @@ fn assert_current_guard_projection(
             .all(|arg| arg != "--policy-hash"));
     }
     for file in &manifest.managed_files {
-        assert!(Path::new(&file.path).is_file(), "missing {}", file.path);
-        if file.ownership == "managed_script" {
-            assert_eq!(file.executable_required, Some(true));
+        assert!(file.path().is_file(), "missing {}", file.path().display());
+        if file.ownership() == GuardManagedOwnership::ManagedScript {
+            assert_eq!(file.executable_required(), Some(true));
         } else {
-            assert_eq!(file.executable_required, None);
+            assert_eq!(file.executable_required(), None);
         }
     }
     assert_platform_script_permissions(manifest);
@@ -1518,13 +1519,18 @@ fn assert_platform_script_permissions(manifest: &GuardManifest) {
     for file in manifest
         .managed_files
         .iter()
-        .filter(|file| file.ownership == "managed_script")
+        .filter(|file| file.ownership() == GuardManagedOwnership::ManagedScript)
     {
-        let mode = fs::metadata(&file.path)
-            .unwrap_or_else(|error| panic!("failed to inspect {}: {error}", file.path))
+        let mode = fs::metadata(file.path())
+            .unwrap_or_else(|error| panic!("failed to inspect {}: {error}", file.path().display()))
             .permissions()
             .mode();
-        assert_ne!(mode & 0o100, 0, "script is not executable: {}", file.path);
+        assert_ne!(
+            mode & 0o100,
+            0,
+            "script is not executable: {}",
+            file.path().display()
+        );
     }
 }
 

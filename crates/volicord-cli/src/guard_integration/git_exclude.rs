@@ -7,9 +7,9 @@ use crate::{
         files::{plan_managed_block_file, GeneratedFilePlan},
         GuardIntegrationError,
     },
-    host_integration::{ConnectionIntent, HostIntegrationFileKind},
+    host_integration::ConnectionIntent,
 };
-use volicord_types::IntegrationProfile;
+use volicord_types::{GuardManagedArtifact, IntegrationProfile};
 
 pub(crate) const GIT_EXCLUDE_START_MARKER: &str = "# BEGIN VOLICORD MANAGED LOCAL EXCLUDES";
 pub(crate) const GIT_EXCLUDE_END_MARKER: &str = "# END VOLICORD MANAGED LOCAL EXCLUDES";
@@ -55,7 +55,7 @@ pub(crate) fn plan_git_excludes_with_personal_protection(
     };
     let include_personal_paths = !target.is_linked_worktree && retain_personal_paths;
     plan_managed_block_file(
-        HostIntegrationFileKind::GitInfoExclude,
+        GuardManagedArtifact::GitInfoExclude,
         &target.anchor_root,
         &target.exclude_path,
         &exclude_block(include_personal_paths),

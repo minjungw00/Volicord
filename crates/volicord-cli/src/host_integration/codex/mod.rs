@@ -4,8 +4,6 @@ mod executable;
 mod identity;
 mod trust;
 
-use std::path::{Path, PathBuf};
-
 use crate::host_integration::HostCapabilities;
 
 pub use adapter::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest};
@@ -21,15 +19,4 @@ pub fn capabilities() -> HostCapabilities {
         rule_file_support: true,
         project_local_configuration: true,
     }
-}
-
-pub(crate) fn project_hooks_path(repo_root: &Path) -> PathBuf {
-    repo_root.join(".codex").join("hooks.json")
-}
-
-pub(crate) fn project_rule_path(repo_root: &Path) -> PathBuf {
-    repo_root
-        .join(".codex")
-        .join("rules")
-        .join("volicord.rules")
 }

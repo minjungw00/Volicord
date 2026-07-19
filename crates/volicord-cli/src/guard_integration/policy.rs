@@ -6,12 +6,13 @@ use std::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_types::{
-    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, IntegrationProfile,
+    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManagedArtifact,
+    IntegrationProfile,
 };
 
 use crate::{
     guard_integration::{
-        files::{read_managed_text, VOLICORD_POLICY_FILE, VOLICORD_POLICY_SCHEMA},
+        files::{read_managed_text, VOLICORD_POLICY_SCHEMA},
         hooks::guard_command_specs_json,
         public_host_label, GuardIntegrationError,
     },
@@ -98,7 +99,9 @@ pub(crate) struct RecordedLocalPolicy {
 pub(crate) fn recorded_local_policy(
     repo_root: &Path,
 ) -> Result<Option<RecordedLocalPolicy>, GuardIntegrationError> {
-    let path = repo_root.join(VOLICORD_POLICY_FILE);
+    let path = GuardManagedArtifact::VolicordPolicy
+        .expected_path(repo_root, None)
+        .expect("the Guard policy has a repository-owned path");
     let Some(text) = read_managed_text(repo_root, &path)? else {
         return Ok(None);
     };

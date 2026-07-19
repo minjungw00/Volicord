@@ -1,25 +1,22 @@
 use std::path::Path;
 
-use serde_json::{json, Value};
 use volicord_store::agent_connections::AgentConnectionRecord;
 use volicord_store::guards::{
     upsert_guard_installation, GuardInstallationRecord, GuardInstallationUpsert,
 };
 use volicord_store::operational_sessions::connection_integration_revision;
 use volicord_types::{
-    AgentConnectionId, GuardInstallationId, GuardManifest, HostKind as ManifestHostKind,
-    IntegrationProfile, ManagedFileExpectation, ProjectId, GUARD_MANIFEST_SCHEMA,
+    AgentConnectionId, GuardArtifactContentHash, GuardInstallationId, GuardManagedArtifact,
+    GuardManifest, HostKind as ManifestHostKind, IntegrationProfile, ManagedFileExpectation,
+    ProjectId, GUARD_MANIFEST_SCHEMA,
 };
 
 pub(crate) use volicord_types::guard_manifest_has_exact_current_shape;
 
-use crate::{
-    guard_integration::{
-        audit::{hook_wrapper_comment_value, hook_wrapper_exec_command, sha256_text},
-        files::{GeneratedFilePlan, GeneratedFileWriteKind},
-        GuardIntegrationError, GuardIntegrationPlan, HOOK_WRAPPER_MARKER,
-    },
-    host_integration::HostIntegrationFileKind,
+use crate::guard_integration::{
+    audit::{hook_wrapper_comment_value, hook_wrapper_exec_command, sha256_text},
+    files::{generated_file_plan_matches_artifact_spec, GeneratedFilePlan, GeneratedFileWriteKind},
+    GuardIntegrationError, GuardIntegrationPlan, HOOK_WRAPPER_MARKER,
 };
 
 pub(crate) fn record_guard_installation(
@@ -77,108 +74,164 @@ pub(crate) fn guard_manifest_json(
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
 }
 
-pub(crate) fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {
-    Value::Array(
-        files
-            .iter()
-            .map(|file| {
-                let mut value = json!({
-                    "kind": file.kind.as_str(),
-                    "path": path_text(&file.path),
-                    "status": file.status.as_str(),
-                    "content_hash": sha256_text(&file.content),
-                });
-                let object = value
-                    .as_object_mut()
-                    .expect("generated file JSON should be an object");
-                match file.write_kind {
-                    GeneratedFileWriteKind::Block {
-                        start_marker,
-                        end_marker,
-                        ..
-                    } => {
-                        object.insert(
-                            "ownership".to_owned(),
-                            Value::String("managed_block".to_owned()),
-                        );
-                        object.insert(
-                            "managed_marker_start".to_owned(),
-                            Value::String(start_marker.to_owned()),
-                        );
-                        object.insert(
-                            "managed_marker_end".to_owned(),
-                            Value::String(end_marker.to_owned()),
-                        );
-                    }
-                    GeneratedFileWriteKind::Json | GeneratedFileWriteKind::ExactJson => {
-                        object.insert(
-                            "ownership".to_owned(),
-                            Value::String("managed_json".to_owned()),
-                        );
-                    }
-                    GeneratedFileWriteKind::Script => {
-                        object.insert(
-                            "ownership".to_owned(),
-                            Value::String("managed_script".to_owned()),
-                        );
-                        object.insert(
-                            "managed_marker".to_owned(),
-                            Value::String(HOOK_WRAPPER_MARKER.to_owned()),
-                        );
-                        object.insert("executable_required".to_owned(), Value::Bool(true));
-                        if file.kind == HostIntegrationFileKind::HostHookDispatch {
-                            object.insert(
-                                "managed_script_role".to_owned(),
-                                Value::String("codex_dispatch".to_owned()),
-                            );
-                        } else if let Some(command) = hook_wrapper_exec_command(&file.content) {
-                            object.insert(
-                                "managed_script_command".to_owned(),
-                                Value::String(command.to_owned()),
-                            );
-                        }
-                        for key in [
-                            "host_kind",
-                            "phase",
-                            "purpose",
-                            "connection_id",
-                            "guard_installation_id",
-                            "policy_hash",
-                            "host_output",
-                        ] {
-                            if let Some(value) = hook_wrapper_comment_value(&file.content, key) {
-                                object.insert(key.to_owned(), Value::String(value.to_owned()));
-                            }
-                        }
-                    }
-                }
-                value
-            })
-            .collect(),
-    )
-}
-
 fn managed_file_expectations(
     files: &[GeneratedFilePlan],
 ) -> Result<Vec<ManagedFileExpectation>, GuardIntegrationError> {
-    let Value::Array(values) = generated_files_json(files) else {
-        unreachable!("generated files serialize as an array")
-    };
-    values
-        .into_iter()
-        .map(|mut value| {
-            value
-                .as_object_mut()
-                .expect("generated file entry is an object")
-                .remove("status");
-            serde_json::from_value(value)
-                .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
-        })
-        .collect()
+    files.iter().map(managed_file_expectation).collect()
 }
 
-fn path_text(path: &Path) -> String {
-    path.display().to_string()
+fn managed_file_expectation(
+    file: &GeneratedFilePlan,
+) -> Result<ManagedFileExpectation, GuardIntegrationError> {
+    if !generated_file_plan_matches_artifact_spec(file) {
+        return Err(GuardIntegrationError::runtime(format!(
+            "generated {} does not match its registered Guard artifact specification",
+            file.artifact.kind().as_str()
+        )));
+    }
+    let content_hash = GuardArtifactContentHash::parse(sha256_text(&file.content))
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
+    let path = file.path.clone();
+    match (file.artifact, file.write_kind) {
+        (
+            GuardManagedArtifact::AgentsManagedBlock,
+            GeneratedFileWriteKind::Block {
+                start_marker,
+                end_marker,
+                ..
+            },
+        ) => ManagedFileExpectation::managed_block(
+            file.artifact,
+            path,
+            content_hash,
+            start_marker,
+            end_marker,
+        )
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string())),
+        (
+            GuardManagedArtifact::GitInfoExclude,
+            GeneratedFileWriteKind::Block {
+                start_marker,
+                end_marker,
+                ..
+            },
+        ) => ManagedFileExpectation::managed_block(
+            file.artifact,
+            path,
+            content_hash,
+            start_marker,
+            end_marker,
+        )
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string())),
+        (
+            GuardManagedArtifact::HostRuleInstruction,
+            GeneratedFileWriteKind::Block {
+                start_marker,
+                end_marker,
+                ..
+            },
+        ) => ManagedFileExpectation::managed_block(
+            file.artifact,
+            path,
+            content_hash,
+            start_marker,
+            end_marker,
+        )
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string())),
+        (GuardManagedArtifact::VolicordPolicy, GeneratedFileWriteKind::Json) => {
+            ManagedFileExpectation::managed_json(file.artifact, path, content_hash)
+                .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
+        }
+        (GuardManagedArtifact::HostHookConfig, GeneratedFileWriteKind::ExactJson) => {
+            ManagedFileExpectation::managed_json(file.artifact, path, content_hash)
+                .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
+        }
+        (GuardManagedArtifact::HostHookDispatch, GeneratedFileWriteKind::Script) => {
+            let host_kind = required_wrapper_host_kind(&file.content)?;
+            require_wrapper_comment(&file.content, "phase", "dispatch")?;
+            require_wrapper_comment(&file.content, "script_role", "codex_dispatch")?;
+            if host_kind != ManifestHostKind::Codex {
+                return Err(GuardIntegrationError::runtime(
+                    "generated dispatch script has a non-Codex host coordinate",
+                ));
+            }
+            Ok(ManagedFileExpectation::codex_dispatch_script(
+                path,
+                content_hash,
+                HOOK_WRAPPER_MARKER,
+            ))
+        }
+        (GuardManagedArtifact::HostHookWrapper(phase), GeneratedFileWriteKind::Script) => {
+            let managed_script_command = hook_wrapper_exec_command(&file.content)
+                .ok_or_else(|| GuardIntegrationError::runtime("generated wrapper has no command"))?
+                .to_owned();
+            let host_kind = required_wrapper_host_kind(&file.content)?;
+            require_wrapper_comment(&file.content, "phase", phase.as_str())?;
+            require_wrapper_comment(&file.content, "purpose", "guard")?;
+            let connection_id =
+                AgentConnectionId::new(required_wrapper_comment(&file.content, "connection_id")?);
+            let guard_installation_id = GuardInstallationId::new(required_wrapper_comment(
+                &file.content,
+                "guard_installation_id",
+            )?);
+            let policy_hash = volicord_types::PolicyHash::parse(required_wrapper_comment(
+                &file.content,
+                "policy_hash",
+            )?)
+            .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
+            let host_output = required_wrapper_comment(&file.content, "host_output")?
+                .parse::<ManifestHostKind>()
+                .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
+            if host_kind != ManifestHostKind::Codex || host_output != ManifestHostKind::Codex {
+                return Err(GuardIntegrationError::runtime(
+                    "generated wrapper has a non-Codex host coordinate",
+                ));
+            }
+            Ok(ManagedFileExpectation::hook_wrapper(
+                phase,
+                path,
+                content_hash,
+                HOOK_WRAPPER_MARKER,
+                managed_script_command,
+                connection_id,
+                guard_installation_id,
+                policy_hash,
+            ))
+        }
+        _ => Err(GuardIntegrationError::runtime(format!(
+            "generated {} does not use its canonical Guard artifact semantics",
+            file.artifact.kind().as_str()
+        ))),
+    }
+}
+
+fn required_wrapper_host_kind(content: &str) -> Result<ManifestHostKind, GuardIntegrationError> {
+    required_wrapper_comment(content, "host_kind")?
+        .parse::<ManifestHostKind>()
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
+}
+
+fn required_wrapper_comment<'a>(
+    content: &'a str,
+    key: &str,
+) -> Result<&'a str, GuardIntegrationError> {
+    hook_wrapper_comment_value(content, key).ok_or_else(|| {
+        GuardIntegrationError::runtime(format!("generated wrapper is missing typed {key} metadata"))
+    })
+}
+
+fn require_wrapper_comment(
+    content: &str,
+    key: &str,
+    expected: &str,
+) -> Result<(), GuardIntegrationError> {
+    if required_wrapper_comment(content, key)? == expected {
+        Ok(())
+    } else {
+        Err(GuardIntegrationError::runtime(format!(
+            "generated wrapper {key} does not match its Guard artifact coordinate"
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -188,7 +241,8 @@ mod tests {
     use volicord_store::agent_connections::agent_connection_record_read_only;
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::{
-        guard_manifest_from_json, GuardCommandInvocation, GuardHookPhase, IntegrationProfile,
+        guard_manifest_from_json, GuardCommandInvocation, GuardHookPhase, GuardManagedArtifact,
+        GuardManagedOwnership, IntegrationProfile,
     };
 
     use super::{
@@ -201,9 +255,7 @@ mod tests {
             hooks::guard_command_line,
             plan::{plan_guard_integration, GuardIntegrationPlanRequest},
         },
-        host_integration::{
-            ConnectionIntent, HostIntegrationFileKind, HostKind, ManagedServerEntry,
-        },
+        host_integration::{ConnectionIntent, HostKind, ManagedServerEntry},
     };
 
     #[test]
@@ -247,11 +299,7 @@ mod tests {
             let wrapper = plan
                 .generated_files
                 .iter()
-                .find(|file| {
-                    file.kind == HostIntegrationFileKind::HostHookWrapper
-                        && hook_wrapper_comment_value(&file.content, "phase")
-                            == Some(phase.as_str())
-                })
+                .find(|file| file.artifact == GuardManagedArtifact::HostHookWrapper(phase))
                 .expect("phase wrapper");
             let expected_command = guard_command_line(runtime);
             assert_eq!(
@@ -296,50 +344,40 @@ mod tests {
         let managed_scripts = manifest
             .managed_files
             .iter()
-            .filter(|file| file.ownership == "managed_script")
-            .map(|file| {
-                (
-                    PathBuf::from(&file.path),
-                    file.kind.clone(),
-                    file.phase.clone().expect("managed script phase"),
-                )
-            })
+            .filter(|file| file.ownership() == GuardManagedOwnership::ManagedScript)
+            .map(|file| (PathBuf::from(file.path()), file.artifact()))
             .collect::<BTreeSet<_>>();
         assert_eq!(
             managed_scripts,
             BTreeSet::from([
                 (
                     repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-                    "host_hook_dispatch".to_owned(),
-                    "dispatch".to_owned(),
+                    GuardManagedArtifact::HostHookDispatch,
                 ),
                 (
                     repo_root.join(".codex/hooks/volicord-pre-tool.sh"),
-                    "host_hook_wrapper".to_owned(),
-                    "pre_tool".to_owned(),
+                    GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool),
                 ),
                 (
                     repo_root.join(".codex/hooks/volicord-post-tool.sh"),
-                    "host_hook_wrapper".to_owned(),
-                    "post_tool".to_owned(),
+                    GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PostTool),
                 ),
                 (
                     repo_root.join(".codex/hooks/volicord-prompt-capture.sh"),
-                    "host_hook_wrapper".to_owned(),
-                    "prompt_capture".to_owned(),
+                    GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PromptCapture),
                 ),
             ])
         );
         assert!(manifest
             .managed_files
             .iter()
-            .filter(|file| file.ownership == "managed_script")
-            .all(|file| file.executable_required == Some(true)));
+            .filter(|file| file.ownership() == GuardManagedOwnership::ManagedScript)
+            .all(|file| file.executable_required() == Some(true)));
         assert!(manifest
             .managed_files
             .iter()
-            .filter(|file| file.ownership != "managed_script")
-            .all(|file| file.executable_required.is_none()));
+            .filter(|file| file.ownership() != GuardManagedOwnership::ManagedScript)
+            .all(|file| file.executable_required().is_none()));
 
         let mut manifest_value = serde_json::to_value(&manifest)?;
         assert!(manifest_value["managed_files"]

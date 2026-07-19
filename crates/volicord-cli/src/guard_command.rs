@@ -28,8 +28,8 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_bytes, guard_manifest_from_json, GuardDecision,
-    GuardHookContractStatus, GuardHookPhase, IntegrationProfile, ObservationConfidence,
-    UtcTimestamp,
+    GuardHookContractStatus, GuardHookPhase, GuardManagedArtifact, IntegrationProfile,
+    ObservationConfidence, UtcTimestamp,
 };
 
 use crate::cli::{HookArgs, HookCommand};
@@ -38,7 +38,6 @@ use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
 const DEFAULT_INTEGRATION_PROFILE: &str = "record";
-const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
 const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
 
 mod args;
@@ -758,7 +757,9 @@ fn bind_guard_envelope(
 }
 
 fn current_policy_hash(project: &ProjectRecord) -> Result<Option<String>, GuardCommandError> {
-    let policy_path = project.repo_root.join(VOLICORD_POLICY_FILE);
+    let policy_path = GuardManagedArtifact::VolicordPolicy
+        .expected_path(&project.repo_root, None)
+        .expect("the Guard policy has a repository-owned path");
     let text = match fs::read_to_string(&policy_path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),

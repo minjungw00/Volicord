@@ -26,15 +26,14 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, guard_manifest_from_json, AcceptancePolicy,
-    ProjectId, RequestedControlLevel, TaskControlLevel, TaskMode,
+    GuardManagedArtifact, ProjectId, RequestedControlLevel, TaskControlLevel, TaskMode,
 };
 
 use crate::{
     cli::{PolicyApplyArgs, PolicyArgs, PolicyCommand, PolicyShowArgs, PolicyValidateArgs},
     guard_integration::{
         files::{
-            plan_policy_file, write_managed_file_if_fresh, FilePlanStatus, VOLICORD_POLICY_FILE,
-            VOLICORD_POLICY_SCHEMA,
+            plan_policy_file, write_managed_file_if_fresh, FilePlanStatus, VOLICORD_POLICY_SCHEMA,
         },
         policy::{validate_workflow_policy, PolicyValidationIssue},
     },
@@ -190,7 +189,9 @@ where
         )
     })?;
     let authority_value = authority_policy_value(&authority)?;
-    let managed_path = repo_root.join(VOLICORD_POLICY_FILE);
+    let managed_path = GuardManagedArtifact::VolicordPolicy
+        .expected_path(&repo_root, None)
+        .expect("the Guard policy has a repository-owned path");
     let file_state = managed_policy_file_state(&managed_path, &authority_value, &authority)?;
     let active_task_requires_escalation =
         active_task_requires_escalation(&store, &authority_value)?;
@@ -280,7 +281,9 @@ where
     let database_changed = authority_apply.database_changed;
     let resulting_version = authority_apply.policy.policy_version;
     let active_task_requires_escalation = authority_apply.active_task_requires_escalation;
-    let managed_path = repo_root.join(VOLICORD_POLICY_FILE);
+    let managed_path = GuardManagedArtifact::VolicordPolicy
+        .expected_path(&repo_root, None)
+        .expect("the Guard policy has a repository-owned path");
     let file_apply =
         plan_policy_file(&repo_root, &managed_path, &candidate.value).and_then(|plan| {
             let changed = plan.status != FilePlanStatus::Unchanged;

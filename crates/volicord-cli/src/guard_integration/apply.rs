@@ -2,16 +2,16 @@ use crate::{
     guard_integration::{
         files::{
             apply_managed_file_retirement, ensure_generated_file_plan_fresh,
-            managed_block_conflict, write_managed_file_if_fresh, FilePlanStatus, GeneratedFilePlan,
-            GeneratedFileWriteKind,
+            generated_file_plan_matches_artifact_spec, managed_block_conflict,
+            write_managed_file_if_fresh, FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind,
         },
         git_exclude::plan_git_excludes,
         GuardIntegrationError, GuardIntegrationPlan,
     },
-    host_integration::{ConnectionIntent, HostIntegrationFileKind},
+    host_integration::ConnectionIntent,
     managed_block,
 };
-use volicord_types::IntegrationProfile;
+use volicord_types::{GuardManagedArtifact, IntegrationProfile};
 
 pub(crate) fn apply_guard_migration_protection(
     plan: &mut GuardIntegrationPlan,
@@ -32,8 +32,8 @@ pub(crate) fn apply_guard_integration(
     apply_guard_migration_protection(&mut plan)?;
     for file in &mut plan.generated_files {
         if matches!(
-            file.kind,
-            HostIntegrationFileKind::GitInfoExclude | HostIntegrationFileKind::VolicordPolicy
+            file.artifact,
+            GuardManagedArtifact::GitInfoExclude | GuardManagedArtifact::VolicordPolicy
         ) {
             continue;
         }
@@ -43,7 +43,7 @@ pub(crate) fn apply_guard_integration(
         retirement.status = apply_managed_file_retirement(retirement)?;
     }
     for file in &mut plan.generated_files {
-        if file.kind == HostIntegrationFileKind::VolicordPolicy {
+        if file.artifact == GuardManagedArtifact::VolicordPolicy {
             file.status = apply_generated_file(file)?;
         }
     }
@@ -55,7 +55,7 @@ pub(crate) fn apply_guard_integration(
         if let Some(recorded) = plan
             .generated_files
             .iter_mut()
-            .find(|file| file.kind == HostIntegrationFileKind::GitInfoExclude)
+            .find(|file| file.artifact == GuardManagedArtifact::GitInfoExclude)
         {
             *recorded = final_exclude;
         } else {
@@ -87,12 +87,17 @@ fn parse_integration_profile(value: &str) -> Result<IntegrationProfile, GuardInt
 pub(crate) fn apply_generated_file(
     file: &GeneratedFilePlan,
 ) -> Result<FilePlanStatus, GuardIntegrationError> {
+    if !generated_file_plan_matches_artifact_spec(file) {
+        return Err(GuardIntegrationError::runtime(
+            "managed file plan does not match the Guard artifact registry",
+        ));
+    }
     ensure_generated_file_plan_fresh(file)?;
     if file.status == FilePlanStatus::Unchanged {
         return Ok(FilePlanStatus::Unchanged);
     }
 
-    let (content, executable) = match file.write_kind {
+    let content = match file.write_kind {
         GeneratedFileWriteKind::Block {
             start_marker,
             end_marker,
@@ -108,20 +113,18 @@ pub(crate) fn apply_generated_file(
                     file.path.display()
                 )));
             }
-            let content = managed_block::apply_managed_block_with_markers(
+            managed_block::apply_managed_block_with_markers(
                 existing,
                 &file.content,
                 start_marker,
                 end_marker,
             )
-            .map_err(managed_block_conflict)?;
-            (content, false)
+            .map_err(managed_block_conflict)?
         }
-        GeneratedFileWriteKind::Json | GeneratedFileWriteKind::ExactJson => {
-            (file.content.clone(), false)
-        }
-        GeneratedFileWriteKind::Script => (file.content.clone(), true),
+        GeneratedFileWriteKind::Json | GeneratedFileWriteKind::ExactJson => file.content.clone(),
+        GeneratedFileWriteKind::Script => file.content.clone(),
     };
+    let executable = file.artifact.spec().executable_required;
     write_managed_file_if_fresh(file, &content, executable)?;
     Ok(match file.status {
         FilePlanStatus::PlannedCreate => FilePlanStatus::Created,

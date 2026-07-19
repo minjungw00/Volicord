@@ -7,18 +7,16 @@ use serde_json::Value;
 use volicord_types::{
     AgentConnectionId, GuardCommand, GuardCommandAbsolutePath, GuardCommandInvocation,
     GuardCommandInvocationSet, GuardCommandProjection, GuardCommandSet, GuardHookPhase,
-    GuardInstallationId, IntegrationProfile, PolicyHash,
+    GuardInstallationId, GuardManagedArtifact, IntegrationProfile, PolicyHash,
 };
 
 use crate::{
     guard_integration::{
-        audit::{CODEX_DISPATCH_WRAPPER, HOOK_WRAPPER_MARKER},
+        audit::HOOK_WRAPPER_MARKER,
         files::{plan_managed_script_file, GeneratedFilePlan},
         public_host_label, GuardIntegrationError, HookWrapperResolutionStatus,
     },
-    host_integration::{
-        HostIntegrationFileKind, HostKind, MANAGED_WRAPPER_ENV, MANAGED_WRAPPER_VALUE,
-    },
+    host_integration::{HostKind, MANAGED_WRAPPER_ENV, MANAGED_WRAPPER_VALUE},
 };
 
 pub(crate) type GuardCommandSpec = GuardCommand;
@@ -126,7 +124,7 @@ pub(crate) fn plan_hook_wrapper_file(
         repo_root,
         &path,
         &content,
-        HostIntegrationFileKind::HostHookWrapper,
+        GuardManagedArtifact::HostHookWrapper(phase),
     )
 }
 
@@ -139,7 +137,7 @@ pub(crate) fn plan_codex_dispatch_wrapper_file(
         repo_root,
         &path,
         &content,
-        HostIntegrationFileKind::HostHookDispatch,
+        GuardManagedArtifact::HostHookDispatch,
     )
 }
 
@@ -289,13 +287,22 @@ fn hook_wrapper_relative_path(
     host_kind: HostKind,
     phase: GuardHookPhase,
 ) -> Result<PathBuf, GuardIntegrationError> {
-    let _ = host_kind;
-    let base = PathBuf::from(".codex").join("hooks");
-    Ok(base.join(format!("volicord-{}.sh", phase.command_name())))
+    if host_kind != HostKind::Codex {
+        return Err(GuardIntegrationError::runtime(
+            "no Guard wrapper path is registered for the selected host",
+        ));
+    }
+    GuardManagedArtifact::HostHookWrapper(phase)
+        .spec()
+        .repository_relative_path()
+        .ok_or_else(|| GuardIntegrationError::runtime("Guard wrapper path is not registered"))
 }
 
 fn codex_dispatch_wrapper_relative_path() -> PathBuf {
-    PathBuf::from(CODEX_DISPATCH_WRAPPER)
+    GuardManagedArtifact::HostHookDispatch
+        .spec()
+        .repository_relative_path()
+        .expect("the Guard dispatch artifact has a repository-relative path")
 }
 
 pub(crate) fn codex_guard_hook_script(phase: GuardHookPhase) -> String {

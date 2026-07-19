@@ -155,6 +155,22 @@ impl HostIntegrationFileKind {
     }
 }
 
+impl From<volicord_types::GuardManagedArtifact> for HostIntegrationFileKind {
+    fn from(artifact: volicord_types::GuardManagedArtifact) -> Self {
+        use volicord_types::GuardManagedArtifact;
+
+        match artifact {
+            GuardManagedArtifact::VolicordPolicy => Self::VolicordPolicy,
+            GuardManagedArtifact::GitInfoExclude => Self::GitInfoExclude,
+            GuardManagedArtifact::HostHookConfig => Self::HostHookConfig,
+            GuardManagedArtifact::HostHookDispatch => Self::HostHookDispatch,
+            GuardManagedArtifact::HostHookWrapper(_) => Self::HostHookWrapper,
+            GuardManagedArtifact::HostRuleInstruction => Self::HostRuleInstruction,
+            GuardManagedArtifact::AgentsManagedBlock => Self::AgentsManagedBlock,
+        }
+    }
+}
+
 pub fn host_capabilities(host_kind: HostKind) -> HostCapabilities {
     match host_kind {
         HostKind::Codex => codex::capabilities(),

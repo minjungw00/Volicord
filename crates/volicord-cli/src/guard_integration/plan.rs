@@ -10,17 +10,17 @@ use volicord_store::{
 };
 use volicord_types::{
     guard_manifest_from_json, guard_manifest_matches_owner_binding, GuardCommandInvocationSet,
-    GuardCommandSet, GuardHookPhase, GuardManifestOwnerBinding, IntegrationProfile, PolicyHash,
-    ProjectId,
+    GuardCommandSet, GuardHookPhase, GuardManagedArtifact, GuardManifestOwnerBinding,
+    IntegrationProfile, PolicyHash, ProjectId,
 };
 
 use crate::{
     guard_integration::{
         audit::policy_hash,
         files::{
-            plan_managed_block_file, plan_managed_file_retirement, plan_policy_file,
-            GeneratedFilePlan, ManagedFileRetirementPlan, AGENTS_FILE, GUIDANCE_END_MARKER,
-            GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
+            generated_file_plan_matches_artifact_spec, plan_managed_block_file,
+            plan_managed_file_retirement, plan_policy_file, GeneratedFilePlan,
+            ManagedFileRetirementPlan, GUIDANCE_END_MARKER, GUIDANCE_START_MARKER,
         },
         git_exclude::{
             git_exclude_path, plan_git_excludes, plan_git_excludes_with_personal_protection,
@@ -34,8 +34,8 @@ use crate::{
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
-        guard_phase_capability_name, host_capabilities, ConnectionIntent, HostIntegrationFileKind,
-        HostKind, ManagedServerEntry,
+        guard_phase_capability_name, host_capabilities, ConnectionIntent, HostKind,
+        ManagedServerEntry,
     },
 };
 
@@ -149,9 +149,11 @@ pub(crate) fn plan_guard_integration(
     if let Some(git_exclude_plan) = git_exclude_plan {
         generated_files.push(git_exclude_plan);
     }
-    let agents_path = repo_root.join(AGENTS_FILE);
+    let agents_path = GuardManagedArtifact::AgentsManagedBlock
+        .expected_path(repo_root, None)
+        .expect("the managed AGENTS block has a repository-owned path");
     generated_files.push(plan_managed_block_file(
-        HostIntegrationFileKind::AgentsManagedBlock,
+        GuardManagedArtifact::AgentsManagedBlock,
         repo_root,
         &agents_path,
         &agents_guidance_block(),
@@ -159,7 +161,9 @@ pub(crate) fn plan_guard_integration(
         GUIDANCE_END_MARKER,
         false,
     )?);
-    let policy_path = repo_root.join(VOLICORD_POLICY_FILE);
+    let policy_path = GuardManagedArtifact::VolicordPolicy
+        .expected_path(repo_root, None)
+        .expect("the Guard policy has a repository-owned path");
     generated_files.push(plan_policy_file(repo_root, &policy_path, &policy)?);
     generated_files.extend(plan_host_generated_files(HostGeneratedFilesRequest {
         host_kind,
@@ -219,6 +223,15 @@ pub(crate) fn plan_guard_integration(
 fn validate_generated_guard_plan(
     plan: GuardIntegrationPlan,
 ) -> Result<GuardIntegrationPlan, GuardIntegrationError> {
+    if !plan
+        .generated_files
+        .iter()
+        .all(generated_file_plan_matches_artifact_spec)
+    {
+        return Err(GuardIntegrationError::runtime(
+            "generated Guard plan does not match the managed-artifact registry",
+        ));
+    }
     let policy = GuardCommandInvocationSet::from_policy_commands(&plan.policy_commands);
     let runtime =
         GuardCommandInvocationSet::from_runtime_commands(&plan.runtime_commands, &plan.policy_hash);
@@ -363,20 +376,19 @@ fn plan_retired_files_from_manifest(
         .collect::<std::collections::BTreeSet<_>>();
     let mut retired = Vec::new();
     for expectation in &manifest.managed_files {
-        let kind = expectation.kind.as_str();
         if matches!(
-            kind,
-            "volicord_policy" | "git_info_exclude" | "agents_managed_block" | "host_mcp_config"
+            expectation.artifact(),
+            GuardManagedArtifact::VolicordPolicy
+                | GuardManagedArtifact::GitInfoExclude
+                | GuardManagedArtifact::AgentsManagedBlock
         ) {
             continue;
         }
-        let path = Path::new(&expectation.path);
+        let path = expectation.path();
         if current_paths.contains(path) {
             continue;
         }
-        let file = serde_json::to_value(expectation)
-            .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-        retired.push(plan_managed_file_retirement(repo_root, &file)?);
+        retired.push(plan_managed_file_retirement(repo_root, expectation)?);
     }
     Ok(retired)
 }
@@ -391,7 +403,7 @@ fn guard_hooks_unsupported_message(
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "GUARD_HOOKS_UNSUPPORTED: {} record init requires configured host lifecycle hooks, but this adapter does not define project-local hook configuration for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration.",
+        "GUARD_HOOKS_UNSUPPORTED: {} record init requires configured host lifecycle hooks, but this adapter does not define project-local hook configuration for: {}. AGENTS.md and .volicord/policy.json are not host hook configuration.",
         public_host_label(host_kind),
         missing
     )

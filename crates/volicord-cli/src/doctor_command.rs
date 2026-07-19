@@ -20,8 +20,8 @@ use volicord_store::{
     StoreError, StoreFailureRoute,
 };
 use volicord_types::{
-    canonical_json_sha256, guard_manifest_from_json, GuardHookPhase, IntegrationProfile, ProjectId,
-    SummaryCard,
+    canonical_json_sha256, guard_manifest_from_json, GuardHookPhase, GuardManagedArtifactKind,
+    IntegrationProfile, ProjectId, SummaryCard,
 };
 
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
     guard_integration::audit::{
         all_recorded_values_true, guard_file_findings_for_inspection,
         guard_manifest_binding_valid_for_inspection, missing_required_hooks_from_manifest_json,
-        GuardFileFindings,
+        GuardArtifactIssue, GuardAuditFacts, GuardManifestIssue,
     },
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
     guard_integration::policy::validate_policy_schema,
@@ -1353,7 +1353,7 @@ fn inspect_guard_installations(
         .collect::<Vec<_>>();
     let binding_invalid_count = installations.len() - binding_valid_installations.len();
 
-    let mut file_findings = GuardFileFindings::default();
+    let mut file_findings = GuardAuditFacts::default();
     for installation in &installations {
         let connection = snapshot
             .agent_connections
@@ -1369,6 +1369,8 @@ fn inspect_guard_installations(
         ));
     }
     file_findings.sort_dedup();
+    let (missing_files, stale_files, broken_files) =
+        projected_doctor_guard_file_paths(&file_findings);
 
     let missing_required_hooks = binding_valid_installations
         .iter()
@@ -1436,9 +1438,9 @@ fn inspect_guard_installations(
     let file_problem = invalid_scope_count > 0
         || binding_invalid_count > 0
         || !missing_required_hooks.is_empty()
-        || !file_findings.missing_files.is_empty()
-        || !file_findings.stale_files.is_empty()
-        || !file_findings.broken_files.is_empty();
+        || !missing_files.is_empty()
+        || !stale_files.is_empty()
+        || !broken_files.is_empty();
     let file_check = if file_problem {
         push_unique_diagnostic_action(
             actions,
@@ -1528,11 +1530,73 @@ fn inspect_guard_installations(
     }
 }
 
-fn doctor_guard_file_details(findings: &GuardFileFindings) -> Value {
+fn projected_doctor_guard_file_paths(
+    facts: &GuardAuditFacts,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let affected_paths = facts.affected_paths();
+    let paths_for = |issues: &[GuardArtifactIssue]| {
+        affected_paths
+            .iter()
+            .filter(|path| {
+                facts
+                    .findings
+                    .iter()
+                    .any(|finding| finding.path == **path && issues.contains(&finding.issue))
+            })
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+    };
+    let missing = paths_for(&[GuardArtifactIssue::Missing]);
+    let stale = paths_for(&[
+        GuardArtifactIssue::ContentMismatch,
+        GuardArtifactIssue::OwnershipMismatch,
+        GuardArtifactIssue::PermissionMismatch,
+        GuardArtifactIssue::HookContractMismatch,
+    ]);
+    let mut broken = paths_for(&[GuardArtifactIssue::Malformed]);
+    if facts
+        .manifest_issues
+        .contains(&GuardManifestIssue::Malformed)
+    {
+        broken.push("manifest_json".to_owned());
+    }
+    if facts
+        .manifest_issues
+        .contains(&GuardManifestIssue::OwnershipMismatch)
+    {
+        broken.push("manifest_json:binding".to_owned());
+    }
+    broken.sort();
+    broken.dedup();
+    (missing, stale, broken)
+}
+
+fn projected_doctor_guard_kind_state(
+    facts: &GuardAuditFacts,
+    kind: GuardManagedArtifactKind,
+) -> String {
+    if !facts.artifact_kind_audited(kind) {
+        return "not_configured".to_owned();
+    }
+    let issues = facts.artifact_issues(kind);
+    if issues.contains(&GuardArtifactIssue::Malformed) {
+        "broken"
+    } else if issues.contains(&GuardArtifactIssue::Missing) {
+        "missing"
+    } else if !issues.is_empty() {
+        "stale"
+    } else {
+        "installed"
+    }
+    .to_owned()
+}
+
+fn doctor_guard_file_details(findings: &GuardAuditFacts) -> Value {
+    let (missing_files, stale_files, broken_files) = projected_doctor_guard_file_paths(findings);
     json!({
-        "missing_files": &findings.missing_files,
-        "stale_files": &findings.stale_files,
-        "broken_files": &findings.broken_files,
+        "missing_files": missing_files,
+        "stale_files": stale_files,
+        "broken_files": broken_files,
         "file_states": doctor_guard_file_states(findings),
         "selected_profiles": &findings.guard_profiles,
         "generated_config_verified": findings.generated_config_verified(),
@@ -1544,23 +1608,27 @@ fn doctor_guard_file_details(findings: &GuardFileFindings) -> Value {
     })
 }
 
-fn doctor_guard_file_states(findings: &GuardFileFindings) -> BTreeMap<String, String> {
-    let mut states = findings.file_kind_states.clone();
+fn doctor_guard_file_states(findings: &GuardAuditFacts) -> BTreeMap<String, String> {
+    let mut states = BTreeMap::new();
     if findings
-        .broken_files
-        .iter()
-        .any(|file| file == "manifest_json")
+        .manifest_issues
+        .contains(&GuardManifestIssue::Malformed)
     {
         return states;
     }
-    states
-        .entry("host_hook_config".to_owned())
-        .or_insert_with(|| findings.hook_config_state(false));
-    let rule_instruction_state = findings.rule_instruction_state(false);
-    if rule_instruction_state != "not_configured" {
-        states
-            .entry("host_rule_instruction".to_owned())
-            .or_insert(rule_instruction_state);
+    for kind in [
+        GuardManagedArtifactKind::AgentsManagedBlock,
+        GuardManagedArtifactKind::VolicordPolicy,
+        GuardManagedArtifactKind::HostHookConfig,
+        GuardManagedArtifactKind::HostHookDispatch,
+        GuardManagedArtifactKind::HostHookWrapper,
+        GuardManagedArtifactKind::HostRuleInstruction,
+        GuardManagedArtifactKind::GitInfoExclude,
+    ] {
+        let state = projected_doctor_guard_kind_state(findings, kind);
+        if state != "not_configured" {
+            states.insert(kind.as_str().to_owned(), state);
+        }
     }
     states
 }

@@ -3318,9 +3318,10 @@ pub(crate) fn test_guard_manifest_json(
     policy_hash: &str,
 ) -> String {
     use volicord_types::{
-        AgentConnectionId, GuardCommandAbsolutePath, GuardCommandInvocationSet,
-        GuardCommandProjection, GuardHookPhase, GuardInstallationId, GuardManifest, HostKind,
-        IntegrationProfile, ManagedFileExpectation, PolicyHash, ProjectId, GUARD_MANIFEST_SCHEMA,
+        AgentConnectionId, GuardArtifactContentHash, GuardCommandAbsolutePath,
+        GuardCommandInvocationSet, GuardCommandProjection, GuardHookPhase, GuardInstallationId,
+        GuardManagedArtifact, GuardManifest, HostKind, IntegrationProfile, ManagedFileExpectation,
+        PolicyHash, ProjectId, GUARD_MANIFEST_SCHEMA,
     };
 
     let integration_revision = connection_integration_revision(connection).expect("test revision");
@@ -3340,95 +3341,61 @@ pub(crate) fn test_guard_manifest_json(
     .to_commands(GuardCommandProjection::Runtime)
     .expect("test runtime command projection");
     let hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
-    let block = |kind: &str, path: PathBuf| ManagedFileExpectation {
-        kind: kind.to_owned(),
-        path: path.display().to_string(),
-        content_hash: hash.to_owned(),
-        ownership: "managed_block".to_owned(),
-        managed_marker_start: Some("VOLICORD_START".to_owned()),
-        managed_marker_end: Some("VOLICORD_END".to_owned()),
-        managed_marker: None,
-        executable_required: None,
-        managed_script_role: None,
-        managed_script_command: None,
-        host_kind: None,
-        phase: None,
-        purpose: None,
-        connection_id: None,
-        guard_installation_id: None,
-        policy_hash: None,
-        host_output: None,
+    let content_hash = || GuardArtifactContentHash::parse(hash).expect("test content hash");
+    let artifact_path = |artifact: GuardManagedArtifact| {
+        artifact
+            .expected_path(repo_root, None)
+            .expect("test repository-owned Guard artifact path")
     };
-    let json_file = |kind: &str, path: PathBuf| ManagedFileExpectation {
-        kind: kind.to_owned(),
-        path: path.display().to_string(),
-        content_hash: hash.to_owned(),
-        ownership: "managed_json".to_owned(),
-        managed_marker_start: None,
-        managed_marker_end: None,
-        managed_marker: None,
-        executable_required: None,
-        managed_script_role: None,
-        managed_script_command: None,
-        host_kind: None,
-        phase: None,
-        purpose: None,
-        connection_id: None,
-        guard_installation_id: None,
-        policy_hash: None,
-        host_output: None,
+    let block = |artifact, path| {
+        ManagedFileExpectation::managed_block(
+            artifact,
+            path,
+            content_hash(),
+            "VOLICORD_START",
+            "VOLICORD_END",
+        )
+        .expect("test managed block")
     };
-    let script = |phase: GuardHookPhase| ManagedFileExpectation {
-        kind: "host_hook_wrapper".to_owned(),
-        path: repo_root
-            .join(format!(".codex/hooks/volicord-{}.sh", phase.command_name()))
-            .display()
-            .to_string(),
-        content_hash: hash.to_owned(),
-        ownership: "managed_script".to_owned(),
-        managed_marker_start: None,
-        managed_marker_end: None,
-        managed_marker: Some("VOLICORD_MANAGED_HOOK_WRAPPER".to_owned()),
-        executable_required: Some(true),
-        managed_script_role: None,
-        managed_script_command: Some("/test/volicord _hook".to_owned()),
-        host_kind: Some("codex".to_owned()),
-        phase: Some(phase.as_str().to_owned()),
-        purpose: Some("guard".to_owned()),
-        connection_id: Some(connection.connection_internal_id.clone()),
-        guard_installation_id: Some(guard_installation_id.to_owned()),
-        policy_hash: Some(policy_hash.to_owned()),
-        host_output: Some("codex".to_owned()),
+    let json_file = |artifact, path| {
+        ManagedFileExpectation::managed_json(artifact, path, content_hash())
+            .expect("test managed JSON")
+    };
+    let script = |phase: GuardHookPhase| {
+        ManagedFileExpectation::hook_wrapper(
+            phase,
+            GuardManagedArtifact::HostHookWrapper(phase)
+                .expected_path(repo_root, None)
+                .expect("test wrapper path"),
+            content_hash(),
+            "VOLICORD_MANAGED_HOOK_WRAPPER",
+            "/test/volicord _hook",
+            AgentConnectionId::new(&connection.connection_internal_id),
+            GuardInstallationId::new(guard_installation_id),
+            typed_policy_hash.clone(),
+        )
     };
     let mut files = vec![
-        block("agents_managed_block", repo_root.join("AGENTS.md")),
-        json_file("volicord_policy", repo_root.join(".volicord/policy.json")),
-        json_file("host_hook_config", repo_root.join(".codex/hooks.json")),
-        ManagedFileExpectation {
-            kind: "host_hook_dispatch".to_owned(),
-            path: repo_root
-                .join(".codex/hooks/volicord-dispatch.sh")
-                .display()
-                .to_string(),
-            content_hash: hash.to_owned(),
-            ownership: "managed_script".to_owned(),
-            managed_marker_start: None,
-            managed_marker_end: None,
-            managed_marker: Some("VOLICORD_MANAGED_HOOK_WRAPPER".to_owned()),
-            executable_required: Some(true),
-            managed_script_role: Some("codex_dispatch".to_owned()),
-            managed_script_command: None,
-            host_kind: Some("codex".to_owned()),
-            phase: Some("dispatch".to_owned()),
-            purpose: None,
-            connection_id: None,
-            guard_installation_id: None,
-            policy_hash: None,
-            host_output: None,
-        },
         block(
-            "host_rule_instruction",
-            repo_root.join(".codex/rules/volicord.rules"),
+            GuardManagedArtifact::AgentsManagedBlock,
+            artifact_path(GuardManagedArtifact::AgentsManagedBlock),
+        ),
+        json_file(
+            GuardManagedArtifact::VolicordPolicy,
+            artifact_path(GuardManagedArtifact::VolicordPolicy),
+        ),
+        json_file(
+            GuardManagedArtifact::HostHookConfig,
+            artifact_path(GuardManagedArtifact::HostHookConfig),
+        ),
+        ManagedFileExpectation::codex_dispatch_script(
+            artifact_path(GuardManagedArtifact::HostHookDispatch),
+            content_hash(),
+            "VOLICORD_MANAGED_HOOK_WRAPPER",
+        ),
+        block(
+            GuardManagedArtifact::HostRuleInstruction,
+            artifact_path(GuardManagedArtifact::HostRuleInstruction),
         ),
     ];
     files.extend(GuardHookPhase::REQUIRED.into_iter().map(script));

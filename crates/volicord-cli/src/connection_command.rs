@@ -40,8 +40,8 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, guard_manifest_from_json,
-    ConnectionVerificationError, ConnectionVerificationReport, IntegrationProfile,
-    IntegrationRevision, ProjectId, PromptCaptureStatus, UtcTimestamp,
+    ConnectionVerificationError, ConnectionVerificationReport, GuardManagedArtifactKind,
+    IntegrationProfile, IntegrationRevision, ProjectId, PromptCaptureStatus, UtcTimestamp,
 };
 
 use crate::cli::{
@@ -50,7 +50,7 @@ use crate::cli::{
 };
 use crate::guard_integration::audit::{
     guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
-    GuardFileFindings,
+    GuardArtifactIssue, GuardAuditFacts, GuardManifestIssue,
 };
 use crate::guard_integration::{
     apply_guard_integration, apply_guard_migration_protection, guard_installation_upsert,
@@ -59,10 +59,11 @@ use crate::guard_integration::{
 };
 use crate::host_integration::{
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
+    guard_phase_capability_name,
     verification::Verification,
-    ConnectionIntent, HostAdapter, HostConfigError, HostIntegrationFileKind, HostKind, HostPlan,
-    HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange,
-    ProjectContext, UserAction, UserActionKind,
+    ConnectionIntent, HostAdapter, HostConfigError, HostKind, HostPlan, HostPlanRequest,
+    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange, ProjectContext,
+    UserAction, UserActionKind,
 };
 use crate::{
     registration::ADMIN_METADATA_JSON,
@@ -1267,7 +1268,7 @@ fn guard_state_for_connection(
         return Ok(GuardOperationalState::not_configured());
     }
 
-    let mut findings = GuardFileFindings::default();
+    let mut findings = GuardAuditFacts::default();
     let mut every_observation_current = true;
     let mut any_incompatible_observation = false;
     let mut every_prompt_capture_observed = true;
@@ -1293,17 +1294,25 @@ fn guard_state_for_connection(
         )?;
     }
     findings.sort_dedup();
+    let (missing_files, stale_files, broken_files) = projected_guard_file_paths(&findings);
+    let missing_required_hooks = findings
+        .missing_required_phases
+        .iter()
+        .copied()
+        .map(guard_phase_capability_name)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
 
     let observed = every_observation_current;
     let prompt_capture_observed = every_prompt_capture_observed;
     let mode_state = guard_mode_state(&installations);
-    let installation_state = if !findings.broken_files.is_empty() {
+    let installation_state = if !broken_files.is_empty() {
         "broken"
-    } else if !findings.missing_files.is_empty() {
+    } else if !missing_files.is_empty() {
         "files_missing"
-    } else if !findings.stale_files.is_empty() {
+    } else if !stale_files.is_empty() {
         "stale"
-    } else if !findings.missing_required_hooks.is_empty() {
+    } else if !missing_required_hooks.is_empty() {
         "degraded"
     } else {
         "configured"
@@ -1316,10 +1325,8 @@ fn guard_state_for_connection(
     } else {
         "not_observed"
     };
-    let configuration_state = guard_configuration_state(
-        installation_state,
-        !findings.missing_required_hooks.is_empty(),
-    );
+    let configuration_state =
+        guard_configuration_state(installation_state, !missing_required_hooks.is_empty());
     let observation_state = guard_observation_state(hook_observed_state);
     let effective_state =
         guard_effective_state(&mode_state, &configuration_state, &observation_state);
@@ -1342,25 +1349,23 @@ fn guard_state_for_connection(
 
     let generated_config_verified = findings.generated_config_verified();
     let direct_file_write_matcher_coverage = findings.direct_file_write_matcher_coverage();
-    let files_state = if !findings.broken_files.is_empty() {
+    let files_state = if !broken_files.is_empty() {
         "broken"
-    } else if !findings.missing_files.is_empty() {
+    } else if !missing_files.is_empty() {
         "missing"
-    } else if !findings.stale_files.is_empty() {
+    } else if !stale_files.is_empty() {
         "stale"
     } else {
         "installed"
     }
     .to_owned();
-    let agents_block_state = findings
-        .kind_state(HostIntegrationFileKind::AgentsManagedBlock)
-        .to_owned();
-    let policy_file_state = findings
-        .kind_state(HostIntegrationFileKind::VolicordPolicy)
-        .to_owned();
-    let rule_instruction_state = findings.rule_instruction_state(false);
-    let hook_config_state = findings.hook_config_state(false);
-    let required_hooks_missing = !findings.missing_required_hooks.is_empty();
+    let agents_block_state =
+        projected_guard_kind_state(&findings, GuardManagedArtifactKind::AgentsManagedBlock);
+    let policy_file_state =
+        projected_guard_kind_state(&findings, GuardManagedArtifactKind::VolicordPolicy);
+    let rule_instruction_state = projected_guard_rule_instruction_state(&findings);
+    let hook_config_state = projected_guard_hook_config_state(&findings);
+    let required_hooks_missing = !missing_required_hooks.is_empty();
     let unresolved_blockers = guard_blockers_for_state(
         &mode_state,
         installation_state,
@@ -1386,13 +1391,100 @@ fn guard_state_for_connection(
         last_observed_at: last_observed_at.map(|timestamp| timestamp.to_canonical_string()),
         last_guard_event_at: last_guard_event_for_projects(runtime_home, connection_id, projects)?,
         prompt_capture_state: prompt_capture_state.to_owned(),
-        missing_files: findings.missing_files,
-        stale_files: findings.stale_files,
-        broken_files: findings.broken_files,
-        missing_required_hooks: findings.missing_required_hooks,
+        missing_files,
+        stale_files,
+        broken_files,
+        missing_required_hooks,
         unresolved_blockers,
     })
 }
+
+fn projected_guard_file_paths(facts: &GuardAuditFacts) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let affected_paths = facts.affected_paths();
+    let paths_for = |issues: &[GuardArtifactIssue]| {
+        affected_paths
+            .iter()
+            .filter(|path| {
+                facts
+                    .findings
+                    .iter()
+                    .any(|finding| finding.path == **path && issues.contains(&finding.issue))
+            })
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+    };
+    let missing = paths_for(&[GuardArtifactIssue::Missing]);
+    let stale = paths_for(&[
+        GuardArtifactIssue::ContentMismatch,
+        GuardArtifactIssue::OwnershipMismatch,
+        GuardArtifactIssue::PermissionMismatch,
+        GuardArtifactIssue::HookContractMismatch,
+    ]);
+    let mut broken = paths_for(&[GuardArtifactIssue::Malformed]);
+    if facts
+        .manifest_issues
+        .contains(&GuardManifestIssue::Malformed)
+    {
+        broken.push("manifest_json".to_owned());
+    }
+    if facts
+        .manifest_issues
+        .contains(&GuardManifestIssue::OwnershipMismatch)
+    {
+        broken.push("manifest_json:binding".to_owned());
+    }
+    broken.sort();
+    broken.dedup();
+    (missing, stale, broken)
+}
+
+fn projected_guard_kind_state(facts: &GuardAuditFacts, kind: GuardManagedArtifactKind) -> String {
+    if !facts.artifact_kind_audited(kind) {
+        return "not_configured".to_owned();
+    }
+    let issues = facts.artifact_issues(kind);
+    if issues.contains(&GuardArtifactIssue::Malformed) {
+        "broken"
+    } else if issues.contains(&GuardArtifactIssue::Missing) {
+        "missing"
+    } else if !issues.is_empty() {
+        "stale"
+    } else {
+        "installed"
+    }
+    .to_owned()
+}
+
+fn projected_guard_rule_instruction_state(facts: &GuardAuditFacts) -> String {
+    let state = projected_guard_kind_state(facts, GuardManagedArtifactKind::HostRuleInstruction);
+    if state != "not_configured" || facts.rule_file_supported {
+        state
+    } else {
+        "unsupported_by_host".to_owned()
+    }
+}
+
+fn projected_guard_hook_config_state(facts: &GuardAuditFacts) -> String {
+    let states = [
+        projected_guard_kind_state(facts, GuardManagedArtifactKind::HostHookConfig),
+        projected_guard_kind_state(facts, GuardManagedArtifactKind::HostHookDispatch),
+        projected_guard_kind_state(facts, GuardManagedArtifactKind::HostHookWrapper),
+    ];
+    if states.iter().any(|state| state == "broken") {
+        "broken".to_owned()
+    } else if states.iter().any(|state| state == "missing") {
+        "missing".to_owned()
+    } else if states.iter().any(|state| state == "stale") {
+        "stale".to_owned()
+    } else if states.iter().any(|state| state == "installed") {
+        "installed".to_owned()
+    } else if facts.missing_required_phases.is_empty() {
+        "not_recorded".to_owned()
+    } else {
+        "missing_required_hooks".to_owned()
+    }
+}
+
 fn guard_mode_state(installations: &[GuardInstallationRecord]) -> String {
     let mut modes = installations
         .iter()

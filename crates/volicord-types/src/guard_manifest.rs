@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
 };
 
 use schemars::JsonSchema;
@@ -572,40 +572,572 @@ fn validate_command_identifier(value: &str) -> Result<(), ()> {
     }
 }
 
+/// Closed serialized kind of one Guard-managed artifact.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardManagedArtifactKind {
+    VolicordPolicy,
+    GitInfoExclude,
+    HostHookConfig,
+    HostHookDispatch,
+    HostHookWrapper,
+    HostRuleInstruction,
+    AgentsManagedBlock,
+}
+
+impl GuardManagedArtifactKind {
+    /// Returns the exact current manifest spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::VolicordPolicy => "volicord_policy",
+            Self::GitInfoExclude => "git_info_exclude",
+            Self::HostHookConfig => "host_hook_config",
+            Self::HostHookDispatch => "host_hook_dispatch",
+            Self::HostHookWrapper => "host_hook_wrapper",
+            Self::HostRuleInstruction => "host_rule_instruction",
+            Self::AgentsManagedBlock => "agents_managed_block",
+        }
+    }
+}
+
+/// One exact artifact coordinate in the current Guard inventory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum GuardManagedArtifact {
+    VolicordPolicy,
+    GitInfoExclude,
+    HostHookConfig,
+    HostHookDispatch,
+    HostHookWrapper(GuardHookPhase),
+    HostRuleInstruction,
+    AgentsManagedBlock,
+}
+
+impl GuardManagedArtifact {
+    /// Every current coordinate, including the optional Git owner coordinate.
+    pub const ALL: [Self; 9] = [
+        Self::AgentsManagedBlock,
+        Self::VolicordPolicy,
+        Self::HostHookConfig,
+        Self::HostHookDispatch,
+        Self::HostHookWrapper(GuardHookPhase::PreTool),
+        Self::HostHookWrapper(GuardHookPhase::PostTool),
+        Self::HostHookWrapper(GuardHookPhase::PromptCapture),
+        Self::HostRuleInstruction,
+        Self::GitInfoExclude,
+    ];
+
+    /// Returns the shared serialized kind for this coordinate.
+    pub const fn kind(self) -> GuardManagedArtifactKind {
+        match self {
+            Self::VolicordPolicy => GuardManagedArtifactKind::VolicordPolicy,
+            Self::GitInfoExclude => GuardManagedArtifactKind::GitInfoExclude,
+            Self::HostHookConfig => GuardManagedArtifactKind::HostHookConfig,
+            Self::HostHookDispatch => GuardManagedArtifactKind::HostHookDispatch,
+            Self::HostHookWrapper(_) => GuardManagedArtifactKind::HostHookWrapper,
+            Self::HostRuleInstruction => GuardManagedArtifactKind::HostRuleInstruction,
+            Self::AgentsManagedBlock => GuardManagedArtifactKind::AgentsManagedBlock,
+        }
+    }
+
+    /// Returns this coordinate's one canonical inventory specification.
+    pub fn spec(self) -> &'static GuardManagedArtifactSpec {
+        GUARD_MANAGED_ARTIFACT_SPECS
+            .iter()
+            .find(|spec| spec.artifact == self)
+            .expect("every closed Guard artifact has one specification")
+    }
+
+    /// Constructs the exact owned path for this coordinate.
+    pub fn expected_path(
+        self,
+        repo_root: &Path,
+        project_git_info_exclude_path: Option<&Path>,
+    ) -> Option<PathBuf> {
+        self.spec()
+            .expected_path(repo_root, project_git_info_exclude_path)
+    }
+}
+
+/// Closed ownership form serialized in a Guard manifest.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardManagedOwnership {
+    ManagedJson,
+    ManagedBlock,
+    ManagedScript,
+}
+
+/// Marker contract required by one managed artifact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuardManagedMarkerSemantics {
+    None,
+    BlockPair,
+    ScriptMarker,
+}
+
+/// Canonical path rule owned by one managed-artifact specification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuardManagedArtifactPath {
+    RepositoryRelative(&'static str),
+    HookWrapper,
+    GitInfoExclude,
+}
+
+/// Closed role of a managed Guard script.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardManagedScriptRole {
+    CodexDispatch,
+}
+
+/// Closed dispatch-script phase spelling retained by the current wire shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardDispatchPhase {
+    Dispatch,
+}
+
+/// Closed wrapper purpose retained by the current wire shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardManagedScriptPurpose {
+    Guard,
+}
+
+/// Canonical content digest of one exact managed artifact projection.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(transparent)]
+pub struct GuardArtifactContentHash(String);
+
+impl GuardArtifactContentHash {
+    /// Parses one canonical `sha256:<64-lowercase-hex>` content digest.
+    pub fn parse(value: impl Into<String>) -> Result<Self, GuardManifestError> {
+        let value = value.into();
+        if canonical_sha256(&value) {
+            Ok(Self(value))
+        } else {
+            Err(GuardManifestError::InvalidContentHash)
+        }
+    }
+
+    /// Returns the canonical digest string.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// One coordinate's canonical path and semantic requirements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuardManagedArtifactSpec {
+    pub artifact: GuardManagedArtifact,
+    pub path: GuardManagedArtifactPath,
+    pub expected_count: usize,
+    pub ownership: GuardManagedOwnership,
+    pub marker_semantics: GuardManagedMarkerSemantics,
+    pub executable_required: bool,
+    pub script_role: Option<GuardManagedScriptRole>,
+    pub optional_under_git_owner: bool,
+}
+
+impl GuardManagedArtifactSpec {
+    /// Returns the repository-relative path when this artifact is repository-owned.
+    pub fn repository_relative_path(self) -> Option<PathBuf> {
+        match (self.path, self.artifact) {
+            (GuardManagedArtifactPath::RepositoryRelative(path), _) => Some(PathBuf::from(path)),
+            (
+                GuardManagedArtifactPath::HookWrapper,
+                GuardManagedArtifact::HostHookWrapper(phase),
+            ) => Some(PathBuf::from(format!(
+                ".codex/hooks/volicord-{}.sh",
+                phase.command_name()
+            ))),
+            (GuardManagedArtifactPath::GitInfoExclude, GuardManagedArtifact::GitInfoExclude) => {
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Constructs this specification's exact owned path.
+    pub fn expected_path(
+        self,
+        repo_root: &Path,
+        project_git_info_exclude_path: Option<&Path>,
+    ) -> Option<PathBuf> {
+        match self.path {
+            GuardManagedArtifactPath::GitInfoExclude => {
+                project_git_info_exclude_path.map(Path::to_path_buf)
+            }
+            GuardManagedArtifactPath::RepositoryRelative(_)
+            | GuardManagedArtifactPath::HookWrapper => self
+                .repository_relative_path()
+                .map(|path| repo_root.join(path)),
+        }
+    }
+}
+
+/// The sole current Guard managed-artifact inventory.
+pub const GUARD_MANAGED_ARTIFACT_SPECS: [GuardManagedArtifactSpec; 9] = [
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::AgentsManagedBlock,
+        path: GuardManagedArtifactPath::RepositoryRelative("AGENTS.md"),
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedBlock,
+        marker_semantics: GuardManagedMarkerSemantics::BlockPair,
+        executable_required: false,
+        script_role: None,
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::VolicordPolicy,
+        path: GuardManagedArtifactPath::RepositoryRelative(".volicord/policy.json"),
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedJson,
+        marker_semantics: GuardManagedMarkerSemantics::None,
+        executable_required: false,
+        script_role: None,
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::HostHookConfig,
+        path: GuardManagedArtifactPath::RepositoryRelative(".codex/hooks.json"),
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedJson,
+        marker_semantics: GuardManagedMarkerSemantics::None,
+        executable_required: false,
+        script_role: None,
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::HostHookDispatch,
+        path: GuardManagedArtifactPath::RepositoryRelative(".codex/hooks/volicord-dispatch.sh"),
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedScript,
+        marker_semantics: GuardManagedMarkerSemantics::ScriptMarker,
+        executable_required: true,
+        script_role: Some(GuardManagedScriptRole::CodexDispatch),
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool),
+        path: GuardManagedArtifactPath::HookWrapper,
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedScript,
+        marker_semantics: GuardManagedMarkerSemantics::ScriptMarker,
+        executable_required: true,
+        script_role: None,
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PostTool),
+        path: GuardManagedArtifactPath::HookWrapper,
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedScript,
+        marker_semantics: GuardManagedMarkerSemantics::ScriptMarker,
+        executable_required: true,
+        script_role: None,
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PromptCapture),
+        path: GuardManagedArtifactPath::HookWrapper,
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedScript,
+        marker_semantics: GuardManagedMarkerSemantics::ScriptMarker,
+        executable_required: true,
+        script_role: None,
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::HostRuleInstruction,
+        path: GuardManagedArtifactPath::RepositoryRelative(".codex/rules/volicord.rules"),
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedBlock,
+        marker_semantics: GuardManagedMarkerSemantics::BlockPair,
+        executable_required: false,
+        script_role: None,
+        optional_under_git_owner: false,
+    },
+    GuardManagedArtifactSpec {
+        artifact: GuardManagedArtifact::GitInfoExclude,
+        path: GuardManagedArtifactPath::GitInfoExclude,
+        expected_count: 1,
+        ownership: GuardManagedOwnership::ManagedBlock,
+        marker_semantics: GuardManagedMarkerSemantics::BlockPair,
+        executable_required: false,
+        script_role: None,
+        optional_under_git_owner: true,
+    },
+];
+
 /// One exact Volicord-managed file expectation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ManagedFileExpectation {
-    pub kind: String,
-    pub path: String,
-    pub content_hash: String,
-    pub ownership: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub managed_marker_start: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub managed_marker_end: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub managed_marker: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub executable_required: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub managed_script_role: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub managed_script_command: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host_kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub phase: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub purpose: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connection_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guard_installation_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub policy_hash: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host_output: Option<String>,
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ManagedFileExpectation {
+    VolicordPolicy {
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        ownership: GuardManagedOwnership,
+    },
+    GitInfoExclude {
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        ownership: GuardManagedOwnership,
+        managed_marker_start: String,
+        managed_marker_end: String,
+    },
+    HostHookConfig {
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        ownership: GuardManagedOwnership,
+    },
+    HostHookDispatch {
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        ownership: GuardManagedOwnership,
+        managed_marker: String,
+        executable_required: bool,
+        managed_script_role: GuardManagedScriptRole,
+        host_kind: HostKind,
+        phase: GuardDispatchPhase,
+    },
+    HostHookWrapper {
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        ownership: GuardManagedOwnership,
+        managed_marker: String,
+        executable_required: bool,
+        managed_script_command: String,
+        host_kind: HostKind,
+        phase: GuardHookPhase,
+        purpose: GuardManagedScriptPurpose,
+        connection_id: AgentConnectionId,
+        guard_installation_id: GuardInstallationId,
+        policy_hash: PolicyHash,
+        host_output: HostKind,
+    },
+    HostRuleInstruction {
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        ownership: GuardManagedOwnership,
+        managed_marker_start: String,
+        managed_marker_end: String,
+    },
+    AgentsManagedBlock {
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        ownership: GuardManagedOwnership,
+        managed_marker_start: String,
+        managed_marker_end: String,
+    },
+}
+
+impl ManagedFileExpectation {
+    /// Builds one canonical managed-JSON expectation.
+    pub fn managed_json(
+        artifact: GuardManagedArtifact,
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+    ) -> Result<Self, GuardManifestError> {
+        match artifact {
+            GuardManagedArtifact::VolicordPolicy => Ok(Self::VolicordPolicy {
+                path,
+                content_hash,
+                ownership: GuardManagedOwnership::ManagedJson,
+            }),
+            GuardManagedArtifact::HostHookConfig => Ok(Self::HostHookConfig {
+                path,
+                content_hash,
+                ownership: GuardManagedOwnership::ManagedJson,
+            }),
+            _ => Err(GuardManifestError::InvalidShape),
+        }
+    }
+
+    /// Builds one canonical managed-block expectation.
+    pub fn managed_block(
+        artifact: GuardManagedArtifact,
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        managed_marker_start: impl Into<String>,
+        managed_marker_end: impl Into<String>,
+    ) -> Result<Self, GuardManifestError> {
+        let managed_marker_start = managed_marker_start.into();
+        let managed_marker_end = managed_marker_end.into();
+        match artifact {
+            GuardManagedArtifact::GitInfoExclude => Ok(Self::GitInfoExclude {
+                path,
+                content_hash,
+                ownership: GuardManagedOwnership::ManagedBlock,
+                managed_marker_start,
+                managed_marker_end,
+            }),
+            GuardManagedArtifact::HostRuleInstruction => Ok(Self::HostRuleInstruction {
+                path,
+                content_hash,
+                ownership: GuardManagedOwnership::ManagedBlock,
+                managed_marker_start,
+                managed_marker_end,
+            }),
+            GuardManagedArtifact::AgentsManagedBlock => Ok(Self::AgentsManagedBlock {
+                path,
+                content_hash,
+                ownership: GuardManagedOwnership::ManagedBlock,
+                managed_marker_start,
+                managed_marker_end,
+            }),
+            _ => Err(GuardManifestError::InvalidShape),
+        }
+    }
+
+    /// Builds the canonical Codex dispatch-script expectation.
+    pub fn codex_dispatch_script(
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        managed_marker: impl Into<String>,
+    ) -> Self {
+        Self::HostHookDispatch {
+            path,
+            content_hash,
+            ownership: GuardManagedOwnership::ManagedScript,
+            managed_marker: managed_marker.into(),
+            executable_required: true,
+            managed_script_role: GuardManagedScriptRole::CodexDispatch,
+            host_kind: HostKind::Codex,
+            phase: GuardDispatchPhase::Dispatch,
+        }
+    }
+
+    /// Builds one canonical phase-wrapper expectation.
+    #[allow(clippy::too_many_arguments)]
+    pub fn hook_wrapper(
+        phase: GuardHookPhase,
+        path: PathBuf,
+        content_hash: GuardArtifactContentHash,
+        managed_marker: impl Into<String>,
+        managed_script_command: impl Into<String>,
+        connection_id: AgentConnectionId,
+        guard_installation_id: GuardInstallationId,
+        policy_hash: PolicyHash,
+    ) -> Self {
+        Self::HostHookWrapper {
+            path,
+            content_hash,
+            ownership: GuardManagedOwnership::ManagedScript,
+            managed_marker: managed_marker.into(),
+            executable_required: true,
+            managed_script_command: managed_script_command.into(),
+            host_kind: HostKind::Codex,
+            phase,
+            purpose: GuardManagedScriptPurpose::Guard,
+            connection_id,
+            guard_installation_id,
+            policy_hash,
+            host_output: HostKind::Codex,
+        }
+    }
+
+    /// Returns the exact typed artifact coordinate.
+    pub const fn artifact(&self) -> GuardManagedArtifact {
+        match self {
+            Self::VolicordPolicy { .. } => GuardManagedArtifact::VolicordPolicy,
+            Self::GitInfoExclude { .. } => GuardManagedArtifact::GitInfoExclude,
+            Self::HostHookConfig { .. } => GuardManagedArtifact::HostHookConfig,
+            Self::HostHookDispatch { .. } => GuardManagedArtifact::HostHookDispatch,
+            Self::HostHookWrapper { phase, .. } => GuardManagedArtifact::HostHookWrapper(*phase),
+            Self::HostRuleInstruction { .. } => GuardManagedArtifact::HostRuleInstruction,
+            Self::AgentsManagedBlock { .. } => GuardManagedArtifact::AgentsManagedBlock,
+        }
+    }
+
+    /// Returns the shared serialized artifact kind.
+    pub const fn kind(&self) -> GuardManagedArtifactKind {
+        self.artifact().kind()
+    }
+
+    /// Returns the exact managed path.
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::VolicordPolicy { path, .. }
+            | Self::GitInfoExclude { path, .. }
+            | Self::HostHookConfig { path, .. }
+            | Self::HostHookDispatch { path, .. }
+            | Self::HostHookWrapper { path, .. }
+            | Self::HostRuleInstruction { path, .. }
+            | Self::AgentsManagedBlock { path, .. } => path,
+        }
+    }
+
+    /// Returns the exact expected content digest.
+    pub fn content_hash(&self) -> &GuardArtifactContentHash {
+        match self {
+            Self::VolicordPolicy { content_hash, .. }
+            | Self::GitInfoExclude { content_hash, .. }
+            | Self::HostHookConfig { content_hash, .. }
+            | Self::HostHookDispatch { content_hash, .. }
+            | Self::HostHookWrapper { content_hash, .. }
+            | Self::HostRuleInstruction { content_hash, .. }
+            | Self::AgentsManagedBlock { content_hash, .. } => content_hash,
+        }
+    }
+
+    /// Returns the closed ownership form.
+    pub const fn ownership(&self) -> GuardManagedOwnership {
+        match self {
+            Self::VolicordPolicy { ownership, .. }
+            | Self::GitInfoExclude { ownership, .. }
+            | Self::HostHookConfig { ownership, .. }
+            | Self::HostHookDispatch { ownership, .. }
+            | Self::HostHookWrapper { ownership, .. }
+            | Self::HostRuleInstruction { ownership, .. }
+            | Self::AgentsManagedBlock { ownership, .. } => *ownership,
+        }
+    }
+
+    /// Returns the managed block markers when this is a block-owned artifact.
+    pub fn block_markers(&self) -> Option<(&str, &str)> {
+        match self {
+            Self::GitInfoExclude {
+                managed_marker_start,
+                managed_marker_end,
+                ..
+            }
+            | Self::HostRuleInstruction {
+                managed_marker_start,
+                managed_marker_end,
+                ..
+            }
+            | Self::AgentsManagedBlock {
+                managed_marker_start,
+                managed_marker_end,
+                ..
+            } => Some((managed_marker_start, managed_marker_end)),
+            _ => None,
+        }
+    }
+
+    /// Returns whether this expectation carries the platform-independent executable contract.
+    pub const fn executable_required(&self) -> Option<bool> {
+        match self {
+            Self::HostHookDispatch {
+                executable_required,
+                ..
+            }
+            | Self::HostHookWrapper {
+                executable_required,
+                ..
+            } => Some(*executable_required),
+            _ => None,
+        }
+    }
 }
 
 /// Strict current Guard installation manifest.
@@ -651,6 +1183,7 @@ pub enum GuardManifestError {
     NonCanonicalJson,
     InvalidShape,
     InvalidPolicyHash,
+    InvalidContentHash,
 }
 
 impl fmt::Display for GuardManifestError {
@@ -660,6 +1193,7 @@ impl fmt::Display for GuardManifestError {
             Self::NonCanonicalJson => "Guard manifest JSON is not canonical",
             Self::InvalidShape => "Guard manifest does not match the exact current contract",
             Self::InvalidPolicyHash => "Guard policy hash is not canonical",
+            Self::InvalidContentHash => "Guard artifact content hash is not canonical",
         })
     }
 }
@@ -702,9 +1236,10 @@ pub fn guard_manifest_managed_artifacts(
             .managed_files
             .into_iter()
             .map(|file| GuardManagedArtifactCoordinate {
-                path: file.path,
+                path: file.path().display().to_string(),
                 digest: file
-                    .content_hash
+                    .content_hash()
+                    .as_str()
                     .strip_prefix("sha256:")
                     .expect("exact manifest hashes are prefixed")
                     .to_owned(),
@@ -754,150 +1289,101 @@ fn exact_manifest_semantics(manifest: &GuardManifest) -> bool {
 }
 
 fn inventory_has_exact_semantics(files: &[ManagedFileExpectation], repo_root: &Path) -> bool {
-    let mut kind_counts = BTreeMap::<&str, usize>::new();
+    let mut artifact_counts = BTreeMap::<GuardManagedArtifact, usize>::new();
     let mut paths = BTreeSet::new();
-    let mut wrapper_phases = BTreeSet::new();
     for file in files {
         if !file_has_closed_semantics(file)
             || !inventory_path_matches(file, repo_root)
-            || !paths.insert(file.path.as_str())
+            || !paths.insert(file.path())
         {
             return false;
         }
-        *kind_counts.entry(file.kind.as_str()).or_default() += 1;
-        if file.kind == "host_hook_wrapper" {
-            let Some(phase) = file.phase.as_deref() else {
-                return false;
-            };
-            if !wrapper_phases.insert(phase) {
-                return false;
-            }
-        }
+        *artifact_counts.entry(file.artifact()).or_default() += 1;
     }
-    [
-        ("agents_managed_block", 1),
-        ("volicord_policy", 1),
-        ("host_hook_config", 1),
-        ("host_hook_dispatch", 1),
-        ("host_hook_wrapper", 3),
-        ("host_rule_instruction", 1),
-    ]
-    .into_iter()
-    .all(|(kind, count)| kind_counts.get(kind) == Some(&count))
-        && kind_counts
-            .get("git_info_exclude")
-            .is_none_or(|count| *count == 1)
-        && kind_counts.len() == 6 + usize::from(kind_counts.contains_key("git_info_exclude"))
-        && wrapper_phases
-            == GuardHookPhase::REQUIRED
-                .into_iter()
-                .map(GuardHookPhase::as_str)
-                .collect()
+    GUARD_MANAGED_ARTIFACT_SPECS.iter().all(|spec| {
+        let count = artifact_counts.get(&spec.artifact).copied().unwrap_or(0);
+        count == spec.expected_count || (spec.optional_under_git_owner && count == 0)
+    }) && artifact_counts.len()
+        == GUARD_MANAGED_ARTIFACT_SPECS
+            .iter()
+            .filter(|spec| artifact_counts.contains_key(&spec.artifact))
+            .count()
 }
 
 fn inventory_path_matches(file: &ManagedFileExpectation, repo_root: &Path) -> bool {
-    let path = Path::new(&file.path);
-    match file.kind.as_str() {
-        "agents_managed_block" => path == repo_root.join("AGENTS.md"),
-        "volicord_policy" => path == repo_root.join(".volicord/policy.json"),
-        "host_hook_config" => path == repo_root.join(".codex/hooks.json"),
-        "host_hook_dispatch" => path == repo_root.join(".codex/hooks/volicord-dispatch.sh"),
-        "host_hook_wrapper" => file.phase.as_deref().is_some_and(|phase| {
-            phase.parse::<GuardHookPhase>().ok().is_some_and(|phase| {
-                path == repo_root.join(format!(".codex/hooks/volicord-{}.sh", phase.command_name()))
-            })
-        }),
-        "host_rule_instruction" => path == repo_root.join(".codex/rules/volicord.rules"),
-        "git_info_exclude" => true,
-        _ => false,
-    }
+    let artifact = file.artifact();
+    artifact == GuardManagedArtifact::GitInfoExclude
+        || artifact.expected_path(repo_root, None).as_deref() == Some(file.path())
 }
 
 fn file_has_closed_semantics(file: &ManagedFileExpectation) -> bool {
-    let optional_strings_are_nonempty = [
-        file.managed_marker_start.as_deref(),
-        file.managed_marker_end.as_deref(),
-        file.managed_marker.as_deref(),
-        file.managed_script_role.as_deref(),
-        file.managed_script_command.as_deref(),
-        file.host_kind.as_deref(),
-        file.phase.as_deref(),
-        file.purpose.as_deref(),
-        file.connection_id.as_deref(),
-        file.guard_installation_id.as_deref(),
-        file.policy_hash.as_deref(),
-        file.host_output.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .all(|value| !value.trim().is_empty());
-    let no_owner_coordinates = || {
-        file.host_kind.is_none()
-            && file.phase.is_none()
-            && file.purpose.is_none()
-            && file.connection_id.is_none()
-            && file.guard_installation_id.is_none()
-            && file.policy_hash.is_none()
-            && file.host_output.is_none()
+    let spec = file.artifact().spec();
+    if !normalized_absolute_path(file.path())
+        || !canonical_sha256(file.content_hash().as_str())
+        || file.ownership() != spec.ownership
+        || file.executable_required()
+            != spec.executable_required.then_some(spec.executable_required)
+    {
+        return false;
+    }
+    let marker_semantics_match = match spec.marker_semantics {
+        GuardManagedMarkerSemantics::None => file.block_markers().is_none(),
+        GuardManagedMarkerSemantics::BlockPair => file
+            .block_markers()
+            .is_some_and(|(start, end)| !start.trim().is_empty() && !end.trim().is_empty()),
+        GuardManagedMarkerSemantics::ScriptMarker => match file {
+            ManagedFileExpectation::HostHookDispatch { managed_marker, .. }
+            | ManagedFileExpectation::HostHookWrapper { managed_marker, .. } => {
+                !managed_marker.trim().is_empty()
+            }
+            _ => false,
+        },
     };
-    let kind_is_coherent = match file.kind.as_str() {
-        "volicord_policy" | "host_hook_config" => {
-            file.ownership == "managed_json"
-                && file.managed_marker_start.is_none()
-                && file.managed_marker_end.is_none()
-                && file.managed_marker.is_none()
-                && file.executable_required.is_none()
-                && file.managed_script_role.is_none()
-                && file.managed_script_command.is_none()
-                && no_owner_coordinates()
-        }
-        "agents_managed_block" | "git_info_exclude" | "host_rule_instruction" => {
-            file.ownership == "managed_block"
-                && file.managed_marker_start.is_some()
-                && file.managed_marker_end.is_some()
-                && file.managed_marker.is_none()
-                && file.executable_required.is_none()
-                && file.managed_script_role.is_none()
-                && file.managed_script_command.is_none()
-                && no_owner_coordinates()
-        }
-        "host_hook_dispatch" => {
-            file.ownership == "managed_script"
-                && file.managed_marker.is_some()
-                && file.executable_required == Some(true)
-                && file.managed_script_role.as_deref() == Some("codex_dispatch")
-                && file.managed_script_command.is_none()
-                && file.host_kind.as_deref() == Some("codex")
-                && file.phase.as_deref() == Some("dispatch")
-                && file.purpose.is_none()
-                && file.connection_id.is_none()
-                && file.guard_installation_id.is_none()
-                && file.policy_hash.is_none()
-                && file.host_output.is_none()
-        }
-        "host_hook_wrapper" => {
-            file.ownership == "managed_script"
-                && file.managed_marker.is_some()
-                && file.executable_required == Some(true)
-                && file.managed_script_role.is_none()
-                && file.managed_script_command.is_some()
-                && file.host_kind.as_deref() == Some("codex")
-                && file
-                    .phase
-                    .as_deref()
-                    .is_some_and(|phase| phase.parse::<GuardHookPhase>().is_ok())
-                && file.purpose.as_deref() == Some("guard")
-                && file.connection_id.is_some()
-                && file.guard_installation_id.is_some()
-                && file.policy_hash.as_deref().is_some_and(canonical_sha256)
-                && file.host_output.as_deref() == Some("codex")
-        }
-        _ => false,
+    let script_role = match file {
+        ManagedFileExpectation::HostHookDispatch {
+            managed_script_role,
+            ..
+        } => Some(*managed_script_role),
+        _ => None,
     };
-    normalized_absolute_path(Path::new(&file.path))
-        && canonical_sha256(&file.content_hash)
-        && optional_strings_are_nonempty
-        && kind_is_coherent
+    if !marker_semantics_match || script_role != spec.script_role {
+        return false;
+    }
+    match file {
+        ManagedFileExpectation::VolicordPolicy { .. }
+        | ManagedFileExpectation::HostHookConfig { .. }
+        | ManagedFileExpectation::GitInfoExclude { .. }
+        | ManagedFileExpectation::HostRuleInstruction { .. }
+        | ManagedFileExpectation::AgentsManagedBlock { .. } => true,
+        ManagedFileExpectation::HostHookDispatch {
+            managed_script_role,
+            host_kind,
+            phase,
+            ..
+        } => {
+            *managed_script_role == GuardManagedScriptRole::CodexDispatch
+                && *host_kind == HostKind::Codex
+                && *phase == GuardDispatchPhase::Dispatch
+        }
+        ManagedFileExpectation::HostHookWrapper {
+            managed_script_command,
+            host_kind,
+            purpose,
+            connection_id,
+            guard_installation_id,
+            policy_hash,
+            host_output,
+            ..
+        } => {
+            !managed_script_command.trim().is_empty()
+                && *host_kind == HostKind::Codex
+                && *purpose == GuardManagedScriptPurpose::Guard
+                && !connection_id.as_str().trim().is_empty()
+                && !guard_installation_id.as_str().trim().is_empty()
+                && canonical_sha256(policy_hash.as_str())
+                && *host_output == HostKind::Codex
+        }
+    }
 }
 
 fn owner_commands_match(manifest: &GuardManifest, binding: GuardManifestOwnerBinding<'_>) -> bool {
@@ -926,40 +1412,28 @@ fn owner_files_match(manifest: &GuardManifest, binding: GuardManifestOwnerBindin
         return false;
     }
     manifest.managed_files.iter().all(|file| {
-        let path = Path::new(&file.path);
-        let path_matches = match file.kind.as_str() {
-            "volicord_policy" => binding.project_repo_root.join(".volicord/policy.json") == path,
-            "host_hook_config" => binding.project_repo_root.join(".codex/hooks.json") == path,
-            "host_hook_dispatch" => {
-                binding
-                    .project_repo_root
-                    .join(".codex/hooks/volicord-dispatch.sh")
-                    == path
-            }
-            "host_hook_wrapper" => file.phase.as_deref().is_some_and(|phase| {
-                phase.parse::<GuardHookPhase>().ok().is_some_and(|phase| {
-                    binding
-                        .project_repo_root
-                        .join(format!(".codex/hooks/volicord-{}.sh", phase.command_name()))
-                        == path
-                })
-            }),
-            "host_rule_instruction" => {
-                binding
-                    .project_repo_root
-                    .join(".codex/rules/volicord.rules")
-                    == path
-            }
-            "agents_managed_block" => binding.project_repo_root.join("AGENTS.md") == path,
-            "git_info_exclude" => binding.project_git_info_exclude_path == Some(path),
-            _ => false,
-        };
+        let path_matches = file
+            .artifact()
+            .expected_path(
+                binding.project_repo_root,
+                binding.project_git_info_exclude_path,
+            )
+            .as_deref()
+            == Some(file.path());
         path_matches
-            && (file.kind != "host_hook_wrapper"
-                || (file.connection_id.as_deref() == Some(binding.row_connection_id)
-                    && file.guard_installation_id.as_deref()
-                        == Some(binding.row_guard_installation_id)
-                    && file.policy_hash.as_deref() == Some(manifest.policy_hash.as_str())))
+            && match file {
+                ManagedFileExpectation::HostHookWrapper {
+                    connection_id,
+                    guard_installation_id,
+                    policy_hash,
+                    ..
+                } => {
+                    connection_id.as_str() == binding.row_connection_id
+                        && guard_installation_id.as_str() == binding.row_guard_installation_id
+                        && policy_hash == &manifest.policy_hash
+                }
+                _ => true,
+            }
     })
 }
 
@@ -1017,6 +1491,94 @@ mod tests {
         .unwrap()
     }
 
+    fn managed_inventory(include_git_exclude: bool) -> Vec<ManagedFileExpectation> {
+        let repo_root = Path::new("/work/product");
+        let content_hash = || GuardArtifactContentHash::parse(HASH).unwrap();
+        let path = |artifact: GuardManagedArtifact| {
+            artifact
+                .expected_path(repo_root, None)
+                .expect("repository-owned test artifact")
+        };
+        let mut files = vec![
+            ManagedFileExpectation::managed_block(
+                GuardManagedArtifact::AgentsManagedBlock,
+                path(GuardManagedArtifact::AgentsManagedBlock),
+                content_hash(),
+                "# BEGIN VOLICORD",
+                "# END VOLICORD",
+            )
+            .unwrap(),
+            ManagedFileExpectation::managed_json(
+                GuardManagedArtifact::VolicordPolicy,
+                path(GuardManagedArtifact::VolicordPolicy),
+                content_hash(),
+            )
+            .unwrap(),
+            ManagedFileExpectation::managed_json(
+                GuardManagedArtifact::HostHookConfig,
+                path(GuardManagedArtifact::HostHookConfig),
+                content_hash(),
+            )
+            .unwrap(),
+            ManagedFileExpectation::codex_dispatch_script(
+                path(GuardManagedArtifact::HostHookDispatch),
+                content_hash(),
+                "VOLICORD_MANAGED_HOOK_WRAPPER",
+            ),
+            ManagedFileExpectation::managed_block(
+                GuardManagedArtifact::HostRuleInstruction,
+                path(GuardManagedArtifact::HostRuleInstruction),
+                content_hash(),
+                "# BEGIN VOLICORD",
+                "# END VOLICORD",
+            )
+            .unwrap(),
+        ];
+        files.extend(GuardHookPhase::REQUIRED.into_iter().map(|phase| {
+            ManagedFileExpectation::hook_wrapper(
+                phase,
+                path(GuardManagedArtifact::HostHookWrapper(phase)),
+                content_hash(),
+                "VOLICORD_MANAGED_HOOK_WRAPPER",
+                "/opt/volicord/bin/volicord _hook",
+                AgentConnectionId::new("conn_0123456789abcdef01234567"),
+                GuardInstallationId::new("guard_installation_example"),
+                PolicyHash::parse(HASH).unwrap(),
+            )
+        }));
+        if include_git_exclude {
+            files.push(
+                ManagedFileExpectation::managed_block(
+                    GuardManagedArtifact::GitInfoExclude,
+                    PathBuf::from("/work/product/.git/info/exclude"),
+                    content_hash(),
+                    "# BEGIN VOLICORD",
+                    "# END VOLICORD",
+                )
+                .unwrap(),
+            );
+        }
+        files
+    }
+
+    fn manifest(include_git_exclude: bool) -> GuardManifest {
+        GuardManifest {
+            schema: GUARD_MANIFEST_SCHEMA.to_owned(),
+            guard_installation_id: GuardInstallationId::new("guard_installation_example"),
+            connection_id: AgentConnectionId::new("conn_0123456789abcdef01234567"),
+            project_id: ProjectId::new("project_example"),
+            host_kind: HostKind::Codex,
+            integration_profile: IntegrationProfile::Record,
+            policy_hash: PolicyHash::parse(HASH).unwrap(),
+            integration_revision: IntegrationRevision::parse(HASH).unwrap(),
+            runtime_commands: invocation_set(Some(HASH))
+                .to_commands(GuardCommandProjection::Runtime)
+                .unwrap(),
+            managed_files: managed_inventory(include_git_exclude),
+            required_hook_phases: GuardHookPhase::REQUIRED.to_vec(),
+        }
+    }
+
     #[test]
     fn policy_hash_rejects_noncanonical_values() {
         assert!(PolicyHash::parse(HASH).is_ok());
@@ -1027,6 +1589,191 @@ mod tests {
     fn manifest_decoder_rejects_unknown_members() {
         let value = json!({"schema": GUARD_MANIFEST_SCHEMA, "unknown": true});
         assert!(!guard_manifest_has_exact_current_shape(&value));
+    }
+
+    #[test]
+    fn canonical_inventory_has_exact_coordinates_counts_and_paths() {
+        assert_eq!(
+            GUARD_MANAGED_ARTIFACT_SPECS.len(),
+            GuardManagedArtifact::ALL.len()
+        );
+        assert_eq!(
+            GUARD_MANAGED_ARTIFACT_SPECS
+                .iter()
+                .map(|spec| spec.artifact)
+                .collect::<BTreeSet<_>>(),
+            GuardManagedArtifact::ALL.into_iter().collect()
+        );
+        assert!(GUARD_MANAGED_ARTIFACT_SPECS
+            .iter()
+            .all(|spec| spec.expected_count == 1));
+
+        let wrapper_paths = GuardHookPhase::REQUIRED
+            .into_iter()
+            .map(|phase| {
+                GuardManagedArtifact::HostHookWrapper(phase)
+                    .spec()
+                    .repository_relative_path()
+                    .unwrap()
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(wrapper_paths.len(), GuardHookPhase::REQUIRED.len());
+        assert_eq!(
+            wrapper_paths,
+            BTreeSet::from([
+                PathBuf::from(".codex/hooks/volicord-pre-tool.sh"),
+                PathBuf::from(".codex/hooks/volicord-post-tool.sh"),
+                PathBuf::from(".codex/hooks/volicord-prompt-capture.sh"),
+            ])
+        );
+    }
+
+    #[test]
+    fn inventory_script_and_non_script_executable_contracts_are_platform_independent() {
+        let files = managed_inventory(true);
+        assert!(files.iter().all(|file| {
+            if file.ownership() == GuardManagedOwnership::ManagedScript {
+                file.executable_required() == Some(true)
+            } else {
+                file.executable_required().is_none()
+            }
+        }));
+        assert!(GUARD_MANAGED_ARTIFACT_SPECS.iter().all(|spec| {
+            spec.executable_required == (spec.ownership == GuardManagedOwnership::ManagedScript)
+        }));
+    }
+
+    #[test]
+    fn managed_artifact_wire_vocabulary_is_strict() {
+        let mut wrapper = serde_json::to_value(
+            managed_inventory(false)
+                .into_iter()
+                .find(|file| {
+                    file.artifact()
+                        == GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool)
+                })
+                .unwrap(),
+        )
+        .unwrap();
+        for (field, value) in [
+            ("kind", "unknown_kind"),
+            ("ownership", "unknown_ownership"),
+            ("phase", "unknown_phase"),
+            ("host_kind", "unknown_host"),
+        ] {
+            let mut candidate = wrapper.clone();
+            candidate[field] = Value::String(value.to_owned());
+            assert!(serde_json::from_value::<ManagedFileExpectation>(candidate).is_err());
+        }
+
+        let dispatch = managed_inventory(false)
+            .into_iter()
+            .find(|file| file.artifact() == GuardManagedArtifact::HostHookDispatch)
+            .unwrap();
+        wrapper = serde_json::to_value(dispatch).unwrap();
+        wrapper["managed_script_role"] = Value::String("unknown_role".to_owned());
+        assert!(serde_json::from_value::<ManagedFileExpectation>(wrapper).is_err());
+    }
+
+    #[test]
+    fn exact_inventory_rejects_duplicate_paths_and_wrapper_coordinates() {
+        let mut duplicate_path = manifest(true);
+        let agents_path = GuardManagedArtifact::AgentsManagedBlock
+            .expected_path(Path::new("/work/product"), None)
+            .unwrap();
+        let git = duplicate_path
+            .managed_files
+            .iter_mut()
+            .find(|file| file.artifact() == GuardManagedArtifact::GitInfoExclude)
+            .unwrap();
+        if let ManagedFileExpectation::GitInfoExclude { path, .. } = git {
+            *path = agents_path;
+        }
+        assert!(!guard_manifest_has_exact_current_shape(
+            &serde_json::to_value(duplicate_path).unwrap()
+        ));
+
+        let mut duplicate_wrapper = manifest(false);
+        let pre_tool = duplicate_wrapper
+            .managed_files
+            .iter()
+            .find(|file| {
+                file.artifact() == GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PreTool)
+            })
+            .unwrap()
+            .clone();
+        let post_tool = duplicate_wrapper
+            .managed_files
+            .iter_mut()
+            .find(|file| {
+                file.artifact() == GuardManagedArtifact::HostHookWrapper(GuardHookPhase::PostTool)
+            })
+            .unwrap();
+        *post_tool = pre_tool;
+        assert!(!guard_manifest_has_exact_current_shape(
+            &serde_json::to_value(duplicate_wrapper).unwrap()
+        ));
+    }
+
+    #[test]
+    fn optional_git_exclude_is_valid_only_under_its_external_owner_path() {
+        let without_git = manifest(false);
+        let without_git_value = serde_json::to_value(&without_git).unwrap();
+        assert!(guard_manifest_has_exact_current_shape(&without_git_value));
+        assert!(guard_manifest_matches_owner_binding(
+            &without_git_value,
+            GuardManifestOwnerBinding {
+                row_guard_installation_id: "guard_installation_example",
+                row_connection_id: "conn_0123456789abcdef01234567",
+                row_project_id: "project_example",
+                connection_host_kind: "codex",
+                connection_integration_revision: HASH,
+                project_repo_root: Path::new("/work/product"),
+                project_git_info_exclude_path: None,
+            }
+        ));
+
+        let with_git_value = serde_json::to_value(manifest(true)).unwrap();
+        assert!(guard_manifest_has_exact_current_shape(&with_git_value));
+        assert!(!guard_manifest_matches_owner_binding(
+            &with_git_value,
+            GuardManifestOwnerBinding {
+                row_guard_installation_id: "guard_installation_example",
+                row_connection_id: "conn_0123456789abcdef01234567",
+                row_project_id: "project_example",
+                connection_host_kind: "codex",
+                connection_integration_revision: HASH,
+                project_repo_root: Path::new("/work/product"),
+                project_git_info_exclude_path: None,
+            }
+        ));
+        assert!(guard_manifest_matches_owner_binding(
+            &with_git_value,
+            GuardManifestOwnerBinding {
+                row_guard_installation_id: "guard_installation_example",
+                row_connection_id: "conn_0123456789abcdef01234567",
+                row_project_id: "project_example",
+                connection_host_kind: "codex",
+                connection_integration_revision: HASH,
+                project_repo_root: Path::new("/work/product"),
+                project_git_info_exclude_path: Some(Path::new("/work/product/.git/info/exclude")),
+            }
+        ));
+    }
+
+    #[test]
+    fn exact_validator_consumes_paths_and_semantics_from_the_registry() {
+        let manifest = manifest(true);
+        for file in &manifest.managed_files {
+            let expected = file.artifact().expected_path(
+                Path::new("/work/product"),
+                Some(Path::new("/work/product/.git/info/exclude")),
+            );
+            assert_eq!(expected.as_deref(), Some(file.path()));
+            assert_eq!(file.ownership(), file.artifact().spec().ownership);
+        }
+        let text = serde_json::to_string(&manifest).unwrap();
+        assert_eq!(guard_manifest_from_json(&text).unwrap(), manifest);
     }
 
     #[test]

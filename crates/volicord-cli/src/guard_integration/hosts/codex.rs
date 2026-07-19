@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 
 use serde_json::{json, Value};
-use volicord_types::GuardHookPhase;
+use volicord_types::{GuardHookPhase, GuardManagedArtifact};
 
 use crate::{
     guard_integration::{
@@ -13,11 +13,10 @@ use crate::{
         GuardIntegrationError,
     },
     host_integration::{
-        codex,
         contracts::{
             contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
         },
-        guard_phase_capability_name, HostIntegrationFileKind, HostKind,
+        guard_phase_capability_name, HostKind,
     },
 };
 
@@ -77,9 +76,11 @@ pub(crate) fn plan_codex_hook_file(
         },
     )?;
     plan_managed_exact_json_file(
-        HostIntegrationFileKind::HostHookConfig,
+        GuardManagedArtifact::HostHookConfig,
         repo_root,
-        &codex::project_hooks_path(repo_root),
+        &GuardManagedArtifact::HostHookConfig
+            .expected_path(repo_root, None)
+            .expect("the Guard hook configuration has a repository-owned path"),
         &value,
     )
 }
@@ -157,9 +158,11 @@ pub(crate) fn plan_codex_rule_file(
     )?;
     let block = format!("{CODEX_RULE_START_MARKER}\n{body}{CODEX_RULE_END_MARKER}\n");
     plan_managed_block_file(
-        HostIntegrationFileKind::HostRuleInstruction,
+        GuardManagedArtifact::HostRuleInstruction,
         repo_root,
-        &codex::project_rule_path(repo_root),
+        &GuardManagedArtifact::HostRuleInstruction
+            .expected_path(repo_root, None)
+            .expect("the Guard rule instruction has a repository-owned path"),
         &block,
         CODEX_RULE_START_MARKER,
         CODEX_RULE_END_MARKER,

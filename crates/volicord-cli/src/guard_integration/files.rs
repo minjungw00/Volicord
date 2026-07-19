@@ -13,27 +13,28 @@ use cap_std::fs::{
     OpenOptions as CapabilityOpenOptions,
 };
 use serde_json::Value;
+use volicord_types::{
+    GuardManagedArtifact, GuardManagedMarkerSemantics, GuardManagedOwnership,
+    ManagedFileExpectation,
+};
 
 use crate::{
     guard_integration::audit::{
         hook_wrapper_comment_value, hook_wrapper_exec_command, is_volicord_codex_hook_config,
         script_is_executable, sha256_text, HOOK_WRAPPER_MARKER,
     },
-    host_integration::HostIntegrationFileKind,
     managed_block::{self, ManagedBlockError},
 };
 
 use super::GuardIntegrationError;
 
 pub(crate) const VOLICORD_POLICY_SCHEMA: &str = volicord_types::WORKFLOW_POLICY_CONTRACT_ID;
-pub(crate) const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
-pub(crate) const AGENTS_FILE: &str = "AGENTS.md";
 pub(crate) const GUIDANCE_START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE -->";
 pub(crate) const GUIDANCE_END_MARKER: &str = "<!-- END VOLICORD MANAGED GUIDANCE -->";
 
 #[derive(Debug, Clone)]
 pub(crate) struct GeneratedFilePlan {
-    pub(crate) kind: HostIntegrationFileKind,
+    pub(crate) artifact: GuardManagedArtifact,
     pub(crate) repo_root: PathBuf,
     pub(crate) path: PathBuf,
     pub(crate) content: String,
@@ -160,6 +161,31 @@ pub(crate) enum GeneratedFileWriteKind {
     Script,
 }
 
+pub(crate) fn generated_file_plan_matches_artifact_spec(file: &GeneratedFilePlan) -> bool {
+    let spec = file.artifact.spec();
+    let git_owner_path =
+        (file.artifact == GuardManagedArtifact::GitInfoExclude).then_some(file.path.as_path());
+    spec.expected_path(&file.repo_root, git_owner_path)
+        .as_deref()
+        == Some(file.path.as_path())
+        && matches!(
+            (spec.ownership, spec.marker_semantics, file.write_kind),
+            (
+                GuardManagedOwnership::ManagedBlock,
+                GuardManagedMarkerSemantics::BlockPair,
+                GeneratedFileWriteKind::Block { .. }
+            ) | (
+                GuardManagedOwnership::ManagedJson,
+                GuardManagedMarkerSemantics::None,
+                GeneratedFileWriteKind::Json | GeneratedFileWriteKind::ExactJson
+            ) | (
+                GuardManagedOwnership::ManagedScript,
+                GuardManagedMarkerSemantics::ScriptMarker,
+                GeneratedFileWriteKind::Script
+            )
+        )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FilePlanStatus {
     PlannedCreate,
@@ -171,7 +197,7 @@ pub(crate) enum FilePlanStatus {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ManagedFileRetirementPlan {
-    pub(crate) kind: HostIntegrationFileKind,
+    pub(crate) artifact: GuardManagedArtifact,
     pub(crate) repo_root: PathBuf,
     pub(crate) path: PathBuf,
     pub(crate) status: RetirementPlanStatus,
@@ -261,7 +287,7 @@ where
             &temp_file,
             &plan.target_snapshot,
             executable,
-            plan.kind == HostIntegrationFileKind::VolicordPolicy,
+            plan.artifact == GuardManagedArtifact::VolicordPolicy,
         )?;
         hook(ManagedWritePhase::TempReady)?;
         temp_file.write_all(content.as_bytes())?;
@@ -2599,7 +2625,7 @@ fn managed_path_conflict(path: &Path, detail: &str) -> GuardIntegrationError {
 }
 
 pub(crate) fn plan_managed_block_file(
-    kind: HostIntegrationFileKind,
+    artifact: GuardManagedArtifact,
     repo_root: &Path,
     path: &Path,
     block: &str,
@@ -2614,7 +2640,7 @@ pub(crate) fn plan_managed_block_file(
             if require_existing_marker && !existing.contains(start_marker) {
                 return Err(GuardIntegrationError::runtime(format!(
                     "{} already exists without a Volicord-managed block: {}",
-                    kind.as_str(),
+                    artifact.kind().as_str(),
                     path.display()
                 )));
             }
@@ -2634,7 +2660,7 @@ pub(crate) fn plan_managed_block_file(
         None => FilePlanStatus::PlannedCreate,
     };
     Ok(GeneratedFilePlan {
-        kind,
+        artifact,
         repo_root: repo_root.to_path_buf(),
         path: path.to_path_buf(),
         content,
@@ -2680,7 +2706,7 @@ pub(crate) fn plan_policy_file(
         None => FilePlanStatus::PlannedCreate,
     };
     Ok(GeneratedFilePlan {
-        kind: HostIntegrationFileKind::VolicordPolicy,
+        artifact: GuardManagedArtifact::VolicordPolicy,
         repo_root: repo_root.to_path_buf(),
         path: path.to_path_buf(),
         content,
@@ -2714,30 +2740,21 @@ pub(crate) fn read_managed_text(
 
 pub(crate) fn plan_managed_file_retirement(
     repo_root: &Path,
-    manifest_file: &Value,
+    manifest_file: &ManagedFileExpectation,
 ) -> Result<ManagedFileRetirementPlan, GuardIntegrationError> {
-    let kind_text = manifest_file
-        .get("kind")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            GuardIntegrationError::runtime("retirement metadata is missing file kind")
-        })?;
-    let kind = host_integration_file_kind(kind_text).ok_or_else(|| {
-        GuardIntegrationError::runtime(format!(
-            "retirement metadata contains unsupported file kind {kind_text}"
-        ))
-    })?;
-    let path = manifest_file
-        .get("path")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
-        .ok_or_else(|| {
-            GuardIntegrationError::runtime("retirement metadata is missing file path")
-        })?;
+    let artifact = manifest_file.artifact();
+    let path = manifest_file.path().to_path_buf();
+    if artifact.expected_path(repo_root, None).as_deref() != Some(path.as_path()) {
+        return Err(GuardIntegrationError::runtime(format!(
+            "managed retirement target is not the registered {} path: {}",
+            artifact.kind().as_str(),
+            path.display()
+        )));
+    }
     let target_snapshot = read_managed_target_snapshot(repo_root, &path)?;
     let Some(existing) = target_snapshot.text() else {
         return Ok(ManagedFileRetirementPlan {
-            kind,
+            artifact,
             repo_root: repo_root.to_path_buf(),
             path,
             status: RetirementPlanStatus::Unchanged,
@@ -2745,56 +2762,35 @@ pub(crate) fn plan_managed_file_retirement(
             replacement: None,
         });
     };
-    let expected_hash = manifest_file
-        .get("content_hash")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            GuardIntegrationError::runtime(format!(
-                "retirement metadata is missing content hash for {}",
-                path.display()
-            ))
-        })?;
-    let replacement = match manifest_file.get("ownership").and_then(Value::as_str) {
-        Some("managed_block") => {
-            let start = manifest_file
-                .get("managed_marker_start")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    GuardIntegrationError::runtime(
-                        "managed-block retirement is missing start marker",
-                    )
-                })?;
-            let end = manifest_file
-                .get("managed_marker_end")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    GuardIntegrationError::runtime("managed-block retirement is missing end marker")
-                })?;
+    let expected_hash = manifest_file.content_hash().as_str();
+    let replacement = match manifest_file {
+        ManagedFileExpectation::GitInfoExclude { .. }
+        | ManagedFileExpectation::HostRuleInstruction { .. }
+        | ManagedFileExpectation::AgentsManagedBlock { .. } => {
+            let (start, end) = manifest_file
+                .block_markers()
+                .expect("managed-block variants carry markers");
             let (managed, remaining) = remove_verified_managed_block(existing, start, end)?;
             if sha256_text(managed) != expected_hash {
                 return Err(retirement_changed_error(&path));
             }
             (!remaining.trim().is_empty()).then_some(remaining.to_owned())
         }
-        Some("managed_json") => {
+        ManagedFileExpectation::VolicordPolicy { .. }
+        | ManagedFileExpectation::HostHookConfig { .. } => {
             if sha256_text(existing) != expected_hash {
                 return Err(retirement_changed_error(&path));
             }
             None
         }
-        Some("managed_script") => {
+        ManagedFileExpectation::HostHookDispatch { .. }
+        | ManagedFileExpectation::HostHookWrapper { .. } => {
             if sha256_text(existing) != expected_hash
                 || !managed_script_retirement_metadata_matches_content(manifest_file, existing)
             {
                 return Err(retirement_changed_error(&path));
             }
             None
-        }
-        _ => {
-            return Err(GuardIntegrationError::runtime(format!(
-                "retirement metadata has unsupported ownership for {}",
-                path.display()
-            )));
         }
     };
     let status = if replacement.is_some() {
@@ -2803,7 +2799,7 @@ pub(crate) fn plan_managed_file_retirement(
         RetirementPlanStatus::PlannedRemove
     };
     Ok(ManagedFileRetirementPlan {
-        kind,
+        artifact,
         repo_root: repo_root.to_path_buf(),
         path,
         status,
@@ -2823,7 +2819,7 @@ pub(crate) fn apply_managed_file_retirement(
     ensure_retirement_plan_fresh(plan)?;
     if let Some(replacement) = &plan.replacement {
         let replacement_plan = GeneratedFilePlan {
-            kind: plan.kind,
+            artifact: plan.artifact,
             repo_root: plan.repo_root.clone(),
             path: plan.path.clone(),
             content: replacement.clone(),
@@ -2870,46 +2866,61 @@ fn retirement_changed_error(path: &Path) -> GuardIntegrationError {
     ))
 }
 
-fn managed_script_retirement_metadata_matches_content(file: &Value, content: &str) -> bool {
-    if file.get("managed_marker").and_then(Value::as_str) != Some(HOOK_WRAPPER_MARKER)
+fn managed_script_retirement_metadata_matches_content(
+    file: &ManagedFileExpectation,
+    content: &str,
+) -> bool {
+    let managed_marker = match file {
+        ManagedFileExpectation::HostHookDispatch { managed_marker, .. }
+        | ManagedFileExpectation::HostHookWrapper { managed_marker, .. } => managed_marker,
+        _ => return false,
+    };
+    if managed_marker != HOOK_WRAPPER_MARKER
         || !content
             .lines()
             .any(|line| line == format!("# {HOOK_WRAPPER_MARKER}"))
     {
         return false;
     }
-    match file.get("kind").and_then(Value::as_str) {
-        Some("host_hook_dispatch") => {
-            file.get("managed_script_role").and_then(Value::as_str) == Some("codex_dispatch")
-                && hook_wrapper_comment_value(content, "host_kind")
-                    == file.get("host_kind").and_then(Value::as_str)
+    match file {
+        ManagedFileExpectation::HostHookDispatch {
+            managed_script_role,
+            host_kind,
+            phase,
+            ..
+        } => {
+            *managed_script_role == volicord_types::GuardManagedScriptRole::CodexDispatch
+                && hook_wrapper_comment_value(content, "host_kind") == Some(host_kind.as_str())
                 && hook_wrapper_comment_value(content, "phase")
-                    == file.get("phase").and_then(Value::as_str)
+                    == Some(match phase {
+                        volicord_types::GuardDispatchPhase::Dispatch => "dispatch",
+                    })
                 && hook_wrapper_comment_value(content, "script_role") == Some("codex_dispatch")
         }
-        Some("host_hook_wrapper") => {
-            let Some(expected_command) = file
-                .get("managed_script_command")
-                .and_then(Value::as_str)
-                .filter(|command| !command.trim().is_empty())
-            else {
-                return false;
-            };
+        ManagedFileExpectation::HostHookWrapper {
+            managed_script_command: expected_command,
+            host_kind,
+            phase,
+            purpose,
+            connection_id,
+            guard_installation_id,
+            policy_hash,
+            host_output,
+            ..
+        } => {
             hook_wrapper_exec_command(content) == Some(expected_command)
-                && [
-                    "host_kind",
-                    "phase",
-                    "purpose",
-                    "connection_id",
-                    "guard_installation_id",
-                    "policy_hash",
-                    "host_output",
-                ]
-                .iter()
-                .all(|key| {
-                    hook_wrapper_comment_value(content, key)
-                        == file.get(*key).and_then(Value::as_str)
-                })
+                && hook_wrapper_comment_value(content, "host_kind") == Some(host_kind.as_str())
+                && hook_wrapper_comment_value(content, "phase") == Some(phase.as_str())
+                && hook_wrapper_comment_value(content, "purpose")
+                    == Some(match purpose {
+                        volicord_types::GuardManagedScriptPurpose::Guard => "guard",
+                    })
+                && hook_wrapper_comment_value(content, "connection_id")
+                    == Some(connection_id.as_str())
+                && hook_wrapper_comment_value(content, "guard_installation_id")
+                    == Some(guard_installation_id.as_str())
+                && hook_wrapper_comment_value(content, "policy_hash") == Some(policy_hash.as_str())
+                && hook_wrapper_comment_value(content, "host_output") == Some(host_output.as_str())
         }
         _ => false,
     }
@@ -2944,22 +2955,8 @@ fn remove_verified_managed_block<'a>(
     Ok((managed, remaining))
 }
 
-fn host_integration_file_kind(value: &str) -> Option<HostIntegrationFileKind> {
-    match value {
-        "volicord_policy" => Some(HostIntegrationFileKind::VolicordPolicy),
-        "git_info_exclude" => Some(HostIntegrationFileKind::GitInfoExclude),
-        "host_mcp_config" => Some(HostIntegrationFileKind::HostMcpConfig),
-        "host_hook_config" => Some(HostIntegrationFileKind::HostHookConfig),
-        "host_hook_dispatch" => Some(HostIntegrationFileKind::HostHookDispatch),
-        "host_hook_wrapper" => Some(HostIntegrationFileKind::HostHookWrapper),
-        "host_rule_instruction" => Some(HostIntegrationFileKind::HostRuleInstruction),
-        "agents_managed_block" => Some(HostIntegrationFileKind::AgentsManagedBlock),
-        _ => None,
-    }
-}
-
 pub(crate) fn plan_managed_exact_json_file(
-    kind: HostIntegrationFileKind,
+    artifact: GuardManagedArtifact,
     repo_root: &Path,
     path: &Path,
     value: &Value,
@@ -2973,7 +2970,7 @@ pub(crate) fn plan_managed_exact_json_file(
             let existing_value = serde_json::from_str::<Value>(existing).map_err(|error| {
                 GuardIntegrationError::runtime(format!(
                     "existing {} is not valid JSON: {} ({error})",
-                    kind.as_str(),
+                    artifact.kind().as_str(),
                     path.display()
                 ))
             })?;
@@ -2983,14 +2980,14 @@ pub(crate) fn plan_managed_exact_json_file(
                 } else {
                     FilePlanStatus::PlannedUpdate
                 }
-            } else if kind == HostIntegrationFileKind::HostHookConfig
+            } else if artifact == GuardManagedArtifact::HostHookConfig
                 && is_volicord_codex_hook_config(&existing_value)
             {
                 FilePlanStatus::PlannedUpdate
             } else {
                 return Err(GuardIntegrationError::runtime(format!(
                     "{} already exists with unmanaged content: {}",
-                    kind.as_str(),
+                    artifact.kind().as_str(),
                     path.display()
                 )));
             }
@@ -2998,7 +2995,7 @@ pub(crate) fn plan_managed_exact_json_file(
         None => FilePlanStatus::PlannedCreate,
     };
     Ok(GeneratedFilePlan {
-        kind,
+        artifact,
         repo_root: repo_root.to_path_buf(),
         path: path.to_path_buf(),
         content,
@@ -3012,7 +3009,7 @@ pub(crate) fn plan_managed_script_file(
     repo_root: &Path,
     path: &Path,
     content: &str,
-    kind: HostIntegrationFileKind,
+    artifact: GuardManagedArtifact,
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let target_snapshot = read_managed_target_snapshot(repo_root, path)?;
     let status = match target_snapshot.text() {
@@ -3028,7 +3025,7 @@ pub(crate) fn plan_managed_script_file(
             } else {
                 return Err(GuardIntegrationError::runtime(format!(
                     "{} already exists with unmanaged content: {}",
-                    kind.as_str(),
+                    artifact.kind().as_str(),
                     path.display()
                 )));
             }
@@ -3036,7 +3033,7 @@ pub(crate) fn plan_managed_script_file(
         None => FilePlanStatus::PlannedCreate,
     };
     Ok(GeneratedFilePlan {
-        kind,
+        artifact,
         repo_root: repo_root.to_path_buf(),
         path: path.to_path_buf(),
         content: content.to_owned(),
@@ -3060,4 +3057,50 @@ pub(crate) fn managed_block_conflict(error: ManagedBlockError) -> GuardIntegrati
 fn is_volicord_policy(value: &Value) -> bool {
     value.get("schema").and_then(Value::as_str) == Some(VOLICORD_POLICY_SCHEMA)
         && value.get("managed_by").and_then(Value::as_str) == Some("volicord")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use volicord_test_support::TempRuntimeHome;
+    use volicord_types::{GuardArtifactContentHash, GuardManagedArtifact, ManagedFileExpectation};
+
+    use super::{plan_managed_file_retirement, sha256_text, RetirementPlanStatus};
+
+    #[test]
+    fn retirement_accepts_only_the_registered_owned_path_and_exact_content(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-retirement-registry")?;
+        let repo_root = fixture.create_product_repo("product")?;
+        let current_path = GuardManagedArtifact::HostHookConfig
+            .expected_path(&repo_root, None)
+            .expect("registered hook config path");
+        fs::create_dir_all(current_path.parent().expect("hook config parent"))?;
+        let current_content = "{\"hooks\":{}}\n";
+        fs::write(&current_path, current_content)?;
+        let content_hash = GuardArtifactContentHash::parse(sha256_text(current_content))?;
+        let current = ManagedFileExpectation::managed_json(
+            GuardManagedArtifact::HostHookConfig,
+            current_path.clone(),
+            content_hash.clone(),
+        )?;
+        let plan = plan_managed_file_retirement(&repo_root, &current)?;
+        assert_eq!(plan.status, RetirementPlanStatus::PlannedRemove);
+
+        let unrelated_path = repo_root.join("user-owned.json");
+        fs::write(&unrelated_path, current_content)?;
+        let unrelated = ManagedFileExpectation::managed_json(
+            GuardManagedArtifact::HostHookConfig,
+            unrelated_path.clone(),
+            content_hash,
+        )?;
+        assert!(plan_managed_file_retirement(&repo_root, &unrelated).is_err());
+        assert_eq!(fs::read_to_string(&unrelated_path)?, current_content);
+
+        fs::write(&current_path, "{\"hooks\":{\"changed\":true}}\n")?;
+        assert!(plan_managed_file_retirement(&repo_root, &current).is_err());
+        assert!(current_path.is_file());
+        Ok(())
+    }
 }
