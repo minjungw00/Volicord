@@ -186,7 +186,6 @@ impl MethodHarness {
                 mode: CONNECTION_MODE_WORKFLOW.to_owned(),
                 enabled: true,
                 managed_fingerprint: "fixture:methods".to_owned(),
-                verification_report_json: None,
                 metadata_json: "{}".to_owned(),
             },
         )?;

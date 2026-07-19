@@ -372,23 +372,8 @@ fn apply_init_provisioning(
         mode: plan.effective_mode.clone(),
         enabled: !is_connection_migration,
         managed_fingerprint: host_plan.fingerprint.clone(),
-        verification_report_json: existing
-            .as_ref()
-            .and_then(|record| record.verification_report_json.clone()),
         metadata_json,
     };
-    let registered_connection = connection_before_host_apply(
-        &plan.runtime_home,
-        &desired_connection_registration,
-        existing.as_ref(),
-        is_connection_migration,
-    );
-    let mut connection = migration_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        registered_connection.map_err(ConnectionCommandError::from),
-    )?;
     let superseded_bindings = superseded_integrations
         .iter()
         .map(|integration| SupersededConnectionProject {
@@ -398,20 +383,19 @@ fn apply_init_provisioning(
         .collect::<Vec<_>>();
     let mut cleanup_resume = false;
     let mut cleanup_resume_pending = Vec::new();
-    if is_connection_migration {
-        let (current_connection, migration_state) = migration_step(
+    if is_connection_migration && existing.is_some() {
+        let (_, migration_state) = migration_step(
             &plan,
             &superseded_integrations,
             is_integration_migration,
             staged_connection_migration_state(
                 &plan.runtime_home,
-                &connection.connection_internal_id,
+                &desired_connection_registration.connection_internal_id,
                 &project.project_id,
                 &superseded_bindings,
             )
             .map_err(ConnectionCommandError::from),
         )?;
-        connection = current_connection;
         if let StagedConnectionMigrationState::CleanupResume {
             pending_connection_ids,
         } = migration_state
@@ -419,28 +403,7 @@ fn apply_init_provisioning(
             cleanup_resume = true;
             cleanup_resume_pending = pending_connection_ids;
         }
-    } else {
-        migration_step(
-            &plan,
-            &superseded_integrations,
-            is_integration_migration,
-            add_connection_project(
-                &plan.runtime_home,
-                ConnectionProjectRegistration {
-                    connection_internal_id: connection.connection_internal_id.clone(),
-                    project_id: project.project_id.clone(),
-                },
-            )
-            .map(|_| ())
-            .map_err(ConnectionCommandError::from),
-        )?;
     }
-    migration_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id),
-    )?;
     if plan.expected_connection.is_some() {
         validate_init_connection_expectation(&plan)?;
     }
@@ -458,20 +421,63 @@ fn apply_init_provisioning(
         cleanup_resume,
         apply_host_plan(plan.host_kind, &host_plan, process),
     )?;
-    if existing.is_some() {
-        let refreshed_connection = if is_connection_migration {
-            ensure_staged_agent_connection(&plan.runtime_home, desired_connection_registration)
-        } else {
-            ensure_agent_connection(&plan.runtime_home, desired_connection_registration)
-        };
-        connection = migration_before_cleanup_step(
+    let registered_connection = if is_connection_migration {
+        ensure_staged_agent_connection(&plan.runtime_home, desired_connection_registration)
+    } else {
+        ensure_agent_connection(&plan.runtime_home, desired_connection_registration)
+    };
+    let mut connection = migration_before_cleanup_step(
+        &plan,
+        &superseded_integrations,
+        is_integration_migration,
+        cleanup_resume,
+        registered_connection.map_err(ConnectionCommandError::from),
+    )?;
+    if is_connection_migration && !cleanup_resume {
+        let (current_connection, migration_state) = migration_before_cleanup_step(
             &plan,
             &superseded_integrations,
             is_integration_migration,
             cleanup_resume,
-            refreshed_connection.map_err(ConnectionCommandError::from),
+            staged_connection_migration_state(
+                &plan.runtime_home,
+                &connection.connection_internal_id,
+                &project.project_id,
+                &superseded_bindings,
+            )
+            .map_err(ConnectionCommandError::from),
+        )?;
+        connection = current_connection;
+        if let StagedConnectionMigrationState::CleanupResume {
+            pending_connection_ids,
+        } = migration_state
+        {
+            cleanup_resume = true;
+            cleanup_resume_pending = pending_connection_ids;
+        }
+    } else if !is_connection_migration {
+        migration_step(
+            &plan,
+            &superseded_integrations,
+            is_integration_migration,
+            add_connection_project(
+                &plan.runtime_home,
+                ConnectionProjectRegistration {
+                    connection_internal_id: connection.connection_internal_id.clone(),
+                    project_id: project.project_id.clone(),
+                },
+            )
+            .map(|_| ())
+            .map_err(ConnectionCommandError::from),
         )?;
     }
+    migration_before_cleanup_step(
+        &plan,
+        &superseded_integrations,
+        is_integration_migration,
+        cleanup_resume,
+        enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id),
+    )?;
     // Host setup may create repository-local parent directories. Replan after
     // those mutations so every managed-file snapshot is anchored to the
     // current filesystem state. The protective union exclude was already
@@ -598,6 +604,7 @@ fn apply_init_provisioning(
             )?,
         }
     }
+    let expected_integration_revision = connection_integration_revision(&connection)?;
     let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
     let verification = migration_post_transition_step(
         &plan,
@@ -616,13 +623,12 @@ fn apply_init_provisioning(
         &plan,
         &superseded_integrations,
         is_integration_migration,
-        update_agent_connection_verification_report(
+        persist_connection_verification_report(
             &plan.runtime_home,
             &connection.connection_internal_id,
-            &host_plan.fingerprint,
+            &expected_integration_revision,
             Some(&verification.report),
-        )
-        .map_err(ConnectionCommandError::from),
+        ),
     )?;
     let _ = connection;
 
@@ -1245,17 +1251,11 @@ fn apply_connection_provisioning(
         mode: plan.mode.clone(),
         enabled: true,
         managed_fingerprint: host_plan.fingerprint.clone(),
-        verification_report_json: existing
-            .as_ref()
-            .and_then(|record| record.verification_report_json.clone()),
         metadata_json,
     };
-    let mut connection = connection_before_host_apply(
-        &plan.runtime_home,
-        &desired_connection_registration,
-        existing.as_ref(),
-        false,
-    )?;
+    apply_host_plan(plan.host_kind, &host_plan, process)?;
+    let mut connection =
+        ensure_agent_connection(&plan.runtime_home, desired_connection_registration)?;
     enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id)?;
     add_connection_project(
         &plan.runtime_home,
@@ -1264,10 +1264,7 @@ fn apply_connection_provisioning(
             project_id: project.project_id.clone(),
         },
     )?;
-    apply_host_plan(plan.host_kind, &host_plan, process)?;
-    if existing.is_some() {
-        connection = ensure_agent_connection(&plan.runtime_home, desired_connection_registration)?;
-    }
+    let expected_integration_revision = connection_integration_revision(&connection)?;
     let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
     let verification = verify_connection(
         &plan.runtime_home,
@@ -1277,10 +1274,10 @@ fn apply_connection_provisioning(
         Some(&project.project_id),
         process,
     )?;
-    connection = update_agent_connection_verification_report(
+    connection = persist_connection_verification_report(
         &plan.runtime_home,
         &connection.connection_internal_id,
-        &host_plan.fingerprint,
+        &expected_integration_revision,
         Some(&verification.report),
     )?;
     let projects =
@@ -1296,22 +1293,6 @@ fn apply_connection_provisioning(
         host_plan,
         guard_state,
     })
-}
-
-fn connection_before_host_apply(
-    runtime_home: &Path,
-    desired: &AgentConnectionRegistration,
-    existing: Option<&AgentConnectionRecord>,
-    staged: bool,
-) -> Result<AgentConnectionRecord, StoreError> {
-    if let Some(existing) = existing {
-        return Ok(existing.clone());
-    }
-    if staged {
-        ensure_staged_agent_connection(runtime_home, desired.clone())
-    } else {
-        ensure_agent_connection(runtime_home, desired.clone())
-    }
 }
 
 fn ensure_host_plan_has_no_conflict(plan: &HostPlan) -> Result<(), ConnectionCommandError> {
@@ -1577,53 +1558,6 @@ mod init_planning_tests {
 #[cfg(test)]
 mod migration_state_tests {
     use super::*;
-    use volicord_test_support::TempRuntimeHome;
-
-    #[test]
-    fn stale_captured_connection_does_not_regress_newer_registry_fingerprint(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = TempRuntimeHome::new("connection-pre-host-race")?;
-        initialize_runtime_home(fixture.path(), "runtime_home_pre_host_race", "{}")?;
-        let current_registration = AgentConnectionRegistration {
-            connection_internal_id: "connection_race".to_owned(),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            intent: CONNECTION_INTENT_SHARED.to_owned(),
-            host_scope: HOST_SCOPE_PROJECT.to_owned(),
-            server_name: DEFAULT_SERVER_NAME.to_owned(),
-            config_target: fixture
-                .path()
-                .join("repo/.codex/config.toml")
-                .display()
-                .to_string(),
-            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            enabled: true,
-            managed_fingerprint: "fingerprint_current".to_owned(),
-            verification_report_json: None,
-            metadata_json: "{}".to_owned(),
-        };
-        let stored = ensure_agent_connection(fixture.path(), current_registration.clone())?;
-        let mut captured_before_concurrent_publish = stored.clone();
-        captured_before_concurrent_publish.managed_fingerprint =
-            "fingerprint_preexisting".to_owned();
-        let mut stale_desired = current_registration;
-        stale_desired.managed_fingerprint = "fingerprint_preexisting".to_owned();
-
-        let selected = connection_before_host_apply(
-            fixture.path(),
-            &stale_desired,
-            Some(&captured_before_concurrent_publish),
-            false,
-        )?;
-
-        assert_eq!(selected.managed_fingerprint, "fingerprint_preexisting");
-        assert_eq!(
-            agent_connection_record(fixture.path(), "connection_race")?
-                .expect("newer registry row remains")
-                .managed_fingerprint,
-            "fingerprint_current"
-        );
-        Ok(())
-    }
 
     #[test]
     fn cleanup_revalidation_failure_reports_unknown_inventory() {

@@ -188,6 +188,16 @@ Status may rebuild an in-memory current projection from the stored active-probe
 facts and current observations, but that read does not persist the projection
 or modify any timestamp.
 
+Active verification captures the exact typed Connection integration revision
+before it plans or probes. Store persists the resulting report only when that
+same revision is still current, using one immediate Registry transaction for
+the comparison and report replacement. The write changes only
+`verification_report_json` and the ordinary row update timestamp. A revision
+conflict leaves the existing report and every owner field unchanged and
+requires verification to be rerun. Verification observes managed
+configuration; it never applies, adopts, or records a newly planned managed
+fingerprint.
+
 Operational compatibility is reported from checks the adapter actually
 performed and behavior it observed. `complete` does not certify executable
 identity or provenance and does not mean operating-system enforcement, actor
@@ -201,7 +211,12 @@ canonical SHA-256 digest. Its basis is the Agent Connection identity, immutable
 Store-owned integration-instance ID, host kind, intent, scope, mode, server
 name, configuration target, and current exact managed-configuration
 fingerprint, plus the nonnegative Store-owned integration generation. That
-fingerprint covers the managed server command and entry.
+fingerprint covers the managed server command and entry and identifies the
+Volicord-managed host configuration that a setup owner last successfully
+applied or adopted. Only setup, repair, staged activation, or another explicit
+managed-configuration mutation may replace it. Replacing it changes the
+integration revision and clears the prior verification report atomically;
+compatible replay with the same fingerprint may retain that report.
 
 Store generates a new opaque integration-instance ID only when it inserts a
 new physical `agent_connections` row. Compatible registration replay,
@@ -335,6 +350,12 @@ The Codex adapter owns host-specific configuration inspection and mutation:
 - repair owner-defined managed state from current canonical inputs; and
 - uninstall only matching Volicord-managed state.
 
+Setup and repair plan and validate first, apply or adopt host configuration,
+then commit the resulting managed fingerprint and owner-coherent Registry and
+Guard state. Verification begins only from that final Connection record and
+persists its report against that record's exact integration revision. Report
+persistence never performs a second fingerprint update.
+
 Runtime authorization does not hash the parent executable, derive a platform
 executable identity, consult an exact-host allowlist, calculate an executable
 identity digest, or issue or validate an executable attestation. A recognizable
@@ -346,7 +367,11 @@ Repair does not overwrite unrelated Codex configuration or silently change the
 selected project, Connection, intent, profile, or platform environment.
 For both `workflow` and `read_only`, repair may restore missing owned Codex
 configuration, Guard files, and the current Guard Installation while preserving
-the Connection mode, integration generation, and current integration revision.
+the Connection mode and integration generation. If repair applies a different
+canonical managed configuration, it records the new managed fingerprint,
+changes the integration revision, and invalidates the prior verification
+report before verification under the new revision. If the fingerprint is
+unchanged, the current revision is preserved.
 Uninstall removes only content whose current managed identity still matches
 Volicord ownership.
 

@@ -77,7 +77,11 @@ Connection 통합 revision은 Connection identity, 변경 불가능한 통합 in
 kind, intent, scope, mode, server name, configuration target, 정확한
 managed-configuration fingerprint, Store 소유 비음수 integration generation을
 domain-separated canonical digest로 만든 값입니다. Managed fingerprint에는 현재 server
-command와 entry가 포함됩니다. Host와 client version 필드는 제외하며 identity나 allowlist
+command와 entry가 포함되며, setup 담당 경로가 마지막으로 적용에 성공했거나 채택한
+Volicord 관리 host configuration을 식별합니다. 명시적인 setup 소유 managed-configuration
+쓰기만 이 값을 바꿀 수 있습니다. 이 쓰기가 fingerprint를 바꾸면 같은 Registry
+transaction에서 `verification_report_json`을 비우며, fingerprint가 같은 replay는 보고서를
+유지할 수 있습니다. Host와 client version 필드는 제외하며 identity나 allowlist
 입력이 아닌 diagnostic 관찰로만 남습니다. 이 fingerprint에는 host executable identity나
 provenance 입력이 없습니다. Store는 실제 mode 전환이 성공할 때마다 generation을 정확히 한
 번 증가시키고 같은 mode의 no-op에서는 증가시키지 않습니다. Generation은 물리 Connection
@@ -266,6 +270,14 @@ Null이 아닌 값은 완전하고 엄격한 `ConnectionVerificationReport` 하�
 check, 사용자 action을 독립적으로 저장하거나 변경할 수 없습니다. SQL null은 완료된
 보고서가 없다는 뜻입니다. 읽기 경로는 Registry 저장소를 바꾸지 않고 그 부재를 Agent
 Connection 담당 문서의 합성 `verification_not_run` 보고서로 projection합니다.
+
+보고서 교체는 호출자가 준 fingerprint가 아니라 정확한 예상 typed Connection integration
+revision을 받습니다. Store는 immediate Registry transaction 하나에서 revision 소유자 field를
+읽고 검증하며 현재 revision을 비교한 뒤 `verification_report_json`과 일반 row 갱신
+timestamp만 바꿉니다. 불일치는 쓰기 효과가 없는 충돌입니다. 이 경계는 malformed인 저장
+보고서의 명시적 교체는 허용하지만 malformed metadata나 다른 소유자 상태를 복구하지
+않습니다. 따라서 검증은 관리 configuration을 채택하거나 Connection integration revision을
+바꿀 수 없습니다.
 
 Store는 쓰기 전과 읽은 뒤 공유 보고서 type을 검증합니다. 닫힌 값, 상한, 결정적 순서,
 중복 거부, 파생 집계를 모두 확인합니다. 형식이 잘못되었거나 비정규인 보고서 JSON은

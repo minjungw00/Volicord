@@ -62,6 +62,16 @@ arguments, and managed launch markers select the registered Connection and its
 optional project at startup. They are cooperative launch context, not identity
 credentials.
 
+The stored managed fingerprint identifies the Volicord-managed host
+configuration that setup, repair, staged activation, or another explicit
+configuration owner last successfully applied or adopted. Those mutation
+paths record it only after the host apply succeeds. A different applied
+fingerprint changes the Connection integration revision and clears the prior
+verification report. Operational verification observes the current file and a
+newly generated Host Plan but never applies or adopts that plan's fingerprint.
+Its report-only write is guarded by the exact revision observed before the
+probe.
+
 Inside WSL2, the Codex executable, Volicord executable, configuration target,
 and each generated managed artifact are independently resolved and checked for
 the same distribution ext4 boundary. A repository root on ext4 does not

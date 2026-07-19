@@ -3829,7 +3829,6 @@ mod tests {
                     mode: CONNECTION_MODE_WORKFLOW.to_owned(),
                     enabled: true,
                     managed_fingerprint: format!("fingerprint:{connection_id}"),
-                    verification_report_json: None,
                     metadata_json: "{}".to_owned(),
                 },
             )?;

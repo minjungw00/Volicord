@@ -319,6 +319,25 @@ Workflow metrics writes store aggregate counters, durations, serialized tool
 byte counts, and categorical outcomes only. These records never contain prompt,
 file, answer, or command bodies.
 
+## Administrative Connection Setup And Verification
+
+An accepted setup, repair, or staged managed-configuration apply writes the
+host configuration before its setup-owned Store path commits the resulting
+`managed_fingerprint`. If an existing Connection's fingerprint changes, that
+same immediate Registry transaction clears `verification_report_json`.
+Compatible replay with the same fingerprint may retain the report. A host
+write that succeeds before a later unrelated failure remains subject to the
+administrative CLI's partial-application reporting and retry contract.
+
+Active connection verification captures the exact typed Connection integration
+revision that it verifies. Report persistence uses one immediate Registry
+transaction to compare the current revision and, only on an exact match,
+replace `verification_report_json` and the ordinary row update timestamp. It
+does not write `managed_fingerprint`, integration instance or generation,
+mode, metadata, memberships, Guard manifests, runtime sessions, or project
+Agent Sessions. A revision conflict has no Registry effect.
+`volicord connection status` remains read-only and does not use this mutation.
+
 ## Administrative Connection Project Retirement
 
 An accepted `volicord connection remove` apply uses one immediate Registry

@@ -85,7 +85,12 @@ The connection integration revision is a domain-separated canonical digest of
 the Connection identity, immutable integration-instance ID, host kind, intent,
 scope, mode, server name, configuration target, exact managed-configuration
 fingerprint, and nonnegative Store-owned integration generation. The managed
-fingerprint includes the current server command and entry. Host and client
+fingerprint includes the current server command and entry and identifies the
+Volicord-managed host configuration that the setup owner last successfully
+applied or adopted. Only an explicit setup-owned managed-configuration write
+may change it. When that write changes the fingerprint, the same Registry
+transaction clears `verification_report_json`; replay with the same
+fingerprint may retain the report. Host and client
 version fields are excluded and remain diagnostic observations, not identity
 or allowlist inputs. The fingerprint contains no host executable identity or
 provenance inputs. Store increments the generation exactly once in each
@@ -296,6 +301,15 @@ connection-verification state. A non-null value is one complete strict
 cannot be stored or changed independently. SQL null means no completed report.
 Reads project that absence through the Agent Connection owner's synthesized
 `verification_not_run` report without mutating Registry storage.
+
+Report replacement accepts the exact expected typed Connection integration
+revision, not a caller-supplied fingerprint. In one immediate Registry
+transaction Store loads and validates the revision owner fields, compares the
+current revision, and updates only `verification_report_json` and the ordinary
+row update timestamp. A mismatch is a conflict with no write. This boundary
+allows explicit replacement of a malformed stored report but does not repair
+malformed metadata or other owner state. Verification therefore cannot adopt
+managed configuration or change the Connection integration revision.
 
 Store validates the shared report type before write and after read, including
 closed values, bounds, deterministic ordering, duplicate rejection, and the

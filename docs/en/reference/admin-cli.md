@@ -253,15 +253,24 @@ actions, observations, or database rows.
 command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test that
 performs `initialize`, `tools/list`, required-tool validation, and a safe
 read-only `volicord.list_projects` call. It then reads current managed-host
-observations and persists exactly one canonical report. The CLI self-test is
-not a managed-host session.
+observations and persists exactly one canonical report. Before planning, it
+captures the selected Connection's exact typed integration revision. Report
+persistence compares that revision and replaces only the report in one
+immediate Registry transaction. If the Connection changed while verification
+was running, no stale report is stored and the command requires a rerun. The
+observed Host Plan fingerprint remains diagnostic: verification does not apply
+or adopt it and never changes `managed_fingerprint`. The CLI self-test is not a
+managed-host session.
 
 `volicord init` and `volicord connection add` keep a successfully written valid
 setup even when a later operational check fails. They do not roll back managed
 configuration because Codex is unavailable or the self-test fails. A fresh
 valid setup with no managed-host observation is `action_required` and includes
 the typed reload and first-use actions required to obtain those observations.
-No Codex version or executable digest is an eligibility allowlist.
+No Codex version or executable digest is an eligibility allowlist. These setup
+commands apply or adopt host configuration before committing its managed
+fingerprint, complete owner-coherent Registry and Guard state, derive the final
+Connection revision, and only then verify and conditionally persist the report.
 
 Actions are an ordered, deduplicated list derived from pending and failed
 checks. Reload and first-use instructions state that actual Codex activity must

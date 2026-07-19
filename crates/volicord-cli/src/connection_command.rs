@@ -14,8 +14,8 @@ use volicord_store::{
         ensure_staged_agent_connection, list_agent_connections,
         list_agent_connections_for_diagnostics, list_connection_projects,
         list_connection_projects_for_diagnostics, remove_connection_project,
-        staged_connection_migration_state, transition_connection_mode,
-        update_agent_connection_verification_report, AgentConnectionRecord,
+        replace_agent_connection_verification_report_if_revision,
+        staged_connection_migration_state, transition_connection_mode, AgentConnectionRecord,
         AgentConnectionRegistration, ConnectionModeGuardManifestRebind, ConnectionModeTransition,
         ConnectionModeTransitionKind, ConnectionProjectRecord, ConnectionProjectRegistration,
         ConnectionProjectRemovalOutcome, PendingHostCleanupError, StagedConnectionMigrationState,
@@ -40,7 +40,8 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, guard_manifest_from_json,
-    ConnectionVerificationError, IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
+    ConnectionVerificationError, ConnectionVerificationReport, IntegrationProfile,
+    IntegrationRevision, ProjectId, PromptCaptureStatus, UtcTimestamp,
 };
 
 use crate::cli::{
@@ -383,6 +384,7 @@ fn command_connection_verify(
             "{PERSISTED_CONNECTION_METADATA_CORRUPT_REASON}: connection verification cannot repair Agent Connection registration metadata; recreate or repair the registration before retrying"
         )));
     }
+    let expected_integration_revision = connection_integration_revision(&connection)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
     let selected_repo_root = selected_project.project.repo_root.clone();
     let host_plan =
@@ -396,10 +398,10 @@ fn command_connection_verify(
         Some(&selected_project.project_id),
         process,
     )?;
-    connection = update_agent_connection_verification_report(
+    connection = persist_connection_verification_report(
         &runtime_home,
         &connection.connection_internal_id,
-        &host_plan.fingerprint,
+        &expected_integration_revision,
         Some(&verification.report),
     )?;
     let rendered = render_current_connection_output(
@@ -411,6 +413,26 @@ fn command_connection_verify(
         &verification.report,
     )?;
     command_output_result(rendered.status, rendered.output)
+}
+
+fn persist_connection_verification_report(
+    runtime_home: &Path,
+    connection_internal_id: &str,
+    expected_integration_revision: &IntegrationRevision,
+    verification_report: Option<&ConnectionVerificationReport>,
+) -> Result<AgentConnectionRecord, ConnectionCommandError> {
+    match replace_agent_connection_verification_report_if_revision(
+        runtime_home,
+        connection_internal_id,
+        expected_integration_revision,
+        verification_report,
+    ) {
+        Ok(connection) => Ok(connection),
+        Err(StoreError::Conflict { .. }) => Err(ConnectionCommandError::runtime(
+            "CONNECTION_VERIFICATION_CONFLICT: the Agent Connection changed while verification was running; rerun `volicord connection verify` against the current Connection revision",
+        )),
+        Err(error) => Err(ConnectionCommandError::from(error)),
+    }
 }
 
 fn command_connection_mode(
@@ -1733,10 +1755,11 @@ mod persisted_metadata_tests {
     use std::{collections::BTreeMap, ffi::OsString, io, path::PathBuf};
 
     use volicord_store::{
-        agent_connections::agent_connection_record,
+        agent_connections::{agent_connection_record, list_connection_projects},
+        guards::{list_guard_installations, upsert_guard_installation, GuardInstallationUpsert},
         sqlite::{open_registry_database, registry_db_path},
     };
-    use volicord_test_support::core_fixtures::CoreFixture;
+    use volicord_test_support::{core_fixtures::CoreFixture, test_guard_manifest_json};
 
     use super::*;
 
@@ -1780,6 +1803,73 @@ mod persisted_metadata_tests {
             _mode: &str,
         ) -> Result<McpVerification, String> {
             self.stdio_calls += 1;
+            Ok(McpVerification::failed("fixture handshake unavailable"))
+        }
+    }
+
+    #[derive(Debug)]
+    struct ModeTransitionDuringVerificationProcess {
+        runtime_home: PathBuf,
+        transitioned: bool,
+    }
+
+    impl ConnectionProcess for ModeTransitionDuringVerificationProcess {
+        fn env_var(&self, name: &str) -> Option<OsString> {
+            (name == "VOLICORD_HOME").then(|| self.runtime_home.clone().into_os_string())
+        }
+
+        fn current_exe(&self) -> Result<PathBuf, String> {
+            Err("current executable is not used by diagnostic commands".to_owned())
+        }
+
+        fn run_preflight(
+            &mut self,
+            _launch: &McpLaunch,
+            runtime_home: &Path,
+            connection_id: &str,
+            _project_id: Option<&str>,
+        ) -> Result<ConnectionProcessOutput, String> {
+            let connection = agent_connection_record(runtime_home, connection_id)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| "fixture connection disappeared".to_owned())?;
+            let projects = list_connection_projects(runtime_home, connection_id)
+                .map_err(|error| error.to_string())?;
+            let expected_integration_revision =
+                connection_integration_revision(&connection).map_err(|error| error.to_string())?;
+            let guard_manifests = preflight_mode_guard_rebinds(
+                runtime_home,
+                &connection,
+                &projects,
+                CONNECTION_MODE_READ_ONLY,
+            )
+            .map_err(|error| error.to_string())?;
+            transition_connection_mode(
+                runtime_home,
+                ConnectionModeTransition {
+                    connection_internal_id: connection_id.to_owned(),
+                    expected_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                    expected_integration_revision,
+                    mode: CONNECTION_MODE_READ_ONLY.to_owned(),
+                    guard_manifests,
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            self.transitioned = true;
+            Ok(ConnectionProcessOutput {
+                success: false,
+                status_code: Some(1),
+                stdout: String::new(),
+                stderr: "fixture preflight unavailable after mode transition".to_owned(),
+            })
+        }
+
+        fn verify_mcp_stdio(
+            &mut self,
+            _launch: &McpLaunch,
+            _runtime_home: &Path,
+            _connection_id: &str,
+            _mode: &str,
+        ) -> Result<McpVerification, String> {
             Ok(McpVerification::failed("fixture handshake unavailable"))
         }
     }
@@ -1956,6 +2046,119 @@ mod persisted_metadata_tests {
         assert_eq!(fs::read(registry_path)?, registry_before);
         assert_eq!(tree_snapshot(fixture.runtime_home_path())?, runtime_before);
         assert_eq!(tree_snapshot(&repo_root)?, repository_before);
+        Ok(())
+    }
+
+    #[test]
+    fn verification_rejects_a_report_after_a_concurrent_mode_transition(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("connection-verify-mode-transition")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let guard_installation_id = "guard_verify_mode_transition";
+        upsert_guard_installation(
+            fixture.runtime_home_path(),
+            GuardInstallationUpsert {
+                guard_installation_id: guard_installation_id.to_owned(),
+                connection_internal_id: fixture.connection_id().to_owned(),
+                project_id: fixture.project_id().to_owned(),
+                manifest_json: test_guard_manifest_json(
+                    fixture.runtime_home_path(),
+                    &repo_root,
+                    fixture.project_id(),
+                    fixture.connection_id(),
+                    guard_installation_id,
+                    "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                ),
+            },
+        )?;
+        let before = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+            .expect("R1 fixture connection");
+        let revision_r1 = connection_integration_revision(&before)?;
+        let generation_r1 = before.integration_generation;
+        let select_args = || ConnectionSelectArgs {
+            host: Some(crate::cli::CodexHost::Codex),
+            repo: Some(repo_root.clone()),
+            shared: false,
+            json: true,
+        };
+        let mut transitioning_process = ModeTransitionDuringVerificationProcess {
+            runtime_home: fixture.runtime_home_path().to_path_buf(),
+            transitioned: false,
+        };
+
+        let error = run_connection_command(
+            ConnectionArgs {
+                command: ConnectionCommand::Verify(select_args()),
+            },
+            &repo_root,
+            &mut transitioning_process,
+        )
+        .expect_err("stale R1 report persistence must fail");
+        assert!(transitioning_process.transitioned);
+        assert!(matches!(error, ConnectionCommandError::Runtime(_)));
+        assert!(error
+            .to_string()
+            .contains("CONNECTION_VERIFICATION_CONFLICT"));
+        assert!(error
+            .to_string()
+            .contains("rerun `volicord connection verify`"));
+
+        let after_transition =
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+                .expect("R2 fixture connection");
+        let revision_r2 = connection_integration_revision(&after_transition)?;
+        assert_ne!(revision_r2, revision_r1);
+        assert_eq!(after_transition.mode, CONNECTION_MODE_READ_ONLY);
+        assert_eq!(after_transition.integration_generation, generation_r1 + 1);
+        assert!(after_transition.verification_report_json.is_none());
+        let guard_after_transition = list_guard_installations(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+            Some(fixture.project_id()),
+        )?
+        .into_iter()
+        .next()
+        .expect("R2 Guard Installation");
+        assert_eq!(
+            guard_manifest_from_json(&guard_after_transition.manifest_json)?.integration_revision,
+            revision_r2
+        );
+
+        let mut retry_process = DiagnosticProcess {
+            runtime_home: fixture.runtime_home_path().to_path_buf(),
+            preflight_calls: 0,
+            stdio_calls: 0,
+        };
+        let retry = run_connection_command(
+            ConnectionArgs {
+                command: ConnectionCommand::Verify(select_args()),
+            },
+            &repo_root,
+            &mut retry_process,
+        );
+        assert!(matches!(
+            retry,
+            Err(ConnectionCommandError::FailureOutput(_))
+        ));
+        let after_retry =
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+                .expect("verified R2 fixture connection");
+        assert_eq!(connection_integration_revision(&after_retry)?, revision_r2);
+        assert_eq!(after_retry.mode, CONNECTION_MODE_READ_ONLY);
+        assert_eq!(after_retry.integration_generation, generation_r1 + 1);
+        assert!(after_retry.verification_report_json.is_some());
+        assert_eq!(
+            list_guard_installations(
+                fixture.runtime_home_path(),
+                fixture.connection_id(),
+                Some(fixture.project_id()),
+            )?
+            .into_iter()
+            .next()
+            .expect("R2 Guard Installation after retry"),
+            guard_after_transition
+        );
         Ok(())
     }
 }

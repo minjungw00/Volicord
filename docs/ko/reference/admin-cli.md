@@ -239,13 +239,21 @@ placeholder로 채우지 않고 생략합니다. `limits`에는 협력적 보장
 `volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. Self-test는
 `initialize`, `tools/list`, 필수 도구 검증, 안전한 읽기 전용
 `volicord.list_projects` 호출을 수행합니다. 그런 다음 현재 managed-host 관찰을 읽고 정규
-보고서 하나만 영속합니다. CLI self-test는 managed-host session이 아닙니다.
+보고서 하나만 영속합니다. Plan 전에 선택한 Connection의 정확한 typed integration
+revision을 확보하고, immediate Registry transaction 하나에서 그 revision을 비교해 보고서만
+교체합니다. 검증 중 Connection이 바뀌면 stale 보고서를 저장하지 않고 명령 재실행을
+요구합니다. 관찰한 Host Plan fingerprint는 diagnostic으로만 남습니다. 검증은 이를 적용하거나
+채택하지 않으며 `managed_fingerprint`를 바꾸지 않습니다. CLI self-test는 managed-host
+session이 아닙니다.
 
 `volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
 유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리
 구성을 rollback하지 않습니다. Managed-host 관찰이 아직 없는 새 유효 설정은
 `action_required`이며, 관찰을 얻는 데 필요한 typed reload/first-use action을 담습니다.
-Codex version이나 executable digest를 eligibility allowlist로 사용하지 않습니다.
+Codex version이나 executable digest를 eligibility allowlist로 사용하지 않습니다. 이 setup
+명령은 host configuration을 적용하거나 채택한 뒤 managed fingerprint를 commit하고, 소유자와
+일관된 Registry/Guard 상태를 완성하며, 최종 Connection revision을 파생한 다음에만 검증하고
+조건부로 보고서를 영속합니다.
 
 Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 제거된 목록입니다. 다시
 불러오기와 최초 사용 지시는 실제 Codex 활동을 관찰해야 한다고 명시합니다.

@@ -57,6 +57,14 @@ WSL2에서는 정규 Linux 형태의 경로만으로 충분하지 않습니다. 
 명령, 인자, 관리 시작 marker는 시작 시 등록된 Connection과 선택적 프로젝트를
 선택합니다. 이 값은 협력적인 시작 맥락이며 identity credential이 아닙니다.
 
+저장된 managed fingerprint는 setup, repair, staged activation 또는 다른 명시적
+configuration 담당 경로가 마지막으로 적용에 성공했거나 채택한 Volicord 관리 host
+configuration을 식별합니다. 이 변경 경로는 host 적용이 성공한 뒤에만 fingerprint를
+기록합니다. 다른 적용 fingerprint는 Connection integration revision을 바꾸고 이전
+verification report를 비웁니다. 운영 검증은 현재 file과 새로 생성한 Host Plan을 관찰하지만
+그 plan의 fingerprint를 적용하거나 채택하지 않습니다. 보고서 전용 쓰기는 probe 전에 관찰한
+정확한 revision으로 보호합니다.
+
 WSL2에서는 Codex 실행 파일, Volicord 실행 파일, 설정 대상, 생성된 각 관리
 아티팩트를 독립적으로 해석하고 같은 배포판 ext4 경계를 확인합니다. 저장소
 root가 ext4에 있다는 사실은 다른 mount의 중첩 파일을 승인하지 않습니다.

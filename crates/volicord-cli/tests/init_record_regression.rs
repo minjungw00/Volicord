@@ -28,7 +28,7 @@ use volicord_cli::{
 use volicord_store::{
     agent_connections::{
         agent_connection_record, connection_metadata_contains_pending_host_cleanup_key,
-        update_agent_connection_verification_report, AgentConnectionRecord,
+        replace_agent_connection_verification_report_if_revision, AgentConnectionRecord,
         CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
     },
     core_pipeline::CoreProjectStore,
@@ -186,13 +186,15 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     let seeded_snapshot = registry_snapshot(fixture.path());
     let seeded_ids = assert_single_owned_records(&seeded_snapshot);
     assert_unavailable_codex_verification(&seeded_snapshot)?;
-    let seeded_connection = &seeded_snapshot.agent_connections[0];
     let managed_bytes = managed_artifact_bytes(&seeded_snapshot)?;
 
-    update_agent_connection_verification_report(
+    replace_agent_connection_verification_report_if_revision(
         fixture.path(),
         &seeded_ids.connection_id,
-        &seeded_connection.managed_fingerprint,
+        &connection_integration_revision(
+            &agent_connection_record(fixture.path(), &seeded_ids.connection_id)?
+                .expect("seeded Agent Connection"),
+        )?,
         None,
     )?;
     delete_guard_installation(fixture.path(), &seeded_ids.guard_installation_id)?;

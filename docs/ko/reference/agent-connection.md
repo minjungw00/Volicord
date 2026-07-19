@@ -171,6 +171,13 @@ projection합니다. 이 보고서를 중첩하거나 집계 상태를 반복하
 메모리 안의 최신 projection을 다시 만들 수 있지만, 이 읽기는 projection을 영속하거나
 timestamp를 바꾸지 않습니다.
 
+활성 검증은 plan이나 probe를 시작하기 전에 정확한 typed Connection integration revision을
+확보합니다. Store는 같은 revision이 여전히 현재 상태일 때만 비교와 보고서 교체를 immediate
+Registry transaction 하나에서 수행합니다. 이 쓰기는 `verification_report_json`과 일반 row
+갱신 timestamp만 바꿉니다. Revision 충돌이 나면 기존 보고서와 모든 소유자 field를 그대로
+두고 검증을 다시 실행하도록 요구합니다. 검증은 관리 configuration을 관찰할 뿐 새로 계획한
+managed fingerprint를 적용하거나 채택하거나 기록하지 않습니다.
+
 운영 호환성은 어댑터가 실제로 수행한 check와 관찰한 동작에서 보고합니다. `complete`는
 실행 파일 identity나 출처를 인증하지 않으며 운영체제 집행, actor identity 증명,
 correctness 증명, 조작 방지 기록을 뜻하지 않습니다. 연결 검증은 runtime 권한
@@ -182,7 +189,11 @@ credential을 발급하지 않습니다.
 digest입니다. Basis는 Agent Connection identity, 변경 불가능한 Store 소유 통합 instance
 ID, host kind, intent, scope, mode, server name, configuration target, 현재의 정확한
 managed-configuration fingerprint, Store 소유 비음수 integration generation입니다. 이
-fingerprint는 관리 server command와 entry를 포함합니다.
+fingerprint는 관리 server command와 entry를 포함하며, setup 담당 경로가 마지막으로 적용에
+성공했거나 채택한 Volicord 관리 host configuration을 식별합니다. Setup, repair, staged
+activation 또는 다른 명시적 managed-configuration 변경만 이 값을 교체할 수 있습니다.
+교체하면 integration revision이 바뀌고 이전 verification report를 같은 transaction에서
+원자적으로 비웁니다. Fingerprint가 같은 호환 replay는 그 보고서를 유지할 수 있습니다.
 
 Store는 새 물리 `agent_connections` 행을 삽입할 때만 새 opaque 통합 instance ID를
 생성합니다. 호환 등록 replay, enabled 상태와 검증 갱신, staged activation과 cleanup 복구,
@@ -299,6 +310,11 @@ Codex 어댑터는 host별 구성 조사와 변경을 담당합니다.
 - 현재 정규 입력으로 담당 문서가 정의한 관리 상태 repair
 - 일치하는 Volicord 관리 상태만 제거
 
+Setup과 repair는 먼저 plan하고 검증한 뒤 host configuration을 적용하거나 채택하고, 그 결과인
+managed fingerprint 및 소유자와 일관된 Registry/Guard 상태를 commit합니다. 검증은 이 최종
+Connection record에서만 시작하며 해당 record의 정확한 integration revision을 기준으로
+보고서를 영속합니다. 보고서 영속은 fingerprint를 두 번째로 갱신하지 않습니다.
+
 Runtime 권한은 parent executable을 hash하거나, 플랫폼 실행 파일 identity를 도출하거나,
 정확한 호스트 allowlist를 조회하거나, 실행 파일 identity digest를 계산하거나, 실행 파일
 attestation을 발급·검증하지 않습니다. 알아볼 수 있는 command name, process path,
@@ -307,9 +323,11 @@ version string, 환경 값, local session은 actor identity가 아닙니다. 관
 
 Repair는 관련 없는 Codex 구성을 덮어쓰거나 선택한 프로젝트, Connection, intent,
 profile, 플랫폼 환경을 암묵적으로 바꾸지 않습니다. `workflow`와 `read_only` 모두에서
-누락된 소유 Codex 구성, Guard 파일, 현재 Guard Installation을 복구할 수 있으며
-Connection mode, integration generation, 현재 integration revision은 보존합니다. 제거는
-현재 관리 identity가 Volicord 소유와 계속 일치하는 내용만 삭제합니다.
+누락된 소유 Codex 구성, Guard 파일, 현재 Guard Installation을 복구하면서 Connection
+mode와 integration generation을 보존합니다. Repair가 다른 정규 관리 configuration을
+적용하면 새 managed fingerprint를 기록하고 integration revision을 바꾸며, 새 revision에서
+검증하기 전에 이전 verification report를 무효화합니다. Fingerprint가 같으면 현재 revision을
+보존합니다. 제거는 현재 관리 identity가 Volicord 소유와 계속 일치하는 내용만 삭제합니다.
 
 명시적인 connection 제거 명령은 Connection 소유 Registry 통합 상태도 폐기합니다.
 Membership 하나를 제거하면 해당 Registry project-session binding과 Guard

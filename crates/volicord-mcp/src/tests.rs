@@ -4378,7 +4378,6 @@ fn adapter_for_additional_connection(
             mode: existing.mode,
             enabled: existing.enabled,
             managed_fingerprint: format!("{}_additional", existing.managed_fingerprint),
-            verification_report_json: existing.verification_report_json,
             metadata_json: existing.metadata_json,
         },
     )?;

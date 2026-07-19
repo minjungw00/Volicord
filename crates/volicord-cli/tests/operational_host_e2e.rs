@@ -18,7 +18,10 @@ use std::{
 use serde_json::{json, Value};
 use support::binary_fixture::{run_child, ChildStdin};
 use volicord_store::agent_connections::AgentConnectionRecord;
-use volicord_store::guards::{agent_session, current_project_agent_session_identity};
+use volicord_store::guards::{
+    agent_session, agent_session_matches_current_integration,
+    current_project_agent_session_identity,
+};
 use volicord_store::inspection::{
     inspect_runtime_home, AgentConnectionInspectionRecord, DatabaseInspection,
     RegistryInspectionSnapshot,
@@ -66,6 +69,7 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     connection_mode_transition_rebinds_guard_revision()?;
     connection_mode_preflight_failure_preserves_connection()?;
     connection_removal_after_operational_observations()?;
+    drift_verification_preserves_owned_configuration_and_removal()?;
     dry_run_has_no_mutation()?;
     protocol_failures_are_authoritative()?;
     local_process_and_configuration_failures_are_structured()?;
@@ -466,6 +470,166 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
         |row| row.get(0),
     )?;
     assert_eq!(recreated_rows, agent_sessions_before + 1);
+    Ok(())
+}
+
+fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::new("operational-verify-configuration-drift")?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&init, 0, "init", "action_required")?;
+    let initial = fixture.registry_snapshot();
+    let initial_revision = connection_integration_revision(
+        &fixture.agent_connection_record(&initial.agent_connections[0]),
+    )?;
+    let applied_mcp_dir = fixture._temporary_root.path().join("applied-mcp");
+    fs::create_dir_all(&applied_mcp_dir)?;
+    let applied_mcp_command = applied_mcp_dir.join(if cfg!(windows) {
+        "volicord.exe"
+    } else {
+        "volicord"
+    });
+    fs::copy(env!("CARGO_BIN_EXE_volicord"), &applied_mcp_command)?;
+    let repair = fixture.run_init(
+        FUTURE_VERSION,
+        Some((&applied_mcp_command, "normal")),
+        false,
+    )?;
+    let repair = assert_connection_report(&repair, 0, "init", "action_required")?;
+    assert_eq!(repair["setup_applied"], true);
+    let initialized = fixture.registry_snapshot();
+    assert_ne!(
+        initialized.agent_connections[0].managed_fingerprint,
+        initial.agent_connections[0].managed_fingerprint
+    );
+    assert_ne!(
+        connection_integration_revision(
+            &fixture.agent_connection_record(&initialized.agent_connections[0])
+        )?,
+        initial_revision
+    );
+    assert!(initialized.agent_connections[0]
+        .verification_report_json
+        .is_some());
+    let connection_id = initialized.agent_connections[0]
+        .connection_internal_id
+        .clone();
+    let project_id = initialized.projects[0].project_id.clone();
+    let config_target = PathBuf::from(&initialized.agent_connections[0].config_target);
+    let config_f_old = fs::read(&config_target)?;
+    let fingerprint_f_old = initialized.agent_connections[0].managed_fingerprint.clone();
+    let manifest = guard_manifest_from_json(&initialized.guard_installations[0].manifest_json)?;
+    let native_session = "future.session.verify.drift";
+    fixture.run_successful_managed_mcp_with_guard(
+        &connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        native_session,
+        &manifest,
+    )?;
+    let current_session_id = current_project_agent_session_identity(
+        &fixture.runtime_home,
+        &project_id,
+        &connection_id,
+        Some(manifest.guard_installation_id.as_str()),
+        native_session,
+    )?
+    .session_id;
+    let agent_session_before =
+        agent_session(&fixture.runtime_home, &project_id, &current_session_id)?
+            .expect("current Agent Session before drift verification");
+    assert!(agent_session_matches_current_integration(
+        &fixture.runtime_home,
+        &agent_session_before,
+        Some(manifest.guard_installation_id.as_str()),
+    )?);
+
+    let alternate_mcp_dir = fixture._temporary_root.path().join("desired-mcp");
+    fs::create_dir_all(&alternate_mcp_dir)?;
+    let alternate_mcp_command = alternate_mcp_dir.join(if cfg!(windows) {
+        "volicord.exe"
+    } else {
+        "volicord"
+    });
+    fs::copy(env!("CARGO_BIN_EXE_volicord"), &alternate_mcp_command)?;
+    let mut metadata: Value =
+        serde_json::from_str(&initialized.agent_connections[0].metadata_json)?;
+    metadata["mcp_command"] = Value::String(alternate_mcp_command.display().to_string());
+    let metadata_json = serde_json::to_string(&metadata)?;
+    rusqlite::Connection::open(&initialized.path)?.execute(
+        "UPDATE agent_connections
+            SET metadata_json = ?2
+          WHERE connection_internal_id = ?1",
+        (&connection_id, &metadata_json),
+    )?;
+    let before_verify = fixture.registry_snapshot();
+    let revision_before_verify = connection_integration_revision(
+        &fixture.agent_connection_record(&before_verify.agent_connections[0]),
+    )?;
+    assert_eq!(
+        before_verify.agent_connections[0].managed_fingerprint,
+        fingerprint_f_old
+    );
+    assert_eq!(fs::read(&config_target)?, config_f_old);
+
+    let verification = fixture.run_connection("verify", FUTURE_VERSION, true)?;
+    let report = assert_connection_report(&verification, 1, "verify", "failed")?;
+    assert_check(
+        &report,
+        "managed_config",
+        "failed",
+        Some("managed_config_mismatch"),
+    );
+    assert_check(&report, "guard_files", "passed", None);
+    let after_verify = fixture.registry_snapshot();
+    assert_eq!(fs::read(&config_target)?, config_f_old);
+    assert_eq!(
+        after_verify.agent_connections[0].managed_fingerprint,
+        fingerprint_f_old
+    );
+    assert_eq!(
+        connection_integration_revision(
+            &fixture.agent_connection_record(&after_verify.agent_connections[0])
+        )?,
+        revision_before_verify
+    );
+    assert!(after_verify.agent_connections[0]
+        .verification_report_json
+        .is_some());
+    assert_eq!(
+        after_verify.guard_installations[0].manifest_json,
+        initialized.guard_installations[0].manifest_json
+    );
+    assert_eq!(
+        guard_manifest_from_json(&after_verify.guard_installations[0].manifest_json)?
+            .integration_revision,
+        revision_before_verify
+    );
+    assert_eq!(
+        latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?
+            .expect("verification must leave a current runtime revision")
+            .connection_integration_revision,
+        revision_before_verify.as_str()
+    );
+    let agent_session_after =
+        agent_session(&fixture.runtime_home, &project_id, &current_session_id)?
+            .expect("current Agent Session after drift verification");
+    assert_eq!(agent_session_after, agent_session_before);
+    assert!(agent_session_matches_current_integration(
+        &fixture.runtime_home,
+        &agent_session_after,
+        Some(manifest.guard_installation_id.as_str()),
+    )?);
+
+    let removed = fixture.run_connection("remove", FUTURE_VERSION, true)?;
+    assert_eq!(removed.status.code(), Some(0));
+    assert!(removed.stderr.is_empty());
+    let removed: Value = serde_json::from_slice(&removed.stdout)?;
+    assert_eq!(removed["membership_removed"], true);
+    assert_eq!(removed["connection_removed"], true);
+    assert!(fixture.registry_snapshot().agent_connections.is_empty());
+    assert!(!fs::read_to_string(config_target)
+        .unwrap_or_default()
+        .contains("mcp_servers.volicord"));
     Ok(())
 }
 

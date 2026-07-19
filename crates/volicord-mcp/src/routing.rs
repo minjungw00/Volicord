@@ -804,7 +804,6 @@ mod repository_discovery_tests {
                     mode: CONNECTION_MODE_WORKFLOW.to_owned(),
                     enabled: true,
                     managed_fingerprint: format!("fingerprint-{index}"),
-                    verification_report_json: None,
                     metadata_json: "{}".to_owned(),
                 },
             )?;

@@ -311,6 +311,23 @@ Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범
 outcome만 저장합니다. 이 기록은 prompt, file, answer, command 본문을 저장하지
 않습니다.
 
+## 관리 Connection Setup과 검증
+
+승인된 setup, repair 또는 staged managed-configuration 적용은 host configuration을 먼저 쓴
+뒤 setup 소유 Store 경로에서 그 결과인 `managed_fingerprint`를 commit합니다. 기존
+Connection의 fingerprint가 바뀌면 같은 immediate Registry transaction에서
+`verification_report_json`을 비웁니다. Fingerprint가 같은 호환 replay는 보고서를 유지할 수
+있습니다. Host 쓰기가 성공하고 뒤의 관련 없는 작업이 실패한 경우에는 관리 CLI의 부분 적용
+보고 및 재시도 계약을 따릅니다.
+
+활성 연결 검증은 자신이 검증하는 정확한 typed Connection integration revision을
+확보합니다. 보고서 영속은 immediate Registry transaction 하나에서 현재 revision을 비교하고
+정확히 일치할 때만 `verification_report_json`과 일반 row 갱신 timestamp를 교체합니다.
+`managed_fingerprint`, integration instance 또는 generation, mode, metadata, membership,
+Guard manifest, runtime session, 프로젝트 Agent Session은 쓰지 않습니다. Revision 충돌은
+Registry 효과가 없습니다. `volicord connection status`는 계속 읽기 전용이며 이 변경을
+사용하지 않습니다.
+
 ## 관리 Connection Project 폐기
 
 승인된 `volicord connection remove` 적용은 immediate Registry transaction 하나를
