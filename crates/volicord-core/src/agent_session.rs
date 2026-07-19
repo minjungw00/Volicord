@@ -220,6 +220,7 @@ impl CoreService {
             || binding.connection_internal_id != connection_id.as_str()
             || binding.project_id != project_id.as_str()
             || binding.session_id != project_session_id.as_str()
+            || binding.project_integration_revision != session.project_integration_revision
             || binding.host_session_id != session.host_session_id
         {
             return Err(AgentSessionValidationError::rejected(

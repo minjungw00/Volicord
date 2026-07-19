@@ -827,6 +827,12 @@ CREATE TABLE agent_sessions (
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
+CREATE TRIGGER agent_sessions_project_integration_revision_immutable
+BEFORE UPDATE OF project_integration_revision ON agent_sessions
+BEGIN
+  SELECT RAISE(ABORT, 'agent_sessions.project_integration_revision is immutable');
+END;
+
 CREATE TABLE guard_events (
   project_id TEXT NOT NULL,
   guard_event_id TEXT NOT NULL,

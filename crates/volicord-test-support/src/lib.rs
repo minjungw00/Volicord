@@ -38,10 +38,10 @@ use volicord_store::{
     StoreError, StoreResult,
 };
 use volicord_types::{
-    managed_stdio_session_id, AgentConnectionId, AgentRuntimeSessionId, AgentSessionId,
-    GuardCommand, GuardCommandSet, GuardHookPhase, GuardInstallationId, GuardManifest, HostKind,
-    IntegrationProfile, ManagedFileExpectation, McpRuntimeSessionSource, PolicyHash, ProjectId,
-    TypeBoundary, GUARD_MANIFEST_SCHEMA,
+    AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, GuardCommand, GuardCommandSet,
+    GuardHookPhase, GuardInstallationId, GuardManifest, HostKind, IntegrationProfile,
+    ManagedFileExpectation, McpRuntimeSessionSource, PolicyHash, ProjectId, TypeBoundary,
+    GUARD_MANIFEST_SCHEMA,
 };
 
 pub mod fixtures {
@@ -331,8 +331,6 @@ pub fn seed_test_agent_session(
     let host_session_id = format!("test-session-{sequence}");
     let host_thread_id = format!("test-thread-{sequence}");
     let host_turn_id = format!("test-turn-{sequence}");
-    let project_session_id = managed_stdio_session_id(connection_id, &host_session_id)
-        .expect("generated test host session identity must be valid");
     let store = CoreProjectStore::open(runtime_home.as_ref(), &project_id.into())?;
     let observed_at = store.current_timestamp()?;
     let runtime_session_id = start_mcp_runtime_session(
@@ -346,11 +344,10 @@ pub fn seed_test_agent_session(
         },
     )?
     .runtime_session_id;
-    upsert_agent_session(
+    let project_session_id = upsert_agent_session(
         runtime_home,
         project_id,
         AgentSessionUpsert {
-            session_id: project_session_id.clone(),
             runtime_session_id: Some(runtime_session_id.clone()),
             connection_internal_id: connection_id.to_owned(),
             guard_installation_id: guard_installation_id.map(str::to_owned),
@@ -359,7 +356,8 @@ pub fn seed_test_agent_session(
             host_turn_id: host_turn_id.clone(),
             observed_at,
         },
-    )?;
+    )?
+    .session_id;
     Ok(TestAgentSessionFixture {
         runtime_session_id: AgentRuntimeSessionId::new(runtime_session_id),
         project_session_id: AgentSessionId::new(project_session_id),

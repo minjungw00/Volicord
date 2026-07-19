@@ -252,11 +252,10 @@ mod tests {
             "connection_instance_11223344-5566-4abb-8cdd-eeff10203040",
         )
         .unwrap();
-        assert_ne!(
-            first,
+        let recreated =
             IntegrationRevision::for_connection(connection_basis("managed:a", &recreated_instance))
-                .expect("recreated physical instance")
-        );
+                .expect("recreated physical instance");
+        assert_ne!(first, recreated);
 
         let mut invalid_generation = connection_basis("managed:a", &instance);
         invalid_generation.integration_generation = -1;
@@ -277,6 +276,44 @@ mod tests {
         assert_eq!(
             project,
             IntegrationRevision::for_project(project_basis).expect("same project basis")
+        );
+        let recreated_project = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+            connection_integration_revision: recreated.as_str(),
+            project_id: "project.alpha",
+            policy_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            guard_installation_id: Some("guard.alpha"),
+            guard_policy_hash: Some(&format!("sha256:{}", "b".repeat(64))),
+        })
+        .expect("recreated project basis");
+        let other_project = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+            connection_integration_revision: first.as_str(),
+            project_id: "project.beta",
+            policy_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            guard_installation_id: Some("guard.alpha"),
+            guard_policy_hash: Some(&format!("sha256:{}", "b".repeat(64))),
+        })
+        .expect("other project basis");
+        let native_session = "native.session.same";
+        let session =
+            crate::project_agent_session_id("connection.alpha", project.as_str(), native_session)
+                .expect("current project session");
+        assert_ne!(
+            session,
+            crate::project_agent_session_id(
+                "connection.alpha",
+                recreated_project.as_str(),
+                native_session,
+            )
+            .expect("recreated project session")
+        );
+        assert_ne!(
+            session,
+            crate::project_agent_session_id(
+                "connection.alpha",
+                other_project.as_str(),
+                native_session,
+            )
+            .expect("other project session")
         );
     }
 

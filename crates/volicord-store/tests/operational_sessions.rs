@@ -20,7 +20,7 @@ use volicord_store::{
     },
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
-use volicord_types::{managed_stdio_session_id, ManagedMcpClientInfo, McpRuntimeSessionSource};
+use volicord_types::{ManagedMcpClientInfo, McpRuntimeSessionSource};
 
 const START: &str = "2026-07-18T00:00:00Z";
 const INIT: &str = "2026-07-18T00:00:01Z";
@@ -258,7 +258,6 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionUpsert {
-            session_id: managed_stdio_session_id(other_connection, other_host_session)?,
             runtime_session_id: Some(runtime.clone()),
             connection_internal_id: other_connection.to_owned(),
             guard_installation_id: None,
@@ -313,9 +312,7 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
     )?;
     let runtime_session_id = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session_id = "host.session.shared";
-    let session_id = managed_stdio_session_id(fixture.connection_id(), host_session_id)?;
     let input = |turn: &str| AgentSessionUpsert {
-        session_id: session_id.clone(),
         runtime_session_id: Some(runtime_session_id.clone()),
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
@@ -343,9 +340,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("operational-guard-first-binding")?;
     let host_session_id = "host.session.guard-first";
-    let session_id = managed_stdio_session_id(fixture.connection_id(), host_session_id)?;
     let observation = |runtime_session_id, turn: &str, observed_at: &str| AgentSessionUpsert {
-        session_id: session_id.clone(),
         runtime_session_id,
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
@@ -360,6 +355,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
         fixture.project_id(),
         observation(None, "host.turn.guard", START),
     )?;
+    let session_id = unbound.session_id.clone();
     assert_eq!(unbound.runtime_session_id, None);
     assert_eq!(unbound.first_observed_at, START);
     assert!(mcp_runtime_project_session_binding(
@@ -394,6 +390,26 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
     .expect("runtime binding");
     assert_eq!(reservation.runtime_session_id, runtime);
     assert_eq!(reservation.host_session_id, host_session_id);
+    assert_eq!(
+        reservation.project_integration_revision,
+        bound.project_integration_revision
+    );
+    let project_state_path = fixture
+        .runtime_home_path()
+        .join("projects")
+        .join(fixture.project_id())
+        .join("state.sqlite");
+    let project_state = rusqlite::Connection::open(project_state_path)?;
+    let immutable = project_state.execute(
+        "UPDATE agent_sessions
+            SET project_integration_revision = ?2
+          WHERE session_id = ?1",
+        rusqlite::params![&session_id, format!("sha256:{}", "f".repeat(64))],
+    );
+    assert!(
+        immutable.is_err(),
+        "stored Agent Session revision must be immutable"
+    );
     Ok(())
 }
 
@@ -415,12 +431,10 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
             "host.thread.concurrent-b",
         ),
     ] {
-        let session_id = managed_stdio_session_id(fixture.connection_id(), host_session)?;
         upsert_agent_session(
             fixture.runtime_home_path(),
             fixture.project_id(),
             AgentSessionUpsert {
-                session_id: session_id.clone(),
                 runtime_session_id: None,
                 connection_internal_id: fixture.connection_id().to_owned(),
                 guard_installation_id: None,
@@ -434,7 +448,6 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
             fixture.runtime_home_path(),
             fixture.project_id(),
             AgentSessionUpsert {
-                session_id,
                 runtime_session_id: Some(runtime.clone()),
                 connection_internal_id: fixture.connection_id().to_owned(),
                 guard_installation_id: None,
@@ -451,7 +464,6 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionUpsert {
-            session_id: managed_stdio_session_id(fixture.connection_id(), host_session_c)?,
             runtime_session_id: Some(runtime_c),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
@@ -475,16 +487,16 @@ fn registry_reservation_replay_finishes_project_attach_and_conflicts_fail(
     let fixture = CoreFixture::new("operational-reservation-recovery")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session = "host.session.recovery";
-    let session_id = managed_stdio_session_id(fixture.connection_id(), host_session)?;
-    bind_mcp_runtime_project_session(
+    let binding = bind_mcp_runtime_project_session(
         fixture.runtime_home_path(),
         &runtime,
         fixture.connection_id(),
         fixture.project_id(),
-        &session_id,
+        None,
         host_session,
         INIT,
     )?;
+    let session_id = binding.session_id;
     assert!(agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
@@ -495,7 +507,6 @@ fn registry_reservation_replay_finishes_project_attach_and_conflicts_fail(
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionUpsert {
-            session_id: session_id.clone(),
             runtime_session_id: Some(runtime),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
@@ -511,7 +522,6 @@ fn registry_reservation_replay_finishes_project_attach_and_conflicts_fail(
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionUpsert {
-            session_id,
             runtime_session_id: Some(conflicting_runtime),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
@@ -534,7 +544,6 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionUpsert {
-            session_id: managed_stdio_session_id(fixture.connection_id(), host_session)?,
             runtime_session_id: Some(runtime),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,

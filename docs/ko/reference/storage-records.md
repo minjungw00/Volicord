@@ -101,8 +101,11 @@ protocol failure, graceful close를 기록합니다. 권위 있는 Store 쓰기�
 
 프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 Connection을
 이름 붙이고 현재 workflow-policy fingerprint와 Guard ownership pair를 더한 프로젝트 통합
-revision을 보관하며, workflow와 Guard 상관관계에 필요한 결정적 Connection-bound session
-ID, host session, thread, latest turn, 최초/마지막 관찰을 유지합니다. Guard 관찰은
+revision을 보관하며, workflow와 Guard 상관관계에 필요한 결정적 revision 범위 session
+ID, host session, thread, latest turn, 최초/마지막 관찰을 유지합니다. Store는 Connection
+internal ID, 저장된 정확한 프로젝트 통합 revision, 정확한 native host session으로 이 ID를
+도출합니다. 프로젝트 revision은 변경할 수 없으며 현재 revision이 바뀌면 이력 row를
+갱신하지 않고 새 row를 만듭니다. Guard 관찰은
 `runtime_session_id=NULL`인 row를 만들 수 있습니다. 빈 값, sentinel, 조작한 runtime,
 CLI-preflight runtime으로 이 상태를 나타내지 않습니다. 복합 프로젝트 foreign key는 하위
 Guard row가 session을 다른 Connection과 조합하지 못하게 합니다.
@@ -111,7 +114,9 @@ Guard row가 session을 다른 Connection과 조합하지 못하게 합니다.
 `mcp_runtime_project_session_bindings`를 예약한 다음 runtime을 프로젝트 row에 붙입니다.
 분리된 SQLite 데이터베이스 사이에는 foreign key를 만들 수 없으므로 Registry 예약이
 uniqueness 경계를 제공합니다. 예약 뒤 attach 전에 중단된 경우를 포함해 정확한 replay는
-멱등이고 runtime, Connection, 프로젝트, host-session claim이 다르면 실패합니다. 프로젝트의
+멱등입니다. 예약은 프로젝트 row와 같은 정확한 프로젝트 통합 revision을 저장하고 권한
+검증은 두 값이 같은지 확인합니다. Runtime, Connection, 프로젝트, revision, host-session
+claim이 다르면 실패합니다. 프로젝트의
 partial index는 null이 아닌 runtime attach를 유일하게 만들면서 Guard-first unbound session은
 여러 개 허용합니다.
 
@@ -143,7 +148,9 @@ binding과 Guard Installation을 유지합니다. Membership이 하나도 남지
 
 유지된 프로젝트 로컬 Agent Session과 Guard 또는 workflow 이력은 이후 권한이 되지
 않습니다. Runtime 권한은 계속 위에서 설명한 현재 Registry membership, runtime session,
-project-session 검증을 요구합니다.
+project-session 검증을 요구합니다. 실제 mode 전환 뒤 또는 물리 Connection 삭제와 재생성
+뒤에 같은 native host session을 다시 사용하면 유지된 이력과 충돌하지 않고 새로운 revision
+범위 프로젝트 row를 선택합니다.
 
 ## Identity와 소유권
 

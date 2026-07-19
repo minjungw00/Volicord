@@ -57,7 +57,8 @@ runtime/project/host-session 예약도 필요합니다. Runtime row는 process-l
 실행 파일 bytes와 경로, process identity, client name/version, host version, 환경 값,
 host thread/turn metadata는 actor 또는 human identity credential이 아닙니다. Thread와 turn
 metadata는 지원 workflow를 연결할 수 있지만 Connection이나 프로젝트 권한을 넓힐 수
-없습니다.
+없습니다. 내부 runtime ID와 revision 범위 프로젝트 session ID도 마찬가지로 비공개 로컬
+상관관계 좌표이며 host-native identity, actor identity, security credential이 아닙니다.
 
 지원 MCP 프로세스는 stdin/stdout을 사용하고 네트워크 전송 listener를 열지 않습니다.
 이는 프로세스 topology 사실이며 네트워크 sandboxing이 아닙니다. Codex나 tool은

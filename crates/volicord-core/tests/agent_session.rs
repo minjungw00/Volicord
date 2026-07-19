@@ -12,8 +12,8 @@ use volicord_test_support::{
     core_fixtures::CoreFixture, seed_test_agent_session, transition_test_connection_mode,
 };
 use volicord_types::{
-    managed_stdio_session_id, ActorSource, AgentConnectionId, AgentRuntimeSessionId,
-    AgentSessionId, FailureCategory, McpRuntimeSessionSource, OperationCategory, ProjectId,
+    ActorSource, AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, FailureCategory,
+    McpRuntimeSessionSource, OperationCategory, ProjectId,
 };
 
 #[test]
@@ -286,10 +286,8 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("core-agent-session-guard-first")?;
     let host_session = "host.session.guard-first";
-    let project_session_id = managed_stdio_session_id(fixture.connection_id(), host_session)?;
     let observed_at = fixture.store()?.current_timestamp()?;
     let input = |runtime_session_id| AgentSessionUpsert {
-        session_id: project_session_id.clone(),
         runtime_session_id,
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
@@ -298,11 +296,12 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
         host_turn_id: "host.turn.guard-first".to_owned(),
         observed_at: observed_at.clone(),
     };
-    upsert_agent_session(
+    let project_session_id = upsert_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
         input(None),
-    )?;
+    )?
+    .session_id;
     let runtime = start_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {

@@ -8,7 +8,7 @@ fn start_metrics_session(
     harness: &MethodHarness,
     native_session_id: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let session_id = volicord_types::managed_stdio_session_id(CONNECTION_ID, native_session_id)?;
+    let session_id = format!("mcp_runtime_{native_session_id}");
     start_diagnostic_session(
         &harness.runtime_home_path,
         DiagnosticSessionStart {

@@ -207,8 +207,14 @@ Runtime session은 소유 Connection과 Connection 통합 revision을 보관합�
 
 프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
 fingerprint와 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
-부재를 더합니다. 프로젝트 Agent Session은 이 revision, 결정적인 Connection-bound session
-ID, Connection, host session/thread/latest turn, 최초/마지막 관찰 시각을 보관합니다. Guard
+부재를 더합니다. 프로젝트 Agent Session은 이 revision, 결정적인 revision 범위 session
+ID, Connection, host session/thread/latest turn, 최초/마지막 관찰 시각을 보관합니다.
+Store는 프로젝트를 결정하고 현재 Guard ownership을 검증한 뒤에만 Connection internal ID,
+정확한 프로젝트 통합 revision, 정확한 host-native session ID에 domain-separated digest를
+적용해 내부 ID를 도출합니다. 호출자는 완성된 내부 ID를 제공할 수 없습니다. 저장된
+프로젝트 revision은 변경할 수 없습니다. 이후 Connection mode generation, 물리 Connection
+재생성, 프로젝트 정책 revision, Guard ownership revision이 생기면 같은 native session에도
+서로 다른 프로젝트 Agent Session row를 만들고 이전 row는 이력으로 남깁니다. Guard
 관찰은 runtime binding이 null인 session을 만들 수 있습니다. 해당 host session의 첫 실제
 managed MCP 도구 호출이 교차 데이터베이스 binding을 예약하고 runtime을 붙입니다. 붙인
 session은 다른 runtime session, Connection, 프로젝트, host session, host thread에 다시

@@ -597,7 +597,6 @@ impl CodexManagedBinding {
 pub(crate) struct ConnectionState {
     pub(crate) phase: ConnectionPhase,
     pub(crate) client_info: Option<ManagedMcpClientInfo>,
-    pub(crate) session_id: String,
     pub(crate) runtime_session_id: String,
     pub(crate) managed_stdio_binding_active: bool,
     pub(crate) launch_origin: &'static str,
@@ -612,7 +611,6 @@ impl Default for ConnectionState {
         Self {
             phase: ConnectionPhase::AwaitingInitialize,
             client_info: None,
-            session_id: String::new(),
             runtime_session_id: String::new(),
             managed_stdio_binding_active: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
@@ -637,7 +635,6 @@ impl ConnectionState {
         };
         Some(ManagedAgentSessionBinding {
             runtime_session_id: self.runtime_session_id.clone(),
-            session_id: self.session_id.clone(),
             host_session_id: host_session_id.clone(),
             host_thread_id: host_thread_id.clone(),
             host_turn_id: host_turn_id.clone(),
@@ -646,7 +643,7 @@ impl ConnectionState {
 
     fn for_launch_origin(launch_origin: McpLaunchOrigin) -> Self {
         let pending_codex = launch_origin == McpLaunchOrigin::ManagedHost;
-        let mut state = Self {
+        Self {
             launch_origin: launch_origin.as_str(),
             codex_binding: if pending_codex {
                 CodexManagedBinding::Pending
@@ -654,11 +651,7 @@ impl ConnectionState {
                 CodexManagedBinding::NotApplicable
             },
             ..Self::default()
-        };
-        if pending_codex {
-            state.session_id.clear();
         }
-        state
     }
 }
 
@@ -1039,7 +1032,6 @@ fn bind_codex_managed_tool_call(
     match &mut state.codex_binding {
         CodexManagedBinding::Pending => {
             let mut candidate = state.clone();
-            candidate.session_id = binding.session_id;
             candidate.codex_binding = CodexManagedBinding::Bound {
                 thread_digest: binding.thread_digest,
                 host_session_id: binding.host_session_id,
@@ -1055,9 +1047,12 @@ fn bind_codex_managed_tool_call(
         }
         CodexManagedBinding::Bound {
             thread_digest,
+            host_session_id,
             host_turn_id,
             ..
-        } if state.session_id == binding.session_id && *thread_digest == binding.thread_digest => {
+        } if *host_session_id == binding.host_session_id
+            && *thread_digest == binding.thread_digest =>
+        {
             *host_turn_id = binding.host_turn_id;
             Ok(())
         }
@@ -1070,7 +1065,6 @@ fn bind_codex_managed_tool_call(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodexManagedCallBinding {
-    session_id: String,
     thread_digest: [u8; 32],
     host_session_id: String,
     host_thread_id: String,
@@ -1104,8 +1098,6 @@ fn codex_managed_call_binding(
     let thread_digest =
         codex_thread_identity_digest(connection_internal_id, native_session_id, nested_thread_id);
     Ok(CodexManagedCallBinding {
-        session_id: managed_stdio_session_id(connection_internal_id, native_session_id)
-            .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?,
         thread_digest,
         host_session_id: native_session_id.to_owned(),
         host_thread_id: nested_thread_id.to_owned(),
@@ -1169,11 +1161,7 @@ mod codex_call_binding_tests {
     fn exact_codex_call_metadata_accepts_extensions_and_has_stable_bindings() {
         let first = codex_managed_call_binding(&valid_params(), "connection.alpha")
             .expect("exact metadata should bind");
-        assert_eq!(
-            first.session_id,
-            managed_stdio_session_id("connection.alpha", "session.alpha")
-                .expect("valid managed context should bind")
-        );
+        assert_eq!(first.host_session_id, "session.alpha");
         let replay = codex_managed_call_binding(&valid_params(), "connection.alpha")
             .expect("same metadata should replay");
         assert_eq!(first, replay);
@@ -1182,7 +1170,7 @@ mod codex_call_binding_tests {
         next_turn["_meta"][CODEX_TURN_METADATA_KEY]["turn_id"] = json!("turn.beta");
         let next = codex_managed_call_binding(&next_turn, "connection.alpha")
             .expect("turn changes do not change the session/thread binding");
-        assert_eq!(next.session_id, first.session_id);
+        assert_eq!(next.host_session_id, first.host_session_id);
         assert_eq!(next.thread_digest, first.thread_digest);
         assert_eq!(next.host_thread_id, first.host_thread_id);
         assert_eq!(next.host_turn_id, "turn.beta");
@@ -1499,13 +1487,17 @@ pub(crate) fn call_tool_result(
     let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
 
     let binding = state.managed_agent_session_binding();
-    if let Some(binding) = binding.as_ref() {
-        adapter.ensure_agent_session_binding_for_tool(tool_name, &arguments, binding)?;
-    }
+    let coordinates = binding
+        .as_ref()
+        .map(|binding| {
+            adapter.ensure_agent_session_binding_for_tool(tool_name, &arguments, binding)
+        })
+        .transpose()?
+        .flatten();
 
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
-        let call_result = if let Some(binding) = binding.as_ref() {
-            adapter.call_tool_for_session(tool_name, arguments, Some(binding.coordinates()))
+        let call_result = if let Some(coordinates) = coordinates.as_ref() {
+            adapter.call_tool_for_session(tool_name, arguments, Some(coordinates.borrowed()))
         } else if adapter.has_default_agent_session() {
             adapter.call_tool(tool_name, arguments)
         } else {
@@ -1991,12 +1983,14 @@ fn finalize_mutation_output(
 ) -> Result<ToolCallOutput, McpAdapterError> {
     let binding = state.managed_agent_session_binding();
     finalize_mutation_output_with_refresh(tool_name, detail, output, |context| {
+        let coordinates = binding
+            .as_ref()
+            .map(|binding| adapter.ensure_agent_session_binding(&context.project_id, binding))
+            .transpose()?;
         adapter.refresh_authority_status(
             &context.project_id,
             &context.task_id,
-            binding
-                .as_ref()
-                .map(ManagedAgentSessionBinding::coordinates),
+            coordinates.as_ref().map(|value| value.borrowed()),
         )
     })
 }
@@ -2631,12 +2625,6 @@ fn validate_managed_stdio_session_ownership(
     if !state.managed_stdio_binding_active {
         return Ok(());
     }
-    if validate_managed_stdio_session_id(&state.session_id).is_err() {
-        return Err(McpAdapterError::Environment(
-            "managed_stdio_session_identity_invalid: managed stdio requires a canonical internal session coordinate"
-                .to_owned(),
-        ));
-    }
     let CodexManagedBinding::Bound {
         host_session_id,
         host_thread_id,
@@ -2644,7 +2632,7 @@ fn validate_managed_stdio_session_ownership(
     } = &state.codex_binding
     else {
         return Err(McpAdapterError::Environment(
-            "managed_stdio_session_identity_invalid: active managed stdio binding has no host identity"
+            "managed_host_native_session_identity_invalid: active managed stdio binding has no host identity"
                 .to_owned(),
         ));
     };
@@ -2659,40 +2647,18 @@ fn validate_managed_stdio_session_ownership(
                 .to_owned(),
         )
     })?;
-    let project_ids = if let Some(project_ids) = adapter.context.project_allowlist.as_ref() {
-        project_ids
-            .iter()
-            .map(|project_id| project_id.as_str().to_owned())
-            .collect::<Vec<_>>()
-    } else {
-        list_connection_projects_read_only(
-            &adapter.runtime_home,
-            adapter.context.connection_internal_id.as_str(),
+    validate_managed_host_native_session_id(host_session_id).map_err(|_| {
+        McpAdapterError::Environment(
+            "managed_host_native_session_identity_invalid: active managed stdio binding has invalid native session identity"
+                .to_owned(),
         )
-        .map_err(McpAdapterError::Store)?
-        .into_iter()
-        .map(|project| project.project_id)
-        .collect::<Vec<_>>()
-    };
-    for project_id in project_ids {
-        if let Some(existing) = agent_session(&adapter.runtime_home, &project_id, &state.session_id)
-            .map_err(McpAdapterError::Store)?
-        {
-            if existing.connection_internal_id != adapter.context.connection_internal_id.as_str()
-                || existing
-                    .runtime_session_id
-                    .as_deref()
-                    .is_some_and(|runtime| runtime != state.runtime_session_id)
-                || existing.host_session_id != *host_session_id
-                || existing.host_thread_id != *host_thread_id
-            {
-                return Err(McpAdapterError::Environment(
-                    "managed_stdio_session_ownership_conflict: existing session ownership does not match this managed stdio connection"
-                        .to_owned(),
-                ));
-            }
-        }
-    }
+    })?;
+    validate_managed_host_native_session_id(host_thread_id).map_err(|_| {
+        McpAdapterError::Environment(
+            "managed_host_native_session_identity_invalid: active managed stdio binding has invalid native thread identity"
+                .to_owned(),
+        )
+    })?;
 
     Ok(())
 }
@@ -2734,7 +2700,7 @@ fn start_transport_diagnostic_session(
     start_diagnostic_session(
         &adapter.runtime_home,
         DiagnosticSessionStart {
-            session_id: &state.session_id,
+            session_id: &state.runtime_session_id,
             connection_id: Some(adapter.context.connection_internal_id.as_str()),
             project_id: project_id.as_deref(),
             transport: DiagnosticTransport::McpStdio,
@@ -2758,7 +2724,7 @@ fn record_tools_list_metric_best_effort(
     let _ = record_workflow_metric_event(
         &adapter.runtime_home,
         &WorkflowMetricEvent {
-            session_id: state.session_id.clone(),
+            session_id: state.runtime_session_id.clone(),
             metric_kind: WorkflowMetricKind::ToolsListSerializedBytes,
             value: serialized_bytes,
             method_name: None,
@@ -2783,7 +2749,7 @@ fn record_public_method_metrics_best_effort(
     let _ = record_workflow_metric_event(
         &adapter.runtime_home,
         &WorkflowMetricEvent {
-            session_id: state.session_id.clone(),
+            session_id: state.runtime_session_id.clone(),
             metric_kind: WorkflowMetricKind::McpMethodCall,
             value: 1,
             method_name: Some(method_name),
@@ -2797,7 +2763,7 @@ fn record_public_method_metrics_best_effort(
         let _ = record_workflow_metric_event(
             &adapter.runtime_home,
             &WorkflowMetricEvent {
-                session_id: state.session_id.clone(),
+                session_id: state.runtime_session_id.clone(),
                 metric_kind: WorkflowMetricKind::StatusReread,
                 value: 1,
                 method_name: None,
@@ -2847,7 +2813,7 @@ fn record_tool_diagnostic_best_effort(
     let _ = record_diagnostic_event(
         &adapter.runtime_home,
         DiagnosticEvent {
-            session_id: &state.session_id,
+            session_id: &state.runtime_session_id,
             event_kind: DiagnosticEventKind::McpToolCall,
             tool_name,
             latency_micros: elapsed,

@@ -4,7 +4,7 @@ use std::{path::Path, str::FromStr};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use volicord_types::{
-    managed_stdio_session_id, validate_managed_host_native_session_id,
+    project_agent_session_id, validate_managed_host_native_session_id,
     ConnectionIntegrationRevisionBasis, DurableIdGenerator, DurableIdKind, IntegrationRevision,
     ManagedMcpClientInfo, McpRuntimeSessionSource, RandomDurableIdGenerator, UtcTimestamp,
     DURABLE_ID_RETRY_LIMIT,
@@ -66,6 +66,7 @@ pub struct McpRuntimeProjectSessionBindingRecord {
     pub connection_internal_id: String,
     pub project_id: String,
     pub session_id: String,
+    pub project_integration_revision: String,
     pub host_session_id: String,
     pub bound_at: String,
 }
@@ -224,16 +225,15 @@ pub fn bind_mcp_runtime_project_session(
     runtime_session_id: &str,
     connection_internal_id: &str,
     project_id: &str,
-    session_id: &str,
+    asserted_guard_installation_id: Option<&str>,
     host_session_id: &str,
     bound_at: &str,
-) -> StoreResult<()> {
+) -> StoreResult<McpRuntimeProjectSessionBindingRecord> {
     validate_timestamp("bound_at", bound_at)?;
     for (field, value) in [
         ("runtime_session_id", runtime_session_id),
         ("connection_internal_id", connection_internal_id),
         ("project_id", project_id),
-        ("session_id", session_id),
         ("host_session_id", host_session_id),
     ] {
         validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)?;
@@ -243,20 +243,15 @@ pub fn bind_mcp_runtime_project_session(
             detail: "host_session_id must be valid managed-host identity metadata".to_owned(),
         }
     })?;
-    if managed_stdio_session_id(connection_internal_id, host_session_id).map_err(|_| {
-        StoreError::InvalidInput {
-            detail: "runtime binding cannot derive its Connection-bound Agent Session ID"
-                .to_owned(),
-        }
-    })? != session_id
-    {
-        return Err(StoreError::Conflict {
-            entity: "agent_session",
-            id: session_id.to_owned(),
-            detail: "session_id does not match the Connection-bound host session identity"
-                .to_owned(),
-        });
-    }
+    let runtime_home = runtime_home.as_ref();
+    let identity = crate::guards::current_project_agent_session_identity(
+        runtime_home,
+        project_id,
+        connection_internal_id,
+        asserted_guard_installation_id,
+        host_session_id,
+    )?;
+    let session_id = identity.session_id.as_str();
     let path = registry_db_path(runtime_home);
     let mut conn = open_registry_database(path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
@@ -303,7 +298,8 @@ pub fn bind_mcp_runtime_project_session(
     }
     let existing_project_session = tx
         .query_row(
-            "SELECT runtime_session_id, connection_internal_id, host_session_id
+            "SELECT runtime_session_id, connection_internal_id,
+                    project_integration_revision, host_session_id
                FROM mcp_runtime_project_session_bindings
               WHERE project_internal_id = ?1 AND session_id = ?2",
             params![project.project_internal_id, session_id],
@@ -312,19 +308,29 @@ pub fn bind_mcp_runtime_project_session(
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
                 ))
             },
         )
         .optional()?;
-    if let Some((existing_runtime, existing_connection, existing_host_session)) =
+    if let Some((existing_runtime, existing_connection, existing_revision, existing_host_session)) =
         existing_project_session
     {
         if existing_runtime == runtime_session_id
             && existing_connection == connection_internal_id
+            && existing_revision == identity.project_integration_revision
             && existing_host_session == host_session_id
         {
             tx.commit()?;
-            return Ok(());
+            return Ok(McpRuntimeProjectSessionBindingRecord {
+                runtime_session_id: runtime_session_id.to_owned(),
+                connection_internal_id: connection_internal_id.to_owned(),
+                project_id: project.project_internal_id,
+                session_id: identity.session_id,
+                project_integration_revision: identity.project_integration_revision,
+                host_session_id: host_session_id.to_owned(),
+                bound_at: bound_at.to_owned(),
+            });
         }
         return Err(StoreError::Conflict {
             entity: "agent_session",
@@ -358,19 +364,28 @@ pub fn bind_mcp_runtime_project_session(
     tx.execute(
         "INSERT INTO mcp_runtime_project_session_bindings (
             runtime_session_id, connection_internal_id, project_internal_id,
-            session_id, host_session_id, bound_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            session_id, project_integration_revision, host_session_id, bound_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             runtime_session_id,
             connection_internal_id,
             project.project_internal_id,
             session_id,
+            identity.project_integration_revision,
             host_session_id,
             bound_at
         ],
     )?;
     tx.commit()?;
-    Ok(())
+    Ok(McpRuntimeProjectSessionBindingRecord {
+        runtime_session_id: runtime_session_id.to_owned(),
+        connection_internal_id: connection_internal_id.to_owned(),
+        project_id: project.project_internal_id,
+        session_id: identity.session_id,
+        project_integration_revision: identity.project_integration_revision,
+        host_session_id: host_session_id.to_owned(),
+        bound_at: bound_at.to_owned(),
+    })
 }
 
 /// Reads the exact Registry reservation for one project Agent Session.
@@ -389,7 +404,7 @@ pub fn mcp_runtime_project_session_binding(
     let record = conn
         .query_row(
             "SELECT b.runtime_session_id, b.connection_internal_id, p.project_internal_id,
-                    b.session_id, b.host_session_id, b.bound_at
+                    b.session_id, b.project_integration_revision, b.host_session_id, b.bound_at
                FROM mcp_runtime_project_session_bindings AS b
                JOIN projects AS p ON p.project_internal_id = b.project_internal_id
               WHERE p.project_internal_id = ?1 AND b.session_id = ?2",
@@ -400,8 +415,9 @@ pub fn mcp_runtime_project_session_binding(
                     connection_internal_id: row.get(1)?,
                     project_id: row.get(2)?,
                     session_id: row.get(3)?,
-                    host_session_id: row.get(4)?,
-                    bound_at: row.get(5)?,
+                    project_integration_revision: row.get(4)?,
+                    host_session_id: row.get(5)?,
+                    bound_at: row.get(6)?,
                 })
             },
         )
@@ -424,14 +440,22 @@ pub fn mcp_runtime_project_session_binding(
                 ),
                 ("project_id", record.project_id.as_str()),
                 ("session_id", record.session_id.as_str()),
+                (
+                    "project_integration_revision",
+                    record.project_integration_revision.as_str(),
+                ),
             ] {
                 validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)
                     .map_err(|_| corrupt(field))?;
             }
             validate_managed_host_native_session_id(&record.host_session_id)
                 .map_err(|_| corrupt("host_session_id"))?;
-            if managed_stdio_session_id(&record.connection_internal_id, &record.host_session_id)
-                .map_err(|_| corrupt("session_id"))?
+            if project_agent_session_id(
+                &record.connection_internal_id,
+                &record.project_integration_revision,
+                &record.host_session_id,
+            )
+            .map_err(|_| corrupt("session_id"))?
                 != record.session_id
             {
                 return Err(corrupt("session_id"));

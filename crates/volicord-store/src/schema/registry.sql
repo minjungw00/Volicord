@@ -211,6 +211,11 @@ CREATE TABLE mcp_runtime_project_session_bindings (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
+  project_integration_revision TEXT NOT NULL CHECK (
+    length(project_integration_revision) = 71
+    AND substr(project_integration_revision, 1, 7) = 'sha256:'
+    AND substr(project_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
   host_session_id TEXT NOT NULL,
   bound_at TEXT NOT NULL,
   PRIMARY KEY (runtime_session_id, host_session_id),
@@ -227,7 +232,9 @@ CREATE TABLE mcp_runtime_project_session_bindings (
 );
 
 CREATE INDEX idx_mcp_runtime_project_bindings_project
-  ON mcp_runtime_project_session_bindings (project_internal_id, connection_internal_id, bound_at);
+  ON mcp_runtime_project_session_bindings (
+    project_internal_id, connection_internal_id, project_integration_revision, bound_at
+  );
 
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,

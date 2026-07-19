@@ -114,8 +114,12 @@ otherwise valid tool result fail.
 Project `agent_sessions` are the project-local correlation projection. Each
 row names one Connection, carries a project integration revision that adds the
 current workflow-policy fingerprint and Guard ownership pair, and keeps the
-deterministic Connection-bound session ID, host session, thread, latest turn,
-and first/last observations needed for workflow and Guard correlation. A Guard
+deterministic revision-scoped session ID, host session, thread, latest turn,
+and first/last observations needed for workflow and Guard correlation. Store
+derives that ID from the Connection internal ID, exact stored project
+integration revision, and exact native host session. The project revision is
+immutable; current revision changes create a new row and never rewrite the
+historical row. A Guard
 observation can create the row with `runtime_session_id=NULL`; no empty,
 sentinel, fabricated, or CLI-preflight runtime represents that state.
 Composite project foreign keys prevent a downstream Guard row from pairing a
@@ -126,7 +130,9 @@ Registry `mcp_runtime_project_session_bindings` and then attaches the runtime
 to the project row. The Registry reservation supplies the uniqueness boundary
 that a foreign key cannot express across separate SQLite databases. Exact
 replay is idempotent, including recovery after reservation but before attach;
-conflicting runtime, Connection, project, or host-session claims fail. A
+the reservation stores the same exact project integration revision as the
+project row, and authorization validates that match. Conflicting runtime,
+Connection, project, revision, or host-session claims fail. A
 partial project index makes non-null runtime attachment unique while allowing
 any number of unbound Guard-first sessions.
 
@@ -163,7 +169,9 @@ rows remain outside this deletion set.
 Retained project-local Agent Sessions and Guard or workflow history do not
 become future authority. Runtime authorization still requires the current
 Registry membership, runtime session, and project-session validation described
-above.
+above. Reusing one native host session after a real mode transition or after
+physical Connection deletion and recreation therefore selects a new
+revision-scoped project row without colliding with retained history.
 
 ## Identity And Ownership
 

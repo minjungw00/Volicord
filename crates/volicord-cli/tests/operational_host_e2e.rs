@@ -18,6 +18,7 @@ use std::{
 use serde_json::{json, Value};
 use support::binary_fixture::{run_child, ChildStdin};
 use volicord_store::agent_connections::AgentConnectionRecord;
+use volicord_store::guards::{agent_session, current_project_agent_session_identity};
 use volicord_store::inspection::{
     inspect_runtime_home, AgentConnectionInspectionRecord, DatabaseInspection,
     RegistryInspectionSnapshot,
@@ -106,13 +107,22 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     let project_id = before_no_op.projects[0].project_id.clone();
     let workflow_manifest =
         guard_manifest_from_json(&before_no_op.guard_installations[0].manifest_json)?;
+    let reused_native_session = "session.same";
     fixture.run_successful_managed_mcp_with_guard(
         &connection_id,
         &project_id,
         FUTURE_VERSION,
-        "future.session.mode.workflow.old",
+        reused_native_session,
         &workflow_manifest,
     )?;
+    let workflow_session_id = current_project_agent_session_identity(
+        &fixture.runtime_home,
+        &project_id,
+        &connection_id,
+        Some(workflow_manifest.guard_installation_id.as_str()),
+        reused_native_session,
+    )?
+    .session_id;
     assert_connection_report(
         &fixture.run_connection("verify", FUTURE_VERSION, true)?,
         0,
@@ -223,14 +233,22 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     let read_only_tools = fixture.run_managed_tools_list_names(&connection_id, &project_id)?;
     assert!(read_only_tools.contains(&"volicord.list_projects".to_owned()));
     assert!(!read_only_tools.contains(&"volicord.intake".to_owned()));
-    fixture
-        .run_current_guard_phases(&read_only_manifest, "future.session.mode.read-only.current")?;
-    assert_unbound_agent_session(&fixture, "future.session.mode.read-only.current")?;
+    fixture.run_current_guard_phases(&read_only_manifest, reused_native_session)?;
+    let read_only_session_id = current_project_agent_session_identity(
+        &fixture.runtime_home,
+        &project_id,
+        &connection_id,
+        Some(read_only_manifest.guard_installation_id.as_str()),
+        reused_native_session,
+    )?
+    .session_id;
+    assert_ne!(read_only_session_id, workflow_session_id);
+    assert_unbound_agent_session(&fixture, &read_only_session_id)?;
     fixture.run_successful_managed_mcp(
         &connection_id,
         &project_id,
         FUTURE_VERSION,
-        "future.session.mode.read-only.current",
+        reused_native_session,
     )?;
     assert_connection_report(
         &fixture.run_connection("verify", FUTURE_VERSION, true)?,
@@ -267,16 +285,23 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
 
     let workflow_tools = fixture.run_managed_tools_list_names(&connection_id, &project_id)?;
     assert!(workflow_tools.contains(&"volicord.intake".to_owned()));
-    fixture.run_current_guard_phases(
-        &current_workflow_manifest,
-        "future.session.mode.workflow.current",
-    )?;
-    assert_unbound_agent_session(&fixture, "future.session.mode.workflow.current")?;
+    fixture.run_current_guard_phases(&current_workflow_manifest, reused_native_session)?;
+    let current_workflow_session_id = current_project_agent_session_identity(
+        &fixture.runtime_home,
+        &project_id,
+        &connection_id,
+        Some(current_workflow_manifest.guard_installation_id.as_str()),
+        reused_native_session,
+    )?
+    .session_id;
+    assert_ne!(current_workflow_session_id, read_only_session_id);
+    assert_ne!(current_workflow_session_id, workflow_session_id);
+    assert_unbound_agent_session(&fixture, &current_workflow_session_id)?;
     fixture.run_successful_managed_mcp(
         &connection_id,
         &project_id,
         FUTURE_VERSION,
-        "future.session.mode.workflow.current",
+        reused_native_session,
     )?;
     assert_connection_report(
         &fixture.run_connection("verify", FUTURE_VERSION, true)?,
@@ -284,6 +309,13 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
         "verify",
         "complete",
     )?;
+    let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
+    let revision_scoped_rows: i64 = project_state.query_row(
+        "SELECT COUNT(*) FROM agent_sessions WHERE host_session_id = ?1",
+        [reused_native_session],
+        |row| row.get(0),
+    )?;
+    assert_eq!(revision_scoped_rows, 3);
 
     let removed = fixture.run_connection("remove", FUTURE_VERSION, true)?;
     assert_eq!(removed.status.code(), Some(0));
@@ -322,15 +354,11 @@ fn assert_manifest_rebound_only(before: &GuardManifest, after: &GuardManifest) {
 
 fn assert_unbound_agent_session(
     fixture: &OperationalFixture,
-    host_session_id: &str,
+    session_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
-    let runtime_session_id: Option<String> = project_state.query_row(
-        "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
-        [host_session_id],
-        |row| row.get(0),
-    )?;
-    assert!(runtime_session_id.is_none());
+    let session = agent_session(&fixture.runtime_home, &fixture.project_id(), session_id)?
+        .expect("current Guard observation must create its revision-scoped Agent Session");
+    assert!(session.runtime_session_id.is_none());
     Ok(())
 }
 
@@ -343,13 +371,22 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
     let project_id = before.projects[0].project_id.clone();
     let config_target = PathBuf::from(&before.agent_connections[0].config_target);
     let manifest = guard_manifest_from_json(&before.guard_installations[0].manifest_json)?;
+    let reused_native_session = "session.same";
     fixture.run_successful_managed_mcp_with_guard(
         &connection_id,
         &project_id,
         FUTURE_VERSION,
-        "future.session.connection.removal",
+        reused_native_session,
         &manifest,
     )?;
+    let historical_session_id = current_project_agent_session_identity(
+        &fixture.runtime_home,
+        &project_id,
+        &connection_id,
+        Some(manifest.guard_installation_id.as_str()),
+        reused_native_session,
+    )?
+    .session_id;
     let repository_before = fixture.repository_snapshot()?;
     let project_state_path = fixture.project_state_db_path();
     let project_state = rusqlite::Connection::open(&project_state_path)?;
@@ -396,6 +433,39 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
     assert!(!fs::read_to_string(config_target)
         .unwrap_or_default()
         .contains("mcp_servers.volicord"));
+
+    let recreated = fixture.run_init(FUTURE_VERSION, None, false)?;
+    assert_connection_report(&recreated, 0, "init", "action_required")?;
+    let recreated_snapshot = fixture.registry_snapshot();
+    let recreated_connection_id = recreated_snapshot.agent_connections[0]
+        .connection_internal_id
+        .clone();
+    let recreated_manifest =
+        guard_manifest_from_json(&recreated_snapshot.guard_installations[0].manifest_json)?;
+    fixture.run_successful_managed_mcp_with_guard(
+        &recreated_connection_id,
+        &project_id,
+        FUTURE_VERSION,
+        reused_native_session,
+        &recreated_manifest,
+    )?;
+    let recreated_session_id = current_project_agent_session_identity(
+        &fixture.runtime_home,
+        &project_id,
+        &recreated_connection_id,
+        Some(recreated_manifest.guard_installation_id.as_str()),
+        reused_native_session,
+    )?
+    .session_id;
+    assert_ne!(recreated_session_id, historical_session_id);
+    assert!(agent_session(&fixture.runtime_home, &project_id, &historical_session_id,)?.is_some());
+    let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
+    let recreated_rows: i64 = project_state.query_row(
+        "SELECT COUNT(*) FROM agent_sessions WHERE host_session_id = ?1",
+        [reused_native_session],
+        |row| row.get(0),
+    )?;
+    assert_eq!(recreated_rows, agent_sessions_before + 1);
     Ok(())
 }
 
@@ -902,10 +972,18 @@ impl OperationalFixture {
             thread::sleep(Duration::from_millis(10));
         }
         self.run_current_guard_phases(manifest, native_session)?;
+        let current_session_id = current_project_agent_session_identity(
+            &self.runtime_home,
+            project_id,
+            connection_id,
+            Some(manifest.guard_installation_id.as_str()),
+            native_session,
+        )?
+        .session_id;
         let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
         let unbound_runtime: Option<String> = project_state.query_row(
-            "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
-            [native_session],
+            "SELECT runtime_session_id FROM agent_sessions WHERE session_id = ?1",
+            [&current_session_id],
             |row| row.get(0),
         )?;
         assert!(unbound_runtime.is_none());
@@ -944,8 +1022,8 @@ impl OperationalFixture {
         assert_eq!(responses[2]["result"]["isError"], false);
         let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
         let bound_runtime: Option<String> = project_state.query_row(
-            "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
-            [native_session],
+            "SELECT runtime_session_id FROM agent_sessions WHERE session_id = ?1",
+            [&current_session_id],
             |row| row.get(0),
         )?;
         assert!(

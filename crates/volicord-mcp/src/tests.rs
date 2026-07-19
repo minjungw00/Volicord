@@ -2015,10 +2015,8 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
     assert!(responses[2]["result"].is_object());
     assert_eq!(responses[3]["error"]["code"], -32602);
     assert_eq!(responses[4]["error"]["code"], -32602);
-    let managed_session_id = managed_stdio_session_id(fixture.connection_id(), native_session_id)?;
-    let diagnostic =
-        read_diagnostic_session(fixture.runtime_home_path(), Some(&managed_session_id))?
-            .expect("first exact call must bind the managed diagnostic session");
+    let diagnostic = read_diagnostic_session(fixture.runtime_home_path(), None)?
+        .expect("first exact call must bind the managed runtime diagnostic session");
     assert_eq!(diagnostic.totals.tool_call_count, 2);
     let persisted = serde_json::to_string(&diagnostic)?;
     for raw in [
@@ -2158,17 +2156,30 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
     }
     assert!(responses[4]["result"].is_object());
 
-    let rejected = managed_stdio_session_id(fixture.connection_id(), rejected_session_id)?;
+    let rejected = current_project_agent_session_identity(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        None,
+        rejected_session_id,
+    )?
+    .session_id;
     assert!(
         agent_session(fixture.runtime_home_path(), fixture.project_id(), &rejected,)?.is_none()
     );
-    assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&rejected))?.is_none());
 
-    let accepted = managed_stdio_session_id(fixture.connection_id(), accepted_session_id)?;
+    let accepted = current_project_agent_session_identity(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        None,
+        accepted_session_id,
+    )?
+    .session_id;
     assert!(
         agent_session(fixture.runtime_home_path(), fixture.project_id(), &accepted,)?.is_some()
     );
-    assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&accepted))?.is_some());
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_some());
     let serialized = serde_json::to_string(&responses)?;
     assert!(!serialized.contains(rejected_session_id));
     assert!(!serialized.contains(accepted_session_id));
@@ -4259,7 +4270,6 @@ fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
         McpAdapter::new(fixture.runtime_home_path(), context).with_managed_agent_session_binding(
             ManagedAgentSessionBinding {
                 runtime_session_id: session.runtime_session_id.as_str().to_owned(),
-                session_id: session.project_session_id.as_str().to_owned(),
                 host_session_id: session.host_session_id,
                 host_thread_id: session.host_thread_id,
                 host_turn_id: session.host_turn_id,
@@ -4390,7 +4400,6 @@ fn adapter_for_additional_connection(
         McpAdapter::new(fixture.runtime_home_path(), context).with_managed_agent_session_binding(
             ManagedAgentSessionBinding {
                 runtime_session_id: session.runtime_session_id.as_str().to_owned(),
-                session_id: session.project_session_id.as_str().to_owned(),
                 host_session_id: session.host_session_id,
                 host_thread_id: session.host_thread_id,
                 host_turn_id: session.host_turn_id,

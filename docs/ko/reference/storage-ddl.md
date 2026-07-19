@@ -92,10 +92,11 @@ manifest와 같아야 합니다. 정수를 파싱하거나, 버전을 비교하�
 고르거나, 다른 프로필을 시도하지 않습니다. 정확한 열기 결과와 실패 범주는
 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
-변경 불가능한 Agent Connection `integration_instance_id`를 추가하면 두 schema digest가
-모두 바뀝니다. 바로 이전 schema manifest를 지닌 Runtime Home은 명시적인 재초기화 안내와
-함께 지원하지 않는 storage profile로 거부합니다. Store는 column을 제자리에서 추가하거나
-값을 합성하지 않습니다.
+Revision 범위 프로젝트 Agent Session identity를 추가하면 두 schema digest가 모두
+바뀝니다. Registry binding에는 `project_integration_revision`이 추가되고 프로젝트 Agent
+Session revision은 SQL에서 변경할 수 없게 됩니다. 바로 이전 schema manifest를 지닌 Runtime
+Home은 명시적인 재초기화 안내와 함께 지원하지 않는 storage profile로 거부합니다. Store는
+column을 제자리에서 추가하거나 이력 session ID를 다시 쓰거나 값을 합성하지 않습니다.
 
 ## 기준 SQL 원본
 
@@ -346,6 +347,11 @@ CREATE TABLE mcp_runtime_project_session_bindings (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
+  project_integration_revision TEXT NOT NULL CHECK (
+    length(project_integration_revision) = 71
+    AND substr(project_integration_revision, 1, 7) = 'sha256:'
+    AND substr(project_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
   host_session_id TEXT NOT NULL,
   bound_at TEXT NOT NULL,
   PRIMARY KEY (runtime_session_id, host_session_id),
@@ -362,7 +368,9 @@ CREATE TABLE mcp_runtime_project_session_bindings (
 );
 
 CREATE INDEX idx_mcp_runtime_project_bindings_project
-  ON mcp_runtime_project_session_bindings (project_internal_id, connection_internal_id, bound_at);
+  ON mcp_runtime_project_session_bindings (
+    project_internal_id, connection_internal_id, project_integration_revision, bound_at
+  );
 
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
@@ -1242,6 +1250,12 @@ CREATE TABLE agent_sessions (
   CHECK (last_observed_at >= first_observed_at),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
+
+CREATE TRIGGER agent_sessions_project_integration_revision_immutable
+BEFORE UPDATE OF project_integration_revision ON agent_sessions
+BEGIN
+  SELECT RAISE(ABORT, 'agent_sessions.project_integration_revision is immutable');
+END;
 
 CREATE TABLE guard_events (
   project_id TEXT NOT NULL,

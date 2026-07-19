@@ -6,7 +6,8 @@ use std::{
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 use volicord_types::{
-    guard_manifest_from_json, ConnectionIntegrationInstanceId, ConnectionVerificationReport,
+    guard_manifest_from_json, project_agent_session_id, ConnectionIntegrationInstanceId,
+    ConnectionVerificationReport, IntegrationRevision,
 };
 
 use crate::{
@@ -63,6 +64,7 @@ pub struct RegistryInspectionSnapshot {
     pub projects: Vec<ProjectInspectionRecord>,
     pub agent_connections: Vec<AgentConnectionInspectionRecord>,
     pub connection_projects: Vec<ConnectionProjectInspectionRecord>,
+    pub runtime_project_session_bindings: Vec<RuntimeProjectSessionBindingInspectionRecord>,
     pub guard_installations: Vec<GuardInstallationInspectionRecord>,
 }
 
@@ -122,6 +124,19 @@ pub struct ConnectionProjectInspectionRecord {
     pub project_internal_id: String,
     pub project_id: String,
     pub created_at: String,
+}
+
+/// Runtime/project Agent Session reservation read from the current registry schema.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeProjectSessionBindingInspectionRecord {
+    pub runtime_session_id: String,
+    pub connection_internal_id: String,
+    pub project_internal_id: String,
+    pub project_id: String,
+    pub session_id: String,
+    pub project_integration_revision: String,
+    pub host_session_id: String,
+    pub bound_at: String,
 }
 
 /// Guard installation row read from the current registry schema.
@@ -285,6 +300,10 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
             Ok(records) => records,
             Err(issue) => return issue.into_database_inspection(path),
         };
+    let runtime_project_session_bindings = match read_runtime_project_session_binding_rows(&conn) {
+        Ok(records) => records,
+        Err(issue) => return issue.into_database_inspection(path),
+    };
     let guard_installations =
         match read_guard_installation_rows(&conn, &agent_connections, &projects) {
             Ok(records) => records,
@@ -299,6 +318,7 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
         projects,
         agent_connections,
         connection_projects,
+        runtime_project_session_bindings,
         guard_installations,
     })
 }
@@ -779,6 +799,86 @@ fn read_guard_installation_rows(
         installations.push(installation);
     }
     Ok(installations)
+}
+
+fn read_runtime_project_session_binding_rows(
+    conn: &Connection,
+) -> Result<Vec<RuntimeProjectSessionBindingInspectionRecord>, InspectionIssue> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                b.runtime_session_id,
+                b.connection_internal_id,
+                b.project_internal_id,
+                b.project_internal_id,
+                b.session_id,
+                b.project_integration_revision,
+                b.host_session_id,
+                b.bound_at
+             FROM mcp_runtime_project_session_bindings AS b
+             ORDER BY b.connection_internal_id, b.project_internal_id, b.session_id",
+        )
+        .map_err(sqlite_unreadable)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(RuntimeProjectSessionBindingInspectionRecord {
+                runtime_session_id: row.get(0)?,
+                connection_internal_id: row.get(1)?,
+                project_internal_id: row.get(2)?,
+                project_id: row.get(3)?,
+                session_id: row.get(4)?,
+                project_integration_revision: row.get(5)?,
+                host_session_id: row.get(6)?,
+                bound_at: row.get(7)?,
+            })
+        })
+        .map_err(sqlite_unreadable)?;
+    let mut bindings = Vec::new();
+    for row in rows {
+        let binding = row.map_err(registration_decode_error)?;
+        for (field, value) in [
+            (
+                "runtime binding runtime_session_id",
+                &binding.runtime_session_id,
+            ),
+            (
+                "runtime binding connection_internal_id",
+                &binding.connection_internal_id,
+            ),
+            (
+                "runtime binding project_internal_id",
+                &binding.project_internal_id,
+            ),
+            ("runtime binding project_id", &binding.project_id),
+            ("runtime binding session_id", &binding.session_id),
+            ("runtime binding host_session_id", &binding.host_session_id),
+            ("runtime binding bound_at", &binding.bound_at),
+        ] {
+            require_nonempty(field, value)?;
+        }
+        IntegrationRevision::parse(binding.project_integration_revision.clone()).map_err(|_| {
+            InspectionIssue::Malformed(
+                "runtime binding project_integration_revision is invalid".to_owned(),
+            )
+        })?;
+        let expected = project_agent_session_id(
+            &binding.connection_internal_id,
+            &binding.project_integration_revision,
+            &binding.host_session_id,
+        )
+        .map_err(|_| {
+            InspectionIssue::Malformed(
+                "runtime binding Agent Session identity is invalid".to_owned(),
+            )
+        })?;
+        if expected != binding.session_id {
+            return Err(InspectionIssue::Malformed(
+                "runtime binding Agent Session identity is noncanonical".to_owned(),
+            ));
+        }
+        bindings.push(binding);
+    }
+    Ok(bindings)
 }
 
 fn read_project_state_record(

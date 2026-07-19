@@ -232,8 +232,16 @@ revision.
 The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint and current Guard installation
 identity/policy hash, or explicit absence of Guard ownership. A project Agent
-Session retains that revision, deterministic Connection-bound session ID,
+Session retains that revision, a deterministic revision-scoped session ID,
 Connection, host session/thread/latest turn, and first/last observation times.
+The Store derives the internal ID with a domain-separated digest over the
+Connection internal ID, exact project integration revision, and exact
+host-native session ID only after resolving the project and validating current
+Guard ownership. Callers cannot supply the complete internal ID. The stored
+project revision is immutable: a later Connection mode generation, physical
+Connection recreation, project-policy revision, or Guard ownership revision
+creates a different project Agent Session row for the same native session and
+leaves the earlier row as history.
 A Guard observation may create it with a null runtime binding. The first actual
 managed MCP tool call for that host session reserves the cross-database binding
 and attaches its runtime. An attached session cannot be rebound across a

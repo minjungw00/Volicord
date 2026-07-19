@@ -20,8 +20,8 @@ use volicord_store::{
         WorkflowMetricDecision, WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     },
     guards::{
-        agent_session, guard_event, guard_installation, insert_guard_event, upsert_agent_session,
-        AgentSessionUpsert, GuardEventInsert,
+        current_project_agent_session_identity, guard_event, guard_installation,
+        insert_guard_event, upsert_agent_session, AgentSessionUpsert, GuardEventInsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
@@ -131,7 +131,7 @@ where
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let input = read_guard_input(options.event_file.as_deref())?;
     let project = resolve_guard_project(&runtime_home, current_dir, &options, &input.raw_value)?;
-    let envelope = match guard_envelope(phase, &options, &input, &project) {
+    let mut envelope = match guard_envelope(phase, &options, &input, &project) {
         Ok(envelope) => envelope,
         Err(error) => {
             record_guard_hook_contract_failure(
@@ -145,8 +145,8 @@ where
             return Err(error);
         }
     };
+    bind_guard_envelope(&runtime_home, &project, phase, &input, &mut envelope)?;
     let input = protect_managed_guard_input(input, &envelope)?;
-    validate_existing_connection_session_binding(&runtime_home, &project, &envelope)?;
     let subject = guard_subject(phase, &input, &envelope, &project);
     if phase == GuardPhase::PostTool {
         if let Some(replayed) =
@@ -185,7 +185,6 @@ where
             });
         }
     }
-    ensure_required_session(&runtime_home, &project, &envelope)?;
     if phase == GuardPhase::PromptCapture {
         let _ = start_guard_diagnostic_session_best_effort(&runtime_home, &project, &envelope);
     }
@@ -708,19 +707,25 @@ fn resolve_guard_project(
     registered_project_for_repo(runtime_home, &repo_root).map_err(Into::into)
 }
 
-fn ensure_required_session(
+fn bind_guard_envelope(
     runtime_home: &Path,
     project: &ProjectRecord,
-    envelope: &GuardEnvelope,
+    phase: GuardPhase,
+    input: &GuardInput,
+    envelope: &mut GuardEnvelope,
 ) -> Result<(), GuardCommandError> {
-    let Some(session_id) = envelope.session_id.as_deref() else {
-        return Ok(());
-    };
-    upsert_agent_session(
+    let identity = current_project_agent_session_identity(
+        runtime_home,
+        &project.project_id,
+        &envelope.connection_id,
+        envelope.guard_installation_id.as_deref(),
+        &envelope.host_session_id,
+    )?;
+    envelope.guard_installation_id = identity.guard_installation_id;
+    let session = upsert_agent_session(
         runtime_home,
         &project.project_id,
         AgentSessionUpsert {
-            session_id: session_id.to_owned(),
             runtime_session_id: None,
             connection_internal_id: envelope.connection_id.clone(),
             guard_installation_id: envelope.guard_installation_id.clone(),
@@ -730,32 +735,25 @@ fn ensure_required_session(
             observed_at: envelope.occurred_at.clone(),
         },
     )?;
-    Ok(())
-}
-
-fn validate_existing_connection_session_binding(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-) -> Result<(), GuardCommandError> {
-    if !is_managed_builtin_host(&envelope.host_kind) {
-        return Ok(());
-    }
-    let Some(session_id) = envelope.session_id.as_deref() else {
-        return Ok(());
-    };
-    let Some(existing) = agent_session(runtime_home, &project.project_id, session_id)? else {
-        return Ok(());
-    };
-    if existing.connection_internal_id != envelope.connection_id
-        || existing.host_session_id != envelope.host_session_id
-        || existing.host_thread_id != envelope.host_thread_id
+    if session.session_id != identity.session_id
+        || session.project_integration_revision != identity.project_integration_revision
     {
         return Err(GuardCommandError::Runtime(
-            "managed_stdio_session_ownership_conflict: existing session ownership does not match this Agent Connection"
+            "Store returned a project Agent Session outside the derived current revision"
                 .to_owned(),
         ));
     }
+    envelope.session_id = Some(session.session_id);
+    envelope.event_id = stable_id(
+        "guard_event",
+        &[
+            phase.command_name(),
+            &envelope.connection_id,
+            envelope.session_id.as_deref().unwrap_or(""),
+            &project.project_id,
+            &input.raw_sha256,
+        ],
+    );
     Ok(())
 }
 

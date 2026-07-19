@@ -23,8 +23,8 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 38);
-    assert_eq!(metadata.columns.len(), 483);
+    assert_eq!(metadata.tables.len(), 39);
+    assert_eq!(metadata.columns.len(), 484);
     assert_eq!(metadata.indexes.len(), 65);
     assert_eq!(metadata.constraints.len(), 37);
     let agent_connection_columns = metadata
@@ -75,6 +75,17 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
             && relation.name == "agent_connections_integration_instance_immutable"
             && relation.relation_kind == GeneratedRelationKind::Trigger
     }));
+    assert!(metadata.columns.iter().any(|column| {
+        column.database == StorageDatabaseKind::Registry
+            && column.table == "mcp_runtime_project_session_bindings"
+            && column.name == "project_integration_revision"
+            && column.not_null
+    }));
+    assert!(metadata.tables.iter().any(|relation| {
+        relation.database == StorageDatabaseKind::ProjectState
+            && relation.name == "agent_sessions_project_integration_revision_immutable"
+            && relation.relation_kind == GeneratedRelationKind::Trigger
+    }));
     for database in [
         StorageDatabaseKind::Registry,
         StorageDatabaseKind::ProjectState,
@@ -96,11 +107,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:28efe2a0d3a544481181185b4d73fb465e1bcf4158237c73217a25a1db963e4b"
+        "sha256:87df618cb318648bc5a0bd8e7fc8018118433a4c7c1ee67c2cb04009f19aa56d"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:1549e654b8de2b08ef6327a8f3d01c68f47f83bcad4bf39d3a3d3e5c416abdd9"
+        "sha256:046f7337674376e858ef62e8f2c19d9d1d544f1e2703b0f89d9162da4b816ac2"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -134,12 +145,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:28efe2a0d3a544481181185b4d73fb465e1bcf4158237c73217a25a1db963e4b\",",
+            "{\"canonical_ddl_digest\":\"sha256:87df618cb318648bc5a0bd8e7fc8018118433a4c7c1ee67c2cb04009f19aa56d\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:1549e654b8de2b08ef6327a8f3d01c68f47f83bcad4bf39d3a3d3e5c416abdd9\"}"
+            "\"integrity_constraints_digest\":\"sha256:046f7337674376e858ef62e8f2c19d9d1d544f1e2703b0f89d9162da4b816ac2\"}"
         )
     );
     Ok(())
@@ -243,12 +254,12 @@ fn malformed_and_noncurrent_manifests_are_corrupt() -> Result<(), Box<dyn Error>
 }
 
 #[test]
-fn preceding_agent_connection_schema_manifest_requires_reinitialization(
+fn preceding_connection_bound_session_schema_manifest_requires_reinitialization(
 ) -> Result<(), Box<dyn Error>> {
     let preceding = StorageManifest::new(
         STORAGE_CONTRACT_ID,
-        "sha256:73ee4020f39d43134ce3dbce74c64243c6fc35c4f6910aa3b927bcf45de6e0d9",
-        "sha256:6f7cc21d2070888dbbe26803671644cbc3ad4bce52347e5015d4fb91fa4d1d9e",
+        "sha256:28efe2a0d3a544481181185b4d73fb465e1bcf4158237c73217a25a1db963e4b",
+        "sha256:1549e654b8de2b08ef6327a8f3d01c68f47f83bcad4bf39d3a3d3e5c416abdd9",
         STORAGE_ENABLED_CAPABILITIES
             .iter()
             .map(|capability| (*capability).to_owned())
@@ -259,7 +270,7 @@ fn preceding_agent_connection_schema_manifest_requires_reinitialization(
     insert_registry_owner(&registry, &persisted)?;
 
     let error = validate_registry_schema(&registry)
-        .expect_err("the preceding Agent Connection schema must not be silently upgraded");
+        .expect_err("the preceding connection-bound session schema must not be silently upgraded");
     assert!(
         matches!(
             error,

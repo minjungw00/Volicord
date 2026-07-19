@@ -67,7 +67,10 @@ one another or being guessed for a Guard event.
 Executable bytes, executable paths, process identity, client name/version,
 host version, environment values, and host thread/turn metadata are not actor
 or human identity credentials. Thread and turn metadata may correlate the
-supported workflow, but cannot widen Connection or project authority.
+supported workflow, but cannot widen Connection or project authority. Internal
+runtime and revision-scoped project session IDs are likewise private local
+correlation coordinates, not host-native identity, actor identity, or security
+credentials.
 
 The supported MCP process uses stdin/stdout and opens no network transport
 listener. This is a process topology fact, not network sandboxing: Codex or

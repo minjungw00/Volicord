@@ -35,7 +35,10 @@ pub(crate) use volicord_store::{
         DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport, WorkflowMetricEvent,
         WorkflowMetricKind, WorkflowMetricOutcome,
     },
-    guards::{agent_session, list_guard_installations, upsert_agent_session, AgentSessionUpsert},
+    guards::{
+        current_project_agent_session_identity, list_guard_installations, upsert_agent_session,
+        AgentSessionUpsert,
+    },
     operational_sessions::{
         record_mcp_graceful_close, record_mcp_initialize, record_mcp_initialized_notification,
         record_mcp_safe_read_only_tool_call, record_mcp_terminal_protocol_failure,
@@ -51,8 +54,7 @@ pub(crate) use volicord_store::{
 #[cfg(test)]
 pub(crate) use volicord_store::guards::guard_health_record;
 pub(crate) use volicord_types::{
-    managed_stdio_session_id, mcp_request_schema, mcp_response_schema,
-    validate_managed_host_native_session_id, validate_managed_stdio_session_id, ActorSource,
+    mcp_request_schema, mcp_response_schema, validate_managed_host_native_session_id, ActorSource,
     AgentConnectionId, AgentConnectionMode, AgentRuntimeSessionId, AgentSessionId,
     AuthorityReceipt, CheckCloseRequest, CloseTaskRequest, EffectKind, ErrorCode,
     GetOperationResultRequest, IdempotencyKey, IntakeRequest, IntegrationProfile,

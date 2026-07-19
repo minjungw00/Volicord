@@ -100,10 +100,12 @@ an integer, compare versions, inspect field presence to select a decoder, or
 try another profile. The exact open result and failure category remain with
 [Storage Versioning](storage-versioning.md).
 
-Adding the immutable Agent Connection `integration_instance_id` changes both
-schema digests. A Runtime Home carrying the immediately prior schema manifest
-is rejected as an unsupported storage profile with explicit reinitialization
-guidance. Store does not add the column or synthesize values in place.
+Adding revision-scoped project Agent Session identities changes both schema
+digests: Registry bindings gain `project_integration_revision`, and project
+Agent Session revisions become SQL-immutable. A Runtime Home carrying the
+immediately prior schema manifest is rejected as an unsupported storage profile
+with explicit reinitialization guidance. Store does not add the column, rewrite
+historical session IDs, or synthesize values in place.
 
 ## Canonical SQL Sources
 
@@ -360,6 +362,11 @@ CREATE TABLE mcp_runtime_project_session_bindings (
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
+  project_integration_revision TEXT NOT NULL CHECK (
+    length(project_integration_revision) = 71
+    AND substr(project_integration_revision, 1, 7) = 'sha256:'
+    AND substr(project_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
   host_session_id TEXT NOT NULL,
   bound_at TEXT NOT NULL,
   PRIMARY KEY (runtime_session_id, host_session_id),
@@ -376,7 +383,9 @@ CREATE TABLE mcp_runtime_project_session_bindings (
 );
 
 CREATE INDEX idx_mcp_runtime_project_bindings_project
-  ON mcp_runtime_project_session_bindings (project_internal_id, connection_internal_id, bound_at);
+  ON mcp_runtime_project_session_bindings (
+    project_internal_id, connection_internal_id, project_integration_revision, bound_at
+  );
 
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
@@ -1256,6 +1265,12 @@ CREATE TABLE agent_sessions (
   CHECK (last_observed_at >= first_observed_at),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
+
+CREATE TRIGGER agent_sessions_project_integration_revision_immutable
+BEFORE UPDATE OF project_integration_revision ON agent_sessions
+BEGIN
+  SELECT RAISE(ABORT, 'agent_sessions.project_integration_revision is immutable');
+END;
 
 CREATE TABLE guard_events (
   project_id TEXT NOT NULL,

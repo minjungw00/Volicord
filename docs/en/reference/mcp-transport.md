@@ -113,12 +113,17 @@ only the cooperative protocol behavior it actually records.
 
 A valid Guard observation may create or update a project `agent_sessions` row
 before any MCP runtime is known. That row stores no fabricated or sentinel
-runtime coordinate. The first actual managed `tools/call` carrying the same
-Connection-bound host session identity reserves the exact Registry
-runtime/project/host-session binding and attaches that runtime to the project
-row. The reservation and attach are replay-safe: if reservation succeeds but
-the project write is interrupted, the identical call can finish the attach.
-CLI preflight never performs this binding.
+runtime coordinate. Before an actual project is selected, MCP runtime state
+retains only the exact native session, thread, and turn metadata; it does not
+derive or search for a Connection-only internal session coordinate. After
+project selection, the Store resolves the current project integration revision
+and derives the project Agent Session ID from the Connection, that exact
+revision, and the native session. The first actual managed `tools/call`
+reserves the exact Registry runtime/project/revision/host-session binding and
+attaches that runtime to the project row. The reservation and attach are
+replay-safe: if reservation succeeds but the project write is interrupted, the
+identical call can finish the attach. CLI preflight never performs this
+binding.
 
 Before constructing Core invocation context for a project tool, the adapter
 validates the authoritative current Registry runtime session, the exact
@@ -127,8 +132,9 @@ row. The Connection must exist and be enabled; the project must exist and
 remain a Connection Project; the runtime session must be a current
 `managed_host` session owned by that Connection; and the project session must
 be non-null-bound to the same runtime, Connection, project, and host session.
-Both integration revisions must match their current Connection and project
-inputs, and the current Connection mode must allow the requested operation
+The Registry binding revision and project row revision must be identical, and
+both integration revisions must match their current Connection and project
+inputs. The current Connection mode must allow the requested operation
 category. An unbound Guard-only session retains Guard history but cannot
 authorize a tool call. Every real mode transition advances the Store-owned
 Connection integration generation, so runtime sessions, project Agent Sessions,

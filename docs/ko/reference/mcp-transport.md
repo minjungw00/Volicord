@@ -103,19 +103,24 @@ Session은 실제로 기록한 협력적 protocol 동작만 증명합니다.
 
 유효한 Guard 관찰은 MCP runtime을 아직 모르는 상태에서 프로젝트 `agent_sessions` row를
 생성하거나 갱신할 수 있습니다. 이 row에는 조작한 값이나 sentinel runtime 좌표를 저장하지
-않습니다. 동일한 Connection-bound host session identity를 운반한 첫 실제 managed
-`tools/call`이 정확한 Registry runtime/project/host-session binding을 예약하고 그 runtime을
-프로젝트 row에 붙입니다. 예약 뒤 프로젝트 쓰기가 중단되어도 동일한 호출을 재실행하면
-attach를 안전하게 완료할 수 있습니다. CLI preflight는 이 binding을 수행하지 않습니다.
+않습니다. 실제 프로젝트를 선택하기 전 MCP runtime 상태는 정확한 native session, thread,
+turn metadata만 유지하고 Connection만으로 내부 session 좌표를 도출하거나 검색하지
+않습니다. 프로젝트를 선택한 뒤 Store가 현재 프로젝트 통합 revision을 결정하고 Connection,
+그 정확한 revision, native session으로 프로젝트 Agent Session ID를 도출합니다. 첫 실제
+managed `tools/call`은 정확한 Registry runtime/project/revision/host-session binding을
+예약하고 그 runtime을 프로젝트 row에 붙입니다. 예약 뒤 프로젝트 쓰기가 중단되어도 동일한
+호출을 재실행하면 attach를 안전하게 완료할 수 있습니다. CLI preflight는 이 binding을
+수행하지 않습니다.
 
 프로젝트 도구의 Core 호출 맥락을 만들기 전에 어댑터는 권위 있는 현재 Registry runtime
 session, 정확한 `mcp_runtime_project_session_bindings` row, 프로젝트 `agent_sessions` row를
 검증합니다. Connection이 존재하고 활성 상태여야 하며 프로젝트가 존재하고 Connection
 Project로 남아 있어야 합니다. Runtime session은 해당 Connection 소유의 현재
 `managed_host` session이어야 합니다. 프로젝트 session은 null이 아닌 runtime binding을
-가지고 동일한 runtime, Connection, 프로젝트, host session에 속해야 합니다. 두 통합
-revision은 현재 Connection과 프로젝트 입력에 일치해야 하며 현재 Connection mode가 요청한
-operation category를 허용해야 합니다. 결속되지 않은 Guard-only session은 Guard 이력을
+가지고 동일한 runtime, Connection, 프로젝트, host session에 속해야 합니다. Registry
+binding revision과 프로젝트 row revision이 서로 같아야 하고, 두 통합 revision은 현재
+Connection과 프로젝트 입력에 일치해야 합니다. 현재 Connection mode가 요청한 operation
+category를 허용해야 합니다. 결속되지 않은 Guard-only session은 Guard 이력을
 보관하지만 도구 호출을 승인할 수 없습니다. 실제 mode 전환마다 Store 소유 Connection
 integration generation이 증가하므로, 이전 모든 generation의 runtime session, 프로젝트
 Agent Session, Guard event는 나중에 Connection이 같은 mode 값으로 돌아가더라도 이력으로

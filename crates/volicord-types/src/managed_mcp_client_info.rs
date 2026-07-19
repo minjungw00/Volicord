@@ -11,8 +11,8 @@ pub const CODEX_MANAGED_MCP_CLIENT_NAME: &str = "codex-mcp-client";
 /// Maximum accepted byte length for one host-native managed stdio session identifier.
 pub const MAX_MANAGED_HOST_NATIVE_SESSION_ID_BYTES: usize = 256;
 
-const MANAGED_STDIO_SESSION_DOMAIN: &[u8] = b"volicord.managed-stdio-session\0";
-const MANAGED_STDIO_SESSION_ID_PREFIX: &str = "mcp_stdio_";
+const PROJECT_AGENT_SESSION_DOMAIN: &[u8] = b"volicord.project-agent-session\0";
+const PROJECT_AGENT_SESSION_ID_PREFIX: &str = "agent_session_";
 
 /// Validation failure for one host-native managed stdio session identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,31 +28,35 @@ impl fmt::Display for ManagedHostNativeSessionIdError {
 
 impl Error for ManagedHostNativeSessionIdError {}
 
-/// Validation failure for an internal managed stdio session coordinate.
+/// Validation failure for an internal project Agent Session coordinate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ManagedStdioSessionIdError {
+pub enum ProjectAgentSessionIdError {
     InvalidConnectionInternalId,
+    InvalidProjectIntegrationRevision,
     InvalidNativeSessionId,
     InvalidSessionId,
 }
 
-impl fmt::Display for ManagedStdioSessionIdError {
+impl fmt::Display for ProjectAgentSessionIdError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::InvalidConnectionInternalId => {
-                "managed stdio session requires a non-empty Agent Connection identity"
+                "project Agent Session requires a non-empty Agent Connection identity"
+            }
+            Self::InvalidProjectIntegrationRevision => {
+                "project Agent Session requires a canonical project integration revision"
             }
             Self::InvalidNativeSessionId => {
-                "managed stdio session requires an exact native session identity"
+                "project Agent Session requires an exact native session identity"
             }
             Self::InvalidSessionId => {
-                "managed stdio session identity must use the canonical internal digest coordinate"
+                "project Agent Session identity must use the canonical internal digest coordinate"
             }
         })
     }
 }
 
-impl Error for ManagedStdioSessionIdError {}
+impl Error for ProjectAgentSessionIdError {}
 
 /// Validates one exact host-native session identifier used by managed stdio.
 pub fn validate_managed_host_native_session_id(
@@ -70,40 +74,45 @@ pub fn validate_managed_host_native_session_id(
     Ok(())
 }
 
-/// Builds the private connection-bound coordinate used for one managed stdio session.
-pub fn managed_stdio_session_id(
+/// Builds the private revision-scoped coordinate used for one project Agent Session.
+pub fn project_agent_session_id(
     connection_internal_id: &str,
+    project_integration_revision: &str,
     native_session_id: &str,
-) -> Result<String, ManagedStdioSessionIdError> {
+) -> Result<String, ProjectAgentSessionIdError> {
     if connection_internal_id.is_empty() || connection_internal_id.as_bytes().contains(&0) {
-        return Err(ManagedStdioSessionIdError::InvalidConnectionInternalId);
+        return Err(ProjectAgentSessionIdError::InvalidConnectionInternalId);
     }
+    crate::IntegrationRevision::parse(project_integration_revision.to_owned())
+        .map_err(|_| ProjectAgentSessionIdError::InvalidProjectIntegrationRevision)?;
     validate_managed_host_native_session_id(native_session_id)
-        .map_err(|_| ManagedStdioSessionIdError::InvalidNativeSessionId)?;
+        .map_err(|_| ProjectAgentSessionIdError::InvalidNativeSessionId)?;
     let mut digest = Sha256::new();
-    digest.update(MANAGED_STDIO_SESSION_DOMAIN);
+    digest.update(PROJECT_AGENT_SESSION_DOMAIN);
     digest.update(connection_internal_id.as_bytes());
+    digest.update([0]);
+    digest.update(project_integration_revision.as_bytes());
     digest.update([0]);
     digest.update(native_session_id.as_bytes());
     Ok(format!(
-        "{MANAGED_STDIO_SESSION_ID_PREFIX}{:x}",
+        "{PROJECT_AGENT_SESSION_ID_PREFIX}{:x}",
         digest.finalize()
     ))
 }
 
-/// Validates one internal managed stdio session coordinate read from storage.
-pub fn validate_managed_stdio_session_id(
+/// Validates one internal project Agent Session coordinate read from storage.
+pub fn validate_project_agent_session_id(
     session_id: &str,
-) -> Result<(), ManagedStdioSessionIdError> {
-    let Some(digest) = session_id.strip_prefix(MANAGED_STDIO_SESSION_ID_PREFIX) else {
-        return Err(ManagedStdioSessionIdError::InvalidSessionId);
+) -> Result<(), ProjectAgentSessionIdError> {
+    let Some(digest) = session_id.strip_prefix(PROJECT_AGENT_SESSION_ID_PREFIX) else {
+        return Err(ProjectAgentSessionIdError::InvalidSessionId);
     };
     if digest.len() != 64
         || !digest
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
     {
-        return Err(ManagedStdioSessionIdError::InvalidSessionId);
+        return Err(ProjectAgentSessionIdError::InvalidSessionId);
     }
     Ok(())
 }
@@ -258,17 +267,31 @@ mod tests {
     }
 
     #[test]
-    fn managed_stdio_session_coordinate_is_connection_bound_and_exact() {
-        let first = managed_stdio_session_id("connection-a", "native-session")
+    fn project_agent_session_coordinate_is_revision_scoped_and_exact() {
+        let revision_a = format!("sha256:{}", "a".repeat(64));
+        let revision_b = format!("sha256:{}", "b".repeat(64));
+        let first = project_agent_session_id("connection-a", &revision_a, "native-session")
             .expect("valid context should bind");
-        let replay = managed_stdio_session_id("connection-a", "native-session")
+        let replay = project_agent_session_id("connection-a", &revision_a, "native-session")
             .expect("same context should replay");
-        let other = managed_stdio_session_id("connection-b", "native-session")
-            .expect("other connection should bind");
+        let other_connection =
+            project_agent_session_id("connection-b", &revision_a, "native-session")
+                .expect("other connection should bind");
+        let other_revision =
+            project_agent_session_id("connection-a", &revision_b, "native-session")
+                .expect("other revision should bind");
+        let other_native =
+            project_agent_session_id("connection-a", &revision_a, "native-session-other")
+                .expect("other native session should bind");
         assert_eq!(first, replay);
-        assert_ne!(first, other);
-        assert!(validate_managed_stdio_session_id(&first).is_ok());
-        assert!(validate_managed_stdio_session_id(&first.to_uppercase()).is_err());
+        assert_ne!(first, other_connection);
+        assert_ne!(first, other_revision);
+        assert_ne!(first, other_native);
+        assert!(
+            project_agent_session_id("connection-a", "not-a-revision", "native-session").is_err()
+        );
+        assert!(validate_project_agent_session_id(&first).is_ok());
+        assert!(validate_project_agent_session_id(&first.to_uppercase()).is_err());
     }
 
     #[test]

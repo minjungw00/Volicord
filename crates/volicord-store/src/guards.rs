@@ -10,7 +10,7 @@ use serde_json::Value;
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_types::{
     canonical_json_sha256, guard_manifest_from_json, guard_manifest_matches_owner_binding,
-    managed_stdio_session_id, validate_managed_host_native_session_id, GuardDecision,
+    project_agent_session_id, validate_managed_host_native_session_id, GuardDecision,
     GuardHookContractStatus, GuardHookPhase, GuardManifestOwnerBinding, IntegrationRevision,
     ProjectIntegrationRevisionBasis, PromptCaptureStatus, UnrecordedChangeStatus, UtcTimestamp,
 };
@@ -64,7 +64,6 @@ pub struct GuardInstallationRecord {
 /// Idempotent project Agent Session observation and optional runtime attachment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentSessionUpsert {
-    pub session_id: String,
     pub runtime_session_id: Option<String>,
     pub connection_internal_id: String,
     pub guard_installation_id: Option<String>,
@@ -72,6 +71,14 @@ pub struct AgentSessionUpsert {
     pub host_thread_id: String,
     pub host_turn_id: String,
     pub observed_at: String,
+}
+
+/// Store-derived current project Agent Session identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectAgentSessionIdentity {
+    pub session_id: String,
+    pub project_integration_revision: String,
+    pub guard_installation_id: Option<String>,
 }
 
 /// Agent Session row stored in project `state.sqlite`.
@@ -521,6 +528,135 @@ pub fn list_guard_installations(
         .collect()
 }
 
+/// Derives the only current project Agent Session identity for native host metadata.
+pub fn current_project_agent_session_identity(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    connection_internal_id: &str,
+    asserted_guard_installation_id: Option<&str>,
+    host_session_id: &str,
+) -> StoreResult<ProjectAgentSessionIdentity> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    if let Some(guard_installation_id) = asserted_guard_installation_id {
+        validate_identifier("guard_installation_id", guard_installation_id)?;
+    }
+    validate_managed_host_native_session_id(host_session_id).map_err(|_| {
+        StoreError::InvalidInput {
+            detail: "host_session_id must be valid managed-host identity metadata".to_owned(),
+        }
+    })?;
+    let runtime_home = runtime_home.as_ref();
+    let connection = agent_connection_record_read_only(runtime_home, connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+        })?;
+    if !connection.enabled {
+        return Err(StoreError::Conflict {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+            detail: "Agent Connection is disabled".to_owned(),
+        });
+    }
+    if !is_agent_connection_project_allowed(runtime_home, connection_internal_id, project_id)? {
+        return Err(StoreError::NotFound {
+            entity: "connection_project",
+            id: format!("{connection_internal_id}/{project_id}"),
+        });
+    }
+    let project =
+        open_project_for_read(runtime_home, project_id)?.ok_or_else(|| StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        })?;
+    let installations =
+        list_guard_installations(runtime_home, connection_internal_id, Some(project_id))?;
+    let guard_ownership = match installations.as_slice() {
+        [] => None,
+        [installation] => {
+            if asserted_guard_installation_id
+                .is_some_and(|asserted| asserted != installation.guard_installation_id)
+            {
+                return Err(StoreError::Conflict {
+                    entity: "guard_installation",
+                    id: asserted_guard_installation_id
+                        .unwrap_or_default()
+                        .to_owned(),
+                    detail: "asserted Guard installation is not the current project installation"
+                        .to_owned(),
+                });
+            }
+            validate_stored_guard_installation_manifest_binding(
+                installation,
+                &connection,
+                &project.project.repo_root,
+            )?;
+            let manifest = current_guard_manifest(installation)?;
+            Some((
+                installation.guard_installation_id.clone(),
+                manifest.policy_hash.into_inner(),
+            ))
+        }
+        _ => {
+            return Err(StoreError::Conflict {
+                entity: "guard_installation",
+                id: format!("{connection_internal_id}/{project_id}"),
+                detail: "project has multiple current Guard installations".to_owned(),
+            })
+        }
+    };
+    if asserted_guard_installation_id.is_some() && guard_ownership.is_none() {
+        return Err(StoreError::Conflict {
+            entity: "guard_installation",
+            id: asserted_guard_installation_id
+                .unwrap_or_default()
+                .to_owned(),
+            detail: "asserted Guard installation is not current for the project".to_owned(),
+        });
+    }
+    let policy_fingerprint = project
+        .conn
+        .query_row(
+            "SELECT policy_fingerprint FROM project_workflow_policies WHERE project_id = ?1",
+            [&project.project.project_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .map(Ok)
+        .unwrap_or_else(|| {
+            canonical_json_sha256(&serde_json::json!({"project_policy": "repository_default"}))
+                .map(|digest| digest.into_inner())
+                .map_err(|_| StoreError::InvalidInput {
+                    detail: "default project policy revision could not be derived".to_owned(),
+                })
+        })?;
+    let connection_revision = connection_integration_revision(&connection)?;
+    let project_revision = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
+        connection_integration_revision: connection_revision.as_str(),
+        project_id: &project.project.project_id,
+        policy_fingerprint: &policy_fingerprint,
+        guard_installation_id: guard_ownership.as_ref().map(|value| value.0.as_str()),
+        guard_policy_hash: guard_ownership.as_ref().map(|value| value.1.as_str()),
+    })
+    .map_err(|error| StoreError::InvalidInput {
+        detail: format!("project integration revision could not be derived: {error}"),
+    })?;
+    let session_id = project_agent_session_id(
+        connection_internal_id,
+        project_revision.as_str(),
+        host_session_id,
+    )
+    .map_err(|error| StoreError::InvalidInput {
+        detail: format!("project Agent Session identity could not be derived: {error}"),
+    })?;
+    Ok(ProjectAgentSessionIdentity {
+        session_id,
+        project_integration_revision: project_revision.into_inner(),
+        guard_installation_id: guard_ownership.map(|value| value.0),
+    })
+}
+
 /// Creates or updates one project Agent Session and optionally attaches its runtime.
 pub fn upsert_agent_session(
     runtime_home: impl AsRef<Path>,
@@ -534,36 +670,6 @@ pub fn upsert_agent_session(
             detail: "observed_at must be a canonical RFC 3339 timestamp".to_owned(),
         })?
         .to_canonical_string();
-    let expected_session_id = managed_stdio_session_id(
-        &input.connection_internal_id,
-        &input.host_session_id,
-    )
-    .map_err(|_| StoreError::InvalidInput {
-        detail: "Agent Session host identity cannot produce its connection-bound session id"
-            .to_owned(),
-    })?;
-    if expected_session_id != input.session_id {
-        return Err(StoreError::Conflict {
-            entity: "agent_session",
-            id: input.session_id,
-            detail: "session_id does not match the Connection-bound host session identity"
-                .to_owned(),
-        });
-    }
-    let connection =
-        agent_connection_record_read_only(&runtime_home, &input.connection_internal_id)?
-            .ok_or_else(|| StoreError::NotFound {
-                entity: "agent_connection",
-                id: input.connection_internal_id.clone(),
-            })?;
-    if !connection.enabled {
-        return Err(StoreError::Conflict {
-            entity: "agent_connection",
-            id: input.connection_internal_id.clone(),
-            detail: "Agent Connection is disabled".to_owned(),
-        });
-    }
-    let connection_revision = connection_integration_revision(&connection)?;
     let runtime_session = input
         .runtime_session_id
         .as_deref()
@@ -585,82 +691,35 @@ pub fn upsert_agent_session(
                 .to_owned(),
         });
     }
-    let mut project = open_guard_project(&runtime_home, project_id, &input.connection_internal_id)?;
-    let guard_ownership = input
-        .guard_installation_id
-        .as_deref()
-        .map(|guard_installation_id| {
-            let installation = guard_installation(&runtime_home, guard_installation_id)?
-                .ok_or_else(|| StoreError::NotFound {
-                    entity: "guard_installation",
-                    id: guard_installation_id.to_owned(),
-            })?;
-            if installation.connection_internal_id != input.connection_internal_id
-                || installation.project_id != project_id
-            {
-                return Err(StoreError::Conflict {
-                    entity: "guard_installation",
-                    id: guard_installation_id.to_owned(),
-                    detail: "Guard installation is not owned by the Agent Session Connection and project"
-                        .to_owned(),
-                });
-            }
-            validate_stored_guard_installation_manifest_binding(
-                &installation,
-                &connection,
-                &project.project.repo_root,
-            )?;
-            let manifest = current_guard_manifest(&installation)?;
-            Ok((
-                installation.guard_installation_id,
-                manifest.policy_hash.into_inner(),
-            ))
-        })
-        .transpose()?;
-    if let Some(runtime_session_id) = input.runtime_session_id.as_deref() {
+    let identity = if let Some(runtime_session_id) = input.runtime_session_id.as_deref() {
         // Reserve cross-database uniqueness first. A replay can finish the project attach.
-        bind_mcp_runtime_project_session(
+        let binding = bind_mcp_runtime_project_session(
             &runtime_home,
             runtime_session_id,
             &input.connection_internal_id,
             project_id,
-            &input.session_id,
+            input.guard_installation_id.as_deref(),
             &input.host_session_id,
             &observed_at,
         )?;
-    }
+        ProjectAgentSessionIdentity {
+            session_id: binding.session_id,
+            project_integration_revision: binding.project_integration_revision,
+            guard_installation_id: input.guard_installation_id.clone(),
+        }
+    } else {
+        current_project_agent_session_identity(
+            &runtime_home,
+            project_id,
+            &input.connection_internal_id,
+            input.guard_installation_id.as_deref(),
+            &input.host_session_id,
+        )?
+    };
+    let mut project = open_guard_project(&runtime_home, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
-    let policy_fingerprint = tx
-        .query_row(
-            "SELECT policy_fingerprint FROM project_workflow_policies WHERE project_id = ?1",
-            [&project.project.project_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .map(Ok)
-        .unwrap_or_else(|| {
-            canonical_json_sha256(&serde_json::json!({"project_policy": "repository_default"}))
-                .map(|digest| digest.into_inner())
-                .map_err(|_| StoreError::InvalidInput {
-                    detail: "default project policy revision could not be derived".to_owned(),
-                })
-        })?;
-    let project_revision = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
-        connection_integration_revision: connection_revision.as_str(),
-        project_id: &project.project.project_id,
-        policy_fingerprint: &policy_fingerprint,
-        guard_installation_id: guard_ownership
-            .as_ref()
-            .map(|ownership| ownership.0.as_str()),
-        guard_policy_hash: guard_ownership
-            .as_ref()
-            .map(|ownership| ownership.1.as_str()),
-    })
-    .map_err(|error| StoreError::InvalidInput {
-        detail: format!("project integration revision could not be derived: {error}"),
-    })?;
     if let Some(existing) =
-        agent_session_from_conn(&tx, &project.project.project_id, &input.session_id)?
+        agent_session_from_conn(&tx, &project.project.project_id, &identity.session_id)?
     {
         if existing.connection_internal_id != input.connection_internal_id
             || existing.host_session_id != input.host_session_id
@@ -668,7 +727,7 @@ pub fn upsert_agent_session(
         {
             return Err(StoreError::Conflict {
                 entity: "agent_session",
-                id: input.session_id,
+                id: identity.session_id,
                 detail: "Agent Session is already bound to another Connection or host identity"
                     .to_owned(),
             });
@@ -680,10 +739,17 @@ pub fn upsert_agent_session(
             if existing_runtime != requested_runtime {
                 return Err(StoreError::Conflict {
                     entity: "agent_session",
-                    id: input.session_id,
+                    id: identity.session_id,
                     detail: "Agent Session is already attached to another runtime".to_owned(),
                 });
             }
+        }
+        if existing.project_integration_revision != identity.project_integration_revision {
+            return Err(StoreError::Conflict {
+                entity: "agent_session",
+                id: identity.session_id,
+                detail: "Agent Session integration revision is immutable".to_owned(),
+            });
         }
         let existing_first = strict_stored_timestamp(
             "agent_sessions",
@@ -714,16 +780,14 @@ pub fn upsert_agent_session(
         tx.execute(
             "UPDATE agent_sessions
                 SET runtime_session_id = COALESCE(runtime_session_id, ?3),
-                    project_integration_revision = ?4,
-                    last_host_turn_id = ?5,
-                    first_observed_at = ?6,
-                    last_observed_at = ?7
+                    last_host_turn_id = ?4,
+                    first_observed_at = ?5,
+                    last_observed_at = ?6
               WHERE project_id = ?1 AND session_id = ?2",
             params![
                 project.project.project_id,
-                input.session_id,
+                identity.session_id,
                 input.runtime_session_id,
-                project_revision.as_str(),
                 last_host_turn_id,
                 first_observed_at,
                 last_observed_at,
@@ -738,10 +802,10 @@ pub fn upsert_agent_session(
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 project.project.project_id,
-                input.session_id,
+                identity.session_id,
                 input.runtime_session_id,
                 input.connection_internal_id,
-                project_revision.as_str(),
+                identity.project_integration_revision,
                 input.host_session_id,
                 input.host_thread_id,
                 input.host_turn_id,
@@ -755,7 +819,7 @@ pub fn upsert_agent_session(
     agent_session_by_conn(
         &project.conn,
         &project.project.project_id,
-        &input.session_id,
+        &identity.session_id,
     )
 }
 
@@ -787,80 +851,28 @@ pub fn agent_session_matches_current_integration(
     let Some(runtime_session_id) = session.runtime_session_id.as_deref() else {
         return Ok(false);
     };
-    let runtime = match current_managed_mcp_runtime_session_for_connection(
+    match current_managed_mcp_runtime_session_for_connection(
         runtime_home,
         runtime_session_id,
         &session.connection_internal_id,
     ) {
-        Ok(runtime) => runtime,
+        Ok(_) => {}
         Err(StoreError::Conflict { .. } | StoreError::NotFound { .. }) => return Ok(false),
         Err(error) => return Err(error),
     };
-    let Some(connection) =
-        agent_connection_record_read_only(runtime_home, &session.connection_internal_id)?
-    else {
-        return Ok(false);
+    let identity = match current_project_agent_session_identity(
+        runtime_home,
+        &session.project_id,
+        &session.connection_internal_id,
+        guard_installation_id,
+        &session.host_session_id,
+    ) {
+        Ok(identity) => identity,
+        Err(StoreError::Conflict { .. } | StoreError::NotFound { .. }) => return Ok(false),
+        Err(error) => return Err(error),
     };
-    let Some(project) = open_project_for_read(runtime_home, &session.project_id)? else {
-        return Ok(false);
-    };
-    let guard_ownership = guard_installation_id
-        .map(|installation_id| -> StoreResult<Option<(String, String)>> {
-            let installation =
-                guard_installation(runtime_home, installation_id)?.ok_or_else(|| {
-                    StoreError::NotFound {
-                        entity: "guard_installation",
-                        id: installation_id.to_owned(),
-                    }
-                })?;
-            if installation.connection_internal_id != session.connection_internal_id
-                || installation.project_id != session.project_id
-            {
-                return Ok(None);
-            }
-            validate_stored_guard_installation_manifest_binding(
-                &installation,
-                &connection,
-                &project.project.repo_root,
-            )?;
-            let manifest = current_guard_manifest(&installation)?;
-            Ok(Some((
-                installation.guard_installation_id,
-                manifest.policy_hash.into_inner(),
-            )))
-        })
-        .transpose()?
-        .flatten();
-    if guard_installation_id.is_some() && guard_ownership.is_none() {
-        return Ok(false);
-    }
-    let policy_fingerprint = project
-        .conn
-        .query_row(
-            "SELECT policy_fingerprint FROM project_workflow_policies WHERE project_id = ?1",
-            [&session.project_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .map(Ok)
-        .unwrap_or_else(|| {
-            canonical_json_sha256(&serde_json::json!({"project_policy": "repository_default"}))
-                .map(|digest| digest.into_inner())
-                .map_err(|_| StoreError::InvalidInput {
-                    detail: "default project policy revision could not be derived".to_owned(),
-                })
-        })?;
-    let revision = IntegrationRevision::for_project(ProjectIntegrationRevisionBasis {
-        connection_integration_revision: &runtime.connection_integration_revision,
-        project_id: &session.project_id,
-        policy_fingerprint: &policy_fingerprint,
-        guard_installation_id: guard_ownership.as_ref().map(|value| value.0.as_str()),
-        guard_policy_hash: guard_ownership.as_ref().map(|value| value.1.as_str()),
-    })
-    .map_err(|error| StoreError::InvalidInput {
-        detail: format!("project integration revision could not be derived: {error}"),
-    })?;
-    Ok(revision.as_str() == session.project_integration_revision)
+    Ok(identity.session_id == session.session_id
+        && identity.project_integration_revision == session.project_integration_revision)
 }
 
 /// Inserts one project-scoped guard event row.
@@ -2286,7 +2298,6 @@ fn project_git_info_exclude_path(repo_root: &Path) -> std::io::Result<Option<Pat
 }
 
 fn validate_agent_session_upsert(input: &AgentSessionUpsert) -> StoreResult<()> {
-    validate_identifier("session_id", &input.session_id)?;
     if let Some(runtime_session_id) = &input.runtime_session_id {
         validate_identifier("runtime_session_id", runtime_session_id)?;
     }
@@ -2752,9 +2763,12 @@ fn validate_decoded_agent_session(session: AgentSessionRecord) -> StoreResult<Ag
         validate_identifier("runtime_session_id", runtime_session_id)
             .map_err(|_| corrupt("runtime_session_id"))?;
     }
-    let expected_session_id =
-        managed_stdio_session_id(&session.connection_internal_id, &session.host_session_id)
-            .map_err(|_| corrupt("session_id"))?;
+    let expected_session_id = project_agent_session_id(
+        &session.connection_internal_id,
+        &session.project_integration_revision,
+        &session.host_session_id,
+    )
+    .map_err(|_| corrupt("session_id"))?;
     if expected_session_id != session.session_id {
         return Err(corrupt("session_id"));
     }
@@ -3334,12 +3348,10 @@ mod tests {
             "2026-06-30T00:00:00Z",
         )?;
         let host_session_id = "session_guard_a";
-        let session_id = managed_stdio_session_id("conn_guard_a", host_session_id)?;
         let session = upsert_agent_session(
             fixture.runtime_home.path(),
             "project_guard_a",
             AgentSessionUpsert {
-                session_id: session_id.clone(),
                 runtime_session_id: Some(runtime_session_id),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: Some("guard_installation_a".to_owned()),
@@ -3349,6 +3361,7 @@ mod tests {
                 observed_at: "2026-06-30T00:02:00Z".to_owned(),
             },
         )?;
+        let session_id = session.session_id.clone();
         assert_eq!(session.session_id, session_id);
 
         let event = insert_guard_event(
@@ -3560,12 +3573,10 @@ mod tests {
             "conn_guard_a",
             "2026-06-30T00:59:00Z",
         )?;
-        let session_id = managed_stdio_session_id("conn_guard_a", "session_guard_a")?;
-        upsert_agent_session(
+        let session_id = upsert_agent_session(
             fixture.runtime_home.path(),
             "project_guard_a",
             AgentSessionUpsert {
-                session_id: session_id.clone(),
                 runtime_session_id: Some(runtime_session_id),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
@@ -3574,7 +3585,8 @@ mod tests {
                 host_turn_id: "turn_guard_a".to_owned(),
                 observed_at: "2026-06-30T01:00:00Z".to_owned(),
             },
-        )?;
+        )?
+        .session_id;
         insert_unrecorded_change(
             fixture.runtime_home.path(),
             "project_guard_a",

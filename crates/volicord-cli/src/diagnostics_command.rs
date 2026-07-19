@@ -468,8 +468,8 @@ mod tests {
     };
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
     use volicord_types::{
-        managed_stdio_session_id, ActorSource, AgentConnectionId, IntegrationProfile, JudgmentKind,
-        MethodName, ObservationConfidence, OperationCategory, ProjectId,
+        ActorSource, AgentConnectionId, IntegrationProfile, JudgmentKind, MethodName,
+        ObservationConfidence, OperationCategory, ProjectId,
     };
 
     use crate::cli::{DiagnosticsSessionArgs, DiagnosticsWorkflowMetricsArgs};
@@ -501,8 +501,7 @@ mod tests {
     #[test]
     fn json_report_exposes_bounded_operability_aggregates() {
         let fixture = CoreFixture::new("diagnostics-command-json").expect("fixture");
-        let session_id = managed_stdio_session_id(fixture.connection_id(), "session_json")
-            .expect("managed session coordinate");
+        let session_id = "mcp_runtime_session_json".to_owned();
         start_diagnostic_session(
             fixture.runtime_home_path(),
             DiagnosticSessionStart {
@@ -601,9 +600,7 @@ mod tests {
     #[test]
     fn workflow_metrics_returns_only_bounded_project_aggregates() {
         let fixture = CoreFixture::new("workflow-metrics-json").expect("fixture");
-        let session_id =
-            managed_stdio_session_id(fixture.connection_id(), "session_workflow_metrics")
-                .expect("managed session coordinate");
+        let session_id = "mcp_runtime_session_workflow_metrics".to_owned();
         start_diagnostic_session(
             fixture.runtime_home_path(),
             DiagnosticSessionStart {
@@ -848,8 +845,7 @@ mod tests {
         )
         .expect("pending user action");
         let before = authority_snapshot(&fixture);
-        let session_id = managed_stdio_session_id(fixture.connection_id(), "session_isolation")
-            .expect("managed session coordinate");
+        let session_id = "mcp_runtime_session_isolation".to_owned();
 
         start_diagnostic_session(
             fixture.runtime_home_path(),

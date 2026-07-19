@@ -111,10 +111,12 @@ allowlist 또는 명시적으로 선택한 구성원입니다. 임의의 파일�
 
 Registry는 process lifecycle milestone과 프로젝트 간 runtime/host session 예약을
 담당합니다. 각 프로젝트 데이터베이스는 프로젝트 Agent Session과 host
-session/thread/turn 상관관계를 담당합니다. 분리된 데이터베이스 파일 사이에는 SQLite
-foreign key를 집행할 수 없으므로 유효한 Guard 관찰은 먼저 unbound 프로젝트 session을
-만들 수 있습니다. 동일한 host identity의 첫 실제 managed MCP 도구 호출이 Registry
-owner를 검증하고 프로젝트 간 uniqueness를 예약한 뒤 그 runtime을 프로젝트 row에
+session/thread/turn 상관관계를 담당합니다. MCP는 실제 프로젝트를 선택할 때까지 이 native
+좌표를 유지하고, 그 뒤 Store가 Connection, 현재 프로젝트 통합 revision, native session으로
+프로젝트 session 좌표를 도출합니다. 분리된 데이터베이스 파일 사이에는 SQLite foreign key를
+집행할 수 없으므로 유효한 Guard 관찰은 먼저 unbound 프로젝트 session을 만들 수 있습니다.
+동일한 host identity의 첫 실제 managed MCP 도구 호출이 Registry owner를 검증하고 정확한
+프로젝트 revision과 함께 프로젝트 간 uniqueness를 예약한 뒤 그 runtime을 프로젝트 row에
 붙입니다. 정확한 replay는 중단된 attach를 복구합니다. Process row는 lease나 liveness
 signal이 아니므로 crash 뒤 열린 것처럼 남은 row와 concurrent process가 Guard 상관관계를
 선택하거나 막지 않습니다. `diagnostics.sqlite`는 분리된 best-effort carrier이며 운영 권한
@@ -128,6 +130,8 @@ signal이 아니므로 crash 뒤 열린 것처럼 남은 row와 concurrent proce
   identity, human identity가 아닙니다.
 - 검증된 운영 session은 로컬에서 관찰한 협력적 session 소유권과 현재 프로젝트 권한만
   증명합니다. Binary, host, client, actor, human identity를 증명하지 않습니다.
+- 내부 runtime/project session ID는 비공개 로컬 상관관계 좌표이며 host-native identity,
+  actor identity, credential이 아닙니다.
 - 변경 불가능한 Connection 통합 instance ID와 integration generation은 Runtime Home
   lifecycle 좌표입니다. Host나 actor identity, release certification, security
   credential, 호출자가 고르는 값이 아닙니다.

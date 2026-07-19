@@ -3,13 +3,11 @@ use std::{path::Path, str::FromStr, time::SystemTime};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
 use volicord_store::bootstrap::ProjectRecord;
-use volicord_types::{
-    managed_stdio_session_id, validate_managed_host_native_session_id, HostKind, IntegrationProfile,
-};
+use volicord_types::{validate_managed_host_native_session_id, HostKind, IntegrationProfile};
 
 use super::{
     args::{GuardInput, GuardOptions, GuardPhase},
-    stable_id, GuardCommandError, DEFAULT_INTEGRATION_PROFILE,
+    GuardCommandError, DEFAULT_INTEGRATION_PROFILE,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,10 +36,10 @@ pub(super) fn event_path_field<'a>(event: &'a Value, paths: &[&[&str]]) -> Optio
 }
 
 pub(super) fn guard_envelope(
-    phase: GuardPhase,
+    _phase: GuardPhase,
     options: &GuardOptions,
     input: &GuardInput,
-    project: &ProjectRecord,
+    _project: &ProjectRecord,
 ) -> Result<GuardEnvelope, GuardCommandError> {
     let connection_id = options
         .connection_id
@@ -110,24 +108,6 @@ pub(super) fn guard_envelope(
             ))
         })?;
     }
-    let session_id = Some(managed_builtin_session_id(
-        &host_kind,
-        &connection_id,
-        &input.raw_value,
-    )?);
-    let derived_event_id = || {
-        stable_id(
-            "guard_event",
-            &[
-                phase.command_name(),
-                &connection_id,
-                session_id.as_deref().unwrap_or(""),
-                &project.project_id,
-                &input.raw_sha256,
-            ],
-        )
-    };
-    let event_id = derived_event_id();
     let occurred_at = event_timestamp_or_now(
         &input.raw_value,
         &[&["occurred_at"], &["timestamp"], &["time"]],
@@ -143,8 +123,8 @@ pub(super) fn guard_envelope(
         )
     });
     Ok(GuardEnvelope {
-        event_id,
-        session_id,
+        event_id: String::new(),
+        session_id: None,
         host_session_id,
         host_thread_id,
         host_turn_id,
@@ -171,18 +151,6 @@ pub(super) fn managed_native_session_id<'a>(
     }
     let paths: &[&[&str]] = &[&["session_id"]];
     consistent_exact_event_string(event, paths, "native session id")
-}
-
-fn managed_builtin_session_id(
-    host_kind: &str,
-    connection_id: &str,
-    event: &Value,
-) -> Result<String, GuardCommandError> {
-    let native_session_id = managed_native_session_id(host_kind, event)?;
-    validate_managed_host_native_session_id(native_session_id)
-        .map_err(|error| GuardCommandError::Usage(error.to_string()))?;
-    managed_stdio_session_id(connection_id, native_session_id)
-        .map_err(|error| GuardCommandError::Usage(error.to_string()))
 }
 
 fn consistent_exact_event_string<'a>(
@@ -329,23 +297,27 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn builtin_native_session_maps_to_a_connection_bound_internal_coordinate() {
+    fn builtin_parser_retains_only_the_exact_native_session_coordinate() {
         let codex = json!({
             "session_id": "native.session:1",
             "thread_id": "different.subagent.thread"
         });
         assert_eq!(
-            managed_builtin_session_id("codex", "connection_alpha", &codex)
-                .expect("valid Codex identity should bind"),
-            managed_stdio_session_id("connection_alpha", "native.session:1")
-                .expect("valid managed context should bind")
+            managed_native_session_id("codex", &codex).expect("valid Codex identity should parse"),
+            "native.session:1"
         );
     }
 
     #[test]
     fn builtin_native_fields_and_internal_overrides_fail_closed() {
         for event in [json!({ "session_id": "native with space" }), json!({})] {
-            assert!(managed_builtin_session_id("codex", "connection", &event).is_err());
+            assert!(
+                managed_native_session_id("codex", &event)
+                    .map(validate_managed_host_native_session_id)
+                    .is_err()
+                    || managed_native_session_id("codex", &event)
+                        .is_ok_and(|value| validate_managed_host_native_session_id(value).is_err())
+            );
         }
 
         let different_thread = json!({
@@ -353,10 +325,9 @@ mod tests {
             "thread_id": "native-b"
         });
         assert_eq!(
-            managed_builtin_session_id("codex", "connection", &different_thread)
+            managed_native_session_id("codex", &different_thread)
                 .expect("thread identifiers do not replace the root session binding"),
-            managed_stdio_session_id("connection", "native-a")
-                .expect("valid managed context should bind")
+            "native-a"
         );
     }
 

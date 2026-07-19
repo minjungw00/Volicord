@@ -17,7 +17,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    canonical_json_bytes, validate_managed_stdio_session_id, IntegrationProfile, MethodName,
+    canonical_json_bytes, validate_project_agent_session_id, IntegrationProfile, MethodName,
     ObservationConfidence, UtcTimestamp,
 };
 
@@ -923,11 +923,8 @@ fn validate_diagnostic_session_start_shape(input: &DiagnosticSessionStart<'_>) -
         }
         _ => {}
     }
-    if matches!(
-        input.transport,
-        DiagnosticTransport::McpStdio | DiagnosticTransport::GuardHook
-    ) {
-        validate_managed_stdio_session_id(input.session_id).map_err(|error| {
+    if input.transport == DiagnosticTransport::GuardHook {
+        validate_project_agent_session_id(input.session_id).map_err(|error| {
             StoreError::InvalidInput {
                 detail: error.to_string(),
             }
@@ -1848,11 +1845,8 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::managed_stdio_session_id;
-
     fn managed_session_id(native_session_id: &str) -> String {
-        managed_stdio_session_id("connection_test", native_session_id)
-            .expect("fixture managed session identity")
+        format!("mcp_runtime_{native_session_id}")
     }
 
     fn start<'a>(session_id: &'a str) -> DiagnosticSessionStart<'a> {
@@ -1984,8 +1978,7 @@ mod tests {
     #[test]
     fn managed_session_diagnostics_bind_native_identity_to_the_connection() {
         let fixture = TempRuntimeHome::new("diagnostics-managed-binding").expect("fixture");
-        let session_id = managed_stdio_session_id("connection_test", "native-session")
-            .expect("managed context should bind");
+        let session_id = managed_session_id("native-session");
         start_diagnostic_session(fixture.path(), start(&session_id)).expect("initial start");
         record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
             .expect("initial event");
@@ -2016,8 +2009,7 @@ mod tests {
     #[test]
     fn managed_transport_requires_bound_valid_native_session_identity() {
         let fixture = TempRuntimeHome::new("diagnostics-managed-native-session").expect("fixture");
-        let session_id = managed_stdio_session_id("connection_test", "native-session")
-            .expect("managed context should bind");
+        let session_id = managed_session_id("native-session");
 
         let mut unbound = start(&session_id);
         unbound.host_kind = None;

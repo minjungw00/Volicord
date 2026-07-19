@@ -41,23 +41,28 @@ pub(crate) struct AgentSessionCoordinates<'a> {
     pub(crate) project_session_id: &'a str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OwnedAgentSessionCoordinates {
+    runtime_session_id: String,
+    project_session_id: String,
+}
+
+impl OwnedAgentSessionCoordinates {
+    pub(crate) fn borrowed(&self) -> AgentSessionCoordinates<'_> {
+        AgentSessionCoordinates {
+            runtime_session_id: &self.runtime_session_id,
+            project_session_id: &self.project_session_id,
+        }
+    }
+}
+
 /// Runtime-owned host correlation passed from the stdio lifecycle to project binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedAgentSessionBinding {
     pub(crate) runtime_session_id: String,
-    pub(crate) session_id: String,
     pub(crate) host_session_id: String,
     pub(crate) host_thread_id: String,
     pub(crate) host_turn_id: String,
-}
-
-impl ManagedAgentSessionBinding {
-    pub(crate) fn coordinates(&self) -> AgentSessionCoordinates<'_> {
-        AgentSessionCoordinates {
-            runtime_session_id: &self.runtime_session_id,
-            project_session_id: &self.session_id,
-        }
-    }
 }
 
 impl McpDerivedInvocationContext {
@@ -274,15 +279,16 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
     ) -> Result<PipelineResponse, McpAdapterError> {
-        if let Some(binding) = self.default_agent_session_binding.as_ref() {
-            self.ensure_agent_session_binding_for_tool(tool_name, &params, binding)?;
-        }
+        let coordinates = self
+            .default_agent_session_binding
+            .as_ref()
+            .map(|binding| self.ensure_agent_session_binding_for_tool(tool_name, &params, binding))
+            .transpose()?
+            .flatten();
         self.call_tool_for_session(
             tool_name,
             params,
-            self.default_agent_session_binding
-                .as_ref()
-                .map(ManagedAgentSessionBinding::coordinates),
+            coordinates.as_ref().map(|value| value.borrowed()),
         )
     }
 
@@ -447,11 +453,15 @@ impl McpAdapter {
         task_id: &TaskId,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
-        let session = session.or_else(|| {
+        let owned_session = if session.is_none() {
             self.default_agent_session_binding
                 .as_ref()
-                .map(ManagedAgentSessionBinding::coordinates)
-        });
+                .map(|binding| self.ensure_agent_session_binding(project_id, binding))
+                .transpose()?
+        } else {
+            None
+        };
+        let session = session.or_else(|| owned_session.as_ref().map(|value| value.borrowed()));
         let envelope = self.generated_envelope(
             STATUS_TOOL_NAME,
             project_id,
@@ -934,9 +944,9 @@ impl McpAdapter {
         tool_name: &str,
         params: &Value,
         binding: &ManagedAgentSessionBinding,
-    ) -> Result<(), McpAdapterError> {
+    ) -> Result<Option<OwnedAgentSessionCoordinates>, McpAdapterError> {
         if !PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) && tool_name != LIST_PROJECTS_TOOL_NAME {
-            return Ok(());
+            return Ok(None);
         }
         let object = params
             .as_object()
@@ -947,10 +957,10 @@ impl McpAdapter {
         let project_id = if tool_name == LIST_PROJECTS_TOOL_NAME {
             let projects = self.allowed_project_availabilities(tool_name)?;
             let [project] = projects.as_slice() else {
-                return Ok(());
+                return Ok(None);
             };
             if project.storage_capability != McpStorageCapability::ReadWrite {
-                return Ok(());
+                return Ok(None);
             }
             ProjectId::new(&project.project_id)
         } else {
@@ -958,28 +968,20 @@ impl McpAdapter {
                 optional_string_field(object, "project_selector", tool_name)?;
             self.select_project(requested_project_selector.as_deref())?
         };
-        if self.storage_capability_for_project(&project_id)? == McpStorageCapability::ReadWrite {
-            self.ensure_agent_session_binding(&project_id, binding)?;
-        }
-        Ok(())
+        self.ensure_agent_session_binding(&project_id, binding)
+            .map(Some)
     }
 
-    fn ensure_agent_session_binding(
+    pub(crate) fn ensure_agent_session_binding(
         &self,
         project_id: &ProjectId,
         binding: &ManagedAgentSessionBinding,
-    ) -> Result<(), McpAdapterError> {
+    ) -> Result<OwnedAgentSessionCoordinates, McpAdapterError> {
         let _connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
             "managed stdio session binding",
         )?;
-        validate_managed_stdio_session_id(&binding.session_id).map_err(|_| {
-            McpAdapterError::Environment(
-                "managed_stdio_session_identity_invalid: managed stdio requires a canonical internal session coordinate"
-                    .to_owned(),
-            )
-        })?;
         let guard_installations = list_guard_installations(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
@@ -1013,25 +1015,42 @@ impl McpAdapter {
         }
         let guard_installation_id =
             guard_installation.map(|installation| installation.guard_installation_id.clone());
-        let observed_at = CoreProjectStore::open(&self.runtime_home, project_id)
-            .and_then(|store| store.current_timestamp())
-            .map_err(McpAdapterError::Store)?;
-        upsert_agent_session(
-            &self.runtime_home,
-            project_id.as_str(),
-            AgentSessionUpsert {
-                session_id: binding.session_id.clone(),
-                runtime_session_id: Some(binding.runtime_session_id.clone()),
-                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
-                guard_installation_id,
-                host_session_id: binding.host_session_id.clone(),
-                host_thread_id: binding.host_thread_id.clone(),
-                host_turn_id: binding.host_turn_id.clone(),
-                observed_at,
-            },
-        )
-        .map_err(McpAdapterError::Store)?;
-        Ok(())
+        let session_id = if self.storage_capability_for_project(project_id)?
+            == McpStorageCapability::ReadWrite
+        {
+            let observed_at = CoreProjectStore::open(&self.runtime_home, project_id)
+                .and_then(|store| store.current_timestamp())
+                .map_err(McpAdapterError::Store)?;
+            upsert_agent_session(
+                &self.runtime_home,
+                project_id.as_str(),
+                AgentSessionUpsert {
+                    runtime_session_id: Some(binding.runtime_session_id.clone()),
+                    connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                    guard_installation_id,
+                    host_session_id: binding.host_session_id.clone(),
+                    host_thread_id: binding.host_thread_id.clone(),
+                    host_turn_id: binding.host_turn_id.clone(),
+                    observed_at,
+                },
+            )
+            .map_err(McpAdapterError::Store)?
+            .session_id
+        } else {
+            current_project_agent_session_identity(
+                &self.runtime_home,
+                project_id.as_str(),
+                self.context.connection_internal_id.as_str(),
+                guard_installation_id.as_deref(),
+                &binding.host_session_id,
+            )
+            .map_err(McpAdapterError::Store)?
+            .session_id
+        };
+        Ok(OwnedAgentSessionCoordinates {
+            runtime_session_id: binding.runtime_session_id.clone(),
+            project_session_id: session_id,
+        })
     }
 
     fn storage_capability_for_project(
