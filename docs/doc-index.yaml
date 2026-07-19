@@ -226,8 +226,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-20'
+  last_verified_on: '2026-07-20'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -1592,8 +1592,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-20'
+  last_verified_on: '2026-07-20'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:

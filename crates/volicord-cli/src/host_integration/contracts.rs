@@ -2,7 +2,7 @@ use std::{fmt, path::Path};
 
 use serde_json::Value;
 use toml_edit::DocumentMut;
-use volicord_types::GuardHookPhase;
+use volicord_types::{GuardHookPhase, GuardManagedArtifact};
 
 use super::HostKind;
 
@@ -118,9 +118,12 @@ pub fn classify_contract_config_path(
         .map(|component| component.as_os_str().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
     let file_name = path.file_name()?.to_string_lossy();
+    let hook_config_suffix = GuardManagedArtifact::HostHookConfig
+        .repository_relative_path()
+        .ok()?;
     if ends_with_components(&components, &[".codex", "config.toml"]) {
         Some(HostContractConfigKind::ProjectConfig)
-    } else if ends_with_components(&components, &[".codex", "hooks.json"]) {
+    } else if path.ends_with(hook_config_suffix) {
         Some(HostContractConfigKind::HookConfig)
     } else if components
         .windows(2)
@@ -266,9 +269,20 @@ fn validate_codex_hook_config(text: &str) -> Result<(), HostContractValidationEr
 }
 
 fn validate_codex_rule_config(text: &str) -> Result<(), HostContractValidationError> {
+    let dispatch_path = GuardManagedArtifact::HostHookDispatch
+        .repository_relative_path()
+        .map_err(|error| HostContractValidationError::new(error.to_string()))?;
+    let dispatch_file_name = dispatch_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            HostContractValidationError::new(
+                "Codex Guard dispatch artifact must have a UTF-8 file name",
+            )
+        })?;
     if !text.contains("prefix_rule(")
         || !text.contains("decision = \"prompt\"")
-        || !text.contains("volicord-dispatch.sh")
+        || !text.contains(dispatch_file_name)
     {
         return Err(HostContractValidationError::new(
             "Codex Guard rule config is missing its managed prefix rule",
@@ -283,4 +297,45 @@ fn ends_with_components(components: &[String], suffix: &[&str]) -> bool {
             .iter()
             .zip(suffix)
             .all(|(actual, expected)| actual == expected)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_hook_configuration_path_is_classified_from_the_artifact_spec() {
+        let canonical = Path::new("/work/product").join(
+            GuardManagedArtifact::HostHookConfig
+                .repository_relative_path()
+                .unwrap(),
+        );
+        assert_eq!(
+            classify_contract_config_path(HostKind::Codex, &canonical),
+            Some(HostContractConfigKind::HookConfig)
+        );
+        assert_eq!(
+            classify_contract_config_path(
+                HostKind::Codex,
+                Path::new("/work/product/.codex/other-hooks.json")
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn codex_rule_validation_requires_the_canonical_dispatch_file_name() {
+        let dispatch_path = GuardManagedArtifact::HostHookDispatch
+            .repository_relative_path()
+            .unwrap();
+        let dispatch_file_name = dispatch_path.file_name().unwrap().to_str().unwrap();
+        let canonical =
+            format!("prefix_rule(pattern = [{dispatch_file_name:?}], decision = \"prompt\")");
+        assert!(validate_codex_rule_config(&canonical).is_ok());
+        assert!(validate_codex_rule_config(
+            "prefix_rule(pattern = [\"another-dispatch.sh\"], decision = \"prompt\")"
+        )
+        .is_err());
+        assert!(validate_codex_rule_config(dispatch_file_name).is_err());
+    }
 }

@@ -21,7 +21,7 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_sha256, guard_manifest_from_json, ConnectionCheckKind, GuardHookPhase,
-    GuardManagedArtifactKind, IntegrationProfile, ProjectId, SummaryCard,
+    GuardManagedArtifact, GuardManagedArtifactKind, IntegrationProfile, ProjectId, SummaryCard,
 };
 
 use crate::{
@@ -559,6 +559,36 @@ fn inspect_personal_local_git_tracking(
     let mut unignored_paths = Vec::new();
     let mut audit_errors = Vec::new();
     let mut effective_personal_project_count = 0usize;
+    let mut local_paths = match always_local_paths() {
+        Ok(paths) => paths,
+        Err(error) => {
+            checks.push(
+                DiagnosticCheck::failed(
+                    "personal_local_git_tracking",
+                    "Guard managed-artifact path policy is invalid",
+                )
+                .with_details(json!({ "detail": error.to_string() })),
+            );
+            return;
+        }
+    };
+    match personal_only_paths() {
+        Ok(paths) => local_paths.extend(paths),
+        Err(error) => {
+            checks.push(
+                DiagnosticCheck::failed(
+                    "personal_local_git_tracking",
+                    "Guard managed-artifact path policy is invalid",
+                )
+                .with_details(json!({ "detail": error.to_string() })),
+            );
+            return;
+        }
+    }
+    let policy_local_path = local_paths
+        .iter()
+        .find(|path| path.artifact() == GuardManagedArtifact::VolicordPolicy)
+        .expect("always-local policy includes the typed Volicord policy coordinate");
 
     'projects: for project in &projects {
         let exclude_path = match git_exclude_path(&project.repo_root) {
@@ -588,7 +618,7 @@ fn inspect_personal_local_git_tracking(
                     json!({
                         "project_id": project.project_id,
                         "repo_root": path_text(&project.repo_root),
-                        "path": "/.volicord/policy.json",
+                        "path": policy_local_path.ignore_probe_pattern(),
                         "detail": detail,
                     }),
                     &mut truncated,
@@ -598,23 +628,15 @@ fn inspect_personal_local_git_tracking(
         // Audit both intent projections regardless of the policy's current
         // intent. A failed or interrupted migration can leave an opposite-
         // intent local file behind, and that file must not become trackable.
-        let local_paths = always_local_paths()
-            .iter()
-            .copied()
-            .chain(personal_only_paths().iter().copied());
-        for local_path in local_paths {
+        for local_path in &local_paths {
             if tracked_paths.len() + unignored_paths.len() + audit_errors.len()
                 >= MAX_PERSONAL_GIT_FINDINGS
             {
                 truncated = true;
                 break 'projects;
             }
-            let pathspec = local_path.trim_start_matches('/').trim_end_matches('/');
-            let ignore_probe = if local_path.ends_with('/') {
-                format!("{pathspec}/policy.json")
-            } else {
-                pathspec.to_owned()
-            };
+            let pathspec = local_path.tracking_path();
+            let ignore_probe = local_path.ignore_probe();
             let tracked = match git_path_predicate(
                 &project.repo_root,
                 true,
@@ -640,7 +662,7 @@ fn inspect_personal_local_git_tracking(
                     json!({
                         "project_id": project.project_id,
                         "repo_root": path_text(&project.repo_root),
-                        "path": local_path,
+                        "path": local_path.pattern(),
                         "exclude_path": path_text(&exclude_path),
                     }),
                     &mut truncated,
@@ -656,7 +678,7 @@ fn inspect_personal_local_git_tracking(
                         json!({
                             "project_id": project.project_id,
                             "repo_root": path_text(&project.repo_root),
-                            "path": local_path,
+                            "path": local_path.pattern(),
                             "detail": format!("failed to inspect the local path: {error}"),
                         }),
                         &mut truncated,
@@ -667,7 +689,7 @@ fn inspect_personal_local_git_tracking(
             let ignored = match git_path_predicate(
                 &project.repo_root,
                 false,
-                &["check-ignore", "--quiet", "--no-index", "--", &ignore_probe],
+                &["check-ignore", "--quiet", "--no-index", "--", ignore_probe],
             ) {
                 Ok(value) => value,
                 Err(detail) => {
@@ -676,7 +698,7 @@ fn inspect_personal_local_git_tracking(
                         json!({
                             "project_id": project.project_id,
                             "repo_root": path_text(&project.repo_root),
-                            "path": local_path,
+                            "path": local_path.pattern(),
                             "detail": detail,
                         }),
                         &mut truncated,
@@ -690,7 +712,7 @@ fn inspect_personal_local_git_tracking(
                     json!({
                         "project_id": project.project_id,
                         "repo_root": path_text(&project.repo_root),
-                        "path": local_path,
+                        "path": local_path.pattern(),
                         "exclude_path": path_text(&exclude_path),
                     }),
                     &mut truncated,
@@ -757,9 +779,14 @@ fn local_policy_connection_intent(repo_root: &Path) -> Result<String, String> {
 }
 
 fn local_policy_audit(repo_root: &Path) -> Result<LocalPolicyAudit, String> {
-    let policy_dir = repo_root.join(".volicord");
-    let policy_path = policy_dir.join("policy.json");
-    let directory_metadata = fs::symlink_metadata(&policy_dir)
+    let policy_relative_path = GuardManagedArtifact::VolicordPolicy
+        .repository_relative_path()
+        .map_err(|error| error.to_string())?;
+    let policy_path = repo_root.join(&policy_relative_path);
+    let policy_dir = policy_path
+        .parent()
+        .ok_or_else(|| "the canonical local policy path has no parent directory".to_owned())?;
+    let directory_metadata = fs::symlink_metadata(policy_dir)
         .map_err(|error| format!("failed to inspect the local policy directory: {error}"))?;
     if directory_metadata.file_type().is_symlink() || !directory_metadata.is_dir() {
         return Err("the local policy directory is not a regular directory".to_owned());
@@ -1032,8 +1059,22 @@ fn inspect_project_policy_authority(
     let mut truncated = project_count > MAX_PERSONAL_GIT_PROJECTS;
     projects.truncate(MAX_PERSONAL_GIT_PROJECTS);
     let mut findings = Vec::new();
+    let policy_relative_path = match GuardManagedArtifact::VolicordPolicy.repository_relative_path()
+    {
+        Ok(path) => path,
+        Err(error) => {
+            checks.push(
+                DiagnosticCheck::failed(
+                    "project_policy_authority",
+                    "Guard managed-artifact path policy is invalid",
+                )
+                .with_details(json!({ "detail": error.to_string() })),
+            );
+            return;
+        }
+    };
     for project in projects {
-        let file_path = project.repo_root.join(".volicord/policy.json");
+        let file_path = project.repo_root.join(&policy_relative_path);
         let state = project_policy_authority_state(runtime_home, project, &file_path);
         if state != ProjectPolicyAuthorityState::Matches {
             truncated |= findings.len() >= MAX_INTENT_DRIFT_FINDINGS;

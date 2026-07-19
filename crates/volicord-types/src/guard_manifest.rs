@@ -649,6 +649,13 @@ impl GuardManagedArtifact {
             .expect("every closed Guard artifact has one specification")
     }
 
+    /// Returns the required repository-relative path for this coordinate.
+    pub fn repository_relative_path(self) -> Result<PathBuf, GuardManagedArtifactPathError> {
+        self.spec()
+            .repository_relative_path()
+            .ok_or(GuardManagedArtifactPathError { artifact: self })
+    }
+
     /// Constructs the exact owned path for this coordinate.
     pub fn expected_path(
         self,
@@ -659,6 +666,31 @@ impl GuardManagedArtifact {
             .expected_path(repo_root, project_git_info_exclude_path)
     }
 }
+
+/// A Guard artifact coordinate that does not own a repository-relative path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuardManagedArtifactPathError {
+    artifact: GuardManagedArtifact,
+}
+
+impl GuardManagedArtifactPathError {
+    /// Returns the artifact whose repository-relative path was requested.
+    pub const fn artifact(self) -> GuardManagedArtifact {
+        self.artifact
+    }
+}
+
+impl fmt::Display for GuardManagedArtifactPathError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "Guard artifact {} does not own a repository-relative managed file path",
+            self.artifact.kind().as_str()
+        )
+    }
+}
+
+impl Error for GuardManagedArtifactPathError {}
 
 /// Closed ownership form serialized in a Guard manifest.
 #[derive(
@@ -1607,6 +1639,27 @@ mod tests {
         assert!(GUARD_MANAGED_ARTIFACT_SPECS
             .iter()
             .all(|spec| spec.expected_count == 1));
+
+        let repository_paths = GuardManagedArtifact::ALL
+            .into_iter()
+            .filter_map(|artifact| artifact.repository_relative_path().ok())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(repository_paths.len(), GuardManagedArtifact::ALL.len() - 1);
+        let git_path_error = GuardManagedArtifact::GitInfoExclude
+            .repository_relative_path()
+            .unwrap_err();
+        assert_eq!(
+            git_path_error.artifact(),
+            GuardManagedArtifact::GitInfoExclude
+        );
+
+        let dispatch_path = GuardManagedArtifact::HostHookDispatch
+            .repository_relative_path()
+            .unwrap();
+        assert_eq!(
+            dispatch_path.file_name().and_then(|name| name.to_str()),
+            Some("volicord-dispatch.sh")
+        );
 
         let wrapper_paths = GuardHookPhase::REQUIRED
             .into_iter()
