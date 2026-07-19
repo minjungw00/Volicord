@@ -10,10 +10,9 @@ use volicord_types::{
 };
 
 use super::{
-    cooperative_assurance_limits,
-    human::{render_command_report_concise, render_command_report_verbose},
-    path_text, ConnectionCommandError, OutputFormat, PlannedConnectionChange,
-    PlannedConnectionChangeKind,
+    cooperative_assurance_limits, human::render_command_report_concise, path_text,
+    verbose::render_command_report_verbose, ConnectionCommandError, OutputFormat,
+    PlannedConnectionChange, PlannedConnectionChangeKind,
 };
 use crate::connection_command::args::HumanOutputDetail;
 
@@ -29,6 +28,7 @@ pub(in crate::connection_command) enum CommandOperation {
 }
 
 impl CommandOperation {
+    #[cfg(test)]
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Init => "init",
@@ -787,11 +787,8 @@ mod tests {
             text.output,
             format!(
                 concat!(
-                    "Operation: verify\n",
-                    "Status: failed\n",
-                    "Dry run: false\n",
-                    "Runtime home: /runtime\n",
-                    "Connection:\n",
+                    "Verification completed: 1 failed.\n\n",
+                    "Connection\n",
                     "  ID: connection_1\n",
                     "  Host: codex\n",
                     "  Scope: user\n",
@@ -799,12 +796,15 @@ mod tests {
                     "  Mode: workflow\n",
                     "  Repository: /workspace/product\n",
                     "  Config target: /home/user/.codex/config.toml\n",
-                    "Checks:\n",
-                    "  [failed] managed_config: Managed configuration check\n",
+                    "  Runtime home: /runtime\n\n",
+                    "Summary\n",
+                    "  Status: failed\n",
+                    "  Checks: 0 passed, 0 pending, 1 failed\n\n",
+                    "Checks\n",
+                    "  [fail] Managed Codex configuration\n",
+                    "    Managed configuration check\n",
                     "    Code: managed_config_failed\n",
-                    "Actions:\n",
-                    "  none\n",
-                    "Limits:\n",
+                    "\nAssurance\n",
                     "  {}\n",
                 ),
                 super::super::common::COOPERATIVE_ASSURANCE_LIMIT

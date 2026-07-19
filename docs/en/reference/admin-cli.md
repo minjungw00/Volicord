@@ -158,12 +158,79 @@ It does not change, remove, reorder, or persist canonical checks or actions.
 Dry-run prose groups planned-change counts by the typed
 `PlannedConnectionChangeKind`; it does not infer ownership from target paths.
 
-`--verbose` renders the complete human diagnostic view, including report
-metadata, every check and action, exact planned operations and targets,
-operation-specific results, and assurance limits. `--json` writes the complete
-serialized `ConnectionCommandReport` for machine use. `--verbose` and `--json`
-are mutually exclusive usage options. `volicord connection list` retains its
-separate compact collection projection and does not accept `--verbose`.
+`--verbose` renders a complete human diagnostic view. It starts with the same
+operation-aware headline as concise output, then uses the applicable
+`Connection`, `Summary`, `Checks`, `Actions`, `Result`, `Planned changes`, and
+`Assurance` sections in that order. It renders every canonical check, action,
+typed result fact, planned operation and target, and assurance limit without a
+raw JSON detail blob. Large successful collections may be summarized by count
+for human diagnosis. In particular, a successful MCP tool inventory is not
+repeated in prose.
+
+`--json` writes the complete serialized `ConnectionCommandReport` and remains
+the lossless machine representation. Full tool inventories and raw nested
+diagnostic facts belong there. `--verbose` and `--json` are mutually exclusive
+usage options. `volicord connection list` retains its separate compact
+collection projection and does not accept `--verbose`.
+
+A representative concise verification result is:
+
+```text
+Verification completed: 5 ready, 4 waiting.
+
+Repository: /workspace/product
+Mode: workflow
+Checks: 5 ready, 4 waiting
+
+Waiting
+  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
+  Guard hook activity: pre_tool, post_tool, prompt_capture
+
+Next
+  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
+
+Run again with --verbose for detailed diagnostics.
+```
+
+The verbose view presents the same typed report as structured diagnostics:
+
+```text
+Verification completed: 1 ready, 1 waiting.
+
+Connection
+  ID: connection_1
+  Host: codex
+  Scope: user
+  Profile: record
+  Mode: workflow
+  Repository: /workspace/product
+  Config target: /home/user/.codex/config.toml
+  Runtime home: /home/user/.volicord
+
+Summary
+  Status: action_required
+  Checks: 1 passed, 1 pending, 0 failed
+
+Checks
+  [wait] Codex managed session
+    Managed host connection use has not been observed
+    Code: host_session_not_observed
+    Current revision: sha256:current-revision
+    Initialize: not observed
+
+  [pass] Managed Codex configuration
+    Managed Codex configuration matches the canonical entry
+    Target: /home/user/.codex/config.toml
+    State: match
+    Diagnostic code: managed_config_matches
+
+Actions
+  observe_codex
+    Restart or reload Codex and use the connection.
+
+Assurance
+  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.
+```
 
 ### Connection List Projection
 
@@ -376,8 +443,8 @@ deduplicates entries by the stable spelling of `kind`, then `operation`, then
 `target`. Managed-configuration and Guard checks use `kind`; changing a target
 path cannot change a planned change's meaning. JSON includes the three fields
 shown above. Concise human output groups counts by `kind`; verbose human output
-renders each entry as
-`kind=<kind> operation=<operation> target=<target>`.
+renders each entry as an indexed block with `Kind`, `Operation`, and `Target`
+labels.
 
 `checks` and `actions` use the canonical
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)

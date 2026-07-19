@@ -151,11 +151,77 @@ phase와 함께 Guard hook 활동으로 보여 줍니다. 정규 check나 action
 영속하지 않습니다. Dry run 산문은 typed `PlannedConnectionChangeKind`별로 계획 변경 수를
 묶으며 target path에서 소유권을 추론하지 않습니다.
 
-`--verbose`는 보고서 메타데이터, 모든 check와 action, 정확한 계획 operation과 target,
-작업별 result, 보장 한계를 포함하는 완전한 사람용 진단 보기를 표시합니다. `--json`은
-기계 사용을 위해 완전한 직렬화 `ConnectionCommandReport`를 씁니다. `--verbose`와
-`--json`은 함께 사용할 수 없는 사용법 옵션입니다. `volicord connection list`는 별도의
-간결한 컬렉션 projection을 유지하며 `--verbose`를 받지 않습니다.
+`--verbose`는 사람이 진단하는 데 필요한 완전한 보기를 표시합니다. 간결한 출력과 같은
+작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Actions`,
+`Result`, `Planned changes`, `Assurance` 구역을 이 순서로 사용합니다. 모든 정규 check와
+action, typed result 사실, 계획 operation과 target, 보장 한계를 원시 JSON detail blob 없이
+표시합니다. 사람이 진단할 때 큰 성공 컬렉션은 개수로 요약할 수 있습니다. 특히 성공한 MCP
+도구 inventory 전체를 산문에 반복하지 않습니다.
+
+`--json`은 완전한 직렬화 `ConnectionCommandReport`를 쓰며 손실 없는 기계 판독 표현으로
+유지됩니다. 전체 도구 inventory와 원시 중첩 진단 사실은 JSON에서 확인합니다.
+`--verbose`와 `--json`은 함께 사용할 수 없는 사용법 옵션입니다.
+`volicord connection list`는 별도의 간결한 컬렉션 projection을 유지하며
+`--verbose`를 받지 않습니다.
+
+대표적인 간결한 검증 결과는 다음과 같습니다.
+
+```text
+Verification completed: 5 ready, 4 waiting.
+
+Repository: /workspace/product
+Mode: workflow
+Checks: 5 ready, 4 waiting
+
+Waiting
+  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
+  Guard hook activity: pre_tool, post_tool, prompt_capture
+
+Next
+  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
+
+Run again with --verbose for detailed diagnostics.
+```
+
+Verbose 보기는 같은 typed 보고서를 구조화된 진단으로 표시합니다.
+
+```text
+Verification completed: 1 ready, 1 waiting.
+
+Connection
+  ID: connection_1
+  Host: codex
+  Scope: user
+  Profile: record
+  Mode: workflow
+  Repository: /workspace/product
+  Config target: /home/user/.codex/config.toml
+  Runtime home: /home/user/.volicord
+
+Summary
+  Status: action_required
+  Checks: 1 passed, 1 pending, 0 failed
+
+Checks
+  [wait] Codex managed session
+    Managed host connection use has not been observed
+    Code: host_session_not_observed
+    Current revision: sha256:current-revision
+    Initialize: not observed
+
+  [pass] Managed Codex configuration
+    Managed Codex configuration matches the canonical entry
+    Target: /home/user/.codex/config.toml
+    State: match
+    Diagnostic code: managed_config_matches
+
+Actions
+  observe_codex
+    Restart or reload Codex and use the connection.
+
+Assurance
+  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.
+```
 
 ### Connection 목록 투영
 
@@ -352,8 +418,8 @@ check와 현재 필요한 reload/use action 하나를 함께 보고할 수 있�
 No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, `target` 순서로 정렬하고
 중복을 제거합니다. 관리 구성과 Guard check는 `kind`를 사용합니다. Target 경로가 바뀌어도
 계획 변경의 의미는 바뀌지 않습니다. JSON은 위의 세 필드를 포함합니다. 간결한 사람용
-출력은 `kind`별 개수를 묶고, verbose 사람용 출력은 각 항목에
-`kind=<kind> operation=<operation> target=<target>` 형태를 사용합니다.
+출력은 `kind`별 개수를 묶고, verbose 사람용 출력은 각 항목을 `Kind`, `Operation`,
+`Target` 라벨이 있는 색인 블록으로 표시합니다.
 
 `checks`와 `actions`는 정규
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의

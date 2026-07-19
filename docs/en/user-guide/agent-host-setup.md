@@ -50,9 +50,17 @@ Run again with --verbose for detailed diagnostics.
 ```
 
 Counts and sections reflect the current report. Use `--verbose` when you need
-every check, support identifier, exact planned target, or assurance limit. Use
-`--json` for the complete machine-readable report. The two flags cannot be used
-together. Exact output and exit behavior belong to
+every check, support identifier, exact planned target, or assurance limit:
+
+```sh
+volicord connection verify codex --shared --repo "<repo>" --verbose
+```
+
+The verbose view uses structured labels instead of raw JSON detail lines. It is
+complete for human diagnosis, while large successful collections such as the
+MCP tool inventory may be summarized by count. Use `--json` for the lossless
+machine report, including full tool inventories and raw nested facts. The two
+flags cannot be used together. Exact output and exit behavior belong to
 [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states).
 
 ## Review Managed Changes

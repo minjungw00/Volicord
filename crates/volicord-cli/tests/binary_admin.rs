@@ -948,12 +948,17 @@ fn verbose_connection_report_retains_the_full_diagnostic_renderer() -> Result<()
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
-    assert!(text.starts_with("Operation: verify\nStatus: failed\n"));
-    assert!(text.contains("Runtime home:"));
-    assert!(text.contains("Connection:\n  ID:"));
-    assert!(text.contains("Checks:\n"));
-    assert!(text.contains("Actions:\n"));
-    assert!(text.contains("Limits:\n"));
+    assert!(text.starts_with("Verification completed:"));
+    assert!(text.contains("\n\nConnection\n  ID:"));
+    assert!(text.contains("  Runtime home:"));
+    assert!(text.contains("\n\nSummary\n  Status: failed\n"));
+    assert!(text.contains("\n\nChecks\n"));
+    assert!(text.contains("\n\nActions\n"));
+    assert!(text.contains("\n\nAssurance\n"));
+    assert!(!text.contains("Details: {"));
+    assert!(!text.contains("\":["));
+    assert!(text.ends_with('\n'));
+    assert!(!text.ends_with("\n\n"));
     Ok(())
 }
 

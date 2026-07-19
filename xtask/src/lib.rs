@@ -3795,9 +3795,10 @@ fn validate_init_command(args: &[String]) -> std::result::Result<(), String> {
     }
     let parsed = parse_command_args(
         args,
-        &["shared", "dry-run", "json"],
+        &["shared", "dry-run", "json", "verbose"],
         &["host", "repo", "profile", "home", "mcp-command"],
     )?;
+    reject_mutually_exclusive(&parsed, "json", "verbose")?;
     reject_positionals(&parsed, 0, "`volicord init`")?;
     if !parsed.options.contains("host") {
         return Err("`volicord init` requires --host".to_string());
@@ -3827,10 +3828,18 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             }
             let parsed = parse_command_args(
                 &args[1..],
-                &["shared", "global", "read-only", "dry-run", "json"],
+                &[
+                    "shared",
+                    "global",
+                    "read-only",
+                    "dry-run",
+                    "json",
+                    "verbose",
+                ],
                 &["repo"],
             )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
+            reject_mutually_exclusive(&parsed, "json", "verbose")?;
             validate_optional_host(&parsed, "`volicord connection add`")
         }
         "list" => {
@@ -3844,16 +3853,26 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             if is_help_only(&args[1..]) {
                 return Ok(());
             }
-            let parsed = parse_command_args(&args[1..], &["shared", "global", "json"], &["repo"])?;
+            let parsed = parse_command_args(
+                &args[1..],
+                &["shared", "global", "json", "verbose"],
+                &["repo"],
+            )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
+            reject_mutually_exclusive(&parsed, "json", "verbose")?;
             validate_optional_host(&parsed, &format!("`volicord connection {subcommand}`"))
         }
         "mode" => {
             if is_help_only(&args[1..]) {
                 return Ok(());
             }
-            let parsed = parse_command_args(&args[1..], &["shared", "global", "json"], &["repo"])?;
+            let parsed = parse_command_args(
+                &args[1..],
+                &["shared", "global", "json", "verbose"],
+                &["repo"],
+            )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
+            reject_mutually_exclusive(&parsed, "json", "verbose")?;
             validate_connection_mode_positionals(&parsed)
         }
         "remove" => {
@@ -3862,10 +3881,11 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             }
             let parsed = parse_command_args(
                 &args[1..],
-                &["shared", "global", "dry-run", "json"],
+                &["shared", "global", "dry-run", "json", "verbose"],
                 &["repo"],
             )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
+            reject_mutually_exclusive(&parsed, "json", "verbose")?;
             validate_optional_host(&parsed, "`volicord connection remove`")
         }
         other => Err(format!(

@@ -721,11 +721,15 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     assert_eq!(verbose.status.code(), Some(0));
     assert!(verbose.stderr.is_empty());
     let verbose = String::from_utf8(verbose.stdout)?;
-    assert!(verbose.starts_with("Operation: status\nStatus: complete\n"));
+    assert!(verbose.starts_with("Codex connection is ready.\n\nConnection\n"));
+    assert!(verbose.contains("\n\nSummary\n  Status: complete\n"));
     for check in complete_report["checks"].as_array().expect("checks") {
-        assert!(verbose.contains(check["id"].as_str().expect("check id")));
         assert!(verbose.contains(check["summary"].as_str().expect("check summary")));
     }
+    assert!(verbose.contains("    Tools returned:"));
+    assert!(verbose.contains("    Designated read-only tool: volicord.list_projects"));
+    assert!(!verbose.contains("Details: {"));
+    assert!(!verbose.contains("\":["));
 
     let changed_version = fixture.run_connection("verify", NEXT_FUTURE_VERSION, true)?;
     let changed_report =

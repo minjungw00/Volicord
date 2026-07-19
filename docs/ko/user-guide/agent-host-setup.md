@@ -48,7 +48,15 @@ Run again with --verbose for detailed diagnostics.
 ```
 
 개수와 구역은 현재 보고서에 따라 달라집니다. 모든 check, 지원용 식별자, 정확한 계획
-`target`, 보장 한계가 필요하면 `--verbose`를 사용합니다. 완전한 기계 판독 보고서가 필요하면
+`target`, 보장 한계가 필요하면 `--verbose`를 사용합니다.
+
+```sh
+volicord connection verify codex --shared --repo "<repo>" --verbose
+```
+
+Verbose 보기는 원시 JSON detail 줄 대신 구조화된 라벨을 사용합니다. 사람이 진단하는 데
+필요한 내용은 완전하게 제공하지만, MCP 도구 inventory처럼 큰 성공 컬렉션은 개수로 요약할
+수 있습니다. 전체 도구 inventory와 원시 중첩 사실을 포함한 손실 없는 기계 판독 보고서는
 `--json`을 사용합니다. 두 플래그는 함께 사용할 수 없습니다. 정확한 출력과 종료 동작은
 [관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
 

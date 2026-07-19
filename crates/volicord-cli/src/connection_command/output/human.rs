@@ -61,140 +61,15 @@ pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) ->
     format!("{}\n", sections.join("\n\n"))
 }
 
-pub(super) fn render_command_report_verbose(report: &ConnectionCommandReport) -> String {
-    let mut output = String::new();
-    output.push_str(&format!("Operation: {}\n", report.operation.as_str()));
-    output.push_str(&format!("Status: {}\n", report.status.as_str()));
-    output.push_str(&format!("Dry run: {}\n", report.dry_run));
-    output.push_str(&format!("Runtime home: {}\n", report.runtime_home));
-    output.push_str("Connection:\n");
-    output.push_str(&format!("  ID: {}\n", report.connection.id));
-    output.push_str(&format!("  Host: {}\n", report.connection.host));
-    output.push_str(&format!("  Scope: {}\n", report.connection.scope));
-    output.push_str(&format!("  Profile: {}\n", report.connection.profile));
-    output.push_str(&format!("  Mode: {}\n", report.connection.mode));
-    output.push_str(&format!("  Repository: {}\n", report.connection.repository));
-    output.push_str(&format!(
-        "  Config target: {}\n",
-        report.connection.config_target
-    ));
-    output.push_str("Checks:\n");
-    for check in &report.checks {
-        output.push_str(&format!(
-            "  [{}] {}: {}\n",
-            check.status().as_str(),
-            check.id().as_str(),
-            check.summary()
-        ));
-        if let Some(code) = check.code() {
-            output.push_str(&format!("    Code: {code}\n"));
-        }
-        if let Some(details) = check.details() {
-            let details = serde_json::to_string(details.as_object())
-                .expect("canonical connection check details must serialize");
-            output.push_str(&format!("    Details: {details}\n"));
-        }
-        if let Some(observed_at) = check.observed_at() {
-            output.push_str(&format!(
-                "    Observed at: {}\n",
-                observed_at.to_canonical_string()
-            ));
-        }
-    }
-    output.push_str("Actions:\n");
-    if report.actions.is_empty() {
-        output.push_str("  none\n");
-    } else {
-        for action in &report.actions {
-            output.push_str(&format!(
-                "  {}: {}\n",
-                action.id().as_str(),
-                action.instruction()
-            ));
-            if let Some(command) = action.command() {
-                output.push_str(&format!("    Command: {command}\n"));
-            }
-        }
-    }
-    if let Some(result) = &report.result {
-        output.push_str("Result:\n");
-        match result {
-            ConnectionCommandResult::Setup { applied } => {
-                output.push_str("  Kind: setup\n");
-                output.push_str(&format!("  Applied: {applied}\n"));
-            }
-            ConnectionCommandResult::ModeTransition {
-                changed,
-                previous_mode,
-                current_mode,
-                previous_integration_revision,
-                current_integration_revision,
-                rebound_guard_installation_ids,
-            } => {
-                output.push_str("  Kind: mode_transition\n");
-                output.push_str(&format!("  Changed: {changed}\n"));
-                output.push_str(&format!("  Previous mode: {previous_mode}\n"));
-                output.push_str(&format!("  Current mode: {current_mode}\n"));
-                output.push_str(&format!(
-                    "  Previous integration revision: {previous_integration_revision}\n"
-                ));
-                output.push_str(&format!(
-                    "  Current integration revision: {current_integration_revision}\n"
-                ));
-                output.push_str("  Rebound Guard installations:\n");
-                if rebound_guard_installation_ids.is_empty() {
-                    output.push_str("    none\n");
-                } else {
-                    for id in rebound_guard_installation_ids {
-                        output.push_str(&format!("    {id}\n"));
-                    }
-                }
-            }
-            ConnectionCommandResult::Removal {
-                membership_removed,
-                connection_removed,
-                remaining_project_count,
-            } => {
-                output.push_str("  Kind: removal\n");
-                output.push_str(&format!("  Membership removed: {membership_removed}\n"));
-                output.push_str(&format!("  Connection removed: {connection_removed}\n"));
-                output.push_str(&format!(
-                    "  Remaining project count: {remaining_project_count}\n"
-                ));
-            }
-        }
-    }
-    if let Some(planned_changes) = &report.planned_changes {
-        output.push_str("Planned changes:\n");
-        if planned_changes.is_empty() {
-            output.push_str("  none\n");
-        } else {
-            for change in planned_changes {
-                output.push_str(&format!(
-                    "  kind={} operation={} target={}\n",
-                    change.kind().as_str(),
-                    change.operation().as_str(),
-                    change.target()
-                ));
-            }
-        }
-    }
-    output.push_str("Limits:\n");
-    for limit in &report.limits {
-        output.push_str(&format!("  {limit}\n"));
-    }
-    output
-}
-
 #[derive(Clone, Copy)]
-struct CheckCounts {
-    ready: usize,
-    waiting: usize,
-    failed: usize,
+pub(super) struct CheckCounts {
+    pub(super) ready: usize,
+    pub(super) waiting: usize,
+    pub(super) failed: usize,
 }
 
 impl CheckCounts {
-    fn from_report(report: &ConnectionCommandReport) -> Self {
+    pub(super) fn from_report(report: &ConnectionCommandReport) -> Self {
         let mut counts = Self {
             ready: 0,
             waiting: 0,
@@ -225,7 +100,7 @@ impl CheckCounts {
     }
 }
 
-fn headline(report: &ConnectionCommandReport, counts: CheckCounts) -> String {
+pub(super) fn headline(report: &ConnectionCommandReport, counts: CheckCounts) -> String {
     match report.operation {
         CommandOperation::Init | CommandOperation::Add => setup_headline(report),
         CommandOperation::Status => match report.status {

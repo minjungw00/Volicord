@@ -4,6 +4,7 @@ mod common;
 mod human;
 mod list;
 mod report;
+mod verbose;
 
 pub(super) use common::cooperative_assurance_limits;
 pub(in crate::connection_command) use list::{display_project_roots, render_connections_output};
