@@ -74,10 +74,13 @@ membership, 변경 불가능한 Store 소유 integration-instance ID, Store 소�
 generation을 담당합니다. 이 현재 소유자 사실에서 파생한 Connection 및 프로젝트 integration
 revision은 로컬 lifecycle과 상관관계 좌표입니다.
 
-완전히 새로운 Agent Connection의 기본 mode는 `workflow`입니다. 일치하는 현재 Agent
-Connection을 다시 설정하거나 복구할 때는 저장된 mode를 정확히 사용합니다. Record
-profile에서 mode를 추론하거나 mode를 전환하지 않습니다. 기존 mode를 바꾸고 integration
-generation을 증가시키는 명령은 `volicord connection mode`뿐입니다.
+완전히 새로운 Agent Connection의 기본 mode는 `workflow`이며,
+`volicord connection add --read-only`로 만드는 새 Connection은 `read_only`로
+시작합니다. 일치하는 현재 Agent Connection을 다시 설정하거나 복구할 때는 저장된 mode를
+정확히 사용합니다. 특히 `connection add`에서 `--read-only`를 생략해도 `workflow` 전환
+요청이 아니며, 기존 `workflow` Connection에 이 플래그를 지정해도 암묵적인 전환 권한이
+생기지 않습니다. 설정은 Record profile에서 mode를 추론하지 않습니다. 기존 mode를 바꾸고
+integration generation을 증가시키는 명령은 `volicord connection mode`뿐입니다.
 
 Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록입니다. 운영체제
 권한을 부여하거나 사용자 identity를 성립시키거나 Codex가 관리 entry를 불러왔음을

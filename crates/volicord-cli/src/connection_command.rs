@@ -252,7 +252,7 @@ pub fn run_connect_command(
                     &plan.connection_id,
                     plan.host_kind.as_str(),
                     plan.host_scope.as_str(),
-                    &plan.mode,
+                    &plan.effective_mode,
                     &plan.repo_root,
                     host_target_text(&plan.host_plan.target),
                 ),

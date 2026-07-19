@@ -5,7 +5,8 @@ use std::{
 
 use volicord_store::{
     agent_connections::{
-        list_agent_connections, list_agent_connections_for_diagnostics, list_connection_projects,
+        list_agent_connections, list_agent_connections_for_diagnostics,
+        list_agent_connections_read_only, list_connection_projects,
         list_connection_projects_for_diagnostics, AgentConnectionRecord, ConnectionProjectRecord,
     },
     bootstrap::project_record_by_repo_root,
@@ -159,7 +160,7 @@ pub(super) fn connection_for_host_target(
     config_target: &str,
     server_name: &str,
 ) -> Result<Option<AgentConnectionRecord>, ConnectionCommandError> {
-    let matches = list_agent_connections(runtime_home)?
+    let matches = list_agent_connections_read_only(runtime_home)?
         .into_iter()
         .filter(|connection| {
             connection.host_kind == host_kind.as_str()

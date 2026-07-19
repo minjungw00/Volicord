@@ -39,12 +39,13 @@ pub(super) struct ConnectionProvisioningPlan {
     pub(super) host_kind: HostKind,
     pub(super) intent: ConnectionIntent,
     pub(super) host_scope: HostScope,
-    pub(super) mode: String,
+    pub(super) effective_mode: String,
     pub(super) repo_root: PathBuf,
     pub(super) host_plan: HostPlan,
     pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
     pub(super) planned_changes: Vec<PlannedConnectionChange>,
     installation_profile: InstallationProfileRecord,
+    expected_connection: Option<SetupConnectionExpectation>,
     target_hint: String,
     server_name: String,
     guard_installation_id: String,
@@ -68,7 +69,7 @@ struct InitProvisioningPlan {
     repo_root: PathBuf,
     connection_id: String,
     effective_mode: String,
-    expected_connection: Option<InitConnectionExpectation>,
+    expected_connection: Option<SetupConnectionExpectation>,
     current_report: Option<volicord_types::ConnectionVerificationReport>,
     project_id: Option<String>,
     membership_exists: bool,
@@ -83,10 +84,67 @@ struct InitProvisioningPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct InitConnectionExpectation {
+struct SetupConnectionExpectation {
     connection_internal_id: String,
-    mode: String,
+    effective_mode: String,
+    integration_instance_id: String,
+    integration_revision: IntegrationRevision,
     managed_fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SetupConnectionTarget<'a> {
+    runtime_home: &'a Path,
+    host_kind: HostKind,
+    intent: ConnectionIntent,
+    host_scope: HostScope,
+    target_hint: &'a str,
+    server_name: &'a str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SetupModeRequest {
+    Unspecified,
+    ReadOnly,
+}
+
+impl SetupModeRequest {
+    fn from_read_only_flag(read_only: bool) -> Self {
+        if read_only {
+            Self::ReadOnly
+        } else {
+            Self::Unspecified
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SetupCommand {
+    Init,
+    ConnectionAdd,
+}
+
+impl SetupCommand {
+    fn changed_code(self) -> &'static str {
+        match self {
+            Self::Init => "INIT_CONNECTION_CHANGED",
+            Self::ConnectionAdd => "CONNECTION_ADD_CHANGED",
+        }
+    }
+
+    fn rerun_command(self) -> &'static str {
+        match self {
+            Self::Init => "volicord init",
+            Self::ConnectionAdd => "volicord connection add",
+        }
+    }
+
+    fn planning_name(self) -> &'static str {
+        match self {
+            Self::Init => "init",
+            Self::ConnectionAdd => "connection add",
+        }
+    }
 }
 
 struct SupersededIntegration {
@@ -207,8 +265,12 @@ fn plan_init_provisioning(
                 &server_name,
             )
         });
-    let effective_mode = effective_init_connection_mode(existing.as_ref())?;
-    let expected_connection = existing.as_ref().map(init_connection_expectation);
+    let effective_mode =
+        effective_setup_connection_mode(existing.as_ref(), SetupModeRequest::Unspecified)?;
+    let expected_connection = existing
+        .as_ref()
+        .map(setup_connection_expectation)
+        .transpose()?;
     let current_report = existing
         .as_ref()
         .map(effective_connection_report)
@@ -654,60 +716,124 @@ fn apply_init_provisioning(
     })
 }
 
-fn effective_init_connection_mode(
+fn effective_setup_connection_mode(
     existing: Option<&AgentConnectionRecord>,
+    request: SetupModeRequest,
 ) -> Result<String, ConnectionCommandError> {
-    match existing.map(|connection| connection.mode.as_str()) {
-        None => Ok(CONNECTION_MODE_WORKFLOW.to_owned()),
-        Some(mode @ (CONNECTION_MODE_WORKFLOW | CONNECTION_MODE_READ_ONLY)) => Ok(mode.to_owned()),
-        Some(mode) => Err(ConnectionCommandError::runtime(format!(
-            "stored Agent Connection has invalid mode {mode}"
-        ))),
+    let existing_mode = match existing.map(|connection| connection.mode.as_str()) {
+        None => None,
+        Some(mode @ (CONNECTION_MODE_WORKFLOW | CONNECTION_MODE_READ_ONLY)) => Some(mode),
+        Some(mode) => {
+            return Err(ConnectionCommandError::runtime(format!(
+                "stored Agent Connection has invalid mode {mode}"
+            )))
+        }
+    };
+    match (existing_mode, request) {
+        (None, SetupModeRequest::Unspecified) => Ok(CONNECTION_MODE_WORKFLOW.to_owned()),
+        (None, SetupModeRequest::ReadOnly) => Ok(CONNECTION_MODE_READ_ONLY.to_owned()),
+        (Some(mode), SetupModeRequest::Unspecified) => Ok(mode.to_owned()),
+        (Some(CONNECTION_MODE_READ_ONLY), SetupModeRequest::ReadOnly) => {
+            Ok(CONNECTION_MODE_READ_ONLY.to_owned())
+        }
+        (Some(CONNECTION_MODE_WORKFLOW), SetupModeRequest::ReadOnly) => {
+            Err(ConnectionCommandError::runtime(
+                "CONNECTION_MODE_REQUEST_CONFLICT: `--read-only` requests `read_only`, but the matching current Agent Connection is `workflow`; use `volicord connection mode` to change an established mode",
+            ))
+        }
+        (Some(_), SetupModeRequest::ReadOnly) => unreachable!("stored mode was validated"),
     }
 }
 
-fn init_connection_expectation(connection: &AgentConnectionRecord) -> InitConnectionExpectation {
-    InitConnectionExpectation {
+fn setup_connection_expectation(
+    connection: &AgentConnectionRecord,
+) -> Result<SetupConnectionExpectation, ConnectionCommandError> {
+    Ok(SetupConnectionExpectation {
         connection_internal_id: connection.connection_internal_id.clone(),
-        mode: connection.mode.clone(),
+        effective_mode: connection.mode.clone(),
+        integration_instance_id: connection.integration_instance_id.as_str().to_owned(),
+        integration_revision: connection_integration_revision(connection)?,
         managed_fingerprint: connection.managed_fingerprint.clone(),
-    }
+    })
 }
 
 fn validate_init_connection_expectation(
     plan: &InitProvisioningPlan,
 ) -> Result<Option<AgentConnectionRecord>, ConnectionCommandError> {
+    validate_setup_connection_expectation(
+        SetupConnectionTarget {
+            runtime_home: &plan.runtime_home,
+            host_kind: plan.host_kind,
+            intent: plan.intent,
+            host_scope: plan.host_scope,
+            target_hint: &plan.target_hint,
+            server_name: &plan.server_name,
+        },
+        plan.expected_connection.as_ref(),
+        SetupCommand::Init,
+    )
+}
+
+fn validate_setup_connection_expectation(
+    target: SetupConnectionTarget<'_>,
+    expected_connection: Option<&SetupConnectionExpectation>,
+    command: SetupCommand,
+) -> Result<Option<AgentConnectionRecord>, ConnectionCommandError> {
     let current = connection_for_host_target(
-        &plan.runtime_home,
-        plan.host_kind,
-        plan.intent,
-        plan.host_scope,
-        &plan.target_hint,
-        &plan.server_name,
+        target.runtime_home,
+        target.host_kind,
+        target.intent,
+        target.host_scope,
+        target.target_hint,
+        target.server_name,
     )?;
-    match (&plan.expected_connection, current) {
+    match (expected_connection, current) {
         (None, None) => Ok(None),
-        (None, Some(_)) => Err(init_connection_changed_error(
-            "a matching Agent Connection appeared after init planning",
+        (None, Some(_)) => Err(setup_connection_changed_error(
+            command,
+            &format!(
+                "a matching Agent Connection appeared after {} planning",
+                command.planning_name()
+            ),
         )),
-        (Some(_), None) => Err(init_connection_changed_error(
+        (Some(_), None) => Err(setup_connection_changed_error(
+            command,
             "the planned Agent Connection no longer matches the selected host target",
         )),
         (Some(expected), Some(current)) => {
             if current.connection_internal_id != expected.connection_internal_id {
-                return Err(init_connection_changed_error(
+                return Err(setup_connection_changed_error(
+                    command,
                     "the selected host target now resolves to a different Agent Connection",
                 ));
             }
-            if current.mode != expected.mode {
-                return Err(init_connection_changed_error(&format!(
-                    "Agent Connection mode changed from {} to {} after init planning",
-                    expected.mode, current.mode
-                )));
+            if current.mode != expected.effective_mode {
+                return Err(setup_connection_changed_error(
+                    command,
+                    &format!(
+                        "Agent Connection mode changed from {} to {} after {} planning",
+                        expected.effective_mode,
+                        current.mode,
+                        command.planning_name()
+                    ),
+                ));
+            }
+            if current.integration_instance_id.as_str() != expected.integration_instance_id {
+                return Err(setup_connection_changed_error(
+                    command,
+                    "the Agent Connection integration instance changed after planning",
+                ));
             }
             if current.managed_fingerprint != expected.managed_fingerprint {
-                return Err(init_connection_changed_error(
-                    "the Agent Connection managed configuration fingerprint changed after init planning",
+                return Err(setup_connection_changed_error(
+                    command,
+                    "the Agent Connection managed configuration fingerprint changed after planning",
+                ));
+            }
+            if connection_integration_revision(&current)? != expected.integration_revision {
+                return Err(setup_connection_changed_error(
+                    command,
+                    "the Agent Connection integration revision changed after planning",
                 ));
             }
             Ok(Some(current))
@@ -715,9 +841,11 @@ fn validate_init_connection_expectation(
     }
 }
 
-fn init_connection_changed_error(detail: &str) -> ConnectionCommandError {
+fn setup_connection_changed_error(command: SetupCommand, detail: &str) -> ConnectionCommandError {
     ConnectionCommandError::runtime(format!(
-        "INIT_CONNECTION_CHANGED: {detail}; rerun `volicord init` against the current state"
+        "{}: {detail}; the Agent Connection changed while setup was being planned; rerun `{}` against the current state",
+        command.changed_code(),
+        command.rerun_command(),
     ))
 }
 
@@ -1083,11 +1211,6 @@ fn plan_connection_provisioning(
     let host_kind = resolve_connection_host(parsed.host_kind, process)?;
     let intent = connection_intent_from_flags(parsed)?;
     let host_scope = host_scope_for_intent(host_kind, intent)?;
-    let mode = if parsed.read_only {
-        CONNECTION_MODE_READ_ONLY
-    } else {
-        CONNECTION_MODE_WORKFLOW
-    };
     let runtime_home = resolve_runtime_home(|name| process.env_var(name), request.current_dir)?;
     let installation_profile = required_installation_profile(&runtime_home)?;
     let repo_root = resolve_connection_repo_root(request.current_dir, parsed.repo.as_deref())?;
@@ -1101,6 +1224,14 @@ fn plan_connection_provisioning(
         &target_hint,
         &server_name,
     )?;
+    let effective_mode = effective_setup_connection_mode(
+        existing.as_ref(),
+        SetupModeRequest::from_read_only_flag(parsed.read_only),
+    )?;
+    let expected_connection = existing
+        .as_ref()
+        .map(setup_connection_expectation)
+        .transpose()?;
     let current_report = existing
         .as_ref()
         .map(effective_connection_report)
@@ -1141,7 +1272,7 @@ fn plan_connection_provisioning(
                 &runtime_home,
                 &installation_profile,
             ),
-            mode,
+            mode: &effective_mode,
             expected_fingerprint,
         },
         process,
@@ -1194,12 +1325,13 @@ fn plan_connection_provisioning(
         host_kind,
         intent,
         host_scope,
-        mode: mode.to_owned(),
+        effective_mode,
         repo_root,
         host_plan,
         current_report,
         planned_changes,
         installation_profile,
+        expected_connection,
         target_hint,
         server_name,
         guard_installation_id,
@@ -1210,6 +1342,18 @@ fn apply_connection_provisioning(
     plan: ConnectionProvisioningPlan,
     process: &mut impl ConnectionProcess,
 ) -> Result<ConnectionProvisioningResult, ConnectionCommandError> {
+    let existing = validate_setup_connection_expectation(
+        SetupConnectionTarget {
+            runtime_home: &plan.runtime_home,
+            host_kind: plan.host_kind,
+            intent: plan.intent,
+            host_scope: plan.host_scope,
+            target_hint: &plan.target_hint,
+            server_name: &plan.server_name,
+        },
+        plan.expected_connection.as_ref(),
+        SetupCommand::ConnectionAdd,
+    )?;
     initialize_runtime_home(
         &plan.runtime_home,
         AGENT_RUNTIME_HOME_ID,
@@ -1226,14 +1370,6 @@ fn apply_connection_provisioning(
             metadata_json: metadata_json_base()?,
         },
     )?;
-    let existing = connection_for_host_target(
-        &plan.runtime_home,
-        plan.host_kind,
-        plan.intent,
-        plan.host_scope,
-        &plan.target_hint,
-        &plan.server_name,
-    )?;
     let expected_fingerprint = existing
         .as_ref()
         .map(|connection| connection.managed_fingerprint.as_str());
@@ -1249,7 +1385,7 @@ fn apply_connection_provisioning(
                 &plan.runtime_home,
                 &plan.installation_profile,
             ),
-            mode: &plan.mode,
+            mode: &plan.effective_mode,
             expected_fingerprint,
         },
         process,
@@ -1264,7 +1400,7 @@ fn apply_connection_provisioning(
         host_scope: plan.host_scope.as_str().to_owned(),
         server_name: host_plan.server_name.clone(),
         config_target: host_target_text(&host_plan.target),
-        mode: plan.mode.clone(),
+        mode: plan.effective_mode.clone(),
         enabled: true,
         managed_fingerprint: host_plan.fingerprint.clone(),
         metadata_json,
@@ -1346,19 +1482,34 @@ mod init_planning_tests {
 
     struct PlanningProcess {
         current_exe: PathBuf,
+        runtime_home: Option<PathBuf>,
     }
 
     impl PlanningProcess {
         fn new() -> Result<Self, std::io::Error> {
             Ok(Self {
                 current_exe: std::env::current_exe()?,
+                runtime_home: None,
+            })
+        }
+
+        fn for_runtime_home(runtime_home: &Path) -> Result<Self, std::io::Error> {
+            Ok(Self {
+                current_exe: std::env::current_exe()?,
+                runtime_home: Some(runtime_home.to_path_buf()),
             })
         }
     }
 
     impl ConnectionProcess for PlanningProcess {
-        fn env_var(&self, _name: &str) -> Option<OsString> {
-            None
+        fn env_var(&self, name: &str) -> Option<OsString> {
+            match name {
+                "VOLICORD_HOME" => self
+                    .runtime_home
+                    .as_ref()
+                    .map(|path| path.as_os_str().to_owned()),
+                _ => None,
+            }
         }
 
         fn current_exe(&self) -> Result<PathBuf, String> {
@@ -1394,6 +1545,21 @@ mod init_planning_tests {
             mcp_command: None,
             mode: InitMode::Record,
             shared: true,
+            dry_run,
+            json: true,
+        }
+    }
+
+    fn parsed_connection(
+        repo_root: &Path,
+        read_only: bool,
+        dry_run: bool,
+    ) -> ParsedConnectionOptions {
+        ParsedConnectionOptions {
+            host_kind: Some(HostKind::Codex),
+            repo: Some(repo_root.to_path_buf()),
+            shared: true,
+            read_only,
             dry_run,
             json: true,
         }
@@ -1550,6 +1716,62 @@ mod init_planning_tests {
                 .manifest_json,
             guard_manifest_before
         );
+        Ok(())
+    }
+
+    #[test]
+    fn connection_add_mode_change_after_planning_fails_before_any_setup_mutation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("connection-add-mode-planning-conflict")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let init = parsed_init(fixture.path(), &repo_root, false);
+        let add = parsed_connection(&repo_root, false, false);
+        let mut process = PlanningProcess::for_runtime_home(fixture.path())?;
+
+        let initial = provision_init(
+            InitProvisioningRequest {
+                parsed: &init,
+                current_dir: &repo_root,
+            },
+            &mut process,
+        )?;
+        assert_eq!(initial.mode, CONNECTION_MODE_WORKFLOW);
+        let plan = plan_connection_provisioning(
+            ProvisionConnectionRequest {
+                parsed: &add,
+                current_dir: &repo_root,
+            },
+            &process,
+        )?;
+        assert_eq!(plan.effective_mode, CONNECTION_MODE_WORKFLOW);
+
+        let transition = command_connection_mode(
+            ConnectionModeArgs {
+                host: Some(crate::cli::CodexHost::Codex),
+                mode: crate::cli::ConnectionMode::ReadOnly,
+                repo: Some(repo_root.clone()),
+                shared: true,
+                json: true,
+            },
+            &repo_root,
+            &mut process,
+        )?;
+        let transition: Value = serde_json::from_str(&transition)?;
+        assert_eq!(transition["result"]["changed"], true);
+        let runtime_before_apply = directory_contents(fixture.path())?;
+        let repository_before_apply = directory_contents(&repo_root)?;
+
+        let error = match apply_connection_provisioning(plan, &mut process) {
+            Err(error) => error,
+            Ok(_) => panic!("stale connection add plan unexpectedly applied"),
+        };
+        let message = error.to_string();
+        assert!(message.contains("CONNECTION_ADD_CHANGED"));
+        assert!(message.contains("mode changed from workflow to read_only"));
+        assert!(message.contains("changed while setup was being planned"));
+        assert!(message.contains("rerun `volicord connection add`"));
+        assert_eq!(directory_contents(fixture.path())?, runtime_before_apply);
+        assert_eq!(directory_contents(&repo_root)?, repository_before_apply);
         Ok(())
     }
 

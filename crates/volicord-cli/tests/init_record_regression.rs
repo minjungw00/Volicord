@@ -16,8 +16,8 @@ use sha2::{Digest, Sha256};
 use support::binary_fixture::create_git_repo;
 use volicord_cli::{
     cli::{
-        CodexHost, ConnectionArgs, ConnectionCommand, ConnectionMode, ConnectionModeArgs, InitArgs,
-        PolicyArgs, PolicyCommand, PolicyValidateArgs, RecordProfile,
+        CodexHost, ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionMode,
+        ConnectionModeArgs, InitArgs, PolicyArgs, PolicyCommand, PolicyValidateArgs, RecordProfile,
     },
     connection_command::{
         run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
@@ -168,6 +168,65 @@ fn fresh_record_init_persists_exact_owner_bound_manifest_and_managed_artifacts(
     assert_valid_policy_without_policy_hash_args(&repo_root)?;
     assert_codex_config_is_user_owned(&snapshot, &process, &repo_root)?;
     assert_authoritative_policy_matches_file(fixture.path(), &ids.project_id, &repo_root)?;
+    Ok(())
+}
+
+#[test]
+fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-connection-add-new-modes")?;
+    let profile_repo = create_git_repo(&fixture, "profile-repo")?;
+    let workflow_repo = create_git_repo(&fixture, "workflow-repo")?;
+    let read_only_repo = create_git_repo(&fixture, "read-only-repo")?;
+    let dry_run_repo = create_git_repo(&fixture, "dry-run-repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+
+    assert_failed_init_with_recorded_guard(&run_record_init(&profile_repo, &mut process)?);
+
+    let workflow = run_connection_add(&workflow_repo, true, false, false, &mut process)?;
+    assert_eq!(workflow["operation"], "add");
+    assert_eq!(workflow["connection"]["mode"], CONNECTION_MODE_WORKFLOW);
+    assert_eq!(
+        workflow["result"],
+        json!({"kind": "setup", "applied": true})
+    );
+    let workflow_id = workflow["connection"]["id"]
+        .as_str()
+        .expect("workflow connection id");
+    let after_workflow = registry_snapshot(fixture.path());
+    assert_eq!(
+        after_workflow
+            .agent_connections
+            .iter()
+            .find(|connection| connection.connection_internal_id == workflow_id)
+            .expect("new workflow Connection")
+            .mode,
+        CONNECTION_MODE_WORKFLOW
+    );
+
+    let read_only = run_connection_add(&read_only_repo, true, true, false, &mut process)?;
+    assert_eq!(read_only["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    let read_only_id = read_only["connection"]["id"]
+        .as_str()
+        .expect("read-only connection id");
+    let after_read_only = registry_snapshot(fixture.path());
+    let read_only_connection = after_read_only
+        .agent_connections
+        .iter()
+        .find(|connection| connection.connection_internal_id == read_only_id)
+        .expect("new read-only Connection");
+    assert_eq!(read_only_connection.mode, CONNECTION_MODE_READ_ONLY);
+    assert_eq!(read_only_connection.integration_generation, 0);
+
+    let runtime_before = directory_contents(fixture.path())?;
+    let repo_before = directory_contents(&dry_run_repo)?;
+    let codex_before = directory_contents(&process.codex_home)?;
+    let dry_run = run_connection_add(&dry_run_repo, true, true, true, &mut process)?;
+    assert_eq!(dry_run["dry_run"], true);
+    assert_eq!(dry_run["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    assert_eq!(directory_contents(fixture.path())?, runtime_before);
+    assert_eq!(directory_contents(&dry_run_repo)?, repo_before);
+    assert_eq!(directory_contents(&process.codex_home)?, codex_before);
     Ok(())
 }
 
@@ -343,7 +402,150 @@ fn read_only_init_replay_dry_run_and_repairs_preserve_mode_generation_and_revisi
 }
 
 #[test]
-fn multi_project_init_replay_preserves_selected_read_only_connection_and_other_membership(
+fn read_only_connection_add_replay_and_repairs_preserve_owner_revision(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-connection-add-read-only-repair")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let unrelated_repo_path = repo_root.join("product-notes.txt");
+    let unrelated_repo_content = "user-owned repository content\n";
+    fs::write(&unrelated_repo_path, unrelated_repo_content)?;
+    let unrelated_codex_content = "[unrelated]\nvalue = \"preserved\"\n";
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    fs::write(
+        process.codex_home.join("config.toml"),
+        unrelated_codex_content,
+    )?;
+
+    assert_failed_init_with_recorded_guard(&run_record_init(&repo_root, &mut process)?);
+    let ids = assert_single_owned_records(&registry_snapshot(fixture.path()));
+    run_read_only_mode(&repo_root, &mut process)?;
+    let read_only = registry_snapshot(fixture.path());
+    let connection = &read_only.agent_connections[0];
+    let integration_instance_id = connection.integration_instance_id.clone();
+    let generation = connection.integration_generation;
+    let revision = inspected_connection_revision(connection)?;
+    let manifest_json = read_only.guard_installations[0].manifest_json.clone();
+    let managed_bytes = managed_artifact_bytes(&read_only)?;
+    let config_target = PathBuf::from(&connection.config_target);
+    let config_bytes = fs::read(&config_target)?;
+    process.preflight_modes.clear();
+    process.verification_modes.clear();
+
+    let replay = run_connection_add(&repo_root, false, false, false, &mut process)?;
+    assert_eq!(replay["operation"], "add");
+    assert_eq!(replay["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    let replayed = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&replayed, generation, &revision)?;
+    assert_eq!(
+        replayed.agent_connections[0].integration_instance_id,
+        integration_instance_id
+    );
+    assert_eq!(replayed.guard_installations[0].manifest_json, manifest_json);
+    assert_eq!(managed_artifact_bytes(&replayed)?, managed_bytes);
+    assert_eq!(fs::read(&config_target)?, config_bytes);
+    assert_eq!(
+        fs::read_to_string(&unrelated_repo_path)?,
+        unrelated_repo_content
+    );
+
+    let explicit = run_connection_add(&repo_root, false, true, false, &mut process)?;
+    assert_eq!(explicit["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    let explicit_replay = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&explicit_replay, generation, &revision)?;
+    assert_eq!(
+        explicit_replay.guard_installations[0].manifest_json,
+        manifest_json
+    );
+    assert_eq!(managed_artifact_bytes(&explicit_replay)?, managed_bytes);
+
+    let runtime_before_dry_run = directory_contents(fixture.path())?;
+    let repo_before_dry_run = directory_contents(&repo_root)?;
+    let codex_before_dry_run = directory_contents(&process.codex_home)?;
+    let dry_run = run_connection_add(&repo_root, false, false, true, &mut process)?;
+    assert_eq!(dry_run["dry_run"], true);
+    assert_eq!(dry_run["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    assert!(dry_run["planned_changes"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+    assert_eq!(directory_contents(fixture.path())?, runtime_before_dry_run);
+    assert_eq!(directory_contents(&repo_root)?, repo_before_dry_run);
+    assert_eq!(
+        directory_contents(&process.codex_home)?,
+        codex_before_dry_run
+    );
+
+    fs::write(&config_target, unrelated_codex_content)?;
+    run_connection_add(&repo_root, false, false, false, &mut process)?;
+    let repaired_config = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&repaired_config, generation, &revision)?;
+    assert_manifest_revision(&repaired_config, &revision)?;
+    let repaired_config_text = fs::read_to_string(&config_target)?;
+    assert!(repaired_config_text.contains(unrelated_codex_content.trim()));
+    assert!(repaired_config_text.contains(&ids.connection_id));
+
+    delete_guard_installation(fixture.path(), &ids.guard_installation_id)?;
+    run_connection_add(&repo_root, false, false, false, &mut process)?;
+    let repaired_guard = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&repaired_guard, generation, &revision)?;
+    assert_manifest_revision(&repaired_guard, &revision)?;
+    assert_eq!(managed_artifact_bytes(&repaired_guard)?, managed_bytes);
+
+    let damaged_file = managed_script_path(&repaired_guard)?;
+    fs::remove_file(&damaged_file)?;
+    run_connection_add(&repo_root, false, false, false, &mut process)?;
+    let repaired_file = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&repaired_file, generation, &revision)?;
+    assert_manifest_revision(&repaired_file, &revision)?;
+    assert_eq!(managed_artifact_bytes(&repaired_file)?, managed_bytes);
+    assert_eq!(
+        fs::read_to_string(&unrelated_repo_path)?,
+        unrelated_repo_content
+    );
+    assert_mode_expectations(&process);
+    Ok(())
+}
+
+#[test]
+fn connection_add_explicit_read_only_rejects_workflow_before_mutation() -> Result<(), Box<dyn Error>>
+{
+    let fixture = TempRuntimeHome::new("cli-connection-add-explicit-mode-conflict")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+
+    assert_failed_init_with_recorded_guard(&run_record_init(&repo_root, &mut process)?);
+    let runtime_before = directory_contents(fixture.path())?;
+    let repo_before = directory_contents(&repo_root)?;
+    let codex_before = directory_contents(&process.codex_home)?;
+    let error = run_connection_command(
+        ConnectionArgs {
+            command: ConnectionCommand::Add(ConnectionAddArgs {
+                host: Some(CodexHost::Codex),
+                repo: Some(repo_root.clone()),
+                shared: false,
+                read_only: true,
+                dry_run: false,
+                json: true,
+            }),
+        },
+        &repo_root,
+        &mut process,
+    )
+    .expect_err("workflow Connection must reject implicit add transition");
+    let message = error.to_string();
+    assert!(message.contains("CONNECTION_MODE_REQUEST_CONFLICT"));
+    assert!(message.contains("matching current Agent Connection is `workflow`"));
+    assert!(message.contains("use `volicord connection mode`"));
+    assert_eq!(directory_contents(fixture.path())?, runtime_before);
+    assert_eq!(directory_contents(&repo_root)?, repo_before);
+    assert_eq!(directory_contents(&process.codex_home)?, codex_before);
+    let after = registry_snapshot(fixture.path());
+    assert_eq!(after.agent_connections[0].mode, CONNECTION_MODE_WORKFLOW);
+    assert_eq!(after.agent_connections[0].integration_generation, 0);
+    Ok(())
+}
+
+#[test]
+fn multi_project_connection_add_replay_preserves_selected_mode_and_other_membership(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = TempRuntimeHome::new("cli-record-init-read-only-multi-project")?;
     let first_repo = create_git_repo(&fixture, "repo-one")?;
@@ -368,7 +570,8 @@ fn multi_project_init_replay_preserves_selected_read_only_connection_and_other_m
         .map(|guard| (guard.project_id.clone(), guard.manifest_json.clone()))
         .collect::<BTreeMap<_, _>>();
 
-    let replay = run_record_init(&second_repo, &mut process)?;
+    let replay = run_connection_add(&second_repo, false, false, false, &mut process)?;
+    assert_eq!(replay["operation"], "add");
     assert_eq!(replay["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
     let after = registry_snapshot(fixture.path());
     assert_read_only_revision_unchanged(&after, generation, &revision)?;
@@ -648,6 +851,34 @@ fn run_record_init_outcome(
             mcp_command: None,
             dry_run: false,
             json: true,
+        },
+        repo_root,
+        process,
+    ) {
+        Ok(output) | Err(ConnectionCommandError::FailureOutput(output)) => output,
+        Err(error) => return Err(error.into()),
+    };
+    assert!(!output.contains(GENERATED_SHAPE_ERROR));
+    Ok(serde_json::from_str(&output)?)
+}
+
+fn run_connection_add(
+    repo_root: &Path,
+    shared: bool,
+    read_only: bool,
+    dry_run: bool,
+    process: &mut FakeConnectionProcess,
+) -> Result<Value, Box<dyn Error>> {
+    let output = match run_connection_command(
+        ConnectionArgs {
+            command: ConnectionCommand::Add(ConnectionAddArgs {
+                host: Some(CodexHost::Codex),
+                repo: Some(repo_root.to_path_buf()),
+                shared,
+                read_only,
+                dry_run,
+                json: true,
+            }),
         },
         repo_root,
         process,

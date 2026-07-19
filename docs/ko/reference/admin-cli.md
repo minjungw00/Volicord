@@ -129,6 +129,14 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 호스트를 생략하면 현재 맥락이 모호하지 않을 때만 사용합니다. 명시적으로 받는 유일한 값은
 `codex`입니다.
 
+`volicord connection add`는 멱등 설정 및 복구 명령입니다. 새 Connection은
+`--read-only`가 없으면 `workflow`, 있으면 `read_only`를 사용합니다. 일치하는 현재
+Connection이 있으면 이 플래그의 부재를 명시적인 `workflow` 요청으로 해석하지 않으며,
+replay와 repair는 저장된 mode를 보존합니다. 현재 Connection이 이미 `read_only`라면
+이 플래그는 멱등 요청입니다. 현재 mode가 `workflow`라면 설정을 변경하기 전에 실패하고
+`volicord connection mode`를 사용하도록 안내합니다. `connection add`는 mode를 전환하거나
+integration generation을 증가시키지 않습니다.
+
 `volicord connection mode`는 Connection mode와 소유한 모든 프로젝트 범위 Guard
 manifest를 revision 전환 하나로 다룹니다. CLI는 변경 전에 모든 Connection Project마다
 현재 상태의 엄격히 유효한 Guard Installation이 정확히 하나씩 있는지 확인하고, 각 후보

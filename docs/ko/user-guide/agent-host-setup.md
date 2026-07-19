@@ -11,8 +11,8 @@
 - `host_kind=codex`
 - `profile=record`
 - `scope=personal` 또는 `scope=shared`
-- 새 연결은 `workflow`로 시작하며 이후 설정은 기존 `workflow` 또는 `read_only`
-  mode를 보존
+- 새 연결은 `volicord connection add --read-only`를 선택하지 않으면 `workflow`로
+  시작하며, 이후 설정은 기존 `workflow` 또는 `read_only` mode를 보존
 - 관리 `volicord mcp --stdio` 전송
 
 공유 설정을 만들거나 복구합니다.
@@ -34,8 +34,14 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 
 ```sh
 volicord connection add codex --repo "<repo>" --dry-run
+volicord connection add codex --repo "<repo>" --read-only --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
 ```
+
+일치하는 현재 Connection에서는 일반 `connection add`와 이미 `read_only`인 Connection에
+`--read-only`를 지정한 `connection add` 모두 replay 또는 repair로 동작합니다. 플래그를
+생략해도 `workflow`를 요청하는 것이 아닙니다. 기존 mode를 바꿀 때는 항상
+`volicord connection mode`를 사용합니다.
 
 ## 검증
 

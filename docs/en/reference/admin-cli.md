@@ -133,6 +133,15 @@ volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
 When the host is omitted, the command uses it only if the current context is
 unambiguous. The only accepted explicit value is `codex`.
 
+`volicord connection add` is an idempotent setup and repair command. A new
+Connection uses `workflow` when `--read-only` is absent and `read_only` when
+the flag is present. For a matching current Connection, absence of the flag is
+not an explicit `workflow` request: replay and repair preserve the stored mode.
+The flag is an idempotent request when that Connection is already `read_only`.
+If it is `workflow`, the flag fails before setup mutation and directs the
+caller to `volicord connection mode`; add never performs that transition or
+increments the integration generation.
+
 `volicord connection mode` treats Connection mode and every owned
 project-scoped Guard manifest as one revision transition. Before mutation, the
 CLI requires exactly one current, strictly valid Guard Installation for every

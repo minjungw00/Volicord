@@ -82,11 +82,15 @@ and Store-owned integration generation. Connection and project integration
 revisions derived from those current owner facts are local lifecycle and
 correlation coordinates.
 
-A genuinely new Agent Connection defaults to `workflow`. Setup replay and
-repair use the persisted mode of a matching current Agent Connection exactly;
-they never infer mode from the Record profile or perform a mode transition.
-`volicord connection mode` is the only command that changes an established
-mode and increments the integration generation.
+A genuinely new Agent Connection defaults to `workflow`; a new Connection
+created by `volicord connection add --read-only` instead starts in
+`read_only`. Setup replay and repair use the persisted mode of a matching
+current Agent Connection exactly. In particular, omitting `--read-only` from
+add is not a `workflow` transition request, and supplying it for an established
+`workflow` Connection does not authorize an implicit transition. Setup never
+infers mode from the Record profile. `volicord connection mode` is the only
+command that changes an established mode and increments the integration
+generation.
 
 An Agent Connection is a stored local integration record in the
 `Volicord Runtime Home`. It does not grant operating-system permission,

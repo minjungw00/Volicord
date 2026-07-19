@@ -12,8 +12,9 @@ The first release has one managed host and one profile:
 - `host_kind=codex`
 - `profile=record`
 - `scope=personal` or `scope=shared`
-- new connections start in `workflow`; later setup preserves an established
-  `workflow` or `read_only` mode
+- new connections start in `workflow` unless
+  `volicord connection add --read-only` is selected; later setup preserves an
+  established `workflow` or `read_only` mode
 - managed `volicord mcp --stdio` transport
 
 Create or repair a shared setup:
@@ -36,8 +37,14 @@ Use dry run for lower-level connection changes:
 
 ```sh
 volicord connection add codex --repo "<repo>" --dry-run
+volicord connection add codex --repo "<repo>" --read-only --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
 ```
+
+On a matching current Connection, ordinary add and add with `--read-only`
+against an already read-only Connection are replay or repair operations. An
+omitted flag does not request `workflow`. Use `volicord connection mode` for
+every established-mode change.
 
 ## Verify
 
