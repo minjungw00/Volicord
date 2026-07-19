@@ -1465,7 +1465,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregation_and_user_actions_are_deterministic() {
+    fn aggregation_and_actions_are_deterministic() {
         let checks = vec![
             canonical_check(
                 ConnectionCheckKind::ToolRoundTrip,

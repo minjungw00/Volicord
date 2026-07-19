@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::Path, str::FromStr, time::SystemTime};
+use std::{path::Path, str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -8,8 +8,6 @@ use volicord_types::{
     ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
     IntegrationProfile, UtcTimestamp,
 };
-
-use crate::host_integration::UserAction;
 
 use super::{
     cooperative_assurance_limits, path_text, ConnectionCommandError, OutputFormat,
@@ -137,7 +135,7 @@ impl ConnectionCommandReport {
         connection: CommandConnection,
         current: Option<&ConnectionVerificationReport>,
         planned_changes: Vec<PlannedConnectionChange>,
-        plan_actions: &[UserAction],
+        plan_actions: &[ConnectionAction],
     ) -> Result<Self, ConnectionCommandError> {
         let has_changes = !planned_changes.is_empty();
         let mut checks = current
@@ -220,7 +218,7 @@ impl ConnectionCommandReport {
             ]);
         }
 
-        let mut actions = canonical_host_actions(plan_actions)?;
+        let mut actions = plan_actions.to_vec();
         if let Some(current) = current {
             actions.extend(current.actions().iter().cloned());
         }
@@ -419,11 +417,8 @@ impl ConnectionCommandReport {
         result: Option<ConnectionCommandResult>,
         planned_changes: Option<Vec<PlannedConnectionChange>>,
     ) -> Result<Self, ConnectionCommandError> {
-        let canonical = ConnectionVerificationReport::try_new(
-            current_timestamp(),
-            checks,
-            deduplicate_actions(actions),
-        )?;
+        let canonical =
+            ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)?;
         let status = command_status(&canonical);
         Ok(Self {
             operation,
@@ -463,29 +458,6 @@ pub(in crate::connection_command) fn render_command_report(
         output,
         status: report.status(),
     })
-}
-
-pub(super) fn canonical_host_actions(
-    actions: &[UserAction],
-) -> Result<Vec<ConnectionAction>, ConnectionCommandError> {
-    actions
-        .iter()
-        .map(|action| {
-            let id = ConnectionActionKind::from(action.kind);
-            ConnectionAction::try_new(id, &action.message, None)
-                .map_err(ConnectionCommandError::from)
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(deduplicate_actions)
-}
-
-fn deduplicate_actions(actions: Vec<ConnectionAction>) -> Vec<ConnectionAction> {
-    actions
-        .into_iter()
-        .map(|action| (action.id(), action))
-        .collect::<BTreeMap<_, _>>()
-        .into_values()
-        .collect()
 }
 
 fn command_status(report: &ConnectionVerificationReport) -> ConnectionStatus {
@@ -875,6 +847,43 @@ mod tests {
         assert_eq!(removal["checks"][0]["status"], "pending");
         assert_eq!(removal["actions"][0]["id"], "apply_removal");
         assert!(removal.get("result").is_none());
+    }
+
+    #[test]
+    fn setup_dry_run_preserves_canonical_host_actions_and_rejects_duplicate_kinds() {
+        let host_action = ConnectionAction::try_new(
+            ConnectionActionKind::RunVerification,
+            "Run connection verification",
+            Some("volicord connection verify".to_owned()),
+        )
+        .unwrap();
+        let report = ConnectionCommandReport::setup_dry_run(
+            CommandOperation::Add,
+            Path::new("/runtime"),
+            connection(),
+            None,
+            Vec::new(),
+            std::slice::from_ref(&host_action),
+        )
+        .unwrap();
+        let action = report
+            .actions
+            .iter()
+            .find(|action| action.id() == ConnectionActionKind::RunVerification)
+            .expect("host-supplied action");
+        assert_eq!(action.instruction(), "Run connection verification");
+        assert_eq!(action.command(), Some("volicord connection verify"));
+
+        let error = ConnectionCommandReport::setup_dry_run(
+            CommandOperation::Add,
+            Path::new("/runtime"),
+            connection(),
+            None,
+            Vec::new(),
+            &[host_action.clone(), host_action],
+        )
+        .expect_err("duplicate action kinds must fail");
+        assert!(error.to_string().contains("duplicate action"));
     }
 
     #[test]

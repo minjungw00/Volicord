@@ -874,6 +874,46 @@ mod tests {
     }
 
     #[test]
+    fn action_instruction_and_optional_command_validation_is_strict() {
+        let action = ConnectionAction::try_new(
+            ConnectionActionKind::InspectCodexProtocol,
+            "Inspect the Codex protocol failure",
+            Some("volicord connection verify".to_owned()),
+        )
+        .expect("bounded action");
+        assert_eq!(action.command(), Some("volicord connection verify"));
+
+        for instruction in ["", "invalid\0instruction"] {
+            assert!(ConnectionAction::try_new(
+                ConnectionActionKind::ObserveCodex,
+                instruction,
+                None,
+            )
+            .is_err());
+        }
+        assert!(ConnectionAction::try_new(
+            ConnectionActionKind::ObserveCodex,
+            "x".repeat(MAX_CONNECTION_TEXT_BYTES + 1),
+            None,
+        )
+        .is_err());
+        for command in ["", "invalid\0command"] {
+            assert!(ConnectionAction::try_new(
+                ConnectionActionKind::InspectCodexProtocol,
+                "Inspect the Codex protocol failure",
+                Some(command.to_owned()),
+            )
+            .is_err());
+        }
+        assert!(ConnectionAction::try_new(
+            ConnectionActionKind::InspectCodexProtocol,
+            "Inspect the Codex protocol failure",
+            Some("x".repeat(MAX_CONNECTION_TEXT_BYTES + 1)),
+        )
+        .is_err());
+    }
+
+    #[test]
     fn unknown_and_noncanonical_report_kinds_fail() {
         for value in ["unknown_check", "mcp_handshake", "host"] {
             assert!(serde_json::from_value::<ConnectionCheckKind>(json!(value)).is_err());

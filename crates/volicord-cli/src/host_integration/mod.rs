@@ -8,80 +8,8 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
-use volicord_types::{ConnectionActionKind, GuardHookPhase};
+use volicord_types::{ConnectionAction, GuardHookPhase};
 pub use volicord_types::{ConnectionIntent, HostKind, HostScope};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UserActionKind {
-    RunVerification,
-    ApplySetup,
-    HostTrustRequired,
-    RepairManagedConfig,
-    InstallOrRepairCodex,
-    RepairMcpServer,
-    ReloadHost,
-    UseVolicordTool,
-    ObserveCodex,
-    InspectCodexProtocol,
-    ReloadGuard,
-    RepairGuard,
-    ApplyRemoval,
-}
-
-impl UserActionKind {
-    pub const ALL: [Self; 13] = [
-        Self::RunVerification,
-        Self::ApplySetup,
-        Self::HostTrustRequired,
-        Self::RepairManagedConfig,
-        Self::InstallOrRepairCodex,
-        Self::RepairMcpServer,
-        Self::ReloadHost,
-        Self::UseVolicordTool,
-        Self::ObserveCodex,
-        Self::InspectCodexProtocol,
-        Self::ReloadGuard,
-        Self::RepairGuard,
-        Self::ApplyRemoval,
-    ];
-}
-
-impl From<UserActionKind> for ConnectionActionKind {
-    fn from(kind: UserActionKind) -> Self {
-        match kind {
-            UserActionKind::RunVerification => Self::RunVerification,
-            UserActionKind::ApplySetup => Self::ApplySetup,
-            UserActionKind::HostTrustRequired => Self::HostTrustRequired,
-            UserActionKind::RepairManagedConfig => Self::RepairManagedConfig,
-            UserActionKind::InstallOrRepairCodex => Self::InstallOrRepairCodex,
-            UserActionKind::RepairMcpServer => Self::RepairMcpServer,
-            UserActionKind::ReloadHost => Self::ReloadHost,
-            UserActionKind::UseVolicordTool => Self::UseVolicordTool,
-            UserActionKind::ObserveCodex => Self::ObserveCodex,
-            UserActionKind::InspectCodexProtocol => Self::InspectCodexProtocol,
-            UserActionKind::ReloadGuard => Self::ReloadGuard,
-            UserActionKind::RepairGuard => Self::RepairGuard,
-            UserActionKind::ApplyRemoval => Self::ApplyRemoval,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserAction {
-    pub kind: UserActionKind,
-    pub message: String,
-}
-
-impl UserAction {
-    pub fn new(kind: UserActionKind, message: impl Into<String>) -> Self {
-        let message = message.into();
-        assert!(
-            !message.is_empty() && message.len() <= 4_096 && !message.as_bytes().contains(&0),
-            "adapter-owned user-action text must satisfy the canonical report bounds"
-        );
-        Self { kind, message }
-    }
-}
 
 pub mod codex;
 pub mod config_edit;
@@ -323,7 +251,7 @@ pub struct HostPlan {
     pub change: PlannedChange,
     pub fingerprint: String,
     pub conflicts: Vec<HostConflict>,
-    pub user_actions: Vec<UserAction>,
+    pub actions: Vec<ConnectionAction>,
     pub(crate) file_snapshot: Option<config_edit::FileSnapshot>,
 }
 
@@ -349,7 +277,6 @@ pub enum PlannedChange {
     Update,
     Remove,
     Noop,
-    ExternalCommand,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -390,7 +317,7 @@ pub struct HostEffect {
     pub target: HostTarget,
     pub change: PlannedChange,
     pub fingerprint: String,
-    pub user_actions: Vec<UserAction>,
+    pub actions: Vec<ConnectionAction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -554,21 +481,4 @@ pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
             .extension()
             .and_then(|extension| extension.to_str())
             .is_none_or(|extension| extension.eq_ignore_ascii_case("exe"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_host_plan_action_converts_without_fallback() {
-        for kind in UserActionKind::ALL {
-            let report_kind = ConnectionActionKind::from(kind);
-            assert!(ConnectionActionKind::ALL.contains(&report_kind));
-            assert_eq!(
-                serde_json::to_value(report_kind).expect("serialize action kind"),
-                serde_json::Value::String(report_kind.as_str().to_owned())
-            );
-        }
-    }
 }

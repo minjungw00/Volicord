@@ -17,17 +17,15 @@ pub(super) enum PlannedConnectionChangeKind {
     ManagedHostConfiguration,
     GuardManagedFile,
     GuardRegistrySetup,
-    ModeTransition,
     ConnectionMembership,
 }
 
 impl PlannedConnectionChangeKind {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 6] = [
         Self::ConnectionMembership,
         Self::GuardManagedFile,
         Self::GuardRegistrySetup,
         Self::ManagedHostConfiguration,
-        Self::ModeTransition,
         Self::ProjectRegistration,
         Self::RuntimeHomeInitialization,
     ];
@@ -39,7 +37,6 @@ impl PlannedConnectionChangeKind {
             Self::ManagedHostConfiguration => "managed_host_configuration",
             Self::GuardManagedFile => "guard_managed_file",
             Self::GuardRegistrySetup => "guard_registry_setup",
-            Self::ModeTransition => "mode_transition",
             Self::ConnectionMembership => "connection_membership",
         }
     }
@@ -53,13 +50,11 @@ pub(super) enum PlannedChangeOperation {
     Remove,
     Register,
     Rebind,
-    Execute,
 }
 
 impl PlannedChangeOperation {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 5] = [
         Self::Create,
-        Self::Execute,
         Self::Rebind,
         Self::Register,
         Self::Remove,
@@ -73,7 +68,6 @@ impl PlannedChangeOperation {
             Self::Remove => "remove",
             Self::Register => "register",
             Self::Rebind => "rebind",
-            Self::Execute => "execute",
         }
     }
 }
@@ -206,7 +200,6 @@ fn host_change_operation(change: PlannedChange) -> Option<PlannedChangeOperation
         PlannedChange::Update => Some(PlannedChangeOperation::Update),
         PlannedChange::Remove => Some(PlannedChangeOperation::Remove),
         PlannedChange::Noop => None,
-        PlannedChange::ExternalCommand => Some(PlannedChangeOperation::Execute),
     }
 }
 
@@ -247,7 +240,6 @@ mod tests {
             "guard_managed_file",
             "guard_registry_setup",
             "managed_host_configuration",
-            "mode_transition",
             "project_registration",
             "runtime_home_initialization",
         ];
@@ -255,9 +247,7 @@ mod tests {
             assert_eq!(serde_json::to_value(kind).unwrap(), expected);
         }
 
-        let operations = [
-            "create", "execute", "rebind", "register", "remove", "update",
-        ];
+        let operations = ["create", "rebind", "register", "remove", "update"];
         for (operation, expected) in PlannedChangeOperation::ALL.into_iter().zip(operations) {
             assert_eq!(serde_json::to_value(operation).unwrap(), expected);
         }

@@ -225,20 +225,22 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
         assert_ne!(change["operation"], "noop");
         assert!(!change.contains_key("change"));
     }
-    let kinds = planned_changes
+    let mut kinds = planned_changes
         .iter()
         .map(|change| change["kind"].as_str().expect("planned kind"))
         .collect::<Vec<_>>();
-    for expected in [
-        "connection_membership",
-        "guard_managed_file",
-        "guard_registry_setup",
-        "managed_host_configuration",
-        "project_registration",
-        "runtime_home_initialization",
-    ] {
-        assert!(kinds.contains(&expected), "missing planned kind {expected}");
-    }
+    kinds.dedup();
+    assert_eq!(
+        kinds,
+        vec![
+            "connection_membership",
+            "guard_managed_file",
+            "guard_registry_setup",
+            "managed_host_configuration",
+            "project_registration",
+            "runtime_home_initialization",
+        ]
+    );
     let triples = planned_changes
         .iter()
         .map(|change| {

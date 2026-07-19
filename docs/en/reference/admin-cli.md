@@ -315,8 +315,8 @@ RemovalResult:
   remaining_project_count: integer
 
 PlannedConnectionChange:
-  kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | mode_transition | connection_membership
-  operation: create | update | remove | register | rebind | execute
+  kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | connection_membership
+  operation: create | update | remove | register | rebind
   target: string
 ```
 

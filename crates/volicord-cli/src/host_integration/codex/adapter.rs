@@ -123,7 +123,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
             change,
             fingerprint,
             conflicts,
-            user_actions: Vec::new(),
+            actions: Vec::new(),
             file_snapshot: Some(snapshot),
         })
     }
@@ -175,7 +175,7 @@ impl<R: CommandRunner> CodexAdapter<R> {
             change: PlannedChange::Noop,
             fingerprint,
             conflicts: Vec::new(),
-            user_actions: Vec::new(),
+            actions: Vec::new(),
             file_snapshot: None,
         })
     }
@@ -369,7 +369,7 @@ fn effect_from_plan(plan: &HostPlan) -> HostEffect {
         target: plan.target.clone(),
         change: plan.change,
         fingerprint: plan.fingerprint.clone(),
-        user_actions: plan.user_actions.clone(),
+        actions: plan.actions.clone(),
     }
 }
 
@@ -383,6 +383,47 @@ fn remove_effect(request: HostRemoveRequest, change: PlannedChange) -> HostEffec
         target: request.target,
         change,
         fingerprint: request.expected_fingerprint,
-        user_actions: Vec::new(),
+        actions: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use volicord_types::{ConnectionAction, ConnectionActionKind};
+
+    use super::*;
+    use crate::host_integration::ManagedServerEntry;
+
+    #[test]
+    fn host_effect_preserves_canonical_actions_and_optional_commands() {
+        let action = ConnectionAction::try_new(
+            ConnectionActionKind::InspectCodexProtocol,
+            "Inspect the Codex protocol failure",
+            Some("volicord connection verify".to_owned()),
+        )
+        .expect("canonical host action");
+        let plan = HostPlan {
+            host_kind: HostKind::Codex,
+            connection_intent: ConnectionIntent::Personal,
+            host_scope: HostScope::User,
+            mode: "workflow".to_owned(),
+            server_name: "volicord".to_owned(),
+            target: HostTarget::File(PathBuf::from("/tmp/codex-config.toml")),
+            entry: ManagedServerEntry::new("connection_1", Path::new("/usr/bin/volicord")),
+            change: PlannedChange::Noop,
+            fingerprint: "sha256:test".to_owned(),
+            conflicts: Vec::new(),
+            actions: vec![action.clone()],
+            file_snapshot: None,
+        };
+
+        let effect = effect_from_plan(&plan);
+
+        assert_eq!(plan.actions, vec![action.clone()]);
+        assert_eq!(effect.actions, vec![action]);
+        assert_eq!(
+            effect.actions[0].command(),
+            Some("volicord connection verify")
+        );
     }
 }

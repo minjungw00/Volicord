@@ -196,7 +196,7 @@ pub fn run_init_command(
             connection,
             outcome.current_report.as_ref(),
             outcome.planned_changes,
-            &outcome.host_plan.user_actions,
+            &outcome.host_plan.actions,
         )?
     } else {
         let verification = outcome.verification.as_ref().ok_or_else(|| {
@@ -255,7 +255,7 @@ pub fn run_connect_command(
                 ),
                 plan.current_report.as_ref(),
                 plan.planned_changes,
-                &plan.host_plan.user_actions,
+                &plan.host_plan.actions,
             )?;
             let rendered = render_command_report(connection_output_format(&parsed), &report)?;
             command_output_result(rendered.status, rendered.output)
