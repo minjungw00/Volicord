@@ -50,9 +50,14 @@ security credential로 동작하지 않으며 호출자가 선택할 수 없습�
 
 Runtime binding이 없는 Guard-only 프로젝트 session은 상관관계 이력이지 호출 권한이
 아닙니다. Core 권한에는 현재 managed-host runtime과 정확한 Registry
-runtime/project/host-session 예약도 필요합니다. Runtime row는 process-liveness 주장이
-아닙니다. Crash 뒤 열린 것처럼 보이는 row는 이력이고 concurrent row 여러 개가 서로를
-승인하거나 Guard event에 맞는 runtime으로 추측될 수 없습니다.
+runtime/project/host-session 예약이 정확한 현재 프로젝트 row에 attach된 상태도 필요합니다.
+예약을 만들기 전에 프로젝트 소유권을 검증하므로 결정적인 Connection, 프로젝트, Guard
+Installation, revision, native session, thread, attached runtime 충돌은 새 Registry 예약을
+남기지 않습니다. Unbound 프로젝트 row는 권한이 아니며 프로젝트 attach 전 중단으로 남은
+예약도 권한이 아닙니다. 정확한 replay는 소유자 상태가 바뀌지 않았을 때만 그 attach를
+완료할 수 있습니다. Runtime row는 process-liveness 주장이 아닙니다. Crash 뒤 열린 것처럼
+보이는 row는 이력이고 concurrent row 여러 개가 서로를 승인하거나 Guard event에 맞는
+runtime으로 추측될 수 없습니다.
 
 실행 파일 bytes와 경로, process identity, client name/version, host version, 환경 값,
 host thread/turn metadata는 actor 또는 human identity credential이 아닙니다. Thread와 turn
@@ -72,7 +77,9 @@ Codex가 이를 읽었다는 증명이 아닙니다.
 
 행동 기반 연결 관찰은 Core 권한을 부여하거나 사용자를 식별하거나 실행 파일 출처 또는
 identity를 인증하거나 미래 호스트 행동을 증명하지 않습니다. Production runtime 권한은
-executable digest나 host version allowlist를 조회하지 않습니다.
+executable digest나 host version allowlist를 조회하지 않습니다. 프로젝트 Agent Session과
+Registry 예약은 로컬 협력적 상관관계 기록입니다. 권한을 위해 둘을 정확히 짝지은 상태도
+actor, host, client, 운영체제 사용자, human identity를 증명하지 않습니다.
 
 <a id="historical-operation-result-access"></a>
 ## 과거 operation result 접근

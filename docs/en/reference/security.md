@@ -60,9 +60,15 @@ credential, and callers cannot select them.
 A Guard-only project session with no runtime binding is correlation history,
 not invocation authority. Core authority additionally requires a current
 managed-host runtime and an exact Registry runtime/project/host-session
-reservation. Runtime rows are not process-liveness claims: an apparently open
-crashed row is historical, and concurrent rows may coexist without authorizing
-one another or being guessed for a Guard event.
+reservation attached to the exact current project row. Project ownership is
+validated before that reservation is created, so a deterministic Connection,
+project, Guard Installation, revision, native-session, thread, or attached-
+runtime conflict leaves no new Registry reservation. An unbound project row is
+not authority, and a reservation left by interruption before project
+attachment is not authority. Exact replay may complete that attachment only
+under unchanged owner state. Runtime rows are not process-liveness claims: an
+apparently open crashed row is historical, and concurrent rows may coexist
+without authorizing one another or being guessed for a Guard event.
 
 Executable bytes, executable paths, process identity, client name/version,
 host version, environment values, and host thread/turn metadata are not actor
@@ -85,7 +91,9 @@ authority, approval, a Write Ticket, or proof that Codex loaded it.
 Behavioral connection observations do not grant Core authority, identify a
 user, certify executable provenance or identity, or prove future host behavior.
 Production runtime authorization does not consult executable digests or host
-version allowlists.
+version allowlists. Project Agent Sessions and Registry reservations are local
+cooperative correlation records; even when paired for authorization, they do
+not prove actor, host, client, operating-system user, or human identity.
 
 <a id="historical-operation-result-access"></a>
 ## Historical Operation-Result Access

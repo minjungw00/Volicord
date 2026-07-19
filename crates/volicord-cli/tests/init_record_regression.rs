@@ -32,7 +32,7 @@ use volicord_store::{
         CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
     },
     core_pipeline::CoreProjectStore,
-    guards::{agent_session, upsert_agent_session, AgentSessionUpsert},
+    guards::{agent_session, bind_agent_session_runtime, AgentSessionRuntimeBinding},
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
     operational_sessions::{
         connection_integration_revision, mcp_runtime_session, start_mcp_runtime_session,
@@ -722,11 +722,11 @@ fn seed_project_session_on_runtime(
     host_session_id: &str,
     observed_at: &str,
 ) -> Result<String, Box<dyn Error>> {
-    Ok(upsert_agent_session(
+    Ok(bind_agent_session_runtime(
         runtime_home,
         project_id,
-        AgentSessionUpsert {
-            runtime_session_id: Some(runtime_session_id.to_owned()),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: runtime_session_id.to_owned(),
             connection_internal_id: connection_internal_id.to_owned(),
             guard_installation_id: Some(guard_installation_id.to_owned()),
             host_session_id: host_session_id.to_owned(),

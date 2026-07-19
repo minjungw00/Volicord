@@ -138,10 +138,15 @@ session coordinate from the Connection, current project integration revision,
 and native session. Because SQLite cannot enforce a foreign key between those
 separate database files, a valid Guard observation may first create an unbound
 project session. The first actual managed MCP tool call for the same host
-identity validates the Registry owner, reserves cross-project uniqueness with
-the exact project revision, and attaches that runtime to the project row.
-Exact replay repairs
-an interrupted attach. A process row is not a lease or liveness signal, so a
+identity first validates the current managed runtime without mutation, then
+establishes or validates the exact unbound project anchor. Only after project
+ownership validation commits does the Registry revalidate the current owner
+facts and reserve cross-project uniqueness with the exact project revision. A
+final project transaction attaches that runtime to the anchor. Project
+ownership conflicts leave no Registry reservation. An unbound project anchor
+and a Registry reservation without project attachment are independently
+non-authoritative. Exact replay under unchanged owner state repairs an
+interrupted final attach. A process row is not a lease or liveness signal, so a
 crashed apparently open row and concurrent processes never select or block
 Guard correlation. `diagnostics.sqlite` is a separate best-effort carrier and
 is never an operational authority source.

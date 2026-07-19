@@ -21,7 +21,7 @@ use volicord_store::{
     },
     guards::{
         current_project_agent_session_identity, guard_event, guard_installation,
-        insert_guard_event, upsert_agent_session, AgentSessionUpsert, GuardEventInsert,
+        insert_guard_event, observe_agent_session, AgentSessionObservation, GuardEventInsert,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
@@ -722,11 +722,10 @@ fn bind_guard_envelope(
         &envelope.host_session_id,
     )?;
     envelope.guard_installation_id = identity.guard_installation_id;
-    let session = upsert_agent_session(
+    let session = observe_agent_session(
         runtime_home,
         &project.project_id,
-        AgentSessionUpsert {
-            runtime_session_id: None,
+        AgentSessionObservation {
             connection_internal_id: envelope.connection_id.clone(),
             guard_installation_id: envelope.guard_installation_id.clone(),
             host_session_id: envelope.host_session_id.clone(),

@@ -4,9 +4,15 @@ use rusqlite::params;
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::{
     agent_connections::{set_connection_enabled, CONNECTION_MODE_READ_ONLY},
-    guards::{upsert_agent_session, AgentSessionUpsert},
-    operational_sessions::{start_mcp_runtime_session, McpRuntimeSessionStart},
+    guards::{
+        agent_session, bind_agent_session_runtime, observe_agent_session, AgentSessionObservation,
+        AgentSessionRuntimeBinding,
+    },
+    operational_sessions::{
+        mcp_runtime_project_session_binding, start_mcp_runtime_session, McpRuntimeSessionStart,
+    },
     sqlite::registry_db_path,
+    StoreError,
 };
 use volicord_test_support::{
     core_fixtures::CoreFixture, seed_test_agent_session, transition_test_connection_mode,
@@ -287,8 +293,7 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
     let fixture = CoreFixture::new("core-agent-session-guard-first")?;
     let host_session = "host.session.guard-first";
     let observed_at = fixture.store()?.current_timestamp()?;
-    let input = |runtime_session_id| AgentSessionUpsert {
-        runtime_session_id,
+    let observation = AgentSessionObservation {
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
         host_session_id: host_session.to_owned(),
@@ -296,13 +301,13 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
         host_turn_id: "host.turn.guard-first".to_owned(),
         observed_at: observed_at.clone(),
     };
-    let project_session_id = upsert_agent_session(
+    let project_session_id = observe_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        input(None),
+        observation,
     )?
     .session_id;
-    let runtime = start_mcp_runtime_session(
+    let conflicting_runtime = start_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -313,27 +318,170 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
         },
     )?;
     let service = CoreService::new(fixture.runtime_home_path());
+    let conflict = bind_agent_session_runtime(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: conflicting_runtime.runtime_session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session.to_owned(),
+            host_thread_id: "host.thread.conflicting".to_owned(),
+            host_turn_id: "host.turn.conflicting".to_owned(),
+            observed_at: observed_at.clone(),
+        },
+    )
+    .expect_err("a conflicting host thread must fail before Registry reservation");
+    assert!(matches!(conflict, StoreError::Conflict { .. }));
+    let still_unbound = agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &project_session_id,
+    )?
+    .expect("Guard-created project session");
+    assert_eq!(still_unbound.host_thread_id, "host.thread.guard-first");
+    assert!(still_unbound.runtime_session_id.is_none());
+    assert!(mcp_runtime_project_session_binding(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &project_session_id,
+    )?
+    .is_none());
     let error = service
         .validate_agent_session(
             AgentConnectionId::new(fixture.connection_id()),
             ProjectId::new(fixture.project_id()),
-            AgentRuntimeSessionId::new(&runtime.runtime_session_id),
+            AgentRuntimeSessionId::new(&conflicting_runtime.runtime_session_id),
             AgentSessionId::new(&project_session_id),
             OperationCategory::Read,
         )
         .expect_err("an unbound Guard-created session cannot authorize");
     assert_eq!(error.reason(), "agent_project_session_unbound");
 
-    upsert_agent_session(
+    let correct_runtime = start_mcp_runtime_session(
+        fixture.runtime_home_path(),
+        McpRuntimeSessionStart {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: None,
+            process_id: std::process::id(),
+            process_started_at: observed_at.clone(),
+        },
+    )?;
+    let attached = bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        input(Some(runtime.runtime_session_id.clone())),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: correct_runtime.runtime_session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session.to_owned(),
+            host_thread_id: "host.thread.guard-first".to_owned(),
+            host_turn_id: "host.turn.correct".to_owned(),
+            observed_at,
+        },
     )?;
+    assert_eq!(attached.session_id, project_session_id);
+    assert_eq!(
+        attached.runtime_session_id.as_deref(),
+        Some(correct_runtime.runtime_session_id.as_str())
+    );
+    let registry = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
+    let binding_count: i64 = registry.query_row(
+        "SELECT COUNT(*) FROM mcp_runtime_project_session_bindings WHERE session_id = ?1",
+        [&project_session_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(binding_count, 1);
+    service.validate_agent_session(
+        AgentConnectionId::new(fixture.connection_id()),
+        ProjectId::new(fixture.project_id()),
+        AgentRuntimeSessionId::new(correct_runtime.runtime_session_id),
+        AgentSessionId::new(project_session_id),
+        OperationCategory::Read,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn registry_reservation_without_project_attachment_cannot_authorize() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("core-agent-session-reservation-only")?;
+    let observed_at = fixture.store()?.current_timestamp()?;
+    let host_session_id = "host.session.reservation-only";
+    let session = observe_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionObservation {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session_id.to_owned(),
+            host_thread_id: "host.thread.reservation-only".to_owned(),
+            host_turn_id: "host.turn.reservation-only".to_owned(),
+            observed_at: observed_at.clone(),
+        },
+    )?;
+    let runtime = start_mcp_runtime_session(
+        fixture.runtime_home_path(),
+        McpRuntimeSessionStart {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: None,
+            process_id: std::process::id(),
+            process_started_at: observed_at.clone(),
+        },
+    )?;
+    let registry = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
+    registry.execute(
+        "INSERT INTO mcp_runtime_project_session_bindings (
+            runtime_session_id, connection_internal_id, project_internal_id,
+            session_id, project_integration_revision, host_session_id, bound_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            runtime.runtime_session_id,
+            fixture.connection_id(),
+            fixture.project_id(),
+            session.session_id,
+            session.project_integration_revision,
+            host_session_id,
+            observed_at,
+        ],
+    )?;
+
+    let service = CoreService::new(fixture.runtime_home_path());
+    let error = service
+        .validate_agent_session(
+            AgentConnectionId::new(fixture.connection_id()),
+            ProjectId::new(fixture.project_id()),
+            AgentRuntimeSessionId::new(&runtime.runtime_session_id),
+            AgentSessionId::new(&session.session_id),
+            OperationCategory::Read,
+        )
+        .expect_err("a Registry-only reservation cannot authorize Core");
+    assert_eq!(error.reason(), "agent_project_session_unbound");
+
+    let attached = bind_agent_session_runtime(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: runtime.runtime_session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session_id.to_owned(),
+            host_thread_id: "host.thread.reservation-only".to_owned(),
+            host_turn_id: "host.turn.reservation-only".to_owned(),
+            observed_at,
+        },
+    )?;
+    assert_eq!(
+        attached.runtime_session_id.as_deref(),
+        Some(runtime.runtime_session_id.as_str())
+    );
     service.validate_agent_session(
         AgentConnectionId::new(fixture.connection_id()),
         ProjectId::new(fixture.project_id()),
         AgentRuntimeSessionId::new(runtime.runtime_session_id),
-        AgentSessionId::new(project_session_id),
+        AgentSessionId::new(session.session_id),
         OperationCategory::Read,
     )?;
     Ok(())

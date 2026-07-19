@@ -2626,8 +2626,8 @@ mod tests {
         ProjectRegistration, ACTIVE_PROJECT_STATUS,
     };
     use crate::operational_sessions::{
-        bind_mcp_runtime_project_session, mcp_runtime_session, start_mcp_runtime_session,
-        McpRuntimeSessionRecord, McpRuntimeSessionStart,
+        mcp_runtime_session, start_mcp_runtime_session, McpRuntimeSessionRecord,
+        McpRuntimeSessionStart,
     };
 
     const PROJECT_ID: &str = "project_a";
@@ -4369,12 +4369,12 @@ mod tests {
             McpRuntimeSessionSource::ManagedHost,
             42,
         )?;
-        bind_mcp_runtime_project_session(
-            fixture.runtime_home.path(),
+        upsert_test_agent_session(
+            &fixture,
             &selected_session.runtime_session_id,
             "conn_selected",
             PROJECT_ID,
-            Some("guard_selected"),
+            "guard_selected",
             "host_selected",
             "2026-07-19T00:00:01Z",
         )?;
@@ -4408,12 +4408,12 @@ mod tests {
             McpRuntimeSessionSource::ManagedHost,
             43,
         )?;
-        bind_mcp_runtime_project_session(
-            fixture.runtime_home.path(),
+        upsert_test_agent_session(
+            &fixture,
             &unrelated_session.runtime_session_id,
             "conn_unrelated",
             PRIOR_OTHER_PROJECT_ID,
-            Some("guard_unrelated"),
+            "guard_unrelated",
             "host_unrelated",
             "2026-07-19T00:00:01Z",
         )?;
@@ -4515,12 +4515,12 @@ mod tests {
                 "host_multi_retained",
             ),
         ] {
-            bind_mcp_runtime_project_session(
-                fixture.runtime_home.path(),
+            upsert_test_agent_session(
+                &fixture,
                 &runtime_session.runtime_session_id,
                 "conn_multi",
                 project_id,
-                Some(guard_id),
+                guard_id,
                 host_session_id,
                 "2026-07-19T00:00:01Z",
             )?;
@@ -4600,12 +4600,12 @@ mod tests {
             McpRuntimeSessionSource::ManagedHost,
             45,
         )?;
-        bind_mcp_runtime_project_session(
-            fixture.runtime_home.path(),
+        upsert_test_agent_session(
+            &fixture,
             &runtime_session.runtime_session_id,
             "conn_pending",
             PROJECT_ID,
-            Some("guard_pending"),
+            "guard_pending",
             "host_pending",
             "2026-07-19T00:00:01Z",
         )?;
@@ -5176,11 +5176,11 @@ mod tests {
         host_session_id: &str,
         observed_at: &str,
     ) -> StoreResult<crate::guards::AgentSessionRecord> {
-        crate::guards::upsert_agent_session(
+        crate::guards::bind_agent_session_runtime(
             fixture.runtime_home.path(),
             project_id,
-            crate::guards::AgentSessionUpsert {
-                runtime_session_id: Some(runtime_session_id.to_owned()),
+            crate::guards::AgentSessionRuntimeBinding {
+                runtime_session_id: runtime_session_id.to_owned(),
                 connection_internal_id: connection_internal_id.to_owned(),
                 guard_installation_id: Some(guard_installation_id.to_owned()),
                 host_session_id: host_session_id.to_owned(),

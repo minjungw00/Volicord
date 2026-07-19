@@ -130,16 +130,30 @@ sentinel, fabricated, or CLI-preflight runtime represents that state.
 Composite project foreign keys prevent a downstream Guard row from pairing a
 session with another Connection.
 
-The first actual managed MCP tool call for the same host session reserves
-Registry `mcp_runtime_project_session_bindings` and then attaches the runtime
-to the project row. The Registry reservation supplies the uniqueness boundary
-that a foreign key cannot express across separate SQLite databases. Exact
-replay is idempotent, including recovery after reservation but before attach;
-the reservation stores the same exact project integration revision as the
-project row, and authorization validates that match. Conflicting runtime,
-Connection, project, revision, or host-session claims fail. A
-partial project index makes non-null runtime attachment unique while allowing
-any number of unbound Guard-first sessions.
+The first actual managed MCP tool call for the same host session uses four
+ordered stages. Store validates the current `managed_host` runtime and its
+Connection revision without mutation. In an immediate project transaction it
+then creates or validates an unbound Agent Session anchor and rejects any
+Connection, native-session, thread, immutable-revision, or existing-runtime
+conflict. Only after that commit does an immediate Registry transaction
+revalidate the runtime, Connection, project membership, current project
+identity, and exact anchor coordinates before inserting
+`mcp_runtime_project_session_bindings`. A final immediate project transaction
+revalidates the anchor and attaches the runtime only when the field is null or
+already names the same runtime.
+
+The Registry reservation supplies the uniqueness boundary that a foreign key
+cannot express across separate SQLite databases. A deterministic project
+ownership conflict leaves no new reservation. A valid anchor can remain
+unbound when Registry reservation fails, but it cannot authorize Core. A
+reservation can remain without project attachment after an interrupted final
+write, but it also cannot authorize Core. Exact replay under unchanged owner
+state reuses that reservation and completes the attachment. The reservation
+stores the same exact project integration revision as the project row, and
+authorization validates that match. Conflicting runtime, Connection, project,
+revision, or host-session Registry claims fail. A partial project index makes
+non-null runtime attachment unique while allowing any number of unbound
+Guard-first or MCP-first anchors.
 
 Only an attached project row with an exact current Registry binding can
 authorize Core. Unbound rows can retain Guard events and prompt captures.

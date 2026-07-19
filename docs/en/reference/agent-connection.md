@@ -258,9 +258,18 @@ Connection recreation, project-policy revision, or Guard ownership revision
 creates a different project Agent Session row for the same native session and
 leaves the earlier row as history.
 A Guard observation may create it with a null runtime binding. The first actual
-managed MCP tool call for that host session reserves the cross-database binding
-and attaches its runtime. An attached session cannot be rebound across a
-runtime session, Connection, project, host session, or host thread.
+managed MCP tool call for that host session validates the current managed
+runtime without mutation, establishes or validates the exact project Agent
+Session anchor, revalidates the current owner inputs while reserving the exact
+cross-database binding, and only then attaches its runtime in a final project
+transaction. Connection, project, Guard Installation, revision, native-session,
+thread, or existing-runtime conflicts detected against the project anchor
+leave no new Registry binding. The project anchor may remain unbound if a later
+Registry reservation fails, but it is not authorization. A Registry reservation
+left by interruption before final attachment is also not authorization; exact
+replay under unchanged owner state reuses it and finishes the attachment. An
+attached session cannot be rebound across a runtime session, Connection,
+project, host session, or host thread.
 
 Runtime rows are historical process observations, not leases or liveness
 claims. A crashed process may leave an apparently open row, and multiple

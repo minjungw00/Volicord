@@ -217,18 +217,33 @@ pub fn current_managed_mcp_runtime_session_for_connection(
     Ok(session)
 }
 
-/// Reserves one runtime/host session for exactly one registered project.
-/// The Registry reservation supplies the cross-database uniqueness boundary
-/// that a project-local SQLite foreign key cannot express.
-pub fn bind_mcp_runtime_project_session(
+/// Exact Phase 2 inputs from one validated project Agent Session anchor.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct McpRuntimeProjectSessionReservation<'a> {
+    pub runtime_session_id: &'a str,
+    pub connection_internal_id: &'a str,
+    pub project_id: &'a str,
+    pub asserted_guard_installation_id: Option<&'a str>,
+    pub expected_identity: &'a crate::guards::ProjectAgentSessionIdentity,
+    pub host_session_id: &'a str,
+    pub bound_at: &'a str,
+}
+
+/// Reserves one runtime/host session for the exact validated project anchor.
+/// This phase helper is crate-private so callers cannot bypass project validation.
+pub(crate) fn reserve_mcp_runtime_project_session(
     runtime_home: impl AsRef<Path>,
-    runtime_session_id: &str,
-    connection_internal_id: &str,
-    project_id: &str,
-    asserted_guard_installation_id: Option<&str>,
-    host_session_id: &str,
-    bound_at: &str,
+    input: McpRuntimeProjectSessionReservation<'_>,
 ) -> StoreResult<McpRuntimeProjectSessionBindingRecord> {
+    let McpRuntimeProjectSessionReservation {
+        runtime_session_id,
+        connection_internal_id,
+        project_id,
+        asserted_guard_installation_id,
+        expected_identity,
+        host_session_id,
+        bound_at,
+    } = input;
     validate_timestamp("bound_at", bound_at)?;
     for (field, value) in [
         ("runtime_session_id", runtime_session_id),
@@ -244,14 +259,6 @@ pub fn bind_mcp_runtime_project_session(
         }
     })?;
     let runtime_home = runtime_home.as_ref();
-    let identity = crate::guards::current_project_agent_session_identity(
-        runtime_home,
-        project_id,
-        connection_internal_id,
-        asserted_guard_installation_id,
-        host_session_id,
-    )?;
-    let session_id = identity.session_id.as_str();
     let path = registry_db_path(runtime_home);
     let mut conn = open_registry_database(path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
@@ -296,10 +303,26 @@ pub fn bind_mcp_runtime_project_session(
             detail: "project is not a current member of the Agent Connection".to_owned(),
         });
     }
+    let identity = crate::guards::current_project_agent_session_identity(
+        runtime_home,
+        project_id,
+        connection_internal_id,
+        asserted_guard_installation_id,
+        host_session_id,
+    )?;
+    if identity != *expected_identity {
+        return Err(StoreError::Conflict {
+            entity: "agent_session",
+            id: expected_identity.session_id.clone(),
+            detail: "current project Agent Session identity changed before Registry reservation"
+                .to_owned(),
+        });
+    }
+    let session_id = identity.session_id.as_str();
     let existing_project_session = tx
         .query_row(
             "SELECT runtime_session_id, connection_internal_id,
-                    project_integration_revision, host_session_id
+                    project_integration_revision, host_session_id, bound_at
                FROM mcp_runtime_project_session_bindings
               WHERE project_internal_id = ?1 AND session_id = ?2",
             params![project.project_internal_id, session_id],
@@ -309,12 +332,18 @@ pub fn bind_mcp_runtime_project_session(
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
                 ))
             },
         )
         .optional()?;
-    if let Some((existing_runtime, existing_connection, existing_revision, existing_host_session)) =
-        existing_project_session
+    if let Some((
+        existing_runtime,
+        existing_connection,
+        existing_revision,
+        existing_host_session,
+        existing_bound_at,
+    )) = existing_project_session
     {
         if existing_runtime == runtime_session_id
             && existing_connection == connection_internal_id
@@ -329,7 +358,7 @@ pub fn bind_mcp_runtime_project_session(
                 session_id: identity.session_id,
                 project_integration_revision: identity.project_integration_revision,
                 host_session_id: host_session_id.to_owned(),
-                bound_at: bound_at.to_owned(),
+                bound_at: existing_bound_at,
             });
         }
         return Err(StoreError::Conflict {

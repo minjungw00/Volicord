@@ -36,8 +36,8 @@ pub(crate) use volicord_store::{
         WorkflowMetricKind, WorkflowMetricOutcome,
     },
     guards::{
-        current_project_agent_session_identity, list_guard_installations, upsert_agent_session,
-        AgentSessionUpsert,
+        bind_agent_session_runtime, current_project_agent_session_identity,
+        list_guard_installations, AgentSessionRuntimeBinding,
     },
     operational_sessions::{
         record_mcp_graceful_close, record_mcp_initialize, record_mcp_initialized_notification,

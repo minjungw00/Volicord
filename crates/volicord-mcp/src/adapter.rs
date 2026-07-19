@@ -1021,11 +1021,11 @@ impl McpAdapter {
             let observed_at = CoreProjectStore::open(&self.runtime_home, project_id)
                 .and_then(|store| store.current_timestamp())
                 .map_err(McpAdapterError::Store)?;
-            upsert_agent_session(
+            bind_agent_session_runtime(
                 &self.runtime_home,
                 project_id.as_str(),
-                AgentSessionUpsert {
-                    runtime_session_id: Some(binding.runtime_session_id.clone()),
+                AgentSessionRuntimeBinding {
+                    runtime_session_id: binding.runtime_session_id.clone(),
                     connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
                     guard_installation_id,
                     host_session_id: binding.host_session_id.clone(),

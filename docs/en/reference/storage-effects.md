@@ -338,6 +338,30 @@ mode, metadata, memberships, Guard manifests, runtime sessions, or project
 Agent Sessions. A revision conflict has no Registry effect.
 `volicord connection status` remains read-only and does not use this mutation.
 
+## Managed Runtime Project-Session Binding
+
+An actual managed MCP project call uses these ordered storage effects:
+
+1. Runtime, Connection revision, project membership, observation time, and
+   current project identity validation have no storage effect on failure.
+2. One immediate project transaction creates or validates the exact unbound
+   Agent Session anchor and applies only owner-defined observation updates.
+3. One immediate Registry transaction revalidates the current owner facts and
+   inserts or exactly reuses the matching
+   `mcp_runtime_project_session_bindings` reservation.
+4. One final immediate project transaction attaches the runtime to the exact
+   anchor or accepts the same existing attachment as replay.
+
+A deterministic Connection, project, Guard Installation, native-session,
+thread, immutable-revision, or existing-runtime ownership conflict is rejected
+in the first two stages and creates no Registry reservation. A Registry
+uniqueness failure can leave the validated project anchor unbound; that row is
+correlation state only. An interruption after Registry reservation can leave
+the exact reservation without project attachment; that reservation is also not
+authority. Exact replay under unchanged owner state reuses it and completes the
+final attachment. No failure path compensates by deleting another runtime's
+valid reservation.
+
 ## Administrative Connection Project Retirement
 
 An accepted `volicord connection remove` apply uses one immediate Registry

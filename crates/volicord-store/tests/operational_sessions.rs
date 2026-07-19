@@ -1,4 +1,8 @@
-use std::error::Error;
+use std::{
+    error::Error,
+    sync::{Arc, Barrier},
+    thread,
+};
 
 use volicord_store::{
     agent_connections::{
@@ -8,16 +12,19 @@ use volicord_store::{
     },
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
-    guards::{agent_session, upsert_agent_session, AgentSessionUpsert},
-    operational_sessions::{
-        bind_mcp_runtime_project_session, current_managed_mcp_runtime_session_for_connection,
-        current_managed_runtime_sessions, latest_current_managed_runtime_session,
-        latest_managed_runtime_session, latest_successful_managed_runtime_session,
-        mcp_runtime_project_session_binding, mcp_runtime_session, record_mcp_initialize,
-        record_mcp_initialized_notification, record_mcp_safe_read_only_tool_call,
-        record_mcp_terminal_protocol_failure, record_mcp_tools_list, start_mcp_runtime_session,
-        McpRuntimeSessionStart,
+    guards::{
+        agent_session, bind_agent_session_runtime, current_project_agent_session_identity,
+        observe_agent_session, AgentSessionObservation, AgentSessionRuntimeBinding,
     },
+    operational_sessions::{
+        current_managed_mcp_runtime_session_for_connection, current_managed_runtime_sessions,
+        latest_current_managed_runtime_session, latest_managed_runtime_session,
+        latest_successful_managed_runtime_session, mcp_runtime_project_session_binding,
+        mcp_runtime_session, record_mcp_initialize, record_mcp_initialized_notification,
+        record_mcp_safe_read_only_tool_call, record_mcp_terminal_protocol_failure,
+        record_mcp_tools_list, start_mcp_runtime_session, McpRuntimeSessionStart,
+    },
+    sqlite::registry_db_path,
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
 use volicord_types::{ManagedMcpClientInfo, McpRuntimeSessionSource};
@@ -68,6 +75,26 @@ fn complete(
     )?;
     record_mcp_safe_read_only_tool_call(fixture.runtime_home_path(), runtime_session_id, SAFE)?;
     Ok(())
+}
+
+fn agent_session_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
+    let project_state = rusqlite::Connection::open(
+        fixture
+            .runtime_home_path()
+            .join("projects")
+            .join(fixture.project_id())
+            .join("state.sqlite"),
+    )?;
+    Ok(project_state.query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?)
+}
+
+fn runtime_project_binding_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
+    let registry = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
+    Ok(registry.query_row(
+        "SELECT COUNT(*) FROM mcp_runtime_project_session_bindings",
+        [],
+        |row| row.get(0),
+    )?)
 }
 
 #[test]
@@ -253,11 +280,11 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
         },
     )?;
     let other_host_session = "host.session.other";
-    assert!(upsert_agent_session(
+    assert!(bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        AgentSessionUpsert {
-            runtime_session_id: Some(runtime.clone()),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: runtime.clone(),
             connection_internal_id: other_connection.to_owned(),
             guard_installation_id: None,
             host_session_id: other_host_session.to_owned(),
@@ -267,6 +294,25 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
         }
     )
     .is_err());
+    let rejected_identity = current_project_agent_session_identity(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        other_connection,
+        None,
+        other_host_session,
+    )?;
+    assert!(agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &rejected_identity.session_id,
+    )?
+    .is_none());
+    assert!(mcp_runtime_project_session_binding(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &rejected_identity.session_id,
+    )?
+    .is_none());
 
     start_diagnostic_session(
         fixture.runtime_home_path(),
@@ -311,8 +357,8 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
     )?;
     let runtime_session_id = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session_id = "host.session.shared";
-    let input = |turn: &str| AgentSessionUpsert {
-        runtime_session_id: Some(runtime_session_id.clone()),
+    let input = |runtime_session_id: &str, turn: &str| AgentSessionRuntimeBinding {
+        runtime_session_id: runtime_session_id.to_owned(),
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
         host_session_id: host_session_id.to_owned(),
@@ -320,17 +366,49 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         host_turn_id: turn.to_owned(),
         observed_at: INIT.to_owned(),
     };
-    upsert_agent_session(
+    bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        input("host.turn.first"),
+        input(&runtime_session_id, "host.turn.first"),
     )?;
-    assert!(upsert_agent_session(
+    assert!(bind_agent_session_runtime(
         fixture.runtime_home_path(),
         second_project,
-        input("host.turn.second")
+        input(&runtime_session_id, "host.turn.second")
     )
     .is_err());
+    let second_identity = current_project_agent_session_identity(
+        fixture.runtime_home_path(),
+        second_project,
+        fixture.connection_id(),
+        None,
+        host_session_id,
+    )?;
+    let unbound = agent_session(
+        fixture.runtime_home_path(),
+        second_project,
+        &second_identity.session_id,
+    )?
+    .expect("Phase 1 anchor remains after natural Registry uniqueness conflict");
+    assert!(unbound.runtime_session_id.is_none());
+    assert!(mcp_runtime_project_session_binding(
+        fixture.runtime_home_path(),
+        second_project,
+        &second_identity.session_id,
+    )?
+    .is_none());
+
+    let non_conflicting_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    let attached = bind_agent_session_runtime(
+        fixture.runtime_home_path(),
+        second_project,
+        input(&non_conflicting_runtime, "host.turn.recovery"),
+    )?;
+    assert_eq!(attached.session_id, second_identity.session_id);
+    assert_eq!(
+        attached.runtime_session_id.as_deref(),
+        Some(non_conflicting_runtime.as_str())
+    );
     Ok(())
 }
 
@@ -339,8 +417,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("operational-guard-first-binding")?;
     let host_session_id = "host.session.guard-first";
-    let observation = |runtime_session_id, turn: &str, observed_at: &str| AgentSessionUpsert {
-        runtime_session_id,
+    let observation = |turn: &str, observed_at: &str| AgentSessionObservation {
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
         host_session_id: host_session_id.to_owned(),
@@ -348,11 +425,21 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
         host_turn_id: turn.to_owned(),
         observed_at: observed_at.to_owned(),
     };
+    let binding =
+        |runtime_session_id: &str, turn: &str, observed_at: &str| AgentSessionRuntimeBinding {
+            runtime_session_id: runtime_session_id.to_owned(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session_id.to_owned(),
+            host_thread_id: "host.thread.guard-first".to_owned(),
+            host_turn_id: turn.to_owned(),
+            observed_at: observed_at.to_owned(),
+        };
 
-    let unbound = upsert_agent_session(
+    let unbound = observe_agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        observation(None, "host.turn.guard", START),
+        observation("host.turn.guard", START),
     )?;
     let session_id = unbound.session_id.clone();
     assert_eq!(unbound.runtime_session_id, None);
@@ -365,20 +452,20 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
     .is_none());
 
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
-    let bound = upsert_agent_session(
+    let bound = bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        observation(Some(runtime.clone()), "host.turn.tool", INIT),
+        binding(&runtime, "host.turn.tool", INIT),
     )?;
     assert_eq!(bound.runtime_session_id.as_deref(), Some(runtime.as_str()));
     assert_eq!(bound.first_observed_at, START);
     assert_eq!(bound.last_observed_at, INIT);
     assert_eq!(bound.last_host_turn_id, "host.turn.tool");
 
-    let replay = upsert_agent_session(
+    let replay = bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        observation(Some(runtime.clone()), "host.turn.tool", INIT),
+        binding(&runtime, "host.turn.tool", INIT),
     )?;
     assert_eq!(replay, bound);
     let reservation = mcp_runtime_project_session_binding(
@@ -430,11 +517,10 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
             "host.thread.concurrent-b",
         ),
     ] {
-        upsert_agent_session(
+        observe_agent_session(
             fixture.runtime_home_path(),
             fixture.project_id(),
-            AgentSessionUpsert {
-                runtime_session_id: None,
+            AgentSessionObservation {
                 connection_internal_id: fixture.connection_id().to_owned(),
                 guard_installation_id: None,
                 host_session_id: host_session.to_owned(),
@@ -443,11 +529,11 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
                 observed_at: START.to_owned(),
             },
         )?;
-        upsert_agent_session(
+        bind_agent_session_runtime(
             fixture.runtime_home_path(),
             fixture.project_id(),
-            AgentSessionUpsert {
-                runtime_session_id: Some(runtime.clone()),
+            AgentSessionRuntimeBinding {
+                runtime_session_id: runtime.clone(),
                 connection_internal_id: fixture.connection_id().to_owned(),
                 guard_installation_id: None,
                 host_session_id: host_session.to_owned(),
@@ -459,11 +545,11 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
     }
     let runtime_c = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session_c = "host.session.concurrent-c";
-    upsert_agent_session(
+    bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        AgentSessionUpsert {
-            runtime_session_id: Some(runtime_c),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: runtime_c,
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
             host_session_id: host_session_c.to_owned(),
@@ -481,54 +567,110 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
 }
 
 #[test]
-fn registry_reservation_replay_finishes_project_attach_and_conflicts_fail(
+fn concurrent_runtimes_claiming_one_project_session_produce_one_winner(
 ) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-concurrent-single-session-claim")?;
+    let host_session = "host.session.concurrent-claim";
+    let host_thread = "host.thread.concurrent-claim";
+    let unbound = observe_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionObservation {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_session_id: host_session.to_owned(),
+            host_thread_id: host_thread.to_owned(),
+            host_turn_id: "host.turn.guard".to_owned(),
+            observed_at: START.to_owned(),
+        },
+    )?;
+    let runtimes = [
+        start(&fixture, McpRuntimeSessionSource::ManagedHost)?,
+        start(&fixture, McpRuntimeSessionSource::ManagedHost)?,
+    ];
+    let barrier = Arc::new(Barrier::new(runtimes.len()));
+    let mut claims = Vec::new();
+    for runtime_session_id in runtimes {
+        let barrier = Arc::clone(&barrier);
+        let runtime_home = fixture.runtime_home_path().to_path_buf();
+        let project_id = fixture.project_id().to_owned();
+        let connection_internal_id = fixture.connection_id().to_owned();
+        claims.push(thread::spawn(move || {
+            barrier.wait();
+            bind_agent_session_runtime(
+                runtime_home,
+                &project_id,
+                AgentSessionRuntimeBinding {
+                    runtime_session_id,
+                    connection_internal_id,
+                    guard_installation_id: None,
+                    host_session_id: host_session.to_owned(),
+                    host_thread_id: host_thread.to_owned(),
+                    host_turn_id: "host.turn.mcp".to_owned(),
+                    observed_at: INIT.to_owned(),
+                },
+            )
+        }));
+    }
+    let results = claims
+        .into_iter()
+        .map(|claim| claim.join().expect("claim thread must not panic"))
+        .collect::<Vec<_>>();
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(results.iter().filter(|result| result.is_err()).count(), 1);
+    let winner = results
+        .into_iter()
+        .find_map(Result::ok)
+        .expect("one runtime wins");
+    let stored = volicord_store::guards::agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &unbound.session_id,
+    )?
+    .expect("project Agent Session");
+    assert_eq!(stored.runtime_session_id, winner.runtime_session_id);
+    let registry = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
+    let binding_count: i64 = registry.query_row(
+        "SELECT COUNT(*) FROM mcp_runtime_project_session_bindings WHERE session_id = ?1",
+        [&unbound.session_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(binding_count, 1);
+    Ok(())
+}
+
+#[test]
+fn managed_binding_replay_is_idempotent_and_conflicting_runtime_fails() -> Result<(), Box<dyn Error>>
+{
     let fixture = CoreFixture::new("operational-reservation-recovery")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session = "host.session.recovery";
-    let binding = bind_mcp_runtime_project_session(
+    let input = |runtime_session_id: &str, turn: &str| AgentSessionRuntimeBinding {
+        runtime_session_id: runtime_session_id.to_owned(),
+        connection_internal_id: fixture.connection_id().to_owned(),
+        guard_installation_id: None,
+        host_session_id: host_session.to_owned(),
+        host_thread_id: "host.thread.recovery".to_owned(),
+        host_turn_id: turn.to_owned(),
+        observed_at: INIT.to_owned(),
+    };
+    let attached = bind_agent_session_runtime(
         fixture.runtime_home_path(),
-        &runtime,
-        fixture.connection_id(),
         fixture.project_id(),
-        None,
-        host_session,
-        INIT,
+        input(&runtime, "host.turn.recovery"),
     )?;
-    let session_id = binding.session_id;
-    assert!(agent_session(
+    let replay = bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        &session_id
-    )?
-    .is_none());
-    upsert_agent_session(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        AgentSessionUpsert {
-            runtime_session_id: Some(runtime),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            host_session_id: host_session.to_owned(),
-            host_thread_id: "host.thread.recovery".to_owned(),
-            host_turn_id: "host.turn.recovery".to_owned(),
-            observed_at: INIT.to_owned(),
-        },
+        input(&runtime, "host.turn.recovery"),
     )?;
+    assert_eq!(replay, attached);
 
     let conflicting_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
-    assert!(upsert_agent_session(
+    assert!(bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        AgentSessionUpsert {
-            runtime_session_id: Some(conflicting_runtime),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            host_session_id: host_session.to_owned(),
-            host_thread_id: "host.thread.recovery".to_owned(),
-            host_turn_id: "host.turn.conflict".to_owned(),
-            observed_at: TOOLS.to_owned(),
-        },
+        input(&conflicting_runtime, "host.turn.conflict"),
     )
     .is_err());
     Ok(())
@@ -539,11 +681,18 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
     let fixture = CoreFixture::new("operational-preflight-no-binding")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
     let host_session = "host.session.preflight";
-    assert!(upsert_agent_session(
+    let identity = current_project_agent_session_identity(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        AgentSessionUpsert {
-            runtime_session_id: Some(runtime),
+        fixture.connection_id(),
+        None,
+        host_session,
+    )?;
+    assert!(bind_agent_session_runtime(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: runtime,
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
             host_session_id: host_session.to_owned(),
@@ -553,5 +702,71 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
         },
     )
     .is_err());
+    assert!(agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &identity.session_id,
+    )?
+    .is_none());
+    assert!(mcp_runtime_project_session_binding(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &identity.session_id,
+    )?
+    .is_none());
+    Ok(())
+}
+
+#[test]
+fn phase_zero_rejections_mutate_neither_project_nor_registry() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-phase-zero-no-mutation")?;
+    let runtime = start_mcp_runtime_session(
+        fixture.runtime_home_path(),
+        McpRuntimeSessionStart {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: None,
+            process_id: 42,
+            process_started_at: INIT.to_owned(),
+        },
+    )?;
+    let input =
+        |guard_installation_id: Option<&str>, observed_at: &str| AgentSessionRuntimeBinding {
+            runtime_session_id: runtime.runtime_session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: guard_installation_id.map(str::to_owned),
+            host_session_id: "host.session.phase-zero".to_owned(),
+            host_thread_id: "host.thread.phase-zero".to_owned(),
+            host_turn_id: "host.turn.phase-zero".to_owned(),
+            observed_at: observed_at.to_owned(),
+        };
+    let project_count = agent_session_count(&fixture)?;
+    let registry_count = runtime_project_binding_count(&fixture)?;
+
+    let before_process_start = bind_agent_session_runtime(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        input(None, START),
+    )
+    .expect_err("an observation before process start must fail in Phase 0");
+    assert!(matches!(
+        before_process_start,
+        volicord_store::StoreError::InvalidInput { .. }
+    ));
+    assert_eq!(agent_session_count(&fixture)?, project_count);
+    assert_eq!(runtime_project_binding_count(&fixture)?, registry_count);
+
+    let wrong_guard = bind_agent_session_runtime(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        input(Some("guard_installation_missing"), INIT),
+    )
+    .expect_err("a non-current Guard installation must fail before Phase 1");
+    assert!(matches!(
+        wrong_guard,
+        volicord_store::StoreError::Conflict { .. }
+    ));
+    assert_eq!(agent_session_count(&fixture)?, project_count);
+    assert_eq!(runtime_project_binding_count(&fixture)?, registry_count);
     Ok(())
 }

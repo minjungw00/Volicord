@@ -27,8 +27,8 @@ use volicord_store::{
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     guards::{
-        agent_session_matches_current_integration, guard_health_record, list_guard_installations,
-        upsert_agent_session, upsert_guard_installation, AgentSessionUpsert,
+        agent_session_matches_current_integration, bind_agent_session_runtime, guard_health_record,
+        list_guard_installations, upsert_guard_installation, AgentSessionRuntimeBinding,
         GuardInstallationUpsert,
     },
     operational_sessions::{
@@ -344,11 +344,11 @@ pub fn seed_test_agent_session(
         },
     )?
     .runtime_session_id;
-    let project_session_id = upsert_agent_session(
+    let project_session_id = bind_agent_session_runtime(
         runtime_home,
         project_id,
-        AgentSessionUpsert {
-            runtime_session_id: Some(runtime_session_id.clone()),
+        AgentSessionRuntimeBinding {
+            runtime_session_id: runtime_session_id.clone(),
             connection_internal_id: connection_id.to_owned(),
             guard_installation_id: guard_installation_id.map(str::to_owned),
             host_session_id: host_session_id.clone(),

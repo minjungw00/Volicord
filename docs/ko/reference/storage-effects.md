@@ -328,6 +328,27 @@ Guard manifest, runtime session, 프로젝트 Agent Session은 쓰지 않습니�
 Registry 효과가 없습니다. `volicord connection status`는 계속 읽기 전용이며 이 변경을
 사용하지 않습니다.
 
+## Managed Runtime 프로젝트 Session 결속
+
+실제 managed MCP 프로젝트 호출은 다음 순서로 저장 효과를 만듭니다.
+
+1. Runtime, Connection revision, 프로젝트 membership, 관찰 시각, 현재 프로젝트
+   identity 검증이 실패하면 저장 효과가 없습니다.
+2. Immediate 프로젝트 transaction 하나가 정확한 unbound Agent Session anchor를 만들거나
+   검증하고 담당 문서가 정의한 관찰 갱신만 적용합니다.
+3. Immediate Registry transaction 하나가 현재 소유자 사실을 다시 검증하고 일치하는
+   `mcp_runtime_project_session_bindings` 예약을 삽입하거나 정확히 재사용합니다.
+4. 마지막 immediate 프로젝트 transaction 하나가 정확한 anchor에 runtime을 붙이거나 이미
+   같은 attach가 있으면 replay로 받아들입니다.
+
+결정적인 Connection, 프로젝트, Guard Installation, native session, thread, 변경 불가능한
+revision, 기존 runtime 소유권 충돌은 첫 두 단계에서 거부되며 Registry 예약을 만들지
+않습니다. Registry uniqueness 실패는 검증된 프로젝트 anchor를 unbound로 남길 수 있지만
+그 row는 상관관계 상태일 뿐입니다. Registry 예약 뒤 중단되면 정확한 예약만 있고 프로젝트
+attach가 없는 상태가 남을 수 있으며 이 예약도 권한이 아닙니다. 소유자 상태가 바뀌지 않은
+정확한 replay는 예약을 재사용해 마지막 attach를 완료합니다. 어떤 실패 경로도 다른 runtime의
+유효한 예약을 보상 삭제하지 않습니다.
+
 ## 관리 Connection Project 폐기
 
 승인된 `volicord connection remove` 적용은 immediate Registry transaction 하나를

@@ -118,12 +118,19 @@ retains only the exact native session, thread, and turn metadata; it does not
 derive or search for a Connection-only internal session coordinate. After
 project selection, the Store resolves the current project integration revision
 and derives the project Agent Session ID from the Connection, that exact
-revision, and the native session. The first actual managed `tools/call`
-reserves the exact Registry runtime/project/revision/host-session binding and
-attaches that runtime to the project row. The reservation and attach are
-replay-safe: if reservation succeeds but the project write is interrupted, the
-identical call can finish the attach. CLI preflight never performs this
-binding.
+revision, and the native session. For the first actual managed `tools/call`,
+the Store first validates the current managed runtime without mutation. It then
+establishes or validates an unbound project Agent Session anchor with the exact
+Connection, native session, thread, project revision, and current Guard
+ownership. Only after that project transaction commits does the Store
+revalidate the current owner facts and reserve the exact Registry
+runtime/project/revision/host-session binding. A final project transaction
+attaches that runtime to the same anchor. A deterministic project ownership
+conflict therefore creates no Registry reservation. An unbound anchor is not
+authority, and a Registry reservation without the matching project attachment
+is not authority. If the final project write is interrupted, an identical call
+under unchanged owner state reuses the reservation and finishes the attachment.
+CLI preflight never performs this binding.
 
 Before constructing Core invocation context for a project tool, the adapter
 validates the authoritative current Registry runtime session, the exact

@@ -107,9 +107,15 @@ Session은 실제로 기록한 협력적 protocol 동작만 증명합니다.
 turn metadata만 유지하고 Connection만으로 내부 session 좌표를 도출하거나 검색하지
 않습니다. 프로젝트를 선택한 뒤 Store가 현재 프로젝트 통합 revision을 결정하고 Connection,
 그 정확한 revision, native session으로 프로젝트 Agent Session ID를 도출합니다. 첫 실제
-managed `tools/call`은 정확한 Registry runtime/project/revision/host-session binding을
-예약하고 그 runtime을 프로젝트 row에 붙입니다. 예약 뒤 프로젝트 쓰기가 중단되어도 동일한
-호출을 재실행하면 attach를 안전하게 완료할 수 있습니다. CLI preflight는 이 binding을
+managed `tools/call`에서 Store는 먼저 현재 managed runtime을 변경 없이 검증합니다. 그다음
+정확한 Connection, native session, thread, 프로젝트 revision, 현재 Guard 소유권에 맞는
+unbound 프로젝트 Agent Session anchor를 만들거나 검증합니다. 이 프로젝트 transaction이
+commit된 뒤에만 Store가 현재 소유자 사실을 다시 검증하고 정확한 Registry
+runtime/project/revision/host-session binding을 예약합니다. 마지막 프로젝트 transaction은
+같은 anchor에 그 runtime을 붙입니다. 따라서 결정적인 프로젝트 소유권 충돌은 Registry
+예약을 만들지 않습니다. Unbound anchor는 권한이 아니며, 일치하는 프로젝트 attach가 없는
+Registry 예약도 권한이 아닙니다. 마지막 프로젝트 쓰기가 중단되면 소유자 상태가 바뀌지
+않은 동일 호출이 예약을 재사용해 attach를 완료합니다. CLI preflight는 이 binding을
 수행하지 않습니다.
 
 프로젝트 도구의 Core 호출 맥락을 만들기 전에 어댑터는 권위 있는 현재 Registry runtime

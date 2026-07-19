@@ -227,9 +227,15 @@ Store는 프로젝트를 결정하고 현재 Guard ownership을 검증한 뒤에
 재생성, 프로젝트 정책 revision, Guard ownership revision이 생기면 같은 native session에도
 서로 다른 프로젝트 Agent Session row를 만들고 이전 row는 이력으로 남깁니다. Guard
 관찰은 runtime binding이 null인 session을 만들 수 있습니다. 해당 host session의 첫 실제
-managed MCP 도구 호출이 교차 데이터베이스 binding을 예약하고 runtime을 붙입니다. 붙인
-session은 다른 runtime session, Connection, 프로젝트, host session, host thread에 다시
-결속할 수 없습니다.
+managed MCP 도구 호출은 먼저 현재 managed runtime을 변경 없이 검증하고, 정확한 프로젝트
+Agent Session anchor를 만들거나 검증한 뒤, Registry에서 정확한 데이터베이스 간 binding을
+예약하면서 현재 소유자 입력을 다시 검증합니다. 마지막 프로젝트 transaction에서만 runtime을
+붙입니다. 프로젝트 anchor에서 확인한 Connection, 프로젝트, Guard Installation, revision,
+native session, thread, 기존 runtime 충돌은 새 Registry binding을 남기지 않습니다. 이후
+Registry 예약이 실패하면 프로젝트 anchor가 unbound로 남을 수 있지만 권한은 아닙니다.
+마지막 attach 전 중단으로 남은 Registry 예약도 권한이 아니며, 소유자 상태가 바뀌지 않은
+정확한 replay가 그 예약을 재사용해 attach를 완료합니다. 붙인 session은 다른 runtime
+session, Connection, 프로젝트, host session, host thread에 다시 결속할 수 없습니다.
 
 Runtime row는 lease나 liveness 주장이 아니라 process의 이력 관찰입니다. Crash한 process는
 열린 것처럼 보이는 row를 남길 수 있고 여러 협력적 Codex process가 동시에 현재 상태일 수

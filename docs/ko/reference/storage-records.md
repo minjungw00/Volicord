@@ -114,15 +114,26 @@ internal ID, 저장된 정확한 프로젝트 통합 revision, 정확한 native 
 CLI-preflight runtime으로 이 상태를 나타내지 않습니다. 복합 프로젝트 foreign key는 하위
 Guard row가 session을 다른 Connection과 조합하지 못하게 합니다.
 
-동일한 host session의 첫 실제 managed MCP 도구 호출은 Registry
-`mcp_runtime_project_session_bindings`를 예약한 다음 runtime을 프로젝트 row에 붙입니다.
+동일한 host session의 첫 실제 managed MCP 도구 호출은 순서가 정해진 네 단계를 사용합니다.
+Store는 현재 `managed_host` runtime과 그 Connection revision을 변경 없이 검증합니다. 그다음
+immediate 프로젝트 transaction에서 unbound Agent Session anchor를 만들거나 검증하고
+Connection, native session, thread, 변경 불가능한 revision, 기존 runtime 충돌을 모두
+거부합니다. 이 commit 뒤에만 immediate Registry transaction이 runtime, Connection,
+프로젝트 membership, 현재 프로젝트 identity, 정확한 anchor 좌표를 다시 검증하고
+`mcp_runtime_project_session_bindings`를 삽입합니다. 마지막 immediate 프로젝트
+transaction은 anchor를 다시 검증하고 runtime 필드가 null이거나 이미 같은 runtime을
+가리킬 때만 attach합니다.
+
 분리된 SQLite 데이터베이스 사이에는 foreign key를 만들 수 없으므로 Registry 예약이
-uniqueness 경계를 제공합니다. 예약 뒤 attach 전에 중단된 경우를 포함해 정확한 replay는
-멱등입니다. 예약은 프로젝트 row와 같은 정확한 프로젝트 통합 revision을 저장하고 권한
-검증은 두 값이 같은지 확인합니다. Runtime, Connection, 프로젝트, revision, host-session
-claim이 다르면 실패합니다. 프로젝트의
-partial index는 null이 아닌 runtime attach를 유일하게 만들면서 Guard-first unbound session은
-여러 개 허용합니다.
+uniqueness 경계를 제공합니다. 결정적인 프로젝트 소유권 충돌은 새 예약을 남기지 않습니다.
+Registry 예약이 실패하면 유효한 anchor가 unbound로 남을 수 있지만 Core를 승인할 수
+없습니다. 마지막 쓰기가 중단되면 프로젝트 attach가 없는 예약이 남을 수 있지만 이 예약도
+Core를 승인할 수 없습니다. 소유자 상태가 바뀌지 않은 정확한 replay는 그 예약을 재사용해
+attach를 완료합니다. 예약은 프로젝트 row와 같은 정확한 프로젝트 통합 revision을 저장하고
+권한 검증은 두 값이 같은지 확인합니다. Runtime, Connection, 프로젝트, revision,
+host-session Registry claim이 다르면 실패합니다. 프로젝트의 partial index는 null이 아닌
+runtime attach를 유일하게 만들면서 Guard-first 또는 MCP-first unbound anchor를 여러 개
+허용합니다.
 
 현재 Registry binding과 정확히 일치하는 attached 프로젝트 row만 Core를 승인할 수
 있습니다. Unbound row는 Guard event와 prompt capture를 보관할 수 있습니다. Runtime row
