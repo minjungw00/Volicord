@@ -118,12 +118,12 @@ volicord policy apply --repo PATH --file PATH
 ## Agent Connection 명령
 
 ```text
-volicord connection add [codex] [--repo PATH] [--shared] [--read-only] [--dry-run]
+volicord connection add [codex] [--repo PATH] [--shared] [--read-only] [--dry-run] [--verbose | --json]
 volicord connection list [--repo PATH]
-volicord connection status [codex] [--repo PATH] [--shared]
-volicord connection verify [codex] [--repo PATH] [--shared]
-volicord connection mode [codex] workflow|read-only [--repo PATH] [--shared]
-volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
+volicord connection status [codex] [--repo PATH] [--shared] [--verbose | --json]
+volicord connection verify [codex] [--repo PATH] [--shared] [--verbose | --json]
+volicord connection mode [codex] workflow|read-only [--repo PATH] [--shared] [--verbose | --json]
+volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run] [--verbose | --json]
 ```
 
 호스트를 생략하면 현재 맥락이 모호하지 않을 때만 사용합니다. 명시적으로 받는 유일한 값은
@@ -136,6 +136,26 @@ replay와 repair는 저장된 mode를 보존합니다. 현재 Connection이 이�
 이 플래그는 멱등 요청입니다. 현재 mode가 `workflow`라면 설정을 변경하기 전에 실패하고
 `volicord connection mode`를 사용하도록 안내합니다. `connection add`는 mode를 전환하거나
 integration generation을 증가시키지 않습니다.
+
+### 선택한 Connection 출력
+
+`volicord init`과 선택한 Connection을 다루는 `add`, `status`, `verify`, `mode`,
+`remove` 명령은 출력 선택 방식 하나를 공유합니다. 출력 플래그가 없으면 작업에 맞는
+결과, 선택한 저장소와 유효한 mode, `ready`/`waiting`/`failed` check 개수, 대기 관찰보다
+앞에 표시하는 현재 문제, 현재 다음 동작을 간결한 사람용 산문으로 보여 줍니다.
+이 사람용 라벨은 표시 문구이며 보고서나 check 상태를 추가하지 않습니다.
+
+간결한 렌더러는 pending `host_session`, `required_tools`, `tool_round_trip` check를
+Codex session 및 도구 활동으로 묶습니다. Pending `guard_observation`은 알고 있는 누락
+phase와 함께 Guard hook 활동으로 보여 줍니다. 정규 check나 action을 변경, 제거, 재정렬,
+영속하지 않습니다. Dry run 산문은 typed `PlannedConnectionChangeKind`별로 계획 변경 수를
+묶으며 target path에서 소유권을 추론하지 않습니다.
+
+`--verbose`는 보고서 메타데이터, 모든 check와 action, 정확한 계획 operation과 target,
+작업별 result, 보장 한계를 포함하는 완전한 사람용 진단 보기를 표시합니다. `--json`은
+기계 사용을 위해 완전한 직렬화 `ConnectionCommandReport`를 씁니다. `--verbose`와
+`--json`은 함께 사용할 수 없는 사용법 옵션입니다. `volicord connection list`는 별도의
+간결한 컬렉션 projection을 유지하며 `--verbose`를 받지 않습니다.
 
 ### Connection 목록 투영
 
@@ -331,8 +351,9 @@ check와 현재 필요한 reload/use action 하나를 함께 보고할 수 있�
 계획 단계는 각 변경에 닫힌 소유권 `kind`, 타입이 지정된 `operation`, 정규 target을 지정합니다.
 No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, `target` 순서로 정렬하고
 중복을 제거합니다. 관리 구성과 Guard check는 `kind`를 사용합니다. Target 경로가 바뀌어도
-계획 변경의 의미는 바뀌지 않습니다. JSON은 위의 세 필드를 포함합니다. 사람용 출력은 각
-항목을 `kind=<kind> operation=<operation> target=<target>` 형태로 표시합니다.
+계획 변경의 의미는 바뀌지 않습니다. JSON은 위의 세 필드를 포함합니다. 간결한 사람용
+출력은 `kind`별 개수를 묶고, verbose 사람용 출력은 각 항목에
+`kind=<kind> operation=<operation> target=<target>` 형태를 사용합니다.
 
 `checks`와 `actions`는 정규
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의
@@ -454,13 +475,14 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 
 ## 출력과 종료 상태
 
-`--json`은 stdout에 JSON 문서 하나만 씁니다. 기본 산문은 사람용이며 자동화에서
-파싱하면 안 됩니다. `complete`, `action_required`, 유효한 모든 dry run은 `0`으로
-종료합니다. Typed `failed` 운영 보고서는 `1`, 사용법 오류는 `2`로 종료합니다. 실패한
-JSON 운영 보고서는 stdout 문서 하나만 쓰고 stderr는 비워 둡니다. 실패한 사람용 운영
-보고서는 stdout에 표시합니다. 예상하지 못한 런타임 또는 직렬화 오류는 stderr를 사용하고
-`1`로 종료합니다. 종료 상태는 표시 문자열이나 다시 parsing한 JSON이 아니라 typed report
-상태로 선택합니다.
+선택한 Connection 명령 보고서의 기본 간결한 산문과 `--verbose` 진단은 사람용이며
+자동화에서 파싱하면 안 됩니다. `--json`은 stdout에 완전한 JSON 문서 하나만 씁니다. 두
+플래그는 사용법 parsing 단계에서 충돌합니다. `complete`, `action_required`, 유효한 모든
+dry run은 `0`으로 종료합니다. Typed `failed` 운영 보고서는 `1`, 사용법 오류는 `2`로
+종료합니다. 실패한 JSON 운영 보고서는 stdout 문서 하나만 쓰고 stderr는 비워 둡니다.
+실패한 사람용 운영 보고서는 stdout에 표시합니다. 예상하지 못한 런타임 또는 직렬화 오류는
+stderr를 사용하고 `1`로 종료합니다. 종료 상태는 표시 문자열이나 다시 parsing한 JSON이
+아니라 typed report 상태로 선택합니다.
 
 <a id="noninteractive-approval-behavior"></a>
 ## 비대화형 동작

@@ -62,6 +62,7 @@ const INIT_HELP: &str = concat!(
     "      --mcp-command <MCP_COMMAND>  \n",
     "      --dry-run                    \n",
     "      --json                       \n",
+    "      --verbose                    \n",
     "  -h, --help                       Print help\n",
 );
 
@@ -560,6 +561,32 @@ fn fresh_init_without_host_observation_is_action_required_and_exit_zero(
 }
 
 #[test]
+fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-init-concise")?;
+    fixture.install_codex_executable()?;
+    let output = fixture.run_init_with_output(false, None)?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let text = stdout(&output)?;
+    assert!(text.starts_with("Volicord setup was applied and needs one more step.\n\n"));
+    assert!(text.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
+    assert!(text.contains("Mode: workflow\nChecks: "));
+    assert!(text.contains("Waiting\n"));
+    assert!(text.contains("Next\n"));
+    assert!(text.ends_with("Run again with --verbose for detailed diagnostics.\n"));
+    for hidden in [
+        "Operation:",
+        "Runtime home:",
+        "Config target:",
+        "Details: {",
+    ] {
+        assert!(!text.contains(hidden));
+    }
+    Ok(())
+}
+
+#[test]
 fn connection_remove_after_fresh_init_removes_last_connection_state() -> Result<(), Box<dyn Error>>
 {
     let fixture = IsolatedInitFixture::new("binary-remove-fresh-init")?;
@@ -608,11 +635,10 @@ fn connection_remove_human_output_reports_complete_connection_removal() -> Resul
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
-    assert!(text.starts_with("Operation: remove\nStatus: complete\n"));
-    assert!(text.contains("Result:\n  Kind: removal\n"));
-    assert!(text.contains("  Membership removed: true\n"));
-    assert!(text.contains("  Connection removed: true\n"));
-    assert!(text.contains("  Remaining project count: 0\n"));
+    assert!(text.starts_with("Connection membership and Connection record were removed.\n\n"));
+    assert!(text.contains("Mode: workflow\nChecks: 1 ready\n"));
+    assert!(!text.contains("Result:"));
+    assert!(!text.contains("Connection removed:"));
     Ok(())
 }
 
@@ -869,11 +895,12 @@ fn membership_only_remove_human_output_reports_connection_retention() -> Result<
 
     assert_eq!(output.status.code(), Some(0));
     let text = stdout(&output)?;
-    assert!(text.starts_with("Operation: remove\nStatus: complete\n"));
-    assert!(text.contains("Result:\n  Kind: removal\n"));
-    assert!(text.contains("  Membership removed: true\n"));
-    assert!(text.contains("  Connection removed: false\n"));
-    assert!(text.contains("  Remaining project count: 1\n"));
+    assert!(text.starts_with(
+        "Connection membership was removed; the shared Connection remains in use.\n\n"
+    ));
+    assert!(text.contains("Mode: workflow\nChecks: 1 ready\n"));
+    assert!(!text.contains("Result:"));
+    assert!(!text.contains("Remaining project count:"));
     Ok(())
 }
 
@@ -903,9 +930,30 @@ fn failed_verify_human_report_is_written_to_stdout() -> Result<(), Box<dyn Error
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
+    assert!(text.starts_with("Verification completed:"));
+    assert!(text.contains(" failed.\n\n"));
+    assert!(text.contains("Problems\n"));
+    assert!(text.contains("Next\n"));
+    assert!(!text.contains("Operation:"));
+    assert!(!text.contains("Details: {"));
+    Ok(())
+}
+
+#[test]
+fn verbose_connection_report_retains_the_full_diagnostic_renderer() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-verify-verbose")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let output = fixture.run_connection_verbose("verify")?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(stderr(&output)?, "");
+    let text = stdout(&output)?;
     assert!(text.starts_with("Operation: verify\nStatus: failed\n"));
+    assert!(text.contains("Runtime home:"));
+    assert!(text.contains("Connection:\n  ID:"));
     assert!(text.contains("Checks:\n"));
     assert!(text.contains("Actions:\n"));
+    assert!(text.contains("Limits:\n"));
     Ok(())
 }
 
@@ -947,6 +995,14 @@ impl IsolatedInitFixture {
     }
 
     fn run(&self, dry_run: bool) -> Result<std::process::Output, Box<dyn Error>> {
+        self.run_init_with_output(dry_run, Some("--json"))
+    }
+
+    fn run_init_with_output(
+        &self,
+        dry_run: bool,
+        output_flag: Option<&str>,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
         let mut command = base_command();
         command
             .arg("init")
@@ -958,13 +1014,15 @@ impl IsolatedInitFixture {
             .arg("record")
             .arg("--home")
             .arg(&self.runtime_home)
-            .arg("--json")
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
             .env("USERPROFILE", &self.user_home)
             .env_remove("VOLICORD_CODEX_NATIVE_EXECUTABLE")
             .current_dir(&self.repo_root);
+        if let Some(output_flag) = output_flag {
+            command.arg(output_flag);
+        }
         if dry_run {
             command.arg("--dry-run");
         }
@@ -977,6 +1035,27 @@ impl IsolatedInitFixture {
         json: bool,
     ) -> Result<std::process::Output, Box<dyn Error>> {
         self.run_connection_for_repo(operation, &self.repo_root, json)
+    }
+
+    fn run_connection_verbose(
+        &self,
+        operation: &str,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("connection")
+            .arg(operation)
+            .arg("codex")
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--verbose")
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        Ok(command.output()?)
     }
 
     fn run_connection_for_repo(

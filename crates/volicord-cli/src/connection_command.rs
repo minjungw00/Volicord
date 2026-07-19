@@ -1611,7 +1611,10 @@ mod persisted_metadata_tests {
             host: Some(crate::cli::CodexHost::Codex),
             repo: Some(repo_root.clone()),
             shared: false,
-            json: true,
+            output: crate::cli::ConnectionReportOutputArgs {
+                json: true,
+                verbose: false,
+            },
         };
         let verification = run_connection_command(
             ConnectionArgs {
@@ -1662,7 +1665,10 @@ mod persisted_metadata_tests {
                     host: Some(crate::cli::CodexHost::Codex),
                     repo: Some(repo_root.clone()),
                     shared: false,
-                    json: true,
+                    output: crate::cli::ConnectionReportOutputArgs {
+                        json: true,
+                        verbose: false,
+                    },
                 }),
             },
             &repo_root,
@@ -1716,7 +1722,10 @@ mod persisted_metadata_tests {
             host: Some(crate::cli::CodexHost::Codex),
             repo: Some(repo_root.clone()),
             shared: false,
-            json: true,
+            output: crate::cli::ConnectionReportOutputArgs {
+                json: true,
+                verbose: false,
+            },
         };
         let mut transitioning_process = ModeTransitionDuringVerificationProcess {
             runtime_home: fixture.runtime_home_path().to_path_buf(),

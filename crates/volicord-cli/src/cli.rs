@@ -114,8 +114,8 @@ pub struct InitArgs {
     pub mcp_command: Option<PathBuf>,
     #[arg(long)]
     pub dry_run: bool,
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub output: ConnectionReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -231,6 +231,14 @@ pub enum ConnectionCommand {
     Remove(ConnectionRemoveArgs),
 }
 
+#[derive(Debug, Args, Default)]
+pub struct ConnectionReportOutputArgs {
+    #[arg(long, conflicts_with = "verbose")]
+    pub json: bool,
+    #[arg(long, conflicts_with = "json")]
+    pub verbose: bool,
+}
+
 #[derive(Debug, Args)]
 pub struct ConnectionAddArgs {
     #[arg(value_enum)]
@@ -243,8 +251,8 @@ pub struct ConnectionAddArgs {
     pub read_only: bool,
     #[arg(long)]
     pub dry_run: bool,
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub output: ConnectionReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -263,8 +271,8 @@ pub struct ConnectionSelectArgs {
     pub repo: Option<PathBuf>,
     #[arg(long)]
     pub shared: bool,
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub output: ConnectionReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -278,8 +286,8 @@ pub struct ConnectionModeArgs {
     pub repo: Option<PathBuf>,
     #[arg(long)]
     pub shared: bool,
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub output: ConnectionReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -292,8 +300,8 @@ pub struct ConnectionRemoveArgs {
     pub shared: bool,
     #[arg(long)]
     pub dry_run: bool,
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub output: ConnectionReportOutputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -570,6 +578,39 @@ fn nonempty_path(value: &str) -> Result<PathBuf, String> {
 mod tests {
     use super::*;
 
+    fn report_output_args(command: Command) -> ConnectionReportOutputArgs {
+        match command {
+            Command::Init(args) => args.output,
+            Command::Connection(ConnectionArgs { command }) => match command {
+                ConnectionCommand::Add(args) => args.output,
+                ConnectionCommand::Status(args) | ConnectionCommand::Verify(args) => args.output,
+                ConnectionCommand::Mode(args) => args.output,
+                ConnectionCommand::Remove(args) => args.output,
+                ConnectionCommand::List(_) => panic!("list has its own collection output"),
+            },
+            _ => panic!("expected a selected Connection command report"),
+        }
+    }
+
+    fn report_command_args() -> [Vec<&'static str>; 6] {
+        [
+            vec!["volicord", "init", "--host", "codex", "--repo", "."],
+            vec!["volicord", "connection", "add", "codex", "--repo", "."],
+            vec!["volicord", "connection", "status", "codex", "--repo", "."],
+            vec!["volicord", "connection", "verify", "codex", "--repo", "."],
+            vec![
+                "volicord",
+                "connection",
+                "mode",
+                "codex",
+                "workflow",
+                "--repo",
+                ".",
+            ],
+            vec!["volicord", "connection", "remove", "codex", "--repo", "."],
+        ]
+    }
+
     #[test]
     fn declaration_rejects_unknown_hosts_and_missing_values() {
         let host_error =
@@ -644,12 +685,66 @@ mod tests {
                 ConnectionCommand::Mode(ConnectionModeArgs {
                     host: Some(CodexHost::Codex),
                     mode: ConnectionMode::ReadOnly,
-                    json: true,
+                    output:
+                        ConnectionReportOutputArgs {
+                            json: true,
+                            verbose: false,
+                        },
                     ..
                 }),
         })) = parsed.command
         else {
             panic!("unexpected parsed command")
         };
+    }
+
+    #[test]
+    fn selected_connection_reports_accept_each_output_mode() {
+        for args in report_command_args() {
+            let parsed = Cli::try_parse_from(&args).expect("default output should parse");
+            let output = report_output_args(parsed.command.expect("selected command"));
+            assert!(!output.json);
+            assert!(!output.verbose);
+
+            let mut verbose_args = args.clone();
+            verbose_args.push("--verbose");
+            let parsed = Cli::try_parse_from(verbose_args).expect("verbose output should parse");
+            let output = report_output_args(parsed.command.expect("selected command"));
+            assert!(!output.json);
+            assert!(output.verbose);
+
+            let mut json_args = args;
+            json_args.push("--json");
+            let parsed = Cli::try_parse_from(json_args).expect("JSON output should parse");
+            let output = report_output_args(parsed.command.expect("selected command"));
+            assert!(output.json);
+            assert!(!output.verbose);
+        }
+    }
+
+    #[test]
+    fn selected_connection_report_output_modes_conflict_in_clap() {
+        for mut args in report_command_args() {
+            args.extend(["--verbose", "--json"]);
+            let error = Cli::try_parse_from(args)
+                .expect_err("verbose and JSON output must conflict in the declaration");
+            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
+    }
+
+    #[test]
+    fn connection_list_keeps_its_collection_output_contract() {
+        let parsed = Cli::try_parse_from(["volicord", "connection", "list", "--json"])
+            .expect("list JSON should remain available");
+        let Some(Command::Connection(ConnectionArgs {
+            command: ConnectionCommand::List(ConnectionListArgs { json: true, .. }),
+        })) = parsed.command
+        else {
+            panic!("unexpected list command")
+        };
+
+        let error = Cli::try_parse_from(["volicord", "connection", "list", "--verbose"])
+            .expect_err("list must not gain selected-report verbose output");
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 }

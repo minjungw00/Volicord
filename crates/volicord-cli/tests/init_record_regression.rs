@@ -17,7 +17,8 @@ use support::binary_fixture::create_git_repo;
 use volicord_cli::{
     cli::{
         CodexHost, ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionMode,
-        ConnectionModeArgs, InitArgs, PolicyArgs, PolicyCommand, PolicyValidateArgs, RecordProfile,
+        ConnectionModeArgs, ConnectionReportOutputArgs, InitArgs, PolicyArgs, PolicyCommand,
+        PolicyValidateArgs, RecordProfile,
     },
     connection_command::{
         run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
@@ -524,7 +525,10 @@ fn connection_add_explicit_read_only_rejects_workflow_before_mutation() -> Resul
                 shared: false,
                 read_only: true,
                 dry_run: false,
-                json: true,
+                output: ConnectionReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
             }),
         },
         &repo_root,
@@ -804,7 +808,10 @@ fn run_record_init(
             home: None,
             mcp_command: None,
             dry_run: false,
-            json: true,
+            output: ConnectionReportOutputArgs {
+                json: true,
+                verbose: false,
+            },
         },
         repo_root,
         process,
@@ -850,7 +857,10 @@ fn run_record_init_outcome(
             home: None,
             mcp_command: None,
             dry_run: false,
-            json: true,
+            output: ConnectionReportOutputArgs {
+                json: true,
+                verbose: false,
+            },
         },
         repo_root,
         process,
@@ -877,7 +887,10 @@ fn run_connection_add(
                 shared,
                 read_only,
                 dry_run,
-                json: true,
+                output: ConnectionReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
             }),
         },
         repo_root,
@@ -987,7 +1000,10 @@ fn run_record_init_dry_run(
             home: None,
             mcp_command: None,
             dry_run: true,
-            json: true,
+            output: ConnectionReportOutputArgs {
+                json: true,
+                verbose: false,
+            },
         },
         repo_root,
         process,
@@ -1010,7 +1026,10 @@ fn run_read_only_mode(
                 mode: ConnectionMode::ReadOnly,
                 repo: Some(repo_root.to_path_buf()),
                 shared: false,
-                json: true,
+                output: ConnectionReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
             }),
         },
         repo_root,

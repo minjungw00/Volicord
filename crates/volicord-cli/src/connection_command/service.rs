@@ -1546,7 +1546,7 @@ mod init_planning_tests {
             mode: InitMode::Record,
             shared: true,
             dry_run,
-            json: true,
+            output: OutputFormat::Json,
         }
     }
 
@@ -1561,7 +1561,7 @@ mod init_planning_tests {
             shared: true,
             read_only,
             dry_run,
-            json: true,
+            output: OutputFormat::Json,
         }
     }
 
@@ -1751,7 +1751,10 @@ mod init_planning_tests {
                 mode: crate::cli::ConnectionMode::ReadOnly,
                 repo: Some(repo_root.clone()),
                 shared: true,
-                json: true,
+                output: crate::cli::ConnectionReportOutputArgs {
+                    json: true,
+                    verbose: false,
+                },
             },
             &repo_root,
             &mut process,

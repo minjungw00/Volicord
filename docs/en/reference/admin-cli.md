@@ -122,12 +122,12 @@ boundary; unknown fields and invalid values fail before commit.
 ## Agent Connection Commands
 
 ```text
-volicord connection add [codex] [--repo PATH] [--shared] [--read-only] [--dry-run]
+volicord connection add [codex] [--repo PATH] [--shared] [--read-only] [--dry-run] [--verbose | --json]
 volicord connection list [--repo PATH]
-volicord connection status [codex] [--repo PATH] [--shared]
-volicord connection verify [codex] [--repo PATH] [--shared]
-volicord connection mode [codex] workflow|read-only [--repo PATH] [--shared]
-volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run]
+volicord connection status [codex] [--repo PATH] [--shared] [--verbose | --json]
+volicord connection verify [codex] [--repo PATH] [--shared] [--verbose | --json]
+volicord connection mode [codex] workflow|read-only [--repo PATH] [--shared] [--verbose | --json]
+volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run] [--verbose | --json]
 ```
 
 When the host is omitted, the command uses it only if the current context is
@@ -141,6 +141,29 @@ The flag is an idempotent request when that Connection is already `read_only`.
 If it is `workflow`, the flag fails before setup mutation and directs the
 caller to `volicord connection mode`; add never performs that transition or
 increments the integration generation.
+
+### Selected Connection Output
+
+`volicord init` and the selected-Connection `add`, `status`, `verify`, `mode`,
+and `remove` commands use one output selection. With neither output flag, they
+render concise human prose: an operation-aware result, selected repository and
+effective mode, `ready`/`waiting`/`failed` check counts, current problems before
+waiting observations, and the current next actions. The human
+labels are presentation wording; they do not add report or check statuses.
+
+The concise renderer groups pending `host_session`, `required_tools`, and
+`tool_round_trip` checks as Codex session and tool activity, and presents a
+pending `guard_observation` as Guard hook activity with known missing phases.
+It does not change, remove, reorder, or persist canonical checks or actions.
+Dry-run prose groups planned-change counts by the typed
+`PlannedConnectionChangeKind`; it does not infer ownership from target paths.
+
+`--verbose` renders the complete human diagnostic view, including report
+metadata, every check and action, exact planned operations and targets,
+operation-specific results, and assurance limits. `--json` writes the complete
+serialized `ConnectionCommandReport` for machine use. `--verbose` and `--json`
+are mutually exclusive usage options. `volicord connection list` retains its
+separate compact collection projection and does not accept `--verbose`.
 
 ### Connection List Projection
 
@@ -352,7 +375,8 @@ Planning assigns every planned change's closed ownership `kind`, typed
 deduplicates entries by the stable spelling of `kind`, then `operation`, then
 `target`. Managed-configuration and Guard checks use `kind`; changing a target
 path cannot change a planned change's meaning. JSON includes the three fields
-shown above. Human output renders each entry as
+shown above. Concise human output groups counts by `kind`; verbose human output
+renders each entry as
 `kind=<kind> operation=<operation> target=<target>`.
 
 `checks` and `actions` use the canonical
@@ -485,14 +509,15 @@ the CLI does not default, repair, or guess an answer.
 
 ## Output And Exit Status
 
-`--json` writes exactly one JSON document to stdout. Default prose is for
-humans and must not be parsed for automation. `complete`, `action_required`,
-and every valid dry run exit `0`; a typed `failed` operational report exits
-`1`; usage errors exit `2`. A failed JSON operational report is the only stdout
-document and leaves stderr empty. A failed human operational report is rendered
-on stdout. Unexpected runtime or serialization errors use stderr and exit `1`.
-Exit selection uses the typed report status, never rendered text or reparsed
-JSON.
+For selected Connection command reports, default concise prose and `--verbose`
+diagnostics are for humans and must not be parsed for automation. `--json`
+writes exactly one complete JSON document to stdout. The two flags conflict at
+usage parsing. `complete`, `action_required`, and every valid dry run exit `0`;
+a typed `failed` operational report exits `1`; usage errors exit `2`. A failed
+JSON operational report is the only stdout document and leaves stderr empty. A
+failed human operational report is rendered on stdout. Unexpected runtime or
+serialization errors use stderr and exit `1`. Exit selection uses the typed
+report status, never rendered text or reparsed JSON.
 
 <a id="noninteractive-approval-behavior"></a>
 ## Noninteractive Behavior

@@ -94,7 +94,7 @@ pub(in crate::connection_command) fn render_connections_output(
         limits: cooperative_assurance_limits(),
     };
     match format {
-        OutputFormat::Text => Ok(render_connections_text(&report.connections)),
+        OutputFormat::Human(_) => Ok(render_connections_text(&report.connections)),
         OutputFormat::Json => serde_json::to_string_pretty(&report)
             .map(|text| format!("{text}\n"))
             .map_err(|error| ConnectionCommandError::runtime(error.to_string())),

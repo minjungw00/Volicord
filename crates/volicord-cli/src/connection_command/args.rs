@@ -5,15 +5,27 @@ use volicord_types::IntegrationProfile;
 use crate::{
     cli::{
         CodexHost, ConnectionAddArgs, ConnectionListArgs, ConnectionModeArgs, ConnectionRemoveArgs,
-        ConnectionSelectArgs, InitArgs,
+        ConnectionReportOutputArgs, ConnectionSelectArgs, InitArgs,
     },
     host_integration::HostKind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum OutputFormat {
-    Text,
     Json,
+    Human(HumanOutputDetail),
+}
+
+impl Default for OutputFormat {
+    fn default() -> Self {
+        Self::Human(HumanOutputDetail::Concise)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum HumanOutputDetail {
+    Concise,
+    Verbose,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -23,7 +35,7 @@ pub(super) struct ParsedConnectionOptions {
     pub(super) shared: bool,
     pub(super) read_only: bool,
     pub(super) dry_run: bool,
-    pub(super) json: bool,
+    pub(super) output: OutputFormat,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -55,7 +67,7 @@ pub(super) struct ParsedInitOptions {
     pub(super) mode: InitMode,
     pub(super) shared: bool,
     pub(super) dry_run: bool,
-    pub(super) json: bool,
+    pub(super) output: OutputFormat,
 }
 
 pub(super) fn init_options(args: InitArgs, current_dir: &Path) -> ParsedInitOptions {
@@ -69,7 +81,7 @@ pub(super) fn init_options(args: InitArgs, current_dir: &Path) -> ParsedInitOpti
         mode: InitMode::Record,
         shared: args.shared,
         dry_run: args.dry_run,
-        json: args.json,
+        output: output_format(args.output),
     }
 }
 
@@ -81,7 +93,7 @@ impl From<ConnectionAddArgs> for ParsedConnectionOptions {
             shared: args.shared,
             read_only: args.read_only,
             dry_run: args.dry_run,
-            json: args.json,
+            output: output_format(args.output),
         }
     }
 }
@@ -90,7 +102,11 @@ impl From<ConnectionListArgs> for ParsedConnectionOptions {
     fn from(args: ConnectionListArgs) -> Self {
         Self {
             repo: args.repo,
-            json: args.json,
+            output: if args.json {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Human(HumanOutputDetail::Concise)
+            },
             ..Self::default()
         }
     }
@@ -102,7 +118,7 @@ impl From<ConnectionSelectArgs> for ParsedConnectionOptions {
             host_kind: args.host.map(host_kind),
             repo: args.repo,
             shared: args.shared,
-            json: args.json,
+            output: output_format(args.output),
             ..Self::default()
         }
     }
@@ -114,7 +130,7 @@ impl From<ConnectionModeArgs> for ParsedConnectionOptions {
             host_kind: args.host.map(host_kind),
             repo: args.repo,
             shared: args.shared,
-            json: args.json,
+            output: output_format(args.output),
             ..Self::default()
         }
     }
@@ -127,25 +143,27 @@ impl From<ConnectionRemoveArgs> for ParsedConnectionOptions {
             repo: args.repo,
             shared: args.shared,
             dry_run: args.dry_run,
-            json: args.json,
+            output: output_format(args.output),
             ..Self::default()
         }
     }
 }
 
 pub(super) fn init_output_format(parsed: &ParsedInitOptions) -> OutputFormat {
-    output_format(parsed.json)
+    parsed.output
 }
 
 pub(super) fn connection_output_format(parsed: &ParsedConnectionOptions) -> OutputFormat {
-    output_format(parsed.json)
+    parsed.output
 }
 
-fn output_format(json: bool) -> OutputFormat {
-    if json {
+fn output_format(args: ConnectionReportOutputArgs) -> OutputFormat {
+    if args.json {
         OutputFormat::Json
+    } else if args.verbose {
+        OutputFormat::Human(HumanOutputDetail::Verbose)
     } else {
-        OutputFormat::Text
+        OutputFormat::Human(HumanOutputDetail::Concise)
     }
 }
 
@@ -158,5 +176,32 @@ pub(super) fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {
         path
     } else {
         current_dir.join(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_output_flags_map_to_one_typed_selection() {
+        assert_eq!(
+            output_format(ConnectionReportOutputArgs::default()),
+            OutputFormat::Human(HumanOutputDetail::Concise)
+        );
+        assert_eq!(
+            output_format(ConnectionReportOutputArgs {
+                json: false,
+                verbose: true,
+            }),
+            OutputFormat::Human(HumanOutputDetail::Verbose)
+        );
+        assert_eq!(
+            output_format(ConnectionReportOutputArgs {
+                json: true,
+                verbose: false,
+            }),
+            OutputFormat::Json
+        );
     }
 }

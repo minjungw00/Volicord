@@ -10,9 +10,12 @@ use volicord_types::{
 };
 
 use super::{
-    cooperative_assurance_limits, path_text, ConnectionCommandError, OutputFormat,
-    PlannedConnectionChange, PlannedConnectionChangeKind,
+    cooperative_assurance_limits,
+    human::{render_command_report_concise, render_command_report_verbose},
+    path_text, ConnectionCommandError, OutputFormat, PlannedConnectionChange,
+    PlannedConnectionChangeKind,
 };
+use crate::connection_command::args::HumanOutputDetail;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -26,7 +29,7 @@ pub(in crate::connection_command) enum CommandOperation {
 }
 
 impl CommandOperation {
-    fn as_str(self) -> &'static str {
+    pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Init => "init",
             Self::Add => "add",
@@ -40,13 +43,13 @@ impl CommandOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(in crate::connection_command) struct CommandConnection {
-    id: String,
-    host: String,
-    scope: String,
-    profile: String,
-    mode: String,
-    repository: String,
-    config_target: String,
+    pub(super) id: String,
+    pub(super) host: String,
+    pub(super) scope: String,
+    pub(super) profile: String,
+    pub(super) mode: String,
+    pub(super) repository: String,
+    pub(super) config_target: String,
 }
 
 impl CommandConnection {
@@ -93,18 +96,18 @@ pub(super) enum ConnectionCommandResult {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(in crate::connection_command) struct ConnectionCommandReport {
-    operation: CommandOperation,
-    dry_run: bool,
-    status: ConnectionStatus,
-    runtime_home: String,
-    connection: CommandConnection,
-    checks: Vec<ConnectionCheck>,
-    actions: Vec<ConnectionAction>,
+    pub(super) operation: CommandOperation,
+    pub(super) dry_run: bool,
+    pub(super) status: ConnectionStatus,
+    pub(super) runtime_home: String,
+    pub(super) connection: CommandConnection,
+    pub(super) checks: Vec<ConnectionCheck>,
+    pub(super) actions: Vec<ConnectionAction>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<ConnectionCommandResult>,
+    pub(super) result: Option<ConnectionCommandResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    planned_changes: Option<Vec<PlannedConnectionChange>>,
-    limits: Vec<String>,
+    pub(super) planned_changes: Option<Vec<PlannedConnectionChange>>,
+    pub(super) limits: Vec<String>,
 }
 
 impl ConnectionCommandReport {
@@ -452,7 +455,8 @@ pub(in crate::connection_command) fn render_command_report(
         OutputFormat::Json => serde_json::to_string_pretty(report)
             .map(|output| format!("{output}\n"))
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
-        OutputFormat::Text => render_command_report_text(report),
+        OutputFormat::Human(HumanOutputDetail::Concise) => render_command_report_concise(report),
+        OutputFormat::Human(HumanOutputDetail::Verbose) => render_command_report_verbose(report),
     };
     Ok(RenderedCommandReport {
         output,
@@ -466,131 +470,6 @@ fn command_status(report: &ConnectionVerificationReport) -> ConnectionStatus {
     } else {
         report.status()
     }
-}
-
-fn render_command_report_text(report: &ConnectionCommandReport) -> String {
-    let mut output = String::new();
-    output.push_str(&format!("Operation: {}\n", report.operation.as_str()));
-    output.push_str(&format!("Status: {}\n", report.status.as_str()));
-    output.push_str(&format!("Dry run: {}\n", report.dry_run));
-    output.push_str(&format!("Runtime home: {}\n", report.runtime_home));
-    output.push_str("Connection:\n");
-    output.push_str(&format!("  ID: {}\n", report.connection.id));
-    output.push_str(&format!("  Host: {}\n", report.connection.host));
-    output.push_str(&format!("  Scope: {}\n", report.connection.scope));
-    output.push_str(&format!("  Profile: {}\n", report.connection.profile));
-    output.push_str(&format!("  Mode: {}\n", report.connection.mode));
-    output.push_str(&format!("  Repository: {}\n", report.connection.repository));
-    output.push_str(&format!(
-        "  Config target: {}\n",
-        report.connection.config_target
-    ));
-    output.push_str("Checks:\n");
-    for check in &report.checks {
-        output.push_str(&format!(
-            "  [{}] {}: {}\n",
-            check.status().as_str(),
-            check.id().as_str(),
-            check.summary()
-        ));
-        if let Some(code) = check.code() {
-            output.push_str(&format!("    Code: {code}\n"));
-        }
-        if let Some(details) = check.details() {
-            let details = serde_json::to_string(details.as_object())
-                .expect("canonical connection check details must serialize");
-            output.push_str(&format!("    Details: {details}\n"));
-        }
-        if let Some(observed_at) = check.observed_at() {
-            output.push_str(&format!(
-                "    Observed at: {}\n",
-                observed_at.to_canonical_string()
-            ));
-        }
-    }
-    output.push_str("Actions:\n");
-    if report.actions.is_empty() {
-        output.push_str("  none\n");
-    } else {
-        for action in &report.actions {
-            output.push_str(&format!(
-                "  {}: {}\n",
-                action.id().as_str(),
-                action.instruction()
-            ));
-            if let Some(command) = action.command() {
-                output.push_str(&format!("    Command: {command}\n"));
-            }
-        }
-    }
-    if let Some(result) = &report.result {
-        output.push_str("Result:\n");
-        match result {
-            ConnectionCommandResult::Setup { applied } => {
-                output.push_str("  Kind: setup\n");
-                output.push_str(&format!("  Applied: {applied}\n"));
-            }
-            ConnectionCommandResult::ModeTransition {
-                changed,
-                previous_mode,
-                current_mode,
-                previous_integration_revision,
-                current_integration_revision,
-                rebound_guard_installation_ids,
-            } => {
-                output.push_str("  Kind: mode_transition\n");
-                output.push_str(&format!("  Changed: {changed}\n"));
-                output.push_str(&format!("  Previous mode: {previous_mode}\n"));
-                output.push_str(&format!("  Current mode: {current_mode}\n"));
-                output.push_str(&format!(
-                    "  Previous integration revision: {previous_integration_revision}\n"
-                ));
-                output.push_str(&format!(
-                    "  Current integration revision: {current_integration_revision}\n"
-                ));
-                output.push_str("  Rebound Guard installations:\n");
-                if rebound_guard_installation_ids.is_empty() {
-                    output.push_str("    none\n");
-                } else {
-                    for id in rebound_guard_installation_ids {
-                        output.push_str(&format!("    {id}\n"));
-                    }
-                }
-            }
-            ConnectionCommandResult::Removal {
-                membership_removed,
-                connection_removed,
-                remaining_project_count,
-            } => {
-                output.push_str("  Kind: removal\n");
-                output.push_str(&format!("  Membership removed: {membership_removed}\n"));
-                output.push_str(&format!("  Connection removed: {connection_removed}\n"));
-                output.push_str(&format!(
-                    "  Remaining project count: {remaining_project_count}\n"
-                ));
-            }
-        }
-    }
-    if let Some(planned_changes) = &report.planned_changes {
-        output.push_str("Planned changes:\n");
-        if planned_changes.is_empty() {
-            output.push_str("  none\n");
-        } else {
-            for change in planned_changes {
-                output.push_str(&format!(
-                    "  kind={} operation={} target={}\n",
-                    change.kind().as_str(),
-                    change.operation().as_str(),
-                    change.target()
-                ));
-            }
-        }
-    }
-    output.push_str("Limits:\n");
-    for limit in &report.limits {
-        output.push_str(&format!("  {limit}\n"));
-    }
-    output
 }
 
 fn command_check(
@@ -887,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn json_and_text_render_the_same_typed_status_and_actions() {
+    fn json_and_verbose_human_render_the_same_typed_status_and_actions() {
         let report = ConnectionCommandReport::from_verification(
             CommandOperation::Verify,
             None,
@@ -896,7 +775,8 @@ mod tests {
             &verification(ConnectionCheckStatus::Failed),
         );
         let json = render_command_report(OutputFormat::Json, &report).unwrap();
-        let text = render_command_report(OutputFormat::Text, &report).unwrap();
+        let text = render_command_report(OutputFormat::Human(HumanOutputDetail::Verbose), &report)
+            .unwrap();
         assert_eq!(json.status, ConnectionStatus::Failed);
         assert_eq!(text.status, ConnectionStatus::Failed);
         assert_eq!(

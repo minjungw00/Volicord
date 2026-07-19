@@ -710,10 +710,21 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     assert_eq!(human.status.code(), Some(0));
     assert!(human.stderr.is_empty());
     let human = String::from_utf8(human.stdout)?;
-    assert!(human.starts_with("Operation: status\nStatus: complete\n"));
+    assert!(human.starts_with("Codex connection is ready.\n\n"));
+    assert!(human.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
+    assert!(human.contains("Mode: workflow\nChecks: "));
     for check in complete_report["checks"].as_array().expect("checks") {
-        assert!(human.contains(check["id"].as_str().expect("check id")));
-        assert!(human.contains(check["summary"].as_str().expect("check summary")));
+        assert!(!human.contains(check["id"].as_str().expect("check id")));
+    }
+
+    let verbose = fixture.run_connection_verbose("status", FUTURE_VERSION)?;
+    assert_eq!(verbose.status.code(), Some(0));
+    assert!(verbose.stderr.is_empty());
+    let verbose = String::from_utf8(verbose.stdout)?;
+    assert!(verbose.starts_with("Operation: status\nStatus: complete\n"));
+    for check in complete_report["checks"].as_array().expect("checks") {
+        assert!(verbose.contains(check["id"].as_str().expect("check id")));
+        assert!(verbose.contains(check["summary"].as_str().expect("check summary")));
     }
 
     let changed_version = fixture.run_connection("verify", NEXT_FUTURE_VERSION, true)?;
@@ -1021,6 +1032,22 @@ impl OperationalFixture {
         json: bool,
     ) -> Result<Output, Box<dyn Error>> {
         self.run_connection_with_path(operation, version, json, &self.path_dir)
+    }
+
+    fn run_connection_verbose(
+        &self,
+        operation: &str,
+        version: &str,
+    ) -> Result<Output, Box<dyn Error>> {
+        let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), version);
+        command
+            .arg("connection")
+            .arg(operation)
+            .arg("codex")
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--verbose");
+        Ok(command.output()?)
     }
 
     fn run_connection_with_path(

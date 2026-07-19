@@ -26,6 +26,35 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 For a personal setup, omit `--shared`. Keep the same selector on later status,
 verify, repair, and removal commands.
 
+## Read Setup Output
+
+Without an output flag, `init` and the selected-Connection lifecycle commands
+print concise terminal prose. A newly applied setup that still needs managed
+host activity looks like this representative output:
+
+```text
+Volicord setup was applied and needs one more step.
+
+Repository: <repo>
+Mode: workflow
+Checks: 5 ready, 4 waiting
+
+Waiting
+  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
+  Guard hook activity: pre_tool, post_tool, prompt_capture
+
+Next
+  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
+
+Run again with --verbose for detailed diagnostics.
+```
+
+Counts and sections reflect the current report. Use `--verbose` when you need
+every check, support identifier, exact planned target, or assurance limit. Use
+`--json` for the complete machine-readable report. The two flags cannot be used
+together. Exact output and exit behavior belong to
+[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states).
+
 ## Review Managed Changes
 
 Before accepting setup, review the structured result and every managed file.
@@ -40,6 +69,9 @@ volicord connection add codex --repo "<repo>" --dry-run
 volicord connection add codex --repo "<repo>" --read-only --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
 ```
+
+Default dry-run output groups planned changes by ownership kind. Add
+`--verbose` to inspect each exact operation and target before applying it.
 
 On a matching current Connection, ordinary add and add with `--read-only`
 against an already read-only Connection are replay or repair operations. An

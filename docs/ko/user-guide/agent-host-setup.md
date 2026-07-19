@@ -24,6 +24,34 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 개인 설정은 `--shared`를 뺍니다. 이후 상태, 검증, 복구, 제거 명령에도 같은 선택자를
 사용합니다.
 
+## 설정 출력 읽기
+
+출력 플래그를 지정하지 않으면 `init`과 선택한 Connection의 생명주기 명령은 터미널에
+간결한 산문을 표시합니다. 새 설정을 적용했지만 관리 호스트 활동이 더 필요한 경우에는
+다음과 같은 대표 출력이 나타납니다.
+
+```text
+Volicord setup was applied and needs one more step.
+
+Repository: <repo>
+Mode: workflow
+Checks: 5 ready, 4 waiting
+
+Waiting
+  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
+  Guard hook activity: pre_tool, post_tool, prompt_capture
+
+Next
+  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
+
+Run again with --verbose for detailed diagnostics.
+```
+
+개수와 구역은 현재 보고서에 따라 달라집니다. 모든 check, 지원용 식별자, 정확한 계획
+`target`, 보장 한계가 필요하면 `--verbose`를 사용합니다. 완전한 기계 판독 보고서가 필요하면
+`--json`을 사용합니다. 두 플래그는 함께 사용할 수 없습니다. 정확한 출력과 종료 동작은
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 담당합니다.
+
 ## 관리 변경 검토
 
 설정을 수락하기 전에 구조화된 결과와 모든 관리 파일을 검토합니다. 프로젝트 소유
@@ -37,6 +65,9 @@ volicord connection add codex --repo "<repo>" --dry-run
 volicord connection add codex --repo "<repo>" --read-only --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
 ```
+
+기본 dry-run 출력은 소유권 `kind`별로 계획 변경을 묶습니다. 적용 전에 정확한 `operation`과
+`target`을 모두 확인하려면 `--verbose`를 추가합니다.
 
 일치하는 현재 Connection에서는 일반 `connection add`와 이미 `read_only`인 Connection에
 `--read-only`를 지정한 `connection add` 모두 replay 또는 repair로 동작합니다. 플래그를
