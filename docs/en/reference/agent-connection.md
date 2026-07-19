@@ -199,9 +199,11 @@ connection with no completed persisted report is projected as a synthesized
 `status=action_required` report containing one `verification_not_run` pending
 check and one verification action. Reading that projection does not persist it.
 
-The administrative CLI projects the report's checks and actions directly into
-the top-level `ConnectionCommandReport`. It does not nest this report, repeat
-its aggregate status, or expose `checked_at` as a second command-output time.
+The administrative CLI uses the canonical check and action member types
+directly in the top-level `ConnectionCommandReport` for init, add, status,
+verify, mode, and remove. Verification flows project the exact report members
+without nesting that report, repeating its aggregate status, or exposing
+`checked_at` as a second command-output time.
 Status may rebuild an in-memory current projection from the stored active-probe
 facts and current observations, but that read does not persist the projection
 or modify any timestamp.

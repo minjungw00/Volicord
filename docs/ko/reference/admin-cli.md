@@ -189,15 +189,15 @@ membership만 제거한 경우와 Agent Connection을 완전히 제거한 경우
 `complete`는 Core 호출 권한, 실행 파일 attestation, 보고서의 check와 관찰을 벗어난
 행동에 대한 주장이 아닙니다.
 
-`volicord init`, `volicord connection status`,
-`volicord connection verify`는 `ConnectionCommandReport` 하나를 직렬화합니다.
+선택한 Connection의 설정 및 생명주기 명령은 모두
+`ConnectionCommandReport` 하나를 직렬화합니다. 여기에는 `volicord init`과
+Connection의 `add`, `status`, `verify`, `mode`, `remove` 명령이 포함됩니다.
 
 ```yaml
 ConnectionCommandReport:
-  operation: init | status | verify
+  operation: init | add | status | verify | mode | remove
   dry_run: bool
   status: complete | action_required | failed
-  setup_applied: bool                    # init에만 사용
   runtime_home: string
   connection:
     id: string
@@ -209,8 +209,28 @@ ConnectionCommandReport:
     config_target: string
   checks: ConnectionCheck[]
   actions: ConnectionAction[]
-  planned_changes: PlannedConnectionChange[] # dry-run에만 사용
+  result?: SetupResult | ModeTransitionResult | RemovalResult
+  planned_changes?: PlannedConnectionChange[] # dry-run에만 사용
   limits: string[]
+
+SetupResult:
+  kind: setup
+  applied: bool
+
+ModeTransitionResult:
+  kind: mode_transition
+  changed: bool
+  previous_mode: read_only | workflow
+  current_mode: read_only | workflow
+  previous_integration_revision: string
+  current_integration_revision: string
+  rebound_guard_installation_ids: string[]
+
+RemovalResult:
+  kind: removal
+  membership_removed: bool
+  connection_removed: bool
+  remaining_project_count: integer
 
 PlannedConnectionChange:
   kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | mode_transition | connection_membership
@@ -218,16 +238,31 @@ PlannedConnectionChange:
   target: string
 ```
 
-이 보고서에는 집계 상태 하나와 check/action 트리 하나만 있습니다. `states`, 중첩 검증
+이 보고서에는 집계 상태 하나와 check/action 트리 하나만 있습니다. 선택적인 tagged
+`result`에는 작업별 사실만 두며 두 번째 상태를 만들지 않습니다. 설정 보고서는
+`kind=setup`, mode 보고서는 `kind=mode_transition`, 적용에 성공한 제거 보고서는
+`kind=removal`을 사용합니다. Status와 verify는 보통 `result`를 생략하고, 제거 dry
+run은 아직 발생하지 않은 결과를 생략합니다. `states`, 중첩 검증
 보고서나 상태, Guard 상태 트리, host gate나 승인 필드, summary card, primary action,
 두 번째 disclosure 트리를 추가하지 않습니다. JSON은 적용되지 않는 선택 필드를 null
 placeholder로 채우지 않고 생략합니다. `limits`에는 협력적 보장 한계를 한 번만 둡니다.
 
-`setup_applied`는 설정 변경과 운영 검증을 구분합니다. `init` 적용이 성공하면 뒤의 로컬
-또는 운영 check 때문에 `status=failed`가 되더라도 `setup_applied=true`입니다. Dry run은
-`setup_applied=false`와 `planned_changes`를 보고하며 `status=dry_run`을 직렬화하지
+`SetupResult.applied`는 설정 변경과 운영 검증을 구분합니다. Init 또는 add 적용이
+성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`가 되더라도
+`applied=true`입니다. Dry run은 `applied=false`와 `planned_changes`를 보고하며
+`status=dry_run`을 직렬화하지
 않습니다. 계획 변경이나 host action이 남으면 `action_required`, 둘 다 없으면
 `complete`입니다.
+
+Migration의 일부만 적용된 뒤 설정이 실패하면 `status=failed`와 `applied=false`를
+보고합니다. 실패한 `setup_plan` check의 details에는 관찰한 Registry 전환, cleanup,
+이전 Connection의 disposition, 재시도 인자를 기록합니다. 두 번째 migration 상태를
+보고하거나 관찰하지 않은 단계가 성공했다고 암시하지 않습니다.
+
+명령 보고서는 필수 check가 하나라도 실패하면 `failed`, 실패 없이 필수 check가
+pending이거나 typed action이 남으면 `action_required`, 그 밖에는 `complete`로
+집계합니다. 따라서 완료된 mode 전환은 두 번째 전환 상태를 만들지 않고 통과한 전환
+check와 현재 필요한 reload/use action 하나를 함께 보고할 수 있습니다.
 
 계획 단계는 각 변경에 닫힌 소유권 `kind`, 타입이 지정된 `operation`, 정규 target을 지정합니다.
 No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, `target` 순서로 정렬하고
@@ -240,6 +275,18 @@ No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, 
 구성원 type과 순서를 사용합니다. JSON과 사람용 출력은 같은 typed command report를
 표시합니다. 사람용 출력은 check를 묶어 보여 줄 수 있지만 상태나 action을 다시 계산하지
 않습니다.
+
+Mode no-op은 `changed=false`, 같은 이전/현재 mode와 revision, 빈 Guard Installation
+재결속 ID, 통과한 `mode_transition` check, 빈 action, `status=complete`를 보고합니다.
+실제 전환은 `changed=true`, 정확한 이전/현재 mode와 revision, 재결속한 Guard
+Installation ID, 통과한 `mode_transition` check 하나, 현재 `reload_host` action 정확히
+하나, `status=action_required`를 보고합니다.
+
+적용에 성공한 제거는 통과한 `connection_removal` check, `status=complete`, 정확한
+`membership_removed`, `connection_removed`, `remaining_project_count` 사실을
+`RemovalResult` 안에 보고합니다. 제거 dry run은 실제 제거 계획이 있을 때만 pending
+제거 check와 `apply_removal` action을 사용하며 typed `planned_changes`로 계획을
+보고하고 아무것도 변경하지 않습니다.
 
 `volicord connection status`는 읽기 전용입니다. 현재 관리 구성, 신뢰, Guard audit,
 통합 revision, managed-host session 관찰을 마지막 활성 executable/MCP server probe와

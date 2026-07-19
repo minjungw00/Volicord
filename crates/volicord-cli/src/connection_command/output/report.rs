@@ -2,17 +2,19 @@ use std::{collections::BTreeMap, path::Path, str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use serde_json::Value;
 use volicord_types::{
     ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
     ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
     IntegrationProfile, UtcTimestamp,
 };
 
-#[cfg(test)]
-use crate::connection_command::planning::PlannedChangeOperation;
-use crate::connection_command::planning::{PlannedConnectionChange, PlannedConnectionChangeKind};
+use crate::host_integration::UserAction;
 
-use super::*;
+use super::{
+    path_text, ConnectionCommandError, OutputFormat, PlannedConnectionChange,
+    PlannedConnectionChangeKind,
+};
 
 const COOPERATIVE_ASSURANCE_LIMIT: &str = "Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.";
 
@@ -20,22 +22,28 @@ const COOPERATIVE_ASSURANCE_LIMIT: &str = "Volicord reports cooperative local co
 #[serde(rename_all = "snake_case")]
 pub(in crate::connection_command) enum CommandOperation {
     Init,
+    Add,
     Status,
     Verify,
+    Mode,
+    Remove,
 }
 
 impl CommandOperation {
     fn as_str(self) -> &'static str {
         match self {
             Self::Init => "init",
+            Self::Add => "add",
             Self::Status => "status",
             Self::Verify => "verify",
+            Self::Mode => "mode",
+            Self::Remove => "remove",
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(super) struct CommandConnection {
+pub(in crate::connection_command) struct CommandConnection {
     id: String,
     host: String,
     scope: String,
@@ -46,7 +54,7 @@ pub(super) struct CommandConnection {
 }
 
 impl CommandConnection {
-    pub(super) fn new(
+    pub(in crate::connection_command) fn new(
         id: impl Into<String>,
         host: impl Into<String>,
         scope: impl Into<String>,
@@ -66,26 +74,47 @@ impl CommandConnection {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(super) enum ConnectionCommandResult {
+    Setup {
+        applied: bool,
+    },
+    ModeTransition {
+        changed: bool,
+        previous_mode: String,
+        current_mode: String,
+        previous_integration_revision: String,
+        current_integration_revision: String,
+        rebound_guard_installation_ids: Vec<String>,
+    },
+    Removal {
+        membership_removed: bool,
+        connection_removed: bool,
+        remaining_project_count: usize,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub(super) struct ConnectionCommandReport {
+pub(in crate::connection_command) struct ConnectionCommandReport {
     operation: CommandOperation,
     dry_run: bool,
     status: ConnectionStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    setup_applied: Option<bool>,
     runtime_home: String,
     connection: CommandConnection,
     checks: Vec<ConnectionCheck>,
     actions: Vec<ConnectionAction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<ConnectionCommandResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     planned_changes: Option<Vec<PlannedConnectionChange>>,
     limits: Vec<String>,
 }
 
 impl ConnectionCommandReport {
-    pub(super) fn from_verification(
+    pub(in crate::connection_command) fn from_verification(
         operation: CommandOperation,
-        setup_applied: Option<bool>,
+        setup_result: Option<bool>,
         runtime_home: &Path,
         connection: CommandConnection,
         verification: &ConnectionVerificationReport,
@@ -93,18 +122,19 @@ impl ConnectionCommandReport {
         Self {
             operation,
             dry_run: false,
-            status: verification.status(),
-            setup_applied,
+            status: command_status(verification),
             runtime_home: path_text(runtime_home),
             connection,
             checks: verification.checks().to_vec(),
             actions: verification.actions().to_vec(),
+            result: setup_result.map(|applied| ConnectionCommandResult::Setup { applied }),
             planned_changes: None,
             limits: vec![COOPERATIVE_ASSURANCE_LIMIT.to_owned()],
         }
     }
 
-    pub(super) fn dry_run(
+    pub(in crate::connection_command) fn setup_dry_run(
+        operation: CommandOperation,
         runtime_home: &Path,
         connection: CommandConnection,
         current: Option<&ConnectionVerificationReport>,
@@ -120,7 +150,9 @@ impl ConnectionCommandReport {
                     .filter(|check| {
                         !matches!(
                             check.id(),
-                            ConnectionCheckKind::ManagedConfig | ConnectionCheckKind::GuardFiles
+                            ConnectionCheckKind::ManagedConfig
+                                | ConnectionCheckKind::GuardFiles
+                                | ConnectionCheckKind::SetupPlan
                         )
                     })
                     .cloned()
@@ -190,55 +222,221 @@ impl ConnectionCommandReport {
             ]);
         }
 
-        let mut actions = BTreeMap::<ConnectionActionKind, ConnectionAction>::new();
+        let mut actions = canonical_host_actions(plan_actions)?;
         if let Some(current) = current {
-            for action in current.actions() {
-                actions.insert(action.id(), action.clone());
-            }
-        }
-        for action in plan_actions {
-            let id = ConnectionActionKind::from(action.kind);
-            actions.insert(
-                id,
-                ConnectionAction::try_new(id, &action.message, None)
-                    .map_err(ConnectionCommandError::from)?,
-            );
+            actions.extend(current.actions().iter().cloned());
         }
         if has_changes {
-            actions.insert(
+            actions.push(ConnectionAction::try_new(
                 ConnectionActionKind::ApplySetup,
-                ConnectionAction::try_new(
-                    ConnectionActionKind::ApplySetup,
-                    "Run init without --dry-run to apply the planned setup changes",
-                    None,
-                )?,
-            );
+                match operation {
+                    CommandOperation::Init => {
+                        "Run init without --dry-run to apply the planned setup changes"
+                    }
+                    CommandOperation::Add => {
+                        "Run connection add without --dry-run to apply the planned setup changes"
+                    }
+                    _ => "Apply the planned setup changes without --dry-run",
+                },
+                None,
+            )?);
         }
         if current.is_none() {
-            actions.insert(
+            actions.push(ConnectionAction::try_new(
                 ConnectionActionKind::ObserveCodex,
-                ConnectionAction::try_new(
-                    ConnectionActionKind::ObserveCodex,
-                    "After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed",
-                    None,
-                )?,
-            );
+                "After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed",
+                None,
+            )?);
         }
+        Self::from_components(
+            operation,
+            true,
+            runtime_home,
+            connection,
+            checks,
+            actions,
+            Some(ConnectionCommandResult::Setup { applied: false }),
+            Some(planned_changes),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::connection_command) fn mode_transition(
+        runtime_home: &Path,
+        connection: CommandConnection,
+        changed: bool,
+        previous_mode: String,
+        current_mode: String,
+        previous_integration_revision: String,
+        current_integration_revision: String,
+        rebound_guard_installation_ids: Vec<String>,
+    ) -> Result<Self, ConnectionCommandError> {
+        let actions = if changed {
+            vec![ConnectionAction::try_new(
+                ConnectionActionKind::ReloadHost,
+                format!(
+                    "Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision {current_integration_revision}"
+                ),
+                None,
+            )?]
+        } else {
+            Vec::new()
+        };
+        let checks = vec![command_check(
+            ConnectionCheckKind::ModeTransition,
+            ConnectionCheckStatus::Passed,
+            "mode_transition_applied",
+            if changed {
+                "Connection mode transition was applied"
+            } else {
+                "Connection mode already matched the requested mode"
+            },
+            None,
+        )?];
+        Self::from_components(
+            CommandOperation::Mode,
+            false,
+            runtime_home,
+            connection,
+            checks,
+            actions,
+            Some(ConnectionCommandResult::ModeTransition {
+                changed,
+                previous_mode,
+                current_mode,
+                previous_integration_revision,
+                current_integration_revision,
+                rebound_guard_installation_ids,
+            }),
+            None,
+        )
+    }
+
+    pub(in crate::connection_command) fn removal(
+        runtime_home: &Path,
+        connection: CommandConnection,
+        membership_removed: bool,
+        connection_removed: bool,
+        remaining_project_count: usize,
+    ) -> Result<Self, ConnectionCommandError> {
+        Self::from_components(
+            CommandOperation::Remove,
+            false,
+            runtime_home,
+            connection,
+            vec![command_check(
+                ConnectionCheckKind::ConnectionRemoval,
+                ConnectionCheckStatus::Passed,
+                "connection_removal_applied",
+                "Selected Connection membership removal was applied",
+                None,
+            )?],
+            Vec::new(),
+            Some(ConnectionCommandResult::Removal {
+                membership_removed,
+                connection_removed,
+                remaining_project_count,
+            }),
+            None,
+        )
+    }
+
+    pub(in crate::connection_command) fn removal_dry_run(
+        runtime_home: &Path,
+        connection: CommandConnection,
+        planned_changes: Vec<PlannedConnectionChange>,
+    ) -> Result<Self, ConnectionCommandError> {
+        let has_changes = !planned_changes.is_empty();
+        let checks = vec![command_check(
+            ConnectionCheckKind::ConnectionRemoval,
+            if has_changes {
+                ConnectionCheckStatus::Pending
+            } else {
+                ConnectionCheckStatus::Passed
+            },
+            "connection_removal_planned",
+            if has_changes {
+                "Selected Connection membership removal is ready to apply"
+            } else {
+                "No Connection removal is required"
+            },
+            None,
+        )?];
+        let actions = if has_changes {
+            vec![ConnectionAction::try_new(
+                ConnectionActionKind::ApplyRemoval,
+                "Run connection remove without --dry-run to apply the planned removal",
+                None,
+            )?]
+        } else {
+            Vec::new()
+        };
+        Self::from_components(
+            CommandOperation::Remove,
+            true,
+            runtime_home,
+            connection,
+            checks,
+            actions,
+            None,
+            Some(planned_changes),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::connection_command) fn setup_failure(
+        operation: CommandOperation,
+        runtime_home: &Path,
+        connection: CommandConnection,
+        summary: &str,
+        details: Value,
+        actions: Vec<ConnectionAction>,
+    ) -> Result<Self, ConnectionCommandError> {
+        Self::from_components(
+            operation,
+            false,
+            runtime_home,
+            connection,
+            vec![command_check(
+                ConnectionCheckKind::SetupPlan,
+                ConnectionCheckStatus::Failed,
+                "setup_partial_application",
+                summary,
+                Some(details),
+            )?],
+            actions,
+            Some(ConnectionCommandResult::Setup { applied: false }),
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn from_components(
+        operation: CommandOperation,
+        dry_run: bool,
+        runtime_home: &Path,
+        connection: CommandConnection,
+        checks: Vec<ConnectionCheck>,
+        actions: Vec<ConnectionAction>,
+        result: Option<ConnectionCommandResult>,
+        planned_changes: Option<Vec<PlannedConnectionChange>>,
+    ) -> Result<Self, ConnectionCommandError> {
         let canonical = ConnectionVerificationReport::try_new(
             current_timestamp(),
             checks,
-            actions.into_values().collect(),
+            deduplicate_actions(actions),
         )?;
+        let status = command_status(&canonical);
         Ok(Self {
-            operation: CommandOperation::Init,
-            dry_run: true,
-            status: canonical.status(),
-            setup_applied: Some(false),
+            operation,
+            dry_run,
+            status,
             runtime_home: path_text(runtime_home),
             connection,
             checks: canonical.checks().to_vec(),
             actions: canonical.actions().to_vec(),
-            planned_changes: Some(planned_changes),
+            result,
+            planned_changes,
             limits: vec![COOPERATIVE_ASSURANCE_LIMIT.to_owned()],
         })
     }
@@ -253,7 +451,7 @@ pub(in crate::connection_command) struct RenderedCommandReport {
     pub(in crate::connection_command) status: ConnectionStatus,
 }
 
-pub(super) fn render_command_report(
+pub(in crate::connection_command) fn render_command_report(
     format: OutputFormat,
     report: &ConnectionCommandReport,
 ) -> Result<RenderedCommandReport, ConnectionCommandError> {
@@ -269,14 +467,42 @@ pub(super) fn render_command_report(
     })
 }
 
+pub(super) fn canonical_host_actions(
+    actions: &[UserAction],
+) -> Result<Vec<ConnectionAction>, ConnectionCommandError> {
+    actions
+        .iter()
+        .map(|action| {
+            let id = ConnectionActionKind::from(action.kind);
+            ConnectionAction::try_new(id, &action.message, None)
+                .map_err(ConnectionCommandError::from)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(deduplicate_actions)
+}
+
+fn deduplicate_actions(actions: Vec<ConnectionAction>) -> Vec<ConnectionAction> {
+    actions
+        .into_iter()
+        .map(|action| (action.id(), action))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect()
+}
+
+fn command_status(report: &ConnectionVerificationReport) -> ConnectionStatus {
+    if report.status() == ConnectionStatus::Complete && !report.actions().is_empty() {
+        ConnectionStatus::ActionRequired
+    } else {
+        report.status()
+    }
+}
+
 fn render_command_report_text(report: &ConnectionCommandReport) -> String {
     let mut output = String::new();
     output.push_str(&format!("Operation: {}\n", report.operation.as_str()));
     output.push_str(&format!("Status: {}\n", report.status.as_str()));
     output.push_str(&format!("Dry run: {}\n", report.dry_run));
-    if let Some(setup_applied) = report.setup_applied {
-        output.push_str(&format!("Setup applied: {setup_applied}\n"));
-    }
     output.push_str(&format!("Runtime home: {}\n", report.runtime_home));
     output.push_str("Connection:\n");
     output.push_str(&format!("  ID: {}\n", report.connection.id));
@@ -300,6 +526,17 @@ fn render_command_report_text(report: &ConnectionCommandReport) -> String {
         if let Some(code) = check.code() {
             output.push_str(&format!("    Code: {code}\n"));
         }
+        if let Some(details) = check.details() {
+            let details = serde_json::to_string(details.as_object())
+                .expect("canonical connection check details must serialize");
+            output.push_str(&format!("    Details: {details}\n"));
+        }
+        if let Some(observed_at) = check.observed_at() {
+            output.push_str(&format!(
+                "    Observed at: {}\n",
+                observed_at.to_canonical_string()
+            ));
+        }
     }
     output.push_str("Actions:\n");
     if report.actions.is_empty() {
@@ -313,6 +550,54 @@ fn render_command_report_text(report: &ConnectionCommandReport) -> String {
             ));
             if let Some(command) = action.command() {
                 output.push_str(&format!("    Command: {command}\n"));
+            }
+        }
+    }
+    if let Some(result) = &report.result {
+        output.push_str("Result:\n");
+        match result {
+            ConnectionCommandResult::Setup { applied } => {
+                output.push_str("  Kind: setup\n");
+                output.push_str(&format!("  Applied: {applied}\n"));
+            }
+            ConnectionCommandResult::ModeTransition {
+                changed,
+                previous_mode,
+                current_mode,
+                previous_integration_revision,
+                current_integration_revision,
+                rebound_guard_installation_ids,
+            } => {
+                output.push_str("  Kind: mode_transition\n");
+                output.push_str(&format!("  Changed: {changed}\n"));
+                output.push_str(&format!("  Previous mode: {previous_mode}\n"));
+                output.push_str(&format!("  Current mode: {current_mode}\n"));
+                output.push_str(&format!(
+                    "  Previous integration revision: {previous_integration_revision}\n"
+                ));
+                output.push_str(&format!(
+                    "  Current integration revision: {current_integration_revision}\n"
+                ));
+                output.push_str("  Rebound Guard installations:\n");
+                if rebound_guard_installation_ids.is_empty() {
+                    output.push_str("    none\n");
+                } else {
+                    for id in rebound_guard_installation_ids {
+                        output.push_str(&format!("    {id}\n"));
+                    }
+                }
+            }
+            ConnectionCommandResult::Removal {
+                membership_removed,
+                connection_removed,
+                remaining_project_count,
+            } => {
+                output.push_str("  Kind: removal\n");
+                output.push_str(&format!("  Membership removed: {membership_removed}\n"));
+                output.push_str(&format!("  Connection removed: {connection_removed}\n"));
+                output.push_str(&format!(
+                    "  Remaining project count: {remaining_project_count}\n"
+                ));
             }
         }
     }
@@ -343,11 +628,11 @@ fn command_check(
     status: ConnectionCheckStatus,
     code: &str,
     summary: &str,
-    details: Option<serde_json::Value>,
+    details: Option<Value>,
 ) -> Result<ConnectionCheck, ConnectionCommandError> {
     let details = details
         .map(|details| {
-            let serde_json::Value::Object(details) = details else {
+            let Value::Object(details) = details else {
                 return Err(ConnectionCommandError::runtime(
                     "command report check details must be an object",
                 ));
@@ -374,7 +659,11 @@ fn current_timestamp() -> UtcTimestamp {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use serde_json::json;
+
+    use crate::connection_command::planning::PlannedChangeOperation;
 
     use super::*;
 
@@ -407,110 +696,135 @@ mod tests {
         )
     }
 
-    fn assert_no_obsolete_tree(value: &serde_json::Value) {
-        match value {
-            serde_json::Value::Array(values) => {
-                for value in values {
-                    assert_no_obsolete_tree(value);
-                }
-            }
-            serde_json::Value::Object(object) => {
-                for obsolete in [
-                    "states",
-                    "verification",
-                    "verification_report",
-                    "verification_status",
-                    "host_hook",
-                    "summary_card",
-                    "primary_next_action",
-                    "disclosure",
-                    "host_gate",
-                    "approval",
-                    "generated_config_verified",
-                    "configuration_health",
-                    "effective_health",
-                    "observation_health",
-                    "stale_files",
-                    "broken_files",
-                ] {
-                    assert!(!object.contains_key(obsolete), "unexpected {obsolete}");
-                }
-                for value in object.values() {
-                    assert_no_obsolete_tree(value);
-                }
-            }
-            _ => {}
-        }
+    fn assert_top_level_keys(value: &Value, optional: &[&str]) {
+        let mut expected = BTreeSet::from([
+            "actions",
+            "checks",
+            "connection",
+            "dry_run",
+            "limits",
+            "operation",
+            "runtime_home",
+            "status",
+        ]);
+        expected.extend(optional.iter().copied());
+        assert_eq!(
+            value
+                .as_object()
+                .expect("command report object")
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            expected
+        );
     }
 
     #[test]
-    fn exact_applied_report_shape_has_one_status_tree() {
+    fn every_operation_uses_the_same_exact_top_level_shape() {
         for operation in [
             CommandOperation::Init,
+            CommandOperation::Add,
             CommandOperation::Status,
             CommandOperation::Verify,
         ] {
             let report = ConnectionCommandReport::from_verification(
                 operation,
-                (operation == CommandOperation::Init).then_some(true),
+                matches!(operation, CommandOperation::Init | CommandOperation::Add).then_some(true),
                 Path::new("/runtime"),
                 connection(),
                 &verification(ConnectionCheckStatus::Passed),
             );
             let value = serde_json::to_value(&report).unwrap();
-            let expected = json!({
-                "operation": operation.as_str(),
-                "dry_run": false,
-                "status": "complete",
-                "runtime_home": "/runtime",
-                "connection": {
-                    "id": "connection_1",
-                    "host": "codex",
-                    "scope": "user",
-                    "profile": "record",
-                    "mode": "workflow",
-                    "repository": "/workspace/product",
-                    "config_target": "/home/user/.codex/config.toml"
-                },
-                "checks": [{
-                    "id": "managed_config",
-                    "status": "passed",
-                    "summary": "Managed configuration check"
-                }],
-                "actions": [],
-                "limits": [COOPERATIVE_ASSURANCE_LIMIT]
-            });
-            let mut expected = expected;
-            if operation == CommandOperation::Init {
-                expected["setup_applied"] = json!(true);
+            assert_eq!(value["operation"], operation.as_str());
+            assert_eq!(value["status"], "complete");
+            assert_eq!(value["checks"].as_array().map(Vec::len), Some(1));
+            assert_eq!(value["actions"], json!([]));
+            assert!(value.get("planned_changes").is_none());
+            if matches!(operation, CommandOperation::Init | CommandOperation::Add) {
+                assert_top_level_keys(&value, &["result"]);
+                assert_eq!(value["result"], json!({"kind": "setup", "applied": true}));
+            } else {
+                assert_top_level_keys(&value, &[]);
+                assert!(value.get("result").is_none());
             }
-            assert_eq!(value, expected);
-            assert_no_obsolete_tree(&value);
         }
+
+        let mode = serde_json::to_value(
+            ConnectionCommandReport::mode_transition(
+                Path::new("/runtime"),
+                connection(),
+                false,
+                "workflow".to_owned(),
+                "workflow".to_owned(),
+                "revision_1".to_owned(),
+                "revision_1".to_owned(),
+                Vec::new(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_top_level_keys(&mode, &["result"]);
+        assert_eq!(mode["operation"], "mode");
+        assert_eq!(mode["status"], "complete");
+        assert_eq!(
+            mode["result"],
+            json!({
+                "kind": "mode_transition",
+                "changed": false,
+                "previous_mode": "workflow",
+                "current_mode": "workflow",
+                "previous_integration_revision": "revision_1",
+                "current_integration_revision": "revision_1",
+                "rebound_guard_installation_ids": [],
+            })
+        );
+
+        let removal = serde_json::to_value(
+            ConnectionCommandReport::removal(Path::new("/runtime"), connection(), true, false, 1)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_top_level_keys(&removal, &["result"]);
+        assert_eq!(removal["operation"], "remove");
+        assert_eq!(removal["status"], "complete");
+        assert_eq!(
+            removal["result"],
+            json!({
+                "kind": "removal",
+                "membership_removed": true,
+                "connection_removed": false,
+                "remaining_project_count": 1,
+            })
+        );
     }
 
     #[test]
-    fn dry_run_status_comes_from_the_typed_plan_report() {
-        let current = verification(ConnectionCheckStatus::Passed);
-        let unchanged = ConnectionCommandReport::dry_run(
-            Path::new("/runtime"),
-            connection(),
-            Some(&current),
-            Vec::new(),
-            &[],
+    fn dry_run_and_mode_status_come_from_typed_checks_and_actions() {
+        let action_only_verification = ConnectionVerificationReport::try_new(
+            UtcTimestamp::parse("2026-07-18T00:00:00Z").unwrap(),
+            verification(ConnectionCheckStatus::Passed)
+                .checks()
+                .to_vec(),
+            vec![
+                ConnectionAction::try_new(ConnectionActionKind::ReloadHost, "Reload Codex", None)
+                    .unwrap(),
+            ],
         )
         .unwrap();
-        let unchanged = serde_json::to_value(unchanged).unwrap();
-        assert_eq!(unchanged["dry_run"], true);
-        assert_eq!(unchanged["setup_applied"], false);
-        assert_eq!(unchanged["status"], "complete");
-        assert_eq!(unchanged["planned_changes"], json!([]));
-        assert_eq!(unchanged["actions"], json!([]));
-
-        let changed = ConnectionCommandReport::dry_run(
+        let action_only = ConnectionCommandReport::from_verification(
+            CommandOperation::Verify,
+            None,
             Path::new("/runtime"),
             connection(),
-            Some(&current),
+            &action_only_verification,
+        );
+        assert_eq!(action_only.status(), ConnectionStatus::ActionRequired);
+
+        let changed = ConnectionCommandReport::setup_dry_run(
+            CommandOperation::Add,
+            Path::new("/runtime"),
+            connection(),
+            None,
             vec![PlannedConnectionChange::new(
                 PlannedConnectionChangeKind::ManagedHostConfiguration,
                 PlannedChangeOperation::Update,
@@ -520,104 +834,49 @@ mod tests {
         )
         .unwrap();
         let changed = serde_json::to_value(changed).unwrap();
+        assert_top_level_keys(&changed, &["planned_changes", "result"]);
+        assert_eq!(changed["operation"], "add");
         assert_eq!(changed["status"], "action_required");
-        assert_eq!(changed["actions"][0]["id"], "apply_setup");
         assert_eq!(
-            changed["planned_changes"],
-            json!([{
-                "kind": "managed_host_configuration",
-                "operation": "update",
-                "target": "/home/user/.codex/config.toml"
-            }])
+            changed["result"],
+            json!({"kind": "setup", "applied": false})
         );
-        assert_no_obsolete_tree(&changed);
-    }
 
-    fn check_status(
-        report: &ConnectionCommandReport,
-        kind: ConnectionCheckKind,
-    ) -> ConnectionCheckStatus {
-        report
-            .checks
-            .iter()
-            .find(|check| check.id() == kind)
-            .expect("planned check")
-            .status()
-    }
-
-    #[test]
-    fn planned_change_kinds_control_semantic_classification() {
-        let current = verification(ConnectionCheckStatus::Passed);
-        let managed_target_looks_like_guard = ConnectionCommandReport::dry_run(
+        let mode = ConnectionCommandReport::mode_transition(
             Path::new("/runtime"),
             connection(),
-            Some(&current),
-            vec![PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::ManagedHostConfiguration,
-                PlannedChangeOperation::Update,
-                ".volicord/policy.json",
-            )],
-            &[],
+            true,
+            "workflow".to_owned(),
+            "read_only".to_owned(),
+            "before".to_owned(),
+            "after".to_owned(),
+            vec!["guard_1".to_owned()],
         )
         .unwrap();
-        assert_eq!(
-            check_status(
-                &managed_target_looks_like_guard,
-                ConnectionCheckKind::ManagedConfig
-            ),
-            ConnectionCheckStatus::Pending
-        );
-        assert_eq!(
-            check_status(
-                &managed_target_looks_like_guard,
-                ConnectionCheckKind::GuardFiles
-            ),
-            ConnectionCheckStatus::Passed
-        );
+        let mode = serde_json::to_value(mode).unwrap();
+        assert_top_level_keys(&mode, &["result"]);
+        assert_eq!(mode["status"], "action_required");
+        assert_eq!(mode["checks"][0]["status"], "passed");
+        assert_eq!(mode["actions"][0]["id"], "reload_host");
+        assert_eq!(mode["result"]["changed"], true);
 
-        let new_guard_at_config_target = ConnectionCommandReport::dry_run(
+        let removal = ConnectionCommandReport::removal_dry_run(
             Path::new("/runtime"),
             connection(),
-            Some(&current),
             vec![PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::GuardManagedFile,
-                PlannedChangeOperation::Create,
-                "/home/user/.codex/config.toml",
+                PlannedConnectionChangeKind::ConnectionMembership,
+                PlannedChangeOperation::Remove,
+                "connection_1:project_1",
             )],
-            &[],
         )
         .unwrap();
-        assert_eq!(
-            check_status(
-                &new_guard_at_config_target,
-                ConnectionCheckKind::ManagedConfig
-            ),
-            ConnectionCheckStatus::Passed
-        );
-        assert_eq!(
-            check_status(&new_guard_at_config_target, ConnectionCheckKind::GuardFiles),
-            ConnectionCheckStatus::Pending
-        );
-
-        for target in ["new/guard/file", "/completely/different/location"] {
-            let report = ConnectionCommandReport::dry_run(
-                Path::new("/runtime"),
-                connection(),
-                Some(&current),
-                vec![PlannedConnectionChange::new(
-                    PlannedConnectionChangeKind::GuardManagedFile,
-                    PlannedChangeOperation::Create,
-                    target,
-                )],
-                &[],
-            )
-            .unwrap();
-            assert_eq!(
-                check_status(&report, ConnectionCheckKind::GuardFiles),
-                ConnectionCheckStatus::Pending,
-                "target text must not change Guard classification"
-            );
-        }
+        let removal = serde_json::to_value(removal).unwrap();
+        assert_top_level_keys(&removal, &["planned_changes"]);
+        assert_eq!(removal["operation"], "remove");
+        assert_eq!(removal["status"], "action_required");
+        assert_eq!(removal["checks"][0]["status"], "pending");
+        assert_eq!(removal["actions"][0]["id"], "apply_removal");
+        assert!(removal.get("result").is_none());
     }
 
     #[test]
@@ -634,10 +893,32 @@ mod tests {
         assert_eq!(json.status, ConnectionStatus::Failed);
         assert_eq!(text.status, ConnectionStatus::Failed);
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&json.output).unwrap()["status"],
+            serde_json::from_str::<Value>(&json.output).unwrap()["status"],
             "failed"
         );
-        assert!(text.output.contains("Status: failed\n"));
-        assert!(text.output.contains("Checks:\n"));
+        assert_eq!(
+            text.output,
+            concat!(
+                "Operation: verify\n",
+                "Status: failed\n",
+                "Dry run: false\n",
+                "Runtime home: /runtime\n",
+                "Connection:\n",
+                "  ID: connection_1\n",
+                "  Host: codex\n",
+                "  Scope: user\n",
+                "  Profile: record\n",
+                "  Mode: workflow\n",
+                "  Repository: /workspace/product\n",
+                "  Config target: /home/user/.codex/config.toml\n",
+                "Checks:\n",
+                "  [failed] managed_config: Managed configuration check\n",
+                "    Code: managed_config_failed\n",
+                "Actions:\n",
+                "  none\n",
+                "Limits:\n",
+                "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
+            )
+        );
     }
 }

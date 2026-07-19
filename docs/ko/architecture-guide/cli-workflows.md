@@ -29,10 +29,12 @@ Codex adapter에 관리 구성 생성을 요청하며 정확한 관리 변경을
 
 ## 연결 검증
 
-`init`, `connection status`, `connection verify`는 정규 검증 type의 check와 action을
-사용해 typed command report 하나를 만듭니다. JSON과 text renderer는 이 보고서를
-소비하고 binary 종료 처리는 typed 집계 상태를 읽습니다. Rendering이 병렬 상태 트리를
-다시 만들거나 자체 출력을 parsing하지 않습니다.
+`init`과 선택한 Connection의 `add`, `status`, `verify`, `mode`, `remove` 흐름은 정규
+검증 type의 check와 action을 사용해 typed command report 하나를 만듭니다. 선택적인 tagged
+result 하나가 다른 상태 트리를 만들지 않고 설정, mode 전환, 제거 사실을 담당합니다.
+JSON과 text renderer는 이 보고서를 소비하고 binary 종료 처리는 typed 집계 상태를 읽습니다.
+Rendering이 병렬 상태 트리를 다시 만들거나 자체 출력을 parsing하지 않습니다. Connection
+list는 명령 보고서 상태에 의존하지 않는 집중 list projection을 유지합니다.
 
 `connection status`는 활성 probe를 실행하거나 파일, 보고서, 관찰, timestamp를 쓰지
 않고 현재 파일과 Store 관찰을 읽습니다. `connection verify`는 현재 adapter와 관리 구성을
@@ -67,8 +69,8 @@ form 대신 영속 데이터 오류로 실패합니다.
 ## 진단과 출력
 
 `doctor`, status, preflight는 읽기 전용 사실을 모아 이름 붙은 다음 동작을 보고합니다.
-세 connection report 명령에서 `dry_run`은 작업 boolean이며 집계 결과는 3상태로
-유지됩니다. `--json`은 typed 결과를 한 번 직렬화합니다. 사람용 text, log,
+Connection report 명령에서 `dry_run`은 작업 boolean이며 집계 결과는 3상태로 유지됩니다.
+`--json`은 typed 결과를 한 번 직렬화합니다. 사람용 text, log,
 diagnostic metadata를 권한 상태로 다시 parse하지 않습니다.
 
 ## 경계

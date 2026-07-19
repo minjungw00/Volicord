@@ -183,9 +183,10 @@ Codex를 reload하고 다시 관찰할 때까지 현재 host 관찰이 pending�
 `status=action_required` 보고서로 projection합니다. 읽었다는 이유로 이를 저장하지
 않습니다.
 
-관리 CLI는 이 보고서의 check와 action을 최상위 `ConnectionCommandReport`에 직접
-projection합니다. 이 보고서를 중첩하거나 집계 상태를 반복하거나 `checked_at`을 두 번째
-명령 출력 시간으로 노출하지 않습니다. Status는 저장된 활성 probe 사실과 현재 관찰에서
+관리 CLI는 init, add, status, verify, mode, remove의 최상위
+`ConnectionCommandReport`에서 정규 check와 action 구성원 type을 직접 사용합니다. 검증
+흐름은 정확한 보고서 구성원을 projection하며, 보고서를 중첩하거나 집계 상태를 반복하거나
+`checked_at`을 두 번째 명령 출력 시간으로 노출하지 않습니다. Status는 저장된 활성 probe 사실과 현재 관찰에서
 메모리 안의 최신 projection을 다시 만들 수 있지만, 이 읽기는 projection을 영속하거나
 timestamp를 바꾸지 않습니다.
 

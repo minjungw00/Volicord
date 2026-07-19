@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use volicord_types::{ConnectionAction, ConnectionActionKind};
+
 use super::*;
 
 pub(super) struct InitProvisioningRequest<'a> {
@@ -40,19 +42,19 @@ pub(super) struct ConnectionProvisioningPlan {
     pub(super) mode: String,
     pub(super) repo_root: PathBuf,
     pub(super) host_plan: HostPlan,
+    pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
+    pub(super) planned_changes: Vec<PlannedConnectionChange>,
     installation_profile: InstallationProfileRecord,
     target_hint: String,
     server_name: String,
+    guard_installation_id: String,
 }
 
 pub(super) struct ConnectionProvisioningResult {
     pub(super) runtime_home: PathBuf,
     pub(super) connection: AgentConnectionRecord,
-    pub(super) projects: Vec<ConnectionProjectRecord>,
     pub(super) affected_repo_root: PathBuf,
     pub(super) verification: VerificationReport,
-    pub(super) host_plan: HostPlan,
-    pub(super) guard_state: GuardOperationalState,
 }
 
 struct InitProvisioningPlan {
@@ -69,6 +71,8 @@ struct InitProvisioningPlan {
     expected_connection: Option<InitConnectionExpectation>,
     current_report: Option<volicord_types::ConnectionVerificationReport>,
     project_id: Option<String>,
+    membership_exists: bool,
+    guard_installation_exists: bool,
     host_plan: HostPlan,
     integration: GuardIntegrationPlan,
     profile_plan: InitProfilePlan,
@@ -100,36 +104,25 @@ enum MigrationRegistryPhase {
 }
 
 impl MigrationRegistryPhase {
-    fn registry_transition(self, connection_migration: bool) -> &'static str {
+    fn registry_transition_applied(self, connection_migration: bool) -> Option<bool> {
         if !connection_migration {
-            return "not_required";
+            return Some(false);
         }
         match self {
-            Self::Pending => "not_applied",
-            Self::Attempted => "unknown",
-            Self::AppliedCleanupPending | Self::AppliedCleanupUnknown | Self::Applied => "applied",
+            Self::Pending => Some(false),
+            Self::Attempted => None,
+            Self::AppliedCleanupPending | Self::AppliedCleanupUnknown | Self::Applied => Some(true),
         }
     }
 
-    fn prior_connection_inventory(self, connection_migration: bool) -> &'static str {
+    fn prior_host_cleanup_completed(self, connection_migration: bool) -> Option<bool> {
         if !connection_migration {
-            return "unchanged";
+            return Some(false);
         }
         match self {
-            Self::Pending => "unchanged",
-            Self::Attempted | Self::AppliedCleanupUnknown => "unknown",
-            Self::AppliedCleanupPending => "disabled_pending_host_cleanup",
-            Self::Applied => "retired_for_project",
-        }
-    }
-
-    fn host_projection(self) -> &'static str {
-        match self {
-            Self::Pending => "partially_applied_or_pending_verification",
-            Self::Attempted => "applied_registry_transition_unknown",
-            Self::AppliedCleanupPending => "partially_applied_after_registry_transition",
-            Self::AppliedCleanupUnknown => "cleanup_inventory_changed_after_registry_transition",
-            Self::Applied => "applied_pending_verification",
+            Self::Pending | Self::Attempted | Self::AppliedCleanupPending => Some(false),
+            Self::AppliedCleanupUnknown => None,
+            Self::Applied => Some(true),
         }
     }
 }
@@ -146,6 +139,8 @@ pub(super) fn provision_init(
             repo_root: &plan.repo_root,
             profile_exists: plan.profile_exists,
             project_exists: plan.project_id.is_some(),
+            membership_exists: plan.membership_exists,
+            guard_installation_exists: plan.guard_installation_exists,
             host_plan: &plan.host_plan,
             integration: &plan.integration,
         });
@@ -256,6 +251,16 @@ fn plan_init_provisioning(
         "guard_installation",
         &[&connection_id, &repo_root_key, parsed.mode.guard_value()],
     );
+    let (membership_exists, guard_installation_exists) = connection_project_planning_facts(
+        &runtime_home,
+        existing
+            .as_ref()
+            .map(|connection| connection.connection_internal_id.as_str()),
+        project_hint
+            .as_ref()
+            .map(|project| project.project_id.as_str()),
+        &guard_installation_id,
+    )?;
     let migration_id = stable_id(
         "migration",
         &[
@@ -291,6 +296,8 @@ fn plan_init_provisioning(
         expected_connection,
         current_report,
         project_id: project_hint.map(|project| project.project_id),
+        membership_exists,
+        guard_installation_exists,
         host_plan,
         integration,
         profile_plan,
@@ -912,7 +919,7 @@ fn migration_post_transition_step<T>(
     })
 }
 
-fn migration_prior_connection_state(
+fn migration_prior_connection_disposition(
     plan: &InitProvisioningPlan,
     integration: &SupersededIntegration,
 ) -> String {
@@ -946,23 +953,6 @@ fn migration_prior_connection_state(
     }
 }
 
-fn aggregate_prior_connection_inventory(
-    prior_connection_states: &[(String, String)],
-    fallback: &'static str,
-) -> String {
-    if prior_connection_states.is_empty() || matches!(fallback, "unchanged" | "unknown") {
-        return fallback.to_owned();
-    }
-    let states = prior_connection_states
-        .iter()
-        .map(|(_, state)| state.as_str())
-        .collect::<BTreeSet<_>>();
-    match states.into_iter().collect::<Vec<_>>().as_slice() {
-        [state] => (*state).to_owned(),
-        _ => "mixed".to_owned(),
-    }
-}
-
 fn migration_partial_application(
     plan: &InitProvisioningPlan,
     integrations: &[SupersededIntegration],
@@ -974,12 +964,12 @@ fn migration_partial_application(
         .map(|integration| integration.connection.connection_internal_id.clone())
         .collect::<Vec<_>>();
     let connection_migration = !integrations.is_empty();
-    let prior_connection_states = integrations
+    let prior_connection_dispositions = integrations
         .iter()
         .map(|integration| {
             (
                 integration.connection.connection_internal_id.clone(),
-                migration_prior_connection_state(plan, integration),
+                migration_prior_connection_disposition(plan, integration),
             )
         })
         .collect::<Vec<_>>();
@@ -997,12 +987,6 @@ fn migration_partial_application(
                     .any(|membership| membership.project_id == project_id)
             })
     });
-    let registry_transition = registry_phase.registry_transition(connection_migration);
-    let prior_connection_inventory = aggregate_prior_connection_inventory(
-        &prior_connection_states,
-        registry_phase.prior_connection_inventory(connection_migration),
-    );
-    let host_projection = registry_phase.host_projection();
     let mut retry_arguments = vec![
         "volicord".to_owned(),
         "init".to_owned(),
@@ -1021,67 +1005,58 @@ fn migration_partial_application(
         plan.init_mode.profile_value().to_owned(),
     ]);
     let explanation = error.to_string();
-    let output = match plan.output_format {
-        OutputFormat::Text => format!(
-            "Result: failed\nMigration state: partial_application\nMigration ID: {}\nRequested connection: {} ({})\nRequested project membership: {}\nPrior connection inventory: {} ({})\nPrior connection states: {}\nRegistry transition: {}\nHost projection: {}\nWhy: {}\nNext: resolve the reported conflict, then rerun with arguments {}\n",
-            plan.migration_id,
-            match requested_connection_enabled {
-                Some(true) => "enabled",
-                Some(false) => "disabled",
-                None => "unknown",
-            },
-            plan.connection_id,
-            match requested_project_membership_active {
-                Some(true) => "active",
-                Some(false) => "inactive",
-                None => "unknown",
-            },
-            prior_connection_inventory,
-            prior_connection_ids.join(", "),
-            prior_connection_states
-                .iter()
-                .map(|(connection_id, state)| format!("{connection_id}={state}"))
-                .collect::<Vec<_>>()
-                .join(", "),
-            registry_transition,
-            host_projection,
-            explanation,
-            serde_json::to_string(&retry_arguments).unwrap_or_else(|_| "[]".to_owned()),
+    let details = json!({
+        "failure": explanation,
+        "migration_id": plan.migration_id,
+        "connection_migration_required": connection_migration,
+        "requested_connection_id": plan.connection_id,
+        "requested_connection_enabled": requested_connection_enabled,
+        "requested_project_membership_active": requested_project_membership_active,
+        "prior_connection_ids": prior_connection_ids,
+        "prior_connections": prior_connection_dispositions
+            .iter()
+            .map(|(connection_id, disposition)| json!({
+                "connection_id": connection_id,
+                "disposition": disposition,
+            }))
+            .collect::<Vec<_>>(),
+        "registry_transition_applied": registry_phase
+            .registry_transition_applied(connection_migration),
+        "prior_host_cleanup_completed": registry_phase
+            .prior_host_cleanup_completed(connection_migration),
+        "retryable": true,
+        "retry_arguments": retry_arguments,
+    });
+    let actions = ConnectionAction::try_new(
+        ConnectionActionKind::ApplySetup,
+        "Resolve the reported setup conflict, then rerun the same init migration using the retry arguments in the failed check details",
+        None,
+    )
+    .map(|action| vec![action])
+    .unwrap_or_default();
+    let report = ConnectionCommandReport::setup_failure(
+        CommandOperation::Init,
+        &plan.runtime_home,
+        CommandConnection::new(
+            &plan.connection_id,
+            plan.host_kind.as_str(),
+            plan.host_scope.as_str(),
+            &plan.effective_mode,
+            &plan.repo_root,
+            host_target_text(&plan.host_plan.target),
         ),
-        OutputFormat::Json => serde_json::to_string_pretty(&json!({
-            "action": "init",
-            "status": "failed",
-            "migration": {
-                "migration_id": plan.migration_id,
-                "state": "partial_application",
-                "requested_connection_id": plan.connection_id,
-                "requested_connection_enabled": requested_connection_enabled,
-                "requested_project_membership_active": requested_project_membership_active,
-                "prior_connection_ids": prior_connection_ids,
-                "prior_connection_inventory": prior_connection_inventory,
-                "prior_connection_states": prior_connection_states
-                    .iter()
-                    .map(|(connection_id, state)| json!({
-                        "connection_id": connection_id,
-                        "state": state
-                    }))
-                    .collect::<Vec<_>>(),
-                "registry_transition": registry_transition,
-                "host_projection": host_projection
-            },
-            "error": explanation,
-            "retryable": true,
-            "retry_arguments": retry_arguments,
-            "next": "Resolve the reported conflict, then rerun the same init migration."
-        }))
-        .map(|text| format!("{text}\n"))
-        .unwrap_or_else(|_| {
+        "Setup migration was only partially applied",
+        details,
+        actions,
+    );
+    let output = report
+        .and_then(|report| render_command_report(plan.output_format, &report))
+        .map(|rendered| rendered.output)
+        .unwrap_or_else(|render_error| {
             format!(
-                "Result: failed\nMigration state: partial_application\nMigration ID: {}\nWhy: {}\n",
-                plan.migration_id, explanation
+                "Operation: init\nStatus: failed\nWhy: {explanation}\nReport error: {render_error}\n"
             )
-        }),
-    };
+        });
     ConnectionCommandError::FailureOutput(output)
 }
 
@@ -1126,6 +1101,10 @@ fn plan_connection_provisioning(
         &target_hint,
         &server_name,
     )?;
+    let current_report = existing
+        .as_ref()
+        .map(effective_connection_report)
+        .transpose()?;
     let connection_id = existing
         .as_ref()
         .map(|connection| connection.connection_internal_id.clone())
@@ -1168,6 +1147,46 @@ fn plan_connection_provisioning(
         process,
     )?;
     ensure_host_plan_has_no_conflict(&host_plan)?;
+    let repo_root_key = path_text(&repo_root);
+    let guard_installation_id = stable_id(
+        "guard_installation",
+        &[
+            &connection_id,
+            &repo_root_key,
+            IntegrationProfile::Record.as_str(),
+        ],
+    );
+    let integration = plan_guard_integration(GuardIntegrationPlanRequest {
+        host_kind,
+        profile: IntegrationProfile::Record,
+        runtime_home: &runtime_home,
+        volicord_command: Path::new(&installation_profile.volicord_command),
+        repo_root: &repo_root,
+        connection_id: &connection_id,
+        guard_installation_id: &guard_installation_id,
+        mcp_entry: &host_plan.entry,
+        connection_intent: intent,
+    })?;
+    let (membership_exists, guard_installation_exists) = connection_project_planning_facts(
+        &runtime_home,
+        existing
+            .as_ref()
+            .map(|connection| connection.connection_internal_id.as_str()),
+        project_hint
+            .as_ref()
+            .map(|project| project.project_id.as_str()),
+        &guard_installation_id,
+    )?;
+    let planned_changes = plan_init_changes(InitPlannedChanges {
+        runtime_home: &runtime_home,
+        repo_root: &repo_root,
+        profile_exists: true,
+        project_exists: project_hint.is_some(),
+        membership_exists,
+        guard_installation_exists,
+        host_plan: &host_plan,
+        integration: &integration,
+    });
 
     Ok(ConnectionProvisioningPlan {
         runtime_home,
@@ -1178,9 +1197,12 @@ fn plan_connection_provisioning(
         mode: mode.to_owned(),
         repo_root,
         host_plan,
+        current_report,
+        planned_changes,
         installation_profile,
         target_hint,
         server_name,
+        guard_installation_id,
     })
 }
 
@@ -1258,6 +1280,29 @@ fn apply_connection_provisioning(
             project_id: project.project_id.clone(),
         },
     )?;
+    let integration = plan_guard_integration(GuardIntegrationPlanRequest {
+        host_kind: plan.host_kind,
+        profile: IntegrationProfile::Record,
+        runtime_home: &plan.runtime_home,
+        volicord_command: Path::new(&plan.installation_profile.volicord_command),
+        repo_root: &project.repo_root,
+        connection_id: &connection.connection_internal_id,
+        guard_installation_id: &plan.guard_installation_id,
+        mcp_entry: &host_plan.entry,
+        connection_intent: plan.intent,
+    })?;
+    record_authoritative_workflow_policy(
+        &plan.runtime_home,
+        &project.project_id,
+        &integration.policy,
+    )?;
+    let integration = apply_guard_integration(integration)?;
+    record_guard_installation(
+        &plan.runtime_home,
+        &connection,
+        &project.project_id,
+        &integration,
+    )?;
     let expected_integration_revision = connection_integration_revision(&connection)?;
     let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
     let verification = verify_connection(
@@ -1274,18 +1319,11 @@ fn apply_connection_provisioning(
         &expected_integration_revision,
         Some(&verification.report),
     )?;
-    let projects =
-        list_connection_projects(&plan.runtime_home, &connection.connection_internal_id)?;
-    let guard_state = guard_state_for_connection(&plan.runtime_home, &connection, &projects)?;
-
     Ok(ConnectionProvisioningResult {
         runtime_home: plan.runtime_home,
         connection,
-        projects,
         affected_repo_root: project.repo_root,
         verification,
-        host_plan,
-        guard_state,
     })
 }
 
@@ -1549,40 +1587,26 @@ mod migration_state_tests {
     use super::*;
 
     #[test]
-    fn cleanup_revalidation_failure_reports_unknown_inventory() {
+    fn cleanup_revalidation_failure_reports_truthful_optional_facts() {
         assert_eq!(
-            MigrationRegistryPhase::AppliedCleanupUnknown.registry_transition(true),
-            "applied"
+            MigrationRegistryPhase::AppliedCleanupUnknown.registry_transition_applied(true),
+            Some(true)
         );
         assert_eq!(
-            MigrationRegistryPhase::AppliedCleanupUnknown.prior_connection_inventory(true),
-            "unknown"
-        );
-        assert_eq!(
-            MigrationRegistryPhase::AppliedCleanupUnknown.host_projection(),
-            "cleanup_inventory_changed_after_registry_transition"
+            MigrationRegistryPhase::AppliedCleanupUnknown.prior_host_cleanup_completed(true),
+            None
         );
     }
 
     #[test]
-    fn mixed_prior_inventory_is_not_misreported_as_all_pending_cleanup() {
-        let states = vec![
-            (
-                "conn_shared_elsewhere".to_owned(),
-                "retired_for_project".to_owned(),
-            ),
-            (
-                "conn_last_project".to_owned(),
-                "disabled_pending_host_cleanup".to_owned(),
-            ),
-        ];
-
+    fn pre_transition_failure_does_not_claim_registry_application() {
         assert_eq!(
-            aggregate_prior_connection_inventory(
-                &states,
-                MigrationRegistryPhase::AppliedCleanupPending.prior_connection_inventory(true),
-            ),
-            "mixed"
+            MigrationRegistryPhase::Pending.registry_transition_applied(true),
+            Some(false)
+        );
+        assert_eq!(
+            MigrationRegistryPhase::Pending.prior_host_cleanup_completed(true),
+            Some(false)
         );
     }
 }

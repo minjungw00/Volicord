@@ -118,6 +118,8 @@ pub(super) struct InitPlannedChanges<'a> {
     pub(super) repo_root: &'a Path,
     pub(super) profile_exists: bool,
     pub(super) project_exists: bool,
+    pub(super) membership_exists: bool,
+    pub(super) guard_installation_exists: bool,
     pub(super) host_plan: &'a HostPlan,
     pub(super) integration: &'a GuardIntegrationPlan,
 }
@@ -132,23 +134,25 @@ pub(super) fn plan_init_changes(input: InitPlannedChanges<'_>) -> Vec<PlannedCon
         ));
     }
     if !input.project_exists {
-        changes.extend([
-            PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::ProjectRegistration,
-                PlannedChangeOperation::Register,
-                path_text(input.repo_root),
-            ),
-            PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::ConnectionMembership,
-                PlannedChangeOperation::Register,
-                path_text(input.repo_root),
-            ),
-            PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::GuardRegistrySetup,
-                PlannedChangeOperation::Register,
-                &input.integration.guard_installation_id,
-            ),
-        ]);
+        changes.push(PlannedConnectionChange::new(
+            PlannedConnectionChangeKind::ProjectRegistration,
+            PlannedChangeOperation::Register,
+            path_text(input.repo_root),
+        ));
+    }
+    if !input.membership_exists {
+        changes.push(PlannedConnectionChange::new(
+            PlannedConnectionChangeKind::ConnectionMembership,
+            PlannedChangeOperation::Register,
+            path_text(input.repo_root),
+        ));
+    }
+    if !input.guard_installation_exists {
+        changes.push(PlannedConnectionChange::new(
+            PlannedConnectionChangeKind::GuardRegistrySetup,
+            PlannedChangeOperation::Register,
+            &input.integration.guard_installation_id,
+        ));
     } else if input.integration.migration_required {
         changes.push(PlannedConnectionChange::new(
             PlannedConnectionChangeKind::GuardRegistrySetup,
@@ -181,6 +185,11 @@ pub(super) fn plan_init_changes(input: InitPlannedChanges<'_>) -> Vec<PlannedCon
             ));
         }
     }
+    canonicalize_planned_changes(&mut changes);
+    changes
+}
+
+pub(super) fn canonicalize_planned_changes(changes: &mut Vec<PlannedConnectionChange>) {
     changes.sort_by(|left, right| {
         left.kind()
             .as_str()
@@ -189,7 +198,6 @@ pub(super) fn plan_init_changes(input: InitPlannedChanges<'_>) -> Vec<PlannedCon
             .then_with(|| left.target().cmp(right.target()))
     });
     changes.dedup();
-    changes
 }
 
 fn host_change_operation(change: PlannedChange) -> Option<PlannedChangeOperation> {

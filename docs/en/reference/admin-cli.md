@@ -200,15 +200,15 @@ is distinct from complete Agent Connection removal.
 `complete` is not Core invocation authorization, executable attestation, or a
 claim about behavior beyond the checks and observations in the report.
 
-`volicord init`, `volicord connection status`, and
-`volicord connection verify` serialize one `ConnectionCommandReport`:
+Every selected-Connection setup and lifecycle command serializes one
+`ConnectionCommandReport`. This includes `volicord init` and the `add`,
+`status`, `verify`, `mode`, and `remove` Connection commands:
 
 ```yaml
 ConnectionCommandReport:
-  operation: init | status | verify
+  operation: init | add | status | verify | mode | remove
   dry_run: bool
   status: complete | action_required | failed
-  setup_applied: bool                    # init only
   runtime_home: string
   connection:
     id: string
@@ -220,8 +220,28 @@ ConnectionCommandReport:
     config_target: string
   checks: ConnectionCheck[]
   actions: ConnectionAction[]
-  planned_changes: PlannedConnectionChange[] # dry-run only
+  result?: SetupResult | ModeTransitionResult | RemovalResult
+  planned_changes?: PlannedConnectionChange[] # dry-run only
   limits: string[]
+
+SetupResult:
+  kind: setup
+  applied: bool
+
+ModeTransitionResult:
+  kind: mode_transition
+  changed: bool
+  previous_mode: read_only | workflow
+  current_mode: read_only | workflow
+  previous_integration_revision: string
+  current_integration_revision: string
+  rebound_guard_installation_ids: string[]
+
+RemovalResult:
+  kind: removal
+  membership_removed: bool
+  connection_removed: bool
+  remaining_project_count: integer
 
 PlannedConnectionChange:
   kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | mode_transition | connection_membership
@@ -229,19 +249,36 @@ PlannedConnectionChange:
   target: string
 ```
 
-The report contains one aggregate status and one check/action tree. It does not
+The report contains one aggregate status and one check/action tree. The optional
+tagged `result` contains only operation-specific facts; it does not introduce a
+second status. Setup reports use `kind=setup`, mode reports use
+`kind=mode_transition`, and successful applied removal reports use
+`kind=removal`. Status and verify normally omit `result`, and removal dry runs
+omit an outcome that has not happened. The report does not
 add `states`, a nested verification report or status, a Guard health tree,
 host-gate or approval fields, a summary card, a primary action, or a second
 disclosure tree. JSON omits optional fields when they do not apply; it does not
 emit them as null-filled placeholders. `limits` carries the cooperative
 assurance limitation once.
 
-`setup_applied` separates setup mutation from operational verification. A
-successful `init` apply reports `setup_applied=true` even when a later local or
-operational check makes `status=failed`. A dry run reports
-`setup_applied=false`, includes `planned_changes`, and never serializes
+`SetupResult.applied` separates setup mutation from operational verification.
+A successful init or add apply reports `applied=true` even when a later local
+or operational check makes `status=failed`. A dry run reports `applied=false`,
+includes `planned_changes`, and never serializes
 `status=dry_run`. Its status is `action_required` when a planned change or host
 action remains and otherwise `complete`.
+
+If setup fails after only part of a migration was applied, it reports
+`status=failed` and `applied=false`; the failed `setup_plan` check details state
+the observed Registry transition, cleanup, prior-Connection dispositions, and
+retry arguments. It does not report a second migration status or imply that an
+unobserved step succeeded.
+
+The command-report aggregate is `failed` when any required check failed,
+`action_required` when no check failed and a required check is pending or a
+typed action remains, and `complete` otherwise. This command aggregation lets a
+completed mode transition report its passed transition check together with the
+one current reload/use action without inventing a second transition status.
 
 Planning assigns every planned change's closed ownership `kind`, typed
 `operation`, and canonical target. It emits no no-op entry and sorts and
@@ -255,6 +292,20 @@ shown above. Human output renders each entry as
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)
 member types and ordering. JSON and human output render the same typed command
 report. Human output may group checks but does not recompute status or actions.
+
+Mode no-op reports `changed=false`, equal previous/current modes and revisions,
+no rebound Guard Installation IDs, a passed `mode_transition` check, no action,
+and `status=complete`. A real transition reports `changed=true`, the exact
+previous/current modes and revisions, the rebound Guard Installation IDs, one
+passed `mode_transition` check, exactly one current `reload_host` action, and
+`status=action_required`.
+
+Successful applied removal reports a passed `connection_removal` check,
+`status=complete`, and exact `membership_removed`, `connection_removed`, and
+`remaining_project_count` facts inside `RemovalResult`. A removal dry run has a
+pending removal check and `apply_removal` action only when an actual removal is
+planned; it reports that plan through typed `planned_changes` and performs no
+mutation.
 
 `volicord connection status` is read-only. It projects current managed
 configuration, trust, Guard audit, integration revision, and managed-host

@@ -88,13 +88,14 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert_eq!(no_op.status.code(), Some(0));
     assert!(no_op.stderr.is_empty());
     let no_op: Value = serde_json::from_slice(&no_op.stdout)?;
-    assert_eq!(no_op["action"], "mode_unchanged");
+    assert_eq!(no_op["operation"], "mode");
     assert_eq!(no_op["status"], "complete");
-    assert_eq!(no_op["transition"], "unchanged");
+    assert_eq!(no_op["result"]["kind"], "mode_transition");
+    assert_eq!(no_op["result"]["changed"], false);
     assert_eq!(no_op["actions"], json!([]));
     assert_eq!(
-        no_op["previous_integration_revision"],
-        no_op["current_integration_revision"]
+        no_op["result"]["previous_integration_revision"],
+        no_op["result"]["current_integration_revision"]
     );
     let after_no_op = fixture.registry_snapshot();
     assert_eq!(
@@ -146,16 +147,17 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     );
     assert!(read_only.stderr.is_empty());
     let read_only_report: Value = serde_json::from_slice(&read_only.stdout)?;
-    assert_eq!(read_only_report["action"], "mode_updated");
+    assert_eq!(read_only_report["operation"], "mode");
     assert_eq!(read_only_report["status"], "action_required");
     assert_eq!(read_only_report["connection"]["mode"], "read_only");
-    assert_eq!(read_only_report["transition"], "updated");
+    assert_eq!(read_only_report["result"]["kind"], "mode_transition");
+    assert_eq!(read_only_report["result"]["changed"], true);
     assert_ne!(
-        read_only_report["previous_integration_revision"],
-        read_only_report["current_integration_revision"]
+        read_only_report["result"]["previous_integration_revision"],
+        read_only_report["result"]["current_integration_revision"]
     );
     assert_eq!(
-        read_only_report["rebound_guard_installation_ids"]
+        read_only_report["result"]["rebound_guard_installation_ids"]
             .as_array()
             .map(Vec::len),
         Some(1)
@@ -176,7 +178,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert_manifest_rebound_only(&workflow_manifest, &read_only_manifest);
     assert_eq!(
         read_only_manifest.integration_revision.as_str(),
-        read_only_report["current_integration_revision"]
+        read_only_report["result"]["current_integration_revision"]
             .as_str()
             .expect("current revision")
     );
@@ -326,7 +328,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert_eq!(removed.status.code(), Some(0));
     assert!(removed.stderr.is_empty());
     let removed: Value = serde_json::from_slice(&removed.stdout)?;
-    assert_eq!(removed["connection_removed"], true);
+    assert_eq!(removed["result"]["connection_removed"], true);
     Ok(())
 }
 
@@ -408,9 +410,9 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
     let report: Value = serde_json::from_slice(&output.stdout)?;
-    assert_eq!(report["membership_removed"], true);
-    assert_eq!(report["connection_removed"], true);
-    assert_eq!(report["remaining_project_count"], 0);
+    assert_eq!(report["result"]["membership_removed"], true);
+    assert_eq!(report["result"]["connection_removed"], true);
+    assert_eq!(report["result"]["remaining_project_count"], 0);
     let after = fixture.registry_snapshot();
     assert!(after.agent_connections.is_empty());
     assert!(after.connection_projects.is_empty());
@@ -496,7 +498,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
         false,
     )?;
     let repair = assert_connection_report(&repair, 0, "init", "action_required")?;
-    assert_eq!(repair["setup_applied"], true);
+    assert_eq!(repair["result"], json!({"kind": "setup", "applied": true}));
     let initialized = fixture.registry_snapshot();
     assert_ne!(
         initialized.agent_connections[0].managed_fingerprint,
@@ -625,8 +627,8 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
     assert_eq!(removed.status.code(), Some(0));
     assert!(removed.stderr.is_empty());
     let removed: Value = serde_json::from_slice(&removed.stdout)?;
-    assert_eq!(removed["membership_removed"], true);
-    assert_eq!(removed["connection_removed"], true);
+    assert_eq!(removed["result"]["membership_removed"], true);
+    assert_eq!(removed["result"]["connection_removed"], true);
     assert!(fixture.registry_snapshot().agent_connections.is_empty());
     assert!(!fs::read_to_string(config_target)
         .unwrap_or_default()
@@ -638,7 +640,10 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     let fixture = OperationalFixture::new("operational-host-complete")?;
     let init = fixture.run_init(FUTURE_VERSION, None, false)?;
     let init_report = assert_connection_report(&init, 0, "init", "action_required")?;
-    assert_eq!(init_report["setup_applied"], true);
+    assert_eq!(
+        init_report["result"],
+        json!({"kind": "setup", "applied": true})
+    );
     assert_check(&init_report, "managed_config", "passed", None);
     assert_check(&init_report, "host_executable", "passed", None);
     assert_check(&init_report, "mcp_server", "passed", None);
@@ -766,7 +771,7 @@ fn dry_run_has_no_mutation() -> Result<(), Box<dyn Error>> {
     let output = fixture.run_init(FUTURE_VERSION, None, true)?;
     let report = assert_connection_report(&output, 0, "init", "action_required")?;
     assert_eq!(report["dry_run"], true);
-    assert_eq!(report["setup_applied"], false);
+    assert_eq!(report["result"], json!({"kind": "setup", "applied": false}));
     assert!(report["planned_changes"].is_array());
     assert!(!fixture.runtime_home.exists());
     assert_eq!(fixture.repository_snapshot()?, repo_before);
@@ -866,7 +871,7 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
         false,
     )?;
     let report = assert_connection_report(&output, 1, "init", "failed")?;
-    assert_eq!(report["setup_applied"], true);
+    assert_eq!(report["result"], json!({"kind": "setup", "applied": true}));
     assert_check(
         &report,
         "mcp_server",
@@ -1579,8 +1584,8 @@ fn assert_compact_public_shape(report: &Value) {
         "runtime_home",
         "status",
     ]);
-    if report["operation"] == "init" {
-        expected.insert("setup_applied");
+    if report.get("result").is_some() {
+        expected.insert("result");
     }
     if report["dry_run"] == true {
         expected.insert("planned_changes");
@@ -1591,12 +1596,19 @@ fn assert_compact_public_shape(report: &Value) {
     );
     for forbidden in [
         "states",
+        "verification",
         "verification_report",
+        "verification_status",
         "host_hook",
         "summary_card",
-        "receipt",
-        "catalog",
-        "primary_action",
+        "primary_next_action",
+        "host_gate",
+        "approval",
+        "configuration_health",
+        "observation_health",
+        "effective_health",
+        "generated_config_verified",
+        "disclosure",
     ] {
         assert!(
             !json_key_exists(report, forbidden),

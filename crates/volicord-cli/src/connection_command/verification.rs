@@ -4,51 +4,40 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
+    guards::{guard_observation_summary, list_guard_installations},
     operational_sessions::{
         connection_integration_revision, current_managed_runtime_sessions,
         latest_managed_runtime_session, McpRuntimeSessionRecord,
     },
 };
+#[cfg(test)]
+use volicord_types::ConnectionStatus;
 use volicord_types::{
     ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
-    ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
+    ConnectionCheckKind, ConnectionCheckStatus, ConnectionVerificationReport, GuardManagedArtifact,
     UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
 };
 
+use crate::guard_integration::audit::{
+    guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
+    GuardArtifactIssue, GuardAuditFacts, GuardManifestIssue,
+};
 use crate::host_integration::{
     codex::{self, CodexAdapter},
     verification::{HostExecutableStatus, ManagedConfigStatus, ProjectTrustStatus, Verification},
-    HostAdapter, HostKind, HostPlan, HostScope, UserAction, UserActionKind,
+    HostAdapter, HostKind, HostPlan, HostScope,
 };
 
 use super::{
-    codex_environment, guard_state_for_connection, mcp_process::run_connection_preflight,
-    parse_host_kind, ConnectionCommandError, ConnectionProcess, GuardOperationalState, McpLaunch,
-    McpVerification,
+    codex_environment, mcp_process::run_connection_preflight, parse_host_kind,
+    ConnectionCommandError, ConnectionProcess, McpLaunch, McpVerification,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::connection_command) enum AgentResultStatus {
-    Complete,
-    ActionRequired,
-    Failed,
-}
-
-impl AgentResultStatus {
-    pub(in crate::connection_command) fn as_str(self) -> &'static str {
-        match self {
-            Self::Complete => "complete",
-            Self::ActionRequired => "action_required",
-            Self::Failed => "failed",
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::connection_command) enum StepStatus {
     Passed,
     Failed,
-    Skipped,
+    Pending,
 }
 
 impl StepStatus {
@@ -56,7 +45,7 @@ impl StepStatus {
         match self {
             Self::Passed => "passed",
             Self::Failed => "failed",
-            Self::Skipped => "skipped",
+            Self::Pending => "pending",
         }
     }
 }
@@ -94,9 +83,9 @@ impl VerificationStep {
         }
     }
 
-    pub(in crate::connection_command) fn skipped(details: impl Into<String>) -> Self {
+    pub(in crate::connection_command) fn pending(details: impl Into<String>) -> Self {
         Self {
-            status: StepStatus::Skipped,
+            status: StepStatus::Pending,
             code: "pending".to_owned(),
             details: details.into(),
             preflight_diagnostics: None,
@@ -142,13 +131,6 @@ impl McpPreflightDiagnostics {
 #[derive(Debug, Clone)]
 pub(in crate::connection_command) struct VerificationReport {
     pub(in crate::connection_command) report: ConnectionVerificationReport,
-    pub(in crate::connection_command) host: Verification,
-}
-
-impl VerificationReport {
-    pub(in crate::connection_command) fn status(&self) -> AgentResultStatus {
-        agent_result_status(self.report.status())
-    }
 }
 
 pub(in crate::connection_command) fn verify_connection(
@@ -181,20 +163,12 @@ pub(in crate::connection_command) fn verify_connection(
         }
     } else {
         McpVerification {
-            step: VerificationStep::skipped(
+            step: VerificationStep::pending(
                 "MCP server self-test did not run after failed preflight",
             ),
             tools: Vec::new(),
         }
     };
-    let guard = guard_state_for_connection(
-        runtime_home,
-        connection,
-        &volicord_store::agent_connections::list_connection_projects_for_diagnostics(
-            runtime_home,
-            &connection.connection_internal_id,
-        )?,
-    )?;
     let report = canonical_verification_report(
         runtime_home,
         connection,
@@ -202,9 +176,8 @@ pub(in crate::connection_command) fn verify_connection(
         &preflight,
         &handshake.step,
         &handshake.tools,
-        &guard,
     )?;
-    Ok(VerificationReport { report, host })
+    Ok(VerificationReport { report })
 }
 
 pub(in crate::connection_command) fn effective_connection_report(
@@ -244,7 +217,6 @@ fn canonical_verification_report(
     preflight: &VerificationStep,
     handshake: &VerificationStep,
     tools: &[String],
-    guard: &GuardOperationalState,
 ) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
@@ -263,7 +235,15 @@ fn canonical_verification_report(
         &current_sessions,
         latest_session.as_ref(),
     )?);
-    checks.extend(guard_checks(guard)?);
+    let projects = volicord_store::agent_connections::list_connection_projects_for_diagnostics(
+        runtime_home,
+        &connection.connection_internal_id,
+    )?;
+    checks.extend(guard_checks_for_connection(
+        runtime_home,
+        connection,
+        &projects,
+    )?);
     let actions = actions_for_checks(&checks)?;
     ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)
         .map_err(ConnectionCommandError::from)
@@ -667,57 +647,138 @@ fn host_session_checks(
     Ok(vec![host_session, required_tools, tool_round_trip])
 }
 
-fn guard_checks(
-    guard: &GuardOperationalState,
+fn guard_checks_for_connection(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    projects: &[ConnectionProjectRecord],
 ) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
-    let files_status = if guard.generated_config_verified
-        && guard.missing_files.is_empty()
-        && guard.stale_files.is_empty()
-        && guard.broken_files.is_empty()
+    let mut installations = Vec::new();
+    for project in projects {
+        installations.extend(list_guard_installations(
+            runtime_home,
+            &connection.connection_internal_id,
+            Some(&project.project_id),
+        )?);
+    }
+    if installations.is_empty() {
+        installations =
+            list_guard_installations(runtime_home, &connection.connection_internal_id, None)?;
+    }
+
+    let mut audit = GuardAuditFacts::default();
+    let mut all_required_phases_observed = !installations.is_empty();
+    let mut prompt_capture_observed = !installations.is_empty();
+    let mut required_phases = Vec::new();
+    let mut observed_phases = Vec::new();
+    let mut incompatible_event_ids = Vec::new();
+    let mut last_current_observation_at = None;
+    let mut installation_ids = Vec::new();
+
+    for installation in &installations {
+        installation_ids.push(installation.guard_installation_id.clone());
+        audit.merge(guard_file_findings_for_installation(
+            runtime_home,
+            installation,
+            connection,
+            projects,
+        ));
+        let binding_is_current =
+            guard_manifest_binding_valid_for_installation(installation, connection, projects);
+        let observation =
+            guard_observation_summary(runtime_home, &installation.project_id, installation)?;
+        required_phases.extend(observation.required_phases.iter().cloned());
+        observed_phases.extend(observation.observed_phases.iter().cloned());
+        incompatible_event_ids.extend(observation.incompatible_event_ids.iter().cloned());
+        let observation_is_current =
+            binding_is_current && observation.all_required_phases_observed();
+        all_required_phases_observed &= observation_is_current;
+        prompt_capture_observed &= observation_is_current && observation.prompt_capture_observed();
+        last_current_observation_at = latest_timestamp(
+            last_current_observation_at,
+            observation.last_observed_at.as_deref(),
+        )?;
+    }
+
+    audit.sort_dedup();
+    installation_ids.sort();
+    installation_ids.dedup();
+    required_phases.sort();
+    required_phases.dedup();
+    observed_phases.sort();
+    observed_phases.dedup();
+    incompatible_event_ids.sort();
+    incompatible_event_ids.dedup();
+
+    let missing_required_phases = required_phases
+        .iter()
+        .filter(|phase| !observed_phases.contains(phase))
+        .cloned()
+        .collect::<Vec<_>>();
+    let configured_phase_gaps = audit
+        .missing_required_phases
+        .iter()
+        .map(|phase| phase.as_str().to_owned())
+        .collect::<Vec<_>>();
+    let files_status = if !installations.is_empty()
+        && audit.generated_config_verified()
+        && configured_phase_gaps.is_empty()
     {
         ConnectionCheckStatus::Passed
-    } else if matches!(
-        guard.installation_state.as_str(),
-        "planned" | "reload_required"
-    ) {
-        ConnectionCheckStatus::Pending
     } else {
         ConnectionCheckStatus::Failed
     };
-    let observation_status = match guard.hook_observed_state.as_str() {
-        "observed" => ConnectionCheckStatus::Passed,
-        "failed" => ConnectionCheckStatus::Failed,
-        _ => ConnectionCheckStatus::Pending,
+    let observation_status = if !incompatible_event_ids.is_empty() {
+        ConnectionCheckStatus::Failed
+    } else if all_required_phases_observed {
+        ConnectionCheckStatus::Passed
+    } else {
+        ConnectionCheckStatus::Pending
     };
-    let mut affected_paths = guard.missing_files.clone();
-    affected_paths.extend(guard.stale_files.iter().cloned());
-    affected_paths.extend(guard.broken_files.iter().cloned());
-    affected_paths.sort();
-    affected_paths.dedup();
-    let file_facts = json!({
-        "manifest_audit_passed": files_status == ConnectionCheckStatus::Passed,
-        "affected_paths": affected_paths,
-        "required_hook_gaps": guard.missing_required_hooks,
-    });
-    let observation_facts = json!({
-        "hook_activity_observed": guard.hook_observed_state == "observed",
-        "prompt_capture_observed": matches!(
-            guard.prompt_capture_state.as_str(),
-            "active" | "observed"
-        ),
-    });
+
+    let artifact_issues = audit
+        .findings
+        .iter()
+        .map(|finding| {
+            json!({
+                "artifact": guard_managed_artifact_name(finding.artifact),
+                "path": finding.path.display().to_string(),
+                "issue": guard_artifact_issue_name(finding.issue),
+                "details": finding.details,
+            })
+        })
+        .collect::<Vec<_>>();
+    let manifest_issues = audit
+        .manifest_issues
+        .iter()
+        .map(|issue| guard_manifest_issue_name(*issue))
+        .collect::<Vec<_>>();
+    let affected_paths = audit
+        .affected_paths()
+        .into_iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+    let observed_at = last_current_observation_at
+        .as_ref()
+        .map(UtcTimestamp::to_canonical_string);
+
     Ok(vec![
         canonical_check(
             ConnectionCheckKind::GuardFiles,
             files_status,
-            match files_status {
-                ConnectionCheckStatus::Passed => "guard_files_passed",
-                ConnectionCheckStatus::Pending => "guard_files_reload_pending",
-                ConnectionCheckStatus::Failed => "guard_files_failed",
+            "guard_files_failed",
+            if files_status == ConnectionCheckStatus::Passed {
+                "Guard managed files match the current typed manifest expectations"
+            } else {
+                "Guard managed files do not match the current typed manifest expectations"
             },
-            "Guard managed files were checked",
-            Some(file_facts),
-            guard.last_observed_at.as_deref(),
+            Some(json!({
+                "installation_ids": installation_ids,
+                "affected_paths": affected_paths,
+                "artifact_issues": artifact_issues,
+                "manifest_issues": manifest_issues,
+                "missing_required_phases": configured_phase_gaps,
+            })),
+            None,
         )?,
         canonical_check(
             ConnectionCheckKind::GuardObservation,
@@ -727,11 +788,76 @@ fn guard_checks(
                 ConnectionCheckStatus::Pending => "guard_observation_pending",
                 ConnectionCheckStatus::Failed => "guard_observation_failed",
             },
-            "Current Guard hook phases were checked",
-            Some(observation_facts),
-            guard.last_observed_at.as_deref(),
+            match observation_status {
+                ConnectionCheckStatus::Passed => {
+                    "Every current required Guard hook phase was observed"
+                }
+                ConnectionCheckStatus::Pending => {
+                    "One or more current required Guard hook phases have not been observed"
+                }
+                ConnectionCheckStatus::Failed => {
+                    "A current Guard event reported an incompatible hook contract"
+                }
+            },
+            Some(json!({
+                "required_phases": required_phases,
+                "observed_phases": observed_phases,
+                "missing_required_phases": missing_required_phases,
+                "incompatible_event_ids": incompatible_event_ids,
+                "prompt_capture": {
+                    "host_supported": audit.prompt_capture_host_supported,
+                    "configured": audit.prompt_capture_configured,
+                    "observed": prompt_capture_observed,
+                },
+                "last_current_observation_at": observed_at,
+            })),
+            observed_at.as_deref(),
         )?,
     ])
+}
+
+fn guard_artifact_issue_name(issue: GuardArtifactIssue) -> &'static str {
+    match issue {
+        GuardArtifactIssue::Missing => "missing",
+        GuardArtifactIssue::Malformed => "malformed",
+        GuardArtifactIssue::ContentMismatch => "content_mismatch",
+        GuardArtifactIssue::OwnershipMismatch => "ownership_mismatch",
+        GuardArtifactIssue::PermissionMismatch => "permission_mismatch",
+        GuardArtifactIssue::HookContractMismatch => "hook_contract_mismatch",
+    }
+}
+
+fn guard_managed_artifact_name(artifact: GuardManagedArtifact) -> String {
+    match artifact {
+        GuardManagedArtifact::HostHookWrapper(phase) => {
+            format!("host_hook_wrapper:{}", phase.as_str())
+        }
+        artifact => artifact.kind().as_str().to_owned(),
+    }
+}
+
+fn guard_manifest_issue_name(issue: GuardManifestIssue) -> &'static str {
+    match issue {
+        GuardManifestIssue::Malformed => "malformed",
+        GuardManifestIssue::OwnershipMismatch => "ownership_mismatch",
+    }
+}
+
+fn latest_timestamp(
+    current: Option<UtcTimestamp>,
+    candidate: Option<&str>,
+) -> Result<Option<UtcTimestamp>, ConnectionCommandError> {
+    let Some(candidate) = candidate else {
+        return Ok(current);
+    };
+    let candidate = UtcTimestamp::parse(candidate).map_err(|_| {
+        ConnectionCommandError::runtime(
+            "stored guard_events.occurred_at is not a canonical RFC 3339 UTC instant",
+        )
+    })?;
+    Ok(Some(current.map_or(candidate.clone(), |current| {
+        current.max(candidate)
+    })))
 }
 
 fn actions_for_checks(
@@ -986,7 +1112,6 @@ pub(in crate::connection_command) fn current_status_report(
             None,
             None,
         )?);
-    let guard = guard_state_for_connection(runtime_home, connection, projects)?;
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
@@ -1011,34 +1136,14 @@ pub(in crate::connection_command) fn current_status_report(
         &current_sessions,
         latest_session.as_ref(),
     )?);
-    checks.extend(guard_checks(&guard)?);
+    checks.extend(guard_checks_for_connection(
+        runtime_home,
+        connection,
+        projects,
+    )?);
     let actions = actions_for_checks(&checks)?;
     let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)?;
     Ok((Some(host), report))
-}
-
-pub(in crate::connection_command) fn connection_status_actions(
-    _current_host: Option<&Verification>,
-    report: &ConnectionVerificationReport,
-) -> Vec<UserAction> {
-    let mut actions = report
-        .actions()
-        .iter()
-        .map(|action| UserAction::new(UserActionKind::from(action.id()), action.instruction()))
-        .collect::<Vec<_>>();
-    actions.sort_by(|left, right| left.message.cmp(&right.message));
-    actions.dedup_by(|left, right| left.kind == right.kind && left.message == right.message);
-    actions
-}
-
-pub(in crate::connection_command) fn agent_result_status(
-    status: ConnectionStatus,
-) -> AgentResultStatus {
-    match status {
-        ConnectionStatus::Complete => AgentResultStatus::Complete,
-        ConnectionStatus::ActionRequired => AgentResultStatus::ActionRequired,
-        ConnectionStatus::Failed => AgentResultStatus::Failed,
-    }
 }
 
 fn current_timestamp() -> UtcTimestamp {
@@ -1413,40 +1518,6 @@ mod tests {
         let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, first)
             .expect("canonical report");
         assert_eq!(report.status(), ConnectionStatus::Failed);
-    }
-
-    #[test]
-    fn report_action_conversion_preserves_protocol_meaning() {
-        let report = ConnectionVerificationReport::try_new(
-            current_timestamp(),
-            Vec::new(),
-            vec![
-                ConnectionAction::try_new(
-                    ConnectionActionKind::ObserveCodex,
-                    "Observe current Codex activity",
-                    None,
-                )
-                .expect("observe action"),
-                ConnectionAction::try_new(
-                    ConnectionActionKind::InspectCodexProtocol,
-                    "Inspect the Codex protocol failure",
-                    None,
-                )
-                .expect("inspect action"),
-            ],
-        )
-        .expect("canonical report");
-
-        let actions = connection_status_actions(None, &report);
-        assert!(actions
-            .iter()
-            .any(|action| action.kind == UserActionKind::ObserveCodex));
-        assert!(actions
-            .iter()
-            .any(|action| action.kind == UserActionKind::InspectCodexProtocol));
-        assert!(actions
-            .iter()
-            .all(|action| action.kind != UserActionKind::ReloadHost));
     }
 
     #[test]

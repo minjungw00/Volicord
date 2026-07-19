@@ -1647,7 +1647,7 @@ documents:
   - command arguments, defaults, output routing, exit codes, and noninteractive behavior
   - Runtime Home selection and project registration commands
   - personal and shared Codex Record connection setup, verification, mode, repair, and removal
-  - exact `ConnectionCommandReport` output for init, status, and verify, including dry-run separation and exit routing
+  - exact `ConnectionCommandReport` output for init, add, status, verify, mode, and remove, including dry-run separation and exit routing
   - managed stdio MCP launch and preflight commands
   - CLI inbox listing and CLI-only UserAction resolution
   - policy, diagnostics, authority-bundle export, and change-reconciliation commands

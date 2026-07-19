@@ -11,7 +11,7 @@ use std::{
 };
 
 use rusqlite::{params, Connection};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use support::binary_fixture::create_git_repo;
 use volicord_cli::{
@@ -262,7 +262,9 @@ fn read_only_init_replay_dry_run_and_repairs_preserve_mode_generation_and_revisi
     let ids = assert_single_owned_records(&workflow);
     assert_eq!(workflow.agent_connections[0].mode, CONNECTION_MODE_WORKFLOW);
     let transition = run_read_only_mode(&repo_root, &mut process)?;
-    assert_eq!(transition["action"], "mode_updated");
+    assert_eq!(transition["operation"], "mode");
+    assert_eq!(transition["result"]["kind"], "mode_transition");
+    assert_eq!(transition["result"]["changed"], true);
     assert_eq!(transition["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
 
     let read_only = registry_snapshot(fixture.path());
@@ -505,19 +507,22 @@ fn init_migration_retains_bound_cleanup_inventory_until_host_cleanup_replay(
 
     let mut replacement_process = FakeConnectionProcess::named(&fixture, "replacement")?;
     let failed_cleanup = run_record_init_outcome(&repo_root, &mut replacement_process)?;
+    assert_eq!(failed_cleanup["operation"], "init");
+    assert_eq!(failed_cleanup["status"], "failed");
     assert_eq!(
-        failed_cleanup["migration"]["state"], "partial_application",
+        failed_cleanup["result"],
+        json!({"kind": "setup", "applied": false}),
         "unexpected migration output: {failed_cleanup}"
     );
-    assert_eq!(
-        failed_cleanup["migration"]["registry_transition"],
-        "applied"
-    );
-    assert_eq!(
-        failed_cleanup["migration"]["prior_connection_inventory"],
-        "disabled_pending_host_cleanup"
-    );
-    assert!(!failed_cleanup["error"]
+    let failure_details = &failed_cleanup["checks"][0]["details"];
+    assert_eq!(failure_details["registry_transition_applied"], true);
+    assert_eq!(failure_details["prior_host_cleanup_completed"], false);
+    assert!(failure_details["prior_connections"]
+        .as_array()
+        .is_some_and(|connections| connections
+            .iter()
+            .any(|connection| { connection["disposition"] == "disabled_pending_host_cleanup" })));
+    assert!(!failure_details["failure"]
         .as_str()
         .unwrap_or_default()
         .contains("FOREIGN KEY"));
@@ -790,7 +795,7 @@ fn assert_failed_init_with_recorded_guard(output: &Value) {
     );
     assert_eq!(output["operation"], "init");
     assert_eq!(output["dry_run"], false);
-    assert_eq!(output["setup_applied"], true);
+    assert_eq!(output["result"], json!({"kind": "setup", "applied": true}));
 }
 
 fn assert_unavailable_codex_verification(

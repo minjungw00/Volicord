@@ -66,26 +66,6 @@ impl From<UserActionKind> for ConnectionActionKind {
     }
 }
 
-impl From<ConnectionActionKind> for UserActionKind {
-    fn from(kind: ConnectionActionKind) -> Self {
-        match kind {
-            ConnectionActionKind::RunVerification => Self::RunVerification,
-            ConnectionActionKind::ApplySetup => Self::ApplySetup,
-            ConnectionActionKind::HostTrustRequired => Self::HostTrustRequired,
-            ConnectionActionKind::RepairManagedConfig => Self::RepairManagedConfig,
-            ConnectionActionKind::InstallOrRepairCodex => Self::InstallOrRepairCodex,
-            ConnectionActionKind::RepairMcpServer => Self::RepairMcpServer,
-            ConnectionActionKind::ReloadHost => Self::ReloadHost,
-            ConnectionActionKind::UseVolicordTool => Self::UseVolicordTool,
-            ConnectionActionKind::ObserveCodex => Self::ObserveCodex,
-            ConnectionActionKind::InspectCodexProtocol => Self::InspectCodexProtocol,
-            ConnectionActionKind::ReloadGuard => Self::ReloadGuard,
-            ConnectionActionKind::RepairGuard => Self::RepairGuard,
-            ConnectionActionKind::ApplyRemoval => Self::ApplyRemoval,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserAction {
     pub kind: UserActionKind,
@@ -628,7 +608,7 @@ mod tests {
     fn every_host_plan_action_converts_without_fallback() {
         for kind in UserActionKind::ALL {
             let report_kind = ConnectionActionKind::from(kind);
-            assert_eq!(UserActionKind::from(report_kind), kind);
+            assert!(ConnectionActionKind::ALL.contains(&report_kind));
             assert_eq!(
                 serde_json::to_value(report_kind).expect("serialize action kind"),
                 serde_json::Value::String(report_kind.as_str().to_owned())

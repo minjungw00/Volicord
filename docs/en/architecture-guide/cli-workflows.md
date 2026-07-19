@@ -32,11 +32,14 @@ Store-owned operational records.
 
 ## Connection Verification
 
-`init`, `connection status`, and `connection verify` build one typed command
-report whose checks and actions come from the canonical verification types.
-The JSON and text renderers consume that report, and binary exit handling reads
-its typed aggregate status. Rendering does not reconstruct a parallel state
-tree or parse its own output.
+`init` and the selected-Connection `add`, `status`, `verify`, `mode`, and
+`remove` flows build one typed command report whose checks and actions use the
+canonical verification types. One optional tagged result owns setup,
+mode-transition, or removal facts without creating another status tree. The
+JSON and text renderers consume that report, and binary exit handling reads its
+typed aggregate status. Rendering does not reconstruct a parallel state tree
+or parse its own output. Connection list retains a focused list projection that
+does not depend on the command-report state.
 
 `connection status` reads current files and Store observations without running
 active probes or writing files, reports, observations, or timestamps.
@@ -73,8 +76,8 @@ path and the unavailable reason.
 ## Diagnostics And Output
 
 `doctor`, status, and preflight collect read-only facts and report named next
-actions. For the three connection-report commands, `dry_run` is an operation
-boolean and the aggregate remains three-state. `--json` serializes the typed
+actions. For connection-report commands, `dry_run` is an operation boolean and
+the aggregate remains three-state. `--json` serializes the typed
 result once. Human text, logs, and diagnostic metadata are not parsed back into
 authority state.
 

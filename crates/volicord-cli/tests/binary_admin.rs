@@ -184,7 +184,8 @@ fn failed_init_is_one_stdout_document_and_exit_one() -> Result<(), Box<dyn Error
     assert_eq!(value["status"], "failed");
     assert_eq!(value["operation"], "init");
     assert_eq!(value["dry_run"], false);
-    assert_eq!(value["setup_applied"], true);
+    assert_eq!(value["result"]["kind"], "setup");
+    assert_eq!(value["result"]["applied"], true);
     assert!(value.get("planned_changes").is_none());
     assert!(value["checks"].is_array());
     assert!(value["actions"].is_array());
@@ -205,7 +206,8 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     assert_eq!(value["operation"], "init");
     assert_eq!(value["dry_run"], true);
     assert_eq!(value["status"], "action_required");
-    assert_eq!(value["setup_applied"], false);
+    assert_eq!(value["result"]["kind"], "setup");
+    assert_eq!(value["result"]["applied"], false);
     assert_eq!(value["connection"]["mode"], "workflow");
     let planned_changes = value["planned_changes"]
         .as_array()
@@ -274,7 +276,8 @@ fn fresh_init_without_host_observation_is_action_required_and_exit_zero(
     let value: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(value["operation"], "init");
     assert_eq!(value["status"], "action_required");
-    assert_eq!(value["setup_applied"], true);
+    assert_eq!(value["result"]["kind"], "setup");
+    assert_eq!(value["result"]["applied"], true);
     assert!(value["checks"].as_array().is_some_and(|checks| {
         checks
             .iter()
@@ -300,10 +303,12 @@ fn connection_remove_after_fresh_init_removes_last_connection_state() -> Result<
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
-    assert_eq!(report["action"], "removed");
-    assert_eq!(report["membership_removed"], true);
-    assert_eq!(report["connection_removed"], true);
-    assert_eq!(report["remaining_project_count"], 0);
+    assert_eq!(report["operation"], "remove");
+    assert_eq!(report["status"], "complete");
+    assert_eq!(report["result"]["kind"], "removal");
+    assert_eq!(report["result"]["membership_removed"], true);
+    assert_eq!(report["result"]["connection_removed"], true);
+    assert_eq!(report["result"]["remaining_project_count"], 0);
     let after = fixture.registry_snapshot();
     assert!(after.agent_connections.is_empty());
     assert!(after.connection_projects.is_empty());
@@ -330,10 +335,11 @@ fn connection_remove_human_output_reports_complete_connection_removal() -> Resul
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
-    assert!(text.starts_with("Agent Connection removed for Codex\n"));
-    assert!(text.contains("Membership: removed\n"));
-    assert!(text.contains("Agent Connection: removed\n"));
-    assert!(text.contains("Remaining repositories: 0\n"));
+    assert!(text.starts_with("Operation: remove\nStatus: complete\n"));
+    assert!(text.contains("Result:\n  Kind: removal\n"));
+    assert!(text.contains("  Membership removed: true\n"));
+    assert!(text.contains("  Connection removed: true\n"));
+    assert!(text.contains("  Remaining project count: 0\n"));
     Ok(())
 }
 
@@ -384,6 +390,28 @@ fn connection_add_dry_run_preserves_setup_check_and_action_kinds() -> Result<(),
     assert!(report["actions"]
         .as_array()
         .is_some_and(|actions| actions.iter().any(|action| action["id"] == "apply_setup")));
+    Ok(())
+}
+
+#[test]
+fn connection_add_operational_failure_is_one_stdout_document_and_exit_one(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-add-operational-failure")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let other_repo = fixture.create_repository("add-failed-repository")?;
+
+    let output = fixture.run_connection_for_repo("add", &other_repo, true)?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_str(&stdout(&output)?)?;
+    assert_eq!(report["operation"], "add");
+    assert_eq!(report["dry_run"], false);
+    assert_eq!(report["status"], "failed");
+    assert_eq!(report["result"]["kind"], "setup");
+    assert_eq!(report["result"]["applied"], true);
+    assert!(report["checks"].is_array());
+    assert!(report["actions"].is_array());
     Ok(())
 }
 
@@ -501,7 +529,7 @@ fn absent_owned_host_entry_can_retry_registry_cleanup() -> Result<(), Box<dyn Er
 
     assert_eq!(output.status.code(), Some(0));
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
-    assert_eq!(report["connection_removed"], true);
+    assert_eq!(report["result"]["connection_removed"], true);
     let after = fixture.registry_snapshot();
     assert!(after.agent_connections.is_empty());
     assert!(after.connection_projects.is_empty());
@@ -535,9 +563,9 @@ fn membership_only_remove_keeps_shared_host_configuration_and_reports_retention(
 
     assert_eq!(output.status.code(), Some(0));
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
-    assert_eq!(report["membership_removed"], true);
-    assert_eq!(report["connection_removed"], false);
-    assert_eq!(report["remaining_project_count"], 1);
+    assert_eq!(report["result"]["membership_removed"], true);
+    assert_eq!(report["result"]["connection_removed"], false);
+    assert_eq!(report["result"]["remaining_project_count"], 1);
     let after = fixture.registry_snapshot();
     assert_eq!(after.agent_connections.len(), 1);
     assert_eq!(after.connection_projects.len(), 1);
@@ -568,9 +596,11 @@ fn membership_only_remove_human_output_reports_connection_retention() -> Result<
 
     assert_eq!(output.status.code(), Some(0));
     let text = stdout(&output)?;
-    assert!(text.starts_with("Repository membership removed for Codex\n"));
-    assert!(text.contains("Agent Connection: retained\n"));
-    assert!(text.contains("Remaining repositories: 1\n"));
+    assert!(text.starts_with("Operation: remove\nStatus: complete\n"));
+    assert!(text.contains("Result:\n  Kind: removal\n"));
+    assert!(text.contains("  Membership removed: true\n"));
+    assert!(text.contains("  Connection removed: false\n"));
+    assert!(text.contains("  Remaining project count: 1\n"));
     Ok(())
 }
 
@@ -586,7 +616,7 @@ fn failed_verify_json_is_one_stdout_document_and_empty_stderr() -> Result<(), Bo
     assert_eq!(value["operation"], "verify");
     assert_eq!(value["dry_run"], false);
     assert_eq!(value["status"], "failed");
-    assert!(value.get("setup_applied").is_none());
+    assert!(value.get("result").is_none());
     assert!(value.get("planned_changes").is_none());
     Ok(())
 }
