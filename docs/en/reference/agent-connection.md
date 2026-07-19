@@ -157,10 +157,11 @@ remaining named kinds; arbitrary adapter-defined check IDs are not accepted.
 `ConnectionActionKind` is the closed current-product vocabulary:
 `apply_removal`, `apply_setup`, `host_trust_required`,
 `inspect_codex_protocol`, `install_or_repair_codex`, `observe_codex`,
-`reload_guard`, `reload_host`, `repair_guard`, `repair_managed_config`,
-`repair_mcp_server`, `run_verification`, and `use_volicord_tool`. Each value
-keeps that exact meaning during report-to-host-plan projection. In particular,
-`observe_codex` and `inspect_codex_protocol` never become `reload_host`.
+`reload_host`, `repair_guard`, `repair_managed_config`, `repair_mcp_server`, and
+`run_verification`. Host plans, host effects, verification reports, and command
+reports use the canonical `ConnectionAction` contract directly. Within that
+direct contract, `observe_codex` and `inspect_codex_protocol` remain distinct
+from `reload_host`.
 
 Every check in the report is required for that report. The top-level status is
 derived and cannot disagree with the checks:

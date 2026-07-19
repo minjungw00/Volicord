@@ -332,14 +332,10 @@ pub enum ConnectionActionKind {
     RepairMcpServer,
     /// Reload the managed host against current configuration.
     ReloadHost,
-    /// Use a Volicord tool through the managed host.
-    UseVolicordTool,
     /// Produce current managed-host and Guard observations.
     ObserveCodex,
     /// Inspect and repair an observed Codex protocol failure.
     InspectCodexProtocol,
-    /// Reload Guard after current managed-file setup.
-    ReloadGuard,
     /// Repair the Volicord Guard integration.
     RepairGuard,
     /// Apply a planned connection membership or removal change.
@@ -348,20 +344,18 @@ pub enum ConnectionActionKind {
 
 impl ConnectionActionKind {
     /// Every current action kind in canonical serialized-spelling order.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 11] = [
         Self::ApplyRemoval,
         Self::ApplySetup,
         Self::HostTrustRequired,
         Self::InspectCodexProtocol,
         Self::InstallOrRepairCodex,
         Self::ObserveCodex,
-        Self::ReloadGuard,
         Self::ReloadHost,
         Self::RepairGuard,
         Self::RepairManagedConfig,
         Self::RepairMcpServer,
         Self::RunVerification,
-        Self::UseVolicordTool,
     ];
 
     /// Returns the stable serialized spelling.
@@ -374,10 +368,8 @@ impl ConnectionActionKind {
             Self::InstallOrRepairCodex => "install_or_repair_codex",
             Self::RepairMcpServer => "repair_mcp_server",
             Self::ReloadHost => "reload_host",
-            Self::UseVolicordTool => "use_volicord_tool",
             Self::ObserveCodex => "observe_codex",
             Self::InspectCodexProtocol => "inspect_codex_protocol",
-            Self::ReloadGuard => "reload_guard",
             Self::RepairGuard => "repair_guard",
             Self::ApplyRemoval => "apply_removal",
         }
@@ -856,13 +848,11 @@ mod tests {
             "inspect_codex_protocol",
             "install_or_repair_codex",
             "observe_codex",
-            "reload_guard",
             "reload_host",
             "repair_guard",
             "repair_managed_config",
             "repair_mcp_server",
             "run_verification",
-            "use_volicord_tool",
         ];
         for (kind, expected) in ConnectionActionKind::ALL.into_iter().zip(expected) {
             assert_eq!(serde_json::to_value(kind).unwrap(), json!(expected));
@@ -922,6 +912,8 @@ mod tests {
             "unknown_action",
             "reload_required",
             "unsupported_reload_action",
+            "reload_guard",
+            "use_volicord_tool",
         ] {
             assert!(serde_json::from_value::<ConnectionActionKind>(json!(value)).is_err());
         }
@@ -934,12 +926,14 @@ mod tests {
             "persisted reports must reject unknown check kinds"
         );
 
-        let mut noncanonical_action = serde_json::to_value(&report).unwrap();
-        noncanonical_action["actions"][0]["id"] = json!("reload_required");
-        assert!(
-            serde_json::from_value::<ConnectionVerificationReport>(noncanonical_action).is_err(),
-            "persisted reports must reject noncanonical action kinds"
-        );
+        for value in ["reload_guard", "use_volicord_tool"] {
+            let mut removed_action = serde_json::to_value(&report).unwrap();
+            removed_action["actions"][0]["id"] = json!(value);
+            assert!(
+                serde_json::from_value::<ConnectionVerificationReport>(removed_action).is_err(),
+                "persisted reports must reject removed action kind {value}"
+            );
+        }
     }
 
     #[test]
@@ -1098,7 +1092,7 @@ mod tests {
                 ),
             ],
             vec![
-                action(ConnectionActionKind::UseVolicordTool),
+                action(ConnectionActionKind::RunVerification),
                 action(ConnectionActionKind::ApplyRemoval),
             ],
         )
@@ -1107,10 +1101,24 @@ mod tests {
             report.checks()[0].id(),
             ConnectionCheckKind::ConnectionRemoval
         );
-        assert_eq!(report.actions()[0].id(), ConnectionActionKind::ApplyRemoval);
+        assert_eq!(
+            report
+                .actions()
+                .iter()
+                .map(ConnectionAction::id)
+                .collect::<Vec<_>>(),
+            vec![
+                ConnectionActionKind::ApplyRemoval,
+                ConnectionActionKind::RunVerification,
+            ]
+        );
 
         let mut value = serde_json::to_value(&report).unwrap();
         value["checks"].as_array_mut().unwrap().swap(0, 1);
+        assert!(serde_json::from_value::<ConnectionVerificationReport>(value).is_err());
+
+        let mut value = serde_json::to_value(&report).unwrap();
+        value["actions"].as_array_mut().unwrap().swap(0, 1);
         assert!(serde_json::from_value::<ConnectionVerificationReport>(value).is_err());
     }
 

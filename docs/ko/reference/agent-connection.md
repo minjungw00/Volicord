@@ -143,10 +143,10 @@ check ID는 받지 않습니다.
 `ConnectionActionKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
 `apply_removal`, `apply_setup`, `host_trust_required`,
 `inspect_codex_protocol`, `install_or_repair_codex`, `observe_codex`,
-`reload_guard`, `reload_host`, `repair_guard`, `repair_managed_config`,
-`repair_mcp_server`, `run_verification`, `use_volicord_tool`입니다. 보고서에서 host plan으로
-projection할 때 각 값의 정확한 의미를 유지합니다. 특히 `observe_codex`와
-`inspect_codex_protocol`이 `reload_host`로 바뀌지 않습니다.
+`reload_host`, `repair_guard`, `repair_managed_config`, `repair_mcp_server`,
+`run_verification`입니다. `HostPlan`, `HostEffect`, 검증 보고서, 명령 보고서는 정규
+`ConnectionAction` 계약을 직접 사용합니다. 이 직접 계약에서 `observe_codex`와
+`inspect_codex_protocol`은 `reload_host`와 서로 다른 행동으로 유지됩니다.
 
 보고서의 모든 check는 그 보고서에 필수입니다. 최상위 상태는 check에서 파생됩니다.
 
