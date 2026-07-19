@@ -1648,6 +1648,7 @@ documents:
   - Runtime Home selection and project registration commands
   - personal and shared Codex Record connection setup, verification, mode, repair, and removal
   - exact `ConnectionCommandReport` output for init, add, status, verify, mode, and remove, including dry-run separation and exit routing
+  - exact read-only `ConnectionListReport` inventory projection, row-local persisted-state issues, and list exit routing
   - managed stdio MCP launch and preflight commands
   - CLI inbox listing and CLI-only UserAction resolution
   - policy, diagnostics, authority-bundle export, and change-reconciliation commands

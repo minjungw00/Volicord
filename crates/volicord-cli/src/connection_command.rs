@@ -83,10 +83,7 @@ use output::{
     render_command_report, render_connections_output, CommandConnection, CommandOperation,
     ConnectionCommandReport,
 };
-use persisted_state::{
-    decode_persisted_object, persisted_object_state_json,
-    PERSISTED_CONNECTION_METADATA_CORRUPT_REASON,
-};
+use persisted_state::{decode_persisted_object, PERSISTED_CONNECTION_METADATA_CORRUPT_REASON};
 use planning::{
     plan_init_changes, InitPlannedChanges, PlannedChangeOperation, PlannedConnectionChange,
     PlannedConnectionChangeKind,
@@ -1573,7 +1570,7 @@ mod persisted_metadata_tests {
     }
 
     #[test]
-    fn corrupt_verification_report_degrades_list_then_verify_repairs_it(
+    fn corrupt_verification_report_is_a_list_issue_then_verify_repairs_it(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = CoreFixture::new("connection-corrupt-verification-report")?;
         let repo_root = fixture.product_repo_path();
@@ -1603,8 +1600,12 @@ mod persisted_metadata_tests {
             &mut process,
         )?;
         let list: Value = serde_json::from_str(&list)?;
-        assert_eq!(list["status"], "degraded");
+        assert!(list.get("status").is_none());
         assert!(list["connections"][0]["verification_report"].is_null());
+        assert_eq!(
+            list["connections"][0]["issues"][0]["kind"],
+            "verification_report_corrupt"
+        );
 
         let select_args = || ConnectionSelectArgs {
             host: Some(crate::cli::CodexHost::Codex),

@@ -142,6 +142,68 @@ If it is `workflow`, the flag fails before setup mutation and directs the
 caller to `volicord connection mode`; add never performs that transition or
 increments the integration generation.
 
+### Connection List Projection
+
+`volicord connection list` is a read-only collection inventory. It has no
+single selected Connection or single operational result, so it does not use
+`ConnectionCommandReport`. Its JSON document has exactly these top-level
+members:
+
+```yaml
+ConnectionListReport:
+  connections: ConnectionListEntry[]
+  limits:
+    - "Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion."
+
+ConnectionListEntry:
+  connection_id: string
+  host_kind: codex
+  connection_intent: personal | shared
+  host_scope: user | project
+  mode: read_only | workflow
+  enabled: bool
+  connected_projects: string[]
+  connected_repositories: string[]
+  verification_report: ConnectionVerificationReport | null
+  issues: ConnectionListIssue[]
+  server_name: string
+  config_target: string
+
+ConnectionListIssue:
+  kind: metadata_corrupt | verification_report_corrupt
+  summary: string
+```
+
+For each row, `verification_report` is the canonical
+[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report).
+When no report has been persisted, the list uses the owner-defined synthesized
+`action_required` report with `verification_not_run`; reading it does not
+persist it. `verification_report` is `null` only when a persisted report is
+corrupt and cannot be decoded. The row then has one
+`verification_report_corrupt` issue. Invalid persisted registration metadata
+adds one `metadata_corrupt` issue without hiding the row or weakening the
+strict rejection used by verification and mode commands.
+
+Issue kinds are a closed snake-case vocabulary. Rows sort and deduplicate them
+by kind, so `metadata_corrupt` precedes `verification_report_corrupt`. Issue
+summaries are bounded diagnostic text and never expose the malformed persisted
+JSON. Row issues describe persisted-state corruption; they are not a
+Connection operational status and do not create an aggregate list status.
+
+Human output keeps this exact tab-separated header:
+
+```text
+host	intent	mode	enabled	connected_repositories	verification_status	issues	target
+```
+
+It renders the canonical verification status when a report is available, `-`
+when a corrupt report is unavailable, `-` for an empty issue list, and the
+ordered issue kinds otherwise. Repository filtering preserves the deterministic
+full membership fields on each matching Connection. An empty match is a valid
+empty inventory. Enumeration succeeds with exit `0` when row-local issues are
+reported and performs no Registry or filesystem write. Store access, selection,
+and serialization failures use the runtime error channel.
+
 `volicord connection mode` treats Connection mode and every owned
 project-scoped Guard manifest as one revision transition. Before mutation, the
 CLI requires exactly one current, strictly valid Guard Installation for every

@@ -137,6 +137,64 @@ replay와 repair는 저장된 mode를 보존합니다. 현재 Connection이 이�
 `volicord connection mode`를 사용하도록 안내합니다. `connection add`는 mode를 전환하거나
 integration generation을 증가시키지 않습니다.
 
+### Connection 목록 투영
+
+`volicord connection list`는 읽기 전용 컬렉션 목록입니다. 선택한 Connection
+하나나 운영 결과 하나를 다루지 않으므로 `ConnectionCommandReport`를 사용하지 않습니다.
+JSON 문서의 최상위 구성원은 정확히 다음과 같습니다.
+
+```yaml
+ConnectionListReport:
+  connections: ConnectionListEntry[]
+  limits:
+    - "Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion."
+
+ConnectionListEntry:
+  connection_id: string
+  host_kind: codex
+  connection_intent: personal | shared
+  host_scope: user | project
+  mode: read_only | workflow
+  enabled: bool
+  connected_projects: string[]
+  connected_repositories: string[]
+  verification_report: ConnectionVerificationReport | null
+  issues: ConnectionListIssue[]
+  server_name: string
+  config_target: string
+
+ConnectionListIssue:
+  kind: metadata_corrupt | verification_report_corrupt
+  summary: string
+```
+
+각 행의 `verification_report`는 정규
+[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)입니다.
+영속한 보고서가 없으면 목록은 `verification_not_run`을 포함하는 담당 문서 정의의 합성
+`action_required` 보고서를 사용하며, 읽는 것만으로 영속하지 않습니다. 영속 보고서가
+손상되어 디코딩할 수 없을 때만 `verification_report`가 `null`이고, 해당 행에
+`verification_report_corrupt` 문제가 하나 생깁니다. 영속 등록 메타데이터가
+유효하지 않으면 행을 숨기거나 검증 및 mode 명령의 엄격한 거부를 약화하지 않고
+`metadata_corrupt` 문제 하나를 추가합니다.
+
+문제 종류는 닫힌 snake-case 어휘입니다. 행에서는 종류 기준으로 정렬하고 중복을 제거하므로
+`metadata_corrupt`가 `verification_report_corrupt`보다 앞섭니다. 문제 요약은 제한된
+진단 문구이며 손상된 영속 JSON을 노출하지 않습니다. 행 문제는 영속 상태 손상을 보고할
+뿐 Connection 운영 상태가 아니며 목록 집계 상태를 만들지 않습니다.
+
+사람용 출력은 다음의 정확한 탭 구분 머리글을 유지합니다.
+
+```text
+host	intent	mode	enabled	connected_repositories	verification_status	issues	target
+```
+
+보고서가 있으면 정규 검증 상태를 표시하고 손상된 보고서를 사용할 수 없으면 `-`를
+표시합니다. 문제 목록이 비어 있어도 `-`, 문제가 있으면 정렬된 종류를 표시합니다.
+저장소 필터링은 일치하는 각 Connection의 결정적인 전체 membership 필드를 보존합니다.
+일치 항목이 없어도 유효한 빈 목록입니다. 행 범위 문제를 보고할 때도 열거는 Registry나
+파일시스템을 쓰지 않고 종료 코드 `0`으로 성공합니다. Store 접근, 선택, 직렬화 실패는
+런타임 오류 채널을 사용합니다.
+
 `volicord connection mode`는 Connection mode와 소유한 모든 프로젝트 범위 Guard
 manifest를 revision 전환 하나로 다룹니다. CLI는 변경 전에 모든 Connection Project마다
 현재 상태의 엄격히 유효한 Guard Installation이 정확히 하나씩 있는지 확인하고, 각 후보

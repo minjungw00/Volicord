@@ -12,11 +12,9 @@ use volicord_types::{
 use crate::host_integration::UserAction;
 
 use super::{
-    path_text, ConnectionCommandError, OutputFormat, PlannedConnectionChange,
-    PlannedConnectionChangeKind,
+    cooperative_assurance_limits, path_text, ConnectionCommandError, OutputFormat,
+    PlannedConnectionChange, PlannedConnectionChangeKind,
 };
-
-const COOPERATIVE_ASSURANCE_LIMIT: &str = "Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -129,7 +127,7 @@ impl ConnectionCommandReport {
             actions: verification.actions().to_vec(),
             result: setup_result.map(|applied| ConnectionCommandResult::Setup { applied }),
             planned_changes: None,
-            limits: vec![COOPERATIVE_ASSURANCE_LIMIT.to_owned()],
+            limits: cooperative_assurance_limits(),
         }
     }
 
@@ -437,7 +435,7 @@ impl ConnectionCommandReport {
             actions: canonical.actions().to_vec(),
             result,
             planned_changes,
-            limits: vec![COOPERATIVE_ASSURANCE_LIMIT.to_owned()],
+            limits: cooperative_assurance_limits(),
         })
     }
 
@@ -898,26 +896,29 @@ mod tests {
         );
         assert_eq!(
             text.output,
-            concat!(
-                "Operation: verify\n",
-                "Status: failed\n",
-                "Dry run: false\n",
-                "Runtime home: /runtime\n",
-                "Connection:\n",
-                "  ID: connection_1\n",
-                "  Host: codex\n",
-                "  Scope: user\n",
-                "  Profile: record\n",
-                "  Mode: workflow\n",
-                "  Repository: /workspace/product\n",
-                "  Config target: /home/user/.codex/config.toml\n",
-                "Checks:\n",
-                "  [failed] managed_config: Managed configuration check\n",
-                "    Code: managed_config_failed\n",
-                "Actions:\n",
-                "  none\n",
-                "Limits:\n",
-                "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
+            format!(
+                concat!(
+                    "Operation: verify\n",
+                    "Status: failed\n",
+                    "Dry run: false\n",
+                    "Runtime home: /runtime\n",
+                    "Connection:\n",
+                    "  ID: connection_1\n",
+                    "  Host: codex\n",
+                    "  Scope: user\n",
+                    "  Profile: record\n",
+                    "  Mode: workflow\n",
+                    "  Repository: /workspace/product\n",
+                    "  Config target: /home/user/.codex/config.toml\n",
+                    "Checks:\n",
+                    "  [failed] managed_config: Managed configuration check\n",
+                    "    Code: managed_config_failed\n",
+                    "Actions:\n",
+                    "  none\n",
+                    "Limits:\n",
+                    "  {}\n",
+                ),
+                super::super::common::COOPERATIVE_ASSURANCE_LIMIT
             )
         );
     }

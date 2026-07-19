@@ -11,14 +11,17 @@ use std::{
 };
 
 use serde_json::Value;
-use support::binary_fixture::base_command;
+use support::binary_fixture::{base_command, prepare_runtime_home};
 use volicord_store::inspection::{
     inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot,
 };
 use volicord_test_support::TempRuntimeHome;
+use volicord_types::ConnectionVerificationReport;
 
 const GENERATED_SHAPE_ERROR: &str =
     "generated host-hook capability does not match the current exact shape";
+const CONNECTION_LIST_TEXT_HEADER: &str =
+    "host\tintent\tmode\tenabled\tconnected_repositories\tverification_status\tissues\ttarget";
 
 const ROOT_HELP: &str = "Local Volicord administration and managed stdio MCP
 
@@ -261,6 +264,274 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     assert!(!fixture.runtime_home.join("registry.sqlite").exists());
     assert!(!fixture.codex_home.join("config.toml").exists());
     assert!(directory_contents(&fixture.repo_root)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-connection-list-json")?;
+    let init = fixture.run(false)?;
+    let init_report: Value = serde_json::from_slice(&init.stdout)?;
+    assert_eq!(init_report["result"]["applied"], true);
+    let runtime_before = directory_contents(&fixture.runtime_home)?;
+    let repository_before = directory_contents(&fixture.repo_root)?;
+
+    let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        report
+            .as_object()
+            .expect("list report object")
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from(["connections", "limits"])
+    );
+    assert_eq!(report["limits"], init_report["limits"]);
+    assert_eq!(report["limits"].as_array().map(Vec::len), Some(1));
+
+    let connections = report["connections"].as_array().expect("connections");
+    assert_eq!(connections.len(), 1);
+    let entry = connections[0].as_object().expect("connection list entry");
+    assert_eq!(
+        entry
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from([
+            "config_target",
+            "connected_projects",
+            "connected_repositories",
+            "connection_id",
+            "connection_intent",
+            "enabled",
+            "host_kind",
+            "host_scope",
+            "issues",
+            "mode",
+            "server_name",
+            "verification_report",
+        ])
+    );
+    serde_json::from_value::<ConnectionVerificationReport>(entry["verification_report"].clone())?;
+    assert_eq!(entry["issues"], serde_json::json!([]));
+    assert!(!json_key_exists(&report, "metadata_state"));
+    assert!(!json_string_value_exists(&report, "current"));
+    assert!(!json_string_value_exists(&report, "degraded"));
+    assert_eq!(directory_contents(&fixture.runtime_home)?, runtime_before);
+    assert_eq!(directory_contents(&fixture.repo_root)?, repository_before);
+    Ok(())
+}
+
+#[test]
+fn connection_list_synthesizes_a_missing_report_without_an_issue() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-connection-list-missing-report")?;
+    fixture.run(false)?;
+    let connection_id = fixture.only_connection_id();
+    set_verification_report(&fixture, &connection_id, None)?;
+
+    let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    let entry = &report["connections"][0];
+    assert_eq!(entry["verification_report"]["status"], "action_required");
+    assert_eq!(
+        entry["verification_report"]["checks"][0]["id"],
+        "verification_not_run"
+    );
+    assert_eq!(entry["issues"], serde_json::json!([]));
+    let stored = stored_verification_report(&fixture, &connection_id)?;
+    assert!(
+        stored.is_none(),
+        "list must not persist the synthesized report"
+    );
+    Ok(())
+}
+
+#[test]
+fn connection_list_reports_malformed_metadata_as_a_row_issue() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-connection-list-metadata-issue")?;
+    fixture.run(false)?;
+    let connection_id = fixture.only_connection_id();
+    set_connection_metadata(&fixture, &connection_id, "{")?;
+
+    let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    let entry = &report["connections"][0];
+    assert!(entry["verification_report"].is_object());
+    assert_eq!(
+        entry["issues"],
+        serde_json::json!([{
+            "kind": "metadata_corrupt",
+            "summary": "Persisted Agent Connection registration metadata is corrupt."
+        }])
+    );
+    assert!(!json_key_exists(&report, "metadata_state"));
+
+    let verify = fixture.run_connection("verify", true)?;
+    assert_eq!(verify.status.code(), Some(1));
+    assert_eq!(stdout(&verify)?, "");
+    assert!(stderr(&verify)?.contains("persisted_connection_metadata_corrupt"));
+
+    let mode = fixture.run_connection_mode("read-only")?;
+    assert_eq!(mode.status.code(), Some(1));
+    assert_eq!(stdout(&mode)?, "");
+    assert!(stderr(&mode)?.contains("metadata_json"));
+    Ok(())
+}
+
+#[test]
+fn connection_list_reports_malformed_verification_as_a_row_issue() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-connection-list-verification-issue")?;
+    fixture.run(false)?;
+    let connection_id = fixture.only_connection_id();
+    set_verification_report(
+        &fixture,
+        &connection_id,
+        Some(r#"{"status":"not_verified"}"#),
+    )?;
+
+    let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    let entry = &report["connections"][0];
+    assert!(entry["verification_report"].is_null());
+    assert_eq!(
+        entry["issues"],
+        serde_json::json!([{
+            "kind": "verification_report_corrupt",
+            "summary": "Persisted Agent Connection verification report is corrupt."
+        }])
+    );
+    Ok(())
+}
+
+#[test]
+fn connection_list_orders_multiple_row_issues() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-connection-list-multiple-issues")?;
+    fixture.run(false)?;
+    let connection_id = fixture.only_connection_id();
+    set_connection_metadata(&fixture, &connection_id, "[]")?;
+    set_verification_report(&fixture, &connection_id, Some("{}"))?;
+
+    let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
+    assert_eq!(output.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    let kinds = report["connections"][0]["issues"]
+        .as_array()
+        .expect("issues")
+        .iter()
+        .map(|issue| issue["kind"].as_str().expect("issue kind"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kinds,
+        vec!["metadata_corrupt", "verification_report_corrupt"]
+    );
+    Ok(())
+}
+
+#[test]
+fn connection_list_text_uses_issues_and_a_neutral_report_placeholder() -> Result<(), Box<dyn Error>>
+{
+    let fixture = IsolatedInitFixture::new("binary-connection-list-text")?;
+    fixture.run(false)?;
+    let connection_id = fixture.only_connection_id();
+
+    let current = fixture.run_connection_list(Some(&fixture.repo_root), false)?;
+    assert_eq!(current.status.code(), Some(0));
+    let current_text = stdout(&current)?;
+    let mut current_lines = current_text.lines();
+    assert_eq!(current_lines.next(), Some(CONNECTION_LIST_TEXT_HEADER));
+    let current_columns = current_lines
+        .next()
+        .expect("connection row")
+        .split('\t')
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        current_columns[5],
+        "complete" | "action_required" | "failed"
+    ));
+    assert_eq!(current_columns[6], "-");
+
+    set_connection_metadata(&fixture, &connection_id, "{")?;
+    set_verification_report(&fixture, &connection_id, Some("{"))?;
+    let corrupt = fixture.run_connection_list(Some(&fixture.repo_root), false)?;
+    assert_eq!(corrupt.status.code(), Some(0));
+    let corrupt_text = stdout(&corrupt)?;
+    let mut corrupt_lines = corrupt_text.lines();
+    assert_eq!(corrupt_lines.next(), Some(CONNECTION_LIST_TEXT_HEADER));
+    let corrupt_columns = corrupt_lines
+        .next()
+        .expect("connection row")
+        .split('\t')
+        .collect::<Vec<_>>();
+    assert_eq!(corrupt_columns[5], "-");
+    assert_eq!(
+        corrupt_columns[6],
+        "metadata_corrupt,verification_report_corrupt"
+    );
+    Ok(())
+}
+
+#[test]
+fn connection_list_filters_by_repository() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-connection-list-filter")?;
+    fixture.run(false)?;
+    let other_repo = fixture.create_repository("other-list-repository")?;
+    let shared = fixture.run_shared_connection_add(&other_repo)?;
+    let shared_report: Value = serde_json::from_slice(&shared.stdout)?;
+    assert_eq!(shared_report["result"]["applied"], true);
+
+    let first = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
+    assert_eq!(first.status.code(), Some(0));
+    let first: Value = serde_json::from_slice(&first.stdout)?;
+    assert_eq!(first["connections"].as_array().map(Vec::len), Some(1));
+    assert_eq!(first["connections"][0]["connection_intent"], "personal");
+
+    let second = fixture.run_connection_list(Some(&other_repo), true)?;
+    assert_eq!(second.status.code(), Some(0));
+    let second: Value = serde_json::from_slice(&second.stdout)?;
+    assert_eq!(second["connections"].as_array().map(Vec::len), Some(1));
+    assert_eq!(second["connections"][0]["connection_intent"], "shared");
+    Ok(())
+}
+
+#[test]
+fn connection_list_empty_inventory_and_store_failure_use_owned_channels(
+) -> Result<(), Box<dyn Error>> {
+    let temporary_root = TempRuntimeHome::new("binary-connection-list-channels")?;
+    let repo_root = temporary_root.path().join("repo");
+    fs::create_dir_all(repo_root.join(".git"))?;
+    let empty_home = temporary_root.path().join("empty-home");
+    prepare_runtime_home(&empty_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
+    let empty = run_connection_list_at(&empty_home, &repo_root)?;
+    assert_eq!(
+        empty.status.code(),
+        Some(0),
+        "unexpected empty-list stderr: {}",
+        stderr(&empty)?
+    );
+    assert_eq!(stderr(&empty)?, "");
+    let empty_report: Value = serde_json::from_slice(&empty.stdout)?;
+    assert_eq!(empty_report["connections"], serde_json::json!([]));
+    assert_eq!(empty_report["limits"].as_array().map(Vec::len), Some(1));
+
+    let corrupt_home = temporary_root.path().join("corrupt-home");
+    prepare_runtime_home(&corrupt_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
+    fs::write(
+        volicord_store::sqlite::registry_db_path(&corrupt_home),
+        b"not a sqlite database",
+    )?;
+    let failed = run_connection_list_at(&corrupt_home, &repo_root)?;
+    assert_eq!(failed.status.code(), Some(1));
+    assert_eq!(stdout(&failed)?, "");
+    assert!(stderr(&failed)?.starts_with("error:"));
     Ok(())
 }
 
@@ -762,6 +1033,57 @@ impl IsolatedInitFixture {
             .output()?)
     }
 
+    fn run_connection_list(
+        &self,
+        repo_root: Option<&Path>,
+        json: bool,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("connection")
+            .arg("list")
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        if let Some(repo_root) = repo_root {
+            command.arg("--repo").arg(repo_root);
+        }
+        if json {
+            command.arg("--json");
+        }
+        Ok(command.output()?)
+    }
+
+    fn run_shared_connection_add(
+        &self,
+        repo_root: &Path,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        Ok(base_command()
+            .arg("connection")
+            .arg("add")
+            .arg("codex")
+            .arg("--repo")
+            .arg(repo_root)
+            .arg("--shared")
+            .arg("--json")
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(repo_root)
+            .output()?)
+    }
+
+    fn only_connection_id(&self) -> String {
+        let snapshot = self.registry_snapshot();
+        assert_eq!(snapshot.agent_connections.len(), 1);
+        snapshot.agent_connections[0].connection_internal_id.clone()
+    }
+
     fn create_repository(&self, name: &str) -> Result<PathBuf, Box<dyn Error>> {
         let repo_root = self._temporary_root.path().join(name);
         fs::create_dir_all(repo_root.join(".git"))?;
@@ -822,4 +1144,82 @@ fn registry_connection_row_count(
         [connection_internal_id],
         |row| row.get(0),
     )?)
+}
+
+fn set_connection_metadata(
+    fixture: &IsolatedInitFixture,
+    connection_id: &str,
+    metadata_json: &str,
+) -> Result<(), Box<dyn Error>> {
+    rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+        &fixture.runtime_home,
+    ))?
+    .execute(
+        "UPDATE agent_connections SET metadata_json = ?2 WHERE connection_internal_id = ?1",
+        [connection_id, metadata_json],
+    )?;
+    Ok(())
+}
+
+fn set_verification_report(
+    fixture: &IsolatedInitFixture,
+    connection_id: &str,
+    verification_report_json: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(&fixture.runtime_home))?
+        .execute(
+            "UPDATE agent_connections SET verification_report_json = ?2 WHERE connection_internal_id = ?1",
+            rusqlite::params![connection_id, verification_report_json],
+        )?;
+    Ok(())
+}
+
+fn stored_verification_report(
+    fixture: &IsolatedInitFixture,
+    connection_id: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let connection = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+        &fixture.runtime_home,
+    ))?;
+    Ok(connection.query_row(
+        "SELECT verification_report_json FROM agent_connections WHERE connection_internal_id = ?1",
+        [connection_id],
+        |row| row.get(0),
+    )?)
+}
+
+fn run_connection_list_at(
+    runtime_home: &Path,
+    current_dir: &Path,
+) -> Result<std::process::Output, Box<dyn Error>> {
+    Ok(base_command()
+        .arg("connection")
+        .arg("list")
+        .arg("--json")
+        .env("VOLICORD_HOME", runtime_home)
+        .current_dir(current_dir)
+        .output()?)
+}
+
+fn json_key_exists(value: &Value, key: &str) -> bool {
+    match value {
+        Value::Object(object) => {
+            object.contains_key(key) || object.values().any(|value| json_key_exists(value, key))
+        }
+        Value::Array(values) => values.iter().any(|value| json_key_exists(value, key)),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => false,
+    }
+}
+
+fn json_string_value_exists(value: &Value, expected: &str) -> bool {
+    match value {
+        Value::String(value) => value == expected,
+        Value::Array(values) => values
+            .iter()
+            .any(|value| json_string_value_exists(value, expected)),
+        Value::Object(object) => object
+            .values()
+            .any(|value| json_string_value_exists(value, expected)),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
 }
