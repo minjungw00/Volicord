@@ -96,7 +96,7 @@ ConnectionVerificationReport:
   actions: ConnectionAction[]
 
 ConnectionCheck:
-  id: ConnectionCheckId
+  id: ConnectionCheckKind
   status: passed | pending | failed
   code?: string
   summary: string
@@ -104,7 +104,7 @@ ConnectionCheck:
   observed_at?: UtcTimestamp
 
 ConnectionAction:
-  id: string
+  id: ConnectionActionKind
   instruction: string
   command?: string
 ```
@@ -112,15 +112,33 @@ ConnectionAction:
 `status`, `checked_at`, `checks`, `actions`, 각 check 또는 action의 선택 사항이 아닌
 구성원은 필수입니다. 선택적인 `code`, `details`, `observed_at`, `command` 값이 없으면
 null로 직렬화하지 않고 구성원을 생략합니다. 알 수 없는 구성원, 중복 JSON key, 중복
-check ID, 중복 action ID, 비정규 순서, 선택 구성원의 명시적 null, 알 수 없는 상태 값은
-유효하지 않습니다. Check ID, action ID, null이 아닌 check code는 ASCII 1~128
+check kind, 중복 action kind, 비정규 순서, 선택 구성원의 명시적 null, 알 수 없는 상태,
+check kind, action kind 값은 유효하지 않습니다. Null이 아닌 check code는 ASCII 1~128
 byte이고 `[a-z][a-z0-9_]*`와 일치해야 합니다. `summary`, `instruction`, null이
 아닌 `command`는 UTF-8 1~4,096 byte이고 NUL을 포함하지 않습니다. Null이 아닌
 `details`는 직렬화 형태가 최대 16 KiB인 JSON 객체입니다. 보고서는 check를 최대
 64개, action을 최대 32개 포함하며 직렬화 형태는 최대 64 KiB입니다.
 
-Check는 `id`의 UTF-8 byte 오름차순으로 정렬합니다. Action도 같은 순서를 사용합니다.
-엄격한 decoding은 다른 순서를 조용히 정규화하지 않고 거부합니다.
+Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로 UTF-8 byte
+오름차순 정렬합니다. Action도 `ConnectionActionKind`의 안정적인 snake-case 표기를
+기준으로 같은 순서를 사용합니다. 엄격한 decoding은 다른 순서를 조용히 정규화하지 않고
+거부합니다. Enum 선언 순서는 wire 순서 계약이 아닙니다.
+
+`ConnectionCheckKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
+`connection_removal`, `guard_files`, `guard_observation`, `host_executable`,
+`host_session`, `managed_config`, `mcp_server`, `mode_transition`,
+`project_trust`, `required_tools`, `setup_plan`, `tool_round_trip`,
+`verification_not_run`입니다. 운영 검증은 아래 표에서 적용되는 check를 사용합니다.
+보고서 부재와 관리 명령 계획은 나머지 이름 붙은 kind를 사용하며, 어댑터가 임의로 정한
+check ID는 받지 않습니다.
+
+`ConnectionActionKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
+`apply_removal`, `apply_setup`, `host_trust_required`,
+`inspect_codex_protocol`, `install_or_repair_codex`, `observe_codex`,
+`reload_guard`, `reload_host`, `repair_guard`, `repair_managed_config`,
+`repair_mcp_server`, `run_verification`, `use_volicord_tool`입니다. 보고서에서 host plan으로
+projection할 때 각 값의 정확한 의미를 유지합니다. 특히 `observe_codex`와
+`inspect_codex_protocol`이 `reload_host`로 바뀌지 않습니다.
 
 보고서의 모든 check는 그 보고서에 필수입니다. 최상위 상태는 check에서 파생됩니다.
 

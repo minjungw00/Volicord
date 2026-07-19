@@ -1,6 +1,6 @@
 //! Canonical serialized Agent Connection verification report.
 
-use std::{collections::BTreeSet, error::Error, fmt};
+use std::{cmp::Ordering, collections::BTreeSet, error::Error, fmt};
 
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{
@@ -74,36 +74,85 @@ impl ConnectionCheckStatus {
     }
 }
 
-/// Stable bounded identifier for one connection check.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
-#[serde(transparent)]
-pub struct ConnectionCheckId(String);
+/// Closed current-product vocabulary for one connection check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionCheckKind {
+    /// No completed verification report exists yet.
+    VerificationNotRun,
+    /// Managed host configuration matches its canonical plan.
+    ManagedConfig,
+    /// The host executable can be discovered and probed.
+    HostExecutable,
+    /// The Volicord MCP server passes the CLI-owned self-test.
+    McpServer,
+    /// A current managed-host session completed initialization.
+    HostSession,
+    /// A current managed host exposes every required tool.
+    RequiredTools,
+    /// A current managed host completed the designated safe tool call.
+    ToolRoundTrip,
+    /// Project trust is satisfied or not separately applicable.
+    ProjectTrust,
+    /// Current Guard managed-file expectations match.
+    GuardFiles,
+    /// Current required Guard phases were observed.
+    GuardObservation,
+    /// A setup plan is ready to apply or already matches.
+    SetupPlan,
+    /// A connection-mode transition was planned or applied.
+    ModeTransition,
+    /// Connection membership or removal was planned or applied.
+    ConnectionRemoval,
+}
 
-impl ConnectionCheckId {
-    /// Constructs an adapter-owned check ID and panics on an implementation bug.
-    pub fn new(value: impl Into<String>) -> Self {
-        Self::try_new(value).expect("connection check IDs must satisfy the canonical contract")
-    }
+impl ConnectionCheckKind {
+    /// Every current check kind in canonical serialized-spelling order.
+    pub const ALL: [Self; 13] = [
+        Self::ConnectionRemoval,
+        Self::GuardFiles,
+        Self::GuardObservation,
+        Self::HostExecutable,
+        Self::HostSession,
+        Self::ManagedConfig,
+        Self::McpServer,
+        Self::ModeTransition,
+        Self::ProjectTrust,
+        Self::RequiredTools,
+        Self::SetupPlan,
+        Self::ToolRoundTrip,
+        Self::VerificationNotRun,
+    ];
 
-    /// Validates one check ID without normalizing it.
-    pub fn try_new(value: impl Into<String>) -> Result<Self, ConnectionVerificationError> {
-        let value = value.into();
-        validate_code("check id", &value)?;
-        Ok(Self(value))
-    }
-
-    /// Returns the identifier as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::VerificationNotRun => "verification_not_run",
+            Self::ManagedConfig => "managed_config",
+            Self::HostExecutable => "host_executable",
+            Self::McpServer => "mcp_server",
+            Self::HostSession => "host_session",
+            Self::RequiredTools => "required_tools",
+            Self::ToolRoundTrip => "tool_round_trip",
+            Self::ProjectTrust => "project_trust",
+            Self::GuardFiles => "guard_files",
+            Self::GuardObservation => "guard_observation",
+            Self::SetupPlan => "setup_plan",
+            Self::ModeTransition => "mode_transition",
+            Self::ConnectionRemoval => "connection_removal",
+        }
     }
 }
 
-impl<'de> Deserialize<'de> for ConnectionCheckId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Self::try_new(String::deserialize(deserializer)?).map_err(de::Error::custom)
+impl PartialOrd for ConnectionCheckKind {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ConnectionCheckKind {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_str().cmp(other.as_str())
     }
 }
 
@@ -159,7 +208,7 @@ impl<'de> Deserialize<'de> for ConnectionCheckDetails {
 /// One required connection check and its bounded observed facts.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct ConnectionCheck {
-    id: ConnectionCheckId,
+    id: ConnectionCheckKind,
     status: ConnectionCheckStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
@@ -173,7 +222,7 @@ pub struct ConnectionCheck {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConnectionCheckWire {
-    id: ConnectionCheckId,
+    id: ConnectionCheckKind,
     status: ConnectionCheckStatus,
     code: Option<String>,
     summary: String,
@@ -202,7 +251,7 @@ impl<'de> Deserialize<'de> for ConnectionCheck {
 impl ConnectionCheck {
     /// Validates and constructs one required check.
     pub fn try_new(
-        id: ConnectionCheckId,
+        id: ConnectionCheckKind,
         status: ConnectionCheckStatus,
         code: Option<String>,
         summary: impl Into<String>,
@@ -235,8 +284,8 @@ impl ConnectionCheck {
     }
 
     /// Returns the stable check ID.
-    pub fn id(&self) -> &ConnectionCheckId {
-        &self.id
+    pub const fn id(&self) -> ConnectionCheckKind {
+        self.id
     }
 
     /// Returns the required check status.
@@ -265,10 +314,92 @@ impl ConnectionCheck {
     }
 }
 
+/// Closed current-product vocabulary for one connection action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionActionKind {
+    /// Run active connection verification.
+    RunVerification,
+    /// Apply planned setup changes.
+    ApplySetup,
+    /// Satisfy the host's project-trust requirement.
+    HostTrustRequired,
+    /// Repair the Volicord-managed host configuration.
+    RepairManagedConfig,
+    /// Install or repair the Codex executable.
+    InstallOrRepairCodex,
+    /// Repair the Volicord MCP server or its storage preflight.
+    RepairMcpServer,
+    /// Reload the managed host against current configuration.
+    ReloadHost,
+    /// Use a Volicord tool through the managed host.
+    UseVolicordTool,
+    /// Produce current managed-host and Guard observations.
+    ObserveCodex,
+    /// Inspect and repair an observed Codex protocol failure.
+    InspectCodexProtocol,
+    /// Reload Guard after current managed-file setup.
+    ReloadGuard,
+    /// Repair the Volicord Guard integration.
+    RepairGuard,
+    /// Apply a planned connection membership or removal change.
+    ApplyRemoval,
+}
+
+impl ConnectionActionKind {
+    /// Every current action kind in canonical serialized-spelling order.
+    pub const ALL: [Self; 13] = [
+        Self::ApplyRemoval,
+        Self::ApplySetup,
+        Self::HostTrustRequired,
+        Self::InspectCodexProtocol,
+        Self::InstallOrRepairCodex,
+        Self::ObserveCodex,
+        Self::ReloadGuard,
+        Self::ReloadHost,
+        Self::RepairGuard,
+        Self::RepairManagedConfig,
+        Self::RepairMcpServer,
+        Self::RunVerification,
+        Self::UseVolicordTool,
+    ];
+
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RunVerification => "run_verification",
+            Self::ApplySetup => "apply_setup",
+            Self::HostTrustRequired => "host_trust_required",
+            Self::RepairManagedConfig => "repair_managed_config",
+            Self::InstallOrRepairCodex => "install_or_repair_codex",
+            Self::RepairMcpServer => "repair_mcp_server",
+            Self::ReloadHost => "reload_host",
+            Self::UseVolicordTool => "use_volicord_tool",
+            Self::ObserveCodex => "observe_codex",
+            Self::InspectCodexProtocol => "inspect_codex_protocol",
+            Self::ReloadGuard => "reload_guard",
+            Self::RepairGuard => "repair_guard",
+            Self::ApplyRemoval => "apply_removal",
+        }
+    }
+}
+
+impl PartialOrd for ConnectionActionKind {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ConnectionActionKind {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
 /// One bounded user instruction produced by connection verification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct ConnectionAction {
-    id: String,
+    id: ConnectionActionKind,
     instruction: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     command: Option<String>,
@@ -277,7 +408,7 @@ pub struct ConnectionAction {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConnectionActionWire {
-    id: String,
+    id: ConnectionActionKind,
     instruction: String,
     command: Option<String>,
 }
@@ -295,13 +426,11 @@ impl<'de> Deserialize<'de> for ConnectionAction {
 impl ConnectionAction {
     /// Validates and constructs one connection action.
     pub fn try_new(
-        id: impl Into<String>,
+        id: ConnectionActionKind,
         instruction: impl Into<String>,
         command: Option<String>,
     ) -> Result<Self, ConnectionVerificationError> {
-        let id = id.into();
         let instruction = instruction.into();
-        validate_code("action id", &id)?;
         validate_text("action instruction", &instruction)?;
         if let Some(command) = command.as_deref() {
             validate_text("action command", command)?;
@@ -314,8 +443,8 @@ impl ConnectionAction {
     }
 
     /// Returns the stable action ID.
-    pub fn id(&self) -> &str {
-        &self.id
+    pub const fn id(&self) -> ConnectionActionKind {
+        self.id
     }
 
     /// Returns the user-visible instruction.
@@ -365,8 +494,8 @@ impl ConnectionVerificationReport {
         mut checks: Vec<ConnectionCheck>,
         mut actions: Vec<ConnectionAction>,
     ) -> Result<Self, ConnectionVerificationError> {
-        checks.sort_by(|left, right| left.id.cmp(&right.id));
-        actions.sort_by(|left, right| left.id.cmp(&right.id));
+        checks.sort_by_key(|check| check.id);
+        actions.sort_by_key(|action| action.id);
         let status = aggregate_status(&checks);
         Self::from_canonical_parts(status, checked_at, checks, actions)
     }
@@ -378,7 +507,7 @@ impl ConnectionVerificationReport {
         Self::try_new(
             checked_at,
             vec![ConnectionCheck::try_new(
-                ConnectionCheckId::new("verification_not_run"),
+                ConnectionCheckKind::VerificationNotRun,
                 ConnectionCheckStatus::Pending,
                 Some("verification_not_run".to_owned()),
                 "Connection verification has not been run",
@@ -386,7 +515,7 @@ impl ConnectionVerificationReport {
                 None,
             )?],
             vec![ConnectionAction::try_new(
-                "run_verification",
+                ConnectionActionKind::RunVerification,
                 "Run connection verification to observe current host behavior",
                 Some("volicord connection verify".to_owned()),
             )?],
@@ -474,15 +603,15 @@ fn require_canonical_check_order(
     checks: &[ConnectionCheck],
 ) -> Result<(), ConnectionVerificationError> {
     let mut seen = BTreeSet::new();
-    let mut previous: Option<&ConnectionCheckId> = None;
+    let mut previous: Option<ConnectionCheckKind> = None;
     for check in checks {
-        if !seen.insert(check.id.as_str()) {
+        if !seen.insert(check.id) {
             return Err(invalid("connection report contains a duplicate check id"));
         }
-        if previous.is_some_and(|previous| previous >= &check.id) {
+        if previous.is_some_and(|previous| previous >= check.id) {
             return Err(invalid("connection checks are not in canonical id order"));
         }
-        previous = Some(&check.id);
+        previous = Some(check.id);
     }
     Ok(())
 }
@@ -491,15 +620,15 @@ fn require_canonical_action_order(
     actions: &[ConnectionAction],
 ) -> Result<(), ConnectionVerificationError> {
     let mut seen = BTreeSet::new();
-    let mut previous: Option<&str> = None;
+    let mut previous: Option<ConnectionActionKind> = None;
     for action in actions {
-        if !seen.insert(action.id.as_str()) {
+        if !seen.insert(action.id) {
             return Err(invalid("connection report contains a duplicate action id"));
         }
-        if previous.is_some_and(|previous| previous >= action.id.as_str()) {
+        if previous.is_some_and(|previous| previous >= action.id) {
             return Err(invalid("connection actions are not in canonical id order"));
         }
-        previous = Some(&action.id);
+        previous = Some(action.id);
     }
     Ok(())
 }
@@ -675,34 +804,124 @@ mod tests {
         UtcTimestamp::parse("2026-07-18T00:00:00Z").expect("test timestamp")
     }
 
-    fn check(id: &str, status: ConnectionCheckStatus) -> ConnectionCheck {
+    fn check(id: ConnectionCheckKind, status: ConnectionCheckStatus) -> ConnectionCheck {
         ConnectionCheck::try_new(
-            ConnectionCheckId::new(id),
+            id,
             status,
-            Some(format!("{id}_result")),
-            format!("{id} summary"),
+            Some(format!("{}_result", id.as_str())),
+            format!("{} summary", id.as_str()),
             None,
             None,
         )
         .expect("test check")
     }
 
+    fn action(id: ConnectionActionKind) -> ConnectionAction {
+        ConnectionAction::try_new(id, format!("{} instruction", id.as_str()), None)
+            .expect("test action")
+    }
+
+    #[test]
+    fn every_current_check_kind_round_trips_exact_json() {
+        let expected = [
+            "connection_removal",
+            "guard_files",
+            "guard_observation",
+            "host_executable",
+            "host_session",
+            "managed_config",
+            "mcp_server",
+            "mode_transition",
+            "project_trust",
+            "required_tools",
+            "setup_plan",
+            "tool_round_trip",
+            "verification_not_run",
+        ];
+        for (kind, expected) in ConnectionCheckKind::ALL.into_iter().zip(expected) {
+            assert_eq!(serde_json::to_value(kind).unwrap(), json!(expected));
+            assert_eq!(
+                serde_json::from_value::<ConnectionCheckKind>(json!(expected)).unwrap(),
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn every_current_action_kind_round_trips_exact_json() {
+        let expected = [
+            "apply_removal",
+            "apply_setup",
+            "host_trust_required",
+            "inspect_codex_protocol",
+            "install_or_repair_codex",
+            "observe_codex",
+            "reload_guard",
+            "reload_host",
+            "repair_guard",
+            "repair_managed_config",
+            "repair_mcp_server",
+            "run_verification",
+            "use_volicord_tool",
+        ];
+        for (kind, expected) in ConnectionActionKind::ALL.into_iter().zip(expected) {
+            assert_eq!(serde_json::to_value(kind).unwrap(), json!(expected));
+            assert_eq!(
+                serde_json::from_value::<ConnectionActionKind>(json!(expected)).unwrap(),
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_and_removed_report_kinds_fail() {
+        for value in ["unknown_check", "mcp_handshake", "host"] {
+            assert!(serde_json::from_value::<ConnectionCheckKind>(json!(value)).is_err());
+        }
+        for value in ["unknown_action", "reload_required", "legacy_reload"] {
+            assert!(serde_json::from_value::<ConnectionActionKind>(json!(value)).is_err());
+        }
+
+        let report = ConnectionVerificationReport::verification_not_run(timestamp()).unwrap();
+        let mut unknown_check = serde_json::to_value(&report).unwrap();
+        unknown_check["checks"][0]["id"] = json!("unknown_check");
+        assert!(
+            serde_json::from_value::<ConnectionVerificationReport>(unknown_check).is_err(),
+            "persisted reports must reject unknown check kinds"
+        );
+
+        let mut removed_action = serde_json::to_value(&report).unwrap();
+        removed_action["actions"][0]["id"] = json!("reload_required");
+        assert!(
+            serde_json::from_value::<ConnectionVerificationReport>(removed_action).is_err(),
+            "persisted reports must reject removed action kinds"
+        );
+    }
+
     #[test]
     fn report_serialization_and_strict_deserialization_are_stable() {
         let report = ConnectionVerificationReport::try_new(
             timestamp(),
-            vec![check("mcp_handshake", ConnectionCheckStatus::Passed)],
-            vec![ConnectionAction::try_new("reload_host", "Reload the host", None).unwrap()],
+            vec![check(
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckStatus::Passed,
+            )],
+            vec![ConnectionAction::try_new(
+                ConnectionActionKind::ReloadHost,
+                "Reload the host",
+                None,
+            )
+            .unwrap()],
         )
         .unwrap();
         let expected = json!({
             "status": "complete",
             "checked_at": "2026-07-18T00:00:00Z",
             "checks": [{
-                "id": "mcp_handshake",
+                "id": "mcp_server",
                 "status": "passed",
-                "code": "mcp_handshake_result",
-                "summary": "mcp_handshake summary",
+                "code": "mcp_server_result",
+                "summary": "mcp_server summary",
             }],
             "actions": [{
                 "id": "reload_host",
@@ -755,9 +974,9 @@ mod tests {
                     let report = ConnectionVerificationReport::try_new(
                         timestamp(),
                         vec![
-                            check("alpha", left),
-                            check("beta", right),
-                            check("gamma", third),
+                            check(ConnectionCheckKind::ManagedConfig, left),
+                            check(ConnectionCheckKind::McpServer, right),
+                            check(ConnectionCheckKind::ProjectTrust, third),
                         ],
                         Vec::new(),
                     )
@@ -791,8 +1010,14 @@ mod tests {
         let error = ConnectionVerificationReport::try_new(
             timestamp(),
             vec![
-                check("same", ConnectionCheckStatus::Passed),
-                check("same", ConnectionCheckStatus::Pending),
+                check(
+                    ConnectionCheckKind::ManagedConfig,
+                    ConnectionCheckStatus::Passed,
+                ),
+                check(
+                    ConnectionCheckKind::ManagedConfig,
+                    ConnectionCheckStatus::Pending,
+                ),
             ],
             Vec::new(),
         )
@@ -801,21 +1026,44 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_action_ids_are_rejected() {
+        let error = ConnectionVerificationReport::try_new(
+            timestamp(),
+            Vec::new(),
+            vec![
+                action(ConnectionActionKind::ReloadHost),
+                action(ConnectionActionKind::ReloadHost),
+            ],
+        )
+        .expect_err("duplicate actions must fail");
+        assert!(error.detail().contains("duplicate action"));
+    }
+
+    #[test]
     fn ordering_is_canonical_and_noncanonical_wire_order_is_rejected() {
         let report = ConnectionVerificationReport::try_new(
             timestamp(),
             vec![
-                check("zeta", ConnectionCheckStatus::Passed),
-                check("alpha", ConnectionCheckStatus::Passed),
+                check(
+                    ConnectionCheckKind::VerificationNotRun,
+                    ConnectionCheckStatus::Passed,
+                ),
+                check(
+                    ConnectionCheckKind::ConnectionRemoval,
+                    ConnectionCheckStatus::Passed,
+                ),
             ],
             vec![
-                ConnectionAction::try_new("zeta", "zeta", None).unwrap(),
-                ConnectionAction::try_new("alpha", "alpha", None).unwrap(),
+                action(ConnectionActionKind::UseVolicordTool),
+                action(ConnectionActionKind::ApplyRemoval),
             ],
         )
         .unwrap();
-        assert_eq!(report.checks()[0].id().as_str(), "alpha");
-        assert_eq!(report.actions()[0].id(), "alpha");
+        assert_eq!(
+            report.checks()[0].id(),
+            ConnectionCheckKind::ConnectionRemoval
+        );
+        assert_eq!(report.actions()[0].id(), ConnectionActionKind::ApplyRemoval);
 
         let mut value = serde_json::to_value(&report).unwrap();
         value["checks"].as_array_mut().unwrap().swap(0, 1);
@@ -826,9 +1074,15 @@ mod tests {
     fn missing_report_projection_is_action_required() {
         let report = ConnectionVerificationReport::verification_not_run(timestamp()).unwrap();
         assert_eq!(report.status(), ConnectionStatus::ActionRequired);
-        assert_eq!(report.checks()[0].id().as_str(), "verification_not_run");
+        assert_eq!(
+            report.checks()[0].id(),
+            ConnectionCheckKind::VerificationNotRun
+        );
         assert_eq!(report.checks()[0].status(), ConnectionCheckStatus::Pending);
-        assert_eq!(report.actions()[0].id(), "run_verification");
+        assert_eq!(
+            report.actions()[0].id(),
+            ConnectionActionKind::RunVerification
+        );
     }
 
     #[test]
@@ -856,8 +1110,8 @@ mod tests {
         let json = r#"{
             "status":"complete",
             "checked_at":"2026-07-18T00:00:00Z",
-            "checks":[{
-                "id":"host",
+                "checks":[{
+                "id":"host_session",
                 "status":"passed",
                 "code":null,
                 "summary":"host",

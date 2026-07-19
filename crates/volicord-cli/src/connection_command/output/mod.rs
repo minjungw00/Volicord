@@ -5,12 +5,11 @@ mod report;
 mod summary;
 mod text;
 
+use crate::connection_command::planning::PlannedConnectionChange;
 use crate::disclosure::cooperative_host_decision_disclosure_json;
-use crate::guard_integration::files::RetirementPlanStatus;
 use json::{actions_json_values, checks_json, connection_json};
 use report::{
-    render_command_report, CommandConnection, ConnectionCommandReport, PlannedConnectionChange,
-    RenderedCommandReport,
+    render_command_report, CommandConnection, ConnectionCommandReport, RenderedCommandReport,
 };
 use summary::connection_diagnostic_summary_card;
 use text::{render_compact_connection_text, render_compact_plan_text};
@@ -23,44 +22,19 @@ pub(super) use text::{render_connection_remove_dry_run_output, render_connection
 enum RepoFileChangeStatus {
     Created,
     Updated,
-    Removed,
     PlannedCreate,
     PlannedUpdate,
-    PlannedRemove,
 }
 
 impl RepoFileChangeStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Created => "created",
-            Self::Updated => "updated",
-            Self::Removed => "removed",
-            Self::PlannedCreate => "planned_create",
-            Self::PlannedUpdate => "planned_update",
-            Self::PlannedRemove => "planned_remove",
-        }
-    }
-
     fn text_verb(self) -> &'static str {
         match self {
             Self::Created => "created",
             Self::Updated => "updated",
-            Self::Removed => "removed",
             Self::PlannedCreate => "would create",
             Self::PlannedUpdate => "would update",
-            Self::PlannedRemove => "would remove",
         }
     }
-
-    fn is_actual(self) -> bool {
-        matches!(self, Self::Created | Self::Updated | Self::Removed)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RepoFileChange {
-    status: RepoFileChangeStatus,
-    path: String,
 }
 
 pub(super) struct InitOutput<'a> {
@@ -72,12 +46,10 @@ pub(super) struct InitOutput<'a> {
     pub(super) repo_root: &'a Path,
     pub(super) connection_id: &'a str,
     pub(super) mode: &'a str,
-    pub(super) project_id: Option<&'a str>,
     pub(super) host_plan: &'a HostPlan,
     pub(super) verification: Option<&'a VerificationReport>,
     pub(super) current_report: Option<&'a volicord_types::ConnectionVerificationReport>,
-    pub(super) integration: &'a GuardIntegrationPlan,
-    pub(super) profile_action: &'a str,
+    pub(super) planned_changes: &'a [PlannedConnectionChange],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +113,7 @@ pub(super) struct ConnectionPlanOutput<'a> {
     pub(super) enabled: bool,
     pub(super) repo_root: Option<&'a Path>,
     pub(super) plan: &'a HostPlan,
+    pub(super) check_kind: ConnectionCheckKind,
     pub(super) projects_remaining: Option<usize>,
     pub(super) user_actions: Vec<UserAction>,
 }
@@ -151,17 +124,7 @@ pub(super) enum ConnectionRemovePlan<'a> {
 }
 
 fn user_action_id(kind: UserActionKind) -> &'static str {
-    match kind {
-        UserActionKind::HostTrustRequired => "host_trust_required",
-        UserActionKind::RepairManagedConfig => "repair_managed_config",
-        UserActionKind::InstallOrRepairCodex => "install_or_repair_codex",
-        UserActionKind::RepairMcpServer => "repair_mcp_server",
-        UserActionKind::ReloadHost => "reload_host",
-        UserActionKind::UseVolicordTool => "use_volicord_tool",
-        UserActionKind::ReloadGuard => "reload_guard",
-        UserActionKind::RepairGuard => "repair_guard",
-        UserActionKind::ReloadRequired => "reload_required",
-    }
+    ConnectionActionKind::from(kind).as_str()
 }
 
 pub(super) fn render_connection_output(
@@ -332,6 +295,15 @@ pub(super) fn render_connection_mode_output(
                 "previous_integration_revision": outcome.previous_integration_revision,
                 "current_integration_revision": outcome.current_integration_revision,
                 "rebound_guard_installation_ids": outcome.rebound_guard_installation_ids,
+                "checks": [{
+                    "id": ConnectionCheckKind::ModeTransition.as_str(),
+                    "status": "passed",
+                    "summary": if changed {
+                        "connection mode transition was applied"
+                    } else {
+                        "connection mode already matched the requested mode"
+                    },
+                }],
                 "actions": actions_json_values(actions),
             });
             serde_json::to_string_pretty(&value)
@@ -411,7 +383,7 @@ pub(super) fn render_connection_plan_output(
                 "planned_change": planned_change,
                 "remaining_connected_projects": data.projects_remaining,
                 "checks": [{
-                    "id": "host_plan",
+                    "id": data.check_kind.as_str(),
                     "status": "passed",
                     "summary": "host plan was built"
                 }],
@@ -443,7 +415,7 @@ pub(super) fn render_init_output(
             data.runtime_home,
             connection,
             data.current_report,
-            init_planned_changes(&data, &target),
+            data.planned_changes.to_vec(),
             &data.host_plan.user_actions,
         )?
     } else {
@@ -463,82 +435,6 @@ pub(super) fn render_init_output(
     render_command_report(data.format, &report)
 }
 
-fn init_planned_changes(data: &InitOutput<'_>, target: &str) -> Vec<PlannedConnectionChange> {
-    let mut changes = Vec::new();
-    if data.profile_action == "planned" {
-        changes.push(PlannedConnectionChange::new(
-            "create",
-            path_text(data.runtime_home),
-        ));
-    }
-    if data.project_id.is_none() {
-        changes.push(PlannedConnectionChange::new(
-            "register",
-            path_text(data.repo_root),
-        ));
-    }
-    if data.host_plan.change != PlannedChange::Noop {
-        changes.push(PlannedConnectionChange::new(
-            planned_change_text(data.host_plan.change),
-            target,
-        ));
-    }
-    for change in init_repo_file_changes(data) {
-        if !change.status.is_actual() {
-            changes.push(PlannedConnectionChange::new(
-                change.status.as_str(),
-                change.path,
-            ));
-        }
-    }
-    changes.sort_by(|left, right| {
-        left.target()
-            .cmp(right.target())
-            .then_with(|| left.change().cmp(right.change()))
-    });
-    changes.dedup();
-    changes
-}
-
-fn init_repo_file_changes(data: &InitOutput<'_>) -> Vec<RepoFileChange> {
-    let mut changes = BTreeMap::new();
-    if let Some(status) = repo_file_change_from_host_plan(data.host_plan.change, data.dry_run) {
-        if let Some(path) = repo_relative_host_target_path(data.host_plan, data.repo_root) {
-            insert_repo_file_change(&mut changes, path, status);
-        }
-    }
-    for file in &data.integration.generated_files {
-        if let Some(status) = repo_file_change_from_file_status(file.status) {
-            if let Some(path) = repo_relative_path(&file.path, data.repo_root) {
-                insert_repo_file_change(&mut changes, path, status);
-            }
-        }
-    }
-    for file in &data.integration.retired_files {
-        if let Some(status) = repo_file_change_from_retirement_status(file.status) {
-            if let Some(path) = repo_relative_path(&file.path, data.repo_root) {
-                insert_repo_file_change(&mut changes, path, status);
-            }
-        }
-    }
-    changes
-        .into_iter()
-        .map(|(path, status)| RepoFileChange { status, path })
-        .collect()
-}
-
-fn repo_file_change_from_retirement_status(
-    status: RetirementPlanStatus,
-) -> Option<RepoFileChangeStatus> {
-    match status {
-        RetirementPlanStatus::PlannedRemove => Some(RepoFileChangeStatus::PlannedRemove),
-        RetirementPlanStatus::PlannedUpdate => Some(RepoFileChangeStatus::PlannedUpdate),
-        RetirementPlanStatus::Removed => Some(RepoFileChangeStatus::Removed),
-        RetirementPlanStatus::Updated => Some(RepoFileChangeStatus::Updated),
-        RetirementPlanStatus::Unchanged => None,
-    }
-}
-
 fn repo_file_change_from_host_plan(
     change: PlannedChange,
     dry_run: bool,
@@ -549,16 +445,6 @@ fn repo_file_change_from_host_plan(
         (false, PlannedChange::Create) => Some(RepoFileChangeStatus::Created),
         (false, PlannedChange::Update) => Some(RepoFileChangeStatus::Updated),
         _ => None,
-    }
-}
-
-fn repo_file_change_from_file_status(status: FilePlanStatus) -> Option<RepoFileChangeStatus> {
-    match status {
-        FilePlanStatus::PlannedCreate => Some(RepoFileChangeStatus::PlannedCreate),
-        FilePlanStatus::PlannedUpdate => Some(RepoFileChangeStatus::PlannedUpdate),
-        FilePlanStatus::Created => Some(RepoFileChangeStatus::Created),
-        FilePlanStatus::Updated => Some(RepoFileChangeStatus::Updated),
-        FilePlanStatus::Unchanged => None,
     }
 }
 
@@ -573,30 +459,6 @@ fn repo_relative_path(path: &Path, repo_root: &Path) -> Option<String> {
     let relative = path.strip_prefix(repo_root).ok()?;
     relative.components().next()?;
     Some(path_text(relative))
-}
-
-fn insert_repo_file_change(
-    changes: &mut BTreeMap<String, RepoFileChangeStatus>,
-    path: String,
-    status: RepoFileChangeStatus,
-) {
-    changes
-        .entry(path)
-        .and_modify(|existing| *existing = merge_repo_file_change_status(*existing, status))
-        .or_insert(status);
-}
-
-fn merge_repo_file_change_status(
-    existing: RepoFileChangeStatus,
-    new: RepoFileChangeStatus,
-) -> RepoFileChangeStatus {
-    match (existing, new) {
-        (RepoFileChangeStatus::Created, _) | (RepoFileChangeStatus::PlannedCreate, _) => existing,
-        (_, RepoFileChangeStatus::Created) | (_, RepoFileChangeStatus::PlannedCreate) => new,
-        (RepoFileChangeStatus::Removed, _) | (RepoFileChangeStatus::PlannedRemove, _) => existing,
-        (_, RepoFileChangeStatus::Removed) | (_, RepoFileChangeStatus::PlannedRemove) => new,
-        _ => existing,
-    }
 }
 
 fn planned_change_text(change: PlannedChange) -> &'static str {
@@ -648,9 +510,9 @@ fn connection_mcp_config_state(
             report
                 .checks()
                 .iter()
-                .find(|check| check.id().as_str() == "host")
+                .find(|check| check.id() == ConnectionCheckKind::ManagedConfig)
                 .and_then(|check| check.details())
-                .and_then(|details| details.as_object().get("managed_config"))
+                .and_then(|details| details.as_object().get("observed_state"))
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
@@ -660,7 +522,7 @@ fn connection_mcp_config_state(
 fn has_reload_action(actions: &[UserAction]) -> bool {
     actions
         .iter()
-        .any(|action| action.kind == UserActionKind::ReloadRequired)
+        .any(|action| action.kind == UserActionKind::ReloadHost)
 }
 
 fn primary_connection_action(
@@ -753,7 +615,7 @@ fn primary_connection_action(
             }
         }
         if let Some(connection) = connection {
-            let stored_host_details =
+            let stored_host_executable =
                 connection
                     .verification_report()
                     .ok()
@@ -762,9 +624,8 @@ fn primary_connection_action(
                         report
                             .checks()
                             .iter()
-                            .find(|check| check.id().as_str() == "host")
-                            .and_then(|check| check.details())
-                            .map(|details| details.as_object().clone())
+                            .find(|check| check.id() == ConnectionCheckKind::HostExecutable)
+                            .cloned()
                     });
             match connection_mcp_config_state(connection, None, None, None).as_str() {
                 "missing" => {
@@ -801,18 +662,15 @@ fn primary_connection_action(
                 }
                 _ => {}
             }
-            if stored_host_details
+            if stored_host_executable
                 .as_ref()
-                .and_then(|host| host.get("executable"))
-                .and_then(Value::as_str)
-                == Some("unavailable")
+                .is_some_and(|check| check.status() == ConnectionCheckStatus::Failed)
             {
                 return Some(PrimaryNextAction::new(
                     "path_binary_not_found",
-                    stored_host_details
+                    stored_host_executable
                         .as_ref()
-                        .and_then(|host| host.get("failure_reason"))
-                        .and_then(Value::as_str)
+                        .map(ConnectionCheck::summary)
                         .unwrap_or(
                             "Install or repair the host executable so it is available on PATH.",
                         ),
@@ -851,7 +709,7 @@ fn primary_connection_action(
         if guard_state.installation_state == "reload_required" {
             if let Some(action) = actions
                 .iter()
-                .find(|action| action.kind == UserActionKind::ReloadRequired)
+                .find(|action| action.kind == UserActionKind::ReloadHost)
             {
                 let mut primary =
                     PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
@@ -863,7 +721,7 @@ fn primary_connection_action(
     if connection.is_none() {
         if let Some(action) = actions
             .iter()
-            .find(|action| action.kind == UserActionKind::ReloadRequired)
+            .find(|action| action.kind == UserActionKind::ReloadHost)
         {
             let mut primary =
                 PrimaryNextAction::new(user_action_id(action.kind), action.message.clone());
@@ -889,7 +747,11 @@ fn prioritized_connection_action(actions: &[UserAction]) -> Option<&UserAction> 
         UserActionKind::UseVolicordTool,
         UserActionKind::ReloadGuard,
         UserActionKind::RepairGuard,
-        UserActionKind::ReloadRequired,
+        UserActionKind::ObserveCodex,
+        UserActionKind::InspectCodexProtocol,
+        UserActionKind::ApplySetup,
+        UserActionKind::ApplyRemoval,
+        UserActionKind::RunVerification,
     ]
     .into_iter()
     .find_map(|kind| actions.iter().find(|action| action.kind == kind))
@@ -918,16 +780,17 @@ fn attach_connection_verify_command(
 }
 
 fn next_action_should_verify(id: &str) -> bool {
-    matches!(
-        id,
-        "host_trust_required"
-            | "project_approval_required"
-            | "reload_required"
-            | "managed_host_startup_not_observed"
-            | "managed_host_tools_list_not_observed"
-            | "active_tool_exposure_unconfirmed"
-            | "managed_host_storage_degraded"
-    )
+    id == ConnectionActionKind::HostTrustRequired.as_str()
+        || id == ConnectionActionKind::ReloadHost.as_str()
+        || matches!(
+            id,
+            "project_approval_required"
+                | "reload_required"
+                | "managed_host_startup_not_observed"
+                | "managed_host_tools_list_not_observed"
+                | "active_tool_exposure_unconfirmed"
+                | "managed_host_storage_degraded"
+        )
 }
 
 fn set_verify_command(action: &mut PrimaryNextAction, command: String) {

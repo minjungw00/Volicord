@@ -2889,7 +2889,7 @@ mod tests {
             volicord_types::ConnectionStatus::ActionRequired
         );
         assert_eq!(projected.checks()[0].id().as_str(), "verification_not_run");
-        assert_eq!(projected.actions()[0].id(), "run_verification");
+        assert_eq!(projected.actions()[0].id().as_str(), "run_verification");
         assert!(
             agent_connection_record(fixture.runtime_home.path(), "conn_missing")?
                 .expect("projection must not remove the connection")

@@ -207,7 +207,55 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     assert_eq!(value["status"], "action_required");
     assert_eq!(value["setup_applied"], false);
     assert_eq!(value["connection"]["mode"], "workflow");
-    assert!(value["planned_changes"].is_array());
+    let planned_changes = value["planned_changes"]
+        .as_array()
+        .expect("typed planned changes");
+    assert!(!planned_changes.is_empty());
+    for change in planned_changes {
+        let change = change.as_object().expect("planned change object");
+        assert_eq!(change.len(), 3);
+        assert!(change["kind"].is_string());
+        assert!(change["operation"].is_string());
+        assert!(change["target"].is_string());
+        assert_ne!(change["operation"], "noop");
+        assert!(!change.contains_key("change"));
+    }
+    let kinds = planned_changes
+        .iter()
+        .map(|change| change["kind"].as_str().expect("planned kind"))
+        .collect::<Vec<_>>();
+    for expected in [
+        "connection_membership",
+        "guard_managed_file",
+        "guard_registry_setup",
+        "managed_host_configuration",
+        "project_registration",
+        "runtime_home_initialization",
+    ] {
+        assert!(kinds.contains(&expected), "missing planned kind {expected}");
+    }
+    let triples = planned_changes
+        .iter()
+        .map(|change| {
+            (
+                change["kind"].as_str().unwrap().to_owned(),
+                change["operation"].as_str().unwrap().to_owned(),
+                change["target"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut canonical = triples.clone();
+    canonical.sort();
+    canonical.dedup();
+    assert_eq!(triples, canonical);
+    let action_ids = value["actions"]
+        .as_array()
+        .expect("typed actions")
+        .iter()
+        .map(|action| action["id"].as_str().expect("action kind"))
+        .collect::<Vec<_>>();
+    assert!(action_ids.contains(&"apply_setup"));
+    assert!(action_ids.contains(&"observe_codex"));
     assert!(!fixture.runtime_home.join("registry.sqlite").exists());
     assert!(!fixture.codex_home.join("config.toml").exists());
     assert!(directory_contents(&fixture.repo_root)?.is_empty());
@@ -303,10 +351,56 @@ fn connection_remove_dry_run_has_no_registry_host_or_repository_effect(
     let output = fixture.run_connection_with_options("remove", &fixture.repo_root, true, true)?;
 
     assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_str(&stdout(&output)?)?;
+    assert!(report["checks"].as_array().is_some_and(|checks| checks
+        .iter()
+        .any(|check| check["id"] == "connection_removal")));
+    assert!(report["actions"]
+        .as_array()
+        .is_some_and(|actions| actions.iter().any(|action| action["id"] == "apply_removal")));
     assert_eq!(fixture.registry_snapshot(), registry_before);
     assert_eq!(directory_contents(&fixture.runtime_home)?, runtime_before);
     assert_eq!(directory_contents(&fixture.codex_home)?, host_before);
     assert_eq!(directory_contents(&fixture.repo_root)?, repository_before);
+    Ok(())
+}
+
+#[test]
+fn connection_add_dry_run_preserves_setup_check_and_action_kinds() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-add-dry-run-kinds")?;
+    fixture.install_codex_executable()?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(0));
+    let other_repo = fixture.create_repository("add-dry-run-repository")?;
+
+    let output = fixture.run_connection_with_options("add", &other_repo, true, true)?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_str(&stdout(&output)?)?;
+    assert!(report["checks"]
+        .as_array()
+        .is_some_and(|checks| checks.iter().any(|check| check["id"] == "setup_plan")));
+    assert!(report["actions"]
+        .as_array()
+        .is_some_and(|actions| actions.iter().any(|action| action["id"] == "apply_setup")));
+    Ok(())
+}
+
+#[test]
+fn connection_mode_preserves_transition_check_and_reload_action_kinds() -> Result<(), Box<dyn Error>>
+{
+    let fixture = IsolatedInitFixture::new("binary-mode-kinds")?;
+    fixture.install_codex_executable()?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(0));
+
+    let output = fixture.run_connection_mode("read-only")?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let report: Value = serde_json::from_str(&stdout(&output)?)?;
+    assert_eq!(report["checks"][0]["id"], "mode_transition");
+    assert_eq!(report["actions"][0]["id"], "reload_host");
     Ok(())
 }
 
@@ -618,6 +712,24 @@ impl IsolatedInitFixture {
             command.arg("--dry-run");
         }
         Ok(command.output()?)
+    }
+
+    fn run_connection_mode(&self, mode: &str) -> Result<std::process::Output, Box<dyn Error>> {
+        Ok(base_command()
+            .arg("connection")
+            .arg("mode")
+            .arg("codex")
+            .arg(mode)
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--json")
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root)
+            .output()?)
     }
 
     fn create_repository(&self, name: &str) -> Result<PathBuf, Box<dyn Error>> {

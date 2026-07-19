@@ -10,8 +10,9 @@ use volicord_store::{
     },
 };
 use volicord_types::{
-    ConnectionAction, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckId,
-    ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport, UtcTimestamp,
+    ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
+    ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
+    UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
 };
 
 use crate::host_integration::{
@@ -220,11 +221,11 @@ pub(in crate::connection_command) fn connection_metadata_failure_report(
     let mut checks = current
         .checks()
         .iter()
-        .filter(|check| check.id().as_str() != "managed_config")
+        .filter(|check| check.id() != ConnectionCheckKind::ManagedConfig)
         .cloned()
         .collect::<Vec<_>>();
     checks.push(canonical_check(
-        "managed_config",
+        ConnectionCheckKind::ManagedConfig,
         ConnectionCheckStatus::Failed,
         "connection_metadata_invalid",
         "Agent Connection metadata is invalid, so managed Codex configuration cannot be inspected",
@@ -302,7 +303,7 @@ fn managed_config_check(host: &Verification) -> Result<ConnectionCheck, Connecti
         ),
     };
     canonical_check(
-        "managed_config",
+        ConnectionCheckKind::ManagedConfig,
         status,
         code,
         summary,
@@ -332,7 +333,7 @@ fn host_executable_check(host: &Verification) -> Result<ConnectionCheck, Connect
         ),
     };
     canonical_check(
-        "host_executable",
+        ConnectionCheckKind::HostExecutable,
         status,
         &host.host_executable_code,
         summary,
@@ -376,7 +377,7 @@ fn mcp_server_check(
         )
     };
     canonical_check(
-        "mcp_server",
+        ConnectionCheckKind::McpServer,
         status,
         code,
         summary,
@@ -393,7 +394,7 @@ fn mcp_server_check(
                 "diagnostic": handshake.details,
                 "initialize": handshake.status == StepStatus::Passed,
                 "tools_list": tools,
-                "safe_read_only_tool": "volicord.list_projects",
+                "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
             }
         })),
         None,
@@ -403,7 +404,7 @@ fn mcp_server_check(
 fn project_trust_check(host: &Verification) -> Result<ConnectionCheck, ConnectionCommandError> {
     let Some(trust) = host.project_trust.as_ref() else {
         return canonical_check(
-            "project_trust",
+            ConnectionCheckKind::ProjectTrust,
             ConnectionCheckStatus::Passed,
             "project_trust_not_applicable",
             "No separate project trust action applies to this connection scope",
@@ -429,7 +430,7 @@ fn project_trust_check(host: &Verification) -> Result<ConnectionCheck, Connectio
         ),
     };
     canonical_check(
-        "project_trust",
+        ConnectionCheckKind::ProjectTrust,
         status,
         &trust.code,
         summary,
@@ -545,7 +546,7 @@ fn host_session_checks(
             ),
         };
     let host_session = canonical_check(
-        "host_session",
+        ConnectionCheckKind::HostSession,
         session_status,
         session_code,
         session_summary,
@@ -604,7 +605,7 @@ fn host_session_checks(
             ),
         };
     let required_tools = canonical_check(
-        "required_tools",
+        ConnectionCheckKind::RequiredTools,
         tools_status,
         tools_code,
         tools_summary,
@@ -656,7 +657,7 @@ fn host_session_checks(
             ),
         };
     let tool_round_trip = canonical_check(
-        "tool_round_trip",
+        ConnectionCheckKind::ToolRoundTrip,
         round_trip_status,
         round_trip_code,
         round_trip_summary,
@@ -707,7 +708,7 @@ fn guard_checks(
     });
     Ok(vec![
         canonical_check(
-            "guard_files",
+            ConnectionCheckKind::GuardFiles,
             files_status,
             match files_status {
                 ConnectionCheckStatus::Passed => "guard_files_passed",
@@ -719,7 +720,7 @@ fn guard_checks(
             guard.last_observed_at.as_deref(),
         )?,
         canonical_check(
-            "guard_observation",
+            ConnectionCheckKind::GuardObservation,
             observation_status,
             match observation_status {
                 ConnectionCheckStatus::Passed => "guard_observation_passed",
@@ -736,39 +737,39 @@ fn guard_checks(
 fn actions_for_checks(
     checks: &[ConnectionCheck],
 ) -> Result<Vec<ConnectionAction>, ConnectionCommandError> {
-    let mut actions = BTreeMap::<&str, (&str, Option<String>)>::new();
+    let mut actions = BTreeMap::<ConnectionActionKind, (&str, Option<String>)>::new();
     for check in checks {
-        match (check.id().as_str(), check.status()) {
-            ("managed_config", ConnectionCheckStatus::Failed) => {
+        match (check.id(), check.status()) {
+            (ConnectionCheckKind::ManagedConfig, ConnectionCheckStatus::Failed) => {
                 actions.insert(
-                    "repair_managed_config",
+                    ConnectionActionKind::RepairManagedConfig,
                     (
                         "Repair or recreate the Volicord-managed Codex MCP entry",
                         None,
                     ),
                 );
             }
-            ("host_executable", ConnectionCheckStatus::Failed) => {
+            (ConnectionCheckKind::HostExecutable, ConnectionCheckStatus::Failed) => {
                 actions.insert(
-                    "install_or_repair_codex",
+                    ConnectionActionKind::InstallOrRepairCodex,
                     (
                         "Install or repair Codex so `codex --version` succeeds on PATH",
                         None,
                     ),
                 );
             }
-            ("mcp_server", ConnectionCheckStatus::Failed) => {
+            (ConnectionCheckKind::McpServer, ConnectionCheckStatus::Failed) => {
                 actions.insert(
-                    "repair_mcp_server",
+                    ConnectionActionKind::RepairMcpServer,
                     (
                         "Repair the Volicord MCP configuration or storage error and verify again",
                         Some("volicord connection verify".to_owned()),
                     ),
                 );
             }
-            ("project_trust", ConnectionCheckStatus::Pending) => {
+            (ConnectionCheckKind::ProjectTrust, ConnectionCheckStatus::Pending) => {
                 actions.insert(
-                    "host_trust_required",
+                    ConnectionActionKind::HostTrustRequired,
                     (
                         "Trust the project in Codex, then restart or reload Codex",
                         None,
@@ -776,11 +777,14 @@ fn actions_for_checks(
                 );
             }
             (
-                "host_session" | "required_tools" | "tool_round_trip" | "guard_observation",
+                ConnectionCheckKind::HostSession
+                | ConnectionCheckKind::RequiredTools
+                | ConnectionCheckKind::ToolRoundTrip
+                | ConnectionCheckKind::GuardObservation,
                 ConnectionCheckStatus::Pending,
             ) => {
                 actions.insert(
-                    "observe_codex",
+                    ConnectionActionKind::ObserveCodex,
                     (
                         "Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool so actual Codex connection and Guard activity can be observed",
                         None,
@@ -788,20 +792,23 @@ fn actions_for_checks(
                 );
             }
             (
-                "host_session" | "required_tools" | "tool_round_trip" | "guard_observation",
+                ConnectionCheckKind::HostSession
+                | ConnectionCheckKind::RequiredTools
+                | ConnectionCheckKind::ToolRoundTrip
+                | ConnectionCheckKind::GuardObservation,
                 ConnectionCheckStatus::Failed,
             ) => {
                 actions.insert(
-                    "inspect_codex_protocol",
+                    ConnectionActionKind::InspectCodexProtocol,
                     (
                         "Inspect the recorded Codex protocol failure, repair the incompatible configuration or behavior, then verify again",
                         Some("volicord connection verify".to_owned()),
                     ),
                 );
             }
-            ("guard_files", ConnectionCheckStatus::Failed) => {
+            (ConnectionCheckKind::GuardFiles, ConnectionCheckStatus::Failed) => {
                 actions.insert(
-                    "repair_guard",
+                    ConnectionActionKind::RepairGuard,
                     (
                         "Repair the Volicord Guard integration and verify the connection again",
                         None,
@@ -821,7 +828,7 @@ fn actions_for_checks(
 }
 
 fn canonical_check(
-    id: &str,
+    id: ConnectionCheckKind,
     status: ConnectionCheckStatus,
     code: &str,
     summary: &str,
@@ -849,7 +856,7 @@ fn canonical_check(
         })
         .transpose()?;
     ConnectionCheck::try_new(
-        ConnectionCheckId::new(id),
+        id,
         status,
         (status != ConnectionCheckStatus::Passed).then(|| code.to_owned()),
         summary,
@@ -933,7 +940,7 @@ pub(in crate::connection_command) fn current_status_report(
             report
                 .checks()
                 .iter()
-                .find(|check| check.id().as_str() == "host_executable")
+                .find(|check| check.id() == ConnectionCheckKind::HostExecutable)
         })
         .cloned();
     if let Some(check) = stored_executable.as_ref() {
@@ -968,11 +975,11 @@ pub(in crate::connection_command) fn current_status_report(
             report
                 .checks()
                 .iter()
-                .find(|check| check.id().as_str() == "mcp_server")
+                .find(|check| check.id() == ConnectionCheckKind::McpServer)
         })
         .cloned()
         .unwrap_or(canonical_check(
-            "mcp_server",
+            ConnectionCheckKind::McpServer,
             ConnectionCheckStatus::Pending,
             "mcp_server_not_verified",
             "Volicord MCP server has not been actively verified",
@@ -991,7 +998,7 @@ pub(in crate::connection_command) fn current_status_report(
         project_trust_check(&host)?,
     ];
     checks.push(stored_executable.unwrap_or(canonical_check(
-        "host_executable",
+        ConnectionCheckKind::HostExecutable,
         ConnectionCheckStatus::Pending,
         "host_executable_not_verified",
         "Codex executable has not been actively verified",
@@ -1017,25 +1024,11 @@ pub(in crate::connection_command) fn connection_status_actions(
     let mut actions = report
         .actions()
         .iter()
-        .map(|action| UserAction::new(user_action_kind(action.id()), action.instruction()))
+        .map(|action| UserAction::new(UserActionKind::from(action.id()), action.instruction()))
         .collect::<Vec<_>>();
     actions.sort_by(|left, right| left.message.cmp(&right.message));
     actions.dedup_by(|left, right| left.kind == right.kind && left.message == right.message);
     actions
-}
-
-fn user_action_kind(id: &str) -> UserActionKind {
-    match id {
-        "host_trust_required" => UserActionKind::HostTrustRequired,
-        "repair_managed_config" => UserActionKind::RepairManagedConfig,
-        "install_or_repair_codex" => UserActionKind::InstallOrRepairCodex,
-        "repair_mcp_server" => UserActionKind::RepairMcpServer,
-        "reload_host" => UserActionKind::ReloadHost,
-        "use_volicord_tool" => UserActionKind::UseVolicordTool,
-        "reload_guard" => UserActionKind::ReloadGuard,
-        "repair_guard" => UserActionKind::RepairGuard,
-        _ => UserActionKind::ReloadRequired,
-    }
 }
 
 pub(in crate::connection_command) fn agent_result_status(
@@ -1117,7 +1110,7 @@ mod tests {
             host_executable_check(&host).expect("host executable check"),
             project_trust_check(&host).expect("project trust check"),
             canonical_check(
-                "mcp_server",
+                ConnectionCheckKind::McpServer,
                 ConnectionCheckStatus::Passed,
                 "mcp_server_ready",
                 "MCP server passed",
@@ -1127,12 +1120,15 @@ mod tests {
             .expect("MCP check"),
         ];
         checks.extend(session_checks);
-        for id in ["guard_files", "guard_observation"] {
+        for id in [
+            ConnectionCheckKind::GuardFiles,
+            ConnectionCheckKind::GuardObservation,
+        ] {
             checks.push(
                 canonical_check(
                     id,
                     ConnectionCheckStatus::Passed,
-                    &format!("{id}_passed"),
+                    &format!("{}_passed", id.as_str()),
                     "Guard check passed",
                     None,
                     None,
@@ -1298,7 +1294,7 @@ mod tests {
             host_executable_check(&host).expect("host executable check"),
             project_trust_check(&host).expect("project trust check"),
             canonical_check(
-                "mcp_server",
+                ConnectionCheckKind::McpServer,
                 ConnectionCheckStatus::Passed,
                 "mcp_server_ready",
                 "MCP server passed",
@@ -1324,7 +1320,7 @@ mod tests {
                 .iter()
                 .map(ConnectionAction::id)
                 .collect::<Vec<_>>(),
-            vec!["observe_codex"]
+            vec![ConnectionActionKind::ObserveCodex]
         );
     }
 
@@ -1367,7 +1363,7 @@ mod tests {
     fn aggregation_and_user_actions_are_deterministic() {
         let checks = vec![
             canonical_check(
-                "tool_round_trip",
+                ConnectionCheckKind::ToolRoundTrip,
                 ConnectionCheckStatus::Pending,
                 "tool_round_trip_not_observed",
                 "Tool call pending",
@@ -1376,7 +1372,7 @@ mod tests {
             )
             .expect("tool check"),
             canonical_check(
-                "managed_config",
+                ConnectionCheckKind::ManagedConfig,
                 ConnectionCheckStatus::Failed,
                 "managed_config_malformed",
                 "Config malformed",
@@ -1385,7 +1381,7 @@ mod tests {
             )
             .expect("config check"),
             canonical_check(
-                "host_session",
+                ConnectionCheckKind::HostSession,
                 ConnectionCheckStatus::Pending,
                 "host_session_not_observed",
                 "Host session pending",
@@ -1394,7 +1390,7 @@ mod tests {
             )
             .expect("host check"),
             canonical_check(
-                "mcp_server",
+                ConnectionCheckKind::McpServer,
                 ConnectionCheckStatus::Failed,
                 "mcp_server_protocol_failed",
                 "MCP failed",
@@ -1409,13 +1405,63 @@ mod tests {
         assert_eq!(
             first.iter().map(ConnectionAction::id).collect::<Vec<_>>(),
             vec![
-                "observe_codex",
-                "repair_managed_config",
-                "repair_mcp_server",
+                ConnectionActionKind::ObserveCodex,
+                ConnectionActionKind::RepairManagedConfig,
+                ConnectionActionKind::RepairMcpServer,
             ]
         );
         let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, first)
             .expect("canonical report");
         assert_eq!(report.status(), ConnectionStatus::Failed);
+    }
+
+    #[test]
+    fn report_action_conversion_preserves_protocol_meaning() {
+        let report = ConnectionVerificationReport::try_new(
+            current_timestamp(),
+            Vec::new(),
+            vec![
+                ConnectionAction::try_new(
+                    ConnectionActionKind::ObserveCodex,
+                    "Observe current Codex activity",
+                    None,
+                )
+                .expect("observe action"),
+                ConnectionAction::try_new(
+                    ConnectionActionKind::InspectCodexProtocol,
+                    "Inspect the Codex protocol failure",
+                    None,
+                )
+                .expect("inspect action"),
+            ],
+        )
+        .expect("canonical report");
+
+        let actions = connection_status_actions(None, &report);
+        assert!(actions
+            .iter()
+            .any(|action| action.kind == UserActionKind::ObserveCodex));
+        assert!(actions
+            .iter()
+            .any(|action| action.kind == UserActionKind::InspectCodexProtocol));
+        assert!(actions
+            .iter()
+            .all(|action| action.kind != UserActionKind::ReloadHost));
+    }
+
+    #[test]
+    fn mcp_server_details_use_the_public_safe_tool_name_constant() {
+        let check = mcp_server_check(
+            &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
+            &VerificationStep::passed_with_code("mcp_server_ready", "ready"),
+            &[LIST_PROJECTS_TOOL_NAME.to_owned()],
+        )
+        .expect("MCP server check");
+        let details = check.details().expect("MCP details").as_object();
+
+        assert_eq!(
+            details["self_test"]["safe_read_only_tool"],
+            LIST_PROJECTS_TOOL_NAME
+        );
     }
 }

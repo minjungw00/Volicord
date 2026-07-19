@@ -105,7 +105,7 @@ ConnectionVerificationReport:
   actions: ConnectionAction[]
 
 ConnectionCheck:
-  id: ConnectionCheckId
+  id: ConnectionCheckKind
   status: passed | pending | failed
   code?: string
   summary: string
@@ -113,7 +113,7 @@ ConnectionCheck:
   observed_at?: UtcTimestamp
 
 ConnectionAction:
-  id: string
+  id: ConnectionActionKind
   instruction: string
   command?: string
 ```
@@ -121,18 +121,36 @@ ConnectionAction:
 `status`, `checked_at`, `checks`, `actions`, and each check or action's
 non-optional members are required. Optional `code`, `details`, `observed_at`,
 and `command` members are omitted when absent rather than serialized as null.
-Unknown members, duplicate JSON keys, duplicate check IDs, duplicate action
-IDs, noncanonical ordering, explicit null for an optional member, and unknown
-status values are invalid. Check IDs,
-action IDs, and non-null check codes are 1 through 128 ASCII bytes and match
-`[a-z][a-z0-9_]*`. `summary`, `instruction`, and non-null `command` values are
+Unknown members, duplicate JSON keys, duplicate check kinds, duplicate action
+kinds, noncanonical ordering, explicit null for an optional member, and unknown
+status, check-kind, or action-kind values are invalid. Non-null check codes are
+1 through 128 ASCII bytes and match `[a-z][a-z0-9_]*`. `summary`, `instruction`,
+and non-null `command` values are
 1 through 4,096 UTF-8 bytes and contain no NUL. A non-null `details` value is a
 JSON object whose serialized form is at most 16 KiB. A report contains at most
 64 checks and 32 actions, and its serialized form is at most 64 KiB.
 
-Checks are sorted by `id` in ascending UTF-8 byte order. Actions use the same
-ordering by `id`. Strict decoding rejects another order rather than silently
-normalizing it.
+Checks are sorted by the stable snake-case spelling of `ConnectionCheckKind` in
+ascending UTF-8 byte order. Actions use the same ordering by the stable
+snake-case spelling of `ConnectionActionKind`. Strict decoding rejects another
+order rather than silently normalizing it; enum declaration order is not the
+wire-order contract.
+
+`ConnectionCheckKind` is the closed current-product vocabulary:
+`connection_removal`, `guard_files`, `guard_observation`, `host_executable`,
+`host_session`, `managed_config`, `mcp_server`, `mode_transition`,
+`project_trust`, `required_tools`, `setup_plan`, `tool_round_trip`, and
+`verification_not_run`. Operational verification uses the applicable checks in
+the table below. Missing-report and administrative command planning use the
+remaining named kinds; arbitrary adapter-defined check IDs are not accepted.
+
+`ConnectionActionKind` is the closed current-product vocabulary:
+`apply_removal`, `apply_setup`, `host_trust_required`,
+`inspect_codex_protocol`, `install_or_repair_codex`, `observe_codex`,
+`reload_guard`, `reload_host`, `repair_guard`, `repair_managed_config`,
+`repair_mcp_server`, `run_verification`, and `use_volicord_tool`. Each value
+keeps that exact meaning during report-to-host-plan projection. In particular,
+`observe_codex` and `inspect_codex_protocol` never become `reload_host`.
 
 Every check in the report is required for that report. The top-level status is
 derived and cannot disagree with the checks:

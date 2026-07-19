@@ -15,12 +15,10 @@ pub(super) struct InitProvisioningOutcome {
     pub(super) repo_root: PathBuf,
     pub(super) connection_id: String,
     pub(super) mode: String,
-    pub(super) project_id: Option<String>,
     pub(super) host_plan: HostPlan,
     pub(super) verification: Option<VerificationReport>,
     pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
-    pub(super) integration: GuardIntegrationPlan,
-    pub(super) profile_action: &'static str,
+    pub(super) planned_changes: Vec<PlannedConnectionChange>,
 }
 
 pub(super) struct ProvisionConnectionRequest<'a> {
@@ -143,6 +141,14 @@ pub(super) fn provision_init(
     let dry_run = request.parsed.dry_run;
     let plan = plan_init_provisioning(request, process)?;
     if dry_run {
+        let planned_changes = plan_init_changes(InitPlannedChanges {
+            runtime_home: &plan.runtime_home,
+            repo_root: &plan.repo_root,
+            profile_exists: plan.profile_exists,
+            project_exists: plan.project_id.is_some(),
+            host_plan: &plan.host_plan,
+            integration: &plan.integration,
+        });
         return Ok(InitProvisioningOutcome {
             dry_run: true,
             host_kind: plan.host_kind,
@@ -151,16 +157,10 @@ pub(super) fn provision_init(
             repo_root: plan.repo_root.clone(),
             connection_id: plan.connection_id,
             mode: plan.effective_mode,
-            project_id: plan.project_id,
             host_plan: plan.host_plan,
             verification: None,
             current_report: plan.current_report,
-            integration: plan.integration,
-            profile_action: if plan.profile_exists {
-                "reused"
-            } else {
-                "planned"
-            },
+            planned_changes,
         });
     }
 
@@ -640,16 +640,10 @@ fn apply_init_provisioning(
         repo_root: project.repo_root,
         connection_id: plan.connection_id,
         mode: plan.effective_mode,
-        project_id: Some(project.project_id),
         host_plan,
         verification: Some(verification),
         current_report: None,
-        integration,
-        profile_action: if plan.profile_exists {
-            "reused"
-        } else {
-            "created"
-        },
+        planned_changes: Vec::new(),
     })
 }
 
@@ -1447,13 +1441,6 @@ mod init_planning_tests {
         assert!(runtime_home_record_read_only(fixture.path())?.is_none());
         assert!(!fixture.registry_db_path().exists());
         assert!(directory_is_empty(fixture.path())?);
-        for file in &outcome.integration.generated_files {
-            assert!(
-                !file.path.exists(),
-                "dry run unexpectedly created {}",
-                file.path.display()
-            );
-        }
         assert_empty_product_repository_untouched(&repo_root)?;
         Ok(())
     }
@@ -1474,7 +1461,9 @@ mod init_planning_tests {
             &mut process,
         )?;
         assert_eq!(initial.mode, CONNECTION_MODE_WORKFLOW);
-        let project_id = initial.project_id.as_deref().expect("initialized project");
+        let project_id = project_record_by_repo_root(fixture.path(), &repo_root)?
+            .expect("initialized project")
+            .project_id;
         let connection_id = initial.connection_id.as_str();
         let plan = plan_init_provisioning(
             InitProvisioningRequest {
@@ -1489,7 +1478,7 @@ mod init_planning_tests {
         let host_before = fs::read(&host_target)?;
         let repository_before = directory_contents(&repo_root)?;
         let guard_manifest_before =
-            list_guard_installations(fixture.path(), connection_id, Some(project_id))?
+            list_guard_installations(fixture.path(), connection_id, Some(&project_id))?
                 .into_iter()
                 .next()
                 .expect("initial Guard Installation")
@@ -1516,7 +1505,7 @@ mod init_planning_tests {
         assert_eq!(fs::read(host_target)?, host_before);
         assert_eq!(directory_contents(&repo_root)?, repository_before);
         assert_eq!(
-            list_guard_installations(fixture.path(), connection_id, Some(project_id))?
+            list_guard_installations(fixture.path(), connection_id, Some(&project_id))?
                 .into_iter()
                 .next()
                 .expect("Guard Installation remains")

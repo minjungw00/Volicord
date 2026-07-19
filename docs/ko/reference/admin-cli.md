@@ -143,7 +143,7 @@ manifest에서 Connection integration revision만 교체합니다. Inventory가 
 generation, manifest, host configuration, Product Repository file을 전혀 바꾸지 않으며 reload
 action도 내보내지 않습니다. 실제 전환이 성공해도 host configuration이나 Product Repository
 file을 다시 쓰지 않고, 기존 managed host를 새 revision에 맞춰 reload해야 하므로 정확히 하나의
-`ReloadRequired` action을 내보냅니다. 이전 runtime session, 프로젝트 Agent Session, Guard
+`reload_host` action을 내보냅니다. 이전 runtime session, 프로젝트 Agent Session, Guard
 event는 이력으로 남지만 현재 check를 충족하지 못하며, 나중에 이전에 사용한 mode로 돌아가도
 다시 현재 상태가 되지 않습니다.
 
@@ -211,6 +211,11 @@ ConnectionCommandReport:
   actions: ConnectionAction[]
   planned_changes: PlannedConnectionChange[] # dry-run에만 사용
   limits: string[]
+
+PlannedConnectionChange:
+  kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | mode_transition | connection_membership
+  operation: create | update | remove | register | rebind | execute
+  target: string
 ```
 
 이 보고서에는 집계 상태 하나와 check/action 트리 하나만 있습니다. `states`, 중첩 검증
@@ -223,6 +228,12 @@ placeholder로 채우지 않고 생략합니다. `limits`에는 협력적 보장
 `setup_applied=false`와 `planned_changes`를 보고하며 `status=dry_run`을 직렬화하지
 않습니다. 계획 변경이나 host action이 남으면 `action_required`, 둘 다 없으면
 `complete`입니다.
+
+계획 단계는 각 변경에 닫힌 소유권 `kind`, 타입이 지정된 `operation`, 정규 target을 지정합니다.
+No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, `target` 순서로 정렬하고
+중복을 제거합니다. 관리 구성과 Guard check는 `kind`를 사용합니다. Target 경로가 바뀌어도
+계획 변경의 의미는 바뀌지 않습니다. JSON은 위의 세 필드를 포함합니다. 사람용 출력은 각
+항목을 `kind=<kind> operation=<operation> target=<target>` 형태로 표시합니다.
 
 `checks`와 `actions`는 정규
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의

@@ -39,9 +39,10 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, guard_manifest_from_json,
-    ConnectionVerificationError, ConnectionVerificationReport, GuardManagedArtifactKind,
-    IntegrationProfile, IntegrationRevision, ProjectId, PromptCaptureStatus, UtcTimestamp,
+    canonical_json_sha256, canonical_json_string, guard_manifest_from_json, ConnectionActionKind,
+    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, ConnectionVerificationError,
+    ConnectionVerificationReport, GuardManagedArtifactKind, IntegrationProfile,
+    IntegrationRevision, ProjectId, PromptCaptureStatus, UtcTimestamp,
 };
 
 use crate::cli::{
@@ -54,8 +55,8 @@ use crate::guard_integration::audit::{
 };
 use crate::guard_integration::{
     apply_guard_integration, apply_guard_migration_protection, guard_installation_upsert,
-    plan_guard_integration, record_guard_installation, FilePlanStatus, GuardIntegrationError,
-    GuardIntegrationPlan, GuardIntegrationPlanRequest,
+    plan_guard_integration, record_guard_installation, GuardIntegrationError, GuardIntegrationPlan,
+    GuardIntegrationPlanRequest,
 };
 use crate::host_integration::{
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
@@ -74,6 +75,7 @@ mod args;
 mod mcp_process;
 mod output;
 mod persisted_state;
+mod planning;
 mod selection;
 mod service;
 mod verification;
@@ -98,6 +100,7 @@ use persisted_state::{
     decode_persisted_object, persisted_object_state_json,
     PERSISTED_CONNECTION_METADATA_CORRUPT_REASON,
 };
+use planning::{plan_init_changes, InitPlannedChanges, PlannedConnectionChange};
 use selection::{
     connection_for_host_target, connection_selector, host_scope_for_intent,
     resolve_connection_host, resolve_connection_repo_root, select_connection,
@@ -201,12 +204,10 @@ pub fn run_init_command(
         repo_root: &outcome.repo_root,
         connection_id: &outcome.connection_id,
         mode: &outcome.mode,
-        project_id: outcome.project_id.as_deref(),
         host_plan: &outcome.host_plan,
         verification: outcome.verification.as_ref(),
         current_report: outcome.current_report.as_ref(),
-        integration: &outcome.integration,
-        profile_action: outcome.profile_action,
+        planned_changes: &outcome.planned_changes,
     })?;
     command_output_result(rendered.status, rendered.output)
 }
@@ -237,6 +238,11 @@ pub fn run_connect_command(
     )? {
         ConnectionProvisioningOutcome::DryRun(plan) => {
             let plan = *plan;
+            let mut user_actions = plan.host_plan.user_actions.clone();
+            user_actions.push(UserAction::new(
+                UserActionKind::ApplySetup,
+                "Run connection add without --dry-run to apply the planned setup",
+            ));
             render_connection_plan_output(ConnectionPlanOutput {
                 format: connection_output_format(&parsed),
                 action: "connection_add",
@@ -250,8 +256,9 @@ pub fn run_connect_command(
                 enabled: true,
                 repo_root: Some(&plan.repo_root),
                 plan: &plan.host_plan,
+                check_kind: ConnectionCheckKind::SetupPlan,
                 projects_remaining: None,
-                user_actions: plan.host_plan.user_actions.clone(),
+                user_actions,
             })
         }
         ConnectionProvisioningOutcome::Applied(outcome) => {
@@ -465,7 +472,7 @@ fn command_connection_mode(
     let actions = match outcome.kind {
         ConnectionModeTransitionKind::Unchanged => Vec::new(),
         ConnectionModeTransitionKind::Updated => vec![UserAction::new(
-            UserActionKind::ReloadRequired,
+            UserActionKind::ReloadHost,
             format!(
                 "Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision {}",
                 outcome.current_integration_revision.as_str()

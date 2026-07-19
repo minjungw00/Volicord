@@ -215,7 +215,7 @@ fn compact_connection_checks(
                         .code()
                         .map(|code| format!("{} ({code})", check.status().as_str()))
                         .unwrap_or_else(|| check.status().as_str().to_owned());
-                    (canonical_check_label(check.id().as_str()), value)
+                    (canonical_check_label(check.id()), value)
                 })
                 .collect::<Vec<_>>()
         })
@@ -227,19 +227,21 @@ fn compact_connection_checks(
     checks
 }
 
-fn canonical_check_label(id: &str) -> &'static str {
+fn canonical_check_label(id: ConnectionCheckKind) -> &'static str {
     match id {
-        "managed_config" => "Managed MCP configuration",
-        "host_executable" => "Codex executable",
-        "mcp_server" => "Volicord MCP server",
-        "host_session" => "Managed host session",
-        "required_tools" => "Required tools",
-        "tool_round_trip" => "Tool round trip",
-        "project_trust" => "Project trust",
-        "guard_files" => "Guard files",
-        "guard_observation" => "Guard observation",
-        "verification_not_run" => "Verification",
-        _ => "Connection check",
+        ConnectionCheckKind::ManagedConfig => "Managed MCP configuration",
+        ConnectionCheckKind::HostExecutable => "Codex executable",
+        ConnectionCheckKind::McpServer => "Volicord MCP server",
+        ConnectionCheckKind::HostSession => "Managed host session",
+        ConnectionCheckKind::RequiredTools => "Required tools",
+        ConnectionCheckKind::ToolRoundTrip => "Tool round trip",
+        ConnectionCheckKind::ProjectTrust => "Project trust",
+        ConnectionCheckKind::GuardFiles => "Guard files",
+        ConnectionCheckKind::GuardObservation => "Guard observation",
+        ConnectionCheckKind::VerificationNotRun => "Verification",
+        ConnectionCheckKind::SetupPlan => "Setup plan",
+        ConnectionCheckKind::ModeTransition => "Mode transition",
+        ConnectionCheckKind::ConnectionRemoval => "Connection removal",
     }
 }
 
@@ -259,7 +261,7 @@ fn append_compact_next_steps(
         .or_else(|| connection_verify_command(Some(data.connection), data.projects));
     let mut index = 1;
     match action.id.as_str() {
-        "reload_required" => {
+        id if id == ConnectionActionKind::ReloadHost.as_str() || id == "reload_required" => {
             push_numbered_text(
                 output,
                 &mut index,
@@ -274,7 +276,9 @@ fn append_compact_next_steps(
             }
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }
-        "host_trust_required" | "project_approval_required" => {
+        id if id == ConnectionActionKind::HostTrustRequired.as_str()
+            || id == "project_approval_required" =>
+        {
             push_numbered_text(
                 output,
                 &mut index,
@@ -804,8 +808,12 @@ pub(in crate::connection_command) fn render_connection_remove_dry_run_output(
                 enabled: connection.enabled,
                 repo_root: Some(&selected_project.project.repo_root),
                 plan: host_plan,
+                check_kind: ConnectionCheckKind::ConnectionRemoval,
                 projects_remaining: Some(remaining_count),
-                user_actions: Vec::new(),
+                user_actions: vec![UserAction::new(
+                    UserActionKind::ApplyRemoval,
+                    "Run connection remove without --dry-run to apply the planned removal",
+                )],
             })
         }
         ConnectionRemovePlan::MembershipOnly => match format {
@@ -815,6 +823,10 @@ pub(in crate::connection_command) fn render_connection_remove_dry_run_output(
                 remaining_count,
             ),
             OutputFormat::Json => {
+                let actions = [UserAction::new(
+                    UserActionKind::ApplyRemoval,
+                    "Run connection remove without --dry-run to apply the planned removal",
+                )];
                 let project_ids = projects
                     .iter()
                     .map(|project| project.project_id.clone())
@@ -844,11 +856,11 @@ pub(in crate::connection_command) fn render_connection_remove_dry_run_output(
                     "planned_change": "membership",
                     "remaining_connected_projects": remaining_count,
                     "checks": [{
-                        "id": "connection_membership",
+                        "id": ConnectionCheckKind::ConnectionRemoval.as_str(),
                         "status": "passed",
                         "summary": "selected repository membership can be removed"
                     }],
-                    "actions": [],
+                    "actions": actions_json_values(&actions),
                     "primary_next_action": Value::Null,
                 }))
                 .map(|text| format!("{text}\n"))

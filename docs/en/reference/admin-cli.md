@@ -149,7 +149,7 @@ Selecting the current mode is an exact no-op: it changes no Registry row,
 timestamp, report, generation, manifest, host configuration, or Product
 Repository file, and emits no reload action. A successful real transition also
 does not rewrite host configuration or Product Repository files; it emits
-exactly one `ReloadRequired` action because the existing managed host must be
+exactly one `reload_host` action because the existing managed host must be
 reloaded against the new revision. Prior runtime sessions, project Agent
 Sessions, and Guard events remain historical and cannot satisfy current checks,
 including when a later transition returns to a previously used mode.
@@ -222,6 +222,11 @@ ConnectionCommandReport:
   actions: ConnectionAction[]
   planned_changes: PlannedConnectionChange[] # dry-run only
   limits: string[]
+
+PlannedConnectionChange:
+  kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | mode_transition | connection_membership
+  operation: create | update | remove | register | rebind | execute
+  target: string
 ```
 
 The report contains one aggregate status and one check/action tree. It does not
@@ -237,6 +242,14 @@ operational check makes `status=failed`. A dry run reports
 `setup_applied=false`, includes `planned_changes`, and never serializes
 `status=dry_run`. Its status is `action_required` when a planned change or host
 action remains and otherwise `complete`.
+
+Planning assigns every planned change's closed ownership `kind`, typed
+`operation`, and canonical target. It emits no no-op entry and sorts and
+deduplicates entries by the stable spelling of `kind`, then `operation`, then
+`target`. Managed-configuration and Guard checks use `kind`; changing a target
+path cannot change a planned change's meaning. JSON includes the three fields
+shown above. Human output renders each entry as
+`kind=<kind> operation=<operation> target=<target>`.
 
 `checks` and `actions` use the canonical
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)

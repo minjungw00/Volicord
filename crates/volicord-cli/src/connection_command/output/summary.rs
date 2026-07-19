@@ -48,13 +48,13 @@ fn connection_summary_next_text(
         "managed_host_storage_degraded" => format!(
             "Repair managed {host_display} host storage read/write capability or switch to a compatible read-only mode."
         ),
-        "host_trust_required" => format!(
+        id if id == ConnectionActionKind::HostTrustRequired.as_str() => format!(
             "The project must be trusted before project-scoped {host_display} configuration loads; then rerun verification."
         ),
         "project_approval_required" => format!(
             "The project must be approved before project-scoped {host_display} configuration loads; then rerun verification."
         ),
-        "reload_required" => format!(
+        id if id == ConnectionActionKind::ReloadHost.as_str() || id == "reload_required" => format!(
             "Restart or reload {host_display} so it loads Volicord configuration, then rerun verification."
         ),
         "mcp_config_missing" => {

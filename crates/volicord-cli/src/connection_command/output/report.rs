@@ -3,10 +3,14 @@ use std::{collections::BTreeMap, path::Path, str::FromStr, time::SystemTime};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use volicord_types::{
-    ConnectionAction, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckId,
-    ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport, IntegrationProfile,
-    UtcTimestamp,
+    ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
+    ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
+    IntegrationProfile, UtcTimestamp,
 };
+
+#[cfg(test)]
+use crate::connection_command::planning::PlannedChangeOperation;
+use crate::connection_command::planning::{PlannedConnectionChange, PlannedConnectionChangeKind};
 
 use super::*;
 
@@ -62,29 +66,6 @@ impl CommandConnection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(super) struct PlannedConnectionChange {
-    change: String,
-    target: String,
-}
-
-impl PlannedConnectionChange {
-    pub(super) fn new(change: impl Into<String>, target: impl Into<String>) -> Self {
-        Self {
-            change: change.into(),
-            target: target.into(),
-        }
-    }
-
-    pub(super) fn change(&self) -> &str {
-        &self.change
-    }
-
-    pub(super) fn target(&self) -> &str {
-        &self.target
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(super) struct ConnectionCommandReport {
     operation: CommandOperation,
@@ -137,7 +118,10 @@ impl ConnectionCommandReport {
                     .checks()
                     .iter()
                     .filter(|check| {
-                        !matches!(check.id().as_str(), "managed_config" | "guard_files")
+                        !matches!(
+                            check.id(),
+                            ConnectionCheckKind::ManagedConfig | ConnectionCheckKind::GuardFiles
+                        )
                     })
                     .cloned()
                     .collect::<Vec<_>>()
@@ -145,11 +129,10 @@ impl ConnectionCommandReport {
             .unwrap_or_default();
         checks.extend([
             command_check(
-                "managed_config",
-                if planned_changes
-                    .iter()
-                    .any(|change| change.target() == connection.config_target)
-                {
+                ConnectionCheckKind::ManagedConfig,
+                if planned_changes.iter().any(|change| {
+                    change.kind() == PlannedConnectionChangeKind::ManagedHostConfiguration
+                }) {
                     ConnectionCheckStatus::Pending
                 } else {
                     ConnectionCheckStatus::Passed
@@ -159,11 +142,11 @@ impl ConnectionCommandReport {
                 None,
             )?,
             command_check(
-                "guard_files",
-                if planned_changes.iter().any(|change| {
-                    change.target() != connection.config_target
-                        && change.target() != runtime_home.display().to_string()
-                }) {
+                ConnectionCheckKind::GuardFiles,
+                if planned_changes
+                    .iter()
+                    .any(|change| change.kind() == PlannedConnectionChangeKind::GuardManagedFile)
+                {
                     ConnectionCheckStatus::Pending
                 } else {
                     ConnectionCheckStatus::Passed
@@ -173,7 +156,7 @@ impl ConnectionCommandReport {
                 None,
             )?,
             command_check(
-                "setup_plan",
+                ConnectionCheckKind::SetupPlan,
                 if has_changes {
                     ConnectionCheckStatus::Pending
                 } else {
@@ -191,14 +174,14 @@ impl ConnectionCommandReport {
         if current.is_none() {
             checks.extend([
                 command_check(
-                    "host_session",
+                    ConnectionCheckKind::HostSession,
                     ConnectionCheckStatus::Pending,
                     "host_session_not_observed",
                     "Actual Codex connection activity has not been observed",
                     None,
                 )?,
                 command_check(
-                    "guard_observation",
+                    ConnectionCheckKind::GuardObservation,
                     ConnectionCheckStatus::Pending,
                     "guard_observation_pending",
                     "Actual Codex Guard activity has not been observed",
@@ -207,25 +190,25 @@ impl ConnectionCommandReport {
             ]);
         }
 
-        let mut actions = BTreeMap::<String, ConnectionAction>::new();
+        let mut actions = BTreeMap::<ConnectionActionKind, ConnectionAction>::new();
         if let Some(current) = current {
             for action in current.actions() {
-                actions.insert(action.id().to_owned(), action.clone());
+                actions.insert(action.id(), action.clone());
             }
         }
         for action in plan_actions {
-            let id = user_action_id(action.kind).to_owned();
+            let id = ConnectionActionKind::from(action.kind);
             actions.insert(
-                id.clone(),
+                id,
                 ConnectionAction::try_new(id, &action.message, None)
                     .map_err(ConnectionCommandError::from)?,
             );
         }
         if has_changes {
             actions.insert(
-                "apply_setup".to_owned(),
+                ConnectionActionKind::ApplySetup,
                 ConnectionAction::try_new(
-                    "apply_setup",
+                    ConnectionActionKind::ApplySetup,
                     "Run init without --dry-run to apply the planned setup changes",
                     None,
                 )?,
@@ -233,9 +216,9 @@ impl ConnectionCommandReport {
         }
         if current.is_none() {
             actions.insert(
-                "observe_codex".to_owned(),
+                ConnectionActionKind::ObserveCodex,
                 ConnectionAction::try_new(
-                    "observe_codex",
+                    ConnectionActionKind::ObserveCodex,
                     "After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed",
                     None,
                 )?,
@@ -323,7 +306,11 @@ fn render_command_report_text(report: &ConnectionCommandReport) -> String {
         output.push_str("  none\n");
     } else {
         for action in &report.actions {
-            output.push_str(&format!("  {}: {}\n", action.id(), action.instruction()));
+            output.push_str(&format!(
+                "  {}: {}\n",
+                action.id().as_str(),
+                action.instruction()
+            ));
             if let Some(command) = action.command() {
                 output.push_str(&format!("    Command: {command}\n"));
             }
@@ -335,7 +322,12 @@ fn render_command_report_text(report: &ConnectionCommandReport) -> String {
             output.push_str("  none\n");
         } else {
             for change in planned_changes {
-                output.push_str(&format!("  {}: {}\n", change.change(), change.target()));
+                output.push_str(&format!(
+                    "  kind={} operation={} target={}\n",
+                    change.kind().as_str(),
+                    change.operation().as_str(),
+                    change.target()
+                ));
             }
         }
     }
@@ -347,7 +339,7 @@ fn render_command_report_text(report: &ConnectionCommandReport) -> String {
 }
 
 fn command_check(
-    id: &str,
+    id: ConnectionCheckKind,
     status: ConnectionCheckStatus,
     code: &str,
     summary: &str,
@@ -364,7 +356,7 @@ fn command_check(
         })
         .transpose()?;
     ConnectionCheck::try_new(
-        ConnectionCheckId::new(id),
+        id,
         status,
         (status != ConnectionCheckStatus::Passed).then(|| code.to_owned()),
         summary,
@@ -390,7 +382,7 @@ mod tests {
         ConnectionVerificationReport::try_new(
             UtcTimestamp::parse("2026-07-18T00:00:00Z").unwrap(),
             vec![ConnectionCheck::try_new(
-                ConnectionCheckId::new("managed_config"),
+                ConnectionCheckKind::ManagedConfig,
                 status,
                 (status != ConnectionCheckStatus::Passed)
                     .then(|| "managed_config_failed".to_owned()),
@@ -520,7 +512,8 @@ mod tests {
             connection(),
             Some(&current),
             vec![PlannedConnectionChange::new(
-                "update",
+                PlannedConnectionChangeKind::ManagedHostConfiguration,
+                PlannedChangeOperation::Update,
                 "/home/user/.codex/config.toml",
             )],
             &[],
@@ -529,7 +522,102 @@ mod tests {
         let changed = serde_json::to_value(changed).unwrap();
         assert_eq!(changed["status"], "action_required");
         assert_eq!(changed["actions"][0]["id"], "apply_setup");
+        assert_eq!(
+            changed["planned_changes"],
+            json!([{
+                "kind": "managed_host_configuration",
+                "operation": "update",
+                "target": "/home/user/.codex/config.toml"
+            }])
+        );
         assert_no_obsolete_tree(&changed);
+    }
+
+    fn check_status(
+        report: &ConnectionCommandReport,
+        kind: ConnectionCheckKind,
+    ) -> ConnectionCheckStatus {
+        report
+            .checks
+            .iter()
+            .find(|check| check.id() == kind)
+            .expect("planned check")
+            .status()
+    }
+
+    #[test]
+    fn planned_change_kinds_control_semantic_classification() {
+        let current = verification(ConnectionCheckStatus::Passed);
+        let managed_target_looks_like_guard = ConnectionCommandReport::dry_run(
+            Path::new("/runtime"),
+            connection(),
+            Some(&current),
+            vec![PlannedConnectionChange::new(
+                PlannedConnectionChangeKind::ManagedHostConfiguration,
+                PlannedChangeOperation::Update,
+                ".volicord/policy.json",
+            )],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            check_status(
+                &managed_target_looks_like_guard,
+                ConnectionCheckKind::ManagedConfig
+            ),
+            ConnectionCheckStatus::Pending
+        );
+        assert_eq!(
+            check_status(
+                &managed_target_looks_like_guard,
+                ConnectionCheckKind::GuardFiles
+            ),
+            ConnectionCheckStatus::Passed
+        );
+
+        let new_guard_at_config_target = ConnectionCommandReport::dry_run(
+            Path::new("/runtime"),
+            connection(),
+            Some(&current),
+            vec![PlannedConnectionChange::new(
+                PlannedConnectionChangeKind::GuardManagedFile,
+                PlannedChangeOperation::Create,
+                "/home/user/.codex/config.toml",
+            )],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            check_status(
+                &new_guard_at_config_target,
+                ConnectionCheckKind::ManagedConfig
+            ),
+            ConnectionCheckStatus::Passed
+        );
+        assert_eq!(
+            check_status(&new_guard_at_config_target, ConnectionCheckKind::GuardFiles),
+            ConnectionCheckStatus::Pending
+        );
+
+        for target in ["new/guard/file", "/completely/different/location"] {
+            let report = ConnectionCommandReport::dry_run(
+                Path::new("/runtime"),
+                connection(),
+                Some(&current),
+                vec![PlannedConnectionChange::new(
+                    PlannedConnectionChangeKind::GuardManagedFile,
+                    PlannedChangeOperation::Create,
+                    target,
+                )],
+                &[],
+            )
+            .unwrap();
+            assert_eq!(
+                check_status(&report, ConnectionCheckKind::GuardFiles),
+                ConnectionCheckStatus::Pending,
+                "target text must not change Guard classification"
+            );
+        }
     }
 
     #[test]
