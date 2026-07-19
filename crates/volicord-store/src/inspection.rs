@@ -5,7 +5,9 @@ use std::{
 
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
-use volicord_types::{guard_manifest_from_json, ConnectionVerificationReport};
+use volicord_types::{
+    guard_manifest_from_json, ConnectionIntegrationInstanceId, ConnectionVerificationReport,
+};
 
 use crate::{
     agent_connections::{
@@ -96,6 +98,7 @@ pub struct ProjectInspectionRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentConnectionInspectionRecord {
     pub connection_internal_id: String,
+    pub integration_instance_id: ConnectionIntegrationInstanceId,
     pub host_kind: String,
     pub intent: String,
     pub host_scope: String,
@@ -622,6 +625,7 @@ fn read_agent_connection_rows(
         .prepare(
             "SELECT
                 connection_internal_id,
+                integration_instance_id,
                 host_kind,
                 intent,
                 host_scope,
@@ -643,22 +647,33 @@ fn read_agent_connection_rows(
     let rows = stmt
         .query_map([], |row| {
             let connection_internal_id = row.get::<_, String>(0)?;
+            let integration_instance_id = ConnectionIntegrationInstanceId::parse(
+                row.get::<_, String>(1)?,
+            )
+            .map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
             Ok(AgentConnectionInspectionRecord {
                 connection_internal_id,
-                host_kind: row.get(1)?,
-                intent: row.get(2)?,
-                host_scope: row.get(3)?,
-                project_internal_id: row.get(4)?,
-                server_name: row.get(5)?,
-                config_target: row.get(6)?,
-                mode: row.get(7)?,
-                enabled: row.get::<_, i64>(8)? == 1,
-                managed_fingerprint: row.get(9)?,
-                integration_generation: row.get(10)?,
-                verification_report_json: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-                metadata_json: row.get(14)?,
+                integration_instance_id,
+                host_kind: row.get(2)?,
+                intent: row.get(3)?,
+                host_scope: row.get(4)?,
+                project_internal_id: row.get(5)?,
+                server_name: row.get(6)?,
+                config_target: row.get(7)?,
+                mode: row.get(8)?,
+                enabled: row.get::<_, i64>(9)? == 1,
+                managed_fingerprint: row.get(10)?,
+                integration_generation: row.get(11)?,
+                verification_report_json: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+                metadata_json: row.get(15)?,
             })
         })
         .map_err(sqlite_unreadable)?;
@@ -1146,6 +1161,7 @@ mod tests {
         registry.execute(
             "INSERT INTO agent_connections (
                 connection_internal_id,
+                integration_instance_id,
                 host_kind,
                 intent,
                 host_scope,
@@ -1162,6 +1178,7 @@ mod tests {
             )
             VALUES (
                 'agent_inspected',
+                'connection_instance_00112233-4455-4abb-8cdd-eeff10203040',
                 ?1,
                 ?2,
                 ?3,
@@ -1190,6 +1207,12 @@ mod tests {
         assert_eq!(
             snapshot.agent_connections[0].connection_internal_id,
             "agent_inspected"
+        );
+        assert_eq!(
+            snapshot.agent_connections[0]
+                .integration_instance_id
+                .as_str(),
+            "connection_instance_00112233-4455-4abb-8cdd-eeff10203040"
         );
         assert_eq!(snapshot.agent_connections[0].host_kind, HOST_KIND_CODEX);
         assert_eq!(snapshot.agent_connections[0].host_scope, HOST_SCOPE_USER);

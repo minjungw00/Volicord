@@ -345,6 +345,7 @@ identifier_preservation:
     - "resolution_basis"
     - "capture_basis"
     - "connection_internal_id"
+    - "integration_instance_id"
     - "connection_id"
     - "project_internal_id"
     - "project_id"
@@ -2230,6 +2231,7 @@ terms:
     ko_reference_first_reference: "`Agent Connection`(에이전트 연결)"
     preserve_as_identifier:
       - "connection_internal_id"
+      - "integration_instance_id"
       - "connection_id"
       - "connection.mode"
       - "connection_intent"
@@ -2378,6 +2380,30 @@ terms:
     notes:
       - "Use for the storage Agent Connection primary key in `agent_connections` and `connection_projects`."
       - "Do not use as an ordinary user-facing selector."
+  integration_instance_id:
+    category: "storage_internal_identifier"
+    roles:
+      - "storage_internal_identifier"
+    en: "integration_instance_id"
+    preserve_identifier: true
+    ko_reference: "`integration_instance_id`"
+    ko_user: "`integration_instance_id`"
+    preserve_as_identifier:
+      - "integration_instance_id"
+      - "ConnectionIntegrationInstanceId"
+    primary_owner:
+      en: "docs/en/reference/storage-ddl.md"
+      ko: "docs/ko/reference/storage-ddl.md"
+    related_references:
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+      - en: "docs/en/reference/agent-connection.md"
+        ko: "docs/ko/reference/agent-connection.md"
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+    notes:
+      - "Use for the immutable Store-generated lifecycle coordinate of one physical `agent_connections` row."
+      - "Do not use as host identity, actor identity, release certification, a security credential, or caller-selected input."
   connection_id:
     category: "mcp_process_binding"
     roles:

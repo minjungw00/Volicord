@@ -53,6 +53,21 @@ CREATE INDEX idx_project_aliases_project
 
 CREATE TABLE agent_connections (
   connection_internal_id TEXT PRIMARY KEY,
+  integration_instance_id TEXT NOT NULL CHECK (
+    length(integration_instance_id) = 56
+    AND substr(integration_instance_id, 1, 20) = 'connection_instance_'
+    AND substr(integration_instance_id, 29, 1) = '-'
+    AND substr(integration_instance_id, 34, 1) = '-'
+    AND substr(integration_instance_id, 39, 1) = '-'
+    AND substr(integration_instance_id, 44, 1) = '-'
+    AND substr(integration_instance_id, 21, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 30, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 35, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 40, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 45, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 35, 1) = '4'
+    AND substr(integration_instance_id, 40, 1) GLOB '[89ab]'
+  ),
   host_kind TEXT NOT NULL CHECK (host_kind = 'codex'),
   intent TEXT NOT NULL CHECK (intent IN ('personal', 'shared')),
   host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project')),
@@ -89,6 +104,8 @@ CREATE INDEX idx_agent_connections_enabled
   ON agent_connections (enabled);
 CREATE INDEX idx_agent_connections_project
   ON agent_connections (project_internal_id);
+CREATE UNIQUE INDEX idx_agent_connections_integration_instance
+  ON agent_connections (integration_instance_id);
 CREATE UNIQUE INDEX idx_agent_connections_target_project
   ON agent_connections (
     host_kind,
@@ -108,6 +125,12 @@ CREATE UNIQUE INDEX idx_agent_connections_target_unscoped
     server_name
   )
   WHERE project_internal_id IS NULL;
+
+CREATE TRIGGER agent_connections_integration_instance_immutable
+BEFORE UPDATE OF integration_instance_id ON agent_connections
+BEGIN
+  SELECT RAISE(ABORT, 'agent_connections.integration_instance_id is immutable');
+END;
 
 CREATE TABLE mcp_runtime_sessions (
   runtime_session_id TEXT PRIMARY KEY,

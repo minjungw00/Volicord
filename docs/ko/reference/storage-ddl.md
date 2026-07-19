@@ -92,10 +92,10 @@ manifest와 같아야 합니다. 정수를 파싱하거나, 버전을 비교하�
 고르거나, 다른 프로필을 시도하지 않습니다. 정확한 열기 결과와 실패 범주는
 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
-분산된 Agent Connection 검증 열을 `verification_report_json`으로 교체하면 두 schema
-digest가 모두 바뀝니다. 바로 이전의 분산 스키마 manifest를 지닌 Runtime Home은 명시적인
-재초기화 안내와 함께 지원하지 않는 storage profile로 거부합니다. Store는 해당 행을
-제자리에서 migration하지 않습니다.
+변경 불가능한 Agent Connection `integration_instance_id`를 추가하면 두 schema digest가
+모두 바뀝니다. 바로 이전 schema manifest를 지닌 Runtime Home은 명시적인 재초기화 안내와
+함께 지원하지 않는 storage profile로 거부합니다. Store는 column을 제자리에서 추가하거나
+값을 합성하지 않습니다.
 
 ## 기준 SQL 원본
 
@@ -188,6 +188,21 @@ CREATE INDEX idx_project_aliases_project
 
 CREATE TABLE agent_connections (
   connection_internal_id TEXT PRIMARY KEY,
+  integration_instance_id TEXT NOT NULL CHECK (
+    length(integration_instance_id) = 56
+    AND substr(integration_instance_id, 1, 20) = 'connection_instance_'
+    AND substr(integration_instance_id, 29, 1) = '-'
+    AND substr(integration_instance_id, 34, 1) = '-'
+    AND substr(integration_instance_id, 39, 1) = '-'
+    AND substr(integration_instance_id, 44, 1) = '-'
+    AND substr(integration_instance_id, 21, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 30, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 35, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 40, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 45, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 35, 1) = '4'
+    AND substr(integration_instance_id, 40, 1) GLOB '[89ab]'
+  ),
   host_kind TEXT NOT NULL CHECK (host_kind = 'codex'),
   intent TEXT NOT NULL CHECK (intent IN ('personal', 'shared')),
   host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project')),
@@ -224,6 +239,8 @@ CREATE INDEX idx_agent_connections_enabled
   ON agent_connections (enabled);
 CREATE INDEX idx_agent_connections_project
   ON agent_connections (project_internal_id);
+CREATE UNIQUE INDEX idx_agent_connections_integration_instance
+  ON agent_connections (integration_instance_id);
 CREATE UNIQUE INDEX idx_agent_connections_target_project
   ON agent_connections (
     host_kind,
@@ -243,6 +260,12 @@ CREATE UNIQUE INDEX idx_agent_connections_target_unscoped
     server_name
   )
   WHERE project_internal_id IS NULL;
+
+CREATE TRIGGER agent_connections_integration_instance_immutable
+BEFORE UPDATE OF integration_instance_id ON agent_connections
+BEGIN
+  SELECT RAISE(ABORT, 'agent_connections.integration_instance_id is immutable');
+END;
 
 CREATE TABLE mcp_runtime_sessions (
   runtime_session_id TEXT PRIMARY KEY,
@@ -373,11 +396,13 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_project
 - `project_aliases`는 별칭을 `project_internal_id` 값에 매핑합니다. 별칭 행은 레지스트리 선택 보조 값이지 프로젝트별 Core 권한 기록이 아닙니다.
 - `projects.state_db_path`는 저장 열로 유지됩니다. Store의 애플리케이션 수준 현재 등록 검증은 운영 `ProjectRecord` 조회나 목록 조회, 쓰기 가능한 프로젝트 상태 열기, Agent Connection 프로젝트 처리 경로, Core 실행, 프로젝트 Store 재사용, MCP 프로젝트 가용성 확인 전에 이 값이 `project_home/state.sqlite`와 같은지 확인해야 합니다.
 - `projects.status`는 저장소 소유 값이며 유효한 값은 `active`뿐입니다.
-- `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, Store 소유 integration generation, 선택적 정규 검증 보고서 JSON 값, 메타데이터, 타임스탬프를 저장합니다.
+- `agent_connections.connection_internal_id`는 Agent Connection 기록의 저장 기본 키입니다. 이 테이블은 고유하고 변경 불가능한 Store 생성 `integration_instance_id`, 호스트 종류, `intent`에 저장되는 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, Store 소유 integration generation, 선택적 정규 검증 보고서 JSON 값, 메타데이터, 타임스탬프를 저장합니다.
+- `agent_connections.integration_instance_id`는 새 물리 행을 만들 때만 생성하는 엄격한 `connection_instance_` 접두 UUIDv4 lifecycle 좌표입니다. 고유 index는 현재 행 사이의 충돌을 막고 `agent_connections_integration_instance_immutable`은 갱신 시도를 거부합니다. 호환 replay와 모든 제자리 lifecycle 갱신은 이 값을 보존합니다. 물리 행 삭제는 이 값을 제거하며, 같은 결정적 Connection identity를 다시 만들어도 새 값을 받습니다.
 - `agent_connections.intent`는 현재 `host_kind=codex` 계약에서 `personal` 또는 `shared`로 제한됩니다.
 - 현재 Codex connection 계약은 `host_kind=codex`를 사용하고 connection intent에 따라 `host_scope`로 `user` 또는 `project`를 사용합니다.
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.integration_generation`은 Connection integration revision의 Store 소유 비음수 입력입니다. 실제 mode 전환이 성공하면 mode와 소유한 모든 Guard manifest를 갱신하는 같은 Registry transaction에서 정확히 한 번 증가합니다. 같은 mode를 지정한 no-op에서는 증가하지 않습니다.
+- Integration generation은 물리 Connection instance 하나 안의 revision을 구분하고 `integration_instance_id`는 물리 삭제와 재생성을 구분합니다. 어느 값도 host나 actor를 식별하거나 release를 인증하거나 security credential로 동작하지 않으며, 호출자가 선택할 수 없습니다.
 - `agent_connections.verification_report_json`은 완료된 보고서가 없으면 SQL null입니다. Null이 아닌 값은 파생 상태와 action을 포함하는 엄격한 정규 `ConnectionVerificationReport` 하나를 저장하며 값이 없는 선택 구성원은 명시적 null 대신 생략합니다. Store는 그 구성 요소를 독립적으로 영속 저장하지 않습니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase에 결속됩니다. 이 객체는 Volicord 소유권만 설명하며 host capability 인증서, lifecycle 상태, OS 수준 집행 증명, 쓰기 방지 증명이 아닙니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 현재 소유권의 `guard_events`에서 도출합니다.

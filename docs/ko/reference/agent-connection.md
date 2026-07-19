@@ -179,13 +179,22 @@ credential을 발급하지 않습니다.
 ## 통합 Revision과 운영 Session
 
 현재 Connection 통합 revision은 타입이 지정되고 domain-separated된 canonical SHA-256
-digest입니다. Basis는 Agent Connection identity, host kind, intent, scope, mode, server
-name, configuration target, 현재의 정확한 managed-configuration fingerprint와 Store 소유
-비음수 integration generation입니다. 이 fingerprint는 관리 server command와 entry를
-포함합니다. Generation은 0에서 시작하고 실제 mode 전환이 성공할 때마다 정확히 한 번
-증가하며, 같은 mode를 지정한 no-op에서는 그대로 유지됩니다. 따라서 이전에 사용한 mode로
-돌아가더라도 새 revision이 만들어지고 그 이전 mode generation의 evidence는 다시 현재 상태가
-될 수 없습니다.
+digest입니다. Basis는 Agent Connection identity, 변경 불가능한 Store 소유 통합 instance
+ID, host kind, intent, scope, mode, server name, configuration target, 현재의 정확한
+managed-configuration fingerprint, Store 소유 비음수 integration generation입니다. 이
+fingerprint는 관리 server command와 entry를 포함합니다.
+
+Store는 새 물리 `agent_connections` 행을 삽입할 때만 새 opaque 통합 instance ID를
+생성합니다. 호환 등록 replay, enabled 상태와 검증 갱신, staged activation과 cleanup 복구,
+mode 전환은 이 값을 보존합니다. 물리 삭제는 행과 함께 instance를 제거합니다. 따라서
+호출자에게 보이는 target과 configuration 입력이 모두 같고 결정적 Connection identity를
+재사용하더라도 다시 만든 Connection은 새 통합 instance ID를 받습니다.
+
+Integration generation은 해당 물리 instance 안에서 0으로 시작하고 실제 mode 전환이
+성공할 때마다 정확히 한 번 증가하며, 같은 mode를 지정한 no-op에서는 그대로 유지됩니다.
+그러므로 generation은 물리 instance 하나 안의 revision을 구분하고, 통합 instance ID는
+삭제와 재생성을 구분합니다. 이전에 사용한 mode로 돌아가더라도 새 revision이 만들어지고
+그 이전 mode generation의 evidence는 다시 현재 상태가 될 수 없습니다.
 
 Revision 구성은 관찰한 host version, executable path 또는 암호학적 identity, allowlist
 좌표, 주장된 capability set, MCP client name/version을 제외합니다. 이 값은 권한을 바꿀
@@ -221,6 +230,10 @@ configuration, Product Repository file은 바꾸지 않습니다. 모든 후보�
 줍니다. Binary, host, client, actor, 운영체제 사용자, human identity를 식별하지
 않습니다. MCP client name/version과 관찰한 host executable version은 제한 안의 임의의
 미래 값을 받고 diagnostic으로만 남습니다.
+
+통합 instance ID와 integration generation은 로컬 lifecycle 좌표일 뿐입니다. 어느 값도
+host identity, actor identity, release certification, security credential, 호출자가
+제어하는 입력이 아닙니다.
 
 <a id="validated-agent-session"></a>
 

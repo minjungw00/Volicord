@@ -1107,6 +1107,7 @@ impl OperationalFixture {
     ) -> AgentConnectionRecord {
         AgentConnectionRecord {
             connection_internal_id: connection.connection_internal_id.clone(),
+            integration_instance_id: connection.integration_instance_id.clone(),
             host_kind: connection.host_kind.clone(),
             intent: connection.intent.clone(),
             host_scope: connection.host_scope.clone(),

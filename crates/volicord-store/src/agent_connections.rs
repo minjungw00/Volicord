@@ -7,7 +7,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    guard_manifest_from_json, ConnectionVerificationReport, IntegrationRevision, UtcTimestamp,
+    guard_manifest_from_json, ConnectionIntegrationInstanceId, ConnectionVerificationReport,
+    DurableIdGenerator, DurableIdKind, IntegrationRevision, RandomDurableIdGenerator, UtcTimestamp,
+    DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::{
@@ -96,6 +98,7 @@ pub struct AgentConnectionNaturalKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentConnectionRecord {
     pub connection_internal_id: String,
+    pub integration_instance_id: ConnectionIntegrationInstanceId,
     pub host_kind: String,
     pub intent: String,
     pub host_scope: String,
@@ -640,9 +643,28 @@ fn write_agent_connection(
             ],
         )?;
     } else {
-        tx.execute(
-            "INSERT INTO agent_connections (
+        let generator = RandomDurableIdGenerator;
+        let mut inserted = false;
+        for _ in 0..DURABLE_ID_RETRY_LIMIT {
+            let integration_instance_id = generator
+                .generate(DurableIdKind::ConnectionIntegrationInstance)
+                .map_err(|error| StoreError::InvalidInput {
+                    detail: format!(
+                        "could not generate Agent Connection integration-instance id: {error}"
+                    ),
+                })?;
+            let integration_instance_id = ConnectionIntegrationInstanceId::parse(
+                integration_instance_id,
+            )
+            .map_err(|error| StoreError::InvalidInput {
+                detail: format!(
+                    "generated Agent Connection integration-instance id was invalid: {error}"
+                ),
+            })?;
+            let changed = tx.execute(
+                "INSERT OR IGNORE INTO agent_connections (
                 connection_internal_id,
+                integration_instance_id,
                 host_kind,
                 intent,
                 host_scope,
@@ -670,24 +692,39 @@ fn write_agent_connection(
                 ?10,
                 ?11,
                 ?12,
+                ?13,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             )",
-            params![
-                registration.connection_internal_id,
-                registration.host_kind,
-                registration.intent,
-                registration.host_scope,
-                registration.project_internal_id,
-                registration.server_name,
-                registration.config_target,
-                registration.mode,
-                enabled_as_i64(registration.enabled),
-                registration.managed_fingerprint,
-                registration.verification_report_json,
-                registration.metadata_json
-            ],
-        )?;
+                params![
+                    registration.connection_internal_id,
+                    integration_instance_id.as_str(),
+                    registration.host_kind,
+                    registration.intent,
+                    registration.host_scope,
+                    registration.project_internal_id,
+                    registration.server_name,
+                    registration.config_target,
+                    registration.mode,
+                    enabled_as_i64(registration.enabled),
+                    registration.managed_fingerprint,
+                    registration.verification_report_json,
+                    registration.metadata_json
+                ],
+            )?;
+            if changed == 1 {
+                inserted = true;
+                break;
+            }
+        }
+        if !inserted {
+            return Err(StoreError::Conflict {
+                entity: "agent_connection",
+                id: registration.connection_internal_id.clone(),
+                detail: "integration-instance durable id collision retry limit was exhausted"
+                    .to_owned(),
+            });
+        }
     }
     let connection = agent_connection_record_from_conn(&tx, &registration.connection_internal_id)?
         .ok_or_else(|| StoreError::NotFound {
@@ -795,6 +832,7 @@ fn list_raw_agent_connections_from_conn(
     let mut stmt = conn.prepare(
         "SELECT
             connection_internal_id,
+            integration_instance_id,
             host_kind,
             intent,
             host_scope,
@@ -815,7 +853,9 @@ fn list_raw_agent_connections_from_conn(
     let mut rows = stmt.query([])?;
     let mut connections = Vec::new();
     while let Some(row) = rows.next()? {
-        connections.push(agent_connection_record_from_row(row)?);
+        connections.push(decode_agent_connection_record(
+            agent_connection_record_from_row(row)?,
+        )?);
     }
     Ok(connections)
 }
@@ -2281,6 +2321,7 @@ pub(crate) fn raw_agent_connection_record_from_conn(
     conn.query_row(
         "SELECT
             connection_internal_id,
+            integration_instance_id,
             host_kind,
             intent,
             host_scope,
@@ -2301,29 +2342,84 @@ pub(crate) fn raw_agent_connection_record_from_conn(
         agent_connection_record_from_row,
     )
     .optional()
-    .map_err(StoreError::from)
+    .map_err(StoreError::from)?
+    .map(decode_agent_connection_record)
+    .transpose()
+}
+
+#[derive(Debug)]
+struct RawAgentConnectionRecord {
+    connection_internal_id: String,
+    integration_instance_id: String,
+    host_kind: String,
+    intent: String,
+    host_scope: String,
+    project_internal_id: Option<String>,
+    server_name: String,
+    config_target: String,
+    mode: String,
+    enabled: bool,
+    managed_fingerprint: String,
+    integration_generation: i64,
+    verification_report_json: Option<String>,
+    created_at: String,
+    updated_at: String,
+    metadata_json: String,
 }
 
 fn agent_connection_record_from_row(
     row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<AgentConnectionRecord> {
+) -> rusqlite::Result<RawAgentConnectionRecord> {
     let connection_internal_id = row.get::<_, String>(0)?;
-    Ok(AgentConnectionRecord {
+    Ok(RawAgentConnectionRecord {
         connection_internal_id,
-        host_kind: row.get(1)?,
-        intent: row.get(2)?,
-        host_scope: row.get(3)?,
-        project_internal_id: row.get(4)?,
-        server_name: row.get(5)?,
-        config_target: row.get(6)?,
-        mode: row.get(7)?,
-        enabled: row.get::<_, i64>(8)? == 1,
-        managed_fingerprint: row.get(9)?,
-        integration_generation: row.get(10)?,
-        verification_report_json: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
-        metadata_json: row.get(14)?,
+        integration_instance_id: row.get(1)?,
+        host_kind: row.get(2)?,
+        intent: row.get(3)?,
+        host_scope: row.get(4)?,
+        project_internal_id: row.get(5)?,
+        server_name: row.get(6)?,
+        config_target: row.get(7)?,
+        mode: row.get(8)?,
+        enabled: row.get::<_, i64>(9)? == 1,
+        managed_fingerprint: row.get(10)?,
+        integration_generation: row.get(11)?,
+        verification_report_json: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
+        metadata_json: row.get(15)?,
+    })
+}
+
+fn decode_agent_connection_record(
+    raw: RawAgentConnectionRecord,
+) -> StoreResult<AgentConnectionRecord> {
+    let integration_instance_id =
+        ConnectionIntegrationInstanceId::parse(raw.integration_instance_id).map_err(|_| {
+            StoreError::CorruptOwnerStateValue {
+                database_kind: "registry",
+                table: "agent_connections",
+                record_ref: raw.connection_internal_id.clone(),
+                logical_column: "integration_instance_id",
+            }
+        })?;
+    Ok(AgentConnectionRecord {
+        connection_internal_id: raw.connection_internal_id,
+        integration_instance_id,
+        host_kind: raw.host_kind,
+        intent: raw.intent,
+        host_scope: raw.host_scope,
+        project_internal_id: raw.project_internal_id,
+        server_name: raw.server_name,
+        config_target: raw.config_target,
+        mode: raw.mode,
+        enabled: raw.enabled,
+        managed_fingerprint: raw.managed_fingerprint,
+        integration_generation: raw.integration_generation,
+        verification_report_json: raw.verification_report_json,
+        created_at: raw.created_at,
+        updated_at: raw.updated_at,
+        metadata_json: raw.metadata_json,
     })
 }
 
@@ -2577,7 +2673,135 @@ mod tests {
         assert!(!updated.enabled);
         assert_eq!(updated.managed_fingerprint, "fingerprint-updated");
         assert_eq!(read, updated);
-        assert_eq!(listed, vec![updated]);
+        assert_eq!(listed, vec![updated.clone()]);
+        assert_eq!(
+            agent_connection_record_for_diagnostics(fixture.runtime_home.path(), "conn_a")?
+                .expect("diagnostic connection")
+                .integration_instance_id,
+            updated.integration_instance_id
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn connection_instances_are_unique_and_stable_across_compatible_updates(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-instance-stability")?;
+        let first = ensure_agent_connection(fixture.runtime_home.path(), connection("conn_first"))?;
+        let second = ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                config_target: "/tmp/volicord-test-second-config.toml".to_owned(),
+                ..connection("conn_second")
+            },
+        )?;
+        assert_ne!(
+            first.integration_instance_id,
+            second.integration_instance_id
+        );
+        assert!(ConnectionIntegrationInstanceId::parse(
+            first.integration_instance_id.as_str().to_owned()
+        )
+        .is_ok());
+
+        let initial_revision = connection_integration_revision(&first)?;
+        let replay =
+            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_first"))?;
+        assert_eq!(
+            replay.integration_instance_id,
+            first.integration_instance_id
+        );
+        assert_eq!(connection_integration_revision(&replay)?, initial_revision);
+
+        let disabled = set_connection_enabled(fixture.runtime_home.path(), "conn_first", false)?;
+        assert_eq!(
+            disabled.integration_instance_id,
+            first.integration_instance_id
+        );
+        assert_eq!(
+            connection_integration_revision(&disabled)?,
+            initial_revision
+        );
+
+        let verified = update_agent_connection_verification_report(
+            fixture.runtime_home.path(),
+            "conn_first",
+            &first.managed_fingerprint,
+            Some(&verification_report()),
+        )?;
+        assert_eq!(
+            verified.integration_instance_id,
+            first.integration_instance_id
+        );
+        assert_eq!(
+            connection_integration_revision(&verified)?,
+            initial_revision
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn connection_instance_is_sql_immutable_and_malformed_storage_is_corrupt(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-instance-storage")?;
+        let created =
+            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_instance"))?;
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database(&registry_path)?;
+        let replacement = "connection_instance_11223344-5566-4abb-8cdd-eeff10203040";
+        assert!(conn
+            .execute(
+                "UPDATE agent_connections
+                    SET integration_instance_id = ?2
+                  WHERE connection_internal_id = ?1",
+                params!["conn_instance", replacement],
+            )
+            .is_err());
+        assert_eq!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_instance")?
+                .expect("connection after rejected overwrite")
+                .integration_instance_id,
+            created.integration_instance_id
+        );
+
+        let immutable_trigger_sql: String = conn.query_row(
+            "SELECT sql FROM sqlite_master
+              WHERE type = 'trigger'
+                AND name = 'agent_connections_integration_instance_immutable'",
+            [],
+            |row| row.get(0),
+        )?;
+        conn.execute_batch(
+            "DROP TRIGGER agent_connections_integration_instance_immutable;
+             PRAGMA ignore_check_constraints = ON;",
+        )?;
+        assert_eq!(
+            conn.execute(
+                "UPDATE agent_connections
+                    SET integration_instance_id = 'not-a-connection-instance'
+                  WHERE connection_internal_id = 'conn_instance'",
+                [],
+            )?,
+            1
+        );
+        conn.execute_batch("PRAGMA ignore_check_constraints = OFF;")?;
+        conn.execute_batch(&immutable_trigger_sql)?;
+        drop(conn);
+
+        for error in [
+            agent_connection_record(fixture.runtime_home.path(), "conn_instance")
+                .expect_err("strict read must reject a malformed integration instance"),
+            agent_connection_record_for_diagnostics(fixture.runtime_home.path(), "conn_instance")
+                .expect_err("diagnostic read must retain typed instance validation"),
+            list_agent_connections(fixture.runtime_home.path())
+                .expect_err("strict list must reject a malformed integration instance"),
+        ] {
+            assert_connection_owner_value_corrupt(
+                error,
+                "conn_instance",
+                "integration_instance_id",
+            );
+        }
         Ok(())
     }
 
@@ -2835,6 +3059,25 @@ mod tests {
                 logical_column: actual_column,
             } if record_ref == connection_internal_id && actual_column == logical_column
         ));
+    }
+
+    fn assert_connection_owner_value_corrupt(
+        error: StoreError,
+        connection_internal_id: &str,
+        logical_column: &'static str,
+    ) {
+        assert!(
+            matches!(
+                &error,
+                StoreError::CorruptOwnerStateValue {
+                    database_kind: "registry",
+                    table: "agent_connections",
+                    record_ref,
+                    logical_column: actual_column,
+                } if record_ref == connection_internal_id && *actual_column == logical_column
+            ),
+            "{error:?}"
+        );
     }
 
     #[test]
@@ -3225,15 +3468,27 @@ mod tests {
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
-        ensure_agent_connection(
+        let staged_registration = AgentConnectionRegistration {
+            connection_internal_id: "conn_staged".to_owned(),
+            config_target: "/tmp/volicord-test-staged-disabled.toml".to_owned(),
+            enabled: false,
+            ..connection("conn_staged")
+        };
+        let staged = ensure_staged_agent_connection(
             fixture.runtime_home.path(),
-            AgentConnectionRegistration {
-                connection_internal_id: "conn_staged".to_owned(),
-                config_target: "/tmp/volicord-test-staged-disabled.toml".to_owned(),
-                enabled: false,
-                ..connection("conn_staged")
-            },
+            staged_registration.clone(),
         )?;
+        let staged_revision = connection_integration_revision(&staged)?;
+        let staged_replay =
+            ensure_staged_agent_connection(fixture.runtime_home.path(), staged_registration)?;
+        assert_eq!(
+            staged_replay.integration_instance_id,
+            staged.integration_instance_id
+        );
+        assert_eq!(
+            connection_integration_revision(&staged_replay)?,
+            staged_revision
+        );
         add_connection_project(
             fixture.runtime_home.path(),
             ConnectionProjectRegistration {
@@ -3298,7 +3553,7 @@ mod tests {
             "guard_conflicting"
         )?
         .is_none());
-        let (_, _, pending_host_cleanup) = activate_staged_connection(
+        let (activated_connection, _, pending_host_cleanup) = activate_staged_connection(
             fixture.runtime_home.path(),
             "conn_staged",
             PROJECT_ID,
@@ -3314,6 +3569,14 @@ mod tests {
             ),
         )?;
         assert_eq!(pending_host_cleanup, vec!["conn_prior"]);
+        assert_eq!(
+            activated_connection.integration_instance_id,
+            staged.integration_instance_id
+        );
+        assert_eq!(
+            connection_integration_revision(&activated_connection)?,
+            staged_revision
+        );
         assert!(
             !agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
                 .expect("prior connection")
@@ -3342,6 +3605,14 @@ mod tests {
             }],
         )?;
         assert!(resumed_connection.enabled);
+        assert_eq!(
+            resumed_connection.integration_instance_id,
+            staged.integration_instance_id
+        );
+        assert_eq!(
+            connection_integration_revision(&resumed_connection)?,
+            staged_revision
+        );
         assert_eq!(
             resumed_state,
             StagedConnectionMigrationState::CleanupResume {
@@ -3473,6 +3744,12 @@ mod tests {
             },
         )?;
         assert!(list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.is_empty());
+        let after_cleanup = agent_connection_record(fixture.runtime_home.path(), "conn_staged")?
+            .expect("replacement connection after cleanup");
+        assert_eq!(
+            after_cleanup.integration_instance_id,
+            staged.integration_instance_id
+        );
         Ok(())
     }
 
@@ -3637,6 +3914,47 @@ mod tests {
             registry_connection_row_count(&fixture, "connection_projects", "conn_initialized")?,
             0
         );
+        Ok(())
+    }
+
+    #[test]
+    fn physical_recreation_reuses_connection_id_with_a_new_instance_and_revision(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-instance-recreation")?;
+        let first =
+            ensure_agent_connection_for_target(fixture.runtime_home.path(), natural_connection())?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: first.connection_internal_id.clone(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        let first_revision = connection_integration_revision(&first)?;
+        let outcome = remove_connection_project(
+            fixture.runtime_home.path(),
+            &first.connection_internal_id,
+            PROJECT_ID,
+        )?;
+        assert!(outcome.connection_removed);
+        assert!(agent_connection_record(
+            fixture.runtime_home.path(),
+            &first.connection_internal_id
+        )?
+        .is_none());
+
+        let recreated =
+            ensure_agent_connection_for_target(fixture.runtime_home.path(), natural_connection())?;
+        assert_eq!(
+            recreated.connection_internal_id,
+            first.connection_internal_id
+        );
+        assert_ne!(
+            recreated.integration_instance_id,
+            first.integration_instance_id
+        );
+        assert_eq!(recreated.integration_generation, 0);
+        assert_ne!(connection_integration_revision(&recreated)?, first_revision);
         Ok(())
     }
 
@@ -4041,6 +4359,10 @@ mod tests {
         assert_eq!(outcome.kind, ConnectionModeTransitionKind::Updated);
         assert_eq!(outcome.connection.mode, CONNECTION_MODE_READ_ONLY);
         assert_eq!(
+            outcome.connection.integration_instance_id,
+            before_connection.integration_instance_id
+        );
+        assert_eq!(
             outcome.connection.integration_generation,
             before_connection.integration_generation + 1
         );
@@ -4094,6 +4416,10 @@ mod tests {
         )?;
         assert_eq!(no_op.kind, ConnectionModeTransitionKind::Unchanged);
         assert_eq!(
+            no_op.connection.integration_instance_id,
+            connection_with_report.integration_instance_id
+        );
+        assert_eq!(
             no_op.connection.integration_generation,
             connection_with_report.integration_generation
         );
@@ -4104,6 +4430,14 @@ mod tests {
         assert_eq!(
             no_op.connection.verification_report_json.as_deref(),
             Some(report.as_str())
+        );
+        assert_eq!(
+            no_op.previous_integration_revision,
+            no_op.current_integration_revision
+        );
+        assert_eq!(
+            no_op.current_integration_revision,
+            connection_integration_revision(&connection_with_report)?
         );
         assert_eq!(
             crate::guards::guard_installation(fixture.runtime_home.path(), "guard_mode")?
@@ -4570,6 +4904,22 @@ mod tests {
             host_scope: HOST_SCOPE_USER.to_owned(),
             server_name: "volicord".to_owned(),
             config_target: "/tmp/volicord-test-config.toml".to_owned(),
+            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+            enabled: true,
+            managed_fingerprint: "fingerprint".to_owned(),
+            verification_report_json: None,
+            metadata_json: "{}".to_owned(),
+        }
+    }
+
+    fn natural_connection() -> AgentConnectionNaturalKeyRegistration {
+        AgentConnectionNaturalKeyRegistration {
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            intent: CONNECTION_INTENT_PERSONAL.to_owned(),
+            host_scope: HOST_SCOPE_USER.to_owned(),
+            project_ref: None,
+            server_name: "volicord".to_owned(),
+            config_target: "/tmp/volicord-test-natural-config.toml".to_owned(),
             mode: CONNECTION_MODE_WORKFLOW.to_owned(),
             enabled: true,
             managed_fingerprint: "fingerprint".to_owned(),

@@ -141,6 +141,9 @@ is never an operational authority source.
 - A validated operational session proves only locally observed cooperative
   session ownership and current project authorization. It does not prove a
   binary, host, client, actor, or human identity.
+- The immutable Connection integration-instance ID and integration generation
+  are Runtime Home lifecycle coordinates. They are not host or actor identity,
+  release certification, security credentials, or caller-selected values.
 - Explicit connection removal deletes only the connection-owned Registry
   integration rows selected by the storage owners. It does not delete project
   registrations or project-local Agent Sessions, Guard and workflow history,

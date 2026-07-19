@@ -565,6 +565,7 @@ fn assert_exact_manifest_and_artifacts(
     assert!(guard_manifest_has_exact_current_shape(&manifest));
     let connection_record = AgentConnectionRecord {
         connection_internal_id: connection.connection_internal_id.clone(),
+        integration_instance_id: connection.integration_instance_id.clone(),
         host_kind: connection.host_kind.clone(),
         intent: connection.intent.clone(),
         host_scope: connection.host_scope.clone(),
@@ -755,6 +756,7 @@ fn inspected_connection_revision(
 ) -> Result<String, Box<dyn Error>> {
     let connection = AgentConnectionRecord {
         connection_internal_id: connection.connection_internal_id.clone(),
+        integration_instance_id: connection.integration_instance_id.clone(),
         host_kind: connection.host_kind.clone(),
         intent: connection.intent.clone(),
         host_scope: connection.host_scope.clone(),

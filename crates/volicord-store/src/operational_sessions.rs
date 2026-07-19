@@ -76,6 +76,7 @@ pub fn connection_integration_revision(
 ) -> StoreResult<IntegrationRevision> {
     IntegrationRevision::for_connection(ConnectionIntegrationRevisionBasis {
         connection_internal_id: &connection.connection_internal_id,
+        integration_instance_id: &connection.integration_instance_id,
         host_kind: &connection.host_kind,
         intent: &connection.intent,
         host_scope: &connection.host_scope,

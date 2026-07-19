@@ -5,7 +5,7 @@ use std::{error::Error, fmt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{canonical_json_sha256, is_canonical_sha256_digest};
+use crate::{canonical_json_sha256, is_canonical_sha256_digest, ConnectionIntegrationInstanceId};
 
 const CONNECTION_REVISION_DOMAIN: &str = "volicord.connection-integration-revision";
 const PROJECT_REVISION_DOMAIN: &str = "volicord.project-integration-revision";
@@ -34,6 +34,7 @@ impl McpRuntimeSessionSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConnectionIntegrationRevisionBasis<'a> {
     pub connection_internal_id: &'a str,
+    pub integration_instance_id: &'a ConnectionIntegrationInstanceId,
     pub host_kind: &'a str,
     pub intent: &'a str,
     pub host_scope: &'a str,
@@ -202,9 +203,20 @@ fn validate_project_basis(
 mod tests {
     use super::*;
 
-    fn connection_basis<'a>(fingerprint: &'a str) -> ConnectionIntegrationRevisionBasis<'a> {
+    fn integration_instance_id() -> ConnectionIntegrationInstanceId {
+        ConnectionIntegrationInstanceId::parse(
+            "connection_instance_00112233-4455-4abb-8cdd-eeff10203040",
+        )
+        .unwrap()
+    }
+
+    fn connection_basis<'a>(
+        fingerprint: &'a str,
+        integration_instance_id: &'a ConnectionIntegrationInstanceId,
+    ) -> ConnectionIntegrationRevisionBasis<'a> {
         ConnectionIntegrationRevisionBasis {
             connection_internal_id: "connection.alpha",
+            integration_instance_id,
             host_kind: "codex",
             intent: "personal",
             host_scope: "project",
@@ -218,24 +230,35 @@ mod tests {
 
     #[test]
     fn current_integration_revision_is_deterministic() {
-        let first = IntegrationRevision::for_connection(connection_basis("managed:a"))
+        let instance = integration_instance_id();
+        let first = IntegrationRevision::for_connection(connection_basis("managed:a", &instance))
             .expect("valid connection basis");
-        let replay =
-            IntegrationRevision::for_connection(connection_basis("managed:a")).expect("same basis");
+        let replay = IntegrationRevision::for_connection(connection_basis("managed:a", &instance))
+            .expect("same basis");
         assert_eq!(first, replay);
         assert_ne!(
             first,
-            IntegrationRevision::for_connection(connection_basis("managed:b"))
+            IntegrationRevision::for_connection(connection_basis("managed:b", &instance))
                 .expect("changed configuration")
         );
-        let mut next_generation = connection_basis("managed:a");
+        let mut next_generation = connection_basis("managed:a", &instance);
         next_generation.integration_generation = 1;
         assert_ne!(
             first,
             IntegrationRevision::for_connection(next_generation).expect("next generation")
         );
 
-        let mut invalid_generation = connection_basis("managed:a");
+        let recreated_instance = ConnectionIntegrationInstanceId::parse(
+            "connection_instance_11223344-5566-4abb-8cdd-eeff10203040",
+        )
+        .unwrap();
+        assert_ne!(
+            first,
+            IntegrationRevision::for_connection(connection_basis("managed:a", &recreated_instance))
+                .expect("recreated physical instance")
+        );
+
+        let mut invalid_generation = connection_basis("managed:a", &instance);
         invalid_generation.integration_generation = -1;
         assert_eq!(
             IntegrationRevision::for_connection(invalid_generation),
@@ -259,7 +282,8 @@ mod tests {
 
     #[test]
     fn host_observation_data_is_not_an_integration_revision_input() {
-        let basis = connection_basis("managed:exact-entry");
+        let instance = integration_instance_id();
+        let basis = connection_basis("managed:exact-entry", &instance);
         let revision = IntegrationRevision::for_connection(basis.clone()).expect("valid basis");
         let _diagnostic_host_version = "future-host-999.1";
         let _diagnostic_executable_path = "/diagnostic/host/path";

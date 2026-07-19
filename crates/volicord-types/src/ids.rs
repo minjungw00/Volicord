@@ -1,7 +1,7 @@
 use std::{error::Error, fmt, sync::Mutex};
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
 macro_rules! opaque_string_type {
     ($name:ident, $doc:literal) => {
@@ -128,6 +128,82 @@ opaque_string_type!(
 opaque_string_type!(StorageRef, "Opaque artifact storage reference.");
 opaque_string_type!(RequestHash, "Deterministic canonical request hash string.");
 
+/// Strict Store-generated lifecycle coordinate for one physical Agent Connection row.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
+#[serde(transparent)]
+pub struct ConnectionIntegrationInstanceId(String);
+
+impl ConnectionIntegrationInstanceId {
+    /// Validates and retains a canonical Store-generated integration-instance ID.
+    pub fn parse(value: impl Into<String>) -> Result<Self, ConnectionIntegrationInstanceIdError> {
+        let value = value.into();
+        let prefix = DurableIdKind::ConnectionIntegrationInstance.prefix();
+        let Some(suffix) = value.strip_prefix(prefix) else {
+            return Err(ConnectionIntegrationInstanceIdError);
+        };
+        let bytes = suffix.as_bytes();
+        if bytes.len() != 36
+            || bytes[8] != b'-'
+            || bytes[13] != b'-'
+            || bytes[18] != b'-'
+            || bytes[23] != b'-'
+            || bytes[14] != b'4'
+            || !matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
+            || bytes.iter().enumerate().any(|(index, byte)| {
+                !matches!(index, 8 | 13 | 18 | 23) && !matches!(byte, b'0'..=b'9' | b'a'..=b'f')
+            })
+        {
+            return Err(ConnectionIntegrationInstanceIdError);
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the canonical ID string.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes the wrapper and returns the canonical ID string.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for ConnectionIntegrationInstanceId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(de::Error::custom)
+    }
+}
+
+impl AsRef<str> for ConnectionIntegrationInstanceId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for ConnectionIntegrationInstanceId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Failure to decode a noncanonical Connection integration-instance ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectionIntegrationInstanceIdError;
+
+impl fmt::Display for ConnectionIntegrationInstanceIdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .write_str("Connection integration-instance ID must be a canonical prefixed UUIDv4")
+    }
+}
+
+impl Error for ConnectionIntegrationInstanceIdError {}
+
 /// Number of generated durable IDs to try before reporting an internal collision failure.
 pub const DURABLE_ID_RETRY_LIMIT: usize = 8;
 
@@ -152,6 +228,8 @@ pub enum DurableIdKind {
     AgentSession,
     /// Store-generated MCP Runtime Session ids.
     McpRuntimeSession,
+    /// Store-generated physical Agent Connection integration-instance ids.
+    ConnectionIntegrationInstance,
     /// Core-generated host-hook installation ids.
     GuardInstallation,
     /// Core-generated host-hook event ids.
@@ -195,6 +273,7 @@ impl DurableIdKind {
             Self::Event => "evt_",
             Self::AgentSession => "session_",
             Self::McpRuntimeSession => "mcp_runtime_",
+            Self::ConnectionIntegrationInstance => "connection_instance_",
             Self::GuardInstallation => "guard_installation_",
             Self::GuardEvent => "guard_event_",
             Self::PromptCapture => "prompt_capture_",
@@ -225,6 +304,7 @@ impl fmt::Display for DurableIdKind {
             Self::Event => "event",
             Self::AgentSession => "agent_session",
             Self::McpRuntimeSession => "mcp_runtime_session",
+            Self::ConnectionIntegrationInstance => "connection_integration_instance",
             Self::GuardInstallation => "guard_installation",
             Self::GuardEvent => "guard_event",
             Self::PromptCapture => "prompt_capture",
@@ -370,7 +450,8 @@ mod tests {
 
     #[test]
     fn sequence_generator_preserves_kind_prefixes() {
-        let generator = SequenceDurableIdGenerator::new(["one", "two", "three", "four", "five"]);
+        let generator =
+            SequenceDurableIdGenerator::new(["one", "two", "three", "four", "five", "six"]);
         assert_eq!(generator.generate(DurableIdKind::Task).unwrap(), "task_one");
         assert_eq!(generator.generate(DurableIdKind::Event).unwrap(), "evt_two");
         assert_eq!(
@@ -390,8 +471,44 @@ mod tests {
             "evidence_producer_five"
         );
         assert_eq!(
+            generator
+                .generate(DurableIdKind::ConnectionIntegrationInstance)
+                .unwrap(),
+            "connection_instance_six"
+        );
+        assert_eq!(
             generator.generate(DurableIdKind::Run),
             Err(DurableIdError::DeterministicSequenceExhausted)
         );
+    }
+
+    #[test]
+    fn connection_integration_instance_id_is_strict_and_canonical() {
+        let canonical = "connection_instance_00112233-4455-4abb-8cdd-eeff10203040";
+        let parsed = ConnectionIntegrationInstanceId::parse(canonical).unwrap();
+        assert_eq!(parsed.as_str(), canonical);
+        assert_eq!(parsed.to_string(), canonical);
+        assert_eq!(
+            serde_json::from_str::<ConnectionIntegrationInstanceId>(
+                &serde_json::to_string(canonical).unwrap()
+            )
+            .unwrap(),
+            parsed
+        );
+
+        for invalid in [
+            "00112233-4455-4abb-8cdd-eeff10203040",
+            "connection_instance_00112233-4455-3abb-8cdd-eeff10203040",
+            "connection_instance_00112233-4455-4abb-7cdd-eeff10203040",
+            "connection_instance_00112233-4455-4ABB-8cdd-eeff10203040",
+            "connection_instance_001122334455-4abb-8cdd-eeff10203040",
+            "connection_instance_00112233-4455-4abb-8cdd-eeff1020304g",
+        ] {
+            assert_eq!(
+                ConnectionIntegrationInstanceId::parse(invalid),
+                Err(ConnectionIntegrationInstanceIdError),
+                "{invalid}"
+            );
+        }
     }
 }

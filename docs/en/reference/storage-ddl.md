@@ -100,11 +100,10 @@ an integer, compare versions, inspect field presence to select a decoder, or
 try another profile. The exact open result and failure category remain with
 [Storage Versioning](storage-versioning.md).
 
-Replacing the fragmented Agent Connection verification columns with
-`verification_report_json` changes both schema digests. A Runtime Home carrying
-the immediately prior fragmented schema manifest is rejected as an unsupported
-storage profile with explicit reinitialization guidance. Store does not migrate
-its rows in place.
+Adding the immutable Agent Connection `integration_instance_id` changes both
+schema digests. A Runtime Home carrying the immediately prior schema manifest
+is rejected as an unsupported storage profile with explicit reinitialization
+guidance. Store does not add the column or synthesize values in place.
 
 ## Canonical SQL Sources
 
@@ -203,6 +202,21 @@ CREATE INDEX idx_project_aliases_project
 
 CREATE TABLE agent_connections (
   connection_internal_id TEXT PRIMARY KEY,
+  integration_instance_id TEXT NOT NULL CHECK (
+    length(integration_instance_id) = 56
+    AND substr(integration_instance_id, 1, 20) = 'connection_instance_'
+    AND substr(integration_instance_id, 29, 1) = '-'
+    AND substr(integration_instance_id, 34, 1) = '-'
+    AND substr(integration_instance_id, 39, 1) = '-'
+    AND substr(integration_instance_id, 44, 1) = '-'
+    AND substr(integration_instance_id, 21, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 30, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 35, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 40, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 45, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(integration_instance_id, 35, 1) = '4'
+    AND substr(integration_instance_id, 40, 1) GLOB '[89ab]'
+  ),
   host_kind TEXT NOT NULL CHECK (host_kind = 'codex'),
   intent TEXT NOT NULL CHECK (intent IN ('personal', 'shared')),
   host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project')),
@@ -239,6 +253,8 @@ CREATE INDEX idx_agent_connections_enabled
   ON agent_connections (enabled);
 CREATE INDEX idx_agent_connections_project
   ON agent_connections (project_internal_id);
+CREATE UNIQUE INDEX idx_agent_connections_integration_instance
+  ON agent_connections (integration_instance_id);
 CREATE UNIQUE INDEX idx_agent_connections_target_project
   ON agent_connections (
     host_kind,
@@ -258,6 +274,12 @@ CREATE UNIQUE INDEX idx_agent_connections_target_unscoped
     server_name
   )
   WHERE project_internal_id IS NULL;
+
+CREATE TRIGGER agent_connections_integration_instance_immutable
+BEFORE UPDATE OF integration_instance_id ON agent_connections
+BEGIN
+  SELECT RAISE(ABORT, 'agent_connections.integration_instance_id is immutable');
+END;
 
 CREATE TABLE mcp_runtime_sessions (
   runtime_session_id TEXT PRIMARY KEY,
@@ -388,11 +410,13 @@ Registry constraints:
 - `project_aliases` maps aliases to `project_internal_id` values. Alias rows are registry selection aids, not project-local Core authority records.
 - `projects.state_db_path` is retained as a stored column. Store application-level current-registration validation must confirm it equals `project_home/state.sqlite` before operational `ProjectRecord` lookup or listing, writable project-state open, Agent Connection project routing, Core execution, project-store reuse, or MCP project availability.
 - `projects.status` is storage-owned and valid only as `active`.
-- `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, a Store-owned integration generation, an optional canonical verification report JSON value, metadata, and timestamps.
+- `agent_connections.connection_internal_id` is the storage primary key for Agent Connection records. The table stores the unique immutable Store-generated `integration_instance_id`, host kind, connection intent in `intent`, host scope, optional `project_internal_id`, server name, config target, mode, enabled state, managed fingerprint, a Store-owned integration generation, an optional canonical verification report JSON value, metadata, and timestamps.
+- `agent_connections.integration_instance_id` is a strict `connection_instance_`-prefixed UUIDv4 lifecycle coordinate created only for a new physical row. Its unique index prevents current-row collisions, and `agent_connections_integration_instance_immutable` rejects attempted updates. Compatible replay and every in-place lifecycle update preserve it. Physical row deletion removes it, and recreating the same deterministic Connection identity gets a new value.
 - `agent_connections.intent` is constrained to `personal` or `shared` for the current `host_kind=codex` contract.
 - The current Codex connection contract uses `host_kind=codex` and a `host_scope` of `user` or `project` according to its connection intent.
 - `agent_connections.mode` is constrained to `read_only` or `workflow`.
 - `agent_connections.integration_generation` is a nonnegative Store-owned input to the Connection integration revision. A successful real mode transition increments it exactly once in the same Registry transaction that updates the mode and all owned Guard manifests. A same-mode no-op does not increment it.
+- The integration generation distinguishes revisions within one physical Connection instance, while `integration_instance_id` distinguishes physical deletion and recreation. Neither value identifies a host or actor, certifies a release, or acts as a security credential, and callers cannot select either value.
 - `agent_connections.verification_report_json` is SQL null when no completed report exists. A non-null value stores one strict canonical `ConnectionVerificationReport`, including its derived status and actions; absent optional members are omitted rather than encoded as explicit null. Store does not persist those components independently.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, and required hook phases. It describes Volicord ownership only; it is not a host-capability certificate, lifecycle status, OS-level enforcement proof, or write-prevention proof. File state is audited from the manifest and current files, while observation state is derived from current-owned `guard_events`.

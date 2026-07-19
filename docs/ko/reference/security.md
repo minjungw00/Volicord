@@ -44,6 +44,10 @@ Volicord는 그 OS 사용자를 인증하거나 프로세스 identity를 사람 
 Connection Project membership, 현재 통합 revision, 현재 Connection mode가 허용한 범위만
 증명합니다.
 
+변경 불가능한 Store 소유 Connection 통합 instance ID와 integration generation은 로컬
+Registry lifecycle revision만 구분합니다. Host나 actor를 식별하거나 release를 인증하거나
+security credential로 동작하지 않으며 호출자가 선택할 수 없습니다.
+
 Runtime binding이 없는 Guard-only 프로젝트 session은 상관관계 이력이지 호출 권한이
 아닙니다. Core 권한에는 현재 managed-host runtime과 정확한 Registry
 runtime/project/host-session 예약도 필요합니다. Runtime row는 process-liveness 주장이

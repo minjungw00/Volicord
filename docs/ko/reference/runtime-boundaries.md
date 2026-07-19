@@ -128,6 +128,9 @@ signal이 아니므로 crash 뒤 열린 것처럼 남은 row와 concurrent proce
   identity, human identity가 아닙니다.
 - 검증된 운영 session은 로컬에서 관찰한 협력적 session 소유권과 현재 프로젝트 권한만
   증명합니다. Binary, host, client, actor, human identity를 증명하지 않습니다.
+- 변경 불가능한 Connection 통합 instance ID와 integration generation은 Runtime Home
+  lifecycle 좌표입니다. Host나 actor identity, release certification, security
+  credential, 호출자가 고르는 값이 아닙니다.
 - 명시적인 connection 제거는 저장소 담당자가 정한 Connection 소유 Registry 통합 행만
   삭제합니다. 프로젝트 등록이나 프로젝트 로컬 Agent Session, Guard 및 workflow 이력,
   evidence와 그 밖의 권한 데이터는 삭제하지 않습니다.

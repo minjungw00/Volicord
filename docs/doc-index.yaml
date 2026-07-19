@@ -1614,6 +1614,7 @@ documents:
     Repository, and external MCP host configuration
   - managed MCP and host-hook child-process binding to the Runtime Home selected by init
   - authoritative MCP runtime-session ownership across Registry and Project databases
+  - Runtime Home-local Connection integration-instance and generation coordinates without host or actor identity meaning
   - clone-portable shared host configuration Runtime Home forwarding boundary
   - ordinary MCP server term versus Volicord product, implementation, CLI, and adapter labels
   - explicit integration files allowed in Product Repositories
@@ -1720,6 +1721,7 @@ documents:
   - supported local cooperative security guarantees and explicit non-guarantees
   - Core authority, Write Ticket, UserAction, Guard observation, and display boundaries
   - Agent Connection, process, actor source, and user-identity non-inference
+  - Connection integration-instance and generation lifecycle coordinates without credential or certification meaning
   - managed stdio process topology without a network-listener guarantee
   - executable and version observations plus operational-session non-attestation boundaries
   - historical operation-result access and private-content boundary
@@ -2520,6 +2522,7 @@ documents:
   - strict stored owner values and JSON placement
   - canonical project time-floor and commit timestamp relationships
   - Agent Connection, project membership, and Codex binding records
+  - immutable Store-owned Connection integration-instance identity and physical recreation boundary
   - single nullable canonical Agent Connection verification report persistence
   - authoritative MCP runtime sessions, integration revisions, unbound Guard-first project sessions, and runtime attachment ownership
   - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
@@ -2555,6 +2558,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, Codex Record Guard configuration state, and retained observation tables
+  - strict immutable and unique Agent Connection integration-instance column and update guard
   - verified-command and verified-tool receipt pairing and project-scoped exclusive host-invocation source-claim constraints
   - canonical SQLite indexes, views, foreign keys, and constraints
   - physical canonical-time-floor and cross-row commit timestamp constraints
@@ -2623,8 +2627,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2638,6 +2642,7 @@ documents:
   - one canonical SQLite format and fail-closed exact-open validation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - noncurrent-contract corruption, unavailable, and fresh-recreation storage boundaries
+  - rejection of the preceding Agent Connection schema without migration or dual-read compatibility
   - canonical Core UTC clock and persisted project-time floor
   - atomic state-version, immutable event, write-ticket, and transaction ordering
   - idempotency, strict replay rows, and exact operation-result retrieval
@@ -2673,6 +2678,7 @@ documents:
   - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
   - direct CLI projection of canonical verification checks and actions without a nested report or duplicate status tree
   - typed integration revisions and authoritative managed-host operational-session evidence
+  - immutable Store-owned integration-instance identity across physical Connection lifecycles
   - exact `PlatformEnvironment` value set and independent WSL2 identity
   - pinned WSL2 distribution identity and filesystem boundary
   - exact `ValidatedAgentSession` fields and current Connection/project/session authorization invariants

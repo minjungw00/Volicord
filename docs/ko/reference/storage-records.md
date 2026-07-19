@@ -67,15 +67,23 @@ thread metadata가 생기기 전 MCP process 시작 시점에 opaque `runtime_se
 만듭니다. `session_source`는 정확히 `managed_host` 또는 `cli_preflight`입니다. CLI row는
 검사할 수 있지만 managed-host 운영 evidence 조회를 충족할 수 없습니다.
 
-Connection 통합 revision은 Connection identity, host kind, intent, scope, mode, server
-name, configuration target, 정확한 managed-configuration fingerprint, Store 소유 비음수
-integration generation을 domain-separated canonical digest로 만든 값입니다. Managed
-fingerprint에는 현재 server command와 entry가 포함됩니다. Host와 client version 필드는
-제외하며 identity나 allowlist 입력이 아닌 diagnostic 관찰로만 남습니다. 이 fingerprint에는
-host executable identity나 provenance 입력이 없습니다. Store는 실제 mode 전환이 성공할
-때마다 generation을 정확히 한 번 증가시키고 같은 mode의 no-op에서는 증가시키지 않습니다.
-따라서 나중에 이전 mode로 돌아가도 과거 runtime, session, Guard evidence가 되살아나지
-않습니다.
+각 물리 `agent_connections` 행에는 Store가 그 행을 삽입할 때 생성한 고유하고 변경
+불가능한 opaque 통합 instance ID가 하나 있습니다. Store는 호환 등록 replay, enabled 상태와
+검증 갱신, staged activation과 cleanup 복구, mode 전환에서 이 값을 보존합니다. 물리
+삭제는 행과 함께 이 값을 제거하며, 나중에 같은 결정적 Connection identity를 삽입해도 새
+값을 받습니다.
+
+Connection 통합 revision은 Connection identity, 변경 불가능한 통합 instance ID, host
+kind, intent, scope, mode, server name, configuration target, 정확한
+managed-configuration fingerprint, Store 소유 비음수 integration generation을
+domain-separated canonical digest로 만든 값입니다. Managed fingerprint에는 현재 server
+command와 entry가 포함됩니다. Host와 client version 필드는 제외하며 identity나 allowlist
+입력이 아닌 diagnostic 관찰로만 남습니다. 이 fingerprint에는 host executable identity나
+provenance 입력이 없습니다. Store는 실제 mode 전환이 성공할 때마다 generation을 정확히 한
+번 증가시키고 같은 mode의 no-op에서는 증가시키지 않습니다. Generation은 물리 Connection
+instance 하나 안의 revision을 구분하고, 변경 불가능한 instance ID는 물리 삭제와 재생성을
+구분합니다. 어느 좌표도 host나 actor를 식별하거나 release를 인증하거나 security
+credential로 동작하지 않습니다.
 
 실제 mode 전환은 Connection mode와 generation을 바꾸고 verification report를 비우며,
 소유한 모든 엄격한 Guard manifest에서 integration revision만 교체하는 작업을 원자적으로

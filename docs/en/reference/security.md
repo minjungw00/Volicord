@@ -52,6 +52,11 @@ cooperative runtime/project session ownership, current Connection Project
 membership, current integration revisions, and permission under the current
 Connection mode.
 
+The immutable Store-owned Connection integration-instance ID and the
+integration generation distinguish local Registry lifecycle revisions only.
+They do not identify a host or actor, certify a release, or serve as a security
+credential, and callers cannot select them.
+
 A Guard-only project session with no runtime binding is correlation history,
 not invocation authority. Core authority additionally requires a current
 managed-host runtime and an exact Registry runtime/project/host-session

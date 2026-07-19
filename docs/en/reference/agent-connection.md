@@ -197,14 +197,27 @@ verification does not issue a runtime authorization credential.
 ## Integration Revisions And Operational Sessions
 
 The current Connection integration revision is a typed, domain-separated
-canonical SHA-256 digest. Its basis is the Agent Connection identity, host
-kind, intent, scope, mode, server name, configuration target, and current exact
-managed-configuration fingerprint, plus the nonnegative Store-owned integration
-generation. That fingerprint covers the managed server command and entry. The
-generation begins at zero and increments exactly once for each successful real
-mode transition; a same-mode no-op leaves it unchanged. Therefore returning to
-a previously used mode still creates a new revision and cannot make evidence
-from that earlier mode generation current again.
+canonical SHA-256 digest. Its basis is the Agent Connection identity, immutable
+Store-owned integration-instance ID, host kind, intent, scope, mode, server
+name, configuration target, and current exact managed-configuration
+fingerprint, plus the nonnegative Store-owned integration generation. That
+fingerprint covers the managed server command and entry.
+
+Store generates a new opaque integration-instance ID only when it inserts a
+new physical `agent_connections` row. Compatible registration replay,
+enabled-state and verification updates, staged activation and cleanup recovery,
+and mode transitions preserve it. Physical deletion removes the instance with
+the row. Recreating the same deterministic Connection identity therefore gets
+a new integration-instance ID even when every caller-visible target and
+configuration input is unchanged.
+
+The integration generation begins at zero and increments exactly once for each
+successful real mode transition within that physical instance; a same-mode
+no-op leaves it unchanged. Therefore the generation distinguishes revisions
+within one physical instance, while the integration-instance ID distinguishes
+deletion and recreation. Returning to a previously used mode still creates a
+new revision and cannot make evidence from that earlier mode generation current
+again.
 
 Revision construction excludes observed host version, executable path or
 cryptographic identity, allowlist coordinates, claimed capability sets, and
@@ -246,6 +259,10 @@ ownership under current configuration. They do not identify a binary, host,
 client, actor, operating-system user, or human. MCP client name/version and
 observed host executable version accept arbitrary bounded future values and
 remain diagnostics only.
+
+The integration-instance ID and integration generation are local lifecycle
+coordinates only. Neither is host identity, actor identity, release
+certification, a security credential, or caller-controlled input.
 
 <a id="validated-agent-session"></a>
 
