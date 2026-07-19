@@ -22,9 +22,13 @@ Volicord(볼리코드)는 AI 지원 제품 작업을 위한 로컬 작업 권한
 - 어떤 판단이 아직 사용자에게 남아 있는지
 - 작업을 닫기 전에 무엇을 해결해야 하는지
 
-최초 릴리스 Volicord는 정확히 검증된 Codex 빌드와 함께 쓰는 로컬
-`Product Repository`(제품 저장소)를 대상으로 합니다. OS 샌드박스, 파일 권한 시스템,
-정확성 판정기, 변조 방지 감사 로그, 중앙식 다중 사용자 서비스가 아닙니다.
+최초 릴리스 Volicord는 로컬 `Product Repository`(제품 저장소)에서 Volicord가 관리하는
+Codex MCP 및 Guard 통합을 사용합니다. 호환성은 현재 관리 구성과 관찰한 MCP protocol,
+도구, 안전 호출, Guard 동작으로 판단합니다. OS 샌드박스, 파일 권한 시스템, 정확성
+판정기, 변조 방지 감사 로그, 중앙식 다중 사용자 서비스가 아닙니다. 정확한 연결, 전송,
+보장 의미는 [Agent Connection](docs/ko/reference/agent-connection.md),
+[MCP 전송](docs/ko/reference/mcp-transport.md), [보안](docs/ko/reference/security.md)이
+담당합니다.
 
 ## 빠른 시작
 

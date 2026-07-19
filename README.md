@@ -23,10 +23,15 @@ Volicord is useful when you want an agent to keep these boundaries visible:
 - which decisions still belong to the user
 - what must be resolved before the work can close
 
-The first release is designed for local Product Repositories used with an exact
-validated Codex build. It is not an OS sandbox, a file-permission system, a
-correctness oracle, a tamper-proof audit log, or a centralized multi-user
-service.
+The first release is designed for local Product Repositories with
+Volicord-managed Codex MCP and Guard integration. Compatibility is determined
+from the current managed configuration and observed MCP protocol, tool,
+safe-call, and Guard behavior. It is not an OS sandbox, a file-permission
+system, a correctness oracle, a tamper-proof audit log, or a centralized
+multi-user service. Exact connection, transport, and assurance semantics belong
+to [Agent Connection](docs/en/reference/agent-connection.md),
+[MCP Transport](docs/en/reference/mcp-transport.md), and
+[Security](docs/en/reference/security.md).
 
 ## Quick Start
 

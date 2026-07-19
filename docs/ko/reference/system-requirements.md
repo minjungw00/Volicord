@@ -6,8 +6,8 @@ Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 �
 
 일반 빌드, 패키지, checksum, 플랫폼, 게시 검증은
 [검증](../maintain/validation.md)이, 관리 운영 session 권한은
-[Agent Connection](agent-connection.md)이 담당합니다. Volicord는 Codex 실행 파일의
-identity나 출처를 인증하지 않습니다.
+[Agent Connection](agent-connection.md)이 담당합니다. 실행 파일 path와 version 관찰은
+현재 운영 검증의 diagnostic 입력입니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
@@ -33,8 +33,8 @@ Volicord는 binary target 다섯 개를 게시합니다. 해당 binary가 지원
 | `x86_64-pc-windows-msvc` | `native_windows` | 모든 구성요소가 native x86-64 Windows에서 실행됩니다. WSL 좌표는 사용할 수 없습니다. |
 | `x86_64-unknown-linux-gnu` | `wsl2` | 모든 구성요소가 아래 조건을 만족하는 같은 WSL2 배포판 내부에서 실행되고 그 Linux 파일 시스템을 사용합니다. |
 
-Target 호환성은 Volicord 플랫폼 제약이며 Codex 아티팩트 인증이 아닙니다. 같은
-x86-64 Linux binary를 실행하더라도 native Linux와 WSL2는 별도 환경입니다. 한
+Target 호환성은 Volicord 플랫폼 제약입니다. 같은 x86-64 Linux binary를 실행하더라도
+native Linux와 WSL2는 별도 환경입니다. 한
 architecture나 환경은 다른 환경의 런타임 전제 조건을 성립시키지 않습니다. 릴리스
 패키징은 계속 게시 target을 각각 빌드하고 점검합니다.
 
@@ -72,8 +72,8 @@ architecture나 환경은 다른 환경의 런타임 전제 조건을 성립시�
 | `/etc/os-release` `VERSION_ID` | `24.04` |
 
 플랫폼 점검은 배포판 이름, 운영체제 identity, WSL2 커널 경계, 파일 시스템 종류를
-관찰합니다. 이 관찰은 지원 토폴로지를 집행할 뿐 실행 파일 identity나 운영 권한
-credential이 아닙니다.
+관찰하여 지원 토폴로지를 집행합니다. 운영 권한은 현재 Connection과 session 소유권을
+별도로 검증합니다.
 
 WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인하고
 `target_triple=x86_64-unknown-linux-gnu`를 요구해야 합니다. 일반 Linux `target_os`
@@ -129,10 +129,11 @@ workflow가 Git 객체 ID를 제공하거나 검증할 때, 또는 선택한 Pro
 
 ## 실행 파일과 프로세스 요구사항
 
-관리 프로세스는 구성된 Codex 실행 파일을 찾아 실행할 수 있어야 합니다. 검증은 관찰한
-실행 파일과 host version을 diagnostic으로 보고할 수 있지만 권한을 위해 hash하거나
-정확한 호스트 allowlist와 대조하거나 실행 파일 attestation을 발급하지 않습니다. 실행 파일 사용 가능성은
-agent, host, binary, 운영체제 사용자, human identity를 성립시키지 않습니다.
+관리 프로세스는 구성된 Codex 실행 파일을 찾아 실행할 수 있어야 합니다. 활성 검증에서는
+실행 파일 탐색과 version 명령이 성공해야 합니다. 검증은 해석한 path와 관찰한 host version을
+diagnostic으로 보고합니다. 관찰한 version이 달라지면 관리 Codex 동작을 다시 관찰할 때까지
+현재 운영 관찰이 pending이 됩니다. 실행 파일 사용 가능성만으로 agent, 운영체제 사용자,
+human identity가 성립하지는 않습니다.
 
 관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야
 합니다. adapter는 관리 entry, command, arguments, 전달된 Runtime Home, configuration
@@ -140,8 +141,8 @@ target, 플랫폼 전제 조건을 검증합니다. 관리 launch marker는 협�
 맥락이지 credential이 아닙니다. 비어 있는 환경 값과 없는 환경 값은 다릅니다.
 
 실행 파일, 설정, 프로세스, client, version 관찰은 diagnostic 또는 설정 사실입니다.
-어느 것도 런타임 권한을 공급하지 않습니다. 권한은 현재 Connection, project
-membership, mode, Store가 소유한 관리 runtime/project session을 사용합니다.
+Runtime 권한은 현재 Connection, project membership, 허용 mode, Store가 소유한 관리
+runtime/project session과 정확한 binding을 검증합니다.
 
 ## Runtime Home 요구사항
 
@@ -206,7 +207,8 @@ Initialize 때 MCP는 제한된 client name/version과 선택적 host version di
 포함한 managed-host runtime session 하나를 기록합니다. 각 project tool 호출에서는
 project session을 기록하거나 선택하고, Core 맥락을 만들기 전에 현재 Connection
 활성화, membership, mode, runtime/project session 소유권, 두 integration revision을
-검증합니다. 제한 안의 임의 client/host version은 이 결과를 바꾸지 않습니다.
+검증합니다. 새로 관찰한 제한 안의 host version은 운영 관찰을 갱신해 호환성을
+확인합니다.
 
 비밀과 관련 없는 ambient 환경 값은 관리 설정에 복사하지 않습니다. 진단은 token,
 전체 민감 payload 또는 가리지 않은 민감 절대 경로를 출력하면 안 됩니다.

@@ -81,13 +81,12 @@ command와 entry가 포함되며, setup 담당 경로가 마지막으로 적용�
 Volicord 관리 host configuration을 식별합니다. 명시적인 setup 소유 managed-configuration
 쓰기만 이 값을 바꿀 수 있습니다. 이 쓰기가 fingerprint를 바꾸면 같은 Registry
 transaction에서 `verification_report_json`을 비우며, fingerprint가 같은 replay는 보고서를
-유지할 수 있습니다. Host와 client version 필드는 제외하며 identity나 allowlist
-입력이 아닌 diagnostic 관찰로만 남습니다. 이 fingerprint에는 host executable identity나
-provenance 입력이 없습니다. Store는 실제 mode 전환이 성공할 때마다 generation을 정확히 한
+유지할 수 있습니다. Host와 client version 필드는 diagnostic 관찰로 남습니다. Host version이
+바뀌면 운영 관찰을 갱신하며, 현재 소유자 field와 Store 소유 generation이 lifecycle revision을
+파생합니다. Store는 실제 mode 전환이 성공할 때마다 generation을 정확히 한
 번 증가시키고 같은 mode의 no-op에서는 증가시키지 않습니다. Generation은 물리 Connection
 instance 하나 안의 revision을 구분하고, 변경 불가능한 instance ID는 물리 삭제와 재생성을
-구분합니다. 어느 좌표도 host나 actor를 식별하거나 release를 인증하거나 security
-credential로 동작하지 않습니다.
+구분합니다. 두 값은 Store 소유 로컬 lifecycle 및 상관관계 좌표입니다.
 
 실제 mode 전환은 Connection mode와 generation을 바꾸고 verification report를 비우며,
 소유한 모든 엄격한 Guard manifest에서 integration revision만 교체하는 작업을 원자적으로
@@ -231,8 +230,8 @@ projection만 읽을 수 있습니다.
 Registry의 각 `guard_installations` row는 안정적인 설치/소유자 identity, 정규
 `manifest_json`, 생성/갱신 timestamp만 유지합니다. Manifest는 엄격하고 소유자에
 결속되며 정확한 policy hash, integration revision, typed runtime command, 전체
-Volicord managed-file 기대값, 필수 typed hook phase를 담습니다. 이 객체는 host capability
-인증서도 설치 status 상태 기계도 아닙니다.
+Volicord managed-file 기대값, 필수 typed hook phase를 담습니다. File audit과 필수 phase
+관찰은 이 manifest와 현재 소유자가 일치하는 사실에서 현재 Guard check를 파생합니다.
 
 Policy command와 runtime command는 의도적으로 서로 다른 projection입니다. 정규 policy
 command에는 `--policy-hash`가 없고, 그 policy를 hash한 뒤 runtime command에

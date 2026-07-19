@@ -81,14 +81,14 @@ reload action 하나를 내보내며, 같은 mode의 no-op에서는 내보내지
 Runtime Home의 Guard manifest는 위 파일 가운데 정확한 Guard-managed subset과 typed
 runtime command에 대한 소유 inventory입니다. Managed script entry는 모든 플랫폼에서 executable
 동작을 요구하지만 파일시스템 조사와 permission 복구는 플랫폼별로 수행합니다. Manifest는
-관련 없는 repository content의 소유권을 주장하지 않으며 host capability 또는 runtime
-인증도 아닙니다.
+관련 없는 repository content의 소유권을 주장하지 않습니다. Audit과 관찰에 사용하는 현재
+policy hash, integration revision, typed runtime command, 전체 managed-file 기대값, 필수 hook
+phase를 담당합니다.
 
 운영 연결 검증은 `PATH`에서 실제 `codex` 명령을 찾고 플랫폼 topology 규칙에 따라 관찰한
 실행 파일 경로를 canonicalize한 뒤 version 명령을 실행합니다. Path와 version
-diagnostic만 기록합니다. Package-native artifact를 해석하거나 executable bytes를
-hash하거나 플랫폼 실행 파일 identity를 도출하거나 version이 정확한 호스트 allowlist에 있어야 한다고
-요구하지 않습니다.
+diagnostic을 기록합니다. 관찰한 version이 바뀌면 현재 host 동작은 운영 관찰을 갱신할 때까지
+pending이 됩니다.
 
 ## Volicord Runtime Home
 
@@ -138,15 +138,15 @@ carrier이며 운영 권한 출처로 사용하지 않습니다.
 
 - Product Repository 쓰기에는 계속 해당 Core 권한이 필요합니다.
 - Runtime Home 쓰기 접근은 Product Repository 쓰기 권한이 아닙니다.
-- 관리 구성과 시작 marker는 사용자 판단, 쓰기 티켓, host attestation, client
-  identity, human identity가 아닙니다.
-- 검증된 운영 session은 로컬에서 관찰한 협력적 session 소유권과 현재 프로젝트 권한만
-  증명합니다. Binary, host, client, actor, human identity를 증명하지 않습니다.
+- 관리 구성과 시작 marker는 협력적 routing 맥락을 선택하며 사용자 판단, 쓰기 티켓,
+  human identity를 공급하지 않습니다.
+- 검증된 운영 session은 로컬에서 관찰한 협력적 session 소유권과 현재 프로젝트 권한을
+  성립시킵니다. Client, actor, 운영체제 사용자, human identity를 성립시키지는 않습니다.
 - 내부 runtime/project session ID는 비공개 로컬 상관관계 좌표이며 host-native identity,
   actor identity, credential이 아닙니다.
 - 변경 불가능한 Connection 통합 instance ID와 integration generation은 Runtime Home
-  lifecycle 좌표입니다. Host나 actor identity, release certification, security
-  credential, 호출자가 고르는 값이 아닙니다.
+  Store 소유 lifecycle 좌표입니다. 현재 소유자 입력과 함께 로컬 lifecycle 및
+  상관관계 revision을 파생합니다.
 - 명시적 제거와 Connection migration은 저장소 담당자가 정한 순서로 선택한
   connection/project 소유 Registry 통합 행만 폐기합니다. 마지막 프로젝트의 pending
   migration은 host 정리가 성공할 때까지 이 완전한 Registry inventory를 유지합니다. 어느

@@ -55,11 +55,11 @@ trusted contract violates that contract. A malformed or unknown untrusted
 boundary input that has not become persisted owner state is `Rejected`, not
 `Corrupt`, and is not guessed into a supported shape.
 
-An installed Codex executable or version is not an external contract and has
-no certified or uncertified state. Connection verification runs behavioral
-probes and reports their actual `passed`, `pending`, or `failed` results.
-Failure to find or run the executable is `Unavailable` at a general
-failure-category boundary and a failed `host_executable` connection check.
+Active connection verification discovers the configured Codex executable, runs
+its version command, and reports the behavioral probes as `passed`, `pending`,
+or `failed`. Failure to find or run the executable is `Unavailable` at a
+general failure-category boundary and a failed `host_executable` connection
+check. A different observed version renews the operational observations.
 
 The administrative connection command report uses `failed` only for a typed
 operational result with at least one failed required check. Pending host

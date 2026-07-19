@@ -45,11 +45,11 @@ does not depend on the command-report state.
 active probes or writing files, reports, observations, or timestamps.
 `connection verify` performs current adapter and managed-configuration
 inspection, runs permitted local probes, reads actual managed-host and Guard
-observations, and commits at most one report through the Store owner. It does
-not hash the host executable, consult an exact-host allowlist, issue an
-executable attestation, fabricate host activity, or create a managed-host agent
-session. Authoritative managed runtime and project sessions are recorded only
-by managed MCP lifecycle handling.
+observations, and commits at most one report through the Store owner. Executable
+path and version are diagnostic probe facts. Authoritative managed runtime and
+project sessions are recorded only by managed MCP lifecycle handling; the CLI
+self-test records `session_source=cli_preflight` and cannot authorize a
+managed-host call.
 
 ## Project And Policy Workflows
 
@@ -87,8 +87,9 @@ authority state.
 - Codex-specific configuration remains in the adapter.
 - No command starts a network transport.
 - No noninteractive command supplies user judgment.
-- Client and host version observations are diagnostics and never authorization,
-  executable identity, provenance, or support credentials.
+- Client and host version observations are diagnostics. A changed host version
+  renews operational observation; managed-call authorization uses current
+  authoritative session ownership and exact bindings.
 
 ## Related Routes
 

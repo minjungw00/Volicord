@@ -6,8 +6,8 @@
 ## 경계 요약
 
 Volicord는 협력적 로컬 권한 기록입니다. 담당 문서가 정의한 workflow 상태를 검증하고
-기록하지만 sandbox, 접근 통제 시스템, host attestation 서비스, malware 방어, 네트워크
-격리 계층, 모델이 지침을 따랐다는 증명이 아닙니다.
+기록하지만 sandbox, 접근 통제 시스템, malware 방어, 네트워크 격리 계층, 변조 방지 감사
+로그, 모델이 지침을 따랐다는 증명이 아닙니다.
 
 ## 지원 보장
 
@@ -45,8 +45,8 @@ Connection Project membership, 현재 통합 revision, 현재 Connection mode가
 증명합니다.
 
 변경 불가능한 Store 소유 Connection 통합 instance ID와 integration generation은 로컬
-Registry lifecycle revision만 구분합니다. Host나 actor를 식별하거나 release를 인증하거나
-security credential로 동작하지 않으며 호출자가 선택할 수 없습니다.
+Registry lifecycle revision을 구분합니다. 현재 소유자 입력과 함께 로컬 lifecycle 및
+상관관계 좌표를 파생하며 호출자가 선택할 수 없습니다.
 
 Runtime binding이 없는 Guard-only 프로젝트 session은 상관관계 이력이지 호출 권한이
 아닙니다. Core 권한에는 현재 managed-host runtime과 정확한 Registry
@@ -59,11 +59,11 @@ Installation, revision, native session, thread, attached runtime 충돌은 새 R
 보이는 row는 이력이고 concurrent row 여러 개가 서로를 승인하거나 Guard event에 맞는
 runtime으로 추측될 수 없습니다.
 
-실행 파일 bytes와 경로, process identity, client name/version, host version, 환경 값,
-host thread/turn metadata는 actor 또는 human identity credential이 아닙니다. Thread와 turn
-metadata는 지원 workflow를 연결할 수 있지만 Connection이나 프로젝트 권한을 넓힐 수
-없습니다. 내부 runtime ID와 revision 범위 프로젝트 session ID도 마찬가지로 비공개 로컬
-상관관계 좌표이며 host-native identity, actor identity, security credential이 아닙니다.
+실행 파일 경로, process metadata, client name/version, host version, 환경 값, host
+thread/turn metadata는 diagnostic 또는 상관관계 사실이며 actor나 human identity가
+아닙니다. Thread와 turn metadata는 지원 workflow를 연결할 수 있지만 Connection이나
+프로젝트 권한을 넓힐 수 없습니다. 내부 runtime ID와 revision 범위 프로젝트 session
+ID도 비공개 로컬 상관관계 좌표입니다.
 
 지원 MCP 프로세스는 stdin/stdout을 사용하고 네트워크 전송 listener를 열지 않습니다.
 이는 프로세스 topology 사실이며 네트워크 sandboxing이 아닙니다. Codex나 tool은
@@ -75,11 +75,11 @@ Product Repository 파일은 사용자 제품 데이터입니다. Runtime Home r
 권한 기록입니다. 관리 Codex 구성은 프로세스를 시작하지만 권한, 승인, 쓰기 티켓,
 Codex가 이를 읽었다는 증명이 아닙니다.
 
-행동 기반 연결 관찰은 Core 권한을 부여하거나 사용자를 식별하거나 실행 파일 출처 또는
-identity를 인증하거나 미래 호스트 행동을 증명하지 않습니다. Production runtime 권한은
-executable digest나 host version allowlist를 조회하지 않습니다. 프로젝트 Agent Session과
-Registry 예약은 로컬 협력적 상관관계 기록입니다. 권한을 위해 둘을 정확히 짝지은 상태도
-actor, host, client, 운영체제 사용자, human identity를 증명하지 않습니다.
+행동 기반 연결 관찰은 현재 관리 구성과 관찰한 protocol, 도구, 안전 호출, Guard 동작의
+호환성을 성립시킵니다. Core 권한은 현재 활성 Connection, 프로젝트 membership, mode,
+관리 runtime session, revision 범위 프로젝트 session, 정확한 Registry/프로젝트 binding을
+별도로 검증합니다. 이 협력적 기록은 actor, client, 운영체제 사용자, human identity,
+완전한 감시, 미래 host 동작을 성립시키지 않습니다.
 
 <a id="historical-operation-result-access"></a>
 ## 과거 operation result 접근

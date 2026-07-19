@@ -64,8 +64,9 @@ git diff --check
 
 Release changes also require the generic release-integrity package and the
 ordinary build, package, checksum, platform, and workflow checks applicable to
-the change. A real-Codex smoke run is optional operational observation and must
-not become an executable identity, provenance, support, or authorization gate.
+the change. A real-Codex smoke run is an optional operational observation for
+the current configuration and environment; version changes renew that
+observation, while managed-call authorization remains session-bound.
 
 ## Handoff
 

@@ -38,6 +38,10 @@
 - Guard 관찰과 미기록 변경 suppression 결과
 - Codex 구성 drift와 행동 probe 실패 보고
 
+운영 상호운용성 coverage는 제한 안의 임의 version 문자열을 받고, initialize와 도구 목록
+milestone을 실행하며, 필수 도구와 안전한 읽기 전용 호출, Guard artifact와 필수 phase 관찰,
+session 소유권 및 integration revision 격리를 점검합니다.
+
 ## 릴리스 무결성과 선택적 호스트 smoke
 
 오래 유지되는 릴리스 테스트 패키지는 `tests/release-integrity`입니다. 게시하는
@@ -45,16 +49,15 @@ Volicord target 다섯 개, 버전 일치, 기준 텍스트 바이트, 패키지
 패키징한 binary identity, checksum 출력, 릴리스 workflow의 일반 빌드와 패키지
 구조를 검증합니다.
 
-저장소 테스트와 릴리스 workflow는 Codex 실행 파일을 인증하거나 정확한 호스트
-allowlist를 유지하지 않습니다. 런타임 연결 검증은
-[Agent Connection](../reference/agent-connection.md)이 정의한 관리 구성, MCP 초기화,
-필수 도구, 안전한 도구 왕복, Guard 관찰을 점검합니다.
+일반 릴리스 무결성 테스트는 Volicord 플랫폼 빌드와 패키지 artifact를 다룹니다. 운영
+Codex 상호운용성 테스트는 [Agent Connection](../reference/agent-connection.md)이 정의한
+관리 구성, MCP 초기화, 필수 도구, 안전한 도구 왕복, Guard 관찰, session 소유권,
+revision 격리를 별도로 다룹니다.
 
 실제 Codex 실행은 선택적인 운영 smoke입니다. 제한된 host version을 진단으로
 보고할 수 있고 version이 바뀌면 관찰을 다시 수행할 수 있습니다. 결과는 해당 구성과
-환경에서 관찰한 행동에만 적용되며 실행 파일 출처나 identity, 미래 호스트 행동, 사람
-identity, 런타임 권한을 증명하지 않습니다. smoke 인프라 부재는 일반 Volicord 릴리스
-점검을 차단하지 않습니다.
+환경에서 관찰한 행동에만 적용되며 미래 host 동작, human identity, 런타임 권한을
+성립시키지 않습니다. smoke 인프라 부재는 일반 Volicord 릴리스 점검을 차단하지 않습니다.
 
 ## 문서 검증
 

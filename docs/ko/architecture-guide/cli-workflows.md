@@ -39,10 +39,10 @@ list는 명령 보고서 상태에 의존하지 않는 집중 list projection을
 `connection status`는 활성 probe를 실행하거나 파일, 보고서, 관찰, timestamp를 쓰지
 않고 현재 파일과 Store 관찰을 읽습니다. `connection verify`는 현재 adapter와 관리 구성을
 검사하고 허용된 로컬 probe를 실행한 뒤 실제 managed-host 및 Guard 관찰을 읽고 Store
-담당 경로로 보고서를 최대 하나 commit합니다. 호스트 실행 파일을 hash하거나 정확한
-호스트 allowlist를 조회하거나 실행 파일 attestation을 발급하거나 host 활동을 꾸며 내거나 managed-host
-agent session을 만들지 않습니다. 권위 있는 관리 runtime/project session은 관리 MCP
-lifecycle 처리에서만 기록합니다.
+담당 경로로 보고서를 최대 하나 commit합니다. Executable path와 version은 diagnostic probe
+사실입니다. 권위 있는 관리 runtime/project session은 관리 MCP lifecycle 처리에서만 기록하며,
+CLI self-test는 `session_source=cli_preflight`를 기록하므로 managed-host 호출을 승인할 수
+없습니다.
 
 ## 프로젝트와 정책 흐름
 
@@ -79,8 +79,8 @@ diagnostic metadata를 권한 상태로 다시 parse하지 않습니다.
 - Codex별 구성은 adapter에 남습니다.
 - 어떤 명령도 네트워크 전송을 시작하지 않습니다.
 - 비대화형 명령은 사용자 판단을 제출하지 않습니다.
-- Client와 host version 관찰은 diagnostic일 뿐 권한 credential이 아닙니다. 릴리스
-  주장은 별도의 정확한 6셀 증거 흐름에 남습니다.
+- Client와 host version 관찰은 diagnostic입니다. Host version이 바뀌면 운영 관찰을
+  갱신하며, 관리 호출 권한은 현재 권위 있는 session 소유권과 정확한 binding을 사용합니다.
 
 ## 관련 경로
 

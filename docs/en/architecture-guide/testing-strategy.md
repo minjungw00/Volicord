@@ -41,6 +41,11 @@ Durable tests should cover, as applicable:
 - Guard observation and unrecorded-change suppression outcomes; and
 - Codex configuration drift and behavior-probe failure reporting.
 
+Operational interoperability coverage accepts arbitrary bounded version
+strings, exercises initialize and tool-list milestones, checks required tools
+and safe read-only calls, audits Guard artifacts and required-phase
+observations, and isolates session ownership and integration revisions.
+
 ## Release Integrity And Optional Host Smoke
 
 The durable release test package is `tests/release-integrity`. It verifies all
@@ -48,18 +53,18 @@ five published Volicord targets, version consistency, canonical text bytes,
 package and archive shape, packaged-binary identity, checksum output, and the
 ordinary build and package structure in the release workflow.
 
-Repository tests and release workflows do not certify a Codex executable or
-maintain an exact-host allowlist. Runtime connection verification instead
-checks the managed configuration, MCP initialization, required tools, safe tool
-round trips, and Guard observations defined by
+Generic release-integrity tests cover Volicord platform build and package
+artifacts. Operational Codex interoperability tests separately cover managed
+configuration, MCP initialization, required tools, safe tool round trips,
+Guard observations, session ownership, and revision isolation as defined by
 [Agent Connection](../reference/agent-connection.md).
 
 A real-Codex run is optional operational smoke. It may report the bounded host
 version as a diagnostic and repeat the observation when that version changes.
 Its result applies only to the behavior observed in that configuration and
-environment; it does not prove executable provenance, identity, future host
-behavior, human identity, or runtime authority. Missing smoke infrastructure
-does not block the ordinary Volicord release checks.
+environment; it does not establish future host behavior, human identity, or
+runtime authority. Missing smoke infrastructure does not block the ordinary
+Volicord release checks.
 
 ## Documentation Validation
 

@@ -52,9 +52,11 @@ cooperative process source but do not prove client, host, actor, or human
 identity. Corrupt records, ambiguous selection, and unavailable storage use the
 [Failure Model](failure-model.md).
 
-Startup does not hash the parent executable, consult an exact-host allowlist,
-derive a platform executable identity, issue or load an executable attestation,
-or use client or host version as an authorization input.
+After startup resolves that managed Connection, it immediately records a
+Registry runtime session with the current Connection integration revision and
+the `managed_host` or `cli_preflight` source. Executable path, host version, and
+client version remain diagnostics; managed-call authorization is established
+from the current session and project bindings described below.
 
 ## MCP Wire Behavior
 
@@ -105,9 +107,10 @@ may coexist and bind different host sessions.
 
 The negotiated protocol version is authoritative protocol data. `clientInfo`
 name/version and an observed host executable version are diagnostic fields;
-they are accepted as bounded future values and do not prove client identity,
-host identity, compatibility, or allowlist membership. The session proves
-only the cooperative protocol behavior it actually records.
+they accept bounded future values. Compatibility is determined from the current
+managed configuration and the initialization, tool-list, required-tool,
+safe-call, and Guard behavior observed for the current revision. These records
+are cooperative and do not establish client, host, actor, or human identity.
 
 ## Per-Call Session Authorization
 
@@ -132,6 +135,10 @@ is not authority. If the final project write is interrupted, an identical call
 under unchanged owner state reuses the reservation and finishes the attachment.
 CLI preflight never performs this binding.
 
+Project Agent Session validation therefore precedes Registry runtime
+reservation. Authorization requires both the completed project attachment and
+the exact completed Registry binding.
+
 Before constructing Core invocation context for a project tool, the adapter
 validates the authoritative current Registry runtime session, the exact
 `mcp_runtime_project_session_bindings` row, and the project `agent_sessions`
@@ -153,9 +160,8 @@ must exactly match `ActorSource::AgentConnection`, and its project ID must
 match every project-scoped invocation. The audit `verification_basis` is
 derived locally as
 `connection:<connection_id>/session:<project_session_id>/revision:<project_integration_revision>`.
-This value records operational ownership; it is not a certificate, receipt,
-identity proof, or trusted host digest. There is no fallback to release
-evidence or a previous authorization record.
+This value is the deterministic local lifecycle and correlation coordinate for
+the validated operational ownership recorded in the audit event.
 
 ## Tool Discovery
 

@@ -186,8 +186,8 @@ membership만 제거한 경우와 Agent Connection을 완전히 제거한 경우
 | `action_required` | 오래 유지되는 설정이 있을 수 있지만 이름 붙은 사용자 또는 Codex 동작이 남았습니다. |
 | `failed` | 동작이 실패했고 기계 판독 원인을 보고합니다. |
 
-`complete`는 Core 호출 권한, 실행 파일 attestation, 보고서의 check와 관찰을 벗어난
-행동에 대한 주장이 아닙니다.
+`complete`는 해당 명령 보고서의 모든 필수 check가 통과했음을 뜻합니다. Core 호출
+권한은 각 관리 MCP 호출에서 별도로 평가합니다.
 
 선택한 Connection의 설정 및 생명주기 명령은 모두
 `ConnectionCommandReport` 하나를 직렬화합니다. 여기에는 `volicord init`과
@@ -242,10 +242,8 @@ PlannedConnectionChange:
 `result`에는 작업별 사실만 두며 두 번째 상태를 만들지 않습니다. 설정 보고서는
 `kind=setup`, mode 보고서는 `kind=mode_transition`, 적용에 성공한 제거 보고서는
 `kind=removal`을 사용합니다. Status와 verify는 보통 `result`를 생략하고, 제거 dry
-run은 아직 발생하지 않은 결과를 생략합니다. `states`, 중첩 검증
-보고서나 상태, Guard 상태 트리, host gate나 승인 필드, summary card, primary action,
-두 번째 disclosure 트리를 추가하지 않습니다. JSON은 적용되지 않는 선택 필드를 null
-placeholder로 채우지 않고 생략합니다. `limits`에는 협력적 보장 한계를 한 번만 둡니다.
+run은 아직 발생하지 않은 결과를 생략합니다. JSON은 적용되지 않는 선택 필드를
+생략합니다. `limits`에는 협력적 보장 한계를 한 번만 둡니다.
 
 `SetupResult.applied`는 설정 변경과 운영 검증을 구분합니다. Init 또는 add 적용이
 성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`가 되더라도
@@ -308,10 +306,9 @@ session이 아닙니다.
 유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리
 구성을 rollback하지 않습니다. Managed-host 관찰이 아직 없는 새 유효 설정은
 `action_required`이며, 관찰을 얻는 데 필요한 typed reload/first-use action을 담습니다.
-Codex version이나 executable digest를 eligibility allowlist로 사용하지 않습니다. 이 setup
-명령은 host configuration을 적용하거나 채택한 뒤 managed fingerprint를 commit하고, 소유자와
-일관된 Registry/Guard 상태를 완성하며, 최종 Connection revision을 파생한 다음에만 검증하고
-조건부로 보고서를 영속합니다.
+이 setup 명령은 host configuration을 적용하거나 채택한 뒤 managed fingerprint를 commit하고,
+소유자와 일관된 Registry/Guard 상태를 완성하며, 최종 Connection revision을 파생한 다음에만
+현재 구성과 관찰한 host 동작을 검증하고 조건부로 보고서를 영속합니다.
 
 Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 제거된 목록입니다. 다시
 불러오기와 최초 사용 지시는 실제 Codex 활동을 관찰해야 한다고 명시합니다.

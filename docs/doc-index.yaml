@@ -226,8 +226,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -249,8 +249,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - terminology_map_v1
@@ -284,8 +284,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -684,8 +684,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -712,8 +712,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -832,13 +832,13 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, build-once workflow integrity, actual-file Codex catalog generation, complete release-bundle verification, and deterministic external release indexing.
+  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, generic release integrity, and operational Codex interoperability observation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1287,8 +1287,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1498,8 +1498,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1723,9 +1723,9 @@ documents:
   - supported local cooperative security guarantees and explicit non-guarantees
   - Core authority, Write Ticket, UserAction, Guard observation, and display boundaries
   - Agent Connection, process, actor source, and user-identity non-inference
-  - Connection integration-instance and generation lifecycle coordinates without credential or certification meaning
+  - Store-owned Connection integration-instance and generation lifecycle coordinates
   - managed stdio process topology without a network-listener guarantee
-  - executable and version observations plus operational-session non-attestation boundaries
+  - diagnostic executable and version observations plus cooperative operational-session and non-identity boundaries
   - historical operation-result access and private-content boundary
   depends_on:
   - reference.storage-records
@@ -2688,11 +2688,11 @@ documents:
   - pinned WSL2 distribution identity and filesystem boundary
   - exact `ValidatedAgentSession` fields and current Connection/project/session authorization invariants
   - Codex discovery, install, verify, repair, uninstall, drift, launch-context, and diagnostic responsibilities
-  - deterministic connection/session/revision audit basis without executable identity inputs
+  - deterministic connection/session/revision audit basis as a local lifecycle and correlation coordinate
   - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
-  - production runtime independence from exact-host allowlists, executable hashes, and client or host versions
+  - compatibility from current managed configuration and observed protocol, tool, safe-call, and Guard behavior
   - report-contained connection actions without an independent persisted status or action array
-  - first-release managed-host threat model and non-signing boundary
+  - first-release managed-host cooperative and non-identity threat boundary
   depends_on:
   - reference.mcp-transport
   - reference.failure-model
@@ -2967,8 +2967,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-24'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-19'
+  last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -3058,8 +3058,8 @@ documents:
   - representative-user Codex onboarding usability validation
   - generic five-target, version, canonical-byte, package, checksum, and workflow integrity validation
   - optional real-Codex smoke as an operational observation outside the ordinary release result
-  - behavioral host verification through configuration, MCP initialization, required tools, safe tool round trips, and Guard observations
-  - diagnostic host-version changes as a reason to renew observation without executable certification
+  - behavioral host verification through configuration, MCP initialization, required tools, safe tool round trips, Guard observations, and session/revision isolation
+  - diagnostic host-version changes as a reason to renew operational observation
   - Rust formatting, lint, test, diff, repository-hygiene, and skipped-validation reporting
   depends_on:
   - maintain.documentation-policy

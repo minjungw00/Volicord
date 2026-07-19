@@ -47,9 +47,10 @@ Runtime Home/Product Repository 분리, 현재 `StorageManifest`, 필요한 저�
 actor, human identity를 증명하지 않습니다. 손상된 기록, 모호한 선택, 사용할 수 없는
 저장소에는 [실패 모델](failure-model.md)을 적용합니다.
 
-시작 경로는 parent executable을 hash하거나, 정확한 호스트 allowlist를 조회하거나,
-플랫폼 실행 파일 identity를 도출하거나, 실행 파일 attestation을 발급 또는 읽거나,
-client/host version을 권한 입력으로 사용하지 않습니다.
+시작 시 해당 관리 Connection을 해결한 직후 현재 Connection integration revision과
+`managed_host` 또는 `cli_preflight` source를 포함한 Registry runtime session을 기록합니다.
+Executable path, host version, client version은 diagnostic으로 남으며, 관리 호출 권한은
+아래의 현재 session 및 프로젝트 binding으로 성립합니다.
 
 ## MCP wire 동작
 
@@ -96,8 +97,9 @@ graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보�
 
 협상한 protocol version은 권위 있는 protocol data입니다. `clientInfo` name/version과
 관찰한 host 실행 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며
-client identity, host identity, compatibility, allowlist membership을 증명하지 않습니다.
-Session은 실제로 기록한 협력적 protocol 동작만 증명합니다.
+호환성은 현재 관리 구성과 현재 revision에서 관찰한 초기화, 도구 목록, 필수 도구,
+안전 호출, Guard 동작으로 판단합니다. 이 기록은 협력적이며 client, host, actor, human
+identity를 성립시키지 않습니다.
 
 ## 호출별 Session 권한
 
@@ -118,6 +120,9 @@ Registry 예약도 권한이 아닙니다. 마지막 프로젝트 쓰기가 중�
 않은 동일 호출이 예약을 재사용해 attach를 완료합니다. CLI preflight는 이 binding을
 수행하지 않습니다.
 
+따라서 프로젝트 Agent Session 검증은 Registry runtime 예약보다 먼저 수행됩니다. 권한에는
+완료된 프로젝트 attachment와 정확히 완료된 Registry binding이 모두 필요합니다.
+
 프로젝트 도구의 Core 호출 맥락을 만들기 전에 어댑터는 권위 있는 현재 Registry runtime
 session, 정확한 `mcp_runtime_project_session_bindings` row, 프로젝트 `agent_sessions` row를
 검증합니다. Connection이 존재하고 활성 상태여야 하며 프로젝트가 존재하고 Connection
@@ -136,8 +141,8 @@ Core는 직렬화할 수 없는 `ValidatedAgentSession` 하나를 받습니다. 
 `ActorSource::AgentConnection`과 정확히 같아야 하며 project ID는 모든 프로젝트 범위
 호출과 일치해야 합니다. 감사용 `verification_basis`는 로컬에서
 `connection:<connection_id>/session:<project_session_id>/revision:<project_integration_revision>`
-형태로 만듭니다. 이 값은 운영 소유권 기록이며 certificate, receipt, identity proof,
-trusted host digest가 아닙니다. 이전 권한 기록으로 fallback하지 않습니다.
+형태로 만듭니다. 이 값은 감사 event에 기록된 검증된 운영 소유권의 결정적인 로컬
+lifecycle 및 상관관계 좌표입니다.
 
 ## 도구 검색
 

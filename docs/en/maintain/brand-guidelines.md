@@ -82,10 +82,11 @@ verification, and operational session authorization separate. A command can acce
 managed MCP runtime/project session can authorize an allowed project call.
 Each fact remains within that named scope. Configuration presence, a passing
 fixture, or a terminal-side MCP check cannot substitute for the current
-managed-host observations or session validation. Those observations do not
-certify executable identity, provenance, or future host behavior. Route environment and setup applicability to
-[System Requirements](../reference/system-requirements.md), operational session
-and behavioral verification meaning to
+managed-host observations or session validation. Compatibility claims remain
+bounded to the current managed configuration and observed behavior. Route
+environment and setup applicability to
+[System Requirements](../reference/system-requirements.md), and operational
+session and behavioral verification meaning to
 [Agent Connection](../reference/agent-connection.md#validated-agent-session).
 
 Do not describe Volicord as making user-owned judgments. Volicord can help

@@ -114,8 +114,8 @@ Volicord 표기, 공식 한영 브랜드 문구, 구성 요소 표현, 테스트
 [시스템 요구사항](../reference/system-requirements.md),
 [Agent Connection](../reference/agent-connection.md#validated-agent-session)을 기준으로
 확인합니다. 설정, 구성, 구현, fixture, 테스트에 관한 사실은 현재 관리 session을
-성립시키지 않습니다. 성공한 관찰은 검사한 행동을 설명할 뿐 실행 파일 identity나
-향후 협력적 호스트 행동을 인증하지 않습니다.
+성립시키지 않습니다. 성공한 관찰은 현재 구성과 환경에서 검사한 동작만 설명하며,
+미래 동작에는 새로운 관찰이 필요합니다.
 
 API와 참조 예시는 필요할 때 메서드 안의 정합성, 요청과 응답 형태, 필드 이름,
 필수 필드, `null` 허용 여부, enum 형태 값, `state_version`, 참조, 아티팩트
@@ -217,8 +217,8 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 ## 릴리스와 호스트 스모크 검증
 
 Volicord 릴리스 검증은 일반적인 다섯 target 빌드, 패키지, checksum, binary smoke,
-플랫폼, Docker, 게시 경로를 다룹니다. Codex 실행 파일이나 그 출처와 identity를
-인증하지 않으며 정확한 호스트 allowlist를 유지하지 않습니다.
+플랫폼, Docker, 게시 경로를 다룹니다. 운영 Codex 상호운용성 검증은 현재 관리 구성과
+환경의 동작을 관찰하는 별도 검증입니다.
 
 오래 유지되는 릴리스 패키징 저장소 점검은 다음과 같습니다.
 
@@ -227,15 +227,18 @@ cargo test --locked -p volicord-release-integrity-tests --all-targets --all-feat
 ```
 
 이 테스트는 target 범위, 버전 일치, 기준 텍스트 바이트, archive 형태, 패키징한
-binary identity, checksum 출력을 보호합니다. 런타임 권한을 부여하거나 특정 Codex
-빌드의 지원을 확립하지 않습니다.
+binary identity, checksum 출력을 보호합니다. 런타임 권한은 각 MCP 호출에서 현재 관리
+session을 통해 평가합니다.
 
 실제 Codex 설치를 사용하는 선택적 smoke 실행은 관리형 구성, MCP 초기화, 필수 도구
 검색, 안전한 도구 왕복, Guard 관찰을 확인할 수 있습니다. 결과는 해당 구성과 환경에
-대한 운영 관찰로만 취급합니다. 보고된 Codex 버전은 진단 정보이며 버전 변경 시 관찰을
-다시 수행할 수 있지만, 버전이나 실행 파일 바이트는 인증 또는 권한 입력이 아닙니다.
-smoke 인프라가 없으면 건너뜀 또는 사용할 수 없음으로 보고하며 일반 Volicord 릴리스
-결과를 바꾸지 않습니다.
+대한 운영 관찰로만 취급합니다. 보고된 Codex 버전은 진단 정보이며 버전 변경 시 운영
+관찰을 다시 수행해야 합니다. smoke 인프라가 없으면 건너뜀 또는 사용할 수 없음으로
+보고하며 일반 Volicord 릴리스 결과를 바꾸지 않습니다.
+
+저장소의 운영 테스트는 제한 안의 임의 version 문자열을 연결 검증까지 전달하고,
+initialize 및 도구 목록 milestone을 실행하며, 필수 도구와 안전 호출, Guard artifact와
+필수 phase 관찰, session 소유권, revision 격리를 점검합니다.
 
 실제 smoke는 폐기 가능한 Product Repository와 Runtime Home 경로에서만 실행합니다.
 자격 증명, prompt, transcript, token, screenshot, 런타임 데이터는 저장소 밖에

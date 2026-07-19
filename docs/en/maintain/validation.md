@@ -128,8 +128,9 @@ or operational session authority. Check those layers against
 [System Requirements](../reference/system-requirements.md),
 and [Agent Connection](../reference/agent-connection.md#validated-agent-session).
 A setup, configuration, implementation, fixture, or test fact does not establish
-a current managed session. A successful observation describes the tested behavior;
-it does not certify executable identity or future cooperative-host behavior.
+a current managed session. A successful observation describes only the behavior
+tested for the current configuration and environment; future behavior requires
+new observation.
 
 For API and Reference examples, check method-local consistency, request and
 response shape, field names, required fields, nullability, enum-like values,
@@ -241,9 +242,9 @@ fabricated completion claims.
 ## Release And Host Smoke Validation
 
 Volicord release validation covers the ordinary five-target build, package,
-checksum, binary-smoke, platform, Docker, and publication paths. It does not
-certify a Codex executable, its provenance, or its identity, and it does not
-maintain an exact-host allowlist.
+checksum, binary-smoke, platform, Docker, and publication paths. Operational
+Codex interoperability validation is a separate observation of the current
+managed configuration and environment.
 
 The durable repository checks for release packaging are:
 
@@ -252,17 +253,21 @@ cargo test --locked -p volicord-release-integrity-tests --all-targets --all-feat
 ```
 
 These tests protect target coverage, version consistency, canonical text bytes,
-archive shape, packaged-binary identity, and checksum output. They do not grant
-runtime authority or establish support for a particular Codex build.
+archive shape, packaged-binary identity, and checksum output. Runtime authority
+is evaluated through current managed sessions during each MCP call.
 
 An optional smoke run with a real Codex installation may exercise managed
 configuration, MCP initialization, required-tool discovery, safe tool round
 trips, and Guard observations. Treat its result as an operational observation
 for that configuration and environment. A reported Codex version is diagnostic;
-a version change may justify repeating the observation, but neither the version
-nor executable bytes are a certification or authorization input. Missing smoke
+a version change requires repeating the operational observation. Missing smoke
 infrastructure is reported as skipped or unavailable and does not change the
 ordinary Volicord release result.
+
+Repository operational tests accept arbitrary bounded version strings through
+connection verification, exercise initialize and tool-list milestones, check
+required tools and safe calls, audit Guard artifacts and required-phase
+observations, and verify session ownership and revision isolation.
 
 Run live smoke only with disposable Product Repository and Runtime Home paths.
 Keep credentials, prompts, transcripts, tokens, screenshots, and runtime data

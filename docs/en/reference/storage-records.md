@@ -90,15 +90,14 @@ Volicord-managed host configuration that the setup owner last successfully
 applied or adopted. Only an explicit setup-owned managed-configuration write
 may change it. When that write changes the fingerprint, the same Registry
 transaction clears `verification_report_json`; replay with the same
-fingerprint may retain the report. Host and client
-version fields are excluded and remain diagnostic observations, not identity
-or allowlist inputs. The fingerprint contains no host executable identity or
-provenance inputs. Store increments the generation exactly once in each
+fingerprint may retain the report. Host and client version fields remain
+diagnostic observations. A changed host version renews operational observation,
+while the current owner fields and Store-owned generation derive the lifecycle
+revision. Store increments the generation exactly once in each
 successful real mode transition and never for a same-mode no-op. The generation
 distinguishes revisions within one physical Connection instance; the immutable
-instance ID distinguishes physical deletion and recreation. Neither coordinate
-identifies a host or actor, certifies a release, or acts as a security
-credential.
+instance ID distinguishes physical deletion and recreation. Together they are
+Store-owned local lifecycle and correlation coordinates.
 
 A real mode transition atomically changes the Connection mode and generation,
 clears its verification report, and replaces only the integration revision in
@@ -260,8 +259,9 @@ Each Registry `guard_installations` row retains only stable installation and
 owner identity, canonical `manifest_json`, and creation/update timestamps. The
 manifest is strict and owner-bound. It carries the exact policy hash,
 integration revision, typed runtime commands, complete Volicord-managed file
-expectations, and required typed hook phases. It is neither a host-capability
-certificate nor an installation-status state machine.
+expectations, and required typed hook phases. File audit and required-phase
+observation derive the current Guard checks from this manifest and current
+owner-matched facts.
 
 Policy commands and runtime commands are intentionally different projections.
 The canonical policy commands omit `--policy-hash`; after hashing that policy,

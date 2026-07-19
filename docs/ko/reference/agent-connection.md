@@ -69,6 +69,11 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 Volicord가 생성한 관리 시작/구성 맥락으로 등록된 Connection 하나와 허용 프로젝트를
 식별합니다.
 
+Connection은 host kind, scope, mode, managed-configuration fingerprint, 프로젝트
+membership, 변경 불가능한 Store 소유 integration-instance ID, Store 소유 integration
+generation을 담당합니다. 이 현재 소유자 사실에서 파생한 Connection 및 프로젝트 integration
+revision은 로컬 lifecycle과 상관관계 좌표입니다.
+
 완전히 새로운 Agent Connection의 기본 mode는 `workflow`입니다. 일치하는 현재 Agent
 Connection을 다시 설정하거나 복구할 때는 저장된 mode를 정확히 사용합니다. Record
 profile에서 mode를 추론하거나 mode를 전환하지 않습니다. 기존 mode를 바꾸고 integration
@@ -163,12 +168,13 @@ projection할 때 각 값의 정확한 의미를 유지합니다. 특히 `observ
 CLI MCP self-test는 `session_source=cli_preflight`만 만듭니다. 따라서
 `host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다. Guard는 최상위
 운영 check로 `guard_files`와 `guard_observation`만 사용합니다. 엄격한 Guard manifest는
-Volicord가 관리하는 파일, runtime command, policy ownership, 필수 phase를 설명할 뿐 host
-capability를 인증하거나 Guard 설치 lifecycle 상태를 저장하지 않습니다.
+현재 policy hash, integration revision, typed runtime command, 전체 Volicord 관리 artifact
+기대값, 필수 hook phase를 담당합니다. Policy command와 runtime command는 typed invocation
+하나에서 나온 서로 다른 projection입니다. Audit은 각 관리 artifact를 정규 현재 기대값과
+비교하고, Guard 관찰은 모든 필수 phase의 호환되는 현재 event를 요구합니다.
 
-제한 안의 모든 Codex version은 이 동작 check의 대상이 될 수 있습니다. Version이 바뀌면
-Codex를 reload하고 다시 관찰할 때까지 현재 host 관찰이 pending이 됩니다. 이를 지원하지
-않는 host나 실패한 artifact 결과로 분류하지 않습니다.
+제한 안의 모든 Codex version은 이 동작 check를 거칩니다. Version이 바뀌면 Codex를
+reload하고 운영 동작을 다시 관찰할 때까지 현재 host 관찰이 pending이 됩니다.
 
 `dry_run`은 작업 mode이며 연결 상태나 check 상태가 아닙니다. 구성 일치, 실행 파일
 가용성, protocol/host version, capability 관찰, 관찰 timestamp는 check 사실에 두며
@@ -197,10 +203,11 @@ Registry transaction 하나에서 수행합니다. 이 쓰기는 `verification_r
 두고 검증을 다시 실행하도록 요구합니다. 검증은 관리 configuration을 관찰할 뿐 새로 계획한
 managed fingerprint를 적용하거나 채택하거나 기록하지 않습니다.
 
-운영 호환성은 어댑터가 실제로 수행한 check와 관찰한 동작에서 보고합니다. `complete`는
-실행 파일 identity나 출처를 인증하지 않으며 운영체제 집행, actor identity 증명,
-correctness 증명, 조작 방지 기록을 뜻하지 않습니다. 연결 검증은 runtime 권한
-credential을 발급하지 않습니다.
+운영 호환성은 현재 관리 구성과 어댑터가 실제로 관찰한 protocol, 도구 목록, 필수 도구,
+안전 호출, Guard 동작으로 판단합니다. `complete`는 해당 보고서의 모든 필수 check가
+통과했음을 뜻합니다. 운영체제 집행, actor 또는 human identity, correctness, 미래 동작,
+조작 방지 기록을 성립시키지는 않습니다. Core 호출 권한은 각 관리 MCP 호출에서 별도로
+평가합니다.
 
 ## 통합 Revision과 운영 Session
 
@@ -226,9 +233,9 @@ Integration generation은 해당 물리 instance 안에서 0으로 시작하고 
 삭제와 재생성을 구분합니다. 이전에 사용한 mode로 돌아가더라도 새 revision이 만들어지고
 그 이전 mode generation의 evidence는 다시 현재 상태가 될 수 없습니다.
 
-Revision 구성은 관찰한 host version, executable path 또는 암호학적 identity, allowlist
-좌표, 주장된 capability set, MCP client name/version을 제외합니다. 이 값은 권한을 바꿀
-수 없습니다.
+관찰한 executable path, host version, MCP client name/version은 diagnostic 사실로
+남습니다. Host version이 바뀌면 운영 관찰을 갱신하며, 권한은 현재 Connection, revision,
+권위 있는 runtime/project session binding을 사용합니다.
 
 각 MCP process 시작은 host thread metadata가 생기기 전에 불투명 Registry runtime
 session ID를 만듭니다. `session_source`는 정확히 `managed_host` 또는
@@ -268,14 +275,13 @@ timestamp만 바꿉니다. Guard command, managed-file inventory, policy hash, h
 configuration, Product Repository file은 바꾸지 않습니다. 모든 후보가 완전하고 현재 상태이며
 소유자가 일치해야 쓰기를 시작하고, 그렇지 않으면 전환을 commit하지 않습니다.
 
-이 기록은 현재 구성 아래 로컬에서 관찰한 협력적 protocol/session 소유권을 보여
-줍니다. Binary, host, client, actor, 운영체제 사용자, human identity를 식별하지
-않습니다. MCP client name/version과 관찰한 host executable version은 제한 안의 임의의
-미래 값을 받고 diagnostic으로만 남습니다.
+이 기록은 현재 구성 아래 로컬에서 관찰한 협력적 protocol/session 소유권을 성립시킵니다.
+Client, host, actor, 운영체제 사용자, human identity를 성립시키지는 않습니다. MCP client
+name/version과 관찰한 host executable version은 제한 안의 임의 미래 값을 받고 diagnostic으로만
+남습니다.
 
-통합 instance ID와 integration generation은 로컬 lifecycle 좌표일 뿐입니다. 어느 값도
-host identity, actor identity, release certification, security credential, 호출자가
-제어하는 입력이 아닙니다.
+Integration instance ID, integration generation, 파생 integration revision은 로컬 lifecycle과
+상관관계 좌표입니다. Store가 lifecycle 입력을 소유하며 호출자는 이를 선택할 수 없습니다.
 
 <a id="validated-agent-session"></a>
 
@@ -308,10 +314,10 @@ struct ValidatedAgentSession {
 9. `ActorSource::AgentConnection`이 검증된 Connection을 정확히 이름 붙입니다.
 10. 프로젝트 범위 operation이 검증된 프로젝트를 정확히 이름 붙입니다.
 11. Runtime session의 `session_source=managed_host`이며 `cli_preflight`가 아닙니다.
-12. Client name/version과 host version을 권한에 사용하지 않습니다.
 
 어댑터는 프로젝트 도구를 호출할 때마다 Core 호출 맥락을 만들기 전에 권위 있는 runtime
-및 프로젝트 row를 검증합니다. 대체 권한, compatibility, fallback 경로는 없습니다.
+및 프로젝트 row를 검증합니다. Executable path, host version, client version은 이 권한
+판정 밖의 diagnostic으로 남습니다.
 
 Core는 감사 basis를 결정적으로 만듭니다.
 
@@ -319,8 +325,8 @@ Core는 감사 basis를 결정적으로 만듭니다.
 connection:<connection_id>/session:<project_session_id>/revision:<project_integration_revision>
 ```
 
-이 basis는 로컬 운영 소유권을 이름 붙입니다. Certificate, receipt, identity proof,
-bearer token, host attestation, trusted host digest가 아닙니다.
+이 basis는 감사 event에 기록된 검증된 운영 소유권의 결정적인 로컬 lifecycle 및
+상관관계 좌표입니다.
 
 ## Codex 어댑터 책임
 
@@ -340,11 +346,10 @@ managed fingerprint 및 소유자와 일관된 Registry/Guard 상태를 commit�
 Connection record에서만 시작하며 해당 record의 정확한 integration revision을 기준으로
 보고서를 영속합니다. 보고서 영속은 fingerprint를 두 번째로 갱신하지 않습니다.
 
-Runtime 권한은 parent executable을 hash하거나, 플랫폼 실행 파일 identity를 도출하거나,
-정확한 호스트 allowlist를 조회하거나, 실행 파일 identity digest를 계산하거나, 실행 파일
-attestation을 발급·검증하지 않습니다. 알아볼 수 있는 command name, process path,
-version string, 환경 값, local session은 actor identity가 아닙니다. 관리 시작 맥락과
-권위 있는 Store session은 위의 협력적 소유권 경계만 세웁니다.
+Runtime 권한은 현재 활성 Connection, 프로젝트 membership, 허용 mode, 관리 runtime
+session, revision 범위 프로젝트 session, 정확한 Registry/프로젝트 binding을 검증합니다.
+Command name, executable path, version string, 환경 값, 로컬 session metadata는 diagnostic
+또는 routing 사실이며 actor나 human identity를 성립시키지 않습니다.
 
 Repair는 관련 없는 Codex 구성을 덮어쓰거나 선택한 프로젝트, Connection, intent,
 profile, 플랫폼 환경을 암묵적으로 바꾸지 않습니다. `workflow`와 `read_only` 모두에서
@@ -391,8 +396,8 @@ membership이 없는 비활성 과거 Connection과 그 connection 전체 runtim
 - identity 주장으로 쓰는 client/host version과 process metadata
 
 동일 사용자 권한으로 실행되는 악성 프로세스의 Runtime Home 변조는 최초 릴리스 위협
-범위 밖입니다. 이 계약은 binary attestation, 운영체제 keystore, signing, key rotation,
-revocation을 추가하지 않습니다.
+범위 밖입니다. 따라서 로컬 기록은 협력적이며 같은 계정 접근 권한을 가진 다른
+프로세스에 대해 변조 방지를 보장하지 않습니다.
 
 ## 인접 담당 문서
 

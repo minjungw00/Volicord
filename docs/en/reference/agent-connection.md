@@ -76,6 +76,12 @@ selected `Product Repository`. Both identify one registered Connection and its
 allowed projects through the Volicord-generated managed launch/configuration
 context.
 
+The Connection owns its host kind, scope, mode, managed-configuration
+fingerprint, project membership, immutable Store-owned integration-instance ID,
+and Store-owned integration generation. Connection and project integration
+revisions derived from those current owner facts are local lifecycle and
+correlation coordinates.
+
 A genuinely new Agent Connection defaults to `workflow`. Setup replay and
 repair use the persisted mode of a matching current Agent Connection exactly;
 they never infer mode from the Record profile or perform a mode transition.
@@ -176,13 +182,16 @@ The current Codex connection report contains these operational checks:
 The CLI MCP self-test creates only `session_source=cli_preflight`; it never
 satisfies `host_session`, `required_tools`, or `tool_round_trip`. Guard uses
 only `guard_files` and `guard_observation` as top-level operational checks.
-The strict Guard manifest describes Volicord-managed files, runtime commands,
-policy ownership, and required phases; it does not certify host capability or
-store a Guard installation lifecycle status.
+The strict Guard manifest owns the current policy hash, integration revision,
+typed runtime commands, complete Volicord-managed artifact expectations, and
+required hook phases. Policy and runtime commands are distinct projections of
+one typed invocation. Audit compares every managed artifact with its canonical
+current expectation, and Guard observation requires compatible current events
+for every required phase.
 
-Any bounded Codex version is eligible for these behavioral checks. A changed
+Any bounded Codex version proceeds through these behavioral checks. A changed
 version makes the current host observation pending until Codex is reloaded and
-observed again; it is not an unsupported-host or failed-artifact result.
+its operational behavior is observed again.
 
 `dry_run` is an operation mode, never a connection or check status.
 Configuration matching, executable availability, protocol and host versions,
@@ -218,11 +227,12 @@ requires verification to be rerun. Verification observes managed
 configuration; it never applies, adopts, or records a newly planned managed
 fingerprint.
 
-Operational compatibility is reported from checks the adapter actually
-performed and behavior it observed. `complete` does not certify executable
-identity or provenance and does not mean operating-system enforcement, actor
-identity proof, correctness proof, or tamper-proof recording. Connection
-verification does not issue a runtime authorization credential.
+Operational compatibility is determined from the current managed configuration
+and the protocol, tool-list, required-tool, safe-call, and Guard behavior the
+adapter actually observed. `complete` means every required check in that report
+passed. It does not establish operating-system enforcement, actor or human
+identity, correctness, future behavior, or tamper-proof recording. Core
+invocation authorization is evaluated separately for each managed MCP call.
 
 ## Integration Revisions And Operational Sessions
 
@@ -254,9 +264,10 @@ deletion and recreation. Returning to a previously used mode still creates a
 new revision and cannot make evidence from that earlier mode generation current
 again.
 
-Revision construction excludes observed host version, executable path or
-cryptographic identity, allowlist coordinates, claimed capability sets, and
-MCP client name/version. Those values cannot change authorization.
+The observed executable path, host version, and MCP client name/version remain
+diagnostic facts. A host-version change renews operational observation, while
+authorization uses the current Connection, revisions, and authoritative
+runtime/project session bindings.
 
 Each MCP process start creates an opaque Registry runtime-session ID before
 host thread metadata exists. `session_source` is exactly `managed_host` or
@@ -306,15 +317,15 @@ configuration, or Product Repository files. All candidates must be complete,
 current, and owner-matched before any write; otherwise no transition is
 committed.
 
-These records demonstrate locally observed cooperative protocol/session
-ownership under current configuration. They do not identify a binary, host,
-client, actor, operating-system user, or human. MCP client name/version and
-observed host executable version accept arbitrary bounded future values and
-remain diagnostics only.
+These records establish locally observed cooperative protocol/session ownership
+under current configuration. They do not establish client, host, actor,
+operating-system-user, or human identity. MCP client name/version and observed
+host executable version accept arbitrary bounded future values and remain
+diagnostics only.
 
-The integration-instance ID and integration generation are local lifecycle
-coordinates only. Neither is host identity, actor identity, release
-certification, a security credential, or caller-controlled input.
+The integration-instance ID, integration generation, and derived integration
+revisions are local lifecycle and correlation coordinates. Store owns their
+lifecycle inputs; callers cannot select them.
 
 <a id="validated-agent-session"></a>
 
@@ -349,12 +360,12 @@ It is created only after validating all of the following current facts:
 9. `ActorSource::AgentConnection` exactly names the validated Connection;
 10. a project-scoped operation exactly names the validated project;
 11. the runtime session has `session_source=managed_host`, never
-   `cli_preflight`; and
-12. client name/version and host version are ignored for authorization.
+   `cli_preflight`.
 
 The adapter validates the authoritative runtime and project rows on every
-project tool call before constructing Core invocation context. No alternate
-authorization, compatibility, or fallback path exists.
+project tool call before constructing Core invocation context. Executable path,
+host version, and client version remain diagnostics outside this authorization
+decision.
 
 Core derives the audit basis deterministically:
 
@@ -362,9 +373,8 @@ Core derives the audit basis deterministically:
 connection:<connection_id>/session:<project_session_id>/revision:<project_integration_revision>
 ```
 
-This basis names local operational ownership. It is not a certificate,
-receipt, identity proof, bearer token, host attestation, or trusted host
-digest.
+This basis is the deterministic local lifecycle and correlation coordinate for
+the validated operational ownership recorded in the audit event.
 
 ## Codex Adapter Responsibilities
 
@@ -385,12 +395,11 @@ Guard state. Verification begins only from that final Connection record and
 persists its report against that record's exact integration revision. Report
 persistence never performs a second fingerprint update.
 
-Runtime authorization does not hash the parent executable, derive a platform
-executable identity, consult an exact-host allowlist, calculate an executable
-identity digest, or issue or validate an executable attestation. A recognizable
-command name, process path, version string, environment value, or local session
-is not actor identity. Managed launch context and authoritative Store sessions
-establish only the cooperative ownership boundary above.
+Runtime authorization validates the current enabled Connection, project
+membership, allowed mode, managed runtime session, revision-scoped project
+session, and exact Registry/project binding. Command names, executable paths,
+version strings, environment values, and local session metadata are diagnostic
+or routing facts and do not establish actor or human identity.
 
 Repair does not overwrite unrelated Codex configuration or silently change the
 selected project, Connection, intent, profile, or platform environment.
@@ -444,9 +453,9 @@ Untrusted:
 - client/host version and process metadata as identity claims.
 
 Tampering with Runtime Home by a malicious process running with the same user
-permissions is outside the first-release threat model. This contract adds no
-binary attestation, operating-system keystore, signing, key rotation, or
-revocation.
+permissions is outside the first-release threat model. The local records are
+therefore cooperative and are not tamper-proof against another process with the
+same account access.
 
 ## Adjacent Owners
 

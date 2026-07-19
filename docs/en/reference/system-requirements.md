@@ -8,8 +8,9 @@ stop.
 
 Ordinary build, package, checksum, platform, and publication validation belongs
 to [Validation](../maintain/validation.md), while managed operational-session
-authorization belongs to [Agent Connection](agent-connection.md). Volicord does
-not certify the identity or provenance of a Codex executable.
+authorization belongs to [Agent Connection](agent-connection.md). Executable
+path and version observations are diagnostic inputs to current operational
+verification.
 
 <a id="surface-stability"></a>
 ## Surface Stability
@@ -36,9 +37,9 @@ for those binaries are:
 | `x86_64-pc-windows-msvc` | `native_windows` | Every component executes as native x86-64 Windows components. WSL coordinates are ineligible. |
 | `x86_64-unknown-linux-gnu` | `wsl2` | Every component executes inside the same supported WSL2 distribution and uses its Linux filesystem as specified below. |
 
-Target compatibility is a Volicord platform constraint, not a Codex artifact
-certification. Native Linux and WSL2 remain distinct environments even when
-they execute the same x86-64 Linux binary. One architecture or environment
+Target compatibility is a Volicord platform constraint. Native Linux and WSL2
+remain distinct environments even when they execute the same x86-64 Linux
+binary. One architecture or environment
 does not establish the runtime prerequisites of another. Release packaging
 still builds and checks every published target independently.
 
@@ -77,8 +78,8 @@ The exact first-release WSL2 coordinate is:
 
 Platform checks observe the distribution name, operating-system identity, WSL2
 kernel boundary, and filesystem type. Those observations enforce the supported
-topology; they are not executable identity or operational authorization
-credentials.
+topology. Operational authorization separately validates current Connection
+and session ownership.
 
 The WSL2 runtime boundary must establish WSL2 explicitly and requires
 `target_triple=x86_64-unknown-linux-gnu`. An ordinary Linux `target_os` result
@@ -143,11 +144,12 @@ ID spelling follows [External Contracts](external-contracts.md#shared-git-object
 ## Executable And Process Requirements
 
 The administrative process must resolve and execute the configured Codex
-executable. Verification may report the observed executable and host version
-as diagnostics, but does not hash it for authorization, compare it with an
-exact-host allowlist, or issue an executable attestation. Executable availability
-does not establish agent, host, binary, operating-system-user, or human
-identity.
+executable. When active verification runs, the executable must be discoverable
+and its version command must succeed. Verification reports the resolved path and
+observed host version as diagnostics. A different observed version makes the
+current operational observation pending until managed Codex behavior is
+observed again. Executable availability alone does not establish agent,
+operating-system-user, or human identity.
 
 The managed Codex configuration must launch the intended Volicord executable
 with managed stdio MCP. The adapter validates the managed entry, command,
@@ -156,9 +158,9 @@ prerequisites. Managed launch markers are cooperative routing context, not
 credentials. Empty and absent environment values are distinct.
 
 Executable, configuration, process, client, and version observations are
-diagnostic or setup facts. None supplies runtime authorization; authorization
-uses the current Connection, project membership, mode, and Store-owned managed
-runtime/project sessions.
+diagnostic or setup facts. Runtime authorization validates the current
+Connection, project membership, allowed mode, and Store-owned managed
+runtime/project sessions and exact binding.
 
 ## Runtime Home Requirements
 
@@ -230,8 +232,9 @@ On initialize, MCP records one managed-host runtime session with bounded client
 name/version and optional host version diagnostics. On each project tool call,
 it records or selects the project session and validates current Connection
 enablement, membership, mode, runtime/project session ownership, and both
-integration revisions before constructing Core context. Arbitrary bounded
-client and host versions do not change this result.
+integration revisions before constructing Core context. Compatibility for a
+newly observed bounded host version is established by renewed operational
+observation.
 
 Secrets and unrelated ambient environment values are not copied into managed
 configuration. Diagnostics must not print tokens, complete sensitive payloads,

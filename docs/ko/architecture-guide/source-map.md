@@ -13,6 +13,9 @@
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
 | `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
 | `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
+| `crates/volicord-types/src/connection_verification.rs` | 정규 connection 상태, check, action, 검증 보고서 타입. |
+| `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
+| `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
 | `crates/volicord-types/src/tool_names.rs` | 공개 MCP 도구 이름 레지스트리. |
 
 ## Store
@@ -22,7 +25,8 @@
 | `crates/volicord-store/src/schema/registry.sql` | Runtime Home registry DDL 정본 소스. |
 | `crates/volicord-store/src/schema/project.sql` | project Store DDL 정본 소스. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home과 Store bootstrap. |
-| `crates/volicord-store/src/agent_connections.rs` | Agent Connection 레코드와 project allowlist. |
+| `crates/volicord-store/src/agent_connections.rs` | Agent Connection 레코드, project allowlist, managed fingerprint, 영속 검증 보고서 경계. |
+| `crates/volicord-store/src/operational_sessions.rs` | 관리 runtime session, protocol milestone, revision 범위 project session, 정확한 데이터베이스 간 binding. |
 | `crates/volicord-store/src/workflow_records.rs` | workflow 레코드 읽기와 쓰기. |
 | `crates/volicord-store/src/core_pipeline/` | Core open, 검증, replay, commit, mutation 적용. |
 | `crates/volicord-store/src/guards.rs` | Guard 관찰, 예상 쓰기, suppression 입력. |
@@ -46,7 +50,10 @@
 |---|---|
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
+| `crates/volicord-cli/src/connection_command/output/report.rs` | 선택한 Connection의 정규 command report, operation result, rendering 입력, 집계 상태. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 관리 구성, 진단용 실행 파일 관찰, 연결 검증. |
+| `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest와 정규 관리 artifact 기대값 생성. |
+| `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
 | `crates/volicord-cli/src/guard_command/` | Guard 이벤트 디코딩과 bounded 관찰. |
 | `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |

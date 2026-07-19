@@ -197,8 +197,8 @@ is distinct from complete Agent Connection removal.
 | `action_required` | Durable setup may exist, but a named user or Codex action remains. |
 | `failed` | The operation failed and reports a machine-readable cause. |
 
-`complete` is not Core invocation authorization, executable attestation, or a
-claim about behavior beyond the checks and observations in the report.
+`complete` means every required check in this command report passed. Core
+invocation authorization is evaluated separately for each managed MCP call.
 
 Every selected-Connection setup and lifecycle command serializes one
 `ConnectionCommandReport`. This includes `volicord init` and the `add`,
@@ -254,12 +254,8 @@ tagged `result` contains only operation-specific facts; it does not introduce a
 second status. Setup reports use `kind=setup`, mode reports use
 `kind=mode_transition`, and successful applied removal reports use
 `kind=removal`. Status and verify normally omit `result`, and removal dry runs
-omit an outcome that has not happened. The report does not
-add `states`, a nested verification report or status, a Guard health tree,
-host-gate or approval fields, a summary card, a primary action, or a second
-disclosure tree. JSON omits optional fields when they do not apply; it does not
-emit them as null-filled placeholders. `limits` carries the cooperative
-assurance limitation once.
+omit an outcome that has not happened. JSON omits optional fields when they do
+not apply. `limits` carries the cooperative assurance limitation once.
 
 `SetupResult.applied` separates setup mutation from operational verification.
 A successful init or add apply reports `applied=true` even when a later local
@@ -331,10 +327,10 @@ setup even when a later operational check fails. They do not roll back managed
 configuration because Codex is unavailable or the self-test fails. A fresh
 valid setup with no managed-host observation is `action_required` and includes
 the typed reload and first-use actions required to obtain those observations.
-No Codex version or executable digest is an eligibility allowlist. These setup
-commands apply or adopt host configuration before committing its managed
-fingerprint, complete owner-coherent Registry and Guard state, derive the final
-Connection revision, and only then verify and conditionally persist the report.
+These setup commands apply or adopt host configuration before committing its
+managed fingerprint, complete owner-coherent Registry and Guard state, derive
+the final Connection revision, and only then verify the current configuration
+and observed host behavior and conditionally persist the report.
 
 Actions are an ordered, deduplicated list derived from pending and failed
 checks. Reload and first-use instructions state that actual Codex activity must

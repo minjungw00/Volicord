@@ -60,8 +60,9 @@ git diff --check
 ```
 
 릴리스 변경은 일반 release-integrity 패키지와 변경에 해당하는 빌드, 패키지,
-checksum, 플랫폼, workflow 점검도 요구합니다. 실제 Codex smoke 실행은 선택적인 운영
-관찰이며 실행 파일 identity, 출처, 지원 또는 권한 게이트가 되면 안 됩니다.
+checksum, 플랫폼, workflow 점검도 요구합니다. 실제 Codex smoke 실행은 현재 구성과 환경의
+선택적인 운영 관찰입니다. Version이 바뀌면 관찰을 갱신하며 관리 호출 권한은 계속 session
+binding으로 판단합니다.
 
 ## 인계
 

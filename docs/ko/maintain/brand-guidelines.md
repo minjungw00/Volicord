@@ -81,8 +81,8 @@ Core 권한 보장을 암시하면 안 됩니다.
 `host_kind=codex`를 받아들일 수 있고, 설정 경로가 전제 조건을 충족할 수 있으며,
 현재 관리 MCP runtime/project session이 허용된 project 호출에 권한을 줄 수 있습니다.
 각 사실은 이름 붙은 범위 안에만 머뭅니다. 설정의 존재, fixture 통과, 터미널 쪽 MCP
-점검은 현재 관리 호스트 관찰이나 session 검증을 대신할 수 없습니다. 해당 관찰은
-실행 파일 identity, 출처, 미래 호스트 행동을 인증하지 않습니다. 환경과 설정의 적용
+점검은 현재 관리 호스트 관찰이나 session 검증을 대신할 수 없습니다. 해당 관찰에서
+주장하는 호환성은 현재 관리 구성과 관찰한 동작에 한정합니다. 환경과 설정의 적용
 가능성은 [시스템 요구사항](../reference/system-requirements.md), 운영 session과 행동 검증
 의미는 [Agent Connection](../reference/agent-connection.md#validated-agent-session)으로 보냅니다.
 

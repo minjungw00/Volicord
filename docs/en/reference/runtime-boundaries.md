@@ -92,15 +92,15 @@ The Runtime Home Guard manifest is an ownership inventory for its exact
 Guard-managed subset of those files and its typed runtime commands. Managed script entries
 require executable behavior on every platform, while filesystem inspection and
 permission repair remain platform-specific. The manifest does not claim
-ownership of unrelated repository content and is not host-capability or runtime
-certification.
+ownership of unrelated repository content. It owns the current policy hash,
+integration revision, typed runtime commands, complete managed-file
+expectations, and required hook phases used by audit and observation.
 
 Operational connection verification discovers the actual `codex` command on
 `PATH`, canonicalizes the observed executable path under the platform topology
-rules, and runs its version command. It records only path and version
-diagnostics. It does not resolve a package-native artifact, hash executable
-bytes, derive a platform executable identity, or require the version to appear in an
-exact-host allowlist.
+rules, and runs its version command. It records the path and version as
+diagnostics. A changed observed version makes current host behavior pending for
+renewed operational observation.
 
 ## Volicord Runtime Home
 
@@ -155,16 +155,16 @@ is never an operational authority source.
 
 - Product Repository writes still require the applicable Core authority.
 - Runtime Home write access is not Product Repository write permission.
-- Managed configuration and its launch markers are not a user decision, Write
-  Ticket, host attestation, client identity, or human identity.
-- A validated operational session proves only locally observed cooperative
-  session ownership and current project authorization. It does not prove a
-  binary, host, client, actor, or human identity.
+- Managed configuration and its launch markers select cooperative routing
+  context; they do not supply a user decision, Write Ticket, or human identity.
+- A validated operational session establishes locally observed cooperative
+  session ownership and current project authorization. It does not establish
+  client, actor, operating-system-user, or human identity.
 - Internal runtime and project session IDs are private local correlation
   coordinates, not host-native identity, actor identity, or credentials.
 - The immutable Connection integration-instance ID and integration generation
-  are Runtime Home lifecycle coordinates. They are not host or actor identity,
-  release certification, security credentials, or caller-selected values.
+  are Store-owned Runtime Home lifecycle coordinates. Together with the current
+  owner inputs, they derive local lifecycle and correlation revisions.
 - Explicit removal and Connection migration retire only the selected
   connection/project-owned Registry integration rows in storage-owner order.
   Pending last-project migration retains that complete Registry inventory until

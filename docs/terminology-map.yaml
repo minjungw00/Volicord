@@ -2299,7 +2299,7 @@ terms:
       - "Do not use `dry_run` or adapter lifecycle facts as connection or check statuses."
       - "Use only the closed `ConnectionCheckKind` values `connection_removal`, `guard_files`, `guard_observation`, `host_executable`, `host_session`, `managed_config`, `mcp_server`, `mode_transition`, `project_trust`, `required_tools`, `setup_plan`, `tool_round_trip`, and `verification_not_run`."
       - "Use only the closed `ConnectionActionKind` values `apply_removal`, `apply_setup`, `host_trust_required`, `inspect_codex_protocol`, `install_or_repair_codex`, `observe_codex`, `reload_guard`, `reload_host`, `repair_guard`, `repair_managed_config`, `repair_mcp_server`, `run_verification`, and `use_volicord_tool`."
-      - "Codex path/version and MCP client version are diagnostic facts, never authorization or executable identity inputs."
+      - "Codex path/version and MCP client version are diagnostic facts; a host-version change renews operational observation, while authorization validates current session ownership and exact bindings."
   connection_command_report:
     category: "technical_concept"
     en: "ConnectionCommandReport"
@@ -2422,7 +2422,7 @@ terms:
         ko: "docs/ko/reference/security.md"
     notes:
       - "Use for the immutable Store-generated lifecycle coordinate of one physical `agent_connections` row."
-      - "Do not use as host identity, actor identity, release certification, a security credential, or caller-selected input."
+      - "Store owns this coordinate; callers cannot select it, and together with the integration generation it distinguishes local Connection lifecycle revisions."
   connection_id:
     category: "mcp_process_binding"
     roles:

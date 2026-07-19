@@ -8,8 +8,8 @@ storage effects, Codex configuration syntax, or operating-system policy.
 
 Volicord is a cooperative local authority record. It validates and records
 owner-defined workflow state, but it is not a sandbox, access-control system,
-host attestation service, malware defense, network isolation layer, or proof
-that a model followed instructions.
+malware defense, network isolation layer, tamper-proof audit log, or proof that
+a model followed instructions.
 
 ## Supported Guarantees
 
@@ -53,9 +53,9 @@ membership, current integration revisions, and permission under the current
 Connection mode.
 
 The immutable Store-owned Connection integration-instance ID and the
-integration generation distinguish local Registry lifecycle revisions only.
-They do not identify a host or actor, certify a release, or serve as a security
-credential, and callers cannot select them.
+integration generation distinguish local Registry lifecycle revisions. Together
+with current owner inputs, they derive local lifecycle and correlation
+coordinates, and callers cannot select them.
 
 A Guard-only project session with no runtime binding is correlation history,
 not invocation authority. Core authority additionally requires a current
@@ -70,13 +70,12 @@ under unchanged owner state. Runtime rows are not process-liveness claims: an
 apparently open crashed row is historical, and concurrent rows may coexist
 without authorizing one another or being guessed for a Guard event.
 
-Executable bytes, executable paths, process identity, client name/version,
-host version, environment values, and host thread/turn metadata are not actor
-or human identity credentials. Thread and turn metadata may correlate the
+Executable paths, process metadata, client name/version, host version,
+environment values, and host thread/turn metadata are diagnostic or correlation
+facts, not actor or human identity. Thread and turn metadata may correlate the
 supported workflow, but cannot widen Connection or project authority. Internal
 runtime and revision-scoped project session IDs are likewise private local
-correlation coordinates, not host-native identity, actor identity, or security
-credentials.
+correlation coordinates.
 
 The supported MCP process uses stdin/stdout and opens no network transport
 listener. This is a process topology fact, not network sandboxing: Codex or
@@ -88,12 +87,13 @@ Product Repository files are user product data. Runtime Home rows are Volicord
 authority records. Managed Codex configuration starts a process but is not
 authority, approval, a Write Ticket, or proof that Codex loaded it.
 
-Behavioral connection observations do not grant Core authority, identify a
-user, certify executable provenance or identity, or prove future host behavior.
-Production runtime authorization does not consult executable digests or host
-version allowlists. Project Agent Sessions and Registry reservations are local
-cooperative correlation records; even when paired for authorization, they do
-not prove actor, host, client, operating-system user, or human identity.
+Behavioral connection observations establish compatibility for the current
+managed configuration and observed protocol, tool, safe-call, and Guard
+behavior. Core authority separately validates the current enabled Connection,
+project membership, mode, managed runtime session, revision-scoped project
+session, and exact Registry/project binding. These cooperative records do not
+establish actor, client, operating-system-user, or human identity, complete
+monitoring, or future host behavior.
 
 <a id="historical-operation-result-access"></a>
 ## Historical Operation-Result Access

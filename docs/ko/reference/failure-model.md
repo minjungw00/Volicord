@@ -51,10 +51,10 @@ diagnostic입니다.
 잘못되었거나 알려지지 않은 경우는 `Corrupt`가 아니라 `Rejected`이며 지원되는
 형태로 추정하지 않습니다.
 
-설치된 Codex 실행 파일이나 version은 외부 계약이 아니며 인증됨 또는 인증되지 않음
-상태가 없습니다. 연결 검증은 동작 probe를 수행하고 실제 `passed`, `pending`, `failed`
-결과를 보고합니다. 실행 파일을 찾거나 실행하지 못한 경우 일반 실패 범주 경계에서는
-`Unavailable`, 연결 보고서에서는 실패한 `host_executable` check입니다.
+활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
+`passed`, `pending`, `failed`로 보고합니다. 실행 파일을 찾거나 실행하지 못한 경우 일반
+실패 범주 경계에서는 `Unavailable`, 연결 보고서에서는 실패한 `host_executable`
+check입니다. 관찰한 version이 달라지면 운영 관찰을 갱신합니다.
 
 관리 connection command report는 필수 check가 하나 이상 실패한 typed 운영 결과에만
 `failed`를 사용합니다. Host 관찰이 pending이면 `action_required`이며 `Degraded`,
