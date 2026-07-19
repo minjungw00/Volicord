@@ -76,6 +76,12 @@ selected `Product Repository`. Both identify one registered Connection and its
 allowed projects through the Volicord-generated managed launch/configuration
 context.
 
+A genuinely new Agent Connection defaults to `workflow`. Setup replay and
+repair use the persisted mode of a matching current Agent Connection exactly;
+they never infer mode from the Record profile or perform a mode transition.
+`volicord connection mode` is the only command that changes an established
+mode and increments the integration generation.
+
 An Agent Connection is a stored local integration record in the
 `Volicord Runtime Home`. It does not grant operating-system permission,
 establish user identity, or prove that Codex loaded the managed entry. One
@@ -313,6 +319,9 @@ establish only the cooperative ownership boundary above.
 
 Repair does not overwrite unrelated Codex configuration or silently change the
 selected project, Connection, intent, profile, or platform environment.
+For both `workflow` and `read_only`, repair may restore missing owned Codex
+configuration, Guard files, and the current Guard Installation while preserving
+the Connection mode, integration generation, and current integration revision.
 Uninstall removes only content whose current managed identity still matches
 Volicord ownership.
 

@@ -11,6 +11,8 @@
 - `host_kind=codex`
 - `profile=record`
 - `scope=personal` 또는 `scope=shared`
+- 새 연결은 `workflow`로 시작하며 이후 설정은 기존 `workflow` 또는 `read_only`
+  mode를 보존
 - 관리 `volicord mcp --stdio` 전송
 
 공유 설정을 만들거나 복구합니다.
@@ -75,8 +77,10 @@ Guard의 prompt 관련 관찰은 진단 입력일 뿐입니다. UserAction resol
 ## 복구
 
 `volicord doctor`를 실행한 뒤 정확히 같은 연결 의도의 `init` 명령을 다시 실행합니다.
-diff를 다시 검토하고 안내된 경우 Codex를 재시작하거나 다시 불러옵니다. 복구는 관련
-없는 구성과 제품 데이터를 보존해야 합니다.
+diff를 다시 검토하고 안내된 경우 Codex를 재시작하거나 다시 불러옵니다. 이 복구는
+`workflow`와 `read_only` mode 모두에서 기존 mode를 유지합니다. Mode를 전환하려면
+`volicord connection mode`를 사용합니다. 복구는 관련 없는 구성과 제품 데이터를
+보존해야 합니다.
 
 ## 제거
 

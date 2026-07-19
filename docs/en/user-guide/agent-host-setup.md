@@ -12,6 +12,8 @@ The first release has one managed host and one profile:
 - `host_kind=codex`
 - `profile=record`
 - `scope=personal` or `scope=shared`
+- new connections start in `workflow`; later setup preserves an established
+  `workflow` or `read_only` mode
 - managed `volicord mcp --stdio` transport
 
 Create or repair a shared setup:
@@ -81,7 +83,9 @@ a UserAction resolution and never substitute for the explicit CLI command.
 
 Run `volicord doctor`, then rerun the same `init` command for the exact
 connection intent. Review the diff again and restart or reload Codex when
-reported. Repair must preserve unrelated configuration and product data.
+reported. This repair works in both `workflow` and `read_only` mode and keeps
+the established mode; use `volicord connection mode` when a mode transition is
+intended. Repair must preserve unrelated configuration and product data.
 
 ## Remove
 

@@ -198,6 +198,7 @@ pub fn run_init_command(
         runtime_home: &outcome.runtime_home,
         repo_root: &outcome.repo_root,
         connection_id: &outcome.connection_id,
+        mode: &outcome.mode,
         project_id: outcome.project_id.as_deref(),
         host_plan: &outcome.host_plan,
         verification: outcome.verification.as_ref(),

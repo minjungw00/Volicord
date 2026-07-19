@@ -79,8 +79,15 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 정확한 관리 binding을 계획, 검증, 적용하고 남은 Codex 신뢰, 다시 불러오기, 검증 동작을
 보고합니다. `--dry-run`은 파일시스템과 저장소를 변경하지 않습니다.
 
+일치하는 현재 Agent Connection이 없으면 `init`은 `workflow` mode로 새 연결을
+만듭니다. 일치하는 현재 Agent Connection이 이미 있으면 `init` replay와 repair는
+host plan, 검증 기대값, 등록에서 기존 `workflow` 또는 `read_only` mode를 정확히
+보존합니다. 이때 integration generation은 바뀌지 않습니다. Mode 전환과 generation
+증가는 `volicord connection mode`만 수행합니다.
+
 설정은 관련 없는 Codex와 저장소 내용을 보존합니다. 복구는 현재 정규 입력으로 같은
-의도를 다시 실행합니다. 제거는 일치하는 Volicord 관리 내용만 삭제합니다.
+의도를 다시 실행합니다. 같은 `init` 복구 명령은 두 mode 모두에서 소유한 Guard 및
+Codex 구성을 복구합니다. 제거는 일치하는 Volicord 관리 내용만 삭제합니다.
 
 <a id="project-commands"></a>
 ## 프로젝트 명령

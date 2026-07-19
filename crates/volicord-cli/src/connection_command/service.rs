@@ -14,6 +14,7 @@ pub(super) struct InitProvisioningOutcome {
     pub(super) runtime_home: PathBuf,
     pub(super) repo_root: PathBuf,
     pub(super) connection_id: String,
+    pub(super) mode: String,
     pub(super) project_id: Option<String>,
     pub(super) host_plan: HostPlan,
     pub(super) verification: Option<VerificationReport>,
@@ -66,6 +67,8 @@ struct InitProvisioningPlan {
     runtime_home: PathBuf,
     repo_root: PathBuf,
     connection_id: String,
+    effective_mode: String,
+    expected_connection: Option<InitConnectionExpectation>,
     current_report: Option<volicord_types::ConnectionVerificationReport>,
     project_id: Option<String>,
     host_plan: HostPlan,
@@ -75,6 +78,13 @@ struct InitProvisioningPlan {
     target_hint: String,
     guard_installation_id: String,
     server_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InitConnectionExpectation {
+    connection_internal_id: String,
+    mode: String,
+    managed_fingerprint: String,
 }
 
 struct SupersededIntegration {
@@ -140,6 +150,7 @@ pub(super) fn provision_init(
             runtime_home: plan.runtime_home,
             repo_root: plan.repo_root.clone(),
             connection_id: plan.connection_id,
+            mode: plan.effective_mode,
             project_id: plan.project_id,
             host_plan: plan.host_plan,
             verification: None,
@@ -179,7 +190,6 @@ fn plan_init_provisioning(
         ConnectionIntent::Personal
     };
     let host_scope = host_scope_for_intent(host_kind, intent)?;
-    let mode = CONNECTION_MODE_WORKFLOW;
     let server_name = DEFAULT_SERVER_NAME.to_owned();
     let target_hint = connection_target_hint(host_kind, host_scope, Some(&repo_root), process)?;
     let existing = connection_for_host_target(
@@ -202,6 +212,8 @@ fn plan_init_provisioning(
                 &server_name,
             )
         });
+    let effective_mode = effective_init_connection_mode(existing.as_ref())?;
+    let expected_connection = existing.as_ref().map(init_connection_expectation);
     let current_report = existing
         .as_ref()
         .map(effective_connection_report)
@@ -233,7 +245,7 @@ fn plan_init_provisioning(
                 .map(|project| project.project_name.as_str())
                 .or(Some("planned project")),
             installation_profile: installation_context,
-            mode,
+            mode: &effective_mode,
             expected_fingerprint,
         },
         process,
@@ -275,6 +287,8 @@ fn plan_init_provisioning(
         runtime_home,
         repo_root,
         connection_id,
+        effective_mode,
+        expected_connection,
         current_report,
         project_id: project_hint.map(|project| project.project_id),
         host_plan,
@@ -291,6 +305,7 @@ fn apply_init_provisioning(
     mut plan: InitProvisioningPlan,
     process: &mut impl ConnectionProcess,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
+    validate_init_connection_expectation(&plan)?;
     let runtime_home_id = runtime_home_id_for_path(&plan.runtime_home)
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     initialize_runtime_home(&plan.runtime_home, &runtime_home_id, ADMIN_METADATA_JSON)?;
@@ -307,15 +322,7 @@ fn apply_init_provisioning(
         },
     )?;
     plan.project_id = Some(project.project_id.clone());
-    let mode = CONNECTION_MODE_WORKFLOW;
-    let existing = connection_for_host_target(
-        &plan.runtime_home,
-        plan.host_kind,
-        plan.intent,
-        plan.host_scope,
-        &plan.target_hint,
-        &plan.server_name,
-    )?;
+    let existing = validate_init_connection_expectation(&plan)?;
     let expected_fingerprint = existing
         .as_ref()
         .map(|connection| connection.managed_fingerprint.as_str());
@@ -328,7 +335,7 @@ fn apply_init_provisioning(
             project_id: Some(&project.project_id),
             project_name: Some(&project.project_name),
             installation_profile: installation_profile_context(&plan.runtime_home, &profile),
-            mode,
+            mode: &plan.effective_mode,
             expected_fingerprint,
         },
         process,
@@ -362,7 +369,7 @@ fn apply_init_provisioning(
         host_scope: plan.host_scope.as_str().to_owned(),
         server_name: host_plan.server_name.clone(),
         config_target: host_target_text(&host_plan.target),
-        mode: mode.to_owned(),
+        mode: plan.effective_mode.clone(),
         enabled: !is_connection_migration,
         managed_fingerprint: host_plan.fingerprint.clone(),
         verification_report_json: existing
@@ -434,6 +441,9 @@ fn apply_init_provisioning(
         is_integration_migration,
         enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id),
     )?;
+    if plan.expected_connection.is_some() {
+        validate_init_connection_expectation(&plan)?;
+    }
     migration_before_cleanup_step(
         &plan,
         &superseded_integrations,
@@ -623,6 +633,7 @@ fn apply_init_provisioning(
         runtime_home: plan.runtime_home,
         repo_root: project.repo_root,
         connection_id: plan.connection_id,
+        mode: plan.effective_mode,
         project_id: Some(project.project_id),
         host_plan,
         verification: Some(verification),
@@ -634,6 +645,73 @@ fn apply_init_provisioning(
             "created"
         },
     })
+}
+
+fn effective_init_connection_mode(
+    existing: Option<&AgentConnectionRecord>,
+) -> Result<String, ConnectionCommandError> {
+    match existing.map(|connection| connection.mode.as_str()) {
+        None => Ok(CONNECTION_MODE_WORKFLOW.to_owned()),
+        Some(mode @ (CONNECTION_MODE_WORKFLOW | CONNECTION_MODE_READ_ONLY)) => Ok(mode.to_owned()),
+        Some(mode) => Err(ConnectionCommandError::runtime(format!(
+            "stored Agent Connection has invalid mode {mode}"
+        ))),
+    }
+}
+
+fn init_connection_expectation(connection: &AgentConnectionRecord) -> InitConnectionExpectation {
+    InitConnectionExpectation {
+        connection_internal_id: connection.connection_internal_id.clone(),
+        mode: connection.mode.clone(),
+        managed_fingerprint: connection.managed_fingerprint.clone(),
+    }
+}
+
+fn validate_init_connection_expectation(
+    plan: &InitProvisioningPlan,
+) -> Result<Option<AgentConnectionRecord>, ConnectionCommandError> {
+    let current = connection_for_host_target(
+        &plan.runtime_home,
+        plan.host_kind,
+        plan.intent,
+        plan.host_scope,
+        &plan.target_hint,
+        &plan.server_name,
+    )?;
+    match (&plan.expected_connection, current) {
+        (None, None) => Ok(None),
+        (None, Some(_)) => Err(init_connection_changed_error(
+            "a matching Agent Connection appeared after init planning",
+        )),
+        (Some(_), None) => Err(init_connection_changed_error(
+            "the planned Agent Connection no longer matches the selected host target",
+        )),
+        (Some(expected), Some(current)) => {
+            if current.connection_internal_id != expected.connection_internal_id {
+                return Err(init_connection_changed_error(
+                    "the selected host target now resolves to a different Agent Connection",
+                ));
+            }
+            if current.mode != expected.mode {
+                return Err(init_connection_changed_error(&format!(
+                    "Agent Connection mode changed from {} to {} after init planning",
+                    expected.mode, current.mode
+                )));
+            }
+            if current.managed_fingerprint != expected.managed_fingerprint {
+                return Err(init_connection_changed_error(
+                    "the Agent Connection managed configuration fingerprint changed after init planning",
+                ));
+            }
+            Ok(Some(current))
+        }
+    }
+}
+
+fn init_connection_changed_error(detail: &str) -> ConnectionCommandError {
+    ConnectionCommandError::runtime(format!(
+        "INIT_CONNECTION_CHANGED: {detail}; rerun `volicord init` against the current state"
+    ))
 }
 
 pub(super) fn record_authoritative_workflow_policy(
@@ -1384,6 +1462,7 @@ mod init_planning_tests {
             &mut process,
         )?;
         assert!(outcome.dry_run);
+        assert_eq!(outcome.mode, CONNECTION_MODE_WORKFLOW);
         assert!(runtime_home_record_read_only(fixture.path())?.is_none());
         assert!(!fixture.registry_db_path().exists());
         assert!(directory_is_empty(fixture.path())?);
@@ -1396,6 +1475,102 @@ mod init_planning_tests {
         }
         assert_empty_product_repository_untouched(&repo_root)?;
         Ok(())
+    }
+
+    #[test]
+    fn mode_change_after_init_planning_fails_before_host_or_guard_mutation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-mode-planning-conflict")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, false);
+        let mut process = PlanningProcess::new()?;
+
+        let initial = provision_init(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &mut process,
+        )?;
+        assert_eq!(initial.mode, CONNECTION_MODE_WORKFLOW);
+        let project_id = initial.project_id.as_deref().expect("initialized project");
+        let connection_id = initial.connection_id.as_str();
+        let plan = plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        )?;
+        assert_eq!(plan.effective_mode, CONNECTION_MODE_WORKFLOW);
+
+        let host_target = PathBuf::from(&plan.target_hint);
+        let host_before = fs::read(&host_target)?;
+        let repository_before = directory_contents(&repo_root)?;
+        let guard_manifest_before =
+            list_guard_installations(fixture.path(), connection_id, Some(project_id))?
+                .into_iter()
+                .next()
+                .expect("initial Guard Installation")
+                .manifest_json;
+        let registry = rusqlite::Connection::open(fixture.registry_db_path())?;
+        let changed = registry.execute(
+            "UPDATE agent_connections
+                SET mode = ?2,
+                    integration_generation = integration_generation + 1
+              WHERE connection_internal_id = ?1",
+            [plan.connection_id.as_str(), CONNECTION_MODE_READ_ONLY],
+        )?;
+        assert_eq!(changed, 1);
+        drop(registry);
+
+        let error = match apply_init_provisioning(plan, &mut process) {
+            Err(error) => error,
+            Ok(_) => panic!("mode conflict unexpectedly applied"),
+        };
+        let message = error.to_string();
+        assert!(message.contains("INIT_CONNECTION_CHANGED"));
+        assert!(message.contains("mode changed from workflow to read_only"));
+        assert!(message.contains("rerun `volicord init`"));
+        assert_eq!(fs::read(host_target)?, host_before);
+        assert_eq!(directory_contents(&repo_root)?, repository_before);
+        assert_eq!(
+            list_guard_installations(fixture.path(), connection_id, Some(project_id))?
+                .into_iter()
+                .next()
+                .expect("Guard Installation remains")
+                .manifest_json,
+            guard_manifest_before
+        );
+        Ok(())
+    }
+
+    fn directory_contents(
+        root: &Path,
+    ) -> Result<std::collections::BTreeMap<PathBuf, Vec<u8>>, std::io::Error> {
+        fn visit(
+            root: &Path,
+            current: &Path,
+            output: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>,
+        ) -> Result<(), std::io::Error> {
+            for entry in fs::read_dir(current)? {
+                let entry = entry?;
+                let path = entry.path();
+                if entry.file_type()?.is_dir() {
+                    visit(root, &path, output)?;
+                } else {
+                    output.insert(
+                        path.strip_prefix(root).unwrap().to_path_buf(),
+                        fs::read(path)?,
+                    );
+                }
+            }
+            Ok(())
+        }
+
+        let mut output = std::collections::BTreeMap::new();
+        visit(root, root, &mut output)?;
+        Ok(output)
     }
 }
 

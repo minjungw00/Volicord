@@ -81,9 +81,17 @@ project-owned shared connection. `init` plans, validates, and applies the exact
 managed binding and reports any remaining Codex trust, reload, or verification
 action. `--dry-run` performs no filesystem or storage mutation.
 
+When no matching current Agent Connection exists, `init` creates one in
+`workflow` mode. When a matching current Agent Connection already exists,
+`init` replay and repair preserve its exact `workflow` or `read_only` mode in
+the host plan, verification expectations, and registration. They do not change
+the integration generation. Only `volicord connection mode` performs a mode
+transition and increments that generation.
+
 Setup preserves unrelated Codex and repository content. Repair reruns the same
-intent from current canonical inputs. Removal deletes only matching
-Volicord-managed content.
+intent from current canonical inputs. The same `init` repair command repairs
+owned Guard and Codex configuration in both modes. Removal deletes only
+matching Volicord-managed content.
 
 <a id="project-commands"></a>
 ## Project Commands

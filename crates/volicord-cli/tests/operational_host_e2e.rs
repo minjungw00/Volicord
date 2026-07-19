@@ -17,11 +17,14 @@ use std::{
 
 use serde_json::{json, Value};
 use support::binary_fixture::{run_child, ChildStdin};
+use volicord_store::agent_connections::AgentConnectionRecord;
 use volicord_store::inspection::{
-    inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot,
+    inspect_runtime_home, AgentConnectionInspectionRecord, DatabaseInspection,
+    RegistryInspectionSnapshot,
 };
 use volicord_store::operational_sessions::{
-    latest_current_managed_runtime_session, start_mcp_runtime_session, McpRuntimeSessionStart,
+    connection_integration_revision, latest_current_managed_runtime_session,
+    start_mcp_runtime_session, McpRuntimeSessionStart,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
@@ -165,6 +168,49 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert!(
         latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?.is_none()
     );
+
+    let generation_before_replay = read_only_snapshot.agent_connections[0].integration_generation;
+    let revision_before_replay = connection_integration_revision(
+        &fixture.agent_connection_record(&read_only_snapshot.agent_connections[0]),
+    )?;
+    let manifest_before_replay = read_only_snapshot.guard_installations[0]
+        .manifest_json
+        .clone();
+    let repository_before_replay = fixture.repository_snapshot()?;
+    let config_target = PathBuf::from(&read_only_snapshot.agent_connections[0].config_target);
+    let config_before_replay = fs::read(&config_target)?;
+    let replay = fixture.run_init(FUTURE_VERSION, None, false)?;
+    let replay = assert_connection_report(&replay, 0, "init", "action_required")?;
+    assert_eq!(replay["connection"]["mode"], "read_only");
+    let after_replay = fixture.registry_snapshot();
+    assert_eq!(after_replay.agent_connections[0].mode, "read_only");
+    assert_eq!(
+        after_replay.agent_connections[0].integration_generation,
+        generation_before_replay
+    );
+    assert_eq!(
+        connection_integration_revision(
+            &fixture.agent_connection_record(&after_replay.agent_connections[0])
+        )?,
+        revision_before_replay
+    );
+    assert_eq!(
+        after_replay.guard_installations[0].manifest_json,
+        manifest_before_replay
+    );
+    assert_eq!(fixture.repository_snapshot()?, repository_before_replay);
+    assert_eq!(fs::read(&config_target)?, config_before_replay);
+
+    let registry_before_dry_run = fixture.registry_snapshot();
+    let repository_before_dry_run = fixture.repository_snapshot()?;
+    let config_before_dry_run = fs::read(&config_target)?;
+    let dry_run = fixture.run_init(FUTURE_VERSION, None, true)?;
+    let dry_run = assert_connection_report(&dry_run, 0, "init", "action_required")?;
+    assert_eq!(dry_run["dry_run"], true);
+    assert_eq!(dry_run["connection"]["mode"], "read_only");
+    assert_eq!(fixture.registry_snapshot(), registry_before_dry_run);
+    assert_eq!(fixture.repository_snapshot()?, repository_before_dry_run);
+    assert_eq!(fs::read(&config_target)?, config_before_dry_run);
 
     let pending = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let pending = assert_connection_report(&pending, 0, "status", "action_required")?;
@@ -1052,6 +1098,29 @@ impl OperationalFixture {
         match inspect_runtime_home(&self.runtime_home).registry {
             DatabaseInspection::Present(snapshot) => snapshot,
             other => panic!("expected registry snapshot, got {other:?}"),
+        }
+    }
+
+    fn agent_connection_record(
+        &self,
+        connection: &AgentConnectionInspectionRecord,
+    ) -> AgentConnectionRecord {
+        AgentConnectionRecord {
+            connection_internal_id: connection.connection_internal_id.clone(),
+            host_kind: connection.host_kind.clone(),
+            intent: connection.intent.clone(),
+            host_scope: connection.host_scope.clone(),
+            project_internal_id: connection.project_internal_id.clone(),
+            server_name: connection.server_name.clone(),
+            config_target: connection.config_target.clone(),
+            mode: connection.mode.clone(),
+            enabled: connection.enabled,
+            managed_fingerprint: connection.managed_fingerprint.clone(),
+            integration_generation: connection.integration_generation,
+            verification_report_json: connection.verification_report_json.clone(),
+            created_at: connection.created_at.clone(),
+            updated_at: connection.updated_at.clone(),
+            metadata_json: connection.metadata_json.clone(),
         }
     }
 

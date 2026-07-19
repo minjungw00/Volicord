@@ -69,6 +69,11 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 Volicord가 생성한 관리 시작/구성 맥락으로 등록된 Connection 하나와 허용 프로젝트를
 식별합니다.
 
+완전히 새로운 Agent Connection의 기본 mode는 `workflow`입니다. 일치하는 현재 Agent
+Connection을 다시 설정하거나 복구할 때는 저장된 mode를 정확히 사용합니다. Record
+profile에서 mode를 추론하거나 mode를 전환하지 않습니다. 기존 mode를 바꾸고 integration
+generation을 증가시키는 명령은 `volicord connection mode`뿐입니다.
+
 Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록입니다. 운영체제
 권한을 부여하거나 사용자 identity를 성립시키거나 Codex가 관리 entry를 불러왔음을
 증명하지 않습니다. 관리 stdio MCP 프로세스 하나는 현재 Agent Connection 하나에
@@ -282,8 +287,10 @@ version string, 환경 값, local session은 actor identity가 아닙니다. 관
 권위 있는 Store session은 위의 협력적 소유권 경계만 세웁니다.
 
 Repair는 관련 없는 Codex 구성을 덮어쓰거나 선택한 프로젝트, Connection, intent,
-profile, 플랫폼 환경을 암묵적으로 바꾸지 않습니다. 제거는 현재 관리 identity가
-Volicord 소유와 계속 일치하는 내용만 삭제합니다.
+profile, 플랫폼 환경을 암묵적으로 바꾸지 않습니다. `workflow`와 `read_only` 모두에서
+누락된 소유 Codex 구성, Guard 파일, 현재 Guard Installation을 복구할 수 있으며
+Connection mode, integration generation, 현재 integration revision은 보존합니다. 제거는
+현재 관리 identity가 Volicord 소유와 계속 일치하는 내용만 삭제합니다.
 
 명시적인 connection 제거 명령은 Connection 소유 Registry 통합 상태도 폐기합니다.
 Membership 하나를 제거하면 해당 Registry project-session binding과 Guard

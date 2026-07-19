@@ -71,6 +71,7 @@ pub(super) struct InitOutput<'a> {
     pub(super) runtime_home: &'a Path,
     pub(super) repo_root: &'a Path,
     pub(super) connection_id: &'a str,
+    pub(super) mode: &'a str,
     pub(super) project_id: Option<&'a str>,
     pub(super) host_plan: &'a HostPlan,
     pub(super) verification: Option<&'a VerificationReport>,
@@ -433,7 +434,7 @@ pub(super) fn render_init_output(
         data.connection_id,
         data.host_kind.as_str(),
         data.host_scope.as_str(),
-        CONNECTION_MODE_WORKFLOW,
+        data.mode,
         data.repo_root,
         &target,
     );

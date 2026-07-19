@@ -15,15 +15,21 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use support::binary_fixture::create_git_repo;
 use volicord_cli::{
-    cli::{CodexHost, InitArgs, PolicyArgs, PolicyCommand, PolicyValidateArgs, RecordProfile},
+    cli::{
+        CodexHost, ConnectionArgs, ConnectionCommand, ConnectionMode, ConnectionModeArgs, InitArgs,
+        PolicyArgs, PolicyCommand, PolicyValidateArgs, RecordProfile,
+    },
     connection_command::{
-        run_init_command, ConnectionCommandError, ConnectionProcess, ConnectionProcessOutput,
-        McpLaunch, McpVerification,
+        run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
+        ConnectionProcessOutput, McpLaunch, McpVerification,
     },
     policy_command::run_policy_command,
 };
 use volicord_store::{
-    agent_connections::{update_agent_connection_verification_report, AgentConnectionRecord},
+    agent_connections::{
+        agent_connection_record, update_agent_connection_verification_report,
+        AgentConnectionRecord, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
+    },
     core_pipeline::CoreProjectStore,
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
     operational_sessions::connection_integration_revision,
@@ -44,6 +50,8 @@ struct FakeConnectionProcess {
     codex_home: PathBuf,
     isolated_path: PathBuf,
     current_exe: PathBuf,
+    preflight_modes: Vec<String>,
+    verification_modes: Vec<String>,
 }
 
 impl FakeConnectionProcess {
@@ -57,6 +65,8 @@ impl FakeConnectionProcess {
             codex_home,
             isolated_path,
             current_exe: PathBuf::from(env!("CARGO_BIN_EXE_volicord")),
+            preflight_modes: Vec::new(),
+            verification_modes: Vec::new(),
         })
     }
 }
@@ -85,15 +95,20 @@ impl ConnectionProcess for FakeConnectionProcess {
     fn run_preflight(
         &mut self,
         _launch: &McpLaunch,
-        _runtime_home: &Path,
+        runtime_home: &Path,
         connection_id: &str,
         _project_id: Option<&str>,
     ) -> Result<ConnectionProcessOutput, String> {
+        let mode = agent_connection_record(runtime_home, connection_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("missing Agent Connection {connection_id}"))?
+            .mode;
+        self.preflight_modes.push(mode.clone());
         Ok(ConnectionProcessOutput {
             success: true,
             status_code: Some(0),
             stdout: format!(
-                "configuration: valid\ntransport: stdio\nconnection_id: {connection_id}\nmode: workflow\nenabled: true\nregistry_read: passed\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: workflow\ntools_list_schema_validation: passed\n"
+                "configuration: valid\ntransport: stdio\nconnection_id: {connection_id}\nmode: {mode}\nenabled: true\nregistry_read: passed\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: {mode}\ntools_list_schema_validation: passed\n"
             ),
             stderr: String::new(),
         })
@@ -104,8 +119,9 @@ impl ConnectionProcess for FakeConnectionProcess {
         _launch: &McpLaunch,
         _runtime_home: &Path,
         _connection_id: &str,
-        _mode: &str,
+        mode: &str,
     ) -> Result<McpVerification, String> {
+        self.verification_modes.push(mode.to_owned());
         Err("live MCP verification is intentionally unavailable in this fixture".to_owned())
     }
 }
@@ -132,6 +148,8 @@ fn fresh_record_init_persists_exact_owner_bound_manifest_and_managed_artifacts(
 
     let snapshot = registry_snapshot(fixture.path());
     let ids = assert_single_owned_records(&snapshot);
+    assert_eq!(snapshot.agent_connections[0].mode, CONNECTION_MODE_WORKFLOW);
+    assert_eq!(snapshot.agent_connections[0].integration_generation, 0);
     assert_unavailable_codex_verification(&snapshot)?;
     assert_eq!(snapshot.projects[0].repo_root, repo_root);
     assert_eq!(snapshot.connection_projects[0].project_id, ids.project_id);
@@ -213,6 +231,146 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     Ok(())
 }
 
+#[test]
+fn read_only_init_replay_dry_run_and_repairs_preserve_mode_generation_and_revision(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-read-only-repair")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let unrelated_repo_path = repo_root.join("product-notes.txt");
+    let unrelated_repo_content = "user-owned repository content\n";
+    fs::write(&unrelated_repo_path, unrelated_repo_content)?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    let unrelated_codex_content = "[unrelated]\nvalue = \"preserved\"\n";
+    fs::write(
+        process.codex_home.join("config.toml"),
+        unrelated_codex_content,
+    )?;
+
+    assert_failed_init_with_recorded_guard(&run_record_init(&repo_root, &mut process)?);
+    let workflow = registry_snapshot(fixture.path());
+    let ids = assert_single_owned_records(&workflow);
+    assert_eq!(workflow.agent_connections[0].mode, CONNECTION_MODE_WORKFLOW);
+    let transition = run_read_only_mode(&repo_root, &mut process)?;
+    assert_eq!(transition["action"], "mode_updated");
+    assert_eq!(transition["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+
+    let read_only = registry_snapshot(fixture.path());
+    let connection = &read_only.agent_connections[0];
+    let generation = connection.integration_generation;
+    let revision = inspected_connection_revision(connection)?;
+    let manifest_json = read_only.guard_installations[0].manifest_json.clone();
+    let managed_bytes = managed_artifact_bytes(&read_only)?;
+    let config_target = PathBuf::from(&connection.config_target);
+    let config_bytes = fs::read(&config_target)?;
+    assert_eq!(connection.mode, CONNECTION_MODE_READ_ONLY);
+    assert_eq!(generation, 1);
+    assert_manifest_revision(&read_only, &revision)?;
+    assert!(String::from_utf8_lossy(&config_bytes).contains(unrelated_codex_content.trim()));
+
+    process.preflight_modes.clear();
+    process.verification_modes.clear();
+    let replay = run_record_init(&repo_root, &mut process)?;
+    assert_failed_init_with_recorded_guard(&replay);
+    assert_eq!(replay["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    let replayed = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&replayed, generation, &revision)?;
+    assert_eq!(replayed.guard_installations[0].manifest_json, manifest_json);
+    assert_eq!(managed_artifact_bytes(&replayed)?, managed_bytes);
+    assert_eq!(fs::read(&config_target)?, config_bytes);
+    assert_eq!(
+        fs::read_to_string(&unrelated_repo_path)?,
+        unrelated_repo_content
+    );
+    assert_mode_expectations(&process);
+
+    let runtime_before_dry_run = directory_contents(fixture.path())?;
+    let repo_before_dry_run = directory_contents(&repo_root)?;
+    let codex_before_dry_run = directory_contents(&process.codex_home)?;
+    let dry_run = run_record_init_dry_run(&repo_root, &mut process)?;
+    assert_eq!(dry_run["dry_run"], true);
+    assert_eq!(dry_run["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    assert_eq!(directory_contents(fixture.path())?, runtime_before_dry_run);
+    assert_eq!(directory_contents(&repo_root)?, repo_before_dry_run);
+    assert_eq!(
+        directory_contents(&process.codex_home)?,
+        codex_before_dry_run
+    );
+
+    delete_guard_installation(fixture.path(), &ids.guard_installation_id)?;
+    assert_failed_init_with_recorded_guard(&run_record_init(&repo_root, &mut process)?);
+    let repaired_guard = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&repaired_guard, generation, &revision)?;
+    assert_manifest_revision(&repaired_guard, &revision)?;
+    assert_eq!(managed_artifact_bytes(&repaired_guard)?, managed_bytes);
+    assert_mode_expectations(&process);
+
+    let damaged_file = managed_script_path(&repaired_guard)?;
+    fs::remove_file(&damaged_file)?;
+    assert_failed_init_with_recorded_guard(&run_record_init(&repo_root, &mut process)?);
+    let repaired_file = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&repaired_file, generation, &revision)?;
+    assert_manifest_revision(&repaired_file, &revision)?;
+    assert_eq!(managed_artifact_bytes(&repaired_file)?, managed_bytes);
+    assert_mode_expectations(&process);
+
+    fs::write(&config_target, unrelated_codex_content)?;
+    assert_failed_init_with_recorded_guard(&run_record_init(&repo_root, &mut process)?);
+    let repaired_config = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&repaired_config, generation, &revision)?;
+    assert_manifest_revision(&repaired_config, &revision)?;
+    let repaired_config_text = fs::read_to_string(&config_target)?;
+    assert!(repaired_config_text.contains(unrelated_codex_content.trim()));
+    assert!(repaired_config_text.contains(&ids.connection_id));
+    assert_eq!(
+        fs::read_to_string(&unrelated_repo_path)?,
+        unrelated_repo_content
+    );
+    assert_mode_expectations(&process);
+    Ok(())
+}
+
+#[test]
+fn multi_project_init_replay_preserves_selected_read_only_connection_and_other_membership(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-read-only-multi-project")?;
+    let first_repo = create_git_repo(&fixture, "repo-one")?;
+    let second_repo = create_git_repo(&fixture, "repo-two")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+
+    assert_failed_init_with_recorded_guard(&run_record_init(&first_repo, &mut process)?);
+    assert_failed_init_with_recorded_guard(&run_record_init(&second_repo, &mut process)?);
+    let workflow = registry_snapshot(fixture.path());
+    assert_eq!(workflow.agent_connections.len(), 1);
+    assert_eq!(workflow.connection_projects.len(), 2);
+    assert_eq!(workflow.guard_installations.len(), 2);
+
+    run_read_only_mode(&first_repo, &mut process)?;
+    let before = registry_snapshot(fixture.path());
+    let generation = before.agent_connections[0].integration_generation;
+    let revision = inspected_connection_revision(&before.agent_connections[0])?;
+    let memberships = before.connection_projects.clone();
+    let manifests = before
+        .guard_installations
+        .iter()
+        .map(|guard| (guard.project_id.clone(), guard.manifest_json.clone()))
+        .collect::<BTreeMap<_, _>>();
+
+    let replay = run_record_init(&second_repo, &mut process)?;
+    assert_eq!(replay["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
+    let after = registry_snapshot(fixture.path());
+    assert_read_only_revision_unchanged(&after, generation, &revision)?;
+    assert_eq!(after.connection_projects, memberships);
+    assert_eq!(
+        after
+            .guard_installations
+            .iter()
+            .map(|guard| (guard.project_id.clone(), guard.manifest_json.clone()))
+            .collect::<BTreeMap<_, _>>(),
+        manifests
+    );
+    Ok(())
+}
+
 fn run_record_init(
     repo_root: &Path,
     process: &mut FakeConnectionProcess,
@@ -256,6 +414,51 @@ fn run_record_init(
         }
     };
     assert!(!output.contains(GENERATED_SHAPE_ERROR));
+    Ok(serde_json::from_str(&output)?)
+}
+
+fn run_record_init_dry_run(
+    repo_root: &Path,
+    process: &mut FakeConnectionProcess,
+) -> Result<Value, Box<dyn Error>> {
+    let result = run_init_command(
+        InitArgs {
+            host: CodexHost::Codex,
+            repo: repo_root.to_path_buf(),
+            shared: false,
+            profile: RecordProfile::Record,
+            home: None,
+            mcp_command: None,
+            dry_run: true,
+            json: true,
+        },
+        repo_root,
+        process,
+    );
+    let output = match result {
+        Ok(output) | Err(ConnectionCommandError::FailureOutput(output)) => output,
+        Err(error) => return Err(error.into()),
+    };
+    Ok(serde_json::from_str(&output)?)
+}
+
+fn run_read_only_mode(
+    repo_root: &Path,
+    process: &mut FakeConnectionProcess,
+) -> Result<Value, Box<dyn Error>> {
+    let output = run_connection_command(
+        ConnectionArgs {
+            command: ConnectionCommand::Mode(ConnectionModeArgs {
+                host: Some(CodexHost::Codex),
+                mode: ConnectionMode::ReadOnly,
+                repo: Some(repo_root.to_path_buf()),
+                shared: false,
+                json: true,
+            }),
+        },
+        repo_root,
+        process,
+    )?;
     Ok(serde_json::from_str(&output)?)
 }
 
@@ -545,6 +748,104 @@ fn managed_artifact_bytes(
         .into_iter()
         .map(|artifact| Ok((artifact.path.clone(), fs::read(artifact.path)?)))
         .collect()
+}
+
+fn inspected_connection_revision(
+    connection: &volicord_store::inspection::AgentConnectionInspectionRecord,
+) -> Result<String, Box<dyn Error>> {
+    let connection = AgentConnectionRecord {
+        connection_internal_id: connection.connection_internal_id.clone(),
+        host_kind: connection.host_kind.clone(),
+        intent: connection.intent.clone(),
+        host_scope: connection.host_scope.clone(),
+        project_internal_id: connection.project_internal_id.clone(),
+        server_name: connection.server_name.clone(),
+        config_target: connection.config_target.clone(),
+        mode: connection.mode.clone(),
+        enabled: connection.enabled,
+        managed_fingerprint: connection.managed_fingerprint.clone(),
+        integration_generation: connection.integration_generation,
+        verification_report_json: connection.verification_report_json.clone(),
+        created_at: connection.created_at.clone(),
+        updated_at: connection.updated_at.clone(),
+        metadata_json: connection.metadata_json.clone(),
+    };
+    Ok(connection_integration_revision(&connection)?.into_inner())
+}
+
+fn assert_read_only_revision_unchanged(
+    snapshot: &RegistryInspectionSnapshot,
+    generation: i64,
+    revision: &str,
+) -> Result<(), Box<dyn Error>> {
+    assert_eq!(snapshot.agent_connections.len(), 1);
+    let connection = &snapshot.agent_connections[0];
+    assert_eq!(connection.mode, CONNECTION_MODE_READ_ONLY);
+    assert_eq!(connection.integration_generation, generation);
+    assert_eq!(inspected_connection_revision(connection)?, revision);
+    Ok(())
+}
+
+fn assert_manifest_revision(
+    snapshot: &RegistryInspectionSnapshot,
+    revision: &str,
+) -> Result<(), Box<dyn Error>> {
+    assert_eq!(snapshot.guard_installations.len(), 1);
+    let manifest: Value = serde_json::from_str(&snapshot.guard_installations[0].manifest_json)?;
+    assert_eq!(manifest["integration_revision"], revision);
+    assert_exact_manifest_and_artifacts(snapshot, Path::new(&snapshot.projects[0].repo_root))?;
+    Ok(())
+}
+
+fn managed_script_path(snapshot: &RegistryInspectionSnapshot) -> Result<PathBuf, Box<dyn Error>> {
+    let manifest: Value = serde_json::from_str(&snapshot.guard_installations[0].manifest_json)?;
+    manifest["managed_files"]
+        .as_array()
+        .and_then(|files| {
+            files.iter().find_map(|file| {
+                (file["ownership"] == "managed_script")
+                    .then(|| file["path"].as_str().map(PathBuf::from))
+                    .flatten()
+            })
+        })
+        .ok_or_else(|| "Guard manifest has no managed script".into())
+}
+
+fn assert_mode_expectations(process: &FakeConnectionProcess) {
+    assert_eq!(
+        process.preflight_modes.last().map(String::as_str),
+        Some(CONNECTION_MODE_READ_ONLY)
+    );
+    assert_eq!(
+        process.verification_modes.last().map(String::as_str),
+        Some(CONNECTION_MODE_READ_ONLY)
+    );
+}
+
+fn directory_contents(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn Error>> {
+    fn visit(
+        root: &Path,
+        current: &Path,
+        output: &mut BTreeMap<PathBuf, Vec<u8>>,
+    ) -> Result<(), Box<dyn Error>> {
+        if !current.exists() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(current)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                visit(root, &path, output)?;
+            } else {
+                output.insert(path.strip_prefix(root)?.to_path_buf(), fs::read(path)?);
+            }
+        }
+        Ok(())
+    }
+
+    let mut output = BTreeMap::new();
+    visit(root, root, &mut output)?;
+    Ok(output)
 }
 
 fn delete_guard_installation(

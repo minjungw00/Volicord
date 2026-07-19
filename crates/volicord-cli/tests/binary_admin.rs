@@ -206,7 +206,11 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     assert_eq!(value["dry_run"], true);
     assert_eq!(value["status"], "action_required");
     assert_eq!(value["setup_applied"], false);
+    assert_eq!(value["connection"]["mode"], "workflow");
     assert!(value["planned_changes"].is_array());
+    assert!(!fixture.runtime_home.join("registry.sqlite").exists());
+    assert!(!fixture.codex_home.join("config.toml").exists());
+    assert!(directory_contents(&fixture.repo_root)?.is_empty());
     Ok(())
 }
 
