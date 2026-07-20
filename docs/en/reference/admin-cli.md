@@ -593,7 +593,7 @@ The failure object has this current shape:
 
 ```yaml
 McpSelfTestFailure:
-  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | shutdown
+  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | cleanup | shutdown
   stage: startup | initialize | tools_list | safe_tool_call | shutdown
   exit_code?: integer | null
   timeout_ms?: integer
@@ -611,10 +611,14 @@ BoundedDiagnosticText:
 Only fields relevant to the typed failure are present. `exit_code=null` means
 the exited process had no numeric status code, including signal termination.
 `stderr` captures at most 2 KiB of child stderr while the verifier drains the
-pipe concurrently; `protocol_detail` is limited to 2 KiB, and one stdout
-protocol line is limited to 64 KiB. Truncated text ends with a deterministic
-marker that states its omitted byte count, and the same count remains in
-`omitted_bytes`. The verifier reports `mcp_server_process_failed` for
+pipe concurrently; `protocol_detail` is limited to 2 KiB, one stdout protocol
+line is limited to 64 KiB, and one self-test process accepts at most 16 stdout
+protocol messages. One monotonic lifecycle deadline governs process progress;
+process-tree termination, direct-child reaping, and pipe completion use a
+bounded cleanup allowance. A `cleanup` failure reports that bounded cleanup did
+not complete and includes its bounded `io_detail`. Truncated text ends with a
+deterministic marker that states its omitted byte count, and the same count
+remains in `omitted_bytes`. The verifier reports `mcp_server_process_failed` for
 `startup` or `shutdown`, `mcp_server_initialize_failed` for `initialize`,
 `mcp_server_tools_list_failed` for `tools_list`, and
 `mcp_server_safe_call_failed` for `safe_tool_call` directly from the typed

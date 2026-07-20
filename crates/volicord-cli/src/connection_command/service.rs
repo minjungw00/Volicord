@@ -1538,8 +1538,11 @@ mod init_planning_tests {
         fn run_preflight(
             &mut self,
             _launch: &MaterializedManagedMcpLaunch,
-        ) -> Result<ConnectionProcessOutput, String> {
-            Err("init planning must not run MCP preflight".to_owned())
+        ) -> Result<ConnectionProcessOutput, McpProcessFailure> {
+            Err(McpProcessFailure::protocol(
+                McpStage::Startup,
+                "init planning must not run MCP preflight",
+            ))
         }
 
         fn verify_mcp_stdio(

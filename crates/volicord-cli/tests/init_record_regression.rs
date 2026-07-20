@@ -108,15 +108,23 @@ impl ConnectionProcess for FakeConnectionProcess {
     fn run_preflight(
         &mut self,
         launch: &MaterializedManagedMcpLaunch,
-    ) -> Result<ConnectionProcessOutput, String> {
+    ) -> Result<ConnectionProcessOutput, McpProcessFailure> {
         let ManagedMcpInvocationPurpose::CliPreflightCheck { connection_id, .. } = launch.purpose()
         else {
-            return Err("fixture expected a CLI preflight invocation".to_owned());
+            return Err(McpProcessFailure::protocol(
+                McpStage::Startup,
+                "fixture expected a CLI preflight invocation",
+            ));
         };
         let runtime_home = &self.runtime_home;
         let mode = agent_connection_record(runtime_home, connection_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| format!("missing Agent Connection {connection_id}"))?
+            .map_err(|error| McpProcessFailure::protocol(McpStage::Startup, error.to_string()))?
+            .ok_or_else(|| {
+                McpProcessFailure::protocol(
+                    McpStage::Startup,
+                    format!("missing Agent Connection {connection_id}"),
+                )
+            })?
             .mode;
         self.preflight_modes.push(mode.clone());
         Ok(ConnectionProcessOutput {

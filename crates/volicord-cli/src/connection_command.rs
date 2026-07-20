@@ -1528,7 +1528,7 @@ mod persisted_metadata_tests {
         fn run_preflight(
             &mut self,
             _launch: &MaterializedManagedMcpLaunch,
-        ) -> Result<ConnectionProcessOutput, String> {
+        ) -> Result<ConnectionProcessOutput, McpProcessFailure> {
             self.preflight_calls += 1;
             Ok(ConnectionProcessOutput {
                 success: false,
@@ -1569,27 +1569,36 @@ mod persisted_metadata_tests {
         fn run_preflight(
             &mut self,
             launch: &MaterializedManagedMcpLaunch,
-        ) -> Result<ConnectionProcessOutput, String> {
+        ) -> Result<ConnectionProcessOutput, McpProcessFailure> {
             let ManagedMcpInvocationPurpose::CliPreflightCheck { connection_id, .. } =
                 launch.purpose()
             else {
-                return Err("fixture expected a CLI preflight invocation".to_owned());
+                return Err(McpProcessFailure::protocol(
+                    McpStage::Startup,
+                    "fixture expected a CLI preflight invocation",
+                ));
             };
             let runtime_home = &self.runtime_home;
             let connection = agent_connection_record(runtime_home, connection_id)
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| "fixture connection disappeared".to_owned())?;
-            let projects = list_connection_projects(runtime_home, connection_id)
-                .map_err(|error| error.to_string())?;
-            let expected_integration_revision =
-                connection_integration_revision(&connection).map_err(|error| error.to_string())?;
+                .map_err(|error| McpProcessFailure::protocol(McpStage::Startup, error.to_string()))?
+                .ok_or_else(|| {
+                    McpProcessFailure::protocol(McpStage::Startup, "fixture connection disappeared")
+                })?;
+            let projects =
+                list_connection_projects(runtime_home, connection_id).map_err(|error| {
+                    McpProcessFailure::protocol(McpStage::Startup, error.to_string())
+                })?;
+            let expected_integration_revision = connection_integration_revision(&connection)
+                .map_err(|error| {
+                    McpProcessFailure::protocol(McpStage::Startup, error.to_string())
+                })?;
             let guard_manifests = preflight_mode_guard_rebinds(
                 runtime_home,
                 &connection,
                 &projects,
                 CONNECTION_MODE_READ_ONLY,
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| McpProcessFailure::protocol(McpStage::Startup, error.to_string()))?;
             transition_connection_mode(
                 runtime_home,
                 ConnectionModeTransition {
@@ -1600,7 +1609,7 @@ mod persisted_metadata_tests {
                     guard_manifests,
                 },
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| McpProcessFailure::protocol(McpStage::Startup, error.to_string()))?;
             self.transitioned = true;
             Ok(ConnectionProcessOutput {
                 success: false,

@@ -50,6 +50,7 @@
 |---|---|
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
+| `crates/volicord-cli/src/connection_command/mcp_process/` | 관리 시작 구체화, 한도가 있는 자식 프로세스 감독, 사전 점검 해석, stdio JSON-RPC 점검 순서, 타입이 지정된 생명주기 또는 프로토콜 진단. |
 | `crates/volicord-cli/src/connection_command/output/report.rs` | 선택한 Connection의 정규 command report, operation result, rendering 입력, 집계 상태. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 관리 구성, 진단용 실행 파일 관찰, 연결 검증. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest와 정규 관리 artifact 기대값 생성. |

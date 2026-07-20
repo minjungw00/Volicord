@@ -552,7 +552,7 @@ McpSelfTestProgress:
 
 ```yaml
 McpSelfTestFailure:
-  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | shutdown
+  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | cleanup | shutdown
   stage: startup | initialize | tools_list | safe_tool_call | shutdown
   exit_code?: integer | null
   timeout_ms?: integer
@@ -570,8 +570,12 @@ BoundedDiagnosticText:
 타입이 지정된 실패에 필요한 필드만 나타납니다. `exit_code=null`은 시그널 종료를
 포함하여 종료된 프로세스에 숫자 상태 코드가 없다는 뜻입니다. 검증기는 stderr 파이프를
 동시에 비우면서 자식 stderr를 최대 2 KiB까지 `stderr`에 보존합니다.
-`protocol_detail`은 2 KiB, stdout 프로토콜 줄 하나는 64 KiB로 제한합니다. 잘린
-텍스트 끝에는 생략한 바이트 수를 밝히는 결정적 표식이 붙으며 같은 수가
+`protocol_detail`은 2 KiB, stdout 프로토콜 줄 하나는 64 KiB로 제한하며 자체 검사
+프로세스 하나에서 stdout 프로토콜 메시지를 최대 16개까지 받습니다. 단조 증가 시계의
+생명주기 기한 하나가 프로세스 진행 전체를 제어합니다. 프로세스 트리 종료, 직접 자식
+프로세스 회수, 파이프 완료에는 한도가 있는 정리 여유 시간을 사용합니다. `cleanup`
+실패는 이 한도 안에 정리를 끝내지 못했음을 나타내며 제한된 `io_detail`을 포함합니다.
+잘린 텍스트 끝에는 생략한 바이트 수를 밝히는 결정적 표식이 붙으며 같은 수가
 `omitted_bytes`에도 남습니다. 검증기는 타입이 지정된 단계에서 직접
 `startup` 또는 `shutdown`을 `mcp_server_process_failed`, `initialize`를
 `mcp_server_initialize_failed`, `tools_list`를 `mcp_server_tools_list_failed`,

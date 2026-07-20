@@ -50,6 +50,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
+| `crates/volicord-cli/src/connection_command/mcp_process/` | Managed launch materialization, bounded child-process supervision, preflight interpretation, stdio JSON-RPC probe sequencing, and typed lifecycle or protocol diagnostics. |
 | `crates/volicord-cli/src/connection_command/output/report.rs` | Canonical selected-Connection command report, operation results, rendering input, and aggregate status. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex managed configuration, diagnostic executable observations, and connection verification. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest and canonical managed-artifact expectation generation. |

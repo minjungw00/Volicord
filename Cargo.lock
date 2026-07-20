@@ -853,6 +853,7 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
