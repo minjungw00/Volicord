@@ -3,7 +3,7 @@
 mod support;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     error::Error,
     ffi::OsString,
     fs,
@@ -13,8 +13,10 @@ use std::{
 
 use serde_json::Value;
 use support::binary_fixture::{base_command, prepare_runtime_home};
-use volicord_store::inspection::{
-    inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot,
+use volicord_store::{
+    bootstrap::initialize_runtime_home,
+    inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
+    sqlite::registry_db_path,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::ConnectionVerificationReport;
@@ -290,8 +292,8 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     let init = fixture.run(false)?;
     let init_report: Value = serde_json::from_slice(&init.stdout)?;
     assert_eq!(init_report["result"]["applied"], true);
-    let runtime_before = directory_contents(&fixture.runtime_home)?;
-    let repository_before = directory_contents(&fixture.repo_root)?;
+    let files_before = directory_contents(fixture._temporary_root.path())?;
+    let entries_before = directory_entries(fixture._temporary_root.path())?;
 
     let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
     assert_eq!(output.status.code(), Some(0));
@@ -337,8 +339,23 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     assert!(!json_key_exists(&report, "metadata_state"));
     assert!(!json_string_value_exists(&report, "current"));
     assert!(!json_string_value_exists(&report, "degraded"));
-    assert_eq!(directory_contents(&fixture.runtime_home)?, runtime_before);
-    assert_eq!(directory_contents(&fixture.repo_root)?, repository_before);
+
+    let status = fixture.run_connection("status", true)?;
+    let status_report: Value = serde_json::from_slice(&status.stdout)?;
+    assert_eq!(status_report["operation"], "status");
+    assert_eq!(
+        status_report["runtime_home"],
+        path_text(&fixture.runtime_home)
+    );
+
+    assert_eq!(
+        directory_contents(fixture._temporary_root.path())?,
+        files_before
+    );
+    assert_eq!(
+        directory_entries(fixture._temporary_root.path())?,
+        entries_before
+    );
     Ok(())
 }
 
@@ -514,46 +531,106 @@ fn relative_explicit_home_is_reported_as_the_selected_absolute_path() -> Result<
 }
 
 #[test]
-fn explicit_unusable_home_never_falls_back_or_creates_state() -> Result<(), Box<dyn Error>> {
+fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_fallback(
+) -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-unusable-explicit-home")?;
     let init: Value = serde_json::from_slice(&fixture.run(false)?.stdout)?;
     let connection_id = init["connection"]["id"]
         .as_str()
         .expect("custom-home connection id");
     let missing_home = fixture._temporary_root.path().join("missing-explicit-home");
-    let uninitialized_home = fixture
+    let missing_registry_home = fixture
         ._temporary_root
         .path()
-        .join("uninitialized-explicit-home");
-    fs::create_dir(&uninitialized_home)?;
-    let custom_before = fixture.all_contents()?;
+        .join("missing-registry-explicit-home");
+    fs::create_dir(&missing_registry_home)?;
+    let zero_byte_home = fixture
+        ._temporary_root
+        .path()
+        .join("zero-byte-explicit-home");
+    fs::create_dir(&zero_byte_home)?;
+    let zero_byte_registry = registry_db_path(&zero_byte_home);
+    fs::write(&zero_byte_registry, [])?;
+    let empty_sqlite_home = fixture
+        ._temporary_root
+        .path()
+        .join("empty-sqlite-explicit-home");
+    fs::create_dir(&empty_sqlite_home)?;
+    let empty_sqlite_registry = registry_db_path(&empty_sqlite_home);
+    let empty_sqlite = rusqlite::Connection::open(&empty_sqlite_registry)?;
+    empty_sqlite.execute_batch("VACUUM")?;
+    drop(empty_sqlite);
+    assert!(
+        !fs::read(&empty_sqlite_registry)?.is_empty(),
+        "VACUUM should materialize an empty valid SQLite database"
+    );
+    let no_profile_home = fixture
+        ._temporary_root
+        .path()
+        .join("no-profile-explicit-home");
+    initialize_runtime_home(&no_profile_home, "runtime_home_without_profile", "{}")?;
+
+    let zero_byte_modified = fs::metadata(&zero_byte_registry)?.modified()?;
+    let empty_sqlite_modified = fs::metadata(&empty_sqlite_registry)?.modified()?;
+    let no_profile_registry = registry_db_path(&no_profile_home);
+    let no_profile_modified = fs::metadata(&no_profile_registry)?.modified()?;
+    let files_before = directory_contents(fixture._temporary_root.path())?;
+    let entries_before = directory_entries(fixture._temporary_root.path())?;
 
     for (unusable_home, expected_code) in [
         (&missing_home, "RUNTIME_HOME_MISSING"),
-        (&uninitialized_home, "SETUP_REQUIRED"),
+        (&missing_registry_home, "SETUP_REQUIRED"),
+        (&zero_byte_home, "SETUP_REQUIRED"),
+        (&empty_sqlite_home, "SETUP_REQUIRED"),
+        (&no_profile_home, "SETUP_REQUIRED"),
     ] {
-        let output = base_command()
-            .arg("connection")
-            .arg("list")
-            .arg("--home")
-            .arg(unusable_home)
-            .arg("--json")
-            .env("VOLICORD_HOME", &fixture.runtime_home)
-            .env("HOME", &fixture.user_home)
-            .env("USERPROFILE", &fixture.user_home)
-            .current_dir(&fixture.repo_root)
-            .output()?;
+        for operation in ["add", "list", "status", "verify", "mode", "remove"] {
+            let output = fixture.run_connection_against_home(operation, unusable_home)?;
 
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(stdout(&output)?, "");
-        let diagnostic = stderr(&output)?;
-        assert!(diagnostic.contains(expected_code));
-        assert!(diagnostic.contains(&path_text(unusable_home)));
-        assert!(!diagnostic.contains(connection_id));
+            assert_eq!(
+                output.status.code(),
+                Some(1),
+                "{operation} unexpectedly succeeded for {}",
+                unusable_home.display()
+            );
+            assert_eq!(stdout(&output)?, "");
+            let diagnostic = stderr(&output)?;
+            assert!(
+                diagnostic.contains(expected_code),
+                "{operation} diagnostic did not contain {expected_code}: {diagnostic}"
+            );
+            assert!(diagnostic.contains(&path_text(unusable_home)));
+            assert!(!diagnostic.contains(connection_id));
+            assert_eq!(
+                directory_contents(fixture._temporary_root.path())?,
+                files_before,
+                "{operation} changed filesystem bytes for {}",
+                unusable_home.display()
+            );
+            assert_eq!(
+                directory_entries(fixture._temporary_root.path())?,
+                entries_before,
+                "{operation} changed directory entries for {}",
+                unusable_home.display()
+            );
+        }
     }
     assert!(!missing_home.exists());
-    assert!(uninitialized_home.is_dir());
-    assert_eq!(fixture.all_contents()?, custom_before);
+    assert!(missing_registry_home.is_dir());
+    assert_eq!(fs::read(&zero_byte_registry)?, Vec::<u8>::new());
+    assert_eq!(fs::metadata(&zero_byte_registry)?.len(), 0);
+    assert_eq!(
+        fs::metadata(&zero_byte_registry)?.modified()?,
+        zero_byte_modified
+    );
+    assert_eq!(
+        fs::metadata(&empty_sqlite_registry)?.modified()?,
+        empty_sqlite_modified
+    );
+    assert_eq!(
+        fs::metadata(&no_profile_registry)?.modified()?,
+        no_profile_modified
+    );
     Ok(())
 }
 
@@ -1570,6 +1647,37 @@ impl IsolatedInitFixture {
         Ok(command.output()?)
     }
 
+    fn run_connection_against_home(
+        &self,
+        operation: &str,
+        runtime_home: &Path,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command.arg("connection").arg(operation);
+        match operation {
+            "list" => {}
+            "mode" => {
+                command.arg("codex").arg("read-only");
+            }
+            _ => {
+                command.arg("codex");
+            }
+        }
+        command
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--home")
+            .arg(runtime_home)
+            .arg("--json")
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        Ok(command.output()?)
+    }
+
     fn all_contents(&self) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn Error>> {
         directory_contents(self._temporary_root.path())
     }
@@ -1625,6 +1733,31 @@ fn directory_contents(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn
     }
 
     let mut output = BTreeMap::new();
+    visit(root, root, &mut output)?;
+    Ok(output)
+}
+
+fn directory_entries(root: &Path) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
+    fn visit(
+        root: &Path,
+        current: &Path,
+        output: &mut BTreeSet<PathBuf>,
+    ) -> Result<(), Box<dyn Error>> {
+        if !current.exists() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(current)? {
+            let entry = entry?;
+            let path = entry.path();
+            output.insert(path.strip_prefix(root)?.to_path_buf());
+            if entry.file_type()?.is_dir() {
+                visit(root, &path, output)?;
+            }
+        }
+        Ok(())
+    }
+
+    let mut output = BTreeSet::new();
     visit(root, root, &mut output)?;
     Ok(output)
 }

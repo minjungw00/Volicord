@@ -1205,6 +1205,8 @@ mod tests {
 
     use super::*;
 
+    type SqliteMasterRow = (String, String, Option<String>);
+
     #[test]
     fn project_id_validator_rejects_unsafe_path_components() {
         for invalid in ["", "   ", ".", "..", "a/b", "a\\b", "a\0b"] {
@@ -1293,6 +1295,117 @@ mod tests {
             require_installation_profile(runtime_home.path())?.volicord_mcp_command,
             "/opt/volicord/bin/volicord"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn installation_profile_read_only_does_not_create_a_missing_registry(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("store-read-only-profile-missing")?;
+        let entries_before = directory_entries(runtime_home.path())?;
+
+        assert!(installation_profile_read_only(runtime_home.path())?.is_none());
+
+        assert_eq!(directory_entries(runtime_home.path())?, entries_before);
+        assert!(!registry_db_path(runtime_home.path()).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn installation_profile_read_only_rejects_zero_byte_registry_without_initializing_it(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("store-read-only-profile-zero-byte")?;
+        let registry_path = registry_db_path(runtime_home.path());
+        fs::write(&registry_path, [])?;
+        let bytes_before = fs::read(&registry_path)?;
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(runtime_home.path())?;
+
+        installation_profile_read_only(runtime_home.path())
+            .expect_err("zero-byte Registry must not be initialized by a read");
+
+        assert_eq!(fs::read(&registry_path)?, bytes_before);
+        assert!(bytes_before.is_empty());
+        assert_eq!(fs::metadata(&registry_path)?.len(), 0);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(runtime_home.path())?, entries_before);
+        Ok(())
+    }
+
+    #[test]
+    fn installation_profile_read_only_rejects_empty_sqlite_without_creating_schema(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("store-read-only-profile-empty-sqlite")?;
+        let registry_path = registry_db_path(runtime_home.path());
+        let conn = rusqlite::Connection::open(&registry_path)?;
+        conn.execute_batch("VACUUM")?;
+        drop(conn);
+        let schema_before = sqlite_master_rows(&registry_path)?;
+        let bytes_before = fs::read(&registry_path)?;
+        assert!(
+            !bytes_before.is_empty(),
+            "VACUUM should materialize an empty valid SQLite database"
+        );
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(runtime_home.path())?;
+
+        installation_profile_read_only(runtime_home.path())
+            .expect_err("empty SQLite must not be accepted as a Volicord Registry");
+
+        assert_eq!(sqlite_master_rows(&registry_path)?, schema_before);
+        assert!(schema_before.is_empty());
+        assert_eq!(fs::read(&registry_path)?, bytes_before);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(runtime_home.path())?, entries_before);
+        Ok(())
+    }
+
+    #[test]
+    fn installation_profile_read_only_preserves_valid_registry_without_profile(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("store-read-only-profile-absent")?;
+        initialize_runtime_home(runtime_home.path(), "runtime_home_profile_absent", "{}")?;
+        let registry_path = registry_db_path(runtime_home.path());
+        let bytes_before = fs::read(&registry_path)?;
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(runtime_home.path())?;
+
+        assert!(installation_profile_read_only(runtime_home.path())?.is_none());
+
+        assert_eq!(fs::read(&registry_path)?, bytes_before);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(runtime_home.path())?, entries_before);
+        Ok(())
+    }
+
+    #[test]
+    fn installation_profile_read_only_returns_exact_profile_without_writing(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("store-read-only-profile-present")?;
+        initialize_runtime_home(runtime_home.path(), "runtime_home_profile_present", "{}")?;
+        let expected = write_installation_profile(
+            runtime_home.path(),
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: "/opt/volicord/bin/volicord".to_owned(),
+                volicord_mcp_command: "/opt/volicord/bin/volicord".to_owned(),
+                bin_dir: PathBuf::from("/opt/volicord/bin"),
+                default_connection_mode: "workflow".to_owned(),
+                metadata_json: r#"{"source":"test"}"#.to_owned(),
+            },
+        )?;
+        let registry_path = registry_db_path(runtime_home.path());
+        let bytes_before = fs::read(&registry_path)?;
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(runtime_home.path())?;
+
+        let actual = installation_profile_read_only(runtime_home.path())?
+            .expect("stored installation profile should be returned");
+
+        assert_eq!(actual, expected);
+        assert_eq!(fs::read(&registry_path)?, bytes_before);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(runtime_home.path())?, entries_before);
         Ok(())
     }
 
@@ -1903,6 +2016,24 @@ mod tests {
             },
         )?;
         Ok((runtime_home, repo_root))
+    }
+
+    fn directory_entries(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+        let mut entries = fs::read_dir(root)?
+            .map(|entry| entry.map(|entry| entry.file_name().into()))
+            .collect::<Result<Vec<PathBuf>, _>>()?;
+        entries.sort();
+        Ok(entries)
+    }
+
+    fn sqlite_master_rows(path: &Path) -> Result<Vec<SqliteMasterRow>, Box<dyn Error>> {
+        let conn = open_read_only_database(path)?;
+        let mut statement =
+            conn.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name")?;
+        let rows = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     fn replace_project_repo_root(

@@ -279,7 +279,7 @@ fn plan_init_provisioning(
         .as_ref()
         .map(effective_connection_report)
         .transpose()?;
-    let project_hint = project_record_by_repo_root(&runtime_home, &repo_root)
+    let project_hint = project_record_by_repo_root_read_only(&runtime_home, &repo_root)
         .ok()
         .flatten();
     let expected_fingerprint = existing
@@ -1215,12 +1215,14 @@ fn plan_connection_provisioning(
     let host_kind = resolve_connection_host(parsed.host_kind, process)?;
     let intent = connection_intent_from_flags(parsed)?;
     let host_scope = host_scope_for_intent(host_kind, intent)?;
-    let runtime_home = selected_connection_runtime_home_path(
+    let SelectedConnectionRuntimeHome {
+        path: runtime_home,
+        installation_profile,
+    } = selected_connection_runtime_home_read_only(
         parsed.explicit_runtime_home.as_deref(),
         |name| process.env_var(name),
         request.current_dir,
     )?;
-    let installation_profile = required_installation_profile(&runtime_home)?;
     let repo_root = resolve_connection_repo_root(request.current_dir, parsed.repo.as_deref())?;
     let server_name = DEFAULT_SERVER_NAME.to_owned();
     let target_hint = connection_target_hint(host_kind, host_scope, Some(&repo_root), process)?;
@@ -1256,7 +1258,7 @@ fn plan_connection_provisioning(
                 &server_name,
             )
         });
-    let project_hint = project_record_by_repo_root(&runtime_home, &repo_root)
+    let project_hint = project_record_by_repo_root_read_only(&runtime_home, &repo_root)
         .ok()
         .flatten();
     let expected_fingerprint = existing
@@ -1483,7 +1485,7 @@ fn ensure_host_plan_has_no_conflict(plan: &HostPlan) -> Result<(), ConnectionCom
 mod init_planning_tests {
     use std::{ffi::OsString, fs, path::PathBuf};
 
-    use volicord_store::bootstrap::runtime_home_record_read_only;
+    use volicord_store::bootstrap::{project_record_by_repo_root, runtime_home_record_read_only};
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;

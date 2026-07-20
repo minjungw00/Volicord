@@ -5,11 +5,11 @@ use std::{
 
 use volicord_store::{
     agent_connections::{
-        list_agent_connections, list_agent_connections_for_diagnostics,
-        list_agent_connections_read_only, list_connection_projects,
-        list_connection_projects_for_diagnostics, AgentConnectionRecord, ConnectionProjectRecord,
+        list_agent_connections_for_diagnostics, list_agent_connections_read_only,
+        list_connection_projects_for_diagnostics, list_connection_projects_read_only,
+        AgentConnectionRecord, ConnectionProjectRecord,
     },
-    bootstrap::project_record_by_repo_root,
+    bootstrap::project_record_by_repo_root_read_only,
 };
 
 use crate::guard_integration::hooks::shell_word;
@@ -199,7 +199,7 @@ fn select_connection_with_diagnostic_reads(
     selector: &ConnectionSelector,
     diagnostic_reads: bool,
 ) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
-    if project_record_by_repo_root(runtime_home, &selector.repo_root)?.is_none() {
+    if project_record_by_repo_root_read_only(runtime_home, &selector.repo_root)?.is_none() {
         return Err(ConnectionCommandError::runtime(format!(
             "PROJECT_NOT_REGISTERED: repository {} is not registered in Runtime Home {}; run `{}` first",
             selector.repo_root.display(),
@@ -212,7 +212,7 @@ fn select_connection_with_diagnostic_reads(
     let connections = if diagnostic_reads {
         list_agent_connections_for_diagnostics(runtime_home)?
     } else {
-        list_agent_connections(runtime_home)?
+        list_agent_connections_read_only(runtime_home)?
     };
     for connection in connections {
         if connection.host_kind != selector.host_kind.as_str() {
@@ -236,7 +236,7 @@ fn select_connection_with_diagnostic_reads(
                 &connection.connection_internal_id,
             )?
         } else {
-            list_connection_projects(runtime_home, &connection.connection_internal_id)?
+            list_connection_projects_read_only(runtime_home, &connection.connection_internal_id)?
         };
         same_host_connections.push((connection.clone(), projects.clone()));
         if projects

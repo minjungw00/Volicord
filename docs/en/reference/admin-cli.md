@@ -69,13 +69,16 @@ resolved against the caller's current working directory and the selected path
 is reported as an absolute path.
 
 An explicit path never falls back to an environment or platform-default home.
-Selection itself does not create or initialize a Runtime Home. `init` may
-create the selected home as part of its owned setup mutation; connection
-commands require the selected home to have a current installation profile and
-fail with that exact path when it is missing or unusable. `connection list`
-and `connection status` remain read-only after selection. Empty, malformed, or
-conflicting values fail before storage access. A Product Repository is never
-used as a Runtime Home.
+Runtime Home selection and the installation-profile validation performed for
+every connection command are read-only. They do not create the selected
+directory or `registry.sqlite`, initialize or migrate Registry schema, or write
+Registry state. Registry schema creation belongs to the explicit `init` setup
+mutation. `init` may create the selected home and schema as part of that owned
+mutation; connection commands require the selected home to have a current
+installation profile and fail with that exact path when it is missing or
+unusable. `connection list` and `connection status` remain read-only after
+selection. Empty, malformed, or conflicting values fail before storage access.
+A Product Repository is never used as a Runtime Home.
 
 A custom-home lifecycle can pass the same path to every command without
 exporting `VOLICORD_HOME`:

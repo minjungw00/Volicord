@@ -14,8 +14,8 @@ use volicord_store::{
         connection_metadata_has_pending_host_cleanup_for_project, ensure_agent_connection,
         ensure_staged_agent_connection, list_agent_connections,
         list_agent_connections_for_diagnostics, list_connection_projects,
-        list_connection_projects_for_diagnostics, remove_connection_project,
-        replace_agent_connection_verification_report_if_revision,
+        list_connection_projects_for_diagnostics, list_connection_projects_read_only,
+        remove_connection_project, replace_agent_connection_verification_report_if_revision,
         staged_connection_migration_state, transition_connection_mode, AgentConnectionRecord,
         AgentConnectionRegistration, ConnectionModeGuardManifestRebind, ConnectionModeTransition,
         ConnectionModeTransitionKind, ConnectionProjectRecord, ConnectionProjectRegistration,
@@ -25,8 +25,9 @@ use volicord_store::{
     },
     bootstrap::{
         ensure_project_for_repo, initialize_runtime_home, installation_profile,
-        project_record_by_repo_root, write_installation_profile, InstallationProfileRecord,
-        InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
+        installation_profile_read_only, project_record_by_repo_root_read_only,
+        write_installation_profile, InstallationProfileRecord, InstallationProfileRegistration,
+        RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
     guards::{list_guard_installations, GuardInstallationRecord},
@@ -291,7 +292,9 @@ pub fn run_connections_command(
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
     let parsed = connection_list_options(args, current_dir);
-    let runtime_home = selected_connection_runtime_home_path(
+    let SelectedConnectionRuntimeHome {
+        path: runtime_home, ..
+    } = selected_connection_runtime_home_read_only(
         parsed.explicit_runtime_home.as_deref(),
         |name| process.env_var(name),
         current_dir,
@@ -345,7 +348,9 @@ fn command_connection_status(
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
     let parsed = connection_select_options(args, current_dir);
-    let runtime_home = selected_connection_runtime_home_path(
+    let SelectedConnectionRuntimeHome {
+        path: runtime_home, ..
+    } = selected_connection_runtime_home_read_only(
         parsed.explicit_runtime_home.as_deref(),
         |name| process.env_var(name),
         current_dir,
@@ -407,7 +412,9 @@ fn command_connection_verify(
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
     let parsed = connection_select_options(args, current_dir);
-    let runtime_home = selected_connection_runtime_home_path(
+    let SelectedConnectionRuntimeHome {
+        path: runtime_home, ..
+    } = selected_connection_runtime_home_read_only(
         parsed.explicit_runtime_home.as_deref(),
         |name| process.env_var(name),
         current_dir,
@@ -484,7 +491,9 @@ fn command_connection_mode(
 ) -> Result<String, ConnectionCommandError> {
     let mode = args.mode.as_str().to_owned();
     let parsed = connection_mode_options(args, current_dir);
-    let runtime_home = selected_connection_runtime_home_path(
+    let SelectedConnectionRuntimeHome {
+        path: runtime_home, ..
+    } = selected_connection_runtime_home_read_only(
         parsed.explicit_runtime_home.as_deref(),
         |name| process.env_var(name),
         current_dir,
@@ -633,7 +642,9 @@ fn command_connection_remove(
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
     let parsed = connection_remove_options(args, current_dir);
-    let runtime_home = selected_connection_runtime_home_path(
+    let SelectedConnectionRuntimeHome {
+        path: runtime_home, ..
+    } = selected_connection_runtime_home_read_only(
         parsed.explicit_runtime_home.as_deref(),
         |name| process.env_var(name),
         current_dir,
@@ -834,10 +845,10 @@ fn parse_connection_intent(value: &str) -> Result<ConnectionIntent, ConnectionCo
     }
 }
 
-fn required_installation_profile(
+fn required_connection_installation_profile_read_only(
     runtime_home: &Path,
 ) -> Result<InstallationProfileRecord, ConnectionCommandError> {
-    match installation_profile(runtime_home) {
+    match installation_profile_read_only(runtime_home) {
         Ok(Some(profile)) => Ok(profile),
         Ok(None) => Err(ConnectionCommandError::runtime(
             connection_setup_required_message(runtime_home),
@@ -886,17 +897,25 @@ where
     }
 }
 
-fn selected_connection_runtime_home_path<F>(
+struct SelectedConnectionRuntimeHome {
+    path: PathBuf,
+    installation_profile: InstallationProfileRecord,
+}
+
+fn selected_connection_runtime_home_read_only<F>(
     explicit_runtime_home: Option<&Path>,
     env_var: F,
     current_dir: &Path,
-) -> Result<PathBuf, ConnectionCommandError>
+) -> Result<SelectedConnectionRuntimeHome, ConnectionCommandError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let runtime_home = selected_runtime_home_path(explicit_runtime_home, env_var, current_dir)?;
-    required_installation_profile(&runtime_home)?;
-    Ok(runtime_home)
+    let path = selected_runtime_home_path(explicit_runtime_home, env_var, current_dir)?;
+    let installation_profile = required_connection_installation_profile_read_only(&path)?;
+    Ok(SelectedConnectionRuntimeHome {
+        path,
+        installation_profile,
+    })
 }
 
 fn init_profile_plan(
@@ -1200,7 +1219,7 @@ fn connection_project_planning_facts(
     let (Some(connection_id), Some(project_id)) = (connection_id, project_id) else {
         return Ok((false, false));
     };
-    let membership_exists = list_connection_projects(runtime_home, connection_id)?
+    let membership_exists = list_connection_projects_read_only(runtime_home, connection_id)?
         .iter()
         .any(|membership| membership.project_id == project_id);
     let guard_installation_exists =

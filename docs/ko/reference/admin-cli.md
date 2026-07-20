@@ -67,12 +67,14 @@ doctor가 기본 policy를 대신 넣거나 어느 authority 복사본도 다시
 보고합니다.
 
 명시적인 경로를 선택하면 환경 변수나 플랫폼 기본 Runtime Home으로 대체하지 않습니다.
-선택 자체는 Runtime Home을 만들거나 초기화하지 않습니다. `init`은 자신이 소유한 설정
-변경의 일부로 선택한 홈을 만들 수 있지만, connection 명령은 선택한 홈에 현재
-installation profile이 있어야 하며 홈이 없거나 사용할 수 없으면 그 정확한 경로를 담아
-실패합니다. 선택 뒤에도 `connection list`와 `connection status`는 읽기 전용입니다.
-비어 있거나 잘못됐거나 충돌하는 값은 저장소 접근 전에 실패합니다. Product Repository를
-Runtime Home으로 사용하지 않습니다.
+Runtime Home 선택과 모든 connection 명령이 수행하는 설치 프로필 검증은 읽기 전용입니다.
+선택한 디렉터리나 `registry.sqlite`를 만들거나, Registry 스키마를 초기화하거나
+마이그레이션하거나, Registry 상태를 쓰지 않습니다. Registry 스키마 생성은 명시적인
+`init` 설정 변경에 속합니다. `init`은 자신이 소유한 설정 변경의 일부로 선택한 홈과
+스키마를 만들 수 있지만, connection 명령은 선택한 홈에 현재 installation profile이 있어야
+하며 홈이 없거나 사용할 수 없으면 그 정확한 경로를 담아 실패합니다. 선택 뒤에도
+`connection list`와 `connection status`는 읽기 전용입니다. 비어 있거나 잘못됐거나 충돌하는
+값은 저장소 접근 전에 실패합니다. Product Repository를 Runtime Home으로 사용하지 않습니다.
 
 모든 명령에 같은 경로를 넘기면 `VOLICORD_HOME`을 내보내지 않고도 사용자 지정 홈의
 lifecycle을 실행할 수 있습니다.
