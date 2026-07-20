@@ -14,7 +14,9 @@ use std::{
 use serde_json::Value;
 use support::binary_fixture::{base_command, prepare_runtime_home};
 use volicord_store::{
-    bootstrap::initialize_runtime_home,
+    bootstrap::{
+        initialize_runtime_home, write_installation_profile, InstallationProfileRegistration,
+    },
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
     sqlite::registry_db_path,
 };
@@ -25,6 +27,8 @@ const GENERATED_SHAPE_ERROR: &str =
     "generated host-hook capability does not match the current exact shape";
 const CONNECTION_LIST_TEXT_HEADER: &str =
     "host\tintent\tmode\tenabled\tconnected_repositories\tverification_status\tissues\ttarget";
+
+type SqliteMasterRow = (String, String, Option<String>);
 
 const ROOT_HELP: &str = "Local Volicord administration and managed stdio MCP
 
@@ -281,6 +285,158 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     assert!(action_ids.contains(&"apply_setup"));
     assert!(action_ids.contains(&"observe_codex"));
     assert!(!fixture.runtime_home.join("registry.sqlite").exists());
+    assert!(!fixture.codex_home.join("config.toml").exists());
+    assert!(directory_contents(&fixture.repo_root)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-init-dry-run-registry-states")?;
+    let missing_home = fixture._temporary_root.path().join("missing-runtime-home");
+    let absent_registry_home = fixture.runtime_home.clone();
+    let zero_byte_home = fixture._temporary_root.path().join("zero-byte-home");
+    fs::create_dir(&zero_byte_home)?;
+    let zero_byte_registry = registry_db_path(&zero_byte_home);
+    fs::write(&zero_byte_registry, [])?;
+    let schema_less_home = fixture._temporary_root.path().join("schema-less-home");
+    fs::create_dir(&schema_less_home)?;
+    let schema_less_registry = registry_db_path(&schema_less_home);
+    let schema_less = rusqlite::Connection::open(&schema_less_registry)?;
+    schema_less.execute_batch("VACUUM")?;
+    drop(schema_less);
+    let schema_less_master_before = sqlite_master_rows(&schema_less_registry)?;
+    assert!(schema_less_master_before.is_empty());
+    let no_profile_home = fixture._temporary_root.path().join("no-profile-home");
+    initialize_runtime_home(&no_profile_home, "runtime_home_without_profile", "{}")?;
+    let no_profile_registry = registry_db_path(&no_profile_home);
+    let current_profile_home = fixture._temporary_root.path().join("current-profile-home");
+    initialize_runtime_home(
+        &current_profile_home,
+        "runtime_home_with_current_profile",
+        "{}",
+    )?;
+    let current_binary = fs::canonicalize(env!("CARGO_BIN_EXE_volicord"))?;
+    write_installation_profile(
+        &current_profile_home,
+        InstallationProfileRegistration {
+            installation_id: "default".to_owned(),
+            volicord_command: path_text(&current_binary),
+            volicord_mcp_command: path_text(&current_binary),
+            bin_dir: current_binary
+                .parent()
+                .ok_or("test binary path has no parent")?
+                .to_path_buf(),
+            default_connection_mode: "workflow".to_owned(),
+            metadata_json: r#"{"source":"binary-test"}"#.to_owned(),
+        },
+    )?;
+    let current_profile_registry = registry_db_path(&current_profile_home);
+    let fallback_home = fixture._temporary_root.path().join("fallback-home");
+
+    let files_before = directory_contents(fixture._temporary_root.path())?;
+    let entries_before = directory_entries(fixture._temporary_root.path())?;
+    let zero_byte_modified_before = fs::metadata(&zero_byte_registry)?.modified()?;
+    let schema_less_modified_before = fs::metadata(&schema_less_registry)?.modified()?;
+    let no_profile_modified_before = fs::metadata(&no_profile_registry)?.modified()?;
+    let current_profile_modified_before = fs::metadata(&current_profile_registry)?.modified()?;
+
+    for runtime_home in [&missing_home, &absent_registry_home] {
+        let output = fixture.run_init_dry_run_against_home(runtime_home, &fallback_home)?;
+        let report = successful_init_dry_run_report(&output)?;
+        assert!(report["planned_changes"]
+            .as_array()
+            .expect("planned changes")
+            .iter()
+            .any(|change| change["kind"] == "runtime_home_initialization"));
+        assert_eq!(
+            directory_contents(fixture._temporary_root.path())?,
+            files_before
+        );
+        assert_eq!(
+            directory_entries(fixture._temporary_root.path())?,
+            entries_before
+        );
+    }
+    assert!(!missing_home.exists());
+    assert!(!registry_db_path(&absent_registry_home).exists());
+
+    for runtime_home in [&zero_byte_home, &schema_less_home] {
+        let output = fixture.run_init_dry_run_against_home(runtime_home, &fallback_home)?;
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output)?, "");
+        let diagnostic = stderr(&output)?;
+        assert!(
+            diagnostic.contains("schema invariant failed for registry")
+                || diagnostic.contains("sqlite error: no such table: runtime_home"),
+            "unexpected invalid Registry diagnostic: {diagnostic}"
+        );
+        assert_eq!(
+            directory_contents(fixture._temporary_root.path())?,
+            files_before
+        );
+        assert_eq!(
+            directory_entries(fixture._temporary_root.path())?,
+            entries_before
+        );
+    }
+
+    let no_profile = fixture.run_init_dry_run_against_home(&no_profile_home, &fallback_home)?;
+    let no_profile_report = successful_init_dry_run_report(&no_profile)?;
+    assert!(no_profile_report["planned_changes"]
+        .as_array()
+        .expect("planned changes")
+        .iter()
+        .any(|change| change["kind"] == "runtime_home_initialization"));
+    assert_eq!(
+        directory_contents(fixture._temporary_root.path())?,
+        files_before
+    );
+    assert_eq!(
+        directory_entries(fixture._temporary_root.path())?,
+        entries_before
+    );
+
+    let current_profile =
+        fixture.run_init_dry_run_against_home(&current_profile_home, &fallback_home)?;
+    let current_profile_report = successful_init_dry_run_report(&current_profile)?;
+    assert!(!current_profile_report["planned_changes"]
+        .as_array()
+        .expect("planned changes")
+        .iter()
+        .any(|change| change["kind"] == "runtime_home_initialization"));
+    assert_eq!(
+        directory_contents(fixture._temporary_root.path())?,
+        files_before
+    );
+    assert_eq!(
+        directory_entries(fixture._temporary_root.path())?,
+        entries_before
+    );
+
+    assert_eq!(fs::read(&zero_byte_registry)?, Vec::<u8>::new());
+    assert_eq!(fs::metadata(&zero_byte_registry)?.len(), 0);
+    assert_eq!(
+        fs::metadata(&zero_byte_registry)?.modified()?,
+        zero_byte_modified_before
+    );
+    assert_eq!(
+        sqlite_master_rows(&schema_less_registry)?,
+        schema_less_master_before
+    );
+    assert_eq!(
+        fs::metadata(&schema_less_registry)?.modified()?,
+        schema_less_modified_before
+    );
+    assert_eq!(
+        fs::metadata(&no_profile_registry)?.modified()?,
+        no_profile_modified_before
+    );
+    assert_eq!(
+        fs::metadata(&current_profile_registry)?.modified()?,
+        current_profile_modified_before
+    );
+    assert!(!fallback_home.exists());
     assert!(!fixture.codex_home.join("config.toml").exists());
     assert!(directory_contents(&fixture.repo_root)?.is_empty());
     Ok(())
@@ -1559,6 +1715,33 @@ impl IsolatedInitFixture {
         Ok(command.output()?)
     }
 
+    fn run_init_dry_run_against_home(
+        &self,
+        runtime_home: &Path,
+        fallback_home: &Path,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        Ok(base_command()
+            .arg("init")
+            .arg("--host")
+            .arg("codex")
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--profile")
+            .arg("record")
+            .arg("--home")
+            .arg(runtime_home)
+            .arg("--dry-run")
+            .arg("--json")
+            .env("VOLICORD_HOME", fallback_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .env_remove("VOLICORD_CODEX_NATIVE_EXECUTABLE")
+            .current_dir(&self.repo_root)
+            .output()?)
+    }
+
     fn run_connection(
         &self,
         operation: &str,
@@ -1853,6 +2036,32 @@ fn directory_entries(root: &Path) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
     let mut output = BTreeSet::new();
     visit(root, root, &mut output)?;
     Ok(output)
+}
+
+fn sqlite_master_rows(path: &Path) -> Result<Vec<SqliteMasterRow>, Box<dyn Error>> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    let mut stmt = conn.prepare(
+        "SELECT type, name, sql
+           FROM sqlite_master
+          ORDER BY type, name",
+    )?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+fn successful_init_dry_run_report(output: &std::process::Output) -> Result<Value, Box<dyn Error>> {
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(output)?, "");
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(report["operation"], "init");
+    assert_eq!(report["dry_run"], true);
+    assert_eq!(report["result"]["applied"], false);
+    Ok(report)
 }
 
 fn path_text(path: &Path) -> String {

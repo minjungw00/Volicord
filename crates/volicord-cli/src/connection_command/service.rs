@@ -238,7 +238,7 @@ fn plan_init_provisioning(
         |name| process.env_var(name),
         request.current_dir,
     )?;
-    let existing_profile = installation_profile(&runtime_home)?;
+    let existing_profile = installation_profile_read_only(&runtime_home)?;
     let profile_plan =
         init_profile_plan(parsed, &runtime_home, existing_profile.as_ref(), process)?;
     let intent = if parsed.shared {
@@ -279,9 +279,7 @@ fn plan_init_provisioning(
         .as_ref()
         .map(effective_connection_report)
         .transpose()?;
-    let project_hint = project_record_by_repo_root_read_only(&runtime_home, &repo_root)
-        .ok()
-        .flatten();
+    let project_hint = project_record_by_repo_root_read_only(&runtime_home, &repo_root)?;
     let expected_fingerprint = existing
         .as_ref()
         .map(|connection| connection.managed_fingerprint.as_str());
@@ -1483,12 +1481,26 @@ fn ensure_host_plan_has_no_conflict(plan: &HostPlan) -> Result<(), ConnectionCom
 
 #[cfg(test)]
 mod init_planning_tests {
-    use std::{ffi::OsString, fs, path::PathBuf};
+    use std::{
+        collections::BTreeSet,
+        ffi::OsString,
+        fs,
+        path::{Path, PathBuf},
+    };
 
-    use volicord_store::bootstrap::{project_record_by_repo_root, runtime_home_record_read_only};
+    use rusqlite::OpenFlags;
+    use volicord_store::{
+        bootstrap::{
+            installation_profile_read_only, project_record_by_repo_root,
+            runtime_home_record_read_only,
+        },
+        sqlite::registry_db_path,
+    };
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
+
+    type SqliteMasterRow = (String, String, Option<String>);
 
     struct PlanningProcess {
         current_exe: PathBuf,
@@ -1606,8 +1618,46 @@ mod init_planning_tests {
         }
     }
 
+    fn directory_entries(root: &Path) -> Result<BTreeSet<PathBuf>, std::io::Error> {
+        fn visit(
+            root: &Path,
+            current: &Path,
+            output: &mut BTreeSet<PathBuf>,
+        ) -> Result<(), std::io::Error> {
+            for entry in fs::read_dir(current)? {
+                let entry = entry?;
+                let path = entry.path();
+                output.insert(path.strip_prefix(root).unwrap().to_path_buf());
+                if entry.file_type()?.is_dir() {
+                    visit(root, &path, output)?;
+                }
+            }
+            Ok(())
+        }
+
+        let mut output = BTreeSet::new();
+        visit(root, root, &mut output)?;
+        Ok(output)
+    }
+
+    fn sqlite_master_rows(path: &Path) -> Result<Vec<SqliteMasterRow>, Box<dyn std::error::Error>> {
+        let conn = rusqlite::Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        let mut stmt = conn.prepare(
+            "SELECT type, name, sql
+               FROM sqlite_master
+              ORDER BY type, name",
+        )?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     #[test]
-    fn normal_init_planning_validates_command_projection_before_apply(
+    fn init_planning_with_absent_registry_is_read_only_and_validates_projection(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("init-capability-preflight")?;
         let repo_root = create_empty_product_repository(&fixture)?;
@@ -1633,6 +1683,224 @@ mod init_planning_tests {
         assert!(!fixture.registry_db_path().exists());
         assert_no_planned_files_exist(&plan);
         assert_empty_product_repository_untouched(&repo_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn init_planning_with_missing_runtime_home_creates_nothing(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-planning-missing-runtime-home")?;
+        let runtime_home = fixture.path().join("missing-runtime-home");
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let repo_before = directory_contents(&repo_root)?;
+        let root_entries_before = directory_entries(fixture.path())?;
+        let parsed = parsed_init(&runtime_home, &repo_root, true);
+        let process = PlanningProcess::new()?;
+
+        let plan = plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        )?;
+
+        assert!(!runtime_home.exists());
+        assert!(!registry_db_path(&runtime_home).exists());
+        assert_eq!(directory_entries(fixture.path())?, root_entries_before);
+        assert_eq!(directory_contents(&repo_root)?, repo_before);
+        assert_no_planned_files_exist(&plan);
+        Ok(())
+    }
+
+    #[test]
+    fn init_planning_rejects_zero_byte_registry_without_mutation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-planning-zero-byte-registry")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let registry_path = registry_db_path(fixture.path());
+        fs::write(&registry_path, [])?;
+        let registry_before = fs::read(&registry_path)?;
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(fixture.path())?;
+        let repo_before = directory_contents(&repo_root)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, true);
+        let process = PlanningProcess::new()?;
+
+        let error = match plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        ) {
+            Ok(_) => panic!("zero-byte Registry unexpectedly produced an init plan"),
+            Err(error) => error,
+        };
+
+        assert!(!error.to_string().is_empty());
+        assert_eq!(fs::read(&registry_path)?, registry_before);
+        assert!(registry_before.is_empty());
+        assert_eq!(fs::metadata(&registry_path)?.len(), 0);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(fixture.path())?, entries_before);
+        assert_eq!(directory_contents(&repo_root)?, repo_before);
+        Ok(())
+    }
+
+    #[test]
+    fn init_planning_rejects_schema_less_sqlite_without_mutation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-planning-schema-less-registry")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let registry_path = registry_db_path(fixture.path());
+        let conn = rusqlite::Connection::open(&registry_path)?;
+        conn.execute_batch("VACUUM")?;
+        drop(conn);
+        let schema_before = sqlite_master_rows(&registry_path)?;
+        let registry_before = fs::read(&registry_path)?;
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(fixture.path())?;
+        let repo_before = directory_contents(&repo_root)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, true);
+        let process = PlanningProcess::new()?;
+
+        let error = match plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        ) {
+            Ok(_) => panic!("schema-less Registry unexpectedly produced an init plan"),
+            Err(error) => error,
+        };
+
+        assert!(!error.to_string().is_empty());
+        assert!(schema_before.is_empty());
+        assert_eq!(sqlite_master_rows(&registry_path)?, schema_before);
+        assert_eq!(fs::read(&registry_path)?, registry_before);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(fixture.path())?, entries_before);
+        assert_eq!(directory_contents(&repo_root)?, repo_before);
+        Ok(())
+    }
+
+    #[test]
+    fn init_planning_with_canonical_registry_without_profile_plans_without_writing(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-planning-canonical-no-profile")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        initialize_runtime_home(fixture.path(), "runtime_home_without_profile", "{}")?;
+        let registry_path = registry_db_path(fixture.path());
+        let registry_before = fs::read(&registry_path)?;
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(fixture.path())?;
+        let repo_before = directory_contents(&repo_root)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, true);
+        let process = PlanningProcess::new()?;
+
+        let plan = plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        )?;
+
+        assert!(!plan.profile_exists);
+        assert!(installation_profile_read_only(fixture.path())?.is_none());
+        assert_eq!(fs::read(&registry_path)?, registry_before);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(fixture.path())?, entries_before);
+        assert_eq!(directory_contents(&repo_root)?, repo_before);
+        assert_no_planned_files_exist(&plan);
+        Ok(())
+    }
+
+    #[test]
+    fn init_planning_with_current_profile_preserves_exact_registry_state(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-planning-current-profile")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let process = PlanningProcess::new()?;
+        let current_exe = fs::canonicalize(&process.current_exe)?;
+        initialize_runtime_home(fixture.path(), "runtime_home_with_profile", "{}")?;
+        let expected_profile = write_installation_profile(
+            fixture.path(),
+            InstallationProfileRegistration {
+                installation_id: INSTALLATION_ID.to_owned(),
+                volicord_command: setup_path_text(&current_exe),
+                volicord_mcp_command: setup_path_text(&current_exe),
+                bin_dir: current_exe
+                    .parent()
+                    .expect("test executable has a parent")
+                    .to_path_buf(),
+                default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                metadata_json: r#"{"source":"test"}"#.to_owned(),
+            },
+        )?;
+        let registry_path = registry_db_path(fixture.path());
+        let registry_before = fs::read(&registry_path)?;
+        let modified_before = fs::metadata(&registry_path)?.modified()?;
+        let entries_before = directory_entries(fixture.path())?;
+        let repo_before = directory_contents(&repo_root)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, true);
+
+        let plan = plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        )?;
+
+        assert!(plan.profile_exists);
+        assert_eq!(
+            installation_profile_read_only(fixture.path())?,
+            Some(expected_profile)
+        );
+        assert_eq!(fs::read(&registry_path)?, registry_before);
+        assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
+        assert_eq!(directory_entries(fixture.path())?, entries_before);
+        assert_eq!(directory_contents(&repo_root)?, repo_before);
+        assert_no_planned_files_exist(&plan);
+        Ok(())
+    }
+
+    #[test]
+    fn init_planning_and_apply_keep_mutation_on_the_explicit_apply_boundary(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("init-plan-then-apply-boundary")?;
+        let repo_root = create_empty_product_repository(&fixture)?;
+        let parsed = parsed_init(fixture.path(), &repo_root, false);
+        let mut process = PlanningProcess::new()?;
+
+        let plan = plan_init_provisioning(
+            InitProvisioningRequest {
+                parsed: &parsed,
+                current_dir: &repo_root,
+            },
+            &process,
+        )?;
+        assert!(!fixture.registry_db_path().exists());
+        assert!(directory_is_empty(fixture.path())?);
+        assert_empty_product_repository_untouched(&repo_root)?;
+        assert_no_planned_files_exist(&plan);
+
+        let generated_paths = plan
+            .integration
+            .generated_files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<Vec<_>>();
+        let outcome = apply_init_provisioning(plan, &mut process)?;
+
+        assert!(!outcome.dry_run);
+        assert!(fixture.registry_db_path().is_file());
+        assert!(installation_profile_read_only(fixture.path())?.is_some());
+        assert!(project_record_by_repo_root(fixture.path(), &repo_root)?.is_some());
+        assert!(generated_paths.iter().all(|path| path.is_file()));
         Ok(())
     }
 
