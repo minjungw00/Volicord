@@ -1,19 +1,16 @@
 use crate::adapter::*;
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
 use crate::prelude::*;
-use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
+use crate::{
+    MANAGED_MCP_LAUNCH_VALUE, VOLICORD_HOME_ENV, VOLICORD_MCP_CONNECTION_ID_ENV,
+    VOLICORD_MCP_HOST_ENV, VOLICORD_MCP_LAUNCH_ENV, VOLICORD_MCP_PROJECT_ID_ENV,
+    VOLICORD_MCP_VERIFICATION_ENV, VOLICORD_MCP_VERIFICATION_VALUE,
+};
 use sha2::{Digest, Sha256};
-use volicord_types::ManagedMcpClientInfo;
+use volicord_types::{HostKind, ManagedMcpClientInfo};
 
-const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
-const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
-const VOLICORD_MCP_HOST: &str = "VOLICORD_MCP_HOST";
-const VOLICORD_MCP_CONNECTION_ID: &str = "VOLICORD_MCP_CONNECTION_ID";
-const VOLICORD_MCP_PROJECT_ID: &str = "VOLICORD_MCP_PROJECT_ID";
-const MANAGED_HOST_LAUNCH_VALUE: &str = "managed_host";
-const CODEX_HOST_VALUE: &str = "codex";
 const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
 const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord.codex-mcp-thread-binding\0";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
@@ -178,23 +175,23 @@ pub fn run_stdio_from_env(
     )
 }
 
-/// Runs stdio from a clone-portable repository descriptor.
+/// Runs stdio from a clone-portable shared managed launch.
 ///
-/// The descriptor carries only the host selector. Connection and project
+/// The launch carries only the host selector. Connection and project
 /// identities are resolved from the current Git repository and the selected
 /// local Runtime Home before the transport starts.
 pub fn run_stdio_discover_repository_from_env(
-    host: RepositoryDiscoveryHost,
+    host: HostKind,
     observed_host_executable_version: Option<String>,
 ) -> Result<(), McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     let runtime_home = resolve_repository_discovery_runtime_home(process_env_var, &current_dir)?;
     let resolution = RepositoryDiscoveryResolution::resolve(&runtime_home, &current_dir, host)?;
-    let launch_origin = classify_launch_origin_with_descriptor(
+    let launch_origin = classify_launch_origin_with_repository_discovery(
         process_env_var,
         resolution.context.connection_internal_id.as_str(),
         Some(resolution.project_id.as_str()),
-        Some(resolution.host.registry_host_kind()),
+        Some(resolution.host.as_str()),
         true,
     );
     reject_invalid_managed_marker(launch_origin)?;
@@ -227,25 +224,25 @@ mod managed_marker_protocol_order_tests {
     use super::*;
 
     #[test]
-    fn repository_descriptor_is_codex_launch_provenance_but_not_session_correlation() {
+    fn shared_repository_launch_is_codex_provenance_but_not_session_correlation() {
         assert_eq!(
-            classify_launch_origin_with_descriptor(
+            classify_launch_origin_with_repository_discovery(
                 |_| None,
                 "connection.alpha",
                 Some("project.alpha"),
-                Some(CODEX_HOST_VALUE),
+                Some(HostKind::Codex.as_str()),
                 true,
             ),
             McpLaunchOrigin::ManagedHost
         );
         assert_eq!(
-            classify_launch_origin_with_descriptor(
+            classify_launch_origin_with_repository_discovery(
                 |name| {
                     (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient-not-a-binding"))
                 },
                 "connection.alpha",
                 Some("project.alpha"),
-                Some(CODEX_HOST_VALUE),
+                Some(HostKind::Codex.as_str()),
                 true,
             ),
             McpLaunchOrigin::ManagedHost,
@@ -262,7 +259,7 @@ pub fn resolve_repository_discovery_runtime_home<F>(
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let runtime_home = env_var("VOLICORD_HOME").ok_or_else(|| {
+    let runtime_home = env_var(VOLICORD_HOME_ENV).ok_or_else(|| {
         McpAdapterError::Environment(
             "repository discovery MCP startup requires VOLICORD_HOME; refusing to substitute the platform default Runtime Home"
             .to_owned(),
@@ -278,7 +275,7 @@ where
         ));
     }
     resolve_runtime_home(
-        |name| (name == "VOLICORD_HOME").then(|| runtime_home.clone()),
+        |name| (name == VOLICORD_HOME_ENV).then(|| runtime_home.clone()),
         current_dir,
     )
 }
@@ -372,7 +369,8 @@ fn mcp_verification_launch<F>(env_var: F) -> bool
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    env_var(VOLICORD_MCP_VERIFICATION).is_some_and(|value| value.to_str() == Some("1"))
+    env_var(VOLICORD_MCP_VERIFICATION_ENV)
+        .is_some_and(|value| value.to_str() == Some(VOLICORD_MCP_VERIFICATION_VALUE))
 }
 
 #[cfg(test)]
@@ -453,7 +451,7 @@ impl McpLaunchOrigin {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::CliVerification => "cli_verification",
-            Self::ManagedHost => "managed_host",
+            Self::ManagedHost => MANAGED_MCP_LAUNCH_VALUE,
             Self::ManualCli => "manual_cli",
             Self::InvalidManagedMarker => "invalid_managed_marker",
             Self::Unknown => "unknown",
@@ -470,7 +468,7 @@ pub(crate) fn classify_launch_origin<F>(
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    classify_launch_origin_with_descriptor(
+    classify_launch_origin_with_repository_discovery(
         env_var,
         connection_id,
         project_id,
@@ -479,12 +477,12 @@ where
     )
 }
 
-fn classify_launch_origin_with_descriptor<F>(
+fn classify_launch_origin_with_repository_discovery<F>(
     env_var: F,
     connection_id: &str,
     project_id: Option<&str>,
     expected_host_kind: Option<&str>,
-    repository_discovery_descriptor: bool,
+    repository_discovery_launch: bool,
 ) -> McpLaunchOrigin
 where
     F: Fn(&str) -> Option<OsString>,
@@ -493,20 +491,22 @@ where
         return McpLaunchOrigin::CliVerification;
     }
 
-    let launch = env_text(&env_var, VOLICORD_MCP_LAUNCH);
-    let host = env_text(&env_var, VOLICORD_MCP_HOST);
-    let marker_connection_id = env_text(&env_var, VOLICORD_MCP_CONNECTION_ID);
-    let marker_project_id = env_text(&env_var, VOLICORD_MCP_PROJECT_ID);
+    let launch = env_text(&env_var, VOLICORD_MCP_LAUNCH_ENV);
+    let host = env_text(&env_var, VOLICORD_MCP_HOST_ENV);
+    let marker_connection_id = env_text(&env_var, VOLICORD_MCP_CONNECTION_ID_ENV);
+    let marker_project_id = env_text(&env_var, VOLICORD_MCP_PROJECT_ID_ENV);
     let volicord_marker_present = [
-        VOLICORD_MCP_LAUNCH,
-        VOLICORD_MCP_HOST,
-        VOLICORD_MCP_CONNECTION_ID,
-        VOLICORD_MCP_PROJECT_ID,
+        VOLICORD_MCP_LAUNCH_ENV,
+        VOLICORD_MCP_HOST_ENV,
+        VOLICORD_MCP_CONNECTION_ID_ENV,
+        VOLICORD_MCP_PROJECT_ID_ENV,
     ]
     .into_iter()
     .any(|name| env_var(name).is_some());
     if !volicord_marker_present {
-        return if repository_discovery_descriptor && expected_host_kind == Some(CODEX_HOST_VALUE) {
+        return if repository_discovery_launch
+            && expected_host_kind == Some(HostKind::Codex.as_str())
+        {
             McpLaunchOrigin::ManagedHost
         } else {
             McpLaunchOrigin::ManualCli
@@ -516,7 +516,7 @@ where
     let Some(expected_host_kind) = expected_host_kind else {
         return McpLaunchOrigin::InvalidManagedMarker;
     };
-    if expected_host_kind != CODEX_HOST_VALUE {
+    if expected_host_kind != HostKind::Codex.as_str() {
         return McpLaunchOrigin::InvalidManagedMarker;
     }
 
@@ -524,7 +524,7 @@ where
         Some(project_id) => marker_project_id.as_deref() == Some(project_id),
         None => marker_project_id.is_none(),
     };
-    if launch.as_deref() == Some(MANAGED_HOST_LAUNCH_VALUE)
+    if launch.as_deref() == Some(MANAGED_MCP_LAUNCH_VALUE)
         && host.as_deref() == Some(expected_host_kind)
         && marker_connection_id.as_deref() == Some(connection_id)
         && project_matches

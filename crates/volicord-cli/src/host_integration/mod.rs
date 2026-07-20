@@ -1,13 +1,10 @@
 use std::{
-    collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
 };
 
 use serde::Serialize;
-use serde_json::Value;
-use sha2::{Digest, Sha256};
-use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
+use volicord_mcp::ManagedMcpLaunchSpec;
 use volicord_types::{ConnectionAction, GuardHookPhase};
 pub use volicord_types::{ConnectionIntent, HostKind, HostScope};
 
@@ -18,7 +15,6 @@ pub mod process;
 pub mod verification;
 
 pub const DEFAULT_SERVER_NAME: &str = "volicord";
-pub const DEFAULT_MCP_COMMAND: &str = "volicord";
 pub const MANAGED_WRAPPER_ENV: &str = "VOLICORD_MANAGED_WRAPPER";
 pub const MANAGED_WRAPPER_VALUE: &str = "codex-record";
 static CODEX_SUPPORTED_CONNECTION_INTENTS: [ConnectionIntent; 2] =
@@ -115,131 +111,6 @@ pub struct HostPlanRequest<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ManagedServerEntry {
-    pub command: String,
-    pub args: Vec<String>,
-    pub env: BTreeMap<String, String>,
-    pub env_vars: Vec<String>,
-}
-
-impl ManagedServerEntry {
-    pub fn new(connection_id: impl Into<String>, mcp_command: &Path) -> Self {
-        Self::new_project_bound(connection_id, None, mcp_command)
-    }
-
-    pub fn new_project_bound(
-        connection_id: impl Into<String>,
-        project_id: Option<&str>,
-        mcp_command: &Path,
-    ) -> Self {
-        let connection_id = connection_id.into();
-        let mut args = vec![
-            "mcp".to_owned(),
-            "--stdio".to_owned(),
-            "--connection".to_owned(),
-            connection_id.clone(),
-        ];
-        if let Some(project_id) = project_id {
-            args.push("--project".to_owned());
-            args.push(project_id.to_owned());
-        }
-        let mut env = BTreeMap::from([
-            ("VOLICORD_MCP_LAUNCH".to_owned(), "managed_host".to_owned()),
-            ("VOLICORD_MCP_HOST".to_owned(), "codex".to_owned()),
-            ("VOLICORD_MCP_CONNECTION_ID".to_owned(), connection_id),
-        ]);
-        if let Some(project_id) = project_id {
-            env.insert("VOLICORD_MCP_PROJECT_ID".to_owned(), project_id.to_owned());
-        }
-        Self {
-            command: mcp_command.display().to_string(),
-            args,
-            env,
-            env_vars: vec!["VOLICORD_HOME".to_owned()],
-        }
-    }
-
-    pub fn new_repository_discovery(host: RepositoryDiscoveryHost) -> Self {
-        let descriptor = RepositoryDiscoveryDescriptor::new(host);
-        Self {
-            command: RepositoryDiscoveryDescriptor::COMMAND.to_owned(),
-            args: descriptor.args(),
-            env: descriptor.env(),
-            env_vars: descriptor.env_vars(),
-        }
-    }
-
-    pub fn validate_repository_discovery(
-        &self,
-        host: RepositoryDiscoveryHost,
-    ) -> Result<(), HostConfigError> {
-        RepositoryDiscoveryDescriptor::new(host)
-            .validate_entry(&self.command, &self.args, &self.env, &self.env_vars)
-            .map_err(|error| {
-                HostConfigError::Conflict(HostConflict::new(
-                    HostConflictKind::InvalidCommand,
-                    error.to_string(),
-                ))
-            })
-    }
-
-    pub fn to_json_value(&self) -> Value {
-        let mut entry = serde_json::Map::new();
-        entry.insert("command".to_owned(), Value::String(self.command.clone()));
-        entry.insert(
-            "args".to_owned(),
-            Value::Array(self.args.iter().cloned().map(Value::String).collect()),
-        );
-        if !self.env.is_empty() {
-            entry.insert(
-                "env".to_owned(),
-                Value::Object(
-                    self.env
-                        .iter()
-                        .map(|(key, value)| (key.clone(), Value::String(value.clone())))
-                        .collect(),
-                ),
-            );
-        }
-        if !self.env_vars.is_empty() {
-            entry.insert(
-                "env_vars".to_owned(),
-                Value::Array(self.env_vars.iter().cloned().map(Value::String).collect()),
-            );
-        }
-        Value::Object(entry)
-    }
-}
-
-pub(crate) fn validate_managed_server_entry_schema(
-    host_kind: HostKind,
-    host_scope: HostScope,
-    entry: &ManagedServerEntry,
-) -> Result<(), HostConfigError> {
-    let _ = host_kind;
-    let discovery_host = RepositoryDiscoveryHost::Codex;
-    if host_scope == HostScope::Project {
-        return entry.validate_repository_discovery(discovery_host);
-    }
-    if entry
-        .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
-        .is_ok()
-    {
-        return Err(HostConfigError::Conflict(HostConflict::new(
-            HostConflictKind::InvalidCommand,
-            "local host configuration must use an explicit local connection binding",
-        )));
-    }
-    if !is_volicord_managed_entry(entry) {
-        return Err(HostConfigError::Conflict(HostConflict::new(
-            HostConflictKind::InvalidCommand,
-            "local host configuration requires a connection-bound Volicord MCP command",
-        )));
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostPlan {
     pub host_kind: HostKind,
     pub connection_intent: ConnectionIntent,
@@ -247,7 +118,7 @@ pub struct HostPlan {
     pub mode: String,
     pub server_name: String,
     pub target: HostTarget,
-    pub entry: ManagedServerEntry,
+    pub entry: ManagedMcpLaunchSpec,
     pub change: PlannedChange,
     pub fingerprint: String,
     pub conflicts: Vec<HostConflict>,
@@ -409,76 +280,4 @@ pub fn is_valid_server_name(name: &str) -> bool {
         return false;
     }
     chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-}
-
-pub fn managed_configuration_digest(
-    host_kind: HostKind,
-    host_scope: HostScope,
-    server_name: &str,
-    entry: &ManagedServerEntry,
-) -> String {
-    let mut digest = Sha256::new();
-    digest.update(b"volicord.codex-managed-configuration\0");
-    digest.update(host_kind.as_str().as_bytes());
-    digest.update([0]);
-    digest.update(host_scope.as_str().as_bytes());
-    digest.update([0]);
-    digest.update(server_name.as_bytes());
-    digest.update([0]);
-    digest.update(
-        serde_json::to_vec(&entry.to_json_value())
-            .expect("managed configuration projection should serialize"),
-    );
-    format!("sha256:{:x}", digest.finalize())
-}
-
-pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
-    if entry
-        .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
-        .is_ok()
-    {
-        return true;
-    }
-    if !matches!(entry.args.len(), 4 | 6)
-        || entry.env_vars != ["VOLICORD_HOME"]
-        || entry.args[0] != "mcp"
-        || entry.args[1] != "--stdio"
-        || entry.args[2] != "--connection"
-        || entry.args[3].trim().is_empty()
-    {
-        return false;
-    }
-    let expected_env = BTreeMap::from([
-        ("VOLICORD_MCP_LAUNCH".to_owned(), "managed_host".to_owned()),
-        ("VOLICORD_MCP_HOST".to_owned(), "codex".to_owned()),
-        (
-            "VOLICORD_MCP_CONNECTION_ID".to_owned(),
-            entry.args[3].clone(),
-        ),
-    ]);
-    let expected_env = if entry.args.len() == 6
-        && entry.args[4] == "--project"
-        && !entry.args[5].trim().is_empty()
-    {
-        let mut expected_env = expected_env;
-        expected_env.insert("VOLICORD_MCP_PROJECT_ID".to_owned(), entry.args[5].clone());
-        expected_env
-    } else if entry.args.len() == 4 {
-        expected_env
-    } else {
-        return false;
-    };
-    if entry.env != expected_env {
-        return false;
-    }
-    let command = Path::new(&entry.command);
-    command.is_absolute()
-        && command
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name == DEFAULT_MCP_COMMAND)
-        && command
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_none_or(|extension| extension.eq_ignore_ascii_case("exe"))
 }

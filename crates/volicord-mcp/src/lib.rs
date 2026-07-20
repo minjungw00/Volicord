@@ -11,8 +11,8 @@ mod adapter;
 mod build_info;
 mod constants;
 mod errors;
+mod managed_launch;
 mod prelude;
-mod repository_discovery;
 mod routing;
 mod schema_validation;
 mod stdio;
@@ -27,8 +27,13 @@ pub use constants::{
     ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
 };
 pub use errors::McpAdapterError;
-pub use repository_discovery::{
-    RepositoryDiscoveryDescriptor, RepositoryDiscoveryDescriptorError, RepositoryDiscoveryHost,
+pub use managed_launch::{
+    is_managed_mcp_launch_environment_name, LaunchEnvironment, ManagedMcpBinding,
+    ManagedMcpLaunchError, ManagedMcpLaunchSpec, RuntimeHomeBinding,
+    MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES, MANAGED_MCP_LAUNCH_VALUE,
+    MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES, VOLICORD_HOME_ENV, VOLICORD_MCP_CONNECTION_ID_ENV,
+    VOLICORD_MCP_HOST_ENV, VOLICORD_MCP_LAUNCH_ENV, VOLICORD_MCP_PROJECT_ID_ENV,
+    VOLICORD_MCP_VERIFICATION_ENV, VOLICORD_MCP_VERIFICATION_VALUE,
 };
 pub use routing::{
     McpConnectionContext, McpConnectionStartupInspection, McpProjectAvailability,

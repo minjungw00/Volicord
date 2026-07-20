@@ -62,11 +62,12 @@
 
 | 경로 | 책임 |
 |---|---|
+| `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 관리형 MCP 시작, 환경, 검증, projection, fingerprinting. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio 생명주기, 프레이밍, 초기화, 프로세스 사전 점검. |
 | `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치, wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | 압축된 공개 도구 descriptor. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
-| `crates/volicord-mcp/src/repository_discovery.rs` | 결속된 Product Repository 탐색. |
+| `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색과 현재 Connection/project routing. |
 
 ## 테스트
 

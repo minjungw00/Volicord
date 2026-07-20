@@ -255,8 +255,9 @@ mod tests {
             hooks::guard_command_line,
             plan::{plan_guard_integration, GuardIntegrationPlanRequest},
         },
-        host_integration::{ConnectionIntent, HostKind, ManagedServerEntry},
+        host_integration::{ConnectionIntent, HostKind},
     };
+    use volicord_mcp::ManagedMcpLaunchSpec;
 
     #[test]
     fn manifest_preserves_policy_and_runtime_command_forms_without_status_state(
@@ -265,11 +266,7 @@ mod tests {
         let repo_root = fixture.product_repo_path();
         fs::create_dir_all(repo_root.join(".git"))?;
         let volicord_command = fixture.runtime_home_path().join("bin/volicord");
-        let mcp_entry = ManagedServerEntry::new_project_bound(
-            fixture.connection_id(),
-            Some(fixture.project_id()),
-            &volicord_command,
-        );
+        let mcp_entry = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)?;
         let guard_installation_id = "guard_manifest_command_forms";
         let plan = plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,

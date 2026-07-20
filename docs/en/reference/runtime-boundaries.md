@@ -55,12 +55,16 @@ stored records remain normalized repository-relative identities.
 
 ## Managed Codex Configuration
 
-A personal connection writes user-owned managed configuration. A shared
-connection writes project-owned configuration and forwards `VOLICORD_HOME`
-without embedding a machine-local Runtime Home path. The generated command,
-arguments, and managed launch markers select the registered Connection and its
-optional project at startup. They are cooperative launch context, not identity
-credentials.
+A personal connection writes user-owned managed configuration with the selected
+canonical absolute Runtime Home as static `VOLICORD_HOME` and no forwarded
+environment names. A shared connection writes project-owned configuration and
+forwards only `VOLICORD_HOME` without embedding a machine-local Runtime Home
+path or lifecycle coordinate. Both are projections of the one canonical
+managed launch contract defined by
+[Agent Connection](agent-connection.md#managed-mcp-launch-contract). The
+generated command, arguments, environment, and managed launch provenance select
+the registered Connection and its optional project at startup. They are
+cooperative launch context, not identity credentials.
 
 The stored managed fingerprint identifies the Volicord-managed host
 configuration that setup, repair, staged activation, or another explicit

@@ -38,7 +38,10 @@ volicord mcp --check --connection <connection_id> [--project <project_id>]
 ## 환경과 시작
 
 `VOLICORD_HOME`은 [런타임 경계](runtime-boundaries.md)에 따라 Runtime Home을
-선택합니다. 공유 구성은 머신 로컬 경로를 내장하지 않고 값을 전달합니다.
+선택합니다. 정규 관리 시작 계약은 개인 구성에 선택한 절대값을 저장하고, 공유
+구성에서는 머신 로컬 경로를 내장하지 않은 채 부모 환경 값만 전달합니다. 정확한
+생성 형태와 엄격한 parsing은
+[Agent Connection](agent-connection.md#managed-mcp-launch-contract)이 담당합니다.
 
 MCP 요청을 읽기 전에 어댑터는 Volicord가 생성한 관리 시작/구성 맥락에서 정확한 등록
 Connection을 해결합니다. Connection 활성 상태, 선택한 프로젝트의 현재 membership,

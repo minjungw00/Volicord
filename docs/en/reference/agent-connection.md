@@ -101,6 +101,60 @@ User-owned actions are delivered through the CLI inbox. An MCP agent may
 request an owner-defined action, but it cannot act as the local user channel or
 resolve the action on the user's behalf.
 
+<a id="managed-mcp-launch-contract"></a>
+
+## Managed MCP Launch Contract
+
+One typed managed MCP launch contract is the canonical source for the
+executable command, stdio arguments, static environment values, forwarded
+parent-environment names, personal or shared binding, managed provenance,
+strict validation, and deterministic fingerprint projection.
+
+A personal connection requires the selected canonical absolute Runtime Home
+and selected absolute `volicord` executable. It stores the Runtime Home and
+managed host, launch, and Connection markers as static environment values and
+forwards no parent-environment name:
+
+```toml
+[mcp_servers.volicord]
+command = "/absolute/path/to/volicord"
+args = ["mcp", "--stdio", "--connection", "<connection_id>"]
+
+[mcp_servers.volicord.env]
+VOLICORD_HOME = "/absolute/runtime/home"
+VOLICORD_MCP_CONNECTION_ID = "<connection_id>"
+VOLICORD_MCP_HOST = "codex"
+VOLICORD_MCP_LAUNCH = "managed_host"
+```
+
+When a personal launch is bound to one current project, it additionally uses
+`--project <project_id>` and static `VOLICORD_MCP_PROJECT_ID=<project_id>`.
+The argument and marker must agree.
+
+A shared connection contains only the clone-portable repository-discovery
+launch. It uses `volicord` from `PATH`, forwards only `VOLICORD_HOME`, and has
+no static environment table:
+
+```toml
+[mcp_servers.volicord]
+command = "volicord"
+args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+env_vars = ["VOLICORD_HOME"]
+```
+
+The shared launch contains no absolute executable, Runtime Home, Connection ID,
+project ID, or other machine-local lifecycle coordinate. A static/forwarded
+environment collision, blank or duplicate forwarded name, incomplete personal
+binding, or mixed personal/shared argument or environment shape is invalid.
+
+Codex TOML parsing is strict and must reconstruct this same typed contract.
+Unknown launch keys, malformed values, and noncanonical shapes are drift rather
+than a second accepted form. A valid `tools.<known-tool>.approval_mode` overlay
+is preserved but excluded from launch identity. The managed fingerprint covers
+the canonical launch projection together with host kind, scope, and server
+name. Formatting differences do not change it; a launch-semantic difference
+does.
+
 <a id="connection-verification-report"></a>
 
 ## `ConnectionVerificationReport`
@@ -400,8 +454,8 @@ The Codex adapter owns host-specific configuration inspection and mutation:
 
 - discover the Codex configuration target and platform environment;
 - install only the managed entry selected by current Connection inputs;
-- generate the command, arguments, Runtime Home forwarding, and managed launch
-  markers used to select the Connection and optional project at startup;
+- project the canonical managed MCP launch contract into Codex TOML and parse
+  it strictly back into the same contract;
 - detect missing, modified, or extra managed configuration as drift;
 - report executable availability and bounded host version diagnostics;
 - repair owner-defined managed state from current canonical inputs; and

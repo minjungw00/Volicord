@@ -71,7 +71,7 @@ the public method execution path.
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, and managed stdio MCP process handoff. |
 | `crates/volicord-platform-fs` | Internal safe facade for platform-native filesystem namespace operations and read-only canonical Git common-directory/worktree snapshots shared by Store owner validation and local adapters. It does not own managed-file policy or public product behavior. |
-| `crates/volicord-mcp` | MCP adapter library for startup validation, tool listing, `tools/call` decoding and dispatch, managed stdio framing, and Core invocation. |
+| `crates/volicord-mcp` | MCP adapter library for the canonical managed-launch contract, startup validation, tool listing, `tools/call` decoding and dispatch, managed stdio framing, and Core invocation. |
 | `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection session, operation-category, and public schema snapshot tests. |

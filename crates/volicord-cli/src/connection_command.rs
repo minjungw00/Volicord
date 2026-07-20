@@ -7,6 +7,7 @@ use std::{
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_mcp::ManagedMcpLaunchSpec;
 use volicord_store::{
     agent_connections::{
         activate_staged_connection, add_connection_project, agent_connection_record,
@@ -112,7 +113,6 @@ const PATH_ENV: &str = "PATH";
 const AGENT_METADATA_CREATED_BY: &str = "volicord_cli_agent_connection";
 const AGENT_RUNTIME_HOME_ID: &str = "runtime_home_agent";
 const INIT_METADATA_CREATED_BY: &str = "volicord_cli_init";
-const DEFAULT_MCP_COMMAND: &str = "volicord";
 const DEFAULT_SERVER_NAME: &str = "volicord";
 const INSTALLATION_ID: &str = "default";
 
@@ -1163,7 +1163,7 @@ fn existing_host_plan(
     let mcp_command = metadata
         .get("mcp_command")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_MCP_COMMAND));
+        .unwrap_or_else(|| PathBuf::from(ManagedMcpLaunchSpec::PATH_COMMAND));
     let runtime_home_for_entry = metadata
         .get("host_runtime_home")
         .map(PathBuf::from)

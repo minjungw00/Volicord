@@ -23,9 +23,11 @@ Codex adapter에 관리 구성 생성을 요청하며 정확한 관리 변경을
 조건이 통과해야 적용합니다. 복구는 같은 흐름을 다시 사용하고 제거는 일치하는 관리
 내용만 삭제합니다.
 
-공유 구성은 `VOLICORD_HOME`을 전달하고 관리 stdio를 시작합니다. 개인 구성은 사용자
-소유로 남습니다. 호스트별 파일 문법은 adapter에 남습니다. Core는 Store가 소유한
-운영 기록에서 만든 현재 `ValidatedAgentSession`만 받습니다.
+하나의 typed 관리형 MCP 시작 계약이 생성, 엄격한 parsing, 검증, fingerprint
+projection을 제공합니다. 개인 구성은 선택한 절대 Runtime Home을 정적
+`VOLICORD_HOME`으로 결속하고, 공유 구성은 `VOLICORD_HOME`만 전달하여 clone 이식성을
+유지합니다. Host별 TOML 문법과 approval overlay는 adapter에 남습니다. Core는 Store가
+소유한 운영 기록에서 만든 현재 `ValidatedAgentSession`만 받습니다.
 
 ## 연결 검증
 

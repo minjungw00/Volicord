@@ -5,6 +5,7 @@ use std::{
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use volicord_mcp::{is_managed_mcp_launch_environment_name, ManagedMcpLaunchSpec};
 use volicord_types::{
     GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManagedArtifact,
     IntegrationProfile,
@@ -16,19 +17,10 @@ use crate::{
         hooks::guard_command_specs_json,
         public_host_label, GuardIntegrationError,
     },
-    host_integration::{
-        guard_phase_capability_name, ConnectionIntent, HostKind, ManagedServerEntry,
-    },
+    host_integration::{guard_phase_capability_name, ConnectionIntent, HostKind},
 };
 
 pub(crate) const POLICY_STORAGE_SCOPE: &str = "local_overlay";
-const ALLOWED_POLICY_MCP_ENV_KEYS: &[&str] = &[
-    "VOLICORD_HOME",
-    "VOLICORD_MCP_LAUNCH",
-    "VOLICORD_MCP_HOST",
-    "VOLICORD_MCP_CONNECTION_ID",
-    "VOLICORD_MCP_PROJECT_ID",
-];
 const POLICY_TOP_LEVEL_KEYS: &[&str] = &[
     "schema",
     "managed_by",
@@ -160,10 +152,10 @@ pub(crate) fn policy_json(
     host_kind: HostKind,
     profile: IntegrationProfile,
     context: LocalPolicyContext<'_>,
-    mcp_entry: &ManagedServerEntry,
+    mcp_entry: &ManagedMcpLaunchSpec,
     guard_commands: &GuardCommandSet,
 ) -> Result<Value, GuardIntegrationError> {
-    validate_policy_mcp_environment(&mcp_entry.env)?;
+    validate_policy_mcp_environment(mcp_entry.environment().static_values())?;
     let commands = guard_command_specs_json(guard_commands)?;
     let policy = json!({
         "schema": VOLICORD_POLICY_SCHEMA,
@@ -176,9 +168,9 @@ pub(crate) fn policy_json(
         "guard_installation_id": context.guard_installation_id,
         "selected_profile": profile.as_str(),
         "mcp": {
-            "command": &mcp_entry.command,
-            "args": &mcp_entry.args,
-            "env": &mcp_entry.env,
+            "command": mcp_entry.command(),
+            "args": mcp_entry.args(),
+            "env": mcp_entry.environment().static_values(),
         },
         "host_hook": {
             "enabled": true,
@@ -627,7 +619,7 @@ fn validate_policy_mcp_environment(
 }
 
 fn validate_policy_mcp_environment_key(key: &str) -> Result<(), GuardIntegrationError> {
-    if ALLOWED_POLICY_MCP_ENV_KEYS.contains(&key) {
+    if is_managed_mcp_launch_environment_name(key) {
         return Ok(());
     }
     let description = if secret_like_env_key(key) {

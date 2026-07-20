@@ -1,9 +1,9 @@
 use crate::errors::McpAdapterError;
 use crate::prelude::*;
-use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::util::*;
 use schemars::{schema_for, JsonSchema};
 use volicord_platform_fs::resolve_git_worktree_layout;
+use volicord_types::HostKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectionContext {
@@ -39,12 +39,12 @@ impl McpConnectionContext {
     }
 }
 
-/// Local binding selected from a clone-portable repository descriptor.
+/// Local binding selected from a clone-portable shared managed launch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepositoryDiscoveryResolution {
     pub runtime_home: PathBuf,
     pub repository_root: PathBuf,
-    pub host: RepositoryDiscoveryHost,
+    pub host: HostKind,
     pub connection_internal_id: AgentConnectionId,
     pub project_id: ProjectId,
     pub context: McpConnectionContext,
@@ -55,7 +55,7 @@ impl RepositoryDiscoveryResolution {
     pub fn resolve(
         runtime_home: impl AsRef<Path>,
         current_dir: &Path,
-        host: RepositoryDiscoveryHost,
+        host: HostKind,
     ) -> Result<Self, McpAdapterError> {
         let runtime_home = runtime_home.as_ref().to_path_buf();
         let repository_root = repository_root_from_current_dir(current_dir)?;
@@ -76,7 +76,7 @@ impl RepositoryDiscoveryResolution {
             .into_iter()
             .filter(|connection| {
                 connection.enabled
-                    && connection.host_kind == host.registry_host_kind()
+                    && connection.host_kind == host.as_str()
                     && connection.intent == CONNECTION_INTENT_SHARED
                     && connection.host_scope == HOST_SCOPE_PROJECT
             })
@@ -748,7 +748,8 @@ mod repository_discovery_tests {
     };
     use volicord_test_support::TempRuntimeHome;
 
-    use crate::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
+    use crate::ManagedMcpLaunchSpec;
+    use volicord_types::HostKind;
 
     use super::RepositoryDiscoveryResolution;
 
@@ -823,25 +824,26 @@ mod repository_discovery_tests {
     }
 
     #[test]
-    fn one_portable_descriptor_resolves_clone_local_ids_in_two_runtime_homes(
+    fn one_portable_shared_launch_resolves_clone_local_ids_in_two_runtime_homes(
     ) -> Result<(), Box<dyn Error>> {
         let first = discovery_fixture("discovery-clone-a", "project_clone_a", &["connection_a"])?;
         let second = discovery_fixture("discovery-clone-b", "project_clone_b", &["connection_b"])?;
-        let descriptor = RepositoryDiscoveryDescriptor::new(RepositoryDiscoveryHost::Codex);
+        let launch = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)
+            .expect("shared repository launch");
         assert_eq!(
-            descriptor.args(),
+            launch.args(),
             ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
         );
 
         let first_resolution = RepositoryDiscoveryResolution::resolve(
             &first.runtime_home,
             &first.repo_root,
-            descriptor.host(),
+            launch.host_kind(),
         )?;
         let second_resolution = RepositoryDiscoveryResolution::resolve(
             &second.runtime_home,
             &second.repo_root,
-            descriptor.host(),
+            launch.host_kind(),
         )?;
 
         assert_eq!(
@@ -874,7 +876,7 @@ mod repository_discovery_tests {
         let unregistered = RepositoryDiscoveryResolution::resolve(
             unregistered_runtime.path(),
             &unregistered_repo,
-            RepositoryDiscoveryHost::Codex,
+            HostKind::Codex,
         )
         .expect_err("unregistered clone must fail closed");
         assert!(unregistered
@@ -890,7 +892,7 @@ mod repository_discovery_tests {
         let ambiguous_error = RepositoryDiscoveryResolution::resolve(
             &ambiguous.runtime_home,
             &ambiguous.repo_root,
-            RepositoryDiscoveryHost::Codex,
+            HostKind::Codex,
         )
         .expect_err("duplicate shared connections must fail closed");
         assert!(ambiguous_error

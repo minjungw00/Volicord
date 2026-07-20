@@ -1114,8 +1114,9 @@ mod tests {
             manifest::guard_manifest_json,
             plan::{plan_guard_integration, GuardIntegrationPlanRequest},
         },
-        host_integration::{ConnectionIntent, HostKind, ManagedServerEntry},
+        host_integration::{ConnectionIntent, HostKind},
     };
+    use volicord_mcp::ManagedMcpLaunchSpec;
 
     #[test]
     fn manifest_audit_accepts_projection_and_detects_owned_file_drift(
@@ -1126,11 +1127,7 @@ mod tests {
         let unrelated_path = repo_root.join("README.user.md");
         fs::write(&unrelated_path, "user-owned\n")?;
         let volicord_command = fixture.runtime_home_path().join("bin/volicord");
-        let mcp_entry = ManagedServerEntry::new_project_bound(
-            fixture.connection_id(),
-            Some(fixture.project_id()),
-            &volicord_command,
-        );
+        let mcp_entry = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)?;
         let plan = plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,

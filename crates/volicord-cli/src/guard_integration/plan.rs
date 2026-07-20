@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use volicord_mcp::ManagedMcpLaunchSpec;
 use volicord_store::agent_connections::agent_connection_record_read_only;
 use volicord_store::guards::guard_installation;
 use volicord_store::operational_sessions::connection_integration_revision;
@@ -35,7 +36,6 @@ use crate::{
     },
     host_integration::{
         guard_phase_capability_name, host_capabilities, ConnectionIntent, HostKind,
-        ManagedServerEntry,
     },
 };
 
@@ -66,7 +66,7 @@ pub(crate) struct GuardIntegrationPlanRequest<'a> {
     pub(crate) repo_root: &'a Path,
     pub(crate) connection_id: &'a str,
     pub(crate) guard_installation_id: &'a str,
-    pub(crate) mcp_entry: &'a ManagedServerEntry,
+    pub(crate) mcp_entry: &'a ManagedMcpLaunchSpec,
     pub(crate) connection_intent: ConnectionIntent,
 }
 
@@ -425,7 +425,8 @@ mod tests {
     use super::{
         plan_guard_integration, validate_generated_guard_plan, GuardIntegrationPlanRequest,
     };
-    use crate::host_integration::{ConnectionIntent, HostKind, ManagedServerEntry};
+    use crate::host_integration::{ConnectionIntent, HostKind};
+    use volicord_mcp::ManagedMcpLaunchSpec;
 
     #[test]
     fn plan_finalization_rejects_an_invalid_policy_runtime_projection(
@@ -434,11 +435,7 @@ mod tests {
         let repo_root = fixture.product_repo_path();
         fs::create_dir_all(repo_root.join(".git"))?;
         let volicord_command = fixture.runtime_home_path().join("bin/volicord");
-        let mcp_entry = ManagedServerEntry::new_project_bound(
-            fixture.connection_id(),
-            Some(fixture.project_id()),
-            &volicord_command,
-        );
+        let mcp_entry = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)?;
         let mut plan = plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,

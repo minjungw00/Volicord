@@ -431,7 +431,7 @@ fn apply_init_provisioning(
     )?;
     let is_connection_migration = !superseded_integrations.is_empty();
     let is_integration_migration = integration.migration_required || is_connection_migration;
-    let mcp_command = PathBuf::from(&host_plan.entry.command);
+    let mcp_command = PathBuf::from(host_plan.entry.command());
     let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &plan.runtime_home)?;
     let desired_connection_registration = AgentConnectionRegistration {
         connection_internal_id: plan.connection_id.clone(),
@@ -1398,7 +1398,7 @@ fn apply_connection_provisioning(
         process,
     )?;
     ensure_host_plan_has_no_conflict(&host_plan)?;
-    let mcp_command = PathBuf::from(&host_plan.entry.command);
+    let mcp_command = PathBuf::from(host_plan.entry.command());
     let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &plan.runtime_home)?;
     let desired_connection_registration = AgentConnectionRegistration {
         connection_internal_id: plan.connection_id,

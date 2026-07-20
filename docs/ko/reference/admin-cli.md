@@ -539,11 +539,14 @@ Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 �
 <a id="external-host-configuration"></a>
 ## 관리 Codex 구성
 
-개인 연결은 사용자 소유 관리 Codex 구성만 씁니다. 공유 연결은 지원되는 프로젝트 소유
-Codex 항목을 쓰고 머신 로컬 경로를 내장하지 않은 채 `VOLICORD_HOME`을 전달합니다.
-정확한 관리 entry marker, drift, 복구, launch 맥락, uninstall 경계는
-[Agent Connection](agent-connection.md)이 담당합니다. 구성 marker는 협력적 launch
-경로를 선택할 뿐 credential이나 identity 증거가 아닙니다.
+개인 연결은 사용자 소유 관리 Codex 구성만 씁니다. 그 entry는 선택한 정규 절대
+Runtime Home을 정적 `VOLICORD_HOME`으로 결속하고 환경
+이름을 전달하지 않습니다. 공유 연결은 지원되는 프로젝트 소유 Codex entry를 쓰고
+`VOLICORD_HOME`만 전달하며 머신 로컬 경로나 lifecycle 좌표를 내장하지 않습니다. 생성,
+엄격한 검증, fingerprinting은 같은 정규 관리 시작 계약을 projection합니다. 정확한 형태,
+drift, 복구, launch 맥락, uninstall 경계는
+[Agent Connection](agent-connection.md#managed-mcp-launch-contract)이 담당합니다. 구성
+marker는 협력적 launch 경로를 선택할 뿐 credential이나 identity 증거가 아닙니다.
 
 ## MCP 명령
 

@@ -250,7 +250,7 @@ where
     }
     if args.discover_repository {
         return Err(CliError::McpRepositoryStdio {
-            host: volicord_mcp::RepositoryDiscoveryHost::Codex,
+            host: volicord_types::HostKind::Codex,
         });
     }
     let connection_id = args
@@ -295,7 +295,7 @@ enum CliError {
         project_id: Option<String>,
     },
     McpRepositoryStdio {
-        host: volicord_mcp::RepositoryDiscoveryHost,
+        host: volicord_types::HostKind,
     },
 }
 

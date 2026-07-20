@@ -40,8 +40,11 @@ performs preflight without entering the stdio loop.
 ## Environment And Startup
 
 `VOLICORD_HOME` selects the Runtime Home according to
-[Runtime Boundaries](runtime-boundaries.md). Shared configuration forwards the
-value without embedding a machine-local path.
+[Runtime Boundaries](runtime-boundaries.md). The canonical managed launch
+contract stores the selected absolute value in personal configuration and
+forwards the parent value only in shared configuration, which embeds no
+machine-local path. Exact generated shapes and strict parsing belong to
+[Agent Connection](agent-connection.md#managed-mcp-launch-contract).
 
 Before reading MCP requests, the adapter resolves the exact registered
 Connection from the Volicord-generated managed launch/configuration context and

@@ -90,6 +90,56 @@ Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록
 사용자 소유 행동은 CLI inbox로 전달합니다. MCP 에이전트는 담당 문서가 정의한 행동을
 요청할 수 있지만 로컬 사용자 채널로 동작하거나 사용자를 대신해 해결할 수 없습니다.
 
+<a id="managed-mcp-launch-contract"></a>
+
+## 관리형 MCP 시작 계약
+
+하나의 typed 관리형 MCP 시작 계약이 실행 명령, stdio 인자, 정적 환경 값, 부모
+환경에서 전달할 이름, 개인 또는 공유 binding, 관리 provenance, 엄격한 검증,
+결정적 fingerprint projection의 정규 출처입니다.
+
+개인 연결에는 선택한 정규 절대 Runtime Home과 선택한 절대 `volicord` 실행 파일이
+필요합니다. Runtime Home과 관리 host, launch, Connection marker를 정적 환경 값으로
+저장하며 부모 환경 이름은 전달하지 않습니다.
+
+```toml
+[mcp_servers.volicord]
+command = "/absolute/path/to/volicord"
+args = ["mcp", "--stdio", "--connection", "<connection_id>"]
+
+[mcp_servers.volicord.env]
+VOLICORD_HOME = "/absolute/runtime/home"
+VOLICORD_MCP_CONNECTION_ID = "<connection_id>"
+VOLICORD_MCP_HOST = "codex"
+VOLICORD_MCP_LAUNCH = "managed_host"
+```
+
+개인 시작이 현재 프로젝트 하나에 결속되면 `--project <project_id>`와 정적
+`VOLICORD_MCP_PROJECT_ID=<project_id>`를 추가로 사용합니다. 인자와 marker는 서로
+일치해야 합니다.
+
+공유 연결에는 clone에 이식 가능한 저장소 탐색 시작만 들어갑니다. `PATH`의
+`volicord`를 사용하고 `VOLICORD_HOME`만 전달하며 정적 환경 table은 두지 않습니다.
+
+```toml
+[mcp_servers.volicord]
+command = "volicord"
+args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+env_vars = ["VOLICORD_HOME"]
+```
+
+공유 시작에는 절대 실행 파일, Runtime Home, Connection ID, project ID 또는 그 밖의
+머신 로컬 lifecycle 좌표를 넣지 않습니다. 정적 환경과 전달 환경의 이름 충돌, 비어
+있거나 중복된 전달 이름, 불완전한 개인 binding, 개인/공유 인자 또는 환경 형태의
+혼합은 유효하지 않습니다.
+
+Codex TOML은 엄격하게 parsing하여 같은 typed 계약을 다시 구성해야 합니다. 알 수
+없는 launch key, 잘못된 값, 비정규 형태는 두 번째 허용 형태가 아니라 drift입니다.
+유효한 `tools.<known-tool>.approval_mode` overlay는 보존하지만 launch identity에서는
+제외합니다. Managed fingerprint는 정규 launch projection과 host kind, scope, server
+name을 포함합니다. 서식 차이는 fingerprint를 바꾸지 않지만 launch 의미가 달라지면
+바뀝니다.
+
 <a id="connection-verification-report"></a>
 
 ## `ConnectionVerificationReport`
@@ -347,8 +397,8 @@ Codex 어댑터는 host별 구성 조사와 변경을 담당합니다.
 
 - Codex configuration target과 플랫폼 환경 탐색
 - 현재 Connection 입력이 선택한 관리 entry만 설치
-- 시작 시 Connection과 선택적 프로젝트를 선택하는 command, arguments, Runtime Home
-  forwarding, 관리 시작 marker 생성
+- 정규 관리형 MCP 시작 계약을 Codex TOML로 projection하고 같은 계약으로 엄격하게
+  다시 parsing
 - 누락되거나 변경되거나 추가된 관리 구성을 drift로 탐지
 - executable 가용성과 제한된 host version diagnostic 보고
 - 현재 정규 입력으로 담당 문서가 정의한 관리 상태 repair

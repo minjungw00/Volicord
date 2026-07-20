@@ -1,36 +1,11 @@
 use std::path::Path;
 
 use toml_edit::{value, Array, DocumentMut, Item, Table};
+use volicord_mcp::ManagedMcpLaunchSpec;
 
-use crate::host_integration::{
-    config_edit::FileSnapshot, HostConfigError, HostConflict, HostConflictKind, HostScope,
-    ManagedServerEntry, DEFAULT_MCP_COMMAND,
-};
+use crate::host_integration::{config_edit::FileSnapshot, HostConfigError};
 
 use super::identity::accepted_codex_tool_approval_overlay_item;
-
-pub(super) fn validate_mcp_command(
-    scope: HostScope,
-    command: &Path,
-) -> Result<(), HostConfigError> {
-    if scope == HostScope::Project {
-        if command == Path::new(DEFAULT_MCP_COMMAND) {
-            return Ok(());
-        }
-        return Err(HostConfigError::Conflict(HostConflict::new(
-            HostConflictKind::InvalidCommand,
-            "Codex project-scoped configuration must use volicord from PATH",
-        )));
-    }
-    if command.is_absolute() {
-        Ok(())
-    } else {
-        Err(HostConfigError::Conflict(HostConflict::new(
-            HostConflictKind::InvalidCommand,
-            "Codex user-scoped configuration requires an absolute volicord command path",
-        )))
-    }
-}
 
 pub(super) fn parse_document(
     text: Option<&str>,
@@ -69,10 +44,12 @@ pub(super) fn document_from_snapshot(
 pub(super) fn upsert_server_table(
     document: &mut DocumentMut,
     server_name: &str,
-    entry: &ManagedServerEntry,
+    entry: &ManagedMcpLaunchSpec,
 ) -> Result<(), HostConfigError> {
     if !document.as_table().contains_key("mcp_servers") {
-        document["mcp_servers"] = Item::Table(Table::new());
+        let mut servers = Table::new();
+        servers.set_implicit(true);
+        document["mcp_servers"] = Item::Table(servers);
     }
     let servers = document
         .get_mut("mcp_servers")
@@ -91,27 +68,79 @@ pub(super) fn upsert_server_table(
     Ok(())
 }
 
-fn server_table(entry: &ManagedServerEntry) -> Table {
+fn server_table(entry: &ManagedMcpLaunchSpec) -> Table {
     let mut table = Table::new();
-    table["command"] = value(entry.command.clone());
+    table["command"] = value(entry.command());
     let mut args = Array::default();
-    for arg in &entry.args {
+    for arg in entry.args() {
         args.push(arg.as_str());
     }
     table["args"] = value(args);
-    if !entry.env_vars.is_empty() {
+    if !entry.environment().forwarded_names().is_empty() {
         let mut env_vars = Array::default();
-        for env_var in &entry.env_vars {
+        for env_var in entry.environment().forwarded_names() {
             env_vars.push(env_var.as_str());
         }
         table["env_vars"] = value(env_vars);
     }
-    if !entry.env.is_empty() {
+    if !entry.environment().static_values().is_empty() {
         let mut env = Table::new();
-        for (key, value_text) in &entry.env {
+        for (key, value_text) in entry.environment().static_values() {
             env[key] = value(value_text.clone());
         }
         table["env"] = Item::Table(env);
     }
     table
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use volicord_types::HostKind;
+
+    fn personal_launch() -> ManagedMcpLaunchSpec {
+        ManagedMcpLaunchSpec::personal(
+            Path::new("/opt/volicord/bin/volicord"),
+            Path::new("/srv/volicord/runtime"),
+            "connection_alpha",
+            None,
+        )
+        .expect("personal launch")
+    }
+
+    #[test]
+    fn codex_toml_generation_has_exact_personal_and_shared_shapes() {
+        let mut personal = DocumentMut::new();
+        upsert_server_table(&mut personal, "volicord", &personal_launch()).expect("personal table");
+        assert_eq!(
+            personal.to_string(),
+            "[mcp_servers.volicord]\ncommand = \"/opt/volicord/bin/volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"connection_alpha\"]\n\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/srv/volicord/runtime\"\nVOLICORD_MCP_CONNECTION_ID = \"connection_alpha\"\nVOLICORD_MCP_HOST = \"codex\"\nVOLICORD_MCP_LAUNCH = \"managed_host\"\n"
+        );
+
+        let mut shared = DocumentMut::new();
+        let shared_launch =
+            ManagedMcpLaunchSpec::shared_repository(HostKind::Codex).expect("shared launch");
+        upsert_server_table(&mut shared, "volicord", &shared_launch).expect("shared table");
+        assert_eq!(
+            shared.to_string(),
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"VOLICORD_HOME\"]\n"
+        );
+    }
+
+    #[test]
+    fn codex_toml_generation_preserves_only_a_valid_tool_approval_overlay() {
+        let mut document = "[mcp_servers.volicord]\ncommand = \"changed\"\nargs = []\n\n[mcp_servers.volicord.tools.\"volicord.status\"]\napproval_mode = \"auto\"\n"
+            .parse::<DocumentMut>()
+            .expect("Codex configuration");
+        upsert_server_table(&mut document, "volicord", &personal_launch())
+            .expect("managed replacement");
+
+        let tools = document["mcp_servers"]["volicord"]["tools"]
+            .as_table()
+            .expect("preserved tools overlay");
+        assert_eq!(
+            tools["volicord.status"]["approval_mode"].as_str(),
+            Some("auto")
+        );
+    }
 }

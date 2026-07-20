@@ -25,10 +25,12 @@ managed configuration, previews exact managed changes, and applies only after
 all preconditions pass. Repair reuses that flow; remove deletes only matching
 managed content.
 
-A shared configuration forwards `VOLICORD_HOME` and starts managed stdio. A
-personal configuration remains user-owned. Host-specific file syntax stays in
-the adapter. Core receives only a current `ValidatedAgentSession` produced from
-Store-owned operational records.
+One typed managed MCP launch contract supplies generation, strict parsing,
+validation, and fingerprint projection. A personal configuration binds the
+selected absolute Runtime Home as static `VOLICORD_HOME`; a shared configuration
+forwards only `VOLICORD_HOME` and remains clone-portable. Host-specific TOML
+syntax and approval overlays stay in the adapter. Core receives only a current
+`ValidatedAgentSession` produced from Store-owned operational records.
 
 ## Connection Verification
 

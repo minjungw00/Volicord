@@ -62,11 +62,12 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
+| `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared managed MCP launch, environment, validation, projection, and fingerprinting. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio lifecycle, framing, initialization, and process preflight. |
 | `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch, and wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Compact public tool descriptors. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |
-| `crates/volicord-mcp/src/repository_discovery.rs` | Bound Product Repository discovery. |
+| `crates/volicord-mcp/src/routing.rs` | Bound Product Repository discovery and current Connection/project routing. |
 
 ## Tests
 

@@ -154,8 +154,9 @@ operating-system-user, or human identity.
 
 The managed Codex configuration must launch the intended Volicord executable
 with managed stdio MCP. The adapter validates the managed entry, command,
-arguments, forwarded Runtime Home, configuration target, and platform
-prerequisites. Managed launch markers are cooperative routing context, not
+arguments, personal static or shared forwarded Runtime Home binding,
+configuration target, and platform prerequisites through the canonical managed
+launch contract. Managed launch markers are cooperative routing context, not
 credentials. Empty and absent environment values are distinct.
 
 Executable, configuration, process, client, and version observations are
@@ -222,10 +223,12 @@ currently owned entry and refuses a changed or unowned entry.
 ## Managed MCP Environment Requirements
 
 The managed process uses stdio exclusively for the public MCP transport. It
-must receive the Connection and Runtime Home from the managed launch context;
-a personal entry may also carry its exact project. Repository-portable shared
-discovery resolves a registered current clone without embedding machine-local
-IDs. Missing, empty, conflicting, or unrecognized required launch context is
+must receive its binding from the canonical managed launch context. A personal
+entry carries its Connection and selected canonical absolute Runtime Home as
+static values and may also carry its exact project; it forwards no environment
+name. Repository-portable shared discovery forwards only `VOLICORD_HOME` and
+resolves a registered current clone without embedding machine-local IDs or
+paths. Missing, empty, conflicting, or unrecognized required launch context is
 rejected; it is not guessed from another Connection. The host and profile
 markers select this cooperative path but do not authorize a tool call.
 

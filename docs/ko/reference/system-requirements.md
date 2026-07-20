@@ -136,9 +136,10 @@ diagnostic으로 보고합니다. 관찰한 version이 달라지면 관리 Codex
 human identity가 성립하지는 않습니다.
 
 관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야
-합니다. adapter는 관리 entry, command, arguments, 전달된 Runtime Home, configuration
-target, 플랫폼 전제 조건을 검증합니다. 관리 launch marker는 협력적 routing
-맥락이지 credential이 아닙니다. 비어 있는 환경 값과 없는 환경 값은 다릅니다.
+합니다. Adapter는 정규 관리 시작 계약을 통해 관리 entry, command, arguments, 개인
+정적 또는 공유 전달 Runtime Home binding, configuration target, 플랫폼 전제 조건을
+검증합니다. 관리 launch marker는 협력적 routing 맥락이지 credential이 아닙니다. 비어
+있는 환경 값과 없는 환경 값은 다릅니다.
 
 실행 파일, 설정, 프로세스, client, version 관찰은 diagnostic 또는 설정 사실입니다.
 Runtime 권한은 현재 Connection, project membership, 허용 mode, Store가 소유한 관리
@@ -197,11 +198,12 @@ Repair는 탐지한 reason을 보고한 뒤 adapter가 소유한 설정과 복�
 ## 관리형 MCP 환경 요구사항
 
 관리 프로세스의 공개 MCP transport는 stdio뿐입니다. 관리 launch 맥락에서
-Connection과 Runtime Home을 받아야 하며 personal entry는 정확한 project도 담을 수
-있습니다. 저장소에 이식 가능한 shared discovery는 머신 로컬 ID를 넣지 않고 등록된
-현재 clone을 해석합니다. 필수 launch 맥락이 없거나 비었거나 충돌하거나 알 수 없으면
-거절하며 다른 Connection에서 추정하지 않습니다. Host/profile marker는 이 협력적
-경로를 선택할 뿐 tool 호출을 승인하지 않습니다.
+정규 관리 시작 binding을 받아야 합니다. Personal entry는 Connection과 선택한 정규 절대
+Runtime Home을 정적 값으로 담고 정확한 project도 담을 수 있으며 환경 이름을 전달하지
+않습니다. 저장소에 이식 가능한 shared discovery는 `VOLICORD_HOME`만 전달하고 머신 로컬
+ID나 경로를 넣지 않은 채 등록된 현재 clone을 해석합니다. 필수 launch 맥락이 없거나
+비었거나 충돌하거나 알 수 없으면 거절하며 다른 Connection에서 추정하지 않습니다.
+Host/profile marker는 이 협력적 경로를 선택할 뿐 tool 호출을 승인하지 않습니다.
 
 Initialize 때 MCP는 제한된 client name/version과 선택적 host version diagnostic을
 포함한 managed-host runtime session 하나를 기록합니다. 각 project tool 호출에서는

@@ -8,20 +8,20 @@ use crate::host_integration::process::{CommandRunner, ProductionCommandRunner};
 use crate::host_integration::verification::{ManagedConfigStatus, Verification};
 use crate::host_integration::{
     config_edit::{read_text_snapshot, write_if_fresh},
-    validate_managed_server_entry_schema, validated_server_name, ConnectionIntent, HostAdapter,
-    HostConfigError, HostConflict, HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan,
-    HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange,
-    ProjectContext, DEFAULT_MCP_COMMAND,
+    validated_server_name, ConnectionIntent, HostAdapter, HostConfigError, HostConflict,
+    HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
+    HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange, ProjectContext,
 };
 use toml_edit::Item;
+use volicord_mcp::ManagedMcpLaunchSpec;
 
 use super::{
     capabilities,
-    config::{document_from_snapshot, parse_document, upsert_server_table, validate_mcp_command},
+    config::{document_from_snapshot, parse_document, upsert_server_table},
     executable::{codex_executable_availability, CodexExecutableAvailability},
     identity::{
         classify_existing_codex_entry, codex_managed_identity_fingerprint,
-        codex_managed_server_entry, evaluate_codex_managed_identity,
+        codex_managed_launch_spec, evaluate_codex_managed_identity,
     },
     trust::project_trust_for_plan,
 };
@@ -63,27 +63,19 @@ impl<R: CommandRunner> CodexAdapter<R> {
         let scope = codex_scope_for_intent(request.connection_intent)?;
         let (mcp_command, runtime_home) =
             entry_inputs_for_scope(scope, request.installation_profile);
-        validate_mcp_command(scope, mcp_command)?;
-
         let server_name = validated_server_name(request.connection_id, None)?;
         let target = self.config_path(scope, request.project)?;
         let project_id = (scope == HostScope::Project)
             .then(|| request.project.map(|project| project.project_id))
             .flatten();
-        let entry = codex_managed_server_entry(
+        let entry = codex_managed_launch_spec(
             scope,
             request.connection_id,
             project_id,
             mcp_command,
             runtime_home,
-        );
-        validate_managed_server_entry_schema(HostKind::Codex, scope, &entry)?;
-        let fingerprint = crate::host_integration::managed_configuration_digest(
-            HostKind::Codex,
-            scope,
-            &server_name,
-            &entry,
-        );
+        )?;
+        let fingerprint = entry.managed_fingerprint(&server_name);
         let (snapshot, text) = read_text_snapshot(&target)?;
         let document = parse_document(text.as_deref(), &target)?;
         if document.as_table().contains_key("mcp_servers")
@@ -138,32 +130,18 @@ impl<R: CommandRunner> CodexAdapter<R> {
                 "Codex supports only user and project host scopes",
             )));
         }
-        validate_mcp_command(request.scope, request.mcp_command)?;
-        if request.scope == HostScope::Project && request.runtime_home.is_some() {
-            return Err(HostConfigError::Conflict(HostConflict::new(
-                HostConflictKind::InvalidCommand,
-                "Codex project-scoped configuration must not embed a personal VOLICORD_HOME",
-            )));
-        }
-
         let server_name = validated_server_name(request.connection_id, Some(request.server_name))?;
         let project_id = (request.scope == HostScope::Project)
             .then_some(request.project_id)
             .flatten();
-        let entry = codex_managed_server_entry(
+        let entry = codex_managed_launch_spec(
             request.scope,
             request.connection_id,
             project_id,
             request.mcp_command,
             request.runtime_home,
-        );
-        validate_managed_server_entry_schema(HostKind::Codex, request.scope, &entry)?;
-        let fingerprint = crate::host_integration::managed_configuration_digest(
-            HostKind::Codex,
-            request.scope,
-            &server_name,
-            &entry,
-        );
+        )?;
+        let fingerprint = entry.managed_fingerprint(&server_name);
         Ok(HostPlan {
             host_kind: HostKind::Codex,
             connection_intent: request.connection_intent,
@@ -353,7 +331,7 @@ fn entry_inputs_for_scope<'a>(
     profile: InstallationProfile<'a>,
 ) -> (&'a Path, Option<&'a Path>) {
     if scope == HostScope::Project {
-        (Path::new(DEFAULT_MCP_COMMAND), None)
+        (Path::new(ManagedMcpLaunchSpec::PATH_COMMAND), None)
     } else {
         (profile.volicord_mcp_command, Some(profile.runtime_home))
     }
@@ -392,8 +370,6 @@ mod tests {
     use volicord_types::{ConnectionAction, ConnectionActionKind};
 
     use super::*;
-    use crate::host_integration::ManagedServerEntry;
-
     #[test]
     fn host_effect_preserves_canonical_action_kind_and_instruction() {
         let action = ConnectionAction::try_new(
@@ -408,7 +384,13 @@ mod tests {
             mode: "workflow".to_owned(),
             server_name: "volicord".to_owned(),
             target: HostTarget::File(PathBuf::from("/tmp/codex-config.toml")),
-            entry: ManagedServerEntry::new("connection_1", Path::new("/usr/bin/volicord")),
+            entry: ManagedMcpLaunchSpec::personal(
+                Path::new("/usr/bin/volicord"),
+                Path::new("/srv/volicord/runtime"),
+                "connection_1",
+                None,
+            )
+            .expect("personal launch"),
             change: PlannedChange::Noop,
             fingerprint: "sha256:test".to_owned(),
             conflicts: Vec::new(),

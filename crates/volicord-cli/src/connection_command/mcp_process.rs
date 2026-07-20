@@ -10,6 +10,10 @@ use std::{
 };
 
 use serde_json::{json, Value};
+use volicord_mcp::{
+    ManagedMcpLaunchSpec, MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES, VOLICORD_HOME_ENV,
+    VOLICORD_MCP_VERIFICATION_ENV, VOLICORD_MCP_VERIFICATION_VALUE,
+};
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
 use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, LIST_PROJECTS_TOOL_NAME, READ_ONLY_METHOD_TOOL_NAMES,
@@ -20,8 +24,6 @@ use crate::host_integration::{HostPlan, HostScope};
 
 use super::verification::{McpPreflightDiagnostics, VerificationStep};
 
-const VOLICORD_HOME: &str = "VOLICORD_HOME";
-const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,9 +36,7 @@ pub struct ConnectionProcessOutput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpLaunch {
-    command: PathBuf,
-    args: Vec<String>,
-    env: BTreeMap<String, String>,
+    spec: ManagedMcpLaunchSpec,
     cwd: Option<PathBuf>,
 }
 
@@ -78,7 +78,7 @@ impl ConnectionProcess for ProductionConnectionProcess {
         connection_id: &str,
         project_id: Option<&str>,
     ) -> Result<ConnectionProcessOutput, String> {
-        let mut child = Command::new(&launch.command);
+        let mut child = Command::new(launch.spec.command());
         child
             .arg("mcp")
             .arg("--check")
@@ -92,7 +92,7 @@ impl ConnectionProcess for ProductionConnectionProcess {
         let output = child.output().map_err(|error| {
             format!(
                 "failed to run {} mcp --check --connection {}: {error}",
-                launch.command.display(),
+                launch.spec.command(),
                 connection_id
             )
         })?;
@@ -254,21 +254,30 @@ pub(super) fn mcp_launch_from_host_plan(plan: &HostPlan, repo_root: Option<&Path
         HostScope::User => None,
     };
     McpLaunch {
-        command: PathBuf::from(&plan.entry.command),
-        args: plan.entry.args.clone(),
-        env: plan.entry.env.clone(),
+        spec: plan.entry.clone(),
         cwd,
     }
 }
 
 fn apply_mcp_launch_context(command: &mut Command, launch: &McpLaunch, runtime_home: &Path) {
-    for (key, value) in &launch.env {
+    for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+        command.env_remove(name);
+    }
+    for (key, value) in launch.spec.environment().static_values() {
         command.env(key, value);
     }
-    // Host-native repository projections may contain a portable environment
-    // reference. Verification always binds the selected local Runtime Home
-    // explicitly and must not launch with that unevaluated host placeholder.
-    command.env(VOLICORD_HOME, runtime_home);
+    // A shared repository projection forwards the parent Runtime Home. CLI
+    // verification binds the already-selected value explicitly instead of
+    // inheriting an ambient value; personal launches use the contract's static
+    // Runtime Home binding above.
+    if launch
+        .spec
+        .environment()
+        .forwarded_names()
+        .contains(VOLICORD_HOME_ENV)
+    {
+        command.env(VOLICORD_HOME_ENV, runtime_home);
+    }
     if let Some(cwd) = &launch.cwd {
         command.current_dir(cwd);
     }
@@ -281,10 +290,13 @@ fn verify_mcp_stdio_process(
     mode: &str,
     timeout: Duration,
 ) -> Result<McpVerification, String> {
-    let mut child = Command::new(&launch.command);
-    child.args(&launch.args);
+    let mut child = Command::new(launch.spec.command());
+    child.args(launch.spec.args());
     apply_mcp_launch_context(&mut child, launch, runtime_home);
-    child.env(VOLICORD_MCP_VERIFICATION, "1");
+    child.env(
+        VOLICORD_MCP_VERIFICATION_ENV,
+        VOLICORD_MCP_VERIFICATION_VALUE,
+    );
     child
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -292,7 +304,7 @@ fn verify_mcp_stdio_process(
     let mut child = child.spawn().map_err(|error| {
         format!(
             "failed to launch {} for MCP handshake with connection {}: {error}",
-            launch.command.display(),
+            launch.spec.command(),
             connection_id
         )
     })?;
@@ -549,24 +561,83 @@ mod tests {
     use super::*;
 
     #[test]
-    fn verification_launch_overrides_host_placeholder_with_selected_runtime_home() {
+    fn verification_launch_binds_selected_runtime_home_and_cleans_managed_markers() {
         let launch = McpLaunch {
-            command: PathBuf::from("volicord"),
-            args: Vec::new(),
-            env: BTreeMap::from([(VOLICORD_HOME.to_owned(), "${VOLICORD_HOME}".to_owned())]),
+            spec: ManagedMcpLaunchSpec::shared_repository(volicord_types::HostKind::Codex)
+                .expect("shared launch"),
             cwd: None,
         };
         let mut command = Command::new("volicord");
+        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+            command.env(name, "ambient");
+        }
 
         apply_mcp_launch_context(&mut command, &launch, Path::new("/selected/runtime-home"));
 
         assert_eq!(
             command
                 .get_envs()
-                .find(|(name, _)| *name == VOLICORD_HOME)
+                .find(|(name, _)| *name == VOLICORD_HOME_ENV)
                 .and_then(|(_, value)| value),
             Some(std::ffi::OsStr::new("/selected/runtime-home"))
         );
+        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES
+            .into_iter()
+            .filter(|name| *name != VOLICORD_HOME_ENV)
+        {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(candidate, _)| *candidate == std::ffi::OsStr::new(name))
+                    .map(|(_, value)| value),
+                Some(None),
+                "verification must remove ambient {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn verification_launch_applies_personal_static_environment_after_cleanup() {
+        let launch = McpLaunch {
+            spec: ManagedMcpLaunchSpec::personal(
+                Path::new("/opt/volicord"),
+                Path::new("/selected/runtime-home"),
+                "connection_alpha",
+                None,
+            )
+            .expect("personal launch"),
+            cwd: None,
+        };
+        let mut command = Command::new("volicord");
+        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+            command.env(name, "ambient");
+        }
+
+        apply_mcp_launch_context(&mut command, &launch, Path::new("/selected/runtime-home"));
+
+        for (name, expected) in launch.spec.environment().static_values() {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(candidate, _)| *candidate == std::ffi::OsStr::new(name))
+                    .and_then(|(_, value)| value),
+                Some(std::ffi::OsStr::new(expected)),
+                "verification must apply static {name}"
+            );
+        }
+        for name in [
+            volicord_mcp::VOLICORD_MCP_PROJECT_ID_ENV,
+            VOLICORD_MCP_VERIFICATION_ENV,
+        ] {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(candidate, _)| *candidate == name)
+                    .map(|(_, value)| value),
+                Some(None),
+                "verification must remove ambient {name}"
+            );
+        }
     }
 
     #[test]
