@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, path::Path, str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
+use volicord_mcp::ManagedMcpInvocationPurpose;
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
     guards::{guard_observation_summary, list_guard_installations},
@@ -29,8 +30,9 @@ use crate::host_integration::{
 };
 
 use super::{
-    codex_environment, mcp_process::run_connection_preflight, parse_host_kind,
-    ConnectionCommandError, ConnectionProcess, McpLaunch, McpVerification,
+    codex_environment,
+    mcp_process::{materialize_connection_invocation, run_connection_preflight},
+    parse_host_kind, ConnectionCommandError, ConnectionProcess, McpVerification,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,24 +139,39 @@ pub(in crate::connection_command) fn verify_connection(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     host_plan: &HostPlan,
-    launch: &McpLaunch,
+    repo_root: &Path,
     project_id: Option<&str>,
     process: &mut impl ConnectionProcess,
 ) -> Result<VerificationReport, ConnectionCommandError> {
     let host_kind = parse_host_kind(&connection.host_kind)?;
     let host = verify_host_plan(host_kind, host_plan, process)?;
+    let preflight_launch = materialize_connection_invocation(
+        &host_plan.entry,
+        runtime_home,
+        repo_root,
+        ManagedMcpInvocationPurpose::cli_preflight_check(
+            &connection.connection_internal_id,
+            project_id,
+        )
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+    )
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     let preflight = run_connection_preflight(
         process,
-        launch,
-        runtime_home,
+        &preflight_launch,
         &connection.connection_internal_id,
-        project_id,
         &connection.mode,
     );
     let handshake = if preflight.status == StepStatus::Passed {
-        match process.verify_mcp_stdio(
-            launch,
+        let handshake_launch = materialize_connection_invocation(
+            &host_plan.entry,
             runtime_home,
+            repo_root,
+            ManagedMcpInvocationPurpose::CliStdioHandshake,
+        )
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        match process.verify_mcp_stdio(
+            &handshake_launch,
             &connection.connection_internal_id,
             &connection.mode,
         ) {
@@ -1377,7 +1394,7 @@ mod tests {
     }
 
     #[test]
-    fn fresh_setup_without_host_observation_is_action_required() {
+    fn successful_cli_self_test_without_host_observation_is_action_required() {
         let host = host("unlisted-future-version");
         let mut checks = vec![
             managed_config_check(&host).expect("managed config check"),

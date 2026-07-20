@@ -516,13 +516,20 @@ Installation ID, 통과한 `mode_transition` check 하나, 현재 `reload_host` 
 `volicord connection verify`는 `codex`를 활성 탐색하고 version 명령을 실행한 뒤
 `volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. Self-test는
 `initialize`, `tools/list`, 필수 도구 검증, 안전한 읽기 전용
-`volicord.list_projects` 호출을 수행합니다. 그런 다음 현재 managed-host 관찰을 읽고 정규
-보고서 하나만 영속합니다. Plan 전에 선택한 Connection의 정확한 typed integration
-revision을 확보하고, immediate Registry transaction 하나에서 그 revision을 비교해 보고서만
-교체합니다. 검증 중 Connection이 바뀌면 stale 보고서를 저장하지 않고 명령 재실행을
-요구합니다. 관찰한 Host Plan fingerprint는 diagnostic으로만 남습니다. 검증은 이를 적용하거나
-채택하지 않으며 `managed_fingerprint`를 바꾸지 않습니다. CLI self-test는 managed-host
-session이 아닙니다.
+`volicord.list_projects` 호출을 수행합니다. 사전 점검과 자체 검사의 프로세스 시작 구체화는 모두
+점검 대상 호스트 구성에 사용된 정규 관리 시작 계약에서 파생합니다. 개인 연결 검증은 그
+계약의 정적 절대 `VOLICORD_HOME`을 사용합니다. 공유 연결 검증은 연결 작업이 선택한
+Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product Repository 루트에서
+저장소 검색을 실행합니다. CLI 전용 검증 표식은 호출에만 적용하는 진단 값이며 생성 호스트
+구성에는 포함되지 않습니다.
+
+그런 다음 현재 managed-host 관찰을 읽고 정규 보고서 하나만 영속합니다. Plan 전에 선택한
+Connection의 정확한 typed integration revision을 확보하고, immediate Registry transaction
+하나에서 그 revision을 비교해 보고서만 교체합니다. 검증 중 Connection이 바뀌면 stale
+보고서를 저장하지 않고 명령 재실행을 요구합니다. 관찰한 Host Plan fingerprint는
+diagnostic으로만 남습니다. 검증은 이를 적용하거나 채택하지 않으며
+`managed_fingerprint`를 바꾸지 않습니다. CLI 자체 검사가 성공해도 관리 호스트 관찰이
+아니며 `host_session`, `required_tools`, `tool_round_trip` 증거를 만들지 않습니다.
 
 `volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
 유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리

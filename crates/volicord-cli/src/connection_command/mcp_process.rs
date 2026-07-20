@@ -3,7 +3,7 @@ use std::{
     ffi::OsString,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -11,16 +11,14 @@ use std::{
 
 use serde_json::{json, Value};
 use volicord_mcp::{
-    ManagedMcpLaunchSpec, MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES, VOLICORD_HOME_ENV,
-    VOLICORD_MCP_VERIFICATION_ENV, VOLICORD_MCP_VERIFICATION_VALUE,
+    ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
+    ManagedMcpWorkingDirectory, MaterializedManagedMcpLaunch, VOLICORD_HOME_ENV,
 };
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
 use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, LIST_PROJECTS_TOOL_NAME, READ_ONLY_METHOD_TOOL_NAMES,
     WORKFLOW_METHOD_TOOL_NAMES,
 };
-
-use crate::host_integration::{HostPlan, HostScope};
 
 use super::verification::{McpPreflightDiagnostics, VerificationStep};
 
@@ -34,26 +32,16 @@ pub struct ConnectionProcessOutput {
     pub stderr: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct McpLaunch {
-    spec: ManagedMcpLaunchSpec,
-    cwd: Option<PathBuf>,
-}
-
 pub trait ConnectionProcess {
     fn env_var(&self, name: &str) -> Option<OsString>;
     fn current_exe(&self) -> Result<PathBuf, String>;
     fn run_preflight(
         &mut self,
-        launch: &McpLaunch,
-        runtime_home: &Path,
-        connection_id: &str,
-        project_id: Option<&str>,
+        launch: &MaterializedManagedMcpLaunch,
     ) -> Result<ConnectionProcessOutput, String>;
     fn verify_mcp_stdio(
         &mut self,
-        launch: &McpLaunch,
-        runtime_home: &Path,
+        launch: &MaterializedManagedMcpLaunch,
         connection_id: &str,
         mode: &str,
     ) -> Result<McpVerification, String>;
@@ -73,27 +61,14 @@ impl ConnectionProcess for ProductionConnectionProcess {
 
     fn run_preflight(
         &mut self,
-        launch: &McpLaunch,
-        runtime_home: &Path,
-        connection_id: &str,
-        project_id: Option<&str>,
+        launch: &MaterializedManagedMcpLaunch,
     ) -> Result<ConnectionProcessOutput, String> {
-        let mut child = Command::new(launch.spec.command());
-        child
-            .arg("mcp")
-            .arg("--check")
-            .arg("--connection")
-            .arg(connection_id);
-        if let Some(project_id) = project_id {
-            child.arg("--project").arg(project_id);
-        }
-        apply_mcp_launch_context(&mut child, launch, runtime_home);
+        let mut child = launch.process_command();
         child.stdin(Stdio::null());
         let output = child.output().map_err(|error| {
             format!(
-                "failed to run {} mcp --check --connection {}: {error}",
-                launch.spec.command(),
-                connection_id
+                "failed to run managed MCP preflight with {}: {error}",
+                launch.command()
             )
         })?;
         Ok(ConnectionProcessOutput {
@@ -106,12 +81,11 @@ impl ConnectionProcess for ProductionConnectionProcess {
 
     fn verify_mcp_stdio(
         &mut self,
-        launch: &McpLaunch,
-        runtime_home: &Path,
+        launch: &MaterializedManagedMcpLaunch,
         connection_id: &str,
         mode: &str,
     ) -> Result<McpVerification, String> {
-        verify_mcp_stdio_process(launch, runtime_home, connection_id, mode, DEFAULT_TIMEOUT)
+        verify_mcp_stdio_process(launch, connection_id, mode, DEFAULT_TIMEOUT)
     }
 }
 
@@ -161,13 +135,11 @@ impl McpVerification {
 
 pub(super) fn run_connection_preflight(
     process: &mut impl ConnectionProcess,
-    launch: &McpLaunch,
-    runtime_home: &Path,
+    launch: &MaterializedManagedMcpLaunch,
     connection_id: &str,
-    project_id: Option<&str>,
     mode: &str,
 ) -> VerificationStep {
-    match process.run_preflight(launch, runtime_home, connection_id, project_id) {
+    match process.run_preflight(launch) {
         Ok(output) if output.success => {
             match validate_connection_preflight_report(&output.stdout, connection_id, mode) {
                 Ok(diagnostics) => VerificationStep::passed_with_code(
@@ -248,55 +220,43 @@ fn expect_report_field(
     }
 }
 
-pub(super) fn mcp_launch_from_host_plan(plan: &HostPlan, repo_root: Option<&Path>) -> McpLaunch {
-    let cwd = match plan.host_scope {
-        HostScope::Project => repo_root.map(Path::to_path_buf),
-        HostScope::User => None,
-    };
-    McpLaunch {
-        spec: plan.entry.clone(),
-        cwd,
-    }
-}
-
-fn apply_mcp_launch_context(command: &mut Command, launch: &McpLaunch, runtime_home: &Path) {
-    for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
-        command.env_remove(name);
-    }
-    for (key, value) in launch.spec.environment().static_values() {
-        command.env(key, value);
-    }
-    // A shared repository projection forwards the parent Runtime Home. CLI
-    // verification binds the already-selected value explicitly instead of
-    // inheriting an ambient value; personal launches use the contract's static
-    // Runtime Home binding above.
+pub(super) fn materialize_connection_invocation(
+    launch: &ManagedMcpLaunchSpec,
+    runtime_home: &Path,
+    repo_root: &Path,
+    purpose: ManagedMcpInvocationPurpose,
+) -> Result<MaterializedManagedMcpLaunch, volicord_mcp::ManagedMcpLaunchError> {
+    let mut forwarded_environment = BTreeMap::new();
     if launch
-        .spec
         .environment()
         .forwarded_names()
         .contains(VOLICORD_HOME_ENV)
     {
-        command.env(VOLICORD_HOME_ENV, runtime_home);
+        forwarded_environment.insert(
+            VOLICORD_HOME_ENV.to_owned(),
+            runtime_home.as_os_str().to_owned(),
+        );
     }
-    if let Some(cwd) = &launch.cwd {
-        command.current_dir(cwd);
-    }
+    let working_directory = match launch.host_scope() {
+        volicord_types::HostScope::User => ManagedMcpWorkingDirectory::Inherited,
+        volicord_types::HostScope::Project => {
+            ManagedMcpWorkingDirectory::ProductRepository(repo_root.to_path_buf())
+        }
+    };
+    launch.materialize(ManagedMcpMaterializationInput::new(
+        purpose,
+        forwarded_environment,
+        working_directory,
+    ))
 }
 
 fn verify_mcp_stdio_process(
-    launch: &McpLaunch,
-    runtime_home: &Path,
+    launch: &MaterializedManagedMcpLaunch,
     connection_id: &str,
     mode: &str,
     timeout: Duration,
 ) -> Result<McpVerification, String> {
-    let mut child = Command::new(launch.spec.command());
-    child.args(launch.spec.args());
-    apply_mcp_launch_context(&mut child, launch, runtime_home);
-    child.env(
-        VOLICORD_MCP_VERIFICATION_ENV,
-        VOLICORD_MCP_VERIFICATION_VALUE,
-    );
+    let mut child = launch.process_command();
     child
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -304,7 +264,7 @@ fn verify_mcp_stdio_process(
     let mut child = child.spawn().map_err(|error| {
         format!(
             "failed to launch {} for MCP handshake with connection {}: {error}",
-            launch.spec.command(),
+            launch.command(),
             connection_id
         )
     })?;
@@ -561,83 +521,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn verification_launch_binds_selected_runtime_home_and_cleans_managed_markers() {
-        let launch = McpLaunch {
-            spec: ManagedMcpLaunchSpec::shared_repository(volicord_types::HostKind::Codex)
-                .expect("shared launch"),
-            cwd: None,
-        };
-        let mut command = Command::new("volicord");
-        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
-            command.env(name, "ambient");
-        }
-
-        apply_mcp_launch_context(&mut command, &launch, Path::new("/selected/runtime-home"));
-
+    fn shared_verification_materializes_selected_runtime_home_and_repository() {
+        let launch = ManagedMcpLaunchSpec::shared_repository(volicord_types::HostKind::Codex)
+            .expect("shared launch");
+        let materialized = materialize_connection_invocation(
+            &launch,
+            Path::new("/selected/runtime-home"),
+            Path::new("/workspace/product"),
+            ManagedMcpInvocationPurpose::CliStdioHandshake,
+        )
+        .expect("shared verification launch");
         assert_eq!(
-            command
-                .get_envs()
-                .find(|(name, _)| *name == VOLICORD_HOME_ENV)
-                .and_then(|(_, value)| value),
-            Some(std::ffi::OsStr::new("/selected/runtime-home"))
+            materialized.environment().get(VOLICORD_HOME_ENV),
+            Some(&OsString::from("/selected/runtime-home"))
         );
-        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES
-            .into_iter()
-            .filter(|name| *name != VOLICORD_HOME_ENV)
-        {
-            assert_eq!(
-                command
-                    .get_envs()
-                    .find(|(candidate, _)| *candidate == std::ffi::OsStr::new(name))
-                    .map(|(_, value)| value),
-                Some(None),
-                "verification must remove ambient {name}"
-            );
-        }
+        assert_eq!(
+            materialized.working_directory(),
+            &ManagedMcpWorkingDirectory::ProductRepository(PathBuf::from("/workspace/product"))
+        );
     }
 
     #[test]
-    fn verification_launch_applies_personal_static_environment_after_cleanup() {
-        let launch = McpLaunch {
-            spec: ManagedMcpLaunchSpec::personal(
-                Path::new("/opt/volicord"),
-                Path::new("/selected/runtime-home"),
-                "connection_alpha",
-                None,
-            )
-            .expect("personal launch"),
-            cwd: None,
-        };
-        let mut command = Command::new("volicord");
-        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
-            command.env(name, "ambient");
-        }
-
-        apply_mcp_launch_context(&mut command, &launch, Path::new("/selected/runtime-home"));
-
-        for (name, expected) in launch.spec.environment().static_values() {
-            assert_eq!(
-                command
-                    .get_envs()
-                    .find(|(candidate, _)| *candidate == std::ffi::OsStr::new(name))
-                    .and_then(|(_, value)| value),
-                Some(std::ffi::OsStr::new(expected)),
-                "verification must apply static {name}"
-            );
-        }
-        for name in [
-            volicord_mcp::VOLICORD_MCP_PROJECT_ID_ENV,
-            VOLICORD_MCP_VERIFICATION_ENV,
-        ] {
-            assert_eq!(
-                command
-                    .get_envs()
-                    .find(|(candidate, _)| *candidate == name)
-                    .map(|(_, value)| value),
-                Some(None),
-                "verification must remove ambient {name}"
-            );
-        }
+    fn personal_verification_uses_static_runtime_home_and_repository_independent_cwd() {
+        let launch = ManagedMcpLaunchSpec::personal(
+            Path::new("/opt/volicord"),
+            Path::new("/contract/runtime-home"),
+            "connection_alpha",
+            None,
+        )
+        .expect("personal launch");
+        let materialized = materialize_connection_invocation(
+            &launch,
+            Path::new("/decoy/selected-runtime-home"),
+            Path::new("/workspace/product"),
+            ManagedMcpInvocationPurpose::CliStdioHandshake,
+        )
+        .expect("personal verification launch");
+        assert_eq!(
+            materialized.environment().get(VOLICORD_HOME_ENV),
+            Some(&OsString::from("/contract/runtime-home"))
+        );
+        assert_eq!(
+            materialized.working_directory(),
+            &ManagedMcpWorkingDirectory::Inherited
+        );
     }
 
     #[test]

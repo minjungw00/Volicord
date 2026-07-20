@@ -1,8 +1,10 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
+    ffi::OsString,
     fmt,
     path::{Component, Path, PathBuf},
+    process::Command,
     str::FromStr,
 };
 
@@ -179,6 +181,114 @@ pub struct ManagedMcpLaunchSpec {
     args: Vec<String>,
     environment: LaunchEnvironment,
     binding: ManagedMcpBinding,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedMcpInvocationPurpose {
+    ManagedStdio,
+    CliStdioHandshake,
+    CliPreflightCheck {
+        connection_id: String,
+        project_id: Option<String>,
+    },
+}
+
+impl ManagedMcpInvocationPurpose {
+    pub fn cli_preflight_check(
+        connection_id: impl Into<String>,
+        project_id: Option<&str>,
+    ) -> Result<Self, ManagedMcpLaunchError> {
+        Ok(Self::CliPreflightCheck {
+            connection_id: nonblank(connection_id.into(), "preflight connection ID")?,
+            project_id: project_id
+                .map(|value| nonblank(value.to_owned(), "preflight project ID"))
+                .transpose()?,
+        })
+    }
+
+    const fn is_cli_verification(&self) -> bool {
+        matches!(
+            self,
+            Self::CliStdioHandshake | Self::CliPreflightCheck { .. }
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedMcpWorkingDirectory {
+    Inherited,
+    ProductRepository(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedMcpMaterializationInput {
+    purpose: ManagedMcpInvocationPurpose,
+    forwarded_environment: BTreeMap<String, OsString>,
+    working_directory: ManagedMcpWorkingDirectory,
+}
+
+impl ManagedMcpMaterializationInput {
+    pub fn new(
+        purpose: ManagedMcpInvocationPurpose,
+        forwarded_environment: BTreeMap<String, OsString>,
+        working_directory: ManagedMcpWorkingDirectory,
+    ) -> Self {
+        Self {
+            purpose,
+            forwarded_environment,
+            working_directory,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaterializedManagedMcpLaunch {
+    command: String,
+    args: Vec<String>,
+    environment: BTreeMap<String, OsString>,
+    working_directory: ManagedMcpWorkingDirectory,
+    purpose: ManagedMcpInvocationPurpose,
+}
+
+impl MaterializedManagedMcpLaunch {
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    pub fn args(&self) -> &[String] {
+        &self.args
+    }
+
+    pub fn environment(&self) -> &BTreeMap<String, OsString> {
+        &self.environment
+    }
+
+    pub fn working_directory(&self) -> &ManagedMcpWorkingDirectory {
+        &self.working_directory
+    }
+
+    pub fn purpose(&self) -> &ManagedMcpInvocationPurpose {
+        &self.purpose
+    }
+
+    pub fn process_command(&self) -> Command {
+        let mut command = Command::new(&self.command);
+        command.args(&self.args);
+        self.apply_process_context(&mut command);
+        command
+    }
+
+    fn apply_process_context(&self, command: &mut Command) {
+        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+            command.env_remove(name);
+        }
+        for (name, value) in &self.environment {
+            command.env(name, value);
+        }
+        if let ManagedMcpWorkingDirectory::ProductRepository(path) = &self.working_directory {
+            command.current_dir(path);
+        }
+    }
 }
 
 impl ManagedMcpLaunchSpec {
@@ -381,6 +491,118 @@ impl ManagedMcpLaunchSpec {
         );
         format!("sha256:{:x}", digest.finalize())
     }
+
+    pub fn materialize(
+        &self,
+        input: ManagedMcpMaterializationInput,
+    ) -> Result<MaterializedManagedMcpLaunch, ManagedMcpLaunchError> {
+        validate_working_directory(&self.binding, &input.working_directory)?;
+        for name in input.forwarded_environment.keys() {
+            if !self.environment.forwarded_names.contains(name) {
+                return Err(ManagedMcpLaunchError::new(format!(
+                    "managed MCP materialization received an undeclared forwarded environment value: {name}"
+                )));
+            }
+        }
+
+        let mut environment = self
+            .environment
+            .static_values
+            .iter()
+            .map(|(name, value)| (name.clone(), OsString::from(value)))
+            .collect::<BTreeMap<_, _>>();
+        for name in &self.environment.forwarded_names {
+            let value = input.forwarded_environment.get(name).ok_or_else(|| {
+                ManagedMcpLaunchError::new(format!(
+                    "managed MCP materialization is missing forwarded environment value: {name}"
+                ))
+            })?;
+            environment.insert(name.clone(), value.clone());
+        }
+        if input.purpose.is_cli_verification() {
+            environment.insert(
+                VOLICORD_MCP_VERIFICATION_ENV.to_owned(),
+                OsString::from(VOLICORD_MCP_VERIFICATION_VALUE),
+            );
+        }
+
+        let args = invocation_args(&self.binding, &self.args, &input.purpose)?;
+        Ok(MaterializedManagedMcpLaunch {
+            command: self.command.clone(),
+            args,
+            environment,
+            working_directory: input.working_directory,
+            purpose: input.purpose,
+        })
+    }
+}
+
+fn invocation_args(
+    binding: &ManagedMcpBinding,
+    stdio_args: &[String],
+    purpose: &ManagedMcpInvocationPurpose,
+) -> Result<Vec<String>, ManagedMcpLaunchError> {
+    match purpose {
+        ManagedMcpInvocationPurpose::ManagedStdio
+        | ManagedMcpInvocationPurpose::CliStdioHandshake => Ok(stdio_args.to_vec()),
+        ManagedMcpInvocationPurpose::CliPreflightCheck {
+            connection_id,
+            project_id,
+        } => {
+            if let ManagedMcpBinding::Personal {
+                connection_id: bound_connection_id,
+                project_id: bound_project_id,
+                ..
+            } = binding
+            {
+                let project_matches = bound_project_id
+                    .as_ref()
+                    .is_none_or(|bound_project_id| project_id.as_ref() == Some(bound_project_id));
+                if connection_id != bound_connection_id || !project_matches {
+                    return Err(ManagedMcpLaunchError::new(
+                        "personal managed MCP preflight coordinates must match the launch contract",
+                    ));
+                }
+            }
+            let mut args = vec![
+                "mcp".to_owned(),
+                "--check".to_owned(),
+                "--connection".to_owned(),
+                connection_id.clone(),
+            ];
+            if let Some(project_id) = project_id {
+                args.extend(["--project".to_owned(), project_id.clone()]);
+            }
+            Ok(args)
+        }
+    }
+}
+
+fn validate_working_directory(
+    binding: &ManagedMcpBinding,
+    working_directory: &ManagedMcpWorkingDirectory,
+) -> Result<(), ManagedMcpLaunchError> {
+    match (binding, working_directory) {
+        (ManagedMcpBinding::Personal { .. }, ManagedMcpWorkingDirectory::Inherited) => Ok(()),
+        (
+            ManagedMcpBinding::SharedRepository { .. },
+            ManagedMcpWorkingDirectory::ProductRepository(path),
+        ) if is_canonical_absolute_path(path) => Ok(()),
+        (ManagedMcpBinding::Personal { .. }, _) => Err(ManagedMcpLaunchError::new(
+            "personal managed MCP launch must use repository-independent working-directory policy",
+        )),
+        (ManagedMcpBinding::SharedRepository { .. }, _) => Err(ManagedMcpLaunchError::new(
+            "shared managed MCP launch requires a canonical absolute Product Repository working directory",
+        )),
+    }
+}
+
+fn is_canonical_absolute_path(path: &Path) -> bool {
+    path.is_absolute()
+        && !path
+            .components()
+            .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+        && path.components().collect::<PathBuf>().as_os_str() == path.as_os_str()
 }
 
 #[derive(Serialize)]
@@ -464,6 +686,8 @@ impl Error for ManagedMcpLaunchError {}
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsStr;
+
     use super::*;
 
     fn personal() -> ManagedMcpLaunchSpec {
@@ -679,5 +903,259 @@ mod tests {
             vec![VOLICORD_HOME_ENV.to_owned()],
         )
         .is_err());
+    }
+
+    #[test]
+    fn personal_materialization_uses_static_runtime_home_and_cleans_ambient_managed_names() {
+        let spec = personal();
+        let materialized = spec
+            .materialize(ManagedMcpMaterializationInput::new(
+                ManagedMcpInvocationPurpose::ManagedStdio,
+                BTreeMap::new(),
+                ManagedMcpWorkingDirectory::Inherited,
+            ))
+            .expect("personal materialization");
+        assert_eq!(
+            materialized.environment().get(VOLICORD_HOME_ENV),
+            Some(&OsString::from("/srv/volicord/runtime"))
+        );
+
+        let mut command = Command::new(materialized.command());
+        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+            command.env(name, "ambient-decoy");
+        }
+        materialized.apply_process_context(&mut command);
+        for (name, expected) in spec.environment().static_values() {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(candidate, _)| *candidate == OsStr::new(name))
+                    .and_then(|(_, value)| value),
+                Some(OsStr::new(expected)),
+                "static contract value must replace an ambient {name}"
+            );
+        }
+        for name in [VOLICORD_MCP_PROJECT_ID_ENV, VOLICORD_MCP_VERIFICATION_ENV] {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(candidate, _)| *candidate == OsStr::new(name))
+                    .map(|(_, value)| value),
+                Some(None),
+                "unbound managed name must be removed: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_materialization_uses_only_explicit_forwarded_runtime_home() {
+        let spec = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)
+            .expect("shared repository launch");
+        let input = ManagedMcpMaterializationInput::new(
+            ManagedMcpInvocationPurpose::CliStdioHandshake,
+            BTreeMap::from([(
+                VOLICORD_HOME_ENV.to_owned(),
+                OsString::from("/selected/runtime-home"),
+            )]),
+            ManagedMcpWorkingDirectory::ProductRepository(PathBuf::from("/workspace/product")),
+        );
+        let first = spec
+            .materialize(input.clone())
+            .expect("first materialization");
+        let second = spec.materialize(input).expect("second materialization");
+
+        assert_eq!(first, second);
+        assert_eq!(
+            first.environment().get(VOLICORD_HOME_ENV),
+            Some(&OsString::from("/selected/runtime-home"))
+        );
+        assert_eq!(first.args(), spec.args());
+        let mut command = Command::new(first.command());
+        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+            command.env(name, "ambient-decoy");
+        }
+        first.apply_process_context(&mut command);
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(candidate, _)| *candidate == OsStr::new(VOLICORD_HOME_ENV))
+                .and_then(|(_, value)| value),
+            Some(OsStr::new("/selected/runtime-home"))
+        );
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(candidate, _)| *candidate == OsStr::new(VOLICORD_MCP_VERIFICATION_ENV))
+                .and_then(|(_, value)| value),
+            Some(OsStr::new(VOLICORD_MCP_VERIFICATION_VALUE))
+        );
+        for name in [
+            VOLICORD_MCP_LAUNCH_ENV,
+            VOLICORD_MCP_HOST_ENV,
+            VOLICORD_MCP_CONNECTION_ID_ENV,
+            VOLICORD_MCP_PROJECT_ID_ENV,
+        ] {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(candidate, _)| *candidate == OsStr::new(name))
+                    .map(|(_, value)| value),
+                Some(None),
+                "decoy managed marker must be removed: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_materialization_rejects_missing_or_undeclared_forwarded_values() {
+        let spec = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)
+            .expect("shared repository launch");
+        let missing = spec
+            .materialize(ManagedMcpMaterializationInput::new(
+                ManagedMcpInvocationPurpose::ManagedStdio,
+                BTreeMap::new(),
+                ManagedMcpWorkingDirectory::ProductRepository(PathBuf::from("/workspace/product")),
+            ))
+            .expect_err("missing forwarded Runtime Home must fail");
+        assert_eq!(
+            missing.to_string(),
+            "managed MCP materialization is missing forwarded environment value: VOLICORD_HOME"
+        );
+
+        let undeclared = personal()
+            .materialize(ManagedMcpMaterializationInput::new(
+                ManagedMcpInvocationPurpose::ManagedStdio,
+                BTreeMap::from([(
+                    VOLICORD_HOME_ENV.to_owned(),
+                    OsString::from("/decoy/runtime-home"),
+                )]),
+                ManagedMcpWorkingDirectory::Inherited,
+            ))
+            .expect_err("personal materialization must reject a forwarded override");
+        assert!(undeclared
+            .to_string()
+            .contains("undeclared forwarded environment"));
+    }
+
+    #[test]
+    fn cli_invocations_add_the_diagnostic_marker_after_contract_materialization() {
+        let spec = personal();
+        let materialize = |purpose| {
+            spec.materialize(ManagedMcpMaterializationInput::new(
+                purpose,
+                BTreeMap::new(),
+                ManagedMcpWorkingDirectory::Inherited,
+            ))
+            .expect("materialized invocation")
+        };
+
+        let managed = materialize(ManagedMcpInvocationPurpose::ManagedStdio);
+        assert!(!managed
+            .environment()
+            .contains_key(VOLICORD_MCP_VERIFICATION_ENV));
+        for verification in [
+            materialize(ManagedMcpInvocationPurpose::CliStdioHandshake),
+            materialize(
+                ManagedMcpInvocationPurpose::cli_preflight_check("connection_alpha", None)
+                    .expect("preflight purpose"),
+            ),
+        ] {
+            assert_eq!(
+                verification
+                    .environment()
+                    .get(VOLICORD_MCP_VERIFICATION_ENV),
+                Some(&OsString::from(VOLICORD_MCP_VERIFICATION_VALUE))
+            );
+        }
+    }
+
+    #[test]
+    fn preflight_arguments_derive_from_the_contract_binding() {
+        let spec = ManagedMcpLaunchSpec::personal(
+            Path::new("/opt/volicord/bin/volicord"),
+            Path::new("/srv/volicord/runtime"),
+            "connection_alpha",
+            Some("project_alpha"),
+        )
+        .expect("project-bound personal launch");
+        let preflight = spec
+            .materialize(ManagedMcpMaterializationInput::new(
+                ManagedMcpInvocationPurpose::cli_preflight_check(
+                    "connection_alpha",
+                    Some("project_alpha"),
+                )
+                .expect("preflight purpose"),
+                BTreeMap::new(),
+                ManagedMcpWorkingDirectory::Inherited,
+            ))
+            .expect("preflight materialization");
+        assert_eq!(
+            preflight.args(),
+            [
+                "mcp",
+                "--check",
+                "--connection",
+                "connection_alpha",
+                "--project",
+                "project_alpha"
+            ]
+        );
+
+        let mismatch = spec.materialize(ManagedMcpMaterializationInput::new(
+            ManagedMcpInvocationPurpose::cli_preflight_check(
+                "connection_decoy",
+                Some("project_alpha"),
+            )
+            .expect("preflight purpose"),
+            BTreeMap::new(),
+            ManagedMcpWorkingDirectory::Inherited,
+        ));
+        assert!(mismatch.is_err());
+    }
+
+    #[test]
+    fn materialization_preserves_ordinary_process_environment_without_wsl_input() {
+        let spec = personal();
+        let materialized = spec
+            .materialize(ManagedMcpMaterializationInput::new(
+                ManagedMcpInvocationPurpose::ManagedStdio,
+                BTreeMap::new(),
+                ManagedMcpWorkingDirectory::Inherited,
+            ))
+            .expect("materialization without WSL_DISTRO_NAME");
+        let mut command = Command::new(materialized.command());
+        for name in ["PATH", "HOME", "LANG", "TMPDIR", "WSL_DISTRO_NAME"] {
+            command.env(name, format!("ordinary-{name}"));
+        }
+        materialized.apply_process_context(&mut command);
+        for name in ["PATH", "HOME", "LANG", "TMPDIR", "WSL_DISTRO_NAME"] {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(candidate, _)| *candidate == OsStr::new(name))
+                    .and_then(|(_, value)| value),
+                Some(OsStr::new(&format!("ordinary-{name}"))),
+                "ordinary inherited environment must remain untouched: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn working_directory_materialization_does_not_change_managed_fingerprint() {
+        let spec = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)
+            .expect("shared repository launch");
+        let fingerprint = spec.managed_fingerprint("volicord");
+        for repo_root in ["/workspace/alpha", "/workspace/beta"] {
+            spec.materialize(ManagedMcpMaterializationInput::new(
+                ManagedMcpInvocationPurpose::ManagedStdio,
+                BTreeMap::from([(
+                    VOLICORD_HOME_ENV.to_owned(),
+                    OsString::from("/selected/runtime-home"),
+                )]),
+                ManagedMcpWorkingDirectory::ProductRepository(PathBuf::from(repo_root)),
+            ))
+            .expect("shared materialization");
+            assert_eq!(spec.managed_fingerprint("volicord"), fingerprint);
+        }
     }
 }

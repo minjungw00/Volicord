@@ -29,8 +29,9 @@ pub use constants::{
 pub use errors::McpAdapterError;
 pub use managed_launch::{
     is_managed_mcp_launch_environment_name, LaunchEnvironment, ManagedMcpBinding,
-    ManagedMcpLaunchError, ManagedMcpLaunchSpec, RuntimeHomeBinding,
-    MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES, MANAGED_MCP_LAUNCH_VALUE,
+    ManagedMcpInvocationPurpose, ManagedMcpLaunchError, ManagedMcpLaunchSpec,
+    ManagedMcpMaterializationInput, ManagedMcpWorkingDirectory, MaterializedManagedMcpLaunch,
+    RuntimeHomeBinding, MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES, MANAGED_MCP_LAUNCH_VALUE,
     MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES, VOLICORD_HOME_ENV, VOLICORD_MCP_CONNECTION_ID_ENV,
     VOLICORD_MCP_HOST_ENV, VOLICORD_MCP_LAUNCH_ENV, VOLICORD_MCP_PROJECT_ID_ENV,
     VOLICORD_MCP_VERIFICATION_ENV, VOLICORD_MCP_VERIFICATION_VALUE,

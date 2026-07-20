@@ -46,6 +46,18 @@ forwards the parent value only in shared configuration, which embeds no
 machine-local path. Exact generated shapes and strict parsing belong to
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract).
 
+Connection preflight and the CLI stdio handshake materialize their process
+launches from that same contract. Materialization preserves ordinary inherited
+process variables, removes Volicord-owned managed-MCP variables, applies static
+values, resolves every forwarded name from explicit verification input, and
+then applies the CLI-only diagnostic marker. Personal verification therefore
+uses the static Runtime Home already in its contract. Shared verification uses
+the operation-selected Runtime Home as the forwarded `VOLICORD_HOME` while the
+repository-visible configuration remains portable. Shared repository discovery
+runs from the canonical Product Repository root; personal verification uses
+its bound identifiers without a repository-discovery working-directory
+dependency.
+
 Before reading MCP requests, the adapter resolves the exact registered
 Connection from the Volicord-generated managed launch/configuration context and
 validates that it is enabled, its selected projects are current members, the
@@ -100,7 +112,9 @@ consulted for these facts.
 Connection verification starts a separate `cli_preflight` process and calls
 `volicord.list_projects` as its designated safe read-only round trip. That
 process validates the server surface, but its lifecycle facts cannot satisfy a
-`managed_host` operational check or authorize a Connection call.
+`managed_host` operational check or authorize a Connection call. Successful
+CLI verification does not fabricate managed `host_session`, `tools/list`, or
+tool-round-trip observations.
 
 Runtime rows are durable process-launch observations, not liveness records.
 A process that exits before recording a terminal failure or graceful close may

@@ -676,7 +676,6 @@ fn apply_init_provisioning(
         }
     }
     let expected_integration_revision = connection_integration_revision(&connection)?;
-    let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
     let verification = migration_post_transition_step(
         &plan,
         &superseded_integrations,
@@ -685,7 +684,7 @@ fn apply_init_provisioning(
             &plan.runtime_home,
             &connection,
             &host_plan,
-            &launch,
+            &project.repo_root,
             Some(&project.project_id),
             process,
         ),
@@ -1447,12 +1446,11 @@ fn apply_connection_provisioning(
         &integration,
     )?;
     let expected_integration_revision = connection_integration_revision(&connection)?;
-    let launch = mcp_launch_from_host_plan(&host_plan, Some(&project.repo_root));
     let verification = verify_connection(
         &plan.runtime_home,
         &connection,
         &host_plan,
-        &launch,
+        &project.repo_root,
         Some(&project.project_id),
         process,
     )?;
@@ -1539,18 +1537,14 @@ mod init_planning_tests {
 
         fn run_preflight(
             &mut self,
-            _launch: &McpLaunch,
-            _runtime_home: &Path,
-            _connection_id: &str,
-            _project_id: Option<&str>,
+            _launch: &MaterializedManagedMcpLaunch,
         ) -> Result<ConnectionProcessOutput, String> {
             Err("init planning must not run MCP preflight".to_owned())
         }
 
         fn verify_mcp_stdio(
             &mut self,
-            _launch: &McpLaunch,
-            _runtime_home: &Path,
+            _launch: &MaterializedManagedMcpLaunch,
             _connection_id: &str,
             _mode: &str,
         ) -> Result<McpVerification, String> {

@@ -8,6 +8,8 @@ use std::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_mcp::ManagedMcpLaunchSpec;
+#[cfg(test)]
+use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
 use volicord_store::{
     agent_connections::{
         activate_staged_connection, add_connection_project, agent_connection_record,
@@ -74,8 +76,7 @@ mod service;
 mod verification;
 
 pub use mcp_process::{
-    ConnectionProcess, ConnectionProcessOutput, McpLaunch, McpVerification,
-    ProductionConnectionProcess,
+    ConnectionProcess, ConnectionProcessOutput, McpVerification, ProductionConnectionProcess,
 };
 
 use args::{
@@ -86,7 +87,6 @@ use args::{
 use guidance::{
     render_runtime_home_setup_guidance, ConnectionUserInvocation, RuntimeHomeSetupState,
 };
-use mcp_process::mcp_launch_from_host_plan;
 use output::{
     render_command_report, render_connections_output, CommandConnection, CommandOperation,
     ConnectionCommandReport,
@@ -434,12 +434,11 @@ fn command_connection_verify(
     let selected_repo_root = selected_project.project.repo_root.clone();
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
-    let launch = mcp_launch_from_host_plan(&host_plan, Some(&selected_project.project.repo_root));
     let verification = verify_connection(
         &runtime_home,
         &connection,
         &host_plan,
-        &launch,
+        &selected_project.project.repo_root,
         Some(&selected_project.project_id),
         process,
     )?;
@@ -1528,10 +1527,7 @@ mod persisted_metadata_tests {
 
         fn run_preflight(
             &mut self,
-            _launch: &McpLaunch,
-            _runtime_home: &Path,
-            _connection_id: &str,
-            _project_id: Option<&str>,
+            _launch: &MaterializedManagedMcpLaunch,
         ) -> Result<ConnectionProcessOutput, String> {
             self.preflight_calls += 1;
             Ok(ConnectionProcessOutput {
@@ -1544,8 +1540,7 @@ mod persisted_metadata_tests {
 
         fn verify_mcp_stdio(
             &mut self,
-            _launch: &McpLaunch,
-            _runtime_home: &Path,
+            _launch: &MaterializedManagedMcpLaunch,
             _connection_id: &str,
             _mode: &str,
         ) -> Result<McpVerification, String> {
@@ -1571,11 +1566,14 @@ mod persisted_metadata_tests {
 
         fn run_preflight(
             &mut self,
-            _launch: &McpLaunch,
-            runtime_home: &Path,
-            connection_id: &str,
-            _project_id: Option<&str>,
+            launch: &MaterializedManagedMcpLaunch,
         ) -> Result<ConnectionProcessOutput, String> {
+            let ManagedMcpInvocationPurpose::CliPreflightCheck { connection_id, .. } =
+                launch.purpose()
+            else {
+                return Err("fixture expected a CLI preflight invocation".to_owned());
+            };
+            let runtime_home = &self.runtime_home;
             let connection = agent_connection_record(runtime_home, connection_id)
                 .map_err(|error| error.to_string())?
                 .ok_or_else(|| "fixture connection disappeared".to_owned())?;
@@ -1612,8 +1610,7 @@ mod persisted_metadata_tests {
 
         fn verify_mcp_stdio(
             &mut self,
-            _launch: &McpLaunch,
-            _runtime_home: &Path,
+            _launch: &MaterializedManagedMcpLaunch,
             _connection_id: &str,
             _mode: &str,
         ) -> Result<McpVerification, String> {

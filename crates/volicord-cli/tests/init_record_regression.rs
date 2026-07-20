@@ -22,10 +22,11 @@ use volicord_cli::{
     },
     connection_command::{
         run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
-        ConnectionProcessOutput, McpLaunch, McpVerification,
+        ConnectionProcessOutput, McpVerification,
     },
     policy_command::run_policy_command,
 };
+use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
 use volicord_store::{
     agent_connections::{
         agent_connection_record, connection_metadata_contains_pending_host_cleanup_key,
@@ -104,11 +105,13 @@ impl ConnectionProcess for FakeConnectionProcess {
 
     fn run_preflight(
         &mut self,
-        _launch: &McpLaunch,
-        runtime_home: &Path,
-        connection_id: &str,
-        _project_id: Option<&str>,
+        launch: &MaterializedManagedMcpLaunch,
     ) -> Result<ConnectionProcessOutput, String> {
+        let ManagedMcpInvocationPurpose::CliPreflightCheck { connection_id, .. } = launch.purpose()
+        else {
+            return Err("fixture expected a CLI preflight invocation".to_owned());
+        };
+        let runtime_home = &self.runtime_home;
         let mode = agent_connection_record(runtime_home, connection_id)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("missing Agent Connection {connection_id}"))?
@@ -126,11 +129,13 @@ impl ConnectionProcess for FakeConnectionProcess {
 
     fn verify_mcp_stdio(
         &mut self,
-        _launch: &McpLaunch,
-        _runtime_home: &Path,
+        launch: &MaterializedManagedMcpLaunch,
         _connection_id: &str,
         mode: &str,
     ) -> Result<McpVerification, String> {
+        if launch.purpose() != &ManagedMcpInvocationPurpose::CliStdioHandshake {
+            return Err("fixture expected a CLI stdio handshake invocation".to_owned());
+        }
         self.verification_modes.push(mode.to_owned());
         Err("live MCP verification is intentionally unavailable in this fixture".to_owned())
     }

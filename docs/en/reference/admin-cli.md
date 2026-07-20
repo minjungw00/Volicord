@@ -554,15 +554,25 @@ actions, observations, or database rows.
 `volicord connection verify` actively discovers `codex`, runs the version
 command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test that
 performs `initialize`, `tools/list`, required-tool validation, and a safe
-read-only `volicord.list_projects` call. It then reads current managed-host
-observations and persists exactly one canonical report. Before planning, it
-captures the selected Connection's exact typed integration revision. Report
-persistence compares that revision and replaces only the report in one
-immediate Registry transaction. If the Connection changed while verification
-was running, no stale report is stored and the command requires a rerun. The
-observed Host Plan fingerprint remains diagnostic: verification does not apply
-or adopt it and never changes `managed_fingerprint`. The CLI self-test is not a
-managed-host session.
+read-only `volicord.list_projects` call. Preflight and self-test launch
+materialization both derive from the canonical managed launch contract used for
+the inspected host configuration. Personal verification uses that contract's
+static absolute `VOLICORD_HOME`; shared verification resolves its forwarded
+`VOLICORD_HOME` from the Runtime Home selected by the connection operation and
+runs repository discovery from the canonical Product Repository root. The
+CLI-only verification marker is an invocation overlay and is not part of
+generated host configuration.
+
+Verification then reads current managed-host observations and persists exactly
+one canonical report. Before planning, it captures the selected Connection's
+exact typed integration revision. Report persistence compares that revision and
+replaces only the report in one immediate Registry transaction. If the
+Connection changed while verification was running, no stale report is stored
+and the command requires a rerun. The observed Host Plan fingerprint remains
+diagnostic: verification does not apply or adopt it and never changes
+`managed_fingerprint`. A successful CLI self-test is not managed-host
+observation and does not create `host_session`, `required_tools`, or
+`tool_round_trip` evidence.
 
 `volicord init` and `volicord connection add` keep a successfully written valid
 setup even when a later operational check fails. They do not roll back managed

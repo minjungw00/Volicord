@@ -43,6 +43,15 @@ volicord mcp --check --connection <connection_id> [--project <project_id>]
 생성 형태와 엄격한 parsing은
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract)이 담당합니다.
 
+Connection 사전 점검과 CLI stdio 핸드셰이크는 같은 계약에서 프로세스 시작을 구체화합니다.
+구체화 과정은 상속한 일반 프로세스 환경 변수를 보존하고, Volicord 소유 관리 MCP 변수를
+제거한 뒤 정적 값을 적용합니다. 전달할 각 이름은 명시적인 검증 입력으로 해석하며,
+마지막에 CLI 전용 진단 표식을 적용합니다. 따라서 개인 연결 검증은 계약에 이미 들어 있는
+정적 Runtime Home을 사용합니다. 공유 연결 검증은 저장소에 보이는 구성을 이식 가능한
+형태로 유지하면서 작업이 선택한 Runtime Home을 전달 대상 `VOLICORD_HOME`으로 사용합니다.
+공유 저장소 검색은 정규 Product Repository 루트에서 실행하고, 개인 연결 검증은 결속된
+식별자를 사용하므로 작업 디렉터리를 통한 저장소 검색에 의존하지 않습니다.
+
 MCP 요청을 읽기 전에 어댑터는 Volicord가 생성한 관리 시작/구성 맥락에서 정확한 등록
 Connection을 해결합니다. Connection 활성 상태, 선택한 프로젝트의 현재 membership,
 Runtime Home/Product Repository 분리, 현재 `StorageManifest`, 필요한 저장 읽기 가능성을
@@ -90,7 +99,8 @@ terminal 사실을 기록합니다. 권위 있는 Store 쓰기가 실패하면 �
 연결 검증은 별도의 `cli_preflight` process를 시작하고 지정된 안전한 읽기 전용 round
 trip으로 `volicord.list_projects`를 호출합니다. 이 process는 server 표면을 검증하지만
 그 lifecycle 사실은 `managed_host` 운영 check를 충족하거나 Connection 호출을 승인할 수
-없습니다.
+없습니다. CLI 검증이 성공해도 관리 `host_session`, `tools/list`, 도구 왕복 관찰을
+꾸며내지 않습니다.
 
 Runtime row는 process launch의 영속 관찰이지 liveness 기록이 아닙니다. Terminal failure나
 graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보이는 row를 남길 수
