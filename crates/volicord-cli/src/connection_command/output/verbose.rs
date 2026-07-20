@@ -143,8 +143,39 @@ struct DetailContext<'a> {
     report: &'a ConnectionCommandReport,
     check: &'a ConnectionCheck,
     object: Option<&'a Map<String, Value>>,
-    consumed: BTreeSet<String>,
+    consumed: BTreeSet<DetailPath>,
     lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum DetailPathSegment {
+    Key(String),
+    Index(usize),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct DetailPath(Vec<DetailPathSegment>);
+
+impl DetailPath {
+    fn from_dotted_keys(path: &str) -> Self {
+        Self(
+            path.split('.')
+                .map(|key| DetailPathSegment::Key(key.to_owned()))
+                .collect(),
+        )
+    }
+
+    fn key(&self, key: &str) -> Self {
+        let mut path = self.clone();
+        path.0.push(DetailPathSegment::Key(key.to_owned()));
+        path
+    }
+
+    fn index(&self, index: usize) -> Self {
+        let mut path = self.clone();
+        path.0.push(DetailPathSegment::Index(index));
+        path
+    }
 }
 
 impl<'a> DetailContext<'a> {
@@ -158,27 +189,43 @@ impl<'a> DetailContext<'a> {
         }
     }
 
-    fn value(&mut self, path: &str) -> Option<&'a Value> {
-        self.consumed.insert(path.to_owned());
+    fn peek(&self, path: &DetailPath) -> Option<&'a Value> {
         value_at_path(self.object?, path)
     }
 
-    fn string(&mut self, path: &str) -> Option<String> {
-        self.value(path).and_then(Value::as_str).map(str::to_owned)
+    fn take_string(&mut self, path: &str) -> Option<String> {
+        self.take_string_at(&DetailPath::from_dotted_keys(path))
     }
 
-    fn boolean(&mut self, path: &str) -> Option<bool> {
-        self.value(path).and_then(Value::as_bool)
+    fn take_string_at(&mut self, path: &DetailPath) -> Option<String> {
+        let value = self.peek(path)?.as_str()?.to_owned();
+        self.consume(path);
+        Some(value)
     }
 
-    fn string_array(&mut self, path: &str) -> Vec<String> {
-        self.value(path)
-            .and_then(Value::as_array)
+    fn take_bool(&mut self, path: &str) -> Option<bool> {
+        let path = DetailPath::from_dotted_keys(path);
+        let value = self.peek(&path)?.as_bool()?;
+        self.consume(&path);
+        Some(value)
+    }
+
+    fn take_string_array(&mut self, path: &str) -> Option<Vec<String>> {
+        let path = DetailPath::from_dotted_keys(path);
+        let values = self.peek(&path)?.as_array()?;
+        let strings = values
+            .iter()
+            .map(Value::as_str)
+            .collect::<Option<Vec<_>>>()?
             .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
             .map(str::to_owned)
-            .collect()
+            .collect();
+        self.consume(&path);
+        Some(strings)
+    }
+
+    fn consume(&mut self, path: &DetailPath) {
+        self.consumed.insert(path.clone());
     }
 
     fn line(&mut self, label: &str, value: impl std::fmt::Display) {
@@ -199,7 +246,7 @@ impl<'a> DetailContext<'a> {
         render_generic_value(
             "Response details".to_owned(),
             &nested,
-            "",
+            &DetailPath::default(),
             &BTreeSet::new(),
             6,
             0,
@@ -211,20 +258,26 @@ impl<'a> DetailContext<'a> {
         let Some(object) = self.object else {
             return;
         };
-        if !has_renderable_object(object, "", &self.consumed, 0) {
+        let root = DetailPath::default();
+        if !has_renderable_object(object, &root, &self.consumed, 0) {
             return;
         }
         self.lines.push("    Additional details".to_owned());
-        render_generic_object(object, "", &self.consumed, 6, 0, &mut self.lines);
+        render_generic_object(object, &root, &self.consumed, 6, 0, &mut self.lines);
     }
 }
 
-fn value_at_path<'a>(object: &'a Map<String, Value>, path: &str) -> Option<&'a Value> {
-    let mut segments = path.split('.');
-    let first = segments.next()?;
+fn value_at_path<'a>(object: &'a Map<String, Value>, path: &DetailPath) -> Option<&'a Value> {
+    let mut segments = path.0.iter();
+    let DetailPathSegment::Key(first) = segments.next()? else {
+        return None;
+    };
     let mut value = object.get(first)?;
     for segment in segments {
-        value = value.as_object()?.get(segment)?;
+        value = match segment {
+            DetailPathSegment::Key(key) => value.as_object()?.get(key)?,
+            DetailPathSegment::Index(index) => value.as_array()?.get(*index)?,
+        };
     }
     Some(value)
 }
@@ -248,16 +301,16 @@ fn render_known_details(context: &mut DetailContext<'_>) {
 }
 
 fn render_managed_config(context: &mut DetailContext<'_>) {
-    if let Some(target) = context.string("target") {
+    if let Some(target) = context.take_string("target") {
         context.line("Target", target);
     }
-    if let Some(state) = context.string("observed_state") {
+    if let Some(state) = context.take_string("observed_state") {
         context.line("State", state);
     }
-    if let Some(code) = context.string("diagnostic_code") {
+    if let Some(code) = context.take_string("diagnostic_code") {
         context.line("Diagnostic code", code);
     }
-    if let Some(diagnostic) = context.string("diagnostic") {
+    if let Some(diagnostic) = context.take_string("diagnostic") {
         if diagnostic_adds_information(&diagnostic, context.check.summary()) {
             context.diagnostic("Diagnostic", &diagnostic);
         }
@@ -265,13 +318,13 @@ fn render_managed_config(context: &mut DetailContext<'_>) {
 }
 
 fn render_host_executable(context: &mut DetailContext<'_>) {
-    if let Some(version) = context.string("version") {
+    if let Some(version) = context.take_string("version") {
         context.line("Version", version);
     }
-    if let Some(path) = context.string("path") {
+    if let Some(path) = context.take_string("path") {
         context.line("Path", path);
     }
-    if let Some(diagnostic) = context.string("diagnostic") {
+    if let Some(diagnostic) = context.take_string("diagnostic") {
         if diagnostic_adds_information(&diagnostic, context.check.summary()) {
             context.diagnostic("Probe diagnostic", &diagnostic);
         }
@@ -279,14 +332,14 @@ fn render_host_executable(context: &mut DetailContext<'_>) {
 }
 
 fn render_mcp_server(context: &mut DetailContext<'_>) {
-    let preflight = context.string("preflight.status");
-    let preflight_code = context.string("preflight.code");
-    let preflight_diagnostic = context.string("preflight.diagnostic");
+    let preflight = context.take_string("preflight.status");
+    let preflight_code = context.take_string("preflight.code");
+    let preflight_diagnostic = context.take_string("preflight.diagnostic");
     if let Some(status) = preflight.as_deref() {
         context.line("Preflight", status);
     }
-    if let Some(storage_read) = context.string("preflight.storage.storage_read") {
-        let storage_write = context.string("preflight.storage.storage_write");
+    if let Some(storage_read) = context.take_string("preflight.storage.storage_read") {
+        let storage_write = context.take_string("preflight.storage.storage_write");
         match storage_write {
             Some(write) => context.line(
                 "Storage",
@@ -294,20 +347,22 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
             ),
             None => context.line("Storage read", storage_read),
         }
-    } else if let Some(storage_write) = context.string("preflight.storage.storage_write") {
+    } else if let Some(storage_write) = context.take_string("preflight.storage.storage_write") {
         context.line("Storage write", storage_write);
     }
-    if let Some(mode) = context.string("preflight.storage.effective_tool_mode") {
+    if let Some(mode) = context.take_string("preflight.storage.effective_tool_mode") {
         context.line("Effective mode", mode);
     }
 
-    let self_test_status = context.string("self_test.status");
-    let self_test_code = context.string("self_test.code");
-    let diagnostic = context.string("self_test.diagnostic");
-    let initialize = context.boolean("self_test.initialize");
-    let tools = context.string_array("self_test.tools_list");
+    let self_test_status = context.take_string("self_test.status");
+    let self_test_code = context.take_string("self_test.code");
+    let diagnostic = context.take_string("self_test.diagnostic");
+    let initialize = context.take_bool("self_test.initialize");
+    let tools = context
+        .take_string_array("self_test.tools_list")
+        .unwrap_or_default();
     let safe_tool = context
-        .string("self_test.safe_read_only_tool")
+        .take_string("self_test.safe_read_only_tool")
         .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
     let stage_code = context
         .check
@@ -450,10 +505,10 @@ fn split_json_suffix(value: &str) -> Option<(&str, Value)> {
 
 fn render_host_session(context: &mut DetailContext<'_>) {
     render_revision_pair(context);
-    if let Some(version) = context.string("current_host_version") {
+    if let Some(version) = context.take_string("current_host_version") {
         context.line("Current host version", version);
     }
-    if let Some(version) = context.string("observed_host_version") {
+    if let Some(version) = context.take_string("observed_host_version") {
         context.line("Observed host version", version);
     }
     context.line("Initialize", host_initialize_result(context.check));
@@ -475,8 +530,8 @@ fn host_initialize_result(check: &ConnectionCheck) -> &'static str {
 fn render_required_tools(context: &mut DetailContext<'_>) {
     render_revision_pair(context);
     let observed = context
-        .boolean("tools_list_observed")
-        .or_else(|| context.string("tools_list_observed_at").map(|_| true))
+        .take_bool("tools_list_observed")
+        .or_else(|| context.take_string("tools_list_observed_at").map(|_| true))
         .unwrap_or_else(|| {
             matches!(
                 context.check.code(),
@@ -484,14 +539,16 @@ fn render_required_tools(context: &mut DetailContext<'_>) {
             )
         });
     context.line("Tools/list observed", yes_no(observed));
-    let explicit_result = context.boolean("required_tools_present");
+    let explicit_result = context.take_bool("required_tools_present");
     let result = match (context.check.status(), explicit_result) {
         (_, Some(true)) | (ConnectionCheckStatus::Passed, _) => "passed",
         (_, Some(false)) | (ConnectionCheckStatus::Failed, _) => "failed",
         _ => "pending",
     };
     context.line("Required tools", result);
-    let missing = context.string_array("missing_tools");
+    let missing = context
+        .take_string_array("missing_tools")
+        .unwrap_or_default();
     if !missing.is_empty() {
         context.line("Missing tools", render_string_values(&missing));
     }
@@ -502,11 +559,11 @@ fn render_required_tools(context: &mut DetailContext<'_>) {
 fn render_tool_round_trip(context: &mut DetailContext<'_>) {
     render_revision_pair(context);
     let safe_tool = context
-        .string("safe_read_only_tool")
+        .take_string("safe_read_only_tool")
         .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
     context.line("Designated read-only tool", safe_tool);
     let completed = context
-        .boolean("call_completed")
+        .take_bool("call_completed")
         .unwrap_or(context.check.status() == ConnectionCheckStatus::Passed);
     context.line("Call completed", yes_no(completed));
     render_terminal_failure(context);
@@ -514,25 +571,25 @@ fn render_tool_round_trip(context: &mut DetailContext<'_>) {
 }
 
 fn render_revision_pair(context: &mut DetailContext<'_>) {
-    if let Some(revision) = context.string("current_integration_revision") {
+    if let Some(revision) = context.take_string("current_integration_revision") {
         context.line("Current revision", revision);
     }
-    if let Some(revision) = context.string("observed_integration_revision") {
+    if let Some(revision) = context.take_string("observed_integration_revision") {
         context.line("Observed revision", revision);
     }
 }
 
 fn render_terminal_failure(context: &mut DetailContext<'_>) {
-    if let Some(code) = context.string("terminal_failure_code") {
+    if let Some(code) = context.take_string("terminal_failure_code") {
         context.line("Terminal failure code", code);
     }
-    if let Some(details) = context.string("terminal_failure_details") {
+    if let Some(details) = context.take_string("terminal_failure_details") {
         context.diagnostic("Terminal failure", &details);
     }
 }
 
 fn render_last_observed(context: &mut DetailContext<'_>) {
-    if let Some(last_observed) = context.string("last_observed_at") {
+    if let Some(last_observed) = context.take_string("last_observed_at") {
         let duplicate = context
             .check
             .observed_at()
@@ -544,21 +601,23 @@ fn render_last_observed(context: &mut DetailContext<'_>) {
 }
 
 fn render_project_trust(context: &mut DetailContext<'_>) {
-    let applicable = context.boolean("applicable").unwrap_or(true);
-    if !applicable {
-        return;
+    let applicable_path = DetailPath::from_dotted_keys("applicable");
+    match context.take_bool("applicable") {
+        Some(false) => return,
+        Some(true) => context.line("Applicable", "yes"),
+        None if context.peek(&applicable_path).is_none() => context.line("Applicable", "yes"),
+        None => {}
     }
-    context.line("Applicable", "yes");
-    if let Some(state) = context.string("observed_state") {
+    if let Some(state) = context.take_string("observed_state") {
         context.line("State", state);
     }
-    if let Some(target) = context.string("repo_root") {
+    if let Some(target) = context.take_string("repo_root") {
         context.line("Target", target);
     }
-    if let Some(path) = context.string("config_path") {
+    if let Some(path) = context.take_string("config_path") {
         context.line("Configuration", path);
     }
-    if let Some(diagnostic) = context.string("diagnostic") {
+    if let Some(diagnostic) = context.take_string("diagnostic") {
         if diagnostic_adds_information(&diagnostic, context.check.summary()) {
             context.diagnostic("Diagnostic", &diagnostic);
         }
@@ -566,45 +625,30 @@ fn render_project_trust(context: &mut DetailContext<'_>) {
 }
 
 fn render_guard_files(context: &mut DetailContext<'_>) {
-    let installations = context.string_array("installation_ids");
+    let installations = context
+        .take_string_array("installation_ids")
+        .unwrap_or_default();
     if !installations.is_empty() {
         context.line(
             "Guard Installation IDs",
             render_string_values(&installations),
         );
     }
-    let affected_paths = context.string_array("affected_paths");
+    let affected_paths = context
+        .take_string_array("affected_paths")
+        .unwrap_or_default();
     render_list(&mut context.lines, "Affected paths", &affected_paths);
 
-    let artifact_issues = context.value("artifact_issues").cloned();
-    if let Some(issues) = artifact_issues.as_ref().and_then(Value::as_array) {
-        let issues = issues
-            .iter()
-            .filter_map(Value::as_object)
-            .filter(|issue| !issue.is_empty())
-            .collect::<Vec<_>>();
-        if !issues.is_empty() {
-            context.lines.push("    Artifact issues".to_owned());
-            for (index, issue) in issues.into_iter().enumerate() {
-                context.lines.push(format!("      {}", index + 1));
-                for (key, label) in [
-                    ("artifact", "Artifact"),
-                    ("path", "Path"),
-                    ("issue", "Issue"),
-                    ("details", "Details"),
-                ] {
-                    if let Some(value) = issue.get(key).and_then(Value::as_str) {
-                        push_labeled_multiline(&mut context.lines, 8, label, value);
-                    }
-                }
-            }
-        }
-    }
-    let manifest_issues = context.string_array("manifest_issues");
+    render_artifact_issues(context);
+    let manifest_issues = context
+        .take_string_array("manifest_issues")
+        .unwrap_or_default();
     if !manifest_issues.is_empty() {
         context.line("Manifest issues", render_string_values(&manifest_issues));
     }
-    let mut missing_phases = context.string_array("missing_required_phases");
+    let mut missing_phases = context
+        .take_string_array("missing_required_phases")
+        .unwrap_or_default();
     sort_phases(&mut missing_phases);
     if !missing_phases.is_empty() {
         context.line(
@@ -614,28 +658,85 @@ fn render_guard_files(context: &mut DetailContext<'_>) {
     }
 }
 
+fn render_artifact_issues(context: &mut DetailContext<'_>) {
+    let array_path = DetailPath::from_dotted_keys("artifact_issues");
+    let Some(Value::Array(issues)) = context.peek(&array_path) else {
+        return;
+    };
+    if issues.is_empty() {
+        context.consume(&array_path);
+        return;
+    }
+
+    let mut rendered_heading = false;
+    for (index, value) in issues.iter().enumerate() {
+        let Value::Object(issue) = value else {
+            continue;
+        };
+        if !rendered_heading {
+            context.lines.push("    Artifact issues".to_owned());
+            rendered_heading = true;
+        }
+
+        let item_path = array_path.index(index);
+        context.lines.push(format!("      {}", index + 1));
+        if issue.is_empty() {
+            context.lines.push("        Empty object".to_owned());
+            context.consume(&item_path);
+            continue;
+        }
+
+        for (key, label) in [
+            ("artifact", "Artifact"),
+            ("path", "Path"),
+            ("issue", "Issue"),
+            ("details", "Details"),
+        ] {
+            let field_path = item_path.key(key);
+            if let Some(value) = context.take_string_at(&field_path) {
+                push_labeled_multiline(&mut context.lines, 8, label, &value);
+            }
+        }
+
+        if has_renderable_object(issue, &item_path, &context.consumed, 1) {
+            context.lines.push("        Additional details".to_owned());
+            render_generic_object(
+                issue,
+                &item_path,
+                &context.consumed,
+                10,
+                1,
+                &mut context.lines,
+            );
+        }
+        context.consume(&item_path);
+    }
+}
+
 fn render_guard_observation(context: &mut DetailContext<'_>) {
     for (path, label) in [
         ("required_phases", "Required phases"),
         ("observed_phases", "Observed phases"),
         ("missing_required_phases", "Missing phases"),
     ] {
-        let mut phases = context.string_array(path);
+        let mut phases = context.take_string_array(path).unwrap_or_default();
         sort_phases(&mut phases);
         if !phases.is_empty() {
             context.line(label, render_string_values(&phases));
         }
     }
-    let incompatible = context.string_array("incompatible_event_ids");
+    let incompatible = context
+        .take_string_array("incompatible_event_ids")
+        .unwrap_or_default();
     if !incompatible.is_empty() {
         context.line(
             "Incompatible event IDs",
             render_string_values(&incompatible),
         );
     }
-    let configured = context.boolean("prompt_capture.configured");
-    let supported = context.boolean("prompt_capture.host_supported");
-    let observed = context.boolean("prompt_capture.observed");
+    let configured = context.take_bool("prompt_capture.configured");
+    let supported = context.take_bool("prompt_capture.host_supported");
+    let observed = context.take_bool("prompt_capture.observed");
     if configured.is_some() || supported.is_some() || observed.is_some() {
         context.line(
             "Prompt capture",
@@ -647,7 +748,7 @@ fn render_guard_observation(context: &mut DetailContext<'_>) {
             ),
         );
     }
-    if let Some(last_observed) = context.string("last_current_observation_at") {
+    if let Some(last_observed) = context.take_string("last_current_observation_at") {
         let duplicate = context
             .check
             .observed_at()
@@ -934,23 +1035,28 @@ fn push_labeled_multiline(lines: &mut Vec<String>, indent: usize, label: &str, v
 
 fn has_renderable_object(
     object: &Map<String, Value>,
-    path: &str,
-    consumed: &BTreeSet<String>,
+    path: &DetailPath,
+    consumed: &BTreeSet<DetailPath>,
     depth: usize,
 ) -> bool {
     object.iter().any(|(key, value)| {
-        let child_path = joined_path(path, key);
-        !consumed.contains(&child_path) && has_renderable_value(value, &child_path, consumed, depth)
+        let child_path = path.key(key);
+        has_renderable_value(value, &child_path, consumed, depth)
     })
 }
 
 fn has_renderable_value(
     value: &Value,
-    path: &str,
-    consumed: &BTreeSet<String>,
+    path: &DetailPath,
+    consumed: &BTreeSet<DetailPath>,
     depth: usize,
 ) -> bool {
     if consumed.contains(path) || value.is_null() {
+        return false;
+    }
+    if matches!(value, Value::Object(object) if object.is_empty())
+        || matches!(value, Value::Array(values) if values.is_empty())
+    {
         return false;
     }
     if depth >= MAX_DETAIL_RENDER_DEPTH {
@@ -958,17 +1064,17 @@ fn has_renderable_value(
     }
     match value {
         Value::Object(object) => has_renderable_object(object, path, consumed, depth + 1),
-        Value::Array(values) => values
-            .iter()
-            .any(|value| has_renderable_value(value, path, consumed, depth + 1)),
+        Value::Array(values) => values.iter().enumerate().any(|(index, value)| {
+            has_renderable_value(value, &path.index(index), consumed, depth + 1)
+        }),
         _ => true,
     }
 }
 
 fn render_generic_object(
     object: &Map<String, Value>,
-    path: &str,
-    consumed: &BTreeSet<String>,
+    path: &DetailPath,
+    consumed: &BTreeSet<DetailPath>,
     indent: usize,
     depth: usize,
     lines: &mut Vec<String>,
@@ -976,7 +1082,7 @@ fn render_generic_object(
     let mut keys = object.keys().collect::<Vec<_>>();
     keys.sort();
     for key in keys {
-        let child_path = joined_path(path, key);
+        let child_path = path.key(key);
         let value = &object[key];
         if !has_renderable_value(value, &child_path, consumed, depth) {
             continue;
@@ -997,12 +1103,15 @@ fn render_generic_object(
 fn render_generic_value(
     label: String,
     value: &Value,
-    path: &str,
-    consumed: &BTreeSet<String>,
+    path: &DetailPath,
+    consumed: &BTreeSet<DetailPath>,
     indent: usize,
     depth: usize,
     lines: &mut Vec<String>,
 ) {
+    if consumed.contains(path) {
+        return;
+    }
     if depth >= MAX_DETAIL_RENDER_DEPTH {
         lines.push(format!(
             "{}{label}: [nested details omitted at depth limit]",
@@ -1022,7 +1131,14 @@ fn render_generic_value(
             render_generic_object(object, path, consumed, indent + 2, depth + 1, lines);
         }
         Value::Array(values) if values.iter().all(is_scalar) => {
-            let rendered = values.iter().filter_map(render_scalar).collect::<Vec<_>>();
+            let rendered = values
+                .iter()
+                .enumerate()
+                .filter(|(index, value)| {
+                    has_renderable_value(value, &path.index(*index), consumed, depth + 1)
+                })
+                .filter_map(|(_, value)| render_scalar(value))
+                .collect::<Vec<_>>();
             if !rendered.is_empty() {
                 lines.push(format!(
                     "{}{label}: {}",
@@ -1033,19 +1149,31 @@ fn render_generic_value(
         }
         Value::Array(values) => {
             lines.push(format!("{}{label}", " ".repeat(indent)));
-            for (index, value) in values.iter().enumerate() {
-                if !has_renderable_value(value, path, consumed, depth + 1) {
-                    continue;
-                }
+            let renderable = values
+                .iter()
+                .enumerate()
+                .filter(|(index, value)| {
+                    has_renderable_value(value, &path.index(*index), consumed, depth + 1)
+                })
+                .collect::<Vec<_>>();
+            for (index, value) in renderable.iter().take(MAX_INLINE_SCALARS).copied() {
+                let item_path = path.index(index);
                 match value {
                     Value::Object(object) => {
                         lines.push(format!("{}{}", " ".repeat(indent + 2), index + 1));
-                        render_generic_object(object, path, consumed, indent + 4, depth + 1, lines);
+                        render_generic_object(
+                            object,
+                            &item_path,
+                            consumed,
+                            indent + 4,
+                            depth + 1,
+                            lines,
+                        );
                     }
                     _ => render_generic_value(
                         (index + 1).to_string(),
                         value,
-                        path,
+                        &item_path,
                         consumed,
                         indent + 2,
                         depth + 1,
@@ -1053,15 +1181,14 @@ fn render_generic_value(
                     ),
                 }
             }
+            if renderable.len() > MAX_INLINE_SCALARS {
+                lines.push(format!(
+                    "{}...: {} more items",
+                    " ".repeat(indent + 2),
+                    renderable.len() - MAX_INLINE_SCALARS
+                ));
+            }
         }
-    }
-}
-
-fn joined_path(parent: &str, key: &str) -> String {
-    if parent.is_empty() {
-        key.to_owned()
-    } else {
-        format!("{parent}.{key}")
     }
 }
 
@@ -1717,6 +1844,14 @@ mod tests {
             None,
         );
         let output = rendered(&guards);
+        assert!(output.contains(concat!(
+            "    Artifact issues\n",
+            "      1\n",
+            "        Artifact: host_hooks_config\n",
+            "        Path: .codex/hooks.json\n",
+            "        Issue: content_mismatch\n",
+            "        Details: expected current managed content\n",
+        )));
         for expected in [
             "    Affected paths\n      .codex/hooks.json\n",
             "    Artifact issues\n      1\n        Artifact: host_hooks_config\n",
@@ -2064,5 +2199,379 @@ mod tests {
             None,
         );
         assert!(rendered(&deep).contains("[nested details omitted at depth limit]"));
+    }
+
+    #[test]
+    fn detail_context_consumes_only_successfully_interpreted_values() {
+        let report = report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Complete,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Passed,
+                None,
+                "Managed configuration details",
+                Some(json!({
+                    "string": "value",
+                    "number": 7,
+                    "boolean": true,
+                    "boolean_string": "true",
+                    "strings": ["one", "two"],
+                    "empty_strings": [],
+                    "mixed": ["one", 2],
+                    "explicit": {"handled": true},
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let mut context = DetailContext::new(&report, &report.checks[0]);
+
+        let string = DetailPath::from_dotted_keys("string");
+        assert_eq!(context.peek(&string), Some(&json!("value")));
+        assert_eq!(context.take_string("string").as_deref(), Some("value"));
+        assert!(context.consumed.contains(&string));
+
+        for mismatched in ["number", "boolean_string"] {
+            assert_eq!(context.take_bool(mismatched), None);
+            assert!(!context
+                .consumed
+                .contains(&DetailPath::from_dotted_keys(mismatched)));
+        }
+        assert_eq!(context.take_string("number"), None);
+        assert_eq!(context.take_bool("boolean"), Some(true));
+        assert_eq!(
+            context.take_string_array("strings"),
+            Some(vec!["one".to_owned(), "two".to_owned()])
+        );
+        assert_eq!(context.take_string_array("empty_strings"), Some(Vec::new()));
+        assert_eq!(context.take_string_array("mixed"), None);
+        assert!(!context
+            .consumed
+            .contains(&DetailPath::from_dotted_keys("mixed")));
+
+        let explicit = DetailPath::from_dotted_keys("explicit");
+        assert!(context.peek(&explicit).is_some());
+        context.consume(&explicit);
+        assert!(context.consumed.contains(&explicit));
+    }
+
+    #[test]
+    fn mismatched_known_scalars_remain_in_additional_details() {
+        let managed = report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Failed,
+                Some("managed_config_mismatch"),
+                "Managed configuration mismatch",
+                Some(json!({
+                    "target": 17,
+                    "observed_state": {"actual": "changed"},
+                    "diagnostic_code": "managed_config_mismatch",
+                    "diagnostic": "Managed configuration mismatch",
+                    "future_field": "future value",
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let output = rendered(&managed);
+        for expected in [
+            "    Diagnostic code: managed_config_mismatch\n",
+            "    Additional details\n",
+            "      Future field: future value\n",
+            "      Observed state\n        Actual: changed\n",
+            "      Target: 17\n",
+        ] {
+            assert!(output.contains(expected), "missing {expected:?}\n{output}");
+        }
+        assert_eq!(
+            output
+                .matches("Diagnostic code: managed_config_mismatch")
+                .count(),
+            1
+        );
+        assert_eq!(output.matches("Managed configuration mismatch").count(), 1);
+
+        let trust = report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::ProjectTrust,
+                ConnectionCheckStatus::Failed,
+                Some("project_trust_invalid"),
+                "Project trust details are invalid",
+                Some(json!({"applicable": "not-a-boolean"})),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let output = rendered(&trust);
+        assert!(output.contains("    Additional details\n      Applicable: not-a-boolean\n"));
+        assert!(!output.contains("    Applicable: yes\n"));
+    }
+
+    #[test]
+    fn string_arrays_are_taken_only_when_every_element_is_a_string() {
+        let focused = report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::RequiredTools,
+                ConnectionCheckStatus::Failed,
+                Some("required_tools_missing"),
+                "Required tools are missing",
+                Some(json!({
+                    "missing_tools": ["volicord.close_task", "volicord.record_evidence"],
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let output = rendered(&focused);
+        assert!(
+            output.contains("    Missing tools: volicord.close_task, volicord.record_evidence\n")
+        );
+        assert_eq!(output.matches("volicord.close_task").count(), 1);
+        assert!(!output.contains("Additional details"));
+
+        let mixed = report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::GuardObservation,
+                ConnectionCheckStatus::Failed,
+                Some("guard_observation_failed"),
+                "Guard phase details are invalid",
+                Some(json!({
+                    "required_phases": ["pre_tool", 7, {"phase": "future"}],
+                    "observed_phases": [],
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let output = rendered(&mixed);
+        for expected in [
+            "    Additional details\n",
+            "      Required phases\n",
+            "        1: pre_tool\n",
+            "        2: 7\n",
+            "        3\n          Phase: future\n",
+        ] {
+            assert!(output.contains(expected), "missing {expected:?}\n{output}");
+        }
+        assert!(!output.contains("    Required phases: pre_tool\n"));
+
+        let long_mixed = report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::GuardFiles,
+                ConnectionCheckStatus::Failed,
+                Some("guard_files_failed"),
+                "Guard installation details are invalid",
+                Some(json!({
+                    "installation_ids": ["one", 2, "three", 4, "five", 6, "seven", 8, {"nine": true}, 10],
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let output = rendered(&long_mixed);
+        assert!(output.contains("      Installation ids\n"));
+        assert!(output.contains("        1: one\n"));
+        assert!(output.contains("        8: 8\n"));
+        assert!(output.contains("        ...: 2 more items\n"));
+    }
+
+    #[test]
+    fn nested_extensions_survive_leaf_consumption_without_known_duplicates() {
+        let mut details = mcp_details(
+            "passed",
+            "Volicord MCP server self-test passed",
+            vec!["private.tool".to_owned()],
+        );
+        details["preflight"]["storage"]["future_storage"] = json!({"replica": "ready"});
+        details["self_test"]["future_self_test"] = json!({"attempt": 2});
+        details["future_top_level"] = json!("visible");
+        let extended_report = report(
+            CommandOperation::Verify,
+            false,
+            ConnectionStatus::Complete,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckStatus::Passed,
+                None,
+                "Volicord MCP server self-test passed",
+                Some(details),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let output = rendered(&extended_report);
+        for expected in [
+            "    Storage: read passed, write passed\n",
+            "    Tools returned: 1\n",
+            "    Additional details\n",
+            "      Future top level: visible\n",
+            "      Preflight\n        Storage\n          Future storage\n            Replica: ready\n",
+            "      Self test\n        Future self test\n          Attempt: 2\n",
+        ] {
+            assert!(output.contains(expected), "missing {expected:?}\n{output}");
+        }
+        assert_eq!(
+            output.matches("Storage: read passed, write passed").count(),
+            1
+        );
+        assert!(!output.contains("private.tool"));
+
+        let scalar_parent = report(
+            CommandOperation::Verify,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckStatus::Failed,
+                Some("mcp_server_preflight_failed"),
+                "MCP preflight failed",
+                Some(json!({
+                    "preflight": {
+                        "status": "failed",
+                        "code": "mcp_server_preflight_failed",
+                        "diagnostic": "storage unavailable",
+                        "storage": "not-an-object",
+                    },
+                    "self_test": {
+                        "status": "failed",
+                        "code": "mcp_server_self_test_not_run",
+                        "diagnostic": "not run",
+                        "initialize": false,
+                        "tools_list": [],
+                        "safe_read_only_tool": "volicord.list_projects",
+                    },
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        assert!(rendered(&scalar_parent)
+            .contains("    Additional details\n      Preflight\n        Storage: not-an-object\n"));
+    }
+
+    #[test]
+    fn artifact_issue_extensions_and_malformed_elements_remain_indexed_and_visible() {
+        let report = report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![check(
+                ConnectionCheckKind::GuardFiles,
+                ConnectionCheckStatus::Failed,
+                Some("guard_files_failed"),
+                "Guard files do not match",
+                Some(json!({
+                    "artifact_issues": [
+                        {
+                            "artifact": "host_hooks_config",
+                            "path": ".codex/hooks.json",
+                            "issue": "content_mismatch",
+                            "details": "expected current managed content",
+                            "extra_scalar": "kept",
+                            "extra_nested": {"owner": "future"},
+                        },
+                        {
+                            "artifact": "guard_wrapper",
+                            "path": 42,
+                            "issue": "mode_mismatch",
+                            "details": "expected executable behavior",
+                        },
+                        "non-object issue",
+                        {},
+                    ],
+                })),
+                None,
+            )],
+            Vec::new(),
+            None,
+            None,
+        );
+        let output = rendered(&report);
+        for expected in [
+            concat!(
+                "    Artifact issues\n",
+                "      1\n",
+                "        Artifact: host_hooks_config\n",
+                "        Path: .codex/hooks.json\n",
+                "        Issue: content_mismatch\n",
+                "        Details: expected current managed content\n",
+                "        Additional details\n",
+                "          Extra nested\n",
+                "            Owner: future\n",
+                "          Extra scalar: kept\n",
+            ),
+            concat!(
+                "      2\n",
+                "        Artifact: guard_wrapper\n",
+                "        Issue: mode_mismatch\n",
+                "        Details: expected executable behavior\n",
+                "        Additional details\n",
+                "          Path: 42\n",
+            ),
+            "      4\n        Empty object\n",
+            "    Additional details\n      Artifact issues\n        3: non-object issue\n",
+        ] {
+            assert!(output.contains(expected), "missing {expected:?}\n{output}");
+        }
+        for value in [
+            "host_hooks_config",
+            ".codex/hooks.json",
+            "content_mismatch",
+            "expected current managed content",
+            "kept",
+            "future",
+            "guard_wrapper",
+            "42",
+            "mode_mismatch",
+            "expected executable behavior",
+            "non-object issue",
+        ] {
+            assert!(output.contains(value), "dropped {value:?}\n{output}");
+        }
+        assert_eq!(output.matches("host_hooks_config").count(), 1);
+        assert_eq!(output.matches("guard_wrapper").count(), 1);
     }
 }

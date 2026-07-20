@@ -166,11 +166,14 @@ path에서 소유권을 추론하지 않습니다.
 작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Actions`,
 `Result`, `Planned changes`, `Assurance` 구역을 이 순서로 사용합니다. 모든 정규 check와
 action, typed result 사실, 계획 operation과 target, 보장 한계를 원시 JSON detail blob 없이
-표시합니다. 사람이 진단할 때 큰 성공 컬렉션은 개수로 요약할 수 있습니다. 특히 성공한 MCP
-도구 inventory 전체를 산문에 반복하지 않습니다.
+표시합니다. 알고 있는 세부 필드는 구조화해서 표시하며, 집중 렌더러가 기대하는 타입과
+맞지 않는 값이나 알 수 없는 확장 필드는 `Additional details` 아래에 표시합니다. 사람이
+진단할 때 큰 성공 컬렉션은 개수로 요약할 수 있고, 그 밖의 제한된 컬렉션에서 모든 항목을
+표시하지 않을 때는 남은 개수를 명시합니다. 산문 출력은 비어 있지 않은 진단 필드를 조용히
+버리지 않습니다. 특히 성공한 MCP 도구 inventory 전체를 산문에 반복하지 않습니다.
 
-`--json`은 완전한 직렬화 `ConnectionCommandReport`를 쓰며 손실 없는 기계 판독 표현으로
-유지됩니다. 전체 도구 inventory와 원시 중첩 진단 사실은 JSON에서 확인합니다.
+`--json`은 완전한 직렬화 `ConnectionCommandReport`를 쓰며 정확하고 손실 없는 기계 판독
+표현으로 유지됩니다. 전체 도구 inventory와 원시 중첩 진단 사실은 JSON에서 확인합니다.
 `--verbose`와 `--json`은 함께 사용할 수 없는 사용법 옵션입니다.
 `volicord connection list`는 별도의 간결한 컬렉션 projection을 유지하며
 `--verbose`를 받지 않습니다.

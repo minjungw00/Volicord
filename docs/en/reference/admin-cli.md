@@ -176,15 +176,19 @@ operation-aware headline as concise output, then uses the applicable
 `Connection`, `Summary`, `Checks`, `Actions`, `Result`, `Planned changes`, and
 `Assurance` sections in that order. It renders every canonical check, action,
 typed result fact, planned operation and target, and assurance limit without a
-raw JSON detail blob. Large successful collections may be summarized by count
-for human diagnosis. In particular, a successful MCP tool inventory is not
-repeated in prose.
+raw JSON detail blob. Known detail fields are rendered structurally; unknown or
+extended fields and values that do not match a focused renderer's expected type
+appear under `Additional details`. Large successful collections may be
+summarized by count for human diagnosis, and other bounded collections use an
+explicit remainder count when not every item is shown. The prose does not
+silently discard nonempty diagnostic fields. In particular, a successful MCP
+tool inventory is not repeated in prose.
 
 `--json` writes the complete serialized `ConnectionCommandReport` and remains
-the lossless machine representation. Full tool inventories and raw nested
-diagnostic facts belong there. `--verbose` and `--json` are mutually exclusive
-usage options. `volicord connection list` retains its separate compact
-collection projection and does not accept `--verbose`.
+the exact, lossless machine representation. Full tool inventories and raw
+nested diagnostic facts belong there. `--verbose` and `--json` are mutually
+exclusive usage options. `volicord connection list` retains its separate
+compact collection projection and does not accept `--verbose`.
 
 A representative concise verification result is:
 
