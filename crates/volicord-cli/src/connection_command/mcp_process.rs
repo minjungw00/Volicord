@@ -371,6 +371,65 @@ pub struct ConnectionProcessOutput {
     pub stderr: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct McpExchangeProgress {
+    pub(super) initialize_completed: bool,
+    pub(super) tools_list: Option<Vec<String>>,
+    pub(super) required_tools_validated: bool,
+    pub(super) safe_tool_call_completed: bool,
+    pub(super) shutdown_completed: bool,
+}
+
+impl McpExchangeProgress {
+    pub fn not_started() -> Self {
+        Self::default()
+    }
+
+    #[cfg(test)]
+    pub(in crate::connection_command) fn observed(
+        initialize_completed: bool,
+        tools_list: Option<Vec<String>>,
+        required_tools_validated: bool,
+        safe_tool_call_completed: bool,
+        shutdown_completed: bool,
+    ) -> Self {
+        Self {
+            initialize_completed,
+            tools_list,
+            required_tools_validated,
+            safe_tool_call_completed,
+            shutdown_completed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpExchangeOutcome {
+    pub(super) progress: McpExchangeProgress,
+    pub(super) failure: Option<McpProcessFailure>,
+}
+
+impl McpExchangeOutcome {
+    pub fn failed(progress: McpExchangeProgress, failure: McpProcessFailure) -> Self {
+        Self {
+            progress,
+            failure: Some(failure),
+        }
+    }
+
+    pub(in crate::connection_command) fn completed(progress: McpExchangeProgress) -> Self {
+        debug_assert!(progress.initialize_completed);
+        debug_assert!(progress.tools_list.is_some());
+        debug_assert!(progress.required_tools_validated);
+        debug_assert!(progress.safe_tool_call_completed);
+        debug_assert!(progress.shutdown_completed);
+        Self {
+            progress,
+            failure: None,
+        }
+    }
+}
+
 pub trait ConnectionProcess {
     fn env_var(&self, name: &str) -> Option<OsString>;
     fn current_exe(&self) -> Result<PathBuf, String>;
@@ -381,9 +440,8 @@ pub trait ConnectionProcess {
     fn verify_mcp_stdio(
         &mut self,
         launch: &MaterializedManagedMcpLaunch,
-        connection_id: &str,
         mode: &str,
-    ) -> Result<McpVerification, McpProcessFailure>;
+    ) -> McpExchangeOutcome;
 }
 
 pub struct ProductionConnectionProcess;
@@ -495,42 +553,49 @@ impl ConnectionProcess for ProductionConnectionProcess {
     fn verify_mcp_stdio(
         &mut self,
         launch: &MaterializedManagedMcpLaunch,
-        _connection_id: &str,
         mode: &str,
-    ) -> Result<McpVerification, McpProcessFailure> {
+    ) -> McpExchangeOutcome {
         verify_mcp_stdio_process(launch, mode, DEFAULT_TIMEOUT)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct McpVerification {
+pub(super) struct McpVerification {
     pub(super) step: VerificationStep,
-    pub(super) tools: Vec<String>,
-    pub(super) failure: Option<McpProcessFailure>,
+    pub(super) exchange: Option<McpExchangeOutcome>,
 }
 
 impl McpVerification {
-    pub(super) fn passed(tools: Vec<String>) -> Self {
-        Self {
-            step: VerificationStep::passed_with_code(
+    pub(super) fn from_exchange(exchange: McpExchangeOutcome) -> Self {
+        let step = match &exchange.failure {
+            Some(failure) => {
+                VerificationStep::failed_with_code(failure.check_code(), failure.summary())
+            }
+            None => VerificationStep::passed_with_code(
                 "mcp_server_ready",
                 format!(
-                    "MCP initialize, tools/list, required-tool validation, and designated read-only tool call succeeded; tools/list returned {} tools",
-                    tools.len()
+                    "MCP initialize, tools/list, required-tool validation, designated read-only tool call, and graceful shutdown succeeded; tools/list returned {} tools",
+                    exchange
+                        .progress
+                        .tools_list
+                        .as_ref()
+                        .expect("completed MCP exchange observed tools/list")
+                        .len()
                 ),
             ),
-            tools,
-            failure: None,
+        };
+        Self {
+            step,
+            exchange: Some(exchange),
         }
     }
 
-    pub fn failed(failure: McpProcessFailure) -> Self {
-        let code = failure.check_code();
-        let details = failure.summary();
+    pub(super) fn not_run() -> Self {
         Self {
-            step: VerificationStep::failed_with_code(code, details),
-            tools: Vec::new(),
-            failure: Some(failure),
+            step: VerificationStep::pending(
+                "MCP server self-test did not run after failed preflight",
+            ),
+            exchange: None,
         }
     }
 }
@@ -656,7 +721,7 @@ fn verify_mcp_stdio_process(
     launch: &MaterializedManagedMcpLaunch,
     mode: &str,
     timeout: Duration,
-) -> Result<McpVerification, McpProcessFailure> {
+) -> McpExchangeOutcome {
     verify_mcp_stdio_command(launch.process_command(), mode, timeout)
 }
 
@@ -664,20 +729,28 @@ fn verify_mcp_stdio_command(
     mut command: Command,
     mode: &str,
     timeout: Duration,
-) -> Result<McpVerification, McpProcessFailure> {
+) -> McpExchangeOutcome {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|error| McpProcessFailure::Spawn {
-        stage: McpStage::Startup,
-        io_detail: bounded_io_detail(error),
-    })?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            return McpExchangeOutcome::failed(
+                McpExchangeProgress::not_started(),
+                McpProcessFailure::Spawn {
+                    stage: McpStage::Startup,
+                    io_detail: bounded_io_detail(error),
+                },
+            )
+        }
+    };
     let deadline = Instant::now() + timeout;
 
     let Some(stderr) = child.stderr.take() else {
         let cleanup = terminate_and_reap(&mut child).err();
-        return Err(cleanup.map_or_else(
+        let failure = cleanup.map_or_else(
             || McpProcessFailure::Read {
                 stage: McpStage::Startup,
                 io_detail: bounded_io_text("MCP stderr pipe was unavailable"),
@@ -688,7 +761,8 @@ fn verify_mcp_stdio_command(
                 io_detail: bounded_io_text(error),
                 stderr: BoundedText::empty(),
             },
-        ));
+        );
+        return McpExchangeOutcome::failed(McpExchangeProgress::not_started(), failure);
     };
     let stderr_reader = thread::spawn(move || drain_stderr(stderr));
 
@@ -707,7 +781,10 @@ fn verify_mcp_stdio_command(
                 stderr: BoundedText::empty(),
             },
         );
-        return Err(apply_reader_completion(failure, readers));
+        return McpExchangeOutcome::failed(
+            McpExchangeProgress::not_started(),
+            apply_reader_completion(failure, readers),
+        );
     };
     let (stdout_tx, stdout_rx) = mpsc::sync_channel(READER_CHANNEL_CAPACITY);
     let stdout_reader = thread::spawn(move || read_stdout_lines(BufReader::new(stdout), stdout_tx));
@@ -730,26 +807,37 @@ fn verify_mcp_stdio_command(
                 stderr: BoundedText::empty(),
             },
         );
-        return Err(finish_failure(failure, stdout_rx, readers));
+        return McpExchangeOutcome::failed(
+            McpExchangeProgress::not_started(),
+            finish_failure(failure, stdout_rx, readers),
+        );
     };
 
     let exchange = perform_mcp_exchange(&mut stdin, &stdout_rx, deadline, timeout, mode);
     drop(stdin);
     match exchange {
-        Ok(tools) => match wait_for_child_until(&mut child, deadline) {
+        Ok(mut progress) => match wait_for_child_until(&mut child, deadline) {
             ChildWait::Exited(status) if status.success() => {
-                finish_success(stdout_rx, readers)?;
-                Ok(McpVerification::passed(tools))
+                match finish_success(stdout_rx, readers) {
+                    Ok(()) => {
+                        progress.shutdown_completed = true;
+                        McpExchangeOutcome::completed(progress)
+                    }
+                    Err(failure) => McpExchangeOutcome::failed(progress, failure),
+                }
             }
-            ChildWait::Exited(status) => Err(finish_failure(
-                McpProcessFailure::Shutdown {
-                    stage: McpStage::Shutdown,
-                    exit_code: status.code(),
-                    stderr: BoundedText::empty(),
-                },
-                stdout_rx,
-                readers,
-            )),
+            ChildWait::Exited(status) => McpExchangeOutcome::failed(
+                progress,
+                finish_failure(
+                    McpProcessFailure::Shutdown {
+                        stage: McpStage::Shutdown,
+                        exit_code: status.code(),
+                        stderr: BoundedText::empty(),
+                    },
+                    stdout_rx,
+                    readers,
+                ),
+            ),
             ChildWait::TimedOut => {
                 let cleanup = terminate_and_reap(&mut child).err();
                 let failure = cleanup.map_or_else(
@@ -764,23 +852,29 @@ fn verify_mcp_stdio_command(
                         stderr: BoundedText::empty(),
                     },
                 );
-                Err(finish_failure(failure, stdout_rx, readers))
+                McpExchangeOutcome::failed(progress, finish_failure(failure, stdout_rx, readers))
             }
             ChildWait::Failed(error) => {
                 let cleanup = terminate_and_reap(&mut child).err();
                 let detail = cleanup.unwrap_or(error);
-                Err(finish_failure(
-                    McpProcessFailure::Wait {
-                        stage: McpStage::Shutdown,
-                        io_detail: bounded_io_text(detail),
-                        stderr: BoundedText::empty(),
-                    },
-                    stdout_rx,
-                    readers,
-                ))
+                McpExchangeOutcome::failed(
+                    progress,
+                    finish_failure(
+                        McpProcessFailure::Wait {
+                            stage: McpStage::Shutdown,
+                            io_detail: bounded_io_text(detail),
+                            stderr: BoundedText::empty(),
+                        },
+                        stdout_rx,
+                        readers,
+                    ),
+                )
             }
         },
-        Err(PendingMcpFailure::Eof { stage }) => {
+        Err(PendingExchangeFailure {
+            progress,
+            failure: PendingMcpFailure::Eof { stage },
+        }) => {
             let failure = match wait_for_child_until(&mut child, deadline) {
                 ChildWait::Exited(status) => McpProcessFailure::ExitedBeforeResponse {
                     stage,
@@ -811,9 +905,12 @@ fn verify_mcp_stdio_command(
                     }
                 }
             };
-            Err(finish_failure(failure, stdout_rx, readers))
+            McpExchangeOutcome::failed(progress, finish_failure(failure, stdout_rx, readers))
         }
-        Err(pending) => {
+        Err(PendingExchangeFailure {
+            progress,
+            failure: pending,
+        }) => {
             let stage = pending.stage();
             if pending.may_be_early_exit() {
                 let status_deadline = Instant::now()
@@ -821,27 +918,33 @@ fn verify_mcp_stdio_command(
                         .min(deadline.saturating_duration_since(Instant::now()));
                 match wait_for_child_until(&mut child, status_deadline) {
                     ChildWait::Exited(status) => {
-                        return Err(finish_failure(
-                            McpProcessFailure::ExitedBeforeResponse {
-                                stage,
-                                exit_code: status.code(),
-                                stderr: BoundedText::empty(),
-                            },
-                            stdout_rx,
-                            readers,
-                        ));
+                        return McpExchangeOutcome::failed(
+                            progress,
+                            finish_failure(
+                                McpProcessFailure::ExitedBeforeResponse {
+                                    stage,
+                                    exit_code: status.code(),
+                                    stderr: BoundedText::empty(),
+                                },
+                                stdout_rx,
+                                readers,
+                            ),
+                        );
                     }
                     ChildWait::Failed(error) => {
                         let cleanup = terminate_and_reap(&mut child).err();
-                        return Err(finish_failure(
-                            McpProcessFailure::Wait {
-                                stage,
-                                io_detail: bounded_io_text(cleanup.unwrap_or(error)),
-                                stderr: BoundedText::empty(),
-                            },
-                            stdout_rx,
-                            readers,
-                        ));
+                        return McpExchangeOutcome::failed(
+                            progress,
+                            finish_failure(
+                                McpProcessFailure::Wait {
+                                    stage,
+                                    io_detail: bounded_io_text(cleanup.unwrap_or(error)),
+                                    stderr: BoundedText::empty(),
+                                },
+                                stdout_rx,
+                                readers,
+                            ),
+                        );
                     }
                     ChildWait::TimedOut => {}
                 }
@@ -855,7 +958,7 @@ fn verify_mcp_stdio_command(
                     stderr: BoundedText::empty(),
                 },
             );
-            Err(finish_failure(failure, stdout_rx, readers))
+            McpExchangeOutcome::failed(progress, finish_failure(failure, stdout_rx, readers))
         }
     }
 }
@@ -866,7 +969,8 @@ fn perform_mcp_exchange(
     deadline: Instant,
     timeout: Duration,
     mode: &str,
-) -> Result<Vec<String>, PendingMcpFailure> {
+) -> Result<McpExchangeProgress, PendingExchangeFailure> {
+    let mut progress = McpExchangeProgress::not_started();
     write_json_line(
         stdin,
         json!({
@@ -880,10 +984,14 @@ fn perform_mcp_exchange(
             }
         }),
         McpStage::Initialize,
-    )?;
-    let initialize = read_json_response(stdout_rx, deadline, timeout, McpStage::Initialize)?;
+    )
+    .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
+    let initialize = read_json_response(stdout_rx, deadline, timeout, McpStage::Initialize)
+        .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
     validate_initialize_response(&initialize)
-        .map_err(|problem| PendingMcpFailure::protocol(McpStage::Initialize, problem))?;
+        .map_err(|problem| PendingMcpFailure::protocol(McpStage::Initialize, problem))
+        .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
+    progress.initialize_completed = true;
 
     write_json_line(
         stdin,
@@ -893,7 +1001,8 @@ fn perform_mcp_exchange(
             "params": {}
         }),
         McpStage::ToolsList,
-    )?;
+    )
+    .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
     write_json_line(
         stdin,
         json!({
@@ -903,12 +1012,27 @@ fn perform_mcp_exchange(
             "params": {}
         }),
         McpStage::ToolsList,
-    )?;
-    let tools_response = read_json_response(stdout_rx, deadline, timeout, McpStage::ToolsList)?;
+    )
+    .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
+    let tools_response = read_json_response(stdout_rx, deadline, timeout, McpStage::ToolsList)
+        .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
     let tools = validate_tools_response(&tools_response)
-        .map_err(|problem| PendingMcpFailure::protocol(McpStage::ToolsList, problem))?;
-    validate_tools_for_mode_problem(mode, &tools)
-        .map_err(|problem| PendingMcpFailure::protocol(McpStage::ToolsList, problem))?;
+        .map_err(|problem| PendingMcpFailure::protocol(McpStage::ToolsList, problem))
+        .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
+    progress.tools_list = Some(tools);
+    if let Err(problem) = validate_tools_for_mode_problem(
+        mode,
+        progress
+            .tools_list
+            .as_deref()
+            .expect("tools/list was just recorded"),
+    ) {
+        return Err(PendingExchangeFailure::new(
+            &progress,
+            PendingMcpFailure::protocol(McpStage::ToolsList, problem),
+        ));
+    }
+    progress.required_tools_validated = true;
 
     write_json_line(
         stdin,
@@ -922,11 +1046,30 @@ fn perform_mcp_exchange(
             }
         }),
         McpStage::SafeToolCall,
-    )?;
-    let safe_response = read_json_response(stdout_rx, deadline, timeout, McpStage::SafeToolCall)?;
+    )
+    .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
+    let safe_response = read_json_response(stdout_rx, deadline, timeout, McpStage::SafeToolCall)
+        .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
     validate_safe_tool_response(&safe_response)
-        .map_err(|problem| PendingMcpFailure::protocol(McpStage::SafeToolCall, problem))?;
-    Ok(tools)
+        .map_err(|problem| PendingMcpFailure::protocol(McpStage::SafeToolCall, problem))
+        .map_err(|failure| PendingExchangeFailure::new(&progress, failure))?;
+    progress.safe_tool_call_completed = true;
+    Ok(progress)
+}
+
+#[derive(Debug)]
+struct PendingExchangeFailure {
+    progress: McpExchangeProgress,
+    failure: PendingMcpFailure,
+}
+
+impl PendingExchangeFailure {
+    fn new(progress: &McpExchangeProgress, failure: PendingMcpFailure) -> Self {
+        Self {
+            progress: progress.clone(),
+            failure,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -1641,18 +1784,18 @@ mod tests {
             std::process::id(),
             TEST_PATH_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
-        let failure = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             Command::new(missing),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_millis(50),
-        )
-        .expect_err("missing process must not spawn");
+        );
+        assert_eq!(outcome.progress, McpExchangeProgress::not_started());
         assert!(matches!(
-            failure,
-            McpProcessFailure::Spawn {
+            outcome.failure,
+            Some(McpProcessFailure::Spawn {
                 stage: McpStage::Startup,
                 ..
-            }
+            })
         ));
     }
 
@@ -1726,13 +1869,13 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn exit_before_initialize_reports_status_and_bounded_stderr() {
-        let failure = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             shell_command("printf '%s\\n' 'fixture startup failure' >&2; exit 23"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
-        )
-        .expect_err("early exit must fail");
-        match failure {
+        );
+        assert_eq!(outcome.progress, McpExchangeProgress::not_started());
+        match outcome.failure.expect("early exit must fail") {
             McpProcessFailure::ExitedBeforeResponse {
                 stage,
                 exit_code,
@@ -1750,13 +1893,13 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn initialize_timeout_terminates_and_reaps_the_child() {
-        let failure = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             shell_command("printf '%s\\n' 'waiting for initialize' >&2; while :; do :; done"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_millis(50),
-        )
-        .expect_err("initialize must time out");
-        match failure {
+        );
+        assert_eq!(outcome.progress, McpExchangeProgress::not_started());
+        match outcome.failure.expect("initialize must time out") {
             McpProcessFailure::Timeout { stage, stderr, .. } => {
                 assert_eq!(stage, McpStage::Initialize);
                 assert!(stderr.text.contains("waiting for initialize"));
@@ -1789,13 +1932,14 @@ mod tests {
             initialize = initialize,
             tools_error = tools_error,
         );
-        let failure = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             shell_command(&script),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
-        )
-        .expect_err("tools/list error must fail");
-        match failure {
+        );
+        assert!(outcome.progress.initialize_completed);
+        assert!(outcome.progress.tools_list.is_none());
+        match outcome.failure.expect("tools/list error must fail") {
             McpProcessFailure::Protocol {
                 stage,
                 protocol_detail,
@@ -1811,6 +1955,53 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn required_tool_validation_failure_preserves_the_observed_tool_list() {
+        let observed_tools = vec!["fixture.alpha".to_owned(), "fixture.beta".to_owned()];
+        let tools_response = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+                "tools": observed_tools
+                    .iter()
+                    .map(|name| json!({"name": name}))
+                    .collect::<Vec<_>>()
+            },
+        });
+        let script = protocol_script(
+            "",
+            &tools_response.to_string(),
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "result": {"content": []},
+            })
+            .to_string(),
+            "",
+        );
+
+        let outcome = verify_mcp_stdio_command(
+            shell_command(&script),
+            CONNECTION_MODE_READ_ONLY,
+            Duration::from_secs(1),
+        );
+
+        assert!(outcome.progress.initialize_completed);
+        assert_eq!(outcome.progress.tools_list, Some(observed_tools));
+        assert!(!outcome.progress.required_tools_validated);
+        assert!(!outcome.progress.safe_tool_call_completed);
+        assert!(!outcome.progress.shutdown_completed);
+        assert!(matches!(
+            outcome.failure,
+            Some(McpProcessFailure::Protocol {
+                stage: McpStage::ToolsList,
+                ref missing_tools,
+                ..
+            }) if !missing_tools.is_empty()
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn safe_tool_call_failure_retains_its_typed_stage() {
         let safe_error = json!({
             "jsonrpc": "2.0",
@@ -1818,31 +2009,65 @@ mod tests {
             "error": {"code": -32603, "message": "ignored child prose"},
         });
         let script = protocol_script("", &read_only_tools_response(), &safe_error.to_string(), "");
-        let failure = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             shell_command(&script),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
-        )
-        .expect_err("designated read-only call error must fail");
+        );
+        assert!(outcome.progress.initialize_completed);
+        assert_eq!(
+            outcome.progress.tools_list,
+            Some(read_only_required_tool_names().map(str::to_owned).collect())
+        );
+        assert!(outcome.progress.required_tools_validated);
+        assert!(!outcome.progress.safe_tool_call_completed);
         assert!(matches!(
-            failure,
-            McpProcessFailure::Protocol {
+            outcome.failure,
+            Some(McpProcessFailure::Protocol {
                 stage: McpStage::SafeToolCall,
                 ..
-            }
+            })
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_failure_preserves_every_completed_exchange_observation() {
+        let expected_tools = read_only_required_tool_names()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let script = successful_protocol_script("", "exit 17");
+
+        let outcome = verify_mcp_stdio_command(
+            shell_command(&script),
+            CONNECTION_MODE_READ_ONLY,
+            Duration::from_secs(1),
+        );
+
+        assert!(outcome.progress.initialize_completed);
+        assert_eq!(outcome.progress.tools_list, Some(expected_tools));
+        assert!(outcome.progress.required_tools_validated);
+        assert!(outcome.progress.safe_tool_call_completed);
+        assert!(!outcome.progress.shutdown_completed);
+        assert!(matches!(
+            outcome.failure,
+            Some(McpProcessFailure::Shutdown {
+                stage: McpStage::Shutdown,
+                exit_code: Some(17),
+                ..
+            })
         ));
     }
 
     #[cfg(unix)]
     #[test]
     fn malformed_json_is_a_bounded_protocol_failure_without_raw_line_echo() {
-        let failure = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             shell_command("IFS= read -r request; printf '%s\\n' '{not-json}'"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
-        )
-        .expect_err("malformed JSON must fail");
-        match failure {
+        );
+        match outcome.failure.expect("malformed JSON must fail") {
             McpProcessFailure::Protocol {
                 stage,
                 protocol_detail,
@@ -1863,13 +2088,12 @@ mod tests {
         let script = format!(
             "i=0; while [ \"$i\" -lt 8 ]; do printf '%s' '{chunk}' >&2; i=$((i + 1)); done; exit 19"
         );
-        let failure = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             shell_command(&script),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
-        )
-        .expect_err("early exit must fail");
-        match failure {
+        );
+        match outcome.failure.expect("early exit must fail") {
             McpProcessFailure::ExitedBeforeResponse { stderr, .. } => {
                 assert!(stderr.truncated);
                 assert_eq!(stderr.omitted_bytes, 6 * 1024);
@@ -1889,13 +2113,17 @@ mod tests {
             "i=0; while [ \"$i\" -lt 256 ]; do printf '%s' '{chunk}' >&2; i=$((i + 1)); done"
         );
         let script = successful_protocol_script(&prefix, "cat >/dev/null");
-        let verification = verify_mcp_stdio_command(
+        let outcome = verify_mcp_stdio_command(
             shell_command(&script),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(3),
-        )
-        .expect("stderr pipe pressure must not block initialize");
-        assert_eq!(verification.step.status.as_str(), "passed");
+        );
+        assert!(outcome.failure.is_none());
+        assert!(outcome.progress.initialize_completed);
+        assert!(outcome.progress.tools_list.is_some());
+        assert!(outcome.progress.required_tools_validated);
+        assert!(outcome.progress.safe_tool_call_completed);
+        assert!(outcome.progress.shutdown_completed);
     }
 
     #[cfg(unix)]
@@ -1910,10 +2138,10 @@ mod tests {
             successful_protocol_script("", "cat >/dev/null; printf '%s' 'reaped' > \"$1\"");
         let mut command = shell_command(&script);
         command.arg("fixture").arg(&marker);
-        let verification =
-            verify_mcp_stdio_command(command, CONNECTION_MODE_READ_ONLY, Duration::from_secs(2))
-                .expect("graceful child shutdown");
-        assert_eq!(verification.step.status.as_str(), "passed");
+        let outcome =
+            verify_mcp_stdio_command(command, CONNECTION_MODE_READ_ONLY, Duration::from_secs(2));
+        assert!(outcome.failure.is_none());
+        assert!(outcome.progress.shutdown_completed);
         assert_eq!(
             fs::read_to_string(&marker).expect("shutdown marker"),
             "reaped"

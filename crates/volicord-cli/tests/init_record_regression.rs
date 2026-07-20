@@ -23,7 +23,8 @@ use volicord_cli::{
     },
     connection_command::{
         run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
-        ConnectionProcessOutput, McpProcessFailure, McpStage, McpVerification,
+        ConnectionProcessOutput, McpExchangeOutcome, McpExchangeProgress, McpProcessFailure,
+        McpStage,
     },
     policy_command::run_policy_command,
 };
@@ -131,20 +132,25 @@ impl ConnectionProcess for FakeConnectionProcess {
     fn verify_mcp_stdio(
         &mut self,
         launch: &MaterializedManagedMcpLaunch,
-        _connection_id: &str,
         mode: &str,
-    ) -> Result<McpVerification, McpProcessFailure> {
+    ) -> McpExchangeOutcome {
         if launch.purpose() != &ManagedMcpInvocationPurpose::CliStdioHandshake {
-            return Err(McpProcessFailure::protocol(
-                McpStage::Startup,
-                "fixture expected a CLI stdio handshake invocation",
-            ));
+            return McpExchangeOutcome::failed(
+                McpExchangeProgress::not_started(),
+                McpProcessFailure::protocol(
+                    McpStage::Startup,
+                    "fixture expected a CLI stdio handshake invocation",
+                ),
+            );
         }
         self.verification_modes.push(mode.to_owned());
-        Err(McpProcessFailure::protocol(
-            McpStage::Initialize,
-            "live MCP verification is intentionally unavailable in this fixture",
-        ))
+        McpExchangeOutcome::failed(
+            McpExchangeProgress::not_started(),
+            McpProcessFailure::protocol(
+                McpStage::Initialize,
+                "live MCP verification is intentionally unavailable in this fixture",
+            ),
+        )
     }
 }
 

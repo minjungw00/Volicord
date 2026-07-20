@@ -31,8 +31,8 @@ use crate::host_integration::{
 
 use super::{
     codex_environment,
-    mcp_process::{materialize_connection_invocation, run_connection_preflight},
-    parse_host_kind, ConnectionCommandError, ConnectionProcess, McpVerification,
+    mcp_process::{materialize_connection_invocation, run_connection_preflight, McpVerification},
+    parse_host_kind, ConnectionCommandError, ConnectionProcess,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,22 +170,11 @@ pub(in crate::connection_command) fn verify_connection(
             ManagedMcpInvocationPurpose::CliStdioHandshake,
         )
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        match process.verify_mcp_stdio(
-            &handshake_launch,
-            &connection.connection_internal_id,
-            &connection.mode,
-        ) {
-            Ok(verification) => verification,
-            Err(error) => McpVerification::failed(error),
-        }
+        McpVerification::from_exchange(
+            process.verify_mcp_stdio(&handshake_launch, &connection.mode),
+        )
     } else {
-        McpVerification {
-            step: VerificationStep::pending(
-                "MCP server self-test did not run after failed preflight",
-            ),
-            tools: Vec::new(),
-            failure: None,
-        }
+        McpVerification::not_run()
     };
     let report =
         canonical_verification_report(runtime_home, connection, &host, &preflight, &handshake)?;
@@ -337,7 +326,7 @@ fn host_executable_check(host: &Verification) -> Result<ConnectionCheck, Connect
     )
 }
 
-fn mcp_server_check(
+pub(in crate::connection_command) fn mcp_server_check(
     preflight: &VerificationStep,
     handshake: &McpVerification,
 ) -> Result<ConnectionCheck, ConnectionCommandError> {
@@ -367,24 +356,32 @@ fn mcp_server_check(
             "Volicord MCP server self-test did not run",
         )
     };
-    let initialize_completed = step.status == StepStatus::Passed
-        || handshake.failure.as_ref().is_some_and(|failure| {
-            matches!(
-                failure.stage(),
-                super::McpStage::ToolsList
-                    | super::McpStage::SafeToolCall
-                    | super::McpStage::Shutdown
-            )
-        });
+    let progress = handshake
+        .exchange
+        .as_ref()
+        .map(|exchange| &exchange.progress);
     let mut self_test = json!({
         "status": step.status.as_str(),
         "code": step.code,
         "diagnostic": step.details,
-        "initialize": initialize_completed,
-        "tools_list": handshake.tools,
+        "initialize": progress.is_some_and(|progress| progress.initialize_completed),
+        "tools_list_observed": progress.is_some_and(|progress| progress.tools_list.is_some()),
+        "required_tools_validated": progress.is_some_and(|progress| progress.required_tools_validated),
         "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
+        "safe_read_only_tool_completed": progress.is_some_and(|progress| progress.safe_tool_call_completed),
+        "shutdown_completed": progress.is_some_and(|progress| progress.shutdown_completed),
     });
-    if let Some(failure) = &handshake.failure {
+    if let Some(tools) = progress.and_then(|progress| progress.tools_list.as_ref()) {
+        self_test
+            .as_object_mut()
+            .expect("self-test details are an object")
+            .insert("tools_list".to_owned(), json!(tools));
+    }
+    if let Some(failure) = handshake
+        .exchange
+        .as_ref()
+        .and_then(|exchange| exchange.failure.as_ref())
+    {
         self_test
             .as_object_mut()
             .expect("self-test details are an object")
@@ -1160,6 +1157,7 @@ fn current_timestamp() -> UtcTimestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connection_command::McpProcessFailure;
 
     fn host(version: &str) -> Verification {
         Verification {
@@ -1550,7 +1548,17 @@ mod tests {
     fn mcp_server_details_use_the_public_safe_tool_name_constant() {
         let check = mcp_server_check(
             &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
-            &McpVerification::passed(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+            &McpVerification::from_exchange(
+                crate::connection_command::McpExchangeOutcome::completed(
+                    crate::connection_command::McpExchangeProgress::observed(
+                        true,
+                        Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                        true,
+                        true,
+                        true,
+                    ),
+                ),
+            ),
         )
         .expect("MCP server check");
         let details = check.details().expect("MCP details").as_object();
@@ -1559,5 +1567,132 @@ mod tests {
             details["self_test"]["safe_read_only_tool"],
             LIST_PROJECTS_TOOL_NAME
         );
+    }
+
+    fn projected_self_test(
+        progress: crate::connection_command::McpExchangeProgress,
+        failure: Option<McpProcessFailure>,
+    ) -> Value {
+        let exchange = match failure {
+            Some(failure) => {
+                crate::connection_command::McpExchangeOutcome::failed(progress, failure)
+            }
+            None => crate::connection_command::McpExchangeOutcome::completed(progress),
+        };
+        let check = mcp_server_check(
+            &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
+            &McpVerification::from_exchange(exchange),
+        )
+        .expect("MCP server check");
+        check.details().expect("MCP details").as_object()["self_test"].clone()
+    }
+
+    #[test]
+    fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage() {
+        let not_started = projected_self_test(
+            crate::connection_command::McpExchangeProgress::not_started(),
+            Some(McpProcessFailure::protocol(
+                crate::connection_command::McpStage::Startup,
+                "startup failed",
+            )),
+        );
+        assert_eq!(not_started["initialize"], false);
+        assert_eq!(not_started["tools_list_observed"], false);
+        assert!(not_started.get("tools_list").is_none());
+
+        let tools_list_failed = projected_self_test(
+            crate::connection_command::McpExchangeProgress::observed(
+                true, None, false, false, false,
+            ),
+            Some(McpProcessFailure::protocol(
+                crate::connection_command::McpStage::ToolsList,
+                "tools/list failed",
+            )),
+        );
+        assert_eq!(tools_list_failed["initialize"], true);
+        assert_eq!(tools_list_failed["tools_list_observed"], false);
+        assert!(tools_list_failed.get("tools_list").is_none());
+
+        let observed_tools = vec!["fixture.alpha".to_owned(), "fixture.beta".to_owned()];
+        let required_tools_failed = projected_self_test(
+            crate::connection_command::McpExchangeProgress::observed(
+                true,
+                Some(observed_tools.clone()),
+                false,
+                false,
+                false,
+            ),
+            Some(McpProcessFailure::protocol(
+                crate::connection_command::McpStage::ToolsList,
+                "required tools failed",
+            )),
+        );
+        assert_eq!(required_tools_failed["tools_list"], json!(observed_tools));
+        assert_eq!(required_tools_failed["tools_list_observed"], true);
+        assert_eq!(required_tools_failed["required_tools_validated"], false);
+
+        let safe_call_failed = projected_self_test(
+            crate::connection_command::McpExchangeProgress::observed(
+                true,
+                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                true,
+                false,
+                false,
+            ),
+            Some(McpProcessFailure::protocol(
+                crate::connection_command::McpStage::SafeToolCall,
+                "designated read-only tool call failed",
+            )),
+        );
+        assert_eq!(safe_call_failed["tools_list_observed"], true);
+        assert_eq!(
+            safe_call_failed["tools_list"],
+            json!([LIST_PROJECTS_TOOL_NAME])
+        );
+        assert_eq!(safe_call_failed["required_tools_validated"], true);
+        assert_eq!(safe_call_failed["safe_read_only_tool_completed"], false);
+
+        let shutdown_failed = projected_self_test(
+            crate::connection_command::McpExchangeProgress::observed(
+                true,
+                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                true,
+                true,
+                false,
+            ),
+            Some(McpProcessFailure::protocol(
+                crate::connection_command::McpStage::Shutdown,
+                "shutdown failed",
+            )),
+        );
+        assert_eq!(shutdown_failed["initialize"], true);
+        assert_eq!(shutdown_failed["tools_list_observed"], true);
+        assert_eq!(
+            shutdown_failed["tools_list"],
+            json!([LIST_PROJECTS_TOOL_NAME])
+        );
+        assert_eq!(shutdown_failed["required_tools_validated"], true);
+        assert_eq!(shutdown_failed["safe_read_only_tool_completed"], true);
+        assert_eq!(shutdown_failed["shutdown_completed"], false);
+        assert_eq!(shutdown_failed["failure"]["stage"], "shutdown");
+
+        let completed = projected_self_test(
+            crate::connection_command::McpExchangeProgress::observed(
+                true,
+                Some(Vec::new()),
+                true,
+                true,
+                true,
+            ),
+            None,
+        );
+        assert_eq!(completed["status"], "passed");
+        assert_eq!(completed["initialize"], true);
+        assert_eq!(completed["tools_list"], json!([]));
+        assert_eq!(completed["tools_list_observed"], true);
+        assert_eq!(completed["required_tools_validated"], true);
+        assert_eq!(completed["safe_read_only_tool_completed"], true);
+        assert_eq!(completed["shutdown_completed"], true);
+        assert!(completed.get("failure").is_none());
     }
 }

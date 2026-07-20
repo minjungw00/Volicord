@@ -565,7 +565,31 @@ generated host configuration.
 
 A failed stdio self-test keeps the current stage-specific check code and adds
 `checks[id=mcp_server].details.self_test.failure` to the JSON diagnostic. The
-failure object has this current shape:
+self-test diagnostic records completed probe observations directly:
+
+```yaml
+McpSelfTestProgress:
+  status: passed | failed | pending
+  code: string
+  diagnostic: string
+  initialize: boolean
+  tools_list_observed: boolean
+  tools_list?: string[]
+  required_tools_validated: boolean
+  safe_read_only_tool: volicord.list_projects
+  safe_read_only_tool_completed: boolean
+  shutdown_completed: boolean
+  failure?: McpSelfTestFailure
+```
+
+`tools_list` is present with the exact returned names whenever `tools/list`
+was observed, including an empty array for an observed empty result. It is
+omitted when no valid tool list was observed. A later safe-call or shutdown
+failure preserves the observed inventory and every earlier successful
+completion fact. Verbose human output reports a probe step as passed only from
+its corresponding completion fact, and reports graceful shutdown separately.
+
+The failure object has this current shape:
 
 ```yaml
 McpSelfTestFailure:

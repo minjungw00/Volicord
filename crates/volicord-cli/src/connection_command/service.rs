@@ -1545,13 +1545,15 @@ mod init_planning_tests {
         fn verify_mcp_stdio(
             &mut self,
             _launch: &MaterializedManagedMcpLaunch,
-            _connection_id: &str,
             _mode: &str,
-        ) -> Result<McpVerification, McpProcessFailure> {
-            Err(McpProcessFailure::protocol(
-                McpStage::Startup,
-                "init planning must not run MCP verification",
-            ))
+        ) -> McpExchangeOutcome {
+            McpExchangeOutcome::failed(
+                McpExchangeProgress::not_started(),
+                McpProcessFailure::protocol(
+                    McpStage::Startup,
+                    "init planning must not run MCP verification",
+                ),
+            )
         }
     }
 

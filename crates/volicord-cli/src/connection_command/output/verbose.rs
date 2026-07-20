@@ -381,12 +381,16 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     let _self_test_code = context.take_string("self_test.code");
     let diagnostic = context.take_string("self_test.diagnostic");
     let initialize = context.take_bool("self_test.initialize");
+    let tools_list_observed = context.take_bool("self_test.tools_list_observed");
     let tools = context
         .take_string_array("self_test.tools_list")
         .unwrap_or_default();
+    let required_tools_validated = context.take_bool("self_test.required_tools_validated");
     let safe_tool = context
         .take_string("self_test.safe_read_only_tool")
         .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
+    let safe_tool_completed = context.take_bool("self_test.safe_read_only_tool_completed");
+    let shutdown_completed = context.take_bool("self_test.shutdown_completed");
     let failure_kind = context.take_string("self_test.failure.kind");
     let failure_stage = context.take_string("self_test.failure.stage");
     let preflight_passed = preflight.as_deref() == Some("passed");
@@ -394,22 +398,24 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
 
     context.line(
         "Initialize",
-        mcp_initialize_result(
-            preflight_passed,
-            self_test_passed,
-            initialize,
-            failure_stage.as_deref(),
-        ),
+        mcp_initialize_result(preflight_passed, initialize, failure_stage.as_deref()),
     );
     context.line(
         "Required tools",
-        mcp_required_tools_result(preflight_passed, self_test_passed, failure_stage.as_deref()),
+        mcp_required_tools_result(
+            preflight_passed,
+            tools_list_observed,
+            required_tools_validated,
+        ),
     );
-    if !tools.is_empty() {
+    if tools_list_observed == Some(true) {
         context.line("Tools returned", tools.len());
     }
-    let safe_result =
-        mcp_safe_tool_result(preflight_passed, self_test_passed, failure_stage.as_deref());
+    let safe_result = mcp_safe_tool_result(
+        preflight_passed,
+        safe_tool_completed,
+        failure_stage.as_deref(),
+    );
     if safe_result == "passed" {
         context.line("Designated read-only tool", safe_tool);
     } else {
@@ -418,6 +424,14 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
             format_args!("{safe_tool} ({safe_result})"),
         );
     }
+    context.line(
+        "Shutdown",
+        mcp_shutdown_result(
+            preflight_passed,
+            shutdown_completed,
+            failure_stage.as_deref(),
+        ),
+    );
 
     let missing_tools = context
         .take_string_array("self_test.failure.missing_tools")
@@ -480,17 +494,10 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
 
 fn mcp_initialize_result(
     preflight_passed: bool,
-    self_test_passed: bool,
     initialize: Option<bool>,
     failure_stage: Option<&str>,
 ) -> &'static str {
-    if self_test_passed
-        || initialize == Some(true)
-        || matches!(
-            failure_stage,
-            Some("tools_list" | "safe_tool_call" | "shutdown")
-        )
-    {
+    if initialize == Some(true) {
         "passed"
     } else if !preflight_passed {
         "not run"
@@ -503,12 +510,12 @@ fn mcp_initialize_result(
 
 fn mcp_required_tools_result(
     preflight_passed: bool,
-    self_test_passed: bool,
-    failure_stage: Option<&str>,
+    tools_list_observed: Option<bool>,
+    required_tools_validated: Option<bool>,
 ) -> &'static str {
-    if self_test_passed || matches!(failure_stage, Some("safe_tool_call" | "shutdown")) {
+    if required_tools_validated == Some(true) {
         "passed"
-    } else if failure_stage == Some("tools_list") {
+    } else if tools_list_observed == Some(true) {
         "failed"
     } else if preflight_passed {
         "not completed"
@@ -519,12 +526,28 @@ fn mcp_required_tools_result(
 
 fn mcp_safe_tool_result(
     preflight_passed: bool,
-    self_test_passed: bool,
+    safe_tool_completed: Option<bool>,
     failure_stage: Option<&str>,
 ) -> &'static str {
-    if self_test_passed || failure_stage == Some("shutdown") {
+    if safe_tool_completed == Some(true) {
         "passed"
     } else if failure_stage == Some("safe_tool_call") {
+        "failed"
+    } else if preflight_passed {
+        "not completed"
+    } else {
+        "not run"
+    }
+}
+
+fn mcp_shutdown_result(
+    preflight_passed: bool,
+    shutdown_completed: Option<bool>,
+    failure_stage: Option<&str>,
+) -> &'static str {
+    if shutdown_completed == Some(true) {
+        "passed"
+    } else if failure_stage == Some("shutdown") {
         "failed"
     } else if preflight_passed {
         "not completed"
@@ -1267,8 +1290,11 @@ mod tests {
 
     use super::*;
     use crate::connection_command::{
+        mcp_process::McpVerification,
         output::{cooperative_assurance_limits, CommandConnection, CommandOperation},
         planning::{PlannedChangeOperation, PlannedConnectionChange},
+        verification::{mcp_server_check, VerificationStep},
+        McpExchangeOutcome, McpExchangeProgress, McpProcessFailure, McpStage,
     };
 
     fn connection(mode: &str) -> CommandConnection {
@@ -1612,7 +1638,9 @@ mod tests {
                 "    Effective mode: workflow\n",
                 "    Initialize: passed\n",
                 "    Required tools: failed\n",
+                "    Tools returned: 0\n",
                 "    Designated read-only tool: volicord.list_projects (not completed)\n",
+                "    Shutdown: not completed\n",
                 "    Missing tools: volicord.close_task\n",
                 "    Failure: protocol during tools_list\n",
                 "    Protocol detail: tools/list omitted 1 required tool(s)\n\n",
@@ -1744,8 +1772,12 @@ mod tests {
                 "code": if status == "passed" { "mcp_server_ready" } else { "mcp_server_tools_list_failed" },
                 "diagnostic": diagnostic,
                 "initialize": true,
+                "tools_list_observed": true,
                 "tools_list": tools,
+                "required_tools_validated": status == "passed",
                 "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
+                "safe_read_only_tool_completed": status == "passed",
+                "shutdown_completed": status == "passed",
             },
         });
         if status != "passed" {
@@ -1766,6 +1798,121 @@ mod tests {
             });
         }
         details
+    }
+
+    fn rendered_mcp_progress(
+        progress: McpExchangeProgress,
+        failure: Option<McpProcessFailure>,
+    ) -> String {
+        let exchange = match failure {
+            Some(failure) => McpExchangeOutcome::failed(progress, failure),
+            None => McpExchangeOutcome::completed(progress),
+        };
+        let check = mcp_server_check(
+            &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
+            &McpVerification::from_exchange(exchange),
+        )
+        .expect("MCP server check");
+        let status = match check.status() {
+            ConnectionCheckStatus::Passed => ConnectionStatus::Complete,
+            ConnectionCheckStatus::Pending => ConnectionStatus::ActionRequired,
+            ConnectionCheckStatus::Failed => ConnectionStatus::Failed,
+        };
+        rendered(&report(
+            CommandOperation::Verify,
+            false,
+            status,
+            "workflow",
+            vec![check],
+            Vec::new(),
+            None,
+            None,
+        ))
+    }
+
+    #[test]
+    fn human_mcp_projection_uses_explicit_progress_for_all_terminal_stages() {
+        let before_initialize = rendered_mcp_progress(
+            McpExchangeProgress::not_started(),
+            Some(McpProcessFailure::protocol(
+                McpStage::Startup,
+                "startup failed",
+            )),
+        );
+        assert!(before_initialize.contains("    Initialize: failed\n"));
+        assert!(before_initialize.contains("    Required tools: not completed\n"));
+        assert!(!before_initialize.contains("    Tools returned:"));
+
+        let tools_list_failed = rendered_mcp_progress(
+            McpExchangeProgress::observed(true, None, false, false, false),
+            Some(McpProcessFailure::protocol(
+                McpStage::ToolsList,
+                "tools/list failed",
+            )),
+        );
+        assert!(tools_list_failed.contains("    Initialize: passed\n"));
+        assert!(tools_list_failed.contains("    Required tools: not completed\n"));
+        assert!(!tools_list_failed.contains("    Tools returned:"));
+
+        let required_tools_failed = rendered_mcp_progress(
+            McpExchangeProgress::observed(
+                true,
+                Some(vec!["fixture.alpha".to_owned(), "fixture.beta".to_owned()]),
+                false,
+                false,
+                false,
+            ),
+            Some(McpProcessFailure::protocol(
+                McpStage::ToolsList,
+                "required tools failed",
+            )),
+        );
+        assert!(required_tools_failed.contains("    Required tools: failed\n"));
+        assert!(required_tools_failed.contains("    Tools returned: 2\n"));
+
+        let safe_call_failed = rendered_mcp_progress(
+            McpExchangeProgress::observed(
+                true,
+                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                true,
+                false,
+                false,
+            ),
+            Some(McpProcessFailure::protocol(
+                McpStage::SafeToolCall,
+                "designated read-only tool call failed",
+            )),
+        );
+        assert!(safe_call_failed.contains("    Required tools: passed\n"));
+        assert!(safe_call_failed.contains("    Tools returned: 1\n"));
+        assert!(safe_call_failed
+            .contains("    Designated read-only tool: volicord.list_projects (failed)\n"));
+        assert!(safe_call_failed.contains("    Shutdown: not completed\n"));
+
+        let shutdown_failed = rendered_mcp_progress(
+            McpExchangeProgress::observed(
+                true,
+                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                true,
+                true,
+                false,
+            ),
+            Some(McpProcessFailure::protocol(
+                McpStage::Shutdown,
+                "shutdown failed",
+            )),
+        );
+        assert!(shutdown_failed.contains("    Designated read-only tool: volicord.list_projects\n"));
+        assert!(shutdown_failed.contains("    Shutdown: failed\n"));
+
+        let completed = rendered_mcp_progress(
+            McpExchangeProgress::observed(true, Some(Vec::new()), true, true, true),
+            None,
+        );
+        assert!(completed.contains("    Initialize: passed\n"));
+        assert!(completed.contains("    Required tools: passed\n"));
+        assert!(completed.contains("    Tools returned: 0\n"));
+        assert!(completed.contains("    Shutdown: passed\n"));
     }
 
     #[test]
@@ -1806,6 +1953,7 @@ mod tests {
             "    Required tools: passed\n",
             "    Tools returned: 13\n",
             "    Designated read-only tool: volicord.list_projects\n",
+            "    Shutdown: passed\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}");
         }
@@ -1819,6 +1967,11 @@ mod tests {
             Vec::new(),
         );
         protocol_details["self_test"]["initialize"] = json!(false);
+        protocol_details["self_test"]["tools_list_observed"] = json!(false);
+        protocol_details["self_test"]
+            .as_object_mut()
+            .expect("self-test details")
+            .remove("tools_list");
         protocol_details["self_test"]["failure"] = json!({
             "kind": "protocol",
             "stage": "initialize",
@@ -2549,8 +2702,11 @@ mod tests {
                         "code": "mcp_server_self_test_not_run",
                         "diagnostic": "not run",
                         "initialize": false,
-                        "tools_list": [],
+                        "tools_list_observed": false,
+                        "required_tools_validated": false,
                         "safe_read_only_tool": "volicord.list_projects",
+                        "safe_read_only_tool_completed": false,
+                        "shutdown_completed": false,
                     },
                 })),
                 None,

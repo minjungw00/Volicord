@@ -524,8 +524,31 @@ Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product 
 구성에는 포함되지 않습니다.
 
 stdio 자체 검사가 실패하면 현재 단계별 check code를 유지하고 JSON 진단의
-`checks[id=mcp_server].details.self_test.failure`에 실패 객체를 추가합니다. 현재 객체
-형태는 다음과 같습니다.
+`checks[id=mcp_server].details.self_test.failure`에 실패 객체를 추가합니다. 자체 검사
+진단은 완료된 점검 관찰을 직접 기록합니다.
+
+```yaml
+McpSelfTestProgress:
+  status: passed | failed | pending
+  code: string
+  diagnostic: string
+  initialize: boolean
+  tools_list_observed: boolean
+  tools_list?: string[]
+  required_tools_validated: boolean
+  safe_read_only_tool: volicord.list_projects
+  safe_read_only_tool_completed: boolean
+  shutdown_completed: boolean
+  failure?: McpSelfTestFailure
+```
+
+`tools/list`를 관찰했으면 빈 결과를 관찰한 경우의 빈 배열을 포함하여 반환된 이름
+그대로 `tools_list`에 나타납니다. 유효한 도구 목록을 관찰하지 못했으면 이 필드를
+생략합니다. 이후의 안전한 호출이나 종료가 실패해도 관찰한 도구 목록과 앞서 성공한
+모든 완료 사실을 보존합니다. 사람이 읽는 상세 출력은 각 완료 사실이 참일 때만 해당
+점검 단계를 통과로 보고하며 정상 종료 결과를 별도로 표시합니다.
+
+현재 실패 객체 형태는 다음과 같습니다.
 
 ```yaml
 McpSelfTestFailure:

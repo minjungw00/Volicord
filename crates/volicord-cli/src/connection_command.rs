@@ -76,8 +76,8 @@ mod service;
 mod verification;
 
 pub use mcp_process::{
-    ConnectionProcess, ConnectionProcessOutput, McpProcessFailure, McpStage, McpVerification,
-    ProductionConnectionProcess,
+    ConnectionProcess, ConnectionProcessOutput, McpExchangeOutcome, McpExchangeProgress,
+    McpProcessFailure, McpStage, ProductionConnectionProcess,
 };
 
 use args::{
@@ -1541,14 +1541,13 @@ mod persisted_metadata_tests {
         fn verify_mcp_stdio(
             &mut self,
             _launch: &MaterializedManagedMcpLaunch,
-            _connection_id: &str,
             _mode: &str,
-        ) -> Result<McpVerification, McpProcessFailure> {
+        ) -> McpExchangeOutcome {
             self.stdio_calls += 1;
-            Ok(McpVerification::failed(McpProcessFailure::protocol(
-                McpStage::Initialize,
-                "fixture handshake unavailable",
-            )))
+            McpExchangeOutcome::failed(
+                McpExchangeProgress::not_started(),
+                McpProcessFailure::protocol(McpStage::Initialize, "fixture handshake unavailable"),
+            )
         }
     }
 
@@ -1614,13 +1613,12 @@ mod persisted_metadata_tests {
         fn verify_mcp_stdio(
             &mut self,
             _launch: &MaterializedManagedMcpLaunch,
-            _connection_id: &str,
             _mode: &str,
-        ) -> Result<McpVerification, McpProcessFailure> {
-            Ok(McpVerification::failed(McpProcessFailure::protocol(
-                McpStage::Initialize,
-                "fixture handshake unavailable",
-            )))
+        ) -> McpExchangeOutcome {
+            McpExchangeOutcome::failed(
+                McpExchangeProgress::not_started(),
+                McpProcessFailure::protocol(McpStage::Initialize, "fixture handshake unavailable"),
+            )
         }
     }
 
