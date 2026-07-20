@@ -17,7 +17,14 @@ use std::{
 
 use serde_json::{json, Value};
 use support::binary_fixture::{run_child, ChildStdin};
-use volicord_store::agent_connections::AgentConnectionRecord;
+use support::json::adapter_tool_response;
+use toml_edit::DocumentMut;
+use volicord_mcp::{
+    ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
+    ManagedMcpWorkingDirectory, ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES,
+    READ_ONLY_METHOD_TOOL_NAMES, VOLICORD_HOME_ENV,
+};
+use volicord_store::agent_connections::{agent_connection_record, AgentConnectionRecord};
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
     current_project_agent_session_coordinates,
@@ -27,8 +34,8 @@ use volicord_store::inspection::{
     RegistryInspectionSnapshot,
 };
 use volicord_store::operational_sessions::{
-    connection_integration_revision, latest_current_managed_runtime_session,
-    start_mcp_runtime_session, McpRuntimeSessionStart,
+    connection_integration_revision, current_managed_runtime_sessions,
+    latest_current_managed_runtime_session, start_mcp_runtime_session, McpRuntimeSessionStart,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
@@ -43,6 +50,7 @@ const NATIVE_SESSION_1000: &str = "future.session.1000";
 const NATIVE_THREAD: &str = "future.thread.operational";
 const MCP_FIXTURE_MODE: &str = "VOLICORD_TEST_MCP_FIXTURE";
 const CODEX_VERSION_ENV: &str = "VOLICORD_TEST_CODEX_VERSION";
+const EARLY_EXIT_STDERR_BYTES: usize = 3 * 1024;
 
 fn main() {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
@@ -53,11 +61,29 @@ fn main() {
         );
         return;
     }
-    if args.first().is_some_and(|arg| arg == "mcp")
-        && env::var(MCP_FIXTURE_MODE).as_deref() == Ok("startup_failure")
-    {
-        eprintln!("deterministic MCP fixture startup failure");
-        std::process::exit(70);
+    if args.first().is_some_and(|arg| arg == "mcp") {
+        match env::var(MCP_FIXTURE_MODE).as_deref() {
+            Ok("startup_failure") => {
+                eprintln!("deterministic MCP fixture startup failure");
+                std::process::exit(70);
+            }
+            Ok("early_stdio_exit") if args.iter().any(|arg| arg == "--check") => {
+                let connection_id = args
+                    .windows(2)
+                    .find(|pair| pair[0] == "--connection")
+                    .and_then(|pair| pair[1].to_str())
+                    .expect("fixture preflight connection ID");
+                println!(
+                    "configuration: valid\ntransport: stdio\nconnection_id: {connection_id}\nmode: workflow\nenabled: true\nregistry_read: passed\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: workflow\ntools_list_schema_validation: passed"
+                );
+                return;
+            }
+            Ok("early_stdio_exit") if args.iter().any(|arg| arg == "--stdio") => {
+                eprint!("{}", "x".repeat(EARLY_EXIT_STDERR_BYTES));
+                std::process::exit(23);
+            }
+            _ => {}
+        }
     }
 
     if let Err(error) = run_operational_regressions() {
@@ -66,6 +92,7 @@ fn main() {
 }
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
+    managed_launch_contracts_survive_filtered_environments()?;
     fresh_operation_version_transition_and_read_only_status()?;
     connection_mode_transition_rebinds_guard_revision()?;
     connection_mode_preflight_failure_preserves_connection()?;
@@ -75,6 +102,72 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     protocol_failures_are_authoritative()?;
     local_process_and_configuration_failures_are_structured()?;
     guard_failures_are_current_and_structured()?;
+    Ok(())
+}
+
+fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dyn Error>> {
+    for (prefix, shared) in [
+        ("operational-personal-managed-launch", false),
+        ("operational-shared-managed-launch", true),
+    ] {
+        let fixture = OperationalFixture::with_scope(prefix, shared)?;
+        let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+        let init_report = assert_connection_report(&init, 0, "init", "action_required")?;
+        assert_check(&init_report, "mcp_server", "passed", None);
+        assert_check(&init_report, "host_session", "pending", None);
+        assert_check(&init_report, "required_tools", "pending", None);
+        assert_check(&init_report, "tool_round_trip", "pending", None);
+
+        let snapshot = fixture.registry_snapshot();
+        let connection_id = snapshot.agent_connections[0].connection_internal_id.clone();
+        let project_id = snapshot.projects[0].project_id.clone();
+        fixture.assert_cli_verification_observations_are_isolated(&connection_id)?;
+
+        let initialize_only = fixture.run_managed_mcp_messages(
+            &connection_id,
+            Some(&project_id),
+            json_lines(&[initialize_request(FUTURE_VERSION)])?,
+        )?;
+        assert_eq!(initialize_only.status.code(), Some(0));
+        assert!(initialize_only.stderr.is_empty());
+        assert_eq!(json_rpc_responses(&initialize_only.stdout)?.len(), 1);
+        let partial =
+            latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?
+                .ok_or("managed initialize-only session should be recorded")?;
+        assert!(partial.initialize_completed_at.is_some());
+        assert!(partial.initialized_notification_at.is_none());
+        assert!(partial.tools_list_observed_at.is_none());
+        assert!(partial.required_tools_present.is_none());
+        assert!(partial.last_safe_read_only_tool_call_at.is_none());
+
+        let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
+        let partial_report =
+            assert_connection_report(&partial_status, 0, "status", "action_required")?;
+        assert_check(&partial_report, "host_session", "passed", None);
+        assert_check(&partial_report, "required_tools", "pending", None);
+        assert_check(&partial_report, "tool_round_trip", "pending", None);
+
+        fixture.run_successful_managed_mcp(
+            &connection_id,
+            &project_id,
+            FUTURE_VERSION,
+            &format!(
+                "acceptance.session.{}",
+                if shared { "shared" } else { "personal" }
+            ),
+        )?;
+        assert!(
+            current_managed_runtime_sessions(&fixture.runtime_home, &connection_id)?
+                .iter()
+                .any(|session| {
+                    session.initialize_completed_at.is_some()
+                        && session.initialized_notification_at.is_some()
+                        && session.tools_list_observed_at.is_some()
+                        && session.required_tools_present == Some(true)
+                        && session.last_safe_read_only_tool_call_at.is_some()
+                })
+        );
+    }
     Ok(())
 }
 
@@ -898,6 +991,35 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
         "failed",
         Some("mcp_server_preflight_failed"),
     );
+
+    let early_exit = OperationalFixture::new("operational-mcp-early-stdio-exit")?;
+    let fixture_executable = early_exit.install_mcp_fixture_executable()?;
+    let output = early_exit.run_init(
+        FUTURE_VERSION,
+        Some((&fixture_executable, "early_stdio_exit")),
+        false,
+    )?;
+    let report = assert_connection_report(&output, 1, "init", "failed")?;
+    assert_eq!(report["result"], json!({"kind": "setup", "applied": true}));
+    assert_check(
+        &report,
+        "mcp_server",
+        "failed",
+        Some("mcp_server_initialize_failed"),
+    );
+    let failure = report["checks"]
+        .as_array()
+        .and_then(|checks| checks.iter().find(|check| check["id"] == "mcp_server"))
+        .and_then(|check| check.pointer("/details/self_test/failure"))
+        .ok_or("MCP early-exit diagnostic projection should be present")?;
+    assert_eq!(failure["kind"], "exited_before_response");
+    assert_eq!(failure["stage"], "initialize");
+    assert_eq!(failure["exit_code"], 23);
+    assert_eq!(failure["stderr"]["truncated"], true);
+    assert_eq!(failure["stderr"]["omitted_bytes"], 1024);
+    assert!(failure["stderr"]["text"]
+        .as_str()
+        .is_some_and(|text| text.ends_with("...[stderr truncated; 1024 bytes omitted]")));
     Ok(())
 }
 
@@ -943,10 +1065,15 @@ struct OperationalFixture {
     user_home: PathBuf,
     path_dir: PathBuf,
     repo_root: PathBuf,
+    shared: bool,
 }
 
 impl OperationalFixture {
     fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+        Self::with_scope(prefix, false)
+    }
+
+    fn with_scope(prefix: &str, shared: bool) -> Result<Self, Box<dyn Error>> {
         let temporary_root = TempRuntimeHome::new(prefix)?;
         let runtime_home = temporary_root.path().join("runtime-home");
         let codex_home = temporary_root.path().join("codex-home");
@@ -959,6 +1086,12 @@ impl OperationalFixture {
         fs::create_dir(repo_root.join(".git"))?;
         let codex_name = if cfg!(windows) { "codex.exe" } else { "codex" };
         fs::copy(env::current_exe()?, path_dir.join(codex_name))?;
+        let volicord_name = if cfg!(windows) {
+            "volicord.exe"
+        } else {
+            "volicord"
+        };
+        fs::copy(env!("CARGO_BIN_EXE_volicord"), path_dir.join(volicord_name))?;
         Ok(Self {
             _temporary_root: temporary_root,
             runtime_home,
@@ -966,6 +1099,7 @@ impl OperationalFixture {
             user_home,
             path_dir,
             repo_root,
+            shared,
         })
     }
 
@@ -993,6 +1127,7 @@ impl OperationalFixture {
         let mut command = Command::new(program);
         command
             .env_clear()
+            .env_remove("WSL_DISTRO_NAME")
             .env("VOLICORD_HOME", &self.runtime_home)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
@@ -1013,6 +1148,18 @@ impl OperationalFixture {
     ) -> Result<Output, Box<dyn Error>> {
         let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), version);
         command
+            .env(
+                "VOLICORD_HOME",
+                self._temporary_root
+                    .path()
+                    .join("ambient-decoy-runtime-home"),
+            )
+            .env("VOLICORD_MCP_LAUNCH", "ambient-decoy-launch")
+            .env("VOLICORD_MCP_HOST", "ambient-decoy-host")
+            .env("VOLICORD_MCP_CONNECTION_ID", "ambient-decoy-connection")
+            .env("VOLICORD_MCP_PROJECT_ID", "ambient-decoy-project")
+            .env("VOLICORD_MCP_VERIFICATION", "ambient-decoy-verification")
+            .env_remove("WSL_DISTRO_NAME")
             .arg("init")
             .arg("--host")
             .arg("codex")
@@ -1023,6 +1170,9 @@ impl OperationalFixture {
             .arg("--home")
             .arg(&self.runtime_home)
             .arg("--json");
+        if self.shared {
+            command.arg("--shared");
+        }
         if let Some((path, mode)) = mcp_fixture {
             command
                 .arg("--mcp-command")
@@ -1148,6 +1298,37 @@ impl OperationalFixture {
         let responses = json_rpc_responses(&output.stdout)?;
         assert_eq!(responses.len(), 3);
         assert_eq!(responses[2]["result"]["isError"], false);
+        let connection = agent_connection_record(&self.runtime_home, connection_id)?
+            .ok_or("managed MCP acceptance Connection should exist")?;
+        let expected_tools = match connection.mode.as_str() {
+            "workflow" => PUBLIC_METHOD_TOOL_NAMES
+                .iter()
+                .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+                .copied()
+                .collect::<Vec<_>>(),
+            "read_only" => READ_ONLY_METHOD_TOOL_NAMES
+                .iter()
+                .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+                .copied()
+                .collect::<Vec<_>>(),
+            mode => return Err(format!("unexpected Connection mode {mode}").into()),
+        };
+        let actual_tools = responses[1]["result"]["tools"]
+            .as_array()
+            .ok_or("tools/list should return an array")?
+            .iter()
+            .map(|tool| tool["name"].as_str().ok_or("tool name should be a string"))
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(actual_tools, expected_tools);
+        let projects = adapter_tool_response(&responses[2])?;
+        let project = projects["projects"]
+            .as_array()
+            .ok_or("list_projects should return projects")?
+            .iter()
+            .find(|project| project["project_selector"] == project_id)
+            .ok_or("list_projects should return the registered disposable project")?;
+        assert_eq!(project["available"], true);
+        assert_eq!(project["repo_root"].as_str(), self.repo_root.to_str());
         Ok(())
     }
 
@@ -1159,7 +1340,7 @@ impl OperationalFixture {
         native_session: &str,
         manifest: &GuardManifest,
     ) -> Result<(), Box<dyn Error>> {
-        let mut command = self.managed_mcp_command(connection_id, Some(project_id));
+        let mut command = self.managed_mcp_command(connection_id, Some(project_id))?;
         let mut child = LiveMcpChild::spawn(&mut command)?;
         child.write(&json_lines(&[
             initialize_request(version),
@@ -1285,27 +1466,123 @@ impl OperationalFixture {
         project_id: Option<&str>,
         input: String,
     ) -> Result<support::binary_fixture::CapturedChildOutput, Box<dyn Error>> {
-        let command = self.managed_mcp_command(connection_id, project_id);
+        let command = self.managed_mcp_command(connection_id, project_id)?;
         run_child(command, ChildStdin::WriteAndClose(input))
     }
 
-    fn managed_mcp_command(&self, connection_id: &str, project_id: Option<&str>) -> Command {
-        let mut command = self.base_command(env!("CARGO_BIN_EXE_volicord"), FUTURE_VERSION);
+    fn managed_mcp_command(
+        &self,
+        connection_id: &str,
+        _project_id: Option<&str>,
+    ) -> Result<Command, Box<dyn Error>> {
+        let launch = self.managed_launch_spec(connection_id)?;
+        let forwarded_environment = if launch
+            .environment()
+            .forwarded_names()
+            .contains(VOLICORD_HOME_ENV)
+        {
+            BTreeMap::from([(
+                VOLICORD_HOME_ENV.to_owned(),
+                self.runtime_home.clone().into_os_string(),
+            )])
+        } else {
+            BTreeMap::new()
+        };
+        let working_directory = if self.shared {
+            ManagedMcpWorkingDirectory::ProductRepository(self.repo_root.clone())
+        } else {
+            ManagedMcpWorkingDirectory::Inherited
+        };
+        let materialized = launch.materialize(ManagedMcpMaterializationInput::new(
+            ManagedMcpInvocationPurpose::ManagedStdio,
+            forwarded_environment,
+            working_directory,
+        ))?;
+        let mut command = materialized.process_command();
         command
-            .env("VOLICORD_MCP_LAUNCH", "managed_host")
-            .env("VOLICORD_MCP_HOST", "codex")
-            .env("VOLICORD_MCP_CONNECTION_ID", connection_id)
-            .arg("mcp")
-            .arg("--stdio")
-            .arg("--connection")
-            .arg(connection_id);
-        if let Some(project_id) = project_id {
-            command
-                .env("VOLICORD_MCP_PROJECT_ID", project_id)
-                .arg("--project")
-                .arg(project_id);
-        }
-        command
+            .env("PATH", &self.path_dir)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .env_remove("WSL_DISTRO_NAME");
+        #[cfg(windows)]
+        copy_required_windows_environment(&mut command);
+        Ok(command)
+    }
+
+    fn managed_launch_spec(
+        &self,
+        connection_id: &str,
+    ) -> Result<ManagedMcpLaunchSpec, Box<dyn Error>> {
+        let snapshot = self.registry_snapshot();
+        let connection = snapshot
+            .agent_connections
+            .iter()
+            .find(|connection| connection.connection_internal_id == connection_id)
+            .ok_or("managed launch Connection should exist")?;
+        let document = fs::read_to_string(&connection.config_target)?.parse::<DocumentMut>()?;
+        let entry = document["mcp_servers"]["volicord"]
+            .as_table()
+            .ok_or("managed Codex entry should be a table")?;
+        let command = entry["command"]
+            .as_str()
+            .ok_or("managed Codex command should be a string")?
+            .to_owned();
+        let args = toml_entry_string_array(entry, "args")?;
+        let static_environment = entry
+            .get("env")
+            .map(|item| {
+                item.as_table()
+                    .ok_or("managed Codex env should be a table")?
+                    .iter()
+                    .map(|(name, value)| {
+                        value
+                            .as_str()
+                            .map(|value| (name.to_owned(), value.to_owned()))
+                            .ok_or("managed Codex env values should be strings")
+                    })
+                    .collect::<Result<BTreeMap<_, _>, _>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let forwarded_environment = entry
+            .get("env_vars")
+            .map(|_| toml_entry_string_array(entry, "env_vars"))
+            .transpose()?
+            .unwrap_or_default();
+        Ok(ManagedMcpLaunchSpec::try_from_host_projection(
+            command,
+            args,
+            static_environment,
+            forwarded_environment,
+        )?)
+    }
+
+    fn assert_cli_verification_observations_are_isolated(
+        &self,
+        connection_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let snapshot = self.registry_snapshot();
+        let registry = rusqlite::Connection::open(&snapshot.path)?;
+        let managed_count: i64 = registry.query_row(
+            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1 AND session_source = 'managed_host'",
+            [connection_id],
+            |row| row.get(0),
+        )?;
+        let cli_count: i64 = registry.query_row(
+            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1 AND session_source = 'cli_preflight'",
+            [connection_id],
+            |row| row.get(0),
+        )?;
+        let complete_cli_count: i64 = registry.query_row(
+            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1 AND session_source = 'cli_preflight' AND initialize_completed_at IS NOT NULL AND initialized_notification_at IS NOT NULL AND tools_list_observed_at IS NOT NULL AND required_tools_present = 1 AND last_safe_read_only_tool_call_at IS NOT NULL",
+            [connection_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(managed_count, 0);
+        assert!(cli_count >= 1);
+        assert!(complete_cli_count >= 1);
+        Ok(())
     }
 
     fn run_current_guard_phases(
@@ -1767,6 +2044,24 @@ fn json_key_exists(value: &Value, key: &str) -> bool {
         Value::Array(values) => values.iter().any(|value| json_key_exists(value, key)),
         _ => false,
     }
+}
+
+fn toml_entry_string_array(
+    table: &toml_edit::Table,
+    key: &str,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let values = table[key]
+        .as_array()
+        .ok_or_else(|| format!("managed Codex {key} should be an array"))?;
+    Ok(values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| format!("managed Codex {key} should contain strings"))
+        })
+        .collect::<Result<Vec<_>, _>>()?)
 }
 
 #[cfg(windows)]

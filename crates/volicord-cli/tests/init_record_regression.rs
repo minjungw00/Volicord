@@ -14,6 +14,7 @@ use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use support::binary_fixture::create_git_repo;
+use toml_edit::DocumentMut;
 use volicord_cli::{
     cli::{
         CodexHost, ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionMode,
@@ -206,6 +207,7 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
         .as_str()
         .expect("workflow connection id");
     let after_workflow = registry_snapshot(fixture.path());
+    let workflow_project_id = project_id_for_repo(&after_workflow, &workflow_repo)?;
     assert_eq!(
         after_workflow
             .agent_connections
@@ -215,6 +217,12 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
             .mode,
         CONNECTION_MODE_WORKFLOW
     );
+    assert_codex_config_is_shared(
+        fixture.path(),
+        &workflow_repo,
+        workflow_id,
+        &workflow_project_id,
+    )?;
 
     let read_only = run_connection_add(&read_only_repo, true, true, false, &mut process)?;
     assert_eq!(read_only["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
@@ -1307,9 +1315,94 @@ fn assert_codex_config_is_user_owned(
     let connection = &snapshot.agent_connections[0];
     assert_eq!(Path::new(&connection.config_target), expected);
     assert!(!expected.starts_with(repo_root));
-    let config = fs::read_to_string(expected)?;
-    assert!(config.contains(&connection.connection_internal_id));
+    let document = fs::read_to_string(expected)?.parse::<DocumentMut>()?;
+    let entry = document["mcp_servers"]["volicord"]
+        .as_table()
+        .ok_or("personal Codex entry should be a table")?;
+    let command = entry["command"]
+        .as_str()
+        .ok_or("personal Codex command should be a string")?;
+    assert!(Path::new(command).is_absolute());
+    assert_eq!(Path::new(command), process.current_exe);
+    assert_eq!(
+        toml_string_array(entry, "args")?,
+        [
+            "mcp",
+            "--stdio",
+            "--connection",
+            connection.connection_internal_id.as_str(),
+        ]
+    );
+    assert!(entry.get("env_vars").is_none());
+    let environment = entry["env"]
+        .as_table()
+        .ok_or("personal Codex environment should be a table")?;
+    assert_eq!(environment.len(), 4);
+    assert_eq!(
+        environment["VOLICORD_HOME"].as_str(),
+        process.runtime_home.to_str()
+    );
+    assert_eq!(
+        environment["VOLICORD_MCP_CONNECTION_ID"].as_str(),
+        Some(connection.connection_internal_id.as_str())
+    );
+    assert_eq!(environment["VOLICORD_MCP_HOST"].as_str(), Some("codex"));
+    assert_eq!(
+        environment["VOLICORD_MCP_LAUNCH"].as_str(),
+        Some("managed_host")
+    );
     Ok(())
+}
+
+fn assert_codex_config_is_shared(
+    runtime_home: &Path,
+    repo_root: &Path,
+    connection_id: &str,
+    project_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let config_path = repo_root.join(".codex/config.toml");
+    let config = fs::read_to_string(&config_path)?;
+    let document = config.parse::<DocumentMut>()?;
+    let entry = document["mcp_servers"]["volicord"]
+        .as_table()
+        .ok_or("shared Codex entry should be a table")?;
+    assert_eq!(entry["command"].as_str(), Some("volicord"));
+    assert_eq!(
+        toml_string_array(entry, "args")?,
+        ["mcp", "--stdio", "--discover-repository", "--host", "codex",]
+    );
+    assert_eq!(toml_string_array(entry, "env_vars")?, ["VOLICORD_HOME"]);
+    assert!(entry.get("env").is_none());
+    for local_coordinate in [
+        runtime_home
+            .to_str()
+            .ok_or("Runtime Home should be UTF-8")?,
+        connection_id,
+        project_id,
+    ] {
+        assert!(
+            !config.contains(local_coordinate),
+            "shared Codex configuration embedded local coordinate {local_coordinate}"
+        );
+    }
+    Ok(())
+}
+
+fn toml_string_array<'a>(
+    table: &'a toml_edit::Table,
+    key: &str,
+) -> Result<Vec<&'a str>, Box<dyn Error>> {
+    let values = table[key]
+        .as_array()
+        .ok_or_else(|| format!("Codex {key} should be an array"))?;
+    Ok(values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| format!("Codex {key} should contain only strings"))
+        })
+        .collect::<Result<Vec<_>, _>>()?)
 }
 
 fn assert_authoritative_policy_matches_file(

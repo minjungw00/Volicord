@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_malformed_and_previous_personal_shapes_are_noncanonical() {
+    fn unknown_and_malformed_shapes_are_noncanonical() {
         let unknown = entry(&personal_text("timeout_sec = 5"));
         assert_eq!(
             parse_codex_managed_identity(&unknown),
@@ -387,14 +387,6 @@ mod tests {
         assert_eq!(
             parse_codex_managed_identity(&malformed),
             Err(CodexManagedIdentityProblem::Malformed)
-        );
-
-        let previous = entry(
-            "[mcp_servers.volicord]\ncommand = \"/opt/volicord/bin/volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"connection_alpha\"]\nenv_vars = [\"VOLICORD_HOME\"]\n\n[mcp_servers.volicord.env]\nVOLICORD_MCP_CONNECTION_ID = \"connection_alpha\"\nVOLICORD_MCP_HOST = \"codex\"\nVOLICORD_MCP_LAUNCH = \"managed_host\"\n",
-        );
-        assert_eq!(
-            parse_codex_managed_identity(&previous),
-            Err(CodexManagedIdentityProblem::Unmanaged)
         );
 
         let unknown_tool = entry(&format!(

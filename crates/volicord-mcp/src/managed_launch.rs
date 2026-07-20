@@ -1114,7 +1114,7 @@ mod tests {
     }
 
     #[test]
-    fn materialization_preserves_ordinary_process_environment_without_wsl_input() {
+    fn materialization_does_not_require_wsl_distribution_environment() {
         let spec = personal();
         let materialized = spec
             .materialize(ManagedMcpMaterializationInput::new(
@@ -1124,11 +1124,12 @@ mod tests {
             ))
             .expect("materialization without WSL_DISTRO_NAME");
         let mut command = Command::new(materialized.command());
-        for name in ["PATH", "HOME", "LANG", "TMPDIR", "WSL_DISTRO_NAME"] {
+        for name in ["PATH", "HOME", "LANG", "TMPDIR"] {
             command.env(name, format!("ordinary-{name}"));
         }
+        command.env_remove("WSL_DISTRO_NAME");
         materialized.apply_process_context(&mut command);
-        for name in ["PATH", "HOME", "LANG", "TMPDIR", "WSL_DISTRO_NAME"] {
+        for name in ["PATH", "HOME", "LANG", "TMPDIR"] {
             assert_eq!(
                 command
                     .get_envs()
@@ -1138,6 +1139,13 @@ mod tests {
                 "ordinary inherited environment must remain untouched: {name}"
             );
         }
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(candidate, _)| *candidate == OsStr::new("WSL_DISTRO_NAME"))
+                .map(|(_, value)| value),
+            Some(None)
+        );
     }
 
     #[test]
