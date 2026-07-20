@@ -76,7 +76,8 @@ mod service;
 mod verification;
 
 pub use mcp_process::{
-    ConnectionProcess, ConnectionProcessOutput, McpVerification, ProductionConnectionProcess,
+    ConnectionProcess, ConnectionProcessOutput, McpProcessFailure, McpStage, McpVerification,
+    ProductionConnectionProcess,
 };
 
 use args::{
@@ -1543,9 +1544,12 @@ mod persisted_metadata_tests {
             _launch: &MaterializedManagedMcpLaunch,
             _connection_id: &str,
             _mode: &str,
-        ) -> Result<McpVerification, String> {
+        ) -> Result<McpVerification, McpProcessFailure> {
             self.stdio_calls += 1;
-            Ok(McpVerification::failed("fixture handshake unavailable"))
+            Ok(McpVerification::failed(McpProcessFailure::protocol(
+                McpStage::Initialize,
+                "fixture handshake unavailable",
+            )))
         }
     }
 
@@ -1613,8 +1617,11 @@ mod persisted_metadata_tests {
             _launch: &MaterializedManagedMcpLaunch,
             _connection_id: &str,
             _mode: &str,
-        ) -> Result<McpVerification, String> {
-            Ok(McpVerification::failed("fixture handshake unavailable"))
+        ) -> Result<McpVerification, McpProcessFailure> {
+            Ok(McpVerification::failed(McpProcessFailure::protocol(
+                McpStage::Initialize,
+                "fixture handshake unavailable",
+            )))
         }
     }
 

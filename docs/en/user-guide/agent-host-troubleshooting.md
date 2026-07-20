@@ -64,6 +64,26 @@ A failure must identify the structural, binding, executable, storage, or
 external-contract problem. Fix that problem and rerun preflight. Do not start a
 different transport or bypass connection binding.
 
+## MCP Self-Test Fails
+
+Rerun active verification with JSON output and find the `mcp_server` check:
+
+```sh
+volicord connection verify codex --repo "<repo>" --json
+```
+
+Inspect `details.self_test.failure.kind` and `.stage` before the bounded
+`io_detail`, `protocol_detail`, or `stderr` context. An
+`exited_before_response` failure also reports `exit_code`; `null` means no
+numeric exit code was available. A timeout reports `timeout_ms`. When a text
+capture has `truncated=true`, retain its deterministic truncation marker and
+`omitted_bytes` count when sharing the diagnostic.
+
+Treat stderr only as bounded context. Do not infer a machine reason from child
+wording or copy credentials into a report. `missing_tools`, when present, came
+from the structured tool-list response. The exact fields and stage-to-check-code
+mapping are owned by [Administrative CLI](../reference/admin-cli.md).
+
 ## Codex Loaded No Tools
 
 Confirm that Codex trusts the exact project and has reloaded the current

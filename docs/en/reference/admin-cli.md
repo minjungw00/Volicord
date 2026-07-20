@@ -563,6 +563,42 @@ runs repository discovery from the canonical Product Repository root. The
 CLI-only verification marker is an invocation overlay and is not part of
 generated host configuration.
 
+A failed stdio self-test keeps the current stage-specific check code and adds
+`checks[id=mcp_server].details.self_test.failure` to the JSON diagnostic. The
+failure object has this current shape:
+
+```yaml
+McpSelfTestFailure:
+  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | shutdown
+  stage: startup | initialize | tools_list | safe_tool_call | shutdown
+  exit_code?: integer | null
+  timeout_ms?: integer
+  stderr?: BoundedDiagnosticText
+  protocol_detail?: BoundedDiagnosticText
+  missing_tools?: string[]
+  io_detail?: BoundedDiagnosticText
+
+BoundedDiagnosticText:
+  text: string
+  truncated: bool
+  omitted_bytes: integer
+```
+
+Only fields relevant to the typed failure are present. `exit_code=null` means
+the exited process had no numeric status code, including signal termination.
+`stderr` captures at most 2 KiB of child stderr while the verifier drains the
+pipe concurrently; `protocol_detail` is limited to 2 KiB, and one stdout
+protocol line is limited to 64 KiB. Truncated text ends with a deterministic
+marker that states its omitted byte count, and the same count remains in
+`omitted_bytes`. The verifier reports `mcp_server_process_failed` for
+`startup` or `shutdown`, `mcp_server_initialize_failed` for `initialize`,
+`mcp_server_tools_list_failed` for `tools_list`, and
+`mcp_server_safe_call_failed` for `safe_tool_call` directly from the typed
+stage. Stderr is diagnostic context, not a machine-readable child reason; the
+CLI does not classify arbitrary child prose. `missing_tools` comes only from
+the structured `tools/list` response, and a JSON-RPC error detail includes its
+structured numeric code without copying arbitrary error prose or data.
+
 Verification then reads current managed-host observations and persists exactly
 one canonical report. Before planning, it captures the selected Connection's
 exact typed integration revision. Report persistence compares that revision and

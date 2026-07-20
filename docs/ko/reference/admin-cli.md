@@ -523,6 +523,40 @@ Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product 
 저장소 검색을 실행합니다. CLI 전용 검증 표식은 호출에만 적용하는 진단 값이며 생성 호스트
 구성에는 포함되지 않습니다.
 
+stdio 자체 검사가 실패하면 현재 단계별 check code를 유지하고 JSON 진단의
+`checks[id=mcp_server].details.self_test.failure`에 실패 객체를 추가합니다. 현재 객체
+형태는 다음과 같습니다.
+
+```yaml
+McpSelfTestFailure:
+  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | shutdown
+  stage: startup | initialize | tools_list | safe_tool_call | shutdown
+  exit_code?: integer | null
+  timeout_ms?: integer
+  stderr?: BoundedDiagnosticText
+  protocol_detail?: BoundedDiagnosticText
+  missing_tools?: string[]
+  io_detail?: BoundedDiagnosticText
+
+BoundedDiagnosticText:
+  text: string
+  truncated: bool
+  omitted_bytes: integer
+```
+
+타입이 지정된 실패에 필요한 필드만 나타납니다. `exit_code=null`은 시그널 종료를
+포함하여 종료된 프로세스에 숫자 상태 코드가 없다는 뜻입니다. 검증기는 stderr 파이프를
+동시에 비우면서 자식 stderr를 최대 2 KiB까지 `stderr`에 보존합니다.
+`protocol_detail`은 2 KiB, stdout 프로토콜 줄 하나는 64 KiB로 제한합니다. 잘린
+텍스트 끝에는 생략한 바이트 수를 밝히는 결정적 표식이 붙으며 같은 수가
+`omitted_bytes`에도 남습니다. 검증기는 타입이 지정된 단계에서 직접
+`startup` 또는 `shutdown`을 `mcp_server_process_failed`, `initialize`를
+`mcp_server_initialize_failed`, `tools_list`를 `mcp_server_tools_list_failed`,
+`safe_tool_call`을 `mcp_server_safe_call_failed`로 보고합니다. `stderr`는 진단 맥락이지
+기계 판독 가능한 자식 프로세스 사유가 아니며 CLI는 임의의 자식 산문을 분류하지 않습니다.
+`missing_tools`는 구조화된 `tools/list` 응답에서만 만들고, JSON-RPC 오류 상세
+정보에는 임의의 오류 산문이나 데이터를 복사하지 않은 채 구조화된 숫자 `code`만 포함합니다.
+
 그런 다음 현재 managed-host 관찰을 읽고 정규 보고서 하나만 영속합니다. Plan 전에 선택한
 Connection의 정확한 typed integration revision을 확보하고, immediate Registry transaction
 하나에서 그 revision을 비교해 보고서만 교체합니다. 검증 중 Connection이 바뀌면 stale

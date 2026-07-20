@@ -210,6 +210,25 @@ impl<'a> DetailContext<'a> {
         Some(value)
     }
 
+    fn take_u64(&mut self, path: &str) -> Option<u64> {
+        let path = DetailPath::from_dotted_keys(path);
+        let value = self.peek(&path)?.as_u64()?;
+        self.consume(&path);
+        Some(value)
+    }
+
+    fn take_optional_i64(&mut self, path: &str) -> Option<Option<i64>> {
+        let path = DetailPath::from_dotted_keys(path);
+        let value = self.peek(&path)?;
+        let value = if value.is_null() {
+            None
+        } else {
+            Some(value.as_i64()?)
+        };
+        self.consume(&path);
+        Some(value)
+    }
+
     fn take_string_array(&mut self, path: &str) -> Option<Vec<String>> {
         let path = DetailPath::from_dotted_keys(path);
         let values = self.peek(&path)?.as_array()?;
@@ -252,6 +271,10 @@ impl<'a> DetailContext<'a> {
             0,
             &mut self.lines,
         );
+    }
+
+    fn multiline(&mut self, label: &str, value: &str) {
+        push_labeled_multiline(&mut self.lines, 4, label, value);
     }
 
     fn render_additional(&mut self) {
@@ -355,7 +378,7 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     }
 
     let self_test_status = context.take_string("self_test.status");
-    let self_test_code = context.take_string("self_test.code");
+    let _self_test_code = context.take_string("self_test.code");
     let diagnostic = context.take_string("self_test.diagnostic");
     let initialize = context.take_bool("self_test.initialize");
     let tools = context
@@ -364,26 +387,29 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     let safe_tool = context
         .take_string("self_test.safe_read_only_tool")
         .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
-    let stage_code = context
-        .check
-        .code()
-        .or(self_test_code.as_deref())
-        .unwrap_or_default();
+    let failure_kind = context.take_string("self_test.failure.kind");
+    let failure_stage = context.take_string("self_test.failure.stage");
     let preflight_passed = preflight.as_deref() == Some("passed");
     let self_test_passed = self_test_status.as_deref() == Some("passed");
 
     context.line(
         "Initialize",
-        mcp_initialize_result(preflight_passed, self_test_passed, initialize, stage_code),
+        mcp_initialize_result(
+            preflight_passed,
+            self_test_passed,
+            initialize,
+            failure_stage.as_deref(),
+        ),
     );
     context.line(
         "Required tools",
-        mcp_required_tools_result(preflight_passed, self_test_passed, stage_code),
+        mcp_required_tools_result(preflight_passed, self_test_passed, failure_stage.as_deref()),
     );
     if !tools.is_empty() {
         context.line("Tools returned", tools.len());
     }
-    let safe_result = mcp_safe_tool_result(preflight_passed, self_test_passed, stage_code);
+    let safe_result =
+        mcp_safe_tool_result(preflight_passed, self_test_passed, failure_stage.as_deref());
     if safe_result == "passed" {
         context.line("Designated read-only tool", safe_tool);
     } else {
@@ -393,22 +419,52 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
         );
     }
 
-    if let Some(diagnostic) = diagnostic.as_deref() {
-        let missing = diagnostic_tool_names(diagnostic, "missing required tool:");
-        let incompatible = diagnostic_tool_names(diagnostic, "incompatible required tool:");
-        if !missing.is_empty() {
-            context.line("Missing tools", render_string_values(&missing));
-        }
-        if !incompatible.is_empty() {
-            context.line("Incompatible tools", render_string_values(&incompatible));
-        }
-        if !self_test_passed
-            && missing.is_empty()
-            && incompatible.is_empty()
-            && diagnostic_adds_information(diagnostic, context.check.summary())
-        {
-            context.diagnostic("Self-test diagnostic", diagnostic);
-        }
+    let missing_tools = context
+        .take_string_array("self_test.failure.missing_tools")
+        .unwrap_or_default();
+    if !missing_tools.is_empty() {
+        context.line("Missing tools", render_string_values(&missing_tools));
+    }
+    if let (Some(kind), Some(stage)) = (failure_kind.as_deref(), failure_stage.as_deref()) {
+        context.line("Failure", format_args!("{kind} during {stage}"));
+    }
+    if let Some(exit_code) = context.take_optional_i64("self_test.failure.exit_code") {
+        context.line(
+            "Exit code",
+            exit_code.map_or_else(|| "unavailable".to_owned(), |code| code.to_string()),
+        );
+    }
+    if let Some(timeout_ms) = context.take_u64("self_test.failure.timeout_ms") {
+        context.line("Timeout", format_args!("{timeout_ms} ms"));
+    }
+    let protocol_detail = context.take_string("self_test.failure.protocol_detail.text");
+    let _protocol_truncated = context.take_bool("self_test.failure.protocol_detail.truncated");
+    let _protocol_omitted = context.take_u64("self_test.failure.protocol_detail.omitted_bytes");
+    if let Some(protocol_detail) = protocol_detail {
+        context.multiline("Protocol detail", &protocol_detail);
+    }
+    let io_detail = context.take_string("self_test.failure.io_detail.text");
+    let _io_truncated = context.take_bool("self_test.failure.io_detail.truncated");
+    let _io_omitted = context.take_u64("self_test.failure.io_detail.omitted_bytes");
+    if let Some(io_detail) = io_detail {
+        context.multiline("I/O detail", &io_detail);
+    }
+    let stderr = context.take_string("self_test.failure.stderr.text");
+    let _stderr_truncated = context.take_bool("self_test.failure.stderr.truncated");
+    let _stderr_omitted = context.take_u64("self_test.failure.stderr.omitted_bytes");
+    if let Some(stderr) = stderr.filter(|stderr| !stderr.is_empty()) {
+        context.multiline("Stderr", &stderr);
+    }
+    if failure_kind.is_none()
+        && !self_test_passed
+        && diagnostic.as_deref().is_some_and(|diagnostic| {
+            diagnostic_adds_information(diagnostic, context.check.summary())
+        })
+    {
+        context.diagnostic(
+            "Self-test diagnostic",
+            diagnostic.as_deref().expect("diagnostic was checked"),
+        );
     }
     if preflight.as_deref() != Some("passed") {
         if let Some(code) = preflight_code {
@@ -426,15 +482,19 @@ fn mcp_initialize_result(
     preflight_passed: bool,
     self_test_passed: bool,
     initialize: Option<bool>,
-    code: &str,
+    failure_stage: Option<&str>,
 ) -> &'static str {
-    if self_test_passed || code.contains("tools_list") || code.contains("safe_call") {
+    if self_test_passed
+        || initialize == Some(true)
+        || matches!(
+            failure_stage,
+            Some("tools_list" | "safe_tool_call" | "shutdown")
+        )
+    {
         "passed"
     } else if !preflight_passed {
         "not run"
-    } else if initialize == Some(true) {
-        "passed"
-    } else if code.contains("initialize") || code.contains("process") {
+    } else if matches!(failure_stage, Some("startup" | "initialize")) {
         "failed"
     } else {
         "not completed"
@@ -444,11 +504,11 @@ fn mcp_initialize_result(
 fn mcp_required_tools_result(
     preflight_passed: bool,
     self_test_passed: bool,
-    code: &str,
+    failure_stage: Option<&str>,
 ) -> &'static str {
-    if self_test_passed || code.contains("safe_call") {
+    if self_test_passed || matches!(failure_stage, Some("safe_tool_call" | "shutdown")) {
         "passed"
-    } else if code.contains("tools_list") {
+    } else if failure_stage == Some("tools_list") {
         "failed"
     } else if preflight_passed {
         "not completed"
@@ -460,37 +520,17 @@ fn mcp_required_tools_result(
 fn mcp_safe_tool_result(
     preflight_passed: bool,
     self_test_passed: bool,
-    code: &str,
+    failure_stage: Option<&str>,
 ) -> &'static str {
-    if self_test_passed {
+    if self_test_passed || failure_stage == Some("shutdown") {
         "passed"
-    } else if code.contains("safe_call") {
+    } else if failure_stage == Some("safe_tool_call") {
         "failed"
     } else if preflight_passed {
         "not completed"
     } else {
         "not run"
     }
-}
-
-fn diagnostic_tool_names(diagnostic: &str, marker: &str) -> Vec<String> {
-    diagnostic
-        .split(marker)
-        .skip(1)
-        .filter_map(|suffix| {
-            let name = suffix
-                .trim_start()
-                .split(|character: char| {
-                    character.is_whitespace() || character == ',' || character == ';'
-                })
-                .next()
-                .unwrap_or_default()
-                .trim_matches(|character: char| {
-                    matches!(character, '`' | '"' | '\'' | '.' | ']' | '}')
-                });
-            (!name.is_empty()).then(|| name.to_owned())
-        })
-        .collect()
 }
 
 fn split_json_suffix(value: &str) -> Option<(&str, Value)> {
@@ -1573,7 +1613,9 @@ mod tests {
                 "    Initialize: passed\n",
                 "    Required tools: failed\n",
                 "    Designated read-only tool: volicord.list_projects (not completed)\n",
-                "    Missing tools: volicord.close_task\n\n",
+                "    Missing tools: volicord.close_task\n",
+                "    Failure: protocol during tools_list\n",
+                "    Protocol detail: tools/list omitted 1 required tool(s)\n\n",
                 "Actions\n",
                 "  repair_mcp_server\n",
                 "    Repair the MCP server and verify again\n",
@@ -1686,7 +1728,7 @@ mod tests {
     }
 
     fn mcp_details(status: &str, diagnostic: &str, tools: Vec<String>) -> Value {
-        json!({
+        let mut details = json!({
             "preflight": {
                 "status": "passed",
                 "code": "mcp_server_preflight_passed",
@@ -1701,11 +1743,29 @@ mod tests {
                 "status": status,
                 "code": if status == "passed" { "mcp_server_ready" } else { "mcp_server_tools_list_failed" },
                 "diagnostic": diagnostic,
-                "initialize": status == "passed",
+                "initialize": true,
                 "tools_list": tools,
                 "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
             },
-        })
+        });
+        if status != "passed" {
+            details["self_test"]["failure"] = json!({
+                "kind": "protocol",
+                "stage": "tools_list",
+                "protocol_detail": {
+                    "text": "tools/list omitted 1 required tool(s)",
+                    "truncated": false,
+                    "omitted_bytes": 0,
+                },
+                "missing_tools": ["volicord.close_task"],
+                "stderr": {
+                    "text": "",
+                    "truncated": false,
+                    "omitted_bytes": 0,
+                },
+            });
+        }
+        details
     }
 
     #[test]
@@ -1753,6 +1813,26 @@ mod tests {
             assert!(!output.contains(&tool), "successful tool inventory leaked");
         }
 
+        let mut protocol_details = mcp_details(
+            "failed",
+            "MCP protocol failed during initialize",
+            Vec::new(),
+        );
+        protocol_details["self_test"]["initialize"] = json!(false);
+        protocol_details["self_test"]["failure"] = json!({
+            "kind": "protocol",
+            "stage": "initialize",
+            "protocol_detail": {
+                "text": "initialize response returned JSON-RPC error code -32000",
+                "truncated": false,
+                "omitted_bytes": 0,
+            },
+            "stderr": {
+                "text": "",
+                "truncated": false,
+                "omitted_bytes": 0,
+            },
+        });
         let protocol_failure = report(
             CommandOperation::Verify,
             false,
@@ -1761,13 +1841,9 @@ mod tests {
             vec![check(
                 ConnectionCheckKind::McpServer,
                 ConnectionCheckStatus::Failed,
-                Some("mcp_server_protocol_failed"),
+                Some("mcp_server_initialize_failed"),
                 "Volicord MCP server self-test failed",
-                Some(mcp_details(
-                    "failed",
-                    r#"MCP initialize returned error: {"code":-32000,"data":{"phase":"initialize"}}"#,
-                    Vec::new(),
-                )),
+                Some(protocol_details),
                 None,
             )],
             Vec::new(),
@@ -1775,14 +1851,20 @@ mod tests {
             None,
         );
         let protocol_output = rendered(&protocol_failure);
+        let protocol_machine = serde_json::to_value(&protocol_failure).unwrap();
+        assert_eq!(
+            protocol_machine["checks"][0]["details"]["self_test"]["failure"]["kind"],
+            "protocol"
+        );
+        assert_eq!(
+            protocol_machine["checks"][0]["details"]["self_test"]["failure"]["stage"],
+            "initialize"
+        );
         assert!(protocol_output.contains(concat!(
-            "    Self-test diagnostic: MCP initialize returned error\n",
-            "      Response details\n",
-            "        Code: -32000\n",
-            "        Data\n",
-            "          Phase: initialize\n",
+            "    Failure: protocol during initialize\n",
+            "    Protocol detail: initialize response returned JSON-RPC error code -32000\n",
         )));
-        assert!(!protocol_output.contains(r#"{"code"#));
+        assert!(!protocol_output.contains("Phase:"));
 
         let guards = report(
             CommandOperation::Status,

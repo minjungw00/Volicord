@@ -184,16 +184,11 @@ pub(in crate::connection_command) fn verify_connection(
                 "MCP server self-test did not run after failed preflight",
             ),
             tools: Vec::new(),
+            failure: None,
         }
     };
-    let report = canonical_verification_report(
-        runtime_home,
-        connection,
-        &host,
-        &preflight,
-        &handshake.step,
-        &handshake.tools,
-    )?;
+    let report =
+        canonical_verification_report(runtime_home, connection, &host, &preflight, &handshake)?;
     Ok(VerificationReport { report })
 }
 
@@ -232,8 +227,7 @@ fn canonical_verification_report(
     connection: &AgentConnectionRecord,
     host: &Verification,
     preflight: &VerificationStep,
-    handshake: &VerificationStep,
-    tools: &[String],
+    handshake: &McpVerification,
 ) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
@@ -243,7 +237,7 @@ fn canonical_verification_report(
     let mut checks = vec![
         managed_config_check(host)?,
         host_executable_check(host)?,
-        mcp_server_check(preflight, handshake, tools)?,
+        mcp_server_check(preflight, handshake)?,
         project_trust_check(host)?,
     ];
     checks.extend(host_session_checks(
@@ -345,25 +339,25 @@ fn host_executable_check(host: &Verification) -> Result<ConnectionCheck, Connect
 
 fn mcp_server_check(
     preflight: &VerificationStep,
-    handshake: &VerificationStep,
-    tools: &[String],
+    handshake: &McpVerification,
 ) -> Result<ConnectionCheck, ConnectionCommandError> {
+    let step = &handshake.step;
     let (status, code, summary) = if preflight.status == StepStatus::Failed {
         (
             ConnectionCheckStatus::Failed,
             preflight.code.as_str(),
             "Volicord CLI MCP preflight failed",
         )
-    } else if handshake.status == StepStatus::Passed {
+    } else if step.status == StepStatus::Passed {
         (
             ConnectionCheckStatus::Passed,
-            handshake.code.as_str(),
+            step.code.as_str(),
             "Volicord MCP server self-test passed",
         )
-    } else if handshake.status == StepStatus::Failed {
+    } else if step.status == StepStatus::Failed {
         (
             ConnectionCheckStatus::Failed,
-            handshake.code.as_str(),
+            step.code.as_str(),
             "Volicord MCP server self-test failed",
         )
     } else {
@@ -373,6 +367,29 @@ fn mcp_server_check(
             "Volicord MCP server self-test did not run",
         )
     };
+    let initialize_completed = step.status == StepStatus::Passed
+        || handshake.failure.as_ref().is_some_and(|failure| {
+            matches!(
+                failure.stage(),
+                super::McpStage::ToolsList
+                    | super::McpStage::SafeToolCall
+                    | super::McpStage::Shutdown
+            )
+        });
+    let mut self_test = json!({
+        "status": step.status.as_str(),
+        "code": step.code,
+        "diagnostic": step.details,
+        "initialize": initialize_completed,
+        "tools_list": handshake.tools,
+        "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
+    });
+    if let Some(failure) = &handshake.failure {
+        self_test
+            .as_object_mut()
+            .expect("self-test details are an object")
+            .insert("failure".to_owned(), failure.to_json());
+    }
     canonical_check(
         ConnectionCheckKind::McpServer,
         status,
@@ -385,14 +402,7 @@ fn mcp_server_check(
                 "diagnostic": preflight.details,
                 "storage": preflight.preflight_diagnostics.as_ref().map(McpPreflightDiagnostics::to_json),
             },
-            "self_test": {
-                "status": handshake.status.as_str(),
-                "code": handshake.code,
-                "diagnostic": handshake.details,
-                "initialize": handshake.status == StepStatus::Passed,
-                "tools_list": tools,
-                "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
-            }
+            "self_test": self_test,
         })),
         None,
     )
@@ -1499,7 +1509,7 @@ mod tests {
             canonical_check(
                 ConnectionCheckKind::McpServer,
                 ConnectionCheckStatus::Failed,
-                "mcp_server_protocol_failed",
+                "mcp_server_initialize_failed",
                 "MCP failed",
                 None,
                 None,
@@ -1540,8 +1550,7 @@ mod tests {
     fn mcp_server_details_use_the_public_safe_tool_name_constant() {
         let check = mcp_server_check(
             &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
-            &VerificationStep::passed_with_code("mcp_server_ready", "ready"),
-            &[LIST_PROJECTS_TOOL_NAME.to_owned()],
+            &McpVerification::passed(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
         )
         .expect("MCP server check");
         let details = check.details().expect("MCP details").as_object();

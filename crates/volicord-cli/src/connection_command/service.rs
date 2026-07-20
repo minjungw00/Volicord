@@ -1547,8 +1547,11 @@ mod init_planning_tests {
             _launch: &MaterializedManagedMcpLaunch,
             _connection_id: &str,
             _mode: &str,
-        ) -> Result<McpVerification, String> {
-            Err("init planning must not run MCP verification".to_owned())
+        ) -> Result<McpVerification, McpProcessFailure> {
+            Err(McpProcessFailure::protocol(
+                McpStage::Startup,
+                "init planning must not run MCP verification",
+            ))
         }
     }
 

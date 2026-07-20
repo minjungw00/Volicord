@@ -22,7 +22,7 @@ use volicord_cli::{
     },
     connection_command::{
         run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
-        ConnectionProcessOutput, McpVerification,
+        ConnectionProcessOutput, McpProcessFailure, McpStage, McpVerification,
     },
     policy_command::run_policy_command,
 };
@@ -132,12 +132,18 @@ impl ConnectionProcess for FakeConnectionProcess {
         launch: &MaterializedManagedMcpLaunch,
         _connection_id: &str,
         mode: &str,
-    ) -> Result<McpVerification, String> {
+    ) -> Result<McpVerification, McpProcessFailure> {
         if launch.purpose() != &ManagedMcpInvocationPurpose::CliStdioHandshake {
-            return Err("fixture expected a CLI stdio handshake invocation".to_owned());
+            return Err(McpProcessFailure::protocol(
+                McpStage::Startup,
+                "fixture expected a CLI stdio handshake invocation",
+            ));
         }
         self.verification_modes.push(mode.to_owned());
-        Err("live MCP verification is intentionally unavailable in this fixture".to_owned())
+        Err(McpProcessFailure::protocol(
+            McpStage::Initialize,
+            "live MCP verification is intentionally unavailable in this fixture",
+        ))
     }
 }
 
