@@ -16,7 +16,7 @@ verification.
 ## Surface Stability
 
 The four `PlatformEnvironment` values, five published target triples, the exact
-first-release WSL2 distribution coordinate, WSL2 topology and ext4 boundary,
+first-release WSL2 distribution identity, WSL2 topology and ext4 boundary,
 managed stdio MCP prerequisite, and stop criteria are stable contracts. Other
 runner images, package-manager commands, executable locations, and diagnostic
 prose are release or implementation details unless another owner marks them
@@ -68,18 +68,19 @@ one pinned Ubuntu LTS WSL2 distribution
      artifacts on the distribution ext4 filesystem
 ```
 
-The exact first-release WSL2 coordinate is:
+The first-release WSL2 boundary and distribution identity are:
 
-| Coordinate | Exact value |
+| Observation | Requirement |
 |---|---|
-| `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
+| `/proc/sys/kernel/osrelease` | A supported Microsoft WSL2 kernel |
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
 
-Platform checks observe the distribution name, operating-system identity, WSL2
-kernel boundary, and filesystem type. Those observations enforce the supported
-topology. Operational authorization separately validates current Connection
-and session ownership.
+Platform checks use the kernel release to distinguish native Linux, WSL1, and
+WSL2. A supported WSL2 kernel uses `/etc/os-release` to establish the Ubuntu ID
+and version. No WSL environment variable is a prerequisite. Filesystem
+observations enforce the supported topology. Operational authorization
+separately validates current Connection and session ownership.
 
 The WSL2 runtime boundary must establish WSL2 explicitly and requires
 `target_triple=x86_64-unknown-linux-gnu`. An ordinary Linux `target_os` result
@@ -106,19 +107,19 @@ launch:
   values, Connections, runtime sessions, or project sessions
 - reuse of native Windows Runtime Home session records in WSL2 or WSL2 session
   records on native Windows
-- a distribution outside the current first-release WSL2 coordinate
+- a distribution whose `/etc/os-release` identity is outside the current
+  first-release WSL2 identity
 
 A WSL shutdown or restart ends the live managed runtime session. Its project
 sessions cannot authorize later calls; a new managed MCP lifecycle records a
 new runtime session and project sessions.
 
 Unsupported topology is machine-readable. `unsupported_wsl1` identifies WSL1;
-`unsupported_wsl_cross_topology` identifies inconsistent WSL kernel/environment
-facts; `unsupported_wsl2_distribution` identifies a distribution-coordinate
-mismatch; and `unsupported_wsl2_filesystem` identifies a non-ext4 component.
-These are `Rejected` environment outcomes. An unavailable kernel, distribution,
-or filesystem observation remains `Unavailable`; it is not converted into a
-rejected or native environment.
+`unsupported_wsl2_distribution` identifies an unsupported `/etc/os-release`
+identity; and `unsupported_wsl2_filesystem` identifies a non-ext4 component.
+These are `Rejected` environment outcomes. An unavailable kernel,
+`/etc/os-release`, or filesystem observation remains `Unavailable`; it is not
+converted into a rejected or native environment.
 
 <a id="toolchain-requirements"></a>
 ## Toolchain Requirements

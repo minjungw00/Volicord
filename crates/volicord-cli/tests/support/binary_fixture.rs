@@ -66,16 +66,6 @@ pub(crate) fn run_without_binding<const N: usize>(
 pub(crate) fn base_command() -> Command {
     let mut command = Command::new(volicord_bin());
     command.env_clear();
-    #[cfg(target_os = "linux")]
-    if std::fs::read_to_string("/proc/sys/kernel/osrelease").is_ok_and(|release| {
-        let release = release.to_ascii_lowercase();
-        release.contains("microsoft-standard") || release.contains("wsl2")
-    }) {
-        command.env(
-            "WSL_DISTRO_NAME",
-            volicord_types::PINNED_WSL2_DISTRIBUTION_NAME,
-        );
-    }
     command.current_dir(env!("CARGO_MANIFEST_DIR"));
     command
 }

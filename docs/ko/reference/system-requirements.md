@@ -12,7 +12,7 @@ Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 �
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-네 `PlatformEnvironment` 값, 게시 target triple 다섯 개, 정확한 최초 릴리스 WSL2 배포판 좌표,
+네 `PlatformEnvironment` 값, 게시 target triple 다섯 개, 정확한 최초 릴리스 WSL2 배포판 식별 정보,
 WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제 조건, 중단 기준은 안정
 계약입니다. 그 밖의 runner 이미지, 패키지 관리자 명령, 실행 파일 위치와 진단
 문구는 다른 담당 문서가 안정으로 지정하지 않는 한 릴리스 또는 구현
@@ -63,17 +63,18 @@ architecture나 환경은 다른 환경의 런타임 전제 조건을 성립시�
      생성된 관리 아티팩트
 ```
 
-최초 릴리스의 정확한 WSL2 좌표는 다음과 같습니다.
+최초 릴리스의 WSL2 경계와 배포판 식별 정보는 다음과 같습니다.
 
-| 좌표 | 정확한 값 |
+| 관찰 | 요구사항 |
 |---|---|
-| `WSL_DISTRO_NAME` | `Ubuntu-24.04` |
+| `/proc/sys/kernel/osrelease` | 지원되는 Microsoft WSL2 커널 |
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
 
-플랫폼 점검은 배포판 이름, 운영체제 identity, WSL2 커널 경계, 파일 시스템 종류를
-관찰하여 지원 토폴로지를 집행합니다. 운영 권한은 현재 Connection과 session 소유권을
-별도로 검증합니다.
+플랫폼 점검은 커널 릴리스를 사용하여 네이티브 Linux, WSL1, WSL2를 구분합니다.
+지원되는 WSL2 커널에서는 `/etc/os-release`로 Ubuntu ID와 버전을 확인합니다. WSL
+환경 변수는 전제 조건이 아닙니다. 파일 시스템 관찰은 지원 토폴로지를 집행합니다.
+운영 권한은 현재 Connection과 session 소유권을 별도로 검증합니다.
 
 WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인하고
 `target_triple=x86_64-unknown-linux-gnu`를 요구해야 합니다. 일반 Linux `target_os`
@@ -94,18 +95,17 @@ unsupported-environment reason으로 실패해야 합니다.
 - Product Repository나 Runtime Home을 `/mnt/c`, `/mnt/d`, 다른 `/mnt/*` 경로 또는 DrvFS mount에 두는 구성
 - Windows와 Linux 경로, PID, 환경 값, Connection, runtime session 또는 project session을 변환하거나 서로 같다고 추정하는 동작
 - 네이티브 Windows Runtime Home session 기록을 WSL2에서 사용하거나 WSL2 session 기록을 네이티브 Windows에서 사용하는 동작
-- 현재 최초 릴리스 WSL2 좌표 밖의 배포판
+- `/etc/os-release` 식별 정보가 현재 최초 릴리스 WSL2 범위 밖인 배포판
 
 WSL 종료나 재시작은 살아 있는 관리 runtime session을 끝냅니다. 그 project session은
 이후 호출에 권한을 줄 수 없으며, 새로운 관리 MCP lifecycle이 새 runtime session과
 project session을 기록해야 합니다.
 
 지원하지 않는 토폴로지는 기계 판독할 수 있습니다. `unsupported_wsl1`은 WSL1,
-`unsupported_wsl_cross_topology`는 서로 맞지 않는 WSL 커널/환경 사실,
-`unsupported_wsl2_distribution`은 배포판 좌표 불일치,
+`unsupported_wsl2_distribution`은 지원하지 않는 `/etc/os-release` 식별값,
 `unsupported_wsl2_filesystem`은 ext4가 아닌 구성요소를 뜻합니다. 이 결과는
-`Rejected` 환경 결과입니다. 커널, 배포판, 파일 시스템을 관찰할 수 없으면
-`Unavailable`로 남으며, 거절된 환경이나 네이티브 환경으로 바꾸지
+`Rejected` 환경 결과입니다. 커널, `/etc/os-release`, 파일 시스템을 관찰할 수
+없으면 `Unavailable`로 남으며, 거절된 환경이나 네이티브 환경으로 바꾸지
 않습니다.
 
 <a id="toolchain-requirements"></a>

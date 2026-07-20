@@ -1392,8 +1392,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-20'
+  last_verified_on: '2026-07-20'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85

@@ -10,7 +10,7 @@ use std::{
 use sha2::{Digest, Sha256};
 use volicord_types::{
     PlatformEnvironment, ReleaseTargetTriple, PINNED_WSL2_DISTRIBUTION_ID,
-    PINNED_WSL2_DISTRIBUTION_NAME, PINNED_WSL2_DISTRIBUTION_VERSION,
+    PINNED_WSL2_DISTRIBUTION_VERSION,
 };
 
 #[cfg(windows)]
@@ -85,17 +85,17 @@ impl std::error::Error for PlatformBoundaryError {}
 pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
     let target_triple = current_release_target_triple()?;
     let kernel_release = read_platform_text("/proc/sys/kernel/osrelease")?;
-    let wsl_distribution_name = std::env::var("WSL_DISTRO_NAME").ok();
+    let os_release = if classify_linux_kernel_release(&kernel_release) == LinuxKernelBoundary::Wsl2
+    {
+        Some(read_platform_text("/etc/os-release")?)
+    } else {
+        None
+    };
     classify_linux_platform_boundary(
         target_triple,
         LinuxPlatformFacts {
             kernel_release: &kernel_release,
-            wsl_distribution_name: wsl_distribution_name.as_deref(),
-            os_release: if kernel_release.to_ascii_lowercase().contains("microsoft") {
-                Some(read_platform_text("/etc/os-release")?)
-            } else {
-                None
-            },
+            os_release: os_release.as_deref(),
         },
     )
 }
@@ -171,8 +171,27 @@ pub fn observe_path_filesystem(_path: &Path) -> Result<PathFilesystemKind, Platf
 #[cfg(target_os = "linux")]
 struct LinuxPlatformFacts<'a> {
     kernel_release: &'a str,
-    wsl_distribution_name: Option<&'a str>,
-    os_release: Option<String>,
+    os_release: Option<&'a str>,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinuxKernelBoundary {
+    Native,
+    Wsl1,
+    Wsl2,
+}
+
+#[cfg(target_os = "linux")]
+fn classify_linux_kernel_release(kernel_release: &str) -> LinuxKernelBoundary {
+    let kernel = kernel_release.trim().to_ascii_lowercase();
+    if !kernel.contains("microsoft") {
+        LinuxKernelBoundary::Native
+    } else if kernel.contains("wsl2") || kernel.contains("microsoft-standard") {
+        LinuxKernelBoundary::Wsl2
+    } else {
+        LinuxKernelBoundary::Wsl1
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -180,47 +199,36 @@ fn classify_linux_platform_boundary(
     target_triple: ReleaseTargetTriple,
     facts: LinuxPlatformFacts<'_>,
 ) -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
-    let kernel = facts.kernel_release.trim().to_ascii_lowercase();
-    if !kernel.contains("microsoft") {
-        if facts.wsl_distribution_name.is_some() {
+    match classify_linux_kernel_release(facts.kernel_release) {
+        LinuxKernelBoundary::Native => {
+            return Ok(LocalPlatformBoundary {
+                target_triple,
+                environment: PlatformEnvironment::Linux,
+            });
+        }
+        LinuxKernelBoundary::Wsl1 => {
             return Err(unsupported_platform(
-                "unsupported_wsl_cross_topology",
-                "WSL_DISTRO_NAME is present outside an observable WSL kernel boundary",
+                "unsupported_wsl1",
+                "the observed Microsoft Linux kernel is not a WSL2 kernel",
             ));
         }
-        return Ok(LocalPlatformBoundary {
-            target_triple,
-            environment: PlatformEnvironment::Linux,
-        });
-    }
-    if !(kernel.contains("wsl2") || kernel.contains("microsoft-standard")) {
-        return Err(unsupported_platform(
-            "unsupported_wsl1",
-            "the observed Microsoft Linux kernel is not a WSL2 kernel",
-        ));
+        LinuxKernelBoundary::Wsl2 => {}
     }
 
-    let distribution_name = facts.wsl_distribution_name.ok_or_else(|| {
-        unavailable_platform(
-            "wsl2_distribution_unavailable",
-            "WSL_DISTRO_NAME is absent inside the WSL2 process",
-        )
-    })?;
     let os_release = facts.os_release.ok_or_else(|| {
         unavailable_platform(
             "wsl2_distribution_unavailable",
             "/etc/os-release was not observed inside the WSL2 process",
         )
     })?;
-    let (distribution_id, distribution_version) = parse_os_release(&os_release)?;
-    if distribution_name != PINNED_WSL2_DISTRIBUTION_NAME
-        || distribution_id != PINNED_WSL2_DISTRIBUTION_ID
+    let (distribution_id, distribution_version) = parse_os_release(os_release)?;
+    if distribution_id != PINNED_WSL2_DISTRIBUTION_ID
         || distribution_version != PINNED_WSL2_DISTRIBUTION_VERSION
     {
         return Err(unsupported_platform(
             "unsupported_wsl2_distribution",
             format!(
-                "expected {PINNED_WSL2_DISTRIBUTION_NAME} with ID={PINNED_WSL2_DISTRIBUTION_ID} and VERSION_ID={PINNED_WSL2_DISTRIBUTION_VERSION}"
+                "expected ID={PINNED_WSL2_DISTRIBUTION_ID} and VERSION_ID={PINNED_WSL2_DISTRIBUTION_VERSION}"
             ),
         ));
     }
@@ -1056,85 +1064,111 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn injected_platform_facts_accept_only_the_pinned_wsl2_distribution() {
-        let exact = classify_linux_platform_boundary(
+    fn supported_wsl2_uses_kernel_and_os_release_identity() {
+        let boundary = classify_linux_platform_boundary(
             ReleaseTargetTriple::X86_64UnknownLinuxGnu,
             LinuxPlatformFacts {
                 kernel_release: "6.6.87.2-microsoft-standard-WSL2",
-                wsl_distribution_name: Some("Ubuntu-24.04"),
-                os_release: Some("ID=ubuntu\nVERSION_ID=\"24.04\"\n".to_owned()),
+                os_release: Some("ID=ubuntu\nVERSION_ID=\"24.04\"\n"),
             },
         )
-        .expect("exact WSL2 facts should be supported");
-        assert_eq!(exact.environment, PlatformEnvironment::Wsl2);
-        for (name, id, version) in [
-            ("Ubuntu-22.04", "ubuntu", "22.04"),
-            ("Debian", "debian", "12"),
-            ("Ubuntu-24.04", "ubuntu", "24.10"),
-        ] {
+        .expect("supported WSL2 facts should be accepted");
+        assert_eq!(boundary.environment, PlatformEnvironment::Wsl2);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_linux_classification_uses_only_kernel_observation() {
+        let boundary = classify_linux_platform_boundary(
+            ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "6.8.0-generic",
+                os_release: None,
+            },
+        )
+        .expect("a non-Microsoft kernel should be native Linux");
+        assert_eq!(boundary.environment, PlatformEnvironment::Linux);
+        assert_eq!(
+            boundary.target_triple,
+            ReleaseTargetTriple::Aarch64UnknownLinuxGnu
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn microsoft_kernel_without_wsl2_boundary_is_rejected_as_wsl1() {
+        let error = classify_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "4.4.0-19041-Microsoft",
+                os_release: None,
+            },
+        )
+        .expect_err("WSL1 must be unsupported");
+        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
+        assert_eq!(error.reason(), "unsupported_wsl1");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn wsl2_rejects_unsupported_distribution_id() {
+        let error = classify_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "6.6.87.2-microsoft-standard-WSL2",
+                os_release: Some("ID=debian\nVERSION_ID=24.04\n"),
+            },
+        )
+        .expect_err("an unsupported distribution ID must fail closed");
+        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
+        assert_eq!(error.reason(), "unsupported_wsl2_distribution");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn wsl2_rejects_unsupported_distribution_version() {
+        let error = classify_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            LinuxPlatformFacts {
+                kernel_release: "6.6.87.2-microsoft-standard-WSL2",
+                os_release: Some("ID=ubuntu\nVERSION_ID=24.10\n"),
+            },
+        )
+        .expect_err("an unsupported distribution version must fail closed");
+        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
+        assert_eq!(error.reason(), "unsupported_wsl2_distribution");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn wsl2_reports_unavailable_os_release_observations() {
+        for os_release in [None, Some("ID=ubuntu\nmalformed\nVERSION_ID=24.04\n")] {
             let error = classify_linux_platform_boundary(
                 ReleaseTargetTriple::X86_64UnknownLinuxGnu,
                 LinuxPlatformFacts {
                     kernel_release: "6.6.87.2-microsoft-standard-WSL2",
-                    wsl_distribution_name: Some(name),
-                    os_release: Some(format!("ID={id}\nVERSION_ID={version}\n")),
+                    os_release,
                 },
             )
-            .expect_err("neighboring distribution facts must fail closed");
-            assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
-            assert_eq!(error.reason(), "unsupported_wsl2_distribution");
+            .expect_err("unavailable or malformed os-release data must fail closed");
+            assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
+            assert_eq!(error.reason(), "wsl2_distribution_unavailable");
         }
     }
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn injected_platform_facts_reject_wsl1_and_cross_topology() {
-        let wsl1 = classify_linux_platform_boundary(
-            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
-            LinuxPlatformFacts {
-                kernel_release: "4.4.0-19041-Microsoft",
-                wsl_distribution_name: Some("Ubuntu-24.04"),
-                os_release: Some("ID=ubuntu\nVERSION_ID=24.04\n".to_owned()),
-            },
-        )
-        .expect_err("WSL1 must be unsupported");
-        assert_eq!(wsl1.reason(), "unsupported_wsl1");
-
-        let cross = classify_linux_platform_boundary(
-            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
-            LinuxPlatformFacts {
-                kernel_release: "6.8.0-generic",
-                wsl_distribution_name: Some("Ubuntu-24.04"),
-                os_release: None,
-            },
-        )
-        .expect_err("WSL environment values outside WSL must fail closed");
-        assert_eq!(cross.reason(), "unsupported_wsl_cross_topology");
-
-        let native = classify_linux_platform_boundary(
-            ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
-            LinuxPlatformFacts {
-                kernel_release: "6.8.0-generic",
-                wsl_distribution_name: None,
-                os_release: None,
-            },
-        )
-        .expect("native Linux should remain supported");
-        assert_eq!(native.environment, PlatformEnvironment::Linux);
-        assert_eq!(
-            native.target_triple,
-            ReleaseTargetTriple::Aarch64UnknownLinuxGnu
-        );
-        let arm_wsl2 = classify_linux_platform_boundary(
+    fn wsl2_rejects_unsupported_release_target() {
+        let error = classify_linux_platform_boundary(
             ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
             LinuxPlatformFacts {
                 kernel_release: "6.6.87.2-microsoft-standard-WSL2",
-                wsl_distribution_name: Some("Ubuntu-24.04"),
-                os_release: Some("ID=ubuntu\nVERSION_ID=24.04\n".to_owned()),
+                os_release: Some("ID=ubuntu\nVERSION_ID=24.04\n"),
             },
         )
         .expect_err("Linux AArch64 must not satisfy the x86-64 WSL2 environment");
-        assert_eq!(arm_wsl2.reason(), "unsupported_wsl2_target");
+        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
+        assert_eq!(error.reason(), "unsupported_wsl2_target");
     }
 
     #[cfg(target_os = "linux")]

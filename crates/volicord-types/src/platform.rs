@@ -5,9 +5,6 @@ use std::{error::Error, fmt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Exact WSL2 distribution name supported by the first release.
-pub const PINNED_WSL2_DISTRIBUTION_NAME: &str = "Ubuntu-24.04";
-
 /// Exact WSL2 distribution identifier from `/etc/os-release`.
 pub const PINNED_WSL2_DISTRIBUTION_ID: &str = "ubuntu";
 

@@ -1000,7 +1000,8 @@ impl OperationalFixture {
             .env("PATH", &self.path_dir)
             .env(CODEX_VERSION_ENV, version)
             .current_dir(&self.repo_root);
-        copy_required_platform_environment(&mut command);
+        #[cfg(windows)]
+        copy_required_windows_environment(&mut command);
         command
     }
 
@@ -1768,18 +1769,8 @@ fn json_key_exists(value: &Value, key: &str) -> bool {
     }
 }
 
-fn copy_required_platform_environment(command: &mut Command) {
-    #[cfg(target_os = "linux")]
-    if fs::read_to_string("/proc/sys/kernel/osrelease").is_ok_and(|release| {
-        let release = release.to_ascii_lowercase();
-        release.contains("microsoft-standard") || release.contains("wsl2")
-    }) {
-        command.env(
-            "WSL_DISTRO_NAME",
-            volicord_types::PINNED_WSL2_DISTRIBUTION_NAME,
-        );
-    }
-    #[cfg(windows)]
+#[cfg(windows)]
+fn copy_required_windows_environment(command: &mut Command) {
     for name in ["SystemRoot", "WINDIR", "PATHEXT", "TEMP", "TMP"] {
         if let Some(value) = env::var_os(name) {
             command.env(name, value);
