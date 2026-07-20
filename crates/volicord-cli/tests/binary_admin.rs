@@ -538,7 +538,7 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
     let connection_id = init["connection"]["id"]
         .as_str()
         .expect("custom-home connection id");
-    let missing_home = fixture._temporary_root.path().join("missing-explicit-home");
+    let missing_home = fixture._temporary_root.path().join("missing explicit home");
     let missing_registry_home = fixture
         ._temporary_root
         .path()
@@ -600,6 +600,14 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
                 "{operation} diagnostic did not contain {expected_code}: {diagnostic}"
             );
             assert!(diagnostic.contains(&path_text(unusable_home)));
+            assert!(diagnostic.contains("with `volicord init` using:"));
+            assert!(
+                diagnostic.contains("Select the host and repository when running `volicord init`.")
+            );
+            assert!(!diagnostic.contains("<host>"));
+            assert!(!diagnostic.contains("<path>"));
+            assert!(!diagnostic.contains("'\\''"));
+            assert!(!diagnostic.contains(&format!("--home '{}'", unusable_home.display())));
             assert!(!diagnostic.contains(connection_id));
             assert_eq!(
                 directory_contents(fixture._temporary_root.path())?,
@@ -662,6 +670,91 @@ fn selection_failure_names_the_selected_runtime_home_and_repository() -> Result<
     assert!(diagnostic.contains(&path_text(&fixture.runtime_home)));
     assert!(diagnostic.contains(&path_text(&unregistered_repo)));
     Ok(())
+}
+
+#[test]
+fn shell_neutral_connection_guidance_preserves_one_unsafe_custom_home() -> Result<(), Box<dyn Error>>
+{
+    let mut fixture = IsolatedInitFixture::new("binary-shell-neutral-guidance")?;
+    fixture.runtime_home = fixture
+        ._temporary_root
+        .path()
+        .join("Volicord Runtime Home's");
+    fixture.repo_root = fixture._temporary_root.path().join("Product Repository's");
+    fs::create_dir_all(&fixture.runtime_home)?;
+    fs::create_dir_all(fixture.repo_root.join(".git"))?;
+
+    let initialized = fixture.run_init_with_output(false, None)?;
+    assert_eq!(initialized.status.code(), Some(1));
+    assert_eq!(stderr(&initialized)?, "");
+    let diagnostic_guidance = stdout(&initialized)?;
+    assert!(
+        diagnostic_guidance.contains(&format!("  Repository: {}\n", fixture.repo_root.display()))
+    );
+    assert!(diagnostic_guidance.contains(&format!(
+        "  Runtime home: {}\n",
+        fixture.runtime_home.display()
+    )));
+    assert!(diagnostic_guidance.contains("  Verbose output: required."));
+    assert_shell_neutral_guidance(&diagnostic_guidance, &fixture.runtime_home);
+
+    let direct_status = fixture.run_connection_verbose("status")?;
+    assert_eq!(direct_status.status.code(), Some(1));
+    assert_eq!(stderr(&direct_status)?, "");
+    assert!(stdout(&direct_status)?.contains(&format!(
+        "  Runtime home: {}\n",
+        fixture.runtime_home.display()
+    )));
+
+    let unregistered_repo = fixture.create_repository("Unregistered Product Repository's")?;
+    let selection = fixture.run_connection_for_repo("status", &unregistered_repo, false)?;
+    assert_eq!(selection.status.code(), Some(1));
+    assert_eq!(stdout(&selection)?, "");
+    let selection_guidance = stderr(&selection)?;
+    assert!(selection_guidance.contains("PROJECT_NOT_REGISTERED"));
+    assert!(
+        selection_guidance.contains(&format!("  Repository: {}\n", unregistered_repo.display()))
+    );
+    assert!(selection_guidance.contains(&format!(
+        "  Runtime home: {}\n",
+        fixture.runtime_home.display()
+    )));
+    assert_shell_neutral_guidance(&selection_guidance, &fixture.runtime_home);
+
+    let registry = rusqlite::Connection::open(registry_db_path(&fixture.runtime_home))?;
+    registry.execute("DELETE FROM guard_installations", [])?;
+    drop(registry);
+    let before_failure = fixture.registry_snapshot();
+    let mode = fixture.run_connection_mode_human("read-only")?;
+    assert_eq!(mode.status.code(), Some(1));
+    assert_eq!(stdout(&mode)?, "");
+    let mode_guidance = stderr(&mode)?;
+    assert!(mode_guidance.contains("exactly one current Guard Installation"));
+    assert!(mode_guidance.contains(&format!("  Repository: {}\n", fixture.repo_root.display())));
+    assert!(mode_guidance.contains(&format!(
+        "  Runtime home: {}\n",
+        fixture.runtime_home.display()
+    )));
+    assert!(mode_guidance.contains("  Connection intent: personal\n"));
+    assert!(mode_guidance.ends_with("  Profile: record.\n"));
+    assert_shell_neutral_guidance(&mode_guidance, &fixture.runtime_home);
+    let after_failure = fixture.registry_snapshot();
+    assert_eq!(
+        after_failure.agent_connections,
+        before_failure.agent_connections
+    );
+    assert_eq!(
+        after_failure.guard_installations,
+        before_failure.guard_installations
+    );
+    Ok(())
+}
+
+fn assert_shell_neutral_guidance(output: &str, runtime_home: &Path) {
+    assert!(output.contains(&path_text(runtime_home)));
+    assert!(!output.contains("'\\''"));
+    assert!(!output.contains(&format!("--home '{}';", runtime_home.display())));
+    assert!(!output.contains(&format!("--home '{}'", runtime_home.display())));
 }
 
 #[test]

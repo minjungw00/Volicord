@@ -12,16 +12,16 @@ use volicord_store::{
     bootstrap::project_record_by_repo_root_read_only,
 };
 
-use crate::guard_integration::hooks::shell_word;
 use crate::host_integration::{
     codex::CodexAdapter, ConnectionIntent, HostAdapter, HostKind, HostScope,
 };
 
 use super::{
     args::{absolute_path, ParsedConnectionOptions},
-    codex_environment, connection_intent_from_flags, intent_flag_suffix,
+    codex_environment, connection_intent_from_flags,
+    guidance::ConnectionUserInvocation,
     output::display_project_roots,
-    path_text, public_host_label, public_host_name_text, public_mode_text, ConnectionCommandError,
+    public_host_label, public_host_name_text, public_mode_text, ConnectionCommandError,
     ConnectionProcess,
 };
 
@@ -200,12 +200,9 @@ fn select_connection_with_diagnostic_reads(
     diagnostic_reads: bool,
 ) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
     if project_record_by_repo_root_read_only(runtime_home, &selector.repo_root)?.is_none() {
-        return Err(ConnectionCommandError::runtime(format!(
-            "PROJECT_NOT_REGISTERED: repository {} is not registered in Runtime Home {}; run `{}` first",
-            selector.repo_root.display(),
-            runtime_home.display(),
-            selector_repair_command(selector, runtime_home)
-        )));
+        return Err(ConnectionCommandError::runtime(
+            project_not_registered_message(selector, runtime_home),
+        ));
     }
     let mut matches = Vec::new();
     let mut same_host_connections = Vec::new();
@@ -247,20 +244,12 @@ fn select_connection_with_diagnostic_reads(
         }
     }
     match matches.len() {
-        0 if same_host_connections.is_empty() => Err(ConnectionCommandError::runtime(format!(
-            "CONNECTION_NOT_FOUND: no Agent Connection in Runtime Home {} matches host {}, intent {}, and repository {}; run `{}`",
-            runtime_home.display(),
-            public_host_label(selector.host_kind),
-            selector_intent_text(selector),
-            selector.repo_root.display(),
-            selector_repair_command(selector, runtime_home)
-        ))),
-        0 => Err(ConnectionCommandError::runtime(format!(
-            "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist in Runtime Home {}; run `{}`",
-            selector.repo_root.display(),
-            runtime_home.display(),
-            selector_repair_command(selector, runtime_home)
-        ))),
+        0 if same_host_connections.is_empty() => Err(ConnectionCommandError::runtime(
+            connection_not_found_message(selector, runtime_home),
+        )),
+        0 => Err(ConnectionCommandError::runtime(
+            connection_allowlist_mismatch_message(selector, runtime_home),
+        )),
         1 => Ok(matches.remove(0)),
         _ => Err(ConnectionCommandError::runtime(ambiguous_selector_message(
             selector, &matches,
@@ -285,30 +274,46 @@ fn selector_intent_text(selector: &ConnectionSelector) -> &'static str {
         .unwrap_or("any")
 }
 
-fn selector_repair_command(selector: &ConnectionSelector, runtime_home: &Path) -> String {
-    let runtime_home = shell_word(&path_text(runtime_home));
-    let repo_root = shell_word(&path_text(&selector.repo_root));
-    match selector.intent {
-        Some(intent @ ConnectionIntent::Personal) => format!(
-            "volicord connection add {}{} --repo {} --home {}",
-            public_host_label(selector.host_kind),
-            intent_flag_suffix(intent),
-            repo_root,
-            runtime_home
-        ),
-        Some(ConnectionIntent::Shared) => format!(
-            "volicord init --host {} --shared --repo {} --home {}",
-            public_host_label(selector.host_kind),
-            repo_root,
-            runtime_home
-        ),
-        None => format!(
-            "volicord init --host {} --repo {} --home {}",
-            public_host_label(selector.host_kind),
-            repo_root,
-            runtime_home
-        ),
-    }
+fn selector_repair_guidance(selector: &ConnectionSelector, runtime_home: &Path) -> String {
+    ConnectionUserInvocation::selection_repair(
+        selector.host_kind,
+        &selector.repo_root,
+        runtime_home,
+        selector.intent,
+    )
+    .render_guidance()
+}
+
+fn project_not_registered_message(selector: &ConnectionSelector, runtime_home: &Path) -> String {
+    format!(
+        "PROJECT_NOT_REGISTERED: repository {} is not registered in Runtime Home {}. {}",
+        selector.repo_root.display(),
+        runtime_home.display(),
+        selector_repair_guidance(selector, runtime_home)
+    )
+}
+
+fn connection_not_found_message(selector: &ConnectionSelector, runtime_home: &Path) -> String {
+    format!(
+        "CONNECTION_NOT_FOUND: no Agent Connection in Runtime Home {} matches host {}, intent {}, and repository {}. {}",
+        runtime_home.display(),
+        public_host_label(selector.host_kind),
+        selector_intent_text(selector),
+        selector.repo_root.display(),
+        selector_repair_guidance(selector, runtime_home)
+    )
+}
+
+fn connection_allowlist_mismatch_message(
+    selector: &ConnectionSelector,
+    runtime_home: &Path,
+) -> String {
+    format!(
+        "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist in Runtime Home {}. {}",
+        selector.repo_root.display(),
+        runtime_home.display(),
+        selector_repair_guidance(selector, runtime_home)
+    )
 }
 
 fn ambiguous_target_message(connections: &[AgentConnectionRecord]) -> String {
@@ -345,4 +350,94 @@ fn ambiguous_selector_message(
     }
     message.push_str("Use a more specific repository path or remove the duplicate connection.\n");
     message
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn selector(intent: Option<ConnectionIntent>, repository: &str) -> ConnectionSelector {
+        ConnectionSelector {
+            host_kind: HostKind::Codex,
+            intent,
+            host_scope: intent.map(|intent| match intent {
+                ConnectionIntent::Personal => HostScope::User,
+                ConnectionIntent::Shared => HostScope::Project,
+            }),
+            repo_root: PathBuf::from(repository),
+        }
+    }
+
+    #[test]
+    fn connection_user_guidance_selection_errors_append_complete_portable_repairs() {
+        let runtime_home = Path::new("/runtime");
+        let cases = [
+            (
+                project_not_registered_message(
+                    &selector(Some(ConnectionIntent::Personal), "/workspace/product"),
+                    runtime_home,
+                ),
+                "PROJECT_NOT_REGISTERED",
+                "Run `volicord connection add codex --repo /workspace/product --home /runtime` first.",
+            ),
+            (
+                connection_not_found_message(
+                    &selector(Some(ConnectionIntent::Shared), "/workspace/product"),
+                    runtime_home,
+                ),
+                "CONNECTION_NOT_FOUND",
+                "Run `volicord init --host codex --shared --repo /workspace/product --home /runtime` first.",
+            ),
+            (
+                connection_allowlist_mismatch_message(
+                    &selector(None, "/workspace/product"),
+                    runtime_home,
+                ),
+                "CONNECTION_ALLOWLIST_MISMATCH",
+                "Run `volicord init --host codex --repo /workspace/product --home /runtime` first.",
+            ),
+        ];
+        for (message, code, guidance) in cases {
+            assert!(message.starts_with(code));
+            assert!(message.ends_with(guidance));
+        }
+    }
+
+    #[test]
+    fn connection_user_guidance_selection_errors_structure_unsafe_repairs() {
+        let runtime_home = Path::new(r"C:\Users\Example User\.volicord");
+        for (message, code) in [
+            (
+                project_not_registered_message(
+                    &selector(
+                        Some(ConnectionIntent::Personal),
+                        "/workspace/product repo's",
+                    ),
+                    runtime_home,
+                ),
+                "PROJECT_NOT_REGISTERED",
+            ),
+            (
+                connection_not_found_message(
+                    &selector(Some(ConnectionIntent::Shared), "/workspace/product repo's"),
+                    runtime_home,
+                ),
+                "CONNECTION_NOT_FOUND",
+            ),
+            (
+                connection_allowlist_mismatch_message(
+                    &selector(None, "/workspace/product repo's"),
+                    runtime_home,
+                ),
+                "CONNECTION_ALLOWLIST_MISMATCH",
+            ),
+        ] {
+            assert!(message.starts_with(code));
+            assert!(message.contains("  Repository: /workspace/product repo's\n"));
+            assert!(message.contains("  Runtime home: C:\\Users\\Example User\\.volicord\n"));
+            assert!(!message.contains("`volicord"));
+            assert!(!message.contains("'\\''"));
+            assert!(!message.contains("--home '"));
+        }
+    }
 }

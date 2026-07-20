@@ -13,8 +13,8 @@ use volicord_cli::{
     changes_command::{run_changes_command, ChangesCommandError},
     cli::{Cli, Command as CliCommand, McpArgs, PolicyCommand as CliPolicyCommand},
     connection_command::{
-        run_connection_command, run_init_command, ConnectionCommandError,
-        ProductionConnectionProcess,
+        connection_setup_required_message, run_connection_command, run_init_command,
+        ConnectionCommandError, ProductionConnectionProcess,
     },
     diagnostics_command::{run_diagnostics_command, DiagnosticsCommandError},
     doctor_command::{run_doctor_command, DoctorCommandError},
@@ -195,11 +195,13 @@ where
     let runtime_home = resolve_runtime_home(|name| env_var(name), current_dir)?;
     match installation_profile(&runtime_home) {
         Ok(Some(_)) => Ok(()),
-        Ok(None) => Err(CliError::runtime(setup_required_message(&runtime_home))),
+        Ok(None) => Err(CliError::runtime(connection_setup_required_message(
+            &runtime_home,
+        ))),
         Err(error) => Err(CliError::runtime(format!(
             "{}; {}",
             error,
-            setup_required_message(&runtime_home)
+            connection_setup_required_message(&runtime_home)
         ))),
     }
 }
@@ -237,20 +239,6 @@ fn managed_process_binding_required() -> CliError {
     CliError::runtime(
         "RUNTIME_HOME_BINDING_REQUIRED: managed host hook commands require a current generated wrapper to supply an absolute, non-empty VOLICORD_HOME, the managed process binding marker, and the installation profile's selected executable; rerun `volicord init` for this Product Repository and reload the host",
     )
-}
-
-fn setup_required_message(runtime_home: &Path) -> String {
-    if !runtime_home.exists() {
-        format!(
-            "RUNTIME_HOME_MISSING: Runtime Home {} is missing.\nRun from the Product Repository:\n  volicord init --host <host> --repo <path>",
-            runtime_home.display()
-        )
-    } else {
-        format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}.\nRun from the Product Repository:\n  volicord init --host <host> --repo <path>",
-            runtime_home.display()
-        )
-    }
 }
 
 fn command_mcp<F>(args: McpArgs, env_var: F, current_dir: &Path) -> Result<String, CliError>

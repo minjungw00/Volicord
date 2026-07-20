@@ -347,6 +347,11 @@ fn connection_mode_preflight_failure_preserves_connection() -> Result<(), Box<dy
     let error = String::from_utf8(failed.stderr)?;
     assert!(error.contains("exactly one current Guard Installation"));
     assert!(error.contains("volicord init"));
+    assert!(error.contains(&fixture.runtime_home.display().to_string()));
+    assert!(error.contains(&fixture.repo_root.display().to_string()));
+    assert!(error.contains("record"));
+    assert!(!error.contains("'\\''"));
+    assert!(!error.contains(&format!("'{}'", fixture.runtime_home.display())));
     let after = fixture.registry_snapshot().agent_connections[0].clone();
     assert_eq!(after, before);
     Ok(())

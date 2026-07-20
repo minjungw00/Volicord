@@ -192,11 +192,13 @@ offering to replay the mutation. An applied `remove` result offers no replay
 diagnostic. `complete` results without actionable diagnostics omit the
 guidance. Every generated connection follow-up command carries the selected
 absolute Runtime Home with `--home PATH`, so running it does not depend on the
-caller's environment. The renderer shows one inline command only when every
-logical argument is a nonempty portable literal token made from ASCII letters,
-digits, `_`, `-`, `.`, `/`, `:`, or `=`. That deliberately conservative
-form needs no argument-specific quoting in POSIX shells, PowerShell, or Command
-Prompt.
+caller's environment.
+
+Connection setup, selection, repair, and diagnostic guidance uses one command
+presentation rule. It shows one inline command only when every logical
+argument is a nonempty portable literal token made from ASCII letters, digits,
+`_`, `-`, `.`, `/`, `:`, or `=`. That deliberately conservative form needs no
+argument-specific quoting in POSIX shells, PowerShell, or Command Prompt.
 
 If the repository or Runtime Home needs shell-specific quoting, the renderer
 instead labels the exact host, repository, Runtime Home, optional shared scope,
@@ -215,6 +217,12 @@ For detailed current Connection diagnostics, run the verbose status command with
   Runtime home: C:\Users\Example User\.volicord
   Verbose output: required.
 ```
+
+When setup cannot continue because the selected Runtime Home is missing or has
+no Installation Profile, the guidance may show that exact Runtime Home as a
+labelled field without a complete command. The caller selects the host and
+Product Repository when running `volicord init`; the guidance does not insert
+unknown coordinates into a placeholder command.
 
 `--verbose` renders a complete human diagnostic view. It starts with the same
 operation-aware headline as concise output, then uses the applicable

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use volicord_types::{
     ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckKind,
@@ -6,7 +6,10 @@ use volicord_types::{
 };
 
 use super::report::{CommandOperation, ConnectionCommandReport, ConnectionCommandResult};
-use crate::connection_command::{PlannedConnectionChange, PlannedConnectionChangeKind};
+use crate::connection_command::{
+    guidance::{ConnectionUserInvocation, DiagnosticOperation},
+    PlannedConnectionChange, PlannedConnectionChangeKind,
+};
 
 pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) -> String {
     let counts = CheckCounts::from_report(report);
@@ -76,8 +79,7 @@ fn concise_diagnostic_hint(report: &ConnectionCommandReport) -> Option<String> {
             has_nonpassing_check.then(|| current_status_diagnostic_hint(report))
         }
         CommandOperation::Verify => has_nonpassing_check.then(|| {
-            ConnectionDiagnosticInvocation::from_report(report, DiagnosticOperation::Verify)
-                .render_guidance()
+            diagnostic_invocation_from_report(report, DiagnosticOperation::Verify).render_guidance()
         }),
         CommandOperation::Init | CommandOperation::Add if report.dry_run => {
             Some("Run the same dry-run command with --verbose for detailed diagnostics.".to_owned())
@@ -122,151 +124,30 @@ fn concise_diagnostic_hint(report: &ConnectionCommandReport) -> Option<String> {
 }
 
 fn current_status_diagnostic_hint(report: &ConnectionCommandReport) -> String {
-    ConnectionDiagnosticInvocation::from_report(report, DiagnosticOperation::Status)
-        .render_guidance()
+    diagnostic_invocation_from_report(report, DiagnosticOperation::Status).render_guidance()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DiagnosticOperation {
-    Status,
-    Verify,
-}
-
-impl DiagnosticOperation {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Status => "status",
-            Self::Verify => "verify",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ConnectionDiagnosticInvocation {
+fn diagnostic_invocation_from_report(
+    report: &ConnectionCommandReport,
     operation: DiagnosticOperation,
-    host: HostKind,
-    repository: PathBuf,
-    runtime_home: PathBuf,
-    shared: bool,
-}
-
-impl ConnectionDiagnosticInvocation {
-    fn from_report(report: &ConnectionCommandReport, operation: DiagnosticOperation) -> Self {
-        let host = report
-            .connection
-            .host
-            .parse::<HostKind>()
-            .expect("Connection command report host must be canonical");
-        let shared = match report.connection.scope.as_str() {
-            scope if scope == HostScope::User.as_str() => false,
-            scope if scope == HostScope::Project.as_str() => true,
-            _ => unreachable!("Connection command reports contain a typed host scope"),
-        };
-        Self {
-            operation,
-            host,
-            repository: PathBuf::from(&report.connection.repository),
-            runtime_home: PathBuf::from(&report.runtime_home),
-            shared,
-        }
-    }
-
-    fn arguments(&self) -> Vec<String> {
-        let mut arguments = vec![
-            "volicord".to_owned(),
-            "connection".to_owned(),
-            self.operation.as_str().to_owned(),
-            self.host.as_str().to_owned(),
-            "--repo".to_owned(),
-            path_value(&self.repository),
-            "--home".to_owned(),
-            path_value(&self.runtime_home),
-        ];
-        if self.shared {
-            arguments.push("--shared".to_owned());
-        }
-        arguments.push("--verbose".to_owned());
-        arguments
-    }
-
-    fn render_guidance(&self) -> String {
-        let arguments = self.arguments();
-        if arguments
-            .iter()
-            .all(|argument| is_portable_inline_token(argument))
-        {
-            let command = arguments.join(" ");
-            return match self.operation {
-                DiagnosticOperation::Status => {
-                    format!("Run `{command}` for detailed current Connection diagnostics.")
-                }
-                DiagnosticOperation::Verify => {
-                    format!("Rerun active verification with `{command}` for detailed diagnostics.")
-                }
-            };
-        }
-
-        self.render_structured_guidance()
-    }
-
-    fn render_structured_guidance(&self) -> String {
-        let introduction = match self.operation {
-            DiagnosticOperation::Status => {
-                "For detailed current Connection diagnostics, run the verbose status command with:"
-            }
-            DiagnosticOperation::Verify => {
-                "For detailed diagnostics, rerun active verification with:"
-            }
-        };
-        let repository = path_value(&self.repository);
-        let runtime_home = path_value(&self.runtime_home);
-        let uses_control_notation =
-            contains_control(&repository) || contains_control(&runtime_home);
-        let mut lines = vec![
-            introduction.to_owned(),
-            String::new(),
-            format!("  Host: {}", self.host.as_str()),
-            render_structured_path("Repository", &repository),
-            render_structured_path("Runtime home", &runtime_home),
-        ];
-        if self.shared {
-            lines.push("  Scope: shared".to_owned());
-        }
-        if uses_control_notation {
-            lines.push(
-                "  Control-character values use JSON string notation; its quotation marks and escape sequences are not part of the value."
-                    .to_owned(),
-            );
-        }
-        lines.push("  Verbose output: required.".to_owned());
-        lines.join("\n")
-    }
-}
-
-fn path_value(path: &Path) -> String {
-    path.display().to_string()
-}
-
-fn is_portable_inline_token(value: &str) -> bool {
-    !value.is_empty()
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b'/' | b':' | b'=')
-        })
-}
-
-fn contains_control(value: &str) -> bool {
-    value.chars().any(char::is_control)
-}
-
-fn render_structured_path(label: &str, value: &str) -> String {
-    if contains_control(value) {
-        format!(
-            "  {label} (JSON string): {}",
-            serde_json::to_string(value).expect("a path display value serializes as JSON")
-        )
-    } else {
-        format!("  {label}: {value}")
-    }
+) -> ConnectionUserInvocation {
+    let host = report
+        .connection
+        .host
+        .parse::<HostKind>()
+        .expect("Connection command report host must be canonical");
+    let scope = match report.connection.scope.as_str() {
+        scope if scope == HostScope::User.as_str() => HostScope::User,
+        scope if scope == HostScope::Project.as_str() => HostScope::Project,
+        _ => unreachable!("Connection command reports contain a typed host scope"),
+    };
+    ConnectionUserInvocation::diagnostic(
+        operation,
+        host,
+        Path::new(&report.connection.repository),
+        Path::new(&report.runtime_home),
+        scope,
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -591,11 +472,6 @@ mod tests {
             render_command_report, CommandConnection, CommandOperation, ConnectionCommandReport,
         },
         planning::{PlannedChangeOperation, PlannedConnectionChange, PlannedConnectionChangeKind},
-    };
-
-    use super::{
-        contains_control, is_portable_inline_token, ConnectionDiagnosticInvocation,
-        DiagnosticOperation,
     };
 
     fn connection(mode: &str) -> CommandConnection {
@@ -1000,188 +876,7 @@ mod tests {
     }
 
     #[test]
-    fn connection_diagnostic_invocation_preserves_default_and_custom_home_arguments() {
-        let mut personal = report(
-            CommandOperation::Status,
-            None,
-            vec![failed_check()],
-            Vec::new(),
-        );
-        personal.runtime_home = "/home/user/.volicord".to_owned();
-        let status =
-            ConnectionDiagnosticInvocation::from_report(&personal, DiagnosticOperation::Status);
-        assert_eq!(
-            status.arguments(),
-            [
-                "volicord",
-                "connection",
-                "status",
-                "codex",
-                "--repo",
-                "/workspace/product",
-                "--home",
-                "/home/user/.volicord",
-                "--verbose",
-            ]
-        );
-        assert_eq!(
-            status.arguments().last().map(String::as_str),
-            Some("--verbose")
-        );
-
-        let mut shared = personal;
-        shared.connection = CommandConnection::new(
-            "connection_1",
-            "codex",
-            "project",
-            "workflow",
-            Path::new("/workspace/shared-product"),
-            "/workspace/shared-product/.codex/config.toml",
-        );
-        shared.runtime_home = "/srv/volicord/team-a".to_owned();
-        let verify =
-            ConnectionDiagnosticInvocation::from_report(&shared, DiagnosticOperation::Verify);
-        assert_eq!(
-            verify.arguments(),
-            [
-                "volicord",
-                "connection",
-                "verify",
-                "codex",
-                "--repo",
-                "/workspace/shared-product",
-                "--home",
-                "/srv/volicord/team-a",
-                "--shared",
-                "--verbose",
-            ]
-        );
-        assert_eq!(
-            verify.arguments().last().map(String::as_str),
-            Some("--verbose")
-        );
-    }
-
-    #[test]
-    fn connection_diagnostic_portable_token_policy_is_strict_and_platform_independent() {
-        for value in [
-            "volicord",
-            "connection",
-            "status",
-            "ABCxyz019_-./:=",
-            "C:/Users/Example/.volicord",
-        ] {
-            assert!(is_portable_inline_token(value), "portable token: {value:?}");
-        }
-        for value in [
-            "",
-            "with space",
-            "with\ttab",
-            "with\nnewline",
-            "single'quote",
-            "double\"quote",
-            r"back\slash",
-            "$HOME",
-            "%USERPROFILE%",
-            "bang!",
-            "a&b",
-            "a|b",
-            "a>b",
-            "a<b",
-            "(value)",
-            "a;b",
-            "a*b",
-            "a?b",
-            "a[b]",
-            "@arguments",
-            "제품",
-        ] {
-            assert!(!is_portable_inline_token(value), "unsafe token: {value:?}");
-        }
-    }
-
-    #[test]
-    fn connection_diagnostic_simple_arguments_render_one_exact_inline_command() {
-        let report = report(
-            CommandOperation::Status,
-            None,
-            vec![failed_check()],
-            Vec::new(),
-        );
-        assert_eq!(
-            ConnectionDiagnosticInvocation::from_report(
-                &report,
-                DiagnosticOperation::Status,
-            )
-            .render_guidance(),
-            "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics."
-        );
-    }
-
-    #[test]
-    fn connection_diagnostic_unsafe_paths_render_exact_labelled_values() {
-        for (repository, runtime_home) in [
-            ("/workspace/product repo", "/runtime"),
-            ("/workspace/product's", "/runtime"),
-            ("/workspace/product", "/runtime home"),
-            ("/workspace/product", r"C:\Users\Example User\.volicord"),
-            ("%USERPROFILE%/product", "/runtime"),
-            ("$HOME/product", "/runtime"),
-            ("/workspace/a&b", "/runtime"),
-            ("/workspace/a|b", "/runtime"),
-            ("/workspace/(product)", "/runtime"),
-            ("/workspace/product;next", "/runtime"),
-            ("/workspace/product*", "/runtime"),
-            ("/workspace/product?", "/runtime"),
-            ("/workspace/control\npath", "/runtime"),
-            ("/workspace/제품", "/runtime"),
-        ] {
-            let mut report = report(
-                CommandOperation::Status,
-                None,
-                vec![failed_check()],
-                Vec::new(),
-            );
-            report.connection = CommandConnection::new(
-                "connection_1",
-                "codex",
-                "user",
-                "workflow",
-                Path::new(repository),
-                "/config-target",
-            );
-            report.runtime_home = runtime_home.to_owned();
-
-            let output =
-                ConnectionDiagnosticInvocation::from_report(&report, DiagnosticOperation::Status)
-                    .render_guidance();
-            assert!(output.starts_with(
-                "For detailed current Connection diagnostics, run the verbose status command with:\n\n  Host: codex\n"
-            ));
-            assert!(output.contains(&structured_path_expectation("Repository", repository)));
-            assert!(output.contains(&structured_path_expectation("Runtime home", runtime_home)));
-            assert!(output.ends_with("  Verbose output: required."));
-            assert!(!output.contains("volicord connection"));
-            assert!(!output.contains('`'));
-            assert!(!output.contains("'\\''"));
-            assert!(!output.contains(&format!("'{repository}'")));
-            assert!(!output.contains("copyable"));
-        }
-    }
-
-    fn structured_path_expectation(label: &str, value: &str) -> String {
-        if contains_control(value) {
-            format!(
-                "  {label} (JSON string): {}",
-                serde_json::to_string(value).unwrap()
-            )
-        } else {
-            format!("  {label}: {value}")
-        }
-    }
-
-    #[test]
-    fn connection_diagnostic_structured_shared_guidance_keeps_scope_without_shell_quotes() {
+    fn concise_connection_diagnostic_uses_shared_structured_guidance() {
         let mut report = report(
             CommandOperation::Status,
             None,
@@ -1207,18 +902,14 @@ mod tests {
         )));
 
         report.operation = CommandOperation::Verify;
-        assert_eq!(
-            ConnectionDiagnosticInvocation::from_report(&report, DiagnosticOperation::Verify,)
-                .render_guidance(),
-            concat!(
-                "For detailed diagnostics, rerun active verification with:\n\n",
-                "  Host: codex\n",
-                "  Repository: /workspace/product repo's\n",
-                "  Runtime home: /runtime\n",
-                "  Scope: shared\n",
-                "  Verbose output: required."
-            )
-        );
+        assert!(concise(&report).contains(concat!(
+            "For detailed diagnostics, rerun active verification with:\n\n",
+            "  Host: codex\n",
+            "  Repository: /workspace/product repo's\n",
+            "  Runtime home: /runtime\n",
+            "  Scope: shared\n",
+            "  Verbose output: required."
+        )));
     }
 
     #[test]

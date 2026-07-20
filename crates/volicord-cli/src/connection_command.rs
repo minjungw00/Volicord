@@ -47,7 +47,6 @@ use crate::cli::{
     ConnectionRemoveArgs, ConnectionSelectArgs, InitArgs,
 };
 use crate::guard_integration::audit::guard_manifest_binding_valid_for_installation;
-use crate::guard_integration::hooks::shell_word;
 use crate::guard_integration::{
     apply_guard_integration, apply_guard_migration_protection, guard_installation_upsert,
     plan_guard_integration, record_guard_installation, GuardIntegrationError, GuardIntegrationPlan,
@@ -64,6 +63,7 @@ use crate::{
 };
 
 mod args;
+mod guidance;
 mod mcp_process;
 mod output;
 mod persisted_state;
@@ -81,6 +81,9 @@ use args::{
     absolute_path, connection_add_options, connection_list_options, connection_mode_options,
     connection_output_format, connection_remove_options, connection_select_options, init_options,
     init_output_format, InitMode, OutputFormat, ParsedConnectionOptions, ParsedInitOptions,
+};
+use guidance::{
+    render_runtime_home_setup_guidance, ConnectionUserInvocation, RuntimeHomeSetupState,
 };
 use mcp_process::mcp_launch_from_host_plan;
 use output::{
@@ -558,7 +561,7 @@ fn preflight_mode_guard_rebinds(
 
     for project in projects {
         let repair =
-            owning_init_repair_command(connection, &project.project.repo_root, runtime_home);
+            owning_init_repair_guidance(connection, &project.project.repo_root, runtime_home)?;
         let installations = list_guard_installations(
             runtime_home,
             &connection.connection_internal_id,
@@ -566,26 +569,26 @@ fn preflight_mode_guard_rebinds(
         )
         .map_err(|error| {
             ConnectionCommandError::runtime(format!(
-                "cannot change the Connection mode because the Guard Installation for {} is malformed or unavailable: {error}; repair it by rerunning `{repair}`",
-                project.project.repo_root.display()
+                "cannot change the Connection mode because the Guard Installation for {} is malformed or unavailable: {error}. {repair}",
+                project.project.repo_root.display(),
             ))
         })?;
         let [installation] = installations.as_slice() else {
             return Err(ConnectionCommandError::runtime(format!(
-                "cannot change the Connection mode because {} must have exactly one current Guard Installation; repair it by rerunning `{repair}`",
-                project.project.repo_root.display()
+                "cannot change the Connection mode because {} must have exactly one current Guard Installation. {repair}",
+                project.project.repo_root.display(),
             )));
         };
         if !guard_manifest_binding_valid_for_installation(installation, connection, projects) {
             return Err(ConnectionCommandError::runtime(format!(
-                "cannot change the Connection mode because Guard Installation {} is not owned by the selected Connection and project; repair it by rerunning `{repair}`",
-                installation.guard_installation_id
+                "cannot change the Connection mode because Guard Installation {} is not owned by the selected Connection and project. {repair}",
+                installation.guard_installation_id,
             )));
         }
         let mut manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|error| {
             ConnectionCommandError::runtime(format!(
-                "cannot change the Connection mode because Guard Installation {} is malformed: {error}; repair it by rerunning `{repair}`",
-                installation.guard_installation_id
+                "cannot change the Connection mode because Guard Installation {} is malformed: {error}. {repair}",
+                installation.guard_installation_id,
             ))
         })?;
         manifest.integration_revision = candidate_revision.clone();
@@ -605,8 +608,8 @@ fn preflight_mode_guard_rebinds(
             projects,
         ) {
             return Err(ConnectionCommandError::runtime(format!(
-                "candidate Guard manifest {} does not match the requested Connection revision; repair the current installation by rerunning `{repair}`",
-                installation.guard_installation_id
+                "candidate Guard manifest {} does not match the requested Connection revision. {repair}",
+                installation.guard_installation_id,
             )));
         }
         rebinds.push(ConnectionModeGuardManifestRebind {
@@ -619,21 +622,19 @@ fn preflight_mode_guard_rebinds(
     Ok(rebinds)
 }
 
-fn owning_init_repair_command(
+fn owning_init_repair_guidance(
     connection: &AgentConnectionRecord,
     repo_root: &Path,
     runtime_home: &Path,
-) -> String {
-    let shared = if connection.intent == CONNECTION_INTENT_SHARED {
-        " --shared"
-    } else {
-        ""
-    };
-    let repo_root = shell_word(&path_text(repo_root));
-    let runtime_home = shell_word(&path_text(runtime_home));
-    format!(
-        "volicord init{shared} --host codex --repo {repo_root} --profile record --home {runtime_home}"
-    )
+) -> Result<String, ConnectionCommandError> {
+    let invocation = ConnectionUserInvocation::owning_init_repair(
+        parse_host_kind(&connection.host_kind)?,
+        repo_root,
+        runtime_home,
+        parse_connection_intent(&connection.intent)?,
+        IntegrationProfile::Record,
+    );
+    Ok(invocation.render_guidance())
 }
 
 fn command_connection_remove(
@@ -794,13 +795,6 @@ fn public_host_label(host_kind: HostKind) -> &'static str {
     }
 }
 
-fn intent_flag_suffix(intent: ConnectionIntent) -> &'static str {
-    match intent {
-        ConnectionIntent::Personal => "",
-        ConnectionIntent::Shared => " --shared",
-    }
-}
-
 fn public_host_name_text(host_kind: &str) -> &str {
     match host_kind {
         HOST_KIND_CODEX => "codex",
@@ -860,19 +854,14 @@ fn required_connection_installation_profile_read_only(
     }
 }
 
-fn connection_setup_required_message(runtime_home: &Path) -> String {
-    let runtime_home_argument = shell_word(&path_text(runtime_home));
-    if runtime_home.exists() {
-        format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path> --home {runtime_home_argument}` from the Product Repository to initialize Volicord.",
-            runtime_home.display(),
-        )
+#[doc(hidden)]
+pub fn connection_setup_required_message(runtime_home: &Path) -> String {
+    let state = if runtime_home.exists() {
+        RuntimeHomeSetupState::InstallationProfileMissing
     } else {
-        format!(
-            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord init --host <host> --repo <path> --home {runtime_home_argument}` from the Product Repository to initialize Volicord.",
-            runtime_home.display(),
-        )
-    }
+        RuntimeHomeSetupState::Missing
+    };
+    render_runtime_home_setup_guidance(runtime_home, state)
 }
 
 struct InitProfilePlan {
