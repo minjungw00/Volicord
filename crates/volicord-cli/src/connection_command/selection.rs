@@ -12,6 +12,7 @@ use volicord_store::{
     bootstrap::project_record_by_repo_root,
 };
 
+use crate::guard_integration::hooks::shell_word;
 use crate::host_integration::{
     codex::CodexAdapter, ConnectionIntent, HostAdapter, HostKind, HostScope,
 };
@@ -20,7 +21,7 @@ use super::{
     args::{absolute_path, ParsedConnectionOptions},
     codex_environment, connection_intent_from_flags, intent_flag_suffix,
     output::display_project_roots,
-    public_host_label, public_host_name_text, public_mode_text, ConnectionCommandError,
+    path_text, public_host_label, public_host_name_text, public_mode_text, ConnectionCommandError,
     ConnectionProcess,
 };
 
@@ -200,9 +201,10 @@ fn select_connection_with_diagnostic_reads(
 ) -> Result<(AgentConnectionRecord, Vec<ConnectionProjectRecord>), ConnectionCommandError> {
     if project_record_by_repo_root(runtime_home, &selector.repo_root)?.is_none() {
         return Err(ConnectionCommandError::runtime(format!(
-            "PROJECT_NOT_REGISTERED: repository {} is not registered; run `{}` first",
+            "PROJECT_NOT_REGISTERED: repository {} is not registered in Runtime Home {}; run `{}` first",
             selector.repo_root.display(),
-            selector_repair_command(selector)
+            runtime_home.display(),
+            selector_repair_command(selector, runtime_home)
         )));
     }
     let mut matches = Vec::new();
@@ -246,16 +248,18 @@ fn select_connection_with_diagnostic_reads(
     }
     match matches.len() {
         0 if same_host_connections.is_empty() => Err(ConnectionCommandError::runtime(format!(
-            "CONNECTION_NOT_FOUND: no Agent Connection matches host {}, intent {}, and repository {}; run `{}`",
+            "CONNECTION_NOT_FOUND: no Agent Connection in Runtime Home {} matches host {}, intent {}, and repository {}; run `{}`",
+            runtime_home.display(),
             public_host_label(selector.host_kind),
             selector_intent_text(selector),
             selector.repo_root.display(),
-            selector_repair_command(selector)
+            selector_repair_command(selector, runtime_home)
         ))),
         0 => Err(ConnectionCommandError::runtime(format!(
-            "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist; run `{}`",
+            "CONNECTION_ALLOWLIST_MISMATCH: repository {} is not in the selected Agent Connection project allowlist in Runtime Home {}; run `{}`",
             selector.repo_root.display(),
-            selector_repair_command(selector)
+            runtime_home.display(),
+            selector_repair_command(selector, runtime_home)
         ))),
         1 => Ok(matches.remove(0)),
         _ => Err(ConnectionCommandError::runtime(ambiguous_selector_message(
@@ -281,23 +285,28 @@ fn selector_intent_text(selector: &ConnectionSelector) -> &'static str {
         .unwrap_or("any")
 }
 
-fn selector_repair_command(selector: &ConnectionSelector) -> String {
+fn selector_repair_command(selector: &ConnectionSelector, runtime_home: &Path) -> String {
+    let runtime_home = shell_word(&path_text(runtime_home));
+    let repo_root = shell_word(&path_text(&selector.repo_root));
     match selector.intent {
         Some(intent @ ConnectionIntent::Personal) => format!(
-            "volicord connection add {}{} --repo {}",
+            "volicord connection add {}{} --repo {} --home {}",
             public_host_label(selector.host_kind),
             intent_flag_suffix(intent),
-            selector.repo_root.display()
+            repo_root,
+            runtime_home
         ),
         Some(ConnectionIntent::Shared) => format!(
-            "volicord init --host {} --shared --repo {}",
+            "volicord init --host {} --shared --repo {} --home {}",
             public_host_label(selector.host_kind),
-            selector.repo_root.display()
+            repo_root,
+            runtime_home
         ),
         None => format!(
-            "volicord init --host {} --repo {}",
+            "volicord init --host {} --repo {} --home {}",
             public_host_label(selector.host_kind),
-            selector.repo_root.display()
+            repo_root,
+            runtime_home
         ),
     }
 }

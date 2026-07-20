@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    ffi::OsString,
     fmt, fs,
     path::{Path, PathBuf},
 };
@@ -45,6 +46,7 @@ use crate::cli::{
     ConnectionRemoveArgs, ConnectionSelectArgs, InitArgs,
 };
 use crate::guard_integration::audit::guard_manifest_binding_valid_for_installation;
+use crate::guard_integration::hooks::shell_word;
 use crate::guard_integration::{
     apply_guard_integration, apply_guard_migration_protection, guard_installation_upsert,
     plan_guard_integration, record_guard_installation, GuardIntegrationError, GuardIntegrationPlan,
@@ -75,8 +77,9 @@ pub use mcp_process::{
 };
 
 use args::{
-    connection_output_format, init_options, init_output_format, InitMode, OutputFormat,
-    ParsedConnectionOptions, ParsedInitOptions,
+    absolute_path, connection_add_options, connection_list_options, connection_mode_options,
+    connection_output_format, connection_remove_options, connection_select_options, init_options,
+    init_output_format, InitMode, OutputFormat, ParsedConnectionOptions, ParsedInitOptions,
 };
 use mcp_process::mcp_launch_from_host_plan;
 use output::{
@@ -232,7 +235,7 @@ pub fn run_connect_command(
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let parsed = ParsedConnectionOptions::from(args);
+    let parsed = connection_add_options(args, current_dir);
     match provision_connection(
         ProvisionConnectionRequest {
             parsed: &parsed,
@@ -287,8 +290,12 @@ pub fn run_connections_command(
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let parsed = ParsedConnectionOptions::from(args);
-    let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
+    let parsed = connection_list_options(args, current_dir);
+    let runtime_home = selected_connection_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        current_dir,
+    )?;
     let repo_root = parsed
         .repo
         .as_deref()
@@ -337,8 +344,12 @@ fn command_connection_status(
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let parsed = ParsedConnectionOptions::from(args);
-    let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
+    let parsed = connection_select_options(args, current_dir);
+    let runtime_home = selected_connection_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        current_dir,
+    )?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
@@ -395,8 +406,12 @@ fn command_connection_verify(
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let parsed = ParsedConnectionOptions::from(args);
-    let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
+    let parsed = connection_select_options(args, current_dir);
+    let runtime_home = selected_connection_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        current_dir,
+    )?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (mut connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
     if decode_persisted_object(&connection.metadata_json).is_none() {
@@ -468,8 +483,12 @@ fn command_connection_mode(
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
     let mode = args.mode.as_str().to_owned();
-    let parsed = ParsedConnectionOptions::from(args);
-    let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
+    let parsed = connection_mode_options(args, current_dir);
+    let runtime_home = selected_connection_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        current_dir,
+    )?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection(&runtime_home, &selector)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
@@ -529,7 +548,8 @@ fn preflight_mode_guard_rebinds(
     let mut rebinds = Vec::with_capacity(projects.len());
 
     for project in projects {
-        let repair = owning_init_repair_command(connection, &project.project.repo_root);
+        let repair =
+            owning_init_repair_command(connection, &project.project.repo_root, runtime_home);
         let installations = list_guard_installations(
             runtime_home,
             &connection.connection_internal_id,
@@ -590,15 +610,20 @@ fn preflight_mode_guard_rebinds(
     Ok(rebinds)
 }
 
-fn owning_init_repair_command(connection: &AgentConnectionRecord, repo_root: &Path) -> String {
+fn owning_init_repair_command(
+    connection: &AgentConnectionRecord,
+    repo_root: &Path,
+    runtime_home: &Path,
+) -> String {
     let shared = if connection.intent == CONNECTION_INTENT_SHARED {
         " --shared"
     } else {
         ""
     };
+    let repo_root = shell_word(&path_text(repo_root));
+    let runtime_home = shell_word(&path_text(runtime_home));
     format!(
-        "volicord init{shared} --host codex --repo \"{}\" --profile record",
-        repo_root.display()
+        "volicord init{shared} --host codex --repo {repo_root} --profile record --home {runtime_home}"
     )
 }
 
@@ -607,8 +632,12 @@ fn command_connection_remove(
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let parsed = ParsedConnectionOptions::from(args);
-    let runtime_home = resolve_runtime_home(|name| process.env_var(name), current_dir)?;
+    let parsed = connection_remove_options(args, current_dir);
+    let runtime_home = selected_connection_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        current_dir,
+    )?;
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (connection, projects) = select_connection(&runtime_home, &selector)?;
     let selected_project = selected_connection_project(&projects, selector.repo_root())?;
@@ -808,12 +837,31 @@ fn parse_connection_intent(value: &str) -> Result<ConnectionIntent, ConnectionCo
 fn required_installation_profile(
     runtime_home: &Path,
 ) -> Result<InstallationProfileRecord, ConnectionCommandError> {
-    installation_profile(runtime_home)?.ok_or_else(|| {
-        ConnectionCommandError::runtime(format!(
-            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path>` from the Product Repository to initialize Volicord.",
-            runtime_home.display()
-        ))
-    })
+    match installation_profile(runtime_home) {
+        Ok(Some(profile)) => Ok(profile),
+        Ok(None) => Err(ConnectionCommandError::runtime(
+            connection_setup_required_message(runtime_home),
+        )),
+        Err(error) => Err(ConnectionCommandError::runtime(format!(
+            "{error}; {}",
+            connection_setup_required_message(runtime_home)
+        ))),
+    }
+}
+
+fn connection_setup_required_message(runtime_home: &Path) -> String {
+    let runtime_home_argument = shell_word(&path_text(runtime_home));
+    if runtime_home.exists() {
+        format!(
+            "SETUP_REQUIRED: installation profile is missing for Runtime Home {}; run `volicord init --host <host> --repo <path> --home {runtime_home_argument}` from the Product Repository to initialize Volicord.",
+            runtime_home.display(),
+        )
+    } else {
+        format!(
+            "RUNTIME_HOME_MISSING: Runtime Home {} is missing; run `volicord init --host <host> --repo <path> --home {runtime_home_argument}` from the Product Repository to initialize Volicord.",
+            runtime_home.display(),
+        )
+    }
 }
 
 struct InitProfilePlan {
@@ -823,16 +871,32 @@ struct InitProfilePlan {
     metadata_json: String,
 }
 
-fn init_runtime_home_path(
-    parsed: &ParsedInitOptions,
+fn selected_runtime_home_path<F>(
+    explicit_runtime_home: Option<&Path>,
+    env_var: F,
     current_dir: &Path,
-    process: &impl ConnectionProcess,
-) -> Result<PathBuf, ConnectionCommandError> {
-    if let Some(path) = &parsed.runtime_home {
-        Ok(path.clone())
+) -> Result<PathBuf, RuntimeHomeResolutionError>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    if let Some(path) = explicit_runtime_home {
+        Ok(absolute_path(current_dir, path.to_path_buf()))
     } else {
-        resolve_runtime_home(|name| process.env_var(name), current_dir).map_err(Into::into)
+        resolve_runtime_home(env_var, current_dir)
     }
+}
+
+fn selected_connection_runtime_home_path<F>(
+    explicit_runtime_home: Option<&Path>,
+    env_var: F,
+    current_dir: &Path,
+) -> Result<PathBuf, ConnectionCommandError>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    let runtime_home = selected_runtime_home_path(explicit_runtime_home, env_var, current_dir)?;
+    required_installation_profile(&runtime_home)?;
+    Ok(runtime_home)
 }
 
 fn init_profile_plan(
@@ -1358,6 +1422,8 @@ fn path_text(path: &Path) -> String {
 
 #[cfg(test)]
 mod init_status_tests {
+    use std::ffi::OsString;
+
     use super::*;
 
     #[test]
@@ -1379,6 +1445,47 @@ mod init_status_tests {
             let output = format!("rendered {} init", status.as_str());
             assert_eq!(command_output_result(status, output.clone()), Ok(output));
         }
+    }
+
+    #[test]
+    fn explicit_runtime_home_precedes_environment_and_is_made_absolute() {
+        let current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let explicit = Path::new("explicit-runtime-home");
+        let selected = selected_runtime_home_path(
+            Some(explicit),
+            |name| (name == "VOLICORD_HOME").then(|| OsString::from("environment-runtime-home")),
+            &current_dir,
+        )
+        .expect("an explicit Runtime Home should select directly");
+
+        assert_eq!(selected, current_dir.join(explicit));
+    }
+
+    #[test]
+    fn runtime_home_selection_keeps_environment_then_platform_default_precedence() {
+        let current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let from_environment = selected_runtime_home_path(
+            None,
+            |name| match name {
+                "VOLICORD_HOME" => Some(OsString::from("environment-runtime-home")),
+                "HOME" => Some(OsString::from("platform-home")),
+                _ => None,
+            },
+            &current_dir,
+        )
+        .expect("VOLICORD_HOME should resolve");
+        assert_eq!(
+            from_environment,
+            current_dir.join("environment-runtime-home")
+        );
+
+        let from_default = selected_runtime_home_path(
+            None,
+            |name| (name == "HOME").then(|| OsString::from("platform-home")),
+            &current_dir,
+        )
+        .expect("the platform default should resolve");
+        assert_eq!(from_default, current_dir.join("platform-home/.volicord"));
     }
 }
 
@@ -1594,6 +1701,7 @@ mod persisted_metadata_tests {
         let list = run_connections_command(
             ConnectionListArgs {
                 repo: Some(repo_root.clone()),
+                runtime_home: crate::cli::RuntimeHomeArgs::default(),
                 json: true,
             },
             &repo_root,
@@ -1610,6 +1718,7 @@ mod persisted_metadata_tests {
         let select_args = || ConnectionSelectArgs {
             host: Some(crate::cli::CodexHost::Codex),
             repo: Some(repo_root.clone()),
+            runtime_home: crate::cli::RuntimeHomeArgs::default(),
             shared: false,
             output: crate::cli::ConnectionReportOutputArgs {
                 json: true,
@@ -1664,6 +1773,7 @@ mod persisted_metadata_tests {
                 command: ConnectionCommand::Status(ConnectionSelectArgs {
                     host: Some(crate::cli::CodexHost::Codex),
                     repo: Some(repo_root.clone()),
+                    runtime_home: crate::cli::RuntimeHomeArgs::default(),
                     shared: false,
                     output: crate::cli::ConnectionReportOutputArgs {
                         json: true,
@@ -1721,6 +1831,7 @@ mod persisted_metadata_tests {
         let select_args = || ConnectionSelectArgs {
             host: Some(crate::cli::CodexHost::Codex),
             repo: Some(repo_root.clone()),
+            runtime_home: crate::cli::RuntimeHomeArgs::default(),
             shared: false,
             output: crate::cli::ConnectionReportOutputArgs {
                 json: true,

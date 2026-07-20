@@ -1591,13 +1591,13 @@ volicord init --host codex --repo /path/to/repo --profile record
 volicord init --host codex --repo /path/to/repo --verbose
 volicord status --repo /path/to/repo
 volicord status --task active
-volicord connection add codex --read-only
-volicord connection add codex --verbose
-volicord connection list --repo /path/to/repo
-volicord connection status codex --repo /path/to/repo --verbose
-volicord connection verify codex --repo /path/to/repo --verbose
-volicord connection mode codex workflow --verbose
-volicord connection remove codex --repo /path/to/repo --verbose
+volicord connection add codex --read-only --home /path/to/runtime-home
+volicord connection add codex --verbose --home /path/to/runtime-home
+volicord connection list --repo /path/to/repo --home /path/to/runtime-home
+volicord connection status codex --repo /path/to/repo --verbose --home /path/to/runtime-home
+volicord connection verify codex --repo /path/to/repo --verbose --home /path/to/runtime-home
+volicord connection mode codex workflow --verbose --home /path/to/runtime-home
+volicord connection remove codex --repo /path/to/repo --verbose --home /path/to/runtime-home
 volicord inbox --task active
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice accept
 ```

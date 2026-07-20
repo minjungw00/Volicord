@@ -61,10 +61,26 @@ doctor가 기본 policy를 대신 넣거나 어느 authority 복사본도 다시
 <a id="runtime-home-selection"></a>
 ## Runtime Home 선택
 
-명령이 `--home PATH`를 받으면 정확한 Runtime Home을 선택합니다. 그 밖에는
-`VOLICORD_HOME`과 플랫폼 기본값 순서로 선택합니다. 비어 있거나 상대 경로이거나 잘못
-됐거나 충돌하는 값은 저장소 접근 전에 실패합니다. Product Repository를 Runtime Home으로
-사용하지 않습니다.
+`volicord init`과 모든 `volicord connection` 하위 명령은 `--home PATH`를 받습니다.
+명시적인 CLI 경로, `VOLICORD_HOME`, 플랫폼 기본값 순서로 선택합니다. 명시적인 상대
+경로는 호출자의 현재 작업 디렉터리를 기준으로 해석하며, 선택한 경로는 절대 경로로
+보고합니다.
+
+명시적인 경로를 선택하면 환경 변수나 플랫폼 기본 Runtime Home으로 대체하지 않습니다.
+선택 자체는 Runtime Home을 만들거나 초기화하지 않습니다. `init`은 자신이 소유한 설정
+변경의 일부로 선택한 홈을 만들 수 있지만, connection 명령은 선택한 홈에 현재
+installation profile이 있어야 하며 홈이 없거나 사용할 수 없으면 그 정확한 경로를 담아
+실패합니다. 선택 뒤에도 `connection list`와 `connection status`는 읽기 전용입니다.
+비어 있거나 잘못됐거나 충돌하는 값은 저장소 접근 전에 실패합니다. Product Repository를
+Runtime Home으로 사용하지 않습니다.
+
+모든 명령에 같은 경로를 넘기면 `VOLICORD_HOME`을 내보내지 않고도 사용자 지정 홈의
+lifecycle을 실행할 수 있습니다.
+
+```sh
+volicord init --host codex --repo "<repo>" --profile record --home "/srv/volicord/team-a"
+volicord connection status codex --repo "<repo>" --home "/srv/volicord/team-a"
+```
 
 <a id="volicord-agent-install"></a>
 <a id="agent-host-setup-and-init"></a>
@@ -118,12 +134,12 @@ volicord policy apply --repo PATH --file PATH
 ## Agent Connection 명령
 
 ```text
-volicord connection add [codex] [--repo PATH] [--shared] [--read-only] [--dry-run] [--verbose | --json]
-volicord connection list [--repo PATH]
-volicord connection status [codex] [--repo PATH] [--shared] [--verbose | --json]
-volicord connection verify [codex] [--repo PATH] [--shared] [--verbose | --json]
-volicord connection mode [codex] workflow|read-only [--repo PATH] [--shared] [--verbose | --json]
-volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run] [--verbose | --json]
+volicord connection add [codex] [--repo PATH] [--home PATH] [--shared] [--read-only] [--dry-run] [--verbose | --json]
+volicord connection list [--repo PATH] [--home PATH]
+volicord connection status [codex] [--repo PATH] [--home PATH] [--shared] [--verbose | --json]
+volicord connection verify [codex] [--repo PATH] [--home PATH] [--shared] [--verbose | --json]
+volicord connection mode [codex] workflow|read-only [--repo PATH] [--home PATH] [--shared] [--verbose | --json]
+volicord connection remove [codex] [--repo PATH] [--home PATH] [--shared] [--dry-run] [--verbose | --json]
 ```
 
 호스트를 생략하면 현재 맥락이 모호하지 않을 때만 사용합니다. 명시적으로 받는 유일한 값은
@@ -160,7 +176,8 @@ path에서 소유권을 추론하지 않습니다.
 적용했거나 `mode` 전환에 성공한 뒤 상세 진단이 유용하면 변경 작업을 재실행하라고
 안내하지 않고 현재 `connection status ... --verbose` 명령을 안내합니다. 적용된
 `remove` 결과에는 재실행 진단을 제안하지 않습니다. 조치할 진단이 없는 `complete`
-결과는 이 안내를 생략합니다.
+결과는 이 안내를 생략합니다. 생성하는 모든 connection 후속 명령은 선택한 절대 Runtime
+Home을 `--home PATH`로 포함하므로, 다시 실행할 때 호출자의 환경에 의존하지 않습니다.
 
 `--verbose`는 사람이 진단하는 데 필요한 완전한 보기를 표시합니다. 간결한 출력과 같은
 작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Actions`,
@@ -194,7 +211,7 @@ Waiting
 Next
   Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
 
-Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics.
+Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /home/user/.volicord --verbose` for detailed diagnostics.
 ```
 
 Verbose 보기는 같은 typed 보고서를 구조화된 진단으로 표시합니다.

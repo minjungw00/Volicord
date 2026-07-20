@@ -62,10 +62,28 @@ can never be reported as passed even when its inspected page has no finding.
 <a id="runtime-home-selection"></a>
 ## Runtime Home Selection
 
-`--home PATH`, when accepted by a command, selects the exact Runtime Home.
-Otherwise selection uses `VOLICORD_HOME` and then the platform default. Empty,
-relative, malformed, or conflicting values fail before storage access. A
-Product Repository is never used as a Runtime Home.
+`volicord init` and every `volicord connection` subcommand accept
+`--home PATH`. Selection uses the explicit CLI path first, then
+`VOLICORD_HOME`, and then the platform default. A relative explicit path is
+resolved against the caller's current working directory and the selected path
+is reported as an absolute path.
+
+An explicit path never falls back to an environment or platform-default home.
+Selection itself does not create or initialize a Runtime Home. `init` may
+create the selected home as part of its owned setup mutation; connection
+commands require the selected home to have a current installation profile and
+fail with that exact path when it is missing or unusable. `connection list`
+and `connection status` remain read-only after selection. Empty, malformed, or
+conflicting values fail before storage access. A Product Repository is never
+used as a Runtime Home.
+
+A custom-home lifecycle can pass the same path to every command without
+exporting `VOLICORD_HOME`:
+
+```sh
+volicord init --host codex --repo "<repo>" --profile record --home "/srv/volicord/team-a"
+volicord connection status codex --repo "<repo>" --home "/srv/volicord/team-a"
+```
 
 <a id="volicord-agent-install"></a>
 <a id="agent-host-setup-and-init"></a>
@@ -122,12 +140,12 @@ boundary; unknown fields and invalid values fail before commit.
 ## Agent Connection Commands
 
 ```text
-volicord connection add [codex] [--repo PATH] [--shared] [--read-only] [--dry-run] [--verbose | --json]
-volicord connection list [--repo PATH]
-volicord connection status [codex] [--repo PATH] [--shared] [--verbose | --json]
-volicord connection verify [codex] [--repo PATH] [--shared] [--verbose | --json]
-volicord connection mode [codex] workflow|read-only [--repo PATH] [--shared] [--verbose | --json]
-volicord connection remove [codex] [--repo PATH] [--shared] [--dry-run] [--verbose | --json]
+volicord connection add [codex] [--repo PATH] [--home PATH] [--shared] [--read-only] [--dry-run] [--verbose | --json]
+volicord connection list [--repo PATH] [--home PATH]
+volicord connection status [codex] [--repo PATH] [--home PATH] [--shared] [--verbose | --json]
+volicord connection verify [codex] [--repo PATH] [--home PATH] [--shared] [--verbose | --json]
+volicord connection mode [codex] workflow|read-only [--repo PATH] [--home PATH] [--shared] [--verbose | --json]
+volicord connection remove [codex] [--repo PATH] [--home PATH] [--shared] [--dry-run] [--verbose | --json]
 ```
 
 When the host is omitted, the command uses it only if the current context is
@@ -169,7 +187,9 @@ setup, or after a successful `mode` transition, useful follow-up diagnostics
 point to the current `connection status ... --verbose` command instead of
 offering to replay the mutation. An applied `remove` result offers no replay
 diagnostic. `complete` results without actionable diagnostics omit the
-guidance.
+guidance. Every generated connection follow-up command carries the selected
+absolute Runtime Home with `--home PATH`, so running it does not depend on the
+caller's environment.
 
 `--verbose` renders a complete human diagnostic view. It starts with the same
 operation-aware headline as concise output, then uses the applicable
@@ -206,7 +226,7 @@ Waiting
 Next
   Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
 
-Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics.
+Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /home/user/.volicord --verbose` for detailed diagnostics.
 ```
 
 The verbose view presents the same typed report as structured diagnostics:

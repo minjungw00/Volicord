@@ -108,14 +108,20 @@ pub struct InitArgs {
     pub shared: bool,
     #[arg(long, value_enum, default_value_t = RecordProfile::Record)]
     pub profile: RecordProfile,
-    #[arg(long, value_parser = nonempty_path)]
-    pub home: Option<PathBuf>,
+    #[command(flatten)]
+    pub runtime_home: RuntimeHomeArgs,
     #[arg(long, value_parser = nonempty_path)]
     pub mcp_command: Option<PathBuf>,
     #[arg(long)]
     pub dry_run: bool,
     #[command(flatten)]
     pub output: ConnectionReportOutputArgs,
+}
+
+#[derive(Debug, Args, Default)]
+pub struct RuntimeHomeArgs {
+    #[arg(long, value_parser = nonempty_path)]
+    pub home: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -245,6 +251,8 @@ pub struct ConnectionAddArgs {
     pub host: Option<CodexHost>,
     #[arg(long, value_parser = nonempty_path)]
     pub repo: Option<PathBuf>,
+    #[command(flatten)]
+    pub runtime_home: RuntimeHomeArgs,
     #[arg(long)]
     pub shared: bool,
     #[arg(long)]
@@ -259,6 +267,8 @@ pub struct ConnectionAddArgs {
 pub struct ConnectionListArgs {
     #[arg(long, value_parser = nonempty_path)]
     pub repo: Option<PathBuf>,
+    #[command(flatten)]
+    pub runtime_home: RuntimeHomeArgs,
     #[arg(long)]
     pub json: bool,
 }
@@ -269,6 +279,8 @@ pub struct ConnectionSelectArgs {
     pub host: Option<CodexHost>,
     #[arg(long, value_parser = nonempty_path)]
     pub repo: Option<PathBuf>,
+    #[command(flatten)]
+    pub runtime_home: RuntimeHomeArgs,
     #[arg(long)]
     pub shared: bool,
     #[command(flatten)]
@@ -284,6 +296,8 @@ pub struct ConnectionModeArgs {
     pub mode: ConnectionMode,
     #[arg(long, value_parser = nonempty_path)]
     pub repo: Option<PathBuf>,
+    #[command(flatten)]
+    pub runtime_home: RuntimeHomeArgs,
     #[arg(long)]
     pub shared: bool,
     #[command(flatten)]
@@ -296,6 +310,8 @@ pub struct ConnectionRemoveArgs {
     pub host: Option<CodexHost>,
     #[arg(long, value_parser = nonempty_path)]
     pub repo: Option<PathBuf>,
+    #[command(flatten)]
+    pub runtime_home: RuntimeHomeArgs,
     #[arg(long)]
     pub shared: bool,
     #[arg(long)]
@@ -592,10 +608,45 @@ mod tests {
         }
     }
 
+    fn runtime_home_args(command: Command) -> RuntimeHomeArgs {
+        match command {
+            Command::Init(args) => args.runtime_home,
+            Command::Connection(ConnectionArgs { command }) => match command {
+                ConnectionCommand::Add(args) => args.runtime_home,
+                ConnectionCommand::List(args) => args.runtime_home,
+                ConnectionCommand::Status(args) | ConnectionCommand::Verify(args) => {
+                    args.runtime_home
+                }
+                ConnectionCommand::Mode(args) => args.runtime_home,
+                ConnectionCommand::Remove(args) => args.runtime_home,
+            },
+            _ => panic!("expected a Runtime Home-selecting command"),
+        }
+    }
+
     fn report_command_args() -> [Vec<&'static str>; 6] {
         [
             vec!["volicord", "init", "--host", "codex", "--repo", "."],
             vec!["volicord", "connection", "add", "codex", "--repo", "."],
+            vec!["volicord", "connection", "status", "codex", "--repo", "."],
+            vec!["volicord", "connection", "verify", "codex", "--repo", "."],
+            vec![
+                "volicord",
+                "connection",
+                "mode",
+                "codex",
+                "workflow",
+                "--repo",
+                ".",
+            ],
+            vec!["volicord", "connection", "remove", "codex", "--repo", "."],
+        ]
+    }
+
+    fn connection_command_args() -> [Vec<&'static str>; 6] {
+        [
+            vec!["volicord", "connection", "add", "codex", "--repo", "."],
+            vec!["volicord", "connection", "list", "--repo", "."],
             vec!["volicord", "connection", "status", "codex", "--repo", "."],
             vec!["volicord", "connection", "verify", "codex", "--repo", "."],
             vec![
@@ -729,6 +780,49 @@ mod tests {
             let error = Cli::try_parse_from(args)
                 .expect_err("verbose and JSON output must conflict in the declaration");
             assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
+    }
+
+    #[test]
+    fn every_connection_command_accepts_one_nonempty_runtime_home() {
+        for mut args in connection_command_args() {
+            args.extend(["--home", "relative-runtime-home"]);
+            let parsed = Cli::try_parse_from(args).expect("Runtime Home should parse");
+            assert_eq!(
+                runtime_home_args(parsed.command.expect("connection command")).home,
+                Some(PathBuf::from("relative-runtime-home"))
+            );
+        }
+
+        for mut args in connection_command_args() {
+            args.extend(["--home", ""]);
+            let error = Cli::try_parse_from(args)
+                .expect_err("an empty explicit Runtime Home must be rejected");
+            assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+        }
+    }
+
+    #[test]
+    fn runtime_home_selection_is_independent_of_connection_output_flags() {
+        for mut args in connection_command_args() {
+            args.extend(["--home", "relative-runtime-home", "--json"]);
+            let parsed = Cli::try_parse_from(args)
+                .expect("Runtime Home and JSON selection should parse together");
+            assert_eq!(
+                runtime_home_args(parsed.command.expect("connection command")).home,
+                Some(PathBuf::from("relative-runtime-home"))
+            );
+        }
+
+        for mut args in report_command_args().into_iter().skip(1) {
+            args.extend(["--home", "relative-runtime-home", "--verbose"]);
+            let parsed = Cli::try_parse_from(args)
+                .expect("Runtime Home and verbose selection should parse together");
+            assert!(
+                runtime_home_args(parsed.command.expect("connection command"))
+                    .home
+                    .is_some()
+            );
         }
     }
 

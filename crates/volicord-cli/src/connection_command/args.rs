@@ -5,7 +5,7 @@ use volicord_types::IntegrationProfile;
 use crate::{
     cli::{
         CodexHost, ConnectionAddArgs, ConnectionListArgs, ConnectionModeArgs, ConnectionRemoveArgs,
-        ConnectionReportOutputArgs, ConnectionSelectArgs, InitArgs,
+        ConnectionReportOutputArgs, ConnectionSelectArgs, InitArgs, RuntimeHomeArgs,
     },
     host_integration::HostKind,
 };
@@ -32,6 +32,7 @@ pub(super) enum HumanOutputDetail {
 pub(super) struct ParsedConnectionOptions {
     pub(super) host_kind: Option<HostKind>,
     pub(super) repo: Option<PathBuf>,
+    pub(super) explicit_runtime_home: Option<PathBuf>,
     pub(super) shared: bool,
     pub(super) read_only: bool,
     pub(super) dry_run: bool,
@@ -62,7 +63,7 @@ impl InitMode {
 pub(super) struct ParsedInitOptions {
     pub(super) host_kind: Option<HostKind>,
     pub(super) repo: Option<PathBuf>,
-    pub(super) runtime_home: Option<PathBuf>,
+    pub(super) explicit_runtime_home: Option<PathBuf>,
     pub(super) mcp_command: Option<PathBuf>,
     pub(super) mode: InitMode,
     pub(super) shared: bool,
@@ -74,7 +75,7 @@ pub(super) fn init_options(args: InitArgs, current_dir: &Path) -> ParsedInitOpti
     ParsedInitOptions {
         host_kind: Some(host_kind(args.host)),
         repo: Some(absolute_path(current_dir, args.repo)),
-        runtime_home: args.home.map(|path| absolute_path(current_dir, path)),
+        explicit_runtime_home: explicit_runtime_home(args.runtime_home, current_dir),
         mcp_command: args
             .mcp_command
             .map(|path| absolute_path(current_dir, path)),
@@ -85,68 +86,82 @@ pub(super) fn init_options(args: InitArgs, current_dir: &Path) -> ParsedInitOpti
     }
 }
 
-impl From<ConnectionAddArgs> for ParsedConnectionOptions {
-    fn from(args: ConnectionAddArgs) -> Self {
-        Self {
-            host_kind: args.host.map(host_kind),
-            repo: args.repo,
-            shared: args.shared,
-            read_only: args.read_only,
-            dry_run: args.dry_run,
-            output: output_format(args.output),
-        }
+pub(super) fn connection_add_options(
+    args: ConnectionAddArgs,
+    current_dir: &Path,
+) -> ParsedConnectionOptions {
+    ParsedConnectionOptions {
+        host_kind: args.host.map(host_kind),
+        repo: args.repo,
+        explicit_runtime_home: explicit_runtime_home(args.runtime_home, current_dir),
+        shared: args.shared,
+        read_only: args.read_only,
+        dry_run: args.dry_run,
+        output: output_format(args.output),
     }
 }
 
-impl From<ConnectionListArgs> for ParsedConnectionOptions {
-    fn from(args: ConnectionListArgs) -> Self {
-        Self {
-            repo: args.repo,
-            output: if args.json {
-                OutputFormat::Json
-            } else {
-                OutputFormat::Human(HumanOutputDetail::Concise)
-            },
-            ..Self::default()
-        }
+pub(super) fn connection_list_options(
+    args: ConnectionListArgs,
+    current_dir: &Path,
+) -> ParsedConnectionOptions {
+    ParsedConnectionOptions {
+        repo: args.repo,
+        explicit_runtime_home: explicit_runtime_home(args.runtime_home, current_dir),
+        output: if args.json {
+            OutputFormat::Json
+        } else {
+            OutputFormat::Human(HumanOutputDetail::Concise)
+        },
+        ..ParsedConnectionOptions::default()
     }
 }
 
-impl From<ConnectionSelectArgs> for ParsedConnectionOptions {
-    fn from(args: ConnectionSelectArgs) -> Self {
-        Self {
-            host_kind: args.host.map(host_kind),
-            repo: args.repo,
-            shared: args.shared,
-            output: output_format(args.output),
-            ..Self::default()
-        }
+pub(super) fn connection_select_options(
+    args: ConnectionSelectArgs,
+    current_dir: &Path,
+) -> ParsedConnectionOptions {
+    ParsedConnectionOptions {
+        host_kind: args.host.map(host_kind),
+        repo: args.repo,
+        explicit_runtime_home: explicit_runtime_home(args.runtime_home, current_dir),
+        shared: args.shared,
+        output: output_format(args.output),
+        ..ParsedConnectionOptions::default()
     }
 }
 
-impl From<ConnectionModeArgs> for ParsedConnectionOptions {
-    fn from(args: ConnectionModeArgs) -> Self {
-        Self {
-            host_kind: args.host.map(host_kind),
-            repo: args.repo,
-            shared: args.shared,
-            output: output_format(args.output),
-            ..Self::default()
-        }
+pub(super) fn connection_mode_options(
+    args: ConnectionModeArgs,
+    current_dir: &Path,
+) -> ParsedConnectionOptions {
+    ParsedConnectionOptions {
+        host_kind: args.host.map(host_kind),
+        repo: args.repo,
+        explicit_runtime_home: explicit_runtime_home(args.runtime_home, current_dir),
+        shared: args.shared,
+        output: output_format(args.output),
+        ..ParsedConnectionOptions::default()
     }
 }
 
-impl From<ConnectionRemoveArgs> for ParsedConnectionOptions {
-    fn from(args: ConnectionRemoveArgs) -> Self {
-        Self {
-            host_kind: args.host.map(host_kind),
-            repo: args.repo,
-            shared: args.shared,
-            dry_run: args.dry_run,
-            output: output_format(args.output),
-            ..Self::default()
-        }
+pub(super) fn connection_remove_options(
+    args: ConnectionRemoveArgs,
+    current_dir: &Path,
+) -> ParsedConnectionOptions {
+    ParsedConnectionOptions {
+        host_kind: args.host.map(host_kind),
+        repo: args.repo,
+        explicit_runtime_home: explicit_runtime_home(args.runtime_home, current_dir),
+        shared: args.shared,
+        dry_run: args.dry_run,
+        output: output_format(args.output),
+        ..ParsedConnectionOptions::default()
     }
+}
+
+fn explicit_runtime_home(args: RuntimeHomeArgs, current_dir: &Path) -> Option<PathBuf> {
+    args.home.map(|path| absolute_path(current_dir, path))
 }
 
 pub(super) fn init_output_format(parsed: &ParsedInitOptions) -> OutputFormat {
@@ -203,5 +218,26 @@ mod tests {
             }),
             OutputFormat::Json
         );
+    }
+
+    #[test]
+    fn explicit_connection_runtime_home_is_made_absolute_from_current_dir() {
+        let current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let parsed = connection_list_options(
+            ConnectionListArgs {
+                repo: None,
+                runtime_home: RuntimeHomeArgs {
+                    home: Some(PathBuf::from("runtime-home")),
+                },
+                json: true,
+            },
+            &current_dir,
+        );
+
+        assert_eq!(
+            parsed.explicit_runtime_home,
+            Some(current_dir.join("runtime-home"))
+        );
+        assert_eq!(parsed.output, OutputFormat::Json);
     }
 }

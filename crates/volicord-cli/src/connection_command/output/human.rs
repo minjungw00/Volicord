@@ -142,6 +142,8 @@ fn selected_connection_verbose_command(
         report.connection.host.as_str(),
         "--repo",
         report.connection.repository.as_str(),
+        "--home",
+        report.runtime_home.as_str(),
     ];
     if report.connection.scope == "project" {
         arguments.push("--shared");
@@ -678,7 +680,7 @@ mod tests {
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
                 "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
             )
         );
 
@@ -702,7 +704,7 @@ mod tests {
                 "  Managed Codex configuration is unavailable\n\n",
                 "Next\n",
                 "  Repair the managed Codex configuration\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
             )
         );
 
@@ -765,7 +767,7 @@ mod tests {
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
                 "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
             )
         );
 
@@ -784,7 +786,7 @@ mod tests {
                 "Checks: 0 ready, 1 failed\n\n",
                 "Problems\n",
                 "  Managed Codex configuration is unavailable\n\n",
-                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
             )
         );
     }
@@ -809,7 +811,7 @@ mod tests {
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
                 "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics.\n",
+                "Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /runtime --verbose` for detailed diagnostics.\n",
             )
         );
 
@@ -821,7 +823,7 @@ mod tests {
         );
         let failed_output = concise(&failed);
         assert!(failed_output.contains(
-            "Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics."
+            "Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /runtime --verbose` for detailed diagnostics."
         ));
 
         let complete = report(
@@ -849,7 +851,7 @@ mod tests {
             );
             let output = concise(&applied);
             assert!(output.contains(
-                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics."
+                "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics."
             ));
             assert!(!output.contains("same setup command"));
 
@@ -897,7 +899,7 @@ mod tests {
         );
 
         assert!(concise(&report).contains(
-            "Run `volicord connection status codex --repo '/workspace/product repo'\\''s' --shared --verbose` for detailed current Connection diagnostics."
+            "Run `volicord connection status codex --repo '/workspace/product repo'\\''s' --home /runtime --shared --verbose` for detailed current Connection diagnostics."
         ));
     }
 
@@ -953,7 +955,7 @@ mod tests {
         changed_with_diagnostics.actions.clear();
         let diagnostics_output = concise(&changed_with_diagnostics);
         assert!(diagnostics_output.contains(
-            "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics."
+            "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics."
         ));
         assert!(!diagnostics_output.contains("same connection mode command"));
 

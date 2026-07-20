@@ -127,7 +127,6 @@ where
             guard_command_outcome(run_guard_command(options, env_var, current_dir)?)
         }
         CliCommand::Connection(options) => {
-            require_setup_completed(&env_var, current_dir)?;
             let mut connection_process = ProductionConnectionProcess;
             run_connection_command(options, current_dir, &mut connection_process)
                 .map_err(CliError::from)

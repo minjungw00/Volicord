@@ -117,6 +117,19 @@ fn connection_and_evidence_help_are_available_without_setup() -> Result<(), Box<
 }
 
 #[test]
+fn every_connection_subcommand_help_exposes_runtime_home_selection() -> Result<(), Box<dyn Error>> {
+    for subcommand in ["add", "list", "status", "verify", "mode", "remove"] {
+        let output = run(&["connection", subcommand, "--help"])?;
+        assert!(output.status.success(), "{}", stderr(&output)?);
+        assert!(
+            stdout(&output)?.contains("--home <HOME>"),
+            "{subcommand} help omitted --home"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn unsupported_host_is_rejected_by_current_init_parser() -> Result<(), Box<dyn Error>> {
     let output = run(&[
         "init",
@@ -325,6 +338,278 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     assert!(!json_string_value_exists(&report, "degraded"));
     assert_eq!(directory_contents(&fixture.runtime_home)?, runtime_before);
     assert_eq!(directory_contents(&fixture.repo_root)?, repository_before);
+    Ok(())
+}
+
+#[test]
+fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<dyn Error>> {
+    let home_a = IsolatedInitFixture::new("binary-explicit-home-a")?;
+    let home_b = IsolatedInitFixture::new("binary-explicit-home-b")?;
+    let init_a: Value = serde_json::from_slice(&home_a.run(false)?.stdout)?;
+    let init_b: Value = serde_json::from_slice(&home_b.run(false)?.stdout)?;
+    let connection_a = init_a["connection"]["id"]
+        .as_str()
+        .expect("home A connection id")
+        .to_owned();
+    let connection_b = init_b["connection"]["id"]
+        .as_str()
+        .expect("home B connection id")
+        .to_owned();
+    assert_ne!(connection_a, connection_b);
+
+    let a_before_reads = home_a.all_contents()?;
+    let b_before_reads = home_b.all_contents()?;
+    for (selected, decoy, expected_id) in [
+        (&home_a, &home_b, connection_a.as_str()),
+        (&home_b, &home_a, connection_b.as_str()),
+    ] {
+        let list = selected.run_connection_with_decoy_home("list", &[], &decoy.runtime_home)?;
+        assert_eq!(list.status.code(), Some(0), "{}", stderr(&list)?);
+        let list: Value = serde_json::from_slice(&list.stdout)?;
+        assert_eq!(list["connections"].as_array().map(Vec::len), Some(1));
+        assert_eq!(list["connections"][0]["connection_id"], expected_id);
+
+        let status =
+            selected.run_connection_with_decoy_home("status", &["codex"], &decoy.runtime_home)?;
+        let status: Value = serde_json::from_slice(&status.stdout)?;
+        assert_eq!(status["operation"], "status");
+        assert_eq!(status["runtime_home"], path_text(&selected.runtime_home));
+        assert_eq!(status["connection"]["id"], expected_id);
+    }
+    assert_eq!(home_a.all_contents()?, a_before_reads);
+    assert_eq!(home_b.all_contents()?, b_before_reads);
+
+    for (selected, decoy, expected_id) in [
+        (&home_a, &home_b, connection_a.as_str()),
+        (&home_b, &home_a, connection_b.as_str()),
+    ] {
+        let decoy_before = decoy.all_contents()?;
+        let add =
+            selected.run_connection_with_decoy_home("add", &["codex"], &decoy.runtime_home)?;
+        let add: Value = serde_json::from_slice(&add.stdout)?;
+        assert_eq!(add["operation"], "add");
+        assert_eq!(add["runtime_home"], path_text(&selected.runtime_home));
+        assert_eq!(add["connection"]["id"], expected_id);
+        assert_eq!(decoy.all_contents()?, decoy_before);
+    }
+
+    for (selected, decoy, expected_id) in [
+        (&home_a, &home_b, connection_a.as_str()),
+        (&home_b, &home_a, connection_b.as_str()),
+    ] {
+        let decoy_before = decoy.all_contents()?;
+        let verify =
+            selected.run_connection_with_decoy_home("verify", &["codex"], &decoy.runtime_home)?;
+        let verify: Value = serde_json::from_slice(&verify.stdout)?;
+        assert_eq!(verify["operation"], "verify");
+        assert_eq!(verify["runtime_home"], path_text(&selected.runtime_home));
+        assert_eq!(verify["connection"]["id"], expected_id);
+        assert_eq!(decoy.all_contents()?, decoy_before);
+    }
+
+    for (selected, decoy, expected_id) in [
+        (&home_a, &home_b, connection_a.as_str()),
+        (&home_b, &home_a, connection_b.as_str()),
+    ] {
+        let decoy_before = decoy.all_contents()?;
+        let mode = selected.run_connection_with_decoy_home(
+            "mode",
+            &["codex", "read-only"],
+            &decoy.runtime_home,
+        )?;
+        assert_eq!(mode.status.code(), Some(0), "{}", stderr(&mode)?);
+        let mode: Value = serde_json::from_slice(&mode.stdout)?;
+        assert_eq!(mode["operation"], "mode");
+        assert_eq!(mode["runtime_home"], path_text(&selected.runtime_home));
+        assert_eq!(mode["connection"]["id"], expected_id);
+        assert_eq!(mode["connection"]["mode"], "read_only");
+        assert_eq!(decoy.all_contents()?, decoy_before);
+    }
+
+    for (selected, decoy, expected_id) in [
+        (&home_a, &home_b, connection_a.as_str()),
+        (&home_b, &home_a, connection_b.as_str()),
+    ] {
+        let decoy_before = decoy.all_contents()?;
+        let remove =
+            selected.run_connection_with_decoy_home("remove", &["codex"], &decoy.runtime_home)?;
+        assert_eq!(remove.status.code(), Some(0), "{}", stderr(&remove)?);
+        let remove: Value = serde_json::from_slice(&remove.stdout)?;
+        assert_eq!(remove["operation"], "remove");
+        assert_eq!(remove["runtime_home"], path_text(&selected.runtime_home));
+        assert_eq!(remove["connection"]["id"], expected_id);
+        assert_eq!(remove["result"]["connection_removed"], true);
+        assert_eq!(decoy.all_contents()?, decoy_before);
+    }
+    Ok(())
+}
+
+#[test]
+fn custom_home_lifecycle_needs_no_environment_binding() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-custom-home-lifecycle")?;
+    let init: Value = serde_json::from_slice(&fixture.run(false)?.stdout)?;
+    let connection_id = init["connection"]["id"]
+        .as_str()
+        .expect("custom-home connection id");
+    assert_eq!(init["runtime_home"], path_text(&fixture.runtime_home));
+
+    let list: Value = serde_json::from_slice(&fixture.run_connection_list(None, true)?.stdout)?;
+    assert_eq!(list["connections"].as_array().map(Vec::len), Some(1));
+    assert_eq!(list["connections"][0]["connection_id"], connection_id);
+
+    for operation in ["status", "verify", "add"] {
+        let report: Value =
+            serde_json::from_slice(&fixture.run_connection(operation, true)?.stdout)?;
+        assert_eq!(report["operation"], operation);
+        assert_eq!(report["runtime_home"], path_text(&fixture.runtime_home));
+        assert_eq!(report["connection"]["id"], connection_id);
+    }
+
+    let mode: Value = serde_json::from_slice(&fixture.run_connection_mode("read-only")?.stdout)?;
+    assert_eq!(mode["runtime_home"], path_text(&fixture.runtime_home));
+    assert_eq!(mode["connection"]["id"], connection_id);
+    assert_eq!(mode["connection"]["mode"], "read_only");
+
+    let remove = fixture.run_connection("remove", true)?;
+    assert_eq!(remove.status.code(), Some(0), "{}", stderr(&remove)?);
+    let remove: Value = serde_json::from_slice(&remove.stdout)?;
+    assert_eq!(remove["runtime_home"], path_text(&fixture.runtime_home));
+    assert_eq!(remove["connection"]["id"], connection_id);
+    assert_eq!(remove["result"]["connection_removed"], true);
+    Ok(())
+}
+
+#[test]
+fn relative_explicit_home_is_reported_as_the_selected_absolute_path() -> Result<(), Box<dyn Error>>
+{
+    let fixture = IsolatedInitFixture::new("binary-relative-explicit-home")?;
+    fixture.run(false)?;
+    let relative_home = fixture
+        .runtime_home
+        .strip_prefix(fixture._temporary_root.path())?;
+    let output = base_command()
+        .arg("connection")
+        .arg("status")
+        .arg("codex")
+        .arg("--repo")
+        .arg(&fixture.repo_root)
+        .arg("--home")
+        .arg(relative_home)
+        .arg("--json")
+        .env("PATH", &fixture.empty_path)
+        .env("CODEX_HOME", &fixture.codex_home)
+        .env("HOME", &fixture.user_home)
+        .env("USERPROFILE", &fixture.user_home)
+        .current_dir(fixture._temporary_root.path())
+        .output()?;
+    assert!(
+        !output.stdout.is_empty(),
+        "relative Runtime Home status produced no report: {}",
+        stderr(&output)?
+    );
+    let report: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(report["runtime_home"], path_text(&fixture.runtime_home));
+    Ok(())
+}
+
+#[test]
+fn explicit_unusable_home_never_falls_back_or_creates_state() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-unusable-explicit-home")?;
+    let init: Value = serde_json::from_slice(&fixture.run(false)?.stdout)?;
+    let connection_id = init["connection"]["id"]
+        .as_str()
+        .expect("custom-home connection id");
+    let missing_home = fixture._temporary_root.path().join("missing-explicit-home");
+    let uninitialized_home = fixture
+        ._temporary_root
+        .path()
+        .join("uninitialized-explicit-home");
+    fs::create_dir(&uninitialized_home)?;
+    let custom_before = fixture.all_contents()?;
+
+    for (unusable_home, expected_code) in [
+        (&missing_home, "RUNTIME_HOME_MISSING"),
+        (&uninitialized_home, "SETUP_REQUIRED"),
+    ] {
+        let output = base_command()
+            .arg("connection")
+            .arg("list")
+            .arg("--home")
+            .arg(unusable_home)
+            .arg("--json")
+            .env("VOLICORD_HOME", &fixture.runtime_home)
+            .env("HOME", &fixture.user_home)
+            .env("USERPROFILE", &fixture.user_home)
+            .current_dir(&fixture.repo_root)
+            .output()?;
+
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stdout(&output)?, "");
+        let diagnostic = stderr(&output)?;
+        assert!(diagnostic.contains(expected_code));
+        assert!(diagnostic.contains(&path_text(unusable_home)));
+        assert!(!diagnostic.contains(connection_id));
+    }
+    assert!(!missing_home.exists());
+    assert!(uninitialized_home.is_dir());
+    assert_eq!(fixture.all_contents()?, custom_before);
+    Ok(())
+}
+
+#[test]
+fn selection_failure_names_the_selected_runtime_home_and_repository() -> Result<(), Box<dyn Error>>
+{
+    let fixture = IsolatedInitFixture::new("binary-explicit-home-selection-error")?;
+    fixture.run(false)?;
+    let unregistered_repo = fixture.create_repository("unregistered-product-repository")?;
+
+    let output = base_command()
+        .arg("connection")
+        .arg("status")
+        .arg("codex")
+        .arg("--repo")
+        .arg(&unregistered_repo)
+        .arg("--home")
+        .arg(&fixture.runtime_home)
+        .arg("--json")
+        .env("HOME", &fixture.user_home)
+        .env("USERPROFILE", &fixture.user_home)
+        .current_dir(&fixture.repo_root)
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(stdout(&output)?, "");
+    let diagnostic = stderr(&output)?;
+    assert!(diagnostic.contains("PROJECT_NOT_REGISTERED"));
+    assert!(diagnostic.contains(&path_text(&fixture.runtime_home)));
+    assert!(diagnostic.contains(&path_text(&unregistered_repo)));
+    Ok(())
+}
+
+#[test]
+fn platform_default_does_not_discover_an_explicit_custom_home() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-custom-home-default-isolation")?;
+    let init: Value = serde_json::from_slice(&fixture.run(false)?.stdout)?;
+    let connection_id = init["connection"]["id"]
+        .as_str()
+        .expect("custom-home connection id");
+    let default_home = fixture.user_home.join(".volicord");
+    let custom_before = fixture.all_contents()?;
+
+    let output = base_command()
+        .arg("connection")
+        .arg("list")
+        .arg("--json")
+        .env("HOME", &fixture.user_home)
+        .env("USERPROFILE", &fixture.user_home)
+        .current_dir(&fixture.repo_root)
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output)?.contains(&path_text(&default_home)));
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(connection_id));
+    assert!(!default_home.exists());
+    assert_eq!(fixture.all_contents()?, custom_before);
     Ok(())
 }
 
@@ -1077,8 +1362,9 @@ impl IsolatedInitFixture {
             .arg("codex")
             .arg("--repo")
             .arg(&self.repo_root)
+            .arg("--home")
+            .arg(&self.runtime_home)
             .arg("--verbose")
-            .env("VOLICORD_HOME", &self.runtime_home)
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
@@ -1110,7 +1396,8 @@ impl IsolatedInitFixture {
             .arg("codex")
             .arg("--repo")
             .arg(repo_root)
-            .env("VOLICORD_HOME", &self.runtime_home)
+            .arg("--home")
+            .arg(&self.runtime_home)
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
@@ -1133,8 +1420,9 @@ impl IsolatedInitFixture {
             .arg(mode)
             .arg("--repo")
             .arg(&self.repo_root)
+            .arg("--home")
+            .arg(&self.runtime_home)
             .arg("--json")
-            .env("VOLICORD_HOME", &self.runtime_home)
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
@@ -1154,7 +1442,8 @@ impl IsolatedInitFixture {
             .arg(mode)
             .arg("--repo")
             .arg(&self.repo_root)
-            .env("VOLICORD_HOME", &self.runtime_home)
+            .arg("--home")
+            .arg(&self.runtime_home)
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
@@ -1172,7 +1461,8 @@ impl IsolatedInitFixture {
         command
             .arg("connection")
             .arg("list")
-            .env("VOLICORD_HOME", &self.runtime_home)
+            .arg("--home")
+            .arg(&self.runtime_home)
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
@@ -1198,14 +1488,44 @@ impl IsolatedInitFixture {
             .arg("--repo")
             .arg(repo_root)
             .arg("--shared")
+            .arg("--home")
+            .arg(&self.runtime_home)
             .arg("--json")
-            .env("VOLICORD_HOME", &self.runtime_home)
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)
             .env("HOME", &self.user_home)
             .env("USERPROFILE", &self.user_home)
             .current_dir(repo_root)
             .output()?)
+    }
+
+    fn run_connection_with_decoy_home(
+        &self,
+        operation: &str,
+        positionals: &[&str],
+        decoy_runtime_home: &Path,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        let mut command = base_command();
+        command
+            .arg("connection")
+            .arg(operation)
+            .args(positionals)
+            .arg("--repo")
+            .arg(&self.repo_root)
+            .arg("--home")
+            .arg(&self.runtime_home)
+            .arg("--json")
+            .env("VOLICORD_HOME", decoy_runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root);
+        Ok(command.output()?)
+    }
+
+    fn all_contents(&self) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn Error>> {
+        directory_contents(self._temporary_root.path())
     }
 
     fn only_connection_id(&self) -> String {
@@ -1261,6 +1581,10 @@ fn directory_contents(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn
     let mut output = BTreeMap::new();
     visit(root, root, &mut output)?;
     Ok(output)
+}
+
+fn path_text(path: &Path) -> String {
+    path.display().to_string()
 }
 
 fn registry_connection_row_count(

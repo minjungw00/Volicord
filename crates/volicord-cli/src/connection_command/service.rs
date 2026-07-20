@@ -233,7 +233,11 @@ fn plan_init_provisioning(
         .as_deref()
         .ok_or_else(|| ConnectionCommandError::usage("--repo is required"))?;
     let repo_root = resolve_init_repo_root(request.current_dir, repo, host_kind, parsed.mode)?;
-    let runtime_home = init_runtime_home_path(parsed, request.current_dir, process)?;
+    let runtime_home = selected_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        request.current_dir,
+    )?;
     let existing_profile = installation_profile(&runtime_home)?;
     let profile_plan =
         init_profile_plan(parsed, &runtime_home, existing_profile.as_ref(), process)?;
@@ -1211,7 +1215,11 @@ fn plan_connection_provisioning(
     let host_kind = resolve_connection_host(parsed.host_kind, process)?;
     let intent = connection_intent_from_flags(parsed)?;
     let host_scope = host_scope_for_intent(host_kind, intent)?;
-    let runtime_home = resolve_runtime_home(|name| process.env_var(name), request.current_dir)?;
+    let runtime_home = selected_connection_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        request.current_dir,
+    )?;
     let installation_profile = required_installation_profile(&runtime_home)?;
     let repo_root = resolve_connection_repo_root(request.current_dir, parsed.repo.as_deref())?;
     let server_name = DEFAULT_SERVER_NAME.to_owned();
@@ -1541,7 +1549,7 @@ mod init_planning_tests {
         ParsedInitOptions {
             host_kind: Some(HostKind::Codex),
             repo: Some(repo_root.to_path_buf()),
-            runtime_home: Some(runtime_home.to_path_buf()),
+            explicit_runtime_home: Some(runtime_home.to_path_buf()),
             mcp_command: None,
             mode: InitMode::Record,
             shared: true,
@@ -1558,6 +1566,7 @@ mod init_planning_tests {
         ParsedConnectionOptions {
             host_kind: Some(HostKind::Codex),
             repo: Some(repo_root.to_path_buf()),
+            explicit_runtime_home: None,
             shared: true,
             read_only,
             dry_run,
@@ -1750,6 +1759,7 @@ mod init_planning_tests {
                 host: Some(crate::cli::CodexHost::Codex),
                 mode: crate::cli::ConnectionMode::ReadOnly,
                 repo: Some(repo_root.clone()),
+                runtime_home: crate::cli::RuntimeHomeArgs::default(),
                 shared: true,
                 output: crate::cli::ConnectionReportOutputArgs {
                     json: true,

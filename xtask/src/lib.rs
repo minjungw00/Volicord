@@ -3836,7 +3836,7 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
                     "json",
                     "verbose",
                 ],
-                &["repo"],
+                &["repo", "home"],
             )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
             reject_mutually_exclusive(&parsed, "json", "verbose")?;
@@ -3846,7 +3846,7 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             if is_help_only(&args[1..]) {
                 return Ok(());
             }
-            let parsed = parse_command_args(&args[1..], &["json"], &["repo"])?;
+            let parsed = parse_command_args(&args[1..], &["json"], &["repo", "home"])?;
             reject_positionals(&parsed, 0, "`volicord connection list`")
         }
         "status" | "verify" => {
@@ -3856,7 +3856,7 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             let parsed = parse_command_args(
                 &args[1..],
                 &["shared", "global", "json", "verbose"],
-                &["repo"],
+                &["repo", "home"],
             )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
             reject_mutually_exclusive(&parsed, "json", "verbose")?;
@@ -3869,7 +3869,7 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             let parsed = parse_command_args(
                 &args[1..],
                 &["shared", "global", "json", "verbose"],
-                &["repo"],
+                &["repo", "home"],
             )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
             reject_mutually_exclusive(&parsed, "json", "verbose")?;
@@ -3882,7 +3882,7 @@ fn validate_connection_command(args: &[String]) -> std::result::Result<(), Strin
             let parsed = parse_command_args(
                 &args[1..],
                 &["shared", "global", "dry-run", "json", "verbose"],
-                &["repo"],
+                &["repo", "home"],
             )?;
             reject_mutually_exclusive(&parsed, "shared", "global")?;
             reject_mutually_exclusive(&parsed, "json", "verbose")?;

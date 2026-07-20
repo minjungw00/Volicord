@@ -18,7 +18,7 @@ use volicord_cli::{
     cli::{
         CodexHost, ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionMode,
         ConnectionModeArgs, ConnectionReportOutputArgs, InitArgs, PolicyArgs, PolicyCommand,
-        PolicyValidateArgs, RecordProfile,
+        PolicyValidateArgs, RecordProfile, RuntimeHomeArgs,
     },
     connection_command::{
         run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
@@ -522,6 +522,7 @@ fn connection_add_explicit_read_only_rejects_workflow_before_mutation() -> Resul
             command: ConnectionCommand::Add(ConnectionAddArgs {
                 host: Some(CodexHost::Codex),
                 repo: Some(repo_root.clone()),
+                runtime_home: RuntimeHomeArgs::default(),
                 shared: false,
                 read_only: true,
                 dry_run: false,
@@ -805,7 +806,7 @@ fn run_record_init(
             repo: repo_root.to_path_buf(),
             shared: false,
             profile: RecordProfile::Record,
-            home: None,
+            runtime_home: RuntimeHomeArgs::default(),
             mcp_command: None,
             dry_run: false,
             output: ConnectionReportOutputArgs {
@@ -854,7 +855,7 @@ fn run_record_init_outcome(
             repo: repo_root.to_path_buf(),
             shared: false,
             profile: RecordProfile::Record,
-            home: None,
+            runtime_home: RuntimeHomeArgs::default(),
             mcp_command: None,
             dry_run: false,
             output: ConnectionReportOutputArgs {
@@ -884,6 +885,7 @@ fn run_connection_add(
             command: ConnectionCommand::Add(ConnectionAddArgs {
                 host: Some(CodexHost::Codex),
                 repo: Some(repo_root.to_path_buf()),
+                runtime_home: RuntimeHomeArgs::default(),
                 shared,
                 read_only,
                 dry_run,
@@ -997,7 +999,7 @@ fn run_record_init_dry_run(
             repo: repo_root.to_path_buf(),
             shared: false,
             profile: RecordProfile::Record,
-            home: None,
+            runtime_home: RuntimeHomeArgs::default(),
             mcp_command: None,
             dry_run: true,
             output: ConnectionReportOutputArgs {
@@ -1025,6 +1027,7 @@ fn run_read_only_mode(
                 host: Some(CodexHost::Codex),
                 mode: ConnectionMode::ReadOnly,
                 repo: Some(repo_root.to_path_buf()),
+                runtime_home: RuntimeHomeArgs::default(),
                 shared: false,
                 output: ConnectionReportOutputArgs {
                     json: true,
