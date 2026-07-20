@@ -189,7 +189,29 @@ offering to replay the mutation. An applied `remove` result offers no replay
 diagnostic. `complete` results without actionable diagnostics omit the
 guidance. Every generated connection follow-up command carries the selected
 absolute Runtime Home with `--home PATH`, so running it does not depend on the
-caller's environment.
+caller's environment. The renderer shows one inline command only when every
+logical argument is a nonempty portable literal token made from ASCII letters,
+digits, `_`, `-`, `.`, `/`, `:`, or `=`. That deliberately conservative
+form needs no argument-specific quoting in POSIX shells, PowerShell, or Command
+Prompt.
+
+If the repository or Runtime Home needs shell-specific quoting, the renderer
+instead labels the exact host, repository, Runtime Home, optional shared scope,
+and verbose-output requirement. It does not present those values as a
+universally copyable command. The user constructs the command in the current
+shell with the labelled values exactly as shown. A value containing a control
+character uses labelled JSON string notation so its exact content and value
+boundary remain unambiguous; that notation is presentation, not shell syntax.
+For example:
+
+```text
+For detailed current Connection diagnostics, run the verbose status command with:
+
+  Host: codex
+  Repository: C:\Work\Product Repo
+  Runtime home: C:\Users\Example User\.volicord
+  Verbose output: required.
+```
 
 `--verbose` renders a complete human diagnostic view. It starts with the same
 operation-aware headline as concise output, then uses the applicable

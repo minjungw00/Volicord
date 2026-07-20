@@ -5,6 +5,7 @@ mod support;
 use std::{
     collections::BTreeMap,
     error::Error,
+    ffi::OsString,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -869,6 +870,51 @@ fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     ] {
         assert!(!text.contains(hidden));
     }
+    Ok(())
+}
+
+#[test]
+fn concise_follow_up_argument_vector_preserves_custom_runtime_home() -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-concise-follow-up-custom-home")?;
+    fixture.install_codex_executable()?;
+    let init = fixture.run_init_with_output(false, None)?;
+    assert_eq!(init.status.code(), Some(0), "{}", stderr(&init)?);
+    assert!(stdout(&init)?.starts_with("Volicord setup was applied and needs one more step.\n\n"));
+
+    let default_runtime_home = fixture.user_home.join(".volicord");
+    assert!(!default_runtime_home.exists());
+    let follow_up_arguments = vec![
+        OsString::from("connection"),
+        OsString::from("status"),
+        OsString::from("codex"),
+        OsString::from("--repo"),
+        fixture.repo_root.as_os_str().to_owned(),
+        OsString::from("--home"),
+        fixture.runtime_home.as_os_str().to_owned(),
+        OsString::from("--verbose"),
+    ];
+    let follow_up = base_command()
+        .args(&follow_up_arguments)
+        .env("VOLICORD_HOME", &default_runtime_home)
+        .env("PATH", &fixture.empty_path)
+        .env("CODEX_HOME", &fixture.codex_home)
+        .env("HOME", &fixture.user_home)
+        .env("USERPROFILE", &fixture.user_home)
+        .current_dir(&fixture.repo_root)
+        .output()?;
+
+    assert_eq!(follow_up.status.code(), Some(0), "{}", stderr(&follow_up)?);
+    assert_eq!(stderr(&follow_up)?, "");
+    let text = stdout(&follow_up)?;
+    assert!(text.contains("Connection\n"));
+    assert!(text.contains(&format!("  Repository: {}\n", fixture.repo_root.display())));
+    assert!(text.contains(&format!(
+        "  Runtime home: {}\n",
+        fixture.runtime_home.display()
+    )));
+    assert!(text.contains("Summary\n"));
+    assert!(text.contains("Checks\n"));
+    assert!(!default_runtime_home.exists());
     Ok(())
 }
 

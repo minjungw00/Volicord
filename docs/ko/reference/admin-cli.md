@@ -178,6 +178,27 @@ path에서 소유권을 추론하지 않습니다.
 `remove` 결과에는 재실행 진단을 제안하지 않습니다. 조치할 진단이 없는 `complete`
 결과는 이 안내를 생략합니다. 생성하는 모든 connection 후속 명령은 선택한 절대 Runtime
 Home을 `--home PATH`로 포함하므로, 다시 실행할 때 호출자의 환경에 의존하지 않습니다.
+논리 인수가 모두 비어 있지 않고 ASCII 영문자, 숫자, `_`, `-`, `.`, `/`, `:`, `=`만
+사용하는 이식 가능한 리터럴 토큰일 때만 한 줄 명령으로 표시합니다.
+이 보수적인 형태는 POSIX 셸, PowerShell, Command Prompt에서 인수별 인용이 필요하지
+않습니다.
+
+저장소나 Runtime Home에 현재 셸에 맞는 인용이 필요하면, 대신 정확한 호스트,
+저장소, Runtime Home, 선택적인 `shared` 범위, `--verbose` 출력 요구사항을 라벨과 함께
+표시합니다. 이 값들을 모든 셸에서 그대로 복사해 실행할 수 있는 명령처럼 제시하지
+않습니다. 사용자는 표시된 정확한 값으로 현재 셸에 맞는 명령을 구성합니다. 제어 문자가
+있는 값은 정확한 내용과 값 경계를 모호하지 않게 유지하도록 라벨이 붙은 JSON 문자열
+표기법을 사용합니다. 이 표기법은 표시 형식이며 셸 문법이 아닙니다. 예시는 다음과
+같습니다.
+
+```text
+For detailed current Connection diagnostics, run the verbose status command with:
+
+  Host: codex
+  Repository: C:\Work\Product Repo
+  Runtime home: C:\Users\Example User\.volicord
+  Verbose output: required.
+```
 
 `--verbose`는 사람이 진단하는 데 필요한 완전한 보기를 표시합니다. 간결한 출력과 같은
 작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Actions`,

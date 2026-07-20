@@ -97,6 +97,9 @@ jobs:
       - name: Check Guard manifest projection
         run: cargo test --locked -p volicord-cli manifest_preserves_policy_and_runtime_command_forms_without_status_state --lib
 
+      - name: Check shell-neutral Connection diagnostic guidance
+        run: cargo test --locked -p volicord-cli connection_diagnostic --lib
+
       - name: Check initialization and Guard managed files
         run: cargo test --locked -p volicord-cli --test init_record_regression
 
