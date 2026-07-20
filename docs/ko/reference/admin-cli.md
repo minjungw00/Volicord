@@ -145,11 +145,22 @@ integration generation을 증가시키지 않습니다.
 앞에 표시하는 현재 문제, 현재 다음 동작을 간결한 사람용 산문으로 보여 줍니다.
 이 사람용 라벨은 표시 문구이며 보고서나 check 상태를 추가하지 않습니다.
 
-간결한 렌더러는 pending `host_session`, `required_tools`, `tool_round_trip` check를
-Codex session 및 도구 활동으로 묶습니다. Pending `guard_observation`은 알고 있는 누락
-phase와 함께 Guard hook 활동으로 보여 줍니다. 정규 check나 action을 변경, 제거, 재정렬,
-영속하지 않습니다. Dry run 산문은 typed `PlannedConnectionChangeKind`별로 계획 변경 수를
-묶으며 target path에서 소유권을 추론하지 않습니다.
+간결한 렌더러는 `host_session`, `required_tools`, `tool_round_trip`에 대응하는 정규
+check가 pending일 때만 해당 활동을 포함합니다. 현재 pending인 일부만 Codex session 또는
+도구 활동으로 묶을 수 있으며 passed, failed, 부재 check는 `Waiting` 아래에 반복하지
+않습니다. Pending `guard_observation`은 알고 있는 누락 phase와 함께 Guard hook 활동으로
+보여 줍니다. 렌더러는 정규 check나 action을 변경, 제거, 재정렬, 영속하지 않습니다.
+Dry run 산문은 typed `PlannedConnectionChangeKind`별로 계획 변경 수를 묶으며 target
+path에서 소유권을 추론하지 않습니다.
+
+간결한 진단 안내는 작업에 따라 달라집니다. `status` 보고서에 pending이나 failed check가
+있으면 같은 읽기 전용 상태 조회를 `--verbose`로 다시 실행할 수 있습니다. `verify`
+보고서에 이런 check가 있으면 활성 검증을 verbose로 다시 실행할 수 있습니다. Dry run
+역시 같은 dry run을 verbose로 다시 실행할 수 있습니다. `init`이나 `add` 설정을
+적용했거나 `mode` 전환에 성공한 뒤 상세 진단이 유용하면 변경 작업을 재실행하라고
+안내하지 않고 현재 `connection status ... --verbose` 명령을 안내합니다. 적용된
+`remove` 결과에는 재실행 진단을 제안하지 않습니다. 조치할 진단이 없는 `complete`
+결과는 이 안내를 생략합니다.
 
 `--verbose`는 사람이 진단하는 데 필요한 완전한 보기를 표시합니다. 간결한 출력과 같은
 작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Actions`,
@@ -180,7 +191,7 @@ Waiting
 Next
   Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
 
-Run again with --verbose for detailed diagnostics.
+Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics.
 ```
 
 Verbose 보기는 같은 typed 보고서를 구조화된 진단으로 표시합니다.

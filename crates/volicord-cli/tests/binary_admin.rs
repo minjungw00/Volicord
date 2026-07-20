@@ -574,7 +574,8 @@ fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("Mode: workflow\nChecks: "));
     assert!(text.contains("Waiting\n"));
     assert!(text.contains("Next\n"));
-    assert!(text.ends_with("Run again with --verbose for detailed diagnostics.\n"));
+    assert!(text.contains("volicord connection status codex --repo"));
+    assert!(text.ends_with("for detailed current Connection diagnostics.\n"));
     for hidden in [
         "Operation:",
         "Runtime home:",
@@ -639,6 +640,8 @@ fn connection_remove_human_output_reports_complete_connection_removal() -> Resul
     assert!(text.contains("Mode: workflow\nChecks: 1 ready\n"));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Connection removed:"));
+    assert!(!text.contains("--verbose"));
+    assert!(!text.contains("connection status"));
     Ok(())
 }
 
@@ -728,6 +731,25 @@ fn connection_mode_preserves_transition_check_and_reload_action_kinds() -> Resul
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(report["checks"][0]["id"], "mode_transition");
     assert_eq!(report["actions"][0]["id"], "reload_host");
+    Ok(())
+}
+
+#[test]
+fn connection_mode_human_output_does_not_offer_to_replay_the_transition(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-mode-human-no-replay")?;
+    fixture.install_codex_executable()?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(0));
+
+    let output = fixture.run_connection_mode_human("read-only")?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output)?, "");
+    let text = stdout(&output)?;
+    assert!(text.starts_with("Connection mode changed from workflow to read_only.\n\n"));
+    assert!(text.contains("Restart or reload Codex, then use the current Volicord integration\n"));
+    assert!(!text.contains("--verbose"));
+    assert!(!text.contains("connection status"));
     Ok(())
 }
 
@@ -901,6 +923,8 @@ fn membership_only_remove_human_output_reports_connection_retention() -> Result<
     assert!(text.contains("Mode: workflow\nChecks: 1 ready\n"));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Remaining project count:"));
+    assert!(!text.contains("--verbose"));
+    assert!(!text.contains("connection status"));
     Ok(())
 }
 
@@ -1110,6 +1134,26 @@ impl IsolatedInitFixture {
             .arg("--repo")
             .arg(&self.repo_root)
             .arg("--json")
+            .env("VOLICORD_HOME", &self.runtime_home)
+            .env("PATH", &self.empty_path)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("HOME", &self.user_home)
+            .env("USERPROFILE", &self.user_home)
+            .current_dir(&self.repo_root)
+            .output()?)
+    }
+
+    fn run_connection_mode_human(
+        &self,
+        mode: &str,
+    ) -> Result<std::process::Output, Box<dyn Error>> {
+        Ok(base_command()
+            .arg("connection")
+            .arg("mode")
+            .arg("codex")
+            .arg(mode)
+            .arg("--repo")
+            .arg(&self.repo_root)
             .env("VOLICORD_HOME", &self.runtime_home)
             .env("PATH", &self.empty_path)
             .env("CODEX_HOME", &self.codex_home)

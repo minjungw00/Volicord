@@ -4,7 +4,10 @@ use volicord_types::{
 };
 
 use super::report::{CommandOperation, ConnectionCommandReport, ConnectionCommandResult};
-use crate::connection_command::{PlannedConnectionChange, PlannedConnectionChangeKind};
+use crate::{
+    connection_command::{PlannedConnectionChange, PlannedConnectionChangeKind},
+    guard_integration::hooks::shell_word,
+};
 
 pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) -> String {
     let counts = CheckCounts::from_report(report);
@@ -57,8 +60,98 @@ pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) ->
         sections.push(format!("Next\n{}", actions.join("\n")));
     }
 
-    sections.push("Run again with --verbose for detailed diagnostics.".to_owned());
+    if let Some(hint) = concise_diagnostic_hint(report) {
+        sections.push(hint);
+    }
     format!("{}\n", sections.join("\n\n"))
+}
+
+fn concise_diagnostic_hint(report: &ConnectionCommandReport) -> Option<String> {
+    let has_nonpassing_check = report
+        .checks
+        .iter()
+        .any(|check| check.status() != ConnectionCheckStatus::Passed);
+
+    match report.operation {
+        CommandOperation::Status => {
+            has_nonpassing_check.then(|| current_status_diagnostic_hint(report))
+        }
+        CommandOperation::Verify => has_nonpassing_check.then(|| {
+            format!(
+                "Rerun active verification with `{}` for detailed diagnostics.",
+                selected_connection_verbose_command(report, "verify")
+            )
+        }),
+        CommandOperation::Init | CommandOperation::Add if report.dry_run => {
+            Some("Run the same dry-run command with --verbose for detailed diagnostics.".to_owned())
+        }
+        CommandOperation::Init | CommandOperation::Add => match report.result.as_ref() {
+            Some(ConnectionCommandResult::Setup { applied: true }) if has_nonpassing_check => {
+                Some(current_status_diagnostic_hint(report))
+            }
+            Some(ConnectionCommandResult::Setup { applied: false })
+                if report.status == ConnectionStatus::Failed && has_nonpassing_check =>
+            {
+                Some(
+                    "Run the same setup command with --verbose for detailed diagnostics."
+                        .to_owned(),
+                )
+            }
+            _ => None,
+        },
+        CommandOperation::Mode => match report.result.as_ref() {
+            Some(ConnectionCommandResult::ModeTransition { changed: true, .. })
+                if has_nonpassing_check =>
+            {
+                Some(current_status_diagnostic_hint(report))
+            }
+            None if report.status == ConnectionStatus::Failed && has_nonpassing_check => Some(
+                "Run the same connection mode command with --verbose for detailed diagnostics."
+                    .to_owned(),
+            ),
+            _ => None,
+        },
+        CommandOperation::Remove if report.dry_run => {
+            Some("Run the same dry-run command with --verbose for detailed diagnostics.".to_owned())
+        }
+        CommandOperation::Remove => match report.result.as_ref() {
+            None if report.status == ConnectionStatus::Failed && has_nonpassing_check => Some(
+                "Run the same connection remove command with --verbose for detailed diagnostics."
+                    .to_owned(),
+            ),
+            _ => None,
+        },
+    }
+}
+
+fn current_status_diagnostic_hint(report: &ConnectionCommandReport) -> String {
+    format!(
+        "Run `{}` for detailed current Connection diagnostics.",
+        selected_connection_verbose_command(report, "status")
+    )
+}
+
+fn selected_connection_verbose_command(
+    report: &ConnectionCommandReport,
+    operation: &str,
+) -> String {
+    let mut arguments = vec![
+        "volicord",
+        "connection",
+        operation,
+        report.connection.host.as_str(),
+        "--repo",
+        report.connection.repository.as_str(),
+    ];
+    if report.connection.scope == "project" {
+        arguments.push("--shared");
+    }
+    arguments.push("--verbose");
+    arguments
+        .into_iter()
+        .map(shell_word)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[derive(Clone, Copy)]
@@ -201,19 +294,9 @@ fn removal_headline(report: &ConnectionCommandReport) -> String {
 
 fn render_waiting_checks(checks: &[ConnectionCheck]) -> Vec<String> {
     let mut waiting = Vec::new();
-    if checks.iter().any(|check| {
-        check.status() == ConnectionCheckStatus::Pending
-            && matches!(
-                check.id(),
-                ConnectionCheckKind::HostSession
-                    | ConnectionCheckKind::RequiredTools
-                    | ConnectionCheckKind::ToolRoundTrip
-            )
-    }) {
-        waiting.push(
-            "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call"
-                .to_owned(),
-        );
+    let pending_activity = PendingCodexActivity::from_checks(checks);
+    if let Some(activity) = pending_activity.render() {
+        waiting.push(format!("  {activity}"));
     }
 
     if let Some(check) = checks.iter().find(|check| {
@@ -244,6 +327,56 @@ fn render_waiting_checks(checks: &[ConnectionCheck]) -> Vec<String> {
             .map(|check| format!("  {}", check.summary())),
     );
     waiting
+}
+
+#[derive(Default)]
+struct PendingCodexActivity {
+    host_session: bool,
+    required_tools: bool,
+    tool_round_trip: bool,
+}
+
+impl PendingCodexActivity {
+    fn from_checks(checks: &[ConnectionCheck]) -> Self {
+        let mut pending = Self::default();
+        for check in checks
+            .iter()
+            .filter(|check| check.status() == ConnectionCheckStatus::Pending)
+        {
+            match check.id() {
+                ConnectionCheckKind::HostSession => pending.host_session = true,
+                ConnectionCheckKind::RequiredTools => pending.required_tools = true,
+                ConnectionCheckKind::ToolRoundTrip => pending.tool_round_trip = true,
+                _ => {}
+            }
+        }
+        pending
+    }
+
+    fn render(&self) -> Option<&'static str> {
+        match (
+            self.host_session,
+            self.required_tools,
+            self.tool_round_trip,
+        ) {
+            (true, true, true) => Some(
+                "Codex session and tool activity: initialize, tools/list, and the designated read-only tool call",
+            ),
+            (true, true, false) => {
+                Some("Codex session and tool activity: initialize and tools/list")
+            }
+            (true, false, true) => Some(
+                "Codex session and tool activity: initialize and the designated read-only tool call",
+            ),
+            (false, true, true) => Some(
+                "Codex tool activity: tools/list and the designated read-only tool call",
+            ),
+            (true, false, false) => Some("Codex managed session"),
+            (false, true, false) => Some("Codex tools/list"),
+            (false, false, true) => Some("Read-only Volicord tool call"),
+            (false, false, false) => None,
+        }
+    }
 }
 
 fn guard_missing_phases(check: &ConnectionCheck) -> Vec<String> {
@@ -333,7 +466,8 @@ mod tests {
     use serde_json::{json, Value};
     use volicord_types::{
         ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
-        ConnectionCheckKind, ConnectionCheckStatus, ConnectionVerificationReport, UtcTimestamp,
+        ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
+        UtcTimestamp,
     };
 
     use crate::connection_command::{
@@ -522,8 +656,7 @@ mod tests {
                 "Volicord setup is ready.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Checks: 1 ready\n",
             )
         );
 
@@ -545,7 +678,7 @@ mod tests {
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
                 "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
             )
         );
 
@@ -569,7 +702,7 @@ mod tests {
                 "  Managed Codex configuration is unavailable\n\n",
                 "Next\n",
                 "  Repair the managed Codex configuration\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
             )
         );
 
@@ -591,7 +724,7 @@ mod tests {
                 "Checks: 0 ready, 1 failed\n\n",
                 "Problems\n",
                 "  Setup migration could not be completed\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Run the same setup command with --verbose for detailed diagnostics.\n",
             )
         );
     }
@@ -610,8 +743,7 @@ mod tests {
                 "Codex connection is ready.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Checks: 1 ready\n",
             )
         );
 
@@ -633,7 +765,7 @@ mod tests {
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
                 "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
             )
         );
 
@@ -652,21 +784,21 @@ mod tests {
                 "Checks: 0 ready, 1 failed\n\n",
                 "Problems\n",
                 "  Managed Codex configuration is unavailable\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics.\n",
             )
         );
     }
 
     #[test]
     fn concise_verify_action_required_output_has_an_active_verification_headline() {
-        let report = report(
+        let action_required = report(
             CommandOperation::Verify,
             None,
             activity_checks(),
             vec![observe_action()],
         );
         assert_eq!(
-            concise(&report),
+            concise(&action_required),
             concat!(
                 "Verification completed: 5 ready, 4 waiting.\n\n",
                 "Repository: /workspace/product\n",
@@ -677,9 +809,96 @@ mod tests {
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
                 "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics.\n",
             )
         );
+
+        let failed = report(
+            CommandOperation::Verify,
+            None,
+            vec![failed_check()],
+            Vec::new(),
+        );
+        let failed_output = concise(&failed);
+        assert!(failed_output.contains(
+            "Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics."
+        ));
+
+        let complete = report(
+            CommandOperation::Verify,
+            None,
+            vec![ready_check()],
+            Vec::new(),
+        );
+        assert!(!concise(&complete).contains("--verbose"));
+    }
+
+    #[test]
+    fn concise_setup_guidance_distinguishes_applied_dry_run_and_pre_apply_results() {
+        for operation in [CommandOperation::Init, CommandOperation::Add] {
+            let applied = report(
+                operation,
+                Some(true),
+                vec![check(
+                    ConnectionCheckKind::HostSession,
+                    ConnectionCheckStatus::Pending,
+                    "Managed host connection use has not been observed",
+                    None,
+                )],
+                Vec::new(),
+            );
+            let output = concise(&applied);
+            assert!(output.contains(
+                "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics."
+            ));
+            assert!(!output.contains("same setup command"));
+
+            let not_applied = ConnectionCommandReport::setup_failure(
+                operation,
+                Path::new("/runtime"),
+                connection("workflow"),
+                "Setup could not be applied",
+                json!({"retryable": true}),
+                Vec::new(),
+            )
+            .unwrap();
+            assert!(concise(&not_applied)
+                .contains("Run the same setup command with --verbose for detailed diagnostics."));
+
+            let dry_run = ConnectionCommandReport::setup_dry_run(
+                operation,
+                Path::new("/runtime"),
+                connection("workflow"),
+                None,
+                Vec::new(),
+                &[],
+            )
+            .unwrap();
+            assert!(concise(&dry_run)
+                .contains("Run the same dry-run command with --verbose for detailed diagnostics."));
+        }
+    }
+
+    #[test]
+    fn current_status_guidance_quotes_the_typed_repository_and_keeps_shared_selection() {
+        let mut report = report(
+            CommandOperation::Status,
+            None,
+            vec![failed_check()],
+            Vec::new(),
+        );
+        report.connection = CommandConnection::new(
+            "connection_1",
+            "codex",
+            "project",
+            "workflow",
+            Path::new("/workspace/product repo's"),
+            "/workspace/product repo's/.codex/config.toml",
+        );
+
+        assert!(concise(&report).contains(
+            "Run `volicord connection status codex --repo '/workspace/product repo'\\''s' --shared --verbose` for detailed current Connection diagnostics."
+        ));
     }
 
     #[test]
@@ -703,8 +922,7 @@ mod tests {
                 "Mode: read_only\n",
                 "Checks: 1 ready\n\n",
                 "Next\n",
-                "  Restart or reload Codex, then use the current Volicord integration\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "  Restart or reload Codex, then use the current Volicord integration\n",
             )
         );
 
@@ -725,10 +943,29 @@ mod tests {
                 "Connection mode is already workflow.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Checks: 1 ready\n",
             )
         );
+
+        let mut changed_with_diagnostics = changed.clone();
+        changed_with_diagnostics.status = ConnectionStatus::Failed;
+        changed_with_diagnostics.checks = vec![failed_check()];
+        changed_with_diagnostics.actions.clear();
+        let diagnostics_output = concise(&changed_with_diagnostics);
+        assert!(diagnostics_output.contains(
+            "Run `volicord connection status codex --repo /workspace/product --verbose` for detailed current Connection diagnostics."
+        ));
+        assert!(!diagnostics_output.contains("same connection mode command"));
+
+        let pre_mutation_failure = report(
+            CommandOperation::Mode,
+            None,
+            vec![failed_check()],
+            Vec::new(),
+        );
+        assert!(concise(&pre_mutation_failure).contains(
+            "Run the same connection mode command with --verbose for detailed diagnostics."
+        ));
     }
 
     #[test]
@@ -747,8 +984,7 @@ mod tests {
                 "Connection membership and Connection record were removed.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Checks: 1 ready\n",
             )
         );
 
@@ -766,10 +1002,25 @@ mod tests {
                 "Connection membership was removed; the shared Connection remains in use.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Checks: 1 ready\n",
             )
         );
+
+        for applied in [&final_membership, &shared_membership] {
+            let output = concise(applied);
+            assert!(!output.contains("--verbose"));
+            assert!(!output.contains("connection status"));
+        }
+
+        let pre_mutation_failure = report(
+            CommandOperation::Remove,
+            None,
+            vec![failed_check()],
+            Vec::new(),
+        );
+        assert!(concise(&pre_mutation_failure).contains(
+            "Run the same connection remove command with --verbose for detailed diagnostics."
+        ));
     }
 
     #[test]
@@ -810,7 +1061,7 @@ mod tests {
                 "  1 managed Codex configuration change\n",
                 "  2 Guard managed-file changes\n\n",
                 "Waiting\n",
-                "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
+                "  Codex managed session\n",
                 "  Guard hook activity\n",
                 "  Guard managed-file plan was inspected\n",
                 "  Managed Codex configuration plan was inspected\n",
@@ -818,7 +1069,7 @@ mod tests {
                 "Next\n",
                 "  1. Run init without --dry-run to apply the planned setup changes\n",
                 "  2. After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Run the same dry-run command with --verbose for detailed diagnostics.\n",
             )
         );
 
@@ -859,7 +1110,7 @@ mod tests {
                 "  Selected Connection membership removal is ready to apply\n\n",
                 "Next\n",
                 "  Run connection remove without --dry-run to apply the planned removal\n\n",
-                "Run again with --verbose for detailed diagnostics.\n",
+                "Run the same dry-run command with --verbose for detailed diagnostics.\n",
             )
         );
     }
@@ -900,7 +1151,7 @@ mod tests {
         );
         let output = concise(&report);
         assert!(output.find("Problems\n").unwrap() < output.find("Waiting\n").unwrap());
-        assert_eq!(output.matches("Codex session and tool activity").count(), 1);
+        assert_eq!(output.matches("Codex managed session").count(), 1);
         assert_eq!(output.matches("Guard hook activity").count(), 1);
         for hidden in [
             "Operation:",
@@ -926,6 +1177,136 @@ mod tests {
         }
         assert!(output.ends_with("diagnostics.\n"));
         assert!(!output.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn concise_waiting_uses_only_canonically_pending_codex_activities() {
+        let cases = [
+            (
+                Some(ConnectionCheckStatus::Pending),
+                Some(ConnectionCheckStatus::Pending),
+                Some(ConnectionCheckStatus::Pending),
+                Some(
+                    "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call",
+                ),
+            ),
+            (
+                Some(ConnectionCheckStatus::Passed),
+                Some(ConnectionCheckStatus::Failed),
+                Some(ConnectionCheckStatus::Pending),
+                Some("  Read-only Volicord tool call"),
+            ),
+            (
+                Some(ConnectionCheckStatus::Failed),
+                Some(ConnectionCheckStatus::Pending),
+                Some(ConnectionCheckStatus::Pending),
+                Some(
+                    "  Codex tool activity: tools/list and the designated read-only tool call",
+                ),
+            ),
+            (
+                Some(ConnectionCheckStatus::Passed),
+                Some(ConnectionCheckStatus::Passed),
+                Some(ConnectionCheckStatus::Pending),
+                Some("  Read-only Volicord tool call"),
+            ),
+            (
+                Some(ConnectionCheckStatus::Pending),
+                None,
+                None,
+                Some("  Codex managed session"),
+            ),
+            (
+                Some(ConnectionCheckStatus::Passed),
+                Some(ConnectionCheckStatus::Passed),
+                Some(ConnectionCheckStatus::Passed),
+                None,
+            ),
+            (
+                Some(ConnectionCheckStatus::Failed),
+                Some(ConnectionCheckStatus::Failed),
+                Some(ConnectionCheckStatus::Failed),
+                None,
+            ),
+        ];
+
+        for (host, tools, round_trip, expected) in cases {
+            let checks = [
+                (ConnectionCheckKind::HostSession, host),
+                (ConnectionCheckKind::RequiredTools, tools),
+                (ConnectionCheckKind::ToolRoundTrip, round_trip),
+            ]
+            .into_iter()
+            .filter_map(|(id, status)| status.map(|status| check(id, status, id.as_str(), None)))
+            .collect::<Vec<_>>();
+            let waiting = super::render_waiting_checks(&checks);
+            assert_eq!(
+                waiting,
+                expected.into_iter().map(str::to_owned).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn concise_waiting_keeps_guard_phase_order_and_failed_checks_only_under_problems() {
+        let all_guard_phases = check(
+            ConnectionCheckKind::GuardObservation,
+            ConnectionCheckStatus::Pending,
+            "Guard activity is pending",
+            Some(json!({
+                "missing_required_phases": ["prompt_capture", "post_tool", "pre_tool"],
+            })),
+        );
+        assert_eq!(
+            super::render_waiting_checks(&[all_guard_phases]),
+            vec!["  Guard hook activity: pre_tool, post_tool, prompt_capture"]
+        );
+
+        let subset = check(
+            ConnectionCheckKind::GuardObservation,
+            ConnectionCheckStatus::Pending,
+            "Guard activity is pending",
+            Some(json!({
+                "missing_required_phases": ["prompt_capture", "post_tool"],
+            })),
+        );
+        assert_eq!(
+            super::render_waiting_checks(&[subset]),
+            vec!["  Guard hook activity: post_tool, prompt_capture"]
+        );
+
+        let mixed = report(
+            CommandOperation::Status,
+            None,
+            vec![
+                check(
+                    ConnectionCheckKind::HostSession,
+                    ConnectionCheckStatus::Failed,
+                    "MCP initialize failed",
+                    None,
+                ),
+                check(
+                    ConnectionCheckKind::RequiredTools,
+                    ConnectionCheckStatus::Pending,
+                    "tools/list is pending",
+                    None,
+                ),
+                check(
+                    ConnectionCheckKind::ToolRoundTrip,
+                    ConnectionCheckStatus::Pending,
+                    "Read-only call is pending",
+                    None,
+                ),
+            ],
+            Vec::new(),
+        );
+        let output = concise(&mixed);
+        assert!(output.find("Problems\n").unwrap() < output.find("Waiting\n").unwrap());
+        assert!(output.contains("Problems\n  MCP initialize failed"));
+        assert!(output.contains(
+            "Waiting\n  Codex tool activity: tools/list and the designated read-only tool call"
+        ));
+        assert!(!output.contains("session and tool activity: initialize"));
     }
 
     #[test]

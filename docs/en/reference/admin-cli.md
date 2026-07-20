@@ -151,12 +151,25 @@ effective mode, `ready`/`waiting`/`failed` check counts, current problems before
 waiting observations, and the current next actions. The human
 labels are presentation wording; they do not add report or check statuses.
 
-The concise renderer groups pending `host_session`, `required_tools`, and
-`tool_round_trip` checks as Codex session and tool activity, and presents a
-pending `guard_observation` as Guard hook activity with known missing phases.
-It does not change, remove, reorder, or persist canonical checks or actions.
-Dry-run prose groups planned-change counts by the typed
-`PlannedConnectionChangeKind`; it does not infer ownership from target paths.
+The concise renderer includes `host_session`, `required_tools`, and
+`tool_round_trip` activity only when the corresponding canonical check is
+pending. It may group the exact pending subset as Codex session or tool
+activity; passed, failed, and absent checks are not repeated under `Waiting`.
+A pending `guard_observation` is presented as Guard hook activity with known
+missing phases. The renderer does not change, remove, reorder, or persist
+canonical checks or actions. Dry-run prose groups planned-change counts by the
+typed `PlannedConnectionChangeKind`; it does not infer ownership from target
+paths.
+
+Concise diagnostic guidance is operation-aware. A `status` report with pending
+or failed checks can rerun the same read-only status query with `--verbose`; a
+`verify` report with those checks can rerun active verification verbosely. Dry
+runs may also rerun the same dry run verbosely. After applied `init` or `add`
+setup, or after a successful `mode` transition, useful follow-up diagnostics
+point to the current `connection status ... --verbose` command instead of
+offering to replay the mutation. An applied `remove` result offers no replay
+diagnostic. `complete` results without actionable diagnostics omit the
+guidance.
 
 `--verbose` renders a complete human diagnostic view. It starts with the same
 operation-aware headline as concise output, then uses the applicable
@@ -189,7 +202,7 @@ Waiting
 Next
   Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
 
-Run again with --verbose for detailed diagnostics.
+Rerun active verification with `volicord connection verify codex --repo /workspace/product --verbose` for detailed diagnostics.
 ```
 
 The verbose view presents the same typed report as structured diagnostics:
