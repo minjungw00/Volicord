@@ -235,7 +235,9 @@ appear under `Additional details`. Large successful collections may be
 summarized by count for human diagnosis, and other bounded collections use an
 explicit remainder count when not every item is shown. The prose does not
 silently discard nonempty diagnostic fields. In particular, a successful MCP
-tool inventory is not repeated in prose.
+tool inventory is not repeated in prose. Each action renders only its semantic
+kind and instruction. The verbose action section does not render or reconstruct
+an executable command.
 
 `--json` writes the complete serialized `ConnectionCommandReport` and remains
 the exact, lossless machine representation. Full tool inventories and raw
@@ -478,6 +480,10 @@ PlannedConnectionChange:
   kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | connection_membership
   operation: create | update | remove | register | rebind
   target: string
+
+ConnectionAction:
+  id: ConnectionActionKind
+  instruction: string
 ```
 
 The report contains one aggregate status and one check/action tree. The optional
@@ -519,7 +525,11 @@ labels.
 `checks` and `actions` use the canonical
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)
 member types and ordering. JSON and human output render the same typed command
-report. Human output may group checks but does not recompute status or actions.
+report. Every JSON action contains exactly `id` and `instruction`. Human output
+may group checks but does not recompute status or actions. Actions are semantic
+report facts; operation-aware executable follow-up guidance is generated
+separately from the current typed host, repository, Runtime Home, scope, and
+output-selection coordinates.
 
 Mode no-op reports `changed=false`, equal previous/current modes and revisions,
 no rebound Guard Installation IDs, a passed `mode_transition` check, no action,

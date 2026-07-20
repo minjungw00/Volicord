@@ -395,11 +395,10 @@ mod tests {
     use crate::host_integration::ManagedServerEntry;
 
     #[test]
-    fn host_effect_preserves_canonical_actions_and_optional_commands() {
+    fn host_effect_preserves_canonical_action_kind_and_instruction() {
         let action = ConnectionAction::try_new(
             ConnectionActionKind::InspectCodexProtocol,
             "Inspect the Codex protocol failure",
-            Some("volicord connection verify".to_owned()),
         )
         .expect("canonical host action");
         let plan = HostPlan {
@@ -422,8 +421,11 @@ mod tests {
         assert_eq!(plan.actions, vec![action.clone()]);
         assert_eq!(effect.actions, vec![action]);
         assert_eq!(
-            effect.actions[0].command(),
-            Some("volicord connection verify")
+            serde_json::to_value(&effect.actions[0]).expect("action JSON"),
+            serde_json::json!({
+                "id": "inspect_codex_protocol",
+                "instruction": "Inspect the Codex protocol failure",
+            })
         );
     }
 }

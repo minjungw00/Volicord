@@ -390,11 +390,10 @@ impl Ord for ConnectionActionKind {
 
 /// One bounded user instruction produced by connection verification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
 pub struct ConnectionAction {
     id: ConnectionActionKind,
     instruction: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    command: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -402,7 +401,6 @@ pub struct ConnectionAction {
 struct ConnectionActionWire {
     id: ConnectionActionKind,
     instruction: String,
-    command: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for ConnectionAction {
@@ -411,7 +409,7 @@ impl<'de> Deserialize<'de> for ConnectionAction {
         D: Deserializer<'de>,
     {
         let wire = ConnectionActionWire::deserialize(deserializer)?;
-        Self::try_new(wire.id, wire.instruction, wire.command).map_err(de::Error::custom)
+        Self::try_new(wire.id, wire.instruction).map_err(de::Error::custom)
     }
 }
 
@@ -420,18 +418,10 @@ impl ConnectionAction {
     pub fn try_new(
         id: ConnectionActionKind,
         instruction: impl Into<String>,
-        command: Option<String>,
     ) -> Result<Self, ConnectionVerificationError> {
         let instruction = instruction.into();
         validate_text("action instruction", &instruction)?;
-        if let Some(command) = command.as_deref() {
-            validate_text("action command", command)?;
-        }
-        Ok(Self {
-            id,
-            instruction,
-            command,
-        })
+        Ok(Self { id, instruction })
     }
 
     /// Returns the stable action ID.
@@ -442,11 +432,6 @@ impl ConnectionAction {
     /// Returns the user-visible instruction.
     pub fn instruction(&self) -> &str {
         &self.instruction
-    }
-
-    /// Returns the optional executable command text.
-    pub fn command(&self) -> Option<&str> {
-        self.command.as_deref()
     }
 }
 
@@ -509,7 +494,6 @@ impl ConnectionVerificationReport {
             vec![ConnectionAction::try_new(
                 ConnectionActionKind::RunVerification,
                 "Run connection verification to observe current host behavior",
-                Some("volicord connection verify".to_owned()),
             )?],
         )
     }
@@ -809,8 +793,7 @@ mod tests {
     }
 
     fn action(id: ConnectionActionKind) -> ConnectionAction {
-        ConnectionAction::try_new(id, format!("{} instruction", id.as_str()), None)
-            .expect("test action")
+        ConnectionAction::try_new(id, format!("{} instruction", id.as_str())).expect("test action")
     }
 
     #[test]
@@ -864,43 +847,67 @@ mod tests {
     }
 
     #[test]
-    fn action_instruction_and_optional_command_validation_is_strict() {
+    fn action_instruction_validation_is_strict() {
         let action = ConnectionAction::try_new(
             ConnectionActionKind::InspectCodexProtocol,
             "Inspect the Codex protocol failure",
-            Some("volicord connection verify".to_owned()),
         )
         .expect("bounded action");
-        assert_eq!(action.command(), Some("volicord connection verify"));
+        assert_eq!(
+            serde_json::to_value(&action).unwrap(),
+            json!({
+                "id": "inspect_codex_protocol",
+                "instruction": "Inspect the Codex protocol failure",
+            })
+        );
 
         for instruction in ["", "invalid\0instruction"] {
-            assert!(ConnectionAction::try_new(
-                ConnectionActionKind::ObserveCodex,
-                instruction,
-                None,
-            )
-            .is_err());
+            assert!(
+                ConnectionAction::try_new(ConnectionActionKind::ObserveCodex, instruction,)
+                    .is_err()
+            );
         }
         assert!(ConnectionAction::try_new(
             ConnectionActionKind::ObserveCodex,
             "x".repeat(MAX_CONNECTION_TEXT_BYTES + 1),
-            None,
         )
         .is_err());
-        for command in ["", "invalid\0command"] {
-            assert!(ConnectionAction::try_new(
-                ConnectionActionKind::InspectCodexProtocol,
-                "Inspect the Codex protocol failure",
-                Some(command.to_owned()),
-            )
-            .is_err());
+    }
+
+    #[test]
+    fn action_schema_and_strict_decoding_use_exactly_id_and_instruction() {
+        let schema = serde_json::to_value(schemars::schema_for!(ConnectionAction)).unwrap();
+        assert_eq!(
+            schema["properties"]
+                .as_object()
+                .expect("ConnectionAction schema properties")
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["id", "instruction"])
+        );
+        assert_eq!(schema["required"], json!(["id", "instruction"]));
+        assert_eq!(schema["additionalProperties"], json!(false));
+
+        for rejected in [
+            json!({
+                "id": "repair_mcp_server",
+                "instruction": "Repair the MCP server",
+                "command": "volicord connection verify",
+            }),
+            json!({
+                "id": "repair_mcp_server",
+                "instruction": "Repair the MCP server",
+                "command": null,
+            }),
+            json!({
+                "id": "repair_mcp_server",
+                "instruction": "Repair the MCP server",
+                "adapter_action": "verify",
+            }),
+        ] {
+            assert!(serde_json::from_value::<ConnectionAction>(rejected).is_err());
         }
-        assert!(ConnectionAction::try_new(
-            ConnectionActionKind::InspectCodexProtocol,
-            "Inspect the Codex protocol failure",
-            Some("x".repeat(MAX_CONNECTION_TEXT_BYTES + 1)),
-        )
-        .is_err());
     }
 
     #[test]
@@ -944,12 +951,10 @@ mod tests {
                 ConnectionCheckKind::McpServer,
                 ConnectionCheckStatus::Passed,
             )],
-            vec![ConnectionAction::try_new(
-                ConnectionActionKind::ReloadHost,
-                "Reload the host",
-                None,
-            )
-            .unwrap()],
+            vec![
+                ConnectionAction::try_new(ConnectionActionKind::ReloadHost, "Reload the host")
+                    .unwrap(),
+            ],
         )
         .unwrap();
         let expected = json!({
@@ -970,6 +975,13 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<ConnectionVerificationReport>(expected).unwrap(),
             report
+        );
+
+        let mut command_bearing_report = serde_json::to_value(&report).unwrap();
+        command_bearing_report["actions"][0]["command"] = json!("volicord connection verify");
+        assert!(
+            serde_json::from_value::<ConnectionVerificationReport>(command_bearing_report).is_err(),
+            "a complete report must reject an unknown action member"
         );
 
         for damaged in [
@@ -1075,6 +1087,56 @@ mod tests {
         )
         .expect_err("duplicate actions must fail");
         assert!(error.detail().contains("duplicate action"));
+    }
+
+    #[test]
+    fn report_collection_and_byte_bounds_remain_enforced() {
+        let error = ConnectionVerificationReport::try_new(
+            timestamp(),
+            vec![
+                check(
+                    ConnectionCheckKind::ManagedConfig,
+                    ConnectionCheckStatus::Passed,
+                );
+                MAX_CONNECTION_CHECKS + 1
+            ],
+            Vec::new(),
+        )
+        .expect_err("the check collection bound must fail before duplicate validation");
+        assert!(error.detail().contains("too many checks"));
+
+        let error = ConnectionVerificationReport::try_new(
+            timestamp(),
+            Vec::new(),
+            vec![action(ConnectionActionKind::ReloadHost); MAX_CONNECTION_ACTIONS + 1],
+        )
+        .expect_err("the action collection bound must fail before duplicate validation");
+        assert!(error.detail().contains("too many actions"));
+
+        let checks = ConnectionCheckKind::ALL
+            .into_iter()
+            .map(|id| {
+                ConnectionCheck::try_new(
+                    id,
+                    ConnectionCheckStatus::Passed,
+                    None,
+                    "x".repeat(MAX_CONNECTION_TEXT_BYTES),
+                    None,
+                    None,
+                )
+                .expect("individually bounded check")
+            })
+            .collect();
+        let actions = ConnectionActionKind::ALL
+            .into_iter()
+            .map(|id| {
+                ConnectionAction::try_new(id, "x".repeat(MAX_CONNECTION_TEXT_BYTES))
+                    .expect("individually bounded action")
+            })
+            .collect();
+        let error = ConnectionVerificationReport::try_new(timestamp(), checks, actions)
+            .expect_err("the complete serialized report bound must still apply");
+        assert!(error.detail().contains("serialized size bound"));
     }
 
     #[test]

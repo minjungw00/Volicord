@@ -114,18 +114,17 @@ ConnectionCheck:
 ConnectionAction:
   id: ConnectionActionKind
   instruction: string
-  command?: string
 ```
 
 `status`, `checked_at`, `checks`, `actions`, 각 check 또는 action의 선택 사항이 아닌
-구성원은 필수입니다. 선택적인 `code`, `details`, `observed_at`, `command` 값이 없으면
-null로 직렬화하지 않고 구성원을 생략합니다. 알 수 없는 구성원, 중복 JSON key, 중복
-check kind, 중복 action kind, 비정규 순서, 선택 구성원의 명시적 null, 알 수 없는 상태,
-check kind, action kind 값은 유효하지 않습니다. Null이 아닌 check code는 ASCII 1~128
-byte이고 `[a-z][a-z0-9_]*`와 일치해야 합니다. `summary`, `instruction`, null이
-아닌 `command`는 UTF-8 1~4,096 byte이고 NUL을 포함하지 않습니다. Null이 아닌
-`details`는 직렬화 형태가 최대 16 KiB인 JSON 객체입니다. 보고서는 check를 최대
-64개, action을 최대 32개 포함하며 직렬화 형태는 최대 64 KiB입니다.
+구성원은 필수입니다. 선택적인 `code`, `details`, `observed_at` 값이 없으면 null로
+직렬화하지 않고 구성원을 생략합니다. 알 수 없는 구성원, 중복 JSON key, 중복 check kind,
+중복 action kind, 비정규 순서, 선택 구성원의 명시적 null, 알 수 없는 상태, check kind,
+action kind 값은 유효하지 않습니다. Null이 아닌 check code는 ASCII 1~128 byte이고
+`[a-z][a-z0-9_]*`와 일치해야 합니다. `summary`와 `instruction`은 UTF-8 1~4,096
+byte이고 NUL을 포함하지 않습니다. Null이 아닌 `details`는 직렬화 형태가 최대 16 KiB인
+JSON 객체입니다. 보고서는 check를 최대 64개, action을 최대 32개 포함하며 직렬화 형태는
+최대 64 KiB입니다.
 
 Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로 UTF-8 byte
 오름차순 정렬합니다. Action도 `ConnectionActionKind`의 안정적인 snake-case 표기를
@@ -147,6 +146,12 @@ check ID는 받지 않습니다.
 `run_verification`입니다. `HostPlan`, `HostEffect`, 검증 보고서, 명령 보고서는 정규
 `ConnectionAction` 계약을 직접 사용합니다. 이 직접 계약에서 `observe_codex`와
 `inspect_codex_protocol`은 `reload_host`와 서로 다른 행동으로 유지됩니다.
+
+Connection action은 안정적인 kind와 사용자 지시로 의미 있는 작업을 표현하며 실행 가능한
+셸 텍스트를 포함하지 않습니다. JSON 소비자는 action 내용을 실행하지 않고 action ID와
+지시를 보고서 사실로 사용합니다. 완전한 현재 selector 좌표가 있으면 사람용 렌더러가 typed
+현재 CLI 호출 맥락에서 실행 안내를 구성합니다. 렌더러가 담당하는 이 안내는 action JSON이나
+영속 보고서에 복사하지 않습니다.
 
 보고서의 모든 check는 그 보고서에 필수입니다. 최상위 상태는 check에서 파생됩니다.
 
@@ -205,6 +210,11 @@ Registry transaction 하나에서 수행합니다. 이 쓰기는 `verification_r
 갱신 timestamp만 바꿉니다. Revision 충돌이 나면 기존 보고서와 모든 소유자 field를 그대로
 두고 검증을 다시 실행하도록 요구합니다. 검증은 관리 configuration을 관찰할 뿐 새로 계획한
 managed fingerprint를 적용하거나 채택하거나 기록하지 않습니다.
+
+영속 action에 `id`와 `instruction` 이외의 구성원이 있으면 현재 보고서 형태가 잘못된
+것이며 엄격한 읽기에서 거부합니다. 활성 검증은 같은 revision 보호 교체 경계를 통해 이런
+잘못된 보고서를 교체할 수 있지만 관련 없는 Connection 소유자 상태는 바꾸지 않습니다.
+JSON을 제자리에서 다시 쓰거나 다른 decoder를 사용하는 경로는 없습니다.
 
 운영 호환성은 현재 관리 구성과 어댑터가 실제로 관찰한 protocol, 도구 목록, 필수 도구,
 안전 호출, Guard 동작으로 판단합니다. `complete`는 해당 보고서의 모든 필수 check가

@@ -286,16 +286,19 @@ revision을 받습니다. Store는 immediate Registry transaction 하나에서 r
 읽고 검증하며 현재 revision을 비교한 뒤 `verification_report_json`과 일반 row 갱신
 timestamp만 바꿉니다. 불일치는 쓰기 효과가 없는 충돌입니다. 이 경계는 malformed인 저장
 보고서의 명시적 교체는 허용하지만 malformed metadata나 다른 소유자 상태를 복구하지
-않습니다. 따라서 검증은 관리 configuration을 채택하거나 Connection integration revision을
-바꿀 수 없습니다.
+않습니다. Action에 `id`와 `instruction` 이외의 구성원이 있으면 이런 malformed 보고서에
+해당합니다. 엄격한 읽기는 이를 거부하지만 활성 검증은 revision이 바뀌지 않았을 때 보고서
+전체를 교체할 수 있습니다. 따라서 검증은 관리 configuration을 채택하거나 Connection
+integration revision을 바꿀 수 없습니다.
 
 Store는 쓰기 전과 읽은 뒤 공유 보고서 type을 검증합니다. 닫힌 값, 상한, 결정적 순서,
 중복 거부, 파생 집계를 모두 확인합니다. 형식이 잘못되었거나 비정규인 보고서 JSON은
 영속 담당 상태 손상입니다. 보고서 부재로 해석하거나 다른 column에서 복구하지 않습니다.
 
-선택적인 check 또는 action 구성원 값이 없으면 정규 JSON에 명시적 null을 저장하지 않고
-그 구성원을 생략합니다. 이 영속 보고서만 저장 check/action 상태를 소유합니다. CLI 명령
-출력은 해당 구성원을 최상위에 projection하며 두 번째 명령 출력 트리를 영속하지 않습니다.
+선택적인 check 구성원 값이 없으면 정규 JSON에 명시적 null을 저장하지 않고 그 구성원을
+생략합니다. 각 action은 의미를 나타내는 `id`와 사용자 `instruction`만 포함하며 실행 호출을
+영속하지 않습니다. 이 보고서만 저장 check/action 상태를 소유합니다. CLI 명령 출력은 해당
+구성원을 최상위에 projection하며 두 번째 명령 출력 트리를 영속하지 않습니다.
 
 <a id="authority-bundle-export"></a>
 ## 권한 번들 내보내기

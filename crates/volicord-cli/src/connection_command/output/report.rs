@@ -237,14 +237,12 @@ impl ConnectionCommandReport {
                     }
                     _ => "Apply the planned setup changes without --dry-run",
                 },
-                None,
             )?);
         }
         if current.is_none() {
             actions.push(ConnectionAction::try_new(
                 ConnectionActionKind::ObserveCodex,
                 "After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed",
-                None,
             )?);
         }
         Self::from_components(
@@ -276,7 +274,6 @@ impl ConnectionCommandReport {
                 format!(
                     "Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision {current_integration_revision}"
                 ),
-                None,
             )?]
         } else {
             Vec::new()
@@ -365,7 +362,6 @@ impl ConnectionCommandReport {
             vec![ConnectionAction::try_new(
                 ConnectionActionKind::ApplyRemoval,
                 "Run connection remove without --dry-run to apply the planned removal",
-                None,
             )?]
         } else {
             Vec::new()
@@ -655,7 +651,7 @@ mod tests {
                 .checks()
                 .to_vec(),
             vec![
-                ConnectionAction::try_new(ConnectionActionKind::ReloadHost, "Reload Codex", None)
+                ConnectionAction::try_new(ConnectionActionKind::ReloadHost, "Reload Codex")
                     .unwrap(),
             ],
         )
@@ -733,7 +729,6 @@ mod tests {
         let host_action = ConnectionAction::try_new(
             ConnectionActionKind::RunVerification,
             "Run connection verification",
-            Some("volicord connection verify".to_owned()),
         )
         .unwrap();
         let report = ConnectionCommandReport::setup_dry_run(
@@ -751,7 +746,13 @@ mod tests {
             .find(|action| action.id() == ConnectionActionKind::RunVerification)
             .expect("host-supplied action");
         assert_eq!(action.instruction(), "Run connection verification");
-        assert_eq!(action.command(), Some("volicord connection verify"));
+        assert_eq!(
+            serde_json::to_value(action).unwrap(),
+            json!({
+                "id": "run_verification",
+                "instruction": "Run connection verification",
+            })
+        );
 
         let error = ConnectionCommandReport::setup_dry_run(
             CommandOperation::Add,

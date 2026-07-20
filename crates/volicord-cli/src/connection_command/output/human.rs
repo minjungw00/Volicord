@@ -510,7 +510,7 @@ mod tests {
     }
 
     fn action(id: ConnectionActionKind, instruction: &str) -> ConnectionAction {
-        ConnectionAction::try_new(id, instruction, None).unwrap()
+        ConnectionAction::try_new(id, instruction).unwrap()
     }
 
     fn verification(

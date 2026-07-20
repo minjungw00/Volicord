@@ -843,9 +843,6 @@ fn render_actions(report: &ConnectionCommandReport) -> String {
     for action in &report.actions {
         let mut lines = vec![format!("  {}", action.id().as_str())];
         push_multiline(&mut lines, 4, action.instruction());
-        if let Some(command) = action.command() {
-            push_labeled_multiline(&mut lines, 4, "Command", command);
-        }
         blocks.push(lines.join("\n"));
     }
     format!("Actions\n{}", blocks.join("\n\n"))
@@ -1271,12 +1268,8 @@ mod tests {
         .unwrap()
     }
 
-    fn action(
-        id: ConnectionActionKind,
-        instruction: &str,
-        command: Option<&str>,
-    ) -> ConnectionAction {
-        ConnectionAction::try_new(id, instruction, command.map(str::to_owned)).unwrap()
+    fn action(id: ConnectionActionKind, instruction: &str) -> ConnectionAction {
+        ConnectionAction::try_new(id, instruction).unwrap()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1363,7 +1356,6 @@ mod tests {
             vec![action(
                 ConnectionActionKind::RepairManagedConfig,
                 "Repair the managed Codex configuration",
-                Some("volicord init --host codex --repo /workspace/product --profile record"),
             )],
             Some(ConnectionCommandResult::Setup { applied: false }),
             Some(vec![PlannedConnectionChange::new(
@@ -1413,7 +1405,7 @@ mod tests {
                 "Actions\n",
                 "  repair_managed_config\n",
                 "    Repair the managed Codex configuration\n",
-                "    Command: volicord init --host codex --repo /workspace/product --profile record\n\n",
+                "\n",
                 "Result\n",
                 "  Applied: no\n\n",
                 "Planned changes\n",
@@ -1453,7 +1445,6 @@ mod tests {
             vec![action(
                 ConnectionActionKind::ObserveCodex,
                 "Restart or reload Codex and use the connection",
-                None,
             )],
             Some(ConnectionCommandResult::Setup { applied: true }),
             None,
@@ -1552,7 +1543,6 @@ mod tests {
             vec![action(
                 ConnectionActionKind::RepairMcpServer,
                 "Repair the MCP server and verify again",
-                Some("volicord connection verify"),
             )],
             None,
             None,
@@ -1587,7 +1577,7 @@ mod tests {
                 "Actions\n",
                 "  repair_mcp_server\n",
                 "    Repair the MCP server and verify again\n",
-                "    Command: volicord connection verify\n\n",
+                "\n",
                 "Assurance\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
             )

@@ -1160,7 +1160,6 @@ fn migration_partial_application(
     let actions = ConnectionAction::try_new(
         ConnectionActionKind::ApplySetup,
         "Resolve the reported setup conflict, then rerun the same init migration using the retry arguments in the failed check details",
-        None,
     )
     .map(|action| vec![action])
     .unwrap_or_default();

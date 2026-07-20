@@ -125,20 +125,19 @@ ConnectionCheck:
 ConnectionAction:
   id: ConnectionActionKind
   instruction: string
-  command?: string
 ```
 
 `status`, `checked_at`, `checks`, `actions`, and each check or action's
 non-optional members are required. Optional `code`, `details`, `observed_at`,
-and `command` members are omitted when absent rather than serialized as null.
-Unknown members, duplicate JSON keys, duplicate check kinds, duplicate action
-kinds, noncanonical ordering, explicit null for an optional member, and unknown
-status, check-kind, or action-kind values are invalid. Non-null check codes are
-1 through 128 ASCII bytes and match `[a-z][a-z0-9_]*`. `summary`, `instruction`,
-and non-null `command` values are
-1 through 4,096 UTF-8 bytes and contain no NUL. A non-null `details` value is a
-JSON object whose serialized form is at most 16 KiB. A report contains at most
-64 checks and 32 actions, and its serialized form is at most 64 KiB.
+members are omitted when absent rather than serialized as null. Unknown
+members, duplicate JSON keys, duplicate check kinds, duplicate action kinds,
+noncanonical ordering, explicit null for an optional member, and unknown status,
+check-kind, or action-kind values are invalid. Non-null check codes are 1
+through 128 ASCII bytes and match `[a-z][a-z0-9_]*`. `summary` and
+`instruction` values are 1 through 4,096 UTF-8 bytes and contain no NUL. A
+non-null `details` value is a JSON object whose serialized form is at most 16
+KiB. A report contains at most 64 checks and 32 actions, and its serialized
+form is at most 64 KiB.
 
 Checks are sorted by the stable snake-case spelling of `ConnectionCheckKind` in
 ascending UTF-8 byte order. Actions use the same ordering by the stable
@@ -162,6 +161,14 @@ remaining named kinds; arbitrary adapter-defined check IDs are not accepted.
 reports use the canonical `ConnectionAction` contract directly. Within that
 direct contract, `observe_codex` and `inspect_codex_protocol` remain distinct
 from `reload_host`.
+
+A Connection action expresses semantic work through its stable kind and user
+instruction. It contains no executable shell text. JSON consumers use the
+action ID and instruction as report facts rather than executing action content.
+When complete current selector coordinates are available, the human renderer
+constructs executable follow-up guidance from its typed current CLI invocation
+context. That renderer-owned guidance is not copied into action JSON or the
+persisted report.
 
 Every check in the report is required for that report. The top-level status is
 derived and cannot disagree with the checks:
@@ -231,6 +238,12 @@ conflict leaves the existing report and every owner field unchanged and
 requires verification to be rerun. Verification observes managed
 configuration; it never applies, adopts, or records a newly planned managed
 fingerprint.
+
+A persisted action with any member other than `id` and `instruction` is a
+malformed current report and strict reads reject it. Active verification may
+replace such a malformed report through the same revision-guarded replacement
+boundary; it does not modify unrelated Connection owner state. No in-place JSON
+rewrite or alternate decoder applies.
 
 Operational compatibility is determined from the current managed configuration
 and the protocol, tool-list, required-tool, safe-call, and Guard behavior the

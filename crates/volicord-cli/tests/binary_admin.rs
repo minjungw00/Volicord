@@ -1028,6 +1028,67 @@ fn connection_list_reports_malformed_verification_as_a_row_issue() -> Result<(),
 }
 
 #[test]
+fn connection_verify_replaces_a_command_bearing_report_without_changing_connection_owners(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = IsolatedInitFixture::new("binary-verify-replaces-command-report")?;
+    assert_eq!(fixture.run(false)?.status.code(), Some(1));
+    let connection_id = fixture.only_connection_id();
+    let before_connection = fixture.registry_snapshot().agent_connections[0].clone();
+
+    let mut invalid: Value = serde_json::from_str(
+        stored_verification_report(&fixture, &connection_id)?
+            .as_deref()
+            .expect("init persisted a verification report"),
+    )?;
+    invalid["actions"]
+        .as_array_mut()
+        .and_then(|actions| actions.first_mut())
+        .and_then(Value::as_object_mut)
+        .expect("failed init report has an action")
+        .insert(
+            "command".to_owned(),
+            Value::String("volicord connection verify".to_owned()),
+        );
+    assert!(
+        serde_json::from_value::<ConnectionVerificationReport>(invalid.clone()).is_err(),
+        "the command-bearing stored shape must not decode as current"
+    );
+    let invalid = serde_json::to_string(&invalid)?;
+    set_verification_report(&fixture, &connection_id, Some(&invalid))?;
+
+    let output = fixture.run_connection("verify", true)?;
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(stderr(&output)?, "");
+    let generated: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(generated["operation"], "verify");
+    for action in generated["actions"].as_array().expect("generated actions") {
+        assert_eq!(
+            action
+                .as_object()
+                .expect("action object")
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["id", "instruction"])
+        );
+    }
+    assert!(!serde_json::to_string(&generated)?.contains("volicord connection verify"));
+
+    let stored = stored_verification_report(&fixture, &connection_id)?
+        .expect("active verification replaced the report");
+    serde_json::from_str::<ConnectionVerificationReport>(&stored)?;
+    assert!(!stored.contains("volicord connection verify"));
+
+    let after_connection = fixture.registry_snapshot().agent_connections[0].clone();
+    let mut expected_connection = before_connection;
+    expected_connection.verification_report_json =
+        after_connection.verification_report_json.clone();
+    expected_connection.updated_at = after_connection.updated_at.clone();
+    assert_eq!(after_connection, expected_connection);
+    Ok(())
+}
+
+#[test]
 fn connection_list_orders_multiple_row_issues() -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-connection-list-multiple-issues")?;
     fixture.run(false)?;
@@ -1599,6 +1660,24 @@ fn failed_verify_json_is_one_stdout_document_and_empty_stderr() -> Result<(), Bo
     assert_eq!(value["status"], "failed");
     assert!(value.get("result").is_none());
     assert!(value.get("planned_changes").is_none());
+    for action in value["actions"].as_array().expect("verification actions") {
+        assert_eq!(
+            action
+                .as_object()
+                .expect("action object")
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["id", "instruction"])
+        );
+    }
+    assert!(!stdout(&output)?.contains("volicord connection verify"));
+
+    let connection_id = fixture.only_connection_id();
+    let stored = stored_verification_report(&fixture, &connection_id)?
+        .expect("verification report was persisted");
+    serde_json::from_str::<ConnectionVerificationReport>(&stored)?;
+    assert!(!stored.contains("volicord connection verify"));
     Ok(())
 }
 
@@ -1615,6 +1694,18 @@ fn failed_verify_human_report_is_written_to_stdout() -> Result<(), Box<dyn Error
     assert!(text.contains(" failed.\n\n"));
     assert!(text.contains("Problems\n"));
     assert!(text.contains("Next\n"));
+    if text.contains("`volicord connection verify") {
+        assert!(text.contains(" codex --repo "));
+        assert!(text.contains(&format!(
+            " --home {} --verbose`",
+            fixture.runtime_home.display()
+        )));
+    } else {
+        assert!(text.contains("Host: codex"));
+        assert!(text.contains(&format!("Repository: {}", fixture.repo_root.display())));
+        assert!(text.contains(&format!("Runtime home: {}", fixture.runtime_home.display())));
+        assert!(text.contains("Verbose output: required."));
+    }
     assert!(!text.contains("Operation:"));
     assert!(!text.contains("Details: {"));
     Ok(())
@@ -1636,6 +1727,8 @@ fn verbose_connection_report_retains_the_full_diagnostic_renderer() -> Result<()
     assert!(text.contains("\n\nChecks\n"));
     assert!(text.contains("\n\nActions\n"));
     assert!(text.contains("\n\nAssurance\n"));
+    assert!(!text.contains("Command:"));
+    assert!(!text.contains("volicord connection verify"));
     assert!(!text.contains("Details: {"));
     assert!(!text.contains("\":["));
     assert!(text.ends_with('\n'));

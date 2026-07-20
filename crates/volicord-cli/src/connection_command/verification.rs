@@ -863,43 +863,31 @@ fn latest_timestamp(
 fn actions_for_checks(
     checks: &[ConnectionCheck],
 ) -> Result<Vec<ConnectionAction>, ConnectionCommandError> {
-    let mut actions = BTreeMap::<ConnectionActionKind, (&str, Option<String>)>::new();
+    let mut actions = BTreeMap::<ConnectionActionKind, &str>::new();
     for check in checks {
         match (check.id(), check.status()) {
             (ConnectionCheckKind::ManagedConfig, ConnectionCheckStatus::Failed) => {
                 actions.insert(
                     ConnectionActionKind::RepairManagedConfig,
-                    (
-                        "Repair or recreate the Volicord-managed Codex MCP entry",
-                        None,
-                    ),
+                    "Repair or recreate the Volicord-managed Codex MCP entry",
                 );
             }
             (ConnectionCheckKind::HostExecutable, ConnectionCheckStatus::Failed) => {
                 actions.insert(
                     ConnectionActionKind::InstallOrRepairCodex,
-                    (
-                        "Install or repair Codex so `codex --version` succeeds on PATH",
-                        None,
-                    ),
+                    "Install or repair Codex so `codex --version` succeeds on PATH",
                 );
             }
             (ConnectionCheckKind::McpServer, ConnectionCheckStatus::Failed) => {
                 actions.insert(
                     ConnectionActionKind::RepairMcpServer,
-                    (
-                        "Repair the Volicord MCP configuration or storage error and verify again",
-                        Some("volicord connection verify".to_owned()),
-                    ),
+                    "Repair the Volicord MCP configuration or storage error and verify again",
                 );
             }
             (ConnectionCheckKind::ProjectTrust, ConnectionCheckStatus::Pending) => {
                 actions.insert(
                     ConnectionActionKind::HostTrustRequired,
-                    (
-                        "Trust the project in Codex, then restart or reload Codex",
-                        None,
-                    ),
+                    "Trust the project in Codex, then restart or reload Codex",
                 );
             }
             (
@@ -911,10 +899,7 @@ fn actions_for_checks(
             ) => {
                 actions.insert(
                     ConnectionActionKind::ObserveCodex,
-                    (
-                        "Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool so actual Codex connection and Guard activity can be observed",
-                        None,
-                    ),
+                    "Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool so actual Codex connection and Guard activity can be observed",
                 );
             }
             (
@@ -926,19 +911,13 @@ fn actions_for_checks(
             ) => {
                 actions.insert(
                     ConnectionActionKind::InspectCodexProtocol,
-                    (
-                        "Inspect the recorded Codex protocol failure, repair the incompatible configuration or behavior, then verify again",
-                        Some("volicord connection verify".to_owned()),
-                    ),
+                    "Inspect the recorded Codex protocol failure, repair the incompatible configuration or behavior, then verify again",
                 );
             }
             (ConnectionCheckKind::GuardFiles, ConnectionCheckStatus::Failed) => {
                 actions.insert(
                     ConnectionActionKind::RepairGuard,
-                    (
-                        "Repair the Volicord Guard integration and verify the connection again",
-                        None,
-                    ),
+                    "Repair the Volicord Guard integration and verify the connection again",
                 );
             }
             _ => {}
@@ -946,9 +925,8 @@ fn actions_for_checks(
     }
     actions
         .into_iter()
-        .map(|(id, (instruction, command))| {
-            ConnectionAction::try_new(id, instruction, command)
-                .map_err(ConnectionCommandError::from)
+        .map(|(id, instruction)| {
+            ConnectionAction::try_new(id, instruction).map_err(ConnectionCommandError::from)
         })
         .collect()
 }
@@ -1343,6 +1321,13 @@ mod tests {
         assert_eq!(checks[1].status(), ConnectionCheckStatus::Passed);
         assert_eq!(checks[2].status(), ConnectionCheckStatus::Failed);
         assert_eq!(checks[2].code(), Some("tool_round_trip_failed"));
+        assert_eq!(
+            serde_json::to_value(actions_for_checks(&checks).expect("protocol action")).unwrap(),
+            json!([{
+                "id": "inspect_codex_protocol",
+                "instruction": "Inspect the recorded Codex protocol failure, repair the incompatible configuration or behavior, then verify again",
+            }])
+        );
     }
 
     #[test]
@@ -1518,6 +1503,20 @@ mod tests {
         let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, first)
             .expect("canonical report");
         assert_eq!(report.status(), ConnectionStatus::Failed);
+        assert_eq!(
+            serde_json::to_value(
+                report
+                    .actions()
+                    .iter()
+                    .find(|action| action.id() == ConnectionActionKind::RepairMcpServer)
+                    .expect("MCP repair action"),
+            )
+            .unwrap(),
+            json!({
+                "id": "repair_mcp_server",
+                "instruction": "Repair the Volicord MCP configuration or storage error and verify again",
+            })
+        );
     }
 
     #[test]

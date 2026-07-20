@@ -218,6 +218,8 @@ action, typed result 사실, 계획 operation과 target, 보장 한계를 원시
 진단할 때 큰 성공 컬렉션은 개수로 요약할 수 있고, 그 밖의 제한된 컬렉션에서 모든 항목을
 표시하지 않을 때는 남은 개수를 명시합니다. 산문 출력은 비어 있지 않은 진단 필드를 조용히
 버리지 않습니다. 특히 성공한 MCP 도구 inventory 전체를 산문에 반복하지 않습니다.
+각 action은 의미를 나타내는 kind와 지시만 표시합니다. Verbose action 구역은 실행 가능한
+명령을 표시하거나 다시 구성하지 않습니다.
 
 `--json`은 완전한 직렬화 `ConnectionCommandReport`를 쓰며 정확하고 손실 없는 기계 판독
 표현으로 유지됩니다. 전체 도구 inventory와 원시 중첩 진단 사실은 JSON에서 확인합니다.
@@ -449,6 +451,10 @@ PlannedConnectionChange:
   kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | connection_membership
   operation: create | update | remove | register | rebind
   target: string
+
+ConnectionAction:
+  id: ConnectionActionKind
+  instruction: string
 ```
 
 이 보고서에는 집계 상태 하나와 check/action 트리 하나만 있습니다. 선택적인 tagged
@@ -485,8 +491,10 @@ No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, 
 `checks`와 `actions`는 정규
 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의
 구성원 type과 순서를 사용합니다. JSON과 사람용 출력은 같은 typed command report를
-표시합니다. 사람용 출력은 check를 묶어 보여 줄 수 있지만 상태나 action을 다시 계산하지
-않습니다.
+표시합니다. 각 JSON action은 정확히 `id`와 `instruction`만 포함합니다. 사람용 출력은
+check를 묶어 보여 줄 수 있지만 상태나 action을 다시 계산하지 않습니다. Action은 의미를
+나타내는 보고서 사실입니다. 작업별 실행 안내는 현재 typed 호스트, 저장소, Runtime Home,
+범위, 출력 선택 좌표에서 별도로 생성합니다.
 
 Mode no-op은 `changed=false`, 같은 이전/현재 mode와 revision, 빈 Guard Installation
 재결속 ID, 통과한 `mode_transition` check, 빈 action, `status=complete`를 보고합니다.

@@ -322,8 +322,11 @@ transaction Store loads and validates the revision owner fields, compares the
 current revision, and updates only `verification_report_json` and the ordinary
 row update timestamp. A mismatch is a conflict with no write. This boundary
 allows explicit replacement of a malformed stored report but does not repair
-malformed metadata or other owner state. Verification therefore cannot adopt
-managed configuration or change the Connection integration revision.
+malformed metadata or other owner state. An action containing any member other
+than `id` and `instruction` is one such malformed report; strict reads reject
+it, while active verification may replace the whole report under the unchanged
+revision. Verification therefore cannot adopt managed configuration or change
+the Connection integration revision.
 
 Store validates the shared report type before write and after read, including
 closed values, bounds, deterministic ordering, duplicate rejection, and the
@@ -331,10 +334,11 @@ derived aggregate. Malformed or noncanonical report JSON is corrupt persisted
 owner state. It is not interpreted as no report and is not repaired from
 another column.
 
-Absent optional check or action members are omitted from canonical JSON rather
-than stored as explicit null. This persisted report remains the sole stored
-check/action state; CLI command output projects those members at top level and
-does not persist a second command-output tree.
+Absent optional check members are omitted from canonical JSON rather than
+stored as explicit null. Every action contains exactly its semantic `id` and
+user `instruction`; no executable invocation is persisted. This report remains
+the sole stored check/action state. CLI command output projects those members
+at top level and does not persist a second command-output tree.
 
 <a id="authority-bundle-export"></a>
 ## Authority Bundle Export
