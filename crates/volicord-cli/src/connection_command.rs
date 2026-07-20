@@ -1179,7 +1179,6 @@ fn existing_host_plan(
             connection_intent,
             scope: host_scope,
             connection_id: &connection.connection_internal_id,
-            project_id: selected_project.map(|project| project.project_id.as_str()),
             server_name: &connection.server_name,
             config_target: Path::new(&connection.config_target),
             mcp_command: &mcp_command,

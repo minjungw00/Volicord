@@ -1475,7 +1475,6 @@ mod tests {
             Path::new("/opt/volicord"),
             Path::new("/contract/runtime-home"),
             "connection_alpha",
-            None,
         )
         .expect("personal launch");
         let materialized = materialize_connection_invocation(

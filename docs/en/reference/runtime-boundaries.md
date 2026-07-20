@@ -62,9 +62,11 @@ forwards only `VOLICORD_HOME` without embedding a machine-local Runtime Home
 path or lifecycle coordinate. Both are projections of the one canonical
 managed launch contract defined by
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract). The
-generated command, arguments, environment, and managed launch provenance select
-the registered Connection and its optional project at startup. They are
-cooperative launch context, not identity credentials.
+personal command, arguments, environment, and managed launch provenance select
+the registered Connection at startup without a project selector; current
+project associations come from Store-owned Connection Project memberships. The
+shared launch resolves its Connection and project through repository discovery.
+These values are cooperative launch context, not identity credentials.
 
 The stored managed fingerprint identifies the Volicord-managed host
 configuration that setup, repair, staged activation, or another explicit

@@ -630,12 +630,12 @@ reinstall Guard files.
 
 A personal connection writes only user-owned managed Codex configuration. Its
 entry binds the selected canonical absolute Runtime Home as static
-`VOLICORD_HOME` and forwards no environment name. A shared connection writes
-the supported project-owned Codex entry, forwards only `VOLICORD_HOME`, and
-embeds no machine-local path or lifecycle coordinate. Generation, strict
-validation, and fingerprinting project the same canonical managed launch
-contract. The exact shapes, drift rules, repair, launch context, and uninstall
-boundary belong to
+`VOLICORD_HOME`, carries no project selector, and forwards no environment name.
+A shared connection writes the supported project-owned Codex entry, forwards
+only `VOLICORD_HOME`, and embeds no machine-local path or lifecycle coordinate.
+Generation, strict validation, and fingerprinting project the same canonical
+managed launch contract. The exact shapes, drift rules, repair, launch context,
+and uninstall boundary belong to
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract).
 Configuration markers select the cooperative launch path; they are not
 credentials or identity evidence.

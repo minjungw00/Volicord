@@ -72,9 +72,10 @@ The first release accepts only this Agent Connection surface:
 
 A `personal` connection installs user-owned local Codex configuration. A
 `shared` connection installs project-owned Codex configuration inside the
-selected `Product Repository`. Both identify one registered Connection and its
-allowed projects through the Volicord-generated managed launch/configuration
-context.
+selected `Product Repository`. A personal managed launch identifies one
+registered Connection; the Connection's allowed projects remain its
+authoritative Store-owned memberships. A shared managed launch resolves its
+Connection and project through repository discovery.
 
 The Connection owns its host kind, scope, mode, managed-configuration
 fingerprint, project membership, immutable Store-owned integration-instance ID,
@@ -127,9 +128,10 @@ VOLICORD_MCP_HOST = "codex"
 VOLICORD_MCP_LAUNCH = "managed_host"
 ```
 
-When a personal launch is bound to one current project, it additionally uses
-`--project <project_id>` and static `VOLICORD_MCP_PROJECT_ID=<project_id>`.
-The argument and marker must agree.
+A personal entry carries no project selector. Its arguments contain no
+`--project`, and its static environment contains no project marker. The Agent
+Connection's authoritative Product Repository associations remain Store-owned
+Connection Project memberships rather than process-launch state.
 
 A shared connection contains only the clone-portable repository-discovery
 launch. It uses `volicord` from `PATH`, forwards only `VOLICORD_HOME`, and has
@@ -143,9 +145,11 @@ env_vars = ["VOLICORD_HOME"]
 ```
 
 The shared launch contains no absolute executable, Runtime Home, Connection ID,
-project ID, or other machine-local lifecycle coordinate. A static/forwarded
-environment collision, blank or duplicate forwarded name, incomplete personal
-binding, or mixed personal/shared argument or environment shape is invalid.
+project ID, or other machine-local lifecycle coordinate. A personal entry with
+a project argument or project environment marker, a static/forwarded
+environment collision, a blank or duplicate forwarded name, an incomplete
+personal binding, or a mixed personal/shared argument or environment shape is
+invalid.
 
 Codex TOML parsing is strict and must reconstruct this same typed contract.
 Unknown launch keys, malformed values, and noncanonical shapes are drift rather

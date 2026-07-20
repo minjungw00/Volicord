@@ -320,7 +320,7 @@ fn stdio_workflow_metrics_record_exact_tools_list_method_outcomes_and_status_rer
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -1581,11 +1581,7 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
 
 #[test]
 fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
-    fn classified(
-        markers: &[(&str, String)],
-        project_id: Option<&str>,
-        host_kind: Option<&str>,
-    ) -> McpLaunchOrigin {
+    fn classified(markers: &[(&str, String)], host_kind: Option<&str>) -> McpLaunchOrigin {
         classify_launch_origin(
             |name| {
                 markers
@@ -1594,7 +1590,6 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
                     .map(|(_, value)| OsString::from(value))
             },
             "conn_alpha",
-            project_id,
             host_kind,
         )
     }
@@ -1611,20 +1606,18 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
         classify_launch_origin(
             |name| (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1")),
             "conn_alpha",
-            Some("project_alpha"),
             Some("codex"),
         ),
         McpLaunchOrigin::CliVerification
     );
     assert_eq!(
-        classify_launch_origin(|_| None, "conn_alpha", Some("project_alpha"), Some("codex"),),
+        classify_launch_origin(|_| None, "conn_alpha", Some("codex")),
         McpLaunchOrigin::ManualCli
     );
     assert_eq!(
         classify_launch_origin(
             |name| (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient_thread")),
             "conn_alpha",
-            Some("project_alpha"),
             Some("codex"),
         ),
         McpLaunchOrigin::ManualCli,
@@ -1634,10 +1627,9 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
         ("VOLICORD_MCP_LAUNCH", "managed_host"),
         ("VOLICORD_MCP_HOST", "codex"),
         ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-        ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
     ]);
     assert_eq!(
-        classified(&valid_codex, Some("project_alpha"), Some("codex")),
+        classified(&valid_codex, Some("codex")),
         McpLaunchOrigin::ManagedHost
     );
     let invalid_cases = vec![
@@ -1647,7 +1639,6 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
                 ("VOLICORD_MCP_LAUNCH", "manual"),
                 ("VOLICORD_MCP_HOST", "codex"),
                 ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
                 ("CODEX_THREAD_ID", "thread_alpha"),
             ]),
             Some("codex"),
@@ -1658,7 +1649,6 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
                 ("VOLICORD_MCP_LAUNCH", "managed_host"),
                 ("VOLICORD_MCP_HOST", "unsupported"),
                 ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
                 ("CODEX_THREAD_ID", "thread_alpha"),
             ]),
             Some("codex"),
@@ -1669,28 +1659,6 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
                 ("VOLICORD_MCP_LAUNCH", "managed_host"),
                 ("VOLICORD_MCP_HOST", "codex"),
                 ("VOLICORD_MCP_CONNECTION_ID", "conn_beta"),
-                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
-                ("CODEX_THREAD_ID", "thread_alpha"),
-            ]),
-            Some("codex"),
-        ),
-        (
-            "wrong project",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "codex"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("VOLICORD_MCP_PROJECT_ID", "project_beta"),
-                ("CODEX_THREAD_ID", "thread_alpha"),
-            ]),
-            Some("codex"),
-        ),
-        (
-            "missing project marker",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "codex"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
                 ("CODEX_THREAD_ID", "thread_alpha"),
             ]),
             Some("codex"),
@@ -1699,21 +1667,16 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
 
     for (label, marker_set, host_kind) in invalid_cases {
         assert_eq!(
-            classified(&marker_set, Some("project_alpha"), host_kind),
+            classified(&marker_set, host_kind),
             McpLaunchOrigin::InvalidManagedMarker,
             "{label}"
         );
     }
-    assert_eq!(
-        classified(&valid_codex, None, Some("codex")),
-        McpLaunchOrigin::InvalidManagedMarker,
-        "an unbound launch must not carry a project marker"
-    );
     for ambient in ["", "thread alpha", &"a".repeat(257)] {
         let mut with_ambient = valid_codex.clone();
         with_ambient.push(("CODEX_THREAD_ID", ambient.to_owned()));
         assert_eq!(
-            classified(&with_ambient, Some("project_alpha"), Some("codex")),
+            classified(&with_ambient, Some("codex")),
             McpLaunchOrigin::ManagedHost,
             "ambient CODEX_THREAD_ID is not a binding input"
         );
@@ -1731,7 +1694,6 @@ fn non_utf8_managed_marker_is_invalid_instead_of_manual() {
                 (name == "VOLICORD_MCP_LAUNCH").then(|| OsString::from_vec(vec![0xff, 0xfe]))
             },
             "conn_alpha",
-            Some("project_alpha"),
             Some("codex"),
         ),
         McpLaunchOrigin::InvalidManagedMarker
@@ -1753,7 +1715,6 @@ fn managed_codex_launch_stays_effect_free_until_exact_call_binding() -> Result<(
             "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
             "CODEX_THREAD_ID" => Some(OsString::from("ambient_not_binding")),
             _ => None,
         },
@@ -1783,7 +1744,6 @@ fn managed_codex_tools_list_buffers_metrics_until_call_binding() -> Result<(), B
             "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
             _ => None,
         },
     )?;
@@ -1826,7 +1786,6 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
             "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
             _ => None,
         },
     )?;
@@ -1880,7 +1839,6 @@ fn managed_stdio_tool_call_records_bounded_metrics() -> Result<(), Box<dyn Error
             "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
             _ => None,
         },
     )?;
@@ -1939,7 +1897,7 @@ fn managed_codex_new_client_version_uses_protocol_and_call_binding() -> Result<(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -2006,7 +1964,7 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -2076,7 +2034,6 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
             "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
             "CODEX_THREAD_ID" => Some(OsString::from("ambient ignored value")),
             _ => None,
         },
@@ -2146,7 +2103,7 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -3527,7 +3484,7 @@ fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -3566,7 +3523,7 @@ fn stdio_diagnostics_never_store_unknown_caller_tool_names() -> Result<(), Box<d
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -3647,7 +3604,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_managed_codex_binding() -> Result<()
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -3688,7 +3645,7 @@ fn stdio_pending_user_action_returns_cli_inbox_recovery() -> Result<(), Box<dyn 
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let values = stdio_responses(&output)?;
@@ -3743,7 +3700,7 @@ fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, true, name),
+        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let values = stdio_responses(&output)?;
@@ -4414,16 +4371,11 @@ fn project_bound_adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Er
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }
 
-fn managed_codex_stdio_env(
-    fixture: &CoreFixture,
-    project_bound: bool,
-    name: &str,
-) -> Option<OsString> {
+fn managed_codex_stdio_env(fixture: &CoreFixture, name: &str) -> Option<OsString> {
     match name {
         "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
         "VOLICORD_MCP_HOST" => Some(OsString::from(HOST_KIND_CODEX)),
         "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-        "VOLICORD_MCP_PROJECT_ID" if project_bound => Some(OsString::from(fixture.project_id())),
         _ => None,
     }
 }

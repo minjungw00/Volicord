@@ -5,8 +5,8 @@ use crate::routing::*;
 use crate::util::*;
 use crate::{
     MANAGED_MCP_LAUNCH_VALUE, VOLICORD_HOME_ENV, VOLICORD_MCP_CONNECTION_ID_ENV,
-    VOLICORD_MCP_HOST_ENV, VOLICORD_MCP_LAUNCH_ENV, VOLICORD_MCP_PROJECT_ID_ENV,
-    VOLICORD_MCP_VERIFICATION_ENV, VOLICORD_MCP_VERIFICATION_VALUE,
+    VOLICORD_MCP_HOST_ENV, VOLICORD_MCP_LAUNCH_ENV, VOLICORD_MCP_VERIFICATION_ENV,
+    VOLICORD_MCP_VERIFICATION_VALUE,
 };
 use sha2::{Digest, Sha256};
 use volicord_types::{HostKind, ManagedMcpClientInfo};
@@ -154,12 +154,8 @@ pub fn run_stdio_from_env(
                 "MCP Agent Connection disappeared during startup: {connection_id}"
             ))
         })?;
-    let launch_origin = classify_launch_origin(
-        process_env_var,
-        connection_id,
-        project_id,
-        Some(&connection.host_kind),
-    );
+    let launch_origin =
+        classify_launch_origin(process_env_var, connection_id, Some(&connection.host_kind));
     reject_invalid_managed_marker(launch_origin)?;
     let adapter = McpAdapter::new(runtime_home, context);
     let stdin = io::stdin();
@@ -190,7 +186,6 @@ pub fn run_stdio_discover_repository_from_env(
     let launch_origin = classify_launch_origin_with_repository_discovery(
         process_env_var,
         resolution.context.connection_internal_id.as_str(),
-        Some(resolution.project_id.as_str()),
         Some(resolution.host.as_str()),
         true,
     );
@@ -229,7 +224,6 @@ mod managed_marker_protocol_order_tests {
             classify_launch_origin_with_repository_discovery(
                 |_| None,
                 "connection.alpha",
-                Some("project.alpha"),
                 Some(HostKind::Codex.as_str()),
                 true,
             ),
@@ -241,7 +235,6 @@ mod managed_marker_protocol_order_tests {
                     (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient-not-a-binding"))
                 },
                 "connection.alpha",
-                Some("project.alpha"),
                 Some(HostKind::Codex.as_str()),
                 true,
             ),
@@ -462,7 +455,6 @@ impl McpLaunchOrigin {
 pub(crate) fn classify_launch_origin<F>(
     env_var: F,
     connection_id: &str,
-    project_id: Option<&str>,
     expected_host_kind: Option<&str>,
 ) -> McpLaunchOrigin
 where
@@ -471,7 +463,6 @@ where
     classify_launch_origin_with_repository_discovery(
         env_var,
         connection_id,
-        project_id,
         expected_host_kind,
         false,
     )
@@ -480,7 +471,6 @@ where
 fn classify_launch_origin_with_repository_discovery<F>(
     env_var: F,
     connection_id: &str,
-    project_id: Option<&str>,
     expected_host_kind: Option<&str>,
     repository_discovery_launch: bool,
 ) -> McpLaunchOrigin
@@ -494,12 +484,10 @@ where
     let launch = env_text(&env_var, VOLICORD_MCP_LAUNCH_ENV);
     let host = env_text(&env_var, VOLICORD_MCP_HOST_ENV);
     let marker_connection_id = env_text(&env_var, VOLICORD_MCP_CONNECTION_ID_ENV);
-    let marker_project_id = env_text(&env_var, VOLICORD_MCP_PROJECT_ID_ENV);
     let volicord_marker_present = [
         VOLICORD_MCP_LAUNCH_ENV,
         VOLICORD_MCP_HOST_ENV,
         VOLICORD_MCP_CONNECTION_ID_ENV,
-        VOLICORD_MCP_PROJECT_ID_ENV,
     ]
     .into_iter()
     .any(|name| env_var(name).is_some());
@@ -520,14 +508,9 @@ where
         return McpLaunchOrigin::InvalidManagedMarker;
     }
 
-    let project_matches = match project_id {
-        Some(project_id) => marker_project_id.as_deref() == Some(project_id),
-        None => marker_project_id.is_none(),
-    };
     if launch.as_deref() == Some(MANAGED_MCP_LAUNCH_VALUE)
         && host.as_deref() == Some(expected_host_kind)
         && marker_connection_id.as_deref() == Some(connection_id)
-        && project_matches
     {
         McpLaunchOrigin::ManagedHost
     } else {
@@ -540,12 +523,6 @@ fn classify_launch_origin_for_adapter<F>(adapter: &McpAdapter, env_var: &F) -> M
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    let project_id = adapter
-        .context
-        .project_allowlist
-        .as_ref()
-        .and_then(|project_ids| project_ids.as_slice().first())
-        .map(|project_id| project_id.as_str());
     let host_kind = agent_connection_record_read_only(
         &adapter.runtime_home,
         adapter.context.connection_internal_id.as_str(),
@@ -556,7 +533,6 @@ where
     classify_launch_origin(
         env_var,
         adapter.context.connection_internal_id.as_str(),
-        project_id,
         host_kind.as_deref(),
     )
 }

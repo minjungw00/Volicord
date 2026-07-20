@@ -56,9 +56,11 @@ WSL2에서는 정규 Linux 형태의 경로만으로 충분하지 않습니다. 
 `VOLICORD_HOME`으로 쓰며 전달 환경 이름을 두지 않습니다. 공유 연결은 프로젝트 소유
 구성에서 `VOLICORD_HOME`만 전달하고 머신 로컬 Runtime Home 경로나 lifecycle 좌표를
 내장하지 않습니다. 두 형태 모두 [Agent Connection](agent-connection.md#managed-mcp-launch-contract)이
-정의한 하나의 정규 관리 시작 계약에서 projection합니다. 생성된 명령, 인자, 환경,
-관리 시작 provenance는 시작 시 등록된 Connection과 선택적 프로젝트를 선택합니다.
-이 값은 협력적인 시작 맥락이며 identity credential이 아닙니다.
+정의한 하나의 정규 관리 시작 계약에서 projection합니다. 개인 명령, 인자, 환경,
+관리 시작 provenance는 프로젝트 선택자 없이 시작 시 등록된 Connection을 선택하며,
+현재 프로젝트 연결 관계는 Store가 소유하는 Connection Project membership에서 가져옵니다.
+공유 시작은 저장소 검색으로 Connection과 프로젝트를 해석합니다. 이 값은 협력적인 시작
+맥락이며 identity credential이 아닙니다.
 
 저장된 managed fingerprint는 setup, repair, staged activation 또는 다른 명시적
 configuration 담당 경로가 마지막으로 적용에 성공했거나 채택한 Volicord 관리 host

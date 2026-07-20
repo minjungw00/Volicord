@@ -65,9 +65,10 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 | 플랫폼 환경 | `linux`, `macos`, `native_windows`, `wsl2` |
 
 `personal` 연결은 사용자 소유 로컬 Codex 구성을 설치합니다. `shared` 연결은 선택한
-`Product Repository` 안에 프로젝트 소유 Codex 구성을 설치합니다. 두 경우 모두
-Volicord가 생성한 관리 시작/구성 맥락으로 등록된 Connection 하나와 허용 프로젝트를
-식별합니다.
+`Product Repository` 안에 프로젝트 소유 Codex 구성을 설치합니다. 개인 관리 시작은
+등록된 Connection 하나를 식별하며, 이 Connection의 허용 프로젝트는 Store가 소유하는
+권위 있는 membership으로 남습니다. 공유 관리 시작은 저장소 검색을 통해 Connection과
+프로젝트를 해석합니다.
 
 Connection은 host kind, scope, mode, managed-configuration fingerprint, 프로젝트
 membership, 변경 불가능한 Store 소유 integration-instance ID, Store 소유 integration
@@ -114,9 +115,10 @@ VOLICORD_MCP_HOST = "codex"
 VOLICORD_MCP_LAUNCH = "managed_host"
 ```
 
-개인 시작이 현재 프로젝트 하나에 결속되면 `--project <project_id>`와 정적
-`VOLICORD_MCP_PROJECT_ID=<project_id>`를 추가로 사용합니다. 인자와 marker는 서로
-일치해야 합니다.
+개인 entry는 프로젝트 선택자를 담지 않습니다. 인자에는 `--project`가 없고 정적
+환경에는 프로젝트 marker가 없습니다. Agent Connection의 권위 있는 Product Repository
+연결 관계는 프로세스 시작 상태가 아니라 Store가 소유하는 Connection Project
+membership으로 남습니다.
 
 공유 연결에는 clone에 이식 가능한 저장소 탐색 시작만 들어갑니다. `PATH`의
 `volicord`를 사용하고 `VOLICORD_HOME`만 전달하며 정적 환경 table은 두지 않습니다.
@@ -129,9 +131,9 @@ env_vars = ["VOLICORD_HOME"]
 ```
 
 공유 시작에는 절대 실행 파일, Runtime Home, Connection ID, project ID 또는 그 밖의
-머신 로컬 lifecycle 좌표를 넣지 않습니다. 정적 환경과 전달 환경의 이름 충돌, 비어
-있거나 중복된 전달 이름, 불완전한 개인 binding, 개인/공유 인자 또는 환경 형태의
-혼합은 유효하지 않습니다.
+머신 로컬 lifecycle 좌표를 넣지 않습니다. 프로젝트 인자나 프로젝트 환경 marker가
+있는 개인 entry, 정적 환경과 전달 환경의 이름 충돌, 비어 있거나 중복된 전달 이름,
+불완전한 개인 binding, 개인/공유 인자 또는 환경 형태의 혼합은 유효하지 않습니다.
 
 Codex TOML은 엄격하게 parsing하여 같은 typed 계약을 다시 구성해야 합니다. 알 수
 없는 launch key, 잘못된 값, 비정규 형태는 두 번째 허용 형태가 아니라 drift입니다.

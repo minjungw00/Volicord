@@ -65,16 +65,8 @@ impl<R: CommandRunner> CodexAdapter<R> {
             entry_inputs_for_scope(scope, request.installation_profile);
         let server_name = validated_server_name(request.connection_id, None)?;
         let target = self.config_path(scope, request.project)?;
-        let project_id = (scope == HostScope::Project)
-            .then(|| request.project.map(|project| project.project_id))
-            .flatten();
-        let entry = codex_managed_launch_spec(
-            scope,
-            request.connection_id,
-            project_id,
-            mcp_command,
-            runtime_home,
-        )?;
+        let entry =
+            codex_managed_launch_spec(scope, request.connection_id, mcp_command, runtime_home)?;
         let fingerprint = entry.managed_fingerprint(&server_name);
         let (snapshot, text) = read_text_snapshot(&target)?;
         let document = parse_document(text.as_deref(), &target)?;
@@ -131,13 +123,9 @@ impl<R: CommandRunner> CodexAdapter<R> {
             )));
         }
         let server_name = validated_server_name(request.connection_id, Some(request.server_name))?;
-        let project_id = (request.scope == HostScope::Project)
-            .then_some(request.project_id)
-            .flatten();
         let entry = codex_managed_launch_spec(
             request.scope,
             request.connection_id,
-            project_id,
             request.mcp_command,
             request.runtime_home,
         )?;
@@ -311,7 +299,6 @@ pub struct CodexExistingPlanRequest<'a> {
     pub connection_intent: ConnectionIntent,
     pub scope: HostScope,
     pub connection_id: &'a str,
-    pub project_id: Option<&'a str>,
     pub server_name: &'a str,
     pub config_target: &'a Path,
     pub mcp_command: &'a Path,
@@ -388,7 +375,6 @@ mod tests {
                 Path::new("/usr/bin/volicord"),
                 Path::new("/srv/volicord/runtime"),
                 "connection_1",
-                None,
             )
             .expect("personal launch"),
             change: PlannedChange::Noop,

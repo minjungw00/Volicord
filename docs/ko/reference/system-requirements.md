@@ -199,11 +199,12 @@ Repair는 탐지한 reason을 보고한 뒤 adapter가 소유한 설정과 복�
 
 관리 프로세스의 공개 MCP transport는 stdio뿐입니다. 관리 launch 맥락에서
 정규 관리 시작 binding을 받아야 합니다. Personal entry는 Connection과 선택한 정규 절대
-Runtime Home을 정적 값으로 담고 정확한 project도 담을 수 있으며 환경 이름을 전달하지
-않습니다. 저장소에 이식 가능한 shared discovery는 `VOLICORD_HOME`만 전달하고 머신 로컬
-ID나 경로를 넣지 않은 채 등록된 현재 clone을 해석합니다. 필수 launch 맥락이 없거나
-비었거나 충돌하거나 알 수 없으면 거절하며 다른 Connection에서 추정하지 않습니다.
-Host/profile marker는 이 협력적 경로를 선택할 뿐 tool 호출을 승인하지 않습니다.
+Runtime Home을 정적 값으로 담고 프로젝트 선택자는 담지 않으며 환경 이름을 전달하지
+않습니다. 권위 있는 저장소 연결 관계는 해당 Connection에서 Store가 소유하는 프로젝트
+membership으로 남습니다. 저장소에 이식 가능한 shared discovery는 `VOLICORD_HOME`만
+전달하고 머신 로컬 ID나 경로를 넣지 않은 채 등록된 현재 clone을 해석합니다. 필수 launch
+맥락이 없거나 비었거나 충돌하거나 알 수 없으면 거절하며 다른 Connection에서 추정하지
+않습니다. Host/profile marker는 이 협력적 경로를 선택할 뿐 tool 호출을 승인하지 않습니다.
 
 Initialize 때 MCP는 제한된 client name/version과 선택적 host version diagnostic을
 포함한 managed-host runtime session 하나를 기록합니다. 각 project tool 호출에서는

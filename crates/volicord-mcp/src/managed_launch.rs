@@ -17,25 +17,22 @@ pub const VOLICORD_HOME_ENV: &str = "VOLICORD_HOME";
 pub const VOLICORD_MCP_LAUNCH_ENV: &str = "VOLICORD_MCP_LAUNCH";
 pub const VOLICORD_MCP_HOST_ENV: &str = "VOLICORD_MCP_HOST";
 pub const VOLICORD_MCP_CONNECTION_ID_ENV: &str = "VOLICORD_MCP_CONNECTION_ID";
-pub const VOLICORD_MCP_PROJECT_ID_ENV: &str = "VOLICORD_MCP_PROJECT_ID";
 pub const VOLICORD_MCP_VERIFICATION_ENV: &str = "VOLICORD_MCP_VERIFICATION";
 pub const MANAGED_MCP_LAUNCH_VALUE: &str = "managed_host";
 pub const VOLICORD_MCP_VERIFICATION_VALUE: &str = "1";
 
-pub const MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES: [&str; 5] = [
+pub const MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES: [&str; 4] = [
     VOLICORD_HOME_ENV,
     VOLICORD_MCP_LAUNCH_ENV,
     VOLICORD_MCP_HOST_ENV,
     VOLICORD_MCP_CONNECTION_ID_ENV,
-    VOLICORD_MCP_PROJECT_ID_ENV,
 ];
 
-pub const MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES: [&str; 6] = [
+pub const MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES: [&str; 5] = [
     VOLICORD_HOME_ENV,
     VOLICORD_MCP_LAUNCH_ENV,
     VOLICORD_MCP_HOST_ENV,
     VOLICORD_MCP_CONNECTION_ID_ENV,
-    VOLICORD_MCP_PROJECT_ID_ENV,
     VOLICORD_MCP_VERIFICATION_ENV,
 ];
 
@@ -49,7 +46,6 @@ pub fn is_managed_mcp_launch_environment_name(name: &str) -> bool {
             | VOLICORD_MCP_LAUNCH_ENV
             | VOLICORD_MCP_HOST_ENV
             | VOLICORD_MCP_CONNECTION_ID_ENV
-            | VOLICORD_MCP_PROJECT_ID_ENV
     )
 }
 
@@ -145,7 +141,6 @@ pub enum ManagedMcpBinding {
     Personal {
         runtime_home: RuntimeHomeBinding,
         connection_id: String,
-        project_id: Option<String>,
     },
     SharedRepository {
         host_kind: HostKind,
@@ -282,6 +277,7 @@ impl MaterializedManagedMcpLaunch {
         for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
             command.env_remove(name);
         }
+        command.env_remove("VOLICORD_MCP_PROJECT_ID");
         for (name, value) in &self.environment {
             command.env(name, value);
         }
@@ -298,7 +294,6 @@ impl ManagedMcpLaunchSpec {
         command: &Path,
         runtime_home: &Path,
         connection_id: impl Into<String>,
-        project_id: Option<&str>,
     ) -> Result<Self, ManagedMcpLaunchError> {
         validate_personal_command(command)?;
         let command = command.to_str().ok_or_else(|| {
@@ -308,21 +303,15 @@ impl ManagedMcpLaunchSpec {
         })?;
         let runtime_home = RuntimeHomeBinding::try_new(runtime_home)?;
         let connection_id = nonblank(connection_id.into(), "connection ID")?;
-        let project_id = project_id
-            .map(|value| nonblank(value.to_owned(), "project ID"))
-            .transpose()?;
 
-        let mut args = vec![
+        let args = vec![
             "mcp".to_owned(),
             "--stdio".to_owned(),
             "--connection".to_owned(),
             connection_id.clone(),
         ];
-        if let Some(project_id) = &project_id {
-            args.extend(["--project".to_owned(), project_id.clone()]);
-        }
 
-        let mut static_values = BTreeMap::from([
+        let static_values = BTreeMap::from([
             (
                 VOLICORD_HOME_ENV.to_owned(),
                 runtime_home.as_str().to_owned(),
@@ -340,9 +329,6 @@ impl ManagedMcpLaunchSpec {
                 MANAGED_MCP_LAUNCH_VALUE.to_owned(),
             ),
         ]);
-        if let Some(project_id) = &project_id {
-            static_values.insert(VOLICORD_MCP_PROJECT_ID_ENV.to_owned(), project_id.clone());
-        }
 
         Ok(Self {
             command: command.to_owned(),
@@ -351,7 +337,6 @@ impl ManagedMcpLaunchSpec {
             binding: ManagedMcpBinding::Personal {
                 runtime_home,
                 connection_id,
-                project_id,
             },
         })
     }
@@ -406,19 +391,12 @@ impl ManagedMcpLaunchSpec {
             let host_kind = HostKind::from_str(host)
                 .map_err(|_| ManagedMcpLaunchError::new("managed MCP launch host must be codex"))?;
             Self::shared_repository(host_kind)?
-        } else if matches!(candidate.args.len(), 4 | 6)
+        } else if candidate.args.len() == 4
             && candidate.args[0] == "mcp"
             && candidate.args[1] == "--stdio"
             && candidate.args[2] == "--connection"
         {
             let connection_id = candidate.args[3].as_str();
-            let project_id = if candidate.args.len() == 6 && candidate.args[4] == "--project" {
-                Some(candidate.args[5].as_str())
-            } else if candidate.args.len() == 4 {
-                None
-            } else {
-                return Err(ManagedMcpLaunchError::invalid_shape());
-            };
             let runtime_home = candidate
                 .environment
                 .static_values
@@ -432,7 +410,6 @@ impl ManagedMcpLaunchSpec {
                 Path::new(&candidate.command),
                 Path::new(runtime_home),
                 connection_id,
-                project_id,
             )?
         } else {
             return Err(ManagedMcpLaunchError::invalid_shape());
@@ -551,16 +528,12 @@ fn invocation_args(
         } => {
             if let ManagedMcpBinding::Personal {
                 connection_id: bound_connection_id,
-                project_id: bound_project_id,
                 ..
             } = binding
             {
-                let project_matches = bound_project_id
-                    .as_ref()
-                    .is_none_or(|bound_project_id| project_id.as_ref() == Some(bound_project_id));
-                if connection_id != bound_connection_id || !project_matches {
+                if connection_id != bound_connection_id {
                     return Err(ManagedMcpLaunchError::new(
-                        "personal managed MCP preflight coordinates must match the launch contract",
+                        "personal managed MCP preflight Connection must match the launch contract",
                     ));
                 }
             }
@@ -695,7 +668,6 @@ mod tests {
             Path::new("/opt/volicord/bin/volicord"),
             Path::new("/srv/volicord/runtime"),
             "connection_alpha",
-            None,
         )
         .expect("personal launch")
     }
@@ -722,35 +694,6 @@ mod tests {
                 .runtime_home()
                 .map(RuntimeHomeBinding::as_str),
             Some("/srv/volicord/runtime")
-        );
-    }
-
-    #[test]
-    fn project_bound_personal_launch_extends_only_the_owned_binding() {
-        let spec = ManagedMcpLaunchSpec::personal(
-            Path::new("/opt/volicord/bin/volicord"),
-            Path::new("/srv/volicord/runtime"),
-            "connection_alpha",
-            Some("project_alpha"),
-        )
-        .expect("project-bound personal launch");
-        assert_eq!(
-            spec.args(),
-            [
-                "mcp",
-                "--stdio",
-                "--connection",
-                "connection_alpha",
-                "--project",
-                "project_alpha"
-            ]
-        );
-        assert_eq!(
-            spec.environment()
-                .static_values()
-                .get(VOLICORD_MCP_PROJECT_ID_ENV)
-                .map(String::as_str),
-            Some("project_alpha")
         );
     }
 
@@ -793,16 +736,15 @@ mod tests {
             reparsed.managed_fingerprint("volicord")
         );
 
-        let project = ManagedMcpLaunchSpec::personal(
+        let other_connection = ManagedMcpLaunchSpec::personal(
             Path::new("/opt/volicord/bin/volicord"),
             Path::new("/srv/volicord/runtime"),
-            "connection_alpha",
-            Some("project_alpha"),
+            "connection_beta",
         )
-        .expect("project-bound launch");
+        .expect("other personal launch");
         assert_ne!(
             first.managed_fingerprint("volicord"),
-            project.managed_fingerprint("volicord")
+            other_connection.managed_fingerprint("volicord")
         );
         assert_ne!(
             first.managed_fingerprint("volicord"),
@@ -831,14 +773,12 @@ mod tests {
             Path::new("volicord"),
             Path::new("/runtime"),
             "connection_alpha",
-            None,
         )
         .is_err());
         assert!(ManagedMcpLaunchSpec::personal(
             Path::new("/opt/volicord"),
             Path::new("relative/runtime"),
             "connection_alpha",
-            None,
         )
         .is_err());
         for runtime_home in [
@@ -850,7 +790,6 @@ mod tests {
                 Path::new("/opt/volicord"),
                 runtime_home,
                 "connection_alpha",
-                None,
             )
             .is_err());
         }
@@ -861,6 +800,33 @@ mod tests {
             spec.args().to_vec(),
             spec.environment().static_values().clone(),
             vec![VOLICORD_HOME_ENV.to_owned()],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn personal_projection_rejects_project_argument_and_environment_marker() {
+        let spec = personal();
+        let mut project_args = spec.args().to_vec();
+        project_args.extend(["--project".to_owned(), "project_alpha".to_owned()]);
+        assert!(ManagedMcpLaunchSpec::try_from_host_projection(
+            spec.command().to_owned(),
+            project_args,
+            spec.environment().static_values().clone(),
+            Vec::new(),
+        )
+        .is_err());
+
+        let mut project_environment = spec.environment().static_values().clone();
+        project_environment.insert(
+            "VOLICORD_MCP_PROJECT_ID".to_owned(),
+            "project_alpha".to_owned(),
+        );
+        assert!(ManagedMcpLaunchSpec::try_from_host_projection(
+            spec.command().to_owned(),
+            spec.args().to_vec(),
+            project_environment,
+            Vec::new(),
         )
         .is_err());
     }
@@ -935,7 +901,7 @@ mod tests {
                 "static contract value must replace an ambient {name}"
             );
         }
-        for name in [VOLICORD_MCP_PROJECT_ID_ENV, VOLICORD_MCP_VERIFICATION_ENV] {
+        for name in ["VOLICORD_MCP_PROJECT_ID", VOLICORD_MCP_VERIFICATION_ENV] {
             assert_eq!(
                 command
                     .get_envs()
@@ -993,7 +959,7 @@ mod tests {
             VOLICORD_MCP_LAUNCH_ENV,
             VOLICORD_MCP_HOST_ENV,
             VOLICORD_MCP_CONNECTION_ID_ENV,
-            VOLICORD_MCP_PROJECT_ID_ENV,
+            "VOLICORD_MCP_PROJECT_ID",
         ] {
             assert_eq!(
                 command
@@ -1070,14 +1036,15 @@ mod tests {
     }
 
     #[test]
-    fn preflight_arguments_derive_from_the_contract_binding() {
+    fn preflight_arguments_use_selected_coordinates_without_changing_launch_identity() {
         let spec = ManagedMcpLaunchSpec::personal(
             Path::new("/opt/volicord/bin/volicord"),
             Path::new("/srv/volicord/runtime"),
             "connection_alpha",
-            Some("project_alpha"),
         )
-        .expect("project-bound personal launch");
+        .expect("personal launch");
+        let projection = spec.canonical_projection();
+        let fingerprint = spec.managed_fingerprint("volicord");
         let preflight = spec
             .materialize(ManagedMcpMaterializationInput::new(
                 ManagedMcpInvocationPurpose::cli_preflight_check(
@@ -1100,6 +1067,8 @@ mod tests {
                 "project_alpha"
             ]
         );
+        assert_eq!(spec.canonical_projection(), projection);
+        assert_eq!(spec.managed_fingerprint("volicord"), fingerprint);
 
         let mismatch = spec.materialize(ManagedMcpMaterializationInput::new(
             ManagedMcpInvocationPurpose::cli_preflight_check(

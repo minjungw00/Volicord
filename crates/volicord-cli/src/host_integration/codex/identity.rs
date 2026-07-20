@@ -34,7 +34,6 @@ pub(crate) struct CodexManagedIdentityEvaluation {
 pub(super) fn codex_managed_launch_spec(
     scope: HostScope,
     connection_id: impl Into<String>,
-    project_id: Option<&str>,
     mcp_command: &Path,
     runtime_home: Option<&Path>,
 ) -> Result<ManagedMcpLaunchSpec, HostConfigError> {
@@ -51,7 +50,7 @@ pub(super) fn codex_managed_launch_spec(
     let runtime_home = runtime_home.ok_or_else(|| {
         managed_launch_error("personal Codex managed MCP launch requires a selected Runtime Home")
     })?;
-    ManagedMcpLaunchSpec::personal(mcp_command, runtime_home, connection_id, project_id)
+    ManagedMcpLaunchSpec::personal(mcp_command, runtime_home, connection_id)
         .map_err(managed_launch_error)
 }
 
@@ -400,6 +399,27 @@ mod tests {
     }
 
     #[test]
+    fn personal_project_argument_and_environment_marker_are_noncanonical() {
+        let project_argument = entry(&personal_text("").replace(
+            "\"connection_alpha\"]",
+            "\"connection_alpha\", \"--project\", \"project_alpha\"]",
+        ));
+        assert_eq!(
+            parse_codex_managed_identity(&project_argument),
+            Err(CodexManagedIdentityProblem::Unmanaged)
+        );
+
+        let project_marker = entry(&personal_text("").replace(
+            "VOLICORD_HOME = \"/srv/volicord/runtime\"",
+            "VOLICORD_HOME = \"/srv/volicord/runtime\"\nVOLICORD_MCP_PROJECT_ID = \"project_alpha\"",
+        ));
+        assert_eq!(
+            parse_codex_managed_identity(&project_marker),
+            Err(CodexManagedIdentityProblem::Unmanaged)
+        );
+    }
+
+    #[test]
     fn semantic_drift_uses_the_current_fingerprint_repair_path() {
         let current = entry(&personal_text(""));
         let current_fingerprint =
@@ -409,7 +429,6 @@ mod tests {
             Path::new("/opt/volicord/bin/volicord"),
             Path::new("/srv/volicord/runtime"),
             "connection_beta",
-            None,
         )
         .expect("desired launch");
         let desired_fingerprint = desired.managed_fingerprint("volicord");

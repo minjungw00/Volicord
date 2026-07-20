@@ -29,9 +29,11 @@ volicord mcp --stdio --discover-repository --host codex
 volicord mcp --check --connection <connection_id> [--project <project_id>]
 ```
 
-결속 형태는 생성된 관리 entry의 정확한 저장 식별자를 사용합니다. 저장소 검색은 정규
-공유 Codex entry 전용이며 정확한 Runtime Home과 정규 Git 작업 트리에서 Connection과
-프로젝트를 해결합니다. cwd만으로
+`--connection` 프로세스 형태는 현재 수동 실행이나 사전 점검에서 명시적인
+`--project` 선택을 받을 수 있습니다. 정규 개인 Codex entry는 `--project` 없이 이
+형태를 사용하며, 현재 프로젝트 연결 관계는 Store가 소유하는 Connection Project
+membership으로 남습니다. 저장소 검색은 정규 공유 Codex entry 전용이며 정확한 Runtime
+Home과 정규 Git 작업 트리에서 Connection과 프로젝트를 해결합니다. cwd만으로
 연결을 추론하거나 주변 저장소를 검색하거나 다른 host selector를 받지 않습니다.
 `--check`는 stdio loop에 들어가지 않고 사전 점검만 수행합니다.
 

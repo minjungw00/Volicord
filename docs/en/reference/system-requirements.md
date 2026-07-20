@@ -225,12 +225,14 @@ currently owned entry and refuses a changed or unowned entry.
 The managed process uses stdio exclusively for the public MCP transport. It
 must receive its binding from the canonical managed launch context. A personal
 entry carries its Connection and selected canonical absolute Runtime Home as
-static values and may also carry its exact project; it forwards no environment
-name. Repository-portable shared discovery forwards only `VOLICORD_HOME` and
-resolves a registered current clone without embedding machine-local IDs or
-paths. Missing, empty, conflicting, or unrecognized required launch context is
-rejected; it is not guessed from another Connection. The host and profile
-markers select this cooperative path but do not authorize a tool call.
+static values, carries no project selector, and forwards no environment name.
+Its authoritative repository associations remain the Connection's Store-owned
+project memberships. Repository-portable shared discovery forwards only
+`VOLICORD_HOME` and resolves a registered current clone without embedding
+machine-local IDs or paths. Missing, empty, conflicting, or unrecognized
+required launch context is rejected; it is not guessed from another
+Connection. The host and profile markers select this cooperative path but do
+not authorize a tool call.
 
 On initialize, MCP records one managed-host runtime session with bounded client
 name/version and optional host version diagnostics. On each project tool call,

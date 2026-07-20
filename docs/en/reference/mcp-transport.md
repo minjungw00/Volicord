@@ -30,12 +30,14 @@ volicord mcp --stdio --discover-repository --host codex
 volicord mcp --check --connection <connection_id> [--project <project_id>]
 ```
 
-The bound form uses exact stored identifiers from the generated managed entry.
-Repository discovery is only for the canonical shared Codex entry and resolves
-the Connection and project from the exact Runtime Home and canonical Git work
-tree. It does not infer a connection from cwd
-alone, scan nearby repositories, or accept another host selector. `--check`
-performs preflight without entering the stdio loop.
+The `--connection` process form accepts an explicit `--project` for current
+manual or preflight selection. The canonical personal Codex entry uses this
+form without `--project`; its current project associations remain Store-owned
+Connection Project memberships. Repository discovery is only for the canonical
+shared Codex entry and resolves the Connection and project from the exact
+Runtime Home and canonical Git work tree. It does not infer a connection from
+cwd alone, scan nearby repositories, or accept another host selector.
+`--check` performs preflight without entering the stdio loop.
 
 ## Environment And Startup
 

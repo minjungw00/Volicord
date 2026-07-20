@@ -581,7 +581,7 @@ Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 �
 ## 관리 Codex 구성
 
 개인 연결은 사용자 소유 관리 Codex 구성만 씁니다. 그 entry는 선택한 정규 절대
-Runtime Home을 정적 `VOLICORD_HOME`으로 결속하고 환경
+Runtime Home을 정적 `VOLICORD_HOME`으로 결속하고 프로젝트 선택자를 담지 않으며 환경
 이름을 전달하지 않습니다. 공유 연결은 지원되는 프로젝트 소유 Codex entry를 쓰고
 `VOLICORD_HOME`만 전달하며 머신 로컬 경로나 lifecycle 좌표를 내장하지 않습니다. 생성,
 엄격한 검증, fingerprinting은 같은 정규 관리 시작 계약을 projection합니다. 정확한 형태,

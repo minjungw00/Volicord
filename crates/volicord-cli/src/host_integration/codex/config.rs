@@ -103,7 +103,6 @@ mod tests {
             Path::new("/opt/volicord/bin/volicord"),
             Path::new("/srv/volicord/runtime"),
             "connection_alpha",
-            None,
         )
         .expect("personal launch")
     }

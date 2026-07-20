@@ -125,7 +125,6 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
 
         let initialize_only = fixture.run_managed_mcp_messages(
             &connection_id,
-            Some(&project_id),
             json_lines(&[initialize_request(FUTURE_VERSION)])?,
         )?;
         assert_eq!(initialize_only.status.code(), Some(0));
@@ -330,7 +329,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert_check(&pending, "required_tools", "pending", None);
     assert_check(&pending, "tool_round_trip", "pending", None);
 
-    let read_only_tools = fixture.run_managed_tools_list_names(&connection_id, &project_id)?;
+    let read_only_tools = fixture.run_managed_tools_list_names(&connection_id)?;
     assert!(read_only_tools.contains(&"volicord.list_projects".to_owned()));
     assert!(!read_only_tools.contains(&"volicord.intake".to_owned()));
     fixture.run_current_guard_phases(&read_only_manifest, reused_native_session)?;
@@ -383,7 +382,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert_check(&pending, "guard_files", "passed", None);
     assert_check(&pending, "guard_observation", "pending", None);
 
-    let workflow_tools = fixture.run_managed_tools_list_names(&connection_id, &project_id)?;
+    let workflow_tools = fixture.run_managed_tools_list_names(&connection_id)?;
     assert!(workflow_tools.contains(&"volicord.intake".to_owned()));
     fixture.run_current_guard_phases(&current_workflow_manifest, reused_native_session)?;
     let current_workflow_session_id = current_project_agent_session_coordinates(
@@ -895,7 +894,6 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
     let initialize = OperationalFixture::initialized("operational-initialize-failure")?;
     initialize.run_managed_mcp_messages(
         &initialize.connection_id(),
-        Some(&initialize.project_id()),
         json_lines(&[json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -912,7 +910,6 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
     let tools_list = OperationalFixture::initialized("operational-tools-list-failure")?;
     tools_list.run_managed_mcp_messages(
         &tools_list.connection_id(),
-        Some(&tools_list.project_id()),
         json_lines(&[
             initialize_request(FUTURE_VERSION),
             initialized_notification(),
@@ -936,7 +933,6 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
     fs::rename(&state_db, &displaced)?;
     let result = missing_tools.run_managed_mcp_messages(
         &missing_tools.connection_id(),
-        None,
         json_lines(&[
             initialize_request(FUTURE_VERSION),
             initialized_notification(),
@@ -1254,11 +1250,9 @@ impl OperationalFixture {
     fn run_managed_tools_list_names(
         &self,
         connection_id: &str,
-        project_id: &str,
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let output = self.run_managed_mcp_messages(
             connection_id,
-            Some(project_id),
             json_lines(&[
                 initialize_request(FUTURE_VERSION),
                 initialized_notification(),
@@ -1285,7 +1279,6 @@ impl OperationalFixture {
     ) -> Result<(), Box<dyn Error>> {
         let output = self.run_managed_mcp_messages(
             connection_id,
-            Some(project_id),
             json_lines(&[
                 initialize_request(version),
                 initialized_notification(),
@@ -1340,7 +1333,7 @@ impl OperationalFixture {
         native_session: &str,
         manifest: &GuardManifest,
     ) -> Result<(), Box<dyn Error>> {
-        let mut command = self.managed_mcp_command(connection_id, Some(project_id))?;
+        let mut command = self.managed_mcp_command(connection_id)?;
         let mut child = LiveMcpChild::spawn(&mut command)?;
         child.write(&json_lines(&[
             initialize_request(version),
@@ -1433,10 +1426,8 @@ impl OperationalFixture {
 
     fn run_safe_tool_storage_failure(&self) -> Result<(), Box<dyn Error>> {
         let connection_id = self.connection_id();
-        let project_id = self.project_id();
         let output = self.run_managed_mcp_messages(
             &connection_id,
-            Some(&project_id),
             json_lines(&[
                 initialize_request(FUTURE_VERSION),
                 initialized_notification(),
@@ -1463,18 +1454,13 @@ impl OperationalFixture {
     fn run_managed_mcp_messages(
         &self,
         connection_id: &str,
-        project_id: Option<&str>,
         input: String,
     ) -> Result<support::binary_fixture::CapturedChildOutput, Box<dyn Error>> {
-        let command = self.managed_mcp_command(connection_id, project_id)?;
+        let command = self.managed_mcp_command(connection_id)?;
         run_child(command, ChildStdin::WriteAndClose(input))
     }
 
-    fn managed_mcp_command(
-        &self,
-        connection_id: &str,
-        _project_id: Option<&str>,
-    ) -> Result<Command, Box<dyn Error>> {
+    fn managed_mcp_command(&self, connection_id: &str) -> Result<Command, Box<dyn Error>> {
         let launch = self.managed_launch_spec(connection_id)?;
         let forwarded_environment = if launch
             .environment()
