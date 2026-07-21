@@ -125,6 +125,30 @@ Volicord는 선택한 profile이 허용할 때만 `tools` server capability를 �
 거절합니다. 허용하는 batch는 입력 순서대로 하나씩 처리합니다. Notification에는 응답
 항목을 만들지 않으며 notification만 있는 batch는 응답을 만들지 않습니다.
 
+## CLI Conformance 및 Host 호환성 Probe
+
+Connection 검증은 production registry의 모든 profile을 검토된 순서대로 server
+conformance matrix에서 실행합니다. Profile마다 별도 stdio process와 정확한 요청 revision을
+사용합니다. 각 probe는 `initialize`, `notifications/initialized`, `tools/list`, 해당
+revision의 고정 schema 검증, 현재 mode의 필수 도구 검증, `volicord.list_projects` 호출
+정확히 하나, 정상 EOF/종료를 완료합니다. Revision별로 요청 및 협상 revision, 반환된 도구,
+완료 단계, typed failure를 기록합니다. 모든 production revision이 통과해야 집계 server
+check가 통과하며, revision 하나가 실패해도 나머지 revision probe를 계속 실행합니다.
+
+Host 호환성은 protocol registry projection이 아니라 host가 독립적으로 소유하는 fixture
+목록입니다. 현재 `codex` fixture는 `clientInfo.name`이 `codex-mcp-client`이고 title이
+`Codex`이며 현재의 빈 capability 객체를 사용하는 검토된 Codex initialize 요청 형태와,
+독립적으로 고정한 revision `2025-06-18`을 사용합니다. 도구 호출 하나에는 유효한 Codex
+native thread/session/turn correlation metadata를 담습니다. `tools/list`와
+`volicord.list_projects`를 실행하며, 요청 revision을 서버의 선호 또는 최신 profile에서
+파생하지 않습니다. 배포된 client 계열이 서로 다른 revision을 요구하면 독립적으로 고정한
+`codex` fixture 여러 개를 함께 둘 수 있습니다.
+
+두 matrix 모두 CLI probe 증거입니다. Host 호환성 fixture 통과는 검토된 요청 형태가 이
+서버에서 동작함을 보여 주지만 관리 Codex process가 실행되었음을 보여 주지는 않습니다.
+Source가 `managed_host`인 실제 process가 기록한 lifecycle 관찰만 managed-host 운영 check를
+충족할 수 있습니다.
+
 ## 권위 있는 Lifecycle 기록
 
 프로세스는 Agent Connection을 해결한 뒤 thread metadata를 검증하거나 protocol message를

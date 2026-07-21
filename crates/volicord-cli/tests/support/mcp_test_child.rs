@@ -15,7 +15,7 @@ use volicord_types::{ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES};
 const LARGE_STDERR_BYTES: usize = 8 * 1024;
 const SUSTAINED_STDERR_BYTES: usize = 256 * 1024;
 const TEST_CHILD_SCENARIO_ARGUMENT: &str = "--mcp-test-child-scenario";
-const TEST_CHILD_VERSION: &str = "volicord-mcp-test-child-current";
+const TEST_CHILD_VERSION: &str = "volicord-mcp-test-child-revision-matrix-schema-failure";
 
 fn main() {
     if let Err(error) = run() {
@@ -60,6 +60,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             process::exit(19);
         }
         "stdio-success" => run_stdio(Scenario::Success)?,
+        "one-revision-failure" => run_stdio(Scenario::OneRevisionFailure)?,
         "tools-list-failure" => run_stdio(Scenario::ToolsListFailure)?,
         "missing-required-tools" => run_stdio(Scenario::MissingRequiredTools)?,
         "read-only-tool-failure" => run_stdio(Scenario::SafeToolFailure)?,
@@ -82,6 +83,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 #[derive(Clone, Copy)]
 enum Scenario<'a> {
     Success,
+    OneRevisionFailure,
     ToolsListFailure,
     MissingRequiredTools,
     SafeToolFailure,
@@ -97,17 +99,27 @@ fn run_stdio(scenario: Scenario<'_>) -> Result<(), Box<dyn Error>> {
     let stdout = io::stdout();
     let mut output = stdout.lock();
 
-    read_request(&mut input, "initialize")?;
+    let initialize = read_request(&mut input, "initialize")?;
+    let revision = initialize["params"]["protocolVersion"]
+        .as_str()
+        .ok_or("initialize protocolVersion was missing")?;
     if matches!(scenario, Scenario::SustainedStderr) {
         io::stderr().write_all(&vec![b'x'; SUSTAINED_STDERR_BYTES])?;
     }
+    let mut initialize_result = json!({
+        "protocolVersion": revision,
+        "capabilities": {"tools": {}},
+        "serverInfo": {"name": "volicord-mcp-test-child", "version": TEST_CHILD_VERSION},
+    });
+    if revision != "2024-10-07" {
+        initialize_result
+            .as_object_mut()
+            .expect("initialize result object")
+            .insert("instructions".to_owned(), json!("fixture"));
+    }
     write_json(
         &mut output,
-        &json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"instructions": "fixture"},
-        }),
+        &json!({"jsonrpc": "2.0", "id": 1, "result": initialize_result}),
     )?;
     read_request(&mut input, "notifications/initialized")?;
     read_request(&mut input, "tools/list")?;
@@ -132,16 +144,23 @@ fn run_stdio(scenario: Scenario<'_>) -> Result<(), Box<dyn Error>> {
             .copied()
             .collect()
     };
+    let mut tool_definitions = tools
+        .into_iter()
+        .map(|name| tool_definition(name, revision))
+        .collect::<Vec<_>>();
+    if matches!(scenario, Scenario::OneRevisionFailure) && revision == "2025-03-26" {
+        tool_definitions[0]
+            .as_object_mut()
+            .expect("tool definition")
+            .remove("inputSchema");
+    }
     write_json(
         &mut output,
         &json!({
             "jsonrpc": "2.0",
             "id": 2,
             "result": {
-                "tools": tools
-                    .into_iter()
-                    .map(|name| json!({"name": name}))
-                    .collect::<Vec<_>>()
+                "tools": tool_definitions
             },
         }),
     )?;
@@ -157,11 +176,30 @@ fn run_stdio(scenario: Scenario<'_>) -> Result<(), Box<dyn Error>> {
             "id": 3,
             "error": {"code": -32603, "message": "ignored child prose"},
         })
+    } else if revision == "2024-10-07" {
+        json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "result": {"toolResult": {"projects": []}},
+        })
+    } else if matches!(revision, "2025-06-18" | "2025-11-25") {
+        json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "result": {
+                "content": [{"type": "text", "text": "{\"projects\":[]}"}],
+                "structuredContent": {"projects": []},
+                "isError": false,
+            },
+        })
     } else {
         json!({
             "jsonrpc": "2.0",
             "id": 3,
-            "result": {"content": []},
+            "result": {
+                "content": [{"type": "text", "text": "{\"projects\":[]}"}],
+                "isError": false,
+            },
         })
     };
     write_json(&mut output, &safe_response)?;
@@ -176,7 +214,27 @@ fn run_stdio(scenario: Scenario<'_>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn read_request(input: &mut impl BufRead, expected_method: &str) -> Result<(), Box<dyn Error>> {
+fn tool_definition(name: &str, revision: &str) -> Value {
+    let mut tool = json!({
+        "name": name,
+        "description": "MCP test fixture tool",
+        "inputSchema": {"type": "object", "properties": {}},
+    });
+    if matches!(revision, "2025-03-26" | "2025-06-18" | "2025-11-25") {
+        tool.as_object_mut()
+            .expect("tool object")
+            .insert("annotations".to_owned(), json!({"readOnlyHint": true}));
+    }
+    if matches!(revision, "2025-06-18" | "2025-11-25") {
+        tool.as_object_mut().expect("tool object").insert(
+            "outputSchema".to_owned(),
+            json!({"type": "object", "properties": {}}),
+        );
+    }
+    tool
+}
+
+fn read_request(input: &mut impl BufRead, expected_method: &str) -> Result<Value, Box<dyn Error>> {
     let mut line = String::new();
     if input.read_line(&mut line)? == 0 {
         return Err(format!("stdin ended before {expected_method}").into());
@@ -185,7 +243,7 @@ fn read_request(input: &mut impl BufRead, expected_method: &str) -> Result<(), B
     if value.get("method").and_then(Value::as_str) != Some(expected_method) {
         return Err(format!("expected {expected_method} request").into());
     }
-    Ok(())
+    Ok(value)
 }
 
 fn write_json(output: &mut impl Write, value: &Value) -> Result<(), Box<dyn Error>> {

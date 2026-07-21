@@ -76,8 +76,8 @@ mod service;
 mod verification;
 
 pub use mcp_process::{
-    ConnectionProcess, ConnectionProcessOutput, McpExchangeOutcome, McpExchangeProgress,
-    McpProcessFailure, McpStage, ProductionConnectionProcess,
+    ConnectionProcess, ConnectionProcessOutput, HostCompatibilityProfile, McpExchangeOutcome,
+    McpExchangeProgress, McpProcessFailure, McpStage, ProductionConnectionProcess,
 };
 
 use args::{

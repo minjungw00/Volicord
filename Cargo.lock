@@ -863,6 +863,7 @@ dependencies = [
  "toml_edit",
  "volicord-core",
  "volicord-mcp",
+ "volicord-mcp-protocol",
  "volicord-platform-fs",
  "volicord-platform-process",
  "volicord-store",

@@ -552,9 +552,13 @@ probe. It neither launches a process nor changes files, timestamps, reports,
 actions, observations, or database rows.
 
 `volicord connection verify` actively discovers `codex`, runs the version
-command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test that
-performs `initialize`, `tools/list`, required-tool validation, and a safe
-read-only `volicord.list_projects` call. Preflight and self-test launch
+command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test. The
+server-conformance matrix runs one independent stdio process for every
+production-supported protocol profile. Each revision performs `initialize`,
+the initialized notification, `tools/list`, pinned-schema and required-tool
+validation, exactly one safe read-only `volicord.list_projects` call, and the
+contracted graceful EOF/shutdown sequence. The aggregate `mcp_server` check
+passes only when every revision probe passes. Preflight and self-test launch
 materialization both derive from the canonical managed launch contract used for
 the inspected host configuration. Personal verification uses that contract's
 static absolute `VOLICORD_HOME`; shared verification resolves its forwarded
@@ -563,31 +567,66 @@ runs repository discovery from the canonical Product Repository root. The
 CLI-only verification marker is an invocation overlay and is not part of
 generated host configuration.
 
-A failed stdio self-test keeps the current stage-specific check code and adds
-`checks[id=mcp_server].details.self_test.failure` to the JSON diagnostic. The
-self-test diagnostic records completed probe observations directly:
+The self-test separately runs independently pinned host-compatibility fixtures.
+The current `codex` fixture uses the reviewed Codex initialize `clientInfo` and
+capability shape, requests exact revision `2025-06-18`, sends valid native
+session-correlation metadata on its one `volicord.list_projects` call, and does
+not select a revision from the server's preferred profile. The fixture list can
+contain multiple `codex` entries when deployed Codex families require different
+revisions or wire shapes.
+
+A failed stdio probe keeps the current stage-specific check code. Its exact
+revision or host fixture, completed observations, and typed failure appear in
+the corresponding matrix entry; the aggregate failure is also available at
+`checks[id=mcp_server].details.self_test.failure`. The self-test diagnostic has
+this current shape:
 
 ```yaml
 McpSelfTestProgress:
   status: passed | failed | pending
   code: string
   diagnostic: string
-  initialize: boolean
-  tools_list_observed: boolean
+  production_supported_revisions: string[]
+  conformance: McpRevisionProbeResult[]
+  host_compatibility_profiles: string[]
+  host_compatibility: McpHostProbeResult[]
   tools_list?: string[]
+  safe_read_only_tool: volicord.list_projects
+  failure?: McpSelfTestFailure
+
+McpRevisionProbeResult:
+  revision: string
+  status: passed | failed
+  requested_revision: string
+  negotiated_revision: string | null
+  initialize: boolean
+  initialized_notification: boolean
+  pinned_schema_validated: boolean
+  tools_list_observed: boolean
+  tools_returned: integer | null
   required_tools_validated: boolean
   safe_read_only_tool: volicord.list_projects
   safe_read_only_tool_completed: boolean
   shutdown_completed: boolean
   failure?: McpSelfTestFailure
+
+McpHostProbeResult:
+  profile: codex
+  fixture: string
+  # remaining fields are the same progress and failure fields as
+  # McpRevisionProbeResult, except revision is represented by the requested
+  # and negotiated fields
 ```
 
-`tools_list` is present with the exact returned names whenever `tools/list`
-was observed, including an empty array for an observed empty result. It is
-omitted when no valid tool list was observed. A later safe-call or shutdown
-failure preserves the observed inventory and every earlier successful
-completion fact. Verbose human output reports a probe step as passed only from
-its corresponding completion fact, and reports graceful shutdown separately.
+The aggregate `tools_list` contains the exact returned names from the observed
+server inventory, including an empty array for an observed empty result; each
+probe records its own `tools_list_observed` fact and `tools_returned` count.
+The aggregate inventory is omitted when no valid tool list was observed. A later safe-call
+or shutdown failure preserves the observed inventory and every earlier
+successful completion fact. `negotiated_revision` remains `null` until the
+initialize response selects the requested fixture revision. Verbose human
+output reports each revision and host fixture independently, including returned
+tool count and graceful shutdown.
 
 The failure object has this current shape:
 
@@ -634,9 +673,11 @@ replaces only the report in one immediate Registry transaction. If the
 Connection changed while verification was running, no stale report is stored
 and the command requires a rerun. The observed Host Plan fingerprint remains
 diagnostic: verification does not apply or adopt it and never changes
-`managed_fingerprint`. A successful CLI self-test is not managed-host
-observation and does not create `host_session`, `required_tools`, or
-`tool_round_trip` evidence.
+`managed_fingerprint`. Server-conformance and host-compatibility results are
+CLI probe evidence only. Even a passing `codex` compatibility fixture is not
+an observation of an actual managed Codex process and does not create
+`host_session`, `required_tools`, or `tool_round_trip` evidence. Only a runtime
+session whose source is `managed_host` can supply those observations.
 
 `volicord init` and `volicord connection add` keep a successfully written valid
 setup even when a later operational check fails. They do not roll back managed

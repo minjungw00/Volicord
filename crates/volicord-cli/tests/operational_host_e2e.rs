@@ -51,6 +51,8 @@ const NATIVE_THREAD: &str = "future.thread.operational";
 const MCP_FIXTURE_MODE: &str = "VOLICORD_TEST_MCP_FIXTURE";
 const CODEX_VERSION_ENV: &str = "VOLICORD_TEST_CODEX_VERSION";
 const EARLY_EXIT_STDERR_BYTES: usize = 3 * 1024;
+const CODEX_COMPATIBILITY_VERSION: &str = "0.108.0-alpha.12";
+const CODEX_COMPATIBILITY_REVISION: &str = "2025-06-18";
 
 fn main() {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
@@ -92,6 +94,7 @@ fn main() {
 }
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
+    codex_2025_06_18_compatibility_records_managed_runtime_facts()?;
     managed_launch_contracts_survive_filtered_environments()?;
     fresh_operation_version_transition_and_read_only_status()?;
     connection_mode_transition_rebinds_guard_revision()?;
@@ -102,6 +105,122 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     protocol_failures_are_authoritative()?;
     local_process_and_configuration_failures_are_structured()?;
     guard_failures_are_current_and_structured()?;
+    Ok(())
+}
+
+fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::new("operational-codex-2025-06-18")?;
+    let init = fixture.run_init(FUTURE_VERSION, None, false)?;
+    let init_report = assert_connection_report(&init, 0, "init", "action_required")?;
+    assert_check(&init_report, "mcp_server", "passed", None);
+    let mcp_details = init_report["checks"]
+        .as_array()
+        .and_then(|checks| checks.iter().find(|check| check["id"] == "mcp_server"))
+        .and_then(|check| check["details"].as_object())
+        .ok_or("MCP server check should expose structured details")?;
+    assert_eq!(
+        mcp_details["self_test"]["production_supported_revisions"],
+        json!([
+            "2024-10-07",
+            "2024-11-05",
+            "2025-03-26",
+            "2025-06-18",
+            "2025-11-25"
+        ])
+    );
+    assert!(mcp_details["self_test"]["conformance"]
+        .as_array()
+        .is_some_and(|probes| probes.len() == 5
+            && probes.iter().all(|probe| {
+                probe["status"] == "passed"
+                    && probe["requested_revision"] == probe["negotiated_revision"]
+                    && probe["pinned_schema_validated"] == true
+                    && probe["safe_read_only_tool_completed"] == true
+                    && probe["shutdown_completed"] == true
+            })));
+    assert_eq!(
+        mcp_details["self_test"]["host_compatibility_profiles"],
+        json!(["codex"])
+    );
+    let codex_probe = &mcp_details["self_test"]["host_compatibility"][0];
+    assert_eq!(codex_probe["profile"], "codex");
+    assert_eq!(
+        codex_probe["requested_revision"],
+        CODEX_COMPATIBILITY_REVISION
+    );
+    assert_eq!(
+        codex_probe["negotiated_revision"],
+        CODEX_COMPATIBILITY_REVISION
+    );
+    assert_eq!(codex_probe["status"], "passed");
+
+    let snapshot = fixture.registry_snapshot();
+    let connection_id = snapshot.agent_connections[0].connection_internal_id.clone();
+    let project_id = snapshot.projects[0].project_id.clone();
+    fixture.assert_cli_verification_observations_are_isolated(&connection_id)?;
+
+    let output = fixture.run_managed_mcp_messages(
+        &connection_id,
+        json_lines(&[
+            codex_compatibility_initialize_request(),
+            initialized_notification(),
+            tools_list_request(),
+            managed_tool_call(
+                3,
+                "volicord.list_projects",
+                json!({}),
+                "codex.compatibility.session",
+            ),
+        ])?,
+    )?;
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let responses = json_rpc_responses(&output.stdout)?;
+    assert_eq!(responses.len(), 3);
+    assert_eq!(
+        responses[0]["result"]["protocolVersion"],
+        CODEX_COMPATIBILITY_REVISION
+    );
+    let actual_tools = responses[1]["result"]["tools"]
+        .as_array()
+        .ok_or("Codex tools/list should return an array")?
+        .iter()
+        .map(|tool| {
+            tool["name"]
+                .as_str()
+                .ok_or("Codex tool name should be a string")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let expected_tools = PUBLIC_METHOD_TOOL_NAMES
+        .iter()
+        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        .copied()
+        .collect::<Vec<_>>();
+    assert_eq!(actual_tools, expected_tools);
+    assert_eq!(responses[2]["result"]["isError"], false);
+    assert!(adapter_tool_response(&responses[2])?["projects"]
+        .as_array()
+        .is_some_and(|projects| projects
+            .iter()
+            .any(|project| project["project_selector"] == project_id)));
+
+    let session = latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?
+        .ok_or("Codex compatibility managed runtime session should be recorded")?;
+    assert_eq!(session.session_source, McpRuntimeSessionSource::ManagedHost);
+    assert_eq!(session.client_name.as_deref(), Some("codex-mcp-client"));
+    assert_eq!(
+        session.client_version.as_deref(),
+        Some(CODEX_COMPATIBILITY_VERSION)
+    );
+    assert_eq!(
+        session.negotiated_protocol_version.as_deref(),
+        Some(CODEX_COMPATIBILITY_REVISION)
+    );
+    assert!(session.initialize_completed_at.is_some());
+    assert!(session.initialized_notification_at.is_some());
+    assert!(session.tools_list_observed_at.is_some());
+    assert_eq!(session.required_tools_present, Some(true));
+    assert!(session.last_safe_read_only_tool_call_at.is_some());
     Ok(())
 }
 
@@ -1943,6 +2062,23 @@ fn initialize_request(version: &str) -> Value {
             "protocolVersion": "2025-11-25",
             "capabilities": {},
             "clientInfo": {"name": "arbitrary-future-client", "version": version}
+        }
+    })
+}
+
+fn codex_compatibility_initialize_request() -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": CODEX_COMPATIBILITY_REVISION,
+            "capabilities": {},
+            "clientInfo": {
+                "name": "codex-mcp-client",
+                "title": "Codex",
+                "version": CODEX_COMPATIBILITY_VERSION,
+            }
         }
     })
 }

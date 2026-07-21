@@ -514,39 +514,73 @@ Installation ID, 통과한 `mode_transition` check 하나, 현재 `reload_host` 
 관찰, 데이터베이스 row를 바꾸지 않습니다.
 
 `volicord connection verify`는 `codex`를 활성 탐색하고 version 명령을 실행한 뒤
-`volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. Self-test는
-`initialize`, `tools/list`, 필수 도구 검증, 안전한 읽기 전용
-`volicord.list_projects` 호출을 수행합니다. 사전 점검과 자체 검사의 프로세스 시작 구체화는 모두
+`volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. 서버 conformance
+matrix는 프로덕션 지원 protocol profile마다 독립된 stdio process 하나를 실행합니다.
+각 revision에서 `initialize`, initialized notification, `tools/list`, 고정 schema와 필수
+도구 검증, 안전한 읽기 전용 `volicord.list_projects` 호출 정확히 하나, 계약에 정한 정상
+EOF/종료 순서를 수행합니다. 모든 revision probe가 통과해야 집계 `mcp_server` check가
+통과합니다. 사전 점검과 자체 검사의 프로세스 시작 구체화는 모두
 점검 대상 호스트 구성에 사용된 정규 관리 시작 계약에서 파생합니다. 개인 연결 검증은 그
 계약의 정적 절대 `VOLICORD_HOME`을 사용합니다. 공유 연결 검증은 연결 작업이 선택한
 Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product Repository 루트에서
 저장소 검색을 실행합니다. CLI 전용 검증 표식은 호출에만 적용하는 진단 값이며 생성 호스트
 구성에는 포함되지 않습니다.
 
-stdio 자체 검사가 실패하면 현재 단계별 check code를 유지하고 JSON 진단의
-`checks[id=mcp_server].details.self_test.failure`에 실패 객체를 추가합니다. 자체 검사
-진단은 완료된 점검 관찰을 직접 기록합니다.
+Self-test는 이와 별도로 독립적으로 고정한 host 호환성 fixture를 실행합니다. 현재
+`codex` fixture는 검토된 Codex initialize `clientInfo` 및 capability 형태를 사용하고,
+정확한 revision `2025-06-18`을 요청하며, `volicord.list_projects` 호출 하나에 유효한
+native session correlation metadata를 보냅니다. 이 fixture는 서버의 선호 profile에서
+revision을 선택하지 않습니다. 배포된 Codex 계열마다 필요한 revision이나 wire 형태가
+다르면 fixture 목록에 `codex` entry를 여러 개 둘 수 있습니다.
+
+stdio probe가 실패하면 현재 단계별 check code를 유지합니다. 해당 matrix entry에 정확한
+revision 또는 host fixture, 완료 관찰, typed failure를 기록하며 집계 failure도
+`checks[id=mcp_server].details.self_test.failure`에서 제공합니다. 현재 self-test 진단
+형태는 다음과 같습니다.
 
 ```yaml
 McpSelfTestProgress:
   status: passed | failed | pending
   code: string
   diagnostic: string
-  initialize: boolean
-  tools_list_observed: boolean
+  production_supported_revisions: string[]
+  conformance: McpRevisionProbeResult[]
+  host_compatibility_profiles: string[]
+  host_compatibility: McpHostProbeResult[]
   tools_list?: string[]
+  safe_read_only_tool: volicord.list_projects
+  failure?: McpSelfTestFailure
+
+McpRevisionProbeResult:
+  revision: string
+  status: passed | failed
+  requested_revision: string
+  negotiated_revision: string | null
+  initialize: boolean
+  initialized_notification: boolean
+  pinned_schema_validated: boolean
+  tools_list_observed: boolean
+  tools_returned: integer | null
   required_tools_validated: boolean
   safe_read_only_tool: volicord.list_projects
   safe_read_only_tool_completed: boolean
   shutdown_completed: boolean
   failure?: McpSelfTestFailure
+
+McpHostProbeResult:
+  profile: codex
+  fixture: string
+  # 나머지는 McpRevisionProbeResult와 같은 progress/failure 필드이며,
+  # revision은 requested/negotiated 필드로 나타냅니다.
 ```
 
-`tools/list`를 관찰했으면 빈 결과를 관찰한 경우의 빈 배열을 포함하여 반환된 이름
-그대로 `tools_list`에 나타납니다. 유효한 도구 목록을 관찰하지 못했으면 이 필드를
-생략합니다. 이후의 안전한 호출이나 종료가 실패해도 관찰한 도구 목록과 앞서 성공한
-모든 완료 사실을 보존합니다. 사람이 읽는 상세 출력은 각 완료 사실이 참일 때만 해당
-점검 단계를 통과로 보고하며 정상 종료 결과를 별도로 표시합니다.
+집계 `tools_list`에는 빈 결과를 관찰한 경우의 빈 배열을 포함하여 관찰한 서버 inventory의
+정확한 반환 이름을 담고, 각 probe는 자체 `tools_list_observed` 사실과 `tools_returned`
+개수를 기록합니다. 유효한 도구 목록을 관찰하지 못했으면 집계 inventory를 생략합니다.
+이후의 안전한 호출이나 종료가 실패해도 관찰한 도구 목록과 앞서 성공한 모든
+완료 사실을 보존합니다. Initialize 응답이 요청한 fixture revision을 선택하기 전까지
+`negotiated_revision`은 `null`입니다. 사람이 읽는 상세 출력은 반환된 도구 수와 정상 종료를
+포함해 revision과 host fixture를 각각 독립적으로 보고합니다.
 
 현재 실패 객체 형태는 다음과 같습니다.
 
@@ -589,8 +623,10 @@ Connection의 정확한 typed integration revision을 확보하고, immediate Re
 하나에서 그 revision을 비교해 보고서만 교체합니다. 검증 중 Connection이 바뀌면 stale
 보고서를 저장하지 않고 명령 재실행을 요구합니다. 관찰한 Host Plan fingerprint는
 diagnostic으로만 남습니다. 검증은 이를 적용하거나 채택하지 않으며
-`managed_fingerprint`를 바꾸지 않습니다. CLI 자체 검사가 성공해도 관리 호스트 관찰이
-아니며 `host_session`, `required_tools`, `tool_round_trip` 증거를 만들지 않습니다.
+`managed_fingerprint`를 바꾸지 않습니다. 서버 conformance와 host 호환성 결과는 CLI
+probe 증거일 뿐입니다. `codex` 호환성 fixture가 통과해도 실제 관리 Codex process를
+관찰한 것이 아니며 `host_session`, `required_tools`, `tool_round_trip` 증거를 만들지
+않습니다. Source가 `managed_host`인 runtime session만 해당 관찰을 제공할 수 있습니다.
 
 `volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
 유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리

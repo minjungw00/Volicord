@@ -139,6 +139,36 @@ initialization state changes or Core execution. An allowed batch is processed
 sequentially in input order. Notifications have no response entry, and a batch
 containing only notifications produces no response.
 
+## CLI Conformance And Host Compatibility Probes
+
+Connection verification runs a server-conformance matrix over every profile in
+the production registry, in its reviewed order. Each profile gets a separate
+stdio process and exact requested revision. The probe completes `initialize`,
+`notifications/initialized`, `tools/list`, validation against that revision's
+pinned schema, current-mode required-tool validation, exactly one
+`volicord.list_projects` call, and graceful EOF/shutdown. It records the
+requested and negotiated revisions, returned tools, completed stages, and a
+typed failure per revision. The aggregate server check passes only if every
+production revision passes; one failed revision does not prevent the remaining
+revisions from being probed.
+
+Host compatibility is a separate, host-owned fixture list rather than a
+projection of the protocol registry. The current `codex` fixture uses the
+reviewed Codex initialize request shape with `clientInfo.name` set to
+`codex-mcp-client`, the `Codex` title, an empty current capability object, and
+the independently pinned revision `2025-06-18`. Its one tool call carries valid
+Codex native thread/session/turn correlation metadata. It executes
+`tools/list` and `volicord.list_projects`, and it never derives its requested
+revision from the server's preferred or newest profile. Multiple independently
+pinned `codex` fixtures may coexist when deployed client families require
+different revisions.
+
+Both matrices are CLI probe evidence. A passing host-compatibility fixture
+shows that the reviewed request shape works against this server; it does not
+show that a managed Codex process ran. Only lifecycle observations recorded by
+an actual process with source `managed_host` can satisfy managed-host
+operational checks.
+
 ## Authoritative Lifecycle Recording
 
 After resolving the Agent Connection, the process creates a Registry runtime

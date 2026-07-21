@@ -31,7 +31,10 @@ use crate::host_integration::{
 
 use super::{
     codex_environment,
-    mcp_process::{materialize_connection_invocation, run_connection_preflight, McpVerification},
+    mcp_process::{
+        materialize_connection_invocation, run_connection_preflight, McpProcessFailure,
+        McpVerification,
+    },
     parse_host_kind, ConnectionCommandError, ConnectionProcess,
 };
 
@@ -360,17 +363,110 @@ pub(in crate::connection_command) fn mcp_server_check(
         .exchange
         .as_ref()
         .map(|exchange| &exchange.progress);
+    let exchange = handshake.exchange.as_ref();
     let mut self_test = json!({
         "status": step.status.as_str(),
         "code": step.code,
         "diagnostic": step.details,
-        "initialize": progress.is_some_and(|progress| progress.initialize_completed),
-        "tools_list_observed": progress.is_some_and(|progress| progress.tools_list.is_some()),
-        "required_tools_validated": progress.is_some_and(|progress| progress.required_tools_validated),
         "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
-        "safe_read_only_tool_completed": progress.is_some_and(|progress| progress.safe_tool_call_completed),
-        "shutdown_completed": progress.is_some_and(|progress| progress.shutdown_completed),
     });
+    if exchange.is_some_and(|exchange| {
+        !exchange.conformance.is_empty() || !exchange.host_compatibility.is_empty()
+    }) {
+        let exchange = exchange.expect("matrix exchange was checked");
+        self_test
+            .as_object_mut()
+            .expect("self-test details are an object")
+            .extend([
+                (
+                    "production_supported_revisions".to_owned(),
+                    json!(exchange
+                        .conformance
+                        .iter()
+                        .map(|probe| probe.revision.as_str())
+                        .collect::<Vec<_>>()),
+                ),
+                (
+                    "conformance".to_owned(),
+                    Value::Array(
+                        exchange
+                            .conformance
+                            .iter()
+                            .map(|probe| {
+                                probe_result_json(
+                                    &probe.progress,
+                                    probe.failure.as_ref(),
+                                    [("revision", json!(probe.revision))],
+                                )
+                            })
+                            .collect(),
+                    ),
+                ),
+                (
+                    "host_compatibility_profiles".to_owned(),
+                    json!(exchange
+                        .host_compatibility
+                        .iter()
+                        .map(|probe| probe.profile.as_str())
+                        .collect::<Vec<_>>()),
+                ),
+                (
+                    "host_compatibility".to_owned(),
+                    Value::Array(
+                        exchange
+                            .host_compatibility
+                            .iter()
+                            .map(|probe| {
+                                probe_result_json(
+                                    &probe.progress,
+                                    probe.failure.as_ref(),
+                                    [
+                                        ("profile", json!(probe.profile.as_str())),
+                                        ("fixture", json!(probe.fixture_id)),
+                                    ],
+                                )
+                            })
+                            .collect(),
+                    ),
+                ),
+            ]);
+        if let Some(tools) = exchange
+            .conformance
+            .iter()
+            .find_map(|probe| probe.progress.tools_list.as_ref())
+        {
+            self_test
+                .as_object_mut()
+                .expect("self-test details are an object")
+                .insert("tools_list".to_owned(), json!(tools));
+        }
+    } else {
+        self_test
+            .as_object_mut()
+            .expect("self-test details are an object")
+            .extend([
+                (
+                    "initialize".to_owned(),
+                    json!(progress.is_some_and(|progress| progress.initialize_completed)),
+                ),
+                (
+                    "tools_list_observed".to_owned(),
+                    json!(progress.is_some_and(|progress| progress.tools_list.is_some())),
+                ),
+                (
+                    "required_tools_validated".to_owned(),
+                    json!(progress.is_some_and(|progress| progress.required_tools_validated)),
+                ),
+                (
+                    "safe_read_only_tool_completed".to_owned(),
+                    json!(progress.is_some_and(|progress| progress.safe_tool_call_completed)),
+                ),
+                (
+                    "shutdown_completed".to_owned(),
+                    json!(progress.is_some_and(|progress| progress.shutdown_completed)),
+                ),
+            ]);
+    }
     if let Some(tools) = progress.and_then(|progress| progress.tools_list.as_ref()) {
         self_test
             .as_object_mut()
@@ -403,6 +499,44 @@ pub(in crate::connection_command) fn mcp_server_check(
         })),
         None,
     )
+}
+
+fn probe_result_json<const N: usize>(
+    progress: &crate::connection_command::McpExchangeProgress,
+    failure: Option<&McpProcessFailure>,
+    identity: [(&str, Value); N],
+) -> Value {
+    let mut result = json!({
+        "status": if failure.is_none() { "passed" } else { "failed" },
+        "requested_revision": progress.requested_revision,
+        "negotiated_revision": progress.negotiated_revision,
+        "initialize": progress.initialize_completed,
+        "initialized_notification": progress.initialized_notification_completed,
+        "pinned_schema_validated": progress.pinned_schema_validated,
+        "tools_list_observed": progress.tools_list.is_some(),
+        "tools_returned": progress.tools_list.as_ref().map(Vec::len),
+        "required_tools_validated": progress.required_tools_validated,
+        "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
+        "safe_read_only_tool_completed": progress.safe_tool_call_completed,
+        "shutdown_completed": progress.shutdown_completed,
+    });
+    let object = result.as_object_mut().expect("probe result is an object");
+    for (field, value) in identity {
+        object.insert(field.to_owned(), value);
+    }
+    if let Some(failure) = failure {
+        let full = failure.to_json();
+        let compact = ["kind", "stage", "exit_code", "timeout_ms", "missing_tools"]
+            .into_iter()
+            .filter_map(|field| {
+                full.get(field)
+                    .cloned()
+                    .map(|value| (field.to_owned(), value))
+            })
+            .collect();
+        object.insert("failure".to_owned(), Value::Object(compact));
+    }
+    result
 }
 
 fn project_trust_check(host: &Verification) -> Result<ConnectionCheck, ConnectionCommandError> {
@@ -1158,7 +1292,6 @@ fn current_timestamp() -> UtcTimestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection_command::McpProcessFailure;
 
     fn host(version: &str) -> Verification {
         Verification {

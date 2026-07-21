@@ -243,6 +243,13 @@ impl<'a> DetailContext<'a> {
         Some(strings)
     }
 
+    fn take_value(&mut self, path: &str) -> Option<Value> {
+        let path = DetailPath::from_dotted_keys(path);
+        let value = self.peek(&path)?.clone();
+        self.consume(&path);
+        Some(value)
+    }
+
     fn consume(&mut self, path: &DetailPath) {
         self.consumed.insert(path.clone());
     }
@@ -380,6 +387,58 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     let self_test_status = context.take_string("self_test.status");
     let _self_test_code = context.take_string("self_test.code");
     let diagnostic = context.take_string("self_test.diagnostic");
+    let production_revisions = context
+        .take_string_array("self_test.production_supported_revisions")
+        .unwrap_or_default();
+    if !production_revisions.is_empty() {
+        let conformance = context
+            .take_value("self_test.conformance")
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default();
+        let host_profiles = context
+            .take_string_array("self_test.host_compatibility_profiles")
+            .unwrap_or_default();
+        let host_compatibility = context
+            .take_value("self_test.host_compatibility")
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default();
+        let safe_tool = context
+            .take_string("self_test.safe_read_only_tool")
+            .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
+        let tools = context
+            .take_string_array("self_test.tools_list")
+            .unwrap_or_default();
+        render_mcp_probe_matrix(
+            context,
+            &production_revisions,
+            &conformance,
+            &host_profiles,
+            &host_compatibility,
+            &safe_tool,
+            &tools,
+        );
+        if self_test_status.as_deref() != Some("passed")
+            && diagnostic.as_deref().is_some_and(|diagnostic| {
+                diagnostic_adds_information(diagnostic, context.check.summary())
+            })
+        {
+            context.diagnostic(
+                "Self-test diagnostic",
+                diagnostic.as_deref().expect("diagnostic was checked"),
+            );
+        }
+        if preflight.as_deref() != Some("passed") {
+            if let Some(code) = preflight_code {
+                context.line("Preflight code", code);
+            }
+            if let Some(diagnostic) = preflight_diagnostic {
+                if diagnostic_adds_information(&diagnostic, context.check.summary()) {
+                    context.diagnostic("Preflight diagnostic", &diagnostic);
+                }
+            }
+        }
+        return;
+    }
     let initialize = context.take_bool("self_test.initialize");
     let tools_list_observed = context.take_bool("self_test.tools_list_observed");
     let tools = context
@@ -489,6 +548,70 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
                 context.diagnostic("Preflight diagnostic", &diagnostic);
             }
         }
+    }
+}
+
+fn render_mcp_probe_matrix(
+    context: &mut DetailContext<'_>,
+    production_revisions: &[String],
+    conformance: &[Value],
+    host_profiles: &[String],
+    host_compatibility: &[Value],
+    safe_tool: &str,
+    tools: &[String],
+) {
+    context.line(
+        "Production revisions",
+        render_string_values(production_revisions),
+    );
+    let passed = conformance
+        .iter()
+        .filter(|probe| probe["status"] == "passed")
+        .count();
+    context.line(
+        "Server conformance",
+        format_args!("{passed}/{} passed", conformance.len()),
+    );
+    for probe in conformance {
+        let revision = probe["revision"].as_str().unwrap_or("unknown");
+        let status = probe["status"].as_str().unwrap_or("unknown");
+        let negotiated = probe["negotiated_revision"]
+            .as_str()
+            .unwrap_or("not negotiated");
+        let tools = probe["tools_returned"].as_u64().unwrap_or(0);
+        let shutdown = if probe["shutdown_completed"] == true {
+            "graceful"
+        } else {
+            "incomplete"
+        };
+        context.line(
+            &format!("Revision {revision}"),
+            format_args!("{status}; negotiated {negotiated}; {tools} tools; {shutdown} shutdown"),
+        );
+        if let Some(stage) = probe["failure"]["stage"].as_str() {
+            context.line(
+                "Revision failure",
+                format_args!("{revision} during {stage}"),
+            );
+        }
+    }
+    context.line("Tools returned", tools.len());
+    context.line("Designated read-only tool", safe_tool);
+    context.line(
+        "Host compatibility profiles",
+        render_string_values(host_profiles),
+    );
+    for probe in host_compatibility {
+        let profile = probe["profile"].as_str().unwrap_or("unknown");
+        let fixture = probe["fixture"].as_str().unwrap_or("unknown");
+        let status = probe["status"].as_str().unwrap_or("unknown");
+        let negotiated = probe["negotiated_revision"]
+            .as_str()
+            .unwrap_or("not negotiated");
+        context.line(
+            &format!("Host profile {profile}"),
+            format_args!("{status}; {fixture}; negotiated {negotiated}"),
+        );
     }
 }
 

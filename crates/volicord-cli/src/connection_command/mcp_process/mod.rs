@@ -5,7 +5,9 @@ use volicord_mcp::MaterializedManagedMcpLaunch;
 use super::verification::VerificationStep;
 
 mod failure;
+mod host_compatibility;
 mod launch;
+mod pinned_schema;
 mod preflight;
 mod stdio_probe;
 mod supervisor;
@@ -13,6 +15,7 @@ mod supervisor;
 mod test_child;
 
 pub use failure::{McpProcessFailure, McpStage};
+pub use host_compatibility::HostCompatibilityProfile;
 pub(super) use launch::materialize_connection_invocation;
 pub use preflight::ConnectionProcessOutput;
 pub use stdio_probe::{McpExchangeOutcome, McpExchangeProgress};
@@ -73,20 +76,29 @@ pub(super) struct McpVerification {
 impl McpVerification {
     pub(super) fn from_exchange(exchange: McpExchangeOutcome) -> Self {
         let step = match &exchange.failure {
-            Some(failure) => {
-                VerificationStep::failed_with_code(failure.check_code(), failure.summary())
-            }
+            Some(failure) => VerificationStep::failed_with_code(
+                failure.check_code(),
+                exchange.failure_summary(failure),
+            ),
             None => VerificationStep::passed_with_code(
                 "mcp_server_ready",
-                format!(
-                    "MCP initialize, tools/list, required-tool validation, designated read-only tool call, and graceful shutdown succeeded; tools/list returned {} tools",
-                    exchange
-                        .progress
-                        .tools_list
-                        .as_ref()
-                        .expect("completed MCP exchange observed tools/list")
-                        .len()
-                ),
+                if exchange.conformance.is_empty() && exchange.host_compatibility.is_empty() {
+                    format!(
+                        "MCP initialize, tools/list, required-tool validation, designated read-only tool call, and graceful shutdown succeeded; tools/list returned {} tools",
+                        exchange
+                            .progress
+                            .tools_list
+                            .as_ref()
+                            .expect("completed MCP exchange observed tools/list")
+                            .len()
+                    )
+                } else {
+                    format!(
+                        "MCP server conformance passed for {} production revisions and {} independent host compatibility fixtures",
+                        exchange.conformance.len(),
+                        exchange.host_compatibility.len()
+                    )
+                },
             ),
         };
         Self {
