@@ -101,12 +101,16 @@ WSL 종료나 재시작은 살아 있는 관리 runtime session을 끝냅니다.
 이후 호출에 권한을 줄 수 없으며, 새로운 관리 MCP lifecycle이 새 runtime session과
 project session을 기록해야 합니다.
 
-지원하지 않는 토폴로지는 기계 판독할 수 있습니다. `unsupported_wsl1`은 WSL1,
-`unsupported_wsl2_distribution`은 지원하지 않는 `/etc/os-release` 식별값,
-`unsupported_wsl2_filesystem`은 ext4가 아닌 구성요소를 뜻합니다. 이 결과는
-`Rejected` 환경 결과입니다. 커널, `/etc/os-release`, 파일 시스템을 관찰할 수
-없으면 `Unavailable`로 남으며, 거절된 환경이나 네이티브 환경으로 바꾸지
-않습니다.
+플랫폼 관찰과 지원하지 않는 토폴로지 결과는 기계 판독할 수 있습니다. 호스트를
+분류하는 데 필요한 커널 릴리스를 읽을 수 없으면 `Unavailable` 결과인
+`platform_environment_unavailable`을 사용합니다. 이 커널 분류가 네이티브 Linux로
+끝나면 배포판 식별 정보를 관찰하지 않습니다. 지원되는 WSL2 커널에서
+`/etc/os-release`를 읽을 수 없거나 필수 `ID` 또는 `VERSION_ID`가 없거나 잘못된
+형식이면 `Unavailable` 사유인 `wsl2_distribution_unavailable`을 사용합니다. 형식이
+올바른 식별 정보의 `ID` 또는 `VERSION_ID`가 지원 범위 밖이면 `Rejected` 사유인
+`unsupported_wsl2_distribution`을 사용합니다. `unsupported_wsl1`은 WSL1,
+`unsupported_wsl2_filesystem`은 ext4가 아닌 구성요소를 뜻합니다. 관찰할 수 없는
+결과를 거절된 환경이나 네이티브 환경으로 바꾸지 않습니다.
 
 <a id="toolchain-requirements"></a>
 ## 도구 체인 요구사항

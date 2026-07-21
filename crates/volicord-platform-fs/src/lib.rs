@@ -20,6 +20,13 @@ const MAX_GIT_CONTROL_FILE_BYTES: u64 = 4096;
 const MAX_PLATFORM_CONTROL_FILE_BYTES: u64 = 16 * 1024;
 const MAX_MOUNTINFO_BYTES: u64 = 4 * 1024 * 1024;
 
+#[cfg(target_os = "linux")]
+const KERNEL_RELEASE_PATH: &str = "/proc/sys/kernel/osrelease";
+#[cfg(target_os = "linux")]
+const OS_RELEASE_PATH: &str = "/etc/os-release";
+#[cfg(target_os = "linux")]
+const MOUNTINFO_PATH: &str = "/proc/self/mountinfo";
+
 /// One observed local process-platform boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalPlatformBoundary {
@@ -84,20 +91,7 @@ impl std::error::Error for PlatformBoundaryError {}
 #[cfg(target_os = "linux")]
 pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
     let target_triple = current_release_target_triple()?;
-    let kernel_release = read_platform_text("/proc/sys/kernel/osrelease")?;
-    let os_release = if classify_linux_kernel_release(&kernel_release) == LinuxKernelBoundary::Wsl2
-    {
-        Some(read_platform_text("/etc/os-release")?)
-    } else {
-        None
-    };
-    classify_linux_platform_boundary(
-        target_triple,
-        LinuxPlatformFacts {
-            kernel_release: &kernel_release,
-            os_release: os_release.as_deref(),
-        },
-    )
+    observe_linux_platform_boundary(target_triple, &mut LocalLinuxPlatformObservation)
 }
 
 /// Observes the current native or exact pinned WSL2 process boundary.
@@ -148,11 +142,7 @@ pub fn observe_path_filesystem(path: &Path) -> Result<PathFilesystemKind, Platfo
     if stat.f_type != 0x0000_ef53 {
         return Ok(PathFilesystemKind::Other);
     }
-    let mountinfo = read_bounded_platform_text(
-        "/proc/self/mountinfo",
-        MAX_MOUNTINFO_BYTES,
-        "platform_filesystem_unavailable",
-    )?;
+    let mountinfo = read_linux_mountinfo()?;
     Ok(
         if filesystem_type_for_path(&canonical_existing, &mountinfo)? == "ext4" {
             PathFilesystemKind::LinuxExt4
@@ -175,6 +165,27 @@ struct LinuxPlatformFacts<'a> {
 }
 
 #[cfg(target_os = "linux")]
+trait LinuxPlatformObservation {
+    fn read_kernel_release(&mut self) -> io::Result<String>;
+
+    fn read_wsl2_os_release(&mut self) -> io::Result<String>;
+}
+
+#[cfg(target_os = "linux")]
+struct LocalLinuxPlatformObservation;
+
+#[cfg(target_os = "linux")]
+impl LinuxPlatformObservation for LocalLinuxPlatformObservation {
+    fn read_kernel_release(&mut self) -> io::Result<String> {
+        read_bounded_platform_text(KERNEL_RELEASE_PATH, MAX_PLATFORM_CONTROL_FILE_BYTES)
+    }
+
+    fn read_wsl2_os_release(&mut self) -> io::Result<String> {
+        read_bounded_platform_text(OS_RELEASE_PATH, MAX_PLATFORM_CONTROL_FILE_BYTES)
+    }
+}
+
+#[cfg(target_os = "linux")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LinuxKernelBoundary {
     Native,
@@ -192,6 +203,39 @@ fn classify_linux_kernel_release(kernel_release: &str) -> LinuxKernelBoundary {
     } else {
         LinuxKernelBoundary::Wsl1
     }
+}
+
+#[cfg(target_os = "linux")]
+fn observe_linux_platform_boundary(
+    target_triple: ReleaseTargetTriple,
+    observation: &mut impl LinuxPlatformObservation,
+) -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
+    let kernel_release = observation.read_kernel_release().map_err(|error| {
+        unavailable_platform(
+            "platform_environment_unavailable",
+            format!(
+                "the Linux kernel release required to classify the host could not be read from {KERNEL_RELEASE_PATH}: {error}"
+            ),
+        )
+    })?;
+    let os_release = match classify_linux_kernel_release(&kernel_release) {
+        LinuxKernelBoundary::Wsl2 => Some(observation.read_wsl2_os_release().map_err(|error| {
+            unavailable_platform(
+                "wsl2_distribution_unavailable",
+                format!(
+                    "the WSL2 distribution identity could not be read from {OS_RELEASE_PATH}: {error}"
+                ),
+            )
+        })?),
+        LinuxKernelBoundary::Native | LinuxKernelBoundary::Wsl1 => None,
+    };
+    classify_linux_platform_boundary(
+        target_triple,
+        LinuxPlatformFacts {
+            kernel_release: &kernel_release,
+            os_release: os_release.as_deref(),
+        },
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -322,62 +366,61 @@ fn parse_os_release(document: &str) -> Result<(String, String), PlatformBoundary
 }
 
 #[cfg(target_os = "linux")]
-fn read_platform_text(path: impl AsRef<Path>) -> Result<String, PlatformBoundaryError> {
-    read_bounded_platform_text(
-        path,
-        MAX_PLATFORM_CONTROL_FILE_BYTES,
-        "platform_environment_unavailable",
-    )
-}
-
-#[cfg(target_os = "linux")]
-fn read_bounded_platform_text(
-    path: impl AsRef<Path>,
-    max_bytes: u64,
-    reason: &'static str,
-) -> Result<String, PlatformBoundaryError> {
+fn read_bounded_platform_text(path: impl AsRef<Path>, max_bytes: u64) -> io::Result<String> {
     use std::io::Read as _;
 
     let path = path.as_ref();
     let metadata = fs::metadata(path).map_err(|error| {
-        unavailable_platform(
-            reason,
+        io::Error::new(
+            error.kind(),
             format!("cannot inspect {}: {error}", path.display()),
         )
     })?;
     if !metadata.is_file() || metadata.len() > max_bytes {
-        return Err(unavailable_platform(
-            reason,
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
             format!("{} is not a bounded regular control file", path.display()),
         ));
     }
     let file = fs::File::open(path).map_err(|error| {
-        unavailable_platform(reason, format!("cannot open {}: {error}", path.display()))
+        io::Error::new(
+            error.kind(),
+            format!("cannot open {}: {error}", path.display()),
+        )
     })?;
     let mut bytes = Vec::new();
     file.take(max_bytes + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| {
-            unavailable_platform(reason, format!("cannot read {}: {error}", path.display()))
+            io::Error::new(
+                error.kind(),
+                format!("cannot read {}: {error}", path.display()),
+            )
         })?;
     if bytes.len() as u64 > max_bytes {
-        return Err(unavailable_platform(
-            reason,
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
             format!("{} exceeds the bounded control-file size", path.display()),
         ));
     }
     if bytes.contains(&0) {
-        return Err(unavailable_platform(
-            reason,
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
             format!("{} contains NUL", path.display()),
         ));
     }
     String::from_utf8(bytes).map_err(|error| {
-        unavailable_platform(
-            reason,
+        io::Error::new(
+            io::ErrorKind::InvalidData,
             format!("{} is not valid UTF-8: {error}", path.display()),
         )
     })
+}
+
+#[cfg(target_os = "linux")]
+fn read_linux_mountinfo() -> Result<String, PlatformBoundaryError> {
+    read_bounded_platform_text(MOUNTINFO_PATH, MAX_MOUNTINFO_BYTES)
+        .map_err(|error| unavailable_platform("platform_filesystem_unavailable", error.to_string()))
 }
 
 #[cfg(target_os = "linux")]
@@ -1048,6 +1091,55 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    enum TestPlatformRead {
+        Text(&'static str),
+        Failure(&'static str),
+    }
+
+    #[cfg(target_os = "linux")]
+    impl TestPlatformRead {
+        fn result(&self) -> io::Result<String> {
+            match self {
+                Self::Text(value) => Ok((*value).to_owned()),
+                Self::Failure(detail) => Err(io::Error::other(*detail)),
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    struct TestLinuxPlatformObservation {
+        kernel_release: TestPlatformRead,
+        os_release: TestPlatformRead,
+        kernel_release_reads: usize,
+        os_release_reads: usize,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl TestLinuxPlatformObservation {
+        fn new(kernel_release: TestPlatformRead, os_release: TestPlatformRead) -> Self {
+            Self {
+                kernel_release,
+                os_release,
+                kernel_release_reads: 0,
+                os_release_reads: 0,
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl LinuxPlatformObservation for TestLinuxPlatformObservation {
+        fn read_kernel_release(&mut self) -> io::Result<String> {
+            self.kernel_release_reads += 1;
+            self.kernel_release.result()
+        }
+
+        fn read_wsl2_os_release(&mut self) -> io::Result<String> {
+            self.os_release_reads += 1;
+            self.os_release.result()
+        }
+    }
+
     #[test]
     fn replace_failure_effect_identifies_partial_namespace_move() {
         assert_eq!(
@@ -1064,27 +1156,36 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn supported_wsl2_uses_kernel_and_os_release_identity() {
-        let boundary = classify_linux_platform_boundary(
+    fn kernel_read_failure_reports_platform_environment_unavailable() {
+        let mut observation = TestLinuxPlatformObservation::new(
+            TestPlatformRead::Failure("injected kernel read failure"),
+            TestPlatformRead::Failure("os-release must not be read"),
+        );
+        let error = observe_linux_platform_boundary(
             ReleaseTargetTriple::X86_64UnknownLinuxGnu,
-            LinuxPlatformFacts {
-                kernel_release: "6.6.87.2-microsoft-standard-WSL2",
-                os_release: Some("ID=ubuntu\nVERSION_ID=\"24.04\"\n"),
-            },
+            &mut observation,
         )
-        .expect("supported WSL2 facts should be accepted");
-        assert_eq!(boundary.environment, PlatformEnvironment::Wsl2);
+        .expect_err("an unavailable kernel observation must fail closed");
+        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
+        assert_eq!(error.reason(), "platform_environment_unavailable");
+        assert_eq!(
+            error.detail(),
+            "the Linux kernel release required to classify the host could not be read from /proc/sys/kernel/osrelease: injected kernel read failure"
+        );
+        assert_eq!(observation.kernel_release_reads, 1);
+        assert_eq!(observation.os_release_reads, 0);
     }
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn native_linux_classification_uses_only_kernel_observation() {
-        let boundary = classify_linux_platform_boundary(
+    fn native_linux_observation_does_not_read_os_release() {
+        let mut observation = TestLinuxPlatformObservation::new(
+            TestPlatformRead::Text("6.8.0-generic"),
+            TestPlatformRead::Failure("os-release must not be read"),
+        );
+        let boundary = observe_linux_platform_boundary(
             ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
-            LinuxPlatformFacts {
-                kernel_release: "6.8.0-generic",
-                os_release: None,
-            },
+            &mut observation,
         )
         .expect("a non-Microsoft kernel should be native Linux");
         assert_eq!(boundary.environment, PlatformEnvironment::Linux);
@@ -1092,36 +1193,86 @@ mod tests {
             boundary.target_triple,
             ReleaseTargetTriple::Aarch64UnknownLinuxGnu
         );
+        assert_eq!(observation.kernel_release_reads, 1);
+        assert_eq!(observation.os_release_reads, 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn wsl2_os_release_read_failure_reports_distribution_unavailable() {
+        let mut observation = TestLinuxPlatformObservation::new(
+            TestPlatformRead::Text("6.6.87.2-microsoft-standard-WSL2"),
+            TestPlatformRead::Failure("injected os-release read failure"),
+        );
+        let error = observe_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            &mut observation,
+        )
+        .expect_err("an unavailable WSL2 distribution observation must fail closed");
+        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
+        assert_eq!(error.reason(), "wsl2_distribution_unavailable");
+        assert_eq!(
+            error.detail(),
+            "the WSL2 distribution identity could not be read from /etc/os-release: injected os-release read failure"
+        );
+        assert_eq!(observation.kernel_release_reads, 1);
+        assert_eq!(observation.os_release_reads, 1);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn wsl2_malformed_os_release_reports_distribution_unavailable() {
+        let mut observation = TestLinuxPlatformObservation::new(
+            TestPlatformRead::Text("6.6.87.2-microsoft-standard-WSL2"),
+            TestPlatformRead::Text("ID=ubuntu\nmalformed\nVERSION_ID=24.04\n"),
+        );
+        let error = observe_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            &mut observation,
+        )
+        .expect_err("a malformed WSL2 distribution observation must fail closed");
+        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
+        assert_eq!(error.reason(), "wsl2_distribution_unavailable");
+        assert_eq!(error.detail(), "/etc/os-release contains a malformed entry");
     }
 
     #[cfg(target_os = "linux")]
     #[test]
     fn microsoft_kernel_without_wsl2_boundary_is_rejected_as_wsl1() {
-        let error = classify_linux_platform_boundary(
+        let mut observation = TestLinuxPlatformObservation::new(
+            TestPlatformRead::Text("4.4.0-19041-Microsoft"),
+            TestPlatformRead::Failure("os-release must not be read"),
+        );
+        let error = observe_linux_platform_boundary(
             ReleaseTargetTriple::X86_64UnknownLinuxGnu,
-            LinuxPlatformFacts {
-                kernel_release: "4.4.0-19041-Microsoft",
-                os_release: None,
-            },
+            &mut observation,
         )
         .expect_err("WSL1 must be unsupported");
         assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
         assert_eq!(error.reason(), "unsupported_wsl1");
+        assert_eq!(
+            error.detail(),
+            "the observed Microsoft Linux kernel is not a WSL2 kernel"
+        );
+        assert_eq!(observation.kernel_release_reads, 1);
+        assert_eq!(observation.os_release_reads, 0);
     }
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn wsl2_rejects_unsupported_distribution_id() {
-        let error = classify_linux_platform_boundary(
+    fn wsl2_observation_rejects_unsupported_distribution_identity() {
+        let mut observation = TestLinuxPlatformObservation::new(
+            TestPlatformRead::Text("6.6.87.2-microsoft-standard-WSL2"),
+            TestPlatformRead::Text("ID=debian\nVERSION_ID=24.04\n"),
+        );
+        let error = observe_linux_platform_boundary(
             ReleaseTargetTriple::X86_64UnknownLinuxGnu,
-            LinuxPlatformFacts {
-                kernel_release: "6.6.87.2-microsoft-standard-WSL2",
-                os_release: Some("ID=debian\nVERSION_ID=24.04\n"),
-            },
+            &mut observation,
         )
         .expect_err("an unsupported distribution ID must fail closed");
         assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
         assert_eq!(error.reason(), "unsupported_wsl2_distribution");
+        assert_eq!(error.detail(), "expected ID=ubuntu and VERSION_ID=24.04");
     }
 
     #[cfg(target_os = "linux")]
@@ -1137,12 +1288,20 @@ mod tests {
         .expect_err("an unsupported distribution version must fail closed");
         assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
         assert_eq!(error.reason(), "unsupported_wsl2_distribution");
+        assert_eq!(error.detail(), "expected ID=ubuntu and VERSION_ID=24.04");
     }
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn wsl2_reports_unavailable_os_release_observations() {
-        for os_release in [None, Some("ID=ubuntu\nmalformed\nVERSION_ID=24.04\n")] {
+    fn wsl2_missing_os_release_fields_report_distribution_unavailable() {
+        for (os_release, detail) in [
+            (
+                None,
+                "/etc/os-release was not observed inside the WSL2 process",
+            ),
+            (Some("VERSION_ID=24.04\n"), "/etc/os-release is missing ID"),
+            (Some("ID=ubuntu\n"), "/etc/os-release is missing VERSION_ID"),
+        ] {
             let error = classify_linux_platform_boundary(
                 ReleaseTargetTriple::X86_64UnknownLinuxGnu,
                 LinuxPlatformFacts {
@@ -1150,10 +1309,32 @@ mod tests {
                     os_release,
                 },
             )
-            .expect_err("unavailable or malformed os-release data must fail closed");
+            .expect_err("missing os-release data must fail closed");
             assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
             assert_eq!(error.reason(), "wsl2_distribution_unavailable");
+            assert_eq!(error.detail(), detail);
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn supported_ubuntu_24_04_wsl2_observation_is_accepted() {
+        let mut observation = TestLinuxPlatformObservation::new(
+            TestPlatformRead::Text("6.6.87.2-microsoft-standard-WSL2"),
+            TestPlatformRead::Text("ID=ubuntu\nVERSION_ID=\"24.04\"\n"),
+        );
+        let boundary = observe_linux_platform_boundary(
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu,
+            &mut observation,
+        )
+        .expect("the supported WSL2 distribution must be accepted");
+        assert_eq!(boundary.environment, PlatformEnvironment::Wsl2);
+        assert_eq!(
+            boundary.target_triple,
+            ReleaseTargetTriple::X86_64UnknownLinuxGnu
+        );
+        assert_eq!(observation.kernel_release_reads, 1);
+        assert_eq!(observation.os_release_reads, 1);
     }
 
     #[cfg(target_os = "linux")]
@@ -1169,6 +1350,10 @@ mod tests {
         .expect_err("Linux AArch64 must not satisfy the x86-64 WSL2 environment");
         assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
         assert_eq!(error.reason(), "unsupported_wsl2_target");
+        assert_eq!(
+            error.detail(),
+            "target aarch64-unknown-linux-gnu cannot run in the supported WSL2 environment"
+        );
     }
 
     #[cfg(target_os = "linux")]

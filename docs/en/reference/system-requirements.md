@@ -114,12 +114,17 @@ A WSL shutdown or restart ends the live managed runtime session. Its project
 sessions cannot authorize later calls; a new managed MCP lifecycle records a
 new runtime session and project sessions.
 
-Unsupported topology is machine-readable. `unsupported_wsl1` identifies WSL1;
-`unsupported_wsl2_distribution` identifies an unsupported `/etc/os-release`
-identity; and `unsupported_wsl2_filesystem` identifies a non-ext4 component.
-These are `Rejected` environment outcomes. An unavailable kernel,
-`/etc/os-release`, or filesystem observation remains `Unavailable`; it is not
-converted into a rejected or native environment.
+Platform observation and unsupported-topology outcomes are machine-readable.
+`platform_environment_unavailable` is an `Unavailable` outcome when the kernel
+release needed to classify the host cannot be read. Native Linux requires no
+distribution-identity observation after that kernel classification. For a
+supported WSL2 kernel, an unreadable `/etc/os-release` or a missing or malformed
+required `ID` or `VERSION_ID` produces the `Unavailable` reason
+`wsl2_distribution_unavailable`. A valid identity with an unsupported `ID` or
+`VERSION_ID` produces the `Rejected` reason
+`unsupported_wsl2_distribution`. `unsupported_wsl1` identifies WSL1, and
+`unsupported_wsl2_filesystem` identifies a non-ext4 component. An unavailable
+observation is not converted into a rejected or native environment.
 
 <a id="toolchain-requirements"></a>
 ## Toolchain Requirements
