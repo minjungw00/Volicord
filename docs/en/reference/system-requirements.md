@@ -76,11 +76,13 @@ The first-release WSL2 boundary and distribution identity are:
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
 
-Platform checks use the kernel release to distinguish native Linux, WSL1, and
-WSL2. A supported WSL2 kernel uses `/etc/os-release` to establish the Ubuntu ID
-and version. No WSL environment variable is a prerequisite. Filesystem
-observations enforce the supported topology. Operational authorization
-separately validates current Connection and session ownership.
+The platform filesystem boundary uses the kernel release to distinguish native
+Linux, WSL1, and WSL2. Only after observing a supported WSL2 kernel does it read
+`/etc/os-release` to establish the Ubuntu ID and version. It does not require or
+forward `WSL_DISTRO_NAME` or another WSL environment variable. The same boundary
+validates the selected target and filesystem observations that enforce the
+supported topology. Operational authorization separately validates current
+Connection and session ownership.
 
 The WSL2 runtime boundary must establish WSL2 explicitly and requires
 `target_triple=x86_64-unknown-linux-gnu`. An ordinary Linux `target_os` result
@@ -158,10 +160,12 @@ observed again. Executable availability alone does not establish agent,
 operating-system-user, or human identity.
 
 The managed Codex configuration must launch the intended Volicord executable
-with managed stdio MCP. The adapter validates the managed entry, command,
-arguments, personal static or shared forwarded Runtime Home binding,
-configuration target, and platform prerequisites through the canonical managed
-launch contract. Managed launch markers are cooperative routing context, not
+with managed stdio MCP. The Codex adapter parses and serializes the current TOML
+shape and validates the managed entry's command, arguments, and personal static
+or shared forwarded Runtime Home binding against the canonical managed launch
+contract. The platform filesystem boundary separately validates the process
+target, platform classification, configuration target path, and filesystem
+prerequisites. Managed launch markers are cooperative routing context, not
 credentials. Empty and absent environment values are distinct.
 
 Executable, configuration, process, client, and version observations are

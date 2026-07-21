@@ -25,12 +25,16 @@ managed configuration, previews exact managed changes, and applies only after
 all preconditions pass. Repair reuses that flow; remove deletes only matching
 managed content.
 
-One typed managed MCP launch contract supplies generation, strict parsing,
-validation, and fingerprint projection. A personal configuration binds the
-selected absolute Runtime Home as static `VOLICORD_HOME`; a shared configuration
-forwards only `VOLICORD_HOME` and remains clone-portable. Host-specific TOML
-syntax and approval overlays stay in the adapter. Core receives only a current
-`ValidatedAgentSession` produced from Store-owned operational records.
+One typed managed MCP launch contract owns the command, arguments, static and
+forwarded environment bindings, personal/shared distinction, canonical
+projection, and fingerprint inputs. A personal configuration binds the selected
+absolute Runtime Home as static `VOLICORD_HOME`; a shared configuration forwards
+only `VOLICORD_HOME` and remains clone-portable. The Codex adapter serializes
+that contract as TOML, parses the managed entry back into it, and preserves only
+the allowed tool-approval overlay. The platform filesystem boundary separately
+classifies Linux or WSL2 and validates the target and filesystem. Core receives
+only a current `ValidatedAgentSession` produced from Store-owned operational
+records.
 
 ## Connection Verification
 

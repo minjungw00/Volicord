@@ -95,9 +95,9 @@ Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록
 
 ## 관리형 MCP 시작 계약
 
-하나의 typed 관리형 MCP 시작 계약이 실행 명령, stdio 인자, 정적 환경 값, 부모
-환경에서 전달할 이름, 개인 또는 공유 binding, 관리 provenance, 엄격한 검증,
-결정적 fingerprint projection의 정규 출처입니다.
+하나의 typed 관리형 MCP 시작 계약이 실행 명령, stdio 인자, 정적 및 전달 환경
+binding, 개인/공유 구분, 관리 provenance, 엄격한 시작 형태 검증, 정규 projection,
+결정적 managed fingerprint 입력의 정규 출처입니다.
 
 개인 연결에는 선택한 정규 절대 Runtime Home과 선택한 절대 `volicord` 실행 파일이
 필요합니다. Runtime Home과 관리 host, launch, Connection marker를 정적 환경 값으로
@@ -135,9 +135,14 @@ env_vars = ["VOLICORD_HOME"]
 있는 개인 entry, 정적 환경과 전달 환경의 이름 충돌, 비어 있거나 중복된 전달 이름,
 불완전한 개인 binding, 개인/공유 인자 또는 환경 형태의 혼합은 유효하지 않습니다.
 
-Codex TOML은 엄격하게 parsing하여 같은 typed 계약을 다시 구성해야 합니다. 알 수
-없는 launch key, 잘못된 값, 비정규 형태는 두 번째 허용 형태가 아니라 drift입니다.
-유효한 `tools.<known-tool>.approval_mode` overlay는 보존하지만 launch identity에서는
+생성 Codex 구성은 어댑터가 이 계약을 projection한 결과입니다. CLI 검증의 사전
+점검과 stdio 자체 검사는 모두 같은 계약을 구체화합니다. 어느 소비 경로도 프로젝트
+선택자, 플랫폼 identity, WSL 전용 필드를 추가하지 않습니다.
+
+Codex 어댑터는 현재 TOML 형태를 parsing하고 같은 typed 계약을 다시 구성하여 관리
+entry를 검증합니다. 알 수 없는 launch key, 잘못된 값, 비정규 형태는 두 번째 허용
+형태가 아니라 drift입니다. 어댑터는 유효한
+`tools.<known-tool>.approval_mode` overlay만 보존하고 launch identity에서는
 제외합니다. Managed fingerprint는 정규 launch projection과 host kind, scope, server
 name을 포함합니다. 서식 차이는 fingerprint를 바꾸지 않지만 launch 의미가 달라지면
 바뀝니다.
@@ -397,7 +402,7 @@ connection:<connection_id>/session:<project_session_id>/revision:<project_integr
 
 Codex 어댑터는 host별 구성 조사와 변경을 담당합니다.
 
-- Codex configuration target과 플랫폼 환경 탐색
+- Codex configuration target 탐색
 - 현재 Connection 입력이 선택한 관리 entry만 설치
 - 정규 관리형 MCP 시작 계약을 Codex TOML로 projection하고 같은 계약으로 엄격하게
   다시 parsing
@@ -405,6 +410,10 @@ Codex 어댑터는 host별 구성 조사와 변경을 담당합니다.
 - executable 가용성과 제한된 host version diagnostic 보고
 - 현재 정규 입력으로 담당 문서가 정의한 관리 상태 repair
 - 일치하는 Volicord 관리 상태만 제거
+
+Codex 어댑터는 네이티브 Linux와 WSL2를 분류하지 않고 프로세스 target이나
+파일시스템 제한을 검증하지 않습니다. 해당 관찰과 검사는
+[시스템 요구사항](system-requirements.md)에 따른 플랫폼 파일시스템 경계가 담당합니다.
 
 Setup과 repair는 먼저 plan하고 검증한 뒤 host configuration을 적용하거나 채택하고, 그 결과인
 managed fingerprint 및 소유자와 일관된 Registry/Guard 상태를 commit합니다. 검증은 이 최종

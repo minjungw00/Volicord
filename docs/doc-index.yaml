@@ -712,8 +712,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-20'
-  last_verified_on: '2026-07-20'
+  last_updated_on: '2026-07-21'
+  last_verified_on: '2026-07-21'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1325,8 +1325,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-20'
-  last_verified_on: '2026-07-20'
+  last_updated_on: '2026-07-21'
+  last_verified_on: '2026-07-21'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1415,6 +1415,9 @@ documents:
   - independent WSL2 topology, ext4 boundary, platform identity, and unsupported
     Windows/WSL crossings
   - exact first-release WSL2 Ubuntu distribution identity
+  - kernel-based native Linux and WSL2 classification, WSL2-only `/etc/os-release` observation,
+    and independence from WSL environment variables
+  - process target, configuration target path, and filesystem prerequisite validation
   - Codex executable availability with version and path observations limited to diagnostics
   - managed Codex configuration, operational-session, executable, process, and platform-environment prerequisites
   - managed stdio MCP launch and current runtime/project-session prerequisites
@@ -2685,10 +2688,12 @@ documents:
   - typed integration revisions and authoritative managed-host operational-session evidence
   - immutable Store-owned integration-instance identity across physical Connection lifecycles
   - Store-derived revision-scoped project Agent Session identity across mode and physical lifecycles
-  - exact `PlatformEnvironment` value set and independent WSL2 identity
-  - pinned WSL2 distribution identity and filesystem boundary
+  - canonical personal/shared managed MCP launch command, arguments, environment bindings, projection,
+    and managed-fingerprint inputs
+  - Codex TOML projection and parsing, managed-entry validation, and allowed tool-approval overlay preservation
   - exact `ValidatedAgentSession` fields and current Connection/project/session authorization invariants
-  - Codex discovery, install, verify, repair, uninstall, drift, launch-context, and diagnostic responsibilities
+  - Codex configuration-target discovery, install, verify, repair, uninstall, drift, launch-context,
+    and diagnostic responsibilities
   - deterministic connection/session/revision audit basis as a local lifecycle and correlation coordinate
   - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
   - compatibility from current managed configuration and observed protocol, tool, safe-call, and Guard behavior

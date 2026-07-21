@@ -107,9 +107,9 @@ resolve the action on the user's behalf.
 ## Managed MCP Launch Contract
 
 One typed managed MCP launch contract is the canonical source for the
-executable command, stdio arguments, static environment values, forwarded
-parent-environment names, personal or shared binding, managed provenance,
-strict validation, and deterministic fingerprint projection.
+executable command, stdio arguments, static and forwarded environment bindings,
+the personal/shared distinction, managed provenance, strict launch-shape
+validation, canonical projection, and deterministic managed-fingerprint inputs.
 
 A personal connection requires the selected canonical absolute Runtime Home
 and selected absolute `volicord` executable. It stores the Runtime Home and
@@ -151,13 +151,18 @@ environment collision, a blank or duplicate forwarded name, an incomplete
 personal binding, or a mixed personal/shared argument or environment shape is
 invalid.
 
-Codex TOML parsing is strict and must reconstruct this same typed contract.
-Unknown launch keys, malformed values, and noncanonical shapes are drift rather
-than a second accepted form. A valid `tools.<known-tool>.approval_mode` overlay
-is preserved but excluded from launch identity. The managed fingerprint covers
-the canonical launch projection together with host kind, scope, and server
-name. Formatting differences do not change it; a launch-semantic difference
-does.
+Generated Codex configuration is an adapter projection of this contract. CLI
+verification materializes both preflight and the stdio self-test from the same
+contract. Neither consumer adds a project selector, platform identity, or
+WSL-specific field.
+
+The Codex adapter parses the current TOML shape and validates a managed entry by
+reconstructing this same typed contract. Unknown launch keys, malformed values,
+and noncanonical shapes are drift rather than a second accepted form. The
+adapter preserves only a valid `tools.<known-tool>.approval_mode` overlay and
+excludes it from launch identity. The managed fingerprint covers the canonical
+launch projection together with host kind, scope, and server name. Formatting
+differences do not change it; a launch-semantic difference does.
 
 <a id="connection-verification-report"></a>
 
@@ -456,7 +461,7 @@ the validated operational ownership recorded in the audit event.
 
 The Codex adapter owns host-specific configuration inspection and mutation:
 
-- discover the Codex configuration target and platform environment;
+- discover the Codex configuration target;
 - install only the managed entry selected by current Connection inputs;
 - project the canonical managed MCP launch contract into Codex TOML and parse
   it strictly back into the same contract;
@@ -464,6 +469,11 @@ The Codex adapter owns host-specific configuration inspection and mutation:
 - report executable availability and bounded host version diagnostics;
 - repair owner-defined managed state from current canonical inputs; and
 - uninstall only matching Volicord-managed state.
+
+The Codex adapter does not classify native Linux or WSL2 and does not validate
+the process target or filesystem restrictions. Those observations and checks
+belong to the platform filesystem boundary under
+[System Requirements](system-requirements.md).
 
 Setup and repair plan and validate first, apply or adopt host configuration,
 then commit the resulting managed fingerprint and owner-coherent Registry and

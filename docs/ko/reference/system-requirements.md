@@ -71,10 +71,11 @@ architecture나 환경은 다른 환경의 런타임 전제 조건을 성립시�
 | `/etc/os-release` `ID` | `ubuntu` |
 | `/etc/os-release` `VERSION_ID` | `24.04` |
 
-플랫폼 점검은 커널 릴리스를 사용하여 네이티브 Linux, WSL1, WSL2를 구분합니다.
-지원되는 WSL2 커널에서는 `/etc/os-release`로 Ubuntu ID와 버전을 확인합니다. WSL
-환경 변수는 전제 조건이 아닙니다. 파일 시스템 관찰은 지원 토폴로지를 집행합니다.
-운영 권한은 현재 Connection과 session 소유권을 별도로 검증합니다.
+플랫폼 파일시스템 경계는 커널 릴리스를 사용하여 네이티브 Linux, WSL1, WSL2를
+구분합니다. 지원되는 WSL2 커널을 관찰한 뒤에만 `/etc/os-release`를 읽어 Ubuntu ID와
+버전을 확인합니다. `WSL_DISTRO_NAME`이나 다른 WSL 환경 변수를 요구하거나 전달하지
+않습니다. 같은 경계가 선택한 target과 지원 토폴로지를 집행하는 파일시스템 관찰을
+검증합니다. 운영 권한은 현재 Connection과 session 소유권을 별도로 검증합니다.
 
 WSL2 런타임 경계는 환경이 WSL2임을 명시적으로 확인하고
 `target_triple=x86_64-unknown-linux-gnu`를 요구해야 합니다. 일반 Linux `target_os`
@@ -139,11 +140,13 @@ diagnostic으로 보고합니다. 관찰한 version이 달라지면 관리 Codex
 현재 운영 관찰이 pending이 됩니다. 실행 파일 사용 가능성만으로 agent, 운영체제 사용자,
 human identity가 성립하지는 않습니다.
 
-관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야
-합니다. Adapter는 정규 관리 시작 계약을 통해 관리 entry, command, arguments, 개인
-정적 또는 공유 전달 Runtime Home binding, configuration target, 플랫폼 전제 조건을
-검증합니다. 관리 launch marker는 협력적 routing 맥락이지 credential이 아닙니다. 비어
-있는 환경 값과 없는 환경 값은 다릅니다.
+관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야 합니다.
+Codex 어댑터는 현재 TOML 형태를 parsing하고 직렬화하며, 관리 entry의 command,
+arguments, 개인 정적 또는 공유 전달 Runtime Home binding을 정규 관리 시작 계약에
+맞춰 검증합니다. 플랫폼 파일시스템 경계는 프로세스 target, 플랫폼 분류,
+configuration target 경로, 파일시스템 전제 조건을 별도로 검증합니다. 관리 launch
+marker는 협력적 routing 맥락이지 credential이 아닙니다. 비어 있는 환경 값과 없는
+환경 값은 다릅니다.
 
 실행 파일, 설정, 프로세스, client, version 관찰은 diagnostic 또는 설정 사실입니다.
 Runtime 권한은 현재 Connection, project membership, 허용 mode, Store가 소유한 관리

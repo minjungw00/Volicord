@@ -18,6 +18,13 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/guard_manifest.rs` | Canonical Guard manifest, managed-artifact, hook-phase, and typed command contracts. |
 | `crates/volicord-types/src/tool_names.rs` | Public MCP tool-name registry. |
 
+## Platform Filesystem Boundary
+
+| Path | Responsibility |
+|---|---|
+| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, platform-native namespace operations, and canonical read-only Git layout discovery. |
+| `crates/volicord-cli/src/host_integration/process.rs` | Process-target validation and target-path filesystem enforcement from platform-boundary observations. |
+
 ## Store
 
 | Path | Responsibility |
@@ -52,7 +59,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
 | `crates/volicord-cli/src/connection_command/mcp_process/` | Managed launch materialization, bounded child-process supervision, preflight interpretation, stdio JSON-RPC probe sequencing, and typed lifecycle or protocol diagnostics. |
 | `crates/volicord-cli/src/connection_command/output/report.rs` | Canonical selected-Connection command report, operation results, rendering input, and aggregate status. |
-| `crates/volicord-cli/src/host_integration/codex/` | Codex managed configuration, diagnostic executable observations, and connection verification. |
+| `crates/volicord-cli/src/host_integration/codex/` | Codex configuration parsing and serialization, canonical managed-entry validation, preservation of the allowed tool-approval overlay, managed configuration mutation, diagnostic executable observations, and connection verification. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest and canonical managed-artifact expectation generation. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | Current Guard owner, artifact, command, marker, and executable-behavior audit. |
 | `crates/volicord-cli/src/guard_command/` | Guard event decoding and bounded observations. |
@@ -63,7 +70,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared managed MCP launch, environment, validation, projection, and fingerprinting. |
+| `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared managed MCP command, arguments, static and forwarded environment bindings, strict launch-shape validation, projection, and fingerprint inputs. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio lifecycle, framing, initialization, and process preflight. |
 | `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch, and wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Compact public tool descriptors. |

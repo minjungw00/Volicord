@@ -18,6 +18,13 @@
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
 | `crates/volicord-types/src/tool_names.rs` | 공개 MCP 도구 이름 레지스트리. |
 
+## 플랫폼 파일시스템 경계
+
+| 경로 | 책임 |
+|---|---|
+| `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 플랫폼 고유 이름 공간 연산, 정규 읽기 전용 Git layout 탐색. |
+| `crates/volicord-cli/src/host_integration/process.rs` | 플랫폼 경계 관찰을 바탕으로 한 프로세스 target 검증과 target 경로 파일시스템 제한 집행. |
+
 ## Store
 
 | 경로 | 책임 |
@@ -52,7 +59,7 @@
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
 | `crates/volicord-cli/src/connection_command/mcp_process/` | 관리 시작 구체화, 한도가 있는 자식 프로세스 감독, 사전 점검 해석, stdio JSON-RPC 점검 순서, 타입이 지정된 생명주기 또는 프로토콜 진단. |
 | `crates/volicord-cli/src/connection_command/output/report.rs` | 선택한 Connection의 정규 command report, operation result, rendering 입력, 집계 상태. |
-| `crates/volicord-cli/src/host_integration/codex/` | Codex 관리 구성, 진단용 실행 파일 관찰, 연결 검증. |
+| `crates/volicord-cli/src/host_integration/codex/` | Codex 구성 parsing 및 직렬화, 정규 관리 entry 검증, 허용된 도구 승인 overlay 보존, 관리 구성 변경, 진단용 실행 파일 관찰, 연결 검증. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest와 정규 관리 artifact 기대값 생성. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
 | `crates/volicord-cli/src/guard_command/` | Guard 이벤트 디코딩과 bounded 관찰. |
@@ -63,7 +70,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 관리형 MCP 시작, 환경, 검증, projection, fingerprinting. |
+| `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 관리형 MCP 명령, 인자, 정적 및 전달 환경 binding, 엄격한 시작 형태 검증, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio 생명주기, 프레이밍, 초기화, 프로세스 사전 점검. |
 | `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치, wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | 압축된 공개 도구 descriptor. |

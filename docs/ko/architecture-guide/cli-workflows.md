@@ -23,11 +23,14 @@ Codex adapter에 관리 구성 생성을 요청하며 정확한 관리 변경을
 조건이 통과해야 적용합니다. 복구는 같은 흐름을 다시 사용하고 제거는 일치하는 관리
 내용만 삭제합니다.
 
-하나의 typed 관리형 MCP 시작 계약이 생성, 엄격한 parsing, 검증, fingerprint
-projection을 제공합니다. 개인 구성은 선택한 절대 Runtime Home을 정적
-`VOLICORD_HOME`으로 결속하고, 공유 구성은 `VOLICORD_HOME`만 전달하여 clone 이식성을
-유지합니다. Host별 TOML 문법과 approval overlay는 adapter에 남습니다. Core는 Store가
-소유한 운영 기록에서 만든 현재 `ValidatedAgentSession`만 받습니다.
+하나의 typed 관리형 MCP 시작 계약이 명령, 인자, 정적 및 전달 환경 binding,
+개인/공유 구분, 정규 projection, fingerprint 입력을 담당합니다. 개인 구성은 선택한
+절대 Runtime Home을 정적 `VOLICORD_HOME`으로 결속하고, 공유 구성은
+`VOLICORD_HOME`만 전달하여 clone 이식성을 유지합니다. Codex 어댑터는 이 계약을
+TOML로 직렬화하고 관리 entry를 다시 계약으로 parsing하며 허용된 도구 승인 overlay만
+보존합니다. 플랫폼 파일시스템 경계는 Linux 또는 WSL2 분류와 target 및 파일시스템
+검증을 별도로 담당합니다. Core는 Store가 소유한 운영 기록에서 만든 현재
+`ValidatedAgentSession`만 받습니다.
 
 ## 연결 검증
 
