@@ -9,14 +9,14 @@ pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 35_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct McpToolAnnotations {
+pub struct CanonicalToolAnnotations {
     pub read_only_hint: bool,
     pub destructive_hint: bool,
     pub idempotent_hint: bool,
     pub open_world_hint: bool,
 }
 
-impl McpToolAnnotations {
+impl CanonicalToolAnnotations {
     const fn read_only() -> Self {
         Self {
             read_only_hint: true,
@@ -46,14 +46,177 @@ impl McpToolAnnotations {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct McpToolDefinition {
+pub struct CanonicalToolDefinition {
     pub name: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<&'static str>,
     pub description: &'static str,
     #[serde(rename = "inputSchema")]
     pub input_schema: Value,
     #[serde(rename = "outputSchema")]
     pub output_schema: Value,
-    pub annotations: McpToolAnnotations,
+    pub annotations: CanonicalToolAnnotations,
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Map<String, Value>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CanonicalContent {
+    Text(String),
+}
+
+impl CanonicalContent {
+    fn to_wire_value(&self) -> Value {
+        match self {
+            Self::Text(text) => json!({
+                "type": "text",
+                "text": text,
+            }),
+        }
+    }
+
+    fn text(&self) -> &str {
+        match self {
+            Self::Text(text) => text,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanonicalToolResult {
+    pub metadata: Option<Map<String, Value>>,
+    pub content: Vec<CanonicalContent>,
+    pub structured_content: Value,
+    pub is_error: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct VersionedToolDefinition(Value);
+
+impl VersionedToolDefinition {
+    pub fn as_value(&self) -> &Value {
+        &self.0
+    }
+
+    pub fn into_value(self) -> Value {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct VersionedToolResult(Value);
+
+impl VersionedToolResult {
+    pub fn as_value(&self) -> &Value {
+        &self.0
+    }
+
+    pub fn into_value(self) -> Value {
+        self.0
+    }
+}
+
+impl CanonicalToolDefinition {
+    pub fn project(&self, profile: &McpProtocolProfile) -> VersionedToolDefinition {
+        let mut projected = Map::new();
+        for field in profile.schema().tool_definition_fields() {
+            match field {
+                ToolDefinitionField::Meta => {
+                    if let Some(metadata) = &self.metadata {
+                        projected.insert("_meta".to_owned(), Value::Object(metadata.clone()));
+                    }
+                }
+                ToolDefinitionField::Annotations => {
+                    projected.insert(
+                        "annotations".to_owned(),
+                        serde_json::to_value(self.annotations)
+                            .expect("canonical tool annotations should serialize"),
+                    );
+                }
+                ToolDefinitionField::Description => {
+                    projected.insert(
+                        "description".to_owned(),
+                        Value::String(self.description.to_owned()),
+                    );
+                }
+                ToolDefinitionField::InputSchema => {
+                    projected.insert("inputSchema".to_owned(), self.input_schema.clone());
+                }
+                ToolDefinitionField::Name => {
+                    projected.insert("name".to_owned(), Value::String(self.name.to_owned()));
+                }
+                ToolDefinitionField::OutputSchema => {
+                    projected.insert("outputSchema".to_owned(), self.output_schema.clone());
+                }
+                ToolDefinitionField::Title => {
+                    if let Some(title) = self.title {
+                        projected.insert("title".to_owned(), Value::String(title.to_owned()));
+                    }
+                }
+                ToolDefinitionField::Execution | ToolDefinitionField::Icons => {}
+            }
+        }
+        VersionedToolDefinition(Value::Object(projected))
+    }
+}
+
+impl CanonicalToolResult {
+    pub fn project(
+        &self,
+        profile: &McpProtocolProfile,
+    ) -> Result<VersionedToolResult, serde_json::Error> {
+        let structured_supported = profile.tools().structured_content();
+        let authoritative_text = (!structured_supported)
+            .then(|| serde_json::to_string(&self.structured_content))
+            .transpose()?;
+        let mut projected = Map::new();
+
+        for field in profile.schema().tool_result_fields() {
+            match field {
+                ToolResultField::Meta => {
+                    if let Some(metadata) = &self.metadata {
+                        projected.insert("_meta".to_owned(), Value::Object(metadata.clone()));
+                    }
+                }
+                ToolResultField::ToolResult => {
+                    projected.insert("toolResult".to_owned(), self.structured_content.clone());
+                }
+                ToolResultField::Content => {
+                    let mut content = Vec::new();
+                    if let Some(authoritative_text) = authoritative_text.as_deref() {
+                        content.push(json!({
+                            "type": "text",
+                            "text": authoritative_text,
+                        }));
+                    }
+                    content.extend(
+                        self.content
+                            .iter()
+                            .filter(|item| {
+                                authoritative_text
+                                    .as_deref()
+                                    .is_none_or(|text| item.text() != text)
+                            })
+                            .map(CanonicalContent::to_wire_value),
+                    );
+                    projected.insert("content".to_owned(), Value::Array(content));
+                }
+                ToolResultField::IsError => {
+                    projected.insert("isError".to_owned(), Value::Bool(self.is_error));
+                }
+                ToolResultField::StructuredContent => {
+                    projected.insert(
+                        "structuredContent".to_owned(),
+                        self.structured_content.clone(),
+                    );
+                }
+            }
+        }
+
+        Ok(VersionedToolResult(Value::Object(projected)))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,20 +451,21 @@ pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExamp
     }
 }
 
-pub fn public_method_tools() -> Vec<McpToolDefinition> {
+pub fn public_method_tools() -> Vec<CanonicalToolDefinition> {
     method_tools(PUBLIC_METHOD_TOOL_NAMES, ToolSchemaDetail::Documentation)
 }
 
 /// Returns adapter utility tool definitions.
-pub fn adapter_utility_tools() -> Vec<McpToolDefinition> {
+pub fn adapter_utility_tools() -> Vec<CanonicalToolDefinition> {
     adapter_utility_tools_with_detail(ToolSchemaDetail::Documentation)
 }
 
-fn adapter_utility_tools_with_detail(detail: ToolSchemaDetail) -> Vec<McpToolDefinition> {
+fn adapter_utility_tools_with_detail(detail: ToolSchemaDetail) -> Vec<CanonicalToolDefinition> {
     ADAPTER_UTILITY_TOOL_NAMES
         .iter()
-        .map(|name| McpToolDefinition {
+        .map(|name| CanonicalToolDefinition {
             name,
+            title: None,
             description: tool_description(name, detail),
             input_schema: mcp_tool_input_schema_with_detail(name, detail)
                 .expect("adapter utility tool input schema should exist"),
@@ -309,18 +473,19 @@ fn adapter_utility_tools_with_detail(detail: ToolSchemaDetail) -> Vec<McpToolDef
                 ToolSchemaDetail::RuntimeCompact => compact_output_schema(),
                 ToolSchemaDetail::Documentation => list_projects_output_schema(),
             },
-            annotations: McpToolAnnotations::read_only(),
+            annotations: CanonicalToolAnnotations::read_only(),
+            metadata: None,
         })
         .collect()
 }
 
 /// Returns workflow-mode MCP-visible tools.
-pub fn mcp_tools() -> Vec<McpToolDefinition> {
+pub fn mcp_tools() -> Vec<CanonicalToolDefinition> {
     mcp_tools_for_mode(AgentConnectionMode::Workflow)
 }
 
 /// Returns MCP-visible tools for the supplied Agent Connection mode.
-pub fn mcp_tools_for_mode(mode: AgentConnectionMode) -> Vec<McpToolDefinition> {
+pub fn mcp_tools_for_mode(mode: AgentConnectionMode) -> Vec<CanonicalToolDefinition> {
     let mut tools = match mode {
         AgentConnectionMode::ReadOnly => {
             method_tools(READ_ONLY_METHOD_TOOL_NAMES, ToolSchemaDetail::Documentation)
@@ -336,7 +501,7 @@ pub fn mcp_tools_for_mode(mode: AgentConnectionMode) -> Vec<McpToolDefinition> {
 pub(crate) fn mcp_tools_for_mode_and_storage(
     mode: AgentConnectionMode,
     storage_capability: McpStorageCapability,
-) -> Vec<McpToolDefinition> {
+) -> Vec<CanonicalToolDefinition> {
     mcp_tools_for_mode_and_storage_with_detail(
         mode,
         storage_capability,
@@ -348,7 +513,7 @@ pub(crate) fn mcp_tools_for_mode_and_storage_with_detail(
     mode: AgentConnectionMode,
     storage_capability: McpStorageCapability,
     detail: ToolSchemaDetail,
-) -> Vec<McpToolDefinition> {
+) -> Vec<CanonicalToolDefinition> {
     let mut tools = match effective_tool_mode_for_mode_and_storage(mode, storage_capability) {
         McpEffectiveToolMode::Unavailable => Vec::new(),
         McpEffectiveToolMode::ReadOnly => method_tools(READ_ONLY_METHOD_TOOL_NAMES, detail),
@@ -367,7 +532,9 @@ pub(crate) fn mcp_tools_for_mode_and_storage_with_detail(
     tools
 }
 
-pub(crate) fn tools_list_schema_validation_status(tools: &[McpToolDefinition]) -> &'static str {
+pub(crate) fn tools_list_schema_validation_status(
+    tools: &[CanonicalToolDefinition],
+) -> &'static str {
     if validate_tools_list_schema_compatibility(tools).is_ok() {
         "passed"
     } else {
@@ -375,7 +542,7 @@ pub(crate) fn tools_list_schema_validation_status(tools: &[McpToolDefinition]) -
     }
 }
 
-pub(crate) fn mcp_tool_naming_style(tools: &[McpToolDefinition]) -> &'static str {
+pub(crate) fn mcp_tool_naming_style(tools: &[CanonicalToolDefinition]) -> &'static str {
     if tools.is_empty() {
         return "empty";
     }
@@ -389,7 +556,7 @@ pub(crate) fn mcp_tool_naming_style(tools: &[McpToolDefinition]) -> &'static str
 }
 
 pub(crate) fn validate_tools_list_schema_compatibility(
-    tools: &[McpToolDefinition],
+    tools: &[CanonicalToolDefinition],
 ) -> Result<(), Vec<String>> {
     let values = tools
         .iter()
@@ -453,11 +620,12 @@ pub(crate) fn validate_tools_list_json_compatibility(tools: &[Value]) -> Result<
 pub(crate) fn method_tools<const N: usize>(
     names: [&'static str; N],
     detail: ToolSchemaDetail,
-) -> Vec<McpToolDefinition> {
+) -> Vec<CanonicalToolDefinition> {
     names
         .iter()
-        .map(|name| McpToolDefinition {
+        .map(|name| CanonicalToolDefinition {
             name,
+            title: None,
             description: tool_description(name, detail),
             input_schema: mcp_tool_input_schema_with_detail(name, detail)
                 .expect("MCP tool schema should exist"),
@@ -468,12 +636,21 @@ pub(crate) fn method_tools<const N: usize>(
                 }
             },
             annotations: tool_annotations(name),
+            metadata: None,
         })
         .collect()
 }
 
-fn compact_output_schema() -> Value {
+pub(crate) fn compact_output_schema() -> Value {
     json!({ "type": "object" })
+}
+
+pub(crate) fn mcp_tool_output_schema(name: &str) -> Option<Value> {
+    is_known_tool_name(name).then(compact_output_schema)
+}
+
+fn is_known_tool_name(name: &str) -> bool {
+    PUBLIC_METHOD_TOOL_NAMES.contains(&name) || ADAPTER_UTILITY_TOOL_NAMES.contains(&name)
 }
 
 pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
@@ -916,20 +1093,20 @@ fn base36(mut value: usize) -> String {
     digits.iter().rev().collect()
 }
 
-fn tool_annotations(name: &str) -> McpToolAnnotations {
+fn tool_annotations(name: &str) -> CanonicalToolAnnotations {
     match name {
         STATUS_TOOL_NAME | GET_OPERATION_RESULT_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => {
-            McpToolAnnotations::read_only()
+            CanonicalToolAnnotations::read_only()
         }
         PREPARE_EVIDENCE_CAPTURE_TOOL_NAME | PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => {
-            McpToolAnnotations::non_destructive_mutation()
+            CanonicalToolAnnotations::non_destructive_mutation()
         }
         INTAKE_TOOL_NAME
         | UPDATE_SCOPE_TOOL_NAME
         | RECORD_RUN_TOOL_NAME
         | REQUEST_USER_ACTION_TOOL_NAME
         | RECONCILE_CHANGES_TOOL_NAME
-        | CLOSE_TASK_TOOL_NAME => McpToolAnnotations::destructive_mutation(),
+        | CLOSE_TASK_TOOL_NAME => CanonicalToolAnnotations::destructive_mutation(),
         _ => panic!("missing MCP annotation policy for tool `{name}`"),
     }
 }

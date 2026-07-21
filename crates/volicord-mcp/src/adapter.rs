@@ -147,7 +147,7 @@ impl McpAdapter {
     }
 
     /// Returns the tools exposed by this adapter's current connection mode.
-    pub fn tools(&self) -> Result<Vec<McpToolDefinition>, McpAdapterError> {
+    pub fn tools(&self) -> Result<Vec<CanonicalToolDefinition>, McpAdapterError> {
         let connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),

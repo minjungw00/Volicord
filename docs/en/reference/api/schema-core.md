@@ -18,6 +18,7 @@ This document owns:
 - `EventRef`
 - `OperationResultRef`
 - the common `response_kind` and `effect_kind` fields
+- the canonical public result body before transport-specific wrapping
 
 This document does not own:
 
@@ -32,6 +33,8 @@ This document does not own:
 - product-wide failure-category meanings; see the
   [Failure Model](../failure-model.md)
 - storage records or effects; see [Storage Records](../storage-records.md) and [Storage Effects](../storage-effects.md)
+- MCP revision-specific tool definitions, result carriers, or error flags; see
+  [MCP transport](../mcp-transport.md)
 
 ## Schema notation
 
@@ -109,6 +112,13 @@ Owner links:
 
 <a id="common-response"></a>
 ## Common response branches
+
+These response schemas define the canonical public result body independently
+of its transport carrier. An MCP adapter retains that same object and projects
+it into the carrier permitted by the selected protocol profile. `toolResult`,
+`content`, `structuredContent`, and MCP `isError` are transport fields owned by
+[MCP transport](../mcp-transport.md); they do not add, remove, or reinterpret
+the fields in the API result body and do not change Core branch semantics.
 
 Every public method response uses exactly one branch:
 

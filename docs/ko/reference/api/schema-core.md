@@ -18,6 +18,7 @@
 - `EventRef`
 - `OperationResultRef`
 - 공통 `response_kind`와 `effect_kind` 필드
+- 전송별 wrapping 이전의 정식 공개 결과 본문
 
 이 문서는 담당하지 않습니다.
 
@@ -31,6 +32,7 @@
 - 공개 오류 코드, 우선순위, 오류 의미: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md)
 - 제품 전체 실패 범주 의미: [실패 모델](../failure-model.md)
 - 저장소 기록과 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
+- MCP revision별 도구 정의, 결과 carrier, 오류 flag: [MCP 전송](../mcp-transport.md)
 
 ## 스키마 표기 규칙
 
@@ -108,6 +110,12 @@ ToolEnvelope:
 
 <a id="common-response"></a>
 ## 공통 응답 분기
+
+이 응답 schema는 전송 carrier와 독립된 정식 공개 결과 본문을 정의합니다. MCP 어댑터는
+같은 객체를 유지하고 선택한 protocol profile이 허용하는 carrier로 projection합니다.
+`toolResult`, `content`, `structuredContent`, MCP `isError`는
+[MCP 전송](../mcp-transport.md)이 담당하는 전송 필드입니다. 이 필드는 API 결과 본문의
+필드를 추가, 제거, 재해석하지 않으며 Core 분기 의미도 바꾸지 않습니다.
 
 공개 메서드 응답은 정확히 하나의 분기를 사용합니다.
 

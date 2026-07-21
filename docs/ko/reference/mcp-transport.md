@@ -74,9 +74,8 @@ JSON은 `-32700`, 잘못된 요청은 `-32600`, 알 수 없는 메서드는 `-32
 보존합니다.
 
 `initialize`가 `tools/list`와 `tools/call`보다 먼저 와야 합니다. Initialize 전 호출,
-반복 initialize, 잘못된 lifecycle 작업, batch 입력은 Core 전에 실패합니다. 선택한
-초기화 profile은 필수 `notifications/initialized` 단계가 끝나기 전까지 협상 완료 상태가
-아닙니다.
+반복 initialize, 잘못된 lifecycle 작업은 Core 전에 실패합니다. 선택한 초기화 profile은
+필수 `notifications/initialized` 단계가 끝나기 전까지 협상 완료 상태가 아닙니다.
 
 <a id="protocol-revision-negotiation"></a>
 ## Protocol revision 협상
@@ -108,6 +107,23 @@ capability, 제한 안의 시도된 client name/version, initialized notificatio
 보관합니다. 선택한 profile에서 initialize 응답의 `protocolVersion`과 capability를 만들고
 이후 lifecycle을 검증합니다. 유효한 initialize 요청 뒤 profile이 선택되지만 유효한
 initialized notification이 handshake를 완료한 뒤에만 그 revision의 협상이 끝납니다.
+
+Volicord는 선택한 profile이 허용할 때만 `tools` server capability를 광고하며, 지원하는
+다섯 profile은 모두 이 필드를 허용합니다. JSON-RPC batch 동작도 profile에 따라 정확히
+다음과 같이 결정합니다.
+
+| 선택한 profile | Batch 요청과 응답 |
+|---|---|
+| `2024-10-07` | 허용하지 않음 |
+| `2024-11-05` | 허용하지 않음 |
+| `2025-03-26` | 허용함 |
+| `2025-06-18` | 허용하지 않음 |
+| `2025-11-25` | 허용하지 않음 |
+
+이 값은 revision 이름의 시간 순서로 추론하지 않고 검토된 profile 사실을 사용합니다.
+`initialize`를 포함하더라도 허용하지 않는 batch는 초기화 상태 변경이나 Core 실행 전에
+거절합니다. 허용하는 batch는 입력 순서대로 하나씩 처리합니다. Notification에는 응답
+항목을 만들지 않으며 notification만 있는 batch는 응답을 만들지 않습니다.
 
 ## 권위 있는 Lifecycle 기록
 
@@ -206,6 +222,23 @@ Task 상태와 이전 호출은 도구를 동적으로 추가하지 않습니다
 없이 실패합니다. `volicord.resolve_user_action`은 공개 Core API 메서드이지만 MCP 도구는
 아닙니다.
 
+정식 도구 registry 하나가 각 공개 도구의 이름, 설명, 간결한 입력 schema, 간결한 출력
+schema, annotation, 현재 값이 있는 선택적 표시 및 metadata를 소유합니다. `tools/list`는
+이 모델을 선택한 session profile에 맞춰 projection합니다. Volicord는 revision마다 별도
+도구 registry나 server 구현을 두지 않습니다. Connection mode와 저장 capability는 위
+표에 따라 도구를 숨길 수 있지만 protocol revision은 계속 보이는 도구의 이름을 바꾸거나
+다른 도구로 대체하지 않습니다.
+
+| 선택한 profile | 현재 Volicord 도구마다 내보내는 필드 |
+|---|---|
+| `2024-10-07`, `2024-11-05` | `name`, `description`, `inputSchema` |
+| `2025-03-26` | `name`, `description`, `inputSchema`, `annotations` |
+| `2025-06-18`, `2025-11-25` | `name`, `description`, `inputSchema`, `outputSchema`, `annotations` |
+
+후기 profile은 `title`과 `_meta`도 허용하고 `2025-11-25`는 `execution`과 `icons`도
+허용합니다. 정식 registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니다. 현재
+Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지 않고 필드를 생략합니다.
+
 ## 공개 인자 projection
 
 `tools/call`은 문자열 `params.name`과 선택적인 객체 `params.arguments`를 사용합니다.
@@ -217,10 +250,25 @@ Task 상태와 이전 호출은 도구를 동적으로 추가하지 않습니다
 <a id="mutation-authority-receipt-projection"></a>
 ## 응답 wrapping
 
-읽기 전용 도구는 공개 메서드 결과를 structured content로 반환합니다. Mutation은
-선택한 `summary`, `workflow`, `full` projection에 새 `AuthorityReceipt`, 정확한 효과
-identity, replay 사실, 제한된 복구 정보를 담습니다. Text는 사람용 rendering이며 다른
-권한 출처가 아닙니다.
+성공한 모든 Core 호출은 먼저 정식 공개 메서드 결과 객체 하나를 만듭니다. 선택한 profile은
+그 객체나 Core 의미를 바꾸지 않고 다음과 같이 MCP carrier만 고릅니다.
+
+| 선택한 profile | 권위 있는 결과 carrier |
+|---|---|
+| `2024-10-07` | `toolResult`; 이 revision에는 표준 `isError` 필드가 없음 |
+| `2024-11-05`, `2025-03-26` | 첫 `content` 항목의 JSON text와 `isError` |
+| `2025-06-18`, `2025-11-25` | `structuredContent`, 호환용 `content`, `isError` |
+
+Text 전용 profile에서는 첫 text 항목이 권위 있는 JSON 객체입니다. 그 뒤 text 항목은
+호환용 rendering이며 다른 권한 출처가 아닙니다. Structured-content profile에서는 그
+객체를 해당 도구가 광고한 정확한 간결한 `outputSchema`로 검증합니다. Core 전 어댑터
+거절도 같은 revision carrier를 사용하며 `isError`를 쓸 수 없는 revision에서도 구조화된
+오류 코드와 재시도/부작용 flag를 보존합니다.
+
+Mutation은 선택한 `summary`, `workflow`, `full` 공개 projection에 새
+`AuthorityReceipt`, 정확한 효과 identity, replay 사실, 제한된 복구 정보를 그대로
+담습니다. 응답 크기 계산과 간결한 복구는 실제 선택 profile의 carrier를 사용합니다.
+이 계산은 재시도 규칙, Core 효과, 권위 있는 공개 결과 본문을 바꾸지 않습니다.
 
 Core 효과를 커밋한 뒤 전달이 실패하면 operation-result 좌표를 보존합니다. 응답 직렬화나
 전송이 실패했다는 이유로 mutation을 다시 시도하지 않습니다.

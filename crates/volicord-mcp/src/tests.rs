@@ -449,7 +449,7 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             STATUS_TOOL_NAME
             | GET_OPERATION_RESULT_TOOL_NAME
             | CHECK_CLOSE_TOOL_NAME
-            | LIST_PROJECTS_TOOL_NAME => McpToolAnnotations {
+            | LIST_PROJECTS_TOOL_NAME => CanonicalToolAnnotations {
                 read_only_hint: true,
                 destructive_hint: false,
                 idempotent_hint: true,
@@ -457,7 +457,7 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             },
             PREPARE_EVIDENCE_CAPTURE_TOOL_NAME
             | PREPARE_WRITE_TOOL_NAME
-            | STAGE_ARTIFACT_TOOL_NAME => McpToolAnnotations {
+            | STAGE_ARTIFACT_TOOL_NAME => CanonicalToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: false,
                 idempotent_hint: false,
@@ -468,7 +468,7 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             | RECORD_RUN_TOOL_NAME
             | REQUEST_USER_ACTION_TOOL_NAME
             | RECONCILE_CHANGES_TOOL_NAME
-            | CLOSE_TASK_TOOL_NAME => McpToolAnnotations {
+            | CLOSE_TASK_TOOL_NAME => CanonicalToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: true,
                 idempotent_hint: false,
@@ -1401,8 +1401,9 @@ fn decoder_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn E
 
 #[test]
 fn mcp_minimal_smoke_tool_lists_hello() {
-    let tools = vec![McpToolDefinition {
+    let tools = vec![CanonicalToolDefinition {
         name: "hello",
+        title: None,
         description: "Minimal diagnostic smoke fixture.",
         input_schema: json!({
             "type": "object",
@@ -1417,12 +1418,13 @@ fn mcp_minimal_smoke_tool_lists_hello() {
             "required": ["message"],
             "additionalProperties": false
         }),
-        annotations: McpToolAnnotations {
+        annotations: CanonicalToolAnnotations {
             read_only_hint: true,
             destructive_hint: false,
             idempotent_hint: true,
             open_world_hint: false,
         },
+        metadata: None,
     }];
 
     assert_eq!(tool_names(&tools), vec!["hello"]);
@@ -2789,6 +2791,127 @@ fn every_production_revision_negotiates_exactly_and_records_after_initialized(
             Some(revision)
         );
         assert!(recorded.initialized_notification_at.is_some());
+    }
+    Ok(())
+}
+
+#[test]
+fn every_production_revision_projects_success_and_tool_errors_without_reclassifying_requests(
+) -> Result<(), Box<dyn Error>> {
+    for (index, profile) in ProtocolRegistry::production()
+        .oldest_to_newest()
+        .enumerate()
+    {
+        let fixture = CoreFixture::new(&format!("mcp-revision-call-shape-{index}"))?;
+        let connection_adapter = adapter(&fixture)?;
+        let mut state = ConnectionState::default();
+
+        let initialize = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            initialize_request_for_protocol(
+                1,
+                json!({}),
+                "revision-call-client",
+                "1.0",
+                profile.revision().as_str(),
+            ),
+        )?
+        .expect("initialize response");
+        assert_eq!(
+            initialize["result"]["protocolVersion"],
+            profile.revision().as_str()
+        );
+        assert!(handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            initialized_notification()
+        )?
+        .is_none());
+
+        let success = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            tools_call(2, STATUS_TOOL_NAME, json!({ "detail": "workflow" })),
+        )?
+        .expect("status response");
+        let success_body = projected_authoritative_tool_result(&success["result"])?;
+        assert_eq!(success_body["base"]["response_kind"], "result");
+
+        let invalid_arguments = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            tools_call(
+                3,
+                RECORD_RUN_TOOL_NAME,
+                json!({ "kind": "unsupported", "unexpected": true }),
+            ),
+        )?
+        .expect("known-tool validation response");
+        let invalid_body = projected_authoritative_tool_result(&invalid_arguments["result"])?;
+        assert_eq!(invalid_body["code"], "MCP_INVALID_ARGUMENTS");
+        assert_eq!(invalid_body["tool_name"], RECORD_RUN_TOOL_NAME);
+
+        let unknown = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            tools_call(4, "volicord.unknown", json!({})),
+        )?
+        .expect("unknown-tool response");
+        assert_eq!(unknown["error"]["code"], -32602);
+        assert!(unknown["result"].is_null());
+    }
+    Ok(())
+}
+
+#[test]
+fn batching_follows_the_selected_profile_and_preserves_sequential_order(
+) -> Result<(), Box<dyn Error>> {
+    for (index, profile) in ProtocolRegistry::production()
+        .oldest_to_newest()
+        .enumerate()
+    {
+        let fixture = CoreFixture::new(&format!("mcp-revision-batch-{index}"))?;
+        let connection_adapter = adapter(&fixture)?;
+        let mut state = ConnectionState::default();
+        let batch = json!([
+            initialize_request_for_protocol(
+                1,
+                json!({}),
+                "revision-batch-client",
+                "1.0",
+                profile.revision().as_str(),
+            ),
+            initialized_notification(),
+            request(2, "tools/list", json!({})),
+        ]);
+
+        let response = handle_json_rpc_message(&connection_adapter, &mut state, batch)?
+            .expect("batch should return either a result array or one rejection");
+        if profile.messages().json_rpc_batching() == JsonRpcBatching::Allowed {
+            let responses = response.as_array().expect("allowed batch response array");
+            assert_eq!(
+                responses
+                    .iter()
+                    .map(|response| response["id"].as_u64().expect("response id"))
+                    .collect::<Vec<_>>(),
+                vec![1, 2]
+            );
+            assert_eq!(responses[0]["result"]["protocolVersion"], "2025-03-26");
+            assert!(responses[1]["result"]["tools"].is_array());
+            assert_eq!(state.phase, ConnectionPhase::Ready);
+
+            let notifications_only = handle_json_rpc_message(
+                &connection_adapter,
+                &mut state,
+                json!([initialized_notification(), initialized_notification()]),
+            )?;
+            assert!(notifications_only.is_none());
+        } else {
+            assert_eq!(response["error"]["code"], -32600);
+            assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
+            assert!(state.mcp_session.is_none());
+        }
     }
     Ok(())
 }
@@ -5295,6 +5418,20 @@ fn json_lines(messages: &[Value]) -> Result<Vec<u8>, serde_json::Error> {
     Ok(output)
 }
 
+fn projected_authoritative_tool_result(result: &Value) -> Result<Value, Box<dyn Error>> {
+    if let Some(structured) = result.get("structuredContent") {
+        return Ok(structured.clone());
+    }
+    if let Some(tool_result) = result.get("toolResult") {
+        return Ok(tool_result.clone());
+    }
+    let text = result
+        .pointer("/content/0/text")
+        .and_then(Value::as_str)
+        .ok_or("content-only tools/call result should carry authoritative JSON text")?;
+    Ok(serde_json::from_str(text)?)
+}
+
 fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>> {
     assert_eq!(response["result"]["isError"], json!(false));
     let structured = response["result"]
@@ -5358,11 +5495,11 @@ fn stored_action_record(
     Ok(record)
 }
 
-fn tool_names(tools: &[McpToolDefinition]) -> Vec<&'static str> {
+fn tool_names(tools: &[CanonicalToolDefinition]) -> Vec<&'static str> {
     tools.iter().map(|tool| tool.name).collect::<Vec<_>>()
 }
 
-fn tool_definition(tool_name: &str) -> McpToolDefinition {
+fn tool_definition(tool_name: &str) -> CanonicalToolDefinition {
     mcp_tools_for_mode_and_storage(
         AgentConnectionMode::Workflow,
         McpStorageCapability::ReadWrite,
@@ -5498,7 +5635,7 @@ fn tool_names_from_list_response(response: &Value) -> Vec<&str> {
         .collect::<Vec<_>>()
 }
 
-fn assert_compatible_tool_definitions(tools: &[McpToolDefinition]) {
+fn assert_compatible_tool_definitions(tools: &[CanonicalToolDefinition]) {
     if let Err(errors) = validate_tools_list_schema_compatibility(tools) {
         panic!(
             "MCP tool definitions should be client-compatible:\n{}",

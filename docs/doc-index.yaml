@@ -1670,7 +1670,7 @@ documents:
   path_en: docs/en/reference/mcp-transport.md
   path_ko: docs/ko/reference/mcp-transport.md
   kind: reference
-  summary: Reference contract for managed stdio startup, JSON-RPC framing, compact tool discovery, public argument projection, response wrapping, UserAction request boundaries, and shutdown.
+  summary: Reference contract for managed stdio startup, revision-profiled JSON-RPC framing, canonical tool projection, response wrapping, UserAction request boundaries, and shutdown.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1691,10 +1691,12 @@ documents:
   - '`volicord mcp --stdio` process command and preflight contract'
   - managed stdio startup, binding validation, lifecycle, framing, and shutdown
   - authoritative operational milestone ordering, persistence, and managed-host evidence boundaries
+  - selected-profile server capability and JSON-RPC batch behavior
+  - canonical tool registry and revision-aware `tools/list` field projection
   - static runtime-compact tool schemas and public tool list
   - MCP public input and output projections without hidden Core context
   - known-tool argument, lifecycle, and adapter-precondition failure shapes
-  - '`tools/call` structured-content and compatibility-text wrapping'
+  - revision-aware `tools/call` result carriers and compatibility wrapping
   - MCP creation or resume of UserAction requests without resolution authority
   - Runtime Home forwarding, connection binding, project selection, and repository discovery
   - native host session retention before project-selected Agent Session derivation
@@ -2147,8 +2149,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-21'
+  last_verified_on: '2026-07-21'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2161,6 +2163,7 @@ documents:
   canonical_for:
   - common API request envelopes
   - common API response branches
+  - canonical public result body before transport-specific wrapping
   - dry-run response shapes
   - shared API error envelope shapes
   - required `ToolError.category` field and shared `ToolError` shape
@@ -2374,8 +2377,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-21'
+  last_verified_on: '2026-07-21'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2387,6 +2390,7 @@ documents:
   - operate
   canonical_for:
   - canonical error/blocker decision flow
+  - MCP carrier-independent interpretation of Volicord response branches
   - public error selection precedence
   - primary `ErrorCode` selection
   - '`STATE_VERSION_CONFLICT` conflict selection'

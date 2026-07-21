@@ -83,9 +83,9 @@ JSON returns `-32700`; invalid requests return `-32600`; unknown methods return
 return `-32603`. Responses preserve the request `id`.
 
 `initialize` precedes `tools/list` and `tools/call`. Calls before initialize,
-repeated initialize, invalid lifecycle operations, and batch input fail before
-Core. A selected initialization profile does not become negotiated until the
-required `notifications/initialized` step completes.
+repeated initialize, and invalid lifecycle operations fail before Core. A
+selected initialization profile does not become negotiated until the required
+`notifications/initialized` step completes.
 
 ## Protocol Revision Negotiation
 
@@ -120,6 +120,24 @@ The selected profile generates the initialize response `protocolVersion` and
 capabilities and governs later lifecycle validation. The profile is selected
 after a successful initialize request, but its revision is negotiated only
 after the valid initialized notification completes the handshake.
+
+Volicord advertises only the `tools` server capability, and only when that
+field is permitted by the selected profile; all five supported profiles permit
+it. The profile also controls JSON-RPC batching exactly as follows:
+
+| Selected profile | Batch requests and responses |
+|---|---|
+| `2024-10-07` | disallowed |
+| `2024-11-05` | disallowed |
+| `2025-03-26` | allowed |
+| `2025-06-18` | disallowed |
+| `2025-11-25` | disallowed |
+
+These are reviewed profile facts, not chronology inferred from revision names.
+A disallowed batch, including one containing `initialize`, is rejected before
+initialization state changes or Core execution. An allowed batch is processed
+sequentially in input order. Notifications have no response entry, and a batch
+containing only notifications produces no response.
 
 ## Authoritative Lifecycle Recording
 
@@ -234,6 +252,25 @@ Task state and previous calls do not dynamically add tools. A withheld mutation
 fails without Core effects. `volicord.resolve_user_action` is a public Core API
 method but is never an MCP tool.
 
+One canonical tool registry owns each public tool name, description, compact
+input schema, compact output schema, annotations, and any currently populated
+optional presentation or metadata values. `tools/list` projects that model
+through the selected session profile; Volicord does not maintain a separate
+tool registry or server implementation for each revision. Connection mode and
+storage capability may withhold tools as listed above, but protocol revision
+does not rename or substitute the tools that remain visible.
+
+| Selected profile | Emitted fields for each current Volicord tool |
+|---|---|
+| `2024-10-07`, `2024-11-05` | `name`, `description`, `inputSchema` |
+| `2025-03-26` | `name`, `description`, `inputSchema`, `annotations` |
+| `2025-06-18`, `2025-11-25` | `name`, `description`, `inputSchema`, `outputSchema`, `annotations` |
+
+The later profiles also permit `title` and `_meta`, and `2025-11-25` permits
+`execution` and `icons`. Those fields are emitted only when the canonical
+registry owns populated values; the current Volicord registry owns none, so
+they are absent rather than fabricated.
+
 ## Public Argument Projection
 
 `tools/call` uses string `params.name` and optional object `params.arguments`.
@@ -245,10 +282,28 @@ relax the complete owner-defined request validation.
 <a id="mutation-authority-receipt-projection"></a>
 ## Response Wrapping
 
-Read-only tools return the public method result as structured content.
-Mutations return the selected `summary`, `workflow`, or `full` projection with
-one fresh `AuthorityReceipt`, exact effect identity, replay facts, and bounded
-recovery information. Text is a human rendering, not another authority source.
+Every successful Core call first produces one canonical public method-result
+object. The selected profile then chooses its MCP carrier without changing that
+object or its Core meaning:
+
+| Selected profile | Authoritative result carrier |
+|---|---|
+| `2024-10-07` | `toolResult`; the revision has no standardized `isError` field |
+| `2024-11-05`, `2025-03-26` | JSON text in the first `content` item, with `isError` |
+| `2025-06-18`, `2025-11-25` | `structuredContent`, with compatibility `content` and `isError` |
+
+For the text-only profiles, the first text item is the authoritative JSON
+object; later text items are compatibility renderings and never another
+authority source. For structured-content profiles, the object is validated
+against the exact compact `outputSchema` advertised for that tool. A pre-Core
+adapter rejection uses the same revision carrier and retains its structured
+error code and retry/side-effect flags even where `isError` is not available.
+
+Mutations retain the selected `summary`, `workflow`, or `full` public
+projection with one fresh `AuthorityReceipt`, exact effect identity, replay
+facts, and bounded recovery information. Response-size accounting and compact
+recovery use the actual selected-profile carrier. They do not change retry
+rules, Core effects, or the authoritative public result body.
 
 A delivery failure after a committed Core effect preserves operation-result
 coordinates. The adapter does not retry a mutation merely because response

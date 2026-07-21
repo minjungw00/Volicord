@@ -43,7 +43,14 @@ Use this flow before applying [primary error-code precedence](#primary-error-cod
 | 5 | A valid method evaluation reaches `NotAllowed` and returns a method-defined non-allow result without selecting a committed effect. | Inside Core, after method-owned policy evaluation. | Method-specific `MethodResult` fields, such as `CloseTaskResult(close_state=blocked)` or method-owned decision fields. No `errors[]` branch is present. | When the method owner defines this result, route it through [API error routing](error-routing.md#blocked-result-behavior), close-readiness blocker boundaries through [API blocker routing](blocker-routing.md), and method details through the method owner. This is not structural `Rejected`. |
 | 6 | A valid method evaluation reaches `NotAllowed` and selects a committed blocker-shaped or non-allow result. | Inside Core, on a method-owned committed branch. | Method-specific `MethodResult` with committed effects only when allowed by the method and storage-effect owners, such as committed `PrepareWriteResult` non-allow decisions. | This can be durable state rather than a failed transport call. Route exact storage effects to [Storage Effects](../storage-effects.md) and exact result fields to the method owner. Public error precedence does not apply because there is no `ToolRejectedResponse.errors[]` branch. The category alone never authorizes the commit. |
 
-For MCP `tools/call`, successful MCP transport wraps a Volicord response with `isError: false`, including a Volicord domain-level `ToolRejectedResponse`. A caller must parse `result.content[0].text` as JSON to inspect `base.response_kind`, `errors`, or method result fields.
+For MCP `tools/call`, successful MCP transport carries a Volicord response as
+a non-error tool result, including a Volicord domain-level
+`ToolRejectedResponse`. A caller reads the authoritative object from
+`toolResult` for `2024-10-07`, parses the first `content` text item for
+`2024-11-05` and `2025-03-26`, or reads `structuredContent` for `2025-06-18`
+and `2025-11-25`. The latter four revisions use `isError: false` for this
+successful transport branch. See [MCP transport](../mcp-transport.md) for the
+revision carriers.
 
 <a id="primary-error-code-precedence"></a>
 

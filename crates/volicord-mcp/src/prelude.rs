@@ -18,8 +18,8 @@ pub(crate) use volicord_core::{
     InvocationContext, PipelineResponse,
 };
 pub(crate) use volicord_mcp_protocol::{
-    InitializedNotification, McpNegotiationOutcome, McpProtocolProfile, ProtocolRegistry,
-    ServerCapabilityField,
+    InitializedNotification, JsonRpcBatching, McpNegotiationOutcome, McpProtocolProfile,
+    ProtocolRegistry, ServerCapabilityField, ToolDefinitionField, ToolResultField,
 };
 pub(crate) use volicord_store::{
     agent_connections::{

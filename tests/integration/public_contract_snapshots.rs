@@ -3,7 +3,7 @@
 use std::{env, ffi::OsStr, fs, path::Path};
 
 use serde_json::{json, Map, Value};
-use volicord_mcp::{mcp_tools_for_mode, McpToolDefinition};
+use volicord_mcp::{mcp_tools_for_mode, CanonicalToolDefinition};
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, public_request_schema, AgentConnectionMode,
     CHECK_CLOSE_TOOL_NAME, CLOSE_TASK_TOOL_NAME, GET_OPERATION_RESULT_TOOL_NAME, INTAKE_TOOL_NAME,
@@ -140,7 +140,7 @@ fn mcp_tools_contract_snapshot(
     })
 }
 
-fn tool_projection(tool: &McpToolDefinition) -> Value {
+fn tool_projection(tool: &CanonicalToolDefinition) -> Value {
     json!({
         "name": tool.name,
         "description": tool.description,

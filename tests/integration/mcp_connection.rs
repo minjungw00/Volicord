@@ -298,7 +298,7 @@ fn mcp_intake_args(project_selector: Option<&str>) -> Value {
     args
 }
 
-fn tool_names(tools: &[volicord_mcp::McpToolDefinition]) -> Vec<&'static str> {
+fn tool_names(tools: &[volicord_mcp::CanonicalToolDefinition]) -> Vec<&'static str> {
     tools.iter().map(|tool| tool.name).collect::<Vec<_>>()
 }
 

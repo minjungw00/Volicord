@@ -1,6 +1,6 @@
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
 use crate::prelude::*;
-use crate::tool_registry::mcp_tool_input_schema;
+use crate::tool_registry::{mcp_tool_input_schema, mcp_tool_output_schema};
 use std::sync::OnceLock;
 
 const MAX_SCHEMA_DEPTH: usize = 64;
@@ -53,6 +53,23 @@ pub(crate) fn validate_mcp_tool_arguments(
             truncated: validation.truncated,
             source: None,
         })
+    }
+}
+
+pub(crate) fn validate_mcp_tool_output(
+    tool_name: &str,
+    output: &Value,
+) -> Result<(), McpAdapterError> {
+    let schema = mcp_tool_output_schema(tool_name)
+        .ok_or_else(|| McpAdapterError::UnknownTool(tool_name.to_owned()))?;
+    let mut validation = ValidationIssues::default();
+    validate_schema_instance(&schema, &schema, output, "", 0, &mut validation);
+    if validation.issues.is_empty() {
+        Ok(())
+    } else {
+        Err(McpAdapterError::Protocol(format!(
+            "canonical result for {tool_name} does not match its advertised output schema"
+        )))
     }
 }
 

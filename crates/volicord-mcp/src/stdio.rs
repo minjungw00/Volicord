@@ -2,6 +2,8 @@ use crate::adapter::*;
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
 use crate::prelude::*;
 use crate::routing::*;
+use crate::schema_validation::validate_mcp_tool_output;
+use crate::tool_registry::{CanonicalContent, CanonicalToolResult};
 use crate::util::*;
 use crate::{
     MANAGED_MCP_LAUNCH_VALUE, VOLICORD_HOME_ENV, VOLICORD_MCP_CONNECTION_ID_ENV,
@@ -696,6 +698,17 @@ pub(crate) fn handle_json_rpc_message(
     state: &mut ConnectionState,
     message: Value,
 ) -> Result<Option<Value>, McpAdapterError> {
+    if let Value::Array(entries) = message {
+        return handle_json_rpc_batch(adapter, state, entries);
+    }
+    handle_single_json_rpc_message(adapter, state, message)
+}
+
+fn handle_single_json_rpc_message(
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+    message: Value,
+) -> Result<Option<Value>, McpAdapterError> {
     match parse_client_message(message) {
         Ok(ClientMessage::Request(request)) => {
             handle_json_rpc_request(adapter, state, request).map(Some)
@@ -711,6 +724,61 @@ pub(crate) fn handle_json_rpc_message(
             error.data,
         ))),
     }
+}
+
+fn handle_json_rpc_batch(
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+    entries: Vec<Value>,
+) -> Result<Option<Value>, McpAdapterError> {
+    if entries.is_empty() {
+        return Ok(Some(invalid_request_response(
+            &Value::Null,
+            "JSON-RPC batch must not be empty",
+        )));
+    }
+
+    let profile = selected_profile_for_batch(state, &entries);
+    if profile
+        .is_none_or(|profile| profile.messages().json_rpc_batching() != JsonRpcBatching::Allowed)
+    {
+        return Ok(Some(invalid_request_response(
+            &Value::Null,
+            "JSON-RPC batching is not permitted by the selected protocol profile",
+        )));
+    }
+
+    let mut responses = Vec::new();
+    for entry in entries {
+        if let Some(response) = handle_single_json_rpc_message(adapter, state, entry)? {
+            responses.push(response);
+        }
+    }
+    Ok((!responses.is_empty()).then_some(Value::Array(responses)))
+}
+
+fn selected_profile_for_batch(
+    state: &ConnectionState,
+    entries: &[Value],
+) -> Option<&'static McpProtocolProfile> {
+    if let Some(session) = &state.mcp_session {
+        return Some(session.selected_profile);
+    }
+
+    entries.iter().find_map(|entry| {
+        let object = entry.as_object()?;
+        (object.get("method").and_then(Value::as_str) == Some("initialize")).then_some(())?;
+        object.get("id")?;
+        let requested = object
+            .get("params")?
+            .as_object()?
+            .get("protocolVersion")?
+            .as_str()?;
+        ProtocolRegistry::production()
+            .negotiate_initialize(requested)
+            .ok()
+            .map(|selection| selection.profile())
+    })
 }
 
 pub(crate) fn parse_client_message(message: Value) -> Result<ClientMessage, JsonRpcFailure> {
@@ -912,8 +980,18 @@ fn handle_json_rpc_request_inner(
                 return Ok(error);
             }
             match adapter.tools() {
-                Ok(tools) => {
-                    let required_tools_present = required_tool_set_present(adapter, &tools)?;
+                Ok(canonical_tools) => {
+                    let required_tools_present =
+                        required_tool_set_present(adapter, &canonical_tools)?;
+                    let profile = state
+                        .mcp_session
+                        .as_ref()
+                        .expect("tools/list lifecycle requires a selected MCP profile")
+                        .selected_profile;
+                    let tools = canonical_tools
+                        .iter()
+                        .map(|tool| tool.project(profile))
+                        .collect::<Vec<_>>();
                     let result = json!({ "tools": tools });
                     if !state.runtime_session_id.is_empty() {
                         record_mcp_tools_list(
@@ -963,12 +1041,34 @@ fn handle_json_rpc_request_inner(
 }
 
 fn safe_tool_call_response_failed(response: &Value) -> bool {
-    response.get("error").is_some()
-        || (response.pointer("/result/isError").and_then(Value::as_bool) == Some(true)
-            && response
-                .pointer("/result/structuredContent/code")
-                .and_then(Value::as_str)
-                != Some("MCP_INVALID_ARGUMENTS"))
+    if response.get("error").is_some() {
+        return true;
+    }
+    let Some(result) = response.get("result") else {
+        return false;
+    };
+    let error_code = projected_tool_error_code(result);
+    let is_error = result.get("isError").and_then(Value::as_bool) == Some(true)
+        || result
+            .pointer("/toolResult/code")
+            .and_then(Value::as_str)
+            .is_some_and(|code| code.starts_with("MCP_"));
+    is_error && error_code.as_deref() != Some("MCP_INVALID_ARGUMENTS")
+}
+
+fn projected_tool_error_code(result: &Value) -> Option<String> {
+    if let Some(code) = result
+        .pointer("/structuredContent/code")
+        .or_else(|| result.pointer("/toolResult/code"))
+        .and_then(Value::as_str)
+    {
+        return Some(code.to_owned());
+    }
+    result
+        .pointer("/content/0/text")
+        .and_then(Value::as_str)
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .and_then(|value| value.get("code").and_then(Value::as_str).map(str::to_owned))
 }
 
 fn record_current_session_protocol_failure(
@@ -994,7 +1094,7 @@ fn record_current_session_protocol_failure(
 
 fn required_tool_set_present(
     adapter: &McpAdapter,
-    tools: &[crate::tool_registry::McpToolDefinition],
+    tools: &[crate::tool_registry::CanonicalToolDefinition],
 ) -> Result<bool, McpAdapterError> {
     let connection = agent_connection_record_read_only(
         &adapter.runtime_home,
@@ -1425,6 +1525,11 @@ pub(crate) fn call_tool_result(
     params: Option<Value>,
     state: &mut ConnectionState,
 ) -> Result<Result<Value, Value>, McpAdapterError> {
+    let selected_profile = state
+        .mcp_session
+        .as_ref()
+        .expect("tools/call lifecycle requires a selected MCP profile")
+        .selected_profile;
     let diagnostic_started = Instant::now();
     let diagnostic_request_bytes = params
         .as_ref()
@@ -1576,11 +1681,15 @@ pub(crate) fn call_tool_result(
                 }
             }
             Ok(response) if tool_name == GET_OPERATION_RESULT_TOOL_NAME => {
-                ToolCallOutput::from_operation_result_response(&response)?
+                ToolCallOutput::from_operation_result_response_for_profile(
+                    &response,
+                    selected_profile,
+                )?
             }
             Ok(response) => ToolCallOutput::from_pipeline_response(&response)?,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
-                let response = tool_execution_error_result(tool_name, &error);
+                let response =
+                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
                     adapter,
                     state,
@@ -1595,7 +1704,8 @@ pub(crate) fn call_tool_result(
                 return Ok(Ok(response));
             }
             Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                let response = tool_execution_error_result(tool_name, &error);
+                let response =
+                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
                     adapter,
                     state,
@@ -1629,7 +1739,8 @@ pub(crate) fn call_tool_result(
         let response = match adapter.call_adapter_tool(tool_name, arguments, None) {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
-                let response = tool_execution_error_result(tool_name, &error);
+                let response =
+                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
                     adapter,
                     state,
@@ -1644,7 +1755,8 @@ pub(crate) fn call_tool_result(
                 return Ok(Ok(response));
             }
             Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                let response = tool_execution_error_result(tool_name, &error);
+                let response =
+                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
                     adapter,
                     state,
@@ -1718,7 +1830,7 @@ pub(crate) fn call_tool_result(
         )
         .map_err(McpAdapterError::Store)?;
     }
-    let response = tool_call_result_from_output(output);
+    let response = tool_call_result_from_output_for_profile(tool_name, output, selected_profile)?;
     record_tool_diagnostic_best_effort(
         adapter,
         state,
@@ -1776,6 +1888,7 @@ struct ToolDiagnosticFacts {
 #[derive(Debug, Clone, PartialEq)]
 struct CanonicalMcpMutationOutcome {
     tool_name: String,
+    profile: &'static McpProtocolProfile,
     requested_detail: MutationDetailLevel,
     facts: ToolDiagnosticFacts,
     exact_method_result: Option<Value>,
@@ -1788,6 +1901,7 @@ struct CanonicalMcpMutationOutcome {
 impl CanonicalMcpMutationOutcome {
     fn new(
         tool_name: &str,
+        profile: &'static McpProtocolProfile,
         requested_detail: MutationDetailLevel,
         facts: ToolDiagnosticFacts,
         exact_method_result: Option<Value>,
@@ -1798,6 +1912,7 @@ impl CanonicalMcpMutationOutcome {
             .and_then(|result| compact_mutation_method_result(tool_name, result).ok());
         Self {
             tool_name: tool_name.to_owned(),
+            profile,
             requested_detail,
             facts,
             exact_method_result,
@@ -1913,8 +2028,19 @@ impl ToolCallOutput {
         Ok(output)
     }
 
+    #[cfg(test)]
     fn from_operation_result_response(
         response: &PipelineResponse,
+    ) -> Result<Self, McpAdapterError> {
+        Self::from_operation_result_response_for_profile(
+            response,
+            ProtocolRegistry::production().preferred_server_profile(),
+        )
+    }
+
+    fn from_operation_result_response_for_profile(
+        response: &PipelineResponse,
+        profile: &McpProtocolProfile,
     ) -> Result<Self, McpAdapterError> {
         let mut output = Self::from_pipeline_response(response)?;
         if output.structured_content["base"]["response_kind"].as_str() == Some("result") {
@@ -1940,9 +2066,11 @@ impl ToolCallOutput {
                     )
                 })?;
             output.primary_text = bounded_mutation_compatibility_text(format!(
-                "Volicord returned historical operation-result bytes [{start}, {end}); complete={complete}. Inspect structuredContent.chunk_utf8 and do not treat historical bytes as current authority."
+                "Volicord returned historical operation-result bytes [{start}, {end}); complete={complete}. Inspect chunk_utf8 in the authoritative result and do not treat historical bytes as current authority."
             ));
-            if rendered_tool_call_output_size(&output)? > MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
+            if rendered_tool_call_output_size_for_profile(&output, profile)?
+                > MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+            {
                 return Err(McpAdapterError::Protocol(
                     "operation-result page exceeded its fixed MCP output budget".to_owned(),
                 ));
@@ -2043,21 +2171,52 @@ fn finalize_mutation_output(
     output: ToolCallOutput,
 ) -> Result<ToolCallOutput, McpAdapterError> {
     let binding = state.managed_agent_session_binding();
-    finalize_mutation_output_with_refresh(tool_name, detail, output, |context| {
-        let coordinates = binding
-            .as_ref()
-            .map(|binding| adapter.ensure_agent_session_binding(&context.project_id, binding))
-            .transpose()?;
-        adapter.refresh_authority_status(
-            &context.project_id,
-            &context.task_id,
-            coordinates.as_ref().map(|value| value.borrowed()),
-        )
-    })
+    let profile = state
+        .mcp_session
+        .as_ref()
+        .expect("tools/call lifecycle requires a selected MCP profile")
+        .selected_profile;
+    finalize_mutation_output_with_refresh_for_profile(
+        tool_name,
+        profile,
+        detail,
+        output,
+        |context| {
+            let coordinates = binding
+                .as_ref()
+                .map(|binding| adapter.ensure_agent_session_binding(&context.project_id, binding))
+                .transpose()?;
+            adapter.refresh_authority_status(
+                &context.project_id,
+                &context.task_id,
+                coordinates.as_ref().map(|value| value.borrowed()),
+            )
+        },
+    )
 }
 
+#[cfg(test)]
 fn finalize_mutation_output_with_refresh<F>(
     tool_name: &str,
+    detail: Option<MutationDetailLevel>,
+    output: ToolCallOutput,
+    refresh: F,
+) -> Result<ToolCallOutput, McpAdapterError>
+where
+    F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
+{
+    finalize_mutation_output_with_refresh_for_profile(
+        tool_name,
+        ProtocolRegistry::production().preferred_server_profile(),
+        detail,
+        output,
+        refresh,
+    )
+}
+
+fn finalize_mutation_output_with_refresh_for_profile<F>(
+    tool_name: &str,
+    profile: &'static McpProtocolProfile,
     detail: Option<MutationDetailLevel>,
     mut output: ToolCallOutput,
     refresh: F,
@@ -2073,7 +2232,7 @@ where
     }
     if response_kind_from_structured_content(&output.structured_content) != Some("result") {
         output.primary_text = bounded_mutation_compatibility_text(format!(
-            "Volicord {tool_name} returned response_kind={}; inspect structuredContent for the authoritative result.",
+            "Volicord {tool_name} returned response_kind={}; inspect the authoritative result carrier.",
             response_kind_from_structured_content(&output.structured_content)
                 .unwrap_or("unknown")
         ));
@@ -2084,6 +2243,7 @@ where
     let operation_result_ref = output.operation_result_ref.clone();
     let mut outcome = CanonicalMcpMutationOutcome::new(
         tool_name,
+        profile,
         detail,
         output.diagnostic_facts.clone(),
         Some(original_method_result),
@@ -2159,7 +2319,7 @@ where
         }
     };
 
-    let result = tool_call_result_from_output(output.clone());
+    let result = tool_call_result_from_output_for_profile(tool_name, output.clone(), profile)?;
     let response_budget = match detail {
         MutationDetailLevel::Summary | MutationDetailLevel::Workflow => {
             MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
@@ -2373,7 +2533,7 @@ fn authority_receipt_compatibility_text(
         .unwrap_or("unknown")
         .to_owned();
     Ok(bounded_mutation_compatibility_text(format!(
-        "Volicord {tool_name} refreshed Task {} at state_version {}; close_state={close_state}; next_actor={next_actor}. Inspect structuredContent for the authority receipt.",
+        "Volicord {tool_name} refreshed Task {} at state_version {}; close_state={close_state}; next_actor={next_actor}. Inspect the authoritative result for the authority receipt.",
         receipt.task_ref.record_id.as_str(),
         receipt.state_version,
     )))
@@ -2394,7 +2554,9 @@ where
         .flatten()
     {
         let output = build_output(&candidate)?;
-        if rendered_tool_call_output_size(&output)? <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES {
+        if rendered_tool_call_output_size_for_profile(&output, outcome.profile)?
+            <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+        {
             return Ok(output);
         }
     }
@@ -2534,7 +2696,7 @@ fn mutation_post_effect_failure_output(
             .map_err(McpAdapterError::Json)?;
             Ok(ToolCallOutput {
                 primary_text: bounded_mutation_compatibility_text(format!(
-                    "Volicord {tool_name} observed an applied mutation effect and refreshed current authority, but post-effect adapter work could not produce the normal response projection. Do not retry this mutation; inspect structuredContent.{exact_result_guidance} Read volicord.status before acting."
+                    "Volicord {tool_name} observed an applied mutation effect and refreshed current authority, but post-effect adapter work could not produce the normal response projection. Do not retry this mutation; inspect {exact_result_guidance} in the authoritative result. Read volicord.status before acting."
                 )),
                 structured_content,
                 extra_texts: Vec::new(),
@@ -2553,43 +2715,23 @@ fn mutation_post_effect_failure_output(
     )
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolCallResultRef<'a> {
-    content: Vec<ToolCallTextContentRef<'a>>,
-    structured_content: &'a Value,
-    is_error: bool,
-}
-
-#[derive(Serialize)]
-struct ToolCallTextContentRef<'a> {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    text: &'a str,
-}
-
+#[cfg(test)]
 fn rendered_tool_call_output_size(output: &ToolCallOutput) -> Result<usize, McpAdapterError> {
-    let mut content = Vec::with_capacity(1 + output.extra_texts.len());
-    content.push(ToolCallTextContentRef {
-        kind: "text",
-        text: output.primary_text.as_str(),
-    });
-    content.extend(
-        output
-            .extra_texts
-            .iter()
-            .map(|text| ToolCallTextContentRef {
-                kind: "text",
-                text: text.as_str(),
-            }),
-    );
-    serde_json::to_vec(&ToolCallResultRef {
-        content,
-        structured_content: &output.structured_content,
-        is_error: output.is_error,
-    })
-    .map(|rendered| rendered.len())
-    .map_err(McpAdapterError::Json)
+    rendered_tool_call_output_size_for_profile(
+        output,
+        ProtocolRegistry::production().preferred_server_profile(),
+    )
+}
+
+fn rendered_tool_call_output_size_for_profile(
+    output: &ToolCallOutput,
+    profile: &McpProtocolProfile,
+) -> Result<usize, McpAdapterError> {
+    let canonical = canonical_tool_result_from_output(output);
+    let projected = canonical.project(profile).map_err(McpAdapterError::Json)?;
+    serde_json::to_vec(projected.as_value())
+        .map(|rendered| rendered.len())
+        .map_err(McpAdapterError::Json)
 }
 
 fn authoritative_refresh_failure_output(
@@ -2675,7 +2817,7 @@ fn bounded_mutation_compatibility_text(text: String) -> String {
     if text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES {
         return text;
     }
-    "Volicord omitted an oversized compatibility summary without truncating it. Inspect structuredContent for the complete authoritative result."
+    "Volicord omitted an oversized compatibility summary without truncating it. Inspect the authoritative result carrier for the complete result."
         .to_owned()
 }
 
@@ -2894,23 +3036,46 @@ fn record_tool_diagnostic_best_effort(
     record_public_method_metrics_best_effort(adapter, state, tool_name, outcome);
 }
 
+#[cfg(test)]
 pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
-    let mut content = vec![json!({
-        "type": "text",
-        "text": output.primary_text
-    })];
-    content.extend(output.extra_texts.into_iter().map(|text| {
-        json!({
-            "type": "text",
-            "text": text
-        })
-    }));
+    tool_call_result_from_output_for_profile(
+        "volicord.test",
+        output,
+        ProtocolRegistry::production().preferred_server_profile(),
+    )
+    .expect("canonical test tool result should project")
+}
 
-    json!({
-        "content": content,
-        "structuredContent": output.structured_content,
-        "isError": output.is_error
-    })
+fn canonical_tool_result_from_output(output: &ToolCallOutput) -> CanonicalToolResult {
+    let mut content = Vec::with_capacity(1 + output.extra_texts.len());
+    content.push(CanonicalContent::Text(output.primary_text.clone()));
+    content.extend(
+        output
+            .extra_texts
+            .iter()
+            .cloned()
+            .map(CanonicalContent::Text),
+    );
+    CanonicalToolResult {
+        metadata: None,
+        content,
+        structured_content: output.structured_content.clone(),
+        is_error: output.is_error,
+    }
+}
+
+fn tool_call_result_from_output_for_profile(
+    tool_name: &str,
+    output: ToolCallOutput,
+    profile: &McpProtocolProfile,
+) -> Result<Value, McpAdapterError> {
+    if profile.tools().structured_content() && is_known_mcp_tool(tool_name) {
+        validate_mcp_tool_output(tool_name, &output.structured_content)?;
+    }
+    canonical_tool_result_from_output(&output)
+        .project(profile)
+        .map(|projected| projected.into_value())
+        .map_err(McpAdapterError::Json)
 }
 
 pub(crate) fn user_action_tool_output(
@@ -3021,9 +3186,22 @@ pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
     PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) || ADAPTER_UTILITY_TOOL_NAMES.contains(&tool_name)
 }
 
+#[cfg(test)]
 pub(crate) fn tool_execution_error_result(
     requested_tool_name: &str,
     error: &McpAdapterError,
+) -> Value {
+    tool_execution_error_result_for_profile(
+        requested_tool_name,
+        error,
+        ProtocolRegistry::production().preferred_server_profile(),
+    )
+}
+
+fn tool_execution_error_result_for_profile(
+    requested_tool_name: &str,
+    error: &McpAdapterError,
+    profile: &McpProtocolProfile,
 ) -> Value {
     let structured = match error {
         McpAdapterError::InvalidParams {
@@ -3082,10 +3260,13 @@ pub(crate) fn tool_execution_error_result(
             }],
         },
     };
-    bounded_tool_error_result(structured)
+    bounded_tool_error_result(structured, profile)
 }
 
-fn bounded_tool_error_result(mut structured: McpToolErrorResponse) -> Value {
+fn bounded_tool_error_result(
+    mut structured: McpToolErrorResponse,
+    profile: &McpProtocolProfile,
+) -> Value {
     let mut truncated = structured.truncated;
     if structured.issues.len() > MAX_VALIDATION_ISSUES {
         structured.issues.truncate(MAX_VALIDATION_ISSUES);
@@ -3112,7 +3293,7 @@ fn bounded_tool_error_result(mut structured: McpToolErrorResponse) -> Value {
     loop {
         structured.reported_issue_count = structured.issues.len();
         structured.truncated = truncated;
-        let result = serialize_tool_error_result(&structured);
+        let result = serialize_tool_error_result(&structured, profile);
         let result_bytes = serde_json::to_vec(&result)
             .expect("MCP tool error result should serialize")
             .len();
@@ -3131,7 +3312,7 @@ fn bounded_tool_error_result(mut structured: McpToolErrorResponse) -> Value {
         structured.issues[0].path.clear();
         structured.issues[0].message = "Validation failed before reaching Core.".to_owned();
         structured.truncated = true;
-        let fallback = serialize_tool_error_result(&structured);
+        let fallback = serialize_tool_error_result(&structured, profile);
         assert!(
             serde_json::to_vec(&fallback)
                 .expect("fallback MCP tool error result should serialize")
@@ -3143,22 +3324,27 @@ fn bounded_tool_error_result(mut structured: McpToolErrorResponse) -> Value {
     }
 }
 
-fn serialize_tool_error_result(structured: &McpToolErrorResponse) -> Value {
+fn serialize_tool_error_result(
+    structured: &McpToolErrorResponse,
+    profile: &McpProtocolProfile,
+) -> Value {
     let structured_content =
         serde_json::to_value(structured).expect("MCP tool error should serialize");
     let text = serde_json::to_string(&structured_content)
         .expect("MCP tool error compatibility text should serialize");
-
-    json!({
-        "content": [
-            {
-                "type": "text",
-                "text": text
-            }
-        ],
-        "structuredContent": structured_content,
-        "isError": true
-    })
+    if profile.tools().structured_content() {
+        validate_mcp_tool_output(&structured.tool_name, &structured_content)
+            .expect("bounded MCP tool error should match advertised output schema");
+    }
+    CanonicalToolResult {
+        metadata: None,
+        content: vec![CanonicalContent::Text(text)],
+        structured_content,
+        is_error: true,
+    }
+    .project(profile)
+    .expect("bounded MCP tool error should project")
+    .into_value()
 }
 
 pub(crate) fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> Value {
@@ -3533,6 +3719,7 @@ mod mutation_output_tests {
     ) -> CanonicalMcpMutationOutcome {
         CanonicalMcpMutationOutcome {
             tool_name: tool_name.to_owned(),
+            profile: ProtocolRegistry::production().preferred_server_profile(),
             requested_detail,
             facts: recovery_facts(),
             exact_method_result,

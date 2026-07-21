@@ -45,7 +45,12 @@
 | 5 | 유효한 메서드 평가가 `NotAllowed`에 도달하고 커밋 효과를 선택하지 않는 메서드 정의 비허용 결과를 반환합니다. | Core 안, 메서드별 정책 평가 뒤. | `CloseTaskResult(close_state=blocked)` 또는 메서드가 담당하는 판단 필드 같은 메서드별 `MethodResult` 필드입니다. `errors[]` 분기는 없습니다. | 메서드 담당자가 이 결과를 정의하면 [API 오류 처리 경로](error-routing.md#blocked-result-behavior), [API 차단 사유 처리 경로](blocker-routing.md), 메서드 담당 문서로 보냅니다. 구조적 `Rejected`가 아닙니다. |
 | 6 | 유효한 메서드 평가가 `NotAllowed`에 도달하고 커밋되는 차단 사유형 또는 비허용 결과를 선택합니다. | Core 안, 메서드별 커밋 분기. | 메서드와 저장 효과 담당 문서가 허용할 때만 커밋 효과를 가진 메서드별 `MethodResult`입니다. 예를 들면 커밋된 `PrepareWriteResult` 비허용 결정입니다. | 실패한 전송 호출이 아니라 지속 상태일 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)로, 정확한 결과 필드는 메서드 담당 문서로 보냅니다. `ToolRejectedResponse.errors[]` 분기가 없으므로 공개 오류 우선순위는 적용되지 않습니다. 범주 자체는 커밋을 허용하지 않습니다. |
 
-MCP `tools/call`에서 MCP 전송이 성공하면 Volicord 도메인 수준 `ToolRejectedResponse`를 포함해 Volicord 응답은 `isError: false`로 래핑됩니다. 호출자는 `base.response_kind`, `errors`, 메서드 결과 필드를 확인하려면 `result.content[0].text`를 JSON으로 파싱해야 합니다.
+MCP `tools/call` 전송이 성공하면 Volicord 도메인 수준 `ToolRejectedResponse`를 포함한
+Volicord 응답을 오류가 아닌 도구 결과로 전달합니다. 호출자는 `2024-10-07`에서는
+`toolResult`, `2024-11-05`와 `2025-03-26`에서는 JSON으로 파싱한 첫 `content` text 항목,
+`2025-06-18`과 `2025-11-25`에서는 `structuredContent`에서 권위 있는 객체를 읽습니다.
+뒤의 네 revision은 성공한 전송 분기에 `isError: false`를 사용합니다. Revision별 carrier는
+[MCP 전송](../mcp-transport.md)을 따릅니다.
 
 <a id="primary-error-code-precedence"></a>
 
