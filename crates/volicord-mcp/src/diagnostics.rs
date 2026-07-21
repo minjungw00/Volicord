@@ -23,6 +23,7 @@ pub(crate) enum JsonRpcDiagnostic {
 pub(crate) enum McpLifecycleDiagnostic {
     InitializeRequired,
     DuplicateInitialize,
+    InitializationBatchForbidden,
     InitializedNotificationMissing,
     InitializedNotificationInvalid,
     OperationBeforeReady,
@@ -127,6 +128,9 @@ impl McpDiagnostic {
             Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize) => {
                 "mcp.lifecycle.duplicate_initialize"
             }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializationBatchForbidden) => {
+                "mcp.lifecycle.initialization_batch_forbidden"
+            }
             Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing) => {
                 "mcp.lifecycle.initialized_notification_missing"
             }
@@ -212,7 +216,8 @@ impl McpDiagnostic {
             | Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize)
             | Self::Protocol(_)
             | Self::Host(McpHostError::ManagedMarkerMismatch) => "initialize",
-            Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing)
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializationBatchForbidden)
+            | Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing)
             | Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid)
             | Self::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady)
             | Self::Lifecycle(McpLifecycleDiagnostic::InvalidShutdownSequence) => "lifecycle",
@@ -254,6 +259,9 @@ impl McpDiagnostic {
             }
             Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize) => {
                 "initialize was requested more than once"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializationBatchForbidden) => {
+                "initialization messages were included in a JSON-RPC batch"
             }
             Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing) => {
                 "the required initialized notification was not observed"
@@ -551,6 +559,7 @@ mod tests {
             McpDiagnostic::JsonRpc(JsonRpcDiagnostic::MessageSizeExceeded),
             McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializeRequired),
             McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializationBatchForbidden),
             McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing),
             McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid),
             McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady),

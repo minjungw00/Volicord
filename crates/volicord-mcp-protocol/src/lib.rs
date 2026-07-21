@@ -200,12 +200,12 @@ impl fmt::Display for McpProtocolGenerationMismatch {
 
 impl std::error::Error for McpProtocolGenerationMismatch {}
 
-/// Behavior of JSON-RPC batching in a protocol revision.
+/// Behavior of operation-phase JSON-RPC batching in a protocol revision.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum JsonRpcBatching {
-    /// Batch request and response messages are absent from the revision schema.
+    /// Operation-phase batch request and response messages are not admitted.
     Disallowed,
-    /// Batch request and response messages are present in the revision schema.
+    /// Operation-phase batch request and response messages may be admitted.
     Allowed,
 }
 
@@ -239,7 +239,7 @@ impl MessageFeatures {
         }
     }
 
-    /// Returns whether the revision schema allows JSON-RPC batch messages.
+    /// Returns whether the selected profile allows operation-phase batch messages.
     pub const fn json_rpc_batching(self) -> JsonRpcBatching {
         self.json_rpc_batching
     }
@@ -597,7 +597,7 @@ const INITIALIZE_MESSAGES_WITHOUT_BATCHING: MessageFeatures = MessageFeatures::n
     InitializedNotification::AfterInitialize,
     true,
 );
-const INITIALIZE_MESSAGES_WITH_BATCHING: MessageFeatures = MessageFeatures::new(
+const INITIALIZE_MESSAGES_WITH_OPERATION_BATCHING: MessageFeatures = MessageFeatures::new(
     JsonRpcBatching::Allowed,
     InitializedNotification::AfterInitialize,
     true,
@@ -631,7 +631,7 @@ const PRODUCTION_PROFILES: [McpProtocolProfile; 5] = [
     ),
     McpProtocolProfile::new(
         McpProtocolRevision::V20250326,
-        INITIALIZE_MESSAGES_WITH_BATCHING,
+        INITIALIZE_MESSAGES_WITH_OPERATION_BATCHING,
         TOOLS_WITH_ANNOTATIONS,
         SchemaFeatures::new(
             CLIENT_CAPABILITIES_2024,

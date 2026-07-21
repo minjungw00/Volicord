@@ -907,23 +907,20 @@ fn handle_json_rpc_batch(
         )));
     }
 
-    let profile = selected_profile_for_batch(state, &entries);
-    if profile
-        .is_none_or(|profile| profile.messages().json_rpc_batching() != JsonRpcBatching::Allowed)
-    {
+    if let Err(rejection) = admit_json_rpc_batch(state, &entries) {
         record_current_session_finding(
             adapter,
             state,
-            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidRequest),
+            rejection.diagnostic(),
             Some(-32600),
-            Some("JSON-RPC batching is not permitted by the selected profile".to_owned()),
+            Some(rejection.detail().to_owned()),
             None,
             Vec::new(),
             false,
         )?;
         return Ok(Some(invalid_request_response(
             &Value::Null,
-            "JSON-RPC batching is not permitted by the selected protocol profile",
+            rejection.detail(),
         )));
     }
 
@@ -936,28 +933,85 @@ fn handle_json_rpc_batch(
     Ok((!responses.is_empty()).then_some(Value::Array(responses)))
 }
 
-fn selected_profile_for_batch(
-    state: &ConnectionState,
-    entries: &[Value],
-) -> Option<&'static McpProtocolProfile> {
-    if let Some(session) = &state.mcp_session {
-        return Some(session.selected_profile);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JsonRpcBatchAdmissionError {
+    InitializationMessage,
+    InitializeRequired,
+    OperationBeforeReady,
+    SelectedProfileDisallowsBatching,
+}
+
+impl JsonRpcBatchAdmissionError {
+    const fn diagnostic(self) -> McpDiagnostic {
+        match self {
+            Self::InitializationMessage => {
+                McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializationBatchForbidden)
+            }
+            Self::InitializeRequired => {
+                McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializeRequired)
+            }
+            Self::OperationBeforeReady => {
+                McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady)
+            }
+            Self::SelectedProfileDisallowsBatching => {
+                McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidRequest)
+            }
+        }
     }
 
-    entries.iter().find_map(|entry| {
-        let object = entry.as_object()?;
-        (object.get("method").and_then(Value::as_str) == Some("initialize")).then_some(())?;
-        object.get("id")?;
-        let requested = object
-            .get("params")?
-            .as_object()?
-            .get("protocolVersion")?
-            .as_str()?;
-        ProtocolRegistry::production()
-            .negotiate_initialize(requested)
-            .ok()
-            .map(|selection| selection.profile())
-    })
+    const fn detail(self) -> &'static str {
+        match self {
+            Self::InitializationMessage => {
+                "initialize and notifications/initialized must be standalone messages"
+            }
+            Self::InitializeRequired => {
+                "JSON-RPC batching requires standalone initialization to complete first"
+            }
+            Self::OperationBeforeReady => {
+                "JSON-RPC batching requires an operation-ready MCP session"
+            }
+            Self::SelectedProfileDisallowsBatching => {
+                "JSON-RPC batching is not permitted by the selected protocol profile"
+            }
+        }
+    }
+}
+
+fn admit_json_rpc_batch(
+    state: &ConnectionState,
+    entries: &[Value],
+) -> Result<(), JsonRpcBatchAdmissionError> {
+    if entries.iter().any(batch_entry_is_initialization_message) {
+        return Err(JsonRpcBatchAdmissionError::InitializationMessage);
+    }
+
+    let session = match state.phase {
+        ConnectionPhase::AwaitingInitialize => {
+            return Err(JsonRpcBatchAdmissionError::InitializeRequired)
+        }
+        ConnectionPhase::AwaitingInitialized => {
+            return Err(JsonRpcBatchAdmissionError::OperationBeforeReady)
+        }
+        ConnectionPhase::Ready => state
+            .mcp_session
+            .as_ref()
+            .filter(|session| session.initialized_notification_completed)
+            .ok_or(JsonRpcBatchAdmissionError::OperationBeforeReady)?,
+    };
+
+    if session.selected_profile.messages().json_rpc_batching() != JsonRpcBatching::Allowed {
+        return Err(JsonRpcBatchAdmissionError::SelectedProfileDisallowsBatching);
+    }
+
+    Ok(())
+}
+
+fn batch_entry_is_initialization_message(entry: &Value) -> bool {
+    entry
+        .as_object()
+        .and_then(|entry| entry.get("method"))
+        .and_then(Value::as_str)
+        .is_some_and(|method| matches!(method, "initialize" | "notifications/initialized"))
 }
 
 pub(crate) fn parse_client_message(message: Value) -> Result<ClientMessage, JsonRpcFailure> {

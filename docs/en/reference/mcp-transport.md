@@ -82,10 +82,13 @@ JSON returns `-32700`; invalid requests return `-32600`; unknown methods return
 `-32601`; invalid parameters return `-32602`; and internal protocol failures
 return `-32603`. Responses preserve the request `id`.
 
-`initialize` precedes `tools/list` and `tools/call`. Calls before initialize,
-repeated initialize, and invalid lifecycle operations fail before Core. A
-selected initialization profile does not become negotiated until the required
-`notifications/initialized` step completes.
+The `initialize` request and the `notifications/initialized` notification are
+each standalone top-level messages. `initialize` precedes `tools/list` and
+`tools/call`. Calls before initialize, repeated initialize, and invalid
+lifecycle operations fail before Core. A selected initialization profile does
+not become negotiated until the standalone `notifications/initialized` step
+completes. A top-level batch is rejected until that step makes the session
+operation-ready.
 
 Observable failures use shared structured findings rather than classifying
 human-readable error text. The current MCP code families are:
@@ -93,7 +96,7 @@ human-readable error text. The current MCP code families are:
 | Family | Stable codes |
 |---|---|
 | JSON-RPC and framing | `mcp.json_rpc.parse_error`, `mcp.json_rpc.invalid_request`, `mcp.json_rpc.invalid_id`, `mcp.json_rpc.unknown_method`, `mcp.json_rpc.malformed_response`, `mcp.json_rpc.framing_failure`, `mcp.json_rpc.message_size_exceeded`, `mcp.json_rpc.error_response` |
-| Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
+| Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialization_batch_forbidden`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
 | Revision and capabilities | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.counter_offer`, `mcp.protocol.counter_offer_rejected`, `mcp.protocol.generation_mismatch`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
 | Tool discovery | `mcp.tools.protocol_error`, `mcp.tools.schema_failure`, `mcp.tools.required_missing`, `mcp.tools.definition_projection_invalid` |
 | Tool call | `mcp.tool_call.unknown_tool`, `mcp.tool_call.invalid_arguments`, `mcp.tool_call.protocol_error`, `mcp.tool_call.output_schema_failed`, `mcp.tool_call.response_budget_failed`, `mcp.tool_call.core_execution_failed`, `mcp.tool_call.adapter_execution_failed`, `mcp.tool_call.safe_read_only_failed`, `mcp.tool_call.session_correlation_invalid` |
@@ -141,9 +144,10 @@ after the valid initialized notification completes the handshake.
 
 Volicord advertises only the `tools` server capability, and only when that
 field is permitted by the selected profile; all five supported profiles permit
-it. The profile also controls JSON-RPC batching exactly as follows:
+it. After initialization is complete, the profile stored in session state
+controls operation-phase JSON-RPC batching exactly as follows:
 
-| Selected profile | Batch requests and responses |
+| Selected profile | Operation-phase batch requests and responses |
 |---|---|
 | `2024-10-07` | disallowed |
 | `2024-11-05` | disallowed |
@@ -151,11 +155,16 @@ it. The profile also controls JSON-RPC batching exactly as follows:
 | `2025-06-18` | disallowed |
 | `2025-11-25` | disallowed |
 
-These are reviewed profile facts, not chronology inferred from revision names.
-A disallowed batch, including one containing `initialize`, is rejected before
-initialization state changes or Core execution. An allowed batch is processed
-sequentially in input order. Notifications have no response entry, and a batch
-containing only notifications produces no response.
+These are reviewed profile facts, not chronology inferred from revision names
+or batch contents. Initialization batching is prohibited for every supported
+revision: a batch containing `initialize` or `notifications/initialized` is
+rejected before any entry is processed. Any other batch received before the
+session is operation-ready is also rejected without changing the selected or
+negotiated revision or recording a tool observation. Once ready, `2025-03-26`
+admits operation batches from its already-selected session profile; every other
+production profile rejects them. An admitted batch is processed sequentially
+in input order. Notifications have no response entry, and a batch containing
+only notifications produces no response.
 
 ## CLI Conformance And Host Compatibility Probes
 

@@ -73,9 +73,12 @@ JSON은 `-32700`, 잘못된 요청은 `-32600`, 알 수 없는 메서드는 `-32
 인자는 `-32602`, 내부 프로토콜 실패는 `-32603`을 반환합니다. 응답은 요청 `id`를
 보존합니다.
 
-`initialize`가 `tools/list`와 `tools/call`보다 먼저 와야 합니다. Initialize 전 호출,
-반복 initialize, 잘못된 lifecycle 작업은 Core 전에 실패합니다. 선택한 초기화 profile은
-필수 `notifications/initialized` 단계가 끝나기 전까지 협상 완료 상태가 아닙니다.
+`initialize` 요청과 `notifications/initialized` 알림은 각각 독립된 최상위 메시지여야
+합니다. `initialize`가 `tools/list`와 `tools/call`보다 먼저 와야 합니다. Initialize 전
+호출, 반복 initialize, 잘못된 lifecycle 작업은 Core 전에 실패합니다. 선택한 초기화
+profile은 독립된 `notifications/initialized` 단계가 끝나기 전까지 협상 완료 상태가
+아닙니다. 이 단계에서 session이 작업을 받을 준비가 될 때까지 최상위 batch는
+거절합니다.
 
 관찰 가능한 실패는 사람이 읽는 오류 문구를 분류하지 않고 공유 구조화 finding을
 사용합니다. 현재 MCP code 계열은 다음과 같습니다.
@@ -83,7 +86,7 @@ JSON은 `-32700`, 잘못된 요청은 `-32600`, 알 수 없는 메서드는 `-32
 | 계열 | 안정적인 code |
 |---|---|
 | JSON-RPC와 framing | `mcp.json_rpc.parse_error`, `mcp.json_rpc.invalid_request`, `mcp.json_rpc.invalid_id`, `mcp.json_rpc.unknown_method`, `mcp.json_rpc.malformed_response`, `mcp.json_rpc.framing_failure`, `mcp.json_rpc.message_size_exceeded`, `mcp.json_rpc.error_response` |
-| Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
+| Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialization_batch_forbidden`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
 | Revision과 capability | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.counter_offer`, `mcp.protocol.counter_offer_rejected`, `mcp.protocol.generation_mismatch`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
 | 도구 검색 | `mcp.tools.protocol_error`, `mcp.tools.schema_failure`, `mcp.tools.required_missing`, `mcp.tools.definition_projection_invalid` |
 | 도구 호출 | `mcp.tool_call.unknown_tool`, `mcp.tool_call.invalid_arguments`, `mcp.tool_call.protocol_error`, `mcp.tool_call.output_schema_failed`, `mcp.tool_call.response_budget_failed`, `mcp.tool_call.core_execution_failed`, `mcp.tool_call.adapter_execution_failed`, `mcp.tool_call.safe_read_only_failed`, `mcp.tool_call.session_correlation_invalid` |
@@ -126,10 +129,10 @@ capability, 제한 안의 시도된 client name/version, initialized notificatio
 initialized notification이 handshake를 완료한 뒤에만 그 revision의 협상이 끝납니다.
 
 Volicord는 선택한 profile이 허용할 때만 `tools` server capability를 광고하며, 지원하는
-다섯 profile은 모두 이 필드를 허용합니다. JSON-RPC batch 동작도 profile에 따라 정확히
-다음과 같이 결정합니다.
+다섯 profile은 모두 이 필드를 허용합니다. 초기화가 끝난 뒤에는 session 상태에 저장된
+profile에 따라 작업 단계의 JSON-RPC batch 동작을 정확히 다음과 같이 결정합니다.
 
-| 선택한 profile | Batch 요청과 응답 |
+| 선택한 profile | 작업 단계의 batch 요청과 응답 |
 |---|---|
 | `2024-10-07` | 허용하지 않음 |
 | `2024-11-05` | 허용하지 않음 |
@@ -137,10 +140,14 @@ Volicord는 선택한 profile이 허용할 때만 `tools` server capability를 �
 | `2025-06-18` | 허용하지 않음 |
 | `2025-11-25` | 허용하지 않음 |
 
-이 값은 revision 이름의 시간 순서로 추론하지 않고 검토된 profile 사실을 사용합니다.
-`initialize`를 포함하더라도 허용하지 않는 batch는 초기화 상태 변경이나 Core 실행 전에
-거절합니다. 허용하는 batch는 입력 순서대로 하나씩 처리합니다. Notification에는 응답
-항목을 만들지 않으며 notification만 있는 batch는 응답을 만들지 않습니다.
+이 값은 revision 이름의 시간 순서나 batch 내용에서 추론하지 않고 검토된 profile 사실을
+사용합니다. 모든 지원 revision에서 초기화 batch를 금지합니다. `initialize` 또는
+`notifications/initialized`를 포함한 batch는 항목을 하나도 처리하지 않은 채 거절합니다.
+그 밖의 batch도 session이 작업을 받을 준비가 되기 전에 도착하면 선택 또는 협상 revision을
+바꾸거나 도구 관찰을 기록하지 않고 거절합니다. 준비가 끝나면 `2025-03-26`은 session에
+이미 선택된 profile에 따라 작업 batch를 허용하고, 다른 모든 production profile은 이를
+거절합니다. 허용한 batch는 입력 순서대로 하나씩 처리합니다. 알림에는 응답 항목을 만들지
+않으며 알림만 있는 batch는 응답을 만들지 않습니다.
 
 ## CLI Conformance 및 Host 호환성 Probe
 
