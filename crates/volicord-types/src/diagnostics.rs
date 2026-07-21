@@ -686,10 +686,15 @@ fn is_sensitive_fact_key(key: &str) -> bool {
             | "raw_contents"
             | "rawcontents"
     ) || normalized.ends_with("_secret")
+        || normalized.ends_with("secret")
         || normalized.ends_with("_token")
+        || normalized.ends_with("token")
         || normalized.ends_with("_password")
+        || normalized.ends_with("password")
         || normalized.ends_with("_credential")
+        || normalized.ends_with("credential")
         || normalized.ends_with("_credentials")
+        || normalized.ends_with("credentials")
 }
 
 fn truncate_utf8(value: &str, max_bytes: usize) -> (String, bool) {
@@ -2184,6 +2189,80 @@ mod tests {
     }
 
     #[derive(Serialize)]
+    struct PropertyFacts {
+        fields: BTreeMap<String, Value>,
+    }
+
+    impl DiagnosticFactSource for PropertyFacts {}
+
+    #[test]
+    fn property_fact_projection_enforces_bounds_and_redacts_secret_shapes() {
+        let secret_keys = [
+            "secret",
+            "API-TOKEN",
+            "access token",
+            "customer_password",
+            "buildCredential",
+            "request-headers",
+            "env vars",
+            "toolArguments",
+            "raw-request",
+            "filesystem-contents",
+        ];
+        for seed in 0..256_usize {
+            let secret_key = secret_keys[seed % secret_keys.len()];
+            let secret = format!("property-secret-{seed}");
+            let mut fields = BTreeMap::new();
+            fields.insert(secret_key.to_owned(), json!(secret));
+            fields.insert(
+                "long_text".to_owned(),
+                json!("가".repeat(MAX_DIAGNOSTIC_FACT_STRING_BYTES + seed + 1)),
+            );
+            fields.insert(
+                "collection".to_owned(),
+                Value::Array(
+                    (0..MAX_DIAGNOSTIC_FACT_COLLECTION_ITEMS + seed % 17 + 1)
+                        .map(|index| json!(format!("item-{seed}-{index}")))
+                        .collect(),
+                ),
+            );
+            fields.insert(
+                "nested".to_owned(),
+                json!({"a": {"b": {"c": {"d": {"e": {"f": seed}}}}}}),
+            );
+
+            let facts = DiagnosticFacts::project(&PropertyFacts { fields }).unwrap();
+            let serialized = serde_json::to_string(&facts).unwrap();
+            assert!(serialized.len() <= MAX_DIAGNOSTIC_FACT_BYTES, "seed {seed}");
+            assert!(!serialized.contains(&secret), "seed {seed} leaked a secret");
+            assert_eq!(facts.data()["fields"][secret_key], REDACTED_VALUE);
+            assert!(facts
+                .redacted_fields()
+                .contains(&format!("fields.{secret_key}")));
+            assert_projected_fact_bounds(&Value::Object(
+                facts.data().clone().into_iter().collect(),
+            ));
+        }
+    }
+
+    fn assert_projected_fact_bounds(value: &Value) {
+        match value {
+            Value::String(value) => {
+                assert!(value.len() <= MAX_DIAGNOSTIC_FACT_STRING_BYTES);
+            }
+            Value::Array(values) => {
+                assert!(values.len() <= MAX_DIAGNOSTIC_FACT_COLLECTION_ITEMS);
+                values.iter().for_each(assert_projected_fact_bounds);
+            }
+            Value::Object(values) => {
+                assert!(values.len() <= MAX_DIAGNOSTIC_FACT_COLLECTION_ITEMS);
+                values.values().for_each(assert_projected_fact_bounds);
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) => {}
+        }
+    }
+
+    #[derive(Serialize)]
     struct NestedFacts {
         value: Value,
     }
@@ -2296,6 +2375,54 @@ mod tests {
             .unwrap_err()
             .detail()
             .contains("exceeded depth"));
+    }
+
+    #[test]
+    fn property_cause_graphs_stay_acyclic_and_root_selection_is_deterministic() {
+        for seed in 0..96_usize {
+            let length = 2 + seed % 10;
+            let ids = (0..length)
+                .map(|index| {
+                    DiagnosticFindingId::parse(format!("finding.property_{seed:02}_{index:02}"))
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            let mut chain = Vec::new();
+            for index in 0..length {
+                let mut node = finding(ids[index].as_str());
+                if index > 0 {
+                    node = node
+                        .with_causes(vec![DiagnosticCause::new(ids[index - 1].clone())])
+                        .unwrap();
+                }
+                chain.push(node);
+            }
+            let selected = vec![ids.last().unwrap().clone()];
+            let expected = vec![ids[0].clone()];
+            assert_eq!(
+                diagnostic_root_cause_ids(&chain, &selected, length).unwrap(),
+                expected
+            );
+
+            let rotation = seed % length;
+            chain.rotate_left(rotation);
+            assert_eq!(
+                diagnostic_root_cause_ids(&chain, &selected, length).unwrap(),
+                expected,
+                "seed {seed} changed root selection after input permutation"
+            );
+
+            let mut cyclic = chain;
+            let root = cyclic.iter_mut().find(|node| node.id() == &ids[0]).unwrap();
+            *root = root
+                .clone()
+                .with_causes(vec![DiagnosticCause::new(ids[length - 1].clone())])
+                .unwrap();
+            assert!(
+                report_with_findings(ConnectionStatus::Failed, cyclic, selected, Vec::new(),)
+                    .is_err()
+            );
+        }
     }
 
     #[test]

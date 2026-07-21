@@ -58,6 +58,9 @@ jobs:
       - name: Run documentation checks
         run: cargo run --locked -p xtask -- docs-check
 
+      - name: Check pinned MCP specification fixtures
+        run: cargo run --locked -p xtask -- mcp-spec-check
+
       - name: Run maintainability report
         run: cargo run --locked -p xtask -- maintainability-report
 
@@ -105,6 +108,9 @@ jobs:
 
       - name: Check operational host process behavior
         run: cargo test --locked -p volicord-cli --test operational_host_e2e
+
+      - name: Check native platform process behavior
+        run: cargo test --locked -p volicord-platform-process --test platform_process
 
       - name: Check binary report behavior
         run: cargo test --locked -p volicord-cli --test binary_admin

@@ -326,6 +326,11 @@ mod tests {
                 stderr: BoundedText::empty(),
             },
             McpProcessFailure::Timeout {
+                stage: McpStage::Startup,
+                timeout: Duration::from_millis(5),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Timeout {
                 stage: McpStage::Initialize,
                 timeout: Duration::from_millis(5),
                 stderr: BoundedText::empty(),
@@ -337,6 +342,11 @@ mod tests {
             },
             McpProcessFailure::Timeout {
                 stage: McpStage::SafeToolCall,
+                timeout: Duration::from_millis(5),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Timeout {
+                stage: McpStage::Shutdown,
                 timeout: Duration::from_millis(5),
                 stderr: BoundedText::empty(),
             },
@@ -370,19 +380,33 @@ mod tests {
                 io_detail: bounded_io_text("wait"),
                 stderr: BoundedText::empty(),
             },
+            McpProcessFailure::Shutdown {
+                stage: McpStage::Shutdown,
+                exit_code: Some(29),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Shutdown {
+                stage: McpStage::Shutdown,
+                exit_code: None,
+                stderr: BoundedText::empty(),
+            },
         ];
         let expected = [
             "process.spawn.failed",
             "process.pipe_acquisition.failed",
+            "process.startup.timeout",
             "process.initialize.timeout",
             "process.tools_list.timeout",
             "process.safe_tool_call.timeout",
+            "process.shutdown.timeout",
             "process.pipe.read_failed",
             "process.pipe.write_failed",
             "process.child.exited",
             "process.child.signaled",
             "process.cleanup.failed",
             "process.child.wait_failed",
+            "process.child.exited",
+            "process.child.signaled",
         ];
         for (failure, code) in process_cases.into_iter().zip(expected) {
             assert_eq!(failure.diagnostic_code(), code);

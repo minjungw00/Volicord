@@ -4,6 +4,7 @@ use std::{
     ffi::OsString,
     fs,
     io::{BufReader, Cursor},
+    panic::{catch_unwind, AssertUnwindSafe},
 };
 
 #[cfg(unix)]
@@ -33,6 +34,7 @@ use crate::{
     },
 };
 use volicord_core::CoreBoundary;
+use volicord_mcp_protocol::ToolResultField;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
@@ -2775,8 +2777,7 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
 }
 
 #[test]
-fn every_production_revision_negotiates_exactly_and_records_after_initialized(
-) -> Result<(), Box<dyn Error>> {
+fn every_production_revision_executes_the_transport_and_eof_matrix() -> Result<(), Box<dyn Error>> {
     for (index, profile) in ProtocolRegistry::production()
         .oldest_to_newest()
         .enumerate()
@@ -2854,11 +2855,21 @@ fn every_production_revision_negotiates_exactly_and_records_after_initialized(
                 revision,
             ),
             initialized_notification(),
+            request(11, "ping", json!({})),
+            request(12, "tools/list", json!({})),
+            tools_call(13, LIST_PROJECTS_TOOL_NAME, json!({})),
         ])?);
         let mut output = Vec::new();
         run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
         let responses = stdio_responses(&output)?;
+        assert_eq!(responses.len(), 4);
         assert_eq!(responses[0]["result"]["protocolVersion"], revision);
+        assert_eq!(responses[1]["result"], json!({}));
+        assert!(responses[2]["result"]["tools"].is_array());
+        let list_projects = projected_authoritative_tool_result(&responses[3]["result"])?;
+        assert!(list_projects["projects"]
+            .as_array()
+            .is_some_and(|projects| !projects.is_empty()));
 
         let registry =
             open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
@@ -2878,12 +2889,17 @@ fn every_production_revision_negotiates_exactly_and_records_after_initialized(
             Some(revision)
         );
         assert!(recorded.initialized_notification_at.is_some());
+        assert!(recorded.tools_list_observed_at.is_some());
+        assert_eq!(recorded.required_tools_present, Some(true));
+        assert!(recorded.designated_safe_tool_observed_at.is_some());
+        assert!(recorded.graceful_close_at.is_some());
+        assert!(recorded.terminal_finding_id.is_none());
     }
     Ok(())
 }
 
 #[test]
-fn every_production_revision_projects_success_and_tool_errors_without_reclassifying_requests(
+fn every_production_revision_projects_tools_results_and_request_failures(
 ) -> Result<(), Box<dyn Error>> {
     for (index, profile) in ProtocolRegistry::production()
         .oldest_to_newest()
@@ -2916,20 +2932,88 @@ fn every_production_revision_projects_success_and_tool_errors_without_reclassify
         )?
         .is_none());
 
+        let ping = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            request(2, "ping", json!({})),
+        )?
+        .expect("ping response");
+        assert_eq!(ping["result"], json!({}));
+
+        let tools_list = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            request(3, "tools/list", json!({})),
+        )?
+        .expect("tools/list response");
+        let tools = tools_list["result"]["tools"]
+            .as_array()
+            .expect("tools/list result array");
+        let tool_names = tools
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect::<BTreeSet<_>>();
+        for required in PUBLIC_METHOD_TOOL_NAMES
+            .iter()
+            .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
+        {
+            assert!(
+                tool_names.contains(required),
+                "{} omitted required tool {required}",
+                profile.revision()
+            );
+        }
+        for tool in tools {
+            let object = tool.as_object().expect("tool definition object");
+            for required in ["name", "description", "inputSchema"] {
+                assert!(object.contains_key(required), "missing {required}: {tool}");
+            }
+            assert_eq!(
+                object.contains_key("annotations"),
+                profile.tools().annotations(),
+                "{} annotations projection",
+                profile.revision()
+            );
+            assert_eq!(
+                object.contains_key("outputSchema"),
+                profile.tools().output_schema(),
+                "{} outputSchema projection",
+                profile.revision()
+            );
+            for absent in ["title", "_meta", "execution", "icons"] {
+                assert!(!object.contains_key(absent), "fabricated {absent}: {tool}");
+            }
+        }
+
         let success = handle_json_rpc_message(
             &connection_adapter,
             &mut state,
-            tools_call(2, STATUS_TOOL_NAME, json!({ "detail": "workflow" })),
+            tools_call(4, LIST_PROJECTS_TOOL_NAME, json!({})),
         )?
-        .expect("status response");
+        .expect("list-projects response");
         let success_body = projected_authoritative_tool_result(&success["result"])?;
-        assert_eq!(success_body["base"]["response_kind"], "result");
+        assert!(success_body["projects"].is_array());
+        assert_eq!(
+            success["result"].get("structuredContent").is_some(),
+            profile.tools().structured_content(),
+            "{} structured-content projection",
+            profile.revision()
+        );
+        assert_eq!(
+            success["result"].get("toolResult").is_some(),
+            profile
+                .schema()
+                .tool_result_fields()
+                .contains(&ToolResultField::ToolResult),
+            "{} legacy toolResult projection",
+            profile.revision()
+        );
 
         let invalid_arguments = handle_json_rpc_message(
             &connection_adapter,
             &mut state,
             tools_call(
-                3,
+                5,
                 RECORD_RUN_TOOL_NAME,
                 json!({ "kind": "unsupported", "unexpected": true }),
             ),
@@ -2939,14 +3023,64 @@ fn every_production_revision_projects_success_and_tool_errors_without_reclassify
         assert_eq!(invalid_body["code"], "MCP_INVALID_ARGUMENTS");
         assert_eq!(invalid_body["tool_name"], RECORD_RUN_TOOL_NAME);
 
-        let unknown = handle_json_rpc_message(
+        let invalid_params = handle_json_rpc_message(
             &connection_adapter,
             &mut state,
-            tools_call(4, "volicord.unknown", json!({})),
+            request(6, "tools/list", json!([])),
+        )?
+        .expect("invalid tools/list params response");
+        assert_eq!(invalid_params["error"]["code"], -32602);
+
+        let invalid_request =
+            handle_json_rpc_message(&connection_adapter, &mut state, json!(true))?
+                .expect("invalid JSON-RPC request response");
+        assert_eq!(invalid_request["error"]["code"], -32600);
+
+        let unknown_method = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            request(7, "volicord/not-a-method", json!({})),
+        )?
+        .expect("unknown-method response");
+        assert_eq!(unknown_method["error"]["code"], -32601);
+
+        let execution_error = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            tools_call(
+                8,
+                STATUS_TOOL_NAME,
+                json!({"project_selector": "project_that_is_not_registered"}),
+            ),
+        )?
+        .expect("tool execution error response");
+        let execution_body = projected_authoritative_tool_result(&execution_error["result"])?;
+        assert_eq!(execution_body["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
+        assert_eq!(execution_body["tool_name"], STATUS_TOOL_NAME);
+
+        let unknown_tool = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            tools_call(9, "volicord.unknown", json!({})),
         )?
         .expect("unknown-tool response");
-        assert_eq!(unknown["error"]["code"], -32602);
-        assert!(unknown["result"].is_null());
+        assert_eq!(unknown_tool["error"]["code"], -32602);
+        assert!(unknown_tool["result"].is_null());
+    }
+    Ok(())
+}
+
+#[test]
+fn property_arbitrary_json_rpc_values_never_panic() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-arbitrary-json-rpc-property")?;
+    let connection_adapter = adapter(&fixture)?;
+    for seed in 0_u64..2_048 {
+        let message = generated_json_rpc_value(seed, 0);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let mut state = ConnectionState::default();
+            let _ = handle_json_rpc_message(&connection_adapter, &mut state, message);
+        }));
+        assert!(result.is_ok(), "JSON-RPC input seed {seed} panicked");
     }
     Ok(())
 }
@@ -5503,6 +5637,61 @@ fn json_lines(messages: &[Value]) -> Result<Vec<u8>, serde_json::Error> {
         output.push(b'\n');
     }
     Ok(output)
+}
+
+fn generated_json_rpc_value(seed: u64, depth: usize) -> Value {
+    if depth >= 4 {
+        return match seed % 5 {
+            0 => Value::Null,
+            1 => Value::Bool(seed & 1 == 0),
+            2 => json!(seed as i64 - 1_024),
+            3 => json!(format!("value-{seed}")),
+            _ => json!([seed, seed.wrapping_mul(17)]),
+        };
+    }
+
+    match seed % 9 {
+        0 => Value::Null,
+        1 => Value::Bool(seed & 1 == 0),
+        2 => json!(seed as i64 - 1_024),
+        3 => json!(format!("json-rpc-{seed}")),
+        4 => Value::Array(
+            (0..(seed as usize % 4))
+                .map(|index| {
+                    generated_json_rpc_value(
+                        seed.wrapping_mul(31).wrapping_add(index as u64),
+                        depth + 1,
+                    )
+                })
+                .collect(),
+        ),
+        5 => json!({
+            "jsonrpc": if seed & 1 == 0 { "2.0" } else { "1.0" },
+            "id": generated_json_rpc_value(seed.wrapping_add(1), depth + 1),
+            "method": generated_json_rpc_value(seed.wrapping_add(2), depth + 1),
+            "params": generated_json_rpc_value(seed.wrapping_add(3), depth + 1),
+        }),
+        6 => json!({
+            "jsonrpc": "2.0",
+            "id": seed,
+            "method": "initialize",
+            "params": generated_json_rpc_value(seed.wrapping_mul(7), depth + 1),
+        }),
+        7 => json!({
+            "jsonrpc": "2.0",
+            "id": seed,
+            "method": "tools/call",
+            "params": {
+                "name": generated_json_rpc_value(seed.wrapping_add(5), depth + 1),
+                "arguments": generated_json_rpc_value(seed.wrapping_add(6), depth + 1),
+            },
+        }),
+        _ => json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": generated_json_rpc_value(seed.wrapping_add(9), depth + 1),
+        }),
+    }
 }
 
 fn projected_authoritative_tool_result(result: &Value) -> Result<Value, Box<dyn Error>> {

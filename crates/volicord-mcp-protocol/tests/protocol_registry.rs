@@ -380,20 +380,23 @@ fn preferred_server_revision_is_in_the_supported_set() {
 }
 
 #[test]
-fn parsing_does_not_accept_date_ranges_or_nearby_dates() {
+fn property_production_parsing_never_accepts_revision_date_ranges() {
     let registry = ProtocolRegistry::production();
+    let supported = registry
+        .oldest_to_newest()
+        .map(|profile| profile.revision().as_str())
+        .collect::<BTreeSet<_>>();
 
-    for value in [
-        "2024-10-06",
-        "2024-10-08",
-        "2024-12-31",
-        "2025-03-25",
-        "2025-03-27",
-        "2025-06-17",
-        "2025-06-19",
-        "2025-11-24",
-        "2025-11-26",
-    ] {
-        assert!(registry.parse(value).is_err(), "{value}");
+    for year in 2023..=2027 {
+        for month in 1..=12 {
+            for day in 1..=31 {
+                let value = format!("{year:04}-{month:02}-{day:02}");
+                assert_eq!(
+                    registry.parse(&value).is_ok(),
+                    supported.contains(value.as_str()),
+                    "production support must use exact registry membership for {value}"
+                );
+            }
+        }
     }
 }
