@@ -1,4 +1,5 @@
 use std::sync::atomic::AtomicU64;
+use volicord_mcp_protocol::ProtocolRegistry;
 
 pub use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, CHECK_CLOSE_TOOL_NAME, CLOSE_TASK_TOOL_NAME,
@@ -9,7 +10,8 @@ pub use volicord_types::{
     WORKFLOW_METHOD_TOOL_NAMES as PUBLIC_METHOD_TOOL_NAMES,
 };
 
-pub(crate) const SUPPORTED_PROTOCOL_VERSION: &str = "2025-11-25";
+pub(crate) const SUPPORTED_PROTOCOL_VERSION: &str =
+    ProtocolRegistry::PREFERRED_SERVER_REVISION.as_str();
 pub(crate) const SERVER_NAME: &str = "volicord-mcp";
 pub(crate) const DEFAULT_LOCALE: &str = "en-US";
 pub(crate) static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);

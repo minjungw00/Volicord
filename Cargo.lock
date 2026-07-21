@@ -920,10 +920,20 @@ dependencies = [
  "serde_json",
  "sha2",
  "volicord-core",
+ "volicord-mcp-protocol",
  "volicord-platform-fs",
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+]
+
+[[package]]
+name = "volicord-mcp-protocol"
+version = "0.9.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml_edit",
 ]
 
 [[package]]

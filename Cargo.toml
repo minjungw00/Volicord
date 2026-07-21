@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/volicord-mcp-protocol",
     "crates/volicord-types",
     "crates/volicord-store",
     "crates/volicord-core",

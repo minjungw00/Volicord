@@ -43,6 +43,78 @@
       "reason": "Git owns the porcelain output format identifier."
     },
     {
+      "path": "crates/volicord-mcp-protocol/src/lib.rs",
+      "needle": "V20241007",
+      "classification": "external_standard",
+      "reason": "This typed variant names the externally standardized MCP 2024-10-07 protocol revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/src/lib.rs",
+      "needle": "V20241105",
+      "classification": "external_standard",
+      "reason": "This typed variant names the externally standardized MCP 2024-11-05 protocol revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/src/lib.rs",
+      "needle": "V20250326",
+      "classification": "external_standard",
+      "reason": "This typed variant names the externally standardized MCP 2025-03-26 protocol revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/src/lib.rs",
+      "needle": "V20250618",
+      "classification": "external_standard",
+      "reason": "This typed variant names the externally standardized MCP 2025-06-18 protocol revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/src/lib.rs",
+      "needle": "V20251125",
+      "classification": "external_standard",
+      "reason": "This typed variant names the externally standardized MCP 2025-11-25 protocol revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/src/lib.rs",
+      "needle": "V20260728",
+      "classification": "external_standard",
+      "reason": "This typed variant names the externally standardized MCP 2026-07-28 release-candidate revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/tests/protocol_registry.rs",
+      "needle": "V20241007",
+      "classification": "external_standard",
+      "reason": "The registry fixture test selects the externally standardized MCP 2024-10-07 revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/tests/protocol_registry.rs",
+      "needle": "V20241105",
+      "classification": "external_standard",
+      "reason": "The registry fixture test selects the externally standardized MCP 2024-11-05 revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/tests/protocol_registry.rs",
+      "needle": "V20250326",
+      "classification": "external_standard",
+      "reason": "The registry fixture test selects the externally standardized MCP 2025-03-26 revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/tests/protocol_registry.rs",
+      "needle": "V20250618",
+      "classification": "external_standard",
+      "reason": "The registry fixture test selects the externally standardized MCP 2025-06-18 revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/tests/protocol_registry.rs",
+      "needle": "V20251125",
+      "classification": "external_standard",
+      "reason": "The registry fixture test selects the externally standardized MCP 2025-11-25 revision."
+    },
+    {
+      "path": "crates/volicord-mcp-protocol/tests/protocol_registry.rs",
+      "needle": "V20260728",
+      "classification": "external_standard",
+      "reason": "The registry fixture test selects the externally standardized MCP 2026-07-28 release-candidate revision."
+    },
+    {
       "path": "crates/volicord-types/src/ids.rs",
       "needle": "uuid_v4",
       "classification": "external_standard",

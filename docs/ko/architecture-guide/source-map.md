@@ -74,6 +74,13 @@
 | `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |
 
+## MCP 프로토콜 프로필
+
+| 경로 | 책임 |
+|---|---|
+| `crates/volicord-mcp-protocol/src/lib.rs` | 폐쇄형 MCP 리비전 타입 파싱, 프로덕션 프로필 조회, 메시지·도구·스키마 기능 선언, 결정론적인 지원 리비전 순서, 추적 중인 사전 릴리스 분류, 별도로 선택하는 서버 선호 리비전. |
+| `crates/volicord-mcp-protocol/tests/protocol_registry.rs` | 고정 매니페스트 일치, 정확한 스키마 기능 일치, 순서, 중복 배제, 정확한 파싱, 선호 리비전 포함, 사전 릴리스 배제 검증. |
+
 ## MCP 어댑터
 
 | 경로 | 책임 |

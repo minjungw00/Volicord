@@ -74,6 +74,13 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | Diagnostic fact collection and rendering. |
 
+## MCP Protocol Profiles
+
+| Path | Responsibility |
+|---|---|
+| `crates/volicord-mcp-protocol/src/lib.rs` | Closed typed MCP revision parsing, production profile lookup, message/tool/schema feature declarations, deterministic supported-revision ordering, tracked pre-release classification, and the separately selected preferred server revision. |
+| `crates/volicord-mcp-protocol/tests/protocol_registry.rs` | Pinned manifest parity, exact schema-feature parity, ordering, duplicate exclusion, exact parsing, preferred-revision membership, and pre-release exclusion. |
+
 ## MCP Adapter
 
 | Path | Responsibility |
