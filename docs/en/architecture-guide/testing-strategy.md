@@ -17,6 +17,25 @@ Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
 prove behavior of a real Codex installation or platform support.
 
+## Pinned MCP Specification Inputs
+
+`tests/conformance/mcp-spec/` owns the minimal versioned upstream schemas and
+license attribution needed for deterministic MCP conformance work. Its manifest
+keeps finalized initialization-based revisions separate from pre-release-only
+inputs, pins full upstream commits, records the handshake family and release
+classification, and checksums every local artifact. This fixture inventory is
+an implementation input; it does not define or advertise Volicord runtime MCP
+interoperability.
+
+`cargo run -p xtask -- mcp-spec-check` is the offline integrity gate. It parses
+the manifest, validates classifications and immutable references, and verifies
+schema presence, schema family, attribution, and checksums without network
+access. `cargo run -p xtask -- mcp-spec-sync` is an explicit maintenance action:
+it resolves the recorded releases to their pinned commits, downloads into a
+temporary directory, validates the complete candidate, and only then replaces
+the fixture. Ordinary builds and tests never invoke the networked sync path, and
+syncing does not promote a pre-release classification.
+
 ## Required Boundary Coverage
 
 Durable tests should cover, as applicable:

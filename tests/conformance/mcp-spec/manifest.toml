@@ -1,0 +1,118 @@
+format_version = 1
+upstream_repository = "https://github.com/modelcontextprotocol/modelcontextprotocol.git"
+
+[[license]]
+id = "mcp-2026-transition"
+spdx_expression = "Apache-2.0 AND MIT"
+attribution = "Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC."
+upstream_release = "2026-07-28-RC"
+upstream_commit = "9d700ed62dcf86cb77475c9b81930611a9182f46"
+upstream_path = "LICENSE"
+local_path = "licenses/mcp-2026-transition.txt"
+sha256 = "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a"
+
+[[license]]
+id = "mcp-mit-2025"
+spdx_expression = "MIT"
+attribution = "Copyright (c) 2024–2025 Anthropic, PBC and contributors"
+upstream_release = "2025-11-25"
+upstream_commit = "38c84e9f93ad191d9eb26d92b945d17bd0efcaf3"
+upstream_path = "LICENSE"
+local_path = "licenses/mcp-mit-2025.txt"
+sha256 = "346e57dc40801e3d58165e97f64d45b42c4571a68a76ecb10c3c12858acecb3f"
+
+[[revision]]
+protocol_version = "2024-10-07"
+release_status = "released"
+handshake_family = "initialization-based"
+upstream_release = "2024-10-07"
+upstream_commit = "ed35f718be83a2e3e1e568f7ba3562b81ed69c40"
+license_id = "mcp-mit-2025"
+production_supported = true
+conformance_tested = false
+pre_release_only = false
+
+[[revision.artifact]]
+upstream_path = "schema/schema.json"
+local_path = "2024-10-07/schema.json"
+sha256 = "c944bbd7d131e12adb40527651a2a8b98a59e05f0b88ad1578dd575678b8f1c2"
+
+[[revision]]
+protocol_version = "2024-11-05"
+release_status = "released"
+handshake_family = "initialization-based"
+upstream_release = "2024-11-05-final"
+upstream_commit = "48234828288ec5e5011398f17b8736f61645f130"
+license_id = "mcp-mit-2025"
+production_supported = true
+conformance_tested = false
+pre_release_only = false
+
+[[revision.artifact]]
+upstream_path = "schema/2024-11-05/schema.json"
+local_path = "2024-11-05/schema.json"
+sha256 = "61cea2392d4f284092d09bc84b9ac488c0d5618ac2b38a56942fc5b99fd960ce"
+
+[[revision]]
+protocol_version = "2025-03-26"
+release_status = "released"
+handshake_family = "initialization-based"
+upstream_release = "2025-03-26"
+upstream_commit = "9236eb1cbfa02c17ab45c83a7bdbe55c450070be"
+license_id = "mcp-mit-2025"
+production_supported = true
+conformance_tested = false
+pre_release_only = false
+
+[[revision.artifact]]
+upstream_path = "schema/2025-03-26/schema.json"
+local_path = "2025-03-26/schema.json"
+sha256 = "dd1619bf96fcd8c50fe46f0dd05b4b9bb9356010040ae985fa595fee226ff4ed"
+
+[[revision]]
+protocol_version = "2025-06-18"
+release_status = "released"
+handshake_family = "initialization-based"
+upstream_release = "2025-06-18"
+upstream_commit = "f5ccad944fdf2b7d9cc70cf817f66ca5a8aa03a4"
+license_id = "mcp-mit-2025"
+production_supported = true
+conformance_tested = false
+pre_release_only = false
+
+[[revision.artifact]]
+upstream_path = "schema/2025-06-18/schema.json"
+local_path = "2025-06-18/schema.json"
+sha256 = "05020a692319467847cdb1794b1306567f52860353b5ff2f2bc2b0140819305b"
+
+[[revision]]
+protocol_version = "2025-11-25"
+release_status = "released"
+handshake_family = "initialization-based"
+upstream_release = "2025-11-25"
+upstream_commit = "38c84e9f93ad191d9eb26d92b945d17bd0efcaf3"
+license_id = "mcp-mit-2025"
+production_supported = true
+conformance_tested = false
+pre_release_only = false
+
+[[revision.artifact]]
+upstream_path = "schema/2025-11-25/schema.json"
+local_path = "2025-11-25/schema.json"
+sha256 = "1ffe4c5577974012f5fa02af14ea88df4b7146679df1abaaad497c8d9230ca8a"
+
+[[revision]]
+protocol_version = "2026-07-28"
+release_status = "release-candidate"
+handshake_family = "per-request-metadata"
+upstream_release = "2026-07-28-RC"
+upstream_commit = "9d700ed62dcf86cb77475c9b81930611a9182f46"
+license_id = "mcp-2026-transition"
+production_supported = false
+conformance_tested = false
+pre_release_only = true
+
+[[revision.artifact]]
+upstream_path = "schema/draft/schema.json"
+local_path = "draft/2026-07-28/schema.json"
+sha256 = "bd19a7a9e6ee3a7394aec816cd0660a0156864e828a348129baccdb83457d234"

@@ -679,7 +679,8 @@ documents:
   path_en: docs/en/architecture-guide/source-map.md
   path_ko: docs/ko/architecture-guide/source-map.md
   kind: explanation
-  summary: Source path responsibility map for current Rust workspace modules.
+  summary: Source path responsibility map for current Rust workspace modules, repository tooling,
+    and durable test inputs.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -832,13 +833,15 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Test-layer selection, strict contract and corruption coverage, documentation validation, generic release integrity, and operational Codex interoperability observation.
+  summary: Test-layer selection, strict contract and corruption coverage, pinned MCP specification
+    inputs and offline integrity, documentation validation, generic release integrity, and operational
+    Codex interoperability observation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-21'
+  last_verified_on: '2026-07-21'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1320,7 +1323,8 @@ documents:
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
   summary: Concise top-level implementation architecture overview for workspace shape, dependency
-    direction, operational paths, durable boundaries, release-integrity tooling, and detail routes.
+    direction, operational paths, durable boundaries, release-integrity and pinned-spec tooling,
+    and detail routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide

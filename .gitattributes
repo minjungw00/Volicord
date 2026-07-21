@@ -3,3 +3,4 @@
 /tests/release-integrity/*.json text eol=lf
 /tests/integration/snapshots/*.json text eol=lf
 /tests/agent-evaluation/fixtures/catalog.json text eol=lf
+/tests/conformance/mcp-spec/**/schema.json text eol=lf whitespace=-blank-at-eof

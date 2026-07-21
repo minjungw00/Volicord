@@ -91,8 +91,16 @@
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
+| `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
 | `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 릴리스 workflow 무결성 테스트. |
 | `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store, 요청 도우미. |
+
+## 저장소 유지보수 도구
+
+| 경로 | 책임 |
+|---|---|
+| `xtask/src/mcp_spec.rs` | 고정 명세의 오프라인 검증과 검증된 임시 후보를 거치는 명시적 네트워크 동기화. |
+| `xtask/tests/mcp_spec.rs` | manifest parsing, 분류, 변경 불가능한 pin, checksum, 필수 artifact, ordering, 오프라인 성공 coverage. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를
 나열하지 않습니다.

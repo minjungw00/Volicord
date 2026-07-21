@@ -74,10 +74,10 @@ the public method execution path.
 | `crates/volicord-platform-process` | Internal safe facade for bounded platform-specific child-process containment and nonblocking child-pipe readiness. It owns low-level Unix process-group, Windows Job Object, and pipe-polling primitives. |
 | `crates/volicord-mcp` | MCP adapter library for the canonical managed-launch contract, startup validation, tool listing, `tools/call` decoding and dispatch, managed stdio framing, and Core invocation. |
 | `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
-| `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
+| `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs, shared fixtures, and versioned offline MCP specification inputs. Pinned upstream inputs do not define runtime support. |
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection session, operation-category, and public schema snapshot tests. |
 | `tests/release-integrity` | Generic five-target coverage, version consistency, canonical text bytes, package shape, packaged-binary identity, checksum output, and release-workflow structure. It owns no production runtime behavior. |
-| `xtask` | Repository maintenance tooling for documentation validation; it is outside Volicord runtime architecture. |
+| `xtask` | Repository maintenance tooling for documentation validation and pinned MCP specification synchronization and offline integrity; it is outside Volicord runtime architecture. |
 
 ## Dependency boundaries
 
@@ -106,7 +106,8 @@ The durable dependency direction is:
 - Test-support and test packages compose implementation crates only for
   disposable fixtures and cross-layer verification.
 - `xtask` stays isolated as repository maintenance tooling and has no internal
-  product-crate dependency.
+  product-crate dependency. Its ordinary MCP specification check is offline;
+  only the explicitly invoked sync command uses the network.
 
 Exact Cargo dependency edges remain with the Cargo manifests. Exact source
 placement remains with the Source Map.
@@ -140,7 +141,7 @@ The failure, storage, and Agent Connection contracts remain in
 | Release integrity | Generic checks cover every published Volicord target, package and checksum continuity, and workflow shape. Optional real-Codex smoke observes current configuration and behavior without becoming a release gate or runtime trust input. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
 | Platform filesystem facade | `volicord-platform-fs` observes the process target and kernel, distinguishes native Linux from WSL2, validates the WSL2 distribution through `/etc/os-release`, and supplies path-filesystem observations for target-path restriction enforcement. It also isolates platform-native namespace primitives and canonical read-only Git common-directory/worktree discovery. It does not decide which files are managed, whether a replacement or write is authorized, or what recovery means. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
 | Platform process facade | `volicord-platform-process` exposes safe bounded child-process containment and child-pipe readiness APIs. It owns low-level process groups, Windows Job Objects, nonblocking pipe configuration, and pipe polling. `volicord-cli` retains MCP supervision policy, lifecycle deadlines, protocol framing, exchange progress, and diagnostics. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), and [Agent Connection](../reference/agent-connection.md). |
-| Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
+| Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. Versioned upstream MCP schemas remain offline-validated conformance inputs and do not advertise runtime support. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
 
 ## Detail routes
 

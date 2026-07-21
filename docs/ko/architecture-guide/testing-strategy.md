@@ -17,6 +17,23 @@
 합니다. fixture는 parser 또는 구현 동작만 증명하며 실제 Codex 설치의 행동이나 플랫폼
 지원을 증명하지 않습니다.
 
+## 고정된 MCP 명세 입력
+
+`tests/conformance/mcp-spec/`은 결정론적인 MCP 적합성 작업에 필요한 최소한의 버전별
+upstream schema와 라이선스 저작자 표시를 담당합니다. 이 경로의 manifest는 확정된
+초기화 기반 revision과 pre-release 전용 입력을 분리하고, 전체 upstream commit을
+고정하며, handshake family와 release 분류를 기록하고, 모든 로컬 artifact의 checksum을
+관리합니다. 이 fixture 목록은 구현 입력일 뿐이며 Volicord 런타임 MCP 상호운용성을
+정의하거나 알리지 않습니다.
+
+`cargo run -p xtask -- mcp-spec-check`는 오프라인 무결성 gate입니다. 네트워크 접근 없이
+manifest를 parsing하고, 분류와 변경 불가능한 참조를 검증하며, schema 존재 여부,
+schema family, 저작자 표시, checksum을 확인합니다. `cargo run -p xtask -- mcp-spec-sync`는
+명시적으로 실행하는 유지보수 작업입니다. 기록된 release가 고정 commit으로 해석되는지
+확인하고 임시 디렉터리에 내려받은 다음, 후보 전체를 검증한 뒤에만 fixture를
+교체합니다. 일반 build와 test는 네트워크를 사용하는 sync 경로를 실행하지 않으며,
+sync가 pre-release 분류를 승격하지도 않습니다.
+
 ## 필수 경계 coverage
 
 해당하는 지속 테스트는 다음을 다룹니다.

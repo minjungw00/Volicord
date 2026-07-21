@@ -91,8 +91,16 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
+| `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
 | `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and release-workflow integrity tests. |
 | `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store, and request helpers. |
+
+## Repository Maintenance Tooling
+
+| Path | Responsibility |
+|---|---|
+| `xtask/src/mcp_spec.rs` | Offline pinned-spec validation and explicit networked synchronization through a verified temporary candidate. |
+| `xtask/tests/mcp_spec.rs` | Manifest parsing, classification, immutable-pin, checksum, required-artifact, ordering, and offline-success coverage. |
 
 Update this map when a durable responsibility moves. Do not list removed,
 generated, or private scratch paths.
