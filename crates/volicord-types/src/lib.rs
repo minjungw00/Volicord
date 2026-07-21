@@ -9,6 +9,7 @@
 
 pub mod canonical;
 pub mod connection_verification;
+pub mod diagnostics;
 pub mod guard_manifest;
 pub mod host_configuration;
 pub mod ids;
@@ -25,6 +26,7 @@ pub mod values;
 
 pub use canonical::*;
 pub use connection_verification::*;
+pub use diagnostics::*;
 pub use guard_manifest::*;
 pub use host_configuration::*;
 pub use ids::*;

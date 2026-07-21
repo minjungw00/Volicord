@@ -11,6 +11,7 @@
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
+| `crates/volicord-types/src/diagnostics.rs` | 공유 `DiagnosticFinding`과 `DiagnosticReport` 구조, 안정적인 네임스페이스 코드 검증, 담당 크레이트의 타입이 지정된 사실에 한도와 민감정보 제거를 적용하는 투영, 원인 그래프 검증, 예기치 않은 실패 대체 표현. |
 | `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
 | `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
 | `crates/volicord-types/src/connection_verification.rs` | 정규 connection 상태, check, action, 검증 보고서 타입. |

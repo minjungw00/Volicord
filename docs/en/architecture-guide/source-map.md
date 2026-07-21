@@ -11,6 +11,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
+| `crates/volicord-types/src/diagnostics.rs` | Shared `DiagnosticFinding` and `DiagnosticReport` envelope, stable namespaced-code validation, bounded redacting projection of typed owner facts, cause-graph validation, and unexpected-failure fallback. |
 | `crates/volicord-types/src/platform.rs` | Shared platform-environment and platform-path types. |
 | `crates/volicord-types/src/host_configuration.rs` | Shared connection-intent and host-scope configuration types. |
 | `crates/volicord-types/src/connection_verification.rs` | Canonical connection status, check, action, and verification-report types. |

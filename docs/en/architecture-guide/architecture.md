@@ -66,7 +66,7 @@ the public method execution path.
 
 | Workspace member | Guide-level role |
 |---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, platform, and host-configuration implementation types. |
+| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, platform, host-configuration, and structured diagnostic-envelope implementation types. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, Agent Connection runtime/project sessions, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
@@ -85,7 +85,10 @@ the public method execution path.
 The durable dependency direction is:
 
 - `volicord-types` sits at the shared type boundary and has no internal
-  product-crate dependencies.
+  product-crate dependencies. It owns the single cross-crate diagnostic
+  envelope, stable namespaced-code validation, and bounded redacting projection
+  of typed owner facts. Domain crates retain their closed detailed code sets and
+  exhaustive error-to-finding conversions.
 - `volicord-store` depends on shared types and the read-only canonical Git
   layout primitive used to validate stored owner paths. It owns persistence
   mechanics and does not depend on Core, CLI, or MCP adapter crates.
@@ -139,6 +142,7 @@ The failure, storage, and Agent Connection contracts remain in
 
 | Boundary | Overview responsibility | Detail and contract routes |
 |---|---|---|
+| Shared diagnostic envelope | `volicord-types` owns the dependency-safe finding, cause, action, and report representation used across implementation crates. Each domain owner maps its closed typed failures and facts into that representation; persistence, verification, and rendering stay with their existing owners instead of creating another general envelope. | [Source Map](source-map.md), [Testing Strategy](testing-strategy.md), [Failure Model](../reference/failure-model.md), and [Security](../reference/security.md). |
 | Core and adapters | Core owns adapter-independent public method handling. CLI and MCP adapters own process, setup, transport, routing, and rendering boundaries around Core. Core does not depend on either adapter layer. | [Request Lifecycle](request-lifecycle.md), [Implementation Design Patterns](design-patterns.md), [Core and adapter dependency boundary](decisions/core-adapter-boundary.md), [API Methods](../reference/api/methods.md), [MCP Transport](../reference/mcp-transport.md), and [Administrative CLI](../reference/admin-cli.md). |
 | Runtime Home and Product Repository | `Volicord Runtime Home` holds Volicord runtime records and artifact data as storage/runtime owners define them. `Product Repository` holds user product files and explicit integration files where owner documents allow them. | [Storage and Transactions](storage-and-transactions.md), [Runtime Home and Product Repository separation](decisions/runtime-home-and-product-repository.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md). |
 | Store commit boundary | Core method planners choose read-only, no-effect, dry-run, staging, or committed branches. Store applies normal committed Core mutations through its transaction boundary and keeps artifact staging separate from normal Core mutation commit. Core authority meaning stays with Core owners; exact storage records and effects stay with storage owners. | [Storage and Transactions](storage-and-transactions.md), [Request Lifecycle](request-lifecycle.md), [Core Model](../reference/core-model.md), [Storage](../reference/storage.md), and [Storage Effects](../reference/storage-effects.md). |
