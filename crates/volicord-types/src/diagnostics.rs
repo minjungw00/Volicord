@@ -18,11 +18,12 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::{
-    AgentConnectionId, AgentRuntimeSessionId, IntegrationRevision, ProjectId, UtcTimestamp,
+    AgentConnectionId, AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckStatus,
+    ConnectionStatus, IntegrationRevision, JsonObject, ProjectId, UtcTimestamp,
 };
 
 /// The only current JSON representation version for [`DiagnosticReport`].
-pub const DIAGNOSTIC_REPORT_SCHEMA_VERSION: u32 = 1;
+pub const DIAGNOSTIC_REPORT_SCHEMA_VERSION: u32 = 2;
 /// Stable prefix for one pre-Registry stderr diagnostic line.
 pub const BOOTSTRAP_DIAGNOSTIC_ENVELOPE_PREFIX: &str = "VOLICORD_DIAGNOSTIC_V1";
 /// Maximum UTF-8 byte length of one complete pre-Registry stderr envelope.
@@ -1205,28 +1206,285 @@ pub fn parse_bootstrap_diagnostic_envelope(
     serde_json::from_str(json).map_err(|_| invalid("bootstrap diagnostic finding is invalid"))
 }
 
-/// Aggregate status of one diagnostic report.
+/// Operation projected by one current diagnostic report.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum DiagnosticReportStatus {
-    /// The intended observations completed without an error finding.
-    Complete,
-    /// At least one named observation could not be completed.
-    Incomplete,
-    /// The observed operation or report construction failed.
-    Failed,
+pub enum DiagnosticOperation {
+    Init,
+    Add,
+    Status,
+    Verify,
+    Mode,
+    Remove,
+    DiagnosticsShow,
+    DiagnosticsSession,
+}
+
+impl DiagnosticOperation {
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Init => "init",
+            Self::Add => "add",
+            Self::Status => "status",
+            Self::Verify => "verify",
+            Self::Mode => "mode",
+            Self::Remove => "remove",
+            Self::DiagnosticsShow => "diagnostics_show",
+            Self::DiagnosticsSession => "diagnostics_session",
+        }
+    }
+}
+
+/// Complete bounded Connection context for a diagnostic projection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct DiagnosticConnectionContext {
+    runtime_home: String,
+    connection_id: String,
+    host: String,
+    scope: String,
+    profile: String,
+    mode: String,
+    repository: Option<String>,
+    config_target: Option<String>,
+    integration_revision: Option<IntegrationRevision>,
+    runtime_session_ids: Vec<AgentRuntimeSessionId>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticConnectionContextWire {
+    runtime_home: String,
+    connection_id: String,
+    host: String,
+    scope: String,
+    profile: String,
+    mode: String,
+    repository: Option<String>,
+    config_target: Option<String>,
+    integration_revision: Option<IntegrationRevision>,
+    runtime_session_ids: Vec<AgentRuntimeSessionId>,
+}
+
+impl<'de> Deserialize<'de> for DiagnosticConnectionContext {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = DiagnosticConnectionContextWire::deserialize(deserializer)?;
+        let supplied_runtime_session_ids = wire.runtime_session_ids.clone();
+        let context = Self::try_new(
+            wire.runtime_home,
+            wire.connection_id,
+            wire.host,
+            wire.scope,
+            wire.profile,
+            wire.mode,
+            wire.repository,
+            wire.config_target,
+            wire.integration_revision,
+            wire.runtime_session_ids,
+        )
+        .map_err(de::Error::custom)?;
+        if supplied_runtime_session_ids != context.runtime_session_ids {
+            return Err(de::Error::custom(
+                "diagnostic connection runtime_session_ids are not in canonical order",
+            ));
+        }
+        Ok(context)
+    }
+}
+
+impl DiagnosticConnectionContext {
+    /// Constructs one bounded current Connection context.
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        runtime_home: impl Into<String>,
+        connection_id: impl Into<String>,
+        host: impl Into<String>,
+        scope: impl Into<String>,
+        profile: impl Into<String>,
+        mode: impl Into<String>,
+        repository: Option<String>,
+        config_target: Option<String>,
+        integration_revision: Option<IntegrationRevision>,
+        mut runtime_session_ids: Vec<AgentRuntimeSessionId>,
+    ) -> Result<Self, DiagnosticError> {
+        let runtime_home = runtime_home.into();
+        let connection_id = connection_id.into();
+        let host = host.into();
+        let scope = scope.into();
+        let profile = profile.into();
+        let mode = mode.into();
+        validate_stable_identifier("diagnostic connection id", &connection_id)?;
+        for (field, value) in [
+            ("runtime_home", runtime_home.as_str()),
+            ("host", host.as_str()),
+            ("scope", scope.as_str()),
+            ("profile", profile.as_str()),
+            ("mode", mode.as_str()),
+        ] {
+            validate_bounded_text(field, value, 4_096)?;
+        }
+        for (field, value) in [
+            ("repository", repository.as_deref()),
+            ("config_target", config_target.as_deref()),
+        ] {
+            if let Some(value) = value {
+                validate_bounded_text(field, value, 4_096)?;
+            }
+        }
+        runtime_session_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        if runtime_session_ids
+            .windows(2)
+            .any(|pair| pair[0] == pair[1])
+        {
+            return Err(invalid(
+                "diagnostic connection context contains duplicate runtime-session ids",
+            ));
+        }
+        Ok(Self {
+            runtime_home,
+            connection_id,
+            host,
+            scope,
+            profile,
+            mode,
+            repository,
+            config_target,
+            integration_revision,
+            runtime_session_ids,
+        })
+    }
+
+    pub fn runtime_home(&self) -> &str {
+        &self.runtime_home
+    }
+
+    pub fn connection_id(&self) -> &str {
+        &self.connection_id
+    }
+
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    pub fn scope(&self) -> &str {
+        &self.scope
+    }
+
+    pub fn profile(&self) -> &str {
+        &self.profile
+    }
+
+    pub fn mode(&self) -> &str {
+        &self.mode
+    }
+
+    pub fn repository(&self) -> Option<&str> {
+        self.repository.as_deref()
+    }
+
+    pub fn config_target(&self) -> Option<&str> {
+        self.config_target.as_deref()
+    }
+
+    pub fn integration_revision(&self) -> Option<&IntegrationRevision> {
+        self.integration_revision.as_ref()
+    }
+
+    pub fn runtime_session_ids(&self) -> &[AgentRuntimeSessionId] {
+        &self.runtime_session_ids
+    }
+}
+
+/// One deduplicated report action with the root causes it remediates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct DiagnosticReportAction {
+    code: DiagnosticCode,
+    summary: String,
+    root_cause_ids: Vec<DiagnosticFindingId>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticReportActionWire {
+    code: DiagnosticCode,
+    summary: String,
+    root_cause_ids: Vec<DiagnosticFindingId>,
+}
+
+impl<'de> Deserialize<'de> for DiagnosticReportAction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = DiagnosticReportActionWire::deserialize(deserializer)?;
+        let supplied_root_cause_ids = wire.root_cause_ids.clone();
+        let action = Self::try_new(wire.code, wire.summary, wire.root_cause_ids)
+            .map_err(de::Error::custom)?;
+        if supplied_root_cause_ids != action.root_cause_ids {
+            return Err(de::Error::custom(
+                "diagnostic action root_cause_ids are not unique and canonically ordered",
+            ));
+        }
+        Ok(action)
+    }
+}
+
+impl DiagnosticReportAction {
+    pub fn try_new(
+        code: DiagnosticCode,
+        summary: impl Into<String>,
+        mut root_cause_ids: Vec<DiagnosticFindingId>,
+    ) -> Result<Self, DiagnosticError> {
+        let summary = summary.into();
+        validate_bounded_text(
+            "diagnostic report action summary",
+            &summary,
+            MAX_DIAGNOSTIC_FACT_STRING_BYTES,
+        )?;
+        root_cause_ids.sort();
+        root_cause_ids.dedup();
+        if root_cause_ids.len() > MAX_DIAGNOSTIC_ROOT_CAUSES {
+            return Err(invalid("diagnostic report action has too many root causes"));
+        }
+        Ok(Self {
+            code,
+            summary,
+            root_cause_ids,
+        })
+    }
+
+    pub fn code(&self) -> &DiagnosticCode {
+        &self.code
+    }
+
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+
+    pub fn root_cause_ids(&self) -> &[DiagnosticFindingId] {
+        &self.root_cause_ids
+    }
 }
 
 /// Current shared JSON diagnostic report.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct DiagnosticReport {
     schema_version: u32,
-    status: DiagnosticReportStatus,
+    operation: DiagnosticOperation,
+    status: ConnectionStatus,
     generated_at: UtcTimestamp,
+    connection: Option<DiagnosticConnectionContext>,
+    checks: Vec<ConnectionCheck>,
     findings: Vec<DiagnosticFinding>,
     root_cause_ids: Vec<DiagnosticFindingId>,
+    actions: Vec<DiagnosticReportAction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    operation_details: Option<JsonObject>,
     limits: Vec<String>,
 }
 
@@ -1234,10 +1492,15 @@ pub struct DiagnosticReport {
 #[serde(deny_unknown_fields)]
 struct DiagnosticReportWire {
     schema_version: u32,
-    status: DiagnosticReportStatus,
+    operation: DiagnosticOperation,
+    status: ConnectionStatus,
     generated_at: UtcTimestamp,
+    connection: Option<DiagnosticConnectionContext>,
+    checks: Vec<ConnectionCheck>,
     findings: Vec<DiagnosticFinding>,
     root_cause_ids: Vec<DiagnosticFindingId>,
+    actions: Vec<DiagnosticReportAction>,
+    operation_details: Option<JsonObject>,
     limits: Vec<String>,
 }
 
@@ -1253,8 +1516,18 @@ impl<'de> Deserialize<'de> for DiagnosticReport {
             )));
         }
         let supplied_root_cause_ids = wire.root_cause_ids;
-        let report = Self::try_new(wire.status, wire.generated_at, wire.findings, wire.limits)
-            .map_err(de::Error::custom)?;
+        let report = Self::try_new(
+            wire.operation,
+            wire.status,
+            wire.generated_at,
+            wire.connection,
+            wire.checks,
+            wire.findings,
+            wire.actions,
+            wire.operation_details,
+            wire.limits,
+        )
+        .map_err(de::Error::custom)?;
         if supplied_root_cause_ids != report.root_cause_ids {
             return Err(de::Error::custom(
                 "diagnostic report root_cause_ids do not match the finding cause graph",
@@ -1266,13 +1539,22 @@ impl<'de> Deserialize<'de> for DiagnosticReport {
 
 impl DiagnosticReport {
     /// Validates and canonically orders one current diagnostic report.
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
-        status: DiagnosticReportStatus,
+        operation: DiagnosticOperation,
+        status: ConnectionStatus,
         generated_at: UtcTimestamp,
+        connection: Option<DiagnosticConnectionContext>,
+        mut checks: Vec<ConnectionCheck>,
         mut findings: Vec<DiagnosticFinding>,
+        mut actions: Vec<DiagnosticReportAction>,
+        operation_details: Option<JsonObject>,
         mut limits: Vec<String>,
     ) -> Result<Self, DiagnosticError> {
         validate_timestamp("diagnostic report generated_at", &generated_at)?;
+        if checks.len() > 64 {
+            return Err(invalid("diagnostic report has more than 64 checks"));
+        }
         if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
             return Err(invalid(format!(
                 "diagnostic report has more than {MAX_DIAGNOSTIC_FINDINGS} findings"
@@ -1284,6 +1566,10 @@ impl DiagnosticReport {
             )));
         }
 
+        checks.sort_by_key(ConnectionCheck::id);
+        if checks.windows(2).any(|pair| pair[0].id() == pair[1].id()) {
+            return Err(invalid("diagnostic report contains duplicate check ids"));
+        }
         findings.sort_by(|left, right| left.id.cmp(&right.id));
         if findings.windows(2).any(|pair| pair[0].id == pair[1].id) {
             return Err(invalid("diagnostic report contains duplicate finding ids"));
@@ -1301,18 +1587,49 @@ impl DiagnosticReport {
         }
 
         validate_cause_graph(&findings)?;
-        let selected = findings
+        let selected = checks
             .iter()
-            .map(|finding| finding.id.clone())
+            .filter(|check| {
+                matches!(
+                    check.status(),
+                    ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+                )
+            })
+            .flat_map(|check| check.cause_finding_ids().iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect::<Vec<_>>();
-        let root_cause_ids =
-            diagnostic_root_cause_ids(&findings, &selected, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH)?;
+        let root_cause_ids = if selected.is_empty() {
+            Vec::new()
+        } else {
+            diagnostic_root_cause_ids(&findings, &selected, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH)?
+        };
+        actions.sort_by(|left, right| left.code.cmp(&right.code));
+        if actions.windows(2).any(|pair| pair[0].code == pair[1].code) {
+            return Err(invalid("diagnostic report contains duplicate action codes"));
+        }
+        let root_set = root_cause_ids.iter().collect::<BTreeSet<_>>();
+        if actions.iter().any(|action| {
+            action
+                .root_cause_ids
+                .iter()
+                .any(|finding_id| !root_set.contains(finding_id))
+        }) {
+            return Err(invalid(
+                "diagnostic report action references a non-root finding",
+            ));
+        }
         let report = Self {
             schema_version: DIAGNOSTIC_REPORT_SCHEMA_VERSION,
+            operation,
             status,
             generated_at,
+            connection,
+            checks,
             findings,
             root_cause_ids,
+            actions,
+            operation_details,
             limits,
         };
         let size = serde_json::to_vec(&report)
@@ -1331,14 +1648,26 @@ impl DiagnosticReport {
         self.schema_version
     }
 
+    pub const fn operation(&self) -> DiagnosticOperation {
+        self.operation
+    }
+
     /// Returns the report status.
-    pub const fn status(&self) -> DiagnosticReportStatus {
+    pub const fn status(&self) -> ConnectionStatus {
         self.status
     }
 
     /// Returns the report generation timestamp.
     pub fn generated_at(&self) -> &UtcTimestamp {
         &self.generated_at
+    }
+
+    pub fn connection(&self) -> Option<&DiagnosticConnectionContext> {
+        self.connection.as_ref()
+    }
+
+    pub fn checks(&self) -> &[ConnectionCheck] {
+        &self.checks
     }
 
     /// Returns findings in canonical ID order.
@@ -1349,6 +1678,14 @@ impl DiagnosticReport {
     /// Returns explicitly identified independent root causes in canonical ID order.
     pub fn root_cause_ids(&self) -> &[DiagnosticFindingId] {
         &self.root_cause_ids
+    }
+
+    pub fn actions(&self) -> &[DiagnosticReportAction] {
+        &self.actions
+    }
+
+    pub fn operation_details(&self) -> Option<&JsonObject> {
+        self.operation_details.as_ref()
     }
 
     /// Returns bounded report limitations in canonical order.
@@ -1628,6 +1965,7 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::*;
+    use crate::ConnectionCheckKind;
 
     fn timestamp() -> UtcTimestamp {
         UtcTimestamp::parse("2026-07-21T01:02:03Z").unwrap()
@@ -1662,6 +2000,43 @@ mod tests {
         .unwrap()
     }
 
+    fn failed_check(cause_finding_ids: Vec<DiagnosticFindingId>) -> ConnectionCheck {
+        ConnectionCheck::try_new(
+            ConnectionCheckKind::HostSession,
+            ConnectionCheckStatus::Failed,
+            cause_finding_ids,
+            Some("test_check_failed".to_owned()),
+            "Test check failed",
+            None,
+            Some(timestamp()),
+        )
+        .unwrap()
+    }
+
+    fn report_with_findings(
+        status: ConnectionStatus,
+        findings: Vec<DiagnosticFinding>,
+        selected_ids: Vec<DiagnosticFindingId>,
+        limits: Vec<String>,
+    ) -> Result<DiagnosticReport, DiagnosticError> {
+        let checks = if selected_ids.is_empty() {
+            Vec::new()
+        } else {
+            vec![failed_check(selected_ids)]
+        };
+        DiagnosticReport::try_new(
+            DiagnosticOperation::Verify,
+            status,
+            timestamp(),
+            None,
+            checks,
+            findings,
+            Vec::new(),
+            None,
+            limits,
+        )
+    }
+
     #[test]
     fn stable_namespaced_codes_are_strictly_validated() {
         for valid in [
@@ -1685,17 +2060,23 @@ mod tests {
 
     #[test]
     fn serialization_is_deterministic_across_input_order() {
-        let first = DiagnosticReport::try_new(
-            DiagnosticReportStatus::Failed,
-            timestamp(),
+        let first = report_with_findings(
+            ConnectionStatus::Failed,
             vec![finding("finding.z"), finding("finding.a")],
+            vec![
+                DiagnosticFindingId::parse("finding.z").unwrap(),
+                DiagnosticFindingId::parse("finding.a").unwrap(),
+            ],
             vec!["second limit".to_owned(), "first limit".to_owned()],
         )
         .unwrap();
-        let second = DiagnosticReport::try_new(
-            DiagnosticReportStatus::Failed,
-            timestamp(),
+        let second = report_with_findings(
+            ConnectionStatus::Failed,
             vec![finding("finding.a"), finding("finding.z")],
+            vec![
+                DiagnosticFindingId::parse("finding.a").unwrap(),
+                DiagnosticFindingId::parse("finding.z").unwrap(),
+            ],
             vec!["first limit".to_owned(), "second limit".to_owned()],
         )
         .unwrap();
@@ -1828,10 +2209,10 @@ mod tests {
                 DiagnosticFindingId::parse("finding.missing").unwrap(),
             )])
             .unwrap();
-        assert!(DiagnosticReport::try_new(
-            DiagnosticReportStatus::Failed,
-            timestamp(),
+        assert!(report_with_findings(
+            ConnectionStatus::Failed,
             vec![missing],
+            vec![DiagnosticFindingId::parse("finding.child").unwrap()],
             Vec::new(),
         )
         .unwrap_err()
@@ -1853,10 +2234,10 @@ mod tests {
                 DiagnosticFindingId::parse("finding.left").unwrap(),
             )])
             .unwrap();
-        assert!(DiagnosticReport::try_new(
-            DiagnosticReportStatus::Failed,
-            timestamp(),
+        assert!(report_with_findings(
+            ConnectionStatus::Failed,
             vec![left, right],
+            vec![DiagnosticFindingId::parse("finding.left").unwrap()],
             Vec::new(),
         )
         .unwrap_err()
@@ -1874,19 +2255,19 @@ mod tests {
                 DiagnosticCause::new(second_id.clone()),
             ])
             .unwrap();
-        let report = DiagnosticReport::try_new(
-            DiagnosticReportStatus::Incomplete,
-            timestamp(),
+        let report = report_with_findings(
+            ConnectionStatus::Failed,
             vec![
                 finding(first_id.as_str()),
                 finding(second_id.as_str()),
                 symptom,
             ],
+            vec![DiagnosticFindingId::parse("finding.check").unwrap()],
             vec!["one auxiliary observation was unavailable".to_owned()],
         )
         .unwrap();
         assert_eq!(report.root_cause_ids(), &[first_id, second_id]);
-        assert_eq!(report.status(), DiagnosticReportStatus::Incomplete);
+        assert_eq!(report.status(), ConnectionStatus::Failed);
     }
 
     #[test]
@@ -1982,9 +2363,9 @@ mod tests {
 
     #[test]
     fn deserialization_accepts_only_the_current_report_schema() {
-        let report = DiagnosticReport::try_new(
-            DiagnosticReportStatus::Complete,
-            timestamp(),
+        let report = report_with_findings(
+            ConnectionStatus::Complete,
+            Vec::new(),
             Vec::new(),
             Vec::new(),
         )
@@ -1995,8 +2376,44 @@ mod tests {
             report
         );
         let mut unsupported = value;
-        unsupported["schema_version"] = json!(2);
+        unsupported["schema_version"] = json!(1);
         assert!(serde_json::from_value::<DiagnosticReport>(unsupported).is_err());
+
+        let context = DiagnosticConnectionContext::try_new(
+            "/runtime",
+            "connection_1",
+            "codex",
+            "user",
+            "record",
+            "workflow",
+            None,
+            None,
+            None,
+            vec![
+                AgentRuntimeSessionId::new("runtime_session_b"),
+                AgentRuntimeSessionId::new("runtime_session_a"),
+            ],
+        )
+        .unwrap();
+        let mut noncanonical_context = serde_json::to_value(context).unwrap();
+        noncanonical_context["runtime_session_ids"] =
+            json!(["runtime_session_b", "runtime_session_a"]);
+        assert!(
+            serde_json::from_value::<DiagnosticConnectionContext>(noncanonical_context).is_err()
+        );
+
+        let action = DiagnosticReportAction::try_new(
+            DiagnosticCode::parse("action.connection.repair").unwrap(),
+            "Repair both independent roots",
+            vec![
+                DiagnosticFindingId::parse("finding.root_b").unwrap(),
+                DiagnosticFindingId::parse("finding.root_a").unwrap(),
+            ],
+        )
+        .unwrap();
+        let mut noncanonical_action = serde_json::to_value(action).unwrap();
+        noncanonical_action["root_cause_ids"] = json!(["finding.root_b", "finding.root_a"]);
+        assert!(serde_json::from_value::<DiagnosticReportAction>(noncanonical_action).is_err());
     }
 
     #[test]

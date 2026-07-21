@@ -151,16 +151,26 @@ pub struct DiagnosticsArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum DiagnosticsCommand {
-    /// Read one bounded diagnostic session, or the latest session.
+    /// Show one structured diagnostic finding and its bounded cause chain.
+    Show(DiagnosticsShowArgs),
+    /// Show one authoritative MCP runtime session and its findings.
     Session(DiagnosticsSessionArgs),
     /// Read workflow metrics for one registered Product Repository.
     WorkflowMetrics(DiagnosticsWorkflowMetricsArgs),
 }
 
 #[derive(Debug, Args)]
+pub struct DiagnosticsShowArgs {
+    #[arg(value_parser = nonempty_string)]
+    pub finding_id: String,
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct DiagnosticsSessionArgs {
-    #[arg(long, value_parser = nonempty_string)]
-    pub session: Option<String>,
+    #[arg(value_parser = nonempty_string)]
+    pub runtime_session_id: String,
     #[arg(long)]
     pub json: bool,
 }

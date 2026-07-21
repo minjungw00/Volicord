@@ -93,6 +93,8 @@ impl ConnectionCheckStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionCheckKind {
+    /// One requested structured diagnostic finding was looked up.
+    DiagnosticLookup,
     /// No completed verification report exists yet.
     VerificationNotRun,
     /// Managed host configuration matches its canonical plan.
@@ -123,12 +125,15 @@ pub enum ConnectionCheckKind {
     ModeTransition,
     /// Connection membership or removal was planned or applied.
     ConnectionRemoval,
+    /// One authoritative MCP runtime session was looked up.
+    RuntimeSessionLookup,
 }
 
 impl ConnectionCheckKind {
     /// Every current check kind in canonical serialized-spelling order.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 17] = [
         Self::ConnectionRemoval,
+        Self::DiagnosticLookup,
         Self::GuardFiles,
         Self::GuardHookExecution,
         Self::GuardObservation,
@@ -140,6 +145,7 @@ impl ConnectionCheckKind {
         Self::ProcessStartup,
         Self::ProjectTrust,
         Self::RequiredTools,
+        Self::RuntimeSessionLookup,
         Self::SetupPlan,
         Self::ToolRoundTrip,
         Self::VerificationNotRun,
@@ -148,6 +154,7 @@ impl ConnectionCheckKind {
     /// Returns the stable serialized spelling.
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::DiagnosticLookup => "diagnostic_lookup",
             Self::VerificationNotRun => "verification_not_run",
             Self::ManagedConfig => "managed_config",
             Self::HostExecutable => "host_executable",
@@ -163,6 +170,7 @@ impl ConnectionCheckKind {
             Self::SetupPlan => "setup_plan",
             Self::ModeTransition => "mode_transition",
             Self::ConnectionRemoval => "connection_removal",
+            Self::RuntimeSessionLookup => "runtime_session_lookup",
         }
     }
 
@@ -176,13 +184,15 @@ impl ConnectionCheckKind {
             Self::GuardHookExecution => &[Self::GuardFiles],
             Self::GuardObservation => &[Self::GuardHookExecution],
             Self::VerificationNotRun
+            | Self::DiagnosticLookup
             | Self::ManagedConfig
             | Self::HostExecutable
             | Self::ProjectTrust
             | Self::GuardFiles
             | Self::SetupPlan
             | Self::ModeTransition
-            | Self::ConnectionRemoval => &[],
+            | Self::ConnectionRemoval
+            | Self::RuntimeSessionLookup => &[],
         }
     }
 }
@@ -1073,6 +1083,7 @@ mod tests {
     fn every_current_check_kind_round_trips_exact_json() {
         let expected = [
             "connection_removal",
+            "diagnostic_lookup",
             "guard_files",
             "guard_hook_execution",
             "guard_observation",
@@ -1084,6 +1095,7 @@ mod tests {
             "process_startup",
             "project_trust",
             "required_tools",
+            "runtime_session_lookup",
             "setup_plan",
             "tool_round_trip",
             "verification_not_run",

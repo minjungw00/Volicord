@@ -410,6 +410,18 @@ pub struct OperationalDiagnosticFacts {
 
 impl DiagnosticFactSource for OperationalDiagnosticFacts {}
 
+#[derive(Serialize)]
+struct ProjectedOperationalDiagnosticFacts<'a> {
+    summary: &'static str,
+    observed_state: Option<&'static str>,
+    artifact_kind: &'a Option<String>,
+    guard_phase: &'a Option<String>,
+    expected_revision: &'a Option<String>,
+    observed_revision: &'a Option<String>,
+}
+
+impl DiagnosticFactSource for ProjectedOperationalDiagnosticFacts<'_> {}
+
 /// Creates a shared finding without reading any display summary or error text.
 pub fn operational_diagnostic_finding(
     diagnostic: OperationalDiagnostic,
@@ -434,7 +446,14 @@ pub fn operational_diagnostic_finding(
         diagnostic.severity(),
         DiagnosticSource::parse("administrative_cli")?,
         DiagnosticSubject::try_new(subject_kind, subject_reference)?,
-        DiagnosticFacts::project(facts)?,
+        DiagnosticFacts::project(&ProjectedOperationalDiagnosticFacts {
+            summary: diagnostic.summary(),
+            observed_state: facts.observed_state,
+            artifact_kind: &facts.artifact_kind,
+            guard_phase: &facts.guard_phase,
+            expected_revision: &facts.expected_revision,
+            observed_revision: &facts.observed_revision,
+        })?,
         observed_at,
     )?
     .with_actions(actions)

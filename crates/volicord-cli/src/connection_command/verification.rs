@@ -13,7 +13,8 @@ use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
     diagnostic_findings::{
-        diagnostic_finding, diagnostic_root_cause_ids, insert_diagnostic_finding,
+        current_diagnostic_findings_for_connection, diagnostic_cause_chain, diagnostic_finding,
+        diagnostic_root_cause_ids, insert_diagnostic_finding,
     },
     guards::{guard_observation_summary, list_guard_installations},
     operational_sessions::{
@@ -26,10 +27,11 @@ use volicord_types::ConnectionStatus;
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
     ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
-    ConnectionVerificationReport, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource,
-    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, GuardManagedArtifact, IntegrationRevision, UtcTimestamp,
-    LIST_PROJECTS_TOOL_NAME, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    ConnectionVerificationReport, DiagnosticAction, DiagnosticCode, DiagnosticDomain,
+    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
+    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
+    IntegrationRevision, UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
+    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
 };
 
 use crate::guard_integration::audit::{
@@ -176,6 +178,8 @@ impl McpPreflightDiagnostics {
 #[derive(Debug, Clone)]
 pub(in crate::connection_command) struct VerificationReport {
     pub(in crate::connection_command) report: ConnectionVerificationReport,
+    pub(in crate::connection_command) findings: Vec<DiagnosticFinding>,
+    pub(in crate::connection_command) integration_revision: IntegrationRevision,
 }
 
 pub(in crate::connection_command) fn verify_connection(
@@ -222,7 +226,131 @@ pub(in crate::connection_command) fn verify_connection(
     persist_process_diagnostics(runtime_home, connection, &mut preflight, &mut handshake)?;
     let report =
         canonical_verification_report(runtime_home, connection, &host, &preflight, &handshake)?;
-    Ok(VerificationReport { report })
+    let (findings, integration_revision) =
+        diagnostic_projection_for_connection(runtime_home, connection, &report)?;
+    Ok(VerificationReport {
+        report,
+        findings,
+        integration_revision,
+    })
+}
+
+pub(in crate::connection_command) fn diagnostic_projection_for_connection(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    report: &ConnectionVerificationReport,
+) -> Result<(Vec<DiagnosticFinding>, IntegrationRevision), ConnectionCommandError> {
+    let current = current_diagnostic_findings_for_connection(
+        runtime_home,
+        &connection.connection_internal_id,
+    )?;
+    let mut findings = BTreeMap::new();
+    for finding in current {
+        let chain = diagnostic_cause_chain(
+            runtime_home,
+            finding.id(),
+            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+        )?;
+        for entry in chain.entries {
+            findings.insert(entry.finding.id().clone(), entry.finding);
+            if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
+                return Err(ConnectionCommandError::runtime(
+                    "diagnostic projection exceeded the shared finding bound",
+                ));
+            }
+        }
+    }
+    let selected = report
+        .checks()
+        .iter()
+        .flat_map(|check| check.cause_finding_ids().iter().cloned())
+        .collect::<BTreeSet<_>>();
+    for finding_id in selected {
+        if findings.contains_key(&finding_id) {
+            continue;
+        }
+        if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
+            let chain = diagnostic_cause_chain(
+                runtime_home,
+                &finding_id,
+                MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+            )?;
+            for entry in chain.entries {
+                findings.insert(entry.finding.id().clone(), entry.finding);
+            }
+        } else {
+            let finding = missing_diagnostic_record_finding(
+                finding_id.clone(),
+                connection,
+                connection_integration_revision(connection)?,
+            )?;
+            findings.insert(finding_id, finding);
+        }
+        if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
+            return Err(ConnectionCommandError::runtime(
+                "diagnostic projection exceeded the shared finding bound",
+            ));
+        }
+    }
+    Ok((
+        findings.into_values().collect(),
+        connection_integration_revision(connection)?,
+    ))
+}
+
+#[derive(Serialize)]
+struct MissingDiagnosticRecordFacts<'a> {
+    summary: &'static str,
+    observation_state: &'static str,
+    finding_id: &'a str,
+    expected: &'static str,
+    actual: &'static str,
+}
+
+impl DiagnosticFactSource for MissingDiagnosticRecordFacts<'_> {}
+
+fn missing_diagnostic_record_finding(
+    finding_id: DiagnosticFindingId,
+    connection: &AgentConnectionRecord,
+    integration_revision: IntegrationRevision,
+) -> Result<DiagnosticFinding, ConnectionCommandError> {
+    let facts = DiagnosticFacts::project(&MissingDiagnosticRecordFacts {
+        summary: "the verification check references a diagnostic finding that is not persisted",
+        observation_state: "absent",
+        finding_id: finding_id.as_str(),
+        expected: "persisted diagnostic finding",
+        actual: "absent",
+    })
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    DiagnosticFinding::try_new(
+        finding_id,
+        DiagnosticCode::parse("diagnostics.finding_record_missing")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticDomain::parse("diagnostics")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticStage::parse("projection")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticSeverity::Error,
+        DiagnosticSource::parse("connection_diagnostic_projection")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticSubject::try_new("finding", "persisted_record")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        facts,
+        current_timestamp(),
+    )
+    .and_then(|finding| {
+        finding.with_actions(vec![DiagnosticAction::try_new(
+            DiagnosticCode::parse("action.diagnostics.rebuild_current_observations")?,
+            "Run connection verification to rebuild current diagnostic observations",
+        )?])
+    })
+    .and_then(|finding| {
+        finding.with_connection_id(AgentConnectionId::new(
+            connection.connection_internal_id.clone(),
+        ))
+    })
+    .map(|finding| finding.with_integration_revision(integration_revision))
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
 
 fn persist_process_diagnostics(

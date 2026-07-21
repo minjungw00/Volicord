@@ -205,9 +205,15 @@ increments the integration generation.
 `volicord init` and the selected-Connection `add`, `status`, `verify`, `mode`,
 and `remove` commands use one output selection. With neither output flag, they
 render concise human prose: an operation-aware result, selected repository and
-effective mode, `ready`/`blocked`/`waiting`/`failed` check counts, current problems before
-waiting observations, and the current next actions. The human
-labels are presentation wording; they do not add report or check statuses.
+effective mode, `ready`/`blocked`/`waiting`/`failed` check counts, current
+problems before waiting observations, and current next actions. For a failed
+report, each problem is an independent root finding and includes its namespaced
+code, one bounded typed summary, the most useful safe actual-versus-expected
+facts, affected blocked checks, and the finding or runtime-session identifier.
+The `Next` section contains one deduplicated namespaced remediation action per
+root. It does not emit a generic inspection action when a root finding already
+contains a typed action. Human labels are presentation wording; they do not add
+report or check statuses.
 
 The canonical check statuses are `passed`, `pending`, `failed`, `blocked`, and
 `not_applicable`. They mean, respectively: completed successfully; waiting for
@@ -228,9 +234,10 @@ typed `PlannedConnectionChangeKind`; it does not infer ownership from target
 paths.
 
 Blocked checks contribute to the blocked count but do not produce a waiting
-observation or downstream observation action. The `Problems` and `Next`
-sections show the failed root check and its deduplicated repair action. Counts
-always include all four concise categories, including zero counts.
+observation or downstream observation action. Root selection and action
+deduplication use finding IDs, cause edges, and typed action codes only; the
+renderer never classifies summary prose. Counts always include all four
+concise categories, including zero counts.
 
 Concise diagnostic guidance is operation-aware. A `status` report with pending,
 failed, or blocked checks can rerun the same read-only status query with
@@ -276,50 +283,83 @@ unknown coordinates into a placeholder command.
 
 `--verbose` renders a complete human diagnostic view. It starts with the same
 operation-aware headline as concise output, then uses the applicable
-`Connection`, `Summary`, `Checks`, `Actions`, `Result`, `Planned changes`, and
-`Assurance` sections in that order. It renders every canonical check, action,
-typed result fact, planned operation and target, and assurance limit without a
-raw JSON detail blob. Known detail fields are rendered structurally; unknown or
-extended fields and values that do not match a focused renderer's expected type
-appear under `Additional details`. Large successful collections may be
-summarized by count for human diagnosis, and other bounded collections use an
-explicit remainder count when not every item is shown. The prose does not
-silently discard nonempty diagnostic fields. Its summary counts `passed`,
-`blocked`, `pending`, `failed`, and `not applicable`; each check shows its
-status label, dependency IDs, and root-finding IDs when present. In particular, a successful MCP
-tool inventory is not repeated in prose. Each action renders only its semantic
-kind and instruction. The verbose action section does not render or reconstruct
-an executable command.
+`Connection`, `Summary`, `Checks`, `Findings`, `Actions`, `Result`, `Planned
+changes`, and `Report limits` sections in that order. It renders every check
+and status, every root and bounded cause-chain finding, every safe typed fact,
+requested, selected, and negotiated protocol revisions, actual MCP peer
+`clientInfo`, the PATH executable probe as a separate observation, bounded
+process exit and stderr facts, Runtime Home and Connection correlation,
+runtime-session ID, integration revision, timestamps, dependency and
+blocked-by relationships, recommended actions, and report limits. Known detail
+fields are rendered structurally; unknown or extended fields and values that do
+not match a focused renderer's expected type appear under `Additional details`.
+The renderer never reconstructs a cause from a summary. Redacted fact fields
+remain redacted.
 
-`--json` writes the complete serialized `ConnectionCommandReport` and remains
-the exact, lossless machine representation. Full tool inventories and raw
-nested diagnostic facts belong there. `--verbose` and `--json` are mutually
-exclusive usage options. `volicord connection list` retains its separate
-compact collection projection and does not accept `--verbose`.
+`--json` writes exactly one current `DiagnosticReport` schema and is the
+lossless machine representation. The only current schema version is `2`; there
+is no alternate legacy connection-report JSON branch. Consumers use the
+structured checks, findings, cause IDs, action codes, and fact objects rather
+than parsing human summaries. `--verbose` and `--json` are mutually exclusive.
+`volicord connection list` retains its separate compact collection projection
+and does not accept `--verbose`.
 
-A representative concise verification result is:
+The schema-2 top-level shape is:
+
+```yaml
+DiagnosticReport:
+  schema_version: 2
+  operation: init | add | status | verify | mode | remove | diagnostics_show | diagnostics_session
+  status: complete | action_required | failed
+  generated_at: timestamp
+  connection: DiagnosticConnectionContext | null
+  checks: ConnectionCheck[]
+  findings: DiagnosticFinding[]
+  root_cause_ids: DiagnosticFindingId[]
+  actions: DiagnosticReportAction[]
+  operation_details: object
+  limits: string[]
+```
+
+`connection` carries Runtime Home, selected Connection coordinates, optional
+repository and configuration target, current integration revision, and bounded
+runtime-session IDs. Each check carries its status, canonical dependencies,
+typed details, observation time, and cause-finding IDs. Each finding carries
+safe typed facts, cause IDs, actions, correlations, redaction metadata, and
+truncation metadata. A missing observation is represented by an absent field or
+an explicit `observation_state=absent` owner fact; an observed empty collection
+is `[]`; a failed observation is a `failed` check with a finding; and a blocked
+observation is a `blocked` check with its root IDs. These states are not
+collapsed into the same empty value.
+
+A representative concise protocol-mismatch result is:
 
 ```text
-Verification completed: 5 ready, 4 waiting.
+Verification completed: 2 blocked, 1 failed.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 5 ready, 0 blocked, 4 waiting, 0 failed
+Checks: 0 ready, 2 blocked, 0 waiting, 1 failed
 
-Waiting
-  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
-  Guard hook activity: pre_tool, post_tool, prompt_capture
+Problems
+  mcp.protocol.unsupported_revision: the requested MCP protocol revision is unsupported
+    Actual MCP client: codex 0.42.0
+    Requested protocol: 2024-11-05
+    Supported protocols: 2025-06-18, 2025-11-25
+    Blocked checks: required_tools, tool_round_trip
+    Runtime session: runtime_session_01
+    Finding: finding.runtime_session_01.protocol
 
 Next
-  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
+  action.mcp.use_supported_protocol_revision: Configure the client to request a production-supported protocol revision
 
 Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /home/user/.volicord --verbose` for detailed diagnostics.
 ```
 
-The verbose view presents the same typed report as structured diagnostics:
+The verbose view presents the same root ID and typed observations:
 
 ```text
-Verification completed: 1 ready, 1 waiting.
+Verification completed: 2 blocked, 1 failed.
 
 Connection
   ID: connection_1
@@ -330,30 +370,55 @@ Connection
   Repository: /workspace/product
   Config target: /home/user/.codex/config.toml
   Runtime home: /home/user/.volicord
+  Integration revision: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  Runtime sessions: runtime_session_01
 
 Summary
-  Status: action_required
-  Checks: 1 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable
+  Status: failed
+  Checks: 0 passed, 2 blocked, 0 pending, 1 failed, 0 not applicable
 
 Checks
-  [wait] Codex managed session
-    Managed host connection use has not been observed
-    Code: host_session_not_observed
+  [fail] Codex managed session
+    MCP initialize selected no supported protocol
+    Code: host_session_protocol_mismatch
     Depends on: process_startup
-    Current revision: sha256:current-revision
-    Initialize: not observed
+    Root findings: finding.runtime_session_01.protocol
+    PATH executable: /opt/codex
+    PATH executable version: 0.42.0
+    Actual MCP peer: codex
+    Actual MCP peer version: 0.42.0
+    Requested protocol: 2024-11-05
+    Selected protocol: 2025-11-25
+    Initialize: failed
 
-  [pass] Managed Codex configuration
-    Managed Codex configuration matches the canonical entry
-    Target: /home/user/.codex/config.toml
-    State: match
-    Diagnostic code: managed_config_matches
+  [blocked] Codex required tools
+    Depends on: host_session
+    Blocked by: host_session
+    Root findings: finding.runtime_session_01.protocol
+
+  [blocked] Read-only tool round trip
+    Depends on: required_tools
+    Blocked by: required_tools
+    Root findings: finding.runtime_session_01.protocol
+
+Findings
+  [root] finding.runtime_session_01.protocol
+    Code: mcp.protocol.unsupported_revision
+    Runtime session: runtime_session_01
+    Bounded typed facts
+      Attempted client name: codex
+      Attempted client version: 0.42.0
+      Requested revision: 2024-11-05
+      Production supported revisions: 2025-06-18, 2025-11-25
 
 Actions
-  observe_codex
-    Restart or reload Codex and use the connection.
+  action.mcp.use_supported_protocol_revision
+    Configure the client to request a production-supported protocol revision
+    Root findings: finding.runtime_session_01.protocol
 
-Assurance
+Report limits
+  Diagnostic cause traversal is bounded to 32 edges and 128 findings.
+  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.
   Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.
 ```
 
@@ -361,8 +426,8 @@ Assurance
 
 `volicord connection list` is a read-only collection inventory. It has no
 single selected Connection or single operational result, so it does not use
-`ConnectionCommandReport`. Its JSON document has exactly these top-level
-members:
+the selected-Connection `DiagnosticReport` projection. Its JSON document has
+exactly these top-level members:
 
 ```yaml
 ConnectionListReport:
@@ -486,29 +551,16 @@ is distinct from complete Agent Connection removal.
 `complete` means every required check in this command report passed. Core
 invocation authorization is evaluated separately for each managed MCP call.
 
-Every selected-Connection setup and lifecycle command serializes one
-`ConnectionCommandReport`. This includes `volicord init` and the `add`,
-`status`, `verify`, `mode`, and `remove` Connection commands:
+Every selected-Connection setup and lifecycle command serializes the one current
+schema-2 `DiagnosticReport` defined above. This includes `volicord init` and the
+`add`, `status`, `verify`, `mode`, and `remove` Connection commands.
+Operation-specific facts are nested under `operation_details`:
 
 ```yaml
-ConnectionCommandReport:
-  operation: init | add | status | verify | mode | remove
+operation_details:
   dry_run: bool
-  status: complete | action_required | failed
-  runtime_home: string
-  connection:
-    id: string
-    host: codex
-    scope: user | project
-    profile: record
-    mode: read_only | workflow
-    repository: string
-    config_target: string
-  checks: ConnectionCheck[]
-  actions: ConnectionAction[]
   result?: SetupResult | ModeTransitionResult | RemovalResult
   planned_changes?: PlannedConnectionChange[] # dry-run only
-  limits: string[]
 
 SetupResult:
   kind: setup
@@ -533,19 +585,14 @@ PlannedConnectionChange:
   kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | connection_membership
   operation: create | update | remove | register | rebind
   target: string
-
-ConnectionAction:
-  id: ConnectionActionKind
-  instruction: string
 ```
 
-The report contains one aggregate status and one check/action tree. The optional
-tagged `result` contains only operation-specific facts; it does not introduce a
-second status. Setup reports use `kind=setup`, mode reports use
-`kind=mode_transition`, and successful applied removal reports use
-`kind=removal`. Status and verify normally omit `result`, and removal dry runs
-omit an outcome that has not happened. JSON omits optional fields when they do
-not apply. `limits` carries the cooperative assurance limitation once.
+The report contains one aggregate status and one check/finding/action graph.
+The optional tagged `operation_details.result` contains only operation-specific
+facts; it does not introduce a second status. Setup results use `kind=setup`,
+mode results use `kind=mode_transition`, and successful applied removal results
+use `kind=removal`. Status and verify normally omit `result`, and removal dry
+runs omit an outcome that has not happened.
 
 `SetupResult.applied` separates setup mutation from operational verification.
 A successful init or add apply reports `applied=true` even when a later local
@@ -575,14 +622,13 @@ shown above. Concise human output groups counts by `kind`; verbose human output
 renders each entry as an indexed block with `Kind`, `Operation`, and `Target`
 labels.
 
-`checks` and `actions` use the canonical
-[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)
-member types and ordering. JSON and human output render the same typed command
-report. Every JSON action contains exactly `id` and `instruction`. Human output
-may group checks but does not recompute status or actions. Actions are semantic
-report facts; operation-aware executable follow-up guidance is generated
-separately from the current typed host, repository, Runtime Home, scope, and
-output-selection coordinates.
+`checks` use the canonical [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)
+member type and ordering. `findings`, `root_cause_ids`, and schema-2 `actions`
+use the shared failure-model contract. Every JSON report action contains
+exactly `code`, `summary`, and `root_cause_ids`. Human output may group pending
+checks but does not recompute causes or actions from prose. Operation-aware
+executable follow-up guidance is generated separately from the current typed
+host, repository, Runtime Home, scope, and output-selection coordinates.
 
 Mode no-op reports `changed=false`, equal previous/current modes and revisions,
 no rebound Guard Installation IDs, a passed `mode_transition` check, no action,
@@ -764,17 +810,30 @@ and response projection belong to [MCP Transport](mcp-transport.md).
 ## Diagnostics
 
 ```text
-volicord diagnostics session [--session SESSION_ID] [--json]
+volicord diagnostics show FINDING_ID [--json]
+volicord diagnostics session RUNTIME_SESSION_ID [--json]
 volicord diagnostics workflow-metrics --repo PATH --json
 ```
 
-Diagnostics output is bounded, non-authority operability data. JSON reports
-identify their local storage with `contract_id=volicord.sqlite.diagnostics`
-and the exact `canonical_schema_digest` derived from the current diagnostics
-SQL. They do not expose or dispatch on a numeric schema version. A diagnostics
-read does not create storage, open project authority state, advance state
-version, change evidence or assurance, change close readiness, or resolve a
-UserAction.
+`diagnostics show` reads one persisted finding and its bounded typed cause
+chain. `diagnostics session` reads one authoritative MCP runtime session and
+the bounded findings correlated with it. These lookups use the Registry Store
+APIs, do not scan unbounded history, and render the same schema-2
+`DiagnosticReport` as selected Connection JSON output. Without `--json`, they
+render a bounded human projection of the same checks, finding IDs, codes, safe
+facts, causes, actions, and limits. A missing finding or session is a failed
+report with `diagnostics.lookup.finding_missing` or
+`diagnostics.lookup.runtime_session_missing`,
+`observation_state=absent`, and `action.diagnostics.check_identifier`; it is not
+an ad hoc error string.
+
+`diagnostics workflow-metrics` remains a separate bounded non-authority
+operability report. Its JSON identifies local diagnostics storage with
+`contract_id=volicord.sqlite.diagnostics` and the exact
+`canonical_schema_digest` derived from the current diagnostics SQL; it does not
+use `DiagnosticReport.schema_version`. A diagnostics read does not create
+storage, advance project authority state, change evidence or assurance, change
+close readiness, or resolve a UserAction.
 
 Active Connection verification persists CLI-owned findings for managed
 configuration, Guard files and observations, repository trust, and revision
@@ -826,13 +885,18 @@ the CLI does not default, repair, or guess an answer.
 
 For selected Connection command reports, default concise prose and `--verbose`
 diagnostics are for humans and must not be parsed for automation. `--json`
-writes exactly one complete JSON document to stdout. The two flags conflict at
+writes exactly one schema-2 `DiagnosticReport` JSON document to stdout. The two flags conflict at
 usage parsing. `complete`, `action_required`, and every valid dry run exit `0`;
 a typed `failed` operational report exits `1`; usage errors exit `2`. A failed
 JSON operational report is the only stdout document and leaves stderr empty. A
 failed human operational report is rendered on stdout. Unexpected runtime or
 serialization errors use stderr and exit `1`. Exit selection uses the typed
 report status, never rendered text or reparsed JSON.
+
+The same operational-output rule applies to `diagnostics show` and
+`diagnostics session`: a found terminal failure or a typed missing lookup is a
+failed report on stdout, including in JSON mode. Workflow metrics retain their
+separate report and exit contract.
 
 <a id="noninteractive-approval-behavior"></a>
 ## Noninteractive Behavior

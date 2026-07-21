@@ -195,7 +195,12 @@ integration generation을 증가시키지 않습니다.
 `remove` 명령은 출력 선택 방식 하나를 공유합니다. 출력 플래그가 없으면 작업에 맞는
 결과, 선택한 저장소와 유효한 mode, `ready`/`blocked`/`waiting`/`failed` check 개수, 대기 관찰보다
 앞에 표시하는 현재 문제, 현재 다음 동작을 간결한 사람용 산문으로 보여 줍니다.
-이 사람용 라벨은 표시 문구이며 보고서나 check 상태를 추가하지 않습니다.
+실패 보고서의 각 문제는 독립 root finding이며 namespaced code, 한도가 있는 typed summary,
+가장 유용한 안전한 actual-versus-expected fact, 영향을 받은 blocked check, finding 또는
+runtime-session 식별자를 포함합니다. `Next` 구역은 root마다 중복 제거한 namespaced
+remediation action 하나를 표시합니다. Root finding에 typed action이 있으면 일반적인
+inspection action을 만들지 않습니다. 사람용 라벨은 표시 문구이며 보고서나 check 상태를
+추가하지 않습니다.
 
 정규 check 상태는 `passed`, `pending`, `failed`, `blocked`, `not_applicable`입니다. 각각
 성공적으로 완료됨, 실패한 prerequisite가 없는 상태에서 필요한 외부 관찰을 기다림, check
@@ -211,9 +216,9 @@ check가 pending일 때만 해당 활동을 포함합니다. 현재 pending인 �
 보여 줍니다. 렌더러는 정규 check나 action을 변경, 제거, 재정렬, 영속하지 않습니다.
 Dry run 산문은 typed `PlannedConnectionChangeKind`별로 계획 변경 수를 묶으며 target
 path에서 소유권을 추론하지 않습니다. Blocked check는 blocked 개수에는 포함하지만 대기
-관찰이나 downstream 관찰 action을 만들지 않습니다. `Problems`와 `Next` 구역은 실패한
-root check와 중복 제거된 repair action을 보여 줍니다. 간결한 개수 표시는 값이 0인 항목을
-포함해 네 범주를 항상 모두 표시합니다.
+관찰이나 downstream 관찰 action을 만들지 않습니다. Root 선택과 action 중복 제거는
+finding ID, cause edge, typed action code만 사용하며 렌더러는 summary 산문으로 분류하지
+않습니다. 간결한 개수 표시는 값이 0인 항목을 포함해 네 범주를 항상 모두 표시합니다.
 
 간결한 진단 안내는 작업에 따라 달라집니다. `status` 보고서에 pending, failed 또는 blocked check가
 있으면 같은 읽기 전용 상태 조회를 `--verbose`로 다시 실행할 수 있습니다. `verify`
@@ -255,47 +260,78 @@ For detailed current Connection diagnostics, run the verbose status command with
 
 `--verbose`는 사람이 진단하는 데 필요한 완전한 보기를 표시합니다. 간결한 출력과 같은
 작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Actions`,
-`Result`, `Planned changes`, `Assurance` 구역을 이 순서로 사용합니다. 모든 정규 check와
-action, typed result 사실, 계획 operation과 target, 보장 한계를 원시 JSON detail blob 없이
-표시합니다. 알고 있는 세부 필드는 구조화해서 표시하며, 집중 렌더러가 기대하는 타입과
-맞지 않는 값이나 알 수 없는 확장 필드는 `Additional details` 아래에 표시합니다. 사람이
-진단할 때 큰 성공 컬렉션은 개수로 요약할 수 있고, 그 밖의 제한된 컬렉션에서 모든 항목을
-표시하지 않을 때는 남은 개수를 명시합니다. 산문 출력은 비어 있지 않은 진단 필드를 조용히
-버리지 않습니다. Summary는 `passed`, `blocked`, `pending`, `failed`, `not applicable`
-개수를 표시하며, 각 check는 상태 라벨과 dependency ID, 있는 경우 root finding ID를
-표시합니다. 특히 성공한 MCP 도구 inventory 전체를 산문에 반복하지 않습니다.
-각 action은 의미를 나타내는 kind와 지시만 표시합니다. Verbose action 구역은 실행 가능한
-명령을 표시하거나 다시 구성하지 않습니다.
+`Findings`, `Actions`, `Result`, `Planned changes`, `Report limits` 구역을 이 순서로
+사용합니다. 모든 check와 상태, 모든 root와 한도가 있는 cause-chain finding, 모든 안전한
+typed fact, requested/selected/negotiated protocol revision, 실제 MCP peer `clientInfo`, 별도
+PATH executable probe, 한도가 있는 process exit와 stderr fact, Runtime Home과 Connection
+correlation, runtime-session ID, integration revision, timestamp, dependency와 blocked-by
+관계, 권장 action, report limit을 표시합니다. 알고 있는 세부 필드는 구조화해서 표시하며,
+집중 렌더러가 기대하는 타입과 맞지 않는 값이나 알 수 없는 확장 필드는 `Additional
+details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구성하지 않으며 가린 fact는
+계속 가립니다.
 
-`--json`은 완전한 직렬화 `ConnectionCommandReport`를 쓰며 정확하고 손실 없는 기계 판독
-표현으로 유지됩니다. 전체 도구 inventory와 원시 중첩 진단 사실은 JSON에서 확인합니다.
-`--verbose`와 `--json`은 함께 사용할 수 없는 사용법 옵션입니다.
+`--json`은 현재 `DiagnosticReport` schema 하나만 쓰며 정확하고 손실 없는 기계 판독
+표현입니다. 현재 schema version은 `2`뿐이며 예전 connection-report JSON 분기는 없습니다.
+Consumer는 사람용 summary를 parsing하지 않고 구조화된 check, finding, cause ID, action
+code, fact object를 사용합니다. `--verbose`와 `--json`은 함께 사용할 수 없는 사용법
+옵션입니다.
 `volicord connection list`는 별도의 간결한 컬렉션 projection을 유지하며
 `--verbose`를 받지 않습니다.
 
-대표적인 간결한 검증 결과는 다음과 같습니다.
+Schema 2의 최상위 형태는 다음과 같습니다.
+
+```yaml
+DiagnosticReport:
+  schema_version: 2
+  operation: init | add | status | verify | mode | remove | diagnostics_show | diagnostics_session
+  status: complete | action_required | failed
+  generated_at: timestamp
+  connection: DiagnosticConnectionContext | null
+  checks: ConnectionCheck[]
+  findings: DiagnosticFinding[]
+  root_cause_ids: DiagnosticFindingId[]
+  actions: DiagnosticReportAction[]
+  operation_details: object
+  limits: string[]
+```
+
+`connection`에는 Runtime Home, 선택한 Connection 좌표, 선택적인 repository와 config
+target, 현재 integration revision, 한도가 있는 runtime-session ID가 들어갑니다. 각
+check에는 상태, 정규 dependency, typed detail, 관찰 시각, cause-finding ID가 들어갑니다.
+각 finding에는 안전한 typed fact, cause ID, action, correlation, redaction metadata,
+truncation metadata가 들어갑니다. 관찰 부재는 필드 부재 또는 명시적인 담당자 fact
+`observation_state=absent`, 관찰된 빈 collection은 `[]`, 관찰 실패는 finding이 있는
+`failed` check, 차단된 관찰은 root ID가 있는 `blocked` check로 나타냅니다. 이 상태들을
+같은 빈 값으로 합치지 않습니다.
+
+대표적인 간결한 protocol mismatch 결과는 다음과 같습니다.
 
 ```text
-Verification completed: 5 ready, 4 waiting.
+Verification completed: 2 blocked, 1 failed.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 5 ready, 0 blocked, 4 waiting, 0 failed
+Checks: 0 ready, 2 blocked, 0 waiting, 1 failed
 
-Waiting
-  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
-  Guard hook activity: pre_tool, post_tool, prompt_capture
+Problems
+  mcp.protocol.unsupported_revision: the requested MCP protocol revision is unsupported
+    Actual MCP client: codex 0.42.0
+    Requested protocol: 2024-11-05
+    Supported protocols: 2025-06-18, 2025-11-25
+    Blocked checks: required_tools, tool_round_trip
+    Runtime session: runtime_session_01
+    Finding: finding.runtime_session_01.protocol
 
 Next
-  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
+  action.mcp.use_supported_protocol_revision: Configure the client to request a production-supported protocol revision
 
 Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /home/user/.volicord --verbose` for detailed diagnostics.
 ```
 
-Verbose 보기는 같은 typed 보고서를 구조화된 진단으로 표시합니다.
+Verbose 보기는 같은 root ID와 typed 관찰을 표시합니다.
 
 ```text
-Verification completed: 1 ready, 1 waiting.
+Verification completed: 2 blocked, 1 failed.
 
 Connection
   ID: connection_1
@@ -306,38 +342,63 @@ Connection
   Repository: /workspace/product
   Config target: /home/user/.codex/config.toml
   Runtime home: /home/user/.volicord
+  Integration revision: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  Runtime sessions: runtime_session_01
 
 Summary
-  Status: action_required
-  Checks: 1 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable
+  Status: failed
+  Checks: 0 passed, 2 blocked, 0 pending, 1 failed, 0 not applicable
 
 Checks
-  [wait] Codex managed session
-    Managed host connection use has not been observed
-    Code: host_session_not_observed
+  [fail] Codex managed session
+    MCP initialize selected no supported protocol
+    Code: host_session_protocol_mismatch
     Depends on: process_startup
-    Current revision: sha256:current-revision
-    Initialize: not observed
+    Root findings: finding.runtime_session_01.protocol
+    PATH executable: /opt/codex
+    PATH executable version: 0.42.0
+    Actual MCP peer: codex
+    Actual MCP peer version: 0.42.0
+    Requested protocol: 2024-11-05
+    Selected protocol: 2025-11-25
+    Initialize: failed
 
-  [pass] Managed Codex configuration
-    Managed Codex configuration matches the canonical entry
-    Target: /home/user/.codex/config.toml
-    State: match
-    Diagnostic code: managed_config_matches
+  [blocked] Codex required tools
+    Depends on: host_session
+    Blocked by: host_session
+    Root findings: finding.runtime_session_01.protocol
+
+  [blocked] Read-only tool round trip
+    Depends on: required_tools
+    Blocked by: required_tools
+    Root findings: finding.runtime_session_01.protocol
+
+Findings
+  [root] finding.runtime_session_01.protocol
+    Code: mcp.protocol.unsupported_revision
+    Runtime session: runtime_session_01
+    Bounded typed facts
+      Attempted client name: codex
+      Attempted client version: 0.42.0
+      Requested revision: 2024-11-05
+      Production supported revisions: 2025-06-18, 2025-11-25
 
 Actions
-  observe_codex
-    Restart or reload Codex and use the connection.
+  action.mcp.use_supported_protocol_revision
+    Configure the client to request a production-supported protocol revision
+    Root findings: finding.runtime_session_01.protocol
 
-Assurance
+Report limits
+  Diagnostic cause traversal is bounded to 32 edges and 128 findings.
+  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.
   Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.
 ```
 
 ### Connection 목록 투영
 
 `volicord connection list`는 읽기 전용 컬렉션 목록입니다. 선택한 Connection
-하나나 운영 결과 하나를 다루지 않으므로 `ConnectionCommandReport`를 사용하지 않습니다.
-JSON 문서의 최상위 구성원은 정확히 다음과 같습니다.
+하나나 운영 결과 하나를 다루지 않으므로 선택한 Connection용 `DiagnosticReport`
+projection을 사용하지 않습니다. JSON 문서의 최상위 구성원은 정확히 다음과 같습니다.
 
 ```yaml
 ConnectionListReport:
@@ -451,29 +512,16 @@ membership만 제거한 경우와 Agent Connection을 완전히 제거한 경우
 `complete`는 해당 명령 보고서의 모든 필수 check가 통과했음을 뜻합니다. Core 호출
 권한은 각 관리 MCP 호출에서 별도로 평가합니다.
 
-선택한 Connection의 설정 및 생명주기 명령은 모두
-`ConnectionCommandReport` 하나를 직렬화합니다. 여기에는 `volicord init`과
-Connection의 `add`, `status`, `verify`, `mode`, `remove` 명령이 포함됩니다.
+선택한 Connection의 설정 및 생명주기 명령은 모두 위에서 정의한 현재 schema 2
+`DiagnosticReport` 하나를 직렬화합니다. 여기에는 `volicord init`과 Connection의
+`add`, `status`, `verify`, `mode`, `remove` 명령이 포함됩니다. Operation별 fact는
+`operation_details` 아래에 둡니다.
 
 ```yaml
-ConnectionCommandReport:
-  operation: init | add | status | verify | mode | remove
+operation_details:
   dry_run: bool
-  status: complete | action_required | failed
-  runtime_home: string
-  connection:
-    id: string
-    host: codex
-    scope: user | project
-    profile: record
-    mode: read_only | workflow
-    repository: string
-    config_target: string
-  checks: ConnectionCheck[]
-  actions: ConnectionAction[]
   result?: SetupResult | ModeTransitionResult | RemovalResult
   planned_changes?: PlannedConnectionChange[] # dry-run에만 사용
-  limits: string[]
 
 SetupResult:
   kind: setup
@@ -498,18 +546,13 @@ PlannedConnectionChange:
   kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | connection_membership
   operation: create | update | remove | register | rebind
   target: string
-
-ConnectionAction:
-  id: ConnectionActionKind
-  instruction: string
 ```
 
-이 보고서에는 집계 상태 하나와 check/action 트리 하나만 있습니다. 선택적인 tagged
-`result`에는 작업별 사실만 두며 두 번째 상태를 만들지 않습니다. 설정 보고서는
-`kind=setup`, mode 보고서는 `kind=mode_transition`, 적용에 성공한 제거 보고서는
-`kind=removal`을 사용합니다. Status와 verify는 보통 `result`를 생략하고, 제거 dry
-run은 아직 발생하지 않은 결과를 생략합니다. JSON은 적용되지 않는 선택 필드를
-생략합니다. `limits`에는 협력적 보장 한계를 한 번만 둡니다.
+이 보고서에는 집계 상태 하나와 check/finding/action graph 하나만 있습니다. 선택적인
+tagged `operation_details.result`에는 작업별 사실만 두며 두 번째 상태를 만들지 않습니다.
+설정 result는 `kind=setup`, mode result는 `kind=mode_transition`, 적용에 성공한 제거
+result는 `kind=removal`을 사용합니다. Status와 verify는 보통 `result`를 생략하고, 제거
+dry run은 아직 발생하지 않은 결과를 생략합니다.
 
 `SetupResult.applied`는 설정 변경과 운영 검증을 구분합니다. Init 또는 add 적용이
 성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`가 되더라도
@@ -535,13 +578,12 @@ No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, 
 출력은 `kind`별 개수를 묶고, verbose 사람용 출력은 각 항목을 `Kind`, `Operation`,
 `Target` 라벨이 있는 색인 블록으로 표시합니다.
 
-`checks`와 `actions`는 정규
-[`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의
-구성원 type과 순서를 사용합니다. JSON과 사람용 출력은 같은 typed command report를
-표시합니다. 각 JSON action은 정확히 `id`와 `instruction`만 포함합니다. 사람용 출력은
-check를 묶어 보여 줄 수 있지만 상태나 action을 다시 계산하지 않습니다. Action은 의미를
-나타내는 보고서 사실입니다. 작업별 실행 안내는 현재 typed 호스트, 저장소, Runtime Home,
-범위, 출력 선택 좌표에서 별도로 생성합니다.
+`checks`는 정규 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의
+구성원 type과 순서를 사용합니다. `findings`, `root_cause_ids`, schema 2 `actions`는 공유
+failure-model 계약을 사용합니다. 각 JSON report action은 정확히 `code`, `summary`,
+`root_cause_ids`를 포함합니다. 사람용 출력은 pending check를 묶어 보여 줄 수 있지만
+산문에서 cause나 action을 다시 계산하지 않습니다. 작업별 실행 안내는 현재 typed 호스트,
+저장소, Runtime Home, 범위, 출력 선택 좌표에서 별도로 생성합니다.
 
 Mode no-op은 `changed=false`, 같은 이전/현재 mode와 revision, 빈 Guard Installation
 재결속 ID, 통과한 `mode_transition` check, 빈 action, `status=complete`를 보고합니다.
@@ -701,16 +743,27 @@ projection은 [MCP 전송](mcp-transport.md)이 담당합니다.
 ## Diagnostics
 
 ```text
-volicord diagnostics session [--session SESSION_ID] [--json]
+volicord diagnostics show FINDING_ID [--json]
+volicord diagnostics session RUNTIME_SESSION_ID [--json]
 volicord diagnostics workflow-metrics --repo PATH --json
 ```
 
-Diagnostics 출력은 제한된 비권한 operability 데이터입니다. JSON 보고서는 현재
-diagnostics SQL에서 파생한 정확한 `canonical_schema_digest`와
-`contract_id=volicord.sqlite.diagnostics`로 로컬 저장소를 식별합니다. 숫자 schema
-version을 노출하거나 그 값으로 dispatch하지 않습니다. Diagnostics 읽기는 저장소를
-만들거나 프로젝트 권한 상태를 열거나 state version을 전진시키거나 evidence 또는
-assurance, 닫기 준비 상태를 바꾸거나 UserAction을 해결하지 않습니다.
+`diagnostics show`는 영속 finding 하나와 한도가 있는 typed cause chain을 읽습니다.
+`diagnostics session`은 authoritative MCP runtime session 하나와 여기에 correlation된 한도
+안의 finding을 읽습니다. 두 조회는 Registry Store API를 사용하고 무제한 history를
+scan하지 않으며, 선택한 Connection JSON 출력과 같은 schema 2 `DiagnosticReport`를
+표시합니다. `--json`이 없으면 같은 check, finding ID, code, safe fact, cause, action,
+limit의 한도 있는 사람용 projection을 표시합니다. Finding이나 session이 없으면 ad hoc
+오류 문자열이 아니라 `diagnostics.lookup.finding_missing` 또는
+`diagnostics.lookup.runtime_session_missing`, `observation_state=absent`,
+`action.diagnostics.check_identifier`를 포함한 failed report를 반환합니다.
+
+`diagnostics workflow-metrics`는 별도의 한도 있는 비권한 operability 보고서입니다. 이
+JSON은 현재 diagnostics SQL에서 파생한 정확한 `canonical_schema_digest`와
+`contract_id=volicord.sqlite.diagnostics`로 로컬 diagnostics 저장소를 식별하며
+`DiagnosticReport.schema_version`을 사용하지 않습니다. Diagnostics 읽기는 저장소를
+만들거나 프로젝트 권한 상태를 전진시키거나 evidence 또는 assurance, 닫기 준비 상태를
+바꾸거나 UserAction을 해결하지 않습니다.
 
 활성 Connection 검증은 관리 구성, Guard 파일과 관찰, 저장소 신뢰, revision freshness에
 대한 CLI 소유 finding을 영속화합니다. 현재 안정 code는
@@ -759,13 +812,18 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ## 출력과 종료 상태
 
 선택한 Connection 명령 보고서의 기본 간결한 산문과 `--verbose` 진단은 사람용이며
-자동화에서 파싱하면 안 됩니다. `--json`은 stdout에 완전한 JSON 문서 하나만 씁니다. 두
+자동화에서 파싱하면 안 됩니다. `--json`은 stdout에 schema 2 `DiagnosticReport` JSON
+문서 하나만 씁니다. 두
 플래그는 사용법 parsing 단계에서 충돌합니다. `complete`, `action_required`, 유효한 모든
 dry run은 `0`으로 종료합니다. Typed `failed` 운영 보고서는 `1`, 사용법 오류는 `2`로
 종료합니다. 실패한 JSON 운영 보고서는 stdout 문서 하나만 쓰고 stderr는 비워 둡니다.
 실패한 사람용 운영 보고서는 stdout에 표시합니다. 예상하지 못한 런타임 또는 직렬화 오류는
 stderr를 사용하고 `1`로 종료합니다. 종료 상태는 표시 문자열이나 다시 parsing한 JSON이
 아니라 typed report 상태로 선택합니다.
+
+같은 운영 출력 규칙을 `diagnostics show`와 `diagnostics session`에도 적용합니다. 찾은
+terminal failure나 typed missing lookup은 JSON mode를 포함해 stdout의 failed report로
+나옵니다. Workflow metrics는 별도 report와 종료 계약을 유지합니다.
 
 <a id="noninteractive-approval-behavior"></a>
 ## 비대화형 동작

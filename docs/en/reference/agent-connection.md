@@ -223,13 +223,16 @@ order rather than silently normalizing it; enum declaration order is not the
 wire-order contract.
 
 `ConnectionCheckKind` is the closed current-product vocabulary:
-`connection_removal`, `guard_files`, `guard_hook_execution`,
+`connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`,
 `guard_observation`, `host_executable`, `host_session`, `managed_config`,
 `mcp_server`, `mode_transition`, `process_startup`, `project_trust`,
-`required_tools`, `setup_plan`, `tool_round_trip`, and `verification_not_run`.
+`required_tools`, `runtime_session_lookup`, `setup_plan`, `tool_round_trip`, and
+`verification_not_run`.
 Operational verification uses the applicable checks in
 the table below. Missing-report and administrative command planning use the
-remaining named kinds; arbitrary adapter-defined check IDs are not accepted.
+remaining named kinds. `diagnostic_lookup` and `runtime_session_lookup` are
+used only by their bounded administrative diagnostic operations; arbitrary
+adapter-defined check IDs are not accepted.
 
 `ConnectionActionKind` is the closed current-product vocabulary:
 `apply_removal`, `apply_setup`, `host_trust_required`,
@@ -339,14 +342,25 @@ connection with no completed persisted report is projected as a synthesized
 `status=action_required` report containing one `verification_not_run` pending
 check and one verification action. Reading that projection does not persist it.
 
-The administrative CLI uses the canonical check and action member types
-directly in the top-level `ConnectionCommandReport` for init, add, status,
-verify, mode, and remove. Verification flows project the exact report members
-without nesting that report, repeating its aggregate status, or exposing
-`checked_at` as a second command-output time.
-Status may rebuild an in-memory current projection from the stored active-probe
-facts and current observations, but that read does not persist the projection
-or modify any timestamp.
+The administrative CLI projects init, add, status, verify, mode, and remove
+through the current schema-2 `DiagnosticReport`. It carries the canonical
+checks, bounded findings and cause edges loaded through Store APIs, derived
+root IDs, one deduplicated typed action per root, Connection context,
+operation-specific result details, and report limits. Concise, verbose, and
+JSON output are projections of this same report and identify the same roots.
+No renderer derives a cause or remediation category from summary prose, and no
+projection re-exposes a fact redacted by `DiagnosticFinding`.
+
+The JSON projection includes `generated_at` as the report time and the exact
+current integration revision in Connection context when one exists. The
+persisted verification `checked_at` remains the observation time for that
+verification and is not repeated as a competing top-level time. Status may
+rebuild an in-memory current projection from stored active-probe facts and
+current observations, but that read does not persist the projection or modify
+any timestamp. A referenced finding row that is absent is represented as the
+typed `diagnostics.finding_record_missing` observation and directs the operator
+to rebuild current observations; rendering does not fabricate the missing
+domain facts.
 
 Active verification captures the exact typed Connection integration revision
 before it plans or probes. Store persists the resulting report only when that

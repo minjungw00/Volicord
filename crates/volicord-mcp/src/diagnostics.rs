@@ -3,9 +3,9 @@ use crate::{
     prelude::*,
 };
 use volicord_types::{
-    DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
-    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
-    IntegrationRevision,
+    DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
+    DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, IntegrationRevision,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,6 +342,41 @@ impl McpDiagnostic {
             Self::Unexpected => "an unexpected internal MCP failure occurred",
         }
     }
+
+    const fn recommended_action(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Protocol(
+                McpProtocolDiagnostic::MalformedVersion
+                | McpProtocolDiagnostic::UnsupportedVersion
+                | McpProtocolDiagnostic::CounterOffer
+                | McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected
+                | McpProtocolDiagnostic::GenerationMismatch,
+            ) => (
+                "action.mcp.use_supported_protocol_revision",
+                "Configure the MCP peer to request one supported protocol revision",
+            ),
+            Self::ToolDiscovery(_) => (
+                "action.mcp.restore_required_tools",
+                "Restore the required tools/list projection for the selected revision",
+            ),
+            Self::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure) => (
+                "action.mcp.repair_read_only_tool",
+                "Repair the designated read-only tool call for the selected revision",
+            ),
+            Self::Host(_) => (
+                "action.host.repair_session_correlation",
+                "Repair the managed host session correlation and reconnect",
+            ),
+            Self::Transport(_) => (
+                "action.mcp.repair_stdio_transport",
+                "Repair the managed MCP stdio transport and reconnect",
+            ),
+            _ => (
+                "action.mcp.repair_protocol_exchange",
+                "Repair the typed MCP protocol failure and reconnect",
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -411,6 +446,7 @@ pub(crate) fn finding_for_diagnostic(
     } else {
         "operation"
     };
+    let (action_code, action_summary) = diagnostic.recommended_action();
     let mut finding = DiagnosticFinding::try_new(
         DiagnosticFindingId::parse(context.finding_id)?,
         DiagnosticCode::parse(diagnostic.code())?,
@@ -425,7 +461,11 @@ pub(crate) fn finding_for_diagnostic(
         DiagnosticSubject::try_new(subject_kind, subject_reference)?,
         facts,
         context.observed_at,
-    )?;
+    )?
+    .with_actions(vec![DiagnosticAction::try_new(
+        DiagnosticCode::parse(action_code)?,
+        action_summary,
+    )?])?;
     if let Some(connection_id) = context.connection_id {
         finding = finding.with_connection_id(AgentConnectionId::new(connection_id))?;
     }

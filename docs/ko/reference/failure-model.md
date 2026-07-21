@@ -122,6 +122,23 @@ enum 순서를 비교하거나 첫 번째 실패 check를 고르지 않습니다
 `DiagnosticReport.root_cause_ids`는 report finding에서 계산한 결과이며 caller가 별도로
 선택해서 제공할 수 없습니다.
 
+`DiagnosticReport`는 현재 사용하는 유일한 lossless diagnostic JSON envelope입니다.
+`schema_version`은 `2`입니다. Typed `operation`, 집계 `status`, 생성 timestamp, 선택적인
+Connection context, 전체 check 배열, 한도가 있는 finding graph, 계산한 root-cause ID,
+중복 제거한 report action, operation별 typed detail, report limit을 담습니다. Report
+action은 namespaced code, 한도가 있는 summary, 해당 action이 복구하는 정확한 root ID를
+담습니다. 다른 schema version, 알 수 없는 최상위 구성원, 중복 check 또는 finding ID,
+잘못된 cause graph, 계산 결과와 다른 supplied root list, 중복 action code, root가 아닌
+finding을 가리키는 action은 역직렬화에서 거부합니다. 예전 connection-report schema를
+위한 두 번째 분기는 없습니다.
+
+Machine consumer는 관찰 결과를 구조적으로 구분합니다. 관찰 부재는 생략한 optional 값
+또는 담당자가 정의한 typed `observation_state=absent`, 관찰한 빈 collection은 값이 있는
+`[]`, 관찰 실패는 cause finding이 있는 `failed` check, prerequisite 때문에 막힌 관찰은
+해당 root ID가 있는 `blocked` check입니다. Producer는 consumer가 parsing해야 하는 사람용
+summary로 이 상태를 encode하면 안 됩니다. 렌더러는 typed fact를 골라 라벨을 붙일 수
+있지만 산문에서 cause edge나 action category를 만들 수 없습니다.
+
 Connection 검증은 이 cause graph를 정확히 다섯 가지 check 상태로 사용합니다. `passed`는
 check가 성공적으로 끝났다는 뜻입니다. `pending`은 필요한 외부 관찰 또는 사용자가
 일으키는 event가 아직 없고 이를 막는 실패 prerequisite도 없다는 뜻입니다. `failed`는

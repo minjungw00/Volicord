@@ -3700,10 +3700,48 @@ fn validate_volicord_command(tokens: &[String]) -> std::result::Result<(), Strin
         "mcp" => validate_mcp_command(&args[1..]),
         "init" => validate_init_command(&args[1..]),
         "connection" => validate_connection_command(&args[1..]),
+        "diagnostics" => validate_diagnostics_command(&args[1..]),
         "project" => validate_project_command(&args[1..]),
         "inbox" => validate_inbox_command(&args[1..]),
         other => Err(format!(
             "unknown `volicord` command `{other}`; use a supported administrative command"
+        )),
+    }
+}
+
+fn validate_diagnostics_command(args: &[String]) -> std::result::Result<(), String> {
+    let Some(subcommand) = args.first().map(String::as_str) else {
+        return Ok(());
+    };
+    match subcommand {
+        "-h" | "--help" | "help" => {
+            validate_no_more_args(args, "`volicord diagnostics` help")
+        }
+        "show" | "session" => {
+            if is_help_only(&args[1..]) {
+                return Ok(());
+            }
+            let parsed = parse_command_args(&args[1..], &["json"], &[])?;
+            require_positionals(
+                &parsed,
+                1,
+                1,
+                &format!("`volicord diagnostics {subcommand}`"),
+            )
+        }
+        "workflow-metrics" => {
+            if is_help_only(&args[1..]) {
+                return Ok(());
+            }
+            let parsed = parse_command_args(&args[1..], &["json"], &["repo"])?;
+            reject_positionals(&parsed, 0, "`volicord diagnostics workflow-metrics`")?;
+            if !parsed.options.contains("repo") {
+                return Err("`volicord diagnostics workflow-metrics` requires --repo".to_owned());
+            }
+            Ok(())
+        }
+        other => Err(format!(
+            "unknown `volicord diagnostics` subcommand `{other}`; use show, session, or workflow-metrics"
         )),
     }
 }

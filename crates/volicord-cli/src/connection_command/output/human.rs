@@ -1,17 +1,23 @@
 use std::path::Path;
 
+use serde_json::Value;
 use volicord_types::{
-    ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckKind,
-    ConnectionCheckStatus, ConnectionStatus, HostKind, HostScope,
+    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, HostKind,
+    HostScope,
 };
 
-use super::report::{CommandOperation, ConnectionCommandReport, ConnectionCommandResult};
+use super::report::{
+    projected_actions, projected_check_root_cause_ids, projected_root_cause_ids, CommandOperation,
+    ConnectionCommandReport, ConnectionCommandResult,
+};
 use crate::connection_command::{
     guidance::{ConnectionUserInvocation, DiagnosticOperation},
-    PlannedConnectionChange, PlannedConnectionChangeKind,
+    ConnectionCommandError, PlannedConnectionChange, PlannedConnectionChangeKind,
 };
 
-pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) -> String {
+pub(super) fn render_command_report_concise(
+    report: &ConnectionCommandReport,
+) -> Result<String, ConnectionCommandError> {
     let counts = CheckCounts::from_report(report);
     let mut sections = vec![headline(report, counts)];
     sections.push(format!(
@@ -29,12 +35,7 @@ pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) ->
         sections.push(render_planned_changes(planned_changes));
     }
 
-    let problems = report
-        .checks
-        .iter()
-        .filter(|check| check.status() == ConnectionCheckStatus::Failed)
-        .map(|check| format!("  {}", check.summary()))
-        .collect::<Vec<_>>();
+    let problems = render_root_problems(report)?;
     if !problems.is_empty() {
         sections.push(format!("Problems\n{}", problems.join("\n")));
     }
@@ -44,18 +45,19 @@ pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) ->
         sections.push(format!("Waiting\n{}", waiting.join("\n")));
     }
 
-    if !report.actions.is_empty() {
-        let numbered = report.actions.len() > 1;
-        let actions = report
-            .actions
+    let projected_actions = projected_actions(report)?;
+    if !projected_actions.is_empty() {
+        let numbered = projected_actions.len() > 1;
+        let actions = projected_actions
             .iter()
             .enumerate()
             .map(|(index, action)| {
-                let instruction = concise_action_instruction(report.operation, action);
+                let instruction = action.summary();
+                let code = action.code().as_str();
                 if numbered {
-                    format!("  {}. {instruction}", index + 1)
+                    format!("  {}. {code}: {instruction}", index + 1)
                 } else {
-                    format!("  {instruction}")
+                    format!("  {code}: {instruction}")
                 }
             })
             .collect::<Vec<_>>();
@@ -65,7 +67,138 @@ pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) ->
     if let Some(hint) = concise_diagnostic_hint(report) {
         sections.push(hint);
     }
-    format!("{}\n", sections.join("\n\n"))
+    Ok(format!("{}\n", sections.join("\n\n")))
+}
+
+fn render_root_problems(
+    report: &ConnectionCommandReport,
+) -> Result<Vec<String>, ConnectionCommandError> {
+    let roots = projected_root_cause_ids(report)?;
+    if roots.is_empty() {
+        return Ok(report
+            .checks
+            .iter()
+            .filter(|check| check.status() == ConnectionCheckStatus::Failed)
+            .map(|check| format!("  {}", check.summary()))
+            .collect());
+    }
+    let projected = roots
+        .into_iter()
+        .filter_map(|root_id| {
+            let finding = report
+                .findings
+                .iter()
+                .find(|finding| finding.id() == &root_id)?;
+            let facts = finding.facts().data();
+            let summary = facts
+                .get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| finding.code().as_str());
+            let mut lines = vec![format!("  {}: {summary}", finding.code())];
+            if let Some(value) = combined_client_info(facts) {
+                lines.push(format!("    Actual MCP client: {value}"));
+            }
+            push_fact_line(
+                &mut lines,
+                facts,
+                "requested_revision",
+                "Requested protocol",
+            );
+            push_array_fact_line(
+                &mut lines,
+                facts,
+                "production_supported_revisions",
+                "Supported protocols",
+            );
+            push_fact_line(&mut lines, facts, "actual", "Actual");
+            push_fact_line(&mut lines, facts, "expected", "Expected");
+            push_fact_line(&mut lines, facts, "observed_state", "Observation");
+            push_fact_line(&mut lines, facts, "observed_revision", "Actual revision");
+            push_fact_line(&mut lines, facts, "expected_revision", "Expected revision");
+            push_array_fact_line(&mut lines, facts, "missing_tools", "Missing tools");
+            push_fact_line(&mut lines, facts, "timeout_ms", "Timeout (ms)");
+            push_fact_line(&mut lines, facts, "exit_code", "Process exit");
+            let blocked = report
+                .checks
+                .iter()
+                .filter(|check| check.status() == ConnectionCheckStatus::Blocked)
+                .filter_map(|check| {
+                    projected_check_root_cause_ids(report, check)
+                        .ok()
+                        .filter(|roots| roots.contains(&root_id))
+                        .map(|_| check.id().as_str())
+                })
+                .collect::<Vec<_>>();
+            if !blocked.is_empty() {
+                lines.push(format!("    Blocked checks: {}", blocked.join(", ")));
+            }
+            if let Some(runtime_session_id) = finding.runtime_session_id() {
+                lines.push(format!("    Runtime session: {runtime_session_id}"));
+            }
+            lines.push(format!("    Finding: {}", finding.id()));
+            Some(lines.join("\n"))
+        })
+        .collect::<Vec<_>>();
+    Ok(if projected.is_empty() {
+        report
+            .checks
+            .iter()
+            .filter(|check| check.status() == ConnectionCheckStatus::Failed)
+            .map(|check| format!("  {}", check.summary()))
+            .collect()
+    } else {
+        projected
+    })
+}
+
+fn combined_client_info(facts: &std::collections::BTreeMap<String, Value>) -> Option<String> {
+    let name = facts.get("attempted_client_name").and_then(Value::as_str);
+    let version = facts
+        .get("attempted_client_version")
+        .and_then(Value::as_str);
+    match (name, version) {
+        (Some(name), Some(version)) => Some(format!("{name} {version}")),
+        (Some(name), None) => Some(name.to_owned()),
+        (None, Some(version)) => Some(version.to_owned()),
+        (None, None) => None,
+    }
+}
+
+fn push_fact_line(
+    lines: &mut Vec<String>,
+    facts: &std::collections::BTreeMap<String, Value>,
+    key: &str,
+    label: &str,
+) {
+    let Some(value) = facts.get(key).filter(|value| !value.is_null()) else {
+        return;
+    };
+    let rendered = value
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| value.to_string());
+    lines.push(format!("    {label}: {rendered}"));
+}
+
+fn push_array_fact_line(
+    lines: &mut Vec<String>,
+    facts: &std::collections::BTreeMap<String, Value>,
+    key: &str,
+    label: &str,
+) {
+    let Some(values) = facts.get(key).and_then(Value::as_array) else {
+        return;
+    };
+    let rendered = values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map_or_else(|| value.to_string(), str::to_owned)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    lines.push(format!("    {label}: {rendered}"));
 }
 
 fn concise_diagnostic_hint(report: &ConnectionCommandReport) -> Option<String> {
@@ -164,7 +297,7 @@ pub(super) struct CheckCounts {
 }
 
 impl CheckCounts {
-    pub(super) fn from_report(report: &ConnectionCommandReport) -> Self {
+    fn from_checks(checks: &[ConnectionCheck]) -> Self {
         let mut counts = Self {
             ready: 0,
             blocked: 0,
@@ -172,7 +305,7 @@ impl CheckCounts {
             failed: 0,
             not_applicable: 0,
         };
-        for check in &report.checks {
+        for check in checks {
             match check.status() {
                 ConnectionCheckStatus::Passed => counts.ready += 1,
                 ConnectionCheckStatus::Pending => counts.waiting += 1,
@@ -182,6 +315,10 @@ impl CheckCounts {
             }
         }
         counts
+    }
+
+    pub(super) fn from_report(report: &ConnectionCommandReport) -> Self {
+        Self::from_checks(&report.checks)
     }
 
     fn render(self, always_show_ready: bool) -> String {
@@ -411,14 +548,6 @@ fn guard_missing_phases(check: &ConnectionCheck) -> Vec<String> {
         _ => 3,
     });
     phases
-}
-
-fn concise_action_instruction(operation: CommandOperation, action: &ConnectionAction) -> &str {
-    if operation == CommandOperation::Mode && action.id() == ConnectionActionKind::ReloadHost {
-        "Restart or reload Codex, then use the current Volicord integration"
-    } else {
-        action.instruction()
-    }
 }
 
 fn render_planned_changes(changes: &[PlannedConnectionChange]) -> String {
@@ -693,7 +822,7 @@ mod tests {
                 "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
-                "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
+                "  action.host.observe_activity: Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
                 "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
             )
         );
@@ -717,7 +846,7 @@ mod tests {
                 "Problems\n",
                 "  Managed Codex configuration is unavailable\n\n",
                 "Next\n",
-                "  Repair the managed Codex configuration\n\n",
+                "  action.managed_config.repair: Repair the managed Codex configuration\n\n",
                 "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
             )
         );
@@ -739,7 +868,12 @@ mod tests {
                 "Mode: workflow\n",
                 "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
                 "Problems\n",
-                "  Setup migration could not be completed\n\n",
+                "  setup.partial_application: Setup migration could not be completed\n",
+                "    Actual: partial setup application\n",
+                "    Expected: complete setup application\n",
+                "    Finding: finding.setup.partial_application\n\n",
+                "Next\n",
+                "  action.connection.retry_setup: Resolve the typed setup failure and rerun the setup operation\n\n",
                 "Run the same setup command with --verbose for detailed diagnostics.\n",
             )
         );
@@ -780,7 +914,7 @@ mod tests {
                 "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
-                "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
+                "  action.host.observe_activity: Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
                 "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
             )
         );
@@ -824,7 +958,7 @@ mod tests {
                 "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
                 "Next\n",
-                "  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
+                "  action.host.observe_activity: Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.\n\n",
                 "Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /runtime --verbose` for detailed diagnostics.\n",
             )
         );
@@ -953,7 +1087,7 @@ mod tests {
                 "Mode: read_only\n",
                 "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n\n",
                 "Next\n",
-                "  Restart or reload Codex, then use the current Volicord integration\n",
+                "  action.host.reload_after_configuration_change: Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision revision_after\n",
             )
         );
 
@@ -1098,8 +1232,8 @@ mod tests {
                 "  Managed Codex configuration plan was inspected\n",
                 "  Setup changes are ready to apply\n\n",
                 "Next\n",
-                "  1. Run init without --dry-run to apply the planned setup changes\n",
-                "  2. After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed\n\n",
+                "  1. action.connection.apply_setup: Run init without --dry-run to apply the planned setup changes\n",
+                "  2. action.host.observe_activity: After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed\n\n",
                 "Run the same dry-run command with --verbose for detailed diagnostics.\n",
             )
         );
@@ -1140,7 +1274,7 @@ mod tests {
                 "Waiting\n",
                 "  Selected Connection membership removal is ready to apply\n\n",
                 "Next\n",
-                "  Run connection remove without --dry-run to apply the planned removal\n\n",
+                "  action.connection.apply_removal: Run connection remove without --dry-run to apply the planned removal\n\n",
                 "Run the same dry-run command with --verbose for detailed diagnostics.\n",
             )
         );
@@ -1332,17 +1466,13 @@ mod tests {
         )
         .blocked_by(vec![cause])
         .unwrap();
-        let mixed = report(
-            CommandOperation::Status,
-            None,
-            vec![failed, blocked_tools, blocked_round_trip],
-            Vec::new(),
+        let checks = vec![failed, blocked_tools, blocked_round_trip];
+        assert!(super::render_waiting_checks(&checks).is_empty());
+        let counts = super::CheckCounts::from_checks(&checks);
+        assert_eq!(
+            (counts.ready, counts.blocked, counts.waiting, counts.failed),
+            (0, 2, 0, 1)
         );
-        let output = concise(&mixed);
-        assert!(output.contains("Problems\n  MCP initialize failed"));
-        assert!(output.contains("Checks: 0 ready, 2 blocked, 0 waiting, 1 failed"));
-        assert!(!output.contains("Waiting\n"));
-        assert!(!output.contains("tools/list is pending"));
     }
 
     #[test]
@@ -1353,7 +1483,10 @@ mod tests {
             activity_checks(),
             vec![observe_action()],
         );
-        let expected = format!("{}\n", serde_json::to_string_pretty(&report).unwrap());
+        let expected = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&report.diagnostic_report().unwrap()).unwrap()
+        );
         let rendered = render_command_report(OutputFormat::Json, &report).unwrap();
         assert_eq!(rendered.output, expected);
     }

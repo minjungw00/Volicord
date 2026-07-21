@@ -406,6 +406,7 @@ impl From<DiagnosticsCommandError> for CliError {
         match error {
             DiagnosticsCommandError::Usage(message) => Self::Usage(message),
             DiagnosticsCommandError::Runtime(message) => Self::Runtime(message),
+            DiagnosticsCommandError::FailureOutput(output) => Self::FailureOutput(output),
         }
     }
 }

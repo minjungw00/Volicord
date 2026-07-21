@@ -201,13 +201,14 @@ Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로
 거부합니다. Enum 선언 순서는 wire 순서 계약이 아닙니다.
 
 `ConnectionCheckKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
-`connection_removal`, `guard_files`, `guard_hook_execution`, `guard_observation`,
-`host_executable`, `host_session`, `managed_config`, `mcp_server`,
+`connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`,
+`guard_observation`, `host_executable`, `host_session`, `managed_config`, `mcp_server`,
 `mode_transition`, `process_startup`, `project_trust`, `required_tools`,
-`setup_plan`, `tool_round_trip`, `verification_not_run`입니다. 운영 검증은 아래 표에서
+`runtime_session_lookup`, `setup_plan`, `tool_round_trip`, `verification_not_run`입니다. 운영 검증은 아래 표에서
 적용되는 check를 사용합니다.
-보고서 부재와 관리 명령 계획은 나머지 이름 붙은 kind를 사용하며, 어댑터가 임의로 정한
-check ID는 받지 않습니다.
+보고서 부재와 관리 명령 계획은 나머지 이름 붙은 kind를 사용합니다.
+`diagnostic_lookup`과 `runtime_session_lookup`은 한도가 있는 해당 관리 diagnostic
+operation에서만 사용하며, 어댑터가 임의로 정한 check ID는 받지 않습니다.
 
 `ConnectionActionKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
 `apply_removal`, `apply_setup`, `host_trust_required`,
@@ -305,12 +306,21 @@ action을 만들지 않으며 blocker의 repair action을 먼저 제공합니다
 `status=action_required` 보고서로 projection합니다. 읽었다는 이유로 이를 저장하지
 않습니다.
 
-관리 CLI는 init, add, status, verify, mode, remove의 최상위
-`ConnectionCommandReport`에서 정규 check와 action 구성원 type을 직접 사용합니다. 검증
-흐름은 정확한 보고서 구성원을 projection하며, 보고서를 중첩하거나 집계 상태를 반복하거나
-`checked_at`을 두 번째 명령 출력 시간으로 노출하지 않습니다. Status는 저장된 활성 probe 사실과 현재 관찰에서
-메모리 안의 최신 projection을 다시 만들 수 있지만, 이 읽기는 projection을 영속하거나
-timestamp를 바꾸지 않습니다.
+관리 CLI는 init, add, status, verify, mode, remove를 현재 schema 2
+`DiagnosticReport`로 projection합니다. 정규 check, Store API로 읽은 한도 있는 finding과
+cause edge, 계산한 root ID, root마다 중복 제거한 typed action 하나, Connection context,
+operation별 result detail, report limit을 담습니다. Concise, verbose, JSON 출력은 같은
+report의 projection이며 같은 root를 식별합니다. 렌더러는 summary 산문에서 cause나
+remediation category를 만들지 않고 `DiagnosticFinding`이 가린 fact를 다시 노출하지
+않습니다.
+
+JSON projection은 `generated_at`을 report 시각으로 담고, 값이 있으면 Connection
+context에 정확한 현재 integration revision을 담습니다. 영속 verification의 `checked_at`은
+해당 verification 관찰 시각으로 남으며 경쟁하는 두 번째 최상위 시각으로 반복하지
+않습니다. Status는 저장된 active-probe fact와 현재 관찰에서 메모리 안의 최신 projection을
+다시 만들 수 있지만, 이 읽기는 projection을 영속하거나 timestamp를 바꾸지 않습니다.
+참조된 finding row가 없으면 typed `diagnostics.finding_record_missing` 관찰로 표시하고 현재
+관찰을 다시 만들도록 안내합니다. 렌더링 과정에서 누락된 domain fact를 꾸며 내지 않습니다.
 
 활성 검증은 plan이나 probe를 시작하기 전에 정확한 typed Connection integration revision을
 확보합니다. Store는 같은 revision이 여전히 현재 상태일 때만 비교와 보고서 교체를 immediate

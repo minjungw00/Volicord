@@ -4,9 +4,13 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use volicord_types::{
-    ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
-    ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
-    IntegrationProfile, UtcTimestamp,
+    diagnostic_root_cause_ids, ConnectionAction, ConnectionActionKind, ConnectionCheck,
+    ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus,
+    ConnectionVerificationReport, DiagnosticAction, DiagnosticCode, DiagnosticConnectionContext,
+    DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
+    DiagnosticFindingId, DiagnosticOperation, DiagnosticReport, DiagnosticReportAction,
+    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationProfile,
+    IntegrationRevision, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 
 use super::{
@@ -37,6 +41,17 @@ impl CommandOperation {
             Self::Verify => "verify",
             Self::Mode => "mode",
             Self::Remove => "remove",
+        }
+    }
+
+    fn diagnostic_operation(self) -> DiagnosticOperation {
+        match self {
+            Self::Init => DiagnosticOperation::Init,
+            Self::Add => DiagnosticOperation::Add,
+            Self::Status => DiagnosticOperation::Status,
+            Self::Verify => DiagnosticOperation::Verify,
+            Self::Mode => DiagnosticOperation::Mode,
+            Self::Remove => DiagnosticOperation::Remove,
         }
     }
 }
@@ -94,7 +109,7 @@ pub(super) enum ConnectionCommandResult {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub(in crate::connection_command) struct ConnectionCommandReport {
     pub(super) operation: CommandOperation,
     pub(super) dry_run: bool,
@@ -103,9 +118,10 @@ pub(in crate::connection_command) struct ConnectionCommandReport {
     pub(super) connection: CommandConnection,
     pub(super) checks: Vec<ConnectionCheck>,
     pub(super) actions: Vec<ConnectionAction>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) generated_at: UtcTimestamp,
+    pub(super) findings: Vec<DiagnosticFinding>,
+    pub(super) integration_revision: Option<IntegrationRevision>,
     pub(super) result: Option<ConnectionCommandResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) planned_changes: Option<Vec<PlannedConnectionChange>>,
     pub(super) limits: Vec<String>,
 }
@@ -126,6 +142,9 @@ impl ConnectionCommandReport {
             connection,
             checks: verification.checks().to_vec(),
             actions: verification.actions().to_vec(),
+            generated_at: verification.checked_at().clone(),
+            findings: Vec::new(),
+            integration_revision: None,
             result: setup_result.map(|applied| ConnectionCommandResult::Setup { applied }),
             planned_changes: None,
             limits: cooperative_assurance_limits(),
@@ -387,22 +406,68 @@ impl ConnectionCommandReport {
         details: Value,
         actions: Vec<ConnectionAction>,
     ) -> Result<Self, ConnectionCommandError> {
-        Self::from_components(
+        let finding_id = DiagnosticFindingId::parse("finding.setup.partial_application")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        let diagnostic_action = if let Some(action) = actions.first() {
+            DiagnosticAction::try_new(
+                DiagnosticCode::parse(connection_action_code(action.id()))
+                    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+                action.instruction(),
+            )
+        } else {
+            DiagnosticAction::try_new(
+                DiagnosticCode::parse("action.connection.retry_setup")
+                    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+                "Resolve the typed setup failure and rerun the setup operation",
+            )
+        }
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        let check = command_check(
+            ConnectionCheckKind::SetupPlan,
+            ConnectionCheckStatus::Failed,
+            "setup_partial_application",
+            summary,
+            Some(details),
+        )?
+        .with_cause_finding_ids(vec![finding_id.clone()])
+        .map_err(ConnectionCommandError::from)?;
+        let connection_id = connection.id.clone();
+        let mut report = Self::from_components(
             operation,
             false,
             runtime_home,
             connection,
-            vec![command_check(
-                ConnectionCheckKind::SetupPlan,
-                ConnectionCheckStatus::Failed,
-                "setup_partial_application",
-                summary,
-                Some(details),
-            )?],
+            vec![check],
             actions,
             Some(ConnectionCommandResult::Setup { applied: false }),
             None,
+        )?;
+        let finding = DiagnosticFinding::try_new(
+            finding_id,
+            DiagnosticCode::parse("setup.partial_application")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticDomain::parse("setup")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticStage::parse("apply")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticSeverity::Error,
+            DiagnosticSource::parse("administrative_cli")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticSubject::try_new("connection", &connection_id)
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticFacts::project(&SetupFailureDiagnosticFacts {
+                summary,
+                observation_state: "failed",
+                expected: "complete setup application",
+                actual: "partial setup application",
+            })
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            report.generated_at.clone(),
         )
+        .and_then(|finding| finding.with_actions(vec![diagnostic_action]))
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        report.findings.push(finding);
+        Ok(report)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -427,6 +492,9 @@ impl ConnectionCommandReport {
             connection,
             checks: canonical.checks().to_vec(),
             actions: canonical.actions().to_vec(),
+            generated_at: canonical.checked_at().clone(),
+            findings: Vec::new(),
+            integration_revision: None,
             result,
             planned_changes,
             limits: cooperative_assurance_limits(),
@@ -435,6 +503,197 @@ impl ConnectionCommandReport {
 
     pub(super) const fn status(&self) -> ConnectionStatus {
         self.status
+    }
+
+    pub(in crate::connection_command) fn with_diagnostic_findings(
+        mut self,
+        findings: Vec<DiagnosticFinding>,
+        integration_revision: Option<IntegrationRevision>,
+    ) -> Self {
+        self.findings = findings;
+        self.integration_revision = integration_revision;
+        self
+    }
+
+    pub(super) fn diagnostic_report(&self) -> Result<DiagnosticReport, ConnectionCommandError> {
+        let mut runtime_session_ids = self
+            .findings
+            .iter()
+            .filter_map(|finding| finding.runtime_session_id().cloned())
+            .collect::<Vec<_>>();
+        runtime_session_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        runtime_session_ids.dedup();
+        let context = DiagnosticConnectionContext::try_new(
+            self.runtime_home.clone(),
+            self.connection.id.clone(),
+            self.connection.host.clone(),
+            self.connection.scope.clone(),
+            self.connection.profile.clone(),
+            self.connection.mode.clone(),
+            Some(self.connection.repository.clone()),
+            Some(self.connection.config_target.clone()),
+            self.integration_revision.clone(),
+            runtime_session_ids,
+        )
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        DiagnosticReport::try_new(
+            self.operation.diagnostic_operation(),
+            self.status,
+            self.generated_at.clone(),
+            Some(context),
+            self.checks.clone(),
+            self.findings.clone(),
+            projected_actions(self)?,
+            Some(self.operation_details()?),
+            self.limits.clone(),
+        )
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+    }
+
+    fn operation_details(&self) -> Result<serde_json::Map<String, Value>, ConnectionCommandError> {
+        let mut details = serde_json::Map::new();
+        details.insert("dry_run".to_owned(), Value::Bool(self.dry_run));
+        if let Some(result) = self.result.as_ref() {
+            details.insert(
+                "result".to_owned(),
+                serde_json::to_value(result)
+                    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            );
+        }
+        if let Some(planned_changes) = self.planned_changes.as_ref() {
+            details.insert(
+                "planned_changes".to_owned(),
+                serde_json::to_value(planned_changes)
+                    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            );
+        }
+        Ok(details)
+    }
+}
+
+#[derive(Serialize)]
+struct SetupFailureDiagnosticFacts<'a> {
+    summary: &'a str,
+    observation_state: &'static str,
+    expected: &'static str,
+    actual: &'static str,
+}
+
+impl DiagnosticFactSource for SetupFailureDiagnosticFacts<'_> {}
+
+pub(super) fn projected_actions(
+    report: &ConnectionCommandReport,
+) -> Result<Vec<DiagnosticReportAction>, ConnectionCommandError> {
+    let roots = projected_root_cause_ids(report)?;
+    let findings = report
+        .findings
+        .iter()
+        .map(|finding| (finding.id(), finding))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut actions = std::collections::BTreeMap::<String, (String, Vec<_>)>::new();
+    if roots.is_empty() {
+        for action in &report.actions {
+            actions.insert(
+                connection_action_code(action.id()).to_owned(),
+                (action.instruction().to_owned(), Vec::new()),
+            );
+        }
+    }
+    let mut roots_with_actions = std::collections::BTreeSet::new();
+    for root in &roots {
+        let Some(action) = findings
+            .get(root)
+            .and_then(|finding| finding.actions().first())
+        else {
+            continue;
+        };
+        let entry = actions
+            .entry(action.code().to_string())
+            .or_insert_with(|| (action.summary().to_owned(), Vec::new()));
+        entry.1.push(root.clone());
+        roots_with_actions.insert(root.clone());
+    }
+    let roots_without_actions = roots
+        .iter()
+        .filter(|root| !roots_with_actions.contains(*root))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !roots_without_actions.is_empty() {
+        if let Some(action) = report.actions.first() {
+            let code = connection_action_code(action.id()).to_owned();
+            let entry = actions
+                .entry(code)
+                .or_insert_with(|| (action.instruction().to_owned(), Vec::new()));
+            entry.1.extend(roots_without_actions);
+        }
+    }
+    actions
+        .into_iter()
+        .map(|(code, (summary, roots))| {
+            DiagnosticReportAction::try_new(
+                DiagnosticCode::parse(code)
+                    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+                summary,
+                roots,
+            )
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+        })
+        .collect()
+}
+
+pub(super) fn projected_root_cause_ids(
+    report: &ConnectionCommandReport,
+) -> Result<Vec<volicord_types::DiagnosticFindingId>, ConnectionCommandError> {
+    let selected = report
+        .checks
+        .iter()
+        .filter(|check| {
+            matches!(
+                check.status(),
+                ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+            )
+        })
+        .flat_map(|check| check.cause_finding_ids().iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>();
+    if selected.is_empty() {
+        return Ok(Vec::new());
+    }
+    diagnostic_root_cause_ids(
+        &report.findings,
+        &selected.into_iter().collect::<Vec<_>>(),
+        MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    )
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+}
+
+pub(super) fn projected_check_root_cause_ids(
+    report: &ConnectionCommandReport,
+    check: &ConnectionCheck,
+) -> Result<Vec<volicord_types::DiagnosticFindingId>, ConnectionCommandError> {
+    if check.cause_finding_ids().is_empty() {
+        return Ok(Vec::new());
+    }
+    diagnostic_root_cause_ids(
+        &report.findings,
+        check.cause_finding_ids(),
+        MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    )
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+}
+
+const fn connection_action_code(kind: ConnectionActionKind) -> &'static str {
+    match kind {
+        ConnectionActionKind::RunVerification => "action.connection.run_verification",
+        ConnectionActionKind::ApplySetup => "action.connection.apply_setup",
+        ConnectionActionKind::HostTrustRequired => "action.trust.approve_repository",
+        ConnectionActionKind::RepairManagedConfig => "action.managed_config.repair",
+        ConnectionActionKind::InstallOrRepairCodex => "action.host.repair_executable",
+        ConnectionActionKind::RepairMcpServer => "action.mcp.repair_server",
+        ConnectionActionKind::ReloadHost => "action.host.reload_after_configuration_change",
+        ConnectionActionKind::ObserveCodex => "action.host.observe_activity",
+        ConnectionActionKind::InspectCodexProtocol => "action.mcp.repair_protocol_exchange",
+        ConnectionActionKind::RepairGuard => "action.guard.repair",
+        ConnectionActionKind::ApplyRemoval => "action.connection.apply_removal",
     }
 }
 
@@ -448,11 +707,11 @@ pub(in crate::connection_command) fn render_command_report(
     report: &ConnectionCommandReport,
 ) -> Result<RenderedCommandReport, ConnectionCommandError> {
     let output = match format {
-        OutputFormat::Json => serde_json::to_string_pretty(report)
+        OutputFormat::Json => serde_json::to_string_pretty(&report.diagnostic_report()?)
             .map(|output| format!("{output}\n"))
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
-        OutputFormat::Human(HumanOutputDetail::Concise) => render_command_report_concise(report),
-        OutputFormat::Human(HumanOutputDetail::Verbose) => render_command_report_verbose(report),
+        OutputFormat::Human(HumanOutputDetail::Concise) => render_command_report_concise(report)?,
+        OutputFormat::Human(HumanOutputDetail::Verbose) => render_command_report_verbose(report)?,
     };
     Ok(RenderedCommandReport {
         output,
@@ -543,18 +802,24 @@ mod tests {
         )
     }
 
-    fn assert_top_level_keys(value: &Value, optional: &[&str]) {
-        let mut expected = BTreeSet::from([
+    fn diagnostic_value(report: &ConnectionCommandReport) -> Value {
+        serde_json::to_value(report.diagnostic_report().unwrap()).unwrap()
+    }
+
+    fn assert_top_level_keys(value: &Value) {
+        let expected = BTreeSet::from([
             "actions",
             "checks",
             "connection",
-            "dry_run",
+            "findings",
+            "generated_at",
             "limits",
             "operation",
-            "runtime_home",
+            "operation_details",
+            "root_cause_ids",
+            "schema_version",
             "status",
         ]);
-        expected.extend(optional.iter().copied());
         assert_eq!(
             value
                 .as_object()
@@ -581,40 +846,40 @@ mod tests {
                 connection(),
                 &verification(ConnectionCheckStatus::Passed),
             );
-            let value = serde_json::to_value(&report).unwrap();
+            let value = diagnostic_value(&report);
+            assert_top_level_keys(&value);
+            assert_eq!(value["schema_version"], 2);
             assert_eq!(value["operation"], operation.as_str());
             assert_eq!(value["status"], "complete");
             assert_eq!(value["checks"].as_array().map(Vec::len), Some(1));
             assert_eq!(value["actions"], json!([]));
-            assert!(value.get("planned_changes").is_none());
             if matches!(operation, CommandOperation::Init | CommandOperation::Add) {
-                assert_top_level_keys(&value, &["result"]);
-                assert_eq!(value["result"], json!({"kind": "setup", "applied": true}));
+                assert_eq!(
+                    value["operation_details"]["result"],
+                    json!({"kind": "setup", "applied": true})
+                );
             } else {
-                assert_top_level_keys(&value, &[]);
-                assert!(value.get("result").is_none());
+                assert!(value["operation_details"].get("result").is_none());
             }
         }
 
-        let mode = serde_json::to_value(
-            ConnectionCommandReport::mode_transition(
-                Path::new("/runtime"),
-                connection(),
-                false,
-                "workflow".to_owned(),
-                "workflow".to_owned(),
-                "revision_1".to_owned(),
-                "revision_1".to_owned(),
-                Vec::new(),
-            )
-            .unwrap(),
+        let mode_report = ConnectionCommandReport::mode_transition(
+            Path::new("/runtime"),
+            connection(),
+            false,
+            "workflow".to_owned(),
+            "workflow".to_owned(),
+            "revision_1".to_owned(),
+            "revision_1".to_owned(),
+            Vec::new(),
         )
         .unwrap();
-        assert_top_level_keys(&mode, &["result"]);
+        let mode = diagnostic_value(&mode_report);
+        assert_top_level_keys(&mode);
         assert_eq!(mode["operation"], "mode");
         assert_eq!(mode["status"], "complete");
         assert_eq!(
-            mode["result"],
+            mode["operation_details"]["result"],
             json!({
                 "kind": "mode_transition",
                 "changed": false,
@@ -626,16 +891,15 @@ mod tests {
             })
         );
 
-        let removal = serde_json::to_value(
+        let removal_report =
             ConnectionCommandReport::removal(Path::new("/runtime"), connection(), true, false, 1)
-                .unwrap(),
-        )
-        .unwrap();
-        assert_top_level_keys(&removal, &["result"]);
+                .unwrap();
+        let removal = diagnostic_value(&removal_report);
+        assert_top_level_keys(&removal);
         assert_eq!(removal["operation"], "remove");
         assert_eq!(removal["status"], "complete");
         assert_eq!(
-            removal["result"],
+            removal["operation_details"]["result"],
             json!({
                 "kind": "removal",
                 "membership_removed": true,
@@ -680,12 +944,12 @@ mod tests {
             &[],
         )
         .unwrap();
-        let changed = serde_json::to_value(changed).unwrap();
-        assert_top_level_keys(&changed, &["planned_changes", "result"]);
+        let changed = diagnostic_value(&changed);
+        assert_top_level_keys(&changed);
         assert_eq!(changed["operation"], "add");
         assert_eq!(changed["status"], "action_required");
         assert_eq!(
-            changed["result"],
+            changed["operation_details"]["result"],
             json!({"kind": "setup", "applied": false})
         );
 
@@ -700,12 +964,15 @@ mod tests {
             vec!["guard_1".to_owned()],
         )
         .unwrap();
-        let mode = serde_json::to_value(mode).unwrap();
-        assert_top_level_keys(&mode, &["result"]);
+        let mode = diagnostic_value(&mode);
+        assert_top_level_keys(&mode);
         assert_eq!(mode["status"], "action_required");
         assert_eq!(mode["checks"][0]["status"], "passed");
-        assert_eq!(mode["actions"][0]["id"], "reload_host");
-        assert_eq!(mode["result"]["changed"], true);
+        assert_eq!(
+            mode["actions"][0]["code"],
+            "action.host.reload_after_configuration_change"
+        );
+        assert_eq!(mode["operation_details"]["result"]["changed"], true);
 
         let removal = ConnectionCommandReport::removal_dry_run(
             Path::new("/runtime"),
@@ -717,13 +984,16 @@ mod tests {
             )],
         )
         .unwrap();
-        let removal = serde_json::to_value(removal).unwrap();
-        assert_top_level_keys(&removal, &["planned_changes"]);
+        let removal = diagnostic_value(&removal);
+        assert_top_level_keys(&removal);
         assert_eq!(removal["operation"], "remove");
         assert_eq!(removal["status"], "action_required");
         assert_eq!(removal["checks"][0]["status"], "pending");
-        assert_eq!(removal["actions"][0]["id"], "apply_removal");
-        assert!(removal.get("result").is_none());
+        assert_eq!(
+            removal["actions"][0]["code"],
+            "action.connection.apply_removal"
+        );
+        assert!(removal["operation_details"].get("result").is_none());
     }
 
     #[test]
@@ -807,7 +1077,9 @@ mod tests {
                     "  [fail] Managed Codex configuration\n",
                     "    Managed configuration check\n",
                     "    Code: managed_config_failed\n",
-                    "\nAssurance\n",
+                    "\nReport limits\n",
+                    "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
+                    "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
                     "  {}\n",
                 ),
                 super::super::common::COOPERATIVE_ASSURANCE_LIMIT

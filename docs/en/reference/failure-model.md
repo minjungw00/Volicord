@@ -133,6 +133,26 @@ reference, a cycle, or a path beyond that bound rejects selection rather than
 guessing a root. `DiagnosticReport.root_cause_ids` is the derived result for
 the report's findings and cannot be supplied as an independent caller choice.
 
+`DiagnosticReport` is the only current lossless diagnostic JSON envelope. Its
+`schema_version` is `2`. It contains the typed `operation`, aggregate `status`,
+generation timestamp, optional Connection context, complete check array,
+bounded finding graph, derived root-cause IDs, deduplicated report actions,
+operation-specific typed details, and report limits. A report action contains a
+namespaced code, bounded summary, and the exact root IDs it remediates.
+Deserialization rejects any other schema version, unknown top-level member,
+duplicate check or finding ID, invalid cause graph, supplied root list that
+differs from the derived roots, duplicate action code, or action that refers to
+a non-root finding. There is no second legacy connection-report schema.
+
+Machine consumers distinguish observation outcomes structurally. An absent
+observation is an omitted optional value or an owner-defined typed
+`observation_state=absent`; an observed empty collection is the present value
+`[]`; an observation failure is a `failed` check with cause findings; and a
+prerequisite-blocked observation is a `blocked` check with those root IDs.
+Producers must not encode any of these states as a human summary that consumers
+must parse. Renderers may select and label typed facts, but cannot derive cause
+edges or action categories from prose.
+
 Connection verification consumes this cause graph through exactly five check
 states. `passed` means the check completed successfully. `pending` means its
 required external observation or user-triggered event has not occurred and no

@@ -1,30 +1,52 @@
-use std::{fmt, path::Path};
+use std::{collections::BTreeMap, fmt, path::Path, str::FromStr, time::SystemTime};
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
+use serde_json::{json, Map, Value};
 use volicord_store::{
+    agent_connections::{agent_connection_record, list_connection_projects_for_diagnostics},
     bootstrap::project_record_by_repo_root_read_only,
-    diagnostics::{
-        current_diagnostics_storage_manifest, read_diagnostic_session,
-        read_workflow_metric_aggregates, DiagnosticSessionAggregate, WorkflowMetricAggregateRow,
-        DIAGNOSTICS_DB_FILE, DIAGNOSTICS_MAX_EVENTS_PER_SESSION, DIAGNOSTICS_MAX_SESSIONS,
-        DIAGNOSTICS_RETENTION_DAYS,
+    diagnostic_findings::{
+        diagnostic_cause_chain, diagnostic_finding, diagnostic_findings_for_runtime_session,
     },
+    diagnostics::{
+        current_diagnostics_storage_manifest, read_workflow_metric_aggregates,
+        WorkflowMetricAggregateRow, DIAGNOSTICS_DB_FILE, DIAGNOSTICS_MAX_EVENTS_PER_SESSION,
+        DIAGNOSTICS_MAX_SESSIONS, DIAGNOSTICS_RETENTION_DAYS,
+    },
+    operational_sessions::mcp_runtime_session,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
 
-use crate::cli::{DiagnosticsArgs, DiagnosticsCommand, DiagnosticsWorkflowMetricsArgs};
+use volicord_types::{
+    AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
+    ConnectionCheckStatus, ConnectionStatus, DiagnosticAction, DiagnosticCode,
+    DiagnosticConnectionContext, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
+    DiagnosticFinding, DiagnosticFindingId, DiagnosticOperation, DiagnosticReport,
+    DiagnosticReportAction, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, IntegrationProfile, IntegrationRevision, UtcTimestamp,
+    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
+};
+
+use crate::cli::{
+    DiagnosticsArgs, DiagnosticsCommand, DiagnosticsSessionArgs, DiagnosticsShowArgs,
+    DiagnosticsWorkflowMetricsArgs,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticsCommandError {
     Usage(String),
     Runtime(String),
+    FailureOutput(String),
 }
 
 impl fmt::Display for DiagnosticsCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Usage(message) | Self::Runtime(message) => formatter.write_str(message),
+            Self::Usage(message) | Self::Runtime(message) | Self::FailureOutput(message) => {
+                formatter.write_str(message)
+            }
         }
     }
 }
@@ -53,19 +75,543 @@ where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
     match args.command {
-        DiagnosticsCommand::Session(options) => {
-            let runtime_home = resolve_runtime_home(env_var, current_dir)?;
-            let aggregate = read_diagnostic_session(&runtime_home, options.session.as_deref())?;
-            if options.json {
-                render_json(aggregate)
-            } else {
-                render_text(aggregate)
-            }
-        }
+        DiagnosticsCommand::Show(options) => run_show(options, env_var, current_dir),
+        DiagnosticsCommand::Session(options) => run_runtime_session(options, env_var, current_dir),
         DiagnosticsCommand::WorkflowMetrics(options) => {
             run_workflow_metrics(options, env_var, current_dir)
         }
     }
+}
+
+fn run_show<F>(
+    options: DiagnosticsShowArgs,
+    env_var: F,
+    current_dir: &Path,
+) -> Result<String, DiagnosticsCommandError>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    let runtime_home = resolve_runtime_home(env_var, current_dir)?;
+    let finding_id = DiagnosticFindingId::parse(options.finding_id.clone())
+        .map_err(|error| DiagnosticsCommandError::Usage(error.to_string()))?;
+    let report = if let Some(finding) = diagnostic_finding(&runtime_home, &finding_id)? {
+        let findings = cause_chain_findings(&runtime_home, std::slice::from_ref(&finding))?;
+        let roots = volicord_types::diagnostic_root_cause_ids(
+            &findings,
+            std::slice::from_ref(&finding_id),
+            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+        )
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
+        let check = diagnostic_check(
+            ConnectionCheckKind::DiagnosticLookup,
+            ConnectionCheckStatus::Failed,
+            "diagnostic_finding_found",
+            "The requested diagnostic finding and bounded cause chain were loaded",
+            roots,
+            json!({"finding_id": finding_id.as_str(), "observation_state": "observed"}),
+        )?;
+        let context = finding_context(&runtime_home, &finding, &findings)?;
+        build_report(
+            DiagnosticOperation::DiagnosticsShow,
+            ConnectionStatus::Failed,
+            context,
+            vec![check],
+            findings,
+            None,
+        )?
+    } else {
+        missing_lookup_report(
+            DiagnosticOperation::DiagnosticsShow,
+            ConnectionCheckKind::DiagnosticLookup,
+            "finding",
+            &options.finding_id,
+        )?
+    };
+    render_lookup_report(&report, options.json)
+}
+
+fn run_runtime_session<F>(
+    options: DiagnosticsSessionArgs,
+    env_var: F,
+    current_dir: &Path,
+) -> Result<String, DiagnosticsCommandError>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    let runtime_home = resolve_runtime_home(env_var, current_dir)?;
+    let report = if let Some(session) =
+        mcp_runtime_session(&runtime_home, &options.runtime_session_id)?
+    {
+        let direct =
+            diagnostic_findings_for_runtime_session(&runtime_home, &options.runtime_session_id)?;
+        let findings = cause_chain_findings(&runtime_home, &direct)?;
+        let terminal_id = session
+            .terminal_finding_id
+            .as_deref()
+            .map(DiagnosticFindingId::parse)
+            .transpose()
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
+        let (status, check_status, code, summary, causes) = if let Some(terminal_id) = terminal_id {
+            (
+                ConnectionStatus::Failed,
+                ConnectionCheckStatus::Failed,
+                "runtime_session_terminal_failure",
+                "The runtime session ended with a typed terminal finding",
+                vec![terminal_id],
+            )
+        } else if session.graceful_close_at.is_some() {
+            (
+                ConnectionStatus::Complete,
+                ConnectionCheckStatus::Passed,
+                "runtime_session_complete",
+                "The runtime session completed without a terminal finding",
+                Vec::new(),
+            )
+        } else {
+            (
+                ConnectionStatus::ActionRequired,
+                ConnectionCheckStatus::Pending,
+                "runtime_session_observation_incomplete",
+                "The runtime session has not reached a terminal observation",
+                Vec::new(),
+            )
+        };
+        let check = diagnostic_check(
+            ConnectionCheckKind::RuntimeSessionLookup,
+            check_status,
+            code,
+            summary,
+            causes,
+            json!({
+                "runtime_session_id": session.runtime_session_id,
+                "session_source": session.session_source,
+                "process_id": session.process_id,
+                "process_started_at": session.process_started_at,
+                "attempted_client_info": {
+                    "name": session.attempted_client_name,
+                    "version": session.attempted_client_version,
+                },
+                "requested_protocol_version": session.requested_protocol_version,
+                "selected_protocol_version": session.selected_protocol_version,
+                "negotiated_protocol_version": session.negotiated_protocol_version,
+                "initialize_completed_at": session.initialize_completed_at,
+                "initialized_notification_at": session.initialized_notification_at,
+                "tools_list_observed_at": session.tools_list_observed_at,
+                "required_tools_present": session.required_tools_present,
+                "designated_safe_tool_observed_at": session.designated_safe_tool_observed_at,
+                "last_observed_at": session.last_observed_at,
+                "terminal_finding_id": session.terminal_finding_id,
+                "graceful_close_at": session.graceful_close_at,
+            }),
+        )?;
+        let context = runtime_session_context(&runtime_home, &session, &findings)?;
+        build_report(
+            DiagnosticOperation::DiagnosticsSession,
+            status,
+            context,
+            vec![check],
+            findings,
+            None,
+        )?
+    } else {
+        missing_lookup_report(
+            DiagnosticOperation::DiagnosticsSession,
+            ConnectionCheckKind::RuntimeSessionLookup,
+            "runtime_session",
+            &options.runtime_session_id,
+        )?
+    };
+    render_lookup_report(&report, options.json)
+}
+
+fn cause_chain_findings(
+    runtime_home: &Path,
+    direct: &[DiagnosticFinding],
+) -> Result<Vec<DiagnosticFinding>, DiagnosticsCommandError> {
+    let mut findings = BTreeMap::new();
+    for finding in direct {
+        let chain = diagnostic_cause_chain(
+            runtime_home,
+            finding.id(),
+            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+        )?;
+        for entry in chain.entries {
+            findings.insert(entry.finding.id().clone(), entry.finding);
+            if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
+                return Err(DiagnosticsCommandError::Runtime(
+                    "diagnostic lookup exceeded the shared finding bound".to_owned(),
+                ));
+            }
+        }
+    }
+    Ok(findings.into_values().collect())
+}
+
+fn diagnostic_check(
+    kind: ConnectionCheckKind,
+    status: ConnectionCheckStatus,
+    code: &str,
+    summary: &str,
+    causes: Vec<DiagnosticFindingId>,
+    details: Value,
+) -> Result<ConnectionCheck, DiagnosticsCommandError> {
+    let Value::Object(details) = details else {
+        return Err(DiagnosticsCommandError::Runtime(
+            "diagnostic lookup details must be an object".to_owned(),
+        ));
+    };
+    ConnectionCheck::try_new(
+        kind,
+        status,
+        causes,
+        Some(code.to_owned()),
+        summary,
+        Some(
+            ConnectionCheckDetails::try_new(details)
+                .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        ),
+        Some(current_timestamp()),
+    )
+    .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
+}
+
+#[derive(Serialize)]
+struct MissingLookupFacts<'a> {
+    summary: &'static str,
+    observation_state: &'static str,
+    requested_kind: &'static str,
+    requested_id: &'a str,
+}
+
+impl DiagnosticFactSource for MissingLookupFacts<'_> {}
+
+fn missing_lookup_report(
+    operation: DiagnosticOperation,
+    check_kind: ConnectionCheckKind,
+    requested_kind: &'static str,
+    requested_id: &str,
+) -> Result<DiagnosticReport, DiagnosticsCommandError> {
+    let (finding_id, code, summary) = match requested_kind {
+        "finding" => (
+            "finding.diagnostics.lookup.finding_missing",
+            "diagnostics.lookup.finding_missing",
+            "The requested diagnostic finding does not exist",
+        ),
+        _ => (
+            "finding.diagnostics.lookup.runtime_session_missing",
+            "diagnostics.lookup.runtime_session_missing",
+            "The requested runtime session does not exist",
+        ),
+    };
+    let finding = DiagnosticFinding::try_new(
+        DiagnosticFindingId::parse(finding_id)
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        DiagnosticCode::parse(code)
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        DiagnosticDomain::parse("diagnostics")
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        DiagnosticStage::parse("lookup")
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        DiagnosticSeverity::Error,
+        DiagnosticSource::parse("administrative_cli")
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        DiagnosticSubject::try_new(requested_kind, requested_id)
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        DiagnosticFacts::project(&MissingLookupFacts {
+            summary,
+            observation_state: "absent",
+            requested_kind,
+            requested_id,
+        })
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
+        current_timestamp(),
+    )
+    .and_then(|finding| {
+        finding.with_actions(vec![DiagnosticAction::try_new(
+            DiagnosticCode::parse("action.diagnostics.check_identifier")?,
+            "Check the exact diagnostic identifier and Runtime Home",
+        )?])
+    })
+    .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
+    let check = diagnostic_check(
+        check_kind,
+        ConnectionCheckStatus::Failed,
+        "diagnostic_lookup_missing",
+        summary,
+        vec![finding.id().clone()],
+        json!({
+            "requested_kind": requested_kind,
+            "requested_id": requested_id,
+            "observation_state": "absent",
+        }),
+    )?;
+    build_report(
+        operation,
+        ConnectionStatus::Failed,
+        None,
+        vec![check],
+        vec![finding],
+        None,
+    )
+}
+
+fn finding_context(
+    runtime_home: &Path,
+    finding: &DiagnosticFinding,
+    findings: &[DiagnosticFinding],
+) -> Result<Option<DiagnosticConnectionContext>, DiagnosticsCommandError> {
+    let Some(connection_id) = finding.connection_id() else {
+        return Ok(None);
+    };
+    let Some(connection) = agent_connection_record(runtime_home, connection_id.as_str())? else {
+        return Ok(None);
+    };
+    connection_context(
+        runtime_home,
+        &connection,
+        finding.project_id().map(|project_id| project_id.as_str()),
+        finding.integration_revision().cloned(),
+        findings,
+        Vec::new(),
+    )
+    .map(Some)
+}
+
+fn runtime_session_context(
+    runtime_home: &Path,
+    session: &volicord_store::operational_sessions::McpRuntimeSessionRecord,
+    findings: &[DiagnosticFinding],
+) -> Result<Option<DiagnosticConnectionContext>, DiagnosticsCommandError> {
+    let Some(connection) = agent_connection_record(runtime_home, &session.connection_internal_id)?
+    else {
+        return Ok(None);
+    };
+    let revision = IntegrationRevision::parse(session.connection_integration_revision.clone())
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
+    connection_context(
+        runtime_home,
+        &connection,
+        None,
+        Some(revision),
+        findings,
+        vec![AgentRuntimeSessionId::new(
+            session.runtime_session_id.clone(),
+        )],
+    )
+    .map(Some)
+}
+
+fn connection_context(
+    runtime_home: &Path,
+    connection: &volicord_store::agent_connections::AgentConnectionRecord,
+    project_id: Option<&str>,
+    revision: Option<IntegrationRevision>,
+    findings: &[DiagnosticFinding],
+    mut runtime_session_ids: Vec<AgentRuntimeSessionId>,
+) -> Result<DiagnosticConnectionContext, DiagnosticsCommandError> {
+    let projects =
+        list_connection_projects_for_diagnostics(runtime_home, &connection.connection_internal_id)?;
+    let repository = project_id
+        .and_then(|project_id| {
+            projects
+                .iter()
+                .find(|project| project.project_id == project_id)
+        })
+        .or_else(|| (projects.len() == 1).then(|| &projects[0]))
+        .map(|project| project.project.repo_root.to_string_lossy().into_owned());
+    runtime_session_ids.extend(
+        findings
+            .iter()
+            .filter_map(|finding| finding.runtime_session_id().cloned()),
+    );
+    runtime_session_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+    runtime_session_ids.dedup();
+    DiagnosticConnectionContext::try_new(
+        runtime_home.to_string_lossy().into_owned(),
+        connection.connection_internal_id.clone(),
+        connection.host_kind.clone(),
+        connection.host_scope.clone(),
+        IntegrationProfile::Record.as_str().to_owned(),
+        connection.mode.clone(),
+        repository,
+        Some(connection.config_target.clone()),
+        revision,
+        runtime_session_ids,
+    )
+    .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
+}
+
+fn build_report(
+    operation: DiagnosticOperation,
+    status: ConnectionStatus,
+    connection: Option<DiagnosticConnectionContext>,
+    checks: Vec<ConnectionCheck>,
+    findings: Vec<DiagnosticFinding>,
+    operation_details: Option<Map<String, Value>>,
+) -> Result<DiagnosticReport, DiagnosticsCommandError> {
+    let selected = checks
+        .iter()
+        .flat_map(|check| check.cause_finding_ids().iter().cloned())
+        .collect::<Vec<_>>();
+    let roots = if selected.is_empty() {
+        Vec::new()
+    } else {
+        volicord_types::diagnostic_root_cause_ids(
+            &findings,
+            &selected,
+            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+        )
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
+    };
+    let mut actions = BTreeMap::<String, (String, Vec<DiagnosticFindingId>)>::new();
+    for root in &roots {
+        let Some(action) = findings
+            .iter()
+            .find(|finding| finding.id() == root)
+            .and_then(|finding| finding.actions().first())
+        else {
+            continue;
+        };
+        let entry = actions
+            .entry(action.code().to_string())
+            .or_insert_with(|| (action.summary().to_owned(), Vec::new()));
+        entry.1.push(root.clone());
+    }
+    let actions = actions
+        .into_iter()
+        .map(|(code, (summary, roots))| {
+            DiagnosticReportAction::try_new(DiagnosticCode::parse(code)?, summary, roots)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
+    DiagnosticReport::try_new(
+        operation,
+        status,
+        current_timestamp(),
+        connection,
+        checks,
+        findings,
+        actions,
+        operation_details,
+        diagnostic_report_limits(),
+    )
+    .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
+}
+
+fn diagnostic_report_limits() -> Vec<String> {
+    vec![
+        format!(
+            "Diagnostic cause traversal is bounded to {} edges and {} findings.",
+            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS
+        ),
+        "Only bounded typed diagnostic facts are rendered; sensitive fields remain redacted."
+            .to_owned(),
+    ]
+}
+
+fn render_lookup_report(
+    report: &DiagnosticReport,
+    json: bool,
+) -> Result<String, DiagnosticsCommandError> {
+    let output = if json {
+        serde_json::to_string_pretty(report)
+            .map(|output| format!("{output}\n"))
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
+    } else {
+        render_lookup_text(report)
+    };
+    if report.status() == ConnectionStatus::Failed {
+        Err(DiagnosticsCommandError::FailureOutput(output))
+    } else {
+        Ok(output)
+    }
+}
+
+fn render_lookup_text(report: &DiagnosticReport) -> String {
+    let mut lines = vec![
+        format!("Diagnostic report: {}", report.status().as_str()),
+        format!("Operation: {}", report.operation().as_str()),
+    ];
+    for check in report.checks() {
+        lines.push(format!(
+            "Check {}: {} — {}",
+            check.id().as_str(),
+            check.status().as_str(),
+            check.summary()
+        ));
+        if let Some(details) = check.details() {
+            lines.push(format!(
+                "  Bounded check facts: {}",
+                serde_json::to_string(details.as_object()).unwrap_or_else(|_| "{}".to_owned())
+            ));
+        }
+    }
+    if let Some(connection) = report.connection() {
+        lines.push(format!("Runtime home: {}", connection.runtime_home()));
+        lines.push(format!("Connection: {}", connection.connection_id()));
+        if let Some(revision) = connection.integration_revision() {
+            lines.push(format!("Integration revision: {}", revision.as_str()));
+        }
+        if !connection.runtime_session_ids().is_empty() {
+            lines.push(format!(
+                "Runtime sessions: {}",
+                connection
+                    .runtime_session_ids()
+                    .iter()
+                    .map(AgentRuntimeSessionId::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+    for finding in report.findings() {
+        let role = if report.root_cause_ids().contains(finding.id()) {
+            "root"
+        } else {
+            "related"
+        };
+        lines.push(format!("Finding ({role}): {}", finding.id()));
+        lines.push(format!("  Code: {}", finding.code()));
+        if let Some(summary) = finding
+            .facts()
+            .data()
+            .get("summary")
+            .and_then(Value::as_str)
+        {
+            lines.push(format!("  Summary: {summary}"));
+        }
+        if let Some(runtime_session_id) = finding.runtime_session_id() {
+            lines.push(format!("  Runtime session: {runtime_session_id}"));
+        }
+        lines.push(format!(
+            "  Bounded typed facts: {}",
+            serde_json::to_string(finding.facts().data()).unwrap_or_else(|_| "{}".to_owned())
+        ));
+        if !finding.causes().is_empty() {
+            lines.push(format!(
+                "  Caused by: {}",
+                finding
+                    .causes()
+                    .iter()
+                    .map(|cause| cause.finding_id().as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+    for action in report.actions() {
+        lines.push(format!("Next: {} — {}", action.code(), action.summary()));
+    }
+    for limit in report.limits() {
+        lines.push(format!("Limit: {limit}"));
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+fn current_timestamp() -> UtcTimestamp {
+    let timestamp: DateTime<Utc> = SystemTime::now().into();
+    UtcTimestamp::from_str(&timestamp.to_rfc3339_opts(chrono::SecondsFormat::Micros, true))
+        .expect("current UTC timestamp must be canonical")
 }
 
 fn run_workflow_metrics<F>(
@@ -96,17 +642,6 @@ where
 }
 
 #[derive(Debug, Serialize)]
-struct DiagnosticsReport {
-    status: &'static str,
-    scope: &'static str,
-    storage: DiagnosticsStorageReport,
-    redaction: DiagnosticsRedactionReport,
-    authority_isolation: AuthorityIsolationReport,
-    current_build: CurrentBuildReport,
-    session: Option<DiagnosticSessionReport>,
-}
-
-#[derive(Debug, Serialize)]
 struct DiagnosticsStorageReport {
     database_file: &'static str,
     contract_id: String,
@@ -117,65 +652,12 @@ struct DiagnosticsStorageReport {
 }
 
 #[derive(Debug, Serialize)]
-struct DiagnosticsRedactionReport {
-    stores_prompt_text: bool,
-    stores_file_content_or_paths: bool,
-    stores_secret_text: bool,
-    stores_user_action_form_or_resolution_text: bool,
-    stored_detail: &'static str,
-}
-
-#[derive(Debug, Serialize)]
 struct AuthorityIsolationReport {
     project_state_database_opened_by_report: bool,
     changes_state_version: bool,
     changes_evidence_or_assurance: bool,
     changes_close_readiness: bool,
     changes_user_actions: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct CurrentBuildReport {
-    package_version: &'static str,
-    build_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct DiagnosticSessionReport {
-    session_id: String,
-    connection_id: Option<String>,
-    project_id: Option<String>,
-    transport: String,
-    host_kind: Option<String>,
-    producer_build: ProducerBuildReport,
-    started_at: String,
-    updated_at: String,
-    tools: Vec<DiagnosticToolReport>,
-    totals: volicord_store::diagnostics::DiagnosticTotals,
-    user_channel_counts: std::collections::BTreeMap<String, u64>,
-    fallback_counts: std::collections::BTreeMap<String, u64>,
-}
-
-#[derive(Debug, Serialize)]
-struct ProducerBuildReport {
-    package_version: String,
-    build_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct DiagnosticToolReport {
-    tool_name: String,
-    call_count: u64,
-    latency_micros_total: u64,
-    latency_micros_max: u64,
-    latency_micros_average: u64,
-    request_bytes: u64,
-    response_bytes: u64,
-    validation_failures: u64,
-    retries_after_validation_failure: u64,
-    core_reached_count: u64,
-    core_committed_count: u64,
-    replayed_count: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -314,36 +796,6 @@ fn distribution_measurement(
     }
 }
 
-fn diagnostics_report(
-    aggregate: Option<DiagnosticSessionAggregate>,
-) -> Result<DiagnosticsReport, DiagnosticsCommandError> {
-    let build = volicord_mcp::build_info();
-    Ok(DiagnosticsReport {
-        status: if aggregate.is_some() { "available" } else { "no_data" },
-        scope: "bounded_local_operability_only",
-        storage: diagnostics_storage_report()?,
-        redaction: DiagnosticsRedactionReport {
-            stores_prompt_text: false,
-            stores_file_content_or_paths: false,
-            stores_secret_text: false,
-            stores_user_action_form_or_resolution_text: false,
-            stored_detail: "allowlisted identifiers, categorical outcomes, counters, byte sizes, and latency only",
-        },
-        authority_isolation: AuthorityIsolationReport {
-            project_state_database_opened_by_report: false,
-            changes_state_version: false,
-            changes_evidence_or_assurance: false,
-            changes_close_readiness: false,
-            changes_user_actions: false,
-        },
-        current_build: CurrentBuildReport {
-            package_version: build.package_version,
-            build_id: build.build_id,
-        },
-        session: aggregate.map(session_report),
-    })
-}
-
 fn diagnostics_storage_report() -> Result<DiagnosticsStorageReport, DiagnosticsCommandError> {
     let manifest = current_diagnostics_storage_manifest()?;
     Ok(DiagnosticsStorageReport {
@@ -354,103 +806,6 @@ fn diagnostics_storage_report() -> Result<DiagnosticsStorageReport, DiagnosticsC
         max_sessions: DIAGNOSTICS_MAX_SESSIONS,
         max_events_per_session: DIAGNOSTICS_MAX_EVENTS_PER_SESSION,
     })
-}
-
-fn session_report(aggregate: DiagnosticSessionAggregate) -> DiagnosticSessionReport {
-    let tools = aggregate
-        .tools
-        .into_iter()
-        .map(|tool| DiagnosticToolReport {
-            tool_name: tool.tool_name,
-            call_count: tool.call_count,
-            latency_micros_total: tool.latency_micros_total,
-            latency_micros_max: tool.latency_micros_max,
-            latency_micros_average: tool
-                .latency_micros_total
-                .checked_div(tool.call_count)
-                .unwrap_or(0),
-            request_bytes: tool.request_bytes,
-            response_bytes: tool.response_bytes,
-            validation_failures: tool.validation_failures,
-            retries_after_validation_failure: tool.retries_after_validation_failure,
-            core_reached_count: tool.core_reached_count,
-            core_committed_count: tool.core_committed_count,
-            replayed_count: tool.replayed_count,
-        })
-        .collect();
-    DiagnosticSessionReport {
-        session_id: aggregate.session_id,
-        connection_id: aggregate.connection_id,
-        project_id: aggregate.project_id,
-        transport: aggregate.transport,
-        host_kind: aggregate.host_kind,
-        producer_build: ProducerBuildReport {
-            package_version: aggregate.package_version,
-            build_id: aggregate.build_id,
-        },
-        started_at: aggregate.started_at,
-        updated_at: aggregate.updated_at,
-        tools,
-        totals: aggregate.totals,
-        user_channel_counts: aggregate.user_channel_counts,
-        fallback_counts: aggregate.fallback_counts,
-    }
-}
-
-fn render_json(
-    aggregate: Option<DiagnosticSessionAggregate>,
-) -> Result<String, DiagnosticsCommandError> {
-    serde_json::to_string_pretty(&diagnostics_report(aggregate)?)
-        .map(|output| format!("{output}\n"))
-        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
-}
-
-fn render_text(
-    aggregate: Option<DiagnosticSessionAggregate>,
-) -> Result<String, DiagnosticsCommandError> {
-    let report = diagnostics_report(aggregate)?;
-    let Some(session) = report.session else {
-        return Ok(concat!(
-            "diagnostics session\n",
-            "status: no_data\n",
-            "scope: bounded local operability only\n",
-            "authority_effect: none\n"
-        )
-        .to_owned());
-    };
-    let channels = serde_json::to_string(&session.user_channel_counts)
-        .expect("diagnostic user-channel count maps are JSON-serializable");
-    let fallbacks = serde_json::to_string(&session.fallback_counts)
-        .expect("diagnostic fallback count maps are JSON-serializable");
-    Ok(format!(
-        concat!(
-            "diagnostics session\n",
-            "status: available\n",
-            "session_id: {}\n",
-            "transport: {}\n",
-            "tool_calls: {}\n",
-            "validation_failures: {}\n",
-            "retries_after_validation_failure: {}\n",
-            "core_reached: {}\n",
-            "core_committed: {}\n",
-            "product_file_writes_observed: {}\n",
-            "authoritative_refresh_failures: {}\n",
-            "user_channels: {}\n",
-            "fallbacks: {}\n",
-            "authority_effect: none\n"
-        ),
-        session.session_id,
-        session.transport,
-        session.totals.tool_call_count,
-        session.totals.validation_failures,
-        session.totals.retries_after_validation_failure,
-        session.totals.core_reached_count,
-        session.totals.core_committed_count,
-        session.totals.product_file_write_count,
-        session.totals.authoritative_refresh_failures,
-        channels,
-        fallbacks,
-    ))
 }
 
 #[cfg(test)]
@@ -472,21 +827,12 @@ mod tests {
         ObservationConfidence, OperationCategory, ProjectId,
     };
 
-    use crate::cli::{DiagnosticsSessionArgs, DiagnosticsWorkflowMetricsArgs};
+    use crate::cli::DiagnosticsWorkflowMetricsArgs;
 
     use super::*;
 
     fn env_for(runtime_home: &Path) -> impl Fn(&str) -> Option<OsString> + '_ {
         move |name| (name == "VOLICORD_HOME").then(|| OsString::from(runtime_home))
-    }
-
-    fn session_args(json: bool) -> DiagnosticsArgs {
-        DiagnosticsArgs {
-            command: DiagnosticsCommand::Session(DiagnosticsSessionArgs {
-                session: None,
-                json,
-            }),
-        }
     }
 
     fn workflow_metrics_args(repo: &Path) -> DiagnosticsArgs {
@@ -499,68 +845,66 @@ mod tests {
     }
 
     #[test]
-    fn json_report_exposes_bounded_operability_aggregates() {
-        let fixture = CoreFixture::new("diagnostics-command-json").expect("fixture");
-        let session_id = "mcp_runtime_session_json".to_owned();
-        start_diagnostic_session(
-            fixture.runtime_home_path(),
-            DiagnosticSessionStart {
-                session_id: &session_id,
-                connection_id: Some(fixture.connection_id()),
-                project_id: Some(fixture.project_id()),
-                transport: DiagnosticTransport::McpStdio,
-                host_kind: Some(DiagnosticHostKind::Codex),
-                package_version: "0.2.0",
-                build_id: "0.2.0;git=unknown",
-            },
-        )
-        .expect("session");
-        record_diagnostic_event(
-            fixture.runtime_home_path(),
-            DiagnosticEvent {
-                session_id: &session_id,
-                event_kind: DiagnosticEventKind::McpToolCall,
-                tool_name: Some("volicord.status"),
-                latency_micros: 90,
-                request_bytes: 32,
-                response_bytes: 64,
-                validation_failure: false,
-                core_reached: true,
-                core_committed: false,
-                replayed: false,
-                user_channel_kind: None,
-                fallback_kind: Some(DiagnosticFallbackKind::CliInbox),
-                product_file_write_count: 0,
-                authoritative_refresh_failure: false,
-                outcome: DiagnosticOutcome::Success,
-            },
-        )
-        .expect("event");
-
-        let output = run_diagnostics_command(
-            session_args(true),
-            env_for(fixture.runtime_home_path()),
-            fixture.product_repo_path().as_path(),
-        )
-        .expect("diagnostics output");
-        let report: serde_json::Value = serde_json::from_str(&output).expect("JSON");
-        assert_eq!(report["status"], "available");
-        assert!(report.get("schema_version").is_none());
-        assert_eq!(
-            report["storage"]["contract_id"],
-            "volicord.sqlite.diagnostics"
-        );
-        assert!(report["storage"]["canonical_schema_digest"]
-            .as_str()
-            .expect("schema digest")
-            .starts_with("sha256:"));
-        assert_eq!(report["session"]["totals"]["core_reached_count"], 1);
-        assert_eq!(report["session"]["fallback_counts"]["cli_inbox"], 1);
-        assert_eq!(
-            report["authority_isolation"]["changes_state_version"],
-            false
-        );
-        assert_eq!(report["redaction"]["stores_secret_text"], false);
+    fn missing_finding_and_runtime_session_lookups_are_exact_typed_reports() {
+        let fixture = CoreFixture::new("missing-diagnostic-lookups").expect("fixture");
+        let cases = [
+            (
+                DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                    finding_id: "finding.does_not_exist".to_owned(),
+                    json: true,
+                }),
+                "diagnostics_show",
+                "diagnostic_lookup",
+                "finding.diagnostics.lookup.finding_missing",
+                "diagnostics.lookup.finding_missing",
+            ),
+            (
+                DiagnosticsCommand::Session(DiagnosticsSessionArgs {
+                    runtime_session_id: "runtime_session_does_not_exist".to_owned(),
+                    json: true,
+                }),
+                "diagnostics_session",
+                "runtime_session_lookup",
+                "finding.diagnostics.lookup.runtime_session_missing",
+                "diagnostics.lookup.runtime_session_missing",
+            ),
+        ];
+        for (command, operation, check_id, finding_id, finding_code) in cases {
+            let error = run_diagnostics_command(
+                DiagnosticsArgs { command },
+                env_for(fixture.runtime_home_path()),
+                fixture.product_repo_path().as_path(),
+            )
+            .expect_err("missing lookup must use the typed failure output channel");
+            let DiagnosticsCommandError::FailureOutput(output) = error else {
+                panic!("missing lookup returned an ad hoc error: {error}");
+            };
+            let report: Value = serde_json::from_str(&output).expect("diagnostic report JSON");
+            assert_eq!(report["schema_version"], 2);
+            assert_eq!(report["operation"], operation);
+            assert_eq!(report["status"], "failed");
+            assert_eq!(report["checks"][0]["id"], check_id);
+            assert_eq!(report["checks"][0]["status"], "failed");
+            assert_eq!(
+                report["checks"][0]["details"]["observation_state"],
+                "absent"
+            );
+            assert_eq!(report["root_cause_ids"], json!([finding_id]));
+            assert_eq!(report["findings"][0]["id"], finding_id);
+            assert_eq!(report["findings"][0]["code"], finding_code);
+            assert_eq!(
+                report["findings"][0]["facts"]["data"]["observation_state"],
+                "absent"
+            );
+            assert_eq!(
+                report["actions"],
+                json!([{
+                    "code": "action.diagnostics.check_identifier",
+                    "summary": "Check the exact diagnostic identifier and Runtime Home",
+                    "root_cause_ids": [finding_id],
+                }])
+            );
+        }
     }
 
     #[test]
@@ -882,7 +1226,7 @@ mod tests {
         )
         .expect("diagnostic event");
         let _ = run_diagnostics_command(
-            session_args(true),
+            workflow_metrics_args(&fixture.product_repo_path()),
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )
@@ -896,7 +1240,7 @@ mod tests {
         )
         .expect("corrupt only diagnostics storage");
         let error = run_diagnostics_command(
-            session_args(true),
+            workflow_metrics_args(&fixture.product_repo_path()),
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )

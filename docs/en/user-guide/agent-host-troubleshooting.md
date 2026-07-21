@@ -13,6 +13,7 @@ volicord doctor
 volicord project current
 volicord connection list
 volicord connection status codex --repo "<repo>"
+volicord connection status codex --repo "<repo>" --json
 ```
 
 Do not delete configuration, Runtime Home data, or the repository to clear a
@@ -22,9 +23,12 @@ not include credentials or private payloads.
 ## Use The Stable Finding Code
 
 In `volicord doctor --json`, read `findings[].code` and
-`findings[].actions[].code`. In Connection verification, retain the persisted
-finding ID and namespaced diagnostic code. Do not classify a failure from the
-English summary, SQLite message, path wording, or stderr excerpt.
+`findings[].actions[].code`. In Connection status or verification JSON, read
+`root_cause_ids`, match those IDs in `findings`, and use the top-level
+`actions[].code` and `actions[].root_cause_ids`. Retain the persisted finding ID,
+runtime-session ID when present, and namespaced diagnostic code. Do not
+classify a failure from the English summary, SQLite message, path wording, or
+stderr excerpt.
 
 Use the code family to choose the focused recovery:
 
@@ -45,6 +49,23 @@ Do not restart Codex merely for deterministic TOML drift, schema mismatch,
 read-only storage, or Runtime Home permission failure. Repair that cause first.
 `internal.unexpected_failure` means no narrower owner mapping was available; it
 does not authorize guessing from prose.
+
+## Inspect One Finding Or Runtime Session
+
+Use the exact identifier from concise, verbose, or JSON output:
+
+```sh
+volicord diagnostics show "<finding-id>"
+volicord diagnostics show "<finding-id>" --json
+volicord diagnostics session "<runtime-session-id>"
+volicord diagnostics session "<runtime-session-id>" --json
+```
+
+These are bounded Registry lookups. The human and JSON forms contain the same
+root IDs and typed facts. A missing identifier returns a typed failed report
+with `observation_state=absent`; it is not evidence that an empty finding or
+empty session was observed. Check the selected Runtime Home and exact ID rather
+than scanning SQLite or inventing an alternate identifier.
 
 ## Command Is Not Available
 
@@ -93,16 +114,27 @@ different transport or bypass connection binding.
 
 ## MCP Self-Test Fails
 
-Rerun active verification with JSON output and find the `mcp_server` check:
+Rerun active verification with JSON output and start with the root IDs:
 
 ```sh
 volicord connection verify codex --repo "<repo>" --json
 ```
 
-Inspect `details.self_test.diagnostic_code`, `failure_stage`, and `finding_id`.
-Matrix failures expose the same three fields on the failed revision or host
-fixture. Retain the finding ID when inspecting or sharing bounded Registry
-facts such as exit code, timeout, missing tools, or stderr excerpt.
+Match `root_cause_ids` to `findings[].id`, then inspect that finding's `code`,
+typed `facts.data`, `causes`, correlations, and actions. The failed check still
+retains stage-specific detail, including `details.self_test.diagnostic_code`,
+`failure_stage`, and `finding_id` where applicable. Retain the finding ID when
+inspecting or sharing bounded Registry facts such as exit code, timeout,
+missing tools, or stderr excerpt.
+
+For `mcp.protocol.unsupported_revision`, compare
+`attempted_client_name`/`attempted_client_version`, `requested_revision`, and
+`production_supported_revisions`. The ordinary concise output already shows
+these values and the blocked `required_tools` and `tool_round_trip` checks. Use
+`action.mcp.use_supported_protocol_revision`; do not replace it with a generic
+inspection step. In verbose output, keep the requested, selected, and
+negotiated revisions distinct, and keep actual MCP peer `clientInfo` distinct
+from the PATH executable probe.
 
 Treat stderr only as bounded context. Do not infer a machine reason from child
 wording or copy credentials into a report. The stable `process.*`, `mcp.*`, and

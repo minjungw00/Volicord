@@ -215,10 +215,10 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
     assert_eq!(workflow["operation"], "add");
     assert_eq!(workflow["connection"]["mode"], CONNECTION_MODE_WORKFLOW);
     assert_eq!(
-        workflow["result"],
+        workflow["operation_details"]["result"],
         json!({"kind": "setup", "applied": true})
     );
-    let workflow_id = workflow["connection"]["id"]
+    let workflow_id = workflow["connection"]["connection_id"]
         .as_str()
         .expect("workflow connection id");
     let after_workflow = registry_snapshot(fixture.path());
@@ -241,7 +241,7 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
 
     let read_only = run_connection_add(&read_only_repo, true, true, false, &mut process)?;
     assert_eq!(read_only["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
-    let read_only_id = read_only["connection"]["id"]
+    let read_only_id = read_only["connection"]["connection_id"]
         .as_str()
         .expect("read-only connection id");
     let after_read_only = registry_snapshot(fixture.path());
@@ -257,7 +257,7 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
     let repo_before = directory_contents(&dry_run_repo)?;
     let codex_before = directory_contents(&process.codex_home)?;
     let dry_run = run_connection_add(&dry_run_repo, true, true, true, &mut process)?;
-    assert_eq!(dry_run["dry_run"], true);
+    assert_eq!(dry_run["operation_details"]["dry_run"], true);
     assert_eq!(dry_run["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
     assert_eq!(directory_contents(fixture.path())?, runtime_before);
     assert_eq!(directory_contents(&dry_run_repo)?, repo_before);
@@ -357,8 +357,11 @@ fn read_only_init_replay_dry_run_and_repairs_preserve_mode_generation_and_revisi
     assert_eq!(workflow.agent_connections[0].mode, CONNECTION_MODE_WORKFLOW);
     let transition = run_read_only_mode(&repo_root, &mut process)?;
     assert_eq!(transition["operation"], "mode");
-    assert_eq!(transition["result"]["kind"], "mode_transition");
-    assert_eq!(transition["result"]["changed"], true);
+    assert_eq!(
+        transition["operation_details"]["result"]["kind"],
+        "mode_transition"
+    );
+    assert_eq!(transition["operation_details"]["result"]["changed"], true);
     assert_eq!(transition["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
 
     let read_only = registry_snapshot(fixture.path());
@@ -394,7 +397,7 @@ fn read_only_init_replay_dry_run_and_repairs_preserve_mode_generation_and_revisi
     let repo_before_dry_run = directory_contents(&repo_root)?;
     let codex_before_dry_run = directory_contents(&process.codex_home)?;
     let dry_run = run_record_init_dry_run(&repo_root, &mut process)?;
-    assert_eq!(dry_run["dry_run"], true);
+    assert_eq!(dry_run["operation_details"]["dry_run"], true);
     assert_eq!(dry_run["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
     assert_eq!(directory_contents(fixture.path())?, runtime_before_dry_run);
     assert_eq!(directory_contents(&repo_root)?, repo_before_dry_run);
@@ -497,9 +500,9 @@ fn read_only_connection_add_replay_and_repairs_preserve_owner_revision(
     let repo_before_dry_run = directory_contents(&repo_root)?;
     let codex_before_dry_run = directory_contents(&process.codex_home)?;
     let dry_run = run_connection_add(&repo_root, false, false, true, &mut process)?;
-    assert_eq!(dry_run["dry_run"], true);
+    assert_eq!(dry_run["operation_details"]["dry_run"], true);
     assert_eq!(dry_run["connection"]["mode"], CONNECTION_MODE_READ_ONLY);
-    assert!(dry_run["planned_changes"]
+    assert!(dry_run["operation_details"]["planned_changes"]
         .as_array()
         .is_some_and(Vec::is_empty));
     assert_eq!(directory_contents(fixture.path())?, runtime_before_dry_run);
@@ -752,7 +755,7 @@ fn init_migration_retains_bound_cleanup_inventory_until_host_cleanup_replay(
     assert_eq!(failed_cleanup["operation"], "init");
     assert_eq!(failed_cleanup["status"], "failed");
     assert_eq!(
-        failed_cleanup["result"],
+        failed_cleanup["operation_details"]["result"],
         json!({"kind": "setup", "applied": false}),
         "unexpected migration output: {failed_cleanup}"
     );
@@ -1081,8 +1084,11 @@ fn assert_failed_init_with_recorded_guard(output: &Value) {
         "unexpected init result: {output}"
     );
     assert_eq!(output["operation"], "init");
-    assert_eq!(output["dry_run"], false);
-    assert_eq!(output["result"], json!({"kind": "setup", "applied": true}));
+    assert_eq!(output["operation_details"]["dry_run"], false);
+    assert_eq!(
+        output["operation_details"]["result"],
+        json!({"kind": "setup", "applied": true})
+    );
 }
 
 fn assert_unavailable_codex_verification(

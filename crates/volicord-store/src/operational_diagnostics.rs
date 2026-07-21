@@ -189,6 +189,19 @@ pub struct RuntimeHomeDiagnosticFacts {
 
 impl DiagnosticFactSource for RuntimeHomeDiagnosticFacts {}
 
+#[derive(Serialize)]
+struct ProjectedRuntimeHomeDiagnosticFacts<'a> {
+    summary: &'static str,
+    observed_state: Option<&'static str>,
+    path_role: Option<&'static str>,
+    boundary_violation: Option<&'static str>,
+    io_error_kind: Option<&'static str>,
+    #[serde(skip)]
+    _source: std::marker::PhantomData<&'a RuntimeHomeDiagnosticFacts>,
+}
+
+impl DiagnosticFactSource for ProjectedRuntimeHomeDiagnosticFacts<'_> {}
+
 /// Builds one shared Runtime Home finding from a typed Runtime Home diagnostic.
 pub fn runtime_home_diagnostic_finding(
     diagnostic: RuntimeHomeDiagnostic,
@@ -205,7 +218,14 @@ pub fn runtime_home_diagnostic_finding(
         DiagnosticSeverity::Error,
         DiagnosticSource::parse("store_runtime_home")?,
         DiagnosticSubject::try_new("runtime_home", "selected")?,
-        DiagnosticFacts::project(facts)?,
+        DiagnosticFacts::project(&ProjectedRuntimeHomeDiagnosticFacts {
+            summary: diagnostic.summary(),
+            observed_state: facts.observed_state,
+            path_role: facts.path_role,
+            boundary_violation: facts.boundary_violation,
+            io_error_kind: facts.io_error_kind,
+            _source: std::marker::PhantomData,
+        })?,
         observed_at,
     )?
     .with_actions(vec![DiagnosticAction::try_new(
@@ -394,6 +414,23 @@ pub struct StoreDiagnosticFacts {
 
 impl DiagnosticFactSource for StoreDiagnosticFacts {}
 
+#[derive(Serialize)]
+struct ProjectedStoreDiagnosticFacts<'a> {
+    summary: &'static str,
+    database_kind: Option<&'static str>,
+    observed_state: Option<&'static str>,
+    sqlite_primary_code: Option<i32>,
+    sqlite_extended_code: Option<i32>,
+    constraint_kind: Option<&'static str>,
+    entity: Option<&'static str>,
+    field: Option<&'static str>,
+    io_error_kind: Option<&'static str>,
+    #[serde(skip)]
+    _source: std::marker::PhantomData<&'a StoreDiagnosticFacts>,
+}
+
+impl DiagnosticFactSource for ProjectedStoreDiagnosticFacts<'_> {}
+
 impl StoreDiagnosticFacts {
     pub fn from_error(error: &StoreError, database_kind: Option<&'static str>) -> Self {
         let mut facts = Self {
@@ -458,7 +495,18 @@ pub fn store_diagnostic_finding_from_kind(
         DiagnosticSeverity::Error,
         DiagnosticSource::parse("store")?,
         DiagnosticSubject::try_new("database", database_kind.unwrap_or("unknown"))?,
-        DiagnosticFacts::project(facts)?,
+        DiagnosticFacts::project(&ProjectedStoreDiagnosticFacts {
+            summary: diagnostic.summary(),
+            database_kind: facts.database_kind,
+            observed_state: facts.observed_state,
+            sqlite_primary_code: facts.sqlite_primary_code,
+            sqlite_extended_code: facts.sqlite_extended_code,
+            constraint_kind: facts.constraint_kind,
+            entity: facts.entity,
+            field: facts.field,
+            io_error_kind: facts.io_error_kind,
+            _source: std::marker::PhantomData,
+        })?,
         observed_at,
     )?
     .with_actions(actions)

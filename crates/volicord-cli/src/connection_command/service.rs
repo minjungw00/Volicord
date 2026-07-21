@@ -2041,7 +2041,7 @@ mod init_planning_tests {
             &mut process,
         )?;
         let transition: Value = serde_json::from_str(&transition)?;
-        assert_eq!(transition["result"]["changed"], true);
+        assert_eq!(transition["operation_details"]["result"]["changed"], true);
         let runtime_before_apply = directory_contents(fixture.path())?;
         let repository_before_apply = directory_contents(&repo_root)?;
 

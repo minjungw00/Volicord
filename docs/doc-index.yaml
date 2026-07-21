@@ -1524,6 +1524,8 @@ documents:
   - fail-closed persisted authority, policy, and typed-data corruption handling
   - shared bounded `DiagnosticFinding` fields, safe-fact projection, cause-graph integrity, and
     pre-Registry `VOLICORD_DIAGNOSTIC_V1` stderr envelope
+  - single current schema-2 `DiagnosticReport`, structural observation states, derived roots, and
+    report-action correlation
   - prohibition on synthetic identifiers, fabricated records, fallback formats, and default-value
     conflation
   depends_on:
@@ -1658,11 +1660,12 @@ documents:
   - command arguments, defaults, output routing, exit codes, and noninteractive behavior
   - Runtime Home selection and project registration commands
   - personal and shared Codex Record connection setup, verification, mode, repair, and removal
-  - exact `ConnectionCommandReport` output for init, add, status, verify, mode, and remove, including dry-run separation and exit routing
+  - exact concise, verbose, and schema-2 `DiagnosticReport` projections for init, add, status, verify, mode, and remove, including dry-run separation and exit routing
   - exact read-only `ConnectionListReport` inventory projection, row-local persisted-state issues, and list exit routing
   - managed stdio MCP launch and preflight commands
   - CLI inbox listing and CLI-only UserAction resolution
-  - policy, diagnostics, authority-bundle export, and change-reconciliation commands
+  - bounded finding and runtime-session diagnostic lookup commands, workflow metrics, policy,
+    authority-bundle export, and change-reconciliation commands
   - administrative command boundary from public Volicord API methods
   depends_on:
   - reference.runtime-boundaries
@@ -2700,7 +2703,8 @@ documents:
   canonical_for:
   - Codex `record`, personal/shared, managed stdio MCP, and CLI inbox first-release connection surface
   - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
-  - direct CLI projection of canonical verification checks and actions without a nested report or duplicate status tree
+  - shared CLI diagnostic projection of canonical verification checks, findings, cause graph, and
+    root-scoped actions without renderer-side cause inference
   - typed integration revisions and authoritative managed-host operational-session evidence
   - immutable Store-owned integration-instance identity across physical Connection lifecycles
   - Store-derived revision-scoped project Agent Session identity across mode and physical lifecycles

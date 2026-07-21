@@ -1598,6 +1598,9 @@ volicord connection status codex --repo /path/to/repo --verbose --home /path/to/
 volicord connection verify codex --repo /path/to/repo --verbose --home /path/to/runtime-home
 volicord connection mode codex workflow --verbose --home /path/to/runtime-home
 volicord connection remove codex --repo /path/to/repo --verbose --home /path/to/runtime-home
+volicord diagnostics show finding.example --json
+volicord diagnostics session runtime_session_example --json
+volicord diagnostics workflow-metrics --repo /path/to/repo --json
 volicord inbox --task active
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice accept
 ```

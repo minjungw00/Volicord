@@ -107,7 +107,8 @@ use service::{
     ProvisionConnectionRequest,
 };
 use verification::{
-    current_status_report, effective_connection_report, verify_connection, VerificationReport,
+    current_status_report, diagnostic_projection_for_connection, effective_connection_report,
+    verify_connection, VerificationReport,
 };
 
 const PATH_ENV: &str = "PATH";
@@ -198,13 +199,19 @@ pub fn run_init_command(
         host_target_text(&outcome.host_plan.target),
     );
     let report = if outcome.dry_run {
-        ConnectionCommandReport::setup_dry_run(
+        let report = ConnectionCommandReport::setup_dry_run(
             CommandOperation::Init,
             &outcome.runtime_home,
             connection,
             outcome.current_report.as_ref(),
             outcome.planned_changes,
             &outcome.host_plan.actions,
+        )?;
+        attach_current_diagnostic_projection(
+            report,
+            &outcome.runtime_home,
+            &outcome.connection_id,
+            outcome.current_report.as_ref(),
         )?
     } else {
         let verification = outcome.verification.as_ref().ok_or_else(|| {
@@ -218,6 +225,10 @@ pub fn run_init_command(
             &outcome.runtime_home,
             connection,
             &verification.report,
+        )
+        .with_diagnostic_findings(
+            verification.findings.clone(),
+            Some(verification.integration_revision.clone()),
         )
     };
     let rendered = render_command_report(init_output_format(&parsed), &report)?;
@@ -265,6 +276,12 @@ pub fn run_connect_command(
                 plan.planned_changes,
                 &plan.host_plan.actions,
             )?;
+            let report = attach_current_diagnostic_projection(
+                report,
+                &plan.runtime_home,
+                &plan.connection_id,
+                plan.current_report.as_ref(),
+            )?;
             let rendered = render_command_report(connection_output_format(&parsed), &report)?;
             command_output_result(rendered.status, rendered.output)
         }
@@ -283,11 +300,32 @@ pub fn run_connect_command(
                     &outcome.connection.config_target,
                 ),
                 &outcome.verification.report,
+            )
+            .with_diagnostic_findings(
+                outcome.verification.findings.clone(),
+                Some(outcome.verification.integration_revision.clone()),
             );
             let rendered = render_command_report(connection_output_format(&parsed), &report)?;
             command_output_result(rendered.status, rendered.output)
         }
     }
+}
+
+fn attach_current_diagnostic_projection(
+    report: ConnectionCommandReport,
+    runtime_home: &Path,
+    connection_id: &str,
+    current_report: Option<&ConnectionVerificationReport>,
+) -> Result<ConnectionCommandReport, ConnectionCommandError> {
+    let Some(current_report) = current_report else {
+        return Ok(report);
+    };
+    let Some(connection) = agent_connection_record(runtime_home, connection_id)? else {
+        return Ok(report);
+    };
+    let (findings, revision) =
+        diagnostic_projection_for_connection(runtime_home, &connection, current_report)?;
+    Ok(report.with_diagnostic_findings(findings, Some(revision)))
 }
 
 pub fn run_connections_command(
@@ -366,6 +404,8 @@ fn command_connection_status(
     let persisted_metadata_corrupt = decode_persisted_object(&connection.metadata_json).is_none();
     if persisted_metadata_corrupt {
         report = verification::connection_metadata_failure_report(&report)?;
+        let (findings, integration_revision) =
+            diagnostic_projection_for_connection(&runtime_home, &connection, &report)?;
         let report = ConnectionCommandReport::from_verification(
             CommandOperation::Status,
             None,
@@ -379,7 +419,8 @@ fn command_connection_status(
                 &connection.config_target,
             ),
             &report,
-        );
+        )
+        .with_diagnostic_findings(findings, Some(integration_revision));
         let rendered = render_command_report(connection_output_format(&parsed), &report)?;
         return command_output_result(rendered.status, rendered.output);
     }
@@ -392,6 +433,8 @@ fn command_connection_status(
         &projects,
         process,
     )?;
+    let (findings, integration_revision) =
+        diagnostic_projection_for_connection(&runtime_home, &connection, &report)?;
     let report = ConnectionCommandReport::from_verification(
         CommandOperation::Status,
         None,
@@ -405,7 +448,8 @@ fn command_connection_status(
             &connection.config_target,
         ),
         &report,
-    );
+    )
+    .with_diagnostic_findings(findings, Some(integration_revision));
     let rendered = render_command_report(connection_output_format(&parsed), &report)?;
     command_output_result(rendered.status, rendered.output)
 }
@@ -462,6 +506,10 @@ fn command_connection_verify(
             &connection.config_target,
         ),
         &verification.report,
+    )
+    .with_diagnostic_findings(
+        verification.findings,
+        Some(verification.integration_revision),
     );
     let rendered = render_command_report(connection_output_format(&parsed), &report)?;
     command_output_result(rendered.status, rendered.output)
@@ -1776,7 +1824,18 @@ mod persisted_metadata_tests {
         assert_eq!(output["checks"], serde_json::to_value(persisted.checks())?);
         assert_eq!(
             output["actions"],
-            serde_json::to_value(persisted.actions())?
+            serde_json::json!([
+                {
+                    "code": "action.guard.repair",
+                    "summary": "Repair the current Guard installation",
+                    "root_cause_ids": ["finding.connection_fixture.guard_manifest_mismatch"]
+                },
+                {
+                    "code": "action.managed_config.repair",
+                    "summary": "Repair the managed host configuration",
+                    "root_cause_ids": ["finding.connection_fixture.managed_config_entry_missing"]
+                }
+            ])
         );
         Ok(())
     }
@@ -1820,7 +1879,7 @@ mod persisted_metadata_tests {
         };
         let output: Value = serde_json::from_str(&output)?;
         assert_eq!(output["operation"], "status");
-        assert_eq!(output["dry_run"], false);
+        assert_eq!(output["operation_details"]["dry_run"], false);
         assert_eq!(output["status"], "failed");
         assert_eq!(process.preflight_calls, 0);
         assert_eq!(process.stdio_calls, 0);

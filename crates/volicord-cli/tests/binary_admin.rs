@@ -207,13 +207,13 @@ fn failed_init_is_one_stdout_document_and_exit_one() -> Result<(), Box<dyn Error
     let value: Value = serde_json::from_str(&text)?;
     assert_eq!(value["status"], "failed");
     assert_eq!(value["operation"], "init");
-    assert_eq!(value["dry_run"], false);
-    assert_eq!(value["result"]["kind"], "setup");
-    assert_eq!(value["result"]["applied"], true);
-    assert!(value.get("planned_changes").is_none());
+    assert_eq!(value["operation_details"]["dry_run"], false);
+    assert_eq!(value["operation_details"]["result"]["kind"], "setup");
+    assert_eq!(value["operation_details"]["result"]["applied"], true);
+    assert!(value["operation_details"].get("planned_changes").is_none());
     assert!(value["checks"].is_array());
     assert!(value["actions"].is_array());
-    assert_eq!(value["limits"].as_array().map(Vec::len), Some(1));
+    assert_eq!(value["limits"].as_array().map(Vec::len), Some(3));
     Ok(())
 }
 
@@ -228,12 +228,12 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     assert!(!text.contains(GENERATED_SHAPE_ERROR));
     let value: Value = serde_json::from_str(&text)?;
     assert_eq!(value["operation"], "init");
-    assert_eq!(value["dry_run"], true);
+    assert_eq!(value["operation_details"]["dry_run"], true);
     assert_eq!(value["status"], "action_required");
-    assert_eq!(value["result"]["kind"], "setup");
-    assert_eq!(value["result"]["applied"], false);
+    assert_eq!(value["operation_details"]["result"]["kind"], "setup");
+    assert_eq!(value["operation_details"]["result"]["applied"], false);
     assert_eq!(value["connection"]["mode"], "workflow");
-    let planned_changes = value["planned_changes"]
+    let planned_changes = value["operation_details"]["planned_changes"]
         .as_array()
         .expect("typed planned changes");
     assert!(!planned_changes.is_empty());
@@ -280,10 +280,10 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
         .as_array()
         .expect("typed actions")
         .iter()
-        .map(|action| action["id"].as_str().expect("action kind"))
+        .map(|action| action["code"].as_str().expect("action code"))
         .collect::<Vec<_>>();
-    assert!(action_ids.contains(&"apply_setup"));
-    assert!(action_ids.contains(&"observe_codex"));
+    assert!(action_ids.contains(&"action.connection.apply_setup"));
+    assert!(action_ids.contains(&"action.host.observe_activity"));
     assert!(!fixture.runtime_home.join("registry.sqlite").exists());
     assert!(!fixture.codex_home.join("config.toml").exists());
     assert!(directory_contents(&fixture.repo_root)?.is_empty());
@@ -344,7 +344,7 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
     for runtime_home in [&missing_home, &absent_registry_home] {
         let output = fixture.run_init_dry_run_against_home(runtime_home, &fallback_home)?;
         let report = successful_init_dry_run_report(&output)?;
-        assert!(report["planned_changes"]
+        assert!(report["operation_details"]["planned_changes"]
             .as_array()
             .expect("planned changes")
             .iter()
@@ -383,7 +383,7 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
 
     let no_profile = fixture.run_init_dry_run_against_home(&no_profile_home, &fallback_home)?;
     let no_profile_report = successful_init_dry_run_report(&no_profile)?;
-    assert!(no_profile_report["planned_changes"]
+    assert!(no_profile_report["operation_details"]["planned_changes"]
         .as_array()
         .expect("planned changes")
         .iter()
@@ -400,11 +400,13 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
     let current_profile =
         fixture.run_init_dry_run_against_home(&current_profile_home, &fallback_home)?;
     let current_profile_report = successful_init_dry_run_report(&current_profile)?;
-    assert!(!current_profile_report["planned_changes"]
-        .as_array()
-        .expect("planned changes")
-        .iter()
-        .any(|change| change["kind"] == "runtime_home_initialization"));
+    assert!(
+        !current_profile_report["operation_details"]["planned_changes"]
+            .as_array()
+            .expect("planned changes")
+            .iter()
+            .any(|change| change["kind"] == "runtime_home_initialization")
+    );
     assert_eq!(
         directory_contents(fixture._temporary_root.path())?,
         files_before
@@ -447,7 +449,7 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     let fixture = IsolatedInitFixture::new("binary-connection-list-json")?;
     let init = fixture.run(false)?;
     let init_report: Value = serde_json::from_slice(&init.stdout)?;
-    assert_eq!(init_report["result"]["applied"], true);
+    assert_eq!(init_report["operation_details"]["result"]["applied"], true);
     let files_before = directory_contents(fixture._temporary_root.path())?;
     let entries_before = directory_entries(fixture._temporary_root.path())?;
 
@@ -465,7 +467,7 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
         std::collections::BTreeSet::from(["connections", "limits"])
     );
     assert_eq!(report["limits"], init_report["limits"]);
-    assert_eq!(report["limits"].as_array().map(Vec::len), Some(1));
+    assert_eq!(report["limits"].as_array().map(Vec::len), Some(3));
 
     let connections = report["connections"].as_array().expect("connections");
     assert_eq!(connections.len(), 1);
@@ -500,7 +502,7 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     let status_report: Value = serde_json::from_slice(&status.stdout)?;
     assert_eq!(status_report["operation"], "status");
     assert_eq!(
-        status_report["runtime_home"],
+        status_report["connection"]["runtime_home"],
         path_text(&fixture.runtime_home)
     );
 
@@ -521,11 +523,11 @@ fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<d
     let home_b = IsolatedInitFixture::new("binary-explicit-home-b")?;
     let init_a: Value = serde_json::from_slice(&home_a.run(false)?.stdout)?;
     let init_b: Value = serde_json::from_slice(&home_b.run(false)?.stdout)?;
-    let connection_a = init_a["connection"]["id"]
+    let connection_a = init_a["connection"]["connection_id"]
         .as_str()
         .expect("home A connection id")
         .to_owned();
-    let connection_b = init_b["connection"]["id"]
+    let connection_b = init_b["connection"]["connection_id"]
         .as_str()
         .expect("home B connection id")
         .to_owned();
@@ -547,8 +549,11 @@ fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<d
             selected.run_connection_with_decoy_home("status", &["codex"], &decoy.runtime_home)?;
         let status: Value = serde_json::from_slice(&status.stdout)?;
         assert_eq!(status["operation"], "status");
-        assert_eq!(status["runtime_home"], path_text(&selected.runtime_home));
-        assert_eq!(status["connection"]["id"], expected_id);
+        assert_eq!(
+            status["connection"]["runtime_home"],
+            path_text(&selected.runtime_home)
+        );
+        assert_eq!(status["connection"]["connection_id"], expected_id);
     }
     assert_eq!(home_a.all_contents()?, a_before_reads);
     assert_eq!(home_b.all_contents()?, b_before_reads);
@@ -562,8 +567,11 @@ fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<d
             selected.run_connection_with_decoy_home("add", &["codex"], &decoy.runtime_home)?;
         let add: Value = serde_json::from_slice(&add.stdout)?;
         assert_eq!(add["operation"], "add");
-        assert_eq!(add["runtime_home"], path_text(&selected.runtime_home));
-        assert_eq!(add["connection"]["id"], expected_id);
+        assert_eq!(
+            add["connection"]["runtime_home"],
+            path_text(&selected.runtime_home)
+        );
+        assert_eq!(add["connection"]["connection_id"], expected_id);
         assert_eq!(decoy.all_contents()?, decoy_before);
     }
 
@@ -576,8 +584,11 @@ fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<d
             selected.run_connection_with_decoy_home("verify", &["codex"], &decoy.runtime_home)?;
         let verify: Value = serde_json::from_slice(&verify.stdout)?;
         assert_eq!(verify["operation"], "verify");
-        assert_eq!(verify["runtime_home"], path_text(&selected.runtime_home));
-        assert_eq!(verify["connection"]["id"], expected_id);
+        assert_eq!(
+            verify["connection"]["runtime_home"],
+            path_text(&selected.runtime_home)
+        );
+        assert_eq!(verify["connection"]["connection_id"], expected_id);
         assert_eq!(decoy.all_contents()?, decoy_before);
     }
 
@@ -594,8 +605,11 @@ fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<d
         assert_eq!(mode.status.code(), Some(0), "{}", stderr(&mode)?);
         let mode: Value = serde_json::from_slice(&mode.stdout)?;
         assert_eq!(mode["operation"], "mode");
-        assert_eq!(mode["runtime_home"], path_text(&selected.runtime_home));
-        assert_eq!(mode["connection"]["id"], expected_id);
+        assert_eq!(
+            mode["connection"]["runtime_home"],
+            path_text(&selected.runtime_home)
+        );
+        assert_eq!(mode["connection"]["connection_id"], expected_id);
         assert_eq!(mode["connection"]["mode"], "read_only");
         assert_eq!(decoy.all_contents()?, decoy_before);
     }
@@ -610,9 +624,15 @@ fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<d
         assert_eq!(remove.status.code(), Some(0), "{}", stderr(&remove)?);
         let remove: Value = serde_json::from_slice(&remove.stdout)?;
         assert_eq!(remove["operation"], "remove");
-        assert_eq!(remove["runtime_home"], path_text(&selected.runtime_home));
-        assert_eq!(remove["connection"]["id"], expected_id);
-        assert_eq!(remove["result"]["connection_removed"], true);
+        assert_eq!(
+            remove["connection"]["runtime_home"],
+            path_text(&selected.runtime_home)
+        );
+        assert_eq!(remove["connection"]["connection_id"], expected_id);
+        assert_eq!(
+            remove["operation_details"]["result"]["connection_removed"],
+            true
+        );
         assert_eq!(decoy.all_contents()?, decoy_before);
     }
     Ok(())
@@ -622,10 +642,13 @@ fn explicit_runtime_homes_isolate_every_connection_command() -> Result<(), Box<d
 fn custom_home_lifecycle_needs_no_environment_binding() -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-custom-home-lifecycle")?;
     let init: Value = serde_json::from_slice(&fixture.run(false)?.stdout)?;
-    let connection_id = init["connection"]["id"]
+    let connection_id = init["connection"]["connection_id"]
         .as_str()
         .expect("custom-home connection id");
-    assert_eq!(init["runtime_home"], path_text(&fixture.runtime_home));
+    assert_eq!(
+        init["connection"]["runtime_home"],
+        path_text(&fixture.runtime_home)
+    );
 
     let list: Value = serde_json::from_slice(&fixture.run_connection_list(None, true)?.stdout)?;
     assert_eq!(list["connections"].as_array().map(Vec::len), Some(1));
@@ -635,21 +658,33 @@ fn custom_home_lifecycle_needs_no_environment_binding() -> Result<(), Box<dyn Er
         let report: Value =
             serde_json::from_slice(&fixture.run_connection(operation, true)?.stdout)?;
         assert_eq!(report["operation"], operation);
-        assert_eq!(report["runtime_home"], path_text(&fixture.runtime_home));
-        assert_eq!(report["connection"]["id"], connection_id);
+        assert_eq!(
+            report["connection"]["runtime_home"],
+            path_text(&fixture.runtime_home)
+        );
+        assert_eq!(report["connection"]["connection_id"], connection_id);
     }
 
     let mode: Value = serde_json::from_slice(&fixture.run_connection_mode("read-only")?.stdout)?;
-    assert_eq!(mode["runtime_home"], path_text(&fixture.runtime_home));
-    assert_eq!(mode["connection"]["id"], connection_id);
+    assert_eq!(
+        mode["connection"]["runtime_home"],
+        path_text(&fixture.runtime_home)
+    );
+    assert_eq!(mode["connection"]["connection_id"], connection_id);
     assert_eq!(mode["connection"]["mode"], "read_only");
 
     let remove = fixture.run_connection("remove", true)?;
     assert_eq!(remove.status.code(), Some(0), "{}", stderr(&remove)?);
     let remove: Value = serde_json::from_slice(&remove.stdout)?;
-    assert_eq!(remove["runtime_home"], path_text(&fixture.runtime_home));
-    assert_eq!(remove["connection"]["id"], connection_id);
-    assert_eq!(remove["result"]["connection_removed"], true);
+    assert_eq!(
+        remove["connection"]["runtime_home"],
+        path_text(&fixture.runtime_home)
+    );
+    assert_eq!(remove["connection"]["connection_id"], connection_id);
+    assert_eq!(
+        remove["operation_details"]["result"]["connection_removed"],
+        true
+    );
     Ok(())
 }
 
@@ -682,7 +717,10 @@ fn relative_explicit_home_is_reported_as_the_selected_absolute_path() -> Result<
         stderr(&output)?
     );
     let report: Value = serde_json::from_slice(&output.stdout)?;
-    assert_eq!(report["runtime_home"], path_text(&fixture.runtime_home));
+    assert_eq!(
+        report["connection"]["runtime_home"],
+        path_text(&fixture.runtime_home)
+    );
     Ok(())
 }
 
@@ -691,7 +729,7 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
 ) -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-unusable-explicit-home")?;
     let init: Value = serde_json::from_slice(&fixture.run(false)?.stdout)?;
-    let connection_id = init["connection"]["id"]
+    let connection_id = init["connection"]["connection_id"]
         .as_str()
         .expect("custom-home connection id");
     let missing_home = fixture._temporary_root.path().join("missing explicit home");
@@ -917,7 +955,7 @@ fn assert_shell_neutral_guidance(output: &str, runtime_home: &Path) {
 fn platform_default_does_not_discover_an_explicit_custom_home() -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-custom-home-default-isolation")?;
     let init: Value = serde_json::from_slice(&fixture.run(false)?.stdout)?;
-    let connection_id = init["connection"]["id"]
+    let connection_id = init["connection"]["connection_id"]
         .as_str()
         .expect("custom-home connection id");
     let default_home = fixture.user_home.join(".volicord");
@@ -1069,7 +1107,7 @@ fn connection_verify_replaces_a_command_bearing_report_without_changing_connecti
                 .keys()
                 .map(String::as_str)
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["id", "instruction"])
+            BTreeSet::from(["code", "root_cause_ids", "summary"])
         );
     }
     assert!(!serde_json::to_string(&generated)?.contains("volicord connection verify"));
@@ -1162,7 +1200,10 @@ fn connection_list_filters_by_repository() -> Result<(), Box<dyn Error>> {
     let other_repo = fixture.create_repository("other-list-repository")?;
     let shared = fixture.run_shared_connection_add(&other_repo)?;
     let shared_report: Value = serde_json::from_slice(&shared.stdout)?;
-    assert_eq!(shared_report["result"]["applied"], true);
+    assert_eq!(
+        shared_report["operation_details"]["result"]["applied"],
+        true
+    );
 
     let first = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
     assert_eq!(first.status.code(), Some(0));
@@ -1196,7 +1237,7 @@ fn connection_list_empty_inventory_and_store_failure_use_owned_channels(
     assert_eq!(stderr(&empty)?, "");
     let empty_report: Value = serde_json::from_slice(&empty.stdout)?;
     assert_eq!(empty_report["connections"], serde_json::json!([]));
-    assert_eq!(empty_report["limits"].as_array().map(Vec::len), Some(1));
+    assert_eq!(empty_report["limits"].as_array().map(Vec::len), Some(3));
 
     let corrupt_home = temporary_root.path().join("corrupt-home");
     prepare_runtime_home(&corrupt_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
@@ -1223,8 +1264,8 @@ fn fresh_init_without_host_observation_is_action_required_and_exit_zero(
     let value: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(value["operation"], "init");
     assert_eq!(value["status"], "action_required");
-    assert_eq!(value["result"]["kind"], "setup");
-    assert_eq!(value["result"]["applied"], true);
+    assert_eq!(value["operation_details"]["result"]["kind"], "setup");
+    assert_eq!(value["operation_details"]["result"]["applied"], true);
     assert!(value["checks"].as_array().is_some_and(|checks| {
         checks
             .iter()
@@ -1324,10 +1365,19 @@ fn connection_remove_after_fresh_init_removes_last_connection_state() -> Result<
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(report["operation"], "remove");
     assert_eq!(report["status"], "complete");
-    assert_eq!(report["result"]["kind"], "removal");
-    assert_eq!(report["result"]["membership_removed"], true);
-    assert_eq!(report["result"]["connection_removed"], true);
-    assert_eq!(report["result"]["remaining_project_count"], 0);
+    assert_eq!(report["operation_details"]["result"]["kind"], "removal");
+    assert_eq!(
+        report["operation_details"]["result"]["membership_removed"],
+        true
+    );
+    assert_eq!(
+        report["operation_details"]["result"]["connection_removed"],
+        true
+    );
+    assert_eq!(
+        report["operation_details"]["result"]["remaining_project_count"],
+        0
+    );
     let after = fixture.registry_snapshot();
     assert!(after.agent_connections.is_empty());
     assert!(after.connection_projects.is_empty());
@@ -1382,9 +1432,9 @@ fn connection_remove_dry_run_has_no_registry_host_or_repository_effect(
     assert!(report["checks"].as_array().is_some_and(|checks| checks
         .iter()
         .any(|check| check["id"] == "connection_removal")));
-    assert!(report["actions"]
-        .as_array()
-        .is_some_and(|actions| actions.iter().any(|action| action["id"] == "apply_removal")));
+    assert!(report["actions"].as_array().is_some_and(|actions| actions
+        .iter()
+        .any(|action| action["code"] == "action.connection.apply_removal")));
     assert_eq!(fixture.registry_snapshot(), registry_before);
     assert_eq!(directory_contents(&fixture.runtime_home)?, runtime_before);
     assert_eq!(directory_contents(&fixture.codex_home)?, host_before);
@@ -1407,9 +1457,9 @@ fn connection_add_dry_run_preserves_setup_check_and_action_kinds() -> Result<(),
     assert!(report["checks"]
         .as_array()
         .is_some_and(|checks| checks.iter().any(|check| check["id"] == "setup_plan")));
-    assert!(report["actions"]
-        .as_array()
-        .is_some_and(|actions| actions.iter().any(|action| action["id"] == "apply_setup")));
+    assert!(report["actions"].as_array().is_some_and(|actions| actions
+        .iter()
+        .any(|action| action["code"] == "action.connection.apply_setup")));
     Ok(())
 }
 
@@ -1426,10 +1476,10 @@ fn connection_add_operational_failure_is_one_stdout_document_and_exit_one(
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(report["operation"], "add");
-    assert_eq!(report["dry_run"], false);
+    assert_eq!(report["operation_details"]["dry_run"], false);
     assert_eq!(report["status"], "failed");
-    assert_eq!(report["result"]["kind"], "setup");
-    assert_eq!(report["result"]["applied"], true);
+    assert_eq!(report["operation_details"]["result"]["kind"], "setup");
+    assert_eq!(report["operation_details"]["result"]["applied"], true);
     assert!(report["checks"].is_array());
     assert!(report["actions"].is_array());
     Ok(())
@@ -1448,7 +1498,10 @@ fn connection_mode_preserves_transition_check_and_reload_action_kinds() -> Resul
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(report["checks"][0]["id"], "mode_transition");
-    assert_eq!(report["actions"][0]["id"], "reload_host");
+    assert_eq!(
+        report["actions"][0]["code"],
+        "action.host.reload_after_configuration_change"
+    );
     Ok(())
 }
 
@@ -1465,7 +1518,7 @@ fn connection_mode_human_output_does_not_offer_to_replay_the_transition(
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
     assert!(text.starts_with("Connection mode changed from workflow to read_only.\n\n"));
-    assert!(text.contains("Restart or reload Codex, then use the current Volicord integration\n"));
+    assert!(text.contains("Restart or reload Codex, then use the current Volicord integration"));
     assert!(!text.contains("--verbose"));
     assert!(!text.contains("connection status"));
     Ok(())
@@ -1551,7 +1604,7 @@ fn registry_failure_after_host_removal_preserves_selectable_connection_state(
         .contains("mcp_servers.volicord"));
     let selectable = fixture.run_connection("status", true)?;
     let report: Value = serde_json::from_str(&stdout(&selectable)?)?;
-    assert_eq!(report["connection"]["id"], connection_id);
+    assert_eq!(report["connection"]["connection_id"], connection_id);
     Ok(())
 }
 
@@ -1568,7 +1621,10 @@ fn absent_owned_host_entry_can_retry_registry_cleanup() -> Result<(), Box<dyn Er
 
     assert_eq!(output.status.code(), Some(0));
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
-    assert_eq!(report["result"]["connection_removed"], true);
+    assert_eq!(
+        report["operation_details"]["result"]["connection_removed"],
+        true
+    );
     let after = fixture.registry_snapshot();
     assert!(after.agent_connections.is_empty());
     assert!(after.connection_projects.is_empty());
@@ -1602,9 +1658,18 @@ fn membership_only_remove_keeps_shared_host_configuration_and_reports_retention(
 
     assert_eq!(output.status.code(), Some(0));
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
-    assert_eq!(report["result"]["membership_removed"], true);
-    assert_eq!(report["result"]["connection_removed"], false);
-    assert_eq!(report["result"]["remaining_project_count"], 1);
+    assert_eq!(
+        report["operation_details"]["result"]["membership_removed"],
+        true
+    );
+    assert_eq!(
+        report["operation_details"]["result"]["connection_removed"],
+        false
+    );
+    assert_eq!(
+        report["operation_details"]["result"]["remaining_project_count"],
+        1
+    );
     let after = fixture.registry_snapshot();
     assert_eq!(after.agent_connections.len(), 1);
     assert_eq!(after.connection_projects.len(), 1);
@@ -1656,10 +1721,10 @@ fn failed_verify_json_is_one_stdout_document_and_empty_stderr() -> Result<(), Bo
     assert_eq!(stderr(&output)?, "");
     let value: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(value["operation"], "verify");
-    assert_eq!(value["dry_run"], false);
+    assert_eq!(value["operation_details"]["dry_run"], false);
     assert_eq!(value["status"], "failed");
-    assert!(value.get("result").is_none());
-    assert!(value.get("planned_changes").is_none());
+    assert!(value["operation_details"].get("result").is_none());
+    assert!(value["operation_details"].get("planned_changes").is_none());
     for action in value["actions"].as_array().expect("verification actions") {
         assert_eq!(
             action
@@ -1668,7 +1733,7 @@ fn failed_verify_json_is_one_stdout_document_and_empty_stderr() -> Result<(), Bo
                 .keys()
                 .map(String::as_str)
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["id", "instruction"])
+            BTreeSet::from(["code", "root_cause_ids", "summary"])
         );
     }
     assert!(!stdout(&output)?.contains("volicord connection verify"));
@@ -1726,7 +1791,7 @@ fn verbose_connection_report_retains_the_full_diagnostic_renderer() -> Result<()
     assert!(text.contains("\n\nSummary\n  Status: failed\n"));
     assert!(text.contains("\n\nChecks\n"));
     assert!(text.contains("\n\nActions\n"));
-    assert!(text.contains("\n\nAssurance\n"));
+    assert!(text.contains("\n\nReport limits\n"));
     assert!(!text.contains("Command:"));
     assert!(!text.contains("volicord connection verify"));
     assert!(!text.contains("Details: {"));
@@ -2152,8 +2217,8 @@ fn successful_init_dry_run_report(output: &std::process::Output) -> Result<Value
     assert_eq!(stderr(output)?, "");
     let report: Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(report["operation"], "init");
-    assert_eq!(report["dry_run"], true);
-    assert_eq!(report["result"]["applied"], false);
+    assert_eq!(report["operation_details"]["dry_run"], true);
+    assert_eq!(report["operation_details"]["result"]["applied"], false);
     Ok(report)
 }
 

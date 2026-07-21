@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, DiagnosticCode, DiagnosticDomain,
+    AgentConnectionId, AgentRuntimeSessionId, DiagnosticAction, DiagnosticCode, DiagnosticDomain,
     DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
     DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationRevision,
     UtcTimestamp,
@@ -565,6 +565,7 @@ impl McpProcessFailure {
             facts,
             context.observed_at,
         )?
+        .with_actions(vec![self.recommended_action()?])?
         .with_connection_id(AgentConnectionId::new(context.connection_id))?
         .with_integration_revision(context.integration_revision);
         if let Some(runtime_session_id) = context.runtime_session_id {
@@ -572,6 +573,60 @@ impl McpProcessFailure {
                 finding.with_runtime_session_id(AgentRuntimeSessionId::new(runtime_session_id))?;
         }
         Ok(finding)
+    }
+
+    fn recommended_action(&self) -> Result<DiagnosticAction, volicord_types::DiagnosticError> {
+        let (code, summary) = match self {
+            Self::Spawn { .. } => (
+                "action.process.repair_launch",
+                "Repair the managed MCP executable or launch configuration",
+            ),
+            Self::PipeAcquisition { .. } | Self::Read { .. } | Self::Write { .. } => (
+                "action.process.repair_stdio",
+                "Repair the managed MCP stdio process boundary",
+            ),
+            Self::Timeout { .. } => (
+                "action.process.resolve_timeout",
+                "Resolve the stage timeout and rerun active verification",
+            ),
+            Self::ExitedBeforeResponse { .. } | Self::Shutdown { .. } => (
+                "action.process.repair_child_exit",
+                "Repair the child-process exit condition and rerun active verification",
+            ),
+            Self::Protocol { kind, .. } => match kind {
+                McpProtocolFailureKind::MalformedProtocolVersion
+                | McpProtocolFailureKind::UnsupportedProtocolRevision
+                | McpProtocolFailureKind::CounterOffer
+                | McpProtocolFailureKind::CounterOfferRejectedOrDisconnected
+                | McpProtocolFailureKind::GenerationMismatch => (
+                    "action.mcp.use_supported_protocol_revision",
+                    "Configure the MCP peer to request one supported protocol revision",
+                ),
+                McpProtocolFailureKind::RequiredToolMissing
+                | McpProtocolFailureKind::InvalidToolDefinitionProjection
+                | McpProtocolFailureKind::ToolListProtocolError
+                | McpProtocolFailureKind::ToolListSchemaFailure => (
+                    "action.mcp.restore_required_tools",
+                    "Restore the required tools/list projection for the selected revision",
+                ),
+                McpProtocolFailureKind::SafeToolProtocolError
+                | McpProtocolFailureKind::OutputSchemaFailure
+                | McpProtocolFailureKind::SafeReadOnlyToolFailure
+                | McpProtocolFailureKind::SessionCorrelationInvalid => (
+                    "action.mcp.repair_read_only_tool",
+                    "Repair the designated read-only tool call for the selected revision",
+                ),
+                _ => (
+                    "action.mcp.repair_protocol_exchange",
+                    "Repair the typed MCP protocol failure and rerun active verification",
+                ),
+            },
+            Self::Wait { .. } | Self::Cleanup { .. } => (
+                "action.process.repair_cleanup",
+                "Repair child-process cleanup and rerun active verification",
+            ),
+        };
+        DiagnosticAction::try_new(DiagnosticCode::parse(code)?, summary)
     }
 
     fn safe_summary(&self) -> &'static str {

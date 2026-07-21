@@ -13,6 +13,7 @@ volicord doctor
 volicord project current
 volicord connection list
 volicord connection status codex --repo "<repo>"
+volicord connection status codex --repo "<repo>" --json
 ```
 
 진단을 없애려고 구성, Runtime Home 데이터, 저장소를 삭제하지 않습니다. 재현 가능한
@@ -21,9 +22,11 @@ volicord connection status codex --repo "<repo>"
 ## 안정 Finding Code 사용
 
 `volicord doctor --json`에서는 `findings[].code`와 `findings[].actions[].code`를
-확인합니다. Connection 검증에서는 영속 finding ID와 namespace diagnostic code를 함께
-보존합니다. 영어 summary, SQLite 메시지, 경로 문구, stderr 발췌로 실패를 분류하지
-않습니다.
+확인합니다. Connection status 또는 verification JSON에서는 `root_cause_ids`를 읽고
+`findings`에서 같은 ID를 찾은 뒤 최상위 `actions[].code`와
+`actions[].root_cause_ids`를 사용합니다. 영속 finding ID, 값이 있으면 runtime-session ID,
+namespaced diagnostic code를 함께 보존합니다. 영어 summary, SQLite 메시지, 경로 문구,
+stderr 발췌로 실패를 분류하지 않습니다.
 
 Code 계열에 따라 집중 복구 경계를 선택합니다.
 
@@ -44,6 +47,22 @@ Code 계열에 따라 집중 복구 경계를 선택합니다.
 이유만으로 Codex를 재시작하지 않습니다. 먼저 해당 원인을 복구합니다.
 `internal.unexpected_failure`는 더 좁은 담당 매핑이 없었다는 뜻이며 산문을 보고 추측할
 권한을 주지 않습니다.
+
+## Finding 또는 Runtime Session 하나 조사
+
+Concise, verbose, JSON 출력에 나온 정확한 식별자를 사용합니다.
+
+```sh
+volicord diagnostics show "<finding-id>"
+volicord diagnostics show "<finding-id>" --json
+volicord diagnostics session "<runtime-session-id>"
+volicord diagnostics session "<runtime-session-id>" --json
+```
+
+이 명령은 한도가 있는 Registry 조회입니다. 사람용 형태와 JSON 형태는 같은 root ID와
+typed fact를 담습니다. 식별자가 없으면 `observation_state=absent`인 typed failed report를
+반환합니다. 빈 finding이나 빈 session을 관찰했다는 뜻이 아닙니다. SQLite를 scan하거나
+다른 식별자를 만들지 말고 선택한 Runtime Home과 정확한 ID를 확인합니다.
 
 ## 명령을 사용할 수 없음
 
@@ -92,16 +111,25 @@ volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 
 ## MCP 자체 검사 실패
 
-JSON 출력으로 활성 검증을 다시 실행하고 `mcp_server` 검사를 찾습니다.
+JSON 출력으로 활성 검증을 다시 실행하고 root ID부터 확인합니다.
 
 ```sh
 volicord connection verify codex --repo "<repo>" --json
 ```
 
-`details.self_test.diagnostic_code`, `failure_stage`, `finding_id`를 확인합니다.
-Matrix 실패도 실패한 revision 또는 host fixture에 같은 세 필드를 표시합니다. 종료
-code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을 확인하거나 전달할
-때 finding ID를 함께 보존합니다.
+`root_cause_ids`와 같은 `findings[].id`를 찾은 뒤 해당 finding의 `code`, typed
+`facts.data`, `causes`, correlation, action을 확인합니다. 적용되는 경우 실패한 check에는
+`details.self_test.diagnostic_code`, `failure_stage`, `finding_id` 같은 stage별 detail도
+남습니다. 종료 code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을
+확인하거나 전달할 때 finding ID를 함께 보존합니다.
+
+`mcp.protocol.unsupported_revision`이면 `attempted_client_name`과
+`attempted_client_version`, `requested_revision`, `production_supported_revisions`를
+비교합니다. 일반 concise 출력에도 이 값과 blocked `required_tools`, `tool_round_trip`
+check가 나옵니다. 일반 inspection 단계로 바꾸지 말고
+`action.mcp.use_supported_protocol_revision`을 사용합니다. Verbose 출력에서는 requested,
+selected, negotiated revision을 구분하고 실제 MCP peer `clientInfo`와 PATH executable
+probe도 구분합니다.
 
 `stderr`는 제한된 맥락으로만 취급합니다. 자식 프로세스 문구에서 기계 판독 사유를
 추론하거나 자격 증명을 보고서에 복사하지 않습니다. 안정적인 `process.*`, `mcp.*`,

@@ -2,28 +2,39 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 use volicord_types::{
-    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, LIST_PROJECTS_TOOL_NAME,
+    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, DiagnosticFindingId,
+    DiagnosticReportAction, LIST_PROJECTS_TOOL_NAME,
 };
 
 use super::{
     human::{headline, CheckCounts},
-    report::{ConnectionCommandReport, ConnectionCommandResult},
-    PlannedConnectionChangeKind,
+    report::{
+        projected_actions, projected_root_cause_ids, ConnectionCommandReport,
+        ConnectionCommandResult,
+    },
+    ConnectionCommandError, PlannedConnectionChangeKind,
 };
 
 const MAX_DETAIL_RENDER_DEPTH: usize = 8;
 const MAX_INLINE_SCALARS: usize = 8;
 
-pub(super) fn render_command_report_verbose(report: &ConnectionCommandReport) -> String {
+pub(super) fn render_command_report_verbose(
+    report: &ConnectionCommandReport,
+) -> Result<String, ConnectionCommandError> {
     let counts = CheckCounts::from_report(report);
+    let roots = projected_root_cause_ids(report)?;
+    let actions = projected_actions(report)?;
     let mut sections = vec![headline(report, counts), render_connection(report)];
     sections.push(render_summary(report, counts));
 
     if !report.checks.is_empty() {
         sections.push(render_checks(report));
     }
-    if !report.actions.is_empty() {
-        sections.push(render_actions(report));
+    if !report.findings.is_empty() {
+        sections.push(render_findings(report, &roots));
+    }
+    if !actions.is_empty() {
+        sections.push(render_actions(&actions));
     }
     if let Some(result) = report.result.as_ref() {
         sections.push(render_result(result));
@@ -39,11 +50,11 @@ pub(super) fn render_command_report_verbose(report: &ConnectionCommandReport) ->
         sections.push(render_assurance(report));
     }
 
-    format!("{}\n", sections.join("\n\n"))
+    Ok(format!("{}\n", sections.join("\n\n")))
 }
 
 fn render_connection(report: &ConnectionCommandReport) -> String {
-    format!(
+    let mut output = format!(
         concat!(
             "Connection\n",
             "  ID: {}\n",
@@ -63,7 +74,26 @@ fn render_connection(report: &ConnectionCommandReport) -> String {
         report.connection.repository,
         report.connection.config_target,
         report.runtime_home,
-    )
+    );
+    if let Some(revision) = report.integration_revision.as_ref() {
+        output.push_str(&format!("\n  Integration revision: {}", revision.as_str()));
+    }
+    let runtime_sessions = report
+        .findings
+        .iter()
+        .filter_map(|finding| finding.runtime_session_id())
+        .collect::<BTreeSet<_>>();
+    if !runtime_sessions.is_empty() {
+        output.push_str(&format!(
+            "\n  Runtime sessions: {}",
+            runtime_sessions
+                .iter()
+                .map(|session_id| session_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    output
 }
 
 fn render_summary(report: &ConnectionCommandReport, counts: CheckCounts) -> String {
@@ -106,15 +136,16 @@ fn render_check(report: &ConnectionCommandReport, check: &ConnectionCheck) -> St
         ));
     }
     if !check.depends_on().is_empty() {
-        lines.push(format!(
-            "    Depends on: {}",
-            check
-                .depends_on()
-                .iter()
-                .map(|kind| kind.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+        let dependencies = check
+            .depends_on()
+            .iter()
+            .map(|kind| kind.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!("    Depends on: {}", dependencies));
+        if check.status() == ConnectionCheckStatus::Blocked {
+            lines.push(format!("    Blocked by: {dependencies}"));
+        }
     }
     if !check.cause_finding_ids().is_empty() {
         lines.push(format!(
@@ -147,6 +178,7 @@ fn check_status_label(status: ConnectionCheckStatus) -> &'static str {
 
 fn check_label(kind: ConnectionCheckKind) -> &'static str {
     match kind {
+        ConnectionCheckKind::DiagnosticLookup => "Diagnostic finding lookup",
         ConnectionCheckKind::VerificationNotRun => "Connection verification",
         ConnectionCheckKind::ManagedConfig => "Managed Codex configuration",
         ConnectionCheckKind::HostExecutable => "Codex executable",
@@ -162,6 +194,7 @@ fn check_label(kind: ConnectionCheckKind) -> &'static str {
         ConnectionCheckKind::SetupPlan => "Setup plan",
         ConnectionCheckKind::ModeTransition => "Connection mode transition",
         ConnectionCheckKind::ConnectionRemoval => "Connection removal",
+        ConnectionCheckKind::RuntimeSessionLookup => "Runtime-session lookup",
     }
 }
 
@@ -317,6 +350,7 @@ fn value_at_path<'a>(object: &'a Map<String, Value>, path: &DetailPath) -> Optio
 
 fn render_known_details(context: &mut DetailContext<'_>) {
     match context.check.id() {
+        ConnectionCheckKind::DiagnosticLookup | ConnectionCheckKind::RuntimeSessionLookup => {}
         ConnectionCheckKind::VerificationNotRun => {}
         ConnectionCheckKind::ManagedConfig => render_managed_config(context),
         ConnectionCheckKind::HostExecutable => render_host_executable(context),
@@ -700,6 +734,15 @@ fn render_host_session(context: &mut DetailContext<'_>) {
     if let Some(version) = context.take_string("actual_mcp_peer_client_info.version") {
         context.line("Actual MCP peer version", version);
     }
+    if let Some(revision) = context.take_string("requested_protocol_version") {
+        context.line("Requested protocol", revision);
+    }
+    if let Some(revision) = context.take_string("selected_protocol_version") {
+        context.line("Selected protocol", revision);
+    }
+    if let Some(revision) = context.take_string("negotiated_protocol_version") {
+        context.line("Negotiated protocol", revision);
+    }
     context.line("Initialize", host_initialize_result(context.check));
     render_terminal_finding(context);
     render_last_observed(context);
@@ -1028,14 +1071,111 @@ fn render_connection_removal(context: &mut DetailContext<'_>) {
     context.line("Remaining project count", remaining_project_count);
 }
 
-fn render_actions(report: &ConnectionCommandReport) -> String {
-    let mut blocks = Vec::with_capacity(report.actions.len());
-    for action in &report.actions {
-        let mut lines = vec![format!("  {}", action.id().as_str())];
-        push_multiline(&mut lines, 4, action.instruction());
+fn render_actions(actions: &[DiagnosticReportAction]) -> String {
+    let mut blocks = Vec::with_capacity(actions.len());
+    for action in actions {
+        let mut lines = vec![format!("  {}", action.code())];
+        push_multiline(&mut lines, 4, action.summary());
+        if !action.root_cause_ids().is_empty() {
+            lines.push(format!(
+                "    Root findings: {}",
+                action
+                    .root_cause_ids()
+                    .iter()
+                    .map(|finding_id| finding_id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
         blocks.push(lines.join("\n"));
     }
     format!("Actions\n{}", blocks.join("\n\n"))
+}
+
+fn render_findings(report: &ConnectionCommandReport, roots: &[DiagnosticFindingId]) -> String {
+    let mut blocks = Vec::with_capacity(report.findings.len());
+    for finding in &report.findings {
+        let role = if roots.contains(finding.id()) {
+            "root"
+        } else {
+            "related"
+        };
+        let severity = match finding.severity() {
+            volicord_types::DiagnosticSeverity::Info => "info",
+            volicord_types::DiagnosticSeverity::Warning => "warning",
+            volicord_types::DiagnosticSeverity::Error => "error",
+        };
+        let mut lines = vec![
+            format!("  [{role}] {}", finding.id()),
+            format!("    Code: {}", finding.code()),
+            format!("    Domain: {}", finding.domain()),
+            format!("    Stage: {}", finding.stage()),
+            format!("    Severity: {severity}"),
+            format!("    Source: {}", finding.source()),
+            format!(
+                "    Subject: {} {}",
+                finding.subject().kind(),
+                finding.subject().reference()
+            ),
+            format!(
+                "    Observed at: {}",
+                finding.observed_at().to_canonical_string()
+            ),
+        ];
+        if let Some(correlation_id) = finding.correlation_id() {
+            lines.push(format!("    Correlation: {correlation_id}"));
+        }
+        if let Some(connection_id) = finding.connection_id() {
+            lines.push(format!("    Connection: {connection_id}"));
+        }
+        if let Some(project_id) = finding.project_id() {
+            lines.push(format!("    Project: {project_id}"));
+        }
+        if let Some(runtime_session_id) = finding.runtime_session_id() {
+            lines.push(format!("    Runtime session: {runtime_session_id}"));
+        }
+        if let Some(revision) = finding.integration_revision() {
+            lines.push(format!("    Integration revision: {}", revision.as_str()));
+        }
+        if !finding.causes().is_empty() {
+            lines.push(format!(
+                "    Caused by: {}",
+                finding
+                    .causes()
+                    .iter()
+                    .map(|cause| cause.finding_id().as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        lines.push("    Bounded typed facts".to_owned());
+        let object = finding
+            .facts()
+            .data()
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Map<_, _>>();
+        render_generic_object(
+            &object,
+            &DetailPath::default(),
+            &BTreeSet::new(),
+            6,
+            0,
+            &mut lines,
+        );
+        if !finding.facts().redacted_fields().is_empty() {
+            lines.push(format!(
+                "    Redacted fields: {}",
+                finding.facts().redacted_fields().join(", ")
+            ));
+        }
+        lines.push(format!(
+            "    Facts truncated: {}",
+            yes_no(finding.facts().truncated())
+        ));
+        blocks.push(lines.join("\n"));
+    }
+    format!("Findings\n{}", blocks.join("\n\n"))
 }
 
 fn render_result(result: &ConnectionCommandResult) -> String {
@@ -1109,7 +1249,7 @@ fn render_planned_changes(changes: &[super::PlannedConnectionChange]) -> String 
 }
 
 fn render_assurance(report: &ConnectionCommandReport) -> String {
-    let mut lines = vec!["Assurance".to_owned()];
+    let mut lines = vec!["Report limits".to_owned()];
     for limit in &report.limits {
         push_multiline(&mut lines, 2, limit);
     }
@@ -1485,6 +1625,9 @@ mod tests {
             connection: connection(mode),
             checks,
             actions,
+            generated_at: UtcTimestamp::parse("2026-07-22T00:00:00Z").unwrap(),
+            findings: Vec::new(),
+            integration_revision: None,
             result,
             planned_changes,
             limits: cooperative_assurance_limits(),
@@ -1492,7 +1635,7 @@ mod tests {
     }
 
     fn rendered(report: &ConnectionCommandReport) -> String {
-        render_command_report_verbose(report)
+        render_command_report_verbose(report).unwrap()
     }
 
     #[test]
@@ -1521,7 +1664,7 @@ mod tests {
         )
         .blocked_by(vec![cause])
         .expect("blocked tools check");
-        let output = rendered(&report(
+        let report = report(
             CommandOperation::Status,
             false,
             ConnectionStatus::Failed,
@@ -1530,8 +1673,8 @@ mod tests {
             Vec::new(),
             None,
             None,
-        ));
-        assert!(output.contains("  Checks: 0 passed, 1 blocked, 0 pending, 0 failed"));
+        );
+        let output = render_checks(&report);
         assert!(output.contains("    Required tools: blocked"));
         assert!(!output.contains("Required tools: pending"));
     }
@@ -1642,7 +1785,7 @@ mod tests {
                 "    Diagnostic code: managed_config_mismatch\n",
                 "    Diagnostic: managed command differs\n\n",
                 "Actions\n",
-                "  repair_managed_config\n",
+                "  action.managed_config.repair\n",
                 "    Repair the managed Codex configuration\n",
                 "\n",
                 "Result\n",
@@ -1652,7 +1795,9 @@ mod tests {
                 "    Kind: managed_host_configuration\n",
                 "    Operation: update\n",
                 "    Target: /home/user/.codex/config.toml\n\n",
-                "Assurance\n",
+                "Report limits\n",
+                "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
+                "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
             )
         );
@@ -1714,11 +1859,13 @@ mod tests {
                 "    PATH executable version: 1.2.3\n",
                 "    Initialize: not observed\n\n",
                 "Actions\n",
-                "  observe_codex\n",
+                "  action.host.observe_activity\n",
                 "    Restart or reload Codex and use the connection\n\n",
                 "Result\n",
                 "  Applied: yes\n\n",
-                "Assurance\n",
+                "Report limits\n",
+                "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
+                "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
             )
         );
@@ -1759,7 +1906,9 @@ mod tests {
                 "Checks\n",
                 "  [n/a] Project trust\n",
                 "    No separate project trust action applies to this connection scope\n\n",
-                "Assurance\n",
+                "Report limits\n",
+                "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
+                "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
             )
         );
@@ -1820,10 +1969,12 @@ mod tests {
                 "    Self-test diagnostic code: mcp.tools.required_missing\n",
                 "    Self-test finding: finding.tools.required_missing\n\n",
                 "Actions\n",
-                "  repair_mcp_server\n",
+                "  action.mcp.repair_server\n",
                 "    Repair the MCP server and verify again\n",
                 "\n",
-                "Assurance\n",
+                "Report limits\n",
+                "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
+                "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
             )
         );
@@ -1868,7 +2019,7 @@ mod tests {
                 "    Current revision: revision_after\n",
                 "    Rebound Guard Installation IDs: guard_1\n\n",
                 "Actions\n",
-                "  reload_host\n",
+                "  action.host.reload_after_configuration_change\n",
                 "    Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision revision_after\n\n",
                 "Result\n",
                 "  Changed: yes\n",
@@ -1878,7 +2029,9 @@ mod tests {
                 "  Current revision: revision_after\n",
                 "  Rebound Guard Installation IDs\n",
                 "    guard_1\n\n",
-                "Assurance\n",
+                "Report limits\n",
+                "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
+                "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
             )
         );
@@ -1917,14 +2070,16 @@ mod tests {
                 "    Membership: planned for removal\n",
                 "    Connection: retained until changes are applied\n\n",
                 "Actions\n",
-                "  apply_removal\n",
+                "  action.connection.apply_removal\n",
                 "    Run connection remove without --dry-run to apply the planned removal\n\n",
                 "Planned changes\n",
                 "  Change 1\n",
                 "    Kind: connection_membership\n",
                 "    Operation: remove\n",
                 "    Target: /workspace/product\n\n",
-                "Assurance\n",
+                "Report limits\n",
+                "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
+                "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
             )
         );
@@ -2104,7 +2259,7 @@ mod tests {
             None,
         );
         let output = rendered(&mcp);
-        let machine = serde_json::to_value(&mcp).unwrap();
+        let machine = serde_json::to_value(mcp.diagnostic_report().unwrap()).unwrap();
         assert_eq!(
             machine["checks"][0]["details"]["self_test"]["tools_list"]
                 .as_array()
@@ -2159,7 +2314,8 @@ mod tests {
             None,
         );
         let protocol_output = rendered(&protocol_failure);
-        let protocol_machine = serde_json::to_value(&protocol_failure).unwrap();
+        let protocol_machine =
+            serde_json::to_value(protocol_failure.diagnostic_report().unwrap()).unwrap();
         assert_eq!(
             protocol_machine["checks"][0]["details"]["self_test"]["diagnostic_code"],
             "mcp.json_rpc.error_response"
@@ -2315,6 +2471,10 @@ mod tests {
     fn every_check_kind_has_one_exhaustive_human_label() {
         let expected = [
             (ConnectionCheckKind::ConnectionRemoval, "Connection removal"),
+            (
+                ConnectionCheckKind::DiagnosticLookup,
+                "Diagnostic finding lookup",
+            ),
             (ConnectionCheckKind::GuardFiles, "Guard managed files"),
             (
                 ConnectionCheckKind::GuardHookExecution,
@@ -2338,6 +2498,10 @@ mod tests {
             ),
             (ConnectionCheckKind::ProjectTrust, "Project trust"),
             (ConnectionCheckKind::RequiredTools, "Codex required tools"),
+            (
+                ConnectionCheckKind::RuntimeSessionLookup,
+                "Runtime-session lookup",
+            ),
             (ConnectionCheckKind::SetupPlan, "Setup plan"),
             (
                 ConnectionCheckKind::ToolRoundTrip,
@@ -2532,9 +2696,11 @@ mod tests {
             Some(ConnectionCommandResult::Setup { applied: false }),
             None,
         );
-        let json_before = serde_json::to_string_pretty(&report_value).unwrap();
+        let json_before =
+            serde_json::to_string_pretty(&report_value.diagnostic_report().unwrap()).unwrap();
         let output = rendered(&report_value);
-        let json_after = serde_json::to_string_pretty(&report_value).unwrap();
+        let json_after =
+            serde_json::to_string_pretty(&report_value.diagnostic_report().unwrap()).unwrap();
         assert_eq!(json_after, json_before);
         for expected in [
             "    Additional details\n",
