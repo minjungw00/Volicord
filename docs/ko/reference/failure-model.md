@@ -52,15 +52,15 @@ diagnostic입니다.
 형태로 추정하지 않습니다.
 
 활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
-`passed`, `pending`, `failed`로 보고합니다. 실행 파일을 찾거나 실행하지 못한 경우 일반
-실패 범주 경계에서는 `Unavailable`, 연결 보고서에서는 실패한 `host_executable`
-check입니다. 관찰한 version이 달라지면 운영 관찰을 갱신합니다.
+아래에서 정의하는 다섯 가지 상태 모델로 보고합니다. 실행 파일을 찾거나 실행하지 못한
+경우 일반 실패 범주 경계에서는 `Unavailable`, 연결 보고서에서는 실패한
+`host_executable` check입니다. 관찰한 version이 달라지면 운영 관찰을 갱신합니다.
 
-관리 connection command report는 필수 check가 하나 이상 실패한 typed 운영 결과에만
-`failed`를 사용합니다. Host 관찰이 pending이면 `action_required`이며 `Degraded`,
-stale/broken 공개 상태, 예상하지 못한 런타임 오류로 표시하지 않습니다. 사용법 오류와
-예상하지 못한 런타임 또는 직렬화 실패는 성공이나 action-required 보고서로 꾸미지 않고
-CLI 오류 채널에 남깁니다.
+관리 connection command report는 필수 check가 하나 이상 실패했거나 blocked인 typed
+운영 결과에 `failed`를 사용합니다. Host 관찰이 pending이면 `action_required`이며
+`Degraded`, stale/broken 공개 상태, 예상하지 못한 런타임 오류로 표시하지 않습니다.
+사용법 오류와 예상하지 못한 런타임 또는 직렬화 실패는 성공이나 action-required
+보고서로 꾸미지 않고 CLI 오류 채널에 남깁니다.
 
 어느 범주도 다른 범주의 의미를 포함하지 않습니다. 특히 다음 규칙을 지킵니다.
 
@@ -112,6 +112,25 @@ Registry는 공유 finding을 구조화된 column과 한도가 있는 subject, f
 하나입니다. 유효하지 않은 node, 없는 cause, 중복 edge, cycle이 있으면 부분 graph나
 dangling edge가 남지 않습니다. MCP terminal finding 삽입과 runtime-session 연결도 같은
 방식으로 transaction 하나에서 수행할 수 있습니다.
+
+Root cause 선택은 이 typed cause edge만 사용합니다. Summary를 parsing하거나 stage 또는
+enum 순서를 비교하거나 첫 번째 실패 check를 고르지 않습니다. 선택 결과는 ID로 정렬해
+결정적이며, 서로 독립인 root를 모두 유지하고 선택한 ancestor가 이미 설명하는 downstream
+증상은 제외합니다. 따라서 여러 선택 finding이 같은 ancestor로 모여도 그 ancestor는 한
+번만 나타납니다. Traversal은 cause edge 32개로 제한합니다. 알 수 없는 reference, cycle,
+한도를 넘는 경로가 있으면 root를 추정하지 않고 선택을 거부합니다.
+`DiagnosticReport.root_cause_ids`는 report finding에서 계산한 결과이며 caller가 별도로
+선택해서 제공할 수 없습니다.
+
+Connection 검증은 이 cause graph를 정확히 다섯 가지 check 상태로 사용합니다. `passed`는
+check가 성공적으로 끝났다는 뜻입니다. `pending`은 필요한 외부 관찰 또는 사용자가
+일으키는 event가 아직 없고 이를 막는 실패 prerequisite도 없다는 뜻입니다. `failed`는
+check 자체가 실패를 관찰했다는 뜻입니다. `blocked`는 prerequisite finding이 실패해
+check를 실행하거나 관찰할 수 없었다는 뜻입니다. `not_applicable`은 해당 Connection 또는
+profile에 check가 적용되지 않는다는 뜻입니다. Blocked check는 해소된 root finding ID를
+담습니다. Root 기반 action은 중복을 제거하며, blocker가 해소되기 전에는 blocked
+downstream 관찰을 위한 action을 만들지 않습니다. 기준 check dependency와 report 집계
+규칙은 [Agent Connection](agent-connection.md)이 담당합니다.
 
 Registry를 열기 전에 실패하면 공유 stderr fallback envelope은 아래 정확한 형태의 한도가
 있는 단일 행 하나뿐입니다.

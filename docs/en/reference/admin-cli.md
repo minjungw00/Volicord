@@ -205,23 +205,36 @@ increments the integration generation.
 `volicord init` and the selected-Connection `add`, `status`, `verify`, `mode`,
 and `remove` commands use one output selection. With neither output flag, they
 render concise human prose: an operation-aware result, selected repository and
-effective mode, `ready`/`waiting`/`failed` check counts, current problems before
+effective mode, `ready`/`blocked`/`waiting`/`failed` check counts, current problems before
 waiting observations, and the current next actions. The human
 labels are presentation wording; they do not add report or check statuses.
+
+The canonical check statuses are `passed`, `pending`, `failed`, `blocked`, and
+`not_applicable`. They mean, respectively: completed successfully; waiting for
+a required external observation with no failed prerequisite; failed in the
+check itself; unable to run because a prerequisite finding failed; and not
+applicable to the selected Connection or profile. The aggregate remains
+`failed` when any check is failed or blocked, `action_required` when no such
+check exists and at least one is pending, and `complete` otherwise.
 
 The concise renderer includes `host_session`, `required_tools`, and
 `tool_round_trip` activity only when the corresponding canonical check is
 pending. It may group the exact pending subset as Codex session or tool
-activity; passed, failed, and absent checks are not repeated under `Waiting`.
+activity; passed, failed, blocked, not-applicable, and absent checks are not repeated under `Waiting`.
 A pending `guard_observation` is presented as Guard hook activity with known
 missing phases. The renderer does not change, remove, reorder, or persist
 canonical checks or actions. Dry-run prose groups planned-change counts by the
 typed `PlannedConnectionChangeKind`; it does not infer ownership from target
 paths.
 
-Concise diagnostic guidance is operation-aware. A `status` report with pending
-or failed checks can rerun the same read-only status query with `--verbose`; a
-`verify` report with those checks can rerun active verification verbosely. Dry
+Blocked checks contribute to the blocked count but do not produce a waiting
+observation or downstream observation action. The `Problems` and `Next`
+sections show the failed root check and its deduplicated repair action. Counts
+always include all four concise categories, including zero counts.
+
+Concise diagnostic guidance is operation-aware. A `status` report with pending,
+failed, or blocked checks can rerun the same read-only status query with
+`--verbose`; a `verify` report with those checks can rerun active verification verbosely. Dry
 runs may also rerun the same dry run verbosely. After applied `init` or `add`
 setup, or after a successful `mode` transition, useful follow-up diagnostics
 point to the current `connection status ... --verbose` command instead of
@@ -271,7 +284,9 @@ extended fields and values that do not match a focused renderer's expected type
 appear under `Additional details`. Large successful collections may be
 summarized by count for human diagnosis, and other bounded collections use an
 explicit remainder count when not every item is shown. The prose does not
-silently discard nonempty diagnostic fields. In particular, a successful MCP
+silently discard nonempty diagnostic fields. Its summary counts `passed`,
+`blocked`, `pending`, `failed`, and `not applicable`; each check shows its
+status label, dependency IDs, and root-finding IDs when present. In particular, a successful MCP
 tool inventory is not repeated in prose. Each action renders only its semantic
 kind and instruction. The verbose action section does not render or reconstruct
 an executable command.
@@ -289,7 +304,7 @@ Verification completed: 5 ready, 4 waiting.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 5 ready, 4 waiting
+Checks: 5 ready, 0 blocked, 4 waiting, 0 failed
 
 Waiting
   Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
@@ -318,12 +333,13 @@ Connection
 
 Summary
   Status: action_required
-  Checks: 1 passed, 1 pending, 0 failed
+  Checks: 1 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable
 
 Checks
   [wait] Codex managed session
     Managed host connection use has not been observed
     Code: host_session_not_observed
+    Depends on: process_startup
     Current revision: sha256:current-revision
     Initialize: not observed
 

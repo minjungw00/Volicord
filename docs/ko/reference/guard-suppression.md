@@ -144,6 +144,27 @@ projection하지 않습니다. File, manifest, wrapper, 호환되지 않는 관�
 `action.guard.trigger_phase`를 사용합니다. Prompt-capture code는 각 집중 action을
 유지합니다. 사람용 summary를 parsing해 action을 고르지 않습니다.
 
+### Guard 검증 Dependency
+
+Connection 검증은 다음과 같은 명시적인 Guard dependency graph를 사용합니다.
+
+```text
+Guard 파일 integrity -> Guard hook 실행 -> Guard phase 관찰
+```
+
+각 check는 정확히 다섯 가지 상태 중 하나입니다. `passed`는 check가 성공적으로 끝났다는
+뜻입니다. `pending`은 필요한 외부 관찰 또는 사용자가 일으키는 event가 아직 없고 이를
+막는 실패 prerequisite도 없다는 뜻입니다. `failed`는 그 check 자체가 실패를 관찰했다는
+뜻입니다. `blocked`는 prerequisite finding이 실패해 실행하거나 관찰할 수 없었다는
+뜻입니다. `not_applicable`은 해당 Connection 또는 profile에 check가 적용되지 않는다는
+뜻입니다.
+
+Guard 파일 integrity가 실패하면 해당 check는 `failed`가 되고 hook 실행과 phase 관찰은
+해소된 같은 root finding에 의해 `blocked`가 됩니다. Downstream check가 blocked인
+동안에는 report가 phase 관찰을 요청하지 않습니다. Root 선택은 typed finding cause edge를
+따르고, 독립 root를 결정적인 순서로 유지하며, summary를 검사하지 않습니다. 전체 check
+graph와 report 집계 상태는 [Agent Connection](agent-connection.md)이 담당합니다.
+
 ## 필수 테스트
 
 지속 계약 테스트는 다음을 다룹니다.

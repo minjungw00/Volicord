@@ -185,11 +185,14 @@ ConnectionVerificationReport:
   status: complete | action_required | failed
   checked_at: UtcTimestamp
   checks: ConnectionCheck[]
+  root_cause_ids: DiagnosticFindingId[]
   actions: ConnectionAction[]
 
 ConnectionCheck:
   id: ConnectionCheckKind
-  status: passed | pending | failed
+  status: passed | pending | failed | blocked | not_applicable
+  depends_on: ConnectionCheckKind[]
+  cause_finding_ids: DiagnosticFindingId[]
   code?: string
   summary: string
   details?: object
@@ -200,7 +203,7 @@ ConnectionAction:
   instruction: string
 ```
 
-`status`, `checked_at`, `checks`, `actions`, and each check or action's
+`status`, `checked_at`, `checks`, `root_cause_ids`, `actions`, and each check or action's
 non-optional members are required. Optional `code`, `details`, `observed_at`,
 members are omitted when absent rather than serialized as null. Unknown
 members, duplicate JSON keys, duplicate check kinds, duplicate action kinds,
@@ -209,8 +212,9 @@ check-kind, or action-kind values are invalid. Non-null check codes are 1
 through 128 ASCII bytes and match `[a-z][a-z0-9_]*`. `summary` and
 `instruction` values are 1 through 4,096 UTF-8 bytes and contain no NUL. A
 non-null `details` value is a JSON object whose serialized form is at most 16
-KiB. A report contains at most 64 checks and 32 actions, and its serialized
-form is at most 64 KiB.
+KiB. A check contains at most 16 dependency edges and 32 root-finding
+references. A report contains at most 64 checks and 32 actions, and its
+serialized form is at most 64 KiB.
 
 Checks are sorted by the stable snake-case spelling of `ConnectionCheckKind` in
 ascending UTF-8 byte order. Actions use the same ordering by the stable
@@ -219,10 +223,11 @@ order rather than silently normalizing it; enum declaration order is not the
 wire-order contract.
 
 `ConnectionCheckKind` is the closed current-product vocabulary:
-`connection_removal`, `guard_files`, `guard_observation`, `host_executable`,
-`host_session`, `managed_config`, `mcp_server`, `mode_transition`,
-`project_trust`, `required_tools`, `setup_plan`, `tool_round_trip`, and
-`verification_not_run`. Operational verification uses the applicable checks in
+`connection_removal`, `guard_files`, `guard_hook_execution`,
+`guard_observation`, `host_executable`, `host_session`, `managed_config`,
+`mcp_server`, `mode_transition`, `process_startup`, `project_trust`,
+`required_tools`, `setup_plan`, `tool_round_trip`, and `verification_not_run`.
+Operational verification uses the applicable checks in
 the table below. Missing-report and administrative command planning use the
 remaining named kinds; arbitrary adapter-defined check IDs are not accepted.
 
@@ -246,27 +251,66 @@ persisted report.
 Every check in the report is required for that report. The top-level status is
 derived and cannot disagree with the checks:
 
-1. any `failed` check produces `status=failed`;
+1. any `failed` or `blocked` check produces `status=failed`;
 2. otherwise any `pending` check produces `status=action_required`;
-3. otherwise `status=complete`.
+3. otherwise the report contains only `passed` and `not_applicable` checks and
+   produces `status=complete`.
+
+The five check statuses have exactly these meanings:
+
+- `passed`: the check completed successfully;
+- `pending`: its required external observation or user-triggered event has not
+  occurred and no failed prerequisite currently prevents it;
+- `failed`: the check itself observed a failure;
+- `blocked`: the check could not run or be observed because a prerequisite
+  check failed; and
+- `not_applicable`: the check does not apply to this Connection or profile.
+
+`depends_on` is the canonical explicit dependency edge set for the check kind.
+Operational verification uses these chains:
+
+```text
+managed_config -> process_startup -> host_session -> required_tools -> tool_round_trip
+managed_config -> mcp_server
+guard_files -> guard_hook_execution -> guard_observation
+```
+
+`host_session` is the managed-host `initialize` check, `required_tools` is the
+managed-host `tools/list` check, and `tool_round_trip` is the designated
+read-only tool-call check. When no managed-host attempt exists, the four checks
+from `process_startup` through `tool_round_trip` are `pending`. An initialize
+failure makes `host_session` `failed` and makes `required_tools` and
+`tool_round_trip` `blocked` by that same root finding. A managed-configuration
+failure blocks both `mcp_server` and the process/protocol chain. A Guard-file
+integrity failure blocks hook execution and phase observation.
+
+Only `failed` and `blocked` checks may carry `cause_finding_ids`. A `blocked`
+check carries the canonical sorted union of the independent root-finding IDs on
+its failed or blocked prerequisites. `root_cause_ids` is the sorted,
+deduplicated union for the complete check graph. A blocked check whose causes
+do not match its failed prerequisites, a dependency cycle, or noncanonical
+dependency edges makes the report invalid.
 
 The current Codex connection report contains these operational checks:
 
-| Check ID | `passed` | `pending` | `failed` |
+| Check ID | Successful observation | Waiting or applicability rule | Self failure |
 |---|---|---|---|
-| `managed_config` | The selected target contains the canonical managed entry. | Never used after an active inspection. | The required entry is missing, malformed, owned by another entry, changed, or unavailable to inspect. Details name the target and the precise cause. |
-| `host_executable` | `codex` was discovered on `PATH` and its version command succeeded. | The read-only status path has no prior active probe to project. | Discovery or the version command failed. Path and version are diagnostic only. |
-| `mcp_server` | The Volicord CLI self-test passed preflight, `initialize`, `tools/list`, the current required-tool set, and a safe read-only `volicord.list_projects` call. | Never used after an active self-test. | Process startup, storage preflight, initialization, tool discovery, required-tool validation, or the safe call failed. |
-| `host_session` | At least one `managed_host` session for the current integration revision and current host-version observation completed the initialize handshake, including its required initialized notification. | No qualifying managed-host use was observed, only an older revision was observed, the initialize handshake is incomplete, or the Codex version changed after the observation. | When no qualifying success exists, the newest current attempt recorded an actual initialization or protocol failure. |
-| `required_tools` | At least one current, host-version-fresh managed-host `tools/list` observation contains every tool required by the current mode. | No qualifying tool-list observation exists. | When no qualifying success exists, the newest current managed host actually omitted required tools or returned invalid tool-list data. |
-| `tool_round_trip` | At least one current, host-version-fresh managed-host session completed a safe read-only Volicord tool call. | No such qualifying current observation exists. | When no qualifying success exists, the newest current attempt recorded an actual protocol or contract incompatibility. |
-| `project_trust` | Project trust is satisfied, or no separate project trust applies. | A normal Codex trust or reload action remains. | The trust configuration is malformed or contradictory and cannot be resolved by the normal action. |
-| `guard_files` | Every current Guard manifest file expectation matches, including canonical content, owner fields, markers, wrapper runtime commands, and required executable behavior. | A newly applied configuration still needs the normal host reload step. | A required managed file is missing, malformed, content- or ownership-mismatched, or lacks required executable behavior. |
-| `guard_observation` | Every required typed hook phase was observed for the manifest's exact policy hash and integration revision. Prompt capture is reported as a detail of this check. | Files are valid, but one or more current required phases have not yet been observed. Older policy-hash or integration-revision events do not satisfy the check. | A current Guard event reports a malformed or incompatible hook contract. |
+| `managed_config` | The selected target contains the canonical managed entry. | Applies to every managed Connection. | The required entry is missing, malformed, owned by another entry, changed, or unavailable to inspect. |
+| `host_executable` | `codex` was discovered on `PATH` and its version command succeeded. | It waits when the read-only status path has no prior active probe. | Discovery or the version command failed. |
+| `mcp_server` | The CLI self-test passed preflight and the complete MCP exchange. | It waits for active verification and is blocked by failed managed configuration. | The self-test itself observed a process, Store, or protocol failure. |
+| `process_startup` | A current managed host started the configured MCP process. | It waits for managed-host use and is blocked by failed managed configuration. | No managed-host startup failure is claimed without a typed host observation; absence remains waiting. |
+| `host_session` | A current, host-version-fresh managed-host session completed `initialize` and its initialized notification. | It waits for a qualifying attempt and is blocked by `process_startup`. | The current attempt observed an initialization or protocol failure. |
+| `required_tools` | A qualifying `tools/list` observation contains every required tool. | It waits for tool discovery and is blocked by `host_session`. | Tool discovery completed with missing or invalid required tools. |
+| `tool_round_trip` | A qualifying session completed `volicord.list_projects`. | It waits for the designated call and is blocked by `required_tools`. | The call itself observed a protocol or contract failure. |
+| `project_trust` | Project trust is satisfied. | A normal trust or reload action is `pending`; scopes with no separate trust check are `not_applicable`. | Trust configuration is malformed or contradictory. |
+| `guard_files` | Every current Guard manifest file expectation matches. | Applies when Guard is part of the Connection profile. | A managed file, manifest, wrapper, ownership, or executable-integrity check failed. |
+| `guard_hook_execution` | A current managed Guard hook executed. | It waits for current hook activity and is blocked by `guard_files`. | Hook execution itself recorded a failure. |
+| `guard_observation` | Every required current typed hook phase was observed. | It waits for remaining phases and is blocked by `guard_hook_execution`. | A current event reports an incompatible hook contract. |
 
 The CLI MCP self-test creates only `session_source=cli_preflight`; it never
-satisfies `host_session`, `required_tools`, or `tool_round_trip`. Guard uses
-only `guard_files` and `guard_observation` as top-level operational checks.
+satisfies `process_startup`, `host_session`, `required_tools`, or
+`tool_round_trip`. Guard uses `guard_files`, `guard_hook_execution`, and
+`guard_observation` as top-level operational checks.
 The strict Guard manifest owns the current policy hash, integration revision,
 typed runtime commands, complete Volicord-managed artifact expectations, and
 required hook phases. Policy and runtime commands are distinct projections of
@@ -284,8 +328,10 @@ capability observations, and observation timestamps belong in check facts;
 they do not introduce another public or persisted status enum.
 
 User instructions appear only in `actions` inside this report. They are ordered
-and deduplicated by stable ID and are derived directly from pending or failed
-checks. Reload and first-use actions require actual Codex activity to be
+and deduplicated by stable ID and are derived from root findings and current
+check state. A blocked downstream check does not emit an observation action;
+its blocker's repair action comes first. Equivalent actions from several
+symptoms collapse to one stable action. Reload and first-use actions require actual Codex activity to be
 observed. A passing `guard_files` check does not request Guard file
 reinstallation. Registry storage does not keep an independent verification
 status or action array. A
@@ -320,8 +366,9 @@ rewrite or alternate decoder applies.
 
 Operational compatibility is determined from the current managed configuration
 and the protocol, tool-list, required-tool, safe-call, and Guard behavior the
-adapter actually observed. `complete` means every required check in that report
-passed. It does not establish operating-system enforcement, actor or human
+adapter actually observed. `complete` means every applicable required check
+passed and every other check is `not_applicable`. It does not establish
+operating-system enforcement, actor or human
 identity, correctness, future behavior, or tamper-proof recording. Core
 invocation authorization is evaluated separately for each managed MCP call.
 

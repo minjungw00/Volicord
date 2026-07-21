@@ -75,8 +75,8 @@ fn render_summary(report: &ConnectionCommandReport, counts: CheckCounts) -> Stri
         lines.push("  Dry run: yes".to_owned());
     }
     lines.push(format!(
-        "  Checks: {} passed, {} pending, {} failed",
-        counts.ready, counts.waiting, counts.failed
+        "  Checks: {} passed, {} blocked, {} pending, {} failed, {} not applicable",
+        counts.ready, counts.blocked, counts.waiting, counts.failed, counts.not_applicable
     ));
     lines.join("\n")
 }
@@ -105,6 +105,28 @@ fn render_check(report: &ConnectionCommandReport, check: &ConnectionCheck) -> St
             observed_at.to_canonical_string()
         ));
     }
+    if !check.depends_on().is_empty() {
+        lines.push(format!(
+            "    Depends on: {}",
+            check
+                .depends_on()
+                .iter()
+                .map(|kind| kind.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !check.cause_finding_ids().is_empty() {
+        lines.push(format!(
+            "    Root findings: {}",
+            check
+                .cause_finding_ids()
+                .iter()
+                .map(|finding_id| finding_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
 
     let mut details = DetailContext::new(report, check);
     render_known_details(&mut details);
@@ -118,6 +140,8 @@ fn check_status_label(status: ConnectionCheckStatus) -> &'static str {
         ConnectionCheckStatus::Passed => "pass",
         ConnectionCheckStatus::Pending => "wait",
         ConnectionCheckStatus::Failed => "fail",
+        ConnectionCheckStatus::Blocked => "blocked",
+        ConnectionCheckStatus::NotApplicable => "n/a",
     }
 }
 
@@ -127,11 +151,13 @@ fn check_label(kind: ConnectionCheckKind) -> &'static str {
         ConnectionCheckKind::ManagedConfig => "Managed Codex configuration",
         ConnectionCheckKind::HostExecutable => "Codex executable",
         ConnectionCheckKind::McpServer => "Volicord MCP server",
+        ConnectionCheckKind::ProcessStartup => "Managed MCP process startup",
         ConnectionCheckKind::HostSession => "Codex managed session",
         ConnectionCheckKind::RequiredTools => "Codex required tools",
         ConnectionCheckKind::ToolRoundTrip => "Read-only tool round trip",
         ConnectionCheckKind::ProjectTrust => "Project trust",
         ConnectionCheckKind::GuardFiles => "Guard managed files",
+        ConnectionCheckKind::GuardHookExecution => "Guard hook execution",
         ConnectionCheckKind::GuardObservation => "Guard hook activity",
         ConnectionCheckKind::SetupPlan => "Setup plan",
         ConnectionCheckKind::ModeTransition => "Connection mode transition",
@@ -295,11 +321,13 @@ fn render_known_details(context: &mut DetailContext<'_>) {
         ConnectionCheckKind::ManagedConfig => render_managed_config(context),
         ConnectionCheckKind::HostExecutable => render_host_executable(context),
         ConnectionCheckKind::McpServer => render_mcp_server(context),
+        ConnectionCheckKind::ProcessStartup => {}
         ConnectionCheckKind::HostSession => render_host_session(context),
         ConnectionCheckKind::RequiredTools => render_required_tools(context),
         ConnectionCheckKind::ToolRoundTrip => render_tool_round_trip(context),
         ConnectionCheckKind::ProjectTrust => render_project_trust(context),
         ConnectionCheckKind::GuardFiles => render_guard_files(context),
+        ConnectionCheckKind::GuardHookExecution => render_guard_observation(context),
         ConnectionCheckKind::GuardObservation => render_guard_observation(context),
         ConnectionCheckKind::SetupPlan => render_setup_plan(context),
         ConnectionCheckKind::ModeTransition => render_mode_transition(context),
@@ -681,6 +709,8 @@ fn host_initialize_result(check: &ConnectionCheck) -> &'static str {
     match (check.status(), check.code().unwrap_or_default()) {
         (ConnectionCheckStatus::Passed, _) => "completed",
         (ConnectionCheckStatus::Failed, _) => "failed",
+        (ConnectionCheckStatus::Blocked, _) => "blocked",
+        (ConnectionCheckStatus::NotApplicable, _) => "not applicable",
         (_, "host_session_not_observed" | "host_session_revision_stale") => "not observed",
         _ => "pending",
     }
@@ -700,6 +730,8 @@ fn render_required_tools(context: &mut DetailContext<'_>) {
     context.line("Tools/list observed", yes_no(observed));
     let explicit_result = context.take_bool("required_tools_present");
     let result = match (context.check.status(), explicit_result) {
+        (ConnectionCheckStatus::Blocked, _) => "blocked",
+        (ConnectionCheckStatus::NotApplicable, _) => "not applicable",
         (_, Some(true)) | (ConnectionCheckStatus::Passed, _) => "passed",
         (_, Some(false)) | (ConnectionCheckStatus::Failed, _) => "failed",
         _ => "pending",
@@ -920,6 +952,8 @@ fn render_setup_plan(context: &mut DetailContext<'_>) {
         ConnectionCheckStatus::Passed => "ready",
         ConnectionCheckStatus::Pending => "changes ready to apply",
         ConnectionCheckStatus::Failed => "partial application",
+        ConnectionCheckStatus::Blocked => "blocked",
+        ConnectionCheckStatus::NotApplicable => "not applicable",
     };
     context.line("Planned state", state);
     let Some(changes) = context.report.planned_changes.as_deref() else {
@@ -1419,6 +1453,7 @@ mod tests {
         ConnectionCheck::try_new(
             id,
             status,
+            Vec::new(),
             code.map(str::to_owned),
             summary,
             detail.and_then(details),
@@ -1458,6 +1493,47 @@ mod tests {
 
     fn rendered(report: &ConnectionCommandReport) -> String {
         render_command_report_verbose(report)
+    }
+
+    #[test]
+    fn blocked_protocol_details_are_never_rendered_as_pending() {
+        let cause = volicord_types::DiagnosticFindingId::parse("finding.initialize_failed")
+            .expect("cause id");
+        let host = check(
+            ConnectionCheckKind::HostSession,
+            ConnectionCheckStatus::Pending,
+            Some("host_session_initialize_pending"),
+            "Codex initialize has not completed",
+            None,
+            None,
+        )
+        .blocked_by(vec![cause.clone()])
+        .expect("blocked host check");
+        assert_eq!(host_initialize_result(&host), "blocked");
+
+        let required_tools = check(
+            ConnectionCheckKind::RequiredTools,
+            ConnectionCheckStatus::Pending,
+            Some("required_tools_not_observed"),
+            "Tools/list has not been observed",
+            Some(json!({"required_tools_present": null})),
+            None,
+        )
+        .blocked_by(vec![cause])
+        .expect("blocked tools check");
+        let output = rendered(&report(
+            CommandOperation::Status,
+            false,
+            ConnectionStatus::Failed,
+            "workflow",
+            vec![required_tools],
+            Vec::new(),
+            None,
+            None,
+        ));
+        assert!(output.contains("  Checks: 0 passed, 1 blocked, 0 pending, 0 failed"));
+        assert!(output.contains("    Required tools: blocked"));
+        assert!(!output.contains("Required tools: pending"));
     }
 
     #[test]
@@ -1540,7 +1616,7 @@ mod tests {
                 "Summary\n",
                 "  Status: failed\n",
                 "  Dry run: yes\n",
-                "  Checks: 1 passed, 1 pending, 1 failed\n\n",
+                "  Checks: 1 passed, 0 blocked, 1 pending, 1 failed, 0 not applicable\n\n",
                 "Checks\n",
                 "  [pass] Guard managed files\n",
                 "    Guard managed files match current expectations\n",
@@ -1549,6 +1625,7 @@ mod tests {
                 "    Codex initialize has not completed\n",
                 "    Code: host_session_initialize_pending\n",
                 "    Observed at: 2026-07-20T00:00:00Z\n",
+                "    Depends on: process_startup\n",
                 "    Current revision: revision_current\n",
                 "    Observed revision: revision_current\n",
                 "    PATH executable: /opt/codex\n",
@@ -1626,11 +1703,12 @@ mod tests {
                 "  Runtime home: /runtime\n\n",
                 "Summary\n",
                 "  Status: action_required\n",
-                "  Checks: 0 passed, 1 pending, 0 failed\n\n",
+                "  Checks: 0 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable\n\n",
                 "Checks\n",
                 "  [wait] Codex managed session\n",
                 "    Managed host connection use has not been observed\n",
                 "    Code: host_session_not_observed\n",
+                "    Depends on: process_startup\n",
                 "    Current revision: revision_current\n",
                 "    PATH executable: /opt/codex\n",
                 "    PATH executable version: 1.2.3\n",
@@ -1652,7 +1730,7 @@ mod tests {
             "workflow",
             vec![check(
                 ConnectionCheckKind::ProjectTrust,
-                ConnectionCheckStatus::Passed,
+                ConnectionCheckStatus::NotApplicable,
                 None,
                 "No separate project trust action applies to this connection scope",
                 Some(json!({"applicable": false})),
@@ -1677,9 +1755,9 @@ mod tests {
                 "  Runtime home: /runtime\n\n",
                 "Summary\n",
                 "  Status: complete\n",
-                "  Checks: 1 passed, 0 pending, 0 failed\n\n",
+                "  Checks: 0 passed, 0 blocked, 0 pending, 0 failed, 1 not applicable\n\n",
                 "Checks\n",
-                "  [pass] Project trust\n",
+                "  [n/a] Project trust\n",
                 "    No separate project trust action applies to this connection scope\n\n",
                 "Assurance\n",
                 "  Volicord reports cooperative local configuration and observed behavior; it does not prove OS enforcement, actor identity, correctness, test sufficiency, or human review completion.\n",
@@ -1725,11 +1803,12 @@ mod tests {
                 "  Runtime home: /runtime\n\n",
                 "Summary\n",
                 "  Status: failed\n",
-                "  Checks: 0 passed, 0 pending, 1 failed\n\n",
+                "  Checks: 0 passed, 0 blocked, 0 pending, 1 failed, 0 not applicable\n\n",
                 "Checks\n",
                 "  [fail] Volicord MCP server\n",
                 "    Volicord MCP server self-test failed\n",
                 "    Code: mcp_server_tools_list_failed\n",
+                "    Depends on: managed_config\n",
                 "    Preflight: passed\n",
                 "    Storage: read passed, write passed\n",
                 "    Effective mode: workflow\n",
@@ -1778,7 +1857,7 @@ mod tests {
                 "  Runtime home: /runtime\n\n",
                 "Summary\n",
                 "  Status: action_required\n",
-                "  Checks: 1 passed, 0 pending, 0 failed\n\n",
+                "  Checks: 1 passed, 0 blocked, 0 pending, 0 failed, 0 not applicable\n\n",
                 "Checks\n",
                 "  [pass] Connection mode transition\n",
                 "    Connection mode transition was applied\n",
@@ -1830,7 +1909,7 @@ mod tests {
                 "Summary\n",
                 "  Status: action_required\n",
                 "  Dry run: yes\n",
-                "  Checks: 0 passed, 1 pending, 0 failed\n\n",
+                "  Checks: 0 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable\n\n",
                 "Checks\n",
                 "  [wait] Connection removal\n",
                 "    Selected Connection membership removal is ready to apply\n",
@@ -1900,7 +1979,10 @@ mod tests {
         let status = match check.status() {
             ConnectionCheckStatus::Passed => ConnectionStatus::Complete,
             ConnectionCheckStatus::Pending => ConnectionStatus::ActionRequired,
-            ConnectionCheckStatus::Failed => ConnectionStatus::Failed,
+            ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked => {
+                ConnectionStatus::Failed
+            }
+            ConnectionCheckStatus::NotApplicable => ConnectionStatus::Complete,
         };
         rendered(&report(
             CommandOperation::Verify,
@@ -2234,6 +2316,10 @@ mod tests {
         let expected = [
             (ConnectionCheckKind::ConnectionRemoval, "Connection removal"),
             (ConnectionCheckKind::GuardFiles, "Guard managed files"),
+            (
+                ConnectionCheckKind::GuardHookExecution,
+                "Guard hook execution",
+            ),
             (ConnectionCheckKind::GuardObservation, "Guard hook activity"),
             (ConnectionCheckKind::HostExecutable, "Codex executable"),
             (ConnectionCheckKind::HostSession, "Codex managed session"),
@@ -2245,6 +2331,10 @@ mod tests {
             (
                 ConnectionCheckKind::ModeTransition,
                 "Connection mode transition",
+            ),
+            (
+                ConnectionCheckKind::ProcessStartup,
+                "Managed MCP process startup",
             ),
             (ConnectionCheckKind::ProjectTrust, "Project trust"),
             (ConnectionCheckKind::RequiredTools, "Codex required tools"),

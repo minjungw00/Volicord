@@ -51,6 +51,8 @@ pub const MAX_DIAGNOSTIC_ACTIONS: usize = 32;
 pub const MAX_DIAGNOSTIC_FINDINGS: usize = 128;
 /// Maximum number of explicitly identified independent root causes.
 pub const MAX_DIAGNOSTIC_ROOT_CAUSES: usize = 64;
+/// Maximum cause-edge depth followed while selecting diagnostic root causes.
+pub const MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH: usize = 32;
 /// Maximum number of report limitations.
 pub const MAX_DIAGNOSTIC_LIMITS: usize = 32;
 /// Maximum serialized byte length of one complete report.
@@ -1250,14 +1252,15 @@ impl<'de> Deserialize<'de> for DiagnosticReport {
                 "diagnostic report schema_version must be {DIAGNOSTIC_REPORT_SCHEMA_VERSION}"
             )));
         }
-        Self::try_new(
-            wire.status,
-            wire.generated_at,
-            wire.findings,
-            wire.root_cause_ids,
-            wire.limits,
-        )
-        .map_err(de::Error::custom)
+        let supplied_root_cause_ids = wire.root_cause_ids;
+        let report = Self::try_new(wire.status, wire.generated_at, wire.findings, wire.limits)
+            .map_err(de::Error::custom)?;
+        if supplied_root_cause_ids != report.root_cause_ids {
+            return Err(de::Error::custom(
+                "diagnostic report root_cause_ids do not match the finding cause graph",
+            ));
+        }
+        Ok(report)
     }
 }
 
@@ -1267,18 +1270,12 @@ impl DiagnosticReport {
         status: DiagnosticReportStatus,
         generated_at: UtcTimestamp,
         mut findings: Vec<DiagnosticFinding>,
-        mut root_cause_ids: Vec<DiagnosticFindingId>,
         mut limits: Vec<String>,
     ) -> Result<Self, DiagnosticError> {
         validate_timestamp("diagnostic report generated_at", &generated_at)?;
         if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
             return Err(invalid(format!(
                 "diagnostic report has more than {MAX_DIAGNOSTIC_FINDINGS} findings"
-            )));
-        }
-        if root_cause_ids.len() > MAX_DIAGNOSTIC_ROOT_CAUSES {
-            return Err(invalid(format!(
-                "diagnostic report has more than {MAX_DIAGNOSTIC_ROOT_CAUSES} root causes"
             )));
         }
         if limits.len() > MAX_DIAGNOSTIC_LIMITS {
@@ -1290,12 +1287,6 @@ impl DiagnosticReport {
         findings.sort_by(|left, right| left.id.cmp(&right.id));
         if findings.windows(2).any(|pair| pair[0].id == pair[1].id) {
             return Err(invalid("diagnostic report contains duplicate finding ids"));
-        }
-        root_cause_ids.sort();
-        if root_cause_ids.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(invalid(
-                "diagnostic report contains duplicate root-cause ids",
-            ));
         }
         for limit in &limits {
             validate_bounded_text(
@@ -1309,7 +1300,13 @@ impl DiagnosticReport {
             return Err(invalid("diagnostic report contains duplicate limits"));
         }
 
-        validate_cause_graph(&findings, &root_cause_ids)?;
+        validate_cause_graph(&findings)?;
+        let selected = findings
+            .iter()
+            .map(|finding| finding.id.clone())
+            .collect::<Vec<_>>();
+        let root_cause_ids =
+            diagnostic_root_cause_ids(&findings, &selected, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH)?;
         let report = Self {
             schema_version: DIAGNOSTIC_REPORT_SCHEMA_VERSION,
             status,
@@ -1360,10 +1357,7 @@ impl DiagnosticReport {
     }
 }
 
-fn validate_cause_graph(
-    findings: &[DiagnosticFinding],
-    root_cause_ids: &[DiagnosticFindingId],
-) -> Result<(), DiagnosticError> {
+fn validate_cause_graph(findings: &[DiagnosticFinding]) -> Result<(), DiagnosticError> {
     let indexes = findings
         .iter()
         .enumerate()
@@ -1379,23 +1373,132 @@ fn validate_cause_graph(
             }
         }
     }
-    for root_cause_id in root_cause_ids {
-        let Some(index) = indexes.get(root_cause_id).copied() else {
-            return Err(invalid(format!(
-                "diagnostic report references unknown root cause {root_cause_id}"
-            )));
-        };
-        if !findings[index].causes.is_empty() {
-            return Err(invalid(format!(
-                "root cause {root_cause_id} must not have its own cause edge"
-            )));
-        }
-    }
-
     let mut marks = vec![0_u8; findings.len()];
     for index in 0..findings.len() {
         visit_cause(index, findings, &indexes, &mut marks)?;
     }
+    Ok(())
+}
+
+/// Selects independent roots for explicitly identified findings by following
+/// only typed cause edges.
+///
+/// Results are sorted by finding ID. Shared ancestors are deduplicated,
+/// downstream symptoms are excluded, and unknown nodes, cycles, and traversal
+/// beyond the caller-selected bound are rejected.
+pub fn diagnostic_root_cause_ids(
+    findings: &[DiagnosticFinding],
+    selected_ids: &[DiagnosticFindingId],
+    max_depth: usize,
+) -> Result<Vec<DiagnosticFindingId>, DiagnosticError> {
+    if max_depth > MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH {
+        return Err(invalid(format!(
+            "diagnostic root-cause depth must not exceed {MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH}"
+        )));
+    }
+    if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
+        return Err(invalid(format!(
+            "diagnostic root-cause graph has more than {MAX_DIAGNOSTIC_FINDINGS} findings"
+        )));
+    }
+    let indexes = findings
+        .iter()
+        .enumerate()
+        .map(|(index, finding)| (finding.id.clone(), index))
+        .collect::<BTreeMap<_, _>>();
+    if indexes.len() != findings.len() {
+        return Err(invalid(
+            "diagnostic root-cause graph contains duplicate finding ids",
+        ));
+    }
+    for finding in findings {
+        for cause in &finding.causes {
+            if !indexes.contains_key(&cause.finding_id) {
+                return Err(invalid(format!(
+                    "diagnostic finding {} references unknown cause {}",
+                    finding.id, cause.finding_id
+                )));
+            }
+        }
+    }
+
+    let mut roots = BTreeSet::new();
+    let mut path = BTreeSet::new();
+    let mut explored_depth = BTreeMap::<DiagnosticFindingId, usize>::new();
+    for selected_id in selected_ids {
+        let Some(index) = indexes.get(selected_id).copied() else {
+            return Err(invalid(format!(
+                "diagnostic root-cause selection references unknown finding {selected_id}"
+            )));
+        };
+        visit_root_cause(
+            index,
+            0,
+            max_depth,
+            findings,
+            &indexes,
+            &mut path,
+            &mut explored_depth,
+            &mut roots,
+        )?;
+    }
+    if roots.len() > MAX_DIAGNOSTIC_ROOT_CAUSES {
+        return Err(invalid(format!(
+            "diagnostic root-cause selection has more than {MAX_DIAGNOSTIC_ROOT_CAUSES} roots"
+        )));
+    }
+    Ok(roots.into_iter().collect())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn visit_root_cause(
+    index: usize,
+    depth: usize,
+    max_depth: usize,
+    findings: &[DiagnosticFinding],
+    indexes: &BTreeMap<DiagnosticFindingId, usize>,
+    path: &mut BTreeSet<DiagnosticFindingId>,
+    explored_depth: &mut BTreeMap<DiagnosticFindingId, usize>,
+    roots: &mut BTreeSet<DiagnosticFindingId>,
+) -> Result<(), DiagnosticError> {
+    let finding = &findings[index];
+    if !path.insert(finding.id.clone()) {
+        return Err(invalid(format!(
+            "diagnostic cause graph contains a cycle at {}",
+            finding.id
+        )));
+    }
+    if explored_depth
+        .get(&finding.id)
+        .is_some_and(|prior_depth| *prior_depth <= depth)
+    {
+        path.remove(&finding.id);
+        return Ok(());
+    }
+    explored_depth.insert(finding.id.clone(), depth);
+    if finding.causes.is_empty() {
+        roots.insert(finding.id.clone());
+    } else {
+        if depth == max_depth {
+            return Err(invalid(format!(
+                "diagnostic root-cause traversal exceeded depth {max_depth} at {}",
+                finding.id
+            )));
+        }
+        for cause in &finding.causes {
+            visit_root_cause(
+                indexes[&cause.finding_id],
+                depth + 1,
+                max_depth,
+                findings,
+                indexes,
+                path,
+                explored_depth,
+                roots,
+            )?;
+        }
+    }
+    path.remove(&finding.id);
     Ok(())
 }
 
@@ -1586,10 +1689,6 @@ mod tests {
             DiagnosticReportStatus::Failed,
             timestamp(),
             vec![finding("finding.z"), finding("finding.a")],
-            vec![
-                DiagnosticFindingId::parse("finding.z").unwrap(),
-                DiagnosticFindingId::parse("finding.a").unwrap(),
-            ],
             vec!["second limit".to_owned(), "first limit".to_owned()],
         )
         .unwrap();
@@ -1597,10 +1696,6 @@ mod tests {
             DiagnosticReportStatus::Failed,
             timestamp(),
             vec![finding("finding.a"), finding("finding.z")],
-            vec![
-                DiagnosticFindingId::parse("finding.a").unwrap(),
-                DiagnosticFindingId::parse("finding.z").unwrap(),
-            ],
             vec!["first limit".to_owned(), "second limit".to_owned()],
         )
         .unwrap();
@@ -1738,7 +1833,6 @@ mod tests {
             timestamp(),
             vec![missing],
             Vec::new(),
-            Vec::new(),
         )
         .unwrap_err()
         .detail()
@@ -1764,7 +1858,6 @@ mod tests {
             timestamp(),
             vec![left, right],
             Vec::new(),
-            Vec::new(),
         )
         .unwrap_err()
         .detail()
@@ -1775,20 +1868,53 @@ mod tests {
     fn reports_represent_multiple_independent_root_causes() {
         let first_id = DiagnosticFindingId::parse("finding.first_root").unwrap();
         let second_id = DiagnosticFindingId::parse("finding.second_root").unwrap();
+        let symptom = finding("finding.check")
+            .with_causes(vec![
+                DiagnosticCause::new(first_id.clone()),
+                DiagnosticCause::new(second_id.clone()),
+            ])
+            .unwrap();
         let report = DiagnosticReport::try_new(
             DiagnosticReportStatus::Incomplete,
             timestamp(),
             vec![
                 finding(first_id.as_str()),
                 finding(second_id.as_str()),
-                finding("finding.check"),
+                symptom,
             ],
-            vec![second_id.clone(), first_id.clone()],
             vec!["one auxiliary observation was unavailable".to_owned()],
         )
         .unwrap();
         assert_eq!(report.root_cause_ids(), &[first_id, second_id]);
         assert_eq!(report.status(), DiagnosticReportStatus::Incomplete);
+    }
+
+    #[test]
+    fn root_selection_deduplicates_cause_chains_without_prose_or_input_order() {
+        let root_id = DiagnosticFindingId::parse("finding.root").unwrap();
+        let middle_id = DiagnosticFindingId::parse("finding.middle").unwrap();
+        let middle = finding(middle_id.as_str())
+            .with_causes(vec![DiagnosticCause::new(root_id.clone())])
+            .unwrap();
+        let first = finding("finding.first_symptom")
+            .with_causes(vec![DiagnosticCause::new(middle_id.clone())])
+            .unwrap();
+        let second = finding("finding.second_symptom")
+            .with_causes(vec![DiagnosticCause::new(middle_id)])
+            .unwrap();
+        let findings = vec![second, finding(root_id.as_str()), first, middle];
+        let selected = vec![
+            DiagnosticFindingId::parse("finding.second_symptom").unwrap(),
+            DiagnosticFindingId::parse("finding.first_symptom").unwrap(),
+        ];
+        assert_eq!(
+            diagnostic_root_cause_ids(&findings, &selected, 2).unwrap(),
+            vec![root_id]
+        );
+        assert!(diagnostic_root_cause_ids(&findings, &selected, 1)
+            .unwrap_err()
+            .detail()
+            .contains("exceeded depth"));
     }
 
     #[test]
@@ -1859,7 +1985,6 @@ mod tests {
         let report = DiagnosticReport::try_new(
             DiagnosticReportStatus::Complete,
             timestamp(),
-            Vec::new(),
             Vec::new(),
             Vec::new(),
         )

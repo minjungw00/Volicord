@@ -69,10 +69,14 @@ pub(super) fn render_command_report_concise(report: &ConnectionCommandReport) ->
 }
 
 fn concise_diagnostic_hint(report: &ConnectionCommandReport) -> Option<String> {
-    let has_nonpassing_check = report
-        .checks
-        .iter()
-        .any(|check| check.status() != ConnectionCheckStatus::Passed);
+    let has_nonpassing_check = report.checks.iter().any(|check| {
+        matches!(
+            check.status(),
+            ConnectionCheckStatus::Pending
+                | ConnectionCheckStatus::Failed
+                | ConnectionCheckStatus::Blocked
+        )
+    });
 
     match report.operation {
         CommandOperation::Status => {
@@ -153,31 +157,46 @@ fn diagnostic_invocation_from_report(
 #[derive(Clone, Copy)]
 pub(super) struct CheckCounts {
     pub(super) ready: usize,
+    pub(super) blocked: usize,
     pub(super) waiting: usize,
     pub(super) failed: usize,
+    pub(super) not_applicable: usize,
 }
 
 impl CheckCounts {
     pub(super) fn from_report(report: &ConnectionCommandReport) -> Self {
         let mut counts = Self {
             ready: 0,
+            blocked: 0,
             waiting: 0,
             failed: 0,
+            not_applicable: 0,
         };
         for check in &report.checks {
             match check.status() {
                 ConnectionCheckStatus::Passed => counts.ready += 1,
                 ConnectionCheckStatus::Pending => counts.waiting += 1,
                 ConnectionCheckStatus::Failed => counts.failed += 1,
+                ConnectionCheckStatus::Blocked => counts.blocked += 1,
+                ConnectionCheckStatus::NotApplicable => counts.not_applicable += 1,
             }
         }
         counts
     }
 
     fn render(self, always_show_ready: bool) -> String {
+        if always_show_ready {
+            return format!(
+                "{} ready, {} blocked, {} waiting, {} failed",
+                self.ready, self.blocked, self.waiting, self.failed
+            );
+        }
         let mut parts = Vec::new();
-        if always_show_ready || self.ready > 0 {
+        if self.ready > 0 {
             parts.push(format!("{} ready", self.ready));
+        }
+        if self.blocked > 0 {
+            parts.push(format!("{} blocked", self.blocked));
         }
         if self.waiting > 0 {
             parts.push(format!("{} waiting", self.waiting));
@@ -500,6 +519,7 @@ mod tests {
         ConnectionCheck::try_new(
             id,
             status,
+            Vec::new(),
             (status != ConnectionCheckStatus::Passed)
                 .then(|| format!("{}_diagnostic", id.as_str())),
             summary,
@@ -652,7 +672,7 @@ mod tests {
                 "Volicord setup is ready.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n",
+                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
             )
         );
 
@@ -668,7 +688,7 @@ mod tests {
                 "Volicord setup was applied and needs one more step.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 5 ready, 4 waiting\n\n",
+                "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",
                 "Waiting\n",
                 "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
@@ -693,7 +713,7 @@ mod tests {
                 "Volicord setup was applied, but verification failed.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 0 ready, 1 failed\n\n",
+                "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
                 "Problems\n",
                 "  Managed Codex configuration is unavailable\n\n",
                 "Next\n",
@@ -717,7 +737,7 @@ mod tests {
                 "Volicord setup could not be applied.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 0 ready, 1 failed\n\n",
+                "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
                 "Problems\n",
                 "  Setup migration could not be completed\n\n",
                 "Run the same setup command with --verbose for detailed diagnostics.\n",
@@ -739,7 +759,7 @@ mod tests {
                 "Codex connection is ready.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n",
+                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
             )
         );
 
@@ -755,7 +775,7 @@ mod tests {
                 "Codex connection is configured and waiting for activity.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 5 ready, 4 waiting\n\n",
+                "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",
                 "Waiting\n",
                 "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
@@ -777,7 +797,7 @@ mod tests {
                 "Codex connection needs attention.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 0 ready, 1 failed\n\n",
+                "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
                 "Problems\n",
                 "  Managed Codex configuration is unavailable\n\n",
                 "Run `volicord connection status codex --repo /workspace/product --home /runtime --verbose` for detailed current Connection diagnostics.\n",
@@ -799,7 +819,7 @@ mod tests {
                 "Verification completed: 5 ready, 4 waiting.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 5 ready, 4 waiting\n\n",
+                "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",
                 "Waiting\n",
                 "  Codex session and tool activity: initialize, tools/list, and the designated read-only tool call\n",
                 "  Guard hook activity: pre_tool, post_tool, prompt_capture\n\n",
@@ -931,7 +951,7 @@ mod tests {
                 "Connection mode changed from workflow to read_only.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: read_only\n",
-                "Checks: 1 ready\n\n",
+                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n\n",
                 "Next\n",
                 "  Restart or reload Codex, then use the current Volicord integration\n",
             )
@@ -954,7 +974,7 @@ mod tests {
                 "Connection mode is already workflow.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n",
+                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
             )
         );
 
@@ -995,7 +1015,7 @@ mod tests {
                 "Connection membership and Connection record were removed.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n",
+                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
             )
         );
 
@@ -1013,7 +1033,7 @@ mod tests {
                 "Connection membership was removed; the shared Connection remains in use.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 1 ready\n",
+                "Checks: 1 ready, 0 blocked, 0 waiting, 0 failed\n",
             )
         );
 
@@ -1067,7 +1087,7 @@ mod tests {
                 "Volicord setup changes are ready to review.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 0 ready, 5 waiting\n\n",
+                "Checks: 0 ready, 0 blocked, 5 waiting, 0 failed\n\n",
                 "Planned changes\n",
                 "  1 managed Codex configuration change\n",
                 "  2 Guard managed-file changes\n\n",
@@ -1112,7 +1132,7 @@ mod tests {
                 "Connection removal is ready to review.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
-                "Checks: 0 ready, 1 waiting\n\n",
+                "Checks: 0 ready, 0 blocked, 1 waiting, 0 failed\n\n",
                 "Planned changes\n",
                 "  1 managed Codex configuration change\n",
                 "  1 Guard Registry change\n",
@@ -1259,7 +1279,7 @@ mod tests {
     }
 
     #[test]
-    fn concise_waiting_keeps_guard_phase_order_and_failed_checks_only_under_problems() {
+    fn concise_waiting_keeps_guard_phase_order_and_blocked_checks_out_of_waiting() {
         let all_guard_phases = check(
             ConnectionCheckKind::GuardObservation,
             ConnectionCheckStatus::Pending,
@@ -1286,38 +1306,43 @@ mod tests {
             vec!["  Guard hook activity: post_tool, prompt_capture"]
         );
 
+        let cause =
+            volicord_types::DiagnosticFindingId::parse("finding.initialize_failed").unwrap();
+        let failed = check(
+            ConnectionCheckKind::HostSession,
+            ConnectionCheckStatus::Failed,
+            "MCP initialize failed",
+            None,
+        )
+        .with_cause_finding_ids(vec![cause.clone()])
+        .unwrap();
+        let blocked_tools = check(
+            ConnectionCheckKind::RequiredTools,
+            ConnectionCheckStatus::Pending,
+            "tools/list is pending",
+            None,
+        )
+        .blocked_by(vec![cause.clone()])
+        .unwrap();
+        let blocked_round_trip = check(
+            ConnectionCheckKind::ToolRoundTrip,
+            ConnectionCheckStatus::Pending,
+            "Read-only call is pending",
+            None,
+        )
+        .blocked_by(vec![cause])
+        .unwrap();
         let mixed = report(
             CommandOperation::Status,
             None,
-            vec![
-                check(
-                    ConnectionCheckKind::HostSession,
-                    ConnectionCheckStatus::Failed,
-                    "MCP initialize failed",
-                    None,
-                ),
-                check(
-                    ConnectionCheckKind::RequiredTools,
-                    ConnectionCheckStatus::Pending,
-                    "tools/list is pending",
-                    None,
-                ),
-                check(
-                    ConnectionCheckKind::ToolRoundTrip,
-                    ConnectionCheckStatus::Pending,
-                    "Read-only call is pending",
-                    None,
-                ),
-            ],
+            vec![failed, blocked_tools, blocked_round_trip],
             Vec::new(),
         );
         let output = concise(&mixed);
-        assert!(output.find("Problems\n").unwrap() < output.find("Waiting\n").unwrap());
         assert!(output.contains("Problems\n  MCP initialize failed"));
-        assert!(output.contains(
-            "Waiting\n  Codex tool activity: tools/list and the designated read-only tool call"
-        ));
-        assert!(!output.contains("session and tool activity: initialize"));
+        assert!(output.contains("Checks: 0 ready, 2 blocked, 0 waiting, 1 failed"));
+        assert!(!output.contains("Waiting\n"));
+        assert!(!output.contains("tools/list is pending"));
     }
 
     #[test]

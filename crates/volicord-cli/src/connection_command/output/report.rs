@@ -488,6 +488,7 @@ fn command_check(
     ConnectionCheck::try_new(
         id,
         status,
+        Vec::new(),
         (status != ConnectionCheckStatus::Passed).then(|| code.to_owned()),
         summary,
         details,
@@ -518,6 +519,7 @@ mod tests {
             vec![ConnectionCheck::try_new(
                 ConnectionCheckKind::ManagedConfig,
                 status,
+                Vec::new(),
                 (status != ConnectionCheckStatus::Passed)
                     .then(|| "managed_config_failed".to_owned()),
                 "Managed configuration check",
@@ -800,7 +802,7 @@ mod tests {
                     "  Runtime home: /runtime\n\n",
                     "Summary\n",
                     "  Status: failed\n",
-                    "  Checks: 0 passed, 0 pending, 1 failed\n\n",
+                    "  Checks: 0 passed, 0 blocked, 0 pending, 1 failed, 0 not applicable\n\n",
                     "Checks\n",
                     "  [fail] Managed Codex configuration\n",
                     "    Managed configuration check\n",

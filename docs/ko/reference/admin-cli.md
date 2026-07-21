@@ -193,19 +193,29 @@ integration generation을 증가시키지 않습니다.
 
 `volicord init`과 선택한 Connection을 다루는 `add`, `status`, `verify`, `mode`,
 `remove` 명령은 출력 선택 방식 하나를 공유합니다. 출력 플래그가 없으면 작업에 맞는
-결과, 선택한 저장소와 유효한 mode, `ready`/`waiting`/`failed` check 개수, 대기 관찰보다
+결과, 선택한 저장소와 유효한 mode, `ready`/`blocked`/`waiting`/`failed` check 개수, 대기 관찰보다
 앞에 표시하는 현재 문제, 현재 다음 동작을 간결한 사람용 산문으로 보여 줍니다.
 이 사람용 라벨은 표시 문구이며 보고서나 check 상태를 추가하지 않습니다.
 
+정규 check 상태는 `passed`, `pending`, `failed`, `blocked`, `not_applicable`입니다. 각각
+성공적으로 완료됨, 실패한 prerequisite가 없는 상태에서 필요한 외부 관찰을 기다림, check
+자체에서 실패함, prerequisite finding 실패로 실행할 수 없음, 선택한 Connection 또는
+profile에 적용되지 않음을 뜻합니다. Check 하나라도 failed 또는 blocked면 집계 상태는
+`failed`이고, 그런 check 없이 pending이 하나 이상이면 `action_required`이며, 그 밖에는
+`complete`입니다.
+
 간결한 렌더러는 `host_session`, `required_tools`, `tool_round_trip`에 대응하는 정규
 check가 pending일 때만 해당 활동을 포함합니다. 현재 pending인 일부만 Codex session 또는
-도구 활동으로 묶을 수 있으며 passed, failed, 부재 check는 `Waiting` 아래에 반복하지
+도구 활동으로 묶을 수 있으며 passed, failed, blocked, not-applicable, 부재 check는 `Waiting` 아래에 반복하지
 않습니다. Pending `guard_observation`은 알고 있는 누락 phase와 함께 Guard hook 활동으로
 보여 줍니다. 렌더러는 정규 check나 action을 변경, 제거, 재정렬, 영속하지 않습니다.
 Dry run 산문은 typed `PlannedConnectionChangeKind`별로 계획 변경 수를 묶으며 target
-path에서 소유권을 추론하지 않습니다.
+path에서 소유권을 추론하지 않습니다. Blocked check는 blocked 개수에는 포함하지만 대기
+관찰이나 downstream 관찰 action을 만들지 않습니다. `Problems`와 `Next` 구역은 실패한
+root check와 중복 제거된 repair action을 보여 줍니다. 간결한 개수 표시는 값이 0인 항목을
+포함해 네 범주를 항상 모두 표시합니다.
 
-간결한 진단 안내는 작업에 따라 달라집니다. `status` 보고서에 pending이나 failed check가
+간결한 진단 안내는 작업에 따라 달라집니다. `status` 보고서에 pending, failed 또는 blocked check가
 있으면 같은 읽기 전용 상태 조회를 `--verbose`로 다시 실행할 수 있습니다. `verify`
 보고서에 이런 check가 있으면 활성 검증을 verbose로 다시 실행할 수 있습니다. Dry run
 역시 같은 dry run을 verbose로 다시 실행할 수 있습니다. `init`이나 `add` 설정을
@@ -251,7 +261,9 @@ action, typed result 사실, 계획 operation과 target, 보장 한계를 원시
 맞지 않는 값이나 알 수 없는 확장 필드는 `Additional details` 아래에 표시합니다. 사람이
 진단할 때 큰 성공 컬렉션은 개수로 요약할 수 있고, 그 밖의 제한된 컬렉션에서 모든 항목을
 표시하지 않을 때는 남은 개수를 명시합니다. 산문 출력은 비어 있지 않은 진단 필드를 조용히
-버리지 않습니다. 특히 성공한 MCP 도구 inventory 전체를 산문에 반복하지 않습니다.
+버리지 않습니다. Summary는 `passed`, `blocked`, `pending`, `failed`, `not applicable`
+개수를 표시하며, 각 check는 상태 라벨과 dependency ID, 있는 경우 root finding ID를
+표시합니다. 특히 성공한 MCP 도구 inventory 전체를 산문에 반복하지 않습니다.
 각 action은 의미를 나타내는 kind와 지시만 표시합니다. Verbose action 구역은 실행 가능한
 명령을 표시하거나 다시 구성하지 않습니다.
 
@@ -268,7 +280,7 @@ Verification completed: 5 ready, 4 waiting.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 5 ready, 4 waiting
+Checks: 5 ready, 0 blocked, 4 waiting, 0 failed
 
 Waiting
   Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
@@ -297,12 +309,13 @@ Connection
 
 Summary
   Status: action_required
-  Checks: 1 passed, 1 pending, 0 failed
+  Checks: 1 passed, 0 blocked, 1 pending, 0 failed, 0 not applicable
 
 Checks
   [wait] Codex managed session
     Managed host connection use has not been observed
     Code: host_session_not_observed
+    Depends on: process_startup
     Current revision: sha256:current-revision
     Initialize: not observed
 

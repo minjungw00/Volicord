@@ -4,9 +4,9 @@ use serde::Serialize;
 use volicord_store::{
     diagnostic_findings::{
         current_diagnostic_findings_for_connection, diagnostic_cause_chain, diagnostic_finding,
-        diagnostic_findings_for_runtime_session, insert_diagnostic_finding,
-        insert_diagnostic_finding_graph, link_mcp_runtime_session_terminal_finding,
-        MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
+        diagnostic_findings_for_runtime_session, diagnostic_root_cause_ids,
+        insert_diagnostic_finding, insert_diagnostic_finding_graph,
+        link_mcp_runtime_session_terminal_finding, MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
     },
     operational_sessions::{
         connection_integration_revision, mcp_runtime_session, start_mcp_runtime_session,
@@ -265,6 +265,39 @@ fn cause_traversal_is_deterministic_and_depth_bounded() -> Result<(), Box<dyn Er
         MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH + 1,
     )
     .is_err());
+    Ok(())
+}
+
+#[test]
+fn root_selection_deduplicates_shared_chains_and_keeps_independent_roots(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("diagnostic-root-selection")?;
+    let first = finding(&fixture, "finding.first_root", &[])?;
+    let second = finding(&fixture, "finding.second_root", &[])?;
+    let middle = finding(&fixture, "finding.middle", &["finding.first_root"])?;
+    let first_symptom = finding(&fixture, "finding.first_symptom", &["finding.middle"])?;
+    let second_symptom = finding(
+        &fixture,
+        "finding.second_symptom",
+        &["finding.middle", "finding.second_root"],
+    )?;
+    insert_diagnostic_finding_graph(
+        fixture.runtime_home_path(),
+        &[second_symptom, first, first_symptom, second, middle],
+    )?;
+
+    let selected = [
+        DiagnosticFindingId::parse("finding.second_symptom")?,
+        DiagnosticFindingId::parse("finding.first_symptom")?,
+    ];
+    assert_eq!(
+        diagnostic_root_cause_ids(fixture.runtime_home_path(), &selected, 2)?,
+        vec![
+            DiagnosticFindingId::parse("finding.first_root")?,
+            DiagnosticFindingId::parse("finding.second_root")?,
+        ]
+    );
+    assert!(diagnostic_root_cause_ids(fixture.runtime_home_path(), &selected, 1).is_err());
     Ok(())
 }
 

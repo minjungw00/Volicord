@@ -275,8 +275,8 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
         let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
         let partial_report = assert_connection_report(&partial_status, 1, "status", "failed")?;
         assert_check(&partial_report, "host_session", "failed", None);
-        assert_check(&partial_report, "required_tools", "failed", None);
-        assert_check(&partial_report, "tool_round_trip", "pending", None);
+        assert_check(&partial_report, "required_tools", "blocked", None);
+        assert_check(&partial_report, "tool_round_trip", "blocked", None);
 
         fixture.run_successful_managed_mcp(
             &connection_id,

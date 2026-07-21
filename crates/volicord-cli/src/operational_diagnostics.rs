@@ -447,15 +447,10 @@ pub(crate) fn persist_connection_operational_finding(
     diagnostic: OperationalDiagnostic,
     facts: &OperationalDiagnosticFacts,
     observed_at: UtcTimestamp,
-) -> Result<(), ConnectionCommandError> {
-    let id_suffix = diagnostic.code().replace('.', "_");
-    let finding_id = DiagnosticFindingId::parse(format!(
-        "finding.{}.{}",
-        connection.connection_internal_id, id_suffix
-    ))
-    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+) -> Result<DiagnosticFindingId, ConnectionCommandError> {
+    let finding_id = connection_operational_finding_id(connection, diagnostic)?;
     if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
-        return Ok(());
+        return Ok(finding_id);
     }
     let revision = connection_integration_revision(connection)?;
     let finding = operational_diagnostic_finding(
@@ -479,7 +474,19 @@ pub(crate) fn persist_connection_operational_finding(
     })
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     insert_diagnostic_finding(runtime_home, &finding)?;
-    Ok(())
+    Ok(finding_id)
+}
+
+pub(crate) fn connection_operational_finding_id(
+    connection: &volicord_store::agent_connections::AgentConnectionRecord,
+    diagnostic: OperationalDiagnostic,
+) -> Result<DiagnosticFindingId, ConnectionCommandError> {
+    let id_suffix = diagnostic.code().replace('.', "_");
+    DiagnosticFindingId::parse(format!(
+        "finding.{}.{}",
+        connection.connection_internal_id, id_suffix
+    ))
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
 
 pub(crate) fn guard_artifact_kind(artifact: GuardManagedArtifact) -> String {

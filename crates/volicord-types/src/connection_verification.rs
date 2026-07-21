@@ -1,6 +1,11 @@
 //! Canonical serialized Agent Connection verification report.
 
-use std::{cmp::Ordering, collections::BTreeSet, error::Error, fmt};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+};
 
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{
@@ -9,12 +14,16 @@ use serde::{
 };
 use serde_json::{Map, Number, Value};
 
-use crate::{JsonObject, UtcTimestamp};
+use crate::{DiagnosticFindingId, JsonObject, UtcTimestamp};
 
 /// Maximum number of required checks in one connection report.
 pub const MAX_CONNECTION_CHECKS: usize = 64;
 /// Maximum number of user actions in one connection report.
 pub const MAX_CONNECTION_ACTIONS: usize = 32;
+/// Maximum number of prerequisite check edges on one connection check.
+pub const MAX_CONNECTION_CHECK_DEPENDENCIES: usize = 16;
+/// Maximum number of independent root-finding references on one check.
+pub const MAX_CONNECTION_CHECK_CAUSES: usize = 32;
 /// Maximum UTF-8 byte length of a check ID, action ID, or check code.
 pub const MAX_CONNECTION_CODE_BYTES: usize = 128;
 /// Maximum UTF-8 byte length of user-visible report text.
@@ -30,11 +39,11 @@ pub const MAX_CONNECTION_REPORT_BYTES: usize = 64 * 1_024;
 )]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionStatus {
-    /// Every required check passed.
+    /// Every applicable required check passed and no check is waiting.
     Complete,
     /// No required check failed and at least one remains pending.
     ActionRequired,
-    /// At least one required check failed.
+    /// At least one required check failed or is blocked by a failed prerequisite.
     Failed,
 }
 
@@ -57,10 +66,14 @@ impl ConnectionStatus {
 pub enum ConnectionCheckStatus {
     /// The required check succeeded.
     Passed,
-    /// The required check has not yet succeeded or failed.
+    /// A required observation is still outstanding and no failed prerequisite prevents it.
     Pending,
     /// The required check failed.
     Failed,
+    /// A failed prerequisite prevented this check from running or being observed.
+    Blocked,
+    /// The check does not apply to this connection or profile.
+    NotApplicable,
 }
 
 impl ConnectionCheckStatus {
@@ -70,6 +83,8 @@ impl ConnectionCheckStatus {
             Self::Passed => "passed",
             Self::Pending => "pending",
             Self::Failed => "failed",
+            Self::Blocked => "blocked",
+            Self::NotApplicable => "not_applicable",
         }
     }
 }
@@ -86,6 +101,8 @@ pub enum ConnectionCheckKind {
     HostExecutable,
     /// The Volicord MCP server passes the CLI-owned self-test.
     McpServer,
+    /// The managed host started the configured Volicord MCP process.
+    ProcessStartup,
     /// A current managed-host session completed initialization.
     HostSession,
     /// A current managed host exposes every required tool.
@@ -96,6 +113,8 @@ pub enum ConnectionCheckKind {
     ProjectTrust,
     /// Current Guard managed-file expectations match.
     GuardFiles,
+    /// A current Guard hook executed under the managed installation.
+    GuardHookExecution,
     /// Current required Guard phases were observed.
     GuardObservation,
     /// A setup plan is ready to apply or already matches.
@@ -108,15 +127,17 @@ pub enum ConnectionCheckKind {
 
 impl ConnectionCheckKind {
     /// Every current check kind in canonical serialized-spelling order.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 15] = [
         Self::ConnectionRemoval,
         Self::GuardFiles,
+        Self::GuardHookExecution,
         Self::GuardObservation,
         Self::HostExecutable,
         Self::HostSession,
         Self::ManagedConfig,
         Self::McpServer,
         Self::ModeTransition,
+        Self::ProcessStartup,
         Self::ProjectTrust,
         Self::RequiredTools,
         Self::SetupPlan,
@@ -131,15 +152,37 @@ impl ConnectionCheckKind {
             Self::ManagedConfig => "managed_config",
             Self::HostExecutable => "host_executable",
             Self::McpServer => "mcp_server",
+            Self::ProcessStartup => "process_startup",
             Self::HostSession => "host_session",
             Self::RequiredTools => "required_tools",
             Self::ToolRoundTrip => "tool_round_trip",
             Self::ProjectTrust => "project_trust",
             Self::GuardFiles => "guard_files",
+            Self::GuardHookExecution => "guard_hook_execution",
             Self::GuardObservation => "guard_observation",
             Self::SetupPlan => "setup_plan",
             Self::ModeTransition => "mode_transition",
             Self::ConnectionRemoval => "connection_removal",
+        }
+    }
+
+    /// Returns the canonical prerequisite edges for this check kind.
+    pub const fn dependencies(self) -> &'static [Self] {
+        match self {
+            Self::McpServer | Self::ProcessStartup => &[Self::ManagedConfig],
+            Self::HostSession => &[Self::ProcessStartup],
+            Self::RequiredTools => &[Self::HostSession],
+            Self::ToolRoundTrip => &[Self::RequiredTools],
+            Self::GuardHookExecution => &[Self::GuardFiles],
+            Self::GuardObservation => &[Self::GuardHookExecution],
+            Self::VerificationNotRun
+            | Self::ManagedConfig
+            | Self::HostExecutable
+            | Self::ProjectTrust
+            | Self::GuardFiles
+            | Self::SetupPlan
+            | Self::ModeTransition
+            | Self::ConnectionRemoval => &[],
         }
     }
 }
@@ -210,6 +253,8 @@ impl<'de> Deserialize<'de> for ConnectionCheckDetails {
 pub struct ConnectionCheck {
     id: ConnectionCheckKind,
     status: ConnectionCheckStatus,
+    depends_on: Vec<ConnectionCheckKind>,
+    cause_finding_ids: Vec<DiagnosticFindingId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
     summary: String,
@@ -224,6 +269,8 @@ pub struct ConnectionCheck {
 struct ConnectionCheckWire {
     id: ConnectionCheckKind,
     status: ConnectionCheckStatus,
+    depends_on: Vec<ConnectionCheckKind>,
+    cause_finding_ids: Vec<DiagnosticFindingId>,
     code: Option<String>,
     summary: String,
     details: Option<ConnectionCheckDetails>,
@@ -236,9 +283,21 @@ impl<'de> Deserialize<'de> for ConnectionCheck {
         D: Deserializer<'de>,
     {
         let wire = ConnectionCheckWire::deserialize(deserializer)?;
+        if wire.depends_on.len() > MAX_CONNECTION_CHECK_DEPENDENCIES {
+            return Err(de::Error::custom(
+                "connection check has too many dependency edges",
+            ));
+        }
+        if wire.depends_on.as_slice() != wire.id.dependencies() {
+            return Err(de::Error::custom(format!(
+                "connection check {} does not use its canonical dependency edges",
+                wire.id.as_str()
+            )));
+        }
         Self::try_new(
             wire.id,
             wire.status,
+            wire.cause_finding_ids,
             wire.code,
             wire.summary,
             wire.details,
@@ -253,11 +312,36 @@ impl ConnectionCheck {
     pub fn try_new(
         id: ConnectionCheckKind,
         status: ConnectionCheckStatus,
+        mut cause_finding_ids: Vec<DiagnosticFindingId>,
         code: Option<String>,
         summary: impl Into<String>,
         details: Option<ConnectionCheckDetails>,
         observed_at: Option<UtcTimestamp>,
     ) -> Result<Self, ConnectionVerificationError> {
+        let depends_on = id.dependencies().to_vec();
+        if cause_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
+            return Err(invalid("connection check has too many root-cause findings"));
+        }
+        cause_finding_ids.sort();
+        if cause_finding_ids.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid(
+                "connection check contains duplicate root-cause finding ids",
+            ));
+        }
+        if status == ConnectionCheckStatus::Blocked && cause_finding_ids.is_empty() {
+            return Err(invalid(
+                "blocked connection check requires at least one root-cause finding id",
+            ));
+        }
+        if !matches!(
+            status,
+            ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+        ) && !cause_finding_ids.is_empty()
+        {
+            return Err(invalid(
+                "only failed or blocked connection checks may reference root-cause findings",
+            ));
+        }
         if let Some(code) = code.as_deref() {
             validate_code("check code", code)?;
         }
@@ -276,6 +360,8 @@ impl ConnectionCheck {
         Ok(Self {
             id,
             status,
+            depends_on,
+            cause_finding_ids,
             code,
             summary,
             details,
@@ -291,6 +377,16 @@ impl ConnectionCheck {
     /// Returns the required check status.
     pub const fn status(&self) -> ConnectionCheckStatus {
         self.status
+    }
+
+    /// Returns prerequisite check edges in canonical check-ID order.
+    pub fn depends_on(&self) -> &[ConnectionCheckKind] {
+        &self.depends_on
+    }
+
+    /// Returns independent typed root findings in canonical finding-ID order.
+    pub fn cause_finding_ids(&self) -> &[DiagnosticFindingId] {
+        &self.cause_finding_ids
     }
 
     /// Returns the optional machine-readable code.
@@ -311,6 +407,56 @@ impl ConnectionCheck {
     /// Returns the optional observation time.
     pub fn observed_at(&self) -> Option<&UtcTimestamp> {
         self.observed_at.as_ref()
+    }
+
+    /// Replaces direct failure references with their computed independent roots.
+    pub fn with_cause_finding_ids(
+        mut self,
+        mut cause_finding_ids: Vec<DiagnosticFindingId>,
+    ) -> Result<Self, ConnectionVerificationError> {
+        if !matches!(
+            self.status,
+            ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+        ) {
+            return Err(invalid(
+                "only failed or blocked connection checks may reference root-cause findings",
+            ));
+        }
+        if cause_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
+            return Err(invalid("connection check has too many root-cause findings"));
+        }
+        cause_finding_ids.sort();
+        cause_finding_ids.dedup();
+        if self.status == ConnectionCheckStatus::Blocked && cause_finding_ids.is_empty() {
+            return Err(invalid(
+                "blocked connection check requires at least one root-cause finding id",
+            ));
+        }
+        self.cause_finding_ids = cause_finding_ids;
+        Ok(self)
+    }
+
+    /// Converts a check that could not run into a typed blocked state.
+    pub fn blocked_by(
+        mut self,
+        mut cause_finding_ids: Vec<DiagnosticFindingId>,
+    ) -> Result<Self, ConnectionVerificationError> {
+        if cause_finding_ids.is_empty() {
+            return Err(invalid(
+                "blocked connection check requires at least one root-cause finding id",
+            ));
+        }
+        if cause_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
+            return Err(invalid("connection check has too many root-cause findings"));
+        }
+        cause_finding_ids.sort();
+        cause_finding_ids.dedup();
+        self.status = ConnectionCheckStatus::Blocked;
+        self.cause_finding_ids = cause_finding_ids;
+        self.code = Some("blocked_by_failed_prerequisite".to_owned());
+        self.summary = "Check is blocked by a failed prerequisite".to_owned();
+        self.observed_at = None;
+        Ok(self)
     }
 }
 
@@ -441,6 +587,7 @@ pub struct ConnectionVerificationReport {
     status: ConnectionStatus,
     checked_at: UtcTimestamp,
     checks: Vec<ConnectionCheck>,
+    root_cause_ids: Vec<DiagnosticFindingId>,
     actions: Vec<ConnectionAction>,
 }
 
@@ -450,6 +597,7 @@ struct ConnectionVerificationReportWire {
     status: ConnectionStatus,
     checked_at: UtcTimestamp,
     checks: Vec<ConnectionCheck>,
+    root_cause_ids: Vec<DiagnosticFindingId>,
     actions: Vec<ConnectionAction>,
 }
 
@@ -459,8 +607,14 @@ impl<'de> Deserialize<'de> for ConnectionVerificationReport {
         D: Deserializer<'de>,
     {
         let wire = ConnectionVerificationReportWire::deserialize(deserializer)?;
-        Self::from_canonical_parts(wire.status, wire.checked_at, wire.checks, wire.actions)
-            .map_err(de::Error::custom)
+        Self::from_canonical_parts(
+            wire.status,
+            wire.checked_at,
+            wire.checks,
+            wire.root_cause_ids,
+            wire.actions,
+        )
+        .map_err(de::Error::custom)
     }
 }
 
@@ -474,7 +628,8 @@ impl ConnectionVerificationReport {
         checks.sort_by_key(|check| check.id);
         actions.sort_by_key(|action| action.id);
         let status = aggregate_status(&checks);
-        Self::from_canonical_parts(status, checked_at, checks, actions)
+        let root_cause_ids = aggregate_root_causes(&checks);
+        Self::from_canonical_parts(status, checked_at, checks, root_cause_ids, actions)
     }
 
     /// Synthesizes the canonical projection for a connection not yet verified.
@@ -486,6 +641,7 @@ impl ConnectionVerificationReport {
             vec![ConnectionCheck::try_new(
                 ConnectionCheckKind::VerificationNotRun,
                 ConnectionCheckStatus::Pending,
+                Vec::new(),
                 Some("verification_not_run".to_owned()),
                 "Connection verification has not been run",
                 None,
@@ -513,6 +669,11 @@ impl ConnectionVerificationReport {
         &self.checks
     }
 
+    /// Returns independent root findings in canonical finding-ID order.
+    pub fn root_cause_ids(&self) -> &[DiagnosticFindingId] {
+        &self.root_cause_ids
+    }
+
     /// Returns user actions in canonical ID order.
     pub fn actions(&self) -> &[ConnectionAction] {
         &self.actions
@@ -522,6 +683,7 @@ impl ConnectionVerificationReport {
         status: ConnectionStatus,
         checked_at: UtcTimestamp,
         checks: Vec<ConnectionCheck>,
+        root_cause_ids: Vec<DiagnosticFindingId>,
         actions: Vec<ConnectionAction>,
     ) -> Result<Self, ConnectionVerificationError> {
         checked_at
@@ -534,6 +696,7 @@ impl ConnectionVerificationReport {
             return Err(invalid("connection report has too many actions"));
         }
         require_canonical_check_order(&checks)?;
+        validate_check_dependency_graph(&checks)?;
         require_canonical_action_order(&actions)?;
         let derived = aggregate_status(&checks);
         if status != derived {
@@ -541,10 +704,17 @@ impl ConnectionVerificationReport {
                 "connection report status does not match its checks",
             ));
         }
+        let derived_roots = aggregate_root_causes(&checks);
+        if root_cause_ids != derived_roots {
+            return Err(invalid(
+                "connection report root_cause_ids do not match its check graph",
+            ));
+        }
         let report = Self {
             status,
             checked_at,
             checks,
+            root_cause_ids,
             actions,
         };
         let size = serde_json::to_vec(&report)
@@ -560,10 +730,12 @@ impl ConnectionVerificationReport {
 }
 
 fn aggregate_status(checks: &[ConnectionCheck]) -> ConnectionStatus {
-    if checks
-        .iter()
-        .any(|check| check.status == ConnectionCheckStatus::Failed)
-    {
+    if checks.iter().any(|check| {
+        matches!(
+            check.status,
+            ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+        )
+    }) {
         ConnectionStatus::Failed
     } else if checks
         .iter()
@@ -573,6 +745,106 @@ fn aggregate_status(checks: &[ConnectionCheck]) -> ConnectionStatus {
     } else {
         ConnectionStatus::Complete
     }
+}
+
+fn aggregate_root_causes(checks: &[ConnectionCheck]) -> Vec<DiagnosticFindingId> {
+    checks
+        .iter()
+        .flat_map(|check| check.cause_finding_ids.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn validate_check_dependency_graph(
+    checks: &[ConnectionCheck],
+) -> Result<(), ConnectionVerificationError> {
+    let indexes = checks
+        .iter()
+        .enumerate()
+        .map(|(index, check)| (check.id, index))
+        .collect::<BTreeMap<_, _>>();
+    let mut marks = vec![0_u8; checks.len()];
+    for index in 0..checks.len() {
+        visit_check_dependency(index, checks, &indexes, &mut marks)?;
+    }
+    for check in checks {
+        let failed_dependency_causes = check
+            .depends_on
+            .iter()
+            .filter_map(|dependency| indexes.get(dependency))
+            .filter_map(|index| {
+                matches!(
+                    checks[*index].status,
+                    ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+                )
+                .then_some(checks[*index].cause_finding_ids.iter().cloned())
+            })
+            .flatten()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let failed_dependency = check.depends_on.iter().any(|dependency| {
+            indexes.get(dependency).is_some_and(|index| {
+                matches!(
+                    checks[*index].status,
+                    ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+                )
+            })
+        });
+        if failed_dependency
+            && !matches!(
+                check.status,
+                ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable
+            )
+        {
+            return Err(invalid(format!(
+                "connection check {} must be blocked by its failed prerequisite",
+                check.id.as_str()
+            )));
+        }
+        if check.status == ConnectionCheckStatus::Blocked && !failed_dependency {
+            return Err(invalid(format!(
+                "connection check {} is blocked without a failed prerequisite check",
+                check.id.as_str()
+            )));
+        }
+        if check.status == ConnectionCheckStatus::Blocked
+            && check.cause_finding_ids != failed_dependency_causes
+        {
+            return Err(invalid(format!(
+                "connection check {} root causes do not match its failed prerequisites",
+                check.id.as_str()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn visit_check_dependency(
+    index: usize,
+    checks: &[ConnectionCheck],
+    indexes: &BTreeMap<ConnectionCheckKind, usize>,
+    marks: &mut [u8],
+) -> Result<(), ConnectionVerificationError> {
+    match marks[index] {
+        1 => {
+            return Err(invalid(format!(
+                "connection check dependency graph contains a cycle at {}",
+                checks[index].id.as_str()
+            )))
+        }
+        2 => return Ok(()),
+        _ => {}
+    }
+    marks[index] = 1;
+    for dependency in &checks[index].depends_on {
+        if let Some(dependency_index) = indexes.get(dependency).copied() {
+            visit_check_dependency(dependency_index, checks, indexes, marks)?;
+        }
+    }
+    marks[index] = 2;
+    Ok(())
 }
 
 fn require_canonical_check_order(
@@ -784,6 +1056,7 @@ mod tests {
         ConnectionCheck::try_new(
             id,
             status,
+            Vec::new(),
             Some(format!("{}_result", id.as_str())),
             format!("{} summary", id.as_str()),
             None,
@@ -801,12 +1074,14 @@ mod tests {
         let expected = [
             "connection_removal",
             "guard_files",
+            "guard_hook_execution",
             "guard_observation",
             "host_executable",
             "host_session",
             "managed_config",
             "mcp_server",
             "mode_transition",
+            "process_startup",
             "project_trust",
             "required_tools",
             "setup_plan",
@@ -963,9 +1238,12 @@ mod tests {
             "checks": [{
                 "id": "mcp_server",
                 "status": "passed",
+                "depends_on": ["managed_config"],
+                "cause_finding_ids": [],
                 "code": "mcp_server_result",
                 "summary": "mcp_server summary",
             }],
+            "root_cause_ids": [],
             "actions": [{
                 "id": "reload_host",
                 "instruction": "Reload the host",
@@ -1017,6 +1295,7 @@ mod tests {
             ConnectionCheckStatus::Passed,
             ConnectionCheckStatus::Pending,
             ConnectionCheckStatus::Failed,
+            ConnectionCheckStatus::NotApplicable,
         ];
         for left in statuses {
             for right in statuses {
@@ -1025,7 +1304,7 @@ mod tests {
                         timestamp(),
                         vec![
                             check(ConnectionCheckKind::ManagedConfig, left),
-                            check(ConnectionCheckKind::McpServer, right),
+                            check(ConnectionCheckKind::HostExecutable, right),
                             check(ConnectionCheckKind::ProjectTrust, third),
                         ],
                         Vec::new(),
@@ -1119,6 +1398,7 @@ mod tests {
                 ConnectionCheck::try_new(
                     id,
                     ConnectionCheckStatus::Passed,
+                    Vec::new(),
                     None,
                     "x".repeat(MAX_CONNECTION_TEXT_BYTES),
                     None,
@@ -1197,6 +1477,71 @@ mod tests {
             report.actions()[0].id(),
             ConnectionActionKind::RunVerification
         );
+    }
+
+    #[test]
+    fn blocked_checks_inherit_exact_root_findings_from_failed_prerequisites() {
+        let root = DiagnosticFindingId::parse("finding.managed_config").unwrap();
+        let managed_config = check(
+            ConnectionCheckKind::ManagedConfig,
+            ConnectionCheckStatus::Failed,
+        )
+        .with_cause_finding_ids(vec![root.clone()])
+        .unwrap();
+        let process = check(
+            ConnectionCheckKind::ProcessStartup,
+            ConnectionCheckStatus::Pending,
+        )
+        .blocked_by(vec![root.clone()])
+        .unwrap();
+        let report = ConnectionVerificationReport::try_new(
+            timestamp(),
+            vec![process, managed_config],
+            Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(report.status(), ConnectionStatus::Failed);
+        assert_eq!(report.root_cause_ids(), std::slice::from_ref(&root));
+
+        let unrelated = DiagnosticFindingId::parse("finding.unrelated").unwrap();
+        let mismatched = check(
+            ConnectionCheckKind::ProcessStartup,
+            ConnectionCheckStatus::Pending,
+        )
+        .blocked_by(vec![unrelated])
+        .unwrap();
+        assert!(ConnectionVerificationReport::try_new(
+            timestamp(),
+            vec![
+                check(
+                    ConnectionCheckKind::ManagedConfig,
+                    ConnectionCheckStatus::Failed,
+                )
+                .with_cause_finding_ids(vec![root])
+                .unwrap(),
+                mismatched,
+            ],
+            Vec::new(),
+        )
+        .unwrap_err()
+        .detail()
+        .contains("root causes do not match"));
+    }
+
+    #[test]
+    fn not_applicable_checks_do_not_require_actions_or_degrade_the_report() {
+        let report = ConnectionVerificationReport::try_new(
+            timestamp(),
+            vec![check(
+                ConnectionCheckKind::ProjectTrust,
+                ConnectionCheckStatus::NotApplicable,
+            )],
+            Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(report.status(), ConnectionStatus::Complete);
+        assert!(report.root_cause_ids().is_empty());
+        assert!(report.actions().is_empty());
     }
 
     #[test]

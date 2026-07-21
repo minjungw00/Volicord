@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, path::Path, str::FromStr, time::SystemTime};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    str::FromStr,
+    time::SystemTime,
+};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -7,7 +12,9 @@ use volicord_mcp::ManagedMcpInvocationPurpose;
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
-    diagnostic_findings::{diagnostic_finding, insert_diagnostic_finding},
+    diagnostic_findings::{
+        diagnostic_finding, diagnostic_root_cause_ids, insert_diagnostic_finding,
+    },
     guards::{guard_observation_summary, list_guard_installations},
     operational_sessions::{
         connection_integration_revision, current_managed_runtime_sessions,
@@ -22,7 +29,7 @@ use volicord_types::{
     ConnectionVerificationReport, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource,
     DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
     DiagnosticStage, DiagnosticSubject, GuardManagedArtifact, IntegrationRevision, UtcTimestamp,
-    LIST_PROJECTS_TOOL_NAME,
+    LIST_PROJECTS_TOOL_NAME, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 
 use crate::guard_integration::audit::{
@@ -35,8 +42,9 @@ use crate::host_integration::{
     HostAdapter, HostKind, HostPlan, HostScope,
 };
 use crate::operational_diagnostics::{
-    guard_artifact_kind, persist_connection_operational_finding, GuardDiagnostic,
-    OperationalDiagnostic, OperationalDiagnosticFacts, RevisionDiagnostic, TrustDiagnostic,
+    connection_operational_finding_id, guard_artifact_kind, persist_connection_operational_finding,
+    GuardDiagnostic, OperationalDiagnostic, OperationalDiagnosticFacts, RevisionDiagnostic,
+    TrustDiagnostic,
 };
 
 use super::{
@@ -383,7 +391,7 @@ fn canonical_verification_report(
     persist_peer_path_mismatch_findings(runtime_home, connection, host, &current_sessions)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
-    persist_host_boundary_findings(
+    let host_findings = persist_host_boundary_findings(
         runtime_home,
         connection,
         host,
@@ -392,10 +400,13 @@ fn canonical_verification_report(
         &current_revision,
     )?;
     let mut checks = vec![
-        managed_config_check(host)?,
+        with_direct_causes(managed_config_check(host)?, host_findings.managed_config)?,
         host_executable_check(host)?,
-        mcp_server_check(preflight, handshake)?,
-        project_trust_check(host)?,
+        with_direct_causes(
+            mcp_server_check(preflight, handshake)?,
+            mcp_server_finding_ids(preflight, handshake)?,
+        )?,
+        with_direct_causes(project_trust_check(host)?, host_findings.project_trust)?,
     ];
     checks.extend(host_session_checks(
         host,
@@ -411,10 +422,18 @@ fn canonical_verification_report(
         runtime_home,
         connection,
         &projects,
+        true,
     )?);
+    checks = finalize_check_graph(runtime_home, checks)?;
     let actions = actions_for_checks(&checks)?;
     ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)
         .map_err(ConnectionCommandError::from)
+}
+
+#[derive(Default)]
+struct HostBoundaryFindings {
+    managed_config: Vec<DiagnosticFindingId>,
+    project_trust: Vec<DiagnosticFindingId>,
 }
 
 fn persist_host_boundary_findings(
@@ -424,37 +443,42 @@ fn persist_host_boundary_findings(
     current_sessions: &[McpRuntimeSessionRecord],
     latest_session: Option<&McpRuntimeSessionRecord>,
     current_revision: &IntegrationRevision,
-) -> Result<(), ConnectionCommandError> {
+) -> Result<HostBoundaryFindings, ConnectionCommandError> {
+    let mut findings = HostBoundaryFindings::default();
     if let Some(diagnostic) = host.managed_config_diagnostic {
-        persist_connection_operational_finding(
-            runtime_home,
-            connection,
-            OperationalDiagnostic::ManagedConfig(diagnostic),
-            &OperationalDiagnosticFacts {
-                observed_state: Some(host.managed_config.as_str()),
-                ..OperationalDiagnosticFacts::default()
-            },
-            current_timestamp(),
-        )?;
+        findings
+            .managed_config
+            .push(persist_connection_operational_finding(
+                runtime_home,
+                connection,
+                OperationalDiagnostic::ManagedConfig(diagnostic),
+                &OperationalDiagnosticFacts {
+                    observed_state: Some(host.managed_config.as_str()),
+                    ..OperationalDiagnosticFacts::default()
+                },
+                current_timestamp(),
+            )?);
     }
     if let Some(diagnostic) = host
         .project_trust
         .as_ref()
         .and_then(|trust| TrustDiagnostic::from_status(trust.status))
     {
-        persist_connection_operational_finding(
-            runtime_home,
-            connection,
-            OperationalDiagnostic::Trust(diagnostic),
-            &OperationalDiagnosticFacts {
-                observed_state: host
-                    .project_trust
-                    .as_ref()
-                    .map(|trust| trust.status.as_str()),
-                ..OperationalDiagnosticFacts::default()
-            },
-            current_timestamp(),
-        )?;
+        findings
+            .project_trust
+            .push(persist_connection_operational_finding(
+                runtime_home,
+                connection,
+                OperationalDiagnostic::Trust(diagnostic),
+                &OperationalDiagnosticFacts {
+                    observed_state: host
+                        .project_trust
+                        .as_ref()
+                        .map(|trust| trust.status.as_str()),
+                    ..OperationalDiagnosticFacts::default()
+                },
+                current_timestamp(),
+            )?);
     }
     if current_sessions.is_empty() {
         if let Some(latest) = latest_session
@@ -473,7 +497,7 @@ fn persist_host_boundary_findings(
             )?;
         }
     }
-    Ok(())
+    Ok(findings)
 }
 
 fn managed_config_check(host: &Verification) -> Result<ConnectionCheck, ConnectionCommandError> {
@@ -795,7 +819,7 @@ fn project_trust_check(host: &Verification) -> Result<ConnectionCheck, Connectio
     let Some(trust) = host.project_trust.as_ref() else {
         return canonical_check(
             ConnectionCheckKind::ProjectTrust,
-            ConnectionCheckStatus::Passed,
+            ConnectionCheckStatus::NotApplicable,
             "project_trust_not_applicable",
             "No separate project trust action applies to this connection scope",
             Some(json!({"applicable": false})),
@@ -982,6 +1006,10 @@ fn host_session_checks(
         })
     };
     let diagnostic = current.first().copied();
+    let started = current
+        .iter()
+        .copied()
+        .find(|session| version_fresh(session));
     let initialized = current.iter().copied().find(|session| {
         version_fresh(session)
             && session.initialize_completed_at.is_some()
@@ -1040,13 +1068,37 @@ fn host_session_checks(
                 Some(session),
             ),
         };
-    let host_session = canonical_check(
-        ConnectionCheckKind::HostSession,
-        session_status,
-        session_code,
-        session_summary,
-        Some(details(session_detail)),
-        session_observed_at,
+    let process_startup = canonical_check(
+        ConnectionCheckKind::ProcessStartup,
+        if started.is_some() {
+            ConnectionCheckStatus::Passed
+        } else {
+            ConnectionCheckStatus::Pending
+        },
+        if started.is_some() {
+            "process_startup_observed"
+        } else {
+            "process_startup_not_observed"
+        },
+        if started.is_some() {
+            "A current managed host started the configured Volicord MCP process"
+        } else {
+            "Managed host process startup has not been observed"
+        },
+        Some(details(started.or(latest))),
+        started.map(|session| session.process_started_at.as_str()),
+    )?;
+
+    let host_session = with_direct_causes(
+        canonical_check(
+            ConnectionCheckKind::HostSession,
+            session_status,
+            session_code,
+            session_summary,
+            Some(details(session_detail)),
+            session_observed_at,
+        )?,
+        terminal_cause_ids(session_detail)?,
     )?;
 
     let (tools_status, tools_code, tools_summary, tools_observed_at, tools_detail) =
@@ -1099,13 +1151,16 @@ fn host_session_checks(
                 Some(session),
             ),
         };
-    let required_tools = canonical_check(
-        ConnectionCheckKind::RequiredTools,
-        tools_status,
-        tools_code,
-        tools_summary,
-        Some(details(tools_detail)),
-        tools_observed_at,
+    let required_tools = with_direct_causes(
+        canonical_check(
+            ConnectionCheckKind::RequiredTools,
+            tools_status,
+            tools_code,
+            tools_summary,
+            Some(details(tools_detail)),
+            tools_observed_at,
+        )?,
+        terminal_cause_ids(tools_detail)?,
     )?;
 
     let (round_trip_status, round_trip_code, round_trip_summary, round_trip_observed_at, round_detail) =
@@ -1136,8 +1191,8 @@ fn host_session_checks(
                     && session.terminal_finding_id.is_some() =>
             {
                 (
-                ConnectionCheckStatus::Failed,
-                "tool_round_trip_failed",
+                    ConnectionCheckStatus::Failed,
+                    "tool_round_trip_failed",
                     "Newest current managed-host session reported a protocol or contract failure",
                     Some(session.last_observed_at.as_str()),
                     Some(session),
@@ -1151,21 +1206,43 @@ fn host_session_checks(
                 Some(session),
             ),
         };
-    let tool_round_trip = canonical_check(
-        ConnectionCheckKind::ToolRoundTrip,
-        round_trip_status,
-        round_trip_code,
-        round_trip_summary,
-        Some(details(round_detail)),
-        round_trip_observed_at,
+    let tool_round_trip = with_direct_causes(
+        canonical_check(
+            ConnectionCheckKind::ToolRoundTrip,
+            round_trip_status,
+            round_trip_code,
+            round_trip_summary,
+            Some(details(round_detail)),
+            round_trip_observed_at,
+        )?,
+        terminal_cause_ids(round_detail)?,
     )?;
-    Ok(vec![host_session, required_tools, tool_round_trip])
+    block_failed_dependencies(vec![
+        process_startup,
+        host_session,
+        required_tools,
+        tool_round_trip,
+    ])
+}
+
+fn terminal_cause_ids(
+    session: Option<&McpRuntimeSessionRecord>,
+) -> Result<Vec<DiagnosticFindingId>, ConnectionCommandError> {
+    session
+        .and_then(|session| session.terminal_finding_id.as_deref())
+        .map(|finding_id| {
+            DiagnosticFindingId::parse(finding_id.to_owned())
+                .map(|finding_id| vec![finding_id])
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+        })
+        .unwrap_or_else(|| Ok(Vec::new()))
 }
 
 fn guard_checks_for_connection(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
+    persist_findings: bool,
 ) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
     let mut installations = Vec::new();
     for project in projects {
@@ -1251,6 +1328,11 @@ fn guard_checks_for_connection(
     } else {
         ConnectionCheckStatus::Pending
     };
+    let hook_execution_status = if observed_phases.is_empty() && incompatible_event_ids.is_empty() {
+        ConnectionCheckStatus::Pending
+    } else {
+        ConnectionCheckStatus::Passed
+    };
 
     let artifact_issues = audit
         .findings
@@ -1278,70 +1360,109 @@ fn guard_checks_for_connection(
         .as_ref()
         .map(UtcTimestamp::to_canonical_string);
 
-    persist_guard_boundary_findings(
+    let guard_findings = persist_guard_boundary_findings(
         runtime_home,
         connection,
         &audit,
+        files_status == ConnectionCheckStatus::Failed,
         &missing_required_phases,
         !incompatible_event_ids.is_empty(),
         prompt_capture_observed,
         observation_revision_mismatch,
         current_timestamp(),
+        persist_findings,
     )?;
 
-    Ok(vec![
-        canonical_check(
-            ConnectionCheckKind::GuardFiles,
-            files_status,
-            "guard_files_failed",
-            if files_status == ConnectionCheckStatus::Passed {
-                "Guard managed files match the current typed manifest expectations"
-            } else {
-                "Guard managed files do not match the current typed manifest expectations"
-            },
-            Some(json!({
-                "installation_ids": installation_ids,
-                "affected_paths": affected_paths,
-                "artifact_issues": artifact_issues,
-                "manifest_issues": manifest_issues,
-                "missing_required_phases": configured_phase_gaps,
-            })),
-            None,
+    block_failed_dependencies(vec![
+        with_direct_causes(
+            canonical_check(
+                ConnectionCheckKind::GuardFiles,
+                files_status,
+                "guard_files_failed",
+                if files_status == ConnectionCheckStatus::Passed {
+                    "Guard managed files match the current typed manifest expectations"
+                } else {
+                    "Guard managed files do not match the current typed manifest expectations"
+                },
+                Some(json!({
+                    "installation_ids": installation_ids,
+                    "affected_paths": affected_paths,
+                    "artifact_issues": artifact_issues,
+                    "manifest_issues": manifest_issues,
+                    "missing_required_phases": configured_phase_gaps,
+                })),
+                None,
+            )?,
+            guard_findings.files,
         )?,
         canonical_check(
-            ConnectionCheckKind::GuardObservation,
-            observation_status,
-            match observation_status {
-                ConnectionCheckStatus::Passed => "guard_observation_passed",
-                ConnectionCheckStatus::Pending => "guard_observation_pending",
-                ConnectionCheckStatus::Failed => "guard_observation_failed",
+            ConnectionCheckKind::GuardHookExecution,
+            hook_execution_status,
+            if hook_execution_status == ConnectionCheckStatus::Passed {
+                "guard_hook_execution_observed"
+            } else {
+                "guard_hook_execution_pending"
             },
-            match observation_status {
-                ConnectionCheckStatus::Passed => {
-                    "Every current required Guard hook phase was observed"
-                }
-                ConnectionCheckStatus::Pending => {
-                    "One or more current required Guard hook phases have not been observed"
-                }
-                ConnectionCheckStatus::Failed => {
-                    "A current Guard event reported an incompatible hook contract"
-                }
+            if hook_execution_status == ConnectionCheckStatus::Passed {
+                "A current managed Guard hook executed"
+            } else {
+                "Current managed Guard hook execution has not been observed"
             },
             Some(json!({
-                "required_phases": required_phases,
                 "observed_phases": observed_phases,
-                "missing_required_phases": missing_required_phases,
-                "incompatible_event_ids": incompatible_event_ids,
-                "prompt_capture": {
-                    "host_supported": audit.prompt_capture_host_supported,
-                    "configured": audit.prompt_capture_configured,
-                    "observed": prompt_capture_observed,
-                },
                 "last_current_observation_at": observed_at,
             })),
             observed_at.as_deref(),
         )?,
+        with_direct_causes(
+            canonical_check(
+                ConnectionCheckKind::GuardObservation,
+                observation_status,
+                match observation_status {
+                    ConnectionCheckStatus::Passed => "guard_observation_passed",
+                    ConnectionCheckStatus::Pending => "guard_observation_pending",
+                    ConnectionCheckStatus::Failed => "guard_observation_failed",
+                    ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
+                        unreachable!("raw Guard observation uses passed, pending, or failed")
+                    }
+                },
+                match observation_status {
+                    ConnectionCheckStatus::Passed => {
+                        "Every current required Guard hook phase was observed"
+                    }
+                    ConnectionCheckStatus::Pending => {
+                        "One or more current required Guard hook phases have not been observed"
+                    }
+                    ConnectionCheckStatus::Failed => {
+                        "A current Guard event reported an incompatible hook contract"
+                    }
+                    ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
+                        unreachable!("raw Guard observation uses passed, pending, or failed")
+                    }
+                },
+                Some(json!({
+                    "required_phases": required_phases,
+                    "observed_phases": observed_phases,
+                    "missing_required_phases": missing_required_phases,
+                    "incompatible_event_ids": incompatible_event_ids,
+                    "prompt_capture": {
+                        "host_supported": audit.prompt_capture_host_supported,
+                        "configured": audit.prompt_capture_configured,
+                        "observed": prompt_capture_observed,
+                    },
+                    "last_current_observation_at": observed_at,
+                })),
+                observed_at.as_deref(),
+            )?,
+            guard_findings.observation,
+        )?,
     ])
+}
+
+#[derive(Default)]
+struct GuardBoundaryFindings {
+    files: Vec<DiagnosticFindingId>,
+    observation: Vec<DiagnosticFindingId>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1349,14 +1470,17 @@ fn persist_guard_boundary_findings(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     audit: &GuardAuditFacts,
+    guard_files_failed: bool,
     missing_required_phases: &[String],
     incompatible_observation: bool,
     prompt_capture_observed: bool,
     observation_revision_mismatch: bool,
     observed_at: UtcTimestamp,
-) -> Result<(), ConnectionCommandError> {
+    persist_findings: bool,
+) -> Result<GuardBoundaryFindings, ConnectionCommandError> {
+    let mut findings = GuardBoundaryFindings::default();
     for finding in &audit.findings {
-        persist_connection_operational_finding(
+        findings.files.push(guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::from_artifact_issue(
@@ -1368,20 +1492,22 @@ fn persist_guard_boundary_findings(
                 ..OperationalDiagnosticFacts::default()
             },
             observed_at.clone(),
-        )?;
+            persist_findings,
+        )?);
     }
     for issue in &audit.manifest_issues {
-        persist_connection_operational_finding(
+        findings.files.push(guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::from_manifest_issue(*issue)),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
-        )?;
+            persist_findings,
+        )?);
     }
     for status in &audit.hook_path_safety_statuses {
         if let Some(diagnostic) = GuardDiagnostic::from_hook_wrapper_status(*status) {
-            persist_connection_operational_finding(
+            findings.files.push(guard_boundary_finding_id(
                 runtime_home,
                 connection,
                 OperationalDiagnostic::Guard(diagnostic),
@@ -1390,11 +1516,22 @@ fn persist_guard_boundary_findings(
                     ..OperationalDiagnosticFacts::default()
                 },
                 observed_at.clone(),
-            )?;
+                persist_findings,
+            )?);
         }
     }
+    if guard_files_failed && findings.files.is_empty() {
+        findings.files.push(guard_boundary_finding_id(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::ManifestMismatch),
+            &OperationalDiagnosticFacts::default(),
+            observed_at.clone(),
+            persist_findings,
+        )?);
+    }
     for phase in &audit.missing_required_phases {
-        persist_connection_operational_finding(
+        guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved),
@@ -1403,10 +1540,11 @@ fn persist_guard_boundary_findings(
                 ..OperationalDiagnosticFacts::default()
             },
             observed_at.clone(),
+            persist_findings,
         )?;
     }
     for phase in missing_required_phases {
-        persist_connection_operational_finding(
+        guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved),
@@ -1415,37 +1553,41 @@ fn persist_guard_boundary_findings(
                 ..OperationalDiagnosticFacts::default()
             },
             observed_at.clone(),
+            persist_findings,
         )?;
     }
     if incompatible_observation {
-        persist_connection_operational_finding(
+        findings.observation.push(guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::IncompatibleObservation),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
-        )?;
+            persist_findings,
+        )?);
     }
     if audit.prompt_capture_configured && !audit.prompt_capture_host_supported {
-        persist_connection_operational_finding(
+        guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::PromptCaptureUnsupported),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
+            persist_findings,
         )?;
     } else if audit.prompt_capture_configured && !prompt_capture_observed {
-        persist_connection_operational_finding(
+        guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::PromptCaptureUnobserved),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
+            persist_findings,
         )?;
     }
     if observation_revision_mismatch {
         let revision = connection_integration_revision(connection)?;
-        persist_connection_operational_finding(
+        guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Revision(RevisionDiagnostic::ObservationMismatch),
@@ -1454,9 +1596,31 @@ fn persist_guard_boundary_findings(
                 ..OperationalDiagnosticFacts::default()
             },
             observed_at,
+            persist_findings,
         )?;
     }
-    Ok(())
+    Ok(findings)
+}
+
+fn guard_boundary_finding_id(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    diagnostic: OperationalDiagnostic,
+    facts: &OperationalDiagnosticFacts,
+    observed_at: UtcTimestamp,
+    persist: bool,
+) -> Result<DiagnosticFindingId, ConnectionCommandError> {
+    if persist {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            diagnostic,
+            facts,
+            observed_at,
+        )
+    } else {
+        connection_operational_finding_id(connection, diagnostic)
+    }
 }
 
 fn guard_artifact_issue_name(issue: GuardArtifactIssue) -> &'static str {
@@ -1501,6 +1665,137 @@ fn latest_timestamp(
     Ok(Some(current.map_or(candidate.clone(), |current| {
         current.max(candidate)
     })))
+}
+
+fn mcp_server_finding_ids(
+    preflight: &VerificationStep,
+    handshake: &McpVerification,
+) -> Result<Vec<DiagnosticFindingId>, ConnectionCommandError> {
+    let mut ids = BTreeMap::<String, DiagnosticFindingId>::new();
+    let mut insert = |value: &str| -> Result<(), ConnectionCommandError> {
+        let id = DiagnosticFindingId::parse(value.to_owned())
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        ids.insert(value.to_owned(), id);
+        Ok(())
+    };
+    if preflight.status == StepStatus::Failed {
+        if let Some(diagnostic) = preflight.diagnostic.as_ref() {
+            insert(&diagnostic.finding_id)?;
+        }
+    }
+    if handshake.step.status == StepStatus::Failed {
+        if let Some(exchange) = handshake.exchange.as_ref() {
+            if let Some(diagnostic) = exchange.diagnostic.as_ref() {
+                insert(&diagnostic.finding_id)?;
+            }
+            for probe in &exchange.conformance {
+                if let Some(diagnostic) = probe.diagnostic.as_ref() {
+                    insert(&diagnostic.finding_id)?;
+                }
+            }
+            for probe in &exchange.host_compatibility {
+                if let Some(diagnostic) = probe.diagnostic.as_ref() {
+                    insert(&diagnostic.finding_id)?;
+                }
+            }
+        }
+    }
+    Ok(ids.into_values().collect())
+}
+
+fn with_direct_causes(
+    check: ConnectionCheck,
+    cause_finding_ids: Vec<DiagnosticFindingId>,
+) -> Result<ConnectionCheck, ConnectionCommandError> {
+    if check.status() == ConnectionCheckStatus::Failed && !cause_finding_ids.is_empty() {
+        check
+            .with_cause_finding_ids(cause_finding_ids)
+            .map_err(ConnectionCommandError::from)
+    } else {
+        Ok(check)
+    }
+}
+
+fn finalize_check_graph(
+    runtime_home: &Path,
+    checks: Vec<ConnectionCheck>,
+) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
+    let mut rooted = Vec::with_capacity(checks.len());
+    for check in checks {
+        if matches!(
+            check.status(),
+            ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+        ) && !check.cause_finding_ids().is_empty()
+        {
+            let mut roots = BTreeSet::new();
+            for finding_id in check.cause_finding_ids() {
+                if diagnostic_finding(runtime_home, finding_id)?.is_some() {
+                    roots.extend(diagnostic_root_cause_ids(
+                        runtime_home,
+                        std::slice::from_ref(finding_id),
+                        MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+                    )?);
+                } else {
+                    roots.insert(finding_id.clone());
+                }
+            }
+            rooted.push(check.with_cause_finding_ids(roots.into_iter().collect())?);
+        } else {
+            rooted.push(check);
+        }
+    }
+
+    block_failed_dependencies(rooted)
+}
+
+fn block_failed_dependencies(
+    mut checks: Vec<ConnectionCheck>,
+) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
+    for _ in 0..checks.len() {
+        let states = checks
+            .iter()
+            .map(|check| {
+                (
+                    check.id(),
+                    (check.status(), check.cause_finding_ids().to_vec()),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut changed = false;
+        for check in &mut checks {
+            if matches!(
+                check.status(),
+                ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable
+            ) {
+                continue;
+            }
+            let causes = check
+                .depends_on()
+                .iter()
+                .filter_map(|dependency| states.get(dependency))
+                .filter(|(status, _)| {
+                    matches!(
+                        status,
+                        ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+                    )
+                })
+                .flat_map(|(_, causes)| causes.iter().cloned())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            if causes.is_empty() {
+                continue;
+            }
+            *check = check.clone().blocked_by(causes)?;
+            changed = true;
+        }
+        if !changed {
+            return Ok(checks);
+        }
+    }
+    Err(ConnectionCommandError::runtime(
+        "connection check dependency traversal exceeded the check bound",
+    ))
 }
 
 fn actions_for_checks(
@@ -1605,6 +1900,7 @@ fn canonical_check(
     ConnectionCheck::try_new(
         id,
         status,
+        Vec::new(),
         (status != ConnectionCheckStatus::Passed).then(|| code.to_owned()),
         summary,
         details,
@@ -1653,6 +1949,7 @@ pub(in crate::connection_command) fn current_status_host_diagnostic(
     let evaluation = codex::managed_identity_evaluation_for_plan(host_plan)?;
     let mut host = Verification::unobserved(&connection.config_target);
     host.managed_config = evaluation.status;
+    host.managed_config_diagnostic = evaluation.diagnostic;
     host.managed_config_details = evaluation.details;
     if host_plan.host_scope == HostScope::Project {
         if let Some(project) = projects.first() {
@@ -1694,7 +1991,9 @@ pub(in crate::connection_command) fn current_status_report(
         host.host_executable = match check.status() {
             ConnectionCheckStatus::Passed => HostExecutableStatus::Available,
             ConnectionCheckStatus::Failed => HostExecutableStatus::Unavailable,
-            ConnectionCheckStatus::Pending => HostExecutableStatus::NotChecked,
+            ConnectionCheckStatus::Pending
+            | ConnectionCheckStatus::Blocked
+            | ConnectionCheckStatus::NotApplicable => HostExecutableStatus::NotChecked,
         };
         host.host_executable_code = check
             .code()
@@ -1733,13 +2032,40 @@ pub(in crate::connection_command) fn current_status_report(
             None,
             None,
         )?);
+    let stored_mcp = if stored_mcp.status() == ConnectionCheckStatus::Blocked {
+        canonical_check(
+            ConnectionCheckKind::McpServer,
+            ConnectionCheckStatus::Pending,
+            "mcp_server_reverification_required",
+            "Volicord MCP server requires active verification after its blocker is resolved",
+            stored_mcp
+                .details()
+                .map(ConnectionCheckDetails::as_object)
+                .cloned()
+                .map(Value::Object),
+            None,
+        )?
+    } else {
+        stored_mcp
+    };
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
+    let managed_config_causes = host
+        .managed_config_diagnostic
+        .map(|diagnostic| {
+            connection_operational_finding_id(
+                connection,
+                OperationalDiagnostic::ManagedConfig(diagnostic),
+            )
+        })
+        .transpose()?
+        .into_iter()
+        .collect();
     let mut checks = vec![
-        managed_config_check(&host)?,
+        with_direct_causes(managed_config_check(&host)?, managed_config_causes)?,
         stored_mcp,
         project_trust_check(&host)?,
     ];
@@ -1761,7 +2087,9 @@ pub(in crate::connection_command) fn current_status_report(
         runtime_home,
         connection,
         projects,
+        false,
     )?);
+    checks = finalize_check_graph(runtime_home, checks)?;
     let actions = actions_for_checks(&checks)?;
     let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)?;
     Ok((Some(host), report))
@@ -1815,6 +2143,13 @@ mod tests {
             terminal_finding_id: None,
             graceful_close_at: None,
         }
+    }
+
+    fn check_for(checks: &[ConnectionCheck], id: ConnectionCheckKind) -> &ConnectionCheck {
+        checks
+            .iter()
+            .find(|check| check.id() == id)
+            .expect("expected connection check")
     }
 
     #[test]
@@ -1889,7 +2224,10 @@ mod tests {
         assert!(checks
             .iter()
             .all(|check| check.status() == ConnectionCheckStatus::Pending));
-        assert_eq!(checks[0].code(), Some("host_version_observation_stale"));
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::HostSession).code(),
+            Some("host_version_observation_stale")
+        );
     }
 
     #[test]
@@ -1910,10 +2248,26 @@ mod tests {
         )
         .expect("initialize-response-only checks");
 
-        assert_eq!(checks[0].status(), ConnectionCheckStatus::Pending);
-        assert_eq!(checks[0].code(), Some("host_session_initialize_pending"));
-        assert_eq!(checks[1].status(), ConnectionCheckStatus::Pending);
-        assert_eq!(checks[2].status(), ConnectionCheckStatus::Pending);
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::ProcessStartup).status(),
+            ConnectionCheckStatus::Passed
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::HostSession).status(),
+            ConnectionCheckStatus::Pending
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::HostSession).code(),
+            Some("host_session_initialize_pending")
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
+            ConnectionCheckStatus::Pending
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
+            ConnectionCheckStatus::Pending
+        );
     }
 
     #[test]
@@ -1955,7 +2309,10 @@ mod tests {
         assert!(stale
             .iter()
             .all(|check| check.status() == ConnectionCheckStatus::Pending));
-        assert_eq!(stale[0].code(), Some("host_session_revision_stale"));
+        assert_eq!(
+            check_for(&stale, ConnectionCheckKind::HostSession).code(),
+            Some("host_session_revision_stale")
+        );
 
         old.session_source = volicord_types::McpRuntimeSessionSource::CliPreflight;
         let cli = host_session_checks(
@@ -1968,7 +2325,168 @@ mod tests {
         assert!(cli
             .iter()
             .all(|check| check.status() == ConnectionCheckStatus::Pending));
-        assert_eq!(cli[0].code(), Some("host_session_not_observed"));
+        assert_eq!(
+            check_for(&cli, ConnectionCheckKind::HostSession).code(),
+            Some("host_session_not_observed")
+        );
+    }
+
+    #[test]
+    fn no_managed_host_activity_keeps_the_protocol_chain_pending() {
+        let checks = host_session_checks(&host("future"), "revision_current", &[], None)
+            .expect("pending host checks");
+        for id in [
+            ConnectionCheckKind::ProcessStartup,
+            ConnectionCheckKind::HostSession,
+            ConnectionCheckKind::RequiredTools,
+            ConnectionCheckKind::ToolRoundTrip,
+        ] {
+            let check = check_for(&checks, id);
+            assert_eq!(check.status(), ConnectionCheckStatus::Pending);
+            assert!(check.cause_finding_ids().is_empty());
+        }
+    }
+
+    #[test]
+    fn managed_config_failure_blocks_process_and_protocol_checks() {
+        let root = DiagnosticFindingId::parse("finding.managed_config_failure").unwrap();
+        let checks = block_failed_dependencies(vec![
+            canonical_check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Failed,
+                "managed_config_malformed",
+                "Managed configuration is malformed",
+                None,
+                None,
+            )
+            .unwrap()
+            .with_cause_finding_ids(vec![root.clone()])
+            .unwrap(),
+            canonical_check(
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckStatus::Pending,
+                "mcp_server_not_run",
+                "MCP verification has not run",
+                None,
+                None,
+            )
+            .unwrap(),
+            canonical_check(
+                ConnectionCheckKind::ProcessStartup,
+                ConnectionCheckStatus::Pending,
+                "process_startup_not_observed",
+                "Process startup has not been observed",
+                None,
+                None,
+            )
+            .unwrap(),
+            canonical_check(
+                ConnectionCheckKind::HostSession,
+                ConnectionCheckStatus::Pending,
+                "host_session_not_observed",
+                "Initialize has not been observed",
+                None,
+                None,
+            )
+            .unwrap(),
+            canonical_check(
+                ConnectionCheckKind::RequiredTools,
+                ConnectionCheckStatus::Pending,
+                "required_tools_not_observed",
+                "Tools have not been observed",
+                None,
+                None,
+            )
+            .unwrap(),
+            canonical_check(
+                ConnectionCheckKind::ToolRoundTrip,
+                ConnectionCheckStatus::Pending,
+                "tool_round_trip_not_observed",
+                "Tool call has not been observed",
+                None,
+                None,
+            )
+            .unwrap(),
+        ])
+        .expect("blocked managed configuration graph");
+
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::ManagedConfig).status(),
+            ConnectionCheckStatus::Failed
+        );
+        for id in [
+            ConnectionCheckKind::McpServer,
+            ConnectionCheckKind::ProcessStartup,
+            ConnectionCheckKind::HostSession,
+            ConnectionCheckKind::RequiredTools,
+            ConnectionCheckKind::ToolRoundTrip,
+        ] {
+            let check = check_for(&checks, id);
+            assert_eq!(check.status(), ConnectionCheckStatus::Blocked);
+            assert_eq!(check.cause_finding_ids(), std::slice::from_ref(&root));
+        }
+        assert_eq!(
+            actions_for_checks(&checks)
+                .unwrap()
+                .iter()
+                .map(ConnectionAction::id)
+                .collect::<Vec<_>>(),
+            vec![ConnectionActionKind::RepairManagedConfig]
+        );
+    }
+
+    #[test]
+    fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
+        let root = DiagnosticFindingId::parse("finding.guard_file_failure").unwrap();
+        let checks = block_failed_dependencies(vec![
+            canonical_check(
+                ConnectionCheckKind::GuardFiles,
+                ConnectionCheckStatus::Failed,
+                "guard_files_failed",
+                "Guard file integrity failed",
+                None,
+                None,
+            )
+            .unwrap()
+            .with_cause_finding_ids(vec![root.clone()])
+            .unwrap(),
+            canonical_check(
+                ConnectionCheckKind::GuardHookExecution,
+                ConnectionCheckStatus::Pending,
+                "guard_hook_execution_pending",
+                "Guard hook execution is not observed",
+                None,
+                None,
+            )
+            .unwrap(),
+            canonical_check(
+                ConnectionCheckKind::GuardObservation,
+                ConnectionCheckStatus::Pending,
+                "guard_observation_pending",
+                "Guard phases are not observed",
+                None,
+                None,
+            )
+            .unwrap(),
+        ])
+        .expect("blocked Guard graph");
+
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::GuardHookExecution).status(),
+            ConnectionCheckStatus::Blocked
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::GuardObservation).status(),
+            ConnectionCheckStatus::Blocked
+        );
+        assert_eq!(
+            actions_for_checks(&checks)
+                .unwrap()
+                .iter()
+                .map(ConnectionAction::id)
+                .collect::<Vec<_>>(),
+            vec![ConnectionActionKind::RepairGuard]
+        );
     }
 
     #[test]
@@ -1985,10 +2503,22 @@ mod tests {
         )
         .expect("protocol checks");
 
-        assert_eq!(checks[0].status(), ConnectionCheckStatus::Passed);
-        assert_eq!(checks[1].status(), ConnectionCheckStatus::Passed);
-        assert_eq!(checks[2].status(), ConnectionCheckStatus::Failed);
-        assert_eq!(checks[2].code(), Some("tool_round_trip_failed"));
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::HostSession).status(),
+            ConnectionCheckStatus::Passed
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
+            ConnectionCheckStatus::Passed
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
+            ConnectionCheckStatus::Failed
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::ToolRoundTrip).code(),
+            Some("tool_round_trip_failed")
+        );
         assert_eq!(
             serde_json::to_value(actions_for_checks(&checks).expect("protocol action")).unwrap(),
             json!([{
@@ -1999,7 +2529,7 @@ mod tests {
     }
 
     #[test]
-    fn initialize_failure_does_not_invent_tool_surface_or_call_failures() {
+    fn initialize_failure_blocks_tools_list_and_tool_round_trip() {
         let host = host("future");
         let mut session = managed_session("future", true);
         session.initialize_completed_at = None;
@@ -2016,13 +2546,25 @@ mod tests {
         )
         .expect("protocol checks");
 
-        assert_eq!(checks[0].status(), ConnectionCheckStatus::Failed);
-        assert_eq!(checks[1].status(), ConnectionCheckStatus::Pending);
-        assert_eq!(checks[2].status(), ConnectionCheckStatus::Pending);
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::HostSession).status(),
+            ConnectionCheckStatus::Failed
+        );
+        for id in [
+            ConnectionCheckKind::RequiredTools,
+            ConnectionCheckKind::ToolRoundTrip,
+        ] {
+            let check = check_for(&checks, id);
+            assert_eq!(check.status(), ConnectionCheckStatus::Blocked);
+            assert_eq!(
+                check.cause_finding_ids(),
+                &[DiagnosticFindingId::parse("finding.initialize_failed").unwrap()]
+            );
+        }
     }
 
     #[test]
-    fn tool_discovery_failure_does_not_invent_a_tool_call_failure() {
+    fn tool_discovery_failure_blocks_the_tool_call() {
         let host = host("future");
         let mut session = managed_session("future", true);
         session.tools_list_observed_at = None;
@@ -2037,9 +2579,18 @@ mod tests {
         )
         .expect("protocol checks");
 
-        assert_eq!(checks[0].status(), ConnectionCheckStatus::Passed);
-        assert_eq!(checks[1].status(), ConnectionCheckStatus::Failed);
-        assert_eq!(checks[2].status(), ConnectionCheckStatus::Pending);
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::HostSession).status(),
+            ConnectionCheckStatus::Passed
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
+            ConnectionCheckStatus::Failed
+        );
+        assert_eq!(
+            check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
+            ConnectionCheckStatus::Blocked
+        );
     }
 
     #[test]
@@ -2119,14 +2670,14 @@ mod tests {
     fn aggregation_and_actions_are_deterministic() {
         let checks = vec![
             canonical_check(
-                ConnectionCheckKind::ToolRoundTrip,
-                ConnectionCheckStatus::Pending,
-                "tool_round_trip_not_observed",
-                "Tool call pending",
+                ConnectionCheckKind::GuardFiles,
+                ConnectionCheckStatus::Failed,
+                "guard_files_failed",
+                "Guard files failed",
                 None,
                 None,
             )
-            .expect("tool check"),
+            .expect("Guard check"),
             canonical_check(
                 ConnectionCheckKind::ManagedConfig,
                 ConnectionCheckStatus::Failed,
@@ -2137,23 +2688,14 @@ mod tests {
             )
             .expect("config check"),
             canonical_check(
-                ConnectionCheckKind::HostSession,
-                ConnectionCheckStatus::Pending,
-                "host_session_not_observed",
-                "Host session pending",
-                None,
-                None,
-            )
-            .expect("host check"),
-            canonical_check(
-                ConnectionCheckKind::McpServer,
+                ConnectionCheckKind::HostExecutable,
                 ConnectionCheckStatus::Failed,
-                "mcp_server_initialize_failed",
-                "MCP failed",
+                "host_executable_failed",
+                "Host executable failed",
                 None,
                 None,
             )
-            .expect("MCP check"),
+            .expect("executable check"),
         ];
         let first = actions_for_checks(&checks).expect("actions");
         let second = actions_for_checks(&checks).expect("repeat actions");
@@ -2161,28 +2703,16 @@ mod tests {
         assert_eq!(
             first.iter().map(ConnectionAction::id).collect::<Vec<_>>(),
             vec![
-                ConnectionActionKind::ObserveCodex,
+                ConnectionActionKind::InstallOrRepairCodex,
+                ConnectionActionKind::RepairGuard,
                 ConnectionActionKind::RepairManagedConfig,
-                ConnectionActionKind::RepairMcpServer,
             ]
         );
-        let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, first)
-            .expect("canonical report");
+        let report =
+            ConnectionVerificationReport::try_new(current_timestamp(), checks, first.clone())
+                .expect("canonical report");
         assert_eq!(report.status(), ConnectionStatus::Failed);
-        assert_eq!(
-            serde_json::to_value(
-                report
-                    .actions()
-                    .iter()
-                    .find(|action| action.id() == ConnectionActionKind::RepairMcpServer)
-                    .expect("MCP repair action"),
-            )
-            .unwrap(),
-            json!({
-                "id": "repair_mcp_server",
-                "instruction": "Repair the Volicord MCP configuration or storage error and verify again",
-            })
-        );
+        assert_eq!(report.actions(), first);
     }
 
     #[test]

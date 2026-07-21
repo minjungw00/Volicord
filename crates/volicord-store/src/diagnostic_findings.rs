@@ -9,7 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use serde_json::{json, Value};
 use volicord_types::{
     DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, IntegrationRevision,
-    MAX_DIAGNOSTIC_FINDINGS,
+    MAX_DIAGNOSTIC_FINDINGS, MAX_DIAGNOSTIC_ROOT_CAUSES,
 };
 
 use crate::{
@@ -236,6 +236,58 @@ pub fn diagnostic_cause_chain(
         entries,
         depth_limit_reached,
     })
+}
+
+/// Computes independent root causes for selected persisted findings.
+pub fn diagnostic_root_cause_ids(
+    runtime_home: impl AsRef<Path>,
+    finding_ids: &[DiagnosticFindingId],
+    max_depth: usize,
+) -> StoreResult<Vec<DiagnosticFindingId>> {
+    if finding_ids.len() > MAX_DIAGNOSTIC_ROOT_CAUSES {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "diagnostic root-cause selection exceeds {MAX_DIAGNOSTIC_ROOT_CAUSES} findings"
+            ),
+        });
+    }
+    let runtime_home = runtime_home.as_ref();
+    let mut selected = finding_ids.to_vec();
+    selected.sort();
+    selected.dedup();
+    let mut roots = BTreeSet::new();
+    let mut traversed = BTreeSet::new();
+    for finding_id in selected {
+        let chain = diagnostic_cause_chain(runtime_home, &finding_id, max_depth)?;
+        if chain.depth_limit_reached {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "diagnostic root-cause traversal exceeded depth {max_depth} from {finding_id}"
+                ),
+            });
+        }
+        for entry in chain.entries {
+            traversed.insert(entry.finding.id().clone());
+            if traversed.len() > MAX_DIAGNOSTIC_CAUSE_CHAIN_FINDINGS {
+                return Err(StoreError::InvalidInput {
+                    detail: format!(
+                        "diagnostic root-cause traversal exceeds {MAX_DIAGNOSTIC_CAUSE_CHAIN_FINDINGS} findings"
+                    ),
+                });
+            }
+            if entry.finding.causes().is_empty() {
+                roots.insert(entry.finding.id().clone());
+            }
+        }
+    }
+    if roots.len() > MAX_DIAGNOSTIC_ROOT_CAUSES {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "diagnostic root-cause selection exceeds {MAX_DIAGNOSTIC_ROOT_CAUSES} roots"
+            ),
+        });
+    }
+    Ok(roots.into_iter().collect())
 }
 
 fn prepare_graph(findings: &[DiagnosticFinding]) -> StoreResult<Vec<PreparedFinding<'_>>> {

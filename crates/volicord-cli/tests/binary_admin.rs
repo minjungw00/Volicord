@@ -1355,7 +1355,7 @@ fn connection_remove_human_output_reports_complete_connection_removal() -> Resul
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
     assert!(text.starts_with("Connection membership and Connection record were removed.\n\n"));
-    assert!(text.contains("Mode: workflow\nChecks: 1 ready\n"));
+    assert!(text.contains("Mode: workflow\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Connection removed:"));
     assert!(!text.contains("--verbose"));
@@ -1638,7 +1638,7 @@ fn membership_only_remove_human_output_reports_connection_retention() -> Result<
     assert!(text.starts_with(
         "Connection membership was removed; the shared Connection remains in use.\n\n"
     ));
-    assert!(text.contains("Mode: workflow\nChecks: 1 ready\n"));
+    assert!(text.contains("Mode: workflow\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Remaining project count:"));
     assert!(!text.contains("--verbose"));

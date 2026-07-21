@@ -56,17 +56,17 @@ boundary input that has not become persisted owner state is `Rejected`, not
 `Corrupt`, and is not guessed into a supported shape.
 
 Active connection verification discovers the configured Codex executable, runs
-its version command, and reports the behavioral probes as `passed`, `pending`,
-or `failed`. Failure to find or run the executable is `Unavailable` at a
-general failure-category boundary and a failed `host_executable` connection
+its version command, and reports every behavioral check using the five-state
+model defined below. Failure to find or run the executable is `Unavailable` at
+a general failure-category boundary and a failed `host_executable` connection
 check. A different observed version renews the operational observations.
 
-The administrative connection command report uses `failed` only for a typed
-operational result with at least one failed required check. Pending host
-observation is `action_required`, not `Degraded`, a stale/broken public status,
-or an unexpected runtime error. Usage and unexpected runtime or serialization
-failures remain on the CLI error channel rather than being fabricated into a
-successful or action-required report.
+The administrative connection command report uses `failed` for a typed
+operational result with at least one failed or blocked required check. Pending
+host observation is `action_required`, not `Degraded`, a stale/broken public
+status, or an unexpected runtime error. Usage and unexpected runtime or
+serialization failures remain on the CLI error channel rather than being
+fabricated into a successful or action-required report.
 
 No category implies another. In particular:
 
@@ -122,6 +122,28 @@ constraint, and bounded traversal is deterministic. Inserting a finding graph
 is one transaction: an invalid node, missing cause, duplicate edge, or cycle
 leaves no partial graph or dangling edge. MCP terminal finding insertion and
 runtime-session linking may likewise be one transaction.
+
+Root-cause selection uses only those typed cause edges. It never parses a
+summary, compares stage or enum ordering, or chooses the first failed check.
+Selection sorts IDs for deterministic output, retains multiple independent
+roots, and removes a downstream symptom when a selected ancestor already
+explains it. Shared ancestors therefore appear once even when several selected
+findings converge on them. Traversal is limited to 32 cause edges; an unknown
+reference, a cycle, or a path beyond that bound rejects selection rather than
+guessing a root. `DiagnosticReport.root_cause_ids` is the derived result for
+the report's findings and cannot be supplied as an independent caller choice.
+
+Connection verification consumes this cause graph through exactly five check
+states. `passed` means the check completed successfully. `pending` means its
+required external observation or user-triggered event has not occurred and no
+failed prerequisite prevents it. `failed` means the check itself observed a
+failure. `blocked` means a prerequisite finding failed, so the check could not
+run or be observed. `not_applicable` means the check does not apply to the
+Connection or profile. A blocked check carries the resolved root finding IDs;
+root-derived actions are deduplicated and a blocked downstream observation
+does not create an action before its blocker is resolved. The canonical check
+dependencies and aggregate report rules are owned by
+[Agent Connection](agent-connection.md).
 
 When failure occurs before the Registry can be opened, the only shared stderr
 fallback envelope is one bounded line in this exact form:

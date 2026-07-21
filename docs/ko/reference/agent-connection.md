@@ -166,11 +166,14 @@ ConnectionVerificationReport:
   status: complete | action_required | failed
   checked_at: UtcTimestamp
   checks: ConnectionCheck[]
+  root_cause_ids: DiagnosticFindingId[]
   actions: ConnectionAction[]
 
 ConnectionCheck:
   id: ConnectionCheckKind
-  status: passed | pending | failed
+  status: passed | pending | failed | blocked | not_applicable
+  depends_on: ConnectionCheckKind[]
+  cause_finding_ids: DiagnosticFindingId[]
   code?: string
   summary: string
   details?: object
@@ -181,15 +184,16 @@ ConnectionAction:
   instruction: string
 ```
 
-`status`, `checked_at`, `checks`, `actions`, 각 check 또는 action의 선택 사항이 아닌
+`status`, `checked_at`, `checks`, `root_cause_ids`, `actions`, 각 check 또는 action의 선택 사항이 아닌
 구성원은 필수입니다. 선택적인 `code`, `details`, `observed_at` 값이 없으면 null로
 직렬화하지 않고 구성원을 생략합니다. 알 수 없는 구성원, 중복 JSON key, 중복 check kind,
 중복 action kind, 비정규 순서, 선택 구성원의 명시적 null, 알 수 없는 상태, check kind,
 action kind 값은 유효하지 않습니다. Null이 아닌 check code는 ASCII 1~128 byte이고
 `[a-z][a-z0-9_]*`와 일치해야 합니다. `summary`와 `instruction`은 UTF-8 1~4,096
 byte이고 NUL을 포함하지 않습니다. Null이 아닌 `details`는 직렬화 형태가 최대 16 KiB인
-JSON 객체입니다. 보고서는 check를 최대 64개, action을 최대 32개 포함하며 직렬화 형태는
-최대 64 KiB입니다.
+JSON 객체입니다. Check 하나에는 dependency edge를 최대 16개, root finding reference를
+최대 32개 둘 수 있습니다. 보고서는 check를 최대 64개, action을 최대 32개 포함하며
+직렬화 형태는 최대 64 KiB입니다.
 
 Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로 UTF-8 byte
 오름차순 정렬합니다. Action도 `ConnectionActionKind`의 안정적인 snake-case 표기를
@@ -197,10 +201,11 @@ Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로
 거부합니다. Enum 선언 순서는 wire 순서 계약이 아닙니다.
 
 `ConnectionCheckKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
-`connection_removal`, `guard_files`, `guard_observation`, `host_executable`,
-`host_session`, `managed_config`, `mcp_server`, `mode_transition`,
-`project_trust`, `required_tools`, `setup_plan`, `tool_round_trip`,
-`verification_not_run`입니다. 운영 검증은 아래 표에서 적용되는 check를 사용합니다.
+`connection_removal`, `guard_files`, `guard_hook_execution`, `guard_observation`,
+`host_executable`, `host_session`, `managed_config`, `mcp_server`,
+`mode_transition`, `process_startup`, `project_trust`, `required_tools`,
+`setup_plan`, `tool_round_trip`, `verification_not_run`입니다. 운영 검증은 아래 표에서
+적용되는 check를 사용합니다.
 보고서 부재와 관리 명령 계획은 나머지 이름 붙은 kind를 사용하며, 어댑터가 임의로 정한
 check ID는 받지 않습니다.
 
@@ -220,27 +225,63 @@ Connection action은 안정적인 kind와 사용자 지시로 의미 있는 작�
 
 보고서의 모든 check는 그 보고서에 필수입니다. 최상위 상태는 check에서 파생됩니다.
 
-1. `failed` check가 하나라도 있으면 `status=failed`입니다.
+1. `failed` 또는 `blocked` check가 하나라도 있으면 `status=failed`입니다.
 2. 그렇지 않고 `pending` check가 하나라도 있으면 `status=action_required`입니다.
-3. 그렇지 않으면 `status=complete`입니다.
+3. 그렇지 않으면 `passed`와 `not_applicable` check만 있으므로
+   `status=complete`입니다.
+
+다섯 check 상태의 의미는 정확히 다음과 같습니다.
+
+- `passed`: check가 성공적으로 완료되었습니다.
+- `pending`: 필요한 외부 관찰이나 사용자 유발 event가 아직 없고, 현재 이를 막는 실패한
+  prerequisite도 없습니다.
+- `failed`: check 자체가 실패를 관찰했습니다.
+- `blocked`: prerequisite check가 실패하여 이 check를 실행하거나 관찰할 수 없습니다.
+- `not_applicable`: 이 Connection 또는 profile에는 check가 적용되지 않습니다.
+
+`depends_on`은 check kind별 정규 명시 dependency edge 집합입니다. 운영 검증은 다음 chain을
+사용합니다.
+
+```text
+managed_config -> process_startup -> host_session -> required_tools -> tool_round_trip
+managed_config -> mcp_server
+guard_files -> guard_hook_execution -> guard_observation
+```
+
+`host_session`은 managed host의 `initialize` check이고, `required_tools`는 managed host의
+`tools/list` check이며, `tool_round_trip`은 지정된 읽기 전용 도구 호출 check입니다.
+Managed-host 시도가 한 번도 없으면 `process_startup`부터 `tool_round_trip`까지 네 check는
+`pending`입니다. Initialize가 실패하면 `host_session`은 `failed`이고,
+`required_tools`와 `tool_round_trip`은 같은 root finding 때문에 `blocked`입니다. Managed
+configuration이 실패하면 `mcp_server`와 process/protocol chain을 모두 막습니다. Guard
+file integrity가 실패하면 hook 실행과 phase 관찰을 막습니다.
+
+`failed`와 `blocked` check만 `cause_finding_ids`를 가질 수 있습니다. `blocked` check는
+실패했거나 blocked인 prerequisite의 독립 root finding ID를 정규 정렬하고 합친 집합을
+담습니다. `root_cause_ids`는 전체 check graph에서 얻은 정렬·중복 제거 합집합입니다.
+Blocked check의 원인이 실패한 prerequisite와 일치하지 않거나 dependency cycle 또는
+비정규 dependency edge가 있으면 보고서는 유효하지 않습니다.
 
 현재 Codex 연결 보고서에는 다음 운영 check가 들어갑니다.
 
-| Check ID | `passed` | `pending` | `failed` |
+| Check ID | 성공 관찰 | 대기 또는 적용 규칙 | 자체 실패 |
 |---|---|---|---|
-| `managed_config` | 선택한 대상에 정규 관리 entry가 있습니다. | 활성 조사 뒤에는 사용하지 않습니다. | 필수 entry가 없거나, malformed이거나, 다른 entry가 이름을 소유하거나, 변경되었거나, 조사할 수 없습니다. Details에는 대상과 정확한 원인을 기록합니다. |
-| `host_executable` | `PATH`에서 `codex`를 찾았고 version 명령이 성공했습니다. | 읽기 전용 status 경로에서 projection할 이전 활성 probe가 없습니다. | 탐색 또는 version 명령이 실패했습니다. Path와 version은 diagnostic일 뿐입니다. |
-| `mcp_server` | Volicord CLI self-test가 preflight, `initialize`, `tools/list`, 현재 필수 도구 집합, 안전한 읽기 전용 `volicord.list_projects` 호출을 통과했습니다. | 활성 self-test 뒤에는 사용하지 않습니다. | Process 시작, storage preflight, 초기화, 도구 검색, 필수 도구 검증, 안전 호출 중 하나가 실패했습니다. |
-| `host_session` | 현재 통합 revision과 현재 host-version 관찰에 맞는 `managed_host` session 하나 이상이 필수 initialized notification을 포함한 initialize handshake를 완료했습니다. | 조건을 충족하는 managed-host 사용을 관찰하지 못했거나, 이전 revision만 관찰했거나, initialize handshake가 끝나지 않았거나, 관찰 뒤 Codex version이 바뀌었습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 시도가 실제 초기화 또는 protocol 실패를 기록했습니다. |
-| `required_tools` | 현재 상태이고 host-version이 fresh인 managed-host `tools/list` 관찰 하나 이상에 현재 mode의 모든 필수 도구가 있습니다. | 조건을 충족하는 도구 목록 관찰이 없습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 managed host에서 필수 도구가 실제로 빠졌거나 도구 목록 데이터가 유효하지 않습니다. |
-| `tool_round_trip` | 현재 상태이고 host-version이 fresh인 managed-host session 하나 이상이 안전한 읽기 전용 Volicord 도구 호출을 완료했습니다. | 조건을 충족하는 현재 관찰이 없습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 시도가 실제 protocol 또는 contract 비호환을 기록했습니다. |
-| `project_trust` | 프로젝트 신뢰가 충족되었거나 별도 프로젝트 신뢰가 적용되지 않습니다. | 일반 Codex 신뢰 또는 reload 동작이 남았습니다. | 신뢰 구성이 malformed 또는 모순 상태이고 일반 동작으로 해결할 수 없습니다. |
-| `guard_files` | 정규 content, 소유자 field, marker, wrapper runtime command, 필수 executable 동작을 포함해 현재 Guard manifest의 모든 파일 기대값이 일치합니다. | 새로 적용한 구성이 일반 host reload 단계를 기다립니다. | 필수 managed file이 없거나 malformed이거나 content/ownership이 다르거나 필수 executable 동작을 충족하지 않습니다. |
-| `guard_observation` | Manifest의 정확한 policy hash와 integration revision에 대해 모든 필수 typed hook phase를 관찰했습니다. Prompt capture는 이 check의 detail로 보고합니다. | 파일은 유효하지만 현재 필수 phase 하나 이상을 아직 관찰하지 못했습니다. 이전 policy hash나 integration revision의 event는 이 check를 충족하지 않습니다. | 현재 Guard event가 malformed 또는 incompatible hook contract를 보고했습니다. |
+| `managed_config` | 선택한 대상에 정규 managed entry가 있습니다. | 모든 managed Connection에 적용됩니다. | 필수 entry가 없거나 malformed이거나 다른 entry가 소유하거나 변경되었거나 조사할 수 없습니다. |
+| `host_executable` | `PATH`에서 `codex`를 찾았고 version 명령이 성공했습니다. | 읽기 전용 status 경로에 이전 active probe가 없으면 기다립니다. | 탐색 또는 version 명령이 실패했습니다. |
+| `mcp_server` | CLI self-test가 preflight와 전체 MCP exchange를 통과했습니다. | Active verification을 기다리며 managed configuration 실패가 막을 수 있습니다. | Self-test 자체가 process, Store 또는 protocol 실패를 관찰했습니다. |
+| `process_startup` | 현재 managed host가 구성된 MCP process를 시작했습니다. | Managed-host 사용을 기다리며 managed configuration 실패가 막을 수 있습니다. | Typed host 관찰이 없으면 managed-host startup 실패를 주장하지 않으며, 관찰 부재는 대기로 남습니다. |
+| `host_session` | 현재 상태이고 host-version이 fresh인 managed-host session이 `initialize`와 initialized notification을 완료했습니다. | 조건을 충족하는 시도를 기다리며 `process_startup` 실패가 막을 수 있습니다. | 현재 시도가 initialization 또는 protocol 실패를 관찰했습니다. |
+| `required_tools` | 조건을 충족하는 `tools/list` 관찰에 모든 필수 도구가 있습니다. | 도구 검색을 기다리며 `host_session` 실패가 막을 수 있습니다. | 도구 검색이 완료됐지만 필수 도구가 없거나 유효하지 않습니다. |
+| `tool_round_trip` | 조건을 충족하는 session이 `volicord.list_projects`를 완료했습니다. | 지정 호출을 기다리며 `required_tools` 실패가 막을 수 있습니다. | 호출 자체가 protocol 또는 contract 실패를 관찰했습니다. |
+| `project_trust` | Project trust가 충족되었습니다. | 일반 trust 또는 reload action은 `pending`이고, 별도 trust check가 없는 scope는 `not_applicable`입니다. | Trust configuration이 malformed 또는 모순 상태입니다. |
+| `guard_files` | 현재 Guard manifest의 모든 file 기대값이 일치합니다. | Guard가 Connection profile에 포함될 때 적용됩니다. | Managed file, manifest, wrapper, ownership 또는 executable integrity check가 실패했습니다. |
+| `guard_hook_execution` | 현재 managed Guard hook이 실행되었습니다. | 현재 hook 활동을 기다리며 `guard_files` 실패가 막을 수 있습니다. | Hook 실행 자체가 실패를 기록했습니다. |
+| `guard_observation` | 현재 필수 typed hook phase를 모두 관찰했습니다. | 남은 phase를 기다리며 `guard_hook_execution` 실패가 막을 수 있습니다. | 현재 event가 incompatible hook contract를 보고했습니다. |
 
 CLI MCP self-test는 `session_source=cli_preflight`만 만듭니다. 따라서
-`host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다. Guard는 최상위
-운영 check로 `guard_files`와 `guard_observation`만 사용합니다. 엄격한 Guard manifest는
+`process_startup`, `host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다.
+Guard는 최상위 운영 check로 `guard_files`, `guard_hook_execution`,
+`guard_observation`을 사용합니다. 엄격한 Guard manifest는
 현재 policy hash, integration revision, typed runtime command, 전체 Volicord 관리 artifact
 기대값, 필수 hook phase를 담당합니다. Policy command와 runtime command는 typed invocation
 하나에서 나온 서로 다른 projection입니다. Audit은 각 관리 artifact를 정규 현재 기대값과
@@ -253,8 +294,10 @@ reload하고 운영 동작을 다시 관찰할 때까지 현재 host 관찰이 p
 가용성, protocol/host version, capability 관찰, 관찰 timestamp는 check 사실에 두며
 별도 공개 또는 영속 상태 enum을 만들지 않습니다.
 
-사용자 지시는 이 보고서의 `actions`에만 둡니다. Pending 또는 failed check에서 직접
-만들고 안정적인 ID 순서로 정렬해 중복을 제거합니다. 다시 불러오기와 최초 사용 action은
+사용자 지시는 이 보고서의 `actions`에만 둡니다. Root finding과 현재 check 상태에서
+만들고 안정적인 ID 순서로 정렬해 중복을 제거합니다. Blocked downstream check는 관찰
+action을 만들지 않으며 blocker의 repair action을 먼저 제공합니다. 여러 symptom에서 나온
+동등한 action은 안정적인 action 하나로 합칩니다. 다시 불러오기와 최초 사용 action은
 실제 Codex 활동을 관찰해야 한다고 명시합니다. `guard_files` check가 통과했다면 Guard
 파일 재설치를 요청하지 않습니다. Registry 저장소는 독립된 검증 상태나 action 배열을
 저장하지 않습니다. 완료된 영속 보고서가 없는 연결은
@@ -282,8 +325,8 @@ managed fingerprint를 적용하거나 채택하거나 기록하지 않습니다
 JSON을 제자리에서 다시 쓰거나 다른 decoder를 사용하는 경로는 없습니다.
 
 운영 호환성은 현재 관리 구성과 어댑터가 실제로 관찰한 protocol, 도구 목록, 필수 도구,
-안전 호출, Guard 동작으로 판단합니다. `complete`는 해당 보고서의 모든 필수 check가
-통과했음을 뜻합니다. 운영체제 집행, actor 또는 human identity, correctness, 미래 동작,
+안전 호출, Guard 동작으로 판단합니다. `complete`는 적용되는 모든 필수 check가 통과하고
+나머지 check가 모두 `not_applicable`임을 뜻합니다. 운영체제 집행, actor 또는 human identity, correctness, 미래 동작,
 조작 방지 기록을 성립시키지는 않습니다. Core 호출 권한은 각 관리 MCP 호출에서 별도로
 평가합니다.
 

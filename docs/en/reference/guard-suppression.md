@@ -153,6 +153,29 @@ File, manifest, wrapper, and incompatible-observation failures use
 `action.guard.trigger_phase`. Prompt-capture codes retain their focused actions.
 No action is selected by parsing a human summary.
 
+### Guard Verification Dependencies
+
+Connection verification uses this explicit Guard dependency graph:
+
+```text
+Guard file integrity -> Guard hook execution -> Guard phase observation
+```
+
+Each check has exactly one of five statuses. `passed` means the check completed
+successfully. `pending` means the required external observation or
+user-triggered event has not occurred and no failed prerequisite prevents it.
+`failed` means that check itself observed a failure. `blocked` means it could
+not run or be observed because a prerequisite finding failed.
+`not_applicable` means the check does not apply to the Connection or profile.
+
+A Guard file-integrity failure makes that check `failed` and makes hook
+execution and phase observation `blocked` by the same resolved root finding.
+The report does not request phase observation while either downstream check is
+blocked. Root selection follows typed finding cause edges, retains independent
+roots in deterministic order, and does not inspect summaries. The complete
+check graph and aggregate report status are owned by
+[Agent Connection](agent-connection.md).
+
 ## Required Tests
 
 Durable contract tests cover:
