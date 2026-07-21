@@ -58,6 +58,40 @@ doctor가 기본 policy를 대신 넣거나 어느 authority 복사본도 다시
 `scan_state: bounded_incomplete`를 보고합니다. 점검한 page에 finding이 없어도 제한 때문에
 감사를 완료하지 못했으면 warning이며 통과로 보고할 수 없습니다.
 
+`volicord doctor --json`은 공유 `DiagnosticFinding` 형태의 `findings`도 반환합니다.
+Registry 조사에서는 임의의 SQLite 메시지를 projection하지 않습니다. SQLite 결과 code,
+조사 상태, 한도가 있는 범주형 사실로 finding을 선택하며 산문은 표시 맥락으로만 남습니다.
+
+관리 Codex 구성 finding은 다음 닫힌 code를 사용합니다.
+
+| Code | Typed 관찰 |
+|---|---|
+| `managed_config.toml.parse_failed` | 구성 문서를 지원 TOML 형태로 parsing할 수 없습니다. |
+| `managed_config.entry.missing` | 필수 MCP entry 또는 소유 table이 없습니다. |
+| `managed_config.entry.disabled` | 필수 MCP entry에 `enabled = false`가 설정되어 있습니다. |
+| `managed_config.command.drift` | 구조화된 command가 다릅니다. |
+| `managed_config.arguments.drift` | 구조화된 argument vector가 다릅니다. |
+| `managed_config.static_environment.drift` | 정적 환경 이름 또는 값이 다릅니다. 값 자체는 finding에 복사하지 않습니다. |
+| `managed_config.forwarded_environment.drift` | 전달하는 환경 이름 집합이 다릅니다. |
+| `managed_config.fingerprint.mismatch` | Scope, 소유권 또는 전체 관리 identity가 다릅니다. |
+| `managed_config.approval_overlay.malformed` | Typed 도구 승인 overlay가 잘못되었습니다. |
+| `managed_config.observation.unavailable` | 구성 target을 조사할 수 없습니다. |
+
+기존 underscore-only `ConnectionCheck.code`는 한도가 있는 check code로 유지합니다. 위
+namespace code는 `DiagnosticFinding.code`이며 Connection check가 이를 운반할 때
+`details.diagnostic_code`에도 projection합니다. 구성 값, command argument, 전체 환경 값은
+diagnostic 사실로 저장하지 않습니다.
+
+다음 단계가 알려졌으면 typed action을 붙입니다. 현재 action code에는
+`action.runtime_home.correct_path`, `action.runtime_home.initialize_registry`,
+`action.store.free_locked_database`,
+`action.installation.reinstall_current_build`,
+`action.managed_config.repair`, `action.guard.repair`,
+`action.guard.trigger_phase`,
+`action.host.reload_after_configuration_change`가 있습니다. Reload action은 구성 변경 뒤
+integration revision이 오래된 경우에만 사용합니다. 결정적인 구성 drift, schema mismatch,
+permission 실패에는 일반적인 restart action을 붙이지 않습니다.
+
 <a id="runtime-home-selection"></a>
 ## Runtime Home 선택
 
@@ -664,6 +698,13 @@ diagnostics SQL에서 파생한 정확한 `canonical_schema_digest`와
 version을 노출하거나 그 값으로 dispatch하지 않습니다. Diagnostics 읽기는 저장소를
 만들거나 프로젝트 권한 상태를 열거나 state version을 전진시키거나 evidence 또는
 assurance, 닫기 준비 상태를 바꾸거나 UserAction을 해결하지 않습니다.
+
+활성 Connection 검증은 관리 구성, Guard 파일과 관찰, 저장소 신뢰, revision freshness에
+대한 CLI 소유 finding을 영속화합니다. 현재 안정 code는
+`trust.repository.not_trusted`, `revision.integration.stale`,
+`revision.observation.mismatch`입니다. 한도 안의 임의 미래 Codex version 문구는 계속
+diagnostic으로 받아들입니다. 집중 host 담당 문서는 지원하지 않는 현재 host revision
+code를 정의하지 않으므로 CLI도 이를 만들어 내지 않습니다.
 
 <a id="authority-bundle-export"></a>
 ## 권한 번들 내보내기

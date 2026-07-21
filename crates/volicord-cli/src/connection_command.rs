@@ -129,7 +129,7 @@ impl ConnectionCommandError {
         Self::Usage(message.into())
     }
 
-    fn runtime(message: impl Into<String>) -> Self {
+    pub(crate) fn runtime(message: impl Into<String>) -> Self {
         Self::Runtime(message.into())
     }
 }
@@ -1471,19 +1471,28 @@ mod init_status_tests {
     #[test]
     fn runtime_home_selection_keeps_environment_then_platform_default_precedence() {
         let current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let environment_home = current_dir.join("environment-runtime-home");
         let from_environment = selected_runtime_home_path(
             None,
             |name| match name {
-                "VOLICORD_HOME" => Some(OsString::from("environment-runtime-home")),
+                "VOLICORD_HOME" => Some(environment_home.clone().into_os_string()),
                 "HOME" => Some(OsString::from("platform-home")),
                 _ => None,
             },
             &current_dir,
         )
         .expect("VOLICORD_HOME should resolve");
+        assert_eq!(from_environment, environment_home);
+
+        let relative_error = selected_runtime_home_path(
+            None,
+            |name| (name == "VOLICORD_HOME").then(|| OsString::from("relative-runtime-home")),
+            &current_dir,
+        )
+        .expect_err("relative VOLICORD_HOME must fail closed");
         assert_eq!(
-            from_environment,
-            current_dir.join("environment-runtime-home")
+            relative_error,
+            RuntimeHomeResolutionError::RelativeVolicordHome
         );
 
         let from_default = selected_runtime_home_path(

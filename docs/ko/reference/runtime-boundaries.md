@@ -124,6 +124,37 @@ Registry를 열기 전에 발생한 실패는 정확히
 raw request body 또는 projection하지 않은 다른 입력을 담으면 안 됩니다. 성공한 Registry
 쓰기를 대신하지 않으며 Store는 이 envelope을 렌더링하지 않습니다.
 
+### 플랫폼, Runtime Home, 설치 finding
+
+운영 분류는 닫힌 담당 enum을 사용합니다. 렌더링한 오류 문구에서 code나 권장 동작을
+파생하지 않습니다. 플랫폼 관찰은 다음 안정 code를 냅니다.
+
+| Code | 조건 |
+|---|---|
+| `platform.operating_system.unsupported` | 운영체제에 지원되는 릴리스 cell이 없습니다. |
+| `platform.target.unsupported` | WSL2와 호환되지 않는 target을 포함해 실행 파일 target을 지원하지 않습니다. |
+| `platform.wsl1.unsupported` | 프로세스가 WSL1에서 실행 중입니다. |
+| `platform.wsl2.distribution_identity_unavailable` | WSL2 배포판 identity를 관찰할 수 없습니다. |
+| `platform.wsl2.distribution_unsupported` | 관찰한 WSL2 배포판이 고정된 cell 밖에 있습니다. |
+| `platform.filesystem.unsupported` | 선택한 경로가 지원되는 파일시스템 경계 밖에 있습니다. |
+| `platform.filesystem.observation_failed` | 파일시스템 identity를 관찰할 수 없습니다. |
+| `platform.observation.failed` | 그 밖의 필수 플랫폼 관찰이 실패했습니다. |
+
+Runtime Home finding은 `runtime_home.path.missing`,
+`runtime_home.path.empty_or_relative`, `runtime_home.path.invalid`,
+`runtime_home.registry.missing`, `runtime_home.permission.denied`,
+`runtime_home.filesystem.unsupported`,
+`runtime_home.boundary.owner_mismatch`를 사용합니다. 명시적인 `VOLICORD_HOME`은 비어
+있지 않은 절대 경로여야 합니다. 명시적인 상대 CLI `--home`은 계속 CLI 경로 입력으로
+취급하며, 이 환경 값 규칙을 적용하기 전에 절대 경로로 해석합니다.
+
+설치 finding은 `installation.executable.missing`,
+`installation.executable.not_runnable`,
+`installation.build_identity.unavailable`,
+`installation.managed_config.inconsistent`를 사용합니다. Finding에는 한도가 있는 범주형
+사실만 남기며 환경 dump, 전체 환경 값, 파일시스템 내용, 제한 없는 경로 탐색 결과를
+남기지 않습니다.
+
 ## 기준 MCP 프로세스
 
 지원 프로세스는 `volicord mcp --stdio`입니다. stdin에서 JSON-RPC를 읽고 stdout에

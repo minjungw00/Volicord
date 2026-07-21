@@ -18,6 +18,33 @@ volicord connection status codex --repo "<repo>"
 진단을 없애려고 구성, Runtime Home 데이터, 저장소를 삭제하지 않습니다. 재현 가능한
 실패를 전달할 때 JSON 출력을 보존하되 자격 증명이나 비공개 payload는 포함하지 않습니다.
 
+## 안정 Finding Code 사용
+
+`volicord doctor --json`에서는 `findings[].code`와 `findings[].actions[].code`를
+확인합니다. Connection 검증에서는 영속 finding ID와 namespace diagnostic code를 함께
+보존합니다. 영어 summary, SQLite 메시지, 경로 문구, stderr 발췌로 실패를 분류하지
+않습니다.
+
+Code 계열에 따라 집중 복구 경계를 선택합니다.
+
+| Code 계열 | 복구 경계 |
+|---|---|
+| `platform.*` | 지원 플랫폼 cell로 옮기거나 필수 플랫폼 관찰을 복구합니다. |
+| `runtime_home.*` | Action이 이름 붙인 대로 절대 Runtime Home을 고치고, 누락 Registry를 초기화하고, permission을 복구하거나 경로 경계를 분리합니다. |
+| `installation.*` | 실행 가능한 현재 Volicord build를 복구합니다. 있으면 `action.installation.reinstall_current_build`를 사용합니다. |
+| `managed_config.*` | 같은 지원 `init` 복구를 실행합니다. Finding은 정적 환경 값이나 argument를 노출하지 않습니다. |
+| `store.sqlite.busy`, `store.sqlite.locked` | Database transaction을 잡고 있는 프로세스를 끝내거나 중지한 뒤 재시도합니다. |
+| `store.schema.mismatch`, `store.integrity.corruption_failure` | 호환 build와 담당자가 승인한 명시적 복원 또는 재초기화 경로를 사용합니다. Schema table을 직접 편집하지 않습니다. |
+| `guard.*` | Guard 설치를 복구하거나 typed action이 이름 붙인 정확한 미관찰 phase를 실행합니다. |
+| `trust.repository.not_trusted` | Codex에서 정확한 Product Repository를 승인합니다. |
+| `revision.integration.stale` | 이미 적용한 구성 변경 뒤 Codex를 다시 불러옵니다. |
+| `revision.observation.mismatch` | 현재 revision에 대해 검증을 다시 실행합니다. |
+
+결정적인 TOML drift, schema mismatch, read-only storage, Runtime Home permission 실패라는
+이유만으로 Codex를 재시작하지 않습니다. 먼저 해당 원인을 복구합니다.
+`internal.unexpected_failure`는 더 좁은 담당 매핑이 없었다는 뜻이며 산문을 보고 추측할
+권한을 주지 않습니다.
+
 ## 명령을 사용할 수 없음
 
 Codex를 시작한 환경의 `PATH`에 정확한 `volicord` 실행 파일이 있는지 확인합니다.

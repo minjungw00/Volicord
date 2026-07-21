@@ -291,6 +291,34 @@ Core는 현재 행위자와 프로젝트 접근을 확인한 뒤 그 사실을 �
 `OperationResultRef`를 만들지 않으며, 스테이징 효과가 일어나기 전에 전체 직렬화
 결과가 지원되는 예상 크기 상한을 만족해야 합니다.
 
+## 구조화된 Store 진단
+
+Store 진단은 가능한 경우 SQLite primary/extended 결과 code로 `rusqlite` 실패를
+분류합니다. SQLite 메시지 문구는 절대 비교하지 않습니다. 현재 닫힌 code는 다음과
+같습니다.
+
+| Code | 원인 조건 |
+|---|---|
+| `store.sqlite.readonly` | Primary code가 `SQLITE_READONLY`입니다. |
+| `store.sqlite.busy` | Primary code가 `SQLITE_BUSY`입니다. |
+| `store.sqlite.locked` | Primary code가 `SQLITE_LOCKED`입니다. |
+| `store.schema.mismatch` | `SQLITE_SCHEMA`를 포함해 정확한 manifest 또는 물리 schema가 일치하지 않습니다. |
+| `store.integrity.corruption_failure` | `SQLITE_CORRUPT`, `SQLITE_NOTADB` 또는 typed integrity 검증 실패입니다. |
+| `store.record.missing` | 필수 typed record 또는 query row가 없습니다. |
+| `store.transaction.failed` | SQLite가 transaction을 abort하거나 interrupt했습니다. |
+| `store.serialization.failed` | Typed 저장 값을 encode 또는 decode할 수 없습니다. |
+| `store.constraint.violation` | `SQLITE_CONSTRAINT`입니다. 알 수 있는 경우 extended code에서 안전한 `constraint_kind` 사실을 파생합니다. |
+
+Finding에는 숫자 `sqlite_primary_code`, `sqlite_extended_code`, database kind, entity,
+field, I/O 오류 종류를 담을 수 있습니다. 임의 SQLite 메시지, SQL 문구, row body, 환경 값,
+비밀값, 파일시스템 내용은 담지 않습니다. 매핑하지 못한 내부 Store 실패는 산문에서
+추측하지 않고 `internal.unexpected_failure`를 사용합니다.
+
+권장 동작은 typed code에서 파생합니다. Busy와 locked finding은
+`action.store.free_locked_database`를 사용하며 readonly, schema, corruption, 누락 record,
+serialization, transaction, constraint finding은 각각의 집중 복구 action을 사용합니다.
+이 결정적인 실패에는 일반 host restart를 권하지 않습니다.
+
 ## 실패, 재시도, 개발 데이터
 
 커밋 전 실패와 트랜잭션 실패는 저장 효과 일부를 남기지 않습니다. 재시도는 보고된

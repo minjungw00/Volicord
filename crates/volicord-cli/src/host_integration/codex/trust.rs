@@ -36,13 +36,13 @@ pub(crate) fn project_trust_diagnostic(
                 details: "Codex user configuration file was not found".to_owned(),
             };
         }
-        Err(error) => {
+        Err(_) => {
             return ProjectTrustDiagnostic {
                 status: ProjectTrustStatus::Unreadable,
                 code: "project_trust_config_unreadable".to_owned(),
                 config_path: config_path_text,
                 repo_root: repo_root_text,
-                details: format!("Codex user configuration could not be read: {error}"),
+                details: "Codex user configuration could not be read".to_owned(),
             };
         }
     };
@@ -67,7 +67,7 @@ pub(crate) fn project_trust_diagnostic(
             details: "Codex user configuration has no matching projects table entry".to_owned(),
         };
     };
-    let Some((project_path, project_item)) = matching_project_entry(projects, repo_root) else {
+    let Some((_, project_item)) = matching_project_entry(projects, repo_root) else {
         return ProjectTrustDiagnostic {
             status: ProjectTrustStatus::Missing,
             code: "project_trust_entry_missing".to_owned(),
@@ -82,7 +82,7 @@ pub(crate) fn project_trust_diagnostic(
             code: "project_trust_entry_malformed".to_owned(),
             config_path: config_path_text,
             repo_root: repo_root_text,
-            details: format!("Codex project trust entry is not a table: {project_path}"),
+            details: "Codex project trust entry is not a table".to_owned(),
         };
     };
     let trust_level = table.get("trust_level").and_then(Item::as_str);

@@ -59,6 +59,43 @@ bounded project-policy audit reports `scan_state: complete` or
 `scan_state: bounded_incomplete`; a bounded-incomplete audit is a warning and
 can never be reported as passed even when its inspected page has no finding.
 
+`volicord doctor --json` also returns `findings` in the shared
+`DiagnosticFinding` shape. Its Registry inspection does not project arbitrary
+SQLite messages. SQLite result codes, inspection state, and bounded categorical
+facts select a finding; prose remains display-only context.
+
+Managed Codex configuration findings use the following closed codes:
+
+| Code | Typed observation |
+|---|---|
+| `managed_config.toml.parse_failed` | The configuration document could not be parsed as the supported TOML shape. |
+| `managed_config.entry.missing` | The required MCP entry or its owner table is absent. |
+| `managed_config.entry.disabled` | The required MCP entry has `enabled = false`. |
+| `managed_config.command.drift` | The structured command differs. |
+| `managed_config.arguments.drift` | The structured argument vector differs. |
+| `managed_config.static_environment.drift` | Static environment names or values differ; values are not copied into the finding. |
+| `managed_config.forwarded_environment.drift` | The forwarded environment-name set differs. |
+| `managed_config.fingerprint.mismatch` | Scope, ownership, or the complete managed identity differs. |
+| `managed_config.approval_overlay.malformed` | The typed tool approval overlay is invalid. |
+| `managed_config.observation.unavailable` | The configuration target could not be inspected. |
+
+The existing underscore-only `ConnectionCheck.code` remains the bounded check
+code. The namespaced code above is the `DiagnosticFinding.code` and is also
+projected as `details.diagnostic_code` where a Connection check carries it.
+Configuration values, command arguments, and complete environment values are
+not diagnostic facts.
+
+Known recovery is attached as a typed action. Current action codes include
+`action.runtime_home.correct_path`, `action.runtime_home.initialize_registry`,
+`action.store.free_locked_database`,
+`action.installation.reinstall_current_build`,
+`action.managed_config.repair`, `action.guard.repair`,
+`action.guard.trigger_phase`, and
+`action.host.reload_after_configuration_change`. The reload action is reserved
+for a stale integration revision after a configuration change. Deterministic
+configuration drift, schema mismatch, and permission failure do not receive a
+generic restart action.
+
 <a id="runtime-home-selection"></a>
 ## Runtime Home Selection
 
@@ -722,6 +759,14 @@ SQL. They do not expose or dispatch on a numeric schema version. A diagnostics
 read does not create storage, open project authority state, advance state
 version, change evidence or assurance, change close readiness, or resolve a
 UserAction.
+
+Active Connection verification persists CLI-owned findings for managed
+configuration, Guard files and observations, repository trust, and revision
+freshness. `trust.repository.not_trusted`, `revision.integration.stale`, and
+`revision.observation.mismatch` are current stable codes. Arbitrary bounded
+future Codex version text remains diagnostic and accepted; the focused host
+owner defines no unsupported-current-host-revision code, so the CLI does not
+invent one.
 
 <a id="authority-bundle-export"></a>
 ## Authority Bundle Export

@@ -1539,8 +1539,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1601,8 +1601,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2651,8 +2651,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:

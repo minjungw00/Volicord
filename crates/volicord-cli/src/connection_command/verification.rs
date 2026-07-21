@@ -34,6 +34,10 @@ use crate::host_integration::{
     verification::{HostExecutableStatus, ManagedConfigStatus, ProjectTrustStatus, Verification},
     HostAdapter, HostKind, HostPlan, HostScope,
 };
+use crate::operational_diagnostics::{
+    guard_artifact_kind, persist_connection_operational_finding, GuardDiagnostic,
+    OperationalDiagnostic, OperationalDiagnosticFacts, RevisionDiagnostic, TrustDiagnostic,
+};
 
 use super::{
     codex_environment,
@@ -379,6 +383,14 @@ fn canonical_verification_report(
     persist_peer_path_mismatch_findings(runtime_home, connection, host, &current_sessions)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
+    persist_host_boundary_findings(
+        runtime_home,
+        connection,
+        host,
+        &current_sessions,
+        latest_session.as_ref(),
+        &current_revision,
+    )?;
     let mut checks = vec![
         managed_config_check(host)?,
         host_executable_check(host)?,
@@ -405,38 +417,101 @@ fn canonical_verification_report(
         .map_err(ConnectionCommandError::from)
 }
 
+fn persist_host_boundary_findings(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    host: &Verification,
+    current_sessions: &[McpRuntimeSessionRecord],
+    latest_session: Option<&McpRuntimeSessionRecord>,
+    current_revision: &IntegrationRevision,
+) -> Result<(), ConnectionCommandError> {
+    if let Some(diagnostic) = host.managed_config_diagnostic {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::ManagedConfig(diagnostic),
+            &OperationalDiagnosticFacts {
+                observed_state: Some(host.managed_config.as_str()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            current_timestamp(),
+        )?;
+    }
+    if let Some(diagnostic) = host
+        .project_trust
+        .as_ref()
+        .and_then(|trust| TrustDiagnostic::from_status(trust.status))
+    {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Trust(diagnostic),
+            &OperationalDiagnosticFacts {
+                observed_state: host
+                    .project_trust
+                    .as_ref()
+                    .map(|trust| trust.status.as_str()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            current_timestamp(),
+        )?;
+    }
+    if current_sessions.is_empty() {
+        if let Some(latest) = latest_session
+            .filter(|latest| latest.connection_integration_revision != current_revision.as_str())
+        {
+            persist_connection_operational_finding(
+                runtime_home,
+                connection,
+                OperationalDiagnostic::Revision(RevisionDiagnostic::IntegrationStale),
+                &OperationalDiagnosticFacts {
+                    expected_revision: Some(current_revision.as_str().to_owned()),
+                    observed_revision: Some(latest.connection_integration_revision.clone()),
+                    ..OperationalDiagnosticFacts::default()
+                },
+                current_timestamp(),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 fn managed_config_check(host: &Verification) -> Result<ConnectionCheck, ConnectionCommandError> {
-    let (status, code, summary) = match host.managed_config {
+    let (status, summary) = match host.managed_config {
         ManagedConfigStatus::Match => (
             ConnectionCheckStatus::Passed,
-            "managed_config_matches",
             "Managed Codex configuration matches the canonical entry",
         ),
         ManagedConfigStatus::Missing => (
             ConnectionCheckStatus::Failed,
-            "managed_config_missing",
             "Required managed Codex configuration is missing",
         ),
         ManagedConfigStatus::Unmanaged => (
             ConnectionCheckStatus::Failed,
-            "managed_config_ownership_conflict",
             "The managed Codex server name has an ownership conflict",
         ),
         ManagedConfigStatus::Changed => (
             ConnectionCheckStatus::Failed,
-            "managed_config_mismatch",
             "Managed Codex configuration differs from the canonical entry",
         ),
         ManagedConfigStatus::Malformed => (
             ConnectionCheckStatus::Failed,
-            "managed_config_malformed",
             "Managed Codex configuration is malformed",
         ),
         ManagedConfigStatus::Unavailable | ManagedConfigStatus::Unknown => (
             ConnectionCheckStatus::Failed,
-            "managed_config_unavailable",
             "Managed Codex configuration could not be inspected",
         ),
+    };
+    let code = match host.managed_config {
+        ManagedConfigStatus::Match => "managed_config_matches",
+        ManagedConfigStatus::Missing => "managed_config_missing",
+        ManagedConfigStatus::Unmanaged => "managed_config_ownership_conflict",
+        ManagedConfigStatus::Changed => "managed_config_mismatch",
+        ManagedConfigStatus::Malformed => "managed_config_malformed",
+        ManagedConfigStatus::Unavailable | ManagedConfigStatus::Unknown => {
+            "managed_config_unavailable"
+        }
     };
     canonical_check(
         ConnectionCheckKind::ManagedConfig,
@@ -445,7 +520,7 @@ fn managed_config_check(host: &Verification) -> Result<ConnectionCheck, Connecti
         summary,
         Some(json!({
             "target": host.config_target,
-            "diagnostic_code": code,
+            "diagnostic_code": host.managed_config_diagnostic.map(|diagnostic| diagnostic.code()).unwrap_or(code),
             "observed_state": host.managed_config.as_str(),
             "diagnostic": host.managed_config_details,
         })),
@@ -1113,6 +1188,7 @@ fn guard_checks_for_connection(
     let mut incompatible_event_ids = Vec::new();
     let mut last_current_observation_at = None;
     let mut installation_ids = Vec::new();
+    let mut observation_revision_mismatch = false;
 
     for installation in &installations {
         installation_ids.push(installation.guard_installation_id.clone());
@@ -1124,6 +1200,7 @@ fn guard_checks_for_connection(
         ));
         let binding_is_current =
             guard_manifest_binding_valid_for_installation(installation, connection, projects);
+        observation_revision_mismatch |= !binding_is_current;
         let observation =
             guard_observation_summary(runtime_home, &installation.project_id, installation)?;
         required_phases.extend(observation.required_phases.iter().cloned());
@@ -1201,6 +1278,17 @@ fn guard_checks_for_connection(
         .as_ref()
         .map(UtcTimestamp::to_canonical_string);
 
+    persist_guard_boundary_findings(
+        runtime_home,
+        connection,
+        &audit,
+        &missing_required_phases,
+        !incompatible_event_ids.is_empty(),
+        prompt_capture_observed,
+        observation_revision_mismatch,
+        current_timestamp(),
+    )?;
+
     Ok(vec![
         canonical_check(
             ConnectionCheckKind::GuardFiles,
@@ -1254,6 +1342,121 @@ fn guard_checks_for_connection(
             observed_at.as_deref(),
         )?,
     ])
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persist_guard_boundary_findings(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    audit: &GuardAuditFacts,
+    missing_required_phases: &[String],
+    incompatible_observation: bool,
+    prompt_capture_observed: bool,
+    observation_revision_mismatch: bool,
+    observed_at: UtcTimestamp,
+) -> Result<(), ConnectionCommandError> {
+    for finding in &audit.findings {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::from_artifact_issue(
+                finding.artifact,
+                finding.issue,
+            )),
+            &OperationalDiagnosticFacts {
+                artifact_kind: Some(guard_artifact_kind(finding.artifact)),
+                ..OperationalDiagnosticFacts::default()
+            },
+            observed_at.clone(),
+        )?;
+    }
+    for issue in &audit.manifest_issues {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::from_manifest_issue(*issue)),
+            &OperationalDiagnosticFacts::default(),
+            observed_at.clone(),
+        )?;
+    }
+    for status in &audit.hook_path_safety_statuses {
+        if let Some(diagnostic) = GuardDiagnostic::from_hook_wrapper_status(*status) {
+            persist_connection_operational_finding(
+                runtime_home,
+                connection,
+                OperationalDiagnostic::Guard(diagnostic),
+                &OperationalDiagnosticFacts {
+                    observed_state: Some(status.as_str()),
+                    ..OperationalDiagnosticFacts::default()
+                },
+                observed_at.clone(),
+            )?;
+        }
+    }
+    for phase in &audit.missing_required_phases {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved),
+            &OperationalDiagnosticFacts {
+                guard_phase: Some(phase.as_str().to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            observed_at.clone(),
+        )?;
+    }
+    for phase in missing_required_phases {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved),
+            &OperationalDiagnosticFacts {
+                guard_phase: Some(phase.clone()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            observed_at.clone(),
+        )?;
+    }
+    if incompatible_observation {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::IncompatibleObservation),
+            &OperationalDiagnosticFacts::default(),
+            observed_at.clone(),
+        )?;
+    }
+    if audit.prompt_capture_configured && !audit.prompt_capture_host_supported {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::PromptCaptureUnsupported),
+            &OperationalDiagnosticFacts::default(),
+            observed_at.clone(),
+        )?;
+    } else if audit.prompt_capture_configured && !prompt_capture_observed {
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Guard(GuardDiagnostic::PromptCaptureUnobserved),
+            &OperationalDiagnosticFacts::default(),
+            observed_at.clone(),
+        )?;
+    }
+    if observation_revision_mismatch {
+        let revision = connection_integration_revision(connection)?;
+        persist_connection_operational_finding(
+            runtime_home,
+            connection,
+            OperationalDiagnostic::Revision(RevisionDiagnostic::ObservationMismatch),
+            &OperationalDiagnosticFacts {
+                expected_revision: Some(revision.as_str().to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            observed_at,
+        )?;
+    }
+    Ok(())
 }
 
 fn guard_artifact_issue_name(issue: GuardArtifactIssue) -> &'static str {
@@ -1578,6 +1781,7 @@ mod tests {
         Verification {
             config_target: "/tmp/codex/config.toml".to_owned(),
             managed_config: ManagedConfigStatus::Match,
+            managed_config_diagnostic: None,
             managed_config_details: "matches".to_owned(),
             host_executable: HostExecutableStatus::Available,
             executable_path: Some("/opt/codex/bin/codex".to_owned()),

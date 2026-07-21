@@ -320,6 +320,36 @@ creates no replay row or `OperationResultRef`, and its complete serialized
 result must satisfy the supported prospective size bound before any staging
 effect occurs.
 
+## Structured Store Diagnostics
+
+Store diagnostics classify `rusqlite` failures from SQLite primary and extended
+result codes when they are available. They never match SQLite message text.
+The closed current codes are:
+
+| Code | Source condition |
+|---|---|
+| `store.sqlite.readonly` | Primary code `SQLITE_READONLY`. |
+| `store.sqlite.busy` | Primary code `SQLITE_BUSY`. |
+| `store.sqlite.locked` | Primary code `SQLITE_LOCKED`. |
+| `store.schema.mismatch` | Exact manifest or physical schema mismatch, including `SQLITE_SCHEMA`. |
+| `store.integrity.corruption_failure` | `SQLITE_CORRUPT`, `SQLITE_NOTADB`, or failed typed integrity validation. |
+| `store.record.missing` | A typed required record or query row is absent. |
+| `store.transaction.failed` | SQLite abort or interruption of a transaction. |
+| `store.serialization.failed` | A typed stored value cannot be encoded or decoded. |
+| `store.constraint.violation` | `SQLITE_CONSTRAINT`; the safe `constraint_kind` fact is derived from the extended code where known. |
+
+The finding may include numeric `sqlite_primary_code` and
+`sqlite_extended_code`, database kind, entity, field, or an I/O error kind. It
+does not include arbitrary SQLite messages, SQL text, row bodies, environment
+values, secrets, or filesystem contents. An unmapped internal Store failure
+uses `internal.unexpected_failure` rather than guessing from prose.
+
+Recommended actions are derived from the typed code. Busy and locked findings
+use `action.store.free_locked_database`; read-only, schema, corruption,
+missing-record, serialization, transaction, and constraint findings use their
+focused repair actions. None of these deterministic failures recommends a
+generic host restart.
+
 ## Failure, Retry, And Development Data
 
 Pre-commit and transaction failures have no partial storage effect. A retry

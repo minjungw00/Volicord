@@ -557,10 +557,10 @@ fn write_project_registration_from_validated_paths(
 
 fn path_boundary_input(error: crate::runtime_home::RuntimePathBoundaryError) -> StoreError {
     match error {
-        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail } => {
+        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail, .. } => {
             StoreError::UnsupportedPlatformEnvironment { reason, detail }
         }
-        RuntimePathBoundaryError::PlatformUnavailable { reason, detail } => {
+        RuntimePathBoundaryError::PlatformUnavailable { reason, detail, .. } => {
             StoreError::PlatformEnvironmentUnavailable { reason, detail }
         }
         error => StoreError::InvalidInput {
@@ -856,10 +856,10 @@ fn registered_project_path_error(
     error: RuntimePathBoundaryError,
 ) -> StoreError {
     match error {
-        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail } => {
+        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail, .. } => {
             StoreError::UnsupportedPlatformEnvironment { reason, detail }
         }
-        RuntimePathBoundaryError::PlatformUnavailable { reason, detail } => {
+        RuntimePathBoundaryError::PlatformUnavailable { reason, detail, .. } => {
             StoreError::PlatformEnvironmentUnavailable { reason, detail }
         }
         error => {

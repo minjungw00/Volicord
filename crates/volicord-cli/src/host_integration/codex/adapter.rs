@@ -239,6 +239,9 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
                 HostConflictKind::UnmanagedNameCollision => ManagedConfigStatus::Unmanaged,
                 _ => ManagedConfigStatus::Changed,
             };
+            managed_evaluation.diagnostic = Some(
+                crate::host_integration::verification::ManagedConfigDiagnostic::FingerprintMismatch,
+            );
             managed_evaluation.details = conflict.message.clone();
         }
         let project_trust = (plan.host_scope == HostScope::Project)
@@ -246,6 +249,7 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
         Ok(Verification {
             config_target: config_target.display().to_string(),
             managed_config: managed_evaluation.status,
+            managed_config_diagnostic: managed_evaluation.diagnostic,
             managed_config_details: managed_evaluation.details,
             host_executable: executable.status,
             executable_path: executable.executable_path,

@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 use toml_edit::{Item, Table};
 use volicord_mcp::ManagedMcpLaunchSpec;
@@ -6,7 +9,7 @@ use volicord_types::{
     ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
 };
 
-use crate::host_integration::verification::ManagedConfigStatus;
+use crate::host_integration::verification::{ManagedConfigDiagnostic, ManagedConfigStatus};
 use crate::host_integration::{
     config_edit::read_text_snapshot, HostConfigError, HostConflict, HostConflictKind, HostKind,
     HostPlan, HostScope, HostTarget, PlannedChange,
@@ -17,6 +20,7 @@ use super::config::parse_document;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedCodexManagedIdentity {
     managed_entry: ManagedMcpLaunchSpec,
+    enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +32,7 @@ enum CodexManagedIdentityProblem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CodexManagedIdentityEvaluation {
     pub(crate) status: ManagedConfigStatus,
+    pub(crate) diagnostic: Option<ManagedConfigDiagnostic>,
     pub(crate) details: String,
 }
 
@@ -74,6 +79,13 @@ pub(super) fn classify_existing_codex_entry(
             return PlannedChange::Noop;
         }
     };
+    if !parsed.enabled {
+        conflicts.push(HostConflict::new(
+            HostConflictKind::FingerprintMismatch,
+            format!("Codex MCP server entry is disabled: {server_name}"),
+        ));
+        return PlannedChange::Noop;
+    }
     let entry = parsed.managed_entry;
     if entry.host_scope() != scope {
         conflicts.push(HostConflict::new(
@@ -106,13 +118,19 @@ fn parse_codex_managed_identity(
     let table = item
         .as_table()
         .ok_or(CodexManagedIdentityProblem::Malformed)?;
-    let allowed_keys = ["command", "args", "env", "env_vars", "tools"];
+    let allowed_keys = ["command", "args", "env", "env_vars", "tools", "enabled"];
     if table.iter().any(|(key, _)| !allowed_keys.contains(&key)) {
         return Err(CodexManagedIdentityProblem::Unmanaged);
     }
     if !codex_tool_approval_overlay_is_valid(table) {
         return Err(CodexManagedIdentityProblem::Unmanaged);
     }
+    let enabled = match table.get("enabled") {
+        None => true,
+        Some(item) => item
+            .as_bool()
+            .ok_or(CodexManagedIdentityProblem::Malformed)?,
+    };
     let command = table
         .get("command")
         .and_then(Item::as_str)
@@ -161,6 +179,7 @@ fn parse_codex_managed_identity(
         .map_err(|_| CodexManagedIdentityProblem::Unmanaged)?;
     Ok(ParsedCodexManagedIdentity {
         managed_entry: entry,
+        enabled,
     })
 }
 
@@ -170,7 +189,7 @@ pub(super) fn codex_managed_identity_fingerprint(
     item: &Item,
 ) -> Option<String> {
     let parsed = parse_codex_managed_identity(item).ok()?;
-    (parsed.managed_entry.host_scope() == scope)
+    (parsed.enabled && parsed.managed_entry.host_scope() == scope)
         .then(|| parsed.managed_entry.managed_fingerprint(server_name))
 }
 
@@ -223,95 +242,215 @@ pub(super) fn evaluate_codex_managed_identity(
     plan: &HostPlan,
 ) -> Result<CodexManagedIdentityEvaluation, HostConfigError> {
     let HostTarget::File(target) = &plan.target else {
-        return Ok(CodexManagedIdentityEvaluation {
-            status: ManagedConfigStatus::Unknown,
-            details: "Codex managed configuration target is not a file".to_owned(),
-        });
+        return Ok(managed_config_failure(
+            ManagedConfigStatus::Unknown,
+            ManagedConfigDiagnostic::Unavailable,
+            "Codex managed configuration target is not a file",
+        ));
     };
     let (_, text) = match read_text_snapshot(target) {
         Ok(snapshot) => snapshot,
-        Err(HostConfigError::Malformed(details)) => {
-            return Ok(CodexManagedIdentityEvaluation {
-                status: ManagedConfigStatus::Malformed,
-                details,
-            });
+        Err(HostConfigError::Malformed(_)) => {
+            return Ok(managed_config_failure(
+                ManagedConfigStatus::Malformed,
+                ManagedConfigDiagnostic::TomlParseFailure,
+                "Codex managed configuration is not valid bounded UTF-8 text",
+            ));
         }
         Err(error) => {
-            return Ok(CodexManagedIdentityEvaluation {
-                status: ManagedConfigStatus::Unavailable,
-                details: error.to_string(),
-            });
+            return Ok(managed_config_failure(
+                ManagedConfigStatus::Unavailable,
+                ManagedConfigDiagnostic::Unavailable,
+                error.to_string(),
+            ));
         }
     };
     let Some(text) = text else {
-        return Ok(CodexManagedIdentityEvaluation {
-            status: ManagedConfigStatus::Missing,
-            details: "Codex configuration target does not exist".to_owned(),
-        });
+        return Ok(managed_config_failure(
+            ManagedConfigStatus::Missing,
+            ManagedConfigDiagnostic::EntryMissing,
+            "Codex configuration target does not exist",
+        ));
     };
     let document = match parse_document(Some(&text), target) {
         Ok(document) => document,
         Err(error) => {
             return match error {
-                HostConfigError::Malformed(details) => Ok(CodexManagedIdentityEvaluation {
-                    status: ManagedConfigStatus::Malformed,
-                    details,
-                }),
+                HostConfigError::Malformed(_) => Ok(managed_config_failure(
+                    ManagedConfigStatus::Malformed,
+                    ManagedConfigDiagnostic::TomlParseFailure,
+                    "Codex managed configuration is malformed TOML",
+                )),
                 other => Err(other),
             };
         }
     };
     let Some(servers) = document.get("mcp_servers") else {
-        return Ok(CodexManagedIdentityEvaluation {
-            status: ManagedConfigStatus::Missing,
-            details: "Codex configuration has no mcp_servers table".to_owned(),
-        });
+        return Ok(managed_config_failure(
+            ManagedConfigStatus::Missing,
+            ManagedConfigDiagnostic::EntryMissing,
+            "Codex configuration has no mcp_servers table",
+        ));
     };
     let Some(servers) = servers.as_table() else {
-        return Ok(CodexManagedIdentityEvaluation {
-            status: ManagedConfigStatus::Malformed,
-            details: "Codex mcp_servers configuration is not a table".to_owned(),
-        });
+        return Ok(managed_config_failure(
+            ManagedConfigStatus::Malformed,
+            ManagedConfigDiagnostic::TomlParseFailure,
+            "Codex mcp_servers configuration is not a table",
+        ));
     };
     let Some(item) = servers.get(&plan.server_name) else {
-        return Ok(CodexManagedIdentityEvaluation {
-            status: ManagedConfigStatus::Missing,
-            details: format!("Codex mcp_servers table has no {} entry", plan.server_name),
-        });
+        return Ok(managed_config_failure(
+            ManagedConfigStatus::Missing,
+            ManagedConfigDiagnostic::EntryMissing,
+            format!("Codex mcp_servers table has no {} entry", plan.server_name),
+        ));
     };
+    if let Some(diagnostic) = managed_entry_shape_diagnostic(item, &plan.entry) {
+        let (status, details) = match diagnostic {
+            ManagedConfigDiagnostic::EntryDisabled => (
+                ManagedConfigStatus::Changed,
+                "Codex managed MCP server entry is disabled",
+            ),
+            ManagedConfigDiagnostic::MalformedApprovalOverlay => (
+                ManagedConfigStatus::Malformed,
+                "Codex managed MCP tool approval overlay is malformed",
+            ),
+            ManagedConfigDiagnostic::FingerprintMismatch => (
+                ManagedConfigStatus::Unmanaged,
+                "Codex MCP server entry has an incompatible managed identity",
+            ),
+            ManagedConfigDiagnostic::CommandDrift
+            | ManagedConfigDiagnostic::ArgumentDrift
+            | ManagedConfigDiagnostic::StaticEnvironmentDrift
+            | ManagedConfigDiagnostic::ForwardedEnvironmentDrift => (
+                ManagedConfigStatus::Changed,
+                "Codex managed MCP server entry differs from the canonical configuration",
+            ),
+            ManagedConfigDiagnostic::TomlParseFailure
+            | ManagedConfigDiagnostic::EntryMissing
+            | ManagedConfigDiagnostic::Unavailable => unreachable!("shape classifier result"),
+        };
+        return Ok(managed_config_failure(status, diagnostic, details));
+    }
     match parse_codex_managed_identity(item) {
         Ok(parsed) => {
             if parsed.managed_entry.host_scope() != plan.host_scope {
-                return Ok(CodexManagedIdentityEvaluation {
-                    status: ManagedConfigStatus::Changed,
-                    details: "Codex managed MCP server entry has the wrong managed scope"
-                        .to_owned(),
-                });
+                return Ok(managed_config_failure(
+                    ManagedConfigStatus::Changed,
+                    ManagedConfigDiagnostic::FingerprintMismatch,
+                    "Codex managed MCP server entry has the wrong managed scope",
+                ));
             }
             let fingerprint = parsed.managed_entry.managed_fingerprint(&plan.server_name);
-            Ok(CodexManagedIdentityEvaluation {
-                status: if fingerprint == plan.fingerprint {
-                    ManagedConfigStatus::Match
-                } else {
-                    ManagedConfigStatus::Changed
-                },
-                details: if fingerprint == plan.fingerprint {
-                    "Codex managed MCP server entry matches the canonical configuration".to_owned()
-                } else {
-                    "Codex managed MCP server entry differs from the canonical configuration"
-                        .to_owned()
-                },
-            })
+            if fingerprint == plan.fingerprint {
+                Ok(CodexManagedIdentityEvaluation {
+                    status: ManagedConfigStatus::Match,
+                    diagnostic: None,
+                    details: "Codex managed MCP server entry matches the canonical configuration"
+                        .to_owned(),
+                })
+            } else {
+                Ok(managed_config_failure(
+                    ManagedConfigStatus::Changed,
+                    ManagedConfigDiagnostic::FingerprintMismatch,
+                    "Codex managed MCP server entry fingerprint differs from the canonical configuration",
+                ))
+            }
         }
-        Err(CodexManagedIdentityProblem::Unmanaged) => Ok(CodexManagedIdentityEvaluation {
-            status: ManagedConfigStatus::Unmanaged,
-            details: "Codex MCP server name is owned by a non-Volicord entry".to_owned(),
-        }),
-        Err(CodexManagedIdentityProblem::Malformed) => Ok(CodexManagedIdentityEvaluation {
-            status: ManagedConfigStatus::Malformed,
-            details: "Codex managed MCP server entry is malformed".to_owned(),
-        }),
+        Err(CodexManagedIdentityProblem::Unmanaged) => Ok(managed_config_failure(
+            ManagedConfigStatus::Unmanaged,
+            ManagedConfigDiagnostic::FingerprintMismatch,
+            "Codex MCP server name is owned by a non-Volicord entry",
+        )),
+        Err(CodexManagedIdentityProblem::Malformed) => Ok(managed_config_failure(
+            ManagedConfigStatus::Malformed,
+            ManagedConfigDiagnostic::FingerprintMismatch,
+            "Codex managed MCP server entry is malformed",
+        )),
     }
+}
+
+fn managed_config_failure(
+    status: ManagedConfigStatus,
+    diagnostic: ManagedConfigDiagnostic,
+    details: impl Into<String>,
+) -> CodexManagedIdentityEvaluation {
+    CodexManagedIdentityEvaluation {
+        status,
+        diagnostic: Some(diagnostic),
+        details: details.into(),
+    }
+}
+
+fn managed_entry_shape_diagnostic(
+    item: &Item,
+    expected: &ManagedMcpLaunchSpec,
+) -> Option<ManagedConfigDiagnostic> {
+    let Some(table) = item.as_table() else {
+        return Some(ManagedConfigDiagnostic::FingerprintMismatch);
+    };
+    if table
+        .iter()
+        .any(|(key, _)| !["command", "args", "env", "env_vars", "tools", "enabled"].contains(&key))
+    {
+        return Some(ManagedConfigDiagnostic::FingerprintMismatch);
+    }
+    match table.get("enabled") {
+        Some(item) if item.as_bool() == Some(false) => {
+            return Some(ManagedConfigDiagnostic::EntryDisabled);
+        }
+        Some(item) if item.as_bool().is_none() => {
+            return Some(ManagedConfigDiagnostic::FingerprintMismatch);
+        }
+        _ => {}
+    }
+    if !codex_tool_approval_overlay_is_valid(table) {
+        return Some(ManagedConfigDiagnostic::MalformedApprovalOverlay);
+    }
+    if table.get("command").and_then(Item::as_str) != Some(expected.command()) {
+        return Some(ManagedConfigDiagnostic::CommandDrift);
+    }
+    let args = table
+        .get("args")
+        .and_then(Item::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .map(|item| item.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()
+        });
+    if args.as_deref() != Some(expected.args()) {
+        return Some(ManagedConfigDiagnostic::ArgumentDrift);
+    }
+    let static_environment = match table.get("env") {
+        None => Some(BTreeMap::new()),
+        Some(item) => item.as_table().and_then(|items| {
+            items
+                .iter()
+                .map(|(key, item)| {
+                    item.as_str()
+                        .map(|value| (key.to_owned(), value.to_owned()))
+                })
+                .collect::<Option<BTreeMap<_, _>>>()
+        }),
+    };
+    if static_environment.as_ref() != Some(expected.environment().static_values()) {
+        return Some(ManagedConfigDiagnostic::StaticEnvironmentDrift);
+    }
+    let forwarded_environment = match table.get("env_vars") {
+        None => Some(BTreeSet::new()),
+        Some(item) => item.as_array().and_then(|items| {
+            items
+                .iter()
+                .map(|item| item.as_str().map(str::to_owned))
+                .collect::<Option<BTreeSet<_>>>()
+        }),
+    };
+    if forwarded_environment.as_ref() != Some(expected.environment().forwarded_names()) {
+        return Some(ManagedConfigDiagnostic::ForwardedEnvironmentDrift);
+    }
+    None
 }
 
 fn managed_launch_error(error: impl ToString) -> HostConfigError {
@@ -337,6 +476,58 @@ mod tests {
         format!(
             "[mcp_servers.volicord]\ncommand = \"/opt/volicord/bin/volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"connection_alpha\"]\n{extra}\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/srv/volicord/runtime\"\nVOLICORD_MCP_CONNECTION_ID = \"connection_alpha\"\nVOLICORD_MCP_HOST = \"codex\"\nVOLICORD_MCP_LAUNCH = \"managed_host\"\n"
         )
+    }
+
+    fn personal_launch() -> ManagedMcpLaunchSpec {
+        ManagedMcpLaunchSpec::personal(
+            Path::new("/opt/volicord/bin/volicord"),
+            Path::new("/srv/volicord/runtime"),
+            "connection_alpha",
+        )
+        .expect("personal launch")
+    }
+
+    #[test]
+    fn managed_config_drift_and_disabled_entry_are_classified_structurally() {
+        let expected = personal_launch();
+        let disabled = entry(&personal_text("enabled = false"));
+        assert_eq!(
+            managed_entry_shape_diagnostic(&disabled, &expected),
+            Some(ManagedConfigDiagnostic::EntryDisabled)
+        );
+
+        let command_drift = entry(
+            &personal_text("").replace("/opt/volicord/bin/volicord", "/opt/other/bin/volicord"),
+        );
+        assert_eq!(
+            managed_entry_shape_diagnostic(&command_drift, &expected),
+            Some(ManagedConfigDiagnostic::CommandDrift)
+        );
+
+        let argument_drift =
+            entry(&personal_text("").replace("connection_alpha\"]", "connection_beta\"]"));
+        assert_eq!(
+            managed_entry_shape_diagnostic(&argument_drift, &expected),
+            Some(ManagedConfigDiagnostic::ArgumentDrift)
+        );
+
+        let static_environment_drift = entry(&personal_text("").replace(
+            "VOLICORD_HOME = \"/srv/volicord/runtime\"",
+            "VOLICORD_HOME = \"/srv/volicord/other\"",
+        ));
+        assert_eq!(
+            managed_entry_shape_diagnostic(&static_environment_drift, &expected),
+            Some(ManagedConfigDiagnostic::StaticEnvironmentDrift)
+        );
+
+        let malformed_overlay = entry(&format!(
+            "{}\n[mcp_servers.volicord.tools.\"volicord.status\"]\napproval_mode = []\n",
+            personal_text("")
+        ));
+        assert_eq!(
+            managed_entry_shape_diagnostic(&malformed_overlay, &expected),
+            Some(ManagedConfigDiagnostic::MalformedApprovalOverlay)
+        );
     }
 
     #[test]

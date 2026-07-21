@@ -942,6 +942,7 @@ name = "volicord-platform-fs"
 version = "0.9.1"
 dependencies = [
  "rustix",
+ "serde",
  "sha2",
  "volicord-types",
  "windows-sys 0.61.2",

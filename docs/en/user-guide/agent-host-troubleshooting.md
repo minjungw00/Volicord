@@ -19,6 +19,33 @@ Do not delete configuration, Runtime Home data, or the repository to clear a
 diagnostic. Preserve JSON output when escalating a reproducible failure, but do
 not include credentials or private payloads.
 
+## Use The Stable Finding Code
+
+In `volicord doctor --json`, read `findings[].code` and
+`findings[].actions[].code`. In Connection verification, retain the persisted
+finding ID and namespaced diagnostic code. Do not classify a failure from the
+English summary, SQLite message, path wording, or stderr excerpt.
+
+Use the code family to choose the focused recovery:
+
+| Code family | Recovery boundary |
+|---|---|
+| `platform.*` | Move to or restore observation of the supported platform cell. |
+| `runtime_home.*` | Correct the absolute Runtime Home, initialize a missing Registry, repair permissions, or separate path boundaries as named by the action. |
+| `installation.*` | Restore a runnable current Volicord build; use `action.installation.reinstall_current_build` when present. |
+| `managed_config.*` | Run the same supported `init` repair. The finding never exposes static environment values or arguments. |
+| `store.sqlite.busy`, `store.sqlite.locked` | Finish or stop the process holding the database transaction, then retry. |
+| `store.schema.mismatch`, `store.integrity.corruption_failure` | Use a compatible build and an explicit owner-approved restore or reinitialization path. Do not edit schema tables in place. |
+| `guard.*` | Repair the Guard installation, or trigger the exact unobserved phase named by the typed action. |
+| `trust.repository.not_trusted` | Approve the exact Product Repository in Codex. |
+| `revision.integration.stale` | Reload Codex after the already-applied configuration change. |
+| `revision.observation.mismatch` | Run verification again against the current revision. |
+
+Do not restart Codex merely for deterministic TOML drift, schema mismatch,
+read-only storage, or Runtime Home permission failure. Repair that cause first.
+`internal.unexpected_failure` means no narrower owner mapping was available; it
+does not authorize guessing from prose.
+
 ## Command Is Not Available
 
 Confirm that the exact `volicord` binary is on the environment used to start

@@ -4,8 +4,10 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::SystemTime,
 };
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_store::{
@@ -16,12 +18,17 @@ use volicord_store::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
         InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
     },
+    operational_diagnostics::{
+        runtime_home_diagnostic_finding, store_diagnostic_finding_from_kind, RuntimeHomeDiagnostic,
+        RuntimeHomeDiagnosticFacts, StoreDiagnostic, StoreDiagnosticFacts,
+    },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreFailureRoute,
 };
 use volicord_types::{
-    canonical_json_sha256, guard_manifest_from_json, ConnectionCheckKind, GuardHookPhase,
-    GuardManagedArtifact, GuardManagedArtifactKind, IntegrationProfile, ProjectId, SummaryCard,
+    canonical_json_sha256, guard_manifest_from_json, ConnectionCheckKind, DiagnosticFinding,
+    GuardHookPhase, GuardManagedArtifact, GuardManagedArtifactKind, IntegrationProfile, ProjectId,
+    SummaryCard, UtcTimestamp,
 };
 
 use crate::{
@@ -34,6 +41,10 @@ use crate::{
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
     guard_integration::policy::validate_policy_schema,
     host_integration::HostKind,
+    operational_diagnostics::{
+        operational_diagnostic_finding, InstallationDiagnostic, OperationalDiagnostic,
+        OperationalDiagnosticFacts,
+    },
     policy_command::read_validated_policy_file,
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
@@ -193,9 +204,28 @@ where
     }
     let mut checks = Vec::new();
     let mut actions = Vec::new();
+    let mut findings = Vec::new();
+    let observed_at = doctor_current_timestamp();
 
-    inspect_build_identity(&mut checks);
-    inspect_runtime_home_path(&runtime_home, &mut checks, &mut actions);
+    if let Some(diagnostic) = inspect_build_identity(&mut checks) {
+        findings.push(doctor_installation_finding(
+            diagnostic,
+            observed_at.clone(),
+        )?);
+    }
+    if let Some((diagnostic, facts)) =
+        inspect_runtime_home_path(&runtime_home, &mut checks, &mut actions)
+    {
+        findings.push(
+            runtime_home_diagnostic_finding(
+                diagnostic,
+                format!("finding.doctor.{}", diagnostic.code().replace('.', "_")),
+                &facts,
+                observed_at.clone(),
+            )
+            .map_err(|error| DoctorCommandError::Runtime(error.to_string()))?,
+        );
+    }
     let mut profile = None;
     let mut absent_profile_state = "missing";
     let mut absent_profile_summary = "installation profile is missing";
@@ -210,6 +240,19 @@ where
                     .with_details(json!({ "path": path_text(path) })),
             );
             actions.push(run_init_action());
+            let diagnostic = RuntimeHomeDiagnostic::RegistryMissing;
+            findings.push(
+                runtime_home_diagnostic_finding(
+                    diagnostic,
+                    "finding.doctor.runtime_home_registry_missing",
+                    &RuntimeHomeDiagnosticFacts {
+                        observed_state: Some("missing"),
+                        ..RuntimeHomeDiagnosticFacts::default()
+                    },
+                    observed_at.clone(),
+                )
+                .map_err(|error| DoctorCommandError::Runtime(error.to_string()))?,
+            );
         }
         DatabaseInspection::Present(snapshot) => {
             inspect_registry_snapshot(snapshot, &mut checks);
@@ -222,7 +265,7 @@ where
             inspect_integration_intent_drift(snapshot, &mut checks, &mut actions);
             inspect_project_policy_authority(&runtime_home, snapshot, &mut checks, &mut actions);
         }
-        DatabaseInspection::Unsupported { path, detail } => {
+        DatabaseInspection::Unsupported { path, .. } => {
             absent_profile_state = "corrupt";
             absent_profile_summary =
                 "installation profile cannot be read from an invalid registry schema";
@@ -233,30 +276,57 @@ where
                 )
                 .with_details(json!({
                     "path": path_text(path),
-                    "detail": detail,
+                    "diagnostic_code": StoreDiagnostic::SchemaMismatch.code(),
                 })),
             );
+            findings.push(doctor_store_finding(
+                StoreDiagnostic::SchemaMismatch,
+                "unsupported",
+                observed_at.clone(),
+            )?);
         }
-        DatabaseInspection::Malformed { path, detail } => {
+        DatabaseInspection::Malformed { path, .. } => {
             absent_profile_state = "corrupt";
             absent_profile_summary = "installation profile cannot be read from a corrupt registry";
             checks.push(
                 DiagnosticCheck::failed("registry", "Runtime Home registry is malformed")
-                    .with_details(json!({ "path": path_text(path), "detail": detail })),
+                    .with_details(json!({
+                        "path": path_text(path),
+                        "diagnostic_code": StoreDiagnostic::IntegrityOrCorruptionFailure.code(),
+                    })),
             );
+            findings.push(doctor_store_finding(
+                StoreDiagnostic::IntegrityOrCorruptionFailure,
+                "malformed",
+                observed_at.clone(),
+            )?);
         }
-        DatabaseInspection::Unreadable { path, detail } => {
+        DatabaseInspection::Unreadable { path, .. } => {
             absent_profile_state = "unavailable";
             absent_profile_summary = "installation profile is currently unavailable";
             checks.push(
                 DiagnosticCheck::failed("registry", "Runtime Home registry is unreadable")
-                    .with_details(json!({ "path": path_text(path), "detail": detail })),
+                    .with_details(json!({
+                        "path": path_text(path),
+                        "diagnostic_code": volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+                    })),
             );
+            findings.push(doctor_store_finding(
+                StoreDiagnostic::Unexpected,
+                "unreadable",
+                observed_at.clone(),
+            )?);
         }
     }
 
     if let Some(profile) = profile {
-        inspect_installation_profile(profile, &env_var, &mut checks, &mut actions);
+        for diagnostic in inspect_installation_profile(profile, &env_var, &mut checks, &mut actions)
+        {
+            findings.push(doctor_installation_finding(
+                diagnostic,
+                observed_at.clone(),
+            )?);
+        }
     } else {
         checks.push(
             DiagnosticCheck::failed("installation_profile", absent_profile_summary).with_details(
@@ -307,11 +377,18 @@ where
     let status = doctor_status(&checks);
     Ok(CommandOutcome {
         status,
-        output: render_doctor_output(options.output, status, &runtime_home, &checks, &actions)?,
+        output: render_doctor_output(
+            options.output,
+            status,
+            &runtime_home,
+            &checks,
+            &actions,
+            &findings,
+        )?,
     })
 }
 
-fn inspect_build_identity(checks: &mut Vec<DiagnosticCheck>) {
+fn inspect_build_identity(checks: &mut Vec<DiagnosticCheck>) -> Option<InstallationDiagnostic> {
     let build = volicord_mcp::build_info();
     let git_metadata_known = build.git_commit != "unknown"
         && build.git_dirty.is_some()
@@ -342,6 +419,7 @@ fn inspect_build_identity(checks: &mut Vec<DiagnosticCheck>) {
     checks.push(check.with_details(
         serde_json::to_value(build).expect("BuildInfo serialization should be infallible"),
     ));
+    (!exact_clean_identity).then_some(InstallationDiagnostic::BuildIdentityUnavailable)
 }
 
 fn render_privacy_footprint_output(
@@ -455,15 +533,18 @@ fn inspect_runtime_home_path(
     runtime_home: &Path,
     checks: &mut Vec<DiagnosticCheck>,
     actions: &mut Vec<DiagnosticAction>,
-) {
+) -> Option<(RuntimeHomeDiagnostic, RuntimeHomeDiagnosticFacts)> {
     match fs::metadata(runtime_home) {
-        Ok(metadata) if metadata.is_dir() => checks.push(
-            DiagnosticCheck::passed(
-                "runtime_home_access",
-                "Runtime Home directory is accessible",
-            )
-            .with_details(json!({ "path": path_text(runtime_home) })),
-        ),
+        Ok(metadata) if metadata.is_dir() => {
+            checks.push(
+                DiagnosticCheck::passed(
+                    "runtime_home_access",
+                    "Runtime Home directory is accessible",
+                )
+                .with_details(json!({ "path": path_text(runtime_home) })),
+            );
+            None
+        }
         Ok(_) => {
             checks.push(
                 DiagnosticCheck::failed(
@@ -473,6 +554,14 @@ fn inspect_runtime_home_path(
                 .with_details(json!({ "path": path_text(runtime_home) })),
             );
             actions.push(run_init_action());
+            Some((
+                RuntimeHomeDiagnostic::InvalidPath,
+                RuntimeHomeDiagnosticFacts {
+                    observed_state: Some("not_directory"),
+                    path_role: Some("runtime_home"),
+                    ..RuntimeHomeDiagnosticFacts::default()
+                },
+            ))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             checks.push(
@@ -480,6 +569,15 @@ fn inspect_runtime_home_path(
                     .with_details(json!({ "path": path_text(runtime_home) })),
             );
             actions.push(run_init_action());
+            Some((
+                RuntimeHomeDiagnostic::MissingPath,
+                RuntimeHomeDiagnosticFacts {
+                    observed_state: Some("missing"),
+                    path_role: Some("runtime_home"),
+                    io_error_kind: Some("not_found"),
+                    ..RuntimeHomeDiagnosticFacts::default()
+                },
+            ))
         }
         Err(error) => {
             checks.push(
@@ -487,11 +585,36 @@ fn inspect_runtime_home_path(
                     "runtime_home_access",
                     "Runtime Home directory is not accessible",
                 )
-                .with_details(
-                    json!({ "path": path_text(runtime_home), "detail": error.to_string() }),
-                ),
+                .with_details(json!({
+                    "path": path_text(runtime_home),
+                    "io_error_kind": doctor_io_error_kind(error.kind()),
+                })),
             );
+            RuntimeHomeDiagnostic::from_io_kind(error.kind()).map(|diagnostic| {
+                (
+                    diagnostic,
+                    RuntimeHomeDiagnosticFacts {
+                        observed_state: Some("unavailable"),
+                        path_role: Some("runtime_home"),
+                        io_error_kind: Some(doctor_io_error_kind(error.kind())),
+                        ..RuntimeHomeDiagnosticFacts::default()
+                    },
+                )
+            })
         }
+    }
+}
+
+const fn doctor_io_error_kind(kind: std::io::ErrorKind) -> &'static str {
+    match kind {
+        std::io::ErrorKind::NotFound => "not_found",
+        std::io::ErrorKind::PermissionDenied => "permission_denied",
+        std::io::ErrorKind::InvalidInput => "invalid_input",
+        std::io::ErrorKind::InvalidData => "invalid_data",
+        std::io::ErrorKind::Unsupported => "unsupported",
+        std::io::ErrorKind::TimedOut => "timed_out",
+        std::io::ErrorKind::Interrupted => "interrupted",
+        _ => "other",
     }
 }
 
@@ -1741,9 +1864,11 @@ fn inspect_installation_profile<F>(
     env_var: &F,
     checks: &mut Vec<DiagnosticCheck>,
     actions: &mut Vec<DiagnosticAction>,
-) where
+) -> Vec<InstallationDiagnostic>
+where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
+    let mut diagnostics = Vec::new();
     let mode_supported = matches!(
         profile.default_connection_mode.as_str(),
         CONNECTION_MODE_WORKFLOW | CONNECTION_MODE_READ_ONLY
@@ -1772,14 +1897,16 @@ fn inspect_installation_profile<F>(
         );
         actions.push(run_init_action());
     }
-    inspect_command_path(
+    if let Some(diagnostic) = inspect_command_path(
         "volicord_command",
         "volicord command",
         &PathBuf::from(&profile.volicord_command),
         checks,
         actions,
-    );
-    inspect_command_path(
+    ) {
+        diagnostics.push(diagnostic);
+    }
+    let _ = inspect_command_path(
         "volicord_mcp_command",
         "MCP launch command",
         &PathBuf::from(&profile.volicord_mcp_command),
@@ -1804,6 +1931,12 @@ fn inspect_installation_profile<F>(
         actions,
     );
     inspect_path_or_shim(profile, path_env.as_deref(), checks, actions);
+    if installed_build_configuration_is_inconsistent(profile) {
+        diagnostics.push(InstallationDiagnostic::ManagedConfigurationInconsistent);
+    }
+    diagnostics.sort_by_key(|diagnostic| diagnostic.code());
+    diagnostics.dedup();
+    diagnostics
 }
 
 fn inspect_command_path(
@@ -1812,18 +1945,19 @@ fn inspect_command_path(
     command: &Path,
     checks: &mut Vec<DiagnosticCheck>,
     actions: &mut Vec<DiagnosticAction>,
-) {
+) -> Option<InstallationDiagnostic> {
     if command.is_absolute() && is_executable_file(command) {
         checks.push(
             DiagnosticCheck::passed(id, format!("{label} is executable"))
                 .with_details(json!({ "path": path_text(command) })),
         );
+        None
     } else {
         checks.push(
             DiagnosticCheck::failed(id, format!("{label} is missing or not executable"))
                 .with_details(json!({ "path": path_text(command) })),
         );
-        let (instruction, command) = if id == "volicord_command" {
+        let (instruction, suggested_command) = if id == "volicord_command" {
             (
                 "Invoke a working Volicord executable and rerun init; init replaces an inaccessible, non-executable, or relative installation-profile volicord command with that running executable.",
                 "volicord init --host codex --repo <path>",
@@ -1837,9 +1971,30 @@ fn inspect_command_path(
         actions.push(DiagnosticAction {
             id: format!("repair_{id}"),
             instruction: instruction.to_owned(),
-            command: Some(command.to_owned()),
+            command: Some(suggested_command.to_owned()),
         });
+        if id != "volicord_command" {
+            None
+        } else if !command.exists() {
+            Some(InstallationDiagnostic::ExecutableMissing)
+        } else {
+            Some(InstallationDiagnostic::ExecutableNotRunnable)
+        }
     }
+}
+
+fn installed_build_configuration_is_inconsistent(
+    profile: &InstallationProfileInspectionRecord,
+) -> bool {
+    let Ok(current) = std::env::current_exe() else {
+        return false;
+    };
+    let configured = PathBuf::from(&profile.volicord_command);
+    let (Ok(current), Ok(configured)) = (fs::canonicalize(current), fs::canonicalize(configured))
+    else {
+        return false;
+    };
+    current != configured
 }
 
 fn inspect_command_availability(
@@ -2006,6 +2161,50 @@ fn doctor_status(checks: &[DiagnosticCheck]) -> CommandStatus {
     }
 }
 
+fn doctor_current_timestamp() -> UtcTimestamp {
+    UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now()))
+}
+
+fn doctor_installation_finding(
+    diagnostic: InstallationDiagnostic,
+    observed_at: UtcTimestamp,
+) -> Result<DiagnosticFinding, DoctorCommandError> {
+    operational_diagnostic_finding(
+        OperationalDiagnostic::Installation(diagnostic),
+        format!("finding.doctor.{}", diagnostic.code().replace('.', "_")),
+        "installation",
+        "current",
+        &OperationalDiagnosticFacts::default(),
+        observed_at,
+    )
+    .map_err(|error| DoctorCommandError::Runtime(error.to_string()))
+}
+
+fn doctor_store_finding(
+    diagnostic: StoreDiagnostic,
+    observed_state: &'static str,
+    observed_at: UtcTimestamp,
+) -> Result<DiagnosticFinding, DoctorCommandError> {
+    let facts = StoreDiagnosticFacts {
+        database_kind: Some("registry"),
+        observed_state: Some(observed_state),
+        sqlite_primary_code: None,
+        sqlite_extended_code: None,
+        constraint_kind: None,
+        entity: None,
+        field: None,
+        io_error_kind: None,
+    };
+    store_diagnostic_finding_from_kind(
+        diagnostic,
+        format!("finding.doctor.{}", diagnostic.code().replace('.', "_")),
+        Some("registry"),
+        &facts,
+        observed_at,
+    )
+    .map_err(|error| DoctorCommandError::Runtime(error.to_string()))
+}
+
 fn host_detection_check() -> DiagnosticCheck {
     DiagnosticCheck::skipped(
         "host_detection",
@@ -2022,6 +2221,7 @@ fn render_doctor_output(
     runtime_home: &Path,
     checks: &[DiagnosticCheck],
     actions: &[DiagnosticAction],
+    findings: &[DiagnosticFinding],
 ) -> Result<String, DoctorCommandError> {
     let summary_card = doctor_summary_card(status, checks, actions);
     match output {
@@ -2054,6 +2254,7 @@ fn render_doctor_output(
                 "runtime_home": path_text(runtime_home),
                 "states": doctor_states_json(runtime_home, checks, actions),
                 "checks": checks,
+                "findings": findings,
                 "warning_count": checks.iter().filter(|check| check.status == "warning").count(),
                 "actions": actions,
                 "actions_required": actions_required,
@@ -2068,6 +2269,7 @@ fn render_doctor_output(
             runtime_home,
             checks,
             actions,
+            findings,
         )),
     }
 }
@@ -2077,6 +2279,7 @@ fn render_compact_doctor_text(
     runtime_home: &Path,
     checks: &[DiagnosticCheck],
     actions: &[DiagnosticAction],
+    findings: &[DiagnosticFinding],
 ) -> String {
     let mut text_summary_card = doctor_summary_card(status, checks, actions);
     text_summary_card.next = doctor_next_summary_text(status, actions);
@@ -2093,6 +2296,12 @@ fn render_compact_doctor_text(
     text.push_str(&format!("\nRuntime Home:\n  {}\n", runtime_home.display()));
     text.push_str(&format!("\nBuild:\n  {}\n", volicord_mcp::build_id()));
     append_doctor_check_summary(&mut text, checks, actions);
+    if !findings.is_empty() {
+        text.push_str("\nStructured findings:\n");
+        for finding in findings {
+            text.push_str(&format!("  - {}\n", finding.code()));
+        }
+    }
     append_doctor_next_actions(&mut text, status, actions);
     text.push_str(
         "\nLimits:\n  Local setup diagnostics are not OS enforcement, write prevention, actor attribution proof, correctness proof, test sufficiency proof, or review completion.\n\nDiagnostics:\n  Run:\n    volicord doctor --json\n",
@@ -2547,13 +2756,8 @@ fn doctor_mcp_config_state(checks: &[DiagnosticCheck]) -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
-fn doctor_host_reload_required(checks: &[DiagnosticCheck], actions: &[DiagnosticAction]) -> bool {
-    actions.iter().any(|action| {
-        action
-            .instruction
-            .to_ascii_lowercase()
-            .contains("restart or reload")
-    }) || checks.iter().any(|check| {
+fn doctor_host_reload_required(checks: &[DiagnosticCheck], _actions: &[DiagnosticAction]) -> bool {
+    checks.iter().any(|check| {
         check
             .details
             .as_ref()

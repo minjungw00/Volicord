@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 volicord-types = { path = "../volicord-types" }
 sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

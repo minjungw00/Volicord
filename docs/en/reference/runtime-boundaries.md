@@ -140,6 +140,38 @@ contain an environment dump, unrestricted process output, raw request body, or
 other unprojected input. It is not a substitute for a successful Registry
 write, and the Store does not render it.
 
+### Platform, Runtime Home, and installation findings
+
+Operational classification uses closed owner enums. It never derives a code or
+recommended action from rendered error text. Platform observation emits these
+stable codes:
+
+| Code | Condition |
+|---|---|
+| `platform.operating_system.unsupported` | The operating system has no supported release cell. |
+| `platform.target.unsupported` | The executable target, including an incompatible WSL2 target, is unsupported. |
+| `platform.wsl1.unsupported` | The process is running under WSL1. |
+| `platform.wsl2.distribution_identity_unavailable` | The WSL2 distribution identity could not be observed. |
+| `platform.wsl2.distribution_unsupported` | The observed WSL2 distribution is outside the pinned cell. |
+| `platform.filesystem.unsupported` | A selected path is outside the supported filesystem boundary. |
+| `platform.filesystem.observation_failed` | Filesystem identity could not be observed. |
+| `platform.observation.failed` | Another required platform observation failed. |
+
+Runtime Home findings use `runtime_home.path.missing`,
+`runtime_home.path.empty_or_relative`, `runtime_home.path.invalid`,
+`runtime_home.registry.missing`, `runtime_home.permission.denied`,
+`runtime_home.filesystem.unsupported`, and
+`runtime_home.boundary.owner_mismatch`. An explicit `VOLICORD_HOME` must be a
+nonempty absolute path. A relative explicit CLI `--home` remains a CLI path
+input and is resolved before this environment-value rule is applied.
+
+Installation findings use `installation.executable.missing`,
+`installation.executable.not_runnable`,
+`installation.build_identity.unavailable`, and
+`installation.managed_config.inconsistent`. Findings retain bounded categorical
+facts only; they do not retain environment dumps, full environment values,
+filesystem contents, or unrestricted path discovery.
+
 ## Baseline MCP Process
 
 The supported process is `volicord mcp --stdio`. It reads JSON-RPC from stdin

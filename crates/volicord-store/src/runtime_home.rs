@@ -7,7 +7,8 @@ use std::{
 
 use volicord_platform_fs::{
     observe_local_platform_boundary, observe_path_filesystem, LocalPlatformBoundary,
-    PathFilesystemKind, PlatformBoundaryError, PlatformBoundaryErrorKind,
+    PathFilesystemKind, PlatformBoundaryDiagnostic, PlatformBoundaryError,
+    PlatformBoundaryErrorKind,
 };
 use volicord_types::PlatformEnvironment;
 
@@ -24,6 +25,7 @@ const HOMEPATH: &str = "HOMEPATH";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeHomeResolutionError {
     EmptyVolicordHome,
+    RelativeVolicordHome,
     MissingUserHome,
 }
 
@@ -31,6 +33,9 @@ impl fmt::Display for RuntimeHomeResolutionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyVolicordHome => formatter.write_str("VOLICORD_HOME must not be empty"),
+            Self::RelativeVolicordHome => {
+                formatter.write_str("VOLICORD_HOME must be an absolute path")
+            }
             Self::MissingUserHome => formatter
                 .write_str("could not determine a default home directory; set VOLICORD_HOME"),
         }
@@ -101,13 +106,21 @@ pub enum RuntimePathBoundaryError {
         project_home: Option<PathBuf>,
     },
     UnsupportedEnvironment {
+        diagnostic: RuntimePlatformDiagnostic,
         reason: &'static str,
         detail: String,
     },
     PlatformUnavailable {
+        diagnostic: RuntimePlatformDiagnostic,
         reason: &'static str,
         detail: String,
     },
+}
+
+/// Closed source classification for platform failures observed at a Runtime Home boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimePlatformDiagnostic {
+    Platform(PlatformBoundaryDiagnostic),
 }
 
 impl RuntimePathBoundaryError {
@@ -126,6 +139,15 @@ impl RuntimePathBoundaryError {
             Self::BoundaryViolation { violation, .. } => violation.as_str(),
             Self::UnsupportedEnvironment { reason, .. }
             | Self::PlatformUnavailable { reason, .. } => reason,
+        }
+    }
+
+    /// Returns the typed platform classification without parsing the reason or detail.
+    pub const fn platform_diagnostic(&self) -> Option<RuntimePlatformDiagnostic> {
+        match self {
+            Self::UnsupportedEnvironment { diagnostic, .. }
+            | Self::PlatformUnavailable { diagnostic, .. } => Some(*diagnostic),
+            Self::InvalidPath { .. } | Self::BoundaryViolation { .. } => None,
         }
     }
 }
@@ -183,8 +205,8 @@ impl fmt::Display for RuntimePathBoundaryError {
                     )
                 }
             },
-            Self::UnsupportedEnvironment { reason, detail }
-            | Self::PlatformUnavailable { reason, detail } => {
+            Self::UnsupportedEnvironment { reason, detail, .. }
+            | Self::PlatformUnavailable { reason, detail, .. } => {
                 write!(formatter, "{reason}: {detail}")
             }
         }
@@ -214,6 +236,9 @@ pub fn validate_runtime_product_platform_facts(
     ] {
         if filesystem != PathFilesystemKind::LinuxExt4 {
             return Err(RuntimePathBoundaryError::UnsupportedEnvironment {
+                diagnostic: RuntimePlatformDiagnostic::Platform(
+                    PlatformBoundaryDiagnostic::UnsupportedFilesystemBoundary,
+                ),
                 reason: "unsupported_wsl2_filesystem",
                 detail: format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
             });
@@ -238,7 +263,11 @@ where
         if value.is_empty() {
             return Err(RuntimeHomeResolutionError::EmptyVolicordHome);
         }
-        return Ok(absolute_path(current_dir, PathBuf::from(value)));
+        let selected = PathBuf::from(value);
+        if !selected.is_absolute() {
+            return Err(RuntimeHomeResolutionError::RelativeVolicordHome);
+        }
+        return Ok(selected);
     }
 
     let home = default_user_home(env_var).ok_or(RuntimeHomeResolutionError::MissingUserHome)?;
@@ -371,6 +400,9 @@ fn validate_platform_path(path: &Path, role: &'static str) -> Result<(), Runtime
         Ok(())
     } else {
         Err(RuntimePathBoundaryError::UnsupportedEnvironment {
+            diagnostic: RuntimePlatformDiagnostic::Platform(
+                PlatformBoundaryDiagnostic::UnsupportedFilesystemBoundary,
+            ),
             reason: "unsupported_wsl2_filesystem",
             detail: format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
         })
@@ -381,11 +413,13 @@ fn runtime_platform_error(error: PlatformBoundaryError) -> RuntimePathBoundaryEr
     match error.kind() {
         PlatformBoundaryErrorKind::Unsupported => {
             RuntimePathBoundaryError::UnsupportedEnvironment {
+                diagnostic: RuntimePlatformDiagnostic::Platform(error.diagnostic()),
                 reason: error.reason(),
                 detail: error.detail().to_owned(),
             }
         }
         PlatformBoundaryErrorKind::Unavailable => RuntimePathBoundaryError::PlatformUnavailable {
+            diagnostic: RuntimePlatformDiagnostic::Platform(error.diagnostic()),
             reason: error.reason(),
             detail: error.detail().to_owned(),
         },
@@ -777,12 +811,7 @@ fn invalid_path(
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        error::Error,
-        ffi::OsString,
-        fs,
-        path::{Path, PathBuf},
-    };
+    use std::{error::Error, ffi::OsString, fs, path::PathBuf};
 
     use volicord_test_support::TempRuntimeHome;
     use volicord_types::{PlatformEnvironment, ReleaseTargetTriple};
@@ -878,11 +907,11 @@ mod tests {
     }
 
     #[test]
-    fn relative_volicord_home_is_resolved_against_current_dir() {
-        let resolved = resolve(&[("VOLICORD_HOME", OsString::from("runtime-home-relative"))])
-            .expect("relative VOLICORD_HOME should resolve");
+    fn relative_volicord_home_is_rejected() {
+        let error = resolve(&[("VOLICORD_HOME", OsString::from("runtime-home-relative"))])
+            .expect_err("relative VOLICORD_HOME should fail closed");
 
-        assert_eq!(resolved, cwd().join("runtime-home-relative"));
+        assert_eq!(error, RuntimeHomeResolutionError::RelativeVolicordHome);
     }
 
     #[test]
@@ -975,16 +1004,11 @@ mod tests {
 
     #[test]
     fn selected_runtime_home_is_not_canonicalized_or_required_to_exist() {
-        let resolved = resolve(&[(
-            "VOLICORD_HOME",
-            OsString::from("missing-runtime-home/../still-missing"),
-        )])
-        .expect("nonexistent relative VOLICORD_HOME should resolve");
+        let selected = cwd().join("missing-runtime-home/../still-missing");
+        let resolved = resolve(&[("VOLICORD_HOME", selected.clone().into_os_string())])
+            .expect("nonexistent absolute VOLICORD_HOME should resolve");
 
-        assert_eq!(
-            resolved,
-            cwd().join(Path::new("missing-runtime-home/../still-missing"))
-        );
+        assert_eq!(resolved, selected);
     }
 
     #[test]

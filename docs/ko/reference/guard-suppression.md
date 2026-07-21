@@ -122,6 +122,28 @@ secret을 넣지 않습니다. Store 실패 때문에 영속 진단이나 event 
 machine-readable Guard 응답은 결과를 계속 담고 진단 영속화를 사용할 수 없다고
 보고합니다. 기록을 commit했다고 주장하면 안 됩니다.
 
+Guard 설치와 관찰 진단은 렌더링한 summary가 아니라 닫힌 원인 enum을 사용합니다.
+
+| Code | Typed 조건 |
+|---|---|
+| `guard.managed_file.missing` | 필수 non-wrapper 관리 파일이 없습니다. |
+| `guard.managed_file.integrity_failed` | 관리 content, 소유권, marker, permission 또는 hook contract가 다릅니다. |
+| `guard.manifest.mismatch` | 엄격한 manifest 또는 wrapper authority binding이 다릅니다. |
+| `guard.hook_wrapper.missing` | 필수 phase wrapper 또는 metadata가 없습니다. |
+| `guard.hook_wrapper.not_executable` | 필수 wrapper가 executable 동작을 충족하지 않습니다. |
+| `guard.hook_process.failed` | Typed Guard hook 프로세스가 실패했습니다. |
+| `guard.phase.required_not_observed` | 현재 필수 phase를 아직 관찰하지 못했습니다. |
+| `guard.observation.incompatible` | 현재 event의 hook contract가 호환되지 않습니다. |
+| `guard.prompt_capture.unsupported` | Host 경계가 구성된 prompt capture를 지원하지 않습니다. |
+| `guard.prompt_capture.unobserved` | 지원되고 구성된 prompt capture를 아직 관찰하지 못했습니다. |
+
+Finding 사실에는 한도가 있는 artifact kind, phase, 범주형 상태, 현재 revision 좌표만 담을
+수 있습니다. 관리 파일 내용, prompt text, 임의 event payload, 제한 없는 경로는
+projection하지 않습니다. File, manifest, wrapper, 호환되지 않는 관찰 실패에는
+`action.guard.repair`를 사용하고, 관찰하지 못한 필수 phase에는
+`action.guard.trigger_phase`를 사용합니다. Prompt-capture code는 각 집중 action을
+유지합니다. 사람용 summary를 parsing해 action을 고르지 않습니다.
+
 ## 필수 테스트
 
 지속 계약 테스트는 다음을 다룹니다.

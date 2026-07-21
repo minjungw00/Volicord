@@ -129,6 +129,30 @@ persistent diagnostic or event recording, the machine-readable Guard response
 still carries the outcome and reports diagnostic persistence as unavailable; it
 must not claim that a record was committed.
 
+Guard installation and observation diagnostics use closed source enums rather
+than rendered summaries:
+
+| Code | Typed condition |
+|---|---|
+| `guard.managed_file.missing` | A required non-wrapper managed file is missing. |
+| `guard.managed_file.integrity_failed` | Managed content, ownership, marker, permission, or hook contract differs. |
+| `guard.manifest.mismatch` | The strict manifest or wrapper authority binding differs. |
+| `guard.hook_wrapper.missing` | A required phase wrapper or its metadata is missing. |
+| `guard.hook_wrapper.not_executable` | A required wrapper lacks executable behavior. |
+| `guard.hook_process.failed` | A typed Guard hook process failed. |
+| `guard.phase.required_not_observed` | A required current phase has not been observed. |
+| `guard.observation.incompatible` | A current event has an incompatible hook contract. |
+| `guard.prompt_capture.unsupported` | The host boundary does not support configured prompt capture. |
+| `guard.prompt_capture.unobserved` | Supported configured prompt capture has not been observed. |
+
+Finding facts may identify only the bounded artifact kind, phase, categorical
+state, and current revision coordinates. They do not project managed-file
+contents, prompt text, arbitrary event payloads, or unrestricted paths.
+File, manifest, wrapper, and incompatible-observation failures use
+`action.guard.repair`; an unobserved required phase uses
+`action.guard.trigger_phase`. Prompt-capture codes retain their focused actions.
+No action is selected by parsing a human summary.
+
 ## Required Tests
 
 Durable contract tests cover:
