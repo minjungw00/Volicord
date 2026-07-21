@@ -9,6 +9,8 @@ mod launch;
 mod preflight;
 mod stdio_probe;
 mod supervisor;
+#[cfg(test)]
+mod test_child;
 
 pub use failure::{McpProcessFailure, McpStage};
 pub(super) use launch::materialize_connection_invocation;

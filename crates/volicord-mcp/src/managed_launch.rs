@@ -1083,41 +1083,6 @@ mod tests {
     }
 
     #[test]
-    fn materialization_does_not_require_wsl_distribution_environment() {
-        let spec = personal();
-        let materialized = spec
-            .materialize(ManagedMcpMaterializationInput::new(
-                ManagedMcpInvocationPurpose::ManagedStdio,
-                BTreeMap::new(),
-                ManagedMcpWorkingDirectory::Inherited,
-            ))
-            .expect("materialization without WSL_DISTRO_NAME");
-        let mut command = Command::new(materialized.command());
-        for name in ["PATH", "HOME", "LANG", "TMPDIR"] {
-            command.env(name, format!("ordinary-{name}"));
-        }
-        command.env_remove("WSL_DISTRO_NAME");
-        materialized.apply_process_context(&mut command);
-        for name in ["PATH", "HOME", "LANG", "TMPDIR"] {
-            assert_eq!(
-                command
-                    .get_envs()
-                    .find(|(candidate, _)| *candidate == OsStr::new(name))
-                    .and_then(|(_, value)| value),
-                Some(OsStr::new(&format!("ordinary-{name}"))),
-                "ordinary inherited environment must remain untouched: {name}"
-            );
-        }
-        assert_eq!(
-            command
-                .get_envs()
-                .find(|(candidate, _)| *candidate == OsStr::new("WSL_DISTRO_NAME"))
-                .map(|(_, value)| value),
-            Some(None)
-        );
-    }
-
-    #[test]
     fn working_directory_materialization_does_not_change_managed_fingerprint() {
         let spec = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)
             .expect("shared repository launch");

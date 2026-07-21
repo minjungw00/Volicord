@@ -43,6 +43,11 @@ name = "volicord"
 path = "src/main.rs"
 
 [[test]]
+name = "mcp_test_child"
+path = "tests/support/mcp_test_child.rs"
+harness = false
+
+[[test]]
 name = "operational_host_e2e"
 path = "tests/operational_host_e2e.rs"
 harness = false

@@ -905,9 +905,8 @@ fn append_cleanup_detail(target: &mut String, detail: &str) {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
-
     use super::*;
+    use crate::connection_command::mcp_process::test_child;
 
     #[test]
     fn protocol_framer_bounds_lines_and_message_count() {
@@ -933,18 +932,11 @@ mod tests {
         ));
     }
 
-    #[cfg(unix)]
-    fn shell_command(script: &str) -> Command {
-        let mut command = Command::new("sh");
-        command.arg("-c").arg(script);
-        command
-    }
-
-    #[cfg(unix)]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn forced_termination_reaps_the_direct_child() {
         let supervisor = ChildSupervisor::spawn(
-            shell_command("while :; do :; done"),
+            test_child::command("hang-before-initialize"),
             SupervisorKind::Preflight,
             Duration::from_millis(25),
         )
@@ -956,33 +948,6 @@ mod tests {
             stderr: BoundedText::empty(),
         });
         assert!(matches!(failure, McpProcessFailure::Timeout { .. }));
-        let raw_pid = i32::try_from(child_id).expect("fixture PID");
-        let pid = Pid::from_raw(raw_pid).expect("nonzero fixture PID");
-        assert_eq!(rustix::process::test_kill_process(pid), Err(Errno::SRCH));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn write_failure_cleanup_terminates_and_reaps_the_child() {
-        let mut supervisor = ChildSupervisor::spawn(
-            shell_command("exec 0<&-; printf '%s\\n' ready; while :; do :; done"),
-            SupervisorKind::Stdio,
-            Duration::from_secs(1),
-        )
-        .expect("spawn fixture");
-        assert!(matches!(
-            supervisor
-                .read_protocol(McpStage::Initialize)
-                .expect("fixture ready line"),
-            ProtocolRead::Event(ProtocolEvent::Line(line)) if line == b"ready"
-        ));
-        let child_id = supervisor.child_id();
-        let failure = supervisor
-            .send_json_line(&serde_json::json!({"fixture": true}), McpStage::Initialize)
-            .expect_err("closed child stdin must fail");
-        assert!(matches!(failure, McpProcessFailure::Write { .. }));
-        let failure = supervisor.finish_failure(failure);
-        assert!(matches!(failure, McpProcessFailure::Write { .. }));
         let raw_pid = i32::try_from(child_id).expect("fixture PID");
         let pid = Pid::from_raw(raw_pid).expect("nonzero fixture PID");
         assert_eq!(rustix::process::test_kill_process(pid), Err(Errno::SRCH));

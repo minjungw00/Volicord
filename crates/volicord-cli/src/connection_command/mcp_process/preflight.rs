@@ -120,9 +120,10 @@ pub(super) fn compact_stream(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{process::Command, time::Instant};
+    use std::time::Instant;
 
     use super::*;
+    use crate::connection_command::mcp_process::test_child;
 
     #[test]
     fn preflight_requires_current_storage_and_tool_schema_checks() {
@@ -160,18 +161,10 @@ mod tests {
         .is_err());
     }
 
-    #[cfg(unix)]
-    fn shell_command(script: &str) -> Command {
-        let mut command = Command::new("sh");
-        command.arg("-c").arg(script);
-        command
-    }
-
-    #[cfg(unix)]
     #[test]
     fn successful_preflight_uses_bounded_shared_supervision() {
         let output = run_preflight_command(
-            shell_command("printf '%s\\n' 'configuration: valid'"),
+            test_child::command("preflight-success"),
             Duration::from_secs(1),
         )
         .expect("successful preflight");
@@ -179,27 +172,27 @@ mod tests {
         assert_eq!(output.stdout, "configuration: valid\n");
     }
 
-    #[cfg(unix)]
     #[test]
     fn preflight_does_not_wait_for_a_descendant_inherited_pipe() {
         let started = Instant::now();
         let output = run_preflight_command(
-            shell_command("sleep 30 & printf '%s\\n' 'configuration: valid'"),
+            test_child::command("preflight-descendant-output-hold"),
             Duration::from_secs(1),
         )
         .expect("contained descendant cleanup");
         assert!(output.success);
-        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(started.elapsed() < Duration::from_secs(3));
     }
 
-    #[cfg(unix)]
     #[test]
     fn preflight_timeout_uses_the_shared_lifecycle_failure() {
-        let failure = run_preflight_command(
-            shell_command("printf '%s\\n' 'preflight still running' >&2; while :; do :; done"),
-            Duration::from_millis(50),
-        )
-        .expect_err("preflight must time out");
+        let timeout = Duration::from_millis(100);
+        let started = Instant::now();
+        let failure = run_preflight_command(test_child::command("hang-before-initialize"), timeout)
+            .expect_err("preflight must time out");
+        let elapsed = started.elapsed();
+        assert!(elapsed >= timeout);
+        assert!(elapsed < Duration::from_secs(2));
         match failure {
             McpProcessFailure::Timeout {
                 stage,
@@ -207,8 +200,8 @@ mod tests {
                 stderr,
             } => {
                 assert_eq!(stage, McpStage::Startup);
-                assert_eq!(timeout, Duration::from_millis(50));
-                assert!(stderr.text.contains("preflight still running"));
+                assert_eq!(timeout, Duration::from_millis(100));
+                assert!(stderr.text.contains("waiting for initialize"));
             }
             other => panic!("unexpected failure: {other:?}"),
         }

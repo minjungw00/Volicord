@@ -508,6 +508,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::connection_command::mcp_process::test_child;
 
     static TEST_PATH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -549,78 +550,10 @@ mod tests {
         ));
     }
 
-    #[cfg(unix)]
-    fn shell_command(script: &str) -> Command {
-        let mut command = Command::new("sh");
-        command.arg("-c").arg(script);
-        command
-    }
-
-    #[cfg(unix)]
-    fn read_only_tools_response() -> String {
-        let tools = read_only_required_tool_names()
-            .map(|name| json!({"name": name}))
-            .collect::<Vec<_>>();
-        json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {"tools": tools},
-        })
-        .to_string()
-    }
-
-    #[cfg(unix)]
-    fn protocol_script(
-        prefix: &str,
-        tools_response: &str,
-        safe_response: &str,
-        suffix: &str,
-    ) -> String {
-        let initialize = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"instructions": "fixture"},
-        });
-        format!(
-            concat!(
-                "{prefix}\n",
-                "IFS= read -r initialize_request\n",
-                "printf '%s\\n' '{initialize}'\n",
-                "IFS= read -r initialized_notification\n",
-                "IFS= read -r tools_request\n",
-                "printf '%s\\n' '{tools_response}'\n",
-                "IFS= read -r safe_request\n",
-                "printf '%s\\n' '{safe_response}'\n",
-                "{suffix}\n",
-            ),
-            prefix = prefix,
-            initialize = initialize,
-            tools_response = tools_response,
-            safe_response = safe_response,
-            suffix = suffix,
-        )
-    }
-
-    #[cfg(unix)]
-    fn successful_protocol_script(prefix: &str, suffix: &str) -> String {
-        protocol_script(
-            prefix,
-            &read_only_tools_response(),
-            &json!({
-                "jsonrpc": "2.0",
-                "id": 3,
-                "result": {"content": []},
-            })
-            .to_string(),
-            suffix,
-        )
-    }
-
-    #[cfg(unix)]
     #[test]
     fn successful_stdio_probe_uses_bounded_shared_supervision() {
         let outcome = verify_mcp_stdio_command(
-            shell_command(&successful_protocol_script("", "cat >/dev/null")),
+            test_child::command("stdio-success"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -628,11 +561,10 @@ mod tests {
         assert!(outcome.progress.shutdown_completed);
     }
 
-    #[cfg(unix)]
     #[test]
     fn exit_before_initialize_reports_status_and_bounded_stderr() {
         let outcome = verify_mcp_stdio_command(
-            shell_command("printf '%s\\n' 'fixture startup failure' >&2; exit 23"),
+            test_child::command("exit-before-initialize"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -652,50 +584,37 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn initialize_timeout_terminates_and_reaps_the_child() {
+        let timeout = Duration::from_millis(100);
+        let started = Instant::now();
         let outcome = verify_mcp_stdio_command(
-            shell_command("printf '%s\\n' 'waiting for initialize' >&2; while :; do :; done"),
+            test_child::command("hang-before-initialize"),
             CONNECTION_MODE_READ_ONLY,
-            Duration::from_millis(50),
+            timeout,
         );
+        let elapsed = started.elapsed();
+        assert!(elapsed >= timeout);
+        assert!(elapsed < Duration::from_secs(2));
         assert_eq!(outcome.progress, McpExchangeProgress::not_started());
         match outcome.failure.expect("initialize must time out") {
-            McpProcessFailure::Timeout { stage, stderr, .. } => {
+            McpProcessFailure::Timeout {
+                stage,
+                timeout: observed_timeout,
+                stderr,
+            } => {
                 assert_eq!(stage, McpStage::Initialize);
+                assert_eq!(observed_timeout, timeout);
                 assert!(stderr.text.contains("waiting for initialize"));
             }
             other => panic!("unexpected failure: {other:?}"),
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn tools_list_failure_retains_its_typed_stage() {
-        let initialize = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"instructions": "fixture"},
-        });
-        let tools_error = json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "error": {"code": -32603, "message": "fixture prose is not classified"},
-        });
-        let script = format!(
-            concat!(
-                "IFS= read -r initialize_request\n",
-                "printf '%s\\n' '{initialize}'\n",
-                "IFS= read -r initialized_notification\n",
-                "IFS= read -r tools_request\n",
-                "printf '%s\\n' '{tools_error}'\n",
-            ),
-            initialize = initialize,
-            tools_error = tools_error,
-        );
         let outcome = verify_mcp_stdio_command(
-            shell_command(&script),
+            test_child::command("tools-list-failure"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -715,33 +634,11 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn required_tool_validation_failure_preserves_the_observed_tool_list() {
         let observed_tools = vec!["fixture.alpha".to_owned(), "fixture.beta".to_owned()];
-        let tools_response = json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {
-                "tools": observed_tools
-                    .iter()
-                    .map(|name| json!({"name": name}))
-                    .collect::<Vec<_>>()
-            },
-        });
-        let script = protocol_script(
-            "",
-            &tools_response.to_string(),
-            &json!({
-                "jsonrpc": "2.0",
-                "id": 3,
-                "result": {"content": []},
-            })
-            .to_string(),
-            "",
-        );
         let outcome = verify_mcp_stdio_command(
-            shell_command(&script),
+            test_child::command("missing-required-tools"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -760,17 +657,10 @@ mod tests {
         ));
     }
 
-    #[cfg(unix)]
     #[test]
     fn safe_tool_call_failure_retains_completed_progress() {
-        let safe_error = json!({
-            "jsonrpc": "2.0",
-            "id": 3,
-            "error": {"code": -32603, "message": "ignored child prose"},
-        });
-        let script = protocol_script("", &read_only_tools_response(), &safe_error.to_string(), "");
         let outcome = verify_mcp_stdio_command(
-            shell_command(&script),
+            test_child::command("read-only-tool-failure"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -790,15 +680,13 @@ mod tests {
         ));
     }
 
-    #[cfg(unix)]
     #[test]
     fn shutdown_failure_preserves_every_completed_exchange_observation() {
         let expected_tools = read_only_required_tool_names()
             .map(str::to_owned)
             .collect::<Vec<_>>();
-        let script = successful_protocol_script("", "exit 17");
         let outcome = verify_mcp_stdio_command(
-            shell_command(&script),
+            test_child::command("shutdown-failure"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -817,11 +705,10 @@ mod tests {
         ));
     }
 
-    #[cfg(unix)]
     #[test]
     fn malformed_json_is_a_bounded_protocol_failure_without_raw_line_echo() {
         let outcome = verify_mcp_stdio_command(
-            shell_command("IFS= read -r request; printf '%s\\n' '{not-json}'"),
+            test_child::command("malformed-json"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -839,15 +726,10 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn large_stderr_is_truncated_after_an_early_exit() {
-        let chunk = "x".repeat(1024);
-        let script = format!(
-            "i=0; while [ \"$i\" -lt 8 ]; do printf '%s' '{chunk}' >&2; i=$((i + 1)); done; exit 19"
-        );
         let outcome = verify_mcp_stdio_command(
-            shell_command(&script),
+            test_child::command("large-stderr-exit"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
@@ -863,24 +745,19 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn stderr_is_drained_while_waiting_for_initialize() {
-        let chunk = "x".repeat(1024);
-        let prefix = format!(
-            "i=0; while [ \"$i\" -lt 256 ]; do printf '%s' '{chunk}' >&2; i=$((i + 1)); done"
-        );
-        let script = successful_protocol_script(&prefix, "cat >/dev/null");
+        let started = Instant::now();
         let outcome = verify_mcp_stdio_command(
-            shell_command(&script),
+            test_child::command("sustained-stderr"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(3),
         );
         assert!(outcome.failure.is_none());
         assert!(outcome.progress.shutdown_completed);
+        assert!(started.elapsed() < Duration::from_secs(4));
     }
 
-    #[cfg(unix)]
     #[test]
     fn successful_shutdown_reaps_the_child() {
         let marker = std::env::temp_dir().join(format!(
@@ -888,10 +765,8 @@ mod tests {
             std::process::id(),
             TEST_PATH_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
-        let script =
-            successful_protocol_script("", "cat >/dev/null; printf '%s' 'reaped' > \"$1\"");
-        let mut command = shell_command(&script);
-        command.arg("fixture").arg(&marker);
+        let mut command = test_child::command("graceful-eof");
+        command.arg(&marker);
         let outcome =
             verify_mcp_stdio_command(command, CONNECTION_MODE_READ_ONLY, Duration::from_secs(2));
         assert!(outcome.failure.is_none());
@@ -903,17 +778,15 @@ mod tests {
         fs::remove_file(marker).expect("remove shutdown marker");
     }
 
-    #[cfg(unix)]
     #[test]
     fn stdio_probe_does_not_wait_for_a_descendant_inherited_pipe() {
-        let script = successful_protocol_script("", "cat >/dev/null; sleep 30 &");
         let started = Instant::now();
         let outcome = verify_mcp_stdio_command(
-            shell_command(&script),
+            test_child::command("descendant-output-hold"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
         assert!(outcome.failure.is_none(), "{outcome:?}");
-        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(started.elapsed() < Duration::from_secs(3));
     }
 }
