@@ -8,7 +8,7 @@
 
 | 위치 | 목적 |
 |---|---|
-| `registry.sqlite` | Runtime Home identity, 설치 profile, 프로젝트, alias, Agent Connection, 명시적 프로젝트 membership, 정규 연결 검증 보고서, 권위 있는 MCP runtime session |
+| `registry.sqlite` | Runtime Home identity, 설치 profile, 프로젝트, alias, Agent Connection, 명시적 프로젝트 membership, 정규 연결 검증 보고서, 구조화된 진단 finding, 권위 있는 MCP runtime session |
 | 프로젝트 `state.sqlite` | 프로젝트 로컬 Core 상태, replay, authority event, UserAction, evidence, artifact, continuity, 프로젝트 Agent Session, Guard 관찰, 조정 |
 | artifact store | 영속 artifact row가 참조하는 bytes와 안전 notice |
 | `diagnostics.sqlite` | 제한된 비권한 operability counter |
@@ -41,8 +41,9 @@ Registry 기록에는 다음이 포함됩니다.
 - Agent Connection과 Connection Projects membership
 - 프로젝트 범위의 안정적인 Guard 설치 identity와 정규 typed Guard manifest
 - Agent Connection마다 최대 하나의 정규 연결 검증 보고서
+- 한도가 있는 구조화된 진단 finding과 그 방향성 원인 edge
 - MCP runtime session과 그 process, initialization, discovery, 안전 호출, terminal
-  failure, graceful close 사실
+  finding, graceful close 사실
 - runtime/host session 하나를 Connection Project 하나에 결속하는 데이터베이스 간 예약
 
 프로젝트 상태 기록에는 다음이 포함됩니다.
@@ -59,6 +60,30 @@ Registry 기록에는 다음이 포함됩니다.
 
 Prompt 관련 Guard 기록은 관찰일 뿐입니다. UserAction resolution, 사용자 답,
 verification basis, 권한 출처가 아닙니다.
+
+## 구조화된 진단 Finding
+
+`diagnostic_findings`는 공유 typed `DiagnosticFinding` 모델을 Registry에 영속하는
+표현입니다. 각 row에는 안정적인 finding ID, namespaced code, domain, stage, severity,
+source, 한도가 있는 typed subject와 안전한 fact JSON, 한도가 있는 action, 선택적인
+correlation ID, 해당하는 Connection·project·runtime-session·integration-revision 좌표,
+정규 관찰 시각을 저장합니다. Store는 쓰기 transaction을 열기 전에 공유 type과 직렬화
+byte 한도를 검증합니다. 환경 dump, 원본 request, 제한 없는 stderr, credential, 한도 없는
+fact object는 저장하지 않습니다.
+
+`diagnostic_cause_edges`는 finding에서 원인 finding으로 향하는 edge 하나를 저장합니다.
+양쪽 끝은 기존 finding을 가리켜야 하고 composite primary key가 중복을 거부하며, insert
+trigger와 Store graph 검증이 cycle을 거부합니다. Store는 immediate transaction 하나에서
+모든 finding을 먼저 삽입한 뒤 edge를 삽입하므로 거부된 graph는 일부 finding 집합이나
+dangling edge를 남기지 않습니다. 원인 조회는 depth와 finding ID 순서로 정렬하고, 32를
+넘는 요청 depth를 거부하며, 서로 다른 finding을 최대 128개 반환하고 선택한 depth 때문에
+추가 edge를 자른 경우 이를 표시합니다.
+
+Finding은 ID별, runtime session별, 정확한 현재 Connection integration revision별로 읽을
+수 있습니다. `runtime_session_id`가 있는 finding에는 해당 runtime의 Connection과
+integration revision도 있어야 합니다. 현재 Connection 조회는 이전 integration revision의
+finding을 현재 finding으로 해석하지 않습니다. 이 Registry finding은 `diagnostics.sqlite`의
+한도가 있는 비권한 counter와 구분됩니다.
 
 ## 권위 있는 운영 Session
 
@@ -96,13 +121,15 @@ instance 하나 안의 revision을 구분하고, 변경 불가능한 instance ID
 실패합니다.
 
 Milestone timestamp와 사실로 lifecycle 상태를 표현하며 중복 status enum은 저장하지
-않습니다. Store는 응답을 내보내기 전에 성공한 `initialize`와 제한 안의 시도된 client
-정보를 기록합니다. 선택한 protocol revision은 유효한 initialized notification이 해당
-profile의 handshake를 완료할 때만 `negotiated_protocol_version`이 됩니다. Store는 실제
-`tools/list`마다의 응답과 required-tool-set 사실, 지정된 안전/읽기 전용 Volicord 호출
-성공, terminal protocol failure, graceful close도 기록합니다. 권위 있는 Store 쓰기가
-실패하면 protocol 성공을 내보내지 않습니다. Best-effort diagnostics는 분리되어 있으며
-정상적인 도구 결과를 실패시킬 수 없습니다.
+않습니다. `attempted_client_name`, `attempted_client_version`,
+`requested_protocol_version`은 한도가 있는 해당 값을 파싱하는 즉시 기록하며, 이후
+initialize 검증이 실패한 경우도 포함합니다. `selected_protocol_version`은 initialize가
+완료될 때 server가 선택해 반환한 revision이고, `negotiated_protocol_version`은 유효한
+initialized notification이 선택 profile의 handshake를 완전히 끝낼 때까지 null입니다.
+Store는 initialize 완료, 실제 `tools/list`마다의 응답과 required-tool-set 사실, 지정된
+안전/읽기 전용 Volicord 호출 성공, terminal 구조화 finding ID 하나, graceful close도 각각
+기록합니다. 권위 있는 Store 쓰기가 실패하면 protocol 성공을 내보내지 않습니다.
+Best-effort diagnostics는 분리되어 있으며 정상적인 도구 결과를 실패시킬 수 없습니다.
 
 프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 Connection을
 이름 붙이고 현재 workflow-policy fingerprint와 Guard ownership pair를 더한 프로젝트 통합
@@ -142,7 +169,7 @@ runtime attach를 유일하게 만들면서 Guard-first 또는 MCP-first unbound
 동시에 존재해도 Guard 상관관계를 막거나 대신 선택되지 않습니다.
 
 Runtime 권한은 이 현재 기록을 직접 읽습니다. 활성 Connection, 현재 Connection Project
-membership, 그 Connection의 `session_source=managed_host` runtime session, 같은 runtime
+membership, 그 Connection의 `session_source=managed_host` nonterminal runtime session, 같은 runtime
 session·Connection·프로젝트 소유의 프로젝트 Agent Session만 허용합니다. 저장된
 Connection과 프로젝트 통합 revision은 현재 담당 입력에서 도출한 revision과 같아야
 합니다. Connection mode는 요청한 operation category를 허용해야 합니다.

@@ -1499,14 +1499,14 @@ documents:
   path_en: docs/en/reference/failure-model.md
   path_ko: docs/ko/reference/failure-model.md
   kind: reference
-  summary: Reference contract for product-wide failure categories, machine-readable identifiers,
-    persisted-data failure rules, and the no-synthetic-default boundary.
+  summary: Reference contract for product-wide failure categories, shared structured diagnostic
+    findings and bootstrap envelope, persisted-data failure rules, and the no-synthetic-default boundary.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-21'
+  last_verified_on: '2026-07-21'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1522,6 +1522,8 @@ documents:
   - structural rejection versus policy non-allow boundary
   - unavailable versus degraded and rejected versus corrupt boundaries
   - fail-closed persisted authority, policy, and typed-data corruption handling
+  - shared bounded `DiagnosticFinding` fields, safe-fact projection, cause-graph integrity, and
+    pre-Registry `VOLICORD_DIAGNOSTIC_V1` stderr envelope
   - prohibition on synthetic identifiers, fabricated records, fallback formats, and default-value
     conflation
   depends_on:
@@ -1613,6 +1615,8 @@ documents:
   canonical_for:
   - Product Repository boundary
   - Volicord Runtime Home boundary
+  - Registry placement for durable structured diagnostic findings and the bounded pre-Registry
+    stderr fallback boundary
   - Volicord implementation, source repository, installation, and executable process boundaries
   - Agent Connection and Connection Projects boundary
   - User Channel boundary for authority-bearing user judgments
@@ -1691,6 +1695,8 @@ documents:
   - '`volicord mcp --stdio` process command and preflight contract'
   - managed stdio startup, binding validation, lifecycle, framing, and shutdown
   - authoritative operational milestone ordering, persistence, and managed-host evidence boundaries
+  - attempted-client, requested, selected, negotiated, discovery, safe-tool, and terminal-finding
+    runtime-session semantics
   - selected-profile server capability and JSON-RPC batch behavior
   - canonical tool registry and revision-aware `tools/list` field projection
   - static runtime-compact tool schemas and public tool list
@@ -2539,6 +2545,7 @@ documents:
   - immutable Store-owned Connection integration-instance identity and physical recreation boundary
   - single nullable canonical Agent Connection verification report persistence
   - authoritative MCP runtime sessions, integration revisions, unbound Guard-first project sessions, and runtime attachment ownership
+  - structured diagnostic findings, cause edges, current-coordinate queries, and MCP terminal-finding links
   - revision-scoped immutable project Agent Session identity and Registry binding revision
   - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
@@ -2573,6 +2580,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, Codex Record Guard configuration state, and retained observation tables
+  - structured diagnostic finding, cause-edge, and MCP runtime-session terminal-link constraints
   - strict immutable and unique Agent Connection integration-instance column and update guard
   - immutable project Agent Session revision and revision-bearing runtime binding constraints
   - verified-command and verified-tool receipt pairing and project-scoped exclusive host-invocation source-claim constraints

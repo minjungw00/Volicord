@@ -698,7 +698,7 @@ fn render_host_session(context: &mut DetailContext<'_>) {
         context.line("Observed host version", version);
     }
     context.line("Initialize", host_initialize_result(context.check));
-    render_terminal_failure(context);
+    render_terminal_finding(context);
     render_last_observed(context);
 }
 
@@ -738,7 +738,7 @@ fn render_required_tools(context: &mut DetailContext<'_>) {
     if !missing.is_empty() {
         context.line("Missing tools", render_string_values(&missing));
     }
-    render_terminal_failure(context);
+    render_terminal_finding(context);
     render_last_observed(context);
 }
 
@@ -752,7 +752,7 @@ fn render_tool_round_trip(context: &mut DetailContext<'_>) {
         .take_bool("call_completed")
         .unwrap_or(context.check.status() == ConnectionCheckStatus::Passed);
     context.line("Call completed", yes_no(completed));
-    render_terminal_failure(context);
+    render_terminal_finding(context);
     render_last_observed(context);
 }
 
@@ -765,12 +765,9 @@ fn render_revision_pair(context: &mut DetailContext<'_>) {
     }
 }
 
-fn render_terminal_failure(context: &mut DetailContext<'_>) {
-    if let Some(code) = context.take_string("terminal_failure_code") {
-        context.line("Terminal failure code", code);
-    }
-    if let Some(details) = context.take_string("terminal_failure_details") {
-        context.diagnostic("Terminal failure", &details);
+fn render_terminal_finding(context: &mut DetailContext<'_>) {
+    if let Some(finding_id) = context.take_string("terminal_finding_id") {
+        context.line("Terminal finding", finding_id);
     }
 }
 
@@ -1523,8 +1520,7 @@ mod tests {
                         "current_host_version": "1.2.3",
                         "observed_host_version": "1.2.3",
                         "last_observed_at": "2026-07-20T00:00:00Z",
-                        "terminal_failure_code": null,
-                        "terminal_failure_details": null,
+                        "terminal_finding_id": null,
                     })),
                     Some("2026-07-20T00:00:00Z"),
                 ),
@@ -1626,8 +1622,7 @@ mod tests {
                     "current_host_version": "1.2.3",
                     "observed_host_version": null,
                     "last_observed_at": null,
-                    "terminal_failure_code": null,
-                    "terminal_failure_details": null,
+                    "terminal_finding_id": null,
                 })),
                 None,
             )],
@@ -2232,8 +2227,7 @@ mod tests {
                     "observed_host_version": "1.0",
                     "runtime_session_id": "session_1",
                     "last_observed_at": "2026-07-20T02:00:00Z",
-                    "terminal_failure_code": "protocol_failure",
-                    "terminal_failure_details": "initialize response was incompatible",
+                    "terminal_finding_id": "finding.protocol_failure",
                 })),
                 Some("2026-07-20T02:00:00Z"),
             )],
@@ -2247,8 +2241,7 @@ mod tests {
             "    Current revision: revision_current\n",
             "    Observed revision: revision_observed\n",
             "    Initialize: failed\n",
-            "    Terminal failure code: protocol_failure\n",
-            "    Terminal failure: initialize response was incompatible\n",
+            "    Terminal finding: finding.protocol_failure\n",
             "    Additional details\n      Runtime session id: session_1\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}");
@@ -2348,8 +2341,7 @@ mod tests {
                         "required_tools_present": false,
                         "missing_tools": ["volicord.close_task"],
                         "last_observed_at": "2026-07-20T03:00:00Z",
-                        "terminal_failure_code": null,
-                        "terminal_failure_details": null,
+                        "terminal_finding_id": null,
                     })),
                     Some("2026-07-20T03:00:00Z"),
                 ),
@@ -2372,8 +2364,7 @@ mod tests {
                         "safe_read_only_tool": "volicord.list_projects",
                         "call_completed": false,
                         "last_observed_at": "2026-07-20T04:00:00Z",
-                        "terminal_failure_code": "tool_contract_mismatch",
-                        "terminal_failure_details": "response shape was incompatible",
+                        "terminal_finding_id": "finding.tool_contract_mismatch",
                     })),
                     Some("2026-07-20T04:00:00Z"),
                 ),
@@ -2423,8 +2414,7 @@ mod tests {
             "  [fail] Read-only tool round trip\n",
             "    Designated read-only tool: volicord.list_projects\n",
             "    Call completed: no\n",
-            "    Terminal failure code: tool_contract_mismatch\n",
-            "    Terminal failure: response shape was incompatible\n",
+            "    Terminal finding: finding.tool_contract_mismatch\n",
             "  [wait] Connection verification\n",
             "    Connection verification has not been run\n",
         ] {

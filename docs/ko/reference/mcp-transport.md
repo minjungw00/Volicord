@@ -157,19 +157,23 @@ launch, Connection, `managed_host` 또는 `cli_preflight` source, 현재 Connect
 revision, process ID, process 시작 시각을 식별합니다. CLI preflight row는
 managed-host 운영 check를 충족하지 않습니다.
 
-어댑터는 성공한 `initialize`와 제한 안의 시도된 client 정보를 응답보다 먼저 영속
-기록합니다. 유효한 `notifications/initialized`와 함께 선택한 profile revision을 협상한
-protocol로 기록한 뒤 ready 상태에 들어가며, 실제 `tools/list` 응답을 반환하기 전에 매번
-기록합니다. Discovery 사실은 생성된 그 응답에 현재 Connection mode가 요구하는 모든
-도구가 있었는지를 나타냅니다. 중복 initialized notification은 첫 번째 유효 관찰 뒤
+어댑터는 한도가 있는 `clientInfo.name`, `clientInfo.version`, `protocolVersion`을 파싱하는
+즉시 시도된 client와 요청 revision으로 영속 기록하며, 이후 initialize 검증이 실패해도 이
+관찰을 유지합니다. Initialize가 성공하면 완료와 server가 선택한 profile revision을 그
+revision을 반환하기 전에 기록합니다. 선택 값은 유효한 `notifications/initialized`가
+handshake를 완전히 끝낼 때만 협상 revision이 됩니다. 실제 `tools/list` 응답도 반환하기
+전에 매번 기록합니다. Discovery 사실은 생성된 그 응답에 현재 Connection mode가 요구하는
+모든 도구가 있었는지를 나타냅니다. 중복 initialized notification은 첫 번째 유효 관찰 뒤
 멱등이며 협상한 revision을 바꿀 수 없습니다.
 
 성공한 `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`,
 `volicord.list_projects` 완료는 도구 결과를 내보내기 전에 안전/읽기 전용 milestone을
-갱신합니다. 관찰할 수 있는 fatal transport failure와 EOF에 따른 graceful close는 각
-terminal 사실을 기록합니다. 권위 있는 Store 쓰기가 실패하면 해당 protocol 성공을
-내보내지 않습니다. `diagnostics.sqlite`의 제한된 쓰기는 계속 best effort이며 이 사실을
-조회할 때 사용하지 않습니다.
+갱신합니다. 관찰할 수 있는 fatal transport 또는 protocol failure는 한도가 있는 공유
+`DiagnosticFinding` 하나를 만들고 그 finding ID를 runtime session의 terminal finding으로
+원자적으로 연결합니다. EOF에 따른 graceful close는 이와 함께 있을 수 없는 별도 terminal
+사실입니다. 권위 있는 Store 쓰기가 실패하면 해당 protocol 성공을 내보내지 않습니다.
+`diagnostics.sqlite`의 제한된 쓰기는 계속 best effort이며 이 사실을 조회할 때 사용하지
+않습니다.
 
 연결 검증은 별도의 `cli_preflight` process를 시작하고 지정된 안전한 읽기 전용 round
 trip으로 `volicord.list_projects`를 호출합니다. 이 process는 server 표면을 검증하지만
@@ -177,14 +181,14 @@ trip으로 `volicord.list_projects`를 호출합니다. 이 process는 server �
 없습니다. CLI 검증이 성공해도 관리 `host_session`, `tools/list`, 도구 왕복 관찰을
 꾸며내지 않습니다.
 
-Runtime row는 process launch의 영속 관찰이지 liveness 기록이 아닙니다. Terminal failure나
+Runtime row는 process launch의 영속 관찰이지 liveness 기록이 아닙니다. Terminal finding 연결이나
 graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보이는 row를 남길 수
 있습니다. 그 row는 이력 evidence로 남지만 이후 Guard event의 상관관계를 위해 선택하지
 않습니다. 여러 managed process가 동시에 존재하면서 서로 다른 host session에 결속할 수
 있습니다.
 
-요청 revision은 client 입력이고, 선택 revision은 서버의 session profile이며, 협상 revision은
-initialized lifecycle 단계가 끝난 뒤의 그 선택 값입니다. 협상한 protocol version만 권위
+요청 revision은 client에서 받은 값이고, 선택 revision은 server가 반환하거나 선택한 값이며,
+협상 revision은 handshake가 완전히 끝난 뒤에만 그 선택 값이 됩니다. 협상한 protocol version만 권위
 있는 runtime-session protocol data입니다. `clientInfo` name/version과 관찰한 host 실행
 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며 호환성은 현재 관리
 구성과 현재 revision에서 관찰한 초기화, 도구 목록, 필수 도구, 안전 호출, Guard 동작으로

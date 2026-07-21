@@ -1806,19 +1806,88 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
     let runtime = mcp_runtime_session(fixture.runtime_home_path(), &runtime_session_id)?
         .expect("authoritative runtime session");
     assert_eq!(
-        runtime.client_name.as_deref(),
+        runtime.attempted_client_name.as_deref(),
         Some("future-cooperative-client")
     );
     assert_eq!(
-        runtime.client_version.as_deref(),
+        runtime.attempted_client_version.as_deref(),
         Some("999.0-preview+custom")
+    );
+    assert_eq!(
+        runtime.requested_protocol_version.as_deref(),
+        Some("2025-11-25")
+    );
+    assert_eq!(
+        runtime.selected_protocol_version.as_deref(),
+        Some("2025-11-25")
+    );
+    assert_eq!(
+        runtime.negotiated_protocol_version.as_deref(),
+        Some("2025-11-25")
     );
     assert!(runtime.initialize_completed_at.is_some());
     assert!(runtime.initialized_notification_at.is_some());
     assert_eq!(runtime.required_tools_present, Some(true));
-    assert!(runtime.last_safe_read_only_tool_call_at.is_some());
+    assert!(runtime.designated_safe_tool_observed_at.is_some());
     assert!(runtime.graceful_close_at.is_some());
-    assert!(runtime.terminal_protocol_failure_code.is_none());
+    assert!(runtime.terminal_finding_id.is_none());
+    Ok(())
+}
+
+#[test]
+fn failed_initialize_retains_attempted_client_and_requested_revision() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-failed-initialize-attempt")?;
+    let mut initialize = initialize_request(1, json!("invalid-capabilities"));
+    initialize["params"]["protocolVersion"] = json!("2099-01-01");
+    initialize["params"]["clientInfo"]["name"] = json!("future-client");
+    initialize["params"]["clientInfo"]["version"] = json!("2099.7");
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(Cursor::new(json_lines(&[initialize])?)),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            _ => None,
+        },
+    )?;
+    assert!(stdio_responses(&output)?[0]["error"].is_object());
+    let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
+    let runtime_session_id = registry.query_row(
+        "SELECT runtime_session_id FROM mcp_runtime_sessions
+          WHERE connection_internal_id = ?1
+          ORDER BY process_started_at DESC, runtime_session_id DESC LIMIT 1",
+        [fixture.connection_id()],
+        |row| row.get::<_, String>(0),
+    )?;
+    let runtime = mcp_runtime_session(fixture.runtime_home_path(), &runtime_session_id)?
+        .expect("failed initialize runtime session");
+    assert_eq!(
+        runtime.attempted_client_name.as_deref(),
+        Some("future-client")
+    );
+    assert_eq!(runtime.attempted_client_version.as_deref(), Some("2099.7"));
+    assert_eq!(
+        runtime.requested_protocol_version.as_deref(),
+        Some("2099-01-01")
+    );
+    assert!(runtime.selected_protocol_version.is_none());
+    assert!(runtime.negotiated_protocol_version.is_none());
+    assert!(runtime.initialize_completed_at.is_none());
+    let terminal_id = runtime.terminal_finding_id.ok_or("terminal finding")?;
+    let terminal = volicord_store::diagnostic_findings::diagnostic_finding(
+        fixture.runtime_home_path(),
+        &volicord_types::DiagnosticFindingId::parse(terminal_id)?,
+    )?
+    .ok_or("persisted terminal finding")?;
+    assert_eq!(terminal.code().as_str(), "mcp.initialize_failed");
+    assert_eq!(
+        terminal.runtime_session_id().map(|value| value.as_str()),
+        Some(runtime_session_id.as_str())
+    );
     Ok(())
 }
 

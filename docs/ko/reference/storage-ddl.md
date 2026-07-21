@@ -130,7 +130,7 @@ projection, fixture, DDL 계약 테스트, 문서 목록은 이 생성 아티팩
 
 ## `registry.sqlite`
 
-`registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 별칭, Agent Connection 기록, Connection Projects 멤버십, 권위 있는 MCP runtime session과 프로젝트 예약, 호스트 훅 설치 기록, 호스트 설정 목록을 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
+`registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필 기록, 프로젝트 등록, 프로젝트 별칭, Agent Connection 기록, Connection Projects 멤버십, 구조화된 진단 finding과 원인 edge, 권위 있는 MCP runtime session과 프로젝트 예약, 호스트 훅 설치 기록, 호스트 설정 목록을 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
 
 <!-- canonical-storage-sql: registry start -->
 ```sql
@@ -268,6 +268,125 @@ BEGIN
   SELECT RAISE(ABORT, 'agent_connections.integration_instance_id is immutable');
 END;
 
+CREATE TABLE diagnostic_findings (
+  finding_id TEXT PRIMARY KEY CHECK (
+    length(CAST(finding_id AS BLOB)) BETWEEN 1 AND 192
+    AND substr(finding_id, 1, 1) GLOB '[a-z]'
+    AND substr(finding_id, -1, 1) GLOB '[a-z0-9]'
+    AND finding_id NOT GLOB '*[^a-z0-9_.:-]*'
+  ),
+  code TEXT NOT NULL CHECK (
+    length(CAST(code AS BLOB)) BETWEEN 3 AND 192
+    AND instr(code, '.') > 1
+    AND code NOT GLOB '*[^a-z0-9_.]*'
+  ),
+  domain TEXT NOT NULL CHECK (
+    length(CAST(domain AS BLOB)) BETWEEN 1 AND 128
+    AND substr(domain, 1, 1) GLOB '[a-z]'
+    AND domain NOT GLOB '*[^a-z0-9_]*'
+  ),
+  stage TEXT NOT NULL CHECK (
+    length(CAST(stage AS BLOB)) BETWEEN 1 AND 128
+    AND substr(stage, 1, 1) GLOB '[a-z]'
+    AND stage NOT GLOB '*[^a-z0-9_]*'
+  ),
+  severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'error')),
+  source TEXT NOT NULL CHECK (
+    length(CAST(source AS BLOB)) BETWEEN 1 AND 128
+    AND substr(source, 1, 1) GLOB '[a-z]'
+    AND source NOT GLOB '*[^a-z0-9_]*'
+  ),
+  subject_json TEXT NOT NULL CHECK (
+    json_valid(subject_json)
+    AND json_type(subject_json) = 'object'
+    AND length(CAST(subject_json AS BLOB)) <= 4096
+  ),
+  facts_json TEXT NOT NULL CHECK (
+    json_valid(facts_json)
+    AND json_type(facts_json) = 'object'
+    AND length(CAST(facts_json AS BLOB)) <= 16384
+  ),
+  actions_json TEXT NOT NULL CHECK (
+    json_valid(actions_json)
+    AND json_type(actions_json) = 'array'
+    AND length(CAST(actions_json AS BLOB)) <= 65536
+  ),
+  correlation_id TEXT CHECK (
+    correlation_id IS NULL
+    OR length(CAST(correlation_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  connection_internal_id TEXT CHECK (
+    connection_internal_id IS NULL
+    OR length(CAST(connection_internal_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  project_internal_id TEXT CHECK (
+    project_internal_id IS NULL
+    OR length(CAST(project_internal_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  runtime_session_id TEXT CHECK (
+    runtime_session_id IS NULL
+    OR length(CAST(runtime_session_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  integration_revision TEXT CHECK (
+    integration_revision IS NULL
+    OR (
+      length(integration_revision) = 71
+      AND substr(integration_revision, 1, 7) = 'sha256:'
+      AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  observed_at TEXT NOT NULL,
+  UNIQUE (finding_id, runtime_session_id),
+  CHECK (
+    runtime_session_id IS NULL
+    OR (connection_internal_id IS NOT NULL AND integration_revision IS NOT NULL)
+  )
+);
+
+CREATE TABLE diagnostic_cause_edges (
+  finding_id TEXT NOT NULL,
+  cause_finding_id TEXT NOT NULL,
+  PRIMARY KEY (finding_id, cause_finding_id),
+  FOREIGN KEY (finding_id)
+    REFERENCES diagnostic_findings (finding_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (cause_finding_id)
+    REFERENCES diagnostic_findings (finding_id)
+    ON DELETE RESTRICT,
+  CHECK (finding_id <> cause_finding_id)
+);
+
+CREATE INDEX idx_diagnostic_findings_runtime_session
+  ON diagnostic_findings (runtime_session_id, observed_at, finding_id)
+  WHERE runtime_session_id IS NOT NULL;
+CREATE INDEX idx_diagnostic_findings_current_connection
+  ON diagnostic_findings (
+    connection_internal_id, integration_revision, observed_at, finding_id
+  )
+  WHERE connection_internal_id IS NOT NULL AND integration_revision IS NOT NULL;
+CREATE INDEX idx_diagnostic_findings_project
+  ON diagnostic_findings (project_internal_id, observed_at, finding_id)
+  WHERE project_internal_id IS NOT NULL;
+CREATE INDEX idx_diagnostic_cause_edges_cause
+  ON diagnostic_cause_edges (cause_finding_id, finding_id);
+
+CREATE TRIGGER diagnostic_cause_edges_acyclic
+BEFORE INSERT ON diagnostic_cause_edges
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    WITH RECURSIVE causes(finding_id) AS (
+      SELECT cause_finding_id
+        FROM diagnostic_cause_edges
+       WHERE finding_id = NEW.cause_finding_id
+      UNION
+      SELECT edge.cause_finding_id
+        FROM diagnostic_cause_edges AS edge
+        JOIN causes ON edge.finding_id = causes.finding_id
+    )
+    SELECT 1 FROM causes WHERE finding_id = NEW.finding_id
+  ) THEN RAISE(ABORT, 'diagnostic cause cycle') END;
+END;
+
 CREATE TABLE mcp_runtime_sessions (
   runtime_session_id TEXT PRIMARY KEY,
   connection_internal_id TEXT NOT NULL,
@@ -278,8 +397,10 @@ CREATE TABLE mcp_runtime_sessions (
     AND substr(connection_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
   ),
   observed_host_executable_version TEXT,
-  client_name TEXT,
-  client_version TEXT,
+  attempted_client_name TEXT,
+  attempted_client_version TEXT,
+  requested_protocol_version TEXT,
+  selected_protocol_version TEXT,
   negotiated_protocol_version TEXT,
   process_id INTEGER NOT NULL CHECK (process_id > 0),
   process_started_at TEXT NOT NULL,
@@ -287,23 +408,27 @@ CREATE TABLE mcp_runtime_sessions (
   initialized_notification_at TEXT,
   tools_list_observed_at TEXT,
   required_tools_present INTEGER CHECK (required_tools_present IN (0, 1)),
-  last_safe_read_only_tool_call_at TEXT,
+  designated_safe_tool_observed_at TEXT,
   last_observed_at TEXT NOT NULL,
-  terminal_protocol_failure_code TEXT,
-  terminal_protocol_failure_details TEXT,
+  terminal_finding_id TEXT,
   graceful_close_at TEXT,
   UNIQUE (runtime_session_id, connection_internal_id),
   FOREIGN KEY (connection_internal_id)
     REFERENCES agent_connections (connection_internal_id)
     ON DELETE RESTRICT,
+  FOREIGN KEY (terminal_finding_id, runtime_session_id)
+    REFERENCES diagnostic_findings (finding_id, runtime_session_id)
+    ON DELETE RESTRICT,
   CHECK (
-    (client_name IS NULL AND client_version IS NULL)
-    OR (client_name IS NOT NULL AND client_version IS NOT NULL)
+    (attempted_client_name IS NULL AND attempted_client_version IS NULL)
+    OR (attempted_client_name IS NOT NULL AND attempted_client_version IS NOT NULL)
   ),
   CHECK (
-    (initialize_completed_at IS NULL AND client_name IS NULL)
-    OR (initialize_completed_at IS NOT NULL AND client_name IS NOT NULL)
+    (initialize_completed_at IS NULL AND selected_protocol_version IS NULL)
+    OR (initialize_completed_at IS NOT NULL AND selected_protocol_version IS NOT NULL)
   ),
+  CHECK (selected_protocol_version IS NULL OR requested_protocol_version IS NOT NULL),
+  CHECK (selected_protocol_version IS NULL OR attempted_client_name IS NOT NULL),
   CHECK (
     (initialized_notification_at IS NULL AND negotiated_protocol_version IS NULL)
     OR (initialized_notification_at IS NOT NULL AND negotiated_protocol_version IS NOT NULL)
@@ -313,18 +438,15 @@ CREATE TABLE mcp_runtime_sessions (
     OR (tools_list_observed_at IS NOT NULL AND required_tools_present IS NOT NULL)
   ),
   CHECK (initialized_notification_at IS NULL OR initialize_completed_at IS NOT NULL),
-  CHECK (last_safe_read_only_tool_call_at IS NULL OR initialized_notification_at IS NOT NULL),
-  CHECK (
-    (terminal_protocol_failure_code IS NULL AND terminal_protocol_failure_details IS NULL)
-    OR terminal_protocol_failure_code IS NOT NULL
-  ),
-  CHECK (terminal_protocol_failure_code IS NULL OR graceful_close_at IS NULL),
+  CHECK (negotiated_protocol_version IS NULL OR negotiated_protocol_version = selected_protocol_version),
+  CHECK (designated_safe_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
+  CHECK (terminal_finding_id IS NULL OR graceful_close_at IS NULL),
   CHECK (last_observed_at >= process_started_at),
   CHECK (initialize_completed_at IS NULL OR initialize_completed_at >= process_started_at),
   CHECK (initialized_notification_at IS NULL OR initialized_notification_at >= initialize_completed_at),
   CHECK (tools_list_observed_at IS NULL OR tools_list_observed_at >= initialize_completed_at),
-  CHECK (last_safe_read_only_tool_call_at IS NULL OR last_safe_read_only_tool_call_at >= initialized_notification_at),
-  CHECK (terminal_protocol_failure_code IS NULL OR last_observed_at >= process_started_at),
+  CHECK (designated_safe_tool_observed_at IS NULL OR designated_safe_tool_observed_at >= initialized_notification_at),
+  CHECK (terminal_finding_id IS NULL OR last_observed_at >= process_started_at),
   CHECK (graceful_close_at IS NULL OR graceful_close_at >= process_started_at)
 );
 
@@ -339,12 +461,12 @@ CREATE INDEX idx_mcp_runtime_sessions_successful_managed
   ON mcp_runtime_sessions (
     connection_internal_id,
     connection_integration_revision,
-    last_safe_read_only_tool_call_at
+    designated_safe_tool_observed_at
   )
   WHERE session_source = 'managed_host'
     AND initialized_notification_at IS NOT NULL
     AND required_tools_present = 1
-    AND last_safe_read_only_tool_call_at IS NOT NULL;
+    AND designated_safe_tool_observed_at IS NOT NULL;
 
 CREATE TABLE mcp_runtime_project_session_bindings (
   runtime_session_id TEXT NOT NULL,
@@ -417,8 +539,11 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_project
 - Integration generation은 물리 Connection instance 하나 안의 revision을 구분하고 `integration_instance_id`는 물리 삭제와 재생성을 구분합니다. 두 값은 Store 소유 로컬 lifecycle 및 상관관계 좌표이며 호출자가 선택할 수 없습니다.
 - `agent_connections.verification_report_json`은 완료된 보고서가 없으면 SQL null입니다. Null이 아닌 값은 파생 상태와 action을 포함하는 엄격한 정규 `ConnectionVerificationReport` 하나를 저장하며 값이 없는 선택 구성원은 명시적 null 대신 생략합니다. Store는 그 구성 요소를 독립적으로 영속 저장하지 않습니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
+- `diagnostic_findings`는 공유 typed finding 전체 형태를 엄격한 물리 column에 저장합니다. `facts_json`은 16,384 byte 이하의 유효한 JSON object이며 `subject_json`과 `actions_json`도 한도가 있는 typed 표현입니다. Runtime과 상관된 row에는 Connection과 integration-revision 좌표가 필요합니다. 현재 Connection 및 runtime-session index는 관찰 시각과 finding ID에 따른 결정적 순서를 제공합니다.
+- `diagnostic_cause_edges`는 양 끝에 foreign key가 있는 고유한 finding-to-cause 쌍을 저장합니다. `diagnostic_cause_edges_acyclic`은 방향성 cycle을 완성하는 insert를 거부하고, cause-side index는 결정적인 역방향 조회와 제한된 순회를 지원합니다.
+- `mcp_runtime_sessions.attempted_client_name`과 `attempted_client_version`은 한도가 있는 파싱된 client 쌍입니다. `requested_protocol_version`은 client 입력이고 `selected_protocol_version`은 server가 선택한 initialize 결과이며, `negotiated_protocol_version`은 handshake 완료와 함께 있을 때만 존재하고 선택 revision과 같아야 합니다. `initialize_completed_at`, `tools_list_observed_at`, `designated_safe_tool_observed_at`은 서로 다른 milestone입니다. `terminal_finding_id`는 같은 runtime의 구조화된 error finding 하나를 가리키는 foreign key이며 graceful close와 함께 있을 수 없습니다.
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase에 결속됩니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 모든 필수 phase의 호환되는 현재 소유 `guard_events`를 요구합니다. 이 협력적 check는 OS 수준 집행이나 쓰기 방지를 제공하지 않습니다.
-- 명시적 제거 또는 migration에 따른 Connection Project 폐기는 immediate transaction 하나에서 소유자 순서로 삭제하여 제한적인 Registry foreign key를 충족합니다. 선택한 project-session binding을 선택한 Guard Installation과 membership보다 먼저 삭제합니다. 여러 프로젝트가 있는 migration은 관련 없는 프로젝트 행과 connection 전체 runtime session을 유지합니다. 마지막 프로젝트 migration은 host 정리와 최종 재검증이 성공할 때까지 비활성 membership, binding, Guard Installation, pending-cleanup marker의 완전한 inventory를 유지한 뒤 프로젝트 소유 행과 membership만 삭제합니다. 명시적으로 마지막 membership을 제거할 때는 Connection 소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 `mcp_runtime_sessions`, `agent_connections` 순서로 삭제합니다. 어떤 경로도 `projects`, `runtime_home`, `installation_profile`, 프로젝트 `state.sqlite` 데이터베이스로 cascade하지 않습니다.
+- 명시적 제거 또는 migration에 따른 Connection Project 폐기는 immediate transaction 하나에서 소유자 순서로 삭제하여 제한적인 Registry foreign key를 충족합니다. 선택한 project-session binding을 선택한 Guard Installation과 membership보다 먼저 삭제합니다. 여러 프로젝트가 있는 migration은 관련 없는 프로젝트 행과 connection 전체 runtime session을 유지합니다. 마지막 프로젝트 migration은 host 정리와 최종 재검증이 성공할 때까지 비활성 membership, binding, Guard Installation, pending-cleanup marker의 완전한 inventory를 유지한 뒤 프로젝트 소유 행과 membership만 삭제합니다. 명시적으로 마지막 membership을 제거할 때는 Connection 소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 `mcp_runtime_sessions`, `agent_connections` 순서로 삭제하며, 구조화된 finding은 영속 이력 진단으로 남습니다. 어떤 경로도 `projects`, `runtime_home`, `installation_profile`, 프로젝트 `state.sqlite` 데이터베이스로 cascade하지 않습니다.
 
 ## 프로젝트 `state.sqlite`
 

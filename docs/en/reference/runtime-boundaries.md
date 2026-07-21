@@ -9,7 +9,7 @@ managed Codex configuration, and the stdio MCP child process.
 | Component | Boundary |
 |---|---|
 | Product Repository | The canonical Git work tree containing user product files and explicitly managed project configuration. |
-| Volicord Runtime Home | Local registry, project state, authoritative operational sessions, and runtime-owned artifacts. |
+| Volicord Runtime Home | Local registry, project state, authoritative operational sessions, structured diagnostic findings, and runtime-owned artifacts. |
 | Volicord installation | The selected `volicord` executable and its build identity. It is not the Runtime Home. |
 | Managed Codex configuration | User- or project-owned configuration that starts the exact managed stdio process. It is not Core authority. |
 | `volicord mcp --stdio` | One local child process bound to one current Agent Connection. It is not a network service. |
@@ -111,8 +111,9 @@ renewed operational observation.
 ## Volicord Runtime Home
 
 The Runtime Home contains only Volicord-owned runtime state: registry storage,
-per-project storage, authoritative operational sessions, and runtime-managed
-artifact bytes. It is selected explicitly or through the platform rule owned by
+per-project storage, authoritative operational sessions, structured diagnostic
+findings, and runtime-managed artifact bytes. It is selected explicitly or
+through the platform rule owned by
 [Administrative CLI](admin-cli.md#runtime-home-selection).
 
 The Runtime Home must not be placed inside a Product Repository. Product files,
@@ -123,6 +124,21 @@ Inside WSL2, validation checks the Runtime Home or its nearest existing
 ancestor against the exact distribution ext4 boundary before initialization.
 Project homes and runtime-managed artifacts remain within that same boundary;
 Linux-looking `/mnt/*` or other non-ext4 locations are unsupported.
+
+The Registry is the durable Runtime Home carrier for structured diagnostic
+findings and their cause edges. A finding may correlate to its Connection,
+project, runtime session, and integration revision, while an MCP runtime
+session may point to its terminal finding. These records are diagnostic
+evidence and do not grant authority.
+
+A failure before the Registry can be opened may emit one bounded single-line
+stderr fallback in the exact form `VOLICORD_DIAGNOSTIC_V1 <bounded-json>`.
+`bounded-json` is the current shared `DiagnosticFinding` representation, not a
+second error shape. The parser requires the exact prefix, one line, the shared
+finding bounds, and the complete shared typed model. This fallback must not
+contain an environment dump, unrestricted process output, raw request body, or
+other unprojected input. It is not a substitute for a successful Registry
+write, and the Store does not render it.
 
 ## Baseline MCP Process
 
@@ -136,7 +152,8 @@ Volicord-generated Registry runtime-session ID at process start. Its project set
 stored allowlist or an explicitly selected member. It does not discover
 authority from arbitrary filesystem proximity.
 
-The Registry owns process lifecycle milestones and cross-project runtime/host
+The Registry owns process lifecycle milestones, structured runtime diagnostic
+findings and cause edges, terminal-finding links, and cross-project runtime/host
 session reservations. Each project database owns its project Agent Session and
 host session/thread/turn correlation. MCP retains those native coordinates
 until an actual project is selected; the Store then derives the project

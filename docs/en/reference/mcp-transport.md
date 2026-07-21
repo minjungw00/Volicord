@@ -178,19 +178,24 @@ row identifies this Volicord-generated process launch, its Connection,
 revision, process ID, and process-start time. A CLI preflight row never
 satisfies a managed-host operational check.
 
-The adapter durably records successful `initialize` and bounded attempted
-client information before returning its response. It records the selected
-profile revision as the negotiated protocol together with a valid
-`notifications/initialized` before entering ready state, and records each
-actual `tools/list` response before returning it. The discovery fact says
-whether that generated response contained every tool required by the current
-Connection mode. Duplicate initialized notifications are idempotent after the
-first valid observation and cannot change the negotiated revision.
+As soon as it parses bounded `clientInfo.name`, `clientInfo.version`, and
+`protocolVersion`, the adapter durably records them as the attempted client and
+requested revision even if later initialize validation fails. On successful
+initialize it records completion and the server-selected profile revision
+before returning that revision. The selected value becomes the negotiated
+revision only when a valid `notifications/initialized` fully completes the
+handshake. The adapter records each actual `tools/list` response before
+returning it; the discovery fact says whether that generated response contained
+every tool required by the current Connection mode. Duplicate initialized
+notifications are idempotent after the first valid observation and cannot
+change the negotiated revision.
 
 Successful `volicord.status`, `volicord.get_operation_result`,
 `volicord.check_close`, and `volicord.list_projects` completions update the
 safe/read-only milestone before the tool result is emitted. Observable fatal
-transport failure and EOF-driven graceful close record their terminal facts.
+transport or protocol failure creates one bounded shared `DiagnosticFinding`
+and atomically links its finding ID as the runtime session's terminal finding.
+EOF-driven graceful close remains a distinct mutually exclusive terminal fact.
 An authoritative Store failure withholds the corresponding protocol success.
 Bounded writes to `diagnostics.sqlite` remain best effort and are never
 consulted for these facts.
@@ -203,14 +208,14 @@ CLI verification does not fabricate managed `host_session`, `tools/list`, or
 tool-round-trip observations.
 
 Runtime rows are durable process-launch observations, not liveness records.
-A process that exits before recording a terminal failure or graceful close may
+A process that exits before linking a terminal finding or recording graceful close may
 leave a row that appears open. Such a row remains historical evidence and is
 never selected to correlate a later Guard event. Concurrent managed processes
 may coexist and bind different host sessions.
 
-The requested revision is client input, the selected revision is the server's
-session profile, and the negotiated revision is that selected value after the
-initialized lifecycle step. Only the negotiated protocol version is
+The requested revision is received from the client, the selected revision is
+returned or selected by the server, and the negotiated revision is that
+selected value only after the handshake fully completes. Only the negotiated protocol version is
 authoritative runtime-session protocol data. `clientInfo` name/version and an
 observed host executable version are diagnostic fields; they accept bounded
 future values. Compatibility is determined from the current managed

@@ -20,14 +20,20 @@ use volicord_store::{
         current_managed_mcp_runtime_session_for_connection, current_managed_runtime_sessions,
         latest_current_managed_runtime_session, latest_managed_runtime_session,
         latest_successful_managed_runtime_session, mcp_runtime_project_session_binding,
-        mcp_runtime_session, record_mcp_initialize, record_mcp_initialized_notification,
-        record_mcp_safe_read_only_tool_call, record_mcp_terminal_protocol_failure,
-        record_mcp_tools_list, start_mcp_runtime_session, McpRuntimeSessionStart,
+        mcp_runtime_session, record_mcp_designated_safe_tool_observation,
+        record_mcp_initialize_attempt, record_mcp_initialize_completion,
+        record_mcp_initialized_notification, record_mcp_terminal_finding, record_mcp_tools_list,
+        start_mcp_runtime_session, McpRuntimeSessionStart,
     },
     sqlite::registry_db_path,
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
-use volicord_types::{ManagedMcpClientInfo, McpRuntimeSessionSource};
+use volicord_types::{
+    AgentConnectionId, AgentRuntimeSessionId, DiagnosticCode, DiagnosticDomain, DiagnosticFacts,
+    DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource,
+    UtcTimestamp,
+};
 
 const START: &str = "2026-07-18T00:00:00Z";
 const INIT: &str = "2026-07-18T00:00:01Z";
@@ -55,10 +61,17 @@ fn complete(
     required_tools_present: bool,
 ) -> Result<(), Box<dyn Error>> {
     let client = ManagedMcpClientInfo::new("future-client", "999.123-preview+custom")?;
-    record_mcp_initialize(
+    record_mcp_initialize_attempt(
         fixture.runtime_home_path(),
         runtime_session_id,
         &client,
+        "2025-11-25",
+        INIT,
+    )?;
+    record_mcp_initialize_completion(
+        fixture.runtime_home_path(),
+        runtime_session_id,
+        "2025-11-25",
         INIT,
     )?;
     record_mcp_initialized_notification(
@@ -73,8 +86,39 @@ fn complete(
         required_tools_present,
         TOOLS,
     )?;
-    record_mcp_safe_read_only_tool_call(fixture.runtime_home_path(), runtime_session_id, SAFE)?;
+    record_mcp_designated_safe_tool_observation(
+        fixture.runtime_home_path(),
+        runtime_session_id,
+        SAFE,
+    )?;
     Ok(())
+}
+
+fn terminal_finding(
+    fixture: &CoreFixture,
+    runtime_session_id: &str,
+    finding_id: &str,
+    code: &str,
+    observed_at: &str,
+) -> Result<DiagnosticFinding, Box<dyn Error>> {
+    let runtime = mcp_runtime_session(fixture.runtime_home_path(), runtime_session_id)?
+        .ok_or("runtime session")?;
+    Ok(DiagnosticFinding::try_new(
+        DiagnosticFindingId::parse(finding_id)?,
+        DiagnosticCode::parse(code)?,
+        DiagnosticDomain::parse("mcp")?,
+        DiagnosticStage::parse("transport")?,
+        DiagnosticSeverity::Error,
+        DiagnosticSource::parse("store_test")?,
+        DiagnosticSubject::try_new("runtime_session", runtime_session_id)?,
+        DiagnosticFacts::empty(),
+        UtcTimestamp::parse(observed_at)?,
+    )?
+    .with_connection_id(AgentConnectionId::new(runtime.connection_internal_id))?
+    .with_runtime_session_id(AgentRuntimeSessionId::new(runtime_session_id))?
+    .with_integration_revision(IntegrationRevision::parse(
+        runtime.connection_integration_revision,
+    )?))
 }
 
 fn agent_session_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
@@ -168,10 +212,37 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     assert!(record_mcp_tools_list(fixture.runtime_home_path(), &runtime, true, INIT).is_err());
     let client = ManagedMcpClientInfo::new("unlisted-client", "2037.0")?;
-    record_mcp_initialize(fixture.runtime_home_path(), &runtime, &client, INIT)?;
+    record_mcp_initialize_attempt(
+        fixture.runtime_home_path(),
+        &runtime,
+        &client,
+        "2025-06-18",
+        INIT,
+    )?;
+    let attempted = mcp_runtime_session(fixture.runtime_home_path(), &runtime)?
+        .expect("initialize attempt observation");
+    assert_eq!(
+        attempted.attempted_client_name.as_deref(),
+        Some("unlisted-client")
+    );
+    assert_eq!(
+        attempted.attempted_client_version.as_deref(),
+        Some("2037.0")
+    );
+    assert_eq!(
+        attempted.requested_protocol_version.as_deref(),
+        Some("2025-06-18")
+    );
+    assert!(attempted.selected_protocol_version.is_none());
+    assert!(attempted.initialize_completed_at.is_none());
+    record_mcp_initialize_completion(fixture.runtime_home_path(), &runtime, "2025-11-25", INIT)?;
     let selected = mcp_runtime_session(fixture.runtime_home_path(), &runtime)?
         .expect("initialize observation");
     assert!(selected.initialize_completed_at.is_some());
+    assert_eq!(
+        selected.selected_protocol_version.as_deref(),
+        Some("2025-11-25")
+    );
     assert!(selected.negotiated_protocol_version.is_none());
     let first = record_mcp_initialized_notification(
         fixture.runtime_home_path(),
@@ -189,8 +260,14 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
         first.initialized_notification_at,
         duplicate.initialized_notification_at
     );
-    assert_eq!(duplicate.client_name.as_deref(), Some("unlisted-client"));
-    assert_eq!(duplicate.client_version.as_deref(), Some("2037.0"));
+    assert_eq!(
+        duplicate.attempted_client_name.as_deref(),
+        Some("unlisted-client")
+    );
+    assert_eq!(
+        duplicate.attempted_client_version.as_deref(),
+        Some("2037.0")
+    );
     assert_eq!(
         duplicate.negotiated_protocol_version.as_deref(),
         Some("2025-11-25")
@@ -219,33 +296,35 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
         mcp_runtime_session(fixture.runtime_home_path(), &incomplete)?.expect("runtime session");
     assert_eq!(record.required_tools_present, Some(false));
     assert_eq!(
-        record.last_safe_read_only_tool_call_at.as_deref(),
+        record.designated_safe_tool_observed_at.as_deref(),
         Some(SAFE)
     );
 
     let fatal = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
-    let fatal_record = record_mcp_terminal_protocol_failure(
-        fixture.runtime_home_path(),
+    let finding = terminal_finding(
+        &fixture,
         &fatal,
-        "protocol_eof",
-        Some("initialize response could not be emitted"),
+        "finding.protocol_eof",
+        "mcp.protocol_eof",
         INIT,
     )?;
+    let fatal_record = record_mcp_terminal_finding(fixture.runtime_home_path(), &finding)?;
     assert_eq!(
-        fatal_record.terminal_protocol_failure_code.as_deref(),
-        Some("protocol_eof")
+        fatal_record.terminal_finding_id.as_deref(),
+        Some("finding.protocol_eof")
     );
     assert!(fatal_record.graceful_close_at.is_none());
 
     let completed_then_terminal = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     complete(&fixture, &completed_then_terminal, true)?;
-    record_mcp_terminal_protocol_failure(
-        fixture.runtime_home_path(),
+    let finding = terminal_finding(
+        &fixture,
         &completed_then_terminal,
-        "later_transport_failure",
-        None,
+        "finding.later_transport_failure",
+        "mcp.later_transport_failure",
         "2026-07-18T00:00:05Z",
     )?;
+    record_mcp_terminal_finding(fixture.runtime_home_path(), &finding)?;
     assert_eq!(
         latest_successful_managed_runtime_session(
             fixture.runtime_home_path(),

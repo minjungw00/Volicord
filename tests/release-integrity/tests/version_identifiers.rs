@@ -45,6 +45,7 @@ fn numeric_version_identifiers_are_explicitly_classified() {
                 entry.classification.as_str(),
                 "external_standard"
                     | "third_party_api"
+                    | "product_contract"
                     | "release_tag_example"
                     | "maintenance_metadata"
                     | "negative_test"

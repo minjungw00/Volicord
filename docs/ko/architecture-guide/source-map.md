@@ -42,6 +42,7 @@
 | `crates/volicord-store/src/schema/project.sql` | project Store DDL 정본 소스. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home과 Store bootstrap. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection 레코드, project allowlist, managed fingerprint, 영속 검증 보고서 경계. |
+| `crates/volicord-store/src/diagnostic_findings.rs` | 구조화된 finding 및 cause graph의 transaction 영속화, runtime terminal-finding 연결, 현재 좌표 조회, 한도가 있는 결정적 traversal. |
 | `crates/volicord-store/src/operational_sessions.rs` | 관리 runtime session, protocol milestone, revision 범위 project session, 정확한 데이터베이스 간 binding. |
 | `crates/volicord-store/src/workflow_records.rs` | workflow 레코드 읽기와 쓰기. |
 | `crates/volicord-store/src/core_pipeline/` | Core open, 검증, replay, commit, mutation 적용. |

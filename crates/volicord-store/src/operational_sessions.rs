@@ -5,14 +5,15 @@ use std::{path::Path, str::FromStr};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use volicord_types::{
     project_agent_session_id, validate_managed_host_native_session_id,
-    ConnectionIntegrationRevisionBasis, DurableIdGenerator, DurableIdKind, IntegrationRevision,
-    ManagedMcpClientInfo, McpRuntimeSessionSource, RandomDurableIdGenerator, UtcTimestamp,
-    DURABLE_ID_RETRY_LIMIT,
+    ConnectionIntegrationRevisionBasis, DiagnosticFinding, DurableIdGenerator, DurableIdKind,
+    IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource, RandomDurableIdGenerator,
+    UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::{
     agent_connections::{raw_agent_connection_record_from_conn, AgentConnectionRecord},
     bootstrap::raw_project_record_from_conn,
+    diagnostic_findings::insert_and_link_mcp_runtime_session_terminal_finding,
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
         registry_db_path,
@@ -22,8 +23,6 @@ use crate::{
 
 const MAX_DIAGNOSTIC_FIELD_BYTES: usize = 1024;
 const MAX_PROTOCOL_FIELD_BYTES: usize = 256;
-const MAX_FAILURE_CODE_BYTES: usize = 128;
-const MAX_FAILURE_DETAILS_BYTES: usize = 4096;
 
 /// MCP process-start facts used to create an authoritative runtime session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,8 +42,10 @@ pub struct McpRuntimeSessionRecord {
     pub session_source: McpRuntimeSessionSource,
     pub connection_integration_revision: String,
     pub observed_host_executable_version: Option<String>,
-    pub client_name: Option<String>,
-    pub client_version: Option<String>,
+    pub attempted_client_name: Option<String>,
+    pub attempted_client_version: Option<String>,
+    pub requested_protocol_version: Option<String>,
+    pub selected_protocol_version: Option<String>,
     pub negotiated_protocol_version: Option<String>,
     pub process_id: u32,
     pub process_started_at: String,
@@ -52,10 +53,9 @@ pub struct McpRuntimeSessionRecord {
     pub initialized_notification_at: Option<String>,
     pub tools_list_observed_at: Option<String>,
     pub required_tools_present: Option<bool>,
-    pub last_safe_read_only_tool_call_at: Option<String>,
+    pub designated_safe_tool_observed_at: Option<String>,
     pub last_observed_at: String,
-    pub terminal_protocol_failure_code: Option<String>,
-    pub terminal_protocol_failure_details: Option<String>,
+    pub terminal_finding_id: Option<String>,
     pub graceful_close_at: Option<String>,
 }
 
@@ -495,16 +495,67 @@ pub fn mcp_runtime_project_session_binding(
         .transpose()
 }
 
-/// Records successful MCP initialize completion before its response is emitted.
-pub fn record_mcp_initialize(
+/// Records parsed client/request data even when initialize later fails.
+pub fn record_mcp_initialize_attempt(
     runtime_home: impl AsRef<Path>,
     runtime_session_id: &str,
     client_info: &ManagedMcpClientInfo,
+    requested_protocol_version: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
+    validate_text(
+        "requested_protocol_version",
+        requested_protocol_version,
+        MAX_PROTOCOL_FIELD_BYTES,
+    )?;
+    validate_timestamp("initialize_attempted_at", observed_at)?;
+    update_session(runtime_home, runtime_session_id, |tx, prior| {
+        require_observation_time(prior, observed_at)?;
+        if prior.attempted_client_name.is_some() || prior.requested_protocol_version.is_some() {
+            return Err(StoreError::Conflict {
+                entity: "mcp_runtime_session",
+                id: runtime_session_id.to_owned(),
+                detail: "initialize attempt is already recorded".to_owned(),
+            });
+        }
+        tx.execute(
+            "UPDATE mcp_runtime_sessions
+                SET attempted_client_name = ?2, attempted_client_version = ?3,
+                    requested_protocol_version = ?4, last_observed_at = ?5
+              WHERE runtime_session_id = ?1",
+            params![
+                runtime_session_id,
+                client_info.name(),
+                client_info.version(),
+                requested_protocol_version,
+                observed_at
+            ],
+        )?;
+        Ok(())
+    })
+}
+
+/// Records initialize completion and the server-selected revision before response emission.
+pub fn record_mcp_initialize_completion(
+    runtime_home: impl AsRef<Path>,
+    runtime_session_id: &str,
+    selected_protocol_version: &str,
+    observed_at: &str,
+) -> StoreResult<McpRuntimeSessionRecord> {
+    validate_text(
+        "selected_protocol_version",
+        selected_protocol_version,
+        MAX_PROTOCOL_FIELD_BYTES,
+    )?;
     validate_timestamp("initialize_completed_at", observed_at)?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
+        if prior.attempted_client_name.is_none() || prior.requested_protocol_version.is_none() {
+            return Err(milestone_order(
+                runtime_session_id,
+                "initialize completion requires a parsed initialize attempt",
+            ));
+        }
         if prior.initialize_completed_at.is_some() {
             return Err(StoreError::Conflict {
                 entity: "mcp_runtime_session",
@@ -514,15 +565,10 @@ pub fn record_mcp_initialize(
         }
         tx.execute(
             "UPDATE mcp_runtime_sessions
-                SET client_name = ?2, client_version = ?3,
-                    initialize_completed_at = ?4, last_observed_at = ?4
+                SET selected_protocol_version = ?2,
+                    initialize_completed_at = ?3, last_observed_at = ?3
               WHERE runtime_session_id = ?1",
-            params![
-                runtime_session_id,
-                client_info.name(),
-                client_info.version(),
-                observed_at
-            ],
+            params![runtime_session_id, selected_protocol_version, observed_at],
         )?;
         Ok(())
     })
@@ -548,6 +594,14 @@ pub fn record_mcp_initialized_notification(
                 runtime_session_id,
                 "initialized notification requires initialize completion",
             ));
+        }
+        if prior.selected_protocol_version.as_deref() != Some(negotiated_protocol_version) {
+            return Err(StoreError::Conflict {
+                entity: "mcp_runtime_session",
+                id: runtime_session_id.to_owned(),
+                detail: "negotiated protocol version differs from the server-selected revision"
+                    .to_owned(),
+            });
         }
         if let Some(prior_version) = prior.negotiated_protocol_version.as_deref() {
             if prior_version != negotiated_protocol_version {
@@ -604,12 +658,12 @@ pub fn record_mcp_tools_list(
 }
 
 /// Records successful completion of a designated safe/read-only Volicord tool.
-pub fn record_mcp_safe_read_only_tool_call(
+pub fn record_mcp_designated_safe_tool_observation(
     runtime_home: impl AsRef<Path>,
     runtime_session_id: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
-    validate_timestamp("last_safe_read_only_tool_call_at", observed_at)?;
+    validate_timestamp("designated_safe_tool_observed_at", observed_at)?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.initialized_notification_at.is_none() {
@@ -620,7 +674,7 @@ pub fn record_mcp_safe_read_only_tool_call(
         }
         tx.execute(
             "UPDATE mcp_runtime_sessions
-                SET last_safe_read_only_tool_call_at = ?2, last_observed_at = ?2
+                SET designated_safe_tool_observed_at = ?2, last_observed_at = ?2
               WHERE runtime_session_id = ?1",
             params![runtime_session_id, observed_at],
         )?;
@@ -628,53 +682,21 @@ pub fn record_mcp_safe_read_only_tool_call(
     })
 }
 
-/// Records an observable terminal protocol failure.
-pub fn record_mcp_terminal_protocol_failure(
+/// Atomically inserts and links one structured terminal finding.
+pub fn record_mcp_terminal_finding(
     runtime_home: impl AsRef<Path>,
-    runtime_session_id: &str,
-    code: &str,
-    details: Option<&str>,
-    observed_at: &str,
+    finding: &DiagnosticFinding,
 ) -> StoreResult<McpRuntimeSessionRecord> {
-    validate_text(
-        "terminal_protocol_failure_code",
-        code,
-        MAX_FAILURE_CODE_BYTES,
-    )?;
-    if let Some(details) = details {
-        validate_text(
-            "terminal_protocol_failure_details",
-            details,
-            MAX_FAILURE_DETAILS_BYTES,
-        )?;
-    }
-    validate_timestamp("terminal_failure_at", observed_at)?;
-    update_session(runtime_home, runtime_session_id, |tx, prior| {
-        require_observation_time(prior, observed_at)?;
-        if prior.graceful_close_at.is_some() {
-            return Err(milestone_order(
-                runtime_session_id,
-                "terminal failure cannot follow graceful close",
-            ));
-        }
-        if let Some(existing) = prior.terminal_protocol_failure_code.as_deref() {
-            if existing == code && prior.terminal_protocol_failure_details.as_deref() == details {
-                return Ok(());
-            }
-            return Err(milestone_order(
-                runtime_session_id,
-                "terminal failure is already recorded",
-            ));
-        }
-        tx.execute(
-            "UPDATE mcp_runtime_sessions
-                SET terminal_protocol_failure_code = ?2,
-                    terminal_protocol_failure_details = ?3,
-                    last_observed_at = ?4
-              WHERE runtime_session_id = ?1",
-            params![runtime_session_id, code, details, observed_at],
-        )?;
-        Ok(())
+    let runtime_session_id = finding
+        .runtime_session_id()
+        .map(|value| value.as_str())
+        .ok_or_else(|| StoreError::InvalidInput {
+            detail: "terminal finding requires runtime_session_id".to_owned(),
+        })?;
+    insert_and_link_mcp_runtime_session_terminal_finding(&runtime_home, finding)?;
+    mcp_runtime_session(runtime_home, runtime_session_id)?.ok_or_else(|| StoreError::NotFound {
+        entity: "mcp_runtime_session",
+        id: runtime_session_id.to_owned(),
     })
 }
 
@@ -687,7 +709,7 @@ pub fn record_mcp_graceful_close(
     validate_timestamp("graceful_close_at", observed_at)?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
-        if prior.terminal_protocol_failure_code.is_some() {
+        if prior.terminal_finding_id.is_some() {
             return Err(milestone_order(
                 runtime_session_id,
                 "graceful close cannot follow terminal failure",
@@ -730,8 +752,8 @@ pub fn latest_successful_managed_runtime_session(
             AND initialized_notification_at IS NOT NULL
             AND tools_list_observed_at IS NOT NULL
             AND required_tools_present = 1
-            AND last_safe_read_only_tool_call_at IS NOT NULL
-          ORDER BY last_safe_read_only_tool_call_at DESC, runtime_session_id DESC
+            AND designated_safe_tool_observed_at IS NOT NULL
+          ORDER BY designated_safe_tool_observed_at DESC, runtime_session_id DESC
           LIMIT 1"
         ),
         params![connection_internal_id, revision.as_str()],
@@ -875,11 +897,13 @@ where
 const RUNTIME_SESSION_SELECT: &str = "SELECT
     runtime_session_id, connection_internal_id, session_source,
     connection_integration_revision, observed_host_executable_version,
-    client_name, client_version, negotiated_protocol_version, process_id,
+    attempted_client_name, attempted_client_version,
+    requested_protocol_version, selected_protocol_version,
+    negotiated_protocol_version, process_id,
     process_started_at, initialize_completed_at, initialized_notification_at,
     tools_list_observed_at, required_tools_present,
-    last_safe_read_only_tool_call_at, last_observed_at,
-    terminal_protocol_failure_code, terminal_protocol_failure_details, graceful_close_at
+    designated_safe_tool_observed_at, last_observed_at,
+    terminal_finding_id, graceful_close_at
   FROM mcp_runtime_sessions";
 
 pub(crate) fn runtime_session_from_conn(
@@ -908,9 +932,9 @@ fn runtime_session_from_row(row: &Row<'_>) -> rusqlite::Result<McpRuntimeSession
             ))
         }
     };
-    let process_id = u32::try_from(row.get::<_, i64>(8)?).map_err(|error| {
+    let process_id = u32::try_from(row.get::<_, i64>(10)?).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(
-            8,
+            10,
             rusqlite::types::Type::Integer,
             Box::new(error),
         )
@@ -921,20 +945,21 @@ fn runtime_session_from_row(row: &Row<'_>) -> rusqlite::Result<McpRuntimeSession
         session_source: source,
         connection_integration_revision: row.get(3)?,
         observed_host_executable_version: row.get(4)?,
-        client_name: row.get(5)?,
-        client_version: row.get(6)?,
-        negotiated_protocol_version: row.get(7)?,
+        attempted_client_name: row.get(5)?,
+        attempted_client_version: row.get(6)?,
+        requested_protocol_version: row.get(7)?,
+        selected_protocol_version: row.get(8)?,
+        negotiated_protocol_version: row.get(9)?,
         process_id,
-        process_started_at: row.get(9)?,
-        initialize_completed_at: row.get(10)?,
-        initialized_notification_at: row.get(11)?,
-        tools_list_observed_at: row.get(12)?,
-        required_tools_present: row.get::<_, Option<i64>>(13)?.map(|value| value == 1),
-        last_safe_read_only_tool_call_at: row.get(14)?,
-        last_observed_at: row.get(15)?,
-        terminal_protocol_failure_code: row.get(16)?,
-        terminal_protocol_failure_details: row.get(17)?,
-        graceful_close_at: row.get(18)?,
+        process_started_at: row.get(11)?,
+        initialize_completed_at: row.get(12)?,
+        initialized_notification_at: row.get(13)?,
+        tools_list_observed_at: row.get(14)?,
+        required_tools_present: row.get::<_, Option<i64>>(15)?.map(|value| value == 1),
+        designated_safe_tool_observed_at: row.get(16)?,
+        last_observed_at: row.get(17)?,
+        terminal_finding_id: row.get(18)?,
+        graceful_close_at: row.get(19)?,
     })
 }
 

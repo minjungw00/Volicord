@@ -179,7 +179,7 @@ impl CoreService {
             }
             error => AgentSessionValidationError::store(error),
         })?;
-        if runtime.terminal_protocol_failure_code.is_some() || runtime.graceful_close_at.is_some() {
+        if runtime.terminal_finding_id.is_some() || runtime.graceful_close_at.is_some() {
             return Err(AgentSessionValidationError::rejected(
                 "agent_runtime_session_terminal",
             ));

@@ -8,7 +8,7 @@ and canonical SQL remain with [Storage DDL](storage-ddl.md).
 
 | Location | Purpose |
 |---|---|
-| `registry.sqlite` | Runtime Home identity, installation profile, projects, aliases, Agent Connections, explicit project memberships, canonical connection verification reports, and authoritative MCP runtime sessions. |
+| `registry.sqlite` | Runtime Home identity, installation profile, projects, aliases, Agent Connections, explicit project memberships, canonical connection verification reports, structured diagnostic findings, and authoritative MCP runtime sessions. |
 | project `state.sqlite` | Project-local Core state, replay, authority events, UserAction, evidence, artifacts, continuity, project Agent Sessions, Guard observations, and reconciliation. |
 | artifact store | Bytes and safe notices referenced by persistent artifact rows. |
 | `diagnostics.sqlite` | Bounded non-authority operability counters. |
@@ -43,8 +43,9 @@ Registry records include:
 - stable project-scoped Guard installation identities and their canonical typed
   Guard manifests;
 - at most one canonical connection verification report per Agent Connection;
+- bounded structured diagnostic findings and their directed cause edges;
 - MCP runtime sessions and their process, initialization, discovery, safe-call,
-  terminal-failure, and graceful-close facts;
+  terminal-finding, and graceful-close facts;
 - cross-database reservations that bind one runtime/host session to one
   Connection Project.
 
@@ -65,6 +66,32 @@ Project-state records include:
 
 Prompt-related Guard records are observations only. They are not a UserAction
 resolution, user answer, verification basis, or authority source.
+
+## Structured Diagnostic Findings
+
+`diagnostic_findings` is the durable Registry representation of the shared
+typed `DiagnosticFinding` model. Each row stores its stable finding ID,
+namespaced code, domain, stage, severity, source, bounded typed subject and safe
+fact JSON, bounded actions, optional correlation ID, applicable Connection,
+project, runtime-session, and integration-revision coordinates, and canonical
+observation time. Store validates the shared type and serialized byte bounds
+before opening a write transaction. It never stores an environment dump, raw
+request, unrestricted stderr, credential, or unbounded fact object.
+
+`diagnostic_cause_edges` stores one directed finding-to-cause edge. Both ends
+must name existing findings, the composite primary key rejects duplicates, and
+the insert trigger plus Store graph validation reject cycles. Store inserts all
+findings before their edges in one immediate transaction, so a rejected graph
+leaves neither a partial finding set nor a dangling edge. Cause queries order
+by depth and finding ID, reject a requested depth above 32, return at most 128
+distinct findings, and report when the selected depth cut off another edge.
+
+Finding reads are available by ID, by runtime session, and by the exact current
+Connection integration revision. A finding with `runtime_session_id` must also
+carry that runtime's Connection and integration revision. The current-
+Connection query does not reinterpret findings from a prior integration
+revision as current. These Registry findings remain separate from bounded
+non-authority counters in `diagnostics.sqlite`.
 
 ## Authoritative Operational Sessions
 
@@ -108,12 +135,15 @@ causes the whole Registry transaction to fail without a partial Connection or
 manifest update.
 
 Milestone timestamps and facts express lifecycle state without a redundant
-status enum. Store records successful `initialize` and its bounded attempted
-client information before the response is emitted. The selected protocol
-revision becomes `negotiated_protocol_version` only when the valid initialized
-notification completes that selected profile's handshake. Store also records
-every actual `tools/list` result and required-tool-set fact, a successful
-designated safe/read-only Volicord call, terminal protocol failure, and graceful
+status enum. `attempted_client_name`, `attempted_client_version`, and
+`requested_protocol_version` are recorded as soon as those bounded values are
+parsed, including when later initialize validation fails.
+`selected_protocol_version` is the revision selected and returned by the server
+when initialize completes; `negotiated_protocol_version` remains null until the
+valid initialized notification fully completes that selected profile's
+handshake. Store separately records initialize completion, every actual
+`tools/list` result and required-tool-set fact, a successful designated
+safe/read-only Volicord call, one terminal structured finding ID, and graceful
 close. A protocol success is not emitted when its authoritative Store write
 fails. Best-effort diagnostics remain separate and cannot make an otherwise
 valid tool result fail.
@@ -165,7 +195,7 @@ blocking or selecting Guard correlation.
 
 Runtime authorization reads these current records directly. It accepts only an
 enabled Connection, a current Connection Project membership, a
-`session_source=managed_host` runtime session for that Connection, and a
+`session_source=managed_host` nonterminal runtime session for that Connection, and a
 project Agent Session owned by the same runtime session, Connection, and
 project. The stored Connection and project integration revisions must equal the
 revisions derived from current owner inputs. The Connection mode must allow the

@@ -9,7 +9,7 @@
 | 구성 요소 | 경계 |
 |---|---|
 | Product Repository | 사용자 제품 파일과 명시적인 관리 프로젝트 구성을 담는 정규 Git 작업 트리입니다. |
-| Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 권위 있는 운영 session, 런타임 소유 아티팩트입니다. |
+| Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 권위 있는 운영 session, 구조화된 diagnostic finding, 런타임 소유 아티팩트입니다. |
 | Volicord 설치 | 선택한 `volicord` 실행 파일과 build identity입니다. Runtime Home이 아닙니다. |
 | 관리 Codex 구성 | 정확한 관리 stdio 프로세스를 시작하는 사용자 또는 프로젝트 소유 구성입니다. Core 권한이 아닙니다. |
 | `volicord mcp --stdio` | 현재 Agent Connection 하나에 결속된 로컬 자식 프로세스 하나입니다. 네트워크 서비스가 아닙니다. |
@@ -97,9 +97,10 @@ pending이 됩니다.
 
 ## Volicord Runtime Home
 
-Runtime Home은 registry 저장소, 프로젝트별 저장소, 권위 있는 운영 session, 런타임
-관리 아티팩트 bytes 같은 Volicord 소유 런타임 상태만 담습니다. 명시적 선택 또는
-[관리 CLI](admin-cli.md#runtime-home-selection)의 플랫폼 규칙으로 선택합니다.
+Runtime Home은 registry 저장소, 프로젝트별 저장소, 권위 있는 운영 session, 구조화된
+diagnostic finding, 런타임 관리 아티팩트 bytes 같은 Volicord 소유 런타임 상태만 담습니다.
+명시적 선택 또는 [관리 CLI](admin-cli.md#runtime-home-selection)의 플랫폼 규칙으로
+선택합니다.
 
 Runtime Home은 Product Repository 안에 두면 안 됩니다. 제품 파일, 유지 문서, 릴리스
 작업 출력, 테스트 결과, 스크린샷, 자격 증명, 대화 기록은 Runtime Home 기록이
@@ -109,6 +110,19 @@ WSL2에서는 초기화 전에 Runtime Home 또는 가장 가까운 기존 상�
 배포판 ext4 경계에 있는지 검증합니다. 프로젝트 home과 런타임 관리 아티팩트도
 같은 경계 안에 있어야 하며 Linux 형태의 `/mnt/*` 또는 ext4가 아닌 위치는
 지원하지 않습니다.
+
+Registry는 구조화된 diagnostic finding과 cause edge의 영속 Runtime Home carrier입니다.
+Finding은 해당 Connection, project, runtime session, integration revision과 상관관계를
+가질 수 있고 MCP runtime session은 terminal finding을 가리킬 수 있습니다. 이 기록은
+diagnostic evidence이며 권한을 부여하지 않습니다.
+
+Registry를 열기 전에 발생한 실패는 정확히
+`VOLICORD_DIAGNOSTIC_V1 <bounded-json>` 형태인 한도가 있는 stderr 단일 행 fallback 하나를
+내보낼 수 있습니다. `bounded-json`은 별도 오류 형태가 아니라 현재 공유
+`DiagnosticFinding` 표현입니다. Parser는 정확한 prefix, 한 행, 공유 finding의 한도와
+완전한 공유 typed model을 요구합니다. 이 fallback에 환경 dump, 제한 없는 process output,
+raw request body 또는 projection하지 않은 다른 입력을 담으면 안 됩니다. 성공한 Registry
+쓰기를 대신하지 않으며 Store는 이 envelope을 렌더링하지 않습니다.
 
 ## 기준 MCP 프로세스
 
@@ -122,8 +136,9 @@ WSL2에서는 초기화 전에 Runtime Home 또는 가장 가까운 기존 상�
 allowlist 또는 명시적으로 선택한 구성원입니다. 임의의 파일시스템 인접성에서 권한을
 검색하지 않습니다.
 
-Registry는 process lifecycle milestone과 프로젝트 간 runtime/host session 예약을
-담당합니다. 각 프로젝트 데이터베이스는 프로젝트 Agent Session과 host
+Registry는 process lifecycle milestone, 구조화된 runtime diagnostic finding과 cause edge,
+terminal-finding 연결, 프로젝트 간 runtime/host session 예약을 담당합니다. 각 프로젝트
+데이터베이스는 프로젝트 Agent Session과 host
 session/thread/turn 상관관계를 담당합니다. MCP는 실제 프로젝트를 선택할 때까지 이 native
 좌표를 유지하고, 그 뒤 Store가 Connection, 현재 프로젝트 통합 revision, native session으로
 프로젝트 session 좌표를 도출합니다. 분리된 데이터베이스 파일 사이에는 SQLite foreign key를

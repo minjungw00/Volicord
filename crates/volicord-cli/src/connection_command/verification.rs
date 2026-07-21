@@ -586,7 +586,7 @@ fn observed_host_version(session: &McpRuntimeSessionRecord) -> Option<&str> {
     session
         .observed_host_executable_version
         .as_deref()
-        .or(session.client_version.as_deref())
+        .or(session.attempted_client_version.as_deref())
 }
 
 fn host_session_checks(
@@ -617,12 +617,13 @@ fn host_session_checks(
             "current_host_version": host.host_version,
             "observed_host_version": observed.and_then(observed_host_version),
             "runtime_session_id": observed.map(|session| session.runtime_session_id.as_str()),
-            "client_name": observed.and_then(|session| session.client_name.as_deref()),
-            "client_version": observed.and_then(|session| session.client_version.as_deref()),
+            "attempted_client_name": observed.and_then(|session| session.attempted_client_name.as_deref()),
+            "attempted_client_version": observed.and_then(|session| session.attempted_client_version.as_deref()),
+            "requested_protocol_version": observed.and_then(|session| session.requested_protocol_version.as_deref()),
+            "selected_protocol_version": observed.and_then(|session| session.selected_protocol_version.as_deref()),
             "negotiated_protocol_version": observed.and_then(|session| session.negotiated_protocol_version.as_deref()),
             "last_observed_at": observed.map(|session| session.last_observed_at.as_str()),
-            "terminal_failure_code": observed.and_then(|session| session.terminal_protocol_failure_code.as_deref()),
-            "terminal_failure_details": observed.and_then(|session| session.terminal_protocol_failure_details.as_deref()),
+            "terminal_finding_id": observed.and_then(|session| session.terminal_finding_id.as_deref()),
         })
     };
     let diagnostic = current.first().copied();
@@ -636,7 +637,7 @@ fn host_session_checks(
         .copied()
         .find(|session| version_fresh(session) && session.required_tools_present == Some(true));
     let round_trip = current.iter().copied().find(|session| {
-        version_fresh(session) && session.last_safe_read_only_tool_call_at.is_some()
+        version_fresh(session) && session.designated_safe_tool_observed_at.is_some()
     });
 
     let (session_status, session_code, session_summary, session_observed_at, session_detail) =
@@ -669,7 +670,7 @@ fn host_session_checks(
                 Some(session.last_observed_at.as_str()),
                 Some(session),
             ),
-            (None, Some(session)) if session.terminal_protocol_failure_code.is_some() => (
+            (None, Some(session)) if session.terminal_finding_id.is_some() => (
                 ConnectionCheckStatus::Failed,
                 "host_session_initialize_failed",
                 "Newest current managed-host session failed before MCP initialize completed",
@@ -725,7 +726,7 @@ fn host_session_checks(
             ),
             (None, Some(session))
                 if session.initialize_completed_at.is_some()
-                    && session.terminal_protocol_failure_code.is_some() =>
+                    && session.terminal_finding_id.is_some() =>
             {
                 (
                     ConnectionCheckStatus::Failed,
@@ -758,7 +759,7 @@ fn host_session_checks(
                 ConnectionCheckStatus::Passed,
                 "tool_round_trip_passed",
                 "A current managed host completed the designated read-only Volicord tool call",
-                session.last_safe_read_only_tool_call_at.as_deref(),
+                session.designated_safe_tool_observed_at.as_deref(),
                 Some(session),
             ),
             (None, None) => (
@@ -777,7 +778,7 @@ fn host_session_checks(
             ),
             (None, Some(session))
                 if session.required_tools_present == Some(true)
-                    && session.terminal_protocol_failure_code.is_some() =>
+                    && session.terminal_finding_id.is_some() =>
             {
                 (
                 ConnectionCheckStatus::Failed,
@@ -1314,8 +1315,10 @@ mod tests {
             session_source: volicord_types::McpRuntimeSessionSource::ManagedHost,
             connection_integration_revision: "revision_current".to_owned(),
             observed_host_executable_version: None,
-            client_name: Some("codex".to_owned()),
-            client_version: Some(version.to_owned()),
+            attempted_client_name: Some("codex".to_owned()),
+            attempted_client_version: Some(version.to_owned()),
+            requested_protocol_version: Some("2025-11-25".to_owned()),
+            selected_protocol_version: Some("2025-11-25".to_owned()),
             negotiated_protocol_version: Some("2025-11-25".to_owned()),
             process_id: 42,
             process_started_at: "2026-07-18T00:00:00Z".to_owned(),
@@ -1323,10 +1326,9 @@ mod tests {
             initialized_notification_at: Some("2026-07-18T00:00:02Z".to_owned()),
             tools_list_observed_at: Some("2026-07-18T00:00:03Z".to_owned()),
             required_tools_present: Some(required_tools_present),
-            last_safe_read_only_tool_call_at: Some("2026-07-18T00:00:04Z".to_owned()),
+            designated_safe_tool_observed_at: Some("2026-07-18T00:00:04Z".to_owned()),
             last_observed_at: "2026-07-18T00:00:04Z".to_owned(),
-            terminal_protocol_failure_code: None,
-            terminal_protocol_failure_details: None,
+            terminal_finding_id: None,
             graceful_close_at: None,
         }
     }
@@ -1414,7 +1416,7 @@ mod tests {
         session.initialized_notification_at = None;
         session.tools_list_observed_at = None;
         session.required_tools_present = None;
-        session.last_safe_read_only_tool_call_at = None;
+        session.designated_safe_tool_observed_at = None;
 
         let checks = host_session_checks(
             &host,
@@ -1440,7 +1442,7 @@ mod tests {
         newer.initialized_notification_at = None;
         newer.tools_list_observed_at = None;
         newer.required_tools_present = None;
-        newer.last_safe_read_only_tool_call_at = None;
+        newer.designated_safe_tool_observed_at = None;
         newer.last_observed_at = "2026-07-18T00:01:00Z".to_owned();
 
         let sessions = vec![newer.clone(), completed.clone()];
@@ -1450,7 +1452,7 @@ mod tests {
             .iter()
             .all(|check| check.status() == ConnectionCheckStatus::Passed));
 
-        newer.terminal_protocol_failure_code = Some("later_crash".to_owned());
+        newer.terminal_finding_id = Some("finding.later_crash".to_owned());
         let sessions = vec![newer.clone(), completed];
         let checks = host_session_checks(&host, "revision_current", &sessions, Some(&newer))
             .expect("terminal diagnostic checks");
@@ -1489,9 +1491,8 @@ mod tests {
     fn actual_current_protocol_incompatibility_fails_only_demonstrated_checks() {
         let host = host("future");
         let mut session = managed_session("future", true);
-        session.last_safe_read_only_tool_call_at = None;
-        session.terminal_protocol_failure_code = Some("protocol_contract_mismatch".to_owned());
-        session.terminal_protocol_failure_details = Some("read-only call failed".to_owned());
+        session.designated_safe_tool_observed_at = None;
+        session.terminal_finding_id = Some("finding.protocol_contract_mismatch".to_owned());
         let checks = host_session_checks(
             &host,
             "revision_current",
@@ -1521,9 +1522,8 @@ mod tests {
         session.initialized_notification_at = None;
         session.tools_list_observed_at = None;
         session.required_tools_present = None;
-        session.last_safe_read_only_tool_call_at = None;
-        session.terminal_protocol_failure_code = Some("mcp_transport_failure".to_owned());
-        session.terminal_protocol_failure_details = Some("initialize failed".to_owned());
+        session.designated_safe_tool_observed_at = None;
+        session.terminal_finding_id = Some("finding.initialize_failed".to_owned());
         let checks = host_session_checks(
             &host,
             "revision_current",
@@ -1543,9 +1543,8 @@ mod tests {
         let mut session = managed_session("future", true);
         session.tools_list_observed_at = None;
         session.required_tools_present = None;
-        session.last_safe_read_only_tool_call_at = None;
-        session.terminal_protocol_failure_code = Some("mcp_transport_failure".to_owned());
-        session.terminal_protocol_failure_details = Some("tools/list failed".to_owned());
+        session.designated_safe_tool_observed_at = None;
+        session.terminal_finding_id = Some("finding.tools_list_failed".to_owned());
         let checks = host_session_checks(
             &host,
             "revision_current",

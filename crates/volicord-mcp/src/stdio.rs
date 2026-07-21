@@ -11,7 +11,11 @@ use crate::{
     VOLICORD_MCP_VERIFICATION_VALUE,
 };
 use sha2::{Digest, Sha256};
-use volicord_types::{HostKind, ManagedMcpClientInfo};
+use volicord_types::{
+    DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
+    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    HostKind, IntegrationRevision, ManagedMcpClientInfo,
+};
 
 const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
 const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord.codex-mcp-thread-binding\0";
@@ -105,7 +109,7 @@ where
 
     match transport_result {
         Ok(()) => {
-            if !state.terminal_protocol_failure_recorded {
+            if !state.terminal_finding_recorded {
                 record_mcp_graceful_close(
                     &adapter.runtime_home,
                     &state.runtime_session_id,
@@ -116,14 +120,17 @@ where
             Ok(())
         }
         Err(error) => {
-            record_mcp_terminal_protocol_failure(
-                &adapter.runtime_home,
-                &state.runtime_session_id,
-                "mcp_transport_failure",
-                None,
-                &authoritative_observation_timestamp(),
-            )
-            .map_err(McpAdapterError::Store)?;
+            let observed_at = authoritative_observation_timestamp();
+            let finding = terminal_finding(
+                &adapter,
+                &state,
+                "mcp.transport_failed",
+                "transport",
+                "managed stdio transport failed",
+                &observed_at,
+            )?;
+            record_mcp_terminal_finding(&adapter.runtime_home, &finding)
+                .map_err(McpAdapterError::Store)?;
             Err(error)
         }
     }
@@ -579,7 +586,7 @@ pub(crate) struct ConnectionState {
     pub(crate) managed_stdio_binding_active: bool,
     pub(crate) launch_origin: &'static str,
     status_method_call_count: u64,
-    terminal_protocol_failure_recorded: bool,
+    terminal_finding_recorded: bool,
     codex_binding: CodexManagedBinding,
     deferred_tools_list_serialized_bytes: Option<u64>,
 }
@@ -593,7 +600,7 @@ impl Default for ConnectionState {
             managed_stdio_binding_active: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
             status_method_call_count: 0,
-            terminal_protocol_failure_recorded: false,
+            terminal_finding_recorded: false,
             codex_binding: CodexManagedBinding::NotApplicable,
             deferred_tools_list_serialized_bytes: None,
         }
@@ -617,14 +624,6 @@ pub(crate) struct NegotiatedMcpSession {
 }
 
 impl NegotiatedMcpSession {
-    fn client_info(&self) -> ManagedMcpClientInfo {
-        ManagedMcpClientInfo::new(
-            self.attempted_client_name.clone(),
-            self.attempted_client_version.clone(),
-        )
-        .expect("validated initialize clientInfo remains valid in connection state")
-    }
-
     const fn requires_initialized_notification(&self) -> bool {
         matches!(
             self.selected_profile.messages().initialized_notification(),
@@ -907,12 +906,14 @@ pub(crate) fn handle_json_rpc_request(
     let response = handle_json_rpc_request_inner(adapter, state, request)?;
     let failure = if method == "initialize" && response.get("error").is_some() {
         Some((
-            "mcp_initialize_failed",
+            "mcp.initialize_failed",
+            "initialize",
             "managed-host initialize returned a JSON-RPC error",
         ))
     } else if method == "tools/list" && response.get("error").is_some() {
         Some((
-            "mcp_tools_list_failed",
+            "mcp.tools_list_failed",
+            "tools_list",
             "managed-host tools/list returned a JSON-RPC error",
         ))
     } else if safe_tool_name.is_some()
@@ -920,14 +921,15 @@ pub(crate) fn handle_json_rpc_request(
         && safe_tool_call_response_failed(&response)
     {
         Some((
-            "mcp_safe_tool_call_failed",
+            "mcp.safe_tool_call_failed",
+            "safe_tool_call",
             "managed-host designated read-only tool call returned an error",
         ))
     } else {
         None
     };
-    if let Some((code, details)) = failure {
-        record_current_session_protocol_failure(adapter, state, code, details)?;
+    if let Some((code, stage, summary)) = failure {
+        record_current_session_protocol_failure(adapter, state, code, stage, summary)?;
     }
     Ok(response)
 }
@@ -944,15 +946,29 @@ fn handle_json_rpc_request_inner(
     let response_id = request.id.clone();
     let result = match request.method.as_str() {
         "initialize" => {
+            if let Some((client_info, requested_protocol_version)) =
+                parsed_initialize_attempt(request.params.as_ref())
+            {
+                if !state.runtime_session_id.is_empty() {
+                    record_mcp_initialize_attempt(
+                        &adapter.runtime_home,
+                        &state.runtime_session_id,
+                        &client_info,
+                        &requested_protocol_version,
+                        &authoritative_observation_timestamp(),
+                    )
+                    .map_err(McpAdapterError::Store)?;
+                }
+            }
             let mcp_session = match validate_initialize_params(&response_id, request.params) {
                 Ok(mcp_session) => mcp_session,
                 Err(error) => return Ok(error),
             };
             if !state.runtime_session_id.is_empty() {
-                record_mcp_initialize(
+                record_mcp_initialize_completion(
                     &adapter.runtime_home,
                     &state.runtime_session_id,
-                    &mcp_session.client_info(),
+                    mcp_session.selected_profile.revision().as_str(),
                     &authoritative_observation_timestamp(),
                 )
                 .map_err(McpAdapterError::Store)?;
@@ -1075,21 +1091,69 @@ fn record_current_session_protocol_failure(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     code: &str,
-    details: &str,
+    stage: &str,
+    summary: &str,
 ) -> Result<(), McpAdapterError> {
-    if state.runtime_session_id.is_empty() || state.terminal_protocol_failure_recorded {
+    if state.runtime_session_id.is_empty() || state.terminal_finding_recorded {
         return Ok(());
     }
-    record_mcp_terminal_protocol_failure(
-        &adapter.runtime_home,
-        &state.runtime_session_id,
-        code,
-        Some(details),
-        &authoritative_observation_timestamp(),
-    )
-    .map_err(McpAdapterError::Store)?;
-    state.terminal_protocol_failure_recorded = true;
+    let observed_at = authoritative_observation_timestamp();
+    let finding = terminal_finding(adapter, state, code, stage, summary, &observed_at)?;
+    record_mcp_terminal_finding(&adapter.runtime_home, &finding).map_err(McpAdapterError::Store)?;
+    state.terminal_finding_recorded = true;
     Ok(())
+}
+
+#[derive(Serialize)]
+struct McpTerminalFindingFacts<'a> {
+    summary: &'a str,
+}
+
+impl DiagnosticFactSource for McpTerminalFindingFacts<'_> {}
+
+fn terminal_finding(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+    code: &str,
+    stage: &str,
+    summary: &str,
+    observed_at: &str,
+) -> Result<DiagnosticFinding, McpAdapterError> {
+    let runtime = mcp_runtime_session(&adapter.runtime_home, &state.runtime_session_id)
+        .map_err(McpAdapterError::Store)?
+        .ok_or_else(|| McpAdapterError::Protocol("MCP runtime session disappeared".to_owned()))?;
+    let diagnostic_error = |error: volicord_types::DiagnosticError| {
+        McpAdapterError::Protocol(format!("terminal diagnostic finding is invalid: {error}"))
+    };
+    DiagnosticFinding::try_new(
+        DiagnosticFindingId::parse(format!("finding.{}.terminal", state.runtime_session_id))
+            .map_err(diagnostic_error)?,
+        DiagnosticCode::parse(code).map_err(diagnostic_error)?,
+        DiagnosticDomain::parse("mcp").map_err(diagnostic_error)?,
+        DiagnosticStage::parse(stage).map_err(diagnostic_error)?,
+        DiagnosticSeverity::Error,
+        DiagnosticSource::parse("mcp_stdio").map_err(diagnostic_error)?,
+        DiagnosticSubject::try_new("runtime_session", &state.runtime_session_id)
+            .map_err(diagnostic_error)?,
+        DiagnosticFacts::project(&McpTerminalFindingFacts { summary }).map_err(diagnostic_error)?,
+        UtcTimestamp::parse(observed_at).map_err(|_| {
+            McpAdapterError::Protocol("terminal finding timestamp is invalid".to_owned())
+        })?,
+    )
+    .map_err(diagnostic_error)?
+    .with_connection_id(AgentConnectionId::new(runtime.connection_internal_id))
+    .map_err(diagnostic_error)?
+    .with_runtime_session_id(AgentRuntimeSessionId::new(state.runtime_session_id.clone()))
+    .map_err(diagnostic_error)
+    .and_then(|finding| {
+        IntegrationRevision::parse(runtime.connection_integration_revision)
+            .map(|revision| finding.with_integration_revision(revision))
+            .map_err(|_| {
+                McpAdapterError::Protocol(
+                    "runtime session integration revision is invalid".to_owned(),
+                )
+            })
+    })
 }
 
 fn required_tool_set_present(
@@ -1491,6 +1555,17 @@ fn validate_initialize_params(
     })
 }
 
+fn parsed_initialize_attempt(params: Option<&Value>) -> Option<(ManagedMcpClientInfo, String)> {
+    let object = params?.as_object()?;
+    let requested_protocol_version = object.get("protocolVersion")?.as_str()?.to_owned();
+    let client_info = object.get("clientInfo")?.as_object()?;
+    let client_name = client_info.get("name")?.as_str()?;
+    let client_version = client_info.get("version")?.as_str()?;
+    ManagedMcpClientInfo::new(client_name, client_version)
+        .ok()
+        .map(|client_info| (client_info, requested_protocol_version))
+}
+
 pub(crate) fn validate_optional_object_params(
     id: &Value,
     params: Option<Value>,
@@ -1823,7 +1898,7 @@ pub(crate) fn call_tool_result(
             || tool_name == LIST_PROJECTS_TOOL_NAME)
         && !state.runtime_session_id.is_empty()
     {
-        record_mcp_safe_read_only_tool_call(
+        record_mcp_designated_safe_tool_observation(
             &adapter.runtime_home,
             &state.runtime_session_id,
             &authoritative_observation_timestamp(),

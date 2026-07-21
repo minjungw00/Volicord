@@ -207,10 +207,21 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
     let session = latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?
         .ok_or("Codex compatibility managed runtime session should be recorded")?;
     assert_eq!(session.session_source, McpRuntimeSessionSource::ManagedHost);
-    assert_eq!(session.client_name.as_deref(), Some("codex-mcp-client"));
     assert_eq!(
-        session.client_version.as_deref(),
+        session.attempted_client_name.as_deref(),
+        Some("codex-mcp-client")
+    );
+    assert_eq!(
+        session.attempted_client_version.as_deref(),
         Some(CODEX_COMPATIBILITY_VERSION)
+    );
+    assert_eq!(
+        session.requested_protocol_version.as_deref(),
+        Some(CODEX_COMPATIBILITY_REVISION)
+    );
+    assert_eq!(
+        session.selected_protocol_version.as_deref(),
+        Some(CODEX_COMPATIBILITY_REVISION)
     );
     assert_eq!(
         session.negotiated_protocol_version.as_deref(),
@@ -220,7 +231,7 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
     assert!(session.initialized_notification_at.is_some());
     assert!(session.tools_list_observed_at.is_some());
     assert_eq!(session.required_tools_present, Some(true));
-    assert!(session.last_safe_read_only_tool_call_at.is_some());
+    assert!(session.designated_safe_tool_observed_at.is_some());
     Ok(())
 }
 
@@ -256,7 +267,7 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
         assert!(partial.initialized_notification_at.is_none());
         assert!(partial.tools_list_observed_at.is_none());
         assert!(partial.required_tools_present.is_none());
-        assert!(partial.last_safe_read_only_tool_call_at.is_none());
+        assert!(partial.designated_safe_tool_observed_at.is_none());
 
         let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
         let partial_report =
@@ -282,7 +293,7 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
                         && session.initialized_notification_at.is_some()
                         && session.tools_list_observed_at.is_some()
                         && session.required_tools_present == Some(true)
-                        && session.last_safe_read_only_tool_call_at.is_some()
+                        && session.designated_safe_tool_observed_at.is_some()
                 })
         );
     }
@@ -891,7 +902,7 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
             process_started_at: "2000-01-01T00:00:00Z".to_owned(),
         },
     )?;
-    assert!(abandoned.terminal_protocol_failure_code.is_none());
+    assert!(abandoned.terminal_finding_id.is_none());
     assert!(abandoned.graceful_close_at.is_none());
 
     fixture.run_successful_managed_mcp_with_guard(
@@ -1505,7 +1516,7 @@ impl OperationalFixture {
         let started = Instant::now();
         loop {
             if latest_current_managed_runtime_session(&self.runtime_home, connection_id)?
-                .is_some_and(|session| session.last_safe_read_only_tool_call_at.is_some())
+                .is_some_and(|session| session.designated_safe_tool_observed_at.is_some())
             {
                 break;
             }
@@ -1680,7 +1691,7 @@ impl OperationalFixture {
             |row| row.get(0),
         )?;
         let complete_cli_count: i64 = registry.query_row(
-            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1 AND session_source = 'cli_preflight' AND initialize_completed_at IS NOT NULL AND initialized_notification_at IS NOT NULL AND tools_list_observed_at IS NOT NULL AND required_tools_present = 1 AND last_safe_read_only_tool_call_at IS NOT NULL",
+            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1 AND session_source = 'cli_preflight' AND initialize_completed_at IS NOT NULL AND initialized_notification_at IS NOT NULL AND tools_list_observed_at IS NOT NULL AND required_tools_present = 1 AND designated_safe_tool_observed_at IS NOT NULL",
             [connection_id],
             |row| row.get(0),
         )?;

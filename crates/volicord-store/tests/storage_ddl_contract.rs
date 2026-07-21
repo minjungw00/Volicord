@@ -23,10 +23,10 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 39);
-    assert_eq!(metadata.columns.len(), 484);
-    assert_eq!(metadata.indexes.len(), 65);
-    assert_eq!(metadata.constraints.len(), 37);
+    assert_eq!(metadata.tables.len(), 42);
+    assert_eq!(metadata.columns.len(), 502);
+    assert_eq!(metadata.indexes.len(), 69);
+    assert_eq!(metadata.constraints.len(), 39);
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -81,6 +81,53 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
             && column.name == "project_integration_revision"
             && column.not_null
     }));
+    let finding_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::Registry
+                && column.table == "diagnostic_findings"
+        })
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    for required in [
+        "finding_id",
+        "code",
+        "domain",
+        "stage",
+        "severity",
+        "facts_json",
+        "source",
+        "connection_internal_id",
+        "project_internal_id",
+        "runtime_session_id",
+        "integration_revision",
+        "observed_at",
+    ] {
+        assert!(finding_columns.contains(&required), "missing {required}");
+    }
+    let runtime_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::Registry
+                && column.table == "mcp_runtime_sessions"
+        })
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    for required in [
+        "attempted_client_name",
+        "attempted_client_version",
+        "requested_protocol_version",
+        "selected_protocol_version",
+        "negotiated_protocol_version",
+        "initialize_completed_at",
+        "tools_list_observed_at",
+        "designated_safe_tool_observed_at",
+        "terminal_finding_id",
+    ] {
+        assert!(runtime_columns.contains(&required), "missing {required}");
+    }
     assert!(metadata.tables.iter().any(|relation| {
         relation.database == StorageDatabaseKind::ProjectState
             && relation.name == "agent_sessions_project_integration_revision_immutable"
@@ -107,11 +154,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:265f31187bf96e6869817449e37bd54622c5bd2e364362fab351fffc8280f9cb"
+        "sha256:1a311d68e5862aa60d946ea8e4158830a79c9b6d7675cf75e3842b4bd60c8aa8"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:4fb752c4487ea46b186ebc655261231a49e412e480f974966ce24dd6bd0e4c37"
+        "sha256:8d26d6c208cbd5f9e6e7c78a893fdea956726ef10ecf6e7f3be9df8057e9f485"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -145,12 +192,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:265f31187bf96e6869817449e37bd54622c5bd2e364362fab351fffc8280f9cb\",",
+            "{\"canonical_ddl_digest\":\"sha256:1a311d68e5862aa60d946ea8e4158830a79c9b6d7675cf75e3842b4bd60c8aa8\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:4fb752c4487ea46b186ebc655261231a49e412e480f974966ce24dd6bd0e4c37\"}"
+            "\"integrity_constraints_digest\":\"sha256:8d26d6c208cbd5f9e6e7c78a893fdea956726ef10ecf6e7f3be9df8057e9f485\"}"
         )
     );
     Ok(())

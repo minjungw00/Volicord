@@ -90,6 +90,40 @@ CLI 오류 채널에 남깁니다.
 다시 만들 수 있습니다. 읽기와 일반 실행은 실패를 분류하는 동안 데이터를 repair,
 migration, 추정, 암묵적 교체하면 안 됩니다.
 
+## 구조화된 Diagnostic Finding
+
+공유 `DiagnosticFinding`은 제품 전체에서 사용하는 구조화된 diagnostic 단위입니다.
+한도가 있는 안정적인 finding ID, namespaced code, domain, stage, severity, producer source,
+typed subject, 안전하게 projection한 facts, 0개 이상의 cause reference와 권장 action,
+관찰 timestamp, 선택적인 correlation, Connection, project, runtime-session, integration
+revision 좌표를 담습니다. Domain 담당자는 closed code vocabulary와 오류를 finding으로
+변환하는 규칙을 계속 담당합니다.
+
+Safe facts는 저장하거나 렌더링하기 전에 한도를 검증합니다. Typed projection은 민감한
+key를 가리고 text 크기, collection 크기, nesting depth를 제한합니다. Raw environment map,
+request body, tool argument set, credential, 제한 없는 child-process output은 diagnostic
+fact가 아닙니다. Producer는 이런 입력을 finding에 옮기는 대신 한도가 있는 안전한 요약을
+제공해야 합니다.
+
+Registry는 공유 finding을 구조화된 column과 한도가 있는 subject, facts, action JSON으로
+저장합니다. Cause reference는 별도 edge입니다. 모든 edge는 기존 finding을 가리켜야 하며,
+중복 edge와 self edge는 거부하고, 검증된 graph 삽입과 Registry constraint가 cycle을
+거부하며, 한도가 있는 traversal은 결정적입니다. Finding graph 삽입은 transaction
+하나입니다. 유효하지 않은 node, 없는 cause, 중복 edge, cycle이 있으면 부분 graph나
+dangling edge가 남지 않습니다. MCP terminal finding 삽입과 runtime-session 연결도 같은
+방식으로 transaction 하나에서 수행할 수 있습니다.
+
+Registry를 열기 전에 실패하면 공유 stderr fallback envelope은 아래 정확한 형태의 한도가
+있는 단일 행 하나뿐입니다.
+
+```text
+VOLICORD_DIAGNOSTIC_V1 <bounded-json>
+```
+
+JSON은 정확히 현재 공유 `DiagnosticFinding` 하나입니다. Format과 parse는 공유 필드 검증,
+safe-fact 한도, 정확한 prefix, 단일 행 형태, 전체 envelope byte 한도를 집행합니다. 이
+fallback은 환경 dump를 허용하지 않으며 두 번째 diagnostic model을 만들지 않습니다.
+
 ## 합성 값과 기본값으로 합치기 금지
 
 다음 값을 사용해 실패를 일반 값으로 바꾸면 안 됩니다.
@@ -116,5 +150,7 @@ migration, 추정, 암묵적 교체하면 안 됩니다.
 
 - 공개 API 응답 분기와 공개 코드: [API 오류](api/errors.md).
 - 영속 기록 계약: [저장 기록](storage-records.md).
+- Runtime Home 배치와 Registry 이전 stderr fallback 경계:
+  [런타임 경계](runtime-boundaries.md).
 - 메서드별 저장 효과와 효과 없음 분기: [저장 효과](storage-effects.md).
 - 관리 검증 및 repair 명령: [관리 CLI](admin-cli.md).

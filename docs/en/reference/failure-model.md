@@ -97,6 +97,44 @@ Recoverable state may be regenerated only through an explicit owner-defined
 verify or repair flow. Reads and ordinary execution must not repair, migrate,
 guess, or silently replace the data while classifying the failure.
 
+## Structured Diagnostic Findings
+
+The shared `DiagnosticFinding` is the product-wide structured diagnostic unit.
+It carries a bounded stable finding ID, namespaced code, domain, stage,
+severity, producer source, typed subject, safe projected facts, zero or more
+cause references and recommended actions, an observation timestamp, and
+optional correlation, Connection, project, runtime-session, and integration
+revision coordinates. Domain owners retain their closed code vocabularies and
+error-to-finding conversion rules.
+
+Safe facts are bounded before storage or rendering. Their typed projection
+redacts sensitive keys and limits text size, collection size, and nesting
+depth. Raw environment maps, request bodies, tool argument sets, credentials,
+and unrestricted child-process output are not diagnostic facts. A producer
+must supply a bounded safe summary instead of moving those inputs into a
+finding.
+
+The Registry stores each shared finding as structured columns plus bounded
+subject, facts, and action JSON. Cause references are separate edges. Every
+edge must resolve to an existing finding, duplicate and self edges are
+rejected, cycles are rejected by validated graph insertion and the Registry
+constraint, and bounded traversal is deterministic. Inserting a finding graph
+is one transaction: an invalid node, missing cause, duplicate edge, or cycle
+leaves no partial graph or dangling edge. MCP terminal finding insertion and
+runtime-session linking may likewise be one transaction.
+
+When failure occurs before the Registry can be opened, the only shared stderr
+fallback envelope is one bounded line in this exact form:
+
+```text
+VOLICORD_DIAGNOSTIC_V1 <bounded-json>
+```
+
+The JSON is exactly one current shared `DiagnosticFinding`. Formatting and
+parsing enforce the shared field validation, safe-fact bounds, exact prefix,
+single-line shape, and whole-envelope byte limit. The fallback does not permit
+environment dumps or create a second diagnostic model.
+
 ## No synthetic or default conflation
 
 Failure must not be converted into an ordinary value by using:
@@ -126,6 +164,8 @@ Adjacent owners:
 
 - Public API branch routing and public codes: [API Errors](api/errors.md).
 - Persisted record contracts: [Storage Records](storage-records.md).
+- Runtime Home placement and the pre-Registry stderr fallback boundary:
+  [Runtime Boundaries](runtime-boundaries.md).
 - Method-to-storage effects and no-effect branches:
   [Storage Effects](storage-effects.md).
 - Administrative verification and repair commands:

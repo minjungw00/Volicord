@@ -127,6 +127,12 @@
       "reason": "UUID version 4 is an externally standardized identifier algorithm."
     },
     {
+      "path": "crates/volicord-types/src/diagnostics.rs",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The bootstrap diagnostic parser and formatter own this exact bounded envelope identifier."
+    },
+    {
       "path": "crates/volicord-core/src/methods/tests/operation_result.rs",
       "needle": "v1.{cursor}",
       "classification": "negative_test",
@@ -143,6 +149,36 @@
       "needle": "terminology_map_v1",
       "classification": "maintenance_metadata",
       "reason": "The documentation-maintenance catalog, not a product compatibility contract, owns this schema key."
+    },
+    {
+      "path": "docs/doc-index.yaml",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The owner catalog routes the exact bootstrap diagnostic envelope contract."
+    },
+    {
+      "path": "docs/en/reference/failure-model.md",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The failure owner defines the exact bootstrap diagnostic envelope contract."
+    },
+    {
+      "path": "docs/en/reference/runtime-boundaries.md",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The runtime owner defines where the exact bootstrap diagnostic envelope may be emitted."
+    },
+    {
+      "path": "docs/ko/reference/failure-model.md",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The Korean failure owner defines the exact bootstrap diagnostic envelope contract."
+    },
+    {
+      "path": "docs/ko/reference/runtime-boundaries.md",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The Korean runtime owner defines where the exact bootstrap diagnostic envelope may be emitted."
     },
     {
       "path": "docs/en/user-guide/installation.md",

@@ -42,6 +42,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/schema/project.sql` | Canonical project Store DDL source. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home and Store bootstrap. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection records, project allowlists, managed fingerprints, and persisted verification-report boundary. |
+| `crates/volicord-store/src/diagnostic_findings.rs` | Transactional structured finding and cause-graph persistence, runtime terminal-finding links, current-coordinate queries, and bounded deterministic traversal. |
 | `crates/volicord-store/src/operational_sessions.rs` | Managed runtime sessions, protocol milestones, revision-scoped project sessions, and exact cross-database bindings. |
 | `crates/volicord-store/src/workflow_records.rs` | Workflow record reads and writes. |
 | `crates/volicord-store/src/core_pipeline/` | Core-open, validation, replay, commit, and mutation application. |

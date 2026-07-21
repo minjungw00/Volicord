@@ -23,6 +23,10 @@ use crate::{
 
 /// The only current JSON representation version for [`DiagnosticReport`].
 pub const DIAGNOSTIC_REPORT_SCHEMA_VERSION: u32 = 1;
+/// Stable prefix for one pre-Registry stderr diagnostic line.
+pub const BOOTSTRAP_DIAGNOSTIC_ENVELOPE_PREFIX: &str = "VOLICORD_DIAGNOSTIC_V1";
+/// Maximum UTF-8 byte length of one complete pre-Registry stderr envelope.
+pub const MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES: usize = 64 * 1024;
 /// Stable fallback code for failures that cannot be classified more narrowly.
 pub const INTERNAL_UNEXPECTED_FAILURE_CODE: &str = "internal.unexpected_failure";
 /// Maximum UTF-8 byte length of a namespaced diagnostic code.
@@ -265,6 +269,48 @@ impl fmt::Display for DiagnosticStage {
 }
 
 impl FromStr for DiagnosticStage {
+    type Err = DiagnosticError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
+    }
+}
+
+/// Bounded producer identity for a diagnostic finding.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
+#[serde(transparent)]
+pub struct DiagnosticSource(String);
+
+impl DiagnosticSource {
+    /// Validates one stable lowercase producer name.
+    pub fn parse(value: impl Into<String>) -> Result<Self, DiagnosticError> {
+        let value = value.into();
+        validate_name("diagnostic source", &value)?;
+        Ok(Self(value))
+    }
+
+    /// Returns the stable producer spelling.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for DiagnosticSource {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::parse(String::deserialize(deserializer)?).map_err(de::Error::custom)
+    }
+}
+
+impl fmt::Display for DiagnosticSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for DiagnosticSource {
     type Err = DiagnosticError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
@@ -744,6 +790,7 @@ pub struct DiagnosticFinding {
     domain: DiagnosticDomain,
     stage: DiagnosticStage,
     severity: DiagnosticSeverity,
+    source: DiagnosticSource,
     subject: DiagnosticSubject,
     facts: DiagnosticFacts,
     causes: Vec<DiagnosticCause>,
@@ -769,6 +816,7 @@ struct DiagnosticFindingWire {
     domain: DiagnosticDomain,
     stage: DiagnosticStage,
     severity: DiagnosticSeverity,
+    source: DiagnosticSource,
     subject: DiagnosticSubject,
     facts: DiagnosticFacts,
     causes: Vec<DiagnosticCause>,
@@ -793,6 +841,7 @@ impl<'de> Deserialize<'de> for DiagnosticFinding {
             wire.domain,
             wire.stage,
             wire.severity,
+            wire.source,
             wire.subject,
             wire.facts,
             wire.observed_at,
@@ -829,6 +878,7 @@ impl DiagnosticFinding {
         domain: DiagnosticDomain,
         stage: DiagnosticStage,
         severity: DiagnosticSeverity,
+        source: DiagnosticSource,
         subject: DiagnosticSubject,
         facts: DiagnosticFacts,
         observed_at: UtcTimestamp,
@@ -841,6 +891,7 @@ impl DiagnosticFinding {
             domain,
             stage,
             severity,
+            source,
             subject,
             facts,
             causes: Vec::new(),
@@ -879,9 +930,10 @@ impl DiagnosticFinding {
         Self::try_new(
             id,
             DiagnosticCode::parse(INTERNAL_UNEXPECTED_FAILURE_CODE)?,
-            DiagnosticDomain::parse(owner)?,
+            DiagnosticDomain::parse(owner.clone())?,
             stage,
             DiagnosticSeverity::Error,
+            DiagnosticSource::parse(owner.clone())?,
             DiagnosticSubject::try_new("operation", operation)?,
             facts,
             observed_at,
@@ -1051,6 +1103,11 @@ impl DiagnosticFinding {
         self.severity
     }
 
+    /// Returns the stable finding producer.
+    pub fn source(&self) -> &DiagnosticSource {
+        &self.source
+    }
+
     /// Returns the bounded subject.
     pub fn subject(&self) -> &DiagnosticSubject {
         &self.subject
@@ -1110,6 +1167,41 @@ struct UnexpectedFailureFacts {
 }
 
 impl DiagnosticFactSource for UnexpectedFailureFacts {}
+
+/// Serializes one shared finding as a bounded single-line stderr fallback.
+pub fn format_bootstrap_diagnostic_envelope(
+    finding: &DiagnosticFinding,
+) -> Result<String, DiagnosticError> {
+    let json = serde_json::to_string(finding)
+        .map_err(|_| invalid("bootstrap diagnostic finding could not be serialized"))?;
+    let envelope = format!("{BOOTSTRAP_DIAGNOSTIC_ENVELOPE_PREFIX} {json}");
+    if envelope.len() > MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES {
+        return Err(invalid(format!(
+            "bootstrap diagnostic envelope exceeds {MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES} UTF-8 bytes"
+        )));
+    }
+    Ok(envelope)
+}
+
+/// Parses one bounded single-line stderr fallback into the shared finding model.
+pub fn parse_bootstrap_diagnostic_envelope(
+    envelope: &str,
+) -> Result<DiagnosticFinding, DiagnosticError> {
+    if envelope.is_empty()
+        || envelope.len() > MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES
+        || envelope.contains(['\r', '\n'])
+    {
+        return Err(invalid(
+            "bootstrap diagnostic envelope is not one bounded line",
+        ));
+    }
+    let json = envelope
+        .strip_prefix(BOOTSTRAP_DIAGNOSTIC_ENVELOPE_PREFIX)
+        .and_then(|value| value.strip_prefix(' '))
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| invalid("bootstrap diagnostic envelope prefix is invalid"))?;
+    serde_json::from_str(json).map_err(|_| invalid("bootstrap diagnostic finding is invalid"))
+}
 
 /// Aggregate status of one diagnostic report.
 #[derive(
@@ -1454,6 +1546,7 @@ mod tests {
             DiagnosticDomain::parse("test").unwrap(),
             DiagnosticStage::parse("verification").unwrap(),
             DiagnosticSeverity::Error,
+            DiagnosticSource::parse("test_runner").unwrap(),
             DiagnosticSubject::try_new("check", id).unwrap(),
             DiagnosticFacts::project(&SafeFacts {
                 actual: "failed".to_owned(),
@@ -1742,6 +1835,7 @@ mod tests {
             DiagnosticDomain::parse("security").unwrap(),
             DiagnosticStage::parse("projection").unwrap(),
             DiagnosticSeverity::Warning,
+            DiagnosticSource::parse("test_runner").unwrap(),
             DiagnosticSubject::try_new("report", "diagnostic-report").unwrap(),
             facts,
             timestamp(),
@@ -1778,5 +1872,17 @@ mod tests {
         let mut unsupported = value;
         unsupported["schema_version"] = json!(2);
         assert!(serde_json::from_value::<DiagnosticReport>(unsupported).is_err());
+    }
+
+    #[test]
+    fn bootstrap_envelope_round_trips_the_shared_bounded_finding() {
+        let envelope = format_bootstrap_diagnostic_envelope(&finding("finding.bootstrap")).unwrap();
+        assert!(envelope.starts_with("VOLICORD_DIAGNOSTIC_V1 {"));
+        assert!(envelope.len() <= MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES);
+        assert_eq!(
+            parse_bootstrap_diagnostic_envelope(&envelope).unwrap(),
+            finding("finding.bootstrap")
+        );
+        assert!(parse_bootstrap_diagnostic_envelope(&format!("{envelope}\n")).is_err());
     }
 }
