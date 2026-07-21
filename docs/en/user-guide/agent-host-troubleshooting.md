@@ -127,12 +127,16 @@ retains stage-specific detail, including `details.self_test.diagnostic_code`,
 inspecting or sharing bounded Registry facts such as exit code, timeout,
 missing tools, or stderr excerpt.
 
-For `mcp.protocol.unsupported_revision`, compare
-`attempted_client_name`/`attempted_client_version`, `requested_revision`, and
-`production_supported_revisions`. The ordinary concise output already shows
-these values and the blocked `required_tools` and `tool_round_trip` checks. Use
-`action.mcp.use_supported_protocol_revision`; do not replace it with a generic
-inspection step. In verbose output, keep the requested, selected, and
+For `mcp.protocol.unsupported_version`, compare `requested_revision` with
+`production_supported_revisions`. For `mcp.protocol.counter_offer_rejected`,
+also compare `selected_revision`; the absence of `negotiated_revision` means
+the handshake did not complete. For `mcp.protocol.generation_mismatch`, confirm
+that the requested revision belongs to the tracked non-production handshake
+generation. In all three cases, retain `attempted_client_name` and
+`attempted_client_version` and use
+`action.mcp.use_supported_protocol_revision`. The ordinary concise output shows
+the applicable bounded facts and the blocked `required_tools` and
+`tool_round_trip` checks. In verbose output, keep requested, selected, and
 negotiated revisions distinct, and keep actual MCP peer `clientInfo` distinct
 from the PATH executable probe.
 

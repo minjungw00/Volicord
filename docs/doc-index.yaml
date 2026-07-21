@@ -55,9 +55,10 @@ applicability:
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
-  mcp_protocol_2025_11_25:
-    description: MCP protocol version 2025-11-25 supported by the local `volicord mcp --stdio`
-      process.
+  mcp_initialize_profiles:
+    description: Production-supported MCP initialize-handshake revisions 2024-10-07, 2024-11-05,
+      2025-03-26, 2025-06-18, and 2025-11-25, as declared by the pinned manifest; tracked
+      pre-release generations remain excluded from production support.
   doc_index_schema_v3:
     description: Documentation index metadata schema version 3 used by `docs/doc-index.yaml` and
       `docs-check`.
@@ -350,7 +351,7 @@ documents:
   last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - new users
   - operators
@@ -437,7 +438,7 @@ documents:
   last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - new users
   - operators
@@ -533,7 +534,7 @@ documents:
   last_verified_on: '2026-07-20'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - operators
   - agent integrators
@@ -562,7 +563,7 @@ documents:
   last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - operators
   - agent integrators
@@ -593,7 +594,7 @@ documents:
   last_verified_on: '2026-07-19'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - operators
   - agent integrators
@@ -685,8 +686,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -718,7 +719,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - implementers
   - agent integrators
@@ -840,8 +841,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1017,7 +1018,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - implementers
   - agent integrators
@@ -1261,7 +1262,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - implementers
   - agent integrators
@@ -1329,8 +1330,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1647,7 +1648,7 @@ documents:
   last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - implementers
   - agent integrators
@@ -1686,7 +1687,7 @@ documents:
   last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - agent integrators
   - implementers
@@ -2506,8 +2507,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-05-06'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2692,7 +2693,7 @@ documents:
   last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
-  - mcp_protocol_2025_11_25
+  - mcp_initialize_profiles
   primary_audience:
   - agent integrators
   - agents

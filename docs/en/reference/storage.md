@@ -17,6 +17,7 @@ enabled_capabilities:
   - exact_operation_result
   - guard_reconciliation
   - managed_codex_connection
+  - operational_mcp_sessions
   - project_continuity
   - user_action_cli_resolution
 ```

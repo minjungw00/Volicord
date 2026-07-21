@@ -51,6 +51,17 @@ Durable tests should cover, as applicable:
 - MCP rejection of hidden context and CLI-only UserAction resolution;
 - authoritative MCP runtime-session source separation, milestone ordering,
   current revisions, project binding, and diagnostics non-authority;
+- exact parity between the production protocol registry and every
+  `production_supported=true` released initialize-handshake manifest entry,
+  with tracked pre-release generations excluded from production support;
+- exact-match and counter-offer negotiation plus profile-specific initialize
+  capabilities, batching, `tools/list`, and `tools/call` wire projection;
+- independently pinned Codex host fixtures that are not derived from the
+  production protocol registry, with CLI conformance evidence kept separate
+  from actual `managed_host` observations;
+- typed diagnostic codes and bounded/redacted facts, transactional finding and
+  cause persistence, deterministic roots, dependency-driven `Blocked` checks,
+  and equivalent concise, verbose, and lossless JSON projections of one report;
 - Guard manifest exact-shape and owner binding, hash-free policy commands versus
   hash-bound runtime commands, wrapper/file drift, platform-independent script
   executable expectations, current-owned hook observations, and older-event

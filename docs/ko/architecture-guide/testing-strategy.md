@@ -48,6 +48,16 @@ sync가 pre-release 분류를 승격하지도 않습니다.
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
 - 권위 있는 MCP runtime-session source 분리, milestone ordering, 현재 revision,
   프로젝트 binding, diagnostics 비권위성
+- 프로덕션 protocol registry와 `production_supported=true`인 모든 released
+  initialize-handshake manifest entry의 정확한 일치 및 프로덕션 지원에서 추적 중인
+  pre-release generation 제외
+- exact-match와 counter-offer 협상, profile별 initialize capability, batching,
+  `tools/list`, `tools/call` wire projection
+- 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정한 Codex host fixture,
+  CLI conformance evidence와 실제 `managed_host` 관찰의 분리
+- typed diagnostic code와 한도 및 민감정보 제거가 적용된 fact, finding 및 cause의
+  transaction 영속화, 결정론적 root, dependency에 따른 `Blocked` check, 보고서 하나를
+  사용하는 동등한 concise·verbose·lossless JSON projection
 - Guard manifest의 exact shape와 owner binding, hash가 없는 policy command와 hash에
   결속된 runtime command의 구분, wrapper/file drift, 플랫폼 독립적인 script executable
   기대값, 현재 소유권의 hook 관찰, 이전 event 제외

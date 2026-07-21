@@ -17,7 +17,7 @@
 | `crates/volicord-types/src/connection_verification.rs` | 정규 connection 상태, check, action, 검증 보고서 타입. |
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
-| `crates/volicord-types/src/tool_names.rs` | 공개 MCP 도구 이름 레지스트리. |
+| `crates/volicord-types/src/tool_names.rs` | 정규 공개 method 및 adapter utility MCP 도구 이름 집합. |
 
 ## 플랫폼 파일시스템 경계
 
@@ -67,8 +67,12 @@
 |---|---|
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
+| `crates/volicord-cli/src/connection_command/verification.rs` | Dependency-aware 검증 check, `Blocked` 전파, managed-host 관찰 정책, cause 부착, 결정론적 root 선택. |
 | `crates/volicord-cli/src/connection_command/mcp_process/` | 관리 시작 구체화, 한도가 있는 자식 프로세스 감독 정책과 기한, 사전 점검 해석, stdio JSON-RPC 프레이밍과 점검 순서, 교환 진행 상태, 타입이 지정된 생명주기 또는 프로토콜 진단. 저수준 격리와 파이프 준비 상태는 `volicord-platform-process`를 통합니다. |
-| `crates/volicord-cli/src/connection_command/output/report.rs` | 선택한 Connection의 정규 command report, operation result, rendering 입력, 집계 상태. |
+| `crates/volicord-cli/src/connection_command/mcp_process/host_compatibility.rs` | 프로덕션 프로토콜 레지스트리에서 파생하지 않고 독립적으로 고정한 host profile fixture와 Codex 요청/도구 호출 형태. |
+| `crates/volicord-cli/src/connection_command/mcp_process/pinned_schema.rs` | 고정된 오프라인 schema를 사용한 revision별 initialize, `tools/list`, `tools/call` probe message 검증. |
+| `crates/volicord-cli/src/connection_command/output/` | 선택한 Connection의 정규 진단 보고서 구성, 집계 상태와 root, 같은 보고서의 concise·verbose·lossless JSON 표시. |
+| `crates/volicord-cli/src/diagnostics_command.rs` | Finding ID 및 runtime-session 세부 명령, 한도가 있는 cause traversal, 보고서 projection. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 구성 parsing 및 직렬화, 정규 관리 entry 검증, 허용된 도구 승인 overlay 보존, 관리 구성 변경, 진단용 실행 파일 관찰, 연결 검증. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest와 정규 관리 artifact 기대값 생성. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
@@ -88,9 +92,9 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 관리형 MCP 명령, 인자, 정적 및 전달 환경 binding, 엄격한 시작 형태 검증, projection, fingerprint 입력. |
-| `crates/volicord-mcp/src/stdio.rs` | stdio 생명주기, 프레이밍, 초기화, 프로세스 사전 점검. |
+| `crates/volicord-mcp/src/stdio.rs` | stdio 생명주기와 프레이밍, typed initialization profile 선택, revision-aware message 처리, 프로세스 사전 점검. |
 | `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치, wrapping. |
-| `crates/volicord-mcp/src/tool_registry.rs` | 압축된 공개 도구 descriptor. |
+| `crates/volicord-mcp/src/tool_registry.rs` | 담당자가 제공하는 도구 이름과 schema를 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 revision별 wire projection을 수행하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색과 현재 Connection/project routing. |
 

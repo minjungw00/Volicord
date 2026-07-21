@@ -342,10 +342,10 @@ Mode: workflow
 Checks: 0 ready, 2 blocked, 0 waiting, 1 failed
 
 Problems
-  mcp.protocol.unsupported_revision: the requested MCP protocol revision is unsupported
+  mcp.protocol.counter_offer_rejected: the protocol counter-offer was rejected or disconnected
     Actual MCP client: codex 0.42.0
-    Requested protocol: 2024-11-05
-    Supported protocols: 2025-06-18, 2025-11-25
+    Requested protocol: 2025-01-15
+    Supported protocols: 2024-10-07, 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25
     Blocked checks: required_tools, tool_round_trip
     Runtime session: runtime_session_01
     Finding: finding.runtime_session_01.protocol
@@ -379,7 +379,7 @@ Summary
 
 Checks
   [fail] Codex managed session
-    MCP initialize selected no supported protocol
+    MCP client rejected or disconnected before accepting the selected counter-offer
     Code: host_session_protocol_mismatch
     Depends on: process_startup
     Root findings: finding.runtime_session_01.protocol
@@ -387,7 +387,7 @@ Checks
     PATH executable version: 0.42.0
     Actual MCP peer: codex
     Actual MCP peer version: 0.42.0
-    Requested protocol: 2024-11-05
+    Requested protocol: 2025-01-15
     Selected protocol: 2025-11-25
     Initialize: failed
 
@@ -403,13 +403,14 @@ Checks
 
 Findings
   [root] finding.runtime_session_01.protocol
-    Code: mcp.protocol.unsupported_revision
+    Code: mcp.protocol.counter_offer_rejected
     Runtime session: runtime_session_01
     Bounded typed facts
       Attempted client name: codex
       Attempted client version: 0.42.0
-      Requested revision: 2024-11-05
-      Production supported revisions: 2025-06-18, 2025-11-25
+      Requested revision: 2025-01-15
+      Selected revision: 2025-11-25
+      Production supported revisions: 2024-10-07, 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25
 
 Actions
   action.mcp.use_supported_protocol_revision

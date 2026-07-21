@@ -259,8 +259,8 @@ For detailed current Connection diagnostics, run the verbose status command with
 좌표를 자리표시자 명령에 넣지 않습니다.
 
 `--verbose`는 사람이 진단하는 데 필요한 완전한 보기를 표시합니다. 간결한 출력과 같은
-작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Actions`,
-`Findings`, `Actions`, `Result`, `Planned changes`, `Report limits` 구역을 이 순서로
+작업별 머리말로 시작하고, 적용되는 `Connection`, `Summary`, `Checks`, `Findings`,
+`Actions`, `Result`, `Planned changes`, `Report limits` 구역을 이 순서로
 사용합니다. 모든 check와 상태, 모든 root와 한도가 있는 cause-chain finding, 모든 안전한
 typed fact, requested/selected/negotiated protocol revision, 실제 MCP peer `clientInfo`, 별도
 PATH executable probe, 한도가 있는 process exit와 stderr fact, Runtime Home과 Connection
@@ -314,10 +314,10 @@ Mode: workflow
 Checks: 0 ready, 2 blocked, 0 waiting, 1 failed
 
 Problems
-  mcp.protocol.unsupported_revision: the requested MCP protocol revision is unsupported
+  mcp.protocol.counter_offer_rejected: the protocol counter-offer was rejected or disconnected
     Actual MCP client: codex 0.42.0
-    Requested protocol: 2024-11-05
-    Supported protocols: 2025-06-18, 2025-11-25
+    Requested protocol: 2025-01-15
+    Supported protocols: 2024-10-07, 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25
     Blocked checks: required_tools, tool_round_trip
     Runtime session: runtime_session_01
     Finding: finding.runtime_session_01.protocol
@@ -351,7 +351,7 @@ Summary
 
 Checks
   [fail] Codex managed session
-    MCP initialize selected no supported protocol
+    MCP client rejected or disconnected before accepting the selected counter-offer
     Code: host_session_protocol_mismatch
     Depends on: process_startup
     Root findings: finding.runtime_session_01.protocol
@@ -359,7 +359,7 @@ Checks
     PATH executable version: 0.42.0
     Actual MCP peer: codex
     Actual MCP peer version: 0.42.0
-    Requested protocol: 2024-11-05
+    Requested protocol: 2025-01-15
     Selected protocol: 2025-11-25
     Initialize: failed
 
@@ -375,13 +375,14 @@ Checks
 
 Findings
   [root] finding.runtime_session_01.protocol
-    Code: mcp.protocol.unsupported_revision
+    Code: mcp.protocol.counter_offer_rejected
     Runtime session: runtime_session_01
     Bounded typed facts
       Attempted client name: codex
       Attempted client version: 0.42.0
-      Requested revision: 2024-11-05
-      Production supported revisions: 2025-06-18, 2025-11-25
+      Requested revision: 2025-01-15
+      Selected revision: 2025-11-25
+      Production supported revisions: 2024-10-07, 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25
 
 Actions
   action.mcp.use_supported_protocol_revision

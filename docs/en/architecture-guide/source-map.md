@@ -17,7 +17,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/connection_verification.rs` | Canonical connection status, check, action, and verification-report types. |
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/project integration revision bases and derivation. |
 | `crates/volicord-types/src/guard_manifest.rs` | Canonical Guard manifest, managed-artifact, hook-phase, and typed command contracts. |
-| `crates/volicord-types/src/tool_names.rs` | Public MCP tool-name registry. |
+| `crates/volicord-types/src/tool_names.rs` | Canonical public-method and adapter-utility MCP tool-name sets. |
 
 ## Platform Filesystem Boundary
 
@@ -67,8 +67,12 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
+| `crates/volicord-cli/src/connection_command/verification.rs` | Dependency-aware verification checks, `Blocked` propagation, managed-host observation policy, cause attachment, and deterministic root selection. |
 | `crates/volicord-cli/src/connection_command/mcp_process/` | Managed launch materialization, bounded child-process supervision policy and deadlines, preflight interpretation, stdio JSON-RPC framing and probe sequencing, exchange progress, and typed lifecycle or protocol diagnostics. Low-level containment and pipe readiness route through `volicord-platform-process`. |
-| `crates/volicord-cli/src/connection_command/output/report.rs` | Canonical selected-Connection command report, operation results, rendering input, and aggregate status. |
+| `crates/volicord-cli/src/connection_command/mcp_process/host_compatibility.rs` | Independently pinned host-profile fixtures and Codex request/tool-call shapes; these are not derived from the production protocol registry. |
+| `crates/volicord-cli/src/connection_command/mcp_process/pinned_schema.rs` | Revision-specific validation of initialize, `tools/list`, and `tools/call` probe messages against the pinned offline schemas. |
+| `crates/volicord-cli/src/connection_command/output/` | Canonical selected-Connection diagnostic report construction, aggregate status and roots, and concise, verbose, and lossless JSON presentation of that same report. |
+| `crates/volicord-cli/src/diagnostics_command.rs` | Finding-ID and runtime-session detail commands, bounded cause traversal, and report projection. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex configuration parsing and serialization, canonical managed-entry validation, preservation of the allowed tool-approval overlay, managed configuration mutation, diagnostic executable observations, and connection verification. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest and canonical managed-artifact expectation generation. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | Current Guard owner, artifact, command, marker, and executable-behavior audit. |
@@ -88,9 +92,9 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared managed MCP command, arguments, static and forwarded environment bindings, strict launch-shape validation, projection, and fingerprint inputs. |
-| `crates/volicord-mcp/src/stdio.rs` | stdio lifecycle, framing, initialization, and process preflight. |
+| `crates/volicord-mcp/src/stdio.rs` | stdio lifecycle and framing, typed initialization-profile selection, revision-aware message handling, and process preflight. |
 | `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch, and wrapping. |
-| `crates/volicord-mcp/src/tool_registry.rs` | Compact public tool descriptors. |
+| `crates/volicord-mcp/src/tool_registry.rs` | Assembly of owner-provided tool names and schemas into canonical tool definitions/results, plus revision-specific wire projection through the selected protocol profile. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |
 | `crates/volicord-mcp/src/routing.rs` | Bound Product Repository discovery and current Connection/project routing. |
 

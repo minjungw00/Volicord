@@ -123,13 +123,17 @@ volicord connection verify codex --repo "<repo>" --json
 남습니다. 종료 code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을
 확인하거나 전달할 때 finding ID를 함께 보존합니다.
 
-`mcp.protocol.unsupported_revision`이면 `attempted_client_name`과
-`attempted_client_version`, `requested_revision`, `production_supported_revisions`를
-비교합니다. 일반 concise 출력에도 이 값과 blocked `required_tools`, `tool_round_trip`
-check가 나옵니다. 일반 inspection 단계로 바꾸지 말고
-`action.mcp.use_supported_protocol_revision`을 사용합니다. Verbose 출력에서는 requested,
-selected, negotiated revision을 구분하고 실제 MCP peer `clientInfo`와 PATH executable
-probe도 구분합니다.
+`mcp.protocol.unsupported_version`이면 `requested_revision`과
+`production_supported_revisions`를 비교합니다.
+`mcp.protocol.counter_offer_rejected`이면 `selected_revision`도 비교합니다.
+`negotiated_revision`이 없다는 것은 handshake가 완료되지 않았다는 뜻입니다.
+`mcp.protocol.generation_mismatch`이면 요청 revision이 추적 중인 비프로덕션 handshake
+generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_name`과
+`attempted_client_version`을 보존하고
+`action.mcp.use_supported_protocol_revision`을 사용합니다. 일반 concise 출력에는 적용되는
+제한된 사실과 blocked `required_tools`, `tool_round_trip` check가 나옵니다. Verbose
+출력에서는 requested, selected, negotiated revision을 구분하고 실제 MCP peer
+`clientInfo`와 PATH executable probe도 구분합니다.
 
 `stderr`는 제한된 맥락으로만 취급합니다. 자식 프로세스 문구에서 기계 판독 사유를
 추론하거나 자격 증명을 보고서에 복사하지 않습니다. 안정적인 `process.*`, `mcp.*`,
