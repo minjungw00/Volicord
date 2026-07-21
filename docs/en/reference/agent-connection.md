@@ -360,6 +360,19 @@ diagnostic facts. A host-version change renews operational observation, while
 authorization uses the current Connection, revisions, and authoritative
 runtime/project session bindings.
 
+The actual MCP peer is the bounded `clientInfo.name` and `clientInfo.version`
+observed on that runtime session. The PATH probe is the separately observed
+Codex executable path and version. Reports and findings never substitute one
+for the other. When both versions exist and differ,
+`host.codex.peer_version_differs_from_path_probe` records warning evidence with
+both fact objects; the mismatch alone is not a fatal Connection failure.
+Malformed native metadata, inconsistent session/thread/turn coordinates,
+registered-session mismatch, and managed-marker mismatch use
+`host.codex.metadata_malformed`,
+`host.codex.session_thread_turn_inconsistent`,
+`host.codex.registered_session_correlation_mismatch`, and
+`host.codex.managed_marker_mismatch` respectively.
+
 Each MCP process start creates an opaque Registry runtime-session ID before
 host thread metadata exists. `session_source` is exactly `managed_host` or
 `cli_preflight`. Only `managed_host` can authorize an Agent Connection call.

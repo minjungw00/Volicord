@@ -533,10 +533,11 @@ native session correlation metadata를 보냅니다. 이 fixture는 서버의 �
 revision을 선택하지 않습니다. 배포된 Codex 계열마다 필요한 revision이나 wire 형태가
 다르면 fixture 목록에 `codex` entry를 여러 개 둘 수 있습니다.
 
-stdio probe가 실패하면 현재 단계별 check code를 유지합니다. 해당 matrix entry에 정확한
-revision 또는 host fixture, 완료 관찰, typed failure를 기록하며 집계 failure도
-`checks[id=mcp_server].details.self_test.failure`에서 제공합니다. 현재 self-test 진단
-형태는 다음과 같습니다.
+stdio probe가 실패하면 현재 단계별 check code를 유지합니다. 해당 matrix entry에는
+정확한 revision 또는 host fixture와 완료 관찰을 유지합니다. 실패 식별값은 안정적인
+diagnostic code, 실패 단계, 영속 finding 참조로 projection하며 verification report에
+두 번째 terminal 실패 객체를 저장하지 않습니다. 현재 self-test 진단 형태는 다음과
+같습니다.
 
 ```yaml
 McpSelfTestProgress:
@@ -549,7 +550,9 @@ McpSelfTestProgress:
   host_compatibility: McpHostProbeResult[]
   tools_list?: string[]
   safe_read_only_tool: volicord.list_projects
-  failure?: McpSelfTestFailure
+  diagnostic_code?: string
+  failure_stage?: startup | initialize | tools_list | safe_tool_call | shutdown
+  finding_id?: string
 
 McpRevisionProbeResult:
   revision: string
@@ -565,12 +568,14 @@ McpRevisionProbeResult:
   safe_read_only_tool: volicord.list_projects
   safe_read_only_tool_completed: boolean
   shutdown_completed: boolean
-  failure?: McpSelfTestFailure
+  diagnostic_code?: string
+  failure_stage?: startup | initialize | tools_list | safe_tool_call | shutdown
+  finding_id?: string
 
 McpHostProbeResult:
   profile: codex
   fixture: string
-  # 나머지는 McpRevisionProbeResult와 같은 progress/failure 필드이며,
+  # 나머지는 McpRevisionProbeResult와 같은 progress/diagnostic 참조 필드이며,
   # revision은 requested/negotiated 필드로 나타냅니다.
 ```
 
@@ -582,41 +587,23 @@ McpHostProbeResult:
 `negotiated_revision`은 `null`입니다. 사람이 읽는 상세 출력은 반환된 도구 수와 정상 종료를
 포함해 revision과 host fixture를 각각 독립적으로 보고합니다.
 
-현재 실패 객체 형태는 다음과 같습니다.
+참조된 `DiagnosticFinding`이 제한된 실패 사실을 담당합니다. 프로세스 code에는
+`process.spawn.failed`, `process.pipe_acquisition.failed`,
+`process.pipe.read_failed`, `process.pipe.write_failed`,
+`process.startup.timeout`, `process.initialize.timeout`, `process.tools_list.timeout`,
+`process.safe_tool_call.timeout`, `process.child.exited`,
+`process.shutdown.timeout`, `process.child.signaled`, `process.child.wait_failed`,
+`process.cleanup.failed`, `process.preflight.report_invalid`가 있습니다. MCP 응답 실패에는
+[MCP 전송](mcp-transport.md)이 담당하는 안정적인 `mcp.*` code를 사용합니다.
 
-```yaml
-McpSelfTestFailure:
-  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | cleanup | shutdown
-  stage: startup | initialize | tools_list | safe_tool_call | shutdown
-  exit_code?: integer | null
-  timeout_ms?: integer
-  stderr?: BoundedDiagnosticText
-  protocol_detail?: BoundedDiagnosticText
-  missing_tools?: string[]
-  io_detail?: BoundedDiagnosticText
-
-BoundedDiagnosticText:
-  text: string
-  truncated: bool
-  omitted_bytes: integer
-```
-
-타입이 지정된 실패에 필요한 필드만 나타납니다. `exit_code=null`은 시그널 종료를
-포함하여 종료된 프로세스에 숫자 상태 코드가 없다는 뜻입니다. 검증기는 stderr 파이프를
-동시에 비우면서 자식 stderr를 최대 2 KiB까지 `stderr`에 보존합니다.
-`protocol_detail`은 2 KiB, stdout 프로토콜 줄 하나는 64 KiB로 제한하며 자체 검사
-프로세스 하나에서 stdout 프로토콜 메시지를 최대 16개까지 받습니다. 단조 증가 시계의
-생명주기 기한 하나가 프로세스 진행 전체를 제어합니다. 프로세스 트리 종료, 직접 자식
-프로세스 회수, 파이프 완료에는 한도가 있는 정리 여유 시간을 사용합니다. `cleanup`
-실패는 이 한도 안에 정리를 끝내지 못했음을 나타내며 제한된 `io_detail`을 포함합니다.
-잘린 텍스트 끝에는 생략한 바이트 수를 밝히는 결정적 표식이 붙으며 같은 수가
-`omitted_bytes`에도 남습니다. 검증기는 타입이 지정된 단계에서 직접
-`startup` 또는 `shutdown`을 `mcp_server_process_failed`, `initialize`를
-`mcp_server_initialize_failed`, `tools_list`를 `mcp_server_tools_list_failed`,
-`safe_tool_call`을 `mcp_server_safe_call_failed`로 보고합니다. `stderr`는 진단 맥락이지
-기계 판독 가능한 자식 프로세스 사유가 아니며 CLI는 임의의 자식 산문을 분류하지 않습니다.
-`missing_tools`는 구조화된 `tools/list` 응답에서만 만들고, JSON-RPC 오류 상세
-정보에는 임의의 오류 산문이나 데이터를 복사하지 않은 채 구조화된 숫자 `code`만 포함합니다.
+검증기는 stderr를 동시에 비우며 공유 사실 projection의 문자열별 제한을 적용하기 전에
+최대 2 KiB를 보존합니다. Finding에는 명시적인 잘림 여부와 생략 바이트 수를 남깁니다.
+stdout protocol 줄 하나는 64 KiB, 자체 검사 프로세스 하나의 stdout protocol
+message는 최대 16개로 제한합니다. 단조 증가 시계의 lifecycle 기한 하나가 프로세스
+진행 전체를 제어하며 프로세스 트리 종료, 직접 자식 회수, 파이프 완료에는 한도가 있는
+정리 여유 시간을 사용합니다. Stderr와 제한된 I/O 상세는 맥락일 뿐입니다. 진단 식별은
+임의의 자식 산문이 아니라 닫힌 프로세스 또는 protocol variant에서 나옵니다. 전체 요청,
+도구 인자, 환경, 제한 없는 stderr는 영속하지 않습니다.
 
 그런 다음 현재 managed-host 관찰을 읽고 정규 보고서 하나만 영속합니다. Plan 전에 선택한
 Connection의 정확한 typed integration revision을 확보하고, immediate Registry transaction

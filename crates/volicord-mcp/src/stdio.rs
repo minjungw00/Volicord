@@ -1,5 +1,10 @@
 use crate::adapter::*;
-use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
+use crate::diagnostics::{
+    finding_for_diagnostic, production_supported_revisions, JsonRpcDiagnostic, McpDiagnostic,
+    McpDiagnosticContext, McpLifecycleDiagnostic, McpProtocolDiagnostic, McpToolCallDiagnostic,
+    McpToolDiscoveryDiagnostic,
+};
+use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError, McpHostError};
 use crate::prelude::*;
 use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_output;
@@ -11,17 +16,14 @@ use crate::{
     VOLICORD_MCP_VERIFICATION_VALUE,
 };
 use sha2::{Digest, Sha256};
-use volicord_types::{
-    DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
-    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
-    HostKind, IntegrationRevision, ManagedMcpClientInfo,
-};
+use volicord_types::{HostKind, ManagedMcpClientInfo};
 
 const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
 const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord.codex-mcp-thread-binding\0";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
+pub(crate) const MAX_MCP_REQUEST_LINE_BYTES: usize = 1024 * 1024;
 
 pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, writer: W) -> Result<(), McpAdapterError>
 where
@@ -48,7 +50,7 @@ impl Default for StdioRunOptions {
 
 fn run_stdio_with_options<R, W>(
     adapter: McpAdapter,
-    reader: R,
+    mut reader: R,
     mut writer: W,
     options: StdioRunOptions,
 ) -> Result<(), McpAdapterError>
@@ -82,8 +84,60 @@ where
         if !state.codex_binding.is_pending() && !state.managed_stdio_binding_active {
             let _ = start_transport_diagnostic_session(&adapter, &state);
         }
-        for line in reader.lines() {
-            let line = line.map_err(McpAdapterError::Io)?;
+        loop {
+            let line = match read_bounded_json_line(&mut reader)? {
+                BoundedJsonLine::Eof => break,
+                BoundedJsonLine::Line(line) => line,
+                BoundedJsonLine::InvalidUtf8 => {
+                    record_current_session_finding(
+                        &adapter,
+                        &mut state,
+                        McpDiagnostic::JsonRpc(JsonRpcDiagnostic::ParseError),
+                        Some(-32700),
+                        Some("input was not valid UTF-8".to_owned()),
+                        None,
+                        Vec::new(),
+                        false,
+                    )?;
+                    write_json_line(
+                        &mut writer,
+                        json_rpc_error(Value::Null, -32700, "Parse error", None),
+                    )?;
+                    continue;
+                }
+                BoundedJsonLine::TooLong => {
+                    record_current_session_finding(
+                        &adapter,
+                        &mut state,
+                        McpDiagnostic::JsonRpc(JsonRpcDiagnostic::MessageSizeExceeded),
+                        Some(-32600),
+                        Some(format!(
+                            "request exceeded the {MAX_MCP_REQUEST_LINE_BYTES}-byte limit"
+                        )),
+                        None,
+                        Vec::new(),
+                        false,
+                    )?;
+                    write_json_line(
+                        &mut writer,
+                        invalid_request_response(&Value::Null, "request message is too large"),
+                    )?;
+                    continue;
+                }
+                BoundedJsonLine::Incomplete => {
+                    record_current_session_finding(
+                        &adapter,
+                        &mut state,
+                        McpDiagnostic::JsonRpc(JsonRpcDiagnostic::FramingFailure),
+                        Some(-32600),
+                        Some("request ended without newline framing".to_owned()),
+                        None,
+                        Vec::new(),
+                        true,
+                    )?;
+                    break;
+                }
+            };
             if line.trim().is_empty() {
                 continue;
             }
@@ -91,9 +145,23 @@ where
             let message: Value = match serde_json::from_str(&line) {
                 Ok(message) => message,
                 Err(error) => {
+                    record_current_session_finding(
+                        &adapter,
+                        &mut state,
+                        McpDiagnostic::JsonRpc(JsonRpcDiagnostic::ParseError),
+                        Some(-32700),
+                        Some(format!(
+                            "invalid JSON at line {} column {}",
+                            error.line(),
+                            error.column()
+                        )),
+                        None,
+                        Vec::new(),
+                        false,
+                    )?;
                     write_json_line(
                         &mut writer,
-                        json_rpc_error(Value::Null, -32700, "Parse error", Some(error.to_string())),
+                        json_rpc_error(Value::Null, -32700, "Parse error", None),
                     )?;
                     continue;
                 }
@@ -110,28 +178,104 @@ where
     match transport_result {
         Ok(()) => {
             if !state.terminal_finding_recorded {
-                record_mcp_graceful_close(
-                    &adapter.runtime_home,
-                    &state.runtime_session_id,
-                    &authoritative_observation_timestamp(),
-                )
-                .map_err(McpAdapterError::Store)?;
+                let incomplete = match state.phase {
+                    ConnectionPhase::Ready => None,
+                    ConnectionPhase::AwaitingInitialize => Some(McpDiagnostic::Lifecycle(
+                        McpLifecycleDiagnostic::InvalidShutdownSequence,
+                    )),
+                    ConnectionPhase::AwaitingInitialized
+                        if state.mcp_session.as_ref().is_some_and(|session| {
+                            session.outcome == McpNegotiationOutcome::ServerCounterOffer
+                        }) =>
+                    {
+                        Some(McpDiagnostic::Protocol(
+                            McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected,
+                        ))
+                    }
+                    ConnectionPhase::AwaitingInitialized => Some(McpDiagnostic::Lifecycle(
+                        McpLifecycleDiagnostic::InitializedNotificationMissing,
+                    )),
+                };
+                if let Some(diagnostic) = incomplete {
+                    record_current_session_finding(
+                        &adapter,
+                        &mut state,
+                        diagnostic,
+                        None,
+                        None,
+                        None,
+                        Vec::new(),
+                        true,
+                    )?;
+                } else {
+                    record_mcp_graceful_close(
+                        &adapter.runtime_home,
+                        &state.runtime_session_id,
+                        &authoritative_observation_timestamp(),
+                    )
+                    .map_err(McpAdapterError::Store)?;
+                }
             }
             Ok(())
         }
         Err(error) => {
-            let observed_at = authoritative_observation_timestamp();
-            let finding = terminal_finding(
-                &adapter,
-                &state,
-                "mcp.transport_failed",
-                "transport",
-                "managed stdio transport failed",
-                &observed_at,
-            )?;
-            record_mcp_terminal_finding(&adapter.runtime_home, &finding)
-                .map_err(McpAdapterError::Store)?;
+            if !state.terminal_finding_recorded {
+                record_current_session_finding(
+                    &adapter,
+                    &mut state,
+                    McpDiagnostic::from(&error),
+                    None,
+                    None,
+                    None,
+                    Vec::new(),
+                    true,
+                )?;
+            }
             Err(error)
+        }
+    }
+}
+
+enum BoundedJsonLine {
+    Eof,
+    Line(String),
+    InvalidUtf8,
+    TooLong,
+    Incomplete,
+}
+
+fn read_bounded_json_line(reader: &mut impl BufRead) -> Result<BoundedJsonLine, McpAdapterError> {
+    let mut bytes = Vec::with_capacity(8 * 1024);
+    let mut exceeded = false;
+    loop {
+        let available = reader.fill_buf().map_err(McpAdapterError::Io)?;
+        if available.is_empty() {
+            return if bytes.is_empty() && !exceeded {
+                Ok(BoundedJsonLine::Eof)
+            } else {
+                Ok(BoundedJsonLine::Incomplete)
+            };
+        }
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let consumed = newline.map_or(available.len(), |index| index + 1);
+        let content_end = newline.unwrap_or(available.len());
+        if !exceeded {
+            let remaining = MAX_MCP_REQUEST_LINE_BYTES.saturating_sub(bytes.len());
+            let retained = remaining.min(content_end);
+            bytes.extend_from_slice(&available[..retained]);
+            exceeded = retained < content_end;
+        }
+        reader.consume(consumed);
+        if newline.is_some() {
+            if exceeded {
+                return Ok(BoundedJsonLine::TooLong);
+            }
+            if bytes.last() == Some(&b'\r') {
+                bytes.pop();
+            }
+            return String::from_utf8(bytes)
+                .map(BoundedJsonLine::Line)
+                .or(Ok(BoundedJsonLine::InvalidUtf8));
         }
     }
 }
@@ -215,10 +359,7 @@ pub fn run_stdio_discover_repository_from_env(
 
 fn reject_invalid_managed_marker(launch_origin: McpLaunchOrigin) -> Result<(), McpAdapterError> {
     if launch_origin == McpLaunchOrigin::InvalidManagedMarker {
-        return Err(McpAdapterError::Environment(
-            "INVALID_MANAGED_MARKER: managed stdio launch markers are incomplete, invalid, or inconsistent"
-                .to_owned(),
-        ));
+        return Err(McpAdapterError::Host(McpHostError::ManagedMarkerMismatch));
     }
     Ok(())
 }
@@ -587,6 +728,8 @@ pub(crate) struct ConnectionState {
     pub(crate) launch_origin: &'static str,
     status_method_call_count: u64,
     terminal_finding_recorded: bool,
+    finding_sequence: u64,
+    pending_finding: Option<McpDiagnostic>,
     codex_binding: CodexManagedBinding,
     deferred_tools_list_serialized_bytes: Option<u64>,
 }
@@ -601,6 +744,8 @@ impl Default for ConnectionState {
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
             status_method_call_count: 0,
             terminal_finding_recorded: false,
+            finding_sequence: 0,
+            pending_finding: None,
             codex_binding: CodexManagedBinding::NotApplicable,
             deferred_tools_list_serialized_bytes: None,
         }
@@ -615,6 +760,7 @@ impl Default for ConnectionState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NegotiatedMcpSession {
     pub(crate) requested_protocol_version: String,
+    pub(crate) requested_protocol_version_well_formed: bool,
     pub(crate) selected_profile: &'static McpProtocolProfile,
     pub(crate) outcome: McpNegotiationOutcome,
     pub(crate) client_capabilities: Map<String, Value>,
@@ -690,6 +836,7 @@ pub(crate) struct JsonRpcFailure {
     pub(crate) code: i64,
     pub(crate) message: &'static str,
     pub(crate) data: Option<String>,
+    pub(crate) diagnostic: JsonRpcDiagnostic,
 }
 
 pub(crate) fn handle_json_rpc_message(
@@ -717,11 +864,24 @@ fn handle_single_json_rpc_message(
             Ok(None)
         }
         Err(error) => Ok(Some(json_rpc_error(
-            error.id,
+            error.id.clone(),
             error.code,
             error.message,
-            error.data,
-        ))),
+            error.data.clone(),
+        )))
+        .and_then(|response| {
+            record_current_session_finding(
+                adapter,
+                state,
+                McpDiagnostic::JsonRpc(error.diagnostic),
+                Some(error.code),
+                error.data,
+                None,
+                Vec::new(),
+                false,
+            )?;
+            Ok(response)
+        }),
     }
 }
 
@@ -731,6 +891,16 @@ fn handle_json_rpc_batch(
     entries: Vec<Value>,
 ) -> Result<Option<Value>, McpAdapterError> {
     if entries.is_empty() {
+        record_current_session_finding(
+            adapter,
+            state,
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidRequest),
+            Some(-32600),
+            Some("JSON-RPC batch was empty".to_owned()),
+            None,
+            Vec::new(),
+            false,
+        )?;
         return Ok(Some(invalid_request_response(
             &Value::Null,
             "JSON-RPC batch must not be empty",
@@ -741,6 +911,16 @@ fn handle_json_rpc_batch(
     if profile
         .is_none_or(|profile| profile.messages().json_rpc_batching() != JsonRpcBatching::Allowed)
     {
+        record_current_session_finding(
+            adapter,
+            state,
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidRequest),
+            Some(-32600),
+            Some("JSON-RPC batching is not permitted by the selected profile".to_owned()),
+            None,
+            Vec::new(),
+            false,
+        )?;
         return Ok(Some(invalid_request_response(
             &Value::Null,
             "JSON-RPC batching is not permitted by the selected protocol profile",
@@ -784,9 +964,10 @@ pub(crate) fn parse_client_message(message: Value) -> Result<ClientMessage, Json
     let object = match message {
         Value::Object(object) => object,
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
-            return Err(invalid_request(
+            return Err(invalid_request_with_diagnostic(
                 Value::Null,
                 "message must be a JSON object",
+                JsonRpcDiagnostic::InvalidRequest,
             ));
         }
     };
@@ -800,15 +981,20 @@ pub(crate) fn parse_client_message(message: Value) -> Result<ClientMessage, Json
     match object.get("jsonrpc") {
         Some(Value::String(version)) if version == "2.0" => (),
         _ => {
-            return Err(invalid_request(
+            return Err(invalid_request_with_diagnostic(
                 response_id,
                 "jsonrpc must be exactly \"2.0\"",
+                JsonRpcDiagnostic::InvalidRequest,
             ));
         }
     }
 
     let Some(Value::String(method)) = object.get("method") else {
-        return Err(invalid_request(response_id, "method must be a string"));
+        return Err(invalid_request_with_diagnostic(
+            response_id,
+            "method must be a string",
+            JsonRpcDiagnostic::InvalidRequest,
+        ));
     };
     let params = object.get("params").cloned();
 
@@ -831,9 +1017,10 @@ pub(crate) fn valid_request_id(value: &Value) -> Result<Value, JsonRpcFailure> {
         Value::String(_) => Ok(value.clone()),
         Value::Number(number) if number.is_i64() || number.is_u64() => Ok(value.clone()),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => {
-            Err(invalid_request(
+            Err(invalid_request_with_diagnostic(
                 Value::Null,
                 "id must be a string or integer",
+                JsonRpcDiagnostic::InvalidId,
             ))
         }
     }
@@ -875,6 +1062,20 @@ pub(crate) fn handle_json_rpc_notification(
             .expect("awaiting initialized has a selected MCP session")
             .initialized_notification_completed = true;
         state.phase = ConnectionPhase::Ready;
+    } else if notification.method == "notifications/initialized"
+        && !(state.phase == ConnectionPhase::Ready
+            && notification_params_are_object_or_absent(notification.params.as_ref()))
+    {
+        record_current_session_finding(
+            adapter,
+            state,
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid),
+            Some(-32600),
+            Some("notifications/initialized did not match the selected lifecycle state".to_owned()),
+            None,
+            Vec::new(),
+            false,
+        )?;
     }
     Ok(())
 }
@@ -904,32 +1105,80 @@ pub(crate) fn handle_json_rpc_request(
         None
     };
     let response = handle_json_rpc_request_inner(adapter, state, request)?;
-    let failure = if method == "initialize" && response.get("error").is_some() {
-        Some((
-            "mcp.initialize_failed",
-            "initialize",
-            "managed-host initialize returned a JSON-RPC error",
+    if method == "tools/call" && state.pending_finding.is_none() {
+        state.pending_finding = response
+            .get("result")
+            .and_then(projected_tool_error_code)
+            .and_then(|code| match code.as_str() {
+                "MCP_INVALID_ARGUMENTS" => Some(McpDiagnostic::ToolCall(
+                    McpToolCallDiagnostic::InvalidArguments,
+                )),
+                "MCP_RESPONSE_BUDGET_EXCEEDED" => Some(McpDiagnostic::ToolCall(
+                    McpToolCallDiagnostic::ResponseBudgetFailure,
+                )),
+                "MCP_POST_EFFECT_ADAPTER_FAILED" => Some(McpDiagnostic::ToolCall(
+                    McpToolCallDiagnostic::AdapterExecutionError,
+                )),
+                _ => None,
+            });
+    }
+    let fallback_failure = if method == "initialize" && response.get("error").is_some() {
+        Some(McpDiagnostic::Protocol(
+            McpProtocolDiagnostic::CapabilityShapeFailure,
         ))
     } else if method == "tools/list" && response.get("error").is_some() {
-        Some((
-            "mcp.tools_list_failed",
-            "tools_list",
-            "managed-host tools/list returned a JSON-RPC error",
-        ))
-    } else if safe_tool_name.is_some()
-        && state.managed_stdio_binding_active
-        && safe_tool_call_response_failed(&response)
-    {
-        Some((
-            "mcp.safe_tool_call_failed",
-            "safe_tool_call",
-            "managed-host designated read-only tool call returned an error",
+        Some(McpDiagnostic::ToolDiscovery(
+            McpToolDiscoveryDiagnostic::ProtocolError,
         ))
     } else {
         None
     };
-    if let Some((code, stage, summary)) = failure {
-        record_current_session_protocol_failure(adapter, state, code, stage, summary)?;
+    let error = response.get("error");
+    let json_rpc_code = error
+        .and_then(|error| error.get("code"))
+        .and_then(Value::as_i64);
+    let safe_error_data = error
+        .and_then(|error| error.get("data"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let pending_finding = state.pending_finding.take();
+    let safe_tool_failed = safe_tool_name.is_some()
+        && state.managed_stdio_binding_active
+        && safe_tool_call_response_failed(&response);
+    if safe_tool_failed {
+        if let Some(failure) = pending_finding {
+            record_current_session_finding(
+                adapter,
+                state,
+                failure,
+                json_rpc_code,
+                safe_error_data.clone(),
+                safe_tool_name.clone(),
+                Vec::new(),
+                false,
+            )?;
+        }
+        record_current_session_finding(
+            adapter,
+            state,
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure),
+            json_rpc_code,
+            safe_error_data,
+            safe_tool_name,
+            Vec::new(),
+            true,
+        )?;
+    } else if let Some(failure) = pending_finding.or(fallback_failure) {
+        record_current_session_finding(
+            adapter,
+            state,
+            failure,
+            json_rpc_code,
+            safe_error_data,
+            safe_tool_name,
+            Vec::new(),
+            method == "initialize" || method == "tools/list",
+        )?;
     }
     Ok(response)
 }
@@ -939,7 +1188,8 @@ fn handle_json_rpc_request_inner(
     state: &mut ConnectionState,
     request: JsonRpcRequest,
 ) -> Result<Value, McpAdapterError> {
-    if let Some(error) = lifecycle_error(state, &request) {
+    if let Some((error, diagnostic)) = lifecycle_error_with_diagnostic(state, &request) {
+        state.pending_finding = Some(diagnostic);
         return Ok(error);
     }
 
@@ -962,7 +1212,10 @@ fn handle_json_rpc_request_inner(
             }
             let mcp_session = match validate_initialize_params(&response_id, request.params) {
                 Ok(mcp_session) => mcp_session,
-                Err(error) => return Ok(error),
+                Err((error, diagnostic)) => {
+                    state.pending_finding = Some(diagnostic);
+                    return Ok(error);
+                }
             };
             if !state.runtime_session_id.is_empty() {
                 record_mcp_initialize_completion(
@@ -974,8 +1227,36 @@ fn handle_json_rpc_request_inner(
                 .map_err(McpAdapterError::Store)?;
             }
             let result = initialize_result(&mcp_session);
+            let counter_offer = mcp_session.outcome == McpNegotiationOutcome::ServerCounterOffer;
+            let requested_revision_well_formed = mcp_session.requested_protocol_version_well_formed;
             state.mcp_session = Some(mcp_session);
             state.phase = ConnectionPhase::AwaitingInitialized;
+            if counter_offer {
+                record_current_session_finding(
+                    adapter,
+                    state,
+                    McpDiagnostic::Protocol(if requested_revision_well_formed {
+                        McpProtocolDiagnostic::UnsupportedVersion
+                    } else {
+                        McpProtocolDiagnostic::MalformedVersion
+                    }),
+                    None,
+                    Some("requested revision is outside the production-supported set".to_owned()),
+                    None,
+                    Vec::new(),
+                    false,
+                )?;
+                record_current_session_finding(
+                    adapter,
+                    state,
+                    McpDiagnostic::Protocol(McpProtocolDiagnostic::CounterOffer),
+                    None,
+                    Some("server selected its preferred production revision".to_owned()),
+                    None,
+                    Vec::new(),
+                    false,
+                )?;
+            }
             if !state.codex_binding.is_pending() && state.managed_stdio_binding_active {
                 let _ = start_transport_diagnostic_session(adapter, state);
             }
@@ -993,12 +1274,20 @@ fn handle_json_rpc_request_inner(
             if let Err(error) =
                 validate_optional_object_params(&response_id, request.params, "tools/list")
             {
+                state.pending_finding = Some(McpDiagnostic::ToolDiscovery(
+                    McpToolDiscoveryDiagnostic::ProtocolError,
+                ));
                 return Ok(error);
             }
             match adapter.tools() {
                 Ok(canonical_tools) => {
                     let required_tools_present =
                         required_tool_set_present(adapter, &canonical_tools)?;
+                    if !required_tools_present {
+                        state.pending_finding = Some(McpDiagnostic::ToolDiscovery(
+                            McpToolDiscoveryDiagnostic::RequiredToolMissing,
+                        ));
+                    }
                     let profile = state
                         .mcp_session
                         .as_ref()
@@ -1032,7 +1321,10 @@ fn handle_json_rpc_request_inner(
                     }
                     result
                 }
-                Err(error) => return Ok(json_rpc_error_for_adapter(response_id, error)),
+                Err(error) => {
+                    state.pending_finding = Some(McpDiagnostic::from(&error));
+                    return Ok(json_rpc_error_for_adapter(response_id, error));
+                }
             }
         }
         "tools/call" => match call_tool_result(adapter, &response_id, request.params, state)? {
@@ -1040,12 +1332,13 @@ fn handle_json_rpc_request_inner(
             Err(error) => return Ok(error),
         },
         _ => {
+            state.pending_finding = Some(McpDiagnostic::JsonRpc(JsonRpcDiagnostic::UnknownMethod));
             return Ok(json_rpc_error(
                 response_id,
                 -32601,
                 "Method not found",
                 Some(request.method),
-            ))
+            ));
         }
     };
 
@@ -1087,73 +1380,66 @@ fn projected_tool_error_code(result: &Value) -> Option<String> {
         .and_then(|value| value.get("code").and_then(Value::as_str).map(str::to_owned))
 }
 
-fn record_current_session_protocol_failure(
+#[allow(clippy::too_many_arguments)]
+fn record_current_session_finding(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
-    code: &str,
-    stage: &str,
-    summary: &str,
+    diagnostic: McpDiagnostic,
+    json_rpc_error_code: Option<i64>,
+    safe_error_data: Option<String>,
+    tool_name: Option<String>,
+    missing_tools: Vec<String>,
+    terminal: bool,
 ) -> Result<(), McpAdapterError> {
-    if state.runtime_session_id.is_empty() || state.terminal_finding_recorded {
+    if state.runtime_session_id.is_empty() || (terminal && state.terminal_finding_recorded) {
         return Ok(());
     }
-    let observed_at = authoritative_observation_timestamp();
-    let finding = terminal_finding(adapter, state, code, stage, summary, &observed_at)?;
-    record_mcp_terminal_finding(&adapter.runtime_home, &finding).map_err(McpAdapterError::Store)?;
-    state.terminal_finding_recorded = true;
-    Ok(())
-}
-
-#[derive(Serialize)]
-struct McpTerminalFindingFacts<'a> {
-    summary: &'a str,
-}
-
-impl DiagnosticFactSource for McpTerminalFindingFacts<'_> {}
-
-fn terminal_finding(
-    adapter: &McpAdapter,
-    state: &ConnectionState,
-    code: &str,
-    stage: &str,
-    summary: &str,
-    observed_at: &str,
-) -> Result<DiagnosticFinding, McpAdapterError> {
     let runtime = mcp_runtime_session(&adapter.runtime_home, &state.runtime_session_id)
         .map_err(McpAdapterError::Store)?
         .ok_or_else(|| McpAdapterError::Protocol("MCP runtime session disappeared".to_owned()))?;
-    let diagnostic_error = |error: volicord_types::DiagnosticError| {
-        McpAdapterError::Protocol(format!("terminal diagnostic finding is invalid: {error}"))
+    state.finding_sequence = state.finding_sequence.saturating_add(1);
+    let finding_id = if terminal {
+        format!("finding.{}.terminal", state.runtime_session_id)
+    } else {
+        format!(
+            "finding.{}.observation{}",
+            state.runtime_session_id, state.finding_sequence
+        )
     };
-    DiagnosticFinding::try_new(
-        DiagnosticFindingId::parse(format!("finding.{}.terminal", state.runtime_session_id))
-            .map_err(diagnostic_error)?,
-        DiagnosticCode::parse(code).map_err(diagnostic_error)?,
-        DiagnosticDomain::parse("mcp").map_err(diagnostic_error)?,
-        DiagnosticStage::parse(stage).map_err(diagnostic_error)?,
-        DiagnosticSeverity::Error,
-        DiagnosticSource::parse("mcp_stdio").map_err(diagnostic_error)?,
-        DiagnosticSubject::try_new("runtime_session", &state.runtime_session_id)
-            .map_err(diagnostic_error)?,
-        DiagnosticFacts::project(&McpTerminalFindingFacts { summary }).map_err(diagnostic_error)?,
-        UtcTimestamp::parse(observed_at).map_err(|_| {
-            McpAdapterError::Protocol("terminal finding timestamp is invalid".to_owned())
-        })?,
+    let finding = finding_for_diagnostic(
+        diagnostic,
+        McpDiagnosticContext {
+            finding_id,
+            observed_at: UtcTimestamp::parse(&authoritative_observation_timestamp()).map_err(
+                |_| McpAdapterError::Protocol("diagnostic timestamp is invalid".to_owned()),
+            )?,
+            connection_id: Some(runtime.connection_internal_id),
+            integration_revision: Some(runtime.connection_integration_revision),
+            runtime_session_id: Some(state.runtime_session_id.clone()),
+            requested_revision: runtime.requested_protocol_version,
+            selected_revision: runtime.selected_protocol_version,
+            negotiated_revision: runtime.negotiated_protocol_version,
+            supported_revisions: production_supported_revisions(),
+            attempted_client_name: runtime.attempted_client_name,
+            attempted_client_version: runtime.attempted_client_version,
+            json_rpc_error_code,
+            safe_error_data,
+            tool_name,
+            missing_tools,
+        },
     )
-    .map_err(diagnostic_error)?
-    .with_connection_id(AgentConnectionId::new(runtime.connection_internal_id))
-    .map_err(diagnostic_error)?
-    .with_runtime_session_id(AgentRuntimeSessionId::new(state.runtime_session_id.clone()))
-    .map_err(diagnostic_error)
-    .and_then(|finding| {
-        IntegrationRevision::parse(runtime.connection_integration_revision)
-            .map(|revision| finding.with_integration_revision(revision))
-            .map_err(|_| {
-                McpAdapterError::Protocol(
-                    "runtime session integration revision is invalid".to_owned(),
-                )
-            })
-    })
+    .map_err(|error| {
+        McpAdapterError::Protocol(format!("structured diagnostic finding is invalid: {error}"))
+    })?;
+    if terminal {
+        record_mcp_terminal_finding(&adapter.runtime_home, &finding)
+            .map_err(McpAdapterError::Store)?;
+        state.terminal_finding_recorded = true;
+    } else {
+        insert_diagnostic_finding(&adapter.runtime_home, &finding)
+            .map_err(McpAdapterError::Store)?;
+    }
+    Ok(())
 }
 
 fn required_tool_set_present(
@@ -1184,16 +1470,20 @@ fn required_tool_set_present(
         .all(|tool_name| actual.contains(tool_name)))
 }
 
-pub(crate) fn lifecycle_error(state: &ConnectionState, request: &JsonRpcRequest) -> Option<Value> {
+fn lifecycle_error_with_diagnostic(
+    state: &ConnectionState,
+    request: &JsonRpcRequest,
+) -> Option<(Value, McpDiagnostic)> {
     match state.phase {
-        ConnectionPhase::AwaitingInitialize if request.method != "initialize" => Some(
+        ConnectionPhase::AwaitingInitialize if request.method != "initialize" => Some((
             invalid_request_response(&request.id, "initialize must be the first request"),
-        ),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializeRequired),
+        )),
         ConnectionPhase::AwaitingInitialize => None,
         ConnectionPhase::AwaitingInitialized => match request.method.as_str() {
-            "initialize" => Some(invalid_request_response(
-                &request.id,
-                "initialize has already completed",
+            "initialize" => Some((
+                invalid_request_response(&request.id, "initialize has already completed"),
+                McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize),
             )),
             "tools/list" => None,
             "tools/call"
@@ -1202,16 +1492,19 @@ pub(crate) fn lifecycle_error(state: &ConnectionState, request: &JsonRpcRequest)
                     .as_ref()
                     .is_none_or(NegotiatedMcpSession::requires_initialized_notification) =>
             {
-                Some(invalid_request_response(
-                    &request.id,
-                    "tools/call requires notifications/initialized",
+                Some((
+                    invalid_request_response(
+                        &request.id,
+                        "tools/call requires notifications/initialized",
+                    ),
+                    McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady),
                 ))
             }
             _ => None,
         },
-        ConnectionPhase::Ready if request.method == "initialize" => Some(invalid_request_response(
-            &request.id,
-            "initialize has already completed",
+        ConnectionPhase::Ready if request.method == "initialize" => Some((
+            invalid_request_response(&request.id, "initialize has already completed"),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize),
         )),
         ConnectionPhase::Ready => None,
     }
@@ -1221,7 +1514,7 @@ fn bind_codex_managed_tool_call(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     params: &Map<String, Value>,
-) -> Result<(), &'static str> {
+) -> Result<(), McpHostError> {
     if matches!(state.codex_binding, CodexManagedBinding::NotApplicable) {
         return Ok(());
     }
@@ -1237,9 +1530,8 @@ fn bind_codex_managed_tool_call(
                 host_turn_id: binding.host_turn_id,
             };
             candidate.managed_stdio_binding_active = true;
-            validate_managed_stdio_session_ownership(adapter, &candidate).map_err(|_| {
-                "managed Codex call metadata conflicts with the registered connection session"
-            })?;
+            validate_managed_stdio_session_ownership(adapter, &candidate)
+                .map_err(|_| McpHostError::RegisteredSessionCorrelationMismatch)?;
             *state = candidate;
             Ok(())
         }
@@ -1255,7 +1547,7 @@ fn bind_codex_managed_tool_call(
             Ok(())
         }
         CodexManagedBinding::Bound { .. } => {
-            Err("managed Codex call metadata changed session or thread binding")
+            Err(McpHostError::RegisteredSessionCorrelationMismatch)
         }
         CodexManagedBinding::NotApplicable => Ok(()),
     }
@@ -1272,27 +1564,26 @@ struct CodexManagedCallBinding {
 fn codex_managed_call_binding(
     params: &Map<String, Value>,
     connection_internal_id: &str,
-) -> Result<CodexManagedCallBinding, &'static str> {
+) -> Result<CodexManagedCallBinding, McpHostError> {
     let metadata = params
         .get("_meta")
         .and_then(Value::as_object)
-        .ok_or("managed Codex tools/call requires object params._meta")?;
+        .ok_or(McpHostError::MalformedNativeMetadata)?;
     let flat_thread_id = metadata
         .get("threadId")
         .and_then(Value::as_str)
-        .ok_or("managed Codex tools/call requires string params._meta.threadId")?;
+        .ok_or(McpHostError::MalformedNativeMetadata)?;
     let turn_metadata = metadata
         .get(CODEX_TURN_METADATA_KEY)
         .and_then(Value::as_object)
-        .ok_or("managed Codex tools/call requires object params._meta.x-codex-turn-metadata")?;
+        .ok_or(McpHostError::MalformedNativeMetadata)?;
     let native_session_id = codex_turn_metadata_id(turn_metadata, "session_id")?;
     let nested_thread_id = codex_turn_metadata_id(turn_metadata, "thread_id")?;
     let turn_id = codex_turn_metadata_id(turn_metadata, "turn_id")?;
-    validate_managed_host_native_session_id(flat_thread_id).map_err(|_| {
-        "managed Codex tools/call contains invalid host-native session correlation metadata"
-    })?;
+    validate_managed_host_native_session_id(flat_thread_id)
+        .map_err(|_| McpHostError::MalformedNativeMetadata)?;
     if flat_thread_id != nested_thread_id {
-        return Err("managed Codex tools/call thread metadata is inconsistent");
+        return Err(McpHostError::SessionThreadTurnInconsistent);
     }
     let thread_digest = codex_thread_correlation_digest(
         connection_internal_id,
@@ -1310,14 +1601,13 @@ fn codex_managed_call_binding(
 fn codex_turn_metadata_id<'a>(
     metadata: &'a Map<String, Value>,
     field: &str,
-) -> Result<&'a str, &'static str> {
+) -> Result<&'a str, McpHostError> {
     let value = metadata
         .get(field)
         .and_then(Value::as_str)
-        .ok_or("managed Codex tools/call requires string session, thread, and turn metadata")?;
-    validate_managed_host_native_session_id(value).map_err(|_| {
-        "managed Codex tools/call contains invalid host-native session correlation metadata"
-    })?;
+        .ok_or(McpHostError::MalformedNativeMetadata)?;
+    validate_managed_host_native_session_id(value)
+        .map_err(|_| McpHostError::MalformedNativeMetadata)?;
     Ok(value)
 }
 
@@ -1495,57 +1785,73 @@ pub(crate) fn initialize_result(session: &NegotiatedMcpSession) -> Value {
 fn validate_initialize_params(
     id: &Value,
     params: Option<Value>,
-) -> Result<NegotiatedMcpSession, Value> {
-    let object = required_object_params(id, params, "initialize")?;
+) -> Result<NegotiatedMcpSession, (Value, McpDiagnostic)> {
+    let object = required_object_params(id, params, "initialize").map_err(|response| {
+        (
+            response,
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
+        )
+    })?;
     let Some(Value::String(requested_protocol_version)) = object.get("protocolVersion") else {
-        return Err(invalid_params_response(
-            id,
-            "initialize params.protocolVersion must be a string",
+        return Err((
+            invalid_params_response(id, "initialize params.protocolVersion must be a string"),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::MalformedVersion),
         ));
     };
     let Some(Value::Object(client_capabilities)) = object.get("capabilities") else {
-        return Err(invalid_params_response(
-            id,
-            "initialize params.capabilities must be an object",
+        return Err((
+            invalid_params_response(id, "initialize params.capabilities must be an object"),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
         ));
     };
     let Some(Value::Object(client_info)) = object.get("clientInfo") else {
-        return Err(invalid_params_response(
-            id,
-            "initialize params.clientInfo must be an object",
+        return Err((
+            invalid_params_response(id, "initialize params.clientInfo must be an object"),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
         ));
     };
     let Some(Value::String(client_name)) = client_info.get("name") else {
-        return Err(invalid_params_response(
-            id,
-            "initialize params.clientInfo.name must be a string",
+        return Err((
+            invalid_params_response(id, "initialize params.clientInfo.name must be a string"),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
         ));
     };
     let Some(Value::String(client_version)) = client_info.get("version") else {
-        return Err(invalid_params_response(
-            id,
-            "initialize params.clientInfo.version must be a string",
+        return Err((
+            invalid_params_response(id, "initialize params.clientInfo.version must be a string"),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
         ));
     };
     let client_info = ManagedMcpClientInfo::new(client_name.clone(), client_version.clone())
-        .map_err(|error| invalid_params_response(id, error.to_string()))?;
+        .map_err(|error| {
+            (
+                invalid_params_response(id, error.to_string()),
+                McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
+            )
+        })?;
     let (attempted_client_name, attempted_client_version) = client_info.into_parts();
     let selection = ProtocolRegistry::production()
         .negotiate_initialize(requested_protocol_version)
         .map_err(|mismatch| {
-            json_rpc_error(
-                id.clone(),
-                -32601,
-                "Method not found",
-                Some(format!(
-                    "protocolVersion {} does not use the initialize handshake",
-                    mismatch.revision()
-                )),
+            (
+                json_rpc_error(
+                    id.clone(),
+                    -32601,
+                    "Method not found",
+                    Some(format!(
+                        "protocolVersion {} does not use the initialize handshake",
+                        mismatch.revision()
+                    )),
+                ),
+                McpDiagnostic::Protocol(McpProtocolDiagnostic::GenerationMismatch),
             )
         })?;
 
     Ok(NegotiatedMcpSession {
         requested_protocol_version: requested_protocol_version.clone(),
+        requested_protocol_version_well_formed: protocol_revision_is_well_formed(
+            requested_protocol_version,
+        ),
         selected_profile: selection.profile(),
         outcome: selection.outcome(),
         client_capabilities: client_capabilities.clone(),
@@ -1553,6 +1859,17 @@ fn validate_initialize_params(
         attempted_client_version,
         initialized_notification_completed: false,
     })
+}
+
+fn protocol_revision_is_well_formed(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
 }
 
 fn parsed_initialize_attempt(params: Option<&Value>) -> Option<(ManagedMcpClientInfo, String)> {
@@ -1621,6 +1938,9 @@ pub(crate) fn call_tool_result(
     let object = match required_object_params(id, params, "tools/call") {
         Ok(object) => object,
         Err(error) => {
+            state.pending_finding = Some(McpDiagnostic::ToolCall(
+                McpToolCallDiagnostic::InvalidArguments,
+            ));
             record_tool_diagnostic_best_effort(
                 adapter,
                 state,
@@ -1637,6 +1957,9 @@ pub(crate) fn call_tool_result(
     };
     if object.contains_key("task") {
         let error = invalid_params_response(id, "tools/call task augmentation is not supported");
+        state.pending_finding = Some(McpDiagnostic::ToolCall(
+            McpToolCallDiagnostic::InvalidArguments,
+        ));
         record_tool_diagnostic_best_effort(
             adapter,
             state,
@@ -1655,6 +1978,9 @@ pub(crate) fn call_tool_result(
         Some(tool_name) => tool_name,
         None => {
             let error = invalid_params_response(id, "tools/call params.name must be a string");
+            state.pending_finding = Some(McpDiagnostic::ToolCall(
+                McpToolCallDiagnostic::InvalidArguments,
+            ));
             record_tool_diagnostic_best_effort(
                 adapter,
                 state,
@@ -1676,6 +2002,7 @@ pub(crate) fn call_tool_result(
             "Invalid params",
             Some(format!("unknown MCP tool: {tool_name}")),
         );
+        state.pending_finding = Some(McpDiagnostic::ToolCall(McpToolCallDiagnostic::UnknownTool));
         record_tool_diagnostic_best_effort(
             adapter,
             state,
@@ -1698,6 +2025,9 @@ pub(crate) fn call_tool_result(
         Some(_) => {
             let error =
                 invalid_params_response(id, "tools/call params.arguments must be an object");
+            state.pending_finding = Some(McpDiagnostic::ToolCall(
+                McpToolCallDiagnostic::InvalidArguments,
+            ));
             record_tool_diagnostic_best_effort(
                 adapter,
                 state,
@@ -1714,7 +2044,8 @@ pub(crate) fn call_tool_result(
     };
     let codex_was_pending = state.codex_binding.is_pending();
     if let Err(error) = bind_codex_managed_tool_call(adapter, state, &object) {
-        return Ok(Err(invalid_params_response(id, error)));
+        state.pending_finding = Some(McpDiagnostic::Host(error));
+        return Ok(Err(invalid_params_response(id, error.to_string())));
     }
     if codex_was_pending {
         let _ = start_transport_diagnostic_session(adapter, state);
@@ -1763,6 +2094,7 @@ pub(crate) fn call_tool_result(
             }
             Ok(response) => ToolCallOutput::from_pipeline_response(&response)?,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
@@ -1779,6 +2111,7 @@ pub(crate) fn call_tool_result(
                 return Ok(Ok(response));
             }
             Err(error @ McpAdapterError::ToolExecution { .. }) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
@@ -1795,6 +2128,7 @@ pub(crate) fn call_tool_result(
                 return Ok(Ok(response));
             }
             Err(error) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response = json_rpc_error_for_adapter(id.clone(), error);
                 record_tool_diagnostic_best_effort(
                     adapter,
@@ -1814,6 +2148,7 @@ pub(crate) fn call_tool_result(
         let response = match adapter.call_adapter_tool(tool_name, arguments, None) {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
@@ -1830,6 +2165,7 @@ pub(crate) fn call_tool_result(
                 return Ok(Ok(response));
             }
             Err(error @ McpAdapterError::ToolExecution { .. }) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
@@ -1846,6 +2182,7 @@ pub(crate) fn call_tool_result(
                 return Ok(Ok(response));
             }
             Err(error) => {
+                state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response = json_rpc_error_for_adapter(id.clone(), error);
                 record_tool_diagnostic_best_effort(
                     adapter,
@@ -3429,7 +3766,9 @@ pub(crate) fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> V
         }
         McpAdapterError::Protocol(_)
         | McpAdapterError::Environment(_)
-        | McpAdapterError::ToolExecution { .. } => (-32602, "Invalid params"),
+        | McpAdapterError::Host(_)
+        | McpAdapterError::ToolExecution { .. }
+        | McpAdapterError::ToolOutputSchema { .. } => (-32602, "Invalid params"),
         McpAdapterError::Core(_)
         | McpAdapterError::Json(_)
         | McpAdapterError::Io(_)
@@ -3438,12 +3777,17 @@ pub(crate) fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> V
     json_rpc_error(id, code, message, Some(error.to_string()))
 }
 
-pub(crate) fn invalid_request(id: Value, data: impl Into<String>) -> JsonRpcFailure {
+fn invalid_request_with_diagnostic(
+    id: Value,
+    data: impl Into<String>,
+    diagnostic: JsonRpcDiagnostic,
+) -> JsonRpcFailure {
     JsonRpcFailure {
         id,
         code: -32600,
         message: "Invalid Request",
         data: Some(data.into()),
+        diagnostic,
     }
 }
 

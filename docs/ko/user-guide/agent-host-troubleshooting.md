@@ -71,17 +71,20 @@ JSON 출력으로 활성 검증을 다시 실행하고 `mcp_server` 검사를 �
 volicord connection verify codex --repo "<repo>" --json
 ```
 
-제한된 `io_detail`, `protocol_detail`, `stderr` 맥락보다 먼저
-`details.self_test.failure.kind`와 `.stage`를 확인합니다.
-`exited_before_response` 실패는 `exit_code`도 보고하며 `null`은 숫자 종료 코드를 얻지
-못했다는 뜻입니다. `timeout`은 `timeout_ms`를 보고합니다. 텍스트 캡처의
-`truncated=true`이면 진단을 전달할 때 결정적 잘림 표식과 `omitted_bytes` 수를
-함께 보존합니다.
+`details.self_test.diagnostic_code`, `failure_stage`, `finding_id`를 확인합니다.
+Matrix 실패도 실패한 revision 또는 host fixture에 같은 세 필드를 표시합니다. 종료
+code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을 확인하거나 전달할
+때 finding ID를 함께 보존합니다.
 
 `stderr`는 제한된 맥락으로만 취급합니다. 자식 프로세스 문구에서 기계 판독 사유를
-추론하거나 자격 증명을 보고서에 복사하지 않습니다. `missing_tools`가 있다면 구조화된
-도구 목록 응답에서 나온 값입니다. 정확한 필드와 단계별 검사 코드 매핑은
-[관리 CLI](../reference/admin-cli.md)가 담당합니다.
+추론하거나 자격 증명을 보고서에 복사하지 않습니다. 안정적인 `process.*`, `mcp.*`,
+`host.codex.*` code가 후속 산문 parsing 없이 원인을 식별합니다. 정확한 진단 참조 필드와
+프로세스 제한은 [관리 CLI](../reference/admin-cli.md), MCP code 의미와 안전한 협상 사실은
+[MCP 전송](../reference/mcp-transport.md)이 담당합니다.
+
+`actual_mcp_peer_client_info.version`과 `path_executable_probe.version`이 다르면 먼저
+활성 Codex 프로세스와 PATH를 확인합니다. 이 warning은 유용한 evidence지만 그 자체로
+치명적 결과는 아닙니다. 보고할 때 한 version을 다른 version으로 바꾸지 않습니다.
 
 ## Codex에서 도구가 보이지 않음
 

@@ -126,7 +126,7 @@ impl ChildSupervisor {
                 supervisor
                     .stdout
                     .is_none()
-                    .then(|| McpProcessFailure::Read {
+                    .then(|| McpProcessFailure::PipeAcquisition {
                         stage: McpStage::Startup,
                         io_detail: bounded_io_text("MCP stdout pipe was unavailable"),
                         stderr: BoundedText::empty(),
@@ -136,7 +136,7 @@ impl ChildSupervisor {
                 supervisor
                     .stderr
                     .is_none()
-                    .then(|| McpProcessFailure::Read {
+                    .then(|| McpProcessFailure::PipeAcquisition {
                         stage: McpStage::Startup,
                         io_detail: bounded_io_text("MCP stderr pipe was unavailable"),
                         stderr: BoundedText::empty(),
@@ -146,7 +146,7 @@ impl ChildSupervisor {
                 matches!(kind, SupervisorKind::Stdio)
                     .then_some(())
                     .filter(|()| supervisor.stdin.is_none())
-                    .map(|()| McpProcessFailure::Write {
+                    .map(|()| McpProcessFailure::PipeAcquisition {
                         stage: McpStage::Startup,
                         io_detail: bounded_io_text("MCP stdin pipe was unavailable"),
                         stderr: BoundedText::empty(),
@@ -157,7 +157,7 @@ impl ChildSupervisor {
         }
 
         if let Err(error) = supervisor.prepare_pipes() {
-            let failure = McpProcessFailure::Read {
+            let failure = McpProcessFailure::PipeAcquisition {
                 stage: McpStage::Startup,
                 io_detail: bounded_io_text(error),
                 stderr: BoundedText::empty(),
@@ -324,7 +324,6 @@ impl ChildSupervisor {
         }
     }
 
-    #[cfg(test)]
     pub(super) fn child_id(&self) -> u32 {
         self.child.id()
     }

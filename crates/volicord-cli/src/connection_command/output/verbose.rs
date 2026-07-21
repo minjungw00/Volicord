@@ -210,25 +210,6 @@ impl<'a> DetailContext<'a> {
         Some(value)
     }
 
-    fn take_u64(&mut self, path: &str) -> Option<u64> {
-        let path = DetailPath::from_dotted_keys(path);
-        let value = self.peek(&path)?.as_u64()?;
-        self.consume(&path);
-        Some(value)
-    }
-
-    fn take_optional_i64(&mut self, path: &str) -> Option<Option<i64>> {
-        let path = DetailPath::from_dotted_keys(path);
-        let value = self.peek(&path)?;
-        let value = if value.is_null() {
-            None
-        } else {
-            Some(value.as_i64()?)
-        };
-        self.consume(&path);
-        Some(value)
-    }
-
     fn take_string_array(&mut self, path: &str) -> Option<Vec<String>> {
         let path = DetailPath::from_dotted_keys(path);
         let values = self.peek(&path)?.as_array()?;
@@ -278,10 +259,6 @@ impl<'a> DetailContext<'a> {
             0,
             &mut self.lines,
         );
-    }
-
-    fn multiline(&mut self, label: &str, value: &str) {
-        push_labeled_multiline(&mut self.lines, 4, label, value);
     }
 
     fn render_additional(&mut self) {
@@ -365,6 +342,9 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     let preflight = context.take_string("preflight.status");
     let preflight_code = context.take_string("preflight.code");
     let preflight_diagnostic = context.take_string("preflight.diagnostic");
+    let preflight_finding_id = context.take_string("preflight.finding_id");
+    let preflight_diagnostic_code = context.take_string("preflight.diagnostic_code");
+    let _preflight_failure_stage = context.take_string("preflight.failure_stage");
     if let Some(status) = preflight.as_deref() {
         context.line("Preflight", status);
     }
@@ -383,10 +363,19 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     if let Some(mode) = context.take_string("preflight.storage.effective_tool_mode") {
         context.line("Effective mode", mode);
     }
+    if let Some(code) = preflight_diagnostic_code {
+        context.line("Preflight diagnostic code", code);
+    }
+    if let Some(finding_id) = preflight_finding_id {
+        context.line("Preflight finding", finding_id);
+    }
 
     let self_test_status = context.take_string("self_test.status");
     let _self_test_code = context.take_string("self_test.code");
     let diagnostic = context.take_string("self_test.diagnostic");
+    let diagnostic_code = context.take_string("self_test.diagnostic_code");
+    let finding_id = context.take_string("self_test.finding_id");
+    let failure_stage = context.take_string("self_test.failure_stage");
     let production_revisions = context
         .take_string_array("self_test.production_supported_revisions")
         .unwrap_or_default();
@@ -417,6 +406,12 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
             &safe_tool,
             &tools,
         );
+        if let Some(code) = diagnostic_code {
+            context.line("Self-test diagnostic code", code);
+        }
+        if let Some(finding_id) = finding_id {
+            context.line("Self-test finding", finding_id);
+        }
         if self_test_status.as_deref() != Some("passed")
             && diagnostic.as_deref().is_some_and(|diagnostic| {
                 diagnostic_adds_information(diagnostic, context.check.summary())
@@ -450,8 +445,6 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
         .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
     let safe_tool_completed = context.take_bool("self_test.safe_read_only_tool_completed");
     let shutdown_completed = context.take_bool("self_test.shutdown_completed");
-    let failure_kind = context.take_string("self_test.failure.kind");
-    let failure_stage = context.take_string("self_test.failure.stage");
     let preflight_passed = preflight.as_deref() == Some("passed");
     let self_test_passed = self_test_status.as_deref() == Some("passed");
 
@@ -492,43 +485,13 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
         ),
     );
 
-    let missing_tools = context
-        .take_string_array("self_test.failure.missing_tools")
-        .unwrap_or_default();
-    if !missing_tools.is_empty() {
-        context.line("Missing tools", render_string_values(&missing_tools));
+    if let Some(code) = diagnostic_code {
+        context.line("Self-test diagnostic code", code);
     }
-    if let (Some(kind), Some(stage)) = (failure_kind.as_deref(), failure_stage.as_deref()) {
-        context.line("Failure", format_args!("{kind} during {stage}"));
+    if let Some(finding_id) = finding_id {
+        context.line("Self-test finding", finding_id);
     }
-    if let Some(exit_code) = context.take_optional_i64("self_test.failure.exit_code") {
-        context.line(
-            "Exit code",
-            exit_code.map_or_else(|| "unavailable".to_owned(), |code| code.to_string()),
-        );
-    }
-    if let Some(timeout_ms) = context.take_u64("self_test.failure.timeout_ms") {
-        context.line("Timeout", format_args!("{timeout_ms} ms"));
-    }
-    let protocol_detail = context.take_string("self_test.failure.protocol_detail.text");
-    let _protocol_truncated = context.take_bool("self_test.failure.protocol_detail.truncated");
-    let _protocol_omitted = context.take_u64("self_test.failure.protocol_detail.omitted_bytes");
-    if let Some(protocol_detail) = protocol_detail {
-        context.multiline("Protocol detail", &protocol_detail);
-    }
-    let io_detail = context.take_string("self_test.failure.io_detail.text");
-    let _io_truncated = context.take_bool("self_test.failure.io_detail.truncated");
-    let _io_omitted = context.take_u64("self_test.failure.io_detail.omitted_bytes");
-    if let Some(io_detail) = io_detail {
-        context.multiline("I/O detail", &io_detail);
-    }
-    let stderr = context.take_string("self_test.failure.stderr.text");
-    let _stderr_truncated = context.take_bool("self_test.failure.stderr.truncated");
-    let _stderr_omitted = context.take_u64("self_test.failure.stderr.omitted_bytes");
-    if let Some(stderr) = stderr.filter(|stderr| !stderr.is_empty()) {
-        context.multiline("Stderr", &stderr);
-    }
-    if failure_kind.is_none()
+    if failure_stage.is_none()
         && !self_test_passed
         && diagnostic.as_deref().is_some_and(|diagnostic| {
             diagnostic_adds_information(diagnostic, context.check.summary())
@@ -588,11 +551,14 @@ fn render_mcp_probe_matrix(
             &format!("Revision {revision}"),
             format_args!("{status}; negotiated {negotiated}; {tools} tools; {shutdown} shutdown"),
         );
-        if let Some(stage) = probe["failure"]["stage"].as_str() {
+        if let Some(stage) = probe["failure_stage"].as_str() {
             context.line(
                 "Revision failure",
                 format_args!("{revision} during {stage}"),
             );
+        }
+        if let Some(code) = probe["diagnostic_code"].as_str() {
+            context.line("Revision diagnostic code", code);
         }
     }
     context.line("Tools returned", tools.len());
@@ -691,11 +657,20 @@ fn split_json_suffix(value: &str) -> Option<(&str, Value)> {
 
 fn render_host_session(context: &mut DetailContext<'_>) {
     render_revision_pair(context);
-    if let Some(version) = context.take_string("current_host_version") {
-        context.line("Current host version", version);
+    if let Some(path) = context.take_string("path_executable_probe.path") {
+        context.line("PATH executable", path);
     }
-    if let Some(version) = context.take_string("observed_host_version") {
-        context.line("Observed host version", version);
+    if let Some(version) = context.take_string("path_executable_probe.version") {
+        context.line("PATH executable version", version);
+    }
+    if let Some(version) = context.take_string("observed_host_executable_version") {
+        context.line("Observed host executable version", version);
+    }
+    if let Some(name) = context.take_string("actual_mcp_peer_client_info.name") {
+        context.line("Actual MCP peer", name);
+    }
+    if let Some(version) = context.take_string("actual_mcp_peer_client_info.version") {
+        context.line("Actual MCP peer version", version);
     }
     context.line("Initialize", host_initialize_result(context.check));
     render_terminal_finding(context);
@@ -706,9 +681,7 @@ fn host_initialize_result(check: &ConnectionCheck) -> &'static str {
     match (check.status(), check.code().unwrap_or_default()) {
         (ConnectionCheckStatus::Passed, _) => "completed",
         (ConnectionCheckStatus::Failed, _) => "failed",
-        (_, code) if code.contains("not_observed") || code.contains("revision_stale") => {
-            "not observed"
-        }
+        (_, "host_session_not_observed" | "host_session_revision_stale") => "not observed",
         _ => "pending",
     }
 }
@@ -1517,8 +1490,9 @@ mod tests {
                     Some(json!({
                         "current_integration_revision": "revision_current",
                         "observed_integration_revision": "revision_current",
-                        "current_host_version": "1.2.3",
-                        "observed_host_version": "1.2.3",
+                        "path_executable_probe": {"path": "/opt/codex", "version": "1.2.3"},
+                        "observed_host_executable_version": "1.2.3",
+                        "actual_mcp_peer_client_info": {"name": "codex", "version": "1.2.3"},
                         "last_observed_at": "2026-07-20T00:00:00Z",
                         "terminal_finding_id": null,
                     })),
@@ -1577,8 +1551,11 @@ mod tests {
                 "    Observed at: 2026-07-20T00:00:00Z\n",
                 "    Current revision: revision_current\n",
                 "    Observed revision: revision_current\n",
-                "    Current host version: 1.2.3\n",
-                "    Observed host version: 1.2.3\n",
+                "    PATH executable: /opt/codex\n",
+                "    PATH executable version: 1.2.3\n",
+                "    Observed host executable version: 1.2.3\n",
+                "    Actual MCP peer: codex\n",
+                "    Actual MCP peer version: 1.2.3\n",
                 "    Initialize: pending\n\n",
                 "  [fail] Managed Codex configuration\n",
                 "    Managed Codex configuration differs from the canonical entry\n",
@@ -1619,8 +1596,9 @@ mod tests {
                 Some(json!({
                     "current_integration_revision": "revision_current",
                     "observed_integration_revision": null,
-                    "current_host_version": "1.2.3",
-                    "observed_host_version": null,
+                    "path_executable_probe": {"path": "/opt/codex", "version": "1.2.3"},
+                    "observed_host_executable_version": null,
+                    "actual_mcp_peer_client_info": {"name": null, "version": null},
                     "last_observed_at": null,
                     "terminal_finding_id": null,
                 })),
@@ -1654,7 +1632,8 @@ mod tests {
                 "    Managed host connection use has not been observed\n",
                 "    Code: host_session_not_observed\n",
                 "    Current revision: revision_current\n",
-                "    Current host version: 1.2.3\n",
+                "    PATH executable: /opt/codex\n",
+                "    PATH executable version: 1.2.3\n",
                 "    Initialize: not observed\n\n",
                 "Actions\n",
                 "  observe_codex\n",
@@ -1759,9 +1738,8 @@ mod tests {
                 "    Tools returned: 0\n",
                 "    Designated read-only tool: volicord.list_projects (not completed)\n",
                 "    Shutdown: not completed\n",
-                "    Missing tools: volicord.close_task\n",
-                "    Failure: protocol during tools_list\n",
-                "    Protocol detail: tools/list omitted 1 required tool(s)\n\n",
+                "    Self-test diagnostic code: mcp.tools.required_missing\n",
+                "    Self-test finding: finding.tools.required_missing\n\n",
                 "Actions\n",
                 "  repair_mcp_server\n",
                 "    Repair the MCP server and verify again\n",
@@ -1899,21 +1877,9 @@ mod tests {
             },
         });
         if status != "passed" {
-            details["self_test"]["failure"] = json!({
-                "kind": "protocol",
-                "stage": "tools_list",
-                "protocol_detail": {
-                    "text": "tools/list omitted 1 required tool(s)",
-                    "truncated": false,
-                    "omitted_bytes": 0,
-                },
-                "missing_tools": ["volicord.close_task"],
-                "stderr": {
-                    "text": "",
-                    "truncated": false,
-                    "omitted_bytes": 0,
-                },
-            });
+            details["self_test"]["diagnostic_code"] = json!("mcp.tools.required_missing");
+            details["self_test"]["failure_stage"] = json!("tools_list");
+            details["self_test"]["finding_id"] = json!("finding.tools.required_missing");
         }
         details
     }
@@ -2090,20 +2056,9 @@ mod tests {
             .as_object_mut()
             .expect("self-test details")
             .remove("tools_list");
-        protocol_details["self_test"]["failure"] = json!({
-            "kind": "protocol",
-            "stage": "initialize",
-            "protocol_detail": {
-                "text": "initialize response returned JSON-RPC error code -32000",
-                "truncated": false,
-                "omitted_bytes": 0,
-            },
-            "stderr": {
-                "text": "",
-                "truncated": false,
-                "omitted_bytes": 0,
-            },
-        });
+        protocol_details["self_test"]["diagnostic_code"] = json!("mcp.json_rpc.error_response");
+        protocol_details["self_test"]["failure_stage"] = json!("initialize");
+        protocol_details["self_test"]["finding_id"] = json!("finding.protocol_failure");
         let protocol_failure = report(
             CommandOperation::Verify,
             false,
@@ -2124,17 +2079,16 @@ mod tests {
         let protocol_output = rendered(&protocol_failure);
         let protocol_machine = serde_json::to_value(&protocol_failure).unwrap();
         assert_eq!(
-            protocol_machine["checks"][0]["details"]["self_test"]["failure"]["kind"],
-            "protocol"
+            protocol_machine["checks"][0]["details"]["self_test"]["diagnostic_code"],
+            "mcp.json_rpc.error_response"
         );
         assert_eq!(
-            protocol_machine["checks"][0]["details"]["self_test"]["failure"]["stage"],
+            protocol_machine["checks"][0]["details"]["self_test"]["failure_stage"],
             "initialize"
         );
-        assert!(protocol_output.contains(concat!(
-            "    Failure: protocol during initialize\n",
-            "    Protocol detail: initialize response returned JSON-RPC error code -32000\n",
-        )));
+        assert!(protocol_output
+            .contains("    Self-test diagnostic code: mcp.json_rpc.error_response\n"));
+        assert!(protocol_output.contains("    Self-test finding: finding.protocol_failure\n"));
         assert!(!protocol_output.contains("Phase:"));
 
         let guards = report(
@@ -2223,8 +2177,9 @@ mod tests {
                 Some(json!({
                     "current_integration_revision": "revision_current",
                     "observed_integration_revision": "revision_observed",
-                    "current_host_version": "2.0",
-                    "observed_host_version": "1.0",
+                    "path_executable_probe": {"path": "/opt/codex", "version": "2.0"},
+                    "observed_host_executable_version": "1.0",
+                    "actual_mcp_peer_client_info": {"name": "codex", "version": "1.0"},
                     "runtime_session_id": "session_1",
                     "last_observed_at": "2026-07-20T02:00:00Z",
                     "terminal_finding_id": "finding.protocol_failure",

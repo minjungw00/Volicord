@@ -1,5 +1,28 @@
 use crate::prelude::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpHostError {
+    MalformedNativeMetadata,
+    SessionThreadTurnInconsistent,
+    RegisteredSessionCorrelationMismatch,
+    ManagedMarkerMismatch,
+}
+
+impl fmt::Display for McpHostError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::MalformedNativeMetadata => "managed Codex host-native metadata is malformed",
+            Self::SessionThreadTurnInconsistent => {
+                "managed Codex session, thread, and turn metadata is inconsistent"
+            }
+            Self::RegisteredSessionCorrelationMismatch => {
+                "managed Codex metadata conflicts with the registered session correlation"
+            }
+            Self::ManagedMarkerMismatch => "managed Codex launch markers are inconsistent",
+        })
+    }
+}
+
 #[derive(Debug)]
 pub enum McpAdapterError {
     UnknownTool(String),
@@ -13,10 +36,14 @@ pub enum McpAdapterError {
         tool_name: String,
         message: String,
     },
+    ToolOutputSchema {
+        tool_name: String,
+    },
     Core(CorePipelineError),
     Store(StoreError),
     Io(io::Error),
     Json(serde_json::Error),
+    Host(McpHostError),
     Protocol(String),
     Environment(String),
 }
@@ -50,10 +77,17 @@ impl fmt::Display for McpAdapterError {
             Self::ToolExecution { tool_name, message } => {
                 write!(formatter, "{tool_name}: {message}")
             }
+            Self::ToolOutputSchema { tool_name } => {
+                write!(
+                    formatter,
+                    "tool {tool_name} output failed its advertised schema"
+                )
+            }
             Self::Core(error) => write!(formatter, "{error}"),
             Self::Store(error) => write!(formatter, "store error: {error}"),
             Self::Io(error) => write!(formatter, "{error}"),
             Self::Json(error) => write!(formatter, "{error}"),
+            Self::Host(error) => write!(formatter, "{error}"),
             Self::Protocol(message) | Self::Environment(message) => formatter.write_str(message),
         }
     }
@@ -73,6 +107,8 @@ impl Error for McpAdapterError {
             Self::UnknownTool(_)
             | Self::InvalidParams { source: None, .. }
             | Self::ToolExecution { .. }
+            | Self::ToolOutputSchema { .. }
+            | Self::Host(_)
             | Self::Protocol(_)
             | Self::Environment(_) => None,
         }

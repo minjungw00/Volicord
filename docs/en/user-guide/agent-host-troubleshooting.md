@@ -72,17 +72,22 @@ Rerun active verification with JSON output and find the `mcp_server` check:
 volicord connection verify codex --repo "<repo>" --json
 ```
 
-Inspect `details.self_test.failure.kind` and `.stage` before the bounded
-`io_detail`, `protocol_detail`, or `stderr` context. An
-`exited_before_response` failure also reports `exit_code`; `null` means no
-numeric exit code was available. A timeout reports `timeout_ms`. When a text
-capture has `truncated=true`, retain its deterministic truncation marker and
-`omitted_bytes` count when sharing the diagnostic.
+Inspect `details.self_test.diagnostic_code`, `failure_stage`, and `finding_id`.
+Matrix failures expose the same three fields on the failed revision or host
+fixture. Retain the finding ID when inspecting or sharing bounded Registry
+facts such as exit code, timeout, missing tools, or stderr excerpt.
 
 Treat stderr only as bounded context. Do not infer a machine reason from child
-wording or copy credentials into a report. `missing_tools`, when present, came
-from the structured tool-list response. The exact fields and stage-to-check-code
-mapping are owned by [Administrative CLI](../reference/admin-cli.md).
+wording or copy credentials into a report. The stable `process.*`, `mcp.*`, and
+`host.codex.*` code identifies the cause without downstream prose parsing. The
+exact diagnostic-reference fields and process limits are owned by
+[Administrative CLI](../reference/admin-cli.md); MCP code meanings and safe
+negotiation facts are owned by [MCP Transport](../reference/mcp-transport.md).
+
+If `actual_mcp_peer_client_info.version` differs from
+`path_executable_probe.version`, first confirm which Codex process and PATH are
+active. This warning is useful evidence but is not by itself a fatal result;
+do not replace one version with the other when reporting it.
 
 ## Codex Loaded No Tools
 

@@ -33,6 +33,7 @@ pub(crate) use volicord_store::{
         runtime_home_record_read_only, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
+    diagnostic_findings::insert_diagnostic_finding,
     diagnostics::{
         record_diagnostic_event, record_workflow_metric_event, start_diagnostic_session,
         DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,

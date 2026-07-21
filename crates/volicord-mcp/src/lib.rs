@@ -10,6 +10,7 @@
 mod adapter;
 mod build_info;
 mod constants;
+mod diagnostics;
 mod errors;
 mod managed_launch;
 mod prelude;
@@ -28,6 +29,7 @@ pub use build_info::{build_id, build_info, BuildInfo};
 pub use constants::{
     ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
 };
+pub use diagnostics::bootstrap_diagnostic_envelope;
 pub use errors::McpAdapterError;
 pub use managed_launch::{
     is_managed_mcp_launch_environment_name, LaunchEnvironment, ManagedMcpBinding,

@@ -576,10 +576,11 @@ contain multiple `codex` entries when deployed Codex families require different
 revisions or wire shapes.
 
 A failed stdio probe keeps the current stage-specific check code. Its exact
-revision or host fixture, completed observations, and typed failure appear in
-the corresponding matrix entry; the aggregate failure is also available at
-`checks[id=mcp_server].details.self_test.failure`. The self-test diagnostic has
-this current shape:
+revision or host fixture and completed observations remain in the corresponding
+matrix entry. Failure identity is projected as a stable diagnostic code,
+failure stage, and persisted finding reference; no second terminal failure
+object is stored in the verification report. The self-test diagnostic has this
+current shape:
 
 ```yaml
 McpSelfTestProgress:
@@ -592,7 +593,9 @@ McpSelfTestProgress:
   host_compatibility: McpHostProbeResult[]
   tools_list?: string[]
   safe_read_only_tool: volicord.list_projects
-  failure?: McpSelfTestFailure
+  diagnostic_code?: string
+  failure_stage?: startup | initialize | tools_list | safe_tool_call | shutdown
+  finding_id?: string
 
 McpRevisionProbeResult:
   revision: string
@@ -608,12 +611,14 @@ McpRevisionProbeResult:
   safe_read_only_tool: volicord.list_projects
   safe_read_only_tool_completed: boolean
   shutdown_completed: boolean
-  failure?: McpSelfTestFailure
+  diagnostic_code?: string
+  failure_stage?: startup | initialize | tools_list | safe_tool_call | shutdown
+  finding_id?: string
 
 McpHostProbeResult:
   profile: codex
   fixture: string
-  # remaining fields are the same progress and failure fields as
+  # remaining fields are the same progress and diagnostic-reference fields as
   # McpRevisionProbeResult, except revision is represented by the requested
   # and negotiated fields
 ```
@@ -628,43 +633,25 @@ initialize response selects the requested fixture revision. Verbose human
 output reports each revision and host fixture independently, including returned
 tool count and graceful shutdown.
 
-The failure object has this current shape:
+The referenced `DiagnosticFinding` owns the bounded failure facts. Process
+codes include `process.spawn.failed`, `process.pipe_acquisition.failed`,
+`process.pipe.read_failed`, `process.pipe.write_failed`,
+`process.startup.timeout`, `process.initialize.timeout`, `process.tools_list.timeout`,
+`process.safe_tool_call.timeout`, `process.child.exited`,
+`process.shutdown.timeout`, `process.child.signaled`, `process.child.wait_failed`,
+`process.cleanup.failed`, and `process.preflight.report_invalid`. MCP response failures use the stable `mcp.*` codes
+owned by [MCP Transport](mcp-transport.md).
 
-```yaml
-McpSelfTestFailure:
-  kind: spawn | exited_before_response | timeout | read | write | protocol | wait | cleanup | shutdown
-  stage: startup | initialize | tools_list | safe_tool_call | shutdown
-  exit_code?: integer | null
-  timeout_ms?: integer
-  stderr?: BoundedDiagnosticText
-  protocol_detail?: BoundedDiagnosticText
-  missing_tools?: string[]
-  io_detail?: BoundedDiagnosticText
-
-BoundedDiagnosticText:
-  text: string
-  truncated: bool
-  omitted_bytes: integer
-```
-
-Only fields relevant to the typed failure are present. `exit_code=null` means
-the exited process had no numeric status code, including signal termination.
-`stderr` captures at most 2 KiB of child stderr while the verifier drains the
-pipe concurrently; `protocol_detail` is limited to 2 KiB, one stdout protocol
-line is limited to 64 KiB, and one self-test process accepts at most 16 stdout
-protocol messages. One monotonic lifecycle deadline governs process progress;
-process-tree termination, direct-child reaping, and pipe completion use a
-bounded cleanup allowance. A `cleanup` failure reports that bounded cleanup did
-not complete and includes its bounded `io_detail`. Truncated text ends with a
-deterministic marker that states its omitted byte count, and the same count
-remains in `omitted_bytes`. The verifier reports `mcp_server_process_failed` for
-`startup` or `shutdown`, `mcp_server_initialize_failed` for `initialize`,
-`mcp_server_tools_list_failed` for `tools_list`, and
-`mcp_server_safe_call_failed` for `safe_tool_call` directly from the typed
-stage. Stderr is diagnostic context, not a machine-readable child reason; the
-CLI does not classify arbitrary child prose. `missing_tools` comes only from
-the structured `tools/list` response, and a JSON-RPC error detail includes its
-structured numeric code without copying arbitrary error prose or data.
+The verifier drains stderr concurrently and retains at most 2 KiB before the
+shared fact projection applies its per-string bound. Findings retain explicit
+truncation and omitted-byte facts. One stdout protocol line is limited to 64
+KiB, and one self-test process accepts at most 16 stdout protocol messages. One
+monotonic lifecycle deadline governs process progress; process-tree
+termination, direct-child reaping, and pipe completion use a bounded cleanup
+allowance. Stderr and bounded I/O details are context only: diagnostic identity
+comes from the closed process or protocol variant, never arbitrary child
+prose. Full requests, tool arguments, environments, and unrestricted stderr
+are not persisted.
 
 Verification then reads current managed-host observations and persists exactly
 one canonical report. Before planning, it captures the selected Connection's

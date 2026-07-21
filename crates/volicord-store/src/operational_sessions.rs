@@ -792,6 +792,35 @@ pub fn latest_managed_runtime_session(
     .and_then(|record| record.map(validate_runtime_session).transpose())
 }
 
+/// Returns the runtime session created by one observed child process for an
+/// Agent Connection. Process identifiers are scoped by the Connection and the
+/// latest matching start wins if the operating system has reused an ID.
+pub fn mcp_runtime_session_for_process(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+    process_id: u32,
+) -> StoreResult<Option<McpRuntimeSessionRecord>> {
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    conn.query_row(
+        &format!(
+            "{RUNTIME_SESSION_SELECT}
+          WHERE connection_internal_id = ?1
+            AND process_id = ?2
+          ORDER BY process_started_at DESC, runtime_session_id DESC
+          LIMIT 1"
+        ),
+        params![connection_internal_id, i64::from(process_id)],
+        runtime_session_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+    .and_then(|record| record.map(validate_runtime_session).transpose())
+}
+
 /// Returns the latest managed-host observation for the Connection's current
 /// integration revision, whether complete, in progress, or terminally failed.
 /// CLI preflight sessions are structurally excluded.

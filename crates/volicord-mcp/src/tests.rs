@@ -39,12 +39,13 @@ use volicord_store::agent_connections::{
     CONNECTION_MODE_READ_ONLY, HOST_KIND_CODEX,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
+use volicord_store::diagnostic_findings::diagnostic_findings_for_runtime_session;
 use volicord_store::diagnostics::{
     diagnostics_db_path, read_diagnostic_session, read_workflow_metric_aggregates,
     WorkflowMetricAggregateRow,
 };
 use volicord_store::guards::{agent_session, upsert_guard_installation, GuardInstallationUpsert};
-use volicord_store::operational_sessions::mcp_runtime_session;
+use volicord_store::operational_sessions::{latest_managed_runtime_session, mcp_runtime_session};
 use volicord_store::sqlite::{open_registry_database_read_only, registry_db_path};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
@@ -1883,7 +1884,10 @@ fn failed_initialize_retains_attempted_client_and_requested_revision() -> Result
         &volicord_types::DiagnosticFindingId::parse(terminal_id)?,
     )?
     .ok_or("persisted terminal finding")?;
-    assert_eq!(terminal.code().as_str(), "mcp.initialize_failed");
+    assert_eq!(
+        terminal.code().as_str(),
+        "mcp.protocol.capability_shape_invalid"
+    );
     assert_eq!(
         terminal.runtime_session_id().map(|value| value.as_str()),
         Some(runtime_session_id.as_str())
@@ -2125,6 +2129,20 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
         before_tool_invocations
     );
     assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
+    let runtime =
+        latest_managed_runtime_session(fixture.runtime_home_path(), fixture.connection_id())?
+            .ok_or("managed runtime for malformed host metadata")?;
+    let findings = diagnostic_findings_for_runtime_session(
+        fixture.runtime_home_path(),
+        &runtime.runtime_session_id,
+    )?;
+    assert!(findings
+        .iter()
+        .any(|finding| finding.code().as_str() == "host.codex.metadata_malformed"));
+    let persisted_findings = serde_json::to_string(&findings)?;
+    assert!(!persisted_findings.contains("thread invalid marker"));
+    assert!(!persisted_findings.contains(CODEX_TEST_SESSION_ID));
+    assert!(!persisted_findings.contains(CODEX_TEST_THREAD_ID));
     Ok(())
 }
 

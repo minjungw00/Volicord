@@ -67,9 +67,9 @@ pub(crate) fn validate_mcp_tool_output(
     if validation.issues.is_empty() {
         Ok(())
     } else {
-        Err(McpAdapterError::Protocol(format!(
-            "canonical result for {tool_name} does not match its advertised output schema"
-        )))
+        Err(McpAdapterError::ToolOutputSchema {
+            tool_name: tool_name.to_owned(),
+        })
     }
 }
 

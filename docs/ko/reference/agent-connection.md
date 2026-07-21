@@ -315,6 +315,17 @@ Integration generation은 해당 물리 instance 안에서 0으로 시작하고 
 남습니다. Host version이 바뀌면 운영 관찰을 갱신하며, 권한은 현재 Connection, revision,
 권위 있는 runtime/project session binding을 사용합니다.
 
+실제 MCP peer는 해당 runtime session에서 관찰한 제한된 `clientInfo.name`과
+`clientInfo.version`입니다. PATH probe는 별도로 관찰한 Codex executable path와
+version입니다. 보고서와 finding은 둘을 서로 대신 사용하지 않습니다. 두 version이 모두
+있고 서로 다르면 `host.codex.peer_version_differs_from_path_probe`가 두 사실 객체를 담은
+warning evidence를 기록하며, 이 불일치만으로 Connection을 치명적 실패로 만들지 않습니다.
+잘못된 native metadata, 일관되지 않은 session/thread/turn 좌표, 등록 session 불일치,
+managed marker 불일치는 각각 `host.codex.metadata_malformed`,
+`host.codex.session_thread_turn_inconsistent`,
+`host.codex.registered_session_correlation_mismatch`,
+`host.codex.managed_marker_mismatch`를 사용합니다.
+
 각 MCP process 시작은 host thread metadata가 생기기 전에 불투명 Registry runtime
 session ID를 만듭니다. `session_source`는 정확히 `managed_host` 또는
 `cli_preflight`입니다. `managed_host`만 Agent Connection 호출을 승인할 수 있습니다.

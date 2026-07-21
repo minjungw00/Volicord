@@ -25,6 +25,9 @@ use volicord_mcp::{
     READ_ONLY_METHOD_TOOL_NAMES, VOLICORD_HOME_ENV,
 };
 use volicord_store::agent_connections::{agent_connection_record, AgentConnectionRecord};
+use volicord_store::diagnostic_findings::{
+    diagnostic_finding, diagnostic_findings_for_runtime_session,
+};
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
     current_project_agent_session_coordinates,
@@ -39,8 +42,8 @@ use volicord_store::operational_sessions::{
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    guard_manifest_from_json, GuardHookPhase, GuardManagedOwnership, GuardManifest,
-    McpRuntimeSessionSource,
+    guard_manifest_from_json, DiagnosticFindingId, GuardHookPhase, GuardManagedOwnership,
+    GuardManifest, McpRuntimeSessionSource,
 };
 
 const FUTURE_VERSION: &str = "999.0.0";
@@ -270,10 +273,9 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
         assert!(partial.designated_safe_tool_observed_at.is_none());
 
         let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
-        let partial_report =
-            assert_connection_report(&partial_status, 0, "status", "action_required")?;
-        assert_check(&partial_report, "host_session", "pending", None);
-        assert_check(&partial_report, "required_tools", "pending", None);
+        let partial_report = assert_connection_report(&partial_status, 1, "status", "failed")?;
+        assert_check(&partial_report, "host_session", "failed", None);
+        assert_check(&partial_report, "required_tools", "failed", None);
         assert_check(&partial_report, "tool_round_trip", "pending", None);
 
         fixture.run_successful_managed_mcp(
@@ -959,21 +961,37 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     assert!(!verbose.contains("\":["));
 
     let changed_version = fixture.run_connection("verify", NEXT_FUTURE_VERSION, true)?;
-    let changed_report =
-        assert_connection_report(&changed_version, 0, "verify", "action_required")?;
-    for (check_id, code) in [
-        ("host_session", "host_version_observation_stale"),
-        ("required_tools", "required_tools_observation_stale"),
-        ("tool_round_trip", "tool_round_trip_observation_stale"),
-    ] {
-        assert_check(&changed_report, check_id, "pending", Some(code));
+    let changed_report = assert_connection_report(&changed_version, 0, "verify", "complete")?;
+    for check_id in ["host_session", "required_tools", "tool_round_trip"] {
+        assert_check(&changed_report, check_id, "passed", None);
     }
-    assert!(changed_report["actions"].as_array().is_some_and(|actions| {
-        actions.iter().any(|action| {
-            let instruction = action["instruction"].as_str().unwrap_or_default();
-            instruction.contains("Codex") || instruction.contains("Volicord")
-        })
-    }));
+    let runtime_session_id = changed_report["checks"]
+        .as_array()
+        .and_then(|checks| checks.iter().find(|check| check["id"] == "host_session"))
+        .and_then(|check| check.pointer("/details/runtime_session_id"))
+        .and_then(Value::as_str)
+        .ok_or("host-session runtime ID")?;
+    let mismatch_id = DiagnosticFindingId::parse(format!(
+        "finding.{runtime_session_id}.peer_path_version_mismatch"
+    ))?;
+    let mismatch = diagnostic_finding(&fixture.runtime_home, &mismatch_id)?
+        .ok_or("peer/PATH mismatch finding")?;
+    assert_eq!(
+        mismatch.code().as_str(),
+        "host.codex.peer_version_differs_from_path_probe"
+    );
+    assert_eq!(
+        mismatch.severity(),
+        volicord_types::DiagnosticSeverity::Warning
+    );
+    assert_eq!(
+        mismatch.facts().data()["actual_mcp_peer_client_info"]["version"],
+        FUTURE_VERSION
+    );
+    assert_eq!(
+        mismatch.facts().data()["path_executable_probe"]["version"],
+        NEXT_FUTURE_VERSION
+    );
 
     fixture.run_successful_managed_mcp(
         &connection_id,
@@ -1052,10 +1070,12 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
         ])?,
     )?;
     tools_list.assert_failed_status("required_tools", "required_tools_invalid")?;
+    tools_list.assert_latest_runtime_finding("mcp.tools.protocol_error")?;
 
     let safe_call = OperationalFixture::initialized("operational-safe-call-failure")?;
     safe_call.run_safe_tool_storage_failure()?;
     safe_call.assert_failed_status("tool_round_trip", "tool_round_trip_failed")?;
+    safe_call.assert_latest_runtime_finding("mcp.tool_call.safe_read_only_failed")?;
 
     let missing_tools = OperationalFixture::initialized("operational-missing-tools")?;
     let state_db = missing_tools.project_state_db_path();
@@ -1133,19 +1153,30 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
         "failed",
         Some("mcp_server_initialize_failed"),
     );
-    let failure = report["checks"]
+    let self_test = report["checks"]
         .as_array()
         .and_then(|checks| checks.iter().find(|check| check["id"] == "mcp_server"))
-        .and_then(|check| check.pointer("/details/self_test/failure"))
+        .and_then(|check| check.pointer("/details/self_test"))
         .ok_or("MCP early-exit diagnostic projection should be present")?;
-    assert_eq!(failure["kind"], "exited_before_response");
-    assert_eq!(failure["stage"], "initialize");
-    assert_eq!(failure["exit_code"], 23);
-    assert_eq!(failure["stderr"]["truncated"], true);
-    assert_eq!(failure["stderr"]["omitted_bytes"], 1024);
-    assert!(failure["stderr"]["text"]
+    assert_eq!(self_test["diagnostic_code"], "process.child.exited");
+    assert_eq!(self_test["failure_stage"], "initialize");
+    let finding_id = DiagnosticFindingId::parse(
+        self_test["finding_id"]
+            .as_str()
+            .ok_or("MCP early-exit finding ID")?,
+    )?;
+    let finding = diagnostic_finding(&early_exit.runtime_home, &finding_id)?
+        .ok_or("persisted MCP early-exit finding")?;
+    let facts = finding.facts().data();
+    assert_eq!(facts.get("exit_code"), Some(&json!(23)));
+    assert_eq!(facts.get("bounded_stderr_truncated"), Some(&json!(true)));
+    assert_eq!(
+        facts.get("bounded_stderr_omitted_bytes"),
+        Some(&json!(1024))
+    );
+    assert!(facts["bounded_stderr_excerpt"]
         .as_str()
-        .is_some_and(|text| text.ends_with("...[stderr truncated; 1024 bytes omitted]")));
+        .is_some_and(|text| text.len() <= volicord_types::MAX_DIAGNOSTIC_FACT_STRING_BYTES));
     Ok(())
 }
 
@@ -1769,6 +1800,23 @@ impl OperationalFixture {
         let report = assert_connection_report(&output, 1, "status", "failed")?;
         assert_check(&report, check_id, "failed", Some(code));
         assert!(!serde_json::to_string(&report)?.contains("unsupported_artifact"));
+        Ok(())
+    }
+
+    fn assert_latest_runtime_finding(&self, code: &str) -> Result<(), Box<dyn Error>> {
+        let connection_id = self.connection_id();
+        let runtime = latest_current_managed_runtime_session(&self.runtime_home, &connection_id)?
+            .ok_or("latest managed runtime session")?;
+        let findings = diagnostic_findings_for_runtime_session(
+            &self.runtime_home,
+            &runtime.runtime_session_id,
+        )?;
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code().as_str() == code),
+            "missing {code} finding in {findings:?}"
+        );
         Ok(())
     }
 

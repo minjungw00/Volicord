@@ -1,22 +1,28 @@
 use std::{collections::BTreeMap, path::Path, str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_mcp::ManagedMcpInvocationPurpose;
+use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
+    diagnostic_findings::{diagnostic_finding, insert_diagnostic_finding},
     guards::{guard_observation_summary, list_guard_installations},
     operational_sessions::{
         connection_integration_revision, current_managed_runtime_sessions,
-        latest_managed_runtime_session, McpRuntimeSessionRecord,
+        latest_managed_runtime_session, mcp_runtime_session_for_process, McpRuntimeSessionRecord,
     },
 };
 #[cfg(test)]
 use volicord_types::ConnectionStatus;
 use volicord_types::{
-    ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
-    ConnectionCheckKind, ConnectionCheckStatus, ConnectionVerificationReport, GuardManagedArtifact,
-    UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
+    AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
+    ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
+    ConnectionVerificationReport, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource,
+    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
+    DiagnosticStage, DiagnosticSubject, GuardManagedArtifact, IntegrationRevision, UtcTimestamp,
+    LIST_PROJECTS_TOOL_NAME,
 };
 
 use crate::guard_integration::audit::{
@@ -32,8 +38,8 @@ use crate::host_integration::{
 use super::{
     codex_environment,
     mcp_process::{
-        materialize_connection_invocation, run_connection_preflight, McpProcessFailure,
-        McpVerification,
+        materialize_connection_invocation, run_connection_preflight, McpPersistedDiagnostic,
+        McpProcessDiagnosticContext, McpProcessFailure, McpVerification,
     },
     parse_host_kind, ConnectionCommandError, ConnectionProcess,
 };
@@ -61,6 +67,9 @@ pub(in crate::connection_command) struct VerificationStep {
     pub(in crate::connection_command) code: String,
     pub(in crate::connection_command) details: String,
     pub(in crate::connection_command) preflight_diagnostics: Option<McpPreflightDiagnostics>,
+    pub(in crate::connection_command) process_id: Option<u32>,
+    pub(in crate::connection_command) failure: Option<McpProcessFailure>,
+    pub(in crate::connection_command) diagnostic: Option<McpPersistedDiagnostic>,
 }
 
 impl VerificationStep {
@@ -73,6 +82,9 @@ impl VerificationStep {
             code: code.into(),
             details: details.into(),
             preflight_diagnostics: None,
+            process_id: None,
+            failure: None,
+            diagnostic: None,
         }
     }
 
@@ -85,6 +97,9 @@ impl VerificationStep {
             code: code.into(),
             details: details.into(),
             preflight_diagnostics: None,
+            process_id: None,
+            failure: None,
+            diagnostic: None,
         }
     }
 
@@ -94,6 +109,9 @@ impl VerificationStep {
             code: "pending".to_owned(),
             details: details.into(),
             preflight_diagnostics: None,
+            process_id: None,
+            failure: None,
+            diagnostic: None,
         }
     }
 
@@ -102,6 +120,16 @@ impl VerificationStep {
         diagnostics: Option<McpPreflightDiagnostics>,
     ) -> Self {
         self.preflight_diagnostics = diagnostics;
+        self
+    }
+
+    pub(in crate::connection_command) fn with_process_failure(
+        mut self,
+        process_id: Option<u32>,
+        failure: McpProcessFailure,
+    ) -> Self {
+        self.process_id = process_id;
+        self.failure = Some(failure);
         self
     }
 }
@@ -159,13 +187,13 @@ pub(in crate::connection_command) fn verify_connection(
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
     )
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    let preflight = run_connection_preflight(
+    let mut preflight = run_connection_preflight(
         process,
         &preflight_launch,
         &connection.connection_internal_id,
         &connection.mode,
     );
-    let handshake = if preflight.status == StepStatus::Passed {
+    let mut handshake = if preflight.status == StepStatus::Passed {
         let handshake_launch = materialize_connection_invocation(
             &host_plan.entry,
             runtime_home,
@@ -179,9 +207,133 @@ pub(in crate::connection_command) fn verify_connection(
     } else {
         McpVerification::not_run()
     };
+    persist_process_diagnostics(runtime_home, connection, &mut preflight, &mut handshake)?;
     let report =
         canonical_verification_report(runtime_home, connection, &host, &preflight, &handshake)?;
     Ok(VerificationReport { report })
+}
+
+fn persist_process_diagnostics(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    preflight: &mut VerificationStep,
+    handshake: &mut McpVerification,
+) -> Result<(), ConnectionCommandError> {
+    if let Some(failure) = preflight.failure.as_ref() {
+        preflight.diagnostic = Some(persist_process_finding(
+            runtime_home,
+            connection,
+            preflight.process_id,
+            failure,
+        )?);
+    }
+    let Some(exchange) = handshake.exchange.as_mut() else {
+        return Ok(());
+    };
+    if !exchange.conformance.is_empty() || !exchange.host_compatibility.is_empty() {
+        for probe in &mut exchange.conformance {
+            if let Some(failure) = probe.failure.as_ref() {
+                probe.diagnostic = Some(persist_process_finding(
+                    runtime_home,
+                    connection,
+                    probe.progress.process_id,
+                    failure,
+                )?);
+            }
+        }
+        for probe in &mut exchange.host_compatibility {
+            if let Some(failure) = probe.failure.as_ref() {
+                probe.diagnostic = Some(persist_process_finding(
+                    runtime_home,
+                    connection,
+                    probe.progress.process_id,
+                    failure,
+                )?);
+            }
+        }
+        exchange.diagnostic = exchange
+            .conformance
+            .iter()
+            .find_map(|probe| probe.diagnostic.clone())
+            .or_else(|| {
+                exchange
+                    .host_compatibility
+                    .iter()
+                    .find_map(|probe| probe.diagnostic.clone())
+            });
+    } else if let Some(failure) = exchange.failure.as_ref() {
+        exchange.diagnostic = Some(persist_process_finding(
+            runtime_home,
+            connection,
+            exchange.progress.process_id,
+            failure,
+        )?);
+    }
+    Ok(())
+}
+
+fn persist_process_finding(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    process_id: Option<u32>,
+    failure: &McpProcessFailure,
+) -> Result<McpPersistedDiagnostic, ConnectionCommandError> {
+    let runtime = process_id
+        .map(|process_id| {
+            mcp_runtime_session_for_process(
+                runtime_home,
+                &connection.connection_internal_id,
+                process_id,
+            )
+        })
+        .transpose()?
+        .flatten();
+    let observed_at = current_timestamp();
+    let finding_id = runtime.as_ref().map_or_else(
+        || {
+            format!(
+                "finding.process.{}",
+                observed_at.to_canonical_string().to_ascii_lowercase()
+            )
+        },
+        |runtime| format!("finding.{}.supervisor", runtime.runtime_session_id),
+    );
+    let revision = connection_integration_revision(connection)?;
+    let finding = failure
+        .to_diagnostic_finding(McpProcessDiagnosticContext {
+            finding_id,
+            observed_at,
+            connection_id: connection.connection_internal_id.clone(),
+            integration_revision: revision,
+            runtime_session_id: runtime
+                .as_ref()
+                .map(|runtime| runtime.runtime_session_id.clone()),
+            requested_revision: runtime
+                .as_ref()
+                .and_then(|runtime| runtime.requested_protocol_version.clone()),
+            selected_revision: runtime
+                .as_ref()
+                .and_then(|runtime| runtime.selected_protocol_version.clone()),
+            negotiated_revision: runtime
+                .as_ref()
+                .and_then(|runtime| runtime.negotiated_protocol_version.clone()),
+            production_supported_revisions: ProtocolRegistry::production()
+                .oldest_to_newest()
+                .map(|profile| profile.revision().as_str().to_owned())
+                .collect(),
+            attempted_client_name: runtime
+                .as_ref()
+                .and_then(|runtime| runtime.attempted_client_name.clone()),
+            attempted_client_version: runtime
+                .as_ref()
+                .and_then(|runtime| runtime.attempted_client_version.clone()),
+        })
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    insert_diagnostic_finding(runtime_home, &finding)?;
+    Ok(McpPersistedDiagnostic {
+        finding_id: finding.id().to_string(),
+        code: finding.code().to_string(),
+    })
 }
 
 pub(in crate::connection_command) fn effective_connection_report(
@@ -224,6 +376,7 @@ fn canonical_verification_report(
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
+    persist_peer_path_mismatch_findings(runtime_home, connection, host, &current_sessions)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
     let mut checks = vec![
@@ -396,6 +549,7 @@ pub(in crate::connection_command) fn mcp_server_check(
                                 probe_result_json(
                                     &probe.progress,
                                     probe.failure.as_ref(),
+                                    probe.diagnostic.as_ref(),
                                     [("revision", json!(probe.revision))],
                                 )
                             })
@@ -420,6 +574,7 @@ pub(in crate::connection_command) fn mcp_server_check(
                                 probe_result_json(
                                     &probe.progress,
                                     probe.failure.as_ref(),
+                                    probe.diagnostic.as_ref(),
                                     [
                                         ("profile", json!(probe.profile.as_str())),
                                         ("fixture", json!(probe.fixture_id)),
@@ -481,7 +636,26 @@ pub(in crate::connection_command) fn mcp_server_check(
         self_test
             .as_object_mut()
             .expect("self-test details are an object")
-            .insert("failure".to_owned(), failure.to_json());
+            .extend([
+                (
+                    "diagnostic_code".to_owned(),
+                    json!(failure.diagnostic_code()),
+                ),
+                ("failure_stage".to_owned(), json!(failure.stage().as_str())),
+            ]);
+    }
+    if let Some(diagnostic) = handshake
+        .exchange
+        .as_ref()
+        .and_then(|exchange| exchange.diagnostic.as_ref())
+    {
+        self_test
+            .as_object_mut()
+            .expect("self-test details are an object")
+            .extend([
+                ("finding_id".to_owned(), json!(diagnostic.finding_id)),
+                ("diagnostic_code".to_owned(), json!(diagnostic.code)),
+            ]);
     }
     canonical_check(
         ConnectionCheckKind::McpServer,
@@ -494,6 +668,9 @@ pub(in crate::connection_command) fn mcp_server_check(
                 "code": preflight.code,
                 "diagnostic": preflight.details,
                 "storage": preflight.preflight_diagnostics.as_ref().map(McpPreflightDiagnostics::to_json),
+                "finding_id": preflight.diagnostic.as_ref().map(|diagnostic| diagnostic.finding_id.as_str()),
+                "diagnostic_code": preflight.diagnostic.as_ref().map(|diagnostic| diagnostic.code.as_str()),
+                "failure_stage": preflight.failure.as_ref().map(|failure| failure.stage().as_str()),
             },
             "self_test": self_test,
         })),
@@ -504,6 +681,7 @@ pub(in crate::connection_command) fn mcp_server_check(
 fn probe_result_json<const N: usize>(
     progress: &crate::connection_command::McpExchangeProgress,
     failure: Option<&McpProcessFailure>,
+    diagnostic: Option<&McpPersistedDiagnostic>,
     identity: [(&str, Value); N],
 ) -> Value {
     let mut result = json!({
@@ -525,16 +703,15 @@ fn probe_result_json<const N: usize>(
         object.insert(field.to_owned(), value);
     }
     if let Some(failure) = failure {
-        let full = failure.to_json();
-        let compact = ["kind", "stage", "exit_code", "timeout_ms", "missing_tools"]
-            .into_iter()
-            .filter_map(|field| {
-                full.get(field)
-                    .cloned()
-                    .map(|value| (field.to_owned(), value))
-            })
-            .collect();
-        object.insert("failure".to_owned(), Value::Object(compact));
+        object.insert(
+            "diagnostic_code".to_owned(),
+            json!(failure.diagnostic_code()),
+        );
+        object.insert("failure_stage".to_owned(), json!(failure.stage().as_str()));
+    }
+    if let Some(diagnostic) = diagnostic {
+        object.insert("finding_id".to_owned(), json!(diagnostic.finding_id));
+        object.insert("diagnostic_code".to_owned(), json!(diagnostic.code));
     }
     result
 }
@@ -583,10 +760,108 @@ fn project_trust_check(host: &Verification) -> Result<ConnectionCheck, Connectio
 }
 
 fn observed_host_version(session: &McpRuntimeSessionRecord) -> Option<&str> {
-    session
-        .observed_host_executable_version
-        .as_deref()
-        .or(session.attempted_client_version.as_deref())
+    session.observed_host_executable_version.as_deref()
+}
+
+#[derive(Serialize)]
+struct ActualMcpPeerClientInfo<'a> {
+    name: Option<&'a str>,
+    version: &'a str,
+}
+
+#[derive(Serialize)]
+struct PathExecutableProbe<'a> {
+    path: Option<&'a str>,
+    version: &'a str,
+}
+
+#[derive(Serialize)]
+struct PeerPathMismatchFacts<'a> {
+    summary: &'static str,
+    runtime_session_id: &'a str,
+    actual_mcp_peer_client_info: ActualMcpPeerClientInfo<'a>,
+    path_executable_probe: PathExecutableProbe<'a>,
+}
+
+impl DiagnosticFactSource for PeerPathMismatchFacts<'_> {}
+
+fn persist_peer_path_mismatch_findings(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    host: &Verification,
+    sessions: &[McpRuntimeSessionRecord],
+) -> Result<(), ConnectionCommandError> {
+    let (Some(path_version), path) = (
+        host.host_version.as_deref(),
+        host.executable_path.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    for session in sessions.iter().filter(|session| {
+        session.session_source == volicord_types::McpRuntimeSessionSource::ManagedHost
+    }) {
+        let Some(peer_version) = session.attempted_client_version.as_deref() else {
+            continue;
+        };
+        if peer_version == path_version {
+            continue;
+        }
+        let finding_id = DiagnosticFindingId::parse(format!(
+            "finding.{}.peer_path_version_mismatch",
+            session.runtime_session_id
+        ))
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
+            continue;
+        }
+        let facts = DiagnosticFacts::project(&PeerPathMismatchFacts {
+            summary: "the actual MCP peer client version differed from the PATH executable probe",
+            runtime_session_id: &session.runtime_session_id,
+            actual_mcp_peer_client_info: ActualMcpPeerClientInfo {
+                name: session.attempted_client_name.as_deref(),
+                version: peer_version,
+            },
+            path_executable_probe: PathExecutableProbe {
+                path,
+                version: path_version,
+            },
+        })
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        let finding = DiagnosticFinding::try_new(
+            finding_id,
+            DiagnosticCode::parse("host.codex.peer_version_differs_from_path_probe")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticDomain::parse("host")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticStage::parse("host_observation")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticSeverity::Warning,
+            DiagnosticSource::parse("cli_host_verification")
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            DiagnosticSubject::try_new("runtime_session", &session.runtime_session_id)
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            facts,
+            current_timestamp(),
+        )
+        .and_then(|finding| {
+            finding
+                .with_connection_id(AgentConnectionId::new(
+                    connection.connection_internal_id.clone(),
+                ))?
+                .with_runtime_session_id(AgentRuntimeSessionId::new(
+                    session.runtime_session_id.clone(),
+                ))
+        })
+        .map(|finding| {
+            finding.with_integration_revision(
+                IntegrationRevision::parse(session.connection_integration_revision.clone())
+                    .expect("persisted runtime session has a validated integration revision"),
+            )
+        })
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        insert_diagnostic_finding(runtime_home, &finding)?;
+    }
+    Ok(())
 }
 
 fn host_session_checks(
@@ -614,11 +889,16 @@ fn host_session_checks(
         json!({
             "current_integration_revision": current_revision,
             "observed_integration_revision": observed.map(|session| session.connection_integration_revision.as_str()),
-            "current_host_version": host.host_version,
-            "observed_host_version": observed.and_then(observed_host_version),
+            "path_executable_probe": {
+                "path": host.executable_path,
+                "version": host.host_version,
+            },
+            "observed_host_executable_version": observed.and_then(observed_host_version),
             "runtime_session_id": observed.map(|session| session.runtime_session_id.as_str()),
-            "attempted_client_name": observed.and_then(|session| session.attempted_client_name.as_deref()),
-            "attempted_client_version": observed.and_then(|session| session.attempted_client_version.as_deref()),
+            "actual_mcp_peer_client_info": {
+                "name": observed.and_then(|session| session.attempted_client_name.as_deref()),
+                "version": observed.and_then(|session| session.attempted_client_version.as_deref()),
+            },
             "requested_protocol_version": observed.and_then(|session| session.requested_protocol_version.as_deref()),
             "selected_protocol_version": observed.and_then(|session| session.selected_protocol_version.as_deref()),
             "negotiated_protocol_version": observed.and_then(|session| session.negotiated_protocol_version.as_deref()),
@@ -1314,7 +1594,7 @@ mod tests {
             connection_internal_id: "connection_fixture".to_owned(),
             session_source: volicord_types::McpRuntimeSessionSource::ManagedHost,
             connection_integration_revision: "revision_current".to_owned(),
-            observed_host_executable_version: None,
+            observed_host_executable_version: Some(version.to_owned()),
             attempted_client_name: Some("codex".to_owned()),
             attempted_client_version: Some(version.to_owned()),
             requested_protocol_version: Some("2025-11-25".to_owned()),
@@ -1831,7 +2111,7 @@ mod tests {
         assert_eq!(shutdown_failed["required_tools_validated"], true);
         assert_eq!(shutdown_failed["safe_read_only_tool_completed"], true);
         assert_eq!(shutdown_failed["shutdown_completed"], false);
-        assert_eq!(shutdown_failed["failure"]["stage"], "shutdown");
+        assert_eq!(shutdown_failed["failure_stage"], "shutdown");
 
         let completed = projected_self_test(
             crate::connection_command::McpExchangeProgress::observed(

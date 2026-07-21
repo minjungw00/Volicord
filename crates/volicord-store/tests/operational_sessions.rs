@@ -20,10 +20,11 @@ use volicord_store::{
         current_managed_mcp_runtime_session_for_connection, current_managed_runtime_sessions,
         latest_current_managed_runtime_session, latest_managed_runtime_session,
         latest_successful_managed_runtime_session, mcp_runtime_project_session_binding,
-        mcp_runtime_session, record_mcp_designated_safe_tool_observation,
-        record_mcp_initialize_attempt, record_mcp_initialize_completion,
-        record_mcp_initialized_notification, record_mcp_terminal_finding, record_mcp_tools_list,
-        start_mcp_runtime_session, McpRuntimeSessionStart,
+        mcp_runtime_session, mcp_runtime_session_for_process,
+        record_mcp_designated_safe_tool_observation, record_mcp_initialize_attempt,
+        record_mcp_initialize_completion, record_mcp_initialized_notification,
+        record_mcp_terminal_finding, record_mcp_tools_list, start_mcp_runtime_session,
+        McpRuntimeSessionStart,
     },
     sqlite::registry_db_path,
 };
@@ -53,6 +54,23 @@ fn start(fixture: &CoreFixture, source: McpRuntimeSessionSource) -> Result<Strin
         },
     )?
     .runtime_session_id)
+}
+
+#[test]
+fn runtime_session_process_lookup_is_connection_scoped() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-runtime-process-lookup")?;
+    let runtime_session_id = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
+    let found =
+        mcp_runtime_session_for_process(fixture.runtime_home_path(), fixture.connection_id(), 42)?
+            .ok_or("runtime session for child process")?;
+    assert_eq!(found.runtime_session_id, runtime_session_id);
+    assert!(mcp_runtime_session_for_process(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+        43,
+    )?
+    .is_none());
+    Ok(())
 }
 
 fn complete(

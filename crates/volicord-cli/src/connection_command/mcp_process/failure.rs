@@ -1,6 +1,12 @@
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde::Serialize;
+use volicord_types::{
+    AgentConnectionId, AgentRuntimeSessionId, DiagnosticCode, DiagnosticDomain,
+    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
+    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationRevision,
+    UtcTimestamp,
+};
 
 pub(super) const MAX_CAPTURED_STDERR_BYTES: usize = 2 * 1024;
 pub(super) const MAX_PROTOCOL_DETAIL_BYTES: usize = 2 * 1024;
@@ -32,6 +38,97 @@ impl McpStage {
             Self::Initialize => "mcp_server_initialize_failed",
             Self::ToolsList => "mcp_server_tools_list_failed",
             Self::SafeToolCall => "mcp_server_safe_call_failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpProtocolFailureKind {
+    MalformedResponse,
+    FramingFailure,
+    MessageSizeExceeded,
+    JsonRpcError,
+    MalformedProtocolVersion,
+    UnsupportedProtocolRevision,
+    CounterOffer,
+    CounterOfferRejectedOrDisconnected,
+    GenerationMismatch,
+    CapabilityShapeFailure,
+    RevisionSchemaProjectionFailure,
+    ToolListProtocolError,
+    ToolListSchemaFailure,
+    RequiredToolMissing,
+    InvalidToolDefinitionProjection,
+    SafeToolProtocolError,
+    OutputSchemaFailure,
+    SafeReadOnlyToolFailure,
+    SessionCorrelationInvalid,
+    PreflightReportInvalid,
+    Unexpected,
+}
+
+impl McpProtocolFailureKind {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::MalformedResponse => "mcp.json_rpc.malformed_response",
+            Self::FramingFailure => "mcp.json_rpc.framing_failure",
+            Self::MessageSizeExceeded => "mcp.json_rpc.message_size_exceeded",
+            Self::JsonRpcError => "mcp.json_rpc.error_response",
+            Self::MalformedProtocolVersion => "mcp.protocol.malformed_version",
+            Self::UnsupportedProtocolRevision => "mcp.protocol.unsupported_version",
+            Self::CounterOffer => "mcp.protocol.counter_offer",
+            Self::CounterOfferRejectedOrDisconnected => "mcp.protocol.counter_offer_rejected",
+            Self::GenerationMismatch => "mcp.protocol.generation_mismatch",
+            Self::CapabilityShapeFailure => "mcp.protocol.capability_shape_invalid",
+            Self::RevisionSchemaProjectionFailure => "mcp.protocol.schema_projection_failed",
+            Self::ToolListProtocolError => "mcp.tools.protocol_error",
+            Self::ToolListSchemaFailure => "mcp.tools.schema_failure",
+            Self::RequiredToolMissing => "mcp.tools.required_missing",
+            Self::InvalidToolDefinitionProjection => "mcp.tools.definition_projection_invalid",
+            Self::SafeToolProtocolError => "mcp.tool_call.protocol_error",
+            Self::OutputSchemaFailure => "mcp.tool_call.output_schema_failed",
+            Self::SafeReadOnlyToolFailure => "mcp.tool_call.safe_read_only_failed",
+            Self::SessionCorrelationInvalid => "mcp.tool_call.session_correlation_invalid",
+            Self::PreflightReportInvalid => "process.preflight.report_invalid",
+            Self::Unexpected => volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+        }
+    }
+
+    const fn summary(self) -> &'static str {
+        match self {
+            Self::MalformedResponse => "the child returned a malformed JSON-RPC response",
+            Self::FramingFailure => "the child returned invalid newline framing",
+            Self::MessageSizeExceeded => "the child exceeded a protocol message budget",
+            Self::JsonRpcError => "the child returned a JSON-RPC error response",
+            Self::MalformedProtocolVersion => "the child returned a malformed protocol version",
+            Self::UnsupportedProtocolRevision => {
+                "the child did not select the requested protocol revision"
+            }
+            Self::CounterOffer => "the child returned a protocol counter-offer",
+            Self::CounterOfferRejectedOrDisconnected => {
+                "the protocol counter-offer was rejected or disconnected"
+            }
+            Self::GenerationMismatch => "the child protocol generation did not match",
+            Self::CapabilityShapeFailure => "the initialize capability shape was invalid",
+            Self::RevisionSchemaProjectionFailure => {
+                "the initialize result failed its revision schema"
+            }
+            Self::ToolListProtocolError => "tools/list returned a protocol error",
+            Self::ToolListSchemaFailure => "tools/list failed its revision schema",
+            Self::RequiredToolMissing => "tools/list omitted a required tool",
+            Self::InvalidToolDefinitionProjection => {
+                "tools/list returned an invalid tool definition"
+            }
+            Self::SafeToolProtocolError => {
+                "the designated read-only tool returned a protocol error"
+            }
+            Self::OutputSchemaFailure => "the designated read-only tool failed its output schema",
+            Self::SafeReadOnlyToolFailure => "the designated read-only tool reported failure",
+            Self::SessionCorrelationInvalid => {
+                "the designated tool-call session correlation was invalid"
+            }
+            Self::PreflightReportInvalid => "the MCP preflight report was invalid",
+            Self::Unexpected => "an unexpected internal child-protocol failure occurred",
         }
     }
 }
@@ -98,14 +195,6 @@ impl BoundedText {
             omitted_bytes,
         }
     }
-
-    pub(super) fn to_json(&self) -> Value {
-        json!({
-            "text": self.text,
-            "truncated": self.truncated,
-            "omitted_bytes": self.omitted_bytes,
-        })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,6 +202,11 @@ pub enum McpProcessFailure {
     Spawn {
         stage: McpStage,
         io_detail: BoundedText,
+    },
+    PipeAcquisition {
+        stage: McpStage,
+        io_detail: BoundedText,
+        stderr: BoundedText,
     },
     ExitedBeforeResponse {
         stage: McpStage,
@@ -136,7 +230,9 @@ pub enum McpProcessFailure {
     },
     Protocol {
         stage: McpStage,
+        kind: McpProtocolFailureKind,
         protocol_detail: BoundedText,
+        json_rpc_error_code: Option<i64>,
         missing_tools: Vec<String>,
         stderr: BoundedText,
     },
@@ -158,10 +254,39 @@ pub enum McpProcessFailure {
 }
 
 impl McpProcessFailure {
+    pub fn exited_with_stderr(
+        stage: McpStage,
+        exit_code: Option<i32>,
+        stderr: impl AsRef<str>,
+    ) -> Self {
+        Self::ExitedBeforeResponse {
+            stage,
+            exit_code,
+            stderr: BoundedText::from_utf8(stderr, MAX_CAPTURED_STDERR_BYTES, "stderr"),
+        }
+    }
+
     pub fn protocol(stage: McpStage, detail: impl Into<String>) -> Self {
+        let kind = match stage {
+            McpStage::Startup => McpProtocolFailureKind::PreflightReportInvalid,
+            McpStage::Initialize => McpProtocolFailureKind::CapabilityShapeFailure,
+            McpStage::ToolsList => McpProtocolFailureKind::ToolListProtocolError,
+            McpStage::SafeToolCall => McpProtocolFailureKind::SafeToolProtocolError,
+            McpStage::Shutdown => McpProtocolFailureKind::Unexpected,
+        };
+        Self::typed_protocol(stage, kind, detail)
+    }
+
+    pub fn typed_protocol(
+        stage: McpStage,
+        kind: McpProtocolFailureKind,
+        detail: impl Into<String>,
+    ) -> Self {
         Self::Protocol {
             stage,
+            kind,
             protocol_detail: bounded_protocol_detail(detail.into()),
+            json_rpc_error_code: None,
             missing_tools: Vec::new(),
             stderr: BoundedText::empty(),
         }
@@ -170,6 +295,7 @@ impl McpProcessFailure {
     pub const fn stage(&self) -> McpStage {
         match self {
             Self::Spawn { stage, .. }
+            | Self::PipeAcquisition { stage, .. }
             | Self::ExitedBeforeResponse { stage, .. }
             | Self::Timeout { stage, .. }
             | Self::Read { stage, .. }
@@ -185,10 +311,44 @@ impl McpProcessFailure {
         self.stage().check_code()
     }
 
+    pub const fn diagnostic_code(&self) -> &'static str {
+        match self {
+            Self::Spawn { .. } => "process.spawn.failed",
+            Self::PipeAcquisition { .. } => "process.pipe_acquisition.failed",
+            Self::ExitedBeforeResponse {
+                exit_code: Some(_), ..
+            } => "process.child.exited",
+            Self::ExitedBeforeResponse {
+                exit_code: None, ..
+            } => "process.child.signaled",
+            Self::Timeout { stage, .. } => match stage {
+                McpStage::Startup => "process.startup.timeout",
+                McpStage::Initialize => "process.initialize.timeout",
+                McpStage::ToolsList => "process.tools_list.timeout",
+                McpStage::SafeToolCall => "process.safe_tool_call.timeout",
+                McpStage::Shutdown => "process.shutdown.timeout",
+            },
+            Self::Read { .. } => "process.pipe.read_failed",
+            Self::Write { .. } => "process.pipe.write_failed",
+            Self::Protocol { kind, .. } => kind.code(),
+            Self::Wait { .. } => "process.child.wait_failed",
+            Self::Cleanup { .. } => "process.cleanup.failed",
+            Self::Shutdown {
+                exit_code: Some(_), ..
+            } => "process.child.exited",
+            Self::Shutdown {
+                exit_code: None, ..
+            } => "process.child.signaled",
+        }
+    }
+
     pub(super) fn with_stderr(mut self, stderr: BoundedText) -> Self {
         match &mut self {
             Self::Spawn { .. } => {}
-            Self::ExitedBeforeResponse {
+            Self::PipeAcquisition {
+                stderr: captured, ..
+            }
+            | Self::ExitedBeforeResponse {
                 stderr: captured, ..
             }
             | Self::Timeout {
@@ -220,6 +380,9 @@ impl McpProcessFailure {
         match self {
             Self::Spawn { io_detail, .. } => {
                 format!("MCP process spawn failed: {}", io_detail.text)
+            }
+            Self::PipeAcquisition { io_detail, .. } => {
+                format!("MCP process pipe acquisition failed: {}", io_detail.text)
             }
             Self::ExitedBeforeResponse {
                 stage, exit_code, ..
@@ -279,72 +442,10 @@ impl McpProcessFailure {
         }
     }
 
-    pub(in crate::connection_command) fn to_json(&self) -> Value {
-        let mut failure = serde_json::Map::new();
-        failure.insert("kind".to_owned(), Value::String(self.kind().to_owned()));
-        failure.insert(
-            "stage".to_owned(),
-            Value::String(self.stage().as_str().to_owned()),
-        );
-        match self {
-            Self::Spawn { io_detail, .. } => {
-                failure.insert("io_detail".to_owned(), io_detail.to_json());
-            }
-            Self::ExitedBeforeResponse {
-                exit_code, stderr, ..
-            }
-            | Self::Shutdown {
-                exit_code, stderr, ..
-            } => {
-                failure.insert(
-                    "exit_code".to_owned(),
-                    exit_code.map_or(Value::Null, |code| Value::from(i64::from(code))),
-                );
-                failure.insert("stderr".to_owned(), stderr.to_json());
-            }
-            Self::Timeout {
-                timeout, stderr, ..
-            } => {
-                failure.insert(
-                    "timeout_ms".to_owned(),
-                    Value::from(timeout.as_millis() as u64),
-                );
-                failure.insert("stderr".to_owned(), stderr.to_json());
-            }
-            Self::Read {
-                io_detail, stderr, ..
-            }
-            | Self::Write {
-                io_detail, stderr, ..
-            }
-            | Self::Wait {
-                io_detail, stderr, ..
-            }
-            | Self::Cleanup {
-                io_detail, stderr, ..
-            } => {
-                failure.insert("io_detail".to_owned(), io_detail.to_json());
-                failure.insert("stderr".to_owned(), stderr.to_json());
-            }
-            Self::Protocol {
-                protocol_detail,
-                missing_tools,
-                stderr,
-                ..
-            } => {
-                failure.insert("protocol_detail".to_owned(), protocol_detail.to_json());
-                if !missing_tools.is_empty() {
-                    failure.insert("missing_tools".to_owned(), json!(missing_tools));
-                }
-                failure.insert("stderr".to_owned(), stderr.to_json());
-            }
-        }
-        Value::Object(failure)
-    }
-
     const fn kind(&self) -> &'static str {
         match self {
             Self::Spawn { .. } => "spawn",
+            Self::PipeAcquisition { .. } => "pipe_acquisition",
             Self::ExitedBeforeResponse { .. } => "exited_before_response",
             Self::Timeout { .. } => "timeout",
             Self::Read { .. } => "read",
@@ -355,7 +456,191 @@ impl McpProcessFailure {
             Self::Shutdown { .. } => "shutdown",
         }
     }
+
+    pub fn to_diagnostic_finding(
+        &self,
+        context: McpProcessDiagnosticContext,
+    ) -> Result<DiagnosticFinding, volicord_types::DiagnosticError> {
+        let (io_detail, protocol_detail, json_rpc_error_code, missing_tools, stderr) = match self {
+            Self::Spawn { io_detail, .. } => (Some(io_detail), None, None, &[][..], None),
+            Self::PipeAcquisition {
+                io_detail, stderr, ..
+            }
+            | Self::Read {
+                io_detail, stderr, ..
+            }
+            | Self::Write {
+                io_detail, stderr, ..
+            }
+            | Self::Wait {
+                io_detail, stderr, ..
+            }
+            | Self::Cleanup {
+                io_detail, stderr, ..
+            } => (Some(io_detail), None, None, &[][..], Some(stderr)),
+            Self::Protocol {
+                protocol_detail,
+                json_rpc_error_code,
+                missing_tools,
+                stderr,
+                ..
+            } => (
+                None,
+                Some(protocol_detail),
+                *json_rpc_error_code,
+                missing_tools.as_slice(),
+                Some(stderr),
+            ),
+            Self::ExitedBeforeResponse { stderr, .. }
+            | Self::Timeout { stderr, .. }
+            | Self::Shutdown { stderr, .. } => (None, None, None, &[][..], Some(stderr)),
+        };
+        let exit_code = match self {
+            Self::ExitedBeforeResponse { exit_code, .. } | Self::Shutdown { exit_code, .. } => {
+                *exit_code
+            }
+            _ => None,
+        };
+        let timeout_ms = match self {
+            Self::Timeout { timeout, .. } => Some(timeout.as_millis() as u64),
+            _ => None,
+        };
+        let facts = DiagnosticFacts::project(&McpProcessDiagnosticFacts {
+            summary: self.safe_summary(),
+            process_failure_kind: self.kind(),
+            runtime_session_id: context.runtime_session_id.as_deref(),
+            requested_revision: context.requested_revision.as_deref(),
+            selected_revision: context.selected_revision.as_deref(),
+            negotiated_revision: context.negotiated_revision.as_deref(),
+            production_supported_revisions: &context.production_supported_revisions,
+            attempted_client_name: context.attempted_client_name.as_deref(),
+            attempted_client_version: context.attempted_client_version.as_deref(),
+            exit_code,
+            signal_termination: matches!(
+                self,
+                Self::ExitedBeforeResponse {
+                    exit_code: None,
+                    ..
+                } | Self::Shutdown {
+                    exit_code: None,
+                    ..
+                }
+            ),
+            timeout_ms,
+            json_rpc_error_code,
+            io_detail: io_detail.map(|detail| detail.text.as_str()),
+            io_detail_truncated: io_detail.is_some_and(|detail| detail.truncated),
+            protocol_detail: protocol_detail.map(|detail| detail.text.as_str()),
+            protocol_detail_truncated: protocol_detail.is_some_and(|detail| detail.truncated),
+            missing_tools,
+            bounded_stderr_excerpt: stderr.map(|captured| captured.text.as_str()),
+            bounded_stderr_truncated: stderr.is_some_and(|captured| captured.truncated),
+            bounded_stderr_omitted_bytes: stderr.map_or(0, |captured| captured.omitted_bytes),
+        })?;
+        let subject_reference = context
+            .runtime_session_id
+            .as_deref()
+            .unwrap_or(context.connection_id.as_str());
+        let mut finding = DiagnosticFinding::try_new(
+            DiagnosticFindingId::parse(context.finding_id)?,
+            DiagnosticCode::parse(self.diagnostic_code())?,
+            DiagnosticDomain::parse(if self.diagnostic_code().starts_with("mcp.") {
+                "mcp"
+            } else if self.diagnostic_code().starts_with("internal.") {
+                "internal"
+            } else {
+                "process"
+            })?,
+            DiagnosticStage::parse(self.stage().as_str())?,
+            DiagnosticSeverity::Error,
+            DiagnosticSource::parse("cli_process_supervisor")?,
+            DiagnosticSubject::try_new(
+                if context.runtime_session_id.is_some() {
+                    "runtime_session"
+                } else {
+                    "connection"
+                },
+                subject_reference,
+            )?,
+            facts,
+            context.observed_at,
+        )?
+        .with_connection_id(AgentConnectionId::new(context.connection_id))?
+        .with_integration_revision(context.integration_revision);
+        if let Some(runtime_session_id) = context.runtime_session_id {
+            finding =
+                finding.with_runtime_session_id(AgentRuntimeSessionId::new(runtime_session_id))?;
+        }
+        Ok(finding)
+    }
+
+    fn safe_summary(&self) -> &'static str {
+        match self {
+            Self::Spawn { .. } => "the MCP child process could not be spawned",
+            Self::PipeAcquisition { .. } => "an MCP child-process pipe was unavailable",
+            Self::ExitedBeforeResponse {
+                exit_code: Some(_), ..
+            } => "the MCP child process exited before the expected response",
+            Self::ExitedBeforeResponse {
+                exit_code: None, ..
+            } => "the MCP child process was terminated by a signal",
+            Self::Timeout { .. } => "the MCP child process exceeded its stage timeout",
+            Self::Read { .. } => "an MCP child-process pipe read failed",
+            Self::Write { .. } => "an MCP child-process pipe write failed",
+            Self::Protocol { kind, .. } => kind.summary(),
+            Self::Wait { .. } => "waiting for the MCP child process failed",
+            Self::Cleanup { .. } => "MCP child-process cleanup or descendant termination failed",
+            Self::Shutdown {
+                exit_code: Some(_), ..
+            } => "the MCP child process exited unsuccessfully during shutdown",
+            Self::Shutdown {
+                exit_code: None, ..
+            } => "the MCP child process was terminated by a signal during shutdown",
+        }
+    }
 }
+
+#[derive(Debug, Clone)]
+pub struct McpProcessDiagnosticContext {
+    pub finding_id: String,
+    pub observed_at: UtcTimestamp,
+    pub connection_id: String,
+    pub integration_revision: IntegrationRevision,
+    pub runtime_session_id: Option<String>,
+    pub requested_revision: Option<String>,
+    pub selected_revision: Option<String>,
+    pub negotiated_revision: Option<String>,
+    pub production_supported_revisions: Vec<String>,
+    pub attempted_client_name: Option<String>,
+    pub attempted_client_version: Option<String>,
+}
+
+#[derive(Serialize)]
+struct McpProcessDiagnosticFacts<'a> {
+    summary: &'static str,
+    process_failure_kind: &'static str,
+    runtime_session_id: Option<&'a str>,
+    requested_revision: Option<&'a str>,
+    selected_revision: Option<&'a str>,
+    negotiated_revision: Option<&'a str>,
+    production_supported_revisions: &'a [String],
+    attempted_client_name: Option<&'a str>,
+    attempted_client_version: Option<&'a str>,
+    exit_code: Option<i32>,
+    signal_termination: bool,
+    timeout_ms: Option<u64>,
+    json_rpc_error_code: Option<i64>,
+    io_detail: Option<&'a str>,
+    io_detail_truncated: bool,
+    protocol_detail: Option<&'a str>,
+    protocol_detail_truncated: bool,
+    missing_tools: &'a [String],
+    bounded_stderr_excerpt: Option<&'a str>,
+    bounded_stderr_truncated: bool,
+    bounded_stderr_omitted_bytes: usize,
+}
+
+impl DiagnosticFactSource for McpProcessDiagnosticFacts<'_> {}
 
 pub(super) fn bounded_protocol_detail(detail: impl AsRef<str>) -> BoundedText {
     BoundedText::from_utf8(detail, MAX_PROTOCOL_DETAIL_BYTES, "protocol detail")

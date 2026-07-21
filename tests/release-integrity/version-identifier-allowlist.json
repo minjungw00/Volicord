@@ -121,6 +121,12 @@
       "reason": "The independently pinned Codex compatibility fixture selects the externally standardized MCP 2025-06-18 revision."
     },
     {
+      "path": "crates/volicord-mcp/src/diagnostics.rs",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The MCP bootstrap test verifies emission of the exact shared diagnostic envelope contract."
+    },
+    {
       "path": "crates/volicord-types/src/ids.rs",
       "needle": "uuid_v4",
       "classification": "external_standard",
@@ -163,6 +169,12 @@
       "reason": "The failure owner defines the exact bootstrap diagnostic envelope contract."
     },
     {
+      "path": "docs/en/reference/mcp-transport.md",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The MCP transport owner applies the exact bootstrap diagnostic envelope contract to pre-Registry transport failures."
+    },
+    {
       "path": "docs/en/reference/runtime-boundaries.md",
       "needle": "VOLICORD_DIAGNOSTIC_V1",
       "classification": "product_contract",
@@ -173,6 +185,12 @@
       "needle": "VOLICORD_DIAGNOSTIC_V1",
       "classification": "product_contract",
       "reason": "The Korean failure owner defines the exact bootstrap diagnostic envelope contract."
+    },
+    {
+      "path": "docs/ko/reference/mcp-transport.md",
+      "needle": "VOLICORD_DIAGNOSTIC_V1",
+      "classification": "product_contract",
+      "reason": "The Korean MCP transport owner applies the exact bootstrap diagnostic envelope contract to pre-Registry transport failures."
     },
     {
       "path": "docs/ko/reference/runtime-boundaries.md",

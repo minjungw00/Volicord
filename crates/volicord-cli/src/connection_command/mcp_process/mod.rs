@@ -14,13 +14,15 @@ mod supervisor;
 #[cfg(test)]
 mod test_child;
 
-pub use failure::{McpProcessFailure, McpStage};
+pub use failure::{
+    McpProcessDiagnosticContext, McpProcessFailure, McpProtocolFailureKind, McpStage,
+};
 pub use host_compatibility::HostCompatibilityProfile;
 pub(super) use launch::materialize_connection_invocation;
 pub use preflight::ConnectionProcessOutput;
-pub use stdio_probe::{McpExchangeOutcome, McpExchangeProgress};
+pub use stdio_probe::{McpExchangeOutcome, McpExchangeProgress, McpPersistedDiagnostic};
 
-use preflight::{compact_stream, run_preflight_command, validate_connection_preflight_report};
+use preflight::{run_preflight_command, validate_connection_preflight_report};
 use stdio_probe::verify_mcp_stdio_process;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -131,20 +133,37 @@ pub(super) fn run_connection_preflight(
                     "volicord mcp preflight passed",
                 )
                 .with_preflight_diagnostics(diagnostics),
-                Err(message) => {
-                    VerificationStep::failed_with_code("mcp_server_preflight_invalid", message)
-                }
+                Err(message) => VerificationStep::failed_with_code(
+                    "mcp_server_preflight_invalid",
+                    message.clone(),
+                )
+                .with_process_failure(
+                    Some(output.process_id),
+                    McpProcessFailure::typed_protocol(
+                        McpStage::Startup,
+                        McpProtocolFailureKind::PreflightReportInvalid,
+                        message,
+                    ),
+                ),
             }
         }
-        Ok(output) => VerificationStep::failed_with_code(
-            "mcp_server_preflight_failed",
-            format!(
-                "volicord mcp preflight failed with status {}; stderr: {}",
-                status_text(output.status_code),
-                compact_stream(&output.stderr)
-            ),
-        ),
-        Err(failure) => VerificationStep::failed_with_code(failure.check_code(), failure.summary()),
+        Ok(output) => {
+            let failure = McpProcessFailure::exited_with_stderr(
+                McpStage::Startup,
+                output.status_code,
+                &output.stderr,
+            );
+            VerificationStep::failed_with_code(
+                "mcp_server_preflight_failed",
+                format!(
+                    "volicord mcp preflight failed with status {}",
+                    status_text(output.status_code)
+                ),
+            )
+            .with_process_failure(Some(output.process_id), failure)
+        }
+        Err(failure) => VerificationStep::failed_with_code(failure.check_code(), failure.summary())
+            .with_process_failure(None, failure),
     }
 }
 
@@ -158,6 +177,7 @@ fn status_text(status_code: Option<i32>) -> String {
 mod tests {
     use super::*;
     use crate::connection_command::mcp_process::failure::{bounded_io_text, BoundedText};
+    use volicord_types::{IntegrationRevision, UtcTimestamp};
 
     #[test]
     fn typed_failures_map_directly_to_current_check_codes() {
@@ -200,5 +220,212 @@ mod tests {
         for (failure, expected) in cases {
             assert_eq!(failure.check_code(), expected);
         }
+    }
+
+    #[test]
+    fn process_and_protocol_variants_map_without_prose_classification() {
+        let protocol_cases = [
+            (
+                McpProtocolFailureKind::MalformedResponse,
+                "mcp.json_rpc.malformed_response",
+            ),
+            (
+                McpProtocolFailureKind::FramingFailure,
+                "mcp.json_rpc.framing_failure",
+            ),
+            (
+                McpProtocolFailureKind::MessageSizeExceeded,
+                "mcp.json_rpc.message_size_exceeded",
+            ),
+            (
+                McpProtocolFailureKind::JsonRpcError,
+                "mcp.json_rpc.error_response",
+            ),
+            (
+                McpProtocolFailureKind::MalformedProtocolVersion,
+                "mcp.protocol.malformed_version",
+            ),
+            (
+                McpProtocolFailureKind::UnsupportedProtocolRevision,
+                "mcp.protocol.unsupported_version",
+            ),
+            (
+                McpProtocolFailureKind::CounterOffer,
+                "mcp.protocol.counter_offer",
+            ),
+            (
+                McpProtocolFailureKind::CounterOfferRejectedOrDisconnected,
+                "mcp.protocol.counter_offer_rejected",
+            ),
+            (
+                McpProtocolFailureKind::GenerationMismatch,
+                "mcp.protocol.generation_mismatch",
+            ),
+            (
+                McpProtocolFailureKind::CapabilityShapeFailure,
+                "mcp.protocol.capability_shape_invalid",
+            ),
+            (
+                McpProtocolFailureKind::RevisionSchemaProjectionFailure,
+                "mcp.protocol.schema_projection_failed",
+            ),
+            (
+                McpProtocolFailureKind::ToolListProtocolError,
+                "mcp.tools.protocol_error",
+            ),
+            (
+                McpProtocolFailureKind::ToolListSchemaFailure,
+                "mcp.tools.schema_failure",
+            ),
+            (
+                McpProtocolFailureKind::RequiredToolMissing,
+                "mcp.tools.required_missing",
+            ),
+            (
+                McpProtocolFailureKind::InvalidToolDefinitionProjection,
+                "mcp.tools.definition_projection_invalid",
+            ),
+            (
+                McpProtocolFailureKind::SafeToolProtocolError,
+                "mcp.tool_call.protocol_error",
+            ),
+            (
+                McpProtocolFailureKind::OutputSchemaFailure,
+                "mcp.tool_call.output_schema_failed",
+            ),
+            (
+                McpProtocolFailureKind::SafeReadOnlyToolFailure,
+                "mcp.tool_call.safe_read_only_failed",
+            ),
+            (
+                McpProtocolFailureKind::SessionCorrelationInvalid,
+                "mcp.tool_call.session_correlation_invalid",
+            ),
+            (
+                McpProtocolFailureKind::PreflightReportInvalid,
+                "process.preflight.report_invalid",
+            ),
+            (
+                McpProtocolFailureKind::Unexpected,
+                volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+            ),
+        ];
+        for (kind, code) in protocol_cases {
+            let failure = McpProcessFailure::typed_protocol(McpStage::Initialize, kind, "ignored");
+            assert_eq!(failure.diagnostic_code(), code);
+        }
+
+        let process_cases = [
+            McpProcessFailure::Spawn {
+                stage: McpStage::Startup,
+                io_detail: bounded_io_text("spawn"),
+            },
+            McpProcessFailure::PipeAcquisition {
+                stage: McpStage::Startup,
+                io_detail: bounded_io_text("pipe"),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Timeout {
+                stage: McpStage::Initialize,
+                timeout: Duration::from_millis(5),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Timeout {
+                stage: McpStage::ToolsList,
+                timeout: Duration::from_millis(5),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Timeout {
+                stage: McpStage::SafeToolCall,
+                timeout: Duration::from_millis(5),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Read {
+                stage: McpStage::Initialize,
+                io_detail: bounded_io_text("read"),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Write {
+                stage: McpStage::Initialize,
+                io_detail: bounded_io_text("write"),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::ExitedBeforeResponse {
+                stage: McpStage::Initialize,
+                exit_code: Some(23),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::ExitedBeforeResponse {
+                stage: McpStage::Initialize,
+                exit_code: None,
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Cleanup {
+                stage: McpStage::Shutdown,
+                io_detail: bounded_io_text("cleanup"),
+                stderr: BoundedText::empty(),
+            },
+            McpProcessFailure::Wait {
+                stage: McpStage::Shutdown,
+                io_detail: bounded_io_text("wait"),
+                stderr: BoundedText::empty(),
+            },
+        ];
+        let expected = [
+            "process.spawn.failed",
+            "process.pipe_acquisition.failed",
+            "process.initialize.timeout",
+            "process.tools_list.timeout",
+            "process.safe_tool_call.timeout",
+            "process.pipe.read_failed",
+            "process.pipe.write_failed",
+            "process.child.exited",
+            "process.child.signaled",
+            "process.cleanup.failed",
+            "process.child.wait_failed",
+        ];
+        for (failure, code) in process_cases.into_iter().zip(expected) {
+            assert_eq!(failure.diagnostic_code(), code);
+        }
+    }
+
+    #[test]
+    fn process_negotiation_finding_keeps_distinct_safe_revision_facts() {
+        let finding = McpProcessFailure::typed_protocol(
+            McpStage::Initialize,
+            McpProtocolFailureKind::UnsupportedProtocolRevision,
+            "selected revision did not match",
+        )
+        .to_diagnostic_finding(McpProcessDiagnosticContext {
+            finding_id: "finding.runtime_process.unsupported".to_owned(),
+            observed_at: UtcTimestamp::parse("2026-07-22T01:02:03Z").unwrap(),
+            connection_id: "connection_test".to_owned(),
+            integration_revision: IntegrationRevision::parse(format!("sha256:{}", "0".repeat(64)))
+                .unwrap(),
+            runtime_session_id: Some("runtime_process".to_owned()),
+            requested_revision: Some("2025-06-18".to_owned()),
+            selected_revision: Some("2025-11-25".to_owned()),
+            negotiated_revision: None,
+            production_supported_revisions: vec![
+                "2025-03-26".to_owned(),
+                "2025-06-18".to_owned(),
+                "2025-11-25".to_owned(),
+            ],
+            attempted_client_name: Some("volicord-conformance-probe".to_owned()),
+            attempted_client_version: Some("0.9.1".to_owned()),
+        })
+        .unwrap();
+
+        let facts = finding.facts().data();
+        assert_eq!(finding.code().as_str(), "mcp.protocol.unsupported_version");
+        assert_eq!(facts["requested_revision"], "2025-06-18");
+        assert_eq!(facts["selected_revision"], "2025-11-25");
+        assert!(facts["negotiated_revision"].is_null());
+        assert_eq!(facts["attempted_client_name"], "volicord-conformance-probe");
+        assert!(facts["production_supported_revisions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|revision| revision == "2025-06-18"));
     }
 }

@@ -87,6 +87,24 @@ repeated initialize, and invalid lifecycle operations fail before Core. A
 selected initialization profile does not become negotiated until the required
 `notifications/initialized` step completes.
 
+Observable failures use shared structured findings rather than classifying
+human-readable error text. The current MCP code families are:
+
+| Family | Stable codes |
+|---|---|
+| JSON-RPC and framing | `mcp.json_rpc.parse_error`, `mcp.json_rpc.invalid_request`, `mcp.json_rpc.invalid_id`, `mcp.json_rpc.unknown_method`, `mcp.json_rpc.malformed_response`, `mcp.json_rpc.framing_failure`, `mcp.json_rpc.message_size_exceeded`, `mcp.json_rpc.error_response` |
+| Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
+| Revision and capabilities | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.counter_offer`, `mcp.protocol.counter_offer_rejected`, `mcp.protocol.generation_mismatch`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
+| Tool discovery | `mcp.tools.protocol_error`, `mcp.tools.schema_failure`, `mcp.tools.required_missing`, `mcp.tools.definition_projection_invalid` |
+| Tool call | `mcp.tool_call.unknown_tool`, `mcp.tool_call.invalid_arguments`, `mcp.tool_call.protocol_error`, `mcp.tool_call.output_schema_failed`, `mcp.tool_call.response_budget_failed`, `mcp.tool_call.core_execution_failed`, `mcp.tool_call.adapter_execution_failed`, `mcp.tool_call.safe_read_only_failed`, `mcp.tool_call.session_correlation_invalid` |
+
+Negotiation findings keep bounded `requested_revision`, `selected_revision`,
+`negotiated_revision`, `production_supported_revisions`, attempted
+`clientInfo` name/version, JSON-RPC error code, safe error data, and runtime
+session ID as separate facts. Requested, selected, and negotiated revisions are
+never substituted for one another. Facts exclude full requests, tool
+arguments, environments, and unrestricted process output.
+
 ## Protocol Revision Negotiation
 
 The production-supported initialization revisions are exactly:
@@ -199,6 +217,12 @@ EOF-driven graceful close remains a distinct mutually exclusive terminal fact.
 An authoritative Store failure withholds the corresponding protocol success.
 Bounded writes to `diagnostics.sqlite` remain best effort and are never
 consulted for these facts.
+
+Failures before the Registry can be opened emit one bounded
+`VOLICORD_DIAGNOSTIC_V1` envelope on stderr. After a Registry runtime session
+exists, findings are persisted with its exact Connection, integration
+revision, and runtime-session coordinates; terminal failures are linked by
+finding ID rather than stored as a second free-form failure object.
 
 Connection verification starts a separate `cli_preflight` process and calls
 `volicord.list_projects` as its designated safe read-only round trip. That

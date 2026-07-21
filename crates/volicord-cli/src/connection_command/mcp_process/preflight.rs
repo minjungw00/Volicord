@@ -10,6 +10,7 @@ use crate::connection_command::verification::McpPreflightDiagnostics;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionProcessOutput {
+    pub process_id: u32,
     pub success: bool,
     pub status_code: Option<i32>,
     pub stdout: String,
@@ -21,6 +22,7 @@ pub(super) fn run_preflight_command(
     timeout: Duration,
 ) -> Result<ConnectionProcessOutput, McpProcessFailure> {
     let mut supervisor = ChildSupervisor::spawn(command, SupervisorKind::Preflight, timeout)?;
+    let process_id = supervisor.child_id();
     let status = match supervisor.wait_for_exit(McpStage::Startup) {
         Ok(status) => status,
         Err(failure) => return Err(supervisor.finish_failure(failure)),
@@ -39,6 +41,7 @@ pub(super) fn run_preflight_command(
         output.stderr.text
     };
     Ok(ConnectionProcessOutput {
+        process_id,
         success: status.success() && !stdout_truncated,
         status_code: status.code(),
         stdout: if stdout_truncated {
@@ -112,10 +115,6 @@ fn append_diagnostic_context(summary: String, context: &str) -> String {
     } else {
         format!("{summary}\n{context}")
     }
-}
-
-pub(super) fn compact_stream(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]

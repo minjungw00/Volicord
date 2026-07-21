@@ -10,7 +10,9 @@ use volicord_types::{
 };
 
 use super::{
-    failure::{bounded_protocol_detail, BoundedText, McpProcessFailure, McpStage},
+    failure::{
+        bounded_protocol_detail, BoundedText, McpProcessFailure, McpProtocolFailureKind, McpStage,
+    },
     host_compatibility::{self, HostCompatibilityFixture, HostCompatibilityProfile},
     pinned_schema,
     supervisor::{
@@ -22,6 +24,7 @@ const EARLY_EXIT_STATUS_WAIT: Duration = Duration::from_millis(25);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct McpExchangeProgress {
+    pub(in crate::connection_command) process_id: Option<u32>,
     pub(in crate::connection_command) requested_revision: Option<String>,
     pub(in crate::connection_command) negotiated_revision: Option<String>,
     pub(in crate::connection_command) initialize_completed: bool,
@@ -47,6 +50,7 @@ impl McpExchangeProgress {
         shutdown_completed: bool,
     ) -> Self {
         Self {
+            process_id: None,
             requested_revision: None,
             negotiated_revision: None,
             initialize_completed,
@@ -74,6 +78,7 @@ pub struct McpRevisionProbeOutcome {
     pub(in crate::connection_command) revision: String,
     pub(in crate::connection_command) progress: McpExchangeProgress,
     pub(in crate::connection_command) failure: Option<McpProcessFailure>,
+    pub(in crate::connection_command) diagnostic: Option<McpPersistedDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,12 +87,20 @@ pub struct McpHostProbeOutcome {
     pub(in crate::connection_command) fixture_id: String,
     pub(in crate::connection_command) progress: McpExchangeProgress,
     pub(in crate::connection_command) failure: Option<McpProcessFailure>,
+    pub(in crate::connection_command) diagnostic: Option<McpPersistedDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpPersistedDiagnostic {
+    pub(in crate::connection_command) finding_id: String,
+    pub(in crate::connection_command) code: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpExchangeOutcome {
     pub(in crate::connection_command) progress: McpExchangeProgress,
     pub(in crate::connection_command) failure: Option<McpProcessFailure>,
+    pub(in crate::connection_command) diagnostic: Option<McpPersistedDiagnostic>,
     pub(in crate::connection_command) conformance: Vec<McpRevisionProbeOutcome>,
     pub(in crate::connection_command) host_compatibility: Vec<McpHostProbeOutcome>,
 }
@@ -97,6 +110,7 @@ impl McpExchangeOutcome {
         Self {
             progress,
             failure: Some(failure),
+            diagnostic: None,
             conformance: Vec::new(),
             host_compatibility: Vec::new(),
         }
@@ -111,6 +125,7 @@ impl McpExchangeOutcome {
         Self {
             progress,
             failure: None,
+            diagnostic: None,
             conformance: Vec::new(),
             host_compatibility: Vec::new(),
         }
@@ -131,6 +146,7 @@ impl McpExchangeOutcome {
         Self {
             progress: McpExchangeProgress::not_started(),
             failure,
+            diagnostic: None,
             conformance,
             host_compatibility,
         }
@@ -201,6 +217,7 @@ fn verify_mcp_stdio_command_factory(
                 revision: revision.as_str().to_owned(),
                 progress: outcome.progress,
                 failure: outcome.failure,
+                diagnostic: None,
             }
         })
         .collect();
@@ -219,6 +236,7 @@ fn verify_mcp_stdio_command_factory(
                 fixture_id: fixture.fixture_id.to_owned(),
                 progress: outcome.progress,
                 failure: outcome.failure,
+                diagnostic: None,
             }
         })
         .collect();
@@ -240,6 +258,7 @@ fn verify_mcp_probe_command(
             )
         }
     };
+    let process_id = supervisor.child_id();
 
     let exchange = perform_mcp_exchange(&mut supervisor, mode, probe);
     supervisor.close_stdin();
@@ -248,6 +267,7 @@ fn verify_mcp_probe_command(
             Ok(status) if status.success() => match supervisor.finish_success(McpStage::Shutdown) {
                 Ok(_) => {
                     progress.shutdown_completed = true;
+                    progress.process_id = Some(process_id);
                     McpExchangeOutcome::completed(progress)
                 }
                 Err(failure) => McpExchangeOutcome::failed(progress, failure),
@@ -258,14 +278,20 @@ fn verify_mcp_probe_command(
                     exit_code: status.code(),
                     stderr: BoundedText::empty(),
                 };
+                let mut progress = progress;
+                progress.process_id = Some(process_id);
                 McpExchangeOutcome::failed(progress, supervisor.finish_failure(failure))
             }
             Err(failure) => {
+                let mut progress = progress;
+                progress.process_id = Some(process_id);
                 McpExchangeOutcome::failed(progress, supervisor.finish_failure(failure))
             }
         },
         Err(PendingExchangeFailure { progress, failure }) => {
             let failure = resolve_pending_failure(&mut supervisor, *failure);
+            let mut progress = progress;
+            progress.process_id = Some(process_id);
             McpExchangeOutcome::failed(progress, supervisor.finish_failure(failure))
         }
     }
@@ -452,7 +478,7 @@ enum PendingMcpFailure {
     Eof {
         stage: McpStage,
     },
-    Lifecycle(McpProcessFailure),
+    Lifecycle(Box<McpProcessFailure>),
     Protocol {
         stage: McpStage,
         problem: ProtocolProblem,
@@ -461,7 +487,7 @@ enum PendingMcpFailure {
 
 impl From<McpProcessFailure> for PendingMcpFailure {
     fn from(failure: McpProcessFailure) -> Self {
-        Self::Lifecycle(failure)
+        Self::Lifecycle(Box::new(failure))
     }
 }
 
@@ -477,10 +503,14 @@ impl PendingMcpFailure {
         }
     }
 
-    const fn may_be_early_exit(&self) -> bool {
+    fn may_be_early_exit(&self) -> bool {
         matches!(
             self,
-            Self::Lifecycle(McpProcessFailure::Read { .. } | McpProcessFailure::Write { .. })
+            Self::Lifecycle(failure)
+                if matches!(
+                    failure.as_ref(),
+                    McpProcessFailure::Read { .. } | McpProcessFailure::Write { .. }
+                )
         )
     }
 
@@ -491,10 +521,12 @@ impl PendingMcpFailure {
                 io_detail: super::failure::bounded_io_text("MCP stdout ended unexpectedly"),
                 stderr: BoundedText::empty(),
             },
-            Self::Lifecycle(failure) => failure,
+            Self::Lifecycle(failure) => *failure,
             Self::Protocol { stage, problem } => McpProcessFailure::Protocol {
                 stage,
+                kind: problem.kind,
                 protocol_detail: bounded_protocol_detail(problem.detail),
+                json_rpc_error_code: problem.json_rpc_error_code,
                 missing_tools: problem.missing_tools,
                 stderr: BoundedText::empty(),
             },
@@ -507,18 +539,18 @@ fn read_json_response(
     stage: McpStage,
 ) -> Result<Value, PendingMcpFailure> {
     match supervisor.read_protocol(stage).map_err(PendingMcpFailure::from)? {
-        ProtocolRead::Exited(status) => Err(PendingMcpFailure::Lifecycle(
+        ProtocolRead::Exited(status) => Err(PendingMcpFailure::Lifecycle(Box::new(
             McpProcessFailure::ExitedBeforeResponse {
                 stage,
                 exit_code: status.code(),
                 stderr: BoundedText::empty(),
             },
-        )),
+        ))),
         ProtocolRead::Event(ProtocolEvent::Line(line)) => {
             serde_json::from_slice::<Value>(&line).map_err(|error| {
                 PendingMcpFailure::protocol(
                     stage,
-                    ProtocolProblem::new(format!(
+                    ProtocolProblem::new(McpProtocolFailureKind::MalformedResponse, format!(
                         "response was not valid JSON at line {} column {}",
                         error.line(),
                         error.column()
@@ -530,7 +562,7 @@ fn read_json_response(
         ProtocolRead::Event(ProtocolEvent::LineTooLong { observed_bytes }) => {
             Err(PendingMcpFailure::protocol(
                 stage,
-                ProtocolProblem::new(format!(
+                ProtocolProblem::new(McpProtocolFailureKind::MessageSizeExceeded, format!(
                     "response line exceeded the {MAX_PROTOCOL_LINE_BYTES}-byte limit (observed at least {observed_bytes} bytes)"
                 )),
             ))
@@ -538,7 +570,7 @@ fn read_json_response(
         ProtocolRead::Event(ProtocolEvent::IncompleteLine { observed_bytes }) => {
             Err(PendingMcpFailure::protocol(
                 stage,
-                ProtocolProblem::new(format!(
+                ProtocolProblem::new(McpProtocolFailureKind::FramingFailure, format!(
                     "response ended without newline-delimited framing after {observed_bytes} bytes"
                 )),
             ))
@@ -546,7 +578,7 @@ fn read_json_response(
         ProtocolRead::Event(ProtocolEvent::MessageLimitExceeded { limit }) => {
             Err(PendingMcpFailure::protocol(
                 stage,
-                ProtocolProblem::new(format!(
+                ProtocolProblem::new(McpProtocolFailureKind::MessageSizeExceeded, format!(
                     "protocol output exceeded the {limit}-message limit"
                 )),
             ))
@@ -556,65 +588,102 @@ fn read_json_response(
 
 #[derive(Debug)]
 struct ProtocolProblem {
+    kind: McpProtocolFailureKind,
     detail: String,
+    json_rpc_error_code: Option<i64>,
     missing_tools: Vec<String>,
 }
 
 impl ProtocolProblem {
-    fn new(detail: impl Into<String>) -> Self {
+    fn new(kind: McpProtocolFailureKind, detail: impl Into<String>) -> Self {
         Self {
+            kind,
             detail: detail.into(),
+            json_rpc_error_code: None,
             missing_tools: Vec::new(),
         }
     }
 
     fn missing_tools(missing_tools: Vec<String>) -> Self {
         Self {
+            kind: McpProtocolFailureKind::RequiredToolMissing,
             detail: format!(
                 "tools/list omitted {} required tool(s)",
                 missing_tools.len()
             ),
+            json_rpc_error_code: None,
             missing_tools,
+        }
+    }
+
+    fn json_rpc(
+        kind: McpProtocolFailureKind,
+        detail: impl Into<String>,
+        error_code: Option<i64>,
+    ) -> Self {
+        Self {
+            kind,
+            detail: detail.into(),
+            json_rpc_error_code: error_code,
+            missing_tools: Vec::new(),
         }
     }
 }
 
-fn response_error(value: &Value, operation: &str) -> Option<ProtocolProblem> {
+fn response_error(
+    value: &Value,
+    operation: &str,
+    kind: McpProtocolFailureKind,
+) -> Option<ProtocolProblem> {
     let error = value.get("error")?;
-    let detail = error.get("code").and_then(Value::as_i64).map_or_else(
+    let error_code = error.get("code").and_then(Value::as_i64);
+    let detail = error_code.map_or_else(
         || format!("{operation} response returned a JSON-RPC error"),
         |code| format!("{operation} response returned JSON-RPC error code {code}"),
     );
-    Some(ProtocolProblem::new(detail))
+    Some(ProtocolProblem::json_rpc(kind, detail, error_code))
 }
 
 fn validate_initialize_response(
     value: &Value,
     revision: McpProtocolRevision,
 ) -> Result<String, ProtocolProblem> {
-    if let Some(problem) = response_error(value, "initialize") {
+    if let Some(problem) = response_error(value, "initialize", McpProtocolFailureKind::JsonRpcError)
+    {
         return Err(problem);
     }
-    let result = value
-        .get("result")
-        .ok_or_else(|| ProtocolProblem::new("initialize response was missing result"))?;
+    let result = value.get("result").ok_or_else(|| {
+        ProtocolProblem::new(
+            McpProtocolFailureKind::MalformedResponse,
+            "initialize response was missing result",
+        )
+    })?;
     pinned_schema::validate_definition(revision, "InitializeResult", result).map_err(|error| {
-        ProtocolProblem::new(format!(
-            "initialize result failed the {} pinned schema: {error}",
-            revision.as_str()
-        ))
+        ProtocolProblem::new(
+            McpProtocolFailureKind::RevisionSchemaProjectionFailure,
+            format!(
+                "initialize result failed the {} pinned schema: {error}",
+                revision.as_str()
+            ),
+        )
     })?;
     let negotiated = result
         .get("protocolVersion")
         .and_then(Value::as_str)
         .ok_or_else(|| {
-            ProtocolProblem::new("initialize response was missing result.protocolVersion")
+            ProtocolProblem::new(
+                McpProtocolFailureKind::MalformedProtocolVersion,
+                "initialize response was missing result.protocolVersion",
+            )
         })?;
     if negotiated != revision.as_str() {
-        return Err(ProtocolProblem::new(format!(
-            "initialize selected protocol revision {negotiated}, expected {}",
-            revision.as_str()
-        )));
+        return Err(ProtocolProblem::new(
+            McpProtocolFailureKind::UnsupportedProtocolRevision,
+            format!(
+                "initialize selected protocol revision {negotiated}, expected {}",
+                revision.as_str()
+            ),
+        ));
     }
     Ok(negotiated.to_owned())
 }
@@ -623,28 +692,45 @@ fn validate_tools_response(
     value: &Value,
     revision: McpProtocolRevision,
 ) -> Result<Vec<String>, ProtocolProblem> {
-    if let Some(problem) = response_error(value, "tools/list") {
+    if let Some(problem) = response_error(
+        value,
+        "tools/list",
+        McpProtocolFailureKind::ToolListProtocolError,
+    ) {
         return Err(problem);
     }
-    let result = value
-        .get("result")
-        .ok_or_else(|| ProtocolProblem::new("tools/list response was missing result"))?;
+    let result = value.get("result").ok_or_else(|| {
+        ProtocolProblem::new(
+            McpProtocolFailureKind::MalformedResponse,
+            "tools/list response was missing result",
+        )
+    })?;
     pinned_schema::validate_definition(revision, "ListToolsResult", result).map_err(|error| {
-        ProtocolProblem::new(format!(
-            "tools/list result failed the {} pinned schema: {error}",
-            revision.as_str()
-        ))
+        ProtocolProblem::new(
+            McpProtocolFailureKind::ToolListSchemaFailure,
+            format!(
+                "tools/list result failed the {} pinned schema: {error}",
+                revision.as_str()
+            ),
+        )
     })?;
     let tools = result
         .get("tools")
         .and_then(Value::as_array)
-        .ok_or_else(|| ProtocolProblem::new("tools/list response was missing result.tools"))?;
+        .ok_or_else(|| {
+            ProtocolProblem::new(
+                McpProtocolFailureKind::ToolListSchemaFailure,
+                "tools/list response was missing result.tools",
+            )
+        })?;
     let mut names = Vec::new();
     for tool in tools {
-        let name = tool
-            .get("name")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ProtocolProblem::new("tools/list contained a tool without a name"))?;
+        let name = tool.get("name").and_then(Value::as_str).ok_or_else(|| {
+            ProtocolProblem::new(
+                McpProtocolFailureKind::InvalidToolDefinitionProjection,
+                "tools/list contained a tool without a name",
+            )
+        })?;
         names.push(name.to_owned());
     }
     Ok(names)
@@ -654,20 +740,31 @@ fn validate_safe_tool_response(
     value: &Value,
     revision: McpProtocolRevision,
 ) -> Result<(), ProtocolProblem> {
-    if let Some(problem) = response_error(value, "designated read-only tool call") {
+    if let Some(problem) = response_error(
+        value,
+        "designated read-only tool call",
+        McpProtocolFailureKind::SafeToolProtocolError,
+    ) {
         return Err(problem);
     }
     let result = value.get("result").ok_or_else(|| {
-        ProtocolProblem::new("designated read-only tool response was missing result")
+        ProtocolProblem::new(
+            McpProtocolFailureKind::MalformedResponse,
+            "designated read-only tool response was missing result",
+        )
     })?;
     pinned_schema::validate_definition(revision, "CallToolResult", result).map_err(|error| {
-        ProtocolProblem::new(format!(
-            "designated read-only tool result failed the {} pinned schema: {error}",
-            revision.as_str()
-        ))
+        ProtocolProblem::new(
+            McpProtocolFailureKind::OutputSchemaFailure,
+            format!(
+                "designated read-only tool result failed the {} pinned schema: {error}",
+                revision.as_str()
+            ),
+        )
     })?;
     if result.get("isError").and_then(Value::as_bool) == Some(true) {
         return Err(ProtocolProblem::new(
+            McpProtocolFailureKind::SafeReadOnlyToolFailure,
             "designated read-only tool response set isError=true",
         ));
     }
@@ -682,9 +779,10 @@ fn validate_tools_for_mode_problem(mode: &str, tools: &[String]) -> Result<(), P
         CONNECTION_MODE_WORKFLOW => {
             validate_required_tools_problem(tools, workflow_required_tool_names())
         }
-        other => Err(ProtocolProblem::new(format!(
-            "unsupported connection mode for tool validation: {other}"
-        ))),
+        other => Err(ProtocolProblem::new(
+            McpProtocolFailureKind::Unexpected,
+            format!("unsupported connection mode for tool validation: {other}"),
+        )),
     }
 }
 

@@ -1,0 +1,599 @@
+use crate::{
+    errors::{McpAdapterError, McpHostError},
+    prelude::*,
+};
+use volicord_types::{
+    DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
+    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    IntegrationRevision,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JsonRpcDiagnostic {
+    ParseError,
+    InvalidRequest,
+    InvalidId,
+    UnknownMethod,
+    MalformedResponse,
+    FramingFailure,
+    MessageSizeExceeded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum McpLifecycleDiagnostic {
+    InitializeRequired,
+    DuplicateInitialize,
+    InitializedNotificationMissing,
+    InitializedNotificationInvalid,
+    OperationBeforeReady,
+    InvalidShutdownSequence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum McpProtocolDiagnostic {
+    MalformedVersion,
+    UnsupportedVersion,
+    CounterOffer,
+    CounterOfferRejectedOrDisconnected,
+    GenerationMismatch,
+    CapabilityShapeFailure,
+    SchemaProjectionFailure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum McpToolDiscoveryDiagnostic {
+    ProtocolError,
+    SchemaFailure,
+    RequiredToolMissing,
+    InvalidToolDefinitionProjection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum McpToolCallDiagnostic {
+    UnknownTool,
+    InvalidArguments,
+    OutputSchemaFailure,
+    ResponseBudgetFailure,
+    CoreExecutionError,
+    AdapterExecutionError,
+    SafeReadOnlyToolFailure,
+    SessionCorrelationInvalid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum McpTransportDiagnostic {
+    IoFailure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum McpDiagnostic {
+    JsonRpc(JsonRpcDiagnostic),
+    Lifecycle(McpLifecycleDiagnostic),
+    Protocol(McpProtocolDiagnostic),
+    ToolDiscovery(McpToolDiscoveryDiagnostic),
+    ToolCall(McpToolCallDiagnostic),
+    Host(McpHostError),
+    Transport(McpTransportDiagnostic),
+    Unexpected,
+}
+
+impl From<&McpAdapterError> for McpDiagnostic {
+    fn from(error: &McpAdapterError) -> Self {
+        match error {
+            McpAdapterError::UnknownTool(_) => Self::ToolCall(McpToolCallDiagnostic::UnknownTool),
+            McpAdapterError::InvalidParams { .. } => {
+                Self::ToolCall(McpToolCallDiagnostic::InvalidArguments)
+            }
+            McpAdapterError::ToolExecution { .. } => {
+                Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
+            }
+            McpAdapterError::ToolOutputSchema { .. } => {
+                Self::ToolCall(McpToolCallDiagnostic::OutputSchemaFailure)
+            }
+            McpAdapterError::Core(_) => Self::ToolCall(McpToolCallDiagnostic::CoreExecutionError),
+            McpAdapterError::Store(_) | McpAdapterError::Environment(_) => {
+                Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
+            }
+            McpAdapterError::Io(_) => Self::Transport(McpTransportDiagnostic::IoFailure),
+            McpAdapterError::Json(_) => Self::JsonRpc(JsonRpcDiagnostic::MalformedResponse),
+            McpAdapterError::Host(error) => Self::Host(*error),
+            McpAdapterError::Protocol(_) => {
+                Self::Protocol(McpProtocolDiagnostic::SchemaProjectionFailure)
+            }
+        }
+    }
+}
+
+impl McpDiagnostic {
+    pub(crate) const fn code(self) -> &'static str {
+        match self {
+            Self::JsonRpc(JsonRpcDiagnostic::ParseError) => "mcp.json_rpc.parse_error",
+            Self::JsonRpc(JsonRpcDiagnostic::InvalidRequest) => "mcp.json_rpc.invalid_request",
+            Self::JsonRpc(JsonRpcDiagnostic::InvalidId) => "mcp.json_rpc.invalid_id",
+            Self::JsonRpc(JsonRpcDiagnostic::UnknownMethod) => "mcp.json_rpc.unknown_method",
+            Self::JsonRpc(JsonRpcDiagnostic::MalformedResponse) => {
+                "mcp.json_rpc.malformed_response"
+            }
+            Self::JsonRpc(JsonRpcDiagnostic::FramingFailure) => "mcp.json_rpc.framing_failure",
+            Self::JsonRpc(JsonRpcDiagnostic::MessageSizeExceeded) => {
+                "mcp.json_rpc.message_size_exceeded"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializeRequired) => {
+                "mcp.lifecycle.initialize_required"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize) => {
+                "mcp.lifecycle.duplicate_initialize"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing) => {
+                "mcp.lifecycle.initialized_notification_missing"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid) => {
+                "mcp.lifecycle.initialized_notification_invalid"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady) => {
+                "mcp.lifecycle.operation_before_ready"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InvalidShutdownSequence) => {
+                "mcp.lifecycle.invalid_shutdown_sequence"
+            }
+            Self::Protocol(McpProtocolDiagnostic::MalformedVersion) => {
+                "mcp.protocol.malformed_version"
+            }
+            Self::Protocol(McpProtocolDiagnostic::UnsupportedVersion) => {
+                "mcp.protocol.unsupported_version"
+            }
+            Self::Protocol(McpProtocolDiagnostic::CounterOffer) => "mcp.protocol.counter_offer",
+            Self::Protocol(McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected) => {
+                "mcp.protocol.counter_offer_rejected"
+            }
+            Self::Protocol(McpProtocolDiagnostic::GenerationMismatch) => {
+                "mcp.protocol.generation_mismatch"
+            }
+            Self::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure) => {
+                "mcp.protocol.capability_shape_invalid"
+            }
+            Self::Protocol(McpProtocolDiagnostic::SchemaProjectionFailure) => {
+                "mcp.protocol.schema_projection_failed"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::ProtocolError) => {
+                "mcp.tools.protocol_error"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::SchemaFailure) => {
+                "mcp.tools.schema_failure"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::RequiredToolMissing) => {
+                "mcp.tools.required_missing"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::InvalidToolDefinitionProjection) => {
+                "mcp.tools.definition_projection_invalid"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::UnknownTool) => "mcp.tool_call.unknown_tool",
+            Self::ToolCall(McpToolCallDiagnostic::InvalidArguments) => {
+                "mcp.tool_call.invalid_arguments"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::OutputSchemaFailure) => {
+                "mcp.tool_call.output_schema_failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::ResponseBudgetFailure) => {
+                "mcp.tool_call.response_budget_failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::CoreExecutionError) => {
+                "mcp.tool_call.core_execution_failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError) => {
+                "mcp.tool_call.adapter_execution_failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure) => {
+                "mcp.tool_call.safe_read_only_failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::SessionCorrelationInvalid) => {
+                "mcp.tool_call.session_correlation_invalid"
+            }
+            Self::Host(McpHostError::MalformedNativeMetadata) => "host.codex.metadata_malformed",
+            Self::Host(McpHostError::SessionThreadTurnInconsistent) => {
+                "host.codex.session_thread_turn_inconsistent"
+            }
+            Self::Host(McpHostError::RegisteredSessionCorrelationMismatch) => {
+                "host.codex.registered_session_correlation_mismatch"
+            }
+            Self::Host(McpHostError::ManagedMarkerMismatch) => "host.codex.managed_marker_mismatch",
+            Self::Transport(McpTransportDiagnostic::IoFailure) => "mcp.transport.io_failed",
+            Self::Unexpected => volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+        }
+    }
+
+    pub(crate) const fn stage(self) -> &'static str {
+        match self {
+            Self::JsonRpc(_) | Self::Transport(_) => "transport",
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializeRequired)
+            | Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize)
+            | Self::Protocol(_)
+            | Self::Host(McpHostError::ManagedMarkerMismatch) => "initialize",
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing)
+            | Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid)
+            | Self::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady)
+            | Self::Lifecycle(McpLifecycleDiagnostic::InvalidShutdownSequence) => "lifecycle",
+            Self::ToolDiscovery(_) => "tools_list",
+            Self::ToolCall(_) | Self::Host(_) => "tool_call",
+            Self::Unexpected => "internal",
+        }
+    }
+
+    pub(crate) const fn severity(self) -> DiagnosticSeverity {
+        match self {
+            Self::Protocol(McpProtocolDiagnostic::CounterOffer)
+            | Self::Protocol(McpProtocolDiagnostic::UnsupportedVersion) => {
+                DiagnosticSeverity::Warning
+            }
+            _ => DiagnosticSeverity::Error,
+        }
+    }
+
+    pub(crate) const fn safe_summary(self) -> &'static str {
+        match self {
+            Self::JsonRpc(JsonRpcDiagnostic::ParseError) => "JSON-RPC input was not valid JSON",
+            Self::JsonRpc(JsonRpcDiagnostic::InvalidRequest) => {
+                "JSON-RPC request shape was invalid"
+            }
+            Self::JsonRpc(JsonRpcDiagnostic::InvalidId) => "JSON-RPC request ID was invalid",
+            Self::JsonRpc(JsonRpcDiagnostic::UnknownMethod) => "JSON-RPC method was not recognized",
+            Self::JsonRpc(JsonRpcDiagnostic::MalformedResponse) => {
+                "JSON-RPC response shape was invalid"
+            }
+            Self::JsonRpc(JsonRpcDiagnostic::FramingFailure) => {
+                "JSON-RPC newline framing was invalid"
+            }
+            Self::JsonRpc(JsonRpcDiagnostic::MessageSizeExceeded) => {
+                "JSON-RPC message exceeded its byte limit"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializeRequired) => {
+                "initialize was required before the operation"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize) => {
+                "initialize was requested more than once"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing) => {
+                "the required initialized notification was not observed"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid) => {
+                "the initialized notification was invalid"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady) => {
+                "the operation was requested before the MCP session was ready"
+            }
+            Self::Lifecycle(McpLifecycleDiagnostic::InvalidShutdownSequence) => {
+                "the MCP stream ended in an invalid lifecycle state"
+            }
+            Self::Protocol(McpProtocolDiagnostic::MalformedVersion) => {
+                "the requested MCP protocol revision was malformed"
+            }
+            Self::Protocol(McpProtocolDiagnostic::UnsupportedVersion) => {
+                "the requested MCP protocol revision was not production-supported"
+            }
+            Self::Protocol(McpProtocolDiagnostic::CounterOffer) => {
+                "the server selected its preferred supported revision as a counter-offer"
+            }
+            Self::Protocol(McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected) => {
+                "the client disconnected before accepting the protocol counter-offer"
+            }
+            Self::Protocol(McpProtocolDiagnostic::GenerationMismatch) => {
+                "the requested protocol revision belongs to another handshake generation"
+            }
+            Self::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure) => {
+                "initialize capabilities did not have the required shape"
+            }
+            Self::Protocol(McpProtocolDiagnostic::SchemaProjectionFailure) => {
+                "revision-specific schema projection failed"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::ProtocolError) => {
+                "tools/list returned a protocol error"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::SchemaFailure) => {
+                "tools/list failed its revision-specific schema"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::RequiredToolMissing) => {
+                "tools/list omitted a required tool"
+            }
+            Self::ToolDiscovery(McpToolDiscoveryDiagnostic::InvalidToolDefinitionProjection) => {
+                "a projected tool definition was invalid"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::UnknownTool) => {
+                "tools/call named an unknown tool"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::InvalidArguments) => {
+                "tools/call arguments were invalid"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::OutputSchemaFailure) => {
+                "tool output failed its advertised schema"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::ResponseBudgetFailure) => {
+                "tool output exceeded its response budget"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::CoreExecutionError) => {
+                "Core tool execution failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError) => {
+                "adapter tool execution failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure) => {
+                "the designated read-only verification tool call failed"
+            }
+            Self::ToolCall(McpToolCallDiagnostic::SessionCorrelationInvalid) => {
+                "managed tool-call session correlation was invalid"
+            }
+            Self::Host(McpHostError::MalformedNativeMetadata) => {
+                "Codex host-native metadata was malformed"
+            }
+            Self::Host(McpHostError::SessionThreadTurnInconsistent) => {
+                "Codex session, thread, and turn metadata was inconsistent"
+            }
+            Self::Host(McpHostError::RegisteredSessionCorrelationMismatch) => {
+                "Codex metadata did not match the registered session correlation"
+            }
+            Self::Host(McpHostError::ManagedMarkerMismatch) => {
+                "managed Codex launch markers were inconsistent"
+            }
+            Self::Transport(McpTransportDiagnostic::IoFailure) => {
+                "managed stdio transport I/O failed"
+            }
+            Self::Unexpected => "an unexpected internal MCP failure occurred",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct McpDiagnosticContext {
+    pub(crate) finding_id: String,
+    pub(crate) observed_at: UtcTimestamp,
+    pub(crate) connection_id: Option<String>,
+    pub(crate) integration_revision: Option<String>,
+    pub(crate) runtime_session_id: Option<String>,
+    pub(crate) requested_revision: Option<String>,
+    pub(crate) selected_revision: Option<String>,
+    pub(crate) negotiated_revision: Option<String>,
+    pub(crate) supported_revisions: Vec<String>,
+    pub(crate) attempted_client_name: Option<String>,
+    pub(crate) attempted_client_version: Option<String>,
+    pub(crate) json_rpc_error_code: Option<i64>,
+    pub(crate) safe_error_data: Option<String>,
+    pub(crate) tool_name: Option<String>,
+    pub(crate) missing_tools: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct McpDiagnosticFacts<'a> {
+    summary: &'static str,
+    requested_revision: &'a Option<String>,
+    selected_revision: &'a Option<String>,
+    negotiated_revision: &'a Option<String>,
+    production_supported_revisions: &'a [String],
+    attempted_client_name: &'a Option<String>,
+    attempted_client_version: &'a Option<String>,
+    json_rpc_error_code: Option<i64>,
+    safe_error_data: &'a Option<String>,
+    runtime_session_id: &'a Option<String>,
+    tool_name: &'a Option<String>,
+    missing_tools: &'a [String],
+}
+
+impl DiagnosticFactSource for McpDiagnosticFacts<'_> {}
+
+pub(crate) fn finding_for_diagnostic(
+    diagnostic: McpDiagnostic,
+    context: McpDiagnosticContext,
+) -> Result<DiagnosticFinding, volicord_types::DiagnosticError> {
+    let facts = DiagnosticFacts::project(&McpDiagnosticFacts {
+        summary: diagnostic.safe_summary(),
+        requested_revision: &context.requested_revision,
+        selected_revision: &context.selected_revision,
+        negotiated_revision: &context.negotiated_revision,
+        production_supported_revisions: &context.supported_revisions,
+        attempted_client_name: &context.attempted_client_name,
+        attempted_client_version: &context.attempted_client_version,
+        json_rpc_error_code: context.json_rpc_error_code,
+        safe_error_data: &context.safe_error_data,
+        runtime_session_id: &context.runtime_session_id,
+        tool_name: &context.tool_name,
+        missing_tools: &context.missing_tools,
+    })?;
+    let subject_reference = context
+        .runtime_session_id
+        .as_deref()
+        .or(context.connection_id.as_deref())
+        .unwrap_or("mcp_startup");
+    let subject_kind = if context.runtime_session_id.is_some() {
+        "runtime_session"
+    } else if context.connection_id.is_some() {
+        "connection"
+    } else {
+        "operation"
+    };
+    let mut finding = DiagnosticFinding::try_new(
+        DiagnosticFindingId::parse(context.finding_id)?,
+        DiagnosticCode::parse(diagnostic.code())?,
+        DiagnosticDomain::parse(match diagnostic {
+            McpDiagnostic::Host(_) => "host",
+            McpDiagnostic::Unexpected => "internal",
+            _ => "mcp",
+        })?,
+        DiagnosticStage::parse(diagnostic.stage())?,
+        diagnostic.severity(),
+        DiagnosticSource::parse("mcp_stdio")?,
+        DiagnosticSubject::try_new(subject_kind, subject_reference)?,
+        facts,
+        context.observed_at,
+    )?;
+    if let Some(connection_id) = context.connection_id {
+        finding = finding.with_connection_id(AgentConnectionId::new(connection_id))?;
+    }
+    if let Some(runtime_session_id) = context.runtime_session_id {
+        finding =
+            finding.with_runtime_session_id(AgentRuntimeSessionId::new(runtime_session_id))?;
+    }
+    if let Some(revision) = context.integration_revision {
+        finding = finding.with_integration_revision(
+            IntegrationRevision::parse(revision)
+                .map_err(|_| diagnostic_model_error("invalid integration revision"))?,
+        );
+    }
+    Ok(finding)
+}
+
+fn diagnostic_model_error(message: &str) -> volicord_types::DiagnosticError {
+    DiagnosticCode::parse(message).expect_err("plain text is not a namespaced diagnostic code")
+}
+
+pub(crate) fn production_supported_revisions() -> Vec<String> {
+    ProtocolRegistry::production()
+        .oldest_to_newest()
+        .map(|profile| profile.revision().as_str().to_owned())
+        .collect()
+}
+
+pub fn bootstrap_diagnostic_envelope(error: &McpAdapterError) -> String {
+    bootstrap_envelope_for_diagnostic(
+        McpDiagnostic::from(error),
+        UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(SystemTime::now())),
+    )
+    .unwrap_or_else(|_| {
+        bootstrap_envelope_for_diagnostic(
+            McpDiagnostic::Unexpected,
+            UtcTimestamp::parse("1970-01-01T00:00:00Z")
+                .expect("fixed bootstrap fallback timestamp is canonical"),
+        )
+        .expect("fixed unexpected MCP bootstrap finding is bounded and valid")
+    })
+}
+
+fn bootstrap_envelope_for_diagnostic(
+    diagnostic: McpDiagnostic,
+    observed_at: UtcTimestamp,
+) -> Result<String, volicord_types::DiagnosticError> {
+    let finding = finding_for_diagnostic(
+        diagnostic,
+        McpDiagnosticContext {
+            finding_id: "finding.mcp.bootstrap".to_owned(),
+            observed_at,
+            connection_id: None,
+            integration_revision: None,
+            runtime_session_id: None,
+            requested_revision: None,
+            selected_revision: None,
+            negotiated_revision: None,
+            supported_revisions: production_supported_revisions(),
+            attempted_client_name: None,
+            attempted_client_version: None,
+            json_rpc_error_code: None,
+            safe_error_data: None,
+            tool_name: None,
+            missing_tools: Vec::new(),
+        },
+    )?;
+    volicord_types::format_bootstrap_diagnostic_envelope(&finding)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_mcp_mapping_family_has_stable_namespaced_codes() {
+        let cases = [
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::ParseError),
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidRequest),
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidId),
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::UnknownMethod),
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::MalformedResponse),
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::FramingFailure),
+            McpDiagnostic::JsonRpc(JsonRpcDiagnostic::MessageSizeExceeded),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializeRequired),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::OperationBeforeReady),
+            McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InvalidShutdownSequence),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::MalformedVersion),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::UnsupportedVersion),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CounterOffer),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::GenerationMismatch),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::SchemaProjectionFailure),
+            McpDiagnostic::ToolDiscovery(McpToolDiscoveryDiagnostic::ProtocolError),
+            McpDiagnostic::ToolDiscovery(McpToolDiscoveryDiagnostic::SchemaFailure),
+            McpDiagnostic::ToolDiscovery(McpToolDiscoveryDiagnostic::RequiredToolMissing),
+            McpDiagnostic::ToolDiscovery(
+                McpToolDiscoveryDiagnostic::InvalidToolDefinitionProjection,
+            ),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::UnknownTool),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::InvalidArguments),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::OutputSchemaFailure),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::ResponseBudgetFailure),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::CoreExecutionError),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::AdapterExecutionError),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure),
+            McpDiagnostic::ToolCall(McpToolCallDiagnostic::SessionCorrelationInvalid),
+            McpDiagnostic::Host(McpHostError::MalformedNativeMetadata),
+            McpDiagnostic::Host(McpHostError::SessionThreadTurnInconsistent),
+            McpDiagnostic::Host(McpHostError::RegisteredSessionCorrelationMismatch),
+            McpDiagnostic::Host(McpHostError::ManagedMarkerMismatch),
+            McpDiagnostic::Transport(McpTransportDiagnostic::IoFailure),
+            McpDiagnostic::Unexpected,
+        ];
+        for diagnostic in cases {
+            DiagnosticCode::parse(diagnostic.code()).expect("stable diagnostic code");
+        }
+    }
+
+    #[test]
+    fn codex_2025_06_18_failure_facts_identify_unsupported_version_without_prose() {
+        let finding = finding_for_diagnostic(
+            McpDiagnostic::Protocol(McpProtocolDiagnostic::UnsupportedVersion),
+            McpDiagnosticContext {
+                finding_id: "finding.runtime_test.unsupported".to_owned(),
+                observed_at: UtcTimestamp::parse("2026-07-22T01:02:03Z").unwrap(),
+                connection_id: Some("connection_test".to_owned()),
+                integration_revision: None,
+                runtime_session_id: Some("runtime_test".to_owned()),
+                requested_revision: Some("2025-06-18".to_owned()),
+                selected_revision: Some("2025-11-25".to_owned()),
+                negotiated_revision: None,
+                supported_revisions: production_supported_revisions(),
+                attempted_client_name: Some("codex-mcp-client".to_owned()),
+                attempted_client_version: Some("0.108.0".to_owned()),
+                json_rpc_error_code: Some(-32601),
+                safe_error_data: Some("unsupported requested revision".to_owned()),
+                tool_name: None,
+                missing_tools: Vec::new(),
+            },
+        )
+        .unwrap();
+        let facts = finding.facts().data();
+        assert_eq!(finding.code().as_str(), "mcp.protocol.unsupported_version");
+        assert_eq!(facts["requested_revision"], "2025-06-18");
+        assert_eq!(facts["selected_revision"], "2025-11-25");
+        assert!(facts["negotiated_revision"].is_null());
+        assert!(facts["production_supported_revisions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "2025-06-18"));
+    }
+
+    #[test]
+    fn bootstrap_failure_is_one_bounded_shared_finding_envelope() {
+        let envelope = bootstrap_diagnostic_envelope(&McpAdapterError::Host(
+            McpHostError::ManagedMarkerMismatch,
+        ));
+        assert!(envelope.starts_with("VOLICORD_DIAGNOSTIC_V1 {"));
+        assert!(envelope.len() <= volicord_types::MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES);
+        let finding = volicord_types::parse_bootstrap_diagnostic_envelope(&envelope).unwrap();
+        assert_eq!(
+            finding.code().as_str(),
+            "host.codex.managed_marker_mismatch"
+        );
+    }
+}

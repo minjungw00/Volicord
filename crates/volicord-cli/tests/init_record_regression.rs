@@ -128,6 +128,7 @@ impl ConnectionProcess for FakeConnectionProcess {
             .mode;
         self.preflight_modes.push(mode.clone());
         Ok(ConnectionProcessOutput {
+            process_id: 0,
             success: true,
             status_code: Some(0),
             stdout: format!(

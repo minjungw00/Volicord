@@ -77,6 +77,23 @@ JSON은 `-32700`, 잘못된 요청은 `-32600`, 알 수 없는 메서드는 `-32
 반복 initialize, 잘못된 lifecycle 작업은 Core 전에 실패합니다. 선택한 초기화 profile은
 필수 `notifications/initialized` 단계가 끝나기 전까지 협상 완료 상태가 아닙니다.
 
+관찰 가능한 실패는 사람이 읽는 오류 문구를 분류하지 않고 공유 구조화 finding을
+사용합니다. 현재 MCP code 계열은 다음과 같습니다.
+
+| 계열 | 안정적인 code |
+|---|---|
+| JSON-RPC와 framing | `mcp.json_rpc.parse_error`, `mcp.json_rpc.invalid_request`, `mcp.json_rpc.invalid_id`, `mcp.json_rpc.unknown_method`, `mcp.json_rpc.malformed_response`, `mcp.json_rpc.framing_failure`, `mcp.json_rpc.message_size_exceeded`, `mcp.json_rpc.error_response` |
+| Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
+| Revision과 capability | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.counter_offer`, `mcp.protocol.counter_offer_rejected`, `mcp.protocol.generation_mismatch`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
+| 도구 검색 | `mcp.tools.protocol_error`, `mcp.tools.schema_failure`, `mcp.tools.required_missing`, `mcp.tools.definition_projection_invalid` |
+| 도구 호출 | `mcp.tool_call.unknown_tool`, `mcp.tool_call.invalid_arguments`, `mcp.tool_call.protocol_error`, `mcp.tool_call.output_schema_failed`, `mcp.tool_call.response_budget_failed`, `mcp.tool_call.core_execution_failed`, `mcp.tool_call.adapter_execution_failed`, `mcp.tool_call.safe_read_only_failed`, `mcp.tool_call.session_correlation_invalid` |
+
+협상 finding은 제한된 `requested_revision`, `selected_revision`,
+`negotiated_revision`, `production_supported_revisions`, 시도한 `clientInfo`
+name/version, JSON-RPC 오류 code, 안전한 오류 data, runtime session ID를 서로
+다른 사실로 보존합니다. 요청, 선택, 협상 revision을 서로 대신 사용하지 않습니다.
+전체 요청, 도구 인자, 환경, 제한 없는 프로세스 출력은 사실에 넣지 않습니다.
+
 <a id="protocol-revision-negotiation"></a>
 ## Protocol revision 협상
 
@@ -174,6 +191,12 @@ handshake를 완전히 끝낼 때만 협상 revision이 됩니다. 실제 `tools
 사실입니다. 권위 있는 Store 쓰기가 실패하면 해당 protocol 성공을 내보내지 않습니다.
 `diagnostics.sqlite`의 제한된 쓰기는 계속 best effort이며 이 사실을 조회할 때 사용하지
 않습니다.
+
+Registry를 열기 전에 발생한 실패는 stderr에 한도가 있는
+`VOLICORD_DIAGNOSTIC_V1` envelope 하나를 출력합니다. Registry runtime session이
+생긴 뒤에는 정확한 Connection, integration revision, runtime-session 좌표와 함께
+finding을 영속합니다. Terminal 실패는 두 번째 자유 형식 실패 객체로 저장하지 않고
+finding ID로 연결합니다.
 
 연결 검증은 별도의 `cli_preflight` process를 시작하고 지정된 안전한 읽기 전용 round
 trip으로 `volicord.list_projects`를 호출합니다. 이 process는 server 표면을 검증하지만

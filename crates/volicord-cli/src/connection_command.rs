@@ -1531,6 +1531,7 @@ mod persisted_metadata_tests {
         ) -> Result<ConnectionProcessOutput, McpProcessFailure> {
             self.preflight_calls += 1;
             Ok(ConnectionProcessOutput {
+                process_id: 0,
                 success: false,
                 status_code: Some(1),
                 stdout: String::new(),
@@ -1612,6 +1613,7 @@ mod persisted_metadata_tests {
             .map_err(|error| McpProcessFailure::protocol(McpStage::Startup, error.to_string()))?;
             self.transitioned = true;
             Ok(ConnectionProcessOutput {
+                process_id: 0,
                 success: false,
                 status_code: Some(1),
                 stdout: String::new(),

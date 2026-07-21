@@ -49,13 +49,13 @@ fn main() {
             if let Err(error) =
                 volicord_mcp::run_stdio_from_env(&connection_id, project_id.as_deref(), None)
             {
-                eprintln!("error: {error}");
+                eprintln!("{}", volicord_mcp::bootstrap_diagnostic_envelope(&error));
                 process::exit(1);
             }
         }
         Err(CliError::McpRepositoryStdio { host }) => {
             if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(host, None) {
-                eprintln!("error: {error}");
+                eprintln!("{}", volicord_mcp::bootstrap_diagnostic_envelope(&error));
                 process::exit(1);
             }
         }
