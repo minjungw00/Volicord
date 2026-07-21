@@ -492,10 +492,11 @@ fn host_session_checks(
         })
     };
     let diagnostic = current.first().copied();
-    let initialized = current
-        .iter()
-        .copied()
-        .find(|session| version_fresh(session) && session.initialize_completed_at.is_some());
+    let initialized = current.iter().copied().find(|session| {
+        version_fresh(session)
+            && session.initialize_completed_at.is_some()
+            && session.initialized_notification_at.is_some()
+    });
     let tools_present = current
         .iter()
         .copied()
@@ -510,7 +511,7 @@ fn host_session_checks(
                 ConnectionCheckStatus::Passed,
                 "host_session_initialized",
                 "A current managed-host session completed MCP initialize",
-                session.initialize_completed_at.as_deref(),
+                session.initialized_notification_at.as_deref(),
                 Some(session),
             ),
             (None, None) if latest.is_some() => (
@@ -1270,6 +1271,30 @@ mod tests {
             .iter()
             .all(|check| check.status() == ConnectionCheckStatus::Pending));
         assert_eq!(checks[0].code(), Some("host_version_observation_stale"));
+    }
+
+    #[test]
+    fn initialize_response_without_initialized_notification_remains_pending() {
+        let host = host("future");
+        let mut session = managed_session("future", true);
+        session.negotiated_protocol_version = None;
+        session.initialized_notification_at = None;
+        session.tools_list_observed_at = None;
+        session.required_tools_present = None;
+        session.last_safe_read_only_tool_call_at = None;
+
+        let checks = host_session_checks(
+            &host,
+            "revision_current",
+            std::slice::from_ref(&session),
+            Some(&session),
+        )
+        .expect("initialize-response-only checks");
+
+        assert_eq!(checks[0].status(), ConnectionCheckStatus::Pending);
+        assert_eq!(checks[0].code(), Some("host_session_initialize_pending"));
+        assert_eq!(checks[1].status(), ConnectionCheckStatus::Pending);
+        assert_eq!(checks[2].status(), ConnectionCheckStatus::Pending);
     }
 
     #[test]

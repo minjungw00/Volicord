@@ -96,11 +96,13 @@ instance 하나 안의 revision을 구분하고, 변경 불가능한 instance ID
 실패합니다.
 
 Milestone timestamp와 사실로 lifecycle 상태를 표현하며 중복 status enum은 저장하지
-않습니다. Store는 성공한 `initialize`, initialized notification, 실제 `tools/list`마다의
-응답과 required-tool-set 사실, 지정된 안전/읽기 전용 Volicord 호출 성공, terminal
-protocol failure, graceful close를 기록합니다. 권위 있는 Store 쓰기가 실패하면 protocol
-성공을 내보내지 않습니다. Best-effort diagnostics는 분리되어 있으며 정상적인 도구 결과를
-실패시킬 수 없습니다.
+않습니다. Store는 응답을 내보내기 전에 성공한 `initialize`와 제한 안의 시도된 client
+정보를 기록합니다. 선택한 protocol revision은 유효한 initialized notification이 해당
+profile의 handshake를 완료할 때만 `negotiated_protocol_version`이 됩니다. Store는 실제
+`tools/list`마다의 응답과 required-tool-set 사실, 지정된 안전/읽기 전용 Volicord 호출
+성공, terminal protocol failure, graceful close도 기록합니다. 권위 있는 Store 쓰기가
+실패하면 protocol 성공을 내보내지 않습니다. Best-effort diagnostics는 분리되어 있으며
+정상적인 도구 결과를 실패시킬 수 없습니다.
 
 프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 Connection을
 이름 붙이고 현재 workflow-policy fingerprint와 Guard ownership pair를 더한 프로젝트 통합

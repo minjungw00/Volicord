@@ -11,8 +11,9 @@ use std::os::unix::fs::PermissionsExt;
 
 use crate::prelude::*;
 use crate::stdio::{
-    classify_launch_origin, run_stdio_with_env_marker, tool_execution_error_result,
-    McpLaunchOrigin, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+    classify_launch_origin, handle_json_rpc_message, run_stdio_with_env_marker,
+    tool_execution_error_result, ConnectionPhase, ConnectionState, McpLaunchOrigin,
+    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
     MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
@@ -2178,7 +2179,10 @@ fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<
     assert_eq!(responses.len(), 2);
     assert_eq!(
         responses[0]["result"]["protocolVersion"],
-        json!(SUPPORTED_PROTOCOL_VERSION)
+        json!(ProtocolRegistry::production()
+            .preferred_server_profile()
+            .revision()
+            .as_str())
     );
     let names = tool_names_from_list_response(&responses[1]);
     assert_eq!(
@@ -2682,6 +2686,248 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
 }
 
 #[test]
+fn every_production_revision_negotiates_exactly_and_records_after_initialized(
+) -> Result<(), Box<dyn Error>> {
+    for (index, profile) in ProtocolRegistry::production()
+        .oldest_to_newest()
+        .enumerate()
+    {
+        let revision = profile.revision().as_str();
+        let fixture = CoreFixture::new(&format!("mcp-negotiate-production-{index}"))?;
+        let connection_adapter = adapter(&fixture)?;
+        let capabilities = json!({"experimental": {"fixture": true}});
+        let mut state = ConnectionState::default();
+
+        let initialize = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            initialize_request_for_protocol(
+                1,
+                capabilities.clone(),
+                "profile-test-client",
+                "1.2.3",
+                revision,
+            ),
+        )?
+        .expect("initialize request should return a response");
+        assert_eq!(initialize["result"]["protocolVersion"], revision);
+        assert_eq!(initialize["result"]["capabilities"], json!({"tools": {}}));
+        assert_eq!(
+            initialize["result"].get("instructions").is_some(),
+            profile.messages().initialize_result_instructions()
+        );
+
+        let selected = state
+            .mcp_session
+            .as_ref()
+            .expect("valid initialize should select a session profile");
+        assert_eq!(selected.requested_protocol_version, revision);
+        assert_eq!(selected.selected_profile, profile);
+        assert_eq!(selected.outcome, McpNegotiationOutcome::ExactMatch);
+        assert_eq!(
+            Value::Object(selected.client_capabilities.clone()),
+            capabilities
+        );
+        assert_eq!(selected.attempted_client_name, "profile-test-client");
+        assert_eq!(selected.attempted_client_version, "1.2.3");
+        assert!(!selected.initialized_notification_completed);
+        assert_eq!(state.phase, ConnectionPhase::AwaitingInitialized);
+
+        let premature_tools = handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            tools_call(2, STATUS_TOOL_NAME, json!({})),
+        )?
+        .expect("premature tools/call should return an error");
+        assert_eq!(premature_tools["error"]["code"], -32600);
+
+        assert!(handle_json_rpc_message(
+            &connection_adapter,
+            &mut state,
+            initialized_notification()
+        )?
+        .is_none());
+        assert_eq!(state.phase, ConnectionPhase::Ready);
+        assert!(
+            state
+                .mcp_session
+                .as_ref()
+                .expect("selected session remains active")
+                .initialized_notification_completed
+        );
+
+        let input = Cursor::new(json_lines(&[
+            initialize_request_for_protocol(
+                10,
+                json!({}),
+                "recording-test-client",
+                "4.5.6",
+                revision,
+            ),
+            initialized_notification(),
+        ])?);
+        let mut output = Vec::new();
+        run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+        let responses = stdio_responses(&output)?;
+        assert_eq!(responses[0]["result"]["protocolVersion"], revision);
+
+        let registry =
+            open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
+        let runtime_session_id = registry.query_row(
+            "SELECT runtime_session_id
+               FROM mcp_runtime_sessions
+              WHERE connection_internal_id = ?1
+              ORDER BY process_started_at DESC, runtime_session_id DESC
+              LIMIT 1",
+            [fixture.connection_id()],
+            |row| row.get::<_, String>(0),
+        )?;
+        let recorded = mcp_runtime_session(fixture.runtime_home_path(), &runtime_session_id)?
+            .expect("runtime session should be recorded");
+        assert_eq!(
+            recorded.negotiated_protocol_version.as_deref(),
+            Some(revision)
+        );
+        assert!(recorded.initialized_notification_at.is_some());
+    }
+    Ok(())
+}
+
+#[test]
+fn codex_compatible_2025_06_18_initialize_succeeds() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-negotiate-codex-2025-06-18")?;
+    let input = Cursor::new(json_lines(&[initialize_request_for_protocol(
+        1,
+        json!({}),
+        CODEX_MANAGED_MCP_CLIENT_NAME,
+        CODEX_TEST_CLIENT_VERSION,
+        "2025-06-18",
+    )])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses[0]["result"]["protocolVersion"], "2025-06-18");
+    Ok(())
+}
+
+#[test]
+fn unsupported_initialize_revision_receives_preferred_server_counter_offer(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-negotiate-counter-offer")?;
+    let adapter = adapter(&fixture)?;
+    let mut state = ConnectionState::default();
+    let response = handle_json_rpc_message(
+        &adapter,
+        &mut state,
+        initialize_request_for_protocol(1, json!({}), "counter-offer-client", "1.0", "2025-01-01"),
+    )?
+    .expect("well-formed unsupported revision should receive initialize result");
+    let preferred = ProtocolRegistry::production().preferred_server_profile();
+
+    assert_eq!(
+        response["result"]["protocolVersion"],
+        preferred.revision().as_str()
+    );
+    let selected = state.mcp_session.as_ref().expect("counter-offer session");
+    assert_eq!(selected.requested_protocol_version, "2025-01-01");
+    assert_eq!(selected.selected_profile, preferred);
+    assert_eq!(selected.outcome, McpNegotiationOutcome::ServerCounterOffer);
+    assert!(!selected.initialized_notification_completed);
+    assert!(handle_json_rpc_message(&adapter, &mut state, initialized_notification())?.is_none());
+    assert!(
+        state
+            .mcp_session
+            .as_ref()
+            .expect("counter-offer session remains active")
+            .initialized_notification_completed
+    );
+    Ok(())
+}
+
+#[test]
+fn malformed_initialize_fields_are_invalid_params_without_session_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let valid_client = json!({"name": "valid-client", "version": "1.0"});
+    let cases = [
+        json!({"capabilities": {}, "clientInfo": valid_client}),
+        json!({"protocolVersion": 1, "capabilities": {}, "clientInfo": valid_client}),
+        json!({"protocolVersion": "2025-11-25", "clientInfo": valid_client}),
+        json!({"protocolVersion": "2025-11-25", "capabilities": null, "clientInfo": valid_client}),
+        json!({"protocolVersion": "2025-11-25", "capabilities": {}}),
+        json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": null}),
+        json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"version": "1.0"}}),
+        json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": 7, "version": "1.0"}}),
+        json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "valid-client"}}),
+        json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "valid-client", "version": false}}),
+    ];
+
+    for (index, params) in cases.into_iter().enumerate() {
+        let fixture = CoreFixture::new(&format!("mcp-malformed-initialize-{index}"))?;
+        let adapter = adapter(&fixture)?;
+        let mut state = ConnectionState::default();
+        let response =
+            handle_json_rpc_message(&adapter, &mut state, request(1, "initialize", params))?
+                .expect("malformed initialize should return an error");
+
+        assert_eq!(response["error"]["code"], -32602, "case {index}");
+        assert!(response["error"]["data"]
+            .as_str()
+            .is_some_and(|data| data.len() <= 512));
+        assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
+        assert!(state.mcp_session.is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn lifecycle_rejects_tools_before_initialize_and_a_second_initialize() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-negotiate-lifecycle-order")?;
+    let adapter = adapter(&fixture)?;
+    let mut state = ConnectionState::default();
+
+    for message in [
+        request(1, "tools/list", json!({})),
+        tools_call(2, STATUS_TOOL_NAME, json!({})),
+    ] {
+        let response = handle_json_rpc_message(&adapter, &mut state, message)?
+            .expect("pre-initialize request should return an error");
+        assert_eq!(response["error"]["code"], -32600);
+    }
+    let initialized =
+        handle_json_rpc_message(&adapter, &mut state, initialize_request(3, json!({})))?
+            .expect("first initialize should return a result");
+    assert!(initialized["result"].is_object());
+    let repeated = handle_json_rpc_message(&adapter, &mut state, initialize_request(4, json!({})))?
+        .expect("second initialize should return an error");
+    assert_eq!(repeated["error"]["code"], -32600);
+    Ok(())
+}
+
+#[test]
+fn discover_generation_protocol_is_not_accepted_as_initialize() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-negotiate-discover-generation")?;
+    let adapter = adapter(&fixture)?;
+    let mut state = ConnectionState::default();
+    let response = handle_json_rpc_message(
+        &adapter,
+        &mut state,
+        initialize_request_for_protocol(1, json!({}), "future-client", "1.0", "2026-07-28"),
+    )?
+    .expect("generation mismatch should return an error");
+
+    assert_eq!(response["error"]["code"], -32601);
+    assert!(response["error"]["data"]
+        .as_str()
+        .is_some_and(|data| data.contains("does not use the initialize handshake")));
+    assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
+    assert!(state.mcp_session.is_none());
+    Ok(())
+}
+
+#[test]
 fn initialize_client_info_enforces_utf8_byte_bounds_before_connection_state_mutation(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-initialize-client-info-bound")?;
@@ -2760,7 +3006,10 @@ fn mcp_tools_list_is_available_after_initialize() -> Result<(), Box<dyn Error>> 
     assert_eq!(responses.len(), 2);
     assert_eq!(
         responses[0]["result"]["protocolVersion"],
-        json!(SUPPORTED_PROTOCOL_VERSION)
+        json!(ProtocolRegistry::production()
+            .preferred_server_profile()
+            .revision()
+            .as_str())
     );
     let names = responses[1]["result"]["tools"]
         .as_array()
@@ -4559,11 +4808,30 @@ fn initialize_request_with_client_info(
     client_name: &str,
     client_version: &str,
 ) -> Value {
+    initialize_request_for_protocol(
+        id,
+        capabilities,
+        client_name,
+        client_version,
+        ProtocolRegistry::production()
+            .preferred_server_profile()
+            .revision()
+            .as_str(),
+    )
+}
+
+fn initialize_request_for_protocol(
+    id: u64,
+    capabilities: Value,
+    client_name: &str,
+    client_version: &str,
+    protocol_version: &str,
+) -> Value {
     request(
         id,
         "initialize",
         json!({
-            "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
+            "protocolVersion": protocol_version,
             "capabilities": capabilities,
             "clientInfo": {
                 "name": client_name,

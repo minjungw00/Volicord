@@ -17,6 +17,10 @@ pub(crate) use volicord_core::{
     CoreBoundary, CorePipelineError, CoreService, CurrentUserActionProjection, GitWorkspaceContext,
     InvocationContext, PipelineResponse,
 };
+pub(crate) use volicord_mcp_protocol::{
+    InitializedNotification, McpNegotiationOutcome, McpProtocolProfile, ProtocolRegistry,
+    ServerCapabilityField,
+};
 pub(crate) use volicord_store::{
     agent_connections::{
         agent_connection_project_access_read_only, agent_connection_record_read_only,

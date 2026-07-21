@@ -73,9 +73,41 @@ JSON은 `-32700`, 잘못된 요청은 `-32600`, 알 수 없는 메서드는 `-32
 인자는 `-32602`, 내부 프로토콜 실패는 `-32603`을 반환합니다. 응답은 요청 `id`를
 보존합니다.
 
-`initialize`가 `tools/list`와 `tools/call`보다 먼저 와야 합니다. 프로세스는 지원 MCP
-protocol version만 협상하고 `notifications/initialized`를 받습니다. 초기화 전 호출,
-반복 initialize, batch 입력, 지원하지 않는 version은 Core 전에 실패합니다.
+`initialize`가 `tools/list`와 `tools/call`보다 먼저 와야 합니다. Initialize 전 호출,
+반복 initialize, 잘못된 lifecycle 작업, batch 입력은 Core 전에 실패합니다. 선택한
+초기화 profile은 필수 `notifications/initialized` 단계가 끝나기 전까지 협상 완료 상태가
+아닙니다.
+
+<a id="protocol-revision-negotiation"></a>
+## Protocol revision 협상
+
+프로덕션에서 지원하는 초기화 revision은 정확히 다음과 같습니다.
+
+- `2024-10-07`
+- `2024-11-05`
+- `2025-03-26`
+- `2025-06-18`
+- `2025-11-25`
+
+요청의 문자열 `protocolVersion`은 요청 revision입니다. 이 닫힌 집합의 정확한 구성원을
+요청하면 같은 profile을 선택하고 initialize 결과도 같은 revision을 반환합니다. 초기화 기반
+protocol 형태에 속하지만 이 집합에 없는 다른 문자열에는 서버의 선호 counter-offer인
+`2025-11-25`를 반환합니다. 고정된 명세에 따라 client가 반환된 revision을 지원할 수 없으면
+연결을 끊어야 합니다. 선택은 문자열이나 날짜 범위 비교가 아니라 정확한 registry membership을
+사용하며 지원 집합은 사용자가 구성할 수 없습니다.
+
+`protocolVersion`이 없거나 문자열이 아닌 경우, `capabilities`가 객체가 아닌 경우,
+`clientInfo`가 잘못된 경우에는 제한된 error data와 함께 계속 `-32602` invalid params를
+반환합니다. 고정된 pre-release `2026-07-28` revision은 discover 기반 generation에
+속합니다. 따라서 이를 담은 initialize 요청은 초기화 counter-offer를 받지 않고 typed
+method 또는 generation mismatch로 실패합니다.
+
+유효한 인자를 해석한 뒤 활성 MCP 연결은 session 범위의 typed selection 하나를 소유합니다.
+이 값은 정확한 요청 문자열, 선택한 profile, exact match 또는 counter-offer 결과, client
+capability, 제한 안의 시도된 client name/version, initialized notification 완료 사실을
+보관합니다. 선택한 profile에서 initialize 응답의 `protocolVersion`과 capability를 만들고
+이후 lifecycle을 검증합니다. 유효한 initialize 요청 뒤 profile이 선택되지만 유효한
+initialized notification이 handshake를 완료한 뒤에만 그 revision의 협상이 끝납니다.
 
 ## 권위 있는 Lifecycle 기록
 
@@ -85,11 +117,12 @@ launch, Connection, `managed_host` 또는 `cli_preflight` source, 현재 Connect
 revision, process ID, process 시작 시각을 식별합니다. CLI preflight row는
 managed-host 운영 check를 충족하지 않습니다.
 
-어댑터는 성공한 `initialize`를 응답보다 먼저 영속 기록하고, 유효한
-`notifications/initialized`를 ready 상태 진입 전에 기록하며, 실제 `tools/list` 응답을
-반환하기 전에 매번 기록합니다. Discovery 사실은 생성된 그 응답에 현재 Connection
-mode가 요구하는 모든 도구가 있었는지를 나타냅니다. 중복 initialized notification은
-첫 번째 유효 관찰 뒤 멱등입니다.
+어댑터는 성공한 `initialize`와 제한 안의 시도된 client 정보를 응답보다 먼저 영속
+기록합니다. 유효한 `notifications/initialized`와 함께 선택한 profile revision을 협상한
+protocol로 기록한 뒤 ready 상태에 들어가며, 실제 `tools/list` 응답을 반환하기 전에 매번
+기록합니다. Discovery 사실은 생성된 그 응답에 현재 Connection mode가 요구하는 모든
+도구가 있었는지를 나타냅니다. 중복 initialized notification은 첫 번째 유효 관찰 뒤
+멱등이며 협상한 revision을 바꿀 수 없습니다.
 
 성공한 `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`,
 `volicord.list_projects` 완료는 도구 결과를 내보내기 전에 안전/읽기 전용 milestone을
@@ -110,11 +143,12 @@ graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보�
 않습니다. 여러 managed process가 동시에 존재하면서 서로 다른 host session에 결속할 수
 있습니다.
 
-협상한 protocol version은 권위 있는 protocol data입니다. `clientInfo` name/version과
-관찰한 host 실행 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며
-호환성은 현재 관리 구성과 현재 revision에서 관찰한 초기화, 도구 목록, 필수 도구,
-안전 호출, Guard 동작으로 판단합니다. 이 기록은 협력적이며 client, host, actor, human
-identity를 성립시키지 않습니다.
+요청 revision은 client 입력이고, 선택 revision은 서버의 session profile이며, 협상 revision은
+initialized lifecycle 단계가 끝난 뒤의 그 선택 값입니다. 협상한 protocol version만 권위
+있는 runtime-session protocol data입니다. `clientInfo` name/version과 관찰한 host 실행
+파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며 호환성은 현재 관리
+구성과 현재 revision에서 관찰한 초기화, 도구 목록, 필수 도구, 안전 호출, Guard 동작으로
+판단합니다. 이 기록은 협력적이며 client, host, actor, human identity를 성립시키지 않습니다.
 
 ## 호출별 Session 권한
 

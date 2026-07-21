@@ -82,10 +82,44 @@ JSON returns `-32700`; invalid requests return `-32600`; unknown methods return
 `-32601`; invalid parameters return `-32602`; and internal protocol failures
 return `-32603`. Responses preserve the request `id`.
 
-`initialize` precedes `tools/list` and `tools/call`. The process negotiates only
-the supported MCP protocol version and then accepts
-`notifications/initialized`. Calls before initialization, repeated initialize,
-batch input, and unsupported versions fail before Core.
+`initialize` precedes `tools/list` and `tools/call`. Calls before initialize,
+repeated initialize, invalid lifecycle operations, and batch input fail before
+Core. A selected initialization profile does not become negotiated until the
+required `notifications/initialized` step completes.
+
+## Protocol Revision Negotiation
+
+The production-supported initialization revisions are exactly:
+
+- `2024-10-07`
+- `2024-11-05`
+- `2025-03-26`
+- `2025-06-18`
+- `2025-11-25`
+
+The request's string `protocolVersion` is the requested revision. An exact
+member of this closed set selects the same profile and the initialize result
+returns the same revision. Any other string that belongs to the
+initialization-based protocol shape receives the preferred server counter-offer
+`2025-11-25`; as required by the pinned specification, a client that cannot
+support the returned revision disconnects. Selection uses exact registry
+membership, not lexical or date-range comparison, and the supported set is not
+user-configurable.
+
+Missing or non-string `protocolVersion`, non-object `capabilities`, and
+malformed `clientInfo` remain `-32602` invalid parameters with bounded error
+data. The pinned pre-release `2026-07-28` revision belongs to the discover-based
+generation, so an initialize request carrying it fails as a typed method or
+generation mismatch instead of receiving an initialization counter-offer.
+
+After valid parameter decoding, the active MCP connection owns one typed,
+session-scoped selection. It retains the exact requested string, selected
+profile, exact-match or counter-offer outcome, client capabilities, bounded
+attempted client name/version, and initialized-notification completion fact.
+The selected profile generates the initialize response `protocolVersion` and
+capabilities and governs later lifecycle validation. The profile is selected
+after a successful initialize request, but its revision is negotiated only
+after the valid initialized notification completes the handshake.
 
 ## Authoritative Lifecycle Recording
 
@@ -96,12 +130,14 @@ row identifies this Volicord-generated process launch, its Connection,
 revision, process ID, and process-start time. A CLI preflight row never
 satisfies a managed-host operational check.
 
-The adapter durably records successful `initialize` before returning its
-response, records a valid `notifications/initialized` before entering ready
-state, and records each actual `tools/list` response before returning it. The
-discovery fact says whether that generated response contained every tool
-required by the current Connection mode. Duplicate initialized notifications
-are idempotent after the first valid observation.
+The adapter durably records successful `initialize` and bounded attempted
+client information before returning its response. It records the selected
+profile revision as the negotiated protocol together with a valid
+`notifications/initialized` before entering ready state, and records each
+actual `tools/list` response before returning it. The discovery fact says
+whether that generated response contained every tool required by the current
+Connection mode. Duplicate initialized notifications are idempotent after the
+first valid observation and cannot change the negotiated revision.
 
 Successful `volicord.status`, `volicord.get_operation_result`,
 `volicord.check_close`, and `volicord.list_projects` completions update the
@@ -124,12 +160,15 @@ leave a row that appears open. Such a row remains historical evidence and is
 never selected to correlate a later Guard event. Concurrent managed processes
 may coexist and bind different host sessions.
 
-The negotiated protocol version is authoritative protocol data. `clientInfo`
-name/version and an observed host executable version are diagnostic fields;
-they accept bounded future values. Compatibility is determined from the current
-managed configuration and the initialization, tool-list, required-tool,
-safe-call, and Guard behavior observed for the current revision. These records
-are cooperative and do not establish client, host, actor, or human identity.
+The requested revision is client input, the selected revision is the server's
+session profile, and the negotiated revision is that selected value after the
+initialized lifecycle step. Only the negotiated protocol version is
+authoritative runtime-session protocol data. `clientInfo` name/version and an
+observed host executable version are diagnostic fields; they accept bounded
+future values. Compatibility is determined from the current managed
+configuration and the initialization, tool-list, required-tool, safe-call, and
+Guard behavior observed for the current revision. These records are cooperative
+and do not establish client, host, actor, or human identity.
 
 ## Per-Call Session Authorization
 

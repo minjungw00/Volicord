@@ -142,7 +142,7 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
         let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
         let partial_report =
             assert_connection_report(&partial_status, 0, "status", "action_required")?;
-        assert_check(&partial_report, "host_session", "passed", None);
+        assert_check(&partial_report, "host_session", "pending", None);
         assert_check(&partial_report, "required_tools", "pending", None);
         assert_check(&partial_report, "tool_round_trip", "pending", None);
 
@@ -899,7 +899,7 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
             "id": 1,
             "method": "initialize",
             "params": {
-                "protocolVersion": "9999-unsupported",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "future-client", "version": FUTURE_VERSION}
             }

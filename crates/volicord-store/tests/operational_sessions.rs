@@ -59,12 +59,12 @@ fn complete(
         fixture.runtime_home_path(),
         runtime_session_id,
         &client,
-        "2025-11-25",
         INIT,
     )?;
     record_mcp_initialized_notification(
         fixture.runtime_home_path(),
         runtime_session_id,
+        "2025-11-25",
         INITIALIZED,
     )?;
     record_mcp_tools_list(
@@ -168,23 +168,40 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     assert!(record_mcp_tools_list(fixture.runtime_home_path(), &runtime, true, INIT).is_err());
     let client = ManagedMcpClientInfo::new("unlisted-client", "2037.0")?;
-    record_mcp_initialize(
+    record_mcp_initialize(fixture.runtime_home_path(), &runtime, &client, INIT)?;
+    let selected = mcp_runtime_session(fixture.runtime_home_path(), &runtime)?
+        .expect("initialize observation");
+    assert!(selected.initialize_completed_at.is_some());
+    assert!(selected.negotiated_protocol_version.is_none());
+    let first = record_mcp_initialized_notification(
         fixture.runtime_home_path(),
         &runtime,
-        &client,
         "2025-11-25",
-        INIT,
+        INITIALIZED,
     )?;
-    let first =
-        record_mcp_initialized_notification(fixture.runtime_home_path(), &runtime, INITIALIZED)?;
-    let duplicate =
-        record_mcp_initialized_notification(fixture.runtime_home_path(), &runtime, TOOLS)?;
+    let duplicate = record_mcp_initialized_notification(
+        fixture.runtime_home_path(),
+        &runtime,
+        "2025-11-25",
+        TOOLS,
+    )?;
     assert_eq!(
         first.initialized_notification_at,
         duplicate.initialized_notification_at
     );
     assert_eq!(duplicate.client_name.as_deref(), Some("unlisted-client"));
     assert_eq!(duplicate.client_version.as_deref(), Some("2037.0"));
+    assert_eq!(
+        duplicate.negotiated_protocol_version.as_deref(),
+        Some("2025-11-25")
+    );
+    assert!(record_mcp_initialized_notification(
+        fixture.runtime_home_path(),
+        &runtime,
+        "2025-06-18",
+        "2026-07-18T00:00:05Z",
+    )
+    .is_err());
     Ok(())
 }
 

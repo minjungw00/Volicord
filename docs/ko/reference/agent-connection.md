@@ -15,7 +15,7 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 - 정규 `ConnectionVerificationReport`, 닫힌 상태 값, 결정적 집계, 엄격한 인코딩,
   보고서 부재 projection
 - Connection과 프로젝트 통합 revision
-- 권위 있는 managed-host runtime/project session 소유권
+- 권위 있는 managed-host runtime, 협상한 MCP profile, 프로젝트 session 소유권
 - `ValidatedAgentSession`과 Core가 이를 소비하기 전에 필요한 검사
 - Codex 어댑터의 탐색, 설치, 검증, repair, 제거 책임
 
@@ -61,6 +61,7 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 | 연결 의도 | `personal` 또는 `shared` |
 | Connection mode | `read_only` 또는 `workflow` |
 | 전송 | `volicord mcp --stdio`로 시작하는 Volicord 관리형 stdio MCP |
+| 프로덕션 MCP revision | `2024-10-07`, `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` 중 하나 |
 | 사용자 소유 행동 전달 | CLI inbox |
 | 플랫폼 환경 | `linux`, `macos`, `native_windows`, `wsl2` |
 
@@ -90,6 +91,13 @@ Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록
 
 사용자 소유 행동은 CLI inbox로 전달합니다. MCP 에이전트는 담당 문서가 정의한 행동을
 요청할 수 있지만 로컬 사용자 채널로 동작하거나 사용자를 대신해 해결할 수 없습니다.
+
+프로덕션 revision 집합에서는 정확한 `protocolVersion` 요청이 같은 session profile을
+선택합니다. 초기화 기반 요청 형태의 다른 문자열에는 서버가 선호하는 `2025-11-25`
+counter-offer를 반환합니다. 날짜 순서로 지원 여부를 추론하거나 사용자가 지원 집합을
+구성하지 않습니다. 고정된 pre-release `2026-07-28` revision은 discover 기반
+generation에 속하므로 initialize 협상에 들어가지 않습니다. 정확한 인자와 응답 동작은
+[MCP 전송](mcp-transport.md#protocol-revision-negotiation)이 담당합니다.
 
 <a id="managed-mcp-launch-contract"></a>
 
@@ -223,7 +231,7 @@ Connection action은 안정적인 kind와 사용자 지시로 의미 있는 작�
 | `managed_config` | 선택한 대상에 정규 관리 entry가 있습니다. | 활성 조사 뒤에는 사용하지 않습니다. | 필수 entry가 없거나, malformed이거나, 다른 entry가 이름을 소유하거나, 변경되었거나, 조사할 수 없습니다. Details에는 대상과 정확한 원인을 기록합니다. |
 | `host_executable` | `PATH`에서 `codex`를 찾았고 version 명령이 성공했습니다. | 읽기 전용 status 경로에서 projection할 이전 활성 probe가 없습니다. | 탐색 또는 version 명령이 실패했습니다. Path와 version은 diagnostic일 뿐입니다. |
 | `mcp_server` | Volicord CLI self-test가 preflight, `initialize`, `tools/list`, 현재 필수 도구 집합, 안전한 읽기 전용 `volicord.list_projects` 호출을 통과했습니다. | 활성 self-test 뒤에는 사용하지 않습니다. | Process 시작, storage preflight, 초기화, 도구 검색, 필수 도구 검증, 안전 호출 중 하나가 실패했습니다. |
-| `host_session` | 현재 통합 revision과 현재 host-version 관찰에 맞는 `managed_host` session 하나 이상이 `initialize`를 완료했습니다. | 조건을 충족하는 managed-host 사용을 관찰하지 못했거나, 이전 revision만 관찰했거나, 초기화 관찰이 아직 없거나, 관찰 뒤 Codex version이 바뀌었습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 시도가 실제 초기화 또는 protocol 실패를 기록했습니다. |
+| `host_session` | 현재 통합 revision과 현재 host-version 관찰에 맞는 `managed_host` session 하나 이상이 필수 initialized notification을 포함한 initialize handshake를 완료했습니다. | 조건을 충족하는 managed-host 사용을 관찰하지 못했거나, 이전 revision만 관찰했거나, initialize handshake가 끝나지 않았거나, 관찰 뒤 Codex version이 바뀌었습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 시도가 실제 초기화 또는 protocol 실패를 기록했습니다. |
 | `required_tools` | 현재 상태이고 host-version이 fresh인 managed-host `tools/list` 관찰 하나 이상에 현재 mode의 모든 필수 도구가 있습니다. | 조건을 충족하는 도구 목록 관찰이 없습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 managed host에서 필수 도구가 실제로 빠졌거나 도구 목록 데이터가 유효하지 않습니다. |
 | `tool_round_trip` | 현재 상태이고 host-version이 fresh인 managed-host session 하나 이상이 안전한 읽기 전용 Volicord 도구 호출을 완료했습니다. | 조건을 충족하는 현재 관찰이 없습니다. | 조건을 충족하는 성공이 없을 때 가장 최근의 현재 시도가 실제 protocol 또는 contract 비호환을 기록했습니다. |
 | `project_trust` | 프로젝트 신뢰가 충족되었거나 별도 프로젝트 신뢰가 적용되지 않습니다. | 일반 Codex 신뢰 또는 reload 동작이 남았습니다. | 신뢰 구성이 malformed 또는 모순 상태이고 일반 동작으로 해결할 수 없습니다. |
@@ -311,6 +319,15 @@ Integration generation은 해당 물리 instance 안에서 0으로 시작하고 
 session ID를 만듭니다. `session_source`는 정확히 `managed_host` 또는
 `cli_preflight`입니다. `managed_host`만 Agent Connection 호출을 승인할 수 있습니다.
 Runtime session은 소유 Connection과 Connection 통합 revision을 보관합니다.
+
+유효한 initialize 요청 뒤 해당 runtime은 session 범위의 typed MCP selection 하나를
+소유합니다. 이 값은 요청 protocol 문자열, 선택한 프로덕션 profile, exact match 또는 서버
+counter-offer 결과, client capability, 제한 안의 시도된 client name/version, initialized
+notification의 handshake 완료 여부를 보관합니다. 선택한 profile에서 initialize 결과
+revision과 capability를 만들고 이후 lifecycle을 검증합니다. 선택은 협상 완료가 아닙니다.
+필수 initialized notification이 유효하게 도착한 뒤에만 profile의 협상이 끝나며 그 revision을
+권위 있는 runtime-session protocol 관찰로 기록합니다. 다시 연결하면 새 runtime과 새
+selection을 만들며 process 사이에서 profile을 공유하거나 상속하지 않습니다.
 
 프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
 fingerprint와 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적

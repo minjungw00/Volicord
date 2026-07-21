@@ -301,8 +301,12 @@ CREATE TABLE mcp_runtime_sessions (
     OR (client_name IS NOT NULL AND client_version IS NOT NULL)
   ),
   CHECK (
-    (initialize_completed_at IS NULL AND negotiated_protocol_version IS NULL AND client_name IS NULL)
-    OR (initialize_completed_at IS NOT NULL AND negotiated_protocol_version IS NOT NULL AND client_name IS NOT NULL)
+    (initialize_completed_at IS NULL AND client_name IS NULL)
+    OR (initialize_completed_at IS NOT NULL AND client_name IS NOT NULL)
+  ),
+  CHECK (
+    (initialized_notification_at IS NULL AND negotiated_protocol_version IS NULL)
+    OR (initialized_notification_at IS NOT NULL AND negotiated_protocol_version IS NOT NULL)
   ),
   CHECK (
     (tools_list_observed_at IS NULL AND required_tools_present IS NULL)

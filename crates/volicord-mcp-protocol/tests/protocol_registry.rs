@@ -3,9 +3,9 @@ use serde_json::{Map, Value};
 use std::collections::{BTreeSet, HashSet};
 use std::str::FromStr;
 use volicord_mcp_protocol::{
-    ClientCapabilityField, InitializedNotification, JsonRpcBatching, McpProtocolGeneration,
-    McpProtocolRevision, McpProtocolRevisionError, McpRevisionStatus, ProtocolRegistry,
-    ServerCapabilityField, ToolDefinitionField, ToolResultField,
+    ClientCapabilityField, InitializedNotification, JsonRpcBatching, McpNegotiationOutcome,
+    McpProtocolGeneration, McpProtocolRevision, McpProtocolRevisionError, McpRevisionStatus,
+    ProtocolRegistry, ServerCapabilityField, ToolDefinitionField, ToolResultField,
 };
 
 const MANIFEST: &str = include_str!(concat!(
@@ -115,6 +115,48 @@ fn every_production_revision_parses_exactly() {
         );
         assert_eq!(registry.parse(revision.as_str()), Ok(profile));
     }
+}
+
+#[test]
+fn every_production_initialize_revision_is_selected_exactly() {
+    let registry = ProtocolRegistry::production();
+
+    for profile in registry.oldest_to_newest() {
+        let selection = registry
+            .negotiate_initialize(profile.revision().as_str())
+            .expect("production initialize revision should negotiate");
+
+        assert_eq!(selection.profile(), profile);
+        assert_eq!(selection.outcome(), McpNegotiationOutcome::ExactMatch);
+    }
+}
+
+#[test]
+fn unknown_initialize_revision_receives_the_preferred_server_counter_offer() {
+    let registry = ProtocolRegistry::production();
+
+    for requested in ["", "2025-01-01", "future-initialize-revision"] {
+        let selection = registry
+            .negotiate_initialize(requested)
+            .expect("a string protocol version is negotiated by server selection");
+
+        assert_eq!(selection.profile(), registry.preferred_server_profile());
+        assert_eq!(
+            selection.outcome(),
+            McpNegotiationOutcome::ServerCounterOffer
+        );
+    }
+}
+
+#[test]
+fn discover_generation_is_not_counter_offered_as_initialize() {
+    let registry = ProtocolRegistry::production();
+    let mismatch = registry
+        .negotiate_initialize(McpProtocolRevision::V20260728.as_str())
+        .expect_err("discover-based traffic must not enter initialize negotiation");
+
+    assert_eq!(mismatch.revision(), McpProtocolRevision::V20260728);
+    assert_eq!(mismatch.actual(), McpProtocolGeneration::Discover);
 }
 
 #[test]

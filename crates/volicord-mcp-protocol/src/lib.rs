@@ -139,6 +139,67 @@ impl fmt::Display for McpProtocolRevisionError {
 
 impl std::error::Error for McpProtocolRevisionError {}
 
+/// The server-selection result for an initialization-based handshake.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum McpNegotiationOutcome {
+    /// The client requested a production-supported revision and the server
+    /// selected that same revision.
+    ExactMatch,
+    /// The requested string did not identify a production-supported
+    /// initialization revision, so the server selected its preferred profile.
+    ServerCounterOffer,
+}
+
+/// One specification-driven server selection for an `initialize` request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct McpInitializeSelection {
+    profile: &'static McpProtocolProfile,
+    outcome: McpNegotiationOutcome,
+}
+
+impl McpInitializeSelection {
+    /// Returns the selected production profile.
+    pub const fn profile(self) -> &'static McpProtocolProfile {
+        self.profile
+    }
+
+    /// Returns whether selection was exact or a server counter-offer.
+    pub const fn outcome(self) -> McpNegotiationOutcome {
+        self.outcome
+    }
+}
+
+/// A typed handshake-family mismatch during `initialize` negotiation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct McpProtocolGenerationMismatch {
+    revision: McpProtocolRevision,
+    actual: McpProtocolGeneration,
+}
+
+impl McpProtocolGenerationMismatch {
+    /// Returns the pinned revision that belongs to another handshake family.
+    pub const fn revision(self) -> McpProtocolRevision {
+        self.revision
+    }
+
+    /// Returns the revision's actual handshake family.
+    pub const fn actual(self) -> McpProtocolGeneration {
+        self.actual
+    }
+}
+
+impl fmt::Display for McpProtocolGenerationMismatch {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "MCP protocol revision {} does not use the initialize handshake",
+            self.revision
+        )
+    }
+}
+
+impl std::error::Error for McpProtocolGenerationMismatch {}
+
 /// Behavior of JSON-RPC batching in a protocol revision.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum JsonRpcBatching {
@@ -632,6 +693,46 @@ impl ProtocolRegistry {
         let revision = value.parse::<McpProtocolRevision>()?;
         self.profile(revision)
             .ok_or(McpProtocolRevisionError::NotProductionSupported(revision))
+    }
+
+    /// Selects a production profile using the pinned initialization rules.
+    ///
+    /// An exact supported request keeps its profile. An otherwise unknown or
+    /// unsupported initialization revision receives the separately chosen
+    /// preferred server profile. A pinned revision from another handshake
+    /// generation remains a typed mismatch and is never counter-offered as an
+    /// initialization revision.
+    pub fn negotiate_initialize(
+        &self,
+        requested: &str,
+    ) -> Result<McpInitializeSelection, McpProtocolGenerationMismatch> {
+        match self.parse(requested) {
+            Ok(profile) if profile.generation() == McpProtocolGeneration::InitializeHandshake => {
+                Ok(McpInitializeSelection {
+                    profile,
+                    outcome: McpNegotiationOutcome::ExactMatch,
+                })
+            }
+            Ok(profile) => Err(McpProtocolGenerationMismatch {
+                revision: profile.revision(),
+                actual: profile.generation(),
+            }),
+            Err(McpProtocolRevisionError::NotProductionSupported(revision))
+                if revision.generation() != McpProtocolGeneration::InitializeHandshake =>
+            {
+                Err(McpProtocolGenerationMismatch {
+                    revision,
+                    actual: revision.generation(),
+                })
+            }
+            Err(McpProtocolRevisionError::Unknown)
+            | Err(McpProtocolRevisionError::NotProductionSupported(_)) => {
+                Ok(McpInitializeSelection {
+                    profile: self.preferred_server_profile(),
+                    outcome: McpNegotiationOutcome::ServerCounterOffer,
+                })
+            }
+        }
     }
 
     /// Looks up a production profile by its typed revision.

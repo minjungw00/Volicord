@@ -500,14 +500,8 @@ pub fn record_mcp_initialize(
     runtime_home: impl AsRef<Path>,
     runtime_session_id: &str,
     client_info: &ManagedMcpClientInfo,
-    negotiated_protocol_version: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
-    validate_text(
-        "negotiated_protocol_version",
-        negotiated_protocol_version,
-        MAX_PROTOCOL_FIELD_BYTES,
-    )?;
     validate_timestamp("initialize_completed_at", observed_at)?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
@@ -521,14 +515,12 @@ pub fn record_mcp_initialize(
         tx.execute(
             "UPDATE mcp_runtime_sessions
                 SET client_name = ?2, client_version = ?3,
-                    negotiated_protocol_version = ?4,
-                    initialize_completed_at = ?5, last_observed_at = ?5
+                    initialize_completed_at = ?4, last_observed_at = ?4
               WHERE runtime_session_id = ?1",
             params![
                 runtime_session_id,
                 client_info.name(),
                 client_info.version(),
-                negotiated_protocol_version,
                 observed_at
             ],
         )?;
@@ -540,8 +532,14 @@ pub fn record_mcp_initialize(
 pub fn record_mcp_initialized_notification(
     runtime_home: impl AsRef<Path>,
     runtime_session_id: &str,
+    negotiated_protocol_version: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
+    validate_text(
+        "negotiated_protocol_version",
+        negotiated_protocol_version,
+        MAX_PROTOCOL_FIELD_BYTES,
+    )?;
     validate_timestamp("initialized_notification_at", observed_at)?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
@@ -551,12 +549,24 @@ pub fn record_mcp_initialized_notification(
                 "initialized notification requires initialize completion",
             ));
         }
+        if let Some(prior_version) = prior.negotiated_protocol_version.as_deref() {
+            if prior_version != negotiated_protocol_version {
+                return Err(StoreError::Conflict {
+                    entity: "mcp_runtime_session",
+                    id: runtime_session_id.to_owned(),
+                    detail:
+                        "initialized notification conflicts with the negotiated protocol version"
+                            .to_owned(),
+                });
+            }
+        }
         tx.execute(
             "UPDATE mcp_runtime_sessions
-                SET initialized_notification_at = COALESCE(initialized_notification_at, ?2),
-                    last_observed_at = ?2
+                SET negotiated_protocol_version = COALESCE(negotiated_protocol_version, ?2),
+                    initialized_notification_at = COALESCE(initialized_notification_at, ?3),
+                    last_observed_at = ?3
               WHERE runtime_session_id = ?1",
-            params![runtime_session_id, observed_at],
+            params![runtime_session_id, negotiated_protocol_version, observed_at],
         )?;
         Ok(())
     })

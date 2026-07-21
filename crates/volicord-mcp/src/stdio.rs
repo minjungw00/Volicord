@@ -572,7 +572,7 @@ impl CodexManagedBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConnectionState {
     pub(crate) phase: ConnectionPhase,
-    pub(crate) client_info: Option<ManagedMcpClientInfo>,
+    pub(crate) mcp_session: Option<NegotiatedMcpSession>,
     pub(crate) runtime_session_id: String,
     pub(crate) managed_stdio_binding_active: bool,
     pub(crate) launch_origin: &'static str,
@@ -586,7 +586,7 @@ impl Default for ConnectionState {
     fn default() -> Self {
         Self {
             phase: ConnectionPhase::AwaitingInitialize,
-            client_info: None,
+            mcp_session: None,
             runtime_session_id: String::new(),
             managed_stdio_binding_active: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
@@ -595,6 +595,39 @@ impl Default for ConnectionState {
             codex_binding: CodexManagedBinding::NotApplicable,
             deferred_tools_list_serialized_bytes: None,
         }
+    }
+}
+
+/// Session-scoped MCP selection and handshake state.
+///
+/// The selected profile is available after a valid initialize request, while
+/// `initialized_notification_completed` remains false until the client
+/// completes the required lifecycle step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NegotiatedMcpSession {
+    pub(crate) requested_protocol_version: String,
+    pub(crate) selected_profile: &'static McpProtocolProfile,
+    pub(crate) outcome: McpNegotiationOutcome,
+    pub(crate) client_capabilities: Map<String, Value>,
+    pub(crate) attempted_client_name: String,
+    pub(crate) attempted_client_version: String,
+    pub(crate) initialized_notification_completed: bool,
+}
+
+impl NegotiatedMcpSession {
+    fn client_info(&self) -> ManagedMcpClientInfo {
+        ManagedMcpClientInfo::new(
+            self.attempted_client_name.clone(),
+            self.attempted_client_version.clone(),
+        )
+        .expect("validated initialize clientInfo remains valid in connection state")
+    }
+
+    const fn requires_initialized_notification(&self) -> bool {
+        matches!(
+            self.selected_profile.messages().initialized_notification(),
+            InitializedNotification::AfterInitialize
+        )
     }
 }
 
@@ -744,18 +777,36 @@ pub(crate) fn handle_json_rpc_notification(
     state: &mut ConnectionState,
     notification: JsonRpcNotification,
 ) -> Result<(), McpAdapterError> {
+    let completes_selected_handshake = state
+        .mcp_session
+        .as_ref()
+        .is_some_and(NegotiatedMcpSession::requires_initialized_notification);
     if notification.method == "notifications/initialized"
         && state.phase == ConnectionPhase::AwaitingInitialized
+        && completes_selected_handshake
         && notification_params_are_object_or_absent(notification.params.as_ref())
     {
+        let selected_revision = state
+            .mcp_session
+            .as_ref()
+            .expect("awaiting initialized has a selected MCP session")
+            .selected_profile
+            .revision()
+            .as_str();
         if !state.runtime_session_id.is_empty() {
             record_mcp_initialized_notification(
                 &adapter.runtime_home,
                 &state.runtime_session_id,
+                selected_revision,
                 &authoritative_observation_timestamp(),
             )
             .map_err(McpAdapterError::Store)?;
         }
+        state
+            .mcp_session
+            .as_mut()
+            .expect("awaiting initialized has a selected MCP session")
+            .initialized_notification_completed = true;
         state.phase = ConnectionPhase::Ready;
     }
     Ok(())
@@ -818,33 +869,33 @@ fn handle_json_rpc_request_inner(
     state: &mut ConnectionState,
     request: JsonRpcRequest,
 ) -> Result<Value, McpAdapterError> {
-    if let Some(error) = lifecycle_error(state.phase, &request) {
+    if let Some(error) = lifecycle_error(state, &request) {
         return Ok(error);
     }
 
     let response_id = request.id.clone();
     let result = match request.method.as_str() {
         "initialize" => {
-            let initialize_params = match validate_initialize_params(&response_id, request.params) {
-                Ok(initialize_params) => initialize_params,
+            let mcp_session = match validate_initialize_params(&response_id, request.params) {
+                Ok(mcp_session) => mcp_session,
                 Err(error) => return Ok(error),
             };
             if !state.runtime_session_id.is_empty() {
                 record_mcp_initialize(
                     &adapter.runtime_home,
                     &state.runtime_session_id,
-                    &initialize_params.client_info,
-                    SUPPORTED_PROTOCOL_VERSION,
+                    &mcp_session.client_info(),
                     &authoritative_observation_timestamp(),
                 )
                 .map_err(McpAdapterError::Store)?;
             }
-            state.client_info = Some(initialize_params.client_info);
+            let result = initialize_result(&mcp_session);
+            state.mcp_session = Some(mcp_session);
             state.phase = ConnectionPhase::AwaitingInitialized;
             if !state.codex_binding.is_pending() && state.managed_stdio_binding_active {
                 let _ = start_transport_diagnostic_session(adapter, state);
             }
-            initialize_result()
+            result
         }
         "ping" => {
             if let Err(error) =
@@ -969,8 +1020,8 @@ fn required_tool_set_present(
         .all(|tool_name| actual.contains(tool_name)))
 }
 
-pub(crate) fn lifecycle_error(state: ConnectionPhase, request: &JsonRpcRequest) -> Option<Value> {
-    match state {
+pub(crate) fn lifecycle_error(state: &ConnectionState, request: &JsonRpcRequest) -> Option<Value> {
+    match state.phase {
         ConnectionPhase::AwaitingInitialize if request.method != "initialize" => Some(
             invalid_request_response(&request.id, "initialize must be the first request"),
         ),
@@ -981,10 +1032,17 @@ pub(crate) fn lifecycle_error(state: ConnectionPhase, request: &JsonRpcRequest) 
                 "initialize has already completed",
             )),
             "tools/list" => None,
-            "tools/call" => Some(invalid_request_response(
-                &request.id,
-                "tools/call requires notifications/initialized",
-            )),
+            "tools/call"
+                if state
+                    .mcp_session
+                    .as_ref()
+                    .is_none_or(NegotiatedMcpSession::requires_initialized_notification) =>
+            {
+                Some(invalid_request_response(
+                    &request.id,
+                    "tools/call requires notifications/initialized",
+                ))
+            }
             _ => None,
         },
         ConnectionPhase::Ready if request.method == "initialize" => Some(invalid_request_response(
@@ -1236,57 +1294,57 @@ mod codex_call_binding_tests {
     }
 }
 
-pub(crate) fn initialize_result() -> Value {
+pub(crate) fn initialize_result(session: &NegotiatedMcpSession) -> Value {
     let build = crate::build_info();
     let package_version = build.package_version;
-    json!({
+    let capabilities = if session
+        .selected_profile
+        .schema()
+        .server_capability_fields()
+        .contains(&ServerCapabilityField::Tools)
+    {
+        json!({ "tools": {} })
+    } else {
+        json!({})
+    };
+    let mut result = json!({
         "_meta": {
             "io.volicord/build": build
         },
-        "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
-        "capabilities": {
-            "tools": {}
-        },
+        "protocolVersion": session.selected_profile.revision().as_str(),
+        "capabilities": capabilities,
         "serverInfo": {
             "name": SERVER_NAME,
             "version": package_version
-        },
-        "instructions": SERVER_INSTRUCTIONS
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ValidatedInitializeParams {
-    client_info: ManagedMcpClientInfo,
+        }
+    });
+    if session
+        .selected_profile
+        .messages()
+        .initialize_result_instructions()
+    {
+        result["instructions"] = Value::String(SERVER_INSTRUCTIONS.to_owned());
+    }
+    result
 }
 
 fn validate_initialize_params(
     id: &Value,
     params: Option<Value>,
-) -> Result<ValidatedInitializeParams, Value> {
+) -> Result<NegotiatedMcpSession, Value> {
     let object = required_object_params(id, params, "initialize")?;
-    match object.get("protocolVersion") {
-        Some(Value::String(protocol_version)) if protocol_version == SUPPORTED_PROTOCOL_VERSION => {
-        }
-        Some(Value::String(_)) => {
-            return Err(invalid_params_response(
-                id,
-                "initialize params.protocolVersion is not supported",
-            ));
-        }
-        _ => {
-            return Err(invalid_params_response(
-                id,
-                "initialize params.protocolVersion must be a string",
-            ));
-        }
-    }
-    if !matches!(object.get("capabilities"), Some(Value::Object(_))) {
+    let Some(Value::String(requested_protocol_version)) = object.get("protocolVersion") else {
+        return Err(invalid_params_response(
+            id,
+            "initialize params.protocolVersion must be a string",
+        ));
+    };
+    let Some(Value::Object(client_capabilities)) = object.get("capabilities") else {
         return Err(invalid_params_response(
             id,
             "initialize params.capabilities must be an object",
         ));
-    }
+    };
     let Some(Value::Object(client_info)) = object.get("clientInfo") else {
         return Err(invalid_params_response(
             id,
@@ -1307,8 +1365,30 @@ fn validate_initialize_params(
     };
     let client_info = ManagedMcpClientInfo::new(client_name.clone(), client_version.clone())
         .map_err(|error| invalid_params_response(id, error.to_string()))?;
+    let (attempted_client_name, attempted_client_version) = client_info.into_parts();
+    let selection = ProtocolRegistry::production()
+        .negotiate_initialize(requested_protocol_version)
+        .map_err(|mismatch| {
+            json_rpc_error(
+                id.clone(),
+                -32601,
+                "Method not found",
+                Some(format!(
+                    "protocolVersion {} does not use the initialize handshake",
+                    mismatch.revision()
+                )),
+            )
+        })?;
 
-    Ok(ValidatedInitializeParams { client_info })
+    Ok(NegotiatedMcpSession {
+        requested_protocol_version: requested_protocol_version.clone(),
+        selected_profile: selection.profile(),
+        outcome: selection.outcome(),
+        client_capabilities: client_capabilities.clone(),
+        attempted_client_name,
+        attempted_client_version,
+        initialized_notification_completed: false,
+    })
 }
 
 pub(crate) fn validate_optional_object_params(

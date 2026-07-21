@@ -17,7 +17,8 @@ This document owns:
 - the canonical `ConnectionVerificationReport`, its closed status values,
   deterministic aggregation, strict encoding, and missing-report projection;
 - Connection and project integration revisions;
-- authoritative managed-host runtime and project session ownership;
+- authoritative managed-host runtime, negotiated MCP profile, and project
+  session ownership;
 - `ValidatedAgentSession` and the checks required before Core consumes it; and
 - Codex adapter discovery, installation, verification, repair, and uninstall
   responsibilities.
@@ -67,6 +68,7 @@ The first release accepts only this Agent Connection surface:
 | Connection intent | `personal` or `shared` |
 | Connection mode | `read_only` or `workflow` |
 | Transport | Volicord-managed stdio MCP started with `volicord mcp --stdio` |
+| Production MCP revisions | `2024-10-07`, `2024-11-05`, `2025-03-26`, `2025-06-18`, or `2025-11-25` |
 | User-owned action delivery | CLI inbox |
 | Platform environment | `linux`, `macos`, `native_windows`, or `wsl2` |
 
@@ -101,6 +103,14 @@ managed stdio MCP process is bound to one current Agent Connection.
 User-owned actions are delivered through the CLI inbox. An MCP agent may
 request an owner-defined action, but it cannot act as the local user channel or
 resolve the action on the user's behalf.
+
+For the production revision set, an exact requested `protocolVersion` selects
+the same session profile. Another string in the initialization-based request
+shape receives the server's preferred `2025-11-25` counter-offer; support is
+never inferred from date ordering or configured by the user. The pinned
+pre-release `2026-07-28` revision belongs to the discover-based generation and
+does not enter initialize negotiation. Exact parameter and response behavior
+is owned by [MCP Transport](mcp-transport.md#protocol-revision-negotiation).
 
 <a id="managed-mcp-launch-contract"></a>
 
@@ -247,7 +257,7 @@ The current Codex connection report contains these operational checks:
 | `managed_config` | The selected target contains the canonical managed entry. | Never used after an active inspection. | The required entry is missing, malformed, owned by another entry, changed, or unavailable to inspect. Details name the target and the precise cause. |
 | `host_executable` | `codex` was discovered on `PATH` and its version command succeeded. | The read-only status path has no prior active probe to project. | Discovery or the version command failed. Path and version are diagnostic only. |
 | `mcp_server` | The Volicord CLI self-test passed preflight, `initialize`, `tools/list`, the current required-tool set, and a safe read-only `volicord.list_projects` call. | Never used after an active self-test. | Process startup, storage preflight, initialization, tool discovery, required-tool validation, or the safe call failed. |
-| `host_session` | At least one `managed_host` session for the current integration revision and current host-version observation completed `initialize`. | No qualifying managed-host use was observed, only an older revision was observed, initialization is still absent, or the Codex version changed after the observation. | When no qualifying success exists, the newest current attempt recorded an actual initialization or protocol failure. |
+| `host_session` | At least one `managed_host` session for the current integration revision and current host-version observation completed the initialize handshake, including its required initialized notification. | No qualifying managed-host use was observed, only an older revision was observed, the initialize handshake is incomplete, or the Codex version changed after the observation. | When no qualifying success exists, the newest current attempt recorded an actual initialization or protocol failure. |
 | `required_tools` | At least one current, host-version-fresh managed-host `tools/list` observation contains every tool required by the current mode. | No qualifying tool-list observation exists. | When no qualifying success exists, the newest current managed host actually omitted required tools or returned invalid tool-list data. |
 | `tool_round_trip` | At least one current, host-version-fresh managed-host session completed a safe read-only Volicord tool call. | No such qualifying current observation exists. | When no qualifying success exists, the newest current attempt recorded an actual protocol or contract incompatibility. |
 | `project_trust` | Project trust is satisfied, or no separate project trust applies. | A normal Codex trust or reload action remains. | The trust configuration is malformed or contradictory and cannot be resolved by the normal action. |
@@ -355,6 +365,17 @@ host thread metadata exists. `session_source` is exactly `managed_host` or
 `cli_preflight`. Only `managed_host` can authorize an Agent Connection call.
 The runtime session retains its owning Connection and Connection integration
 revision.
+
+After a valid initialize request, that runtime owns one session-scoped typed
+MCP selection. It retains the requested protocol string, selected production
+profile, exact-match or server-counter-offer outcome, client capabilities,
+bounded attempted client name/version, and whether the initialized notification
+completed the handshake. The selected profile generates the initialize result
+revision and capabilities and governs later lifecycle validation. Selection is
+not negotiation completion: only the required valid initialized notification
+marks the profile negotiated and records its revision as the authoritative
+runtime-session protocol observation. Reconnection creates a new runtime and a
+new selection; profiles are not shared or inherited across processes.
 
 The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint and current Guard installation

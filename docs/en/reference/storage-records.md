@@ -108,12 +108,15 @@ causes the whole Registry transaction to fail without a partial Connection or
 manifest update.
 
 Milestone timestamps and facts express lifecycle state without a redundant
-status enum. Store records successful `initialize`, the initialized
-notification, every actual `tools/list` result and required-tool-set fact, a
-successful designated safe/read-only Volicord call, terminal protocol failure,
-and graceful close. A protocol success is not emitted when its authoritative
-Store write fails. Best-effort diagnostics remain separate and cannot make an
-otherwise valid tool result fail.
+status enum. Store records successful `initialize` and its bounded attempted
+client information before the response is emitted. The selected protocol
+revision becomes `negotiated_protocol_version` only when the valid initialized
+notification completes that selected profile's handshake. Store also records
+every actual `tools/list` result and required-tool-set fact, a successful
+designated safe/read-only Volicord call, terminal protocol failure, and graceful
+close. A protocol success is not emitted when its authoritative Store write
+fails. Best-effort diagnostics remain separate and cannot make an otherwise
+valid tool result fail.
 
 Project `agent_sessions` are the project-local correlation projection. Each
 row names one Connection, carries a project integration revision that adds the
