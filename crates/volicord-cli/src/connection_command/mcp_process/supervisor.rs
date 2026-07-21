@@ -1,41 +1,20 @@
 use std::{
     collections::VecDeque,
-    io::{self, Read, Write},
+    io::{self, Write},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
 use serde_json::Value;
+use volicord_platform_process::{
+    configure_child_stderr_pipe, configure_child_stdin_pipe, configure_child_stdout_pipe,
+    read_child_stderr_available, read_child_stdout_available, PipeRead, ProcessContainment,
+};
 
 use super::failure::{
     bounded_io_detail, bounded_io_text, BoundedText, McpProcessFailure, McpStage,
     MAX_CAPTURED_STDERR_BYTES,
-};
-
-#[cfg(windows)]
-use std::os::windows::io::AsRawHandle;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::os::{fd::AsFd, unix::process::CommandExt};
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use rustix::{
-    fs::{fcntl_getfl, fcntl_setfl, OFlags},
-    io::Errno,
-    process::{kill_process_group, Pid, Signal},
-};
-
-#[cfg(windows)]
-use windows_sys::Win32::{
-    Foundation::{CloseHandle, ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED, HANDLE},
-    System::{
-        JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-            SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        },
-        Pipes::PeekNamedPipe,
-    },
 };
 
 pub(super) const MAX_PREFLIGHT_STDOUT_BYTES: usize = 16 * 1024;
@@ -97,9 +76,9 @@ impl ChildSupervisor {
         let mut containment =
             ProcessContainment::new().map_err(|error| McpProcessFailure::Spawn {
                 stage: McpStage::Startup,
-                io_detail: bounded_io_text(error),
+                io_detail: bounded_io_text(error.to_string()),
             })?;
-        containment.configure(&mut command);
+        containment.configure_command(&mut command);
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         match kind {
             SupervisorKind::Preflight => {
@@ -141,7 +120,7 @@ impl ChildSupervisor {
         let startup_failure = attach_error
             .map(|error| McpProcessFailure::Spawn {
                 stage: McpStage::Startup,
-                io_detail: bounded_io_text(error),
+                io_detail: bounded_io_text(error.to_string()),
             })
             .or_else(|| {
                 supervisor
@@ -358,7 +337,7 @@ impl ChildSupervisor {
         let mut cleanup_detail = String::new();
 
         if let Err(error) = self.containment.terminate_tree() {
-            append_cleanup_detail(&mut cleanup_detail, &error);
+            append_cleanup_detail(&mut cleanup_detail, &error.to_string());
         }
         if self.status.is_none() {
             let _ = self.child.kill();
@@ -423,17 +402,17 @@ impl ChildSupervisor {
 
     fn prepare_pipes(&self) -> Result<(), String> {
         if let Some(stdout) = &self.stdout {
-            prepare_pipe(stdout).map_err(|error| {
+            configure_child_stdout_pipe(stdout).map_err(|error| {
                 format!("failed to configure MCP stdout for bounded reads: {error}")
             })?;
         }
         if let Some(stderr) = &self.stderr {
-            prepare_pipe(stderr).map_err(|error| {
+            configure_child_stderr_pipe(stderr).map_err(|error| {
                 format!("failed to configure MCP stderr for bounded reads: {error}")
             })?;
         }
         if let Some(stdin) = &self.stdin {
-            prepare_pipe(stdin).map_err(|error| {
+            configure_child_stdin_pipe(stdin).map_err(|error| {
                 format!("failed to configure MCP stdin for bounded writes: {error}")
             })?;
         }
@@ -445,7 +424,7 @@ impl ChildSupervisor {
         let mut buffer = [0_u8; PIPE_READ_CHUNK_BYTES];
 
         if let Some(stdout) = self.stdout.as_mut() {
-            match read_pipe_available(stdout, &mut buffer) {
+            match read_child_stdout_available(stdout, &mut buffer) {
                 Ok(PipeRead::Data(count)) => {
                     progressed = true;
                     self.stdout_state.push(&buffer[..count]);
@@ -468,7 +447,7 @@ impl ChildSupervisor {
         }
 
         if let Some(stderr) = self.stderr.as_mut() {
-            match read_pipe_available(stderr, &mut buffer) {
+            match read_child_stderr_available(stderr, &mut buffer) {
                 Ok(PipeRead::Data(count)) => {
                     progressed = true;
                     self.stderr_capture.push(&buffer[..count]);
@@ -670,224 +649,6 @@ impl ProtocolFramer {
     }
 }
 
-enum PipeRead {
-    Data(usize),
-    NoData,
-    Eof,
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn prepare_pipe(pipe: impl AsFd) -> io::Result<()> {
-    let flags = fcntl_getfl(&pipe)?;
-    Ok(fcntl_setfl(pipe, flags | OFlags::NONBLOCK)?)
-}
-
-#[cfg(windows)]
-fn prepare_pipe<T>(_pipe: &T) -> io::Result<()> {
-    Ok(())
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn prepare_pipe<T>(_pipe: &T) -> io::Result<()> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "bounded MCP process supervision is unavailable on this platform",
-    ))
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn read_pipe_available<R: Read + AsFd>(reader: &mut R, buffer: &mut [u8]) -> io::Result<PipeRead> {
-    match reader.read(buffer) {
-        Ok(0) => Ok(PipeRead::Eof),
-        Ok(count) => Ok(PipeRead::Data(count)),
-        Err(error) if error.kind() == io::ErrorKind::Interrupted => Ok(PipeRead::NoData),
-        Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(PipeRead::NoData),
-        Err(error) => Err(error),
-    }
-}
-
-#[cfg(windows)]
-fn read_pipe_available<R: Read + AsRawHandle>(
-    reader: &mut R,
-    buffer: &mut [u8],
-) -> io::Result<PipeRead> {
-    let mut available = 0_u32;
-    let peeked = unsafe {
-        PeekNamedPipe(
-            reader.as_raw_handle() as HANDLE,
-            std::ptr::null_mut(),
-            0,
-            std::ptr::null_mut(),
-            &mut available,
-            std::ptr::null_mut(),
-        )
-    };
-    if peeked == 0 {
-        let error = io::Error::last_os_error();
-        return match error.raw_os_error().map(|code| code as u32) {
-            Some(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED) => Ok(PipeRead::Eof),
-            _ => Err(error),
-        };
-    }
-    if available == 0 {
-        return Ok(PipeRead::NoData);
-    }
-    let requested = buffer.len().min(available as usize);
-    match reader.read(&mut buffer[..requested]) {
-        Ok(0) => Ok(PipeRead::Eof),
-        Ok(count) => Ok(PipeRead::Data(count)),
-        Err(error) if error.kind() == io::ErrorKind::Interrupted => Ok(PipeRead::NoData),
-        Err(error) => Err(error),
-    }
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn read_pipe_available<R: Read>(_reader: &mut R, _buffer: &mut [u8]) -> io::Result<PipeRead> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "bounded MCP pipe reads are unavailable on this platform",
-    ))
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-struct ProcessContainment {
-    child_pid: Option<Pid>,
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-impl ProcessContainment {
-    fn new() -> Result<Self, String> {
-        Ok(Self { child_pid: None })
-    }
-
-    fn configure(&self, command: &mut Command) {
-        command.process_group(0);
-    }
-
-    fn attach(&mut self, child: &Child) -> Result<(), String> {
-        let raw_pid = i32::try_from(child.id())
-            .map_err(|_| "MCP child process ID did not fit the platform PID range".to_owned())?;
-        self.child_pid = Pid::from_raw(raw_pid);
-        self.child_pid
-            .is_some()
-            .then_some(())
-            .ok_or_else(|| "MCP child process ID was unavailable".to_owned())
-    }
-
-    fn terminate_tree(&self) -> Result<(), String> {
-        let Some(pid) = self.child_pid else {
-            return Ok(());
-        };
-        match kill_process_group(pid, Signal::KILL) {
-            Ok(()) | Err(Errno::SRCH) => Ok(()),
-            Err(error) => Err(format!(
-                "failed to terminate the contained MCP process group: {error}"
-            )),
-        }
-    }
-}
-
-#[cfg(windows)]
-struct ProcessContainment {
-    job: HANDLE,
-    attached: bool,
-}
-
-#[cfg(windows)]
-impl ProcessContainment {
-    fn new() -> Result<Self, String> {
-        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if job.is_null() {
-            return Err(format!(
-                "failed to create MCP process Job Object: {}",
-                io::Error::last_os_error()
-            ));
-        }
-        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let configured = unsafe {
-            SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                std::ptr::from_ref(&limits).cast(),
-                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            )
-        };
-        if configured == 0 {
-            let error = io::Error::last_os_error();
-            unsafe {
-                CloseHandle(job);
-            }
-            return Err(format!(
-                "failed to configure MCP process Job Object: {error}"
-            ));
-        }
-        Ok(Self {
-            job,
-            attached: false,
-        })
-    }
-
-    fn configure(&self, _command: &mut Command) {}
-
-    fn attach(&mut self, child: &Child) -> Result<(), String> {
-        let assigned =
-            unsafe { AssignProcessToJobObject(self.job, child.as_raw_handle() as HANDLE) };
-        if assigned == 0 {
-            return Err(format!(
-                "failed to assign MCP child to its Job Object: {}",
-                io::Error::last_os_error()
-            ));
-        }
-        self.attached = true;
-        Ok(())
-    }
-
-    fn terminate_tree(&self) -> Result<(), String> {
-        if !self.attached {
-            return Ok(());
-        }
-        let terminated = unsafe { TerminateJobObject(self.job, 1) };
-        if terminated == 0 {
-            Err(format!(
-                "failed to terminate the contained MCP Job Object: {}",
-                io::Error::last_os_error()
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-#[cfg(windows)]
-impl Drop for ProcessContainment {
-    fn drop(&mut self) {
-        unsafe {
-            CloseHandle(self.job);
-        }
-    }
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-struct ProcessContainment;
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-impl ProcessContainment {
-    fn new() -> Result<Self, String> {
-        Err("bounded MCP process containment is unavailable on this platform".to_owned())
-    }
-
-    fn configure(&self, _command: &mut Command) {}
-
-    fn attach(&mut self, _child: &Child) -> Result<(), String> {
-        Err("bounded MCP process containment is unavailable on this platform".to_owned())
-    }
-
-    fn terminate_tree(&self) -> Result<(), String> {
-        Ok(())
-    }
-}
-
 fn append_cleanup_detail(target: &mut String, detail: &str) {
     if target.len() >= super::failure::MAX_IO_DETAIL_BYTES {
         return;
@@ -907,6 +668,8 @@ fn append_cleanup_detail(target: &mut String, detail: &str) {
 mod tests {
     use super::*;
     use crate::connection_command::mcp_process::test_child;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use rustix::{io::Errno, process::Pid};
 
     #[test]
     fn protocol_framer_bounds_lines_and_message_count() {

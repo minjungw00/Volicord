@@ -69,8 +69,9 @@ the public method execution path.
 | `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, platform, and host-configuration implementation types. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, Agent Connection runtime/project sessions, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
-| `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, and managed stdio MCP process handoff. |
+| `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
 | `crates/volicord-platform-fs` | Internal safe facade for process-target and platform observation, native Linux/WSL2 classification, WSL2 distribution validation and filesystem observation, platform-native filesystem namespace operations, and read-only canonical Git common-directory/worktree snapshots. It does not own managed launch or Codex configuration policy. |
+| `crates/volicord-platform-process` | Internal safe facade for bounded platform-specific child-process containment and nonblocking child-pipe readiness. It owns low-level Unix process-group, Windows Job Object, and pipe-polling primitives. |
 | `crates/volicord-mcp` | MCP adapter library for the canonical managed-launch contract, startup validation, tool listing, `tools/call` decoding and dispatch, managed stdio framing, and Core invocation. |
 | `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs and shared fixtures. |
@@ -92,6 +93,10 @@ The durable dependency direction is:
 - `volicord-cli` and `volicord-mcp` are adapter or local orchestration layers.
   They may depend on Core, Store, and shared types for their distinct setup,
   startup validation, routing, and invocation responsibilities.
+- `volicord-platform-process` has no internal product-crate dependencies. It
+  supplies safe child-process containment and pipe-polling primitives to local
+  orchestration layers without owning MCP supervision policy, deadlines,
+  framing, progress, or diagnostics.
 - `volicord-platform-fs` has no internal product-crate dependencies. It owns
   safe observation of the current process target and platform, WSL2
   distribution identity and path filesystem, platform-native namespace
@@ -134,6 +139,7 @@ The failure, storage, and Agent Connection contracts remain in
 | Administrative CLI and Codex adapter | The CLI owns Codex configuration discovery, managed-entry installation and validation, diagnostic verification, repair, uninstall, and stdio MCP launch. The Codex adapter converts the canonical managed launch contract to and from Codex TOML while preserving only the allowed tool-approval overlay. It does not classify Linux or WSL2 and does not issue runtime authorization. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), [Administrative CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
 | Release integrity | Generic checks cover every published Volicord target, package and checksum continuity, and workflow shape. Optional real-Codex smoke observes current configuration and behavior without becoming a release gate or runtime trust input. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
 | Platform filesystem facade | `volicord-platform-fs` observes the process target and kernel, distinguishes native Linux from WSL2, validates the WSL2 distribution through `/etc/os-release`, and supplies path-filesystem observations for target-path restriction enforcement. It also isolates platform-native namespace primitives and canonical read-only Git common-directory/worktree discovery. It does not decide which files are managed, whether a replacement or write is authorized, or what recovery means. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
+| Platform process facade | `volicord-platform-process` exposes safe bounded child-process containment and child-pipe readiness APIs. It owns low-level process groups, Windows Job Objects, nonblocking pipe configuration, and pipe polling. `volicord-cli` retains MCP supervision policy, lifecycle deadlines, protocol framing, exchange progress, and diagnostics. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), and [Agent Connection](../reference/agent-connection.md). |
 | Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
 
 ## Detail routes

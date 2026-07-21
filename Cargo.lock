@@ -850,10 +850,10 @@ dependencies = [
  "volicord-core",
  "volicord-mcp",
  "volicord-platform-fs",
+ "volicord-platform-process",
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -919,6 +919,14 @@ dependencies = [
  "rustix",
  "sha2",
  "volicord-types",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "volicord-platform-process"
+version = "0.9.1"
+dependencies = [
+ "rustix",
  "windows-sys 0.61.2",
 ]
 
