@@ -42,7 +42,12 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/schema/project.sql` | Canonical project Store DDL source. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home and Store bootstrap. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection records, project allowlists, managed fingerprints, and persisted verification-report boundary. |
-| `crates/volicord-store/src/diagnostic_findings.rs` | Transactional structured finding and cause-graph persistence, runtime terminal-finding links, current-coordinate queries, and bounded deterministic traversal. |
+| `crates/volicord-store/src/diagnostic_findings/mod.rs` | Lifecycle-specific diagnostic persistence facade and public Store API exports. |
+| `crates/volicord-store/src/diagnostic_findings/occurrence.rs` | Insert-only occurrence persistence and atomic runtime terminal-finding links. |
+| `crates/volicord-store/src/diagnostic_findings/current_state.rs` | Current snapshot activation, replacement, resolution, and reactivation. |
+| `crates/volicord-store/src/diagnostic_findings/graph.rs` | Cause-graph validation, root selection, and bounded deterministic traversal. |
+| `crates/volicord-store/src/diagnostic_findings/queries.rs` | Explicit identifier, reportable-finding, runtime-session occurrence, and active-current-scope queries. |
+| `crates/volicord-store/src/diagnostic_findings/row.rs` | Internal finding row encoding, decoding, and lifecycle identity validation. |
 | `crates/volicord-store/src/operational_sessions.rs` | Managed runtime sessions, protocol milestones, revision-scoped project sessions, and exact cross-database bindings. |
 | `crates/volicord-store/src/workflow_records.rs` | Workflow record reads and writes. |
 | `crates/volicord-store/src/core_pipeline/` | Core-open, validation, replay, commit, and mutation application. |
@@ -67,7 +72,13 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
-| `crates/volicord-cli/src/connection_command/verification.rs` | Dependency-aware verification checks, `Blocked` propagation, managed-host observation policy, cause attachment, and deterministic root selection. |
+| `crates/volicord-cli/src/connection_command/verification/mod.rs` | Connection verification coordinator, shared step/report types, and bounded package exports. |
+| `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, and managed-host session checks. |
+| `crates/volicord-cli/src/connection_command/verification/mcp_checks.rs` | MCP preflight/handshake check projection and MCP finding-ID inputs. |
+| `crates/volicord-cli/src/connection_command/verification/guard_checks.rs` | Guard file, hook-execution, and observation check evaluation. |
+| `crates/volicord-cli/src/connection_command/verification/dependency_graph.rs` | Cause attachment, `Blocked` propagation, graph finalization, action selection, and canonical check construction. |
+| `crates/volicord-cli/src/connection_command/verification/finding_projection.rs` | Process, host, peer-version, and Guard observation projection into lifecycle-specific findings. |
+| `crates/volicord-cli/src/connection_command/verification/report_inputs.rs` | Active verification and current-status report input assembly. |
 | `crates/volicord-cli/src/operational_diagnostics/mod.rs` | Typed operational-diagnostic module facade and bounded internal exports. |
 | `crates/volicord-cli/src/operational_diagnostics/definitions.rs` | Immutable CLI operational-diagnostic definitions and exhaustive closed diagnostic-value mappings. |
 | `crates/volicord-cli/src/operational_diagnostics/subjects.rs` | Closed typed operational subjects, canonical identity bytes, scope ownership, and safe display projection. |
@@ -110,17 +121,29 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
+| `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization ordering, rejection, shutdown, and EOF contracts. |
+| `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch ordering, notification, and response contracts. |
+| `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection and schema compatibility contracts. |
+| `crates/volicord-mcp/src/tests/tool_calls.rs` | Tool dispatch, result, error, and storage-capability contracts. |
+| `crates/volicord-mcp/src/tests/managed_host_observation.rs` | Managed launch, routing, session binding, and host-observation contracts. |
+| `crates/volicord-mcp/src/tests/diagnostics.rs` | Diagnostic persistence and workflow-metric contracts. |
+| `crates/volicord-mcp/src/tests/conformance.rs` | Module-level registry-driven protocol conformance assertions. |
+| `crates/volicord-mcp/src/tests/support.rs` | Shared MCP test fixture and protocol-message construction only. |
 | `crates/volicord-mcp/tests/protocol_conformance.rs` | One registry-driven wire conformance case for every production profile, including pinned-schema validation, required tools, the designated round trip, profile-specific projection and batching, lifecycle rejection, and EOF. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
 | `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed `production_supported` and `pre_release_only` facts, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
 | `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and release-workflow integrity tests. |
-| `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store, and request helpers. |
+| `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store-facing setup and inspection, intentional corruption/malformed-storage fixtures, and request helpers; implementation-test modules do not embed storage SQL. |
 
 ## Repository Maintenance Tooling
 
 | Path | Responsibility |
 |---|---|
-| `xtask/src/mcp_spec.rs` | Lightweight offline pinned-spec validation, exact manifest/registry production parity, deterministic count reporting, and explicit networked synchronization through a verified temporary candidate while preserving reviewed support metadata. |
+| `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
+| `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
+| `xtask/src/mcp_spec/validation.rs` | Offline metadata, immutable-pin, checksum, artifact, schema, ordering, and registry-parity validation. |
+| `xtask/src/mcp_spec/report.rs` | Deterministic check and synchronization report types. |
+| `xtask/src/mcp_spec/sync.rs` | The sole networked MCP specification path, using a verified temporary candidate before replacement. |
 | `xtask/tests/mcp_spec.rs` | Strict manifest parsing, classification, parity failures, immutable-pin, checksum, required-artifact, ordering, reporting, and offline-success coverage. |
 
 Update this map when a durable responsibility moves. Do not list removed,

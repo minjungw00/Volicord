@@ -78,8 +78,8 @@ and Agent Connection.
 
 ## Related tests and Reference owners
 
-- MCP unit tests in
-  [`crates/volicord-mcp/src/tests.rs`](../../../../crates/volicord-mcp/src/tests.rs),
+- MCP protocol-projection unit tests in
+  [`crates/volicord-mcp/src/tests/protocol_projection.rs`](../../../../crates/volicord-mcp/src/tests/protocol_projection.rs),
   process coverage in
   [`crates/volicord-cli/tests/mcp_transport.rs`](../../../../crates/volicord-cli/tests/mcp_transport.rs),
   and integration coverage in

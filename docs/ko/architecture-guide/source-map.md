@@ -42,7 +42,12 @@
 | `crates/volicord-store/src/schema/project.sql` | project Store DDL 정본 소스. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home과 Store bootstrap. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection 레코드, project allowlist, managed fingerprint, 영속 검증 보고서 경계. |
-| `crates/volicord-store/src/diagnostic_findings.rs` | 구조화된 finding 및 cause graph의 transaction 영속화, runtime terminal-finding 연결, 현재 좌표 조회, 한도가 있는 결정적 traversal. |
+| `crates/volicord-store/src/diagnostic_findings/mod.rs` | Lifecycle별 진단 영속화 facade와 공개 Store API export. |
+| `crates/volicord-store/src/diagnostic_findings/occurrence.rs` | 추가 전용 occurrence 영속화와 원자적 runtime terminal-finding 연결. |
+| `crates/volicord-store/src/diagnostic_findings/current_state.rs` | Current snapshot 활성화, 교체, 해소, 재활성화. |
+| `crates/volicord-store/src/diagnostic_findings/graph.rs` | Cause graph 검증, root 선택, 한도가 있는 결정적 순회. |
+| `crates/volicord-store/src/diagnostic_findings/queries.rs` | 명시적 식별자, 보고 가능한 finding, runtime-session occurrence, 활성 current scope 조회. |
+| `crates/volicord-store/src/diagnostic_findings/row.rs` | 내부 finding row 인코딩, 디코딩, lifecycle identity 검증. |
 | `crates/volicord-store/src/operational_sessions.rs` | 관리 runtime session, protocol milestone, revision 범위 project session, 정확한 데이터베이스 간 binding. |
 | `crates/volicord-store/src/workflow_records.rs` | workflow 레코드 읽기와 쓰기. |
 | `crates/volicord-store/src/core_pipeline/` | Core open, 검증, replay, commit, mutation 적용. |
@@ -67,7 +72,13 @@
 |---|---|
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
-| `crates/volicord-cli/src/connection_command/verification.rs` | Dependency-aware 검증 check, `Blocked` 전파, managed-host 관찰 정책, cause 부착, 결정론적 root 선택. |
+| `crates/volicord-cli/src/connection_command/verification/mod.rs` | Connection 검증 조율, 공유 step/report 타입, 한도가 있는 패키지 export. |
+| `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, managed-host session check. |
+| `crates/volicord-cli/src/connection_command/verification/mcp_checks.rs` | MCP preflight/handshake check 투영과 MCP finding ID 입력. |
+| `crates/volicord-cli/src/connection_command/verification/guard_checks.rs` | Guard 파일, hook execution, observation check 평가. |
+| `crates/volicord-cli/src/connection_command/verification/dependency_graph.rs` | Cause 부착, `Blocked` 전파, graph 확정, action 선택, 정규 check 구성. |
+| `crates/volicord-cli/src/connection_command/verification/finding_projection.rs` | Process, host, peer version, Guard 관찰을 lifecycle별 finding으로 투영. |
+| `crates/volicord-cli/src/connection_command/verification/report_inputs.rs` | 능동 검증과 current-status 보고서 입력 조립. |
 | `crates/volicord-cli/src/operational_diagnostics/mod.rs` | Typed 운영 diagnostic module facade와 한도가 있는 내부 export. |
 | `crates/volicord-cli/src/operational_diagnostics/definitions.rs` | 불변 CLI 운영 diagnostic definition과 전체 폐쇄형 diagnostic 값 매핑. |
 | `crates/volicord-cli/src/operational_diagnostics/subjects.rs` | 폐쇄형 typed 운영 subject, 정규 identity byte, scope 소유권, 안전한 표시 projection. |
@@ -110,17 +121,29 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
+| `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization 순서, 거절, 종료, EOF 계약. |
+| `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch 순서, notification, 응답 계약. |
+| `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection과 schema 호환성 계약. |
+| `crates/volicord-mcp/src/tests/tool_calls.rs` | Tool dispatch, 결과, 오류, 저장소 capability 계약. |
+| `crates/volicord-mcp/src/tests/managed_host_observation.rs` | 관리 launch, routing, session binding, host 관찰 계약. |
+| `crates/volicord-mcp/src/tests/diagnostics.rs` | 진단 영속화와 workflow metric 계약. |
+| `crates/volicord-mcp/src/tests/conformance.rs` | 모듈 수준 registry 기반 protocol conformance assertion. |
+| `crates/volicord-mcp/src/tests/support.rs` | 공유 MCP 테스트 fixture와 protocol message 구성만 담당. |
 | `crates/volicord-mcp/tests/protocol_conformance.rs` | 모든 프로덕션 profile에 적용하는 하나의 registry 기반 wire 적합성 case. 고정 schema 검증, 필수 도구, 지정 왕복, profile별 projection 및 batching, lifecycle 거절, EOF를 다룹니다. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
 | `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 `production_supported`와 `pre_release_only` 사실, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
 | `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 릴리스 workflow 무결성 테스트. |
-| `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store, 요청 도우미. |
+| `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store 쪽 설정 및 검사, 의도적인 손상·비정상 저장소 fixture, 요청 도우미. 구현 테스트 모듈은 저장소 SQL을 직접 포함하지 않습니다. |
 
 ## 저장소 유지보수 도구
 
 | 경로 | 책임 |
 |---|---|
-| `xtask/src/mcp_spec.rs` | 가벼운 고정 명세 오프라인 검증, manifest/registry의 정확한 프로덕션 집합 일치, 결정론적 개수 보고, 검토된 지원 metadata를 보존하면서 검증된 임시 후보를 거치는 명시적 네트워크 동기화. |
+| `xtask/src/mcp_spec/mod.rs` | MCP 명세 유지보수 facade와 명령 진입점. |
+| `xtask/src/mcp_spec/manifest.rs` | 엄격한 고정 manifest 모델, parsing, 결정론적 rendering. |
+| `xtask/src/mcp_spec/validation.rs` | 오프라인 metadata, 변경 불가능한 pin, checksum, artifact, schema, ordering, registry 일치 검증. |
+| `xtask/src/mcp_spec/report.rs` | 결정론적 검사와 동기화 보고 타입. |
+| `xtask/src/mcp_spec/sync.rs` | 교체 전에 검증된 임시 후보를 사용하는 유일한 네트워크 MCP 명세 경로. |
 | `xtask/tests/mcp_spec.rs` | 엄격한 manifest parsing, 분류, 집합 불일치, 변경 불가능한 pin, checksum, 필수 artifact, ordering, 보고, 오프라인 성공 coverage. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를

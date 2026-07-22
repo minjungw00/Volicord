@@ -1563,9 +1563,11 @@ mod persisted_metadata_tests {
     use volicord_store::{
         agent_connections::{agent_connection_record, list_connection_projects},
         guards::{list_guard_installations, upsert_guard_installation, GuardInstallationUpsert},
-        sqlite::{open_registry_database, registry_db_path},
     };
-    use volicord_test_support::{core_fixtures::CoreFixture, test_guard_manifest_json};
+    use volicord_test_support::{
+        core_fixtures::CoreFixture, corrupt_connection_verification_report,
+        test_guard_manifest_json,
+    };
 
     use super::*;
 
@@ -1763,11 +1765,10 @@ mod persisted_metadata_tests {
         let repo_root = fixture.product_repo_path();
         fs::create_dir_all(repo_root.join(".git"))?;
         let damaged = r#"{"status":"not_verified"}"#;
-        open_registry_database(registry_db_path(fixture.runtime_home_path()))?.execute(
-            "UPDATE agent_connections
-                SET verification_report_json = ?2
-              WHERE connection_internal_id = ?1",
-            (fixture.connection_id(), damaged),
+        corrupt_connection_verification_report(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+            damaged,
         )?;
         assert!(
             agent_connection_record(fixture.runtime_home_path(), fixture.connection_id()).is_err()

@@ -821,7 +821,6 @@ fn diagnostics_storage_report() -> Result<DiagnosticsStorageReport, DiagnosticsC
 mod tests {
     use std::{ffi::OsString, fs};
 
-    use rusqlite::OptionalExtension;
     use serde::Serialize;
     use serde_json::Value;
     use volicord_core::{CoreService, InvocationContext};
@@ -1158,71 +1157,6 @@ mod tests {
         }
     }
 
-    #[derive(Debug, PartialEq, Eq)]
-    struct AuthoritySnapshot {
-        state_version: u64,
-        enforcement_profile_json: String,
-        evidence_claim_count: u64,
-        evidence_summary_count: u64,
-        evidence_observation_count: u64,
-        assurance_levels: Option<String>,
-        blocker_count: u64,
-        close_state: Option<String>,
-        user_action_count: u64,
-        user_action_state: Option<String>,
-    }
-
-    fn authority_snapshot(fixture: &CoreFixture) -> AuthoritySnapshot {
-        let conn = fixture.conn().expect("authority db");
-        AuthoritySnapshot {
-            state_version: conn
-                .query_row("SELECT state_version FROM project_state", [], |row| row.get(0))
-                .expect("state version"),
-            enforcement_profile_json: conn
-                .query_row("SELECT enforcement_profile_json FROM project_state", [], |row| {
-                    row.get(0)
-                })
-                .expect("enforcement profile"),
-            evidence_claim_count: count(&conn, "evidence_claims"),
-            evidence_summary_count: count(&conn, "evidence_summaries"),
-            evidence_observation_count: count(&conn, "evidence_observations"),
-            assurance_levels: conn
-                .query_row(
-                    "SELECT group_concat(assurance_level, ',') FROM evidence_observations",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()
-                .expect("assurance levels")
-                .flatten(),
-            blocker_count: count(&conn, "blockers"),
-            close_state: conn
-                .query_row(
-                    "SELECT group_concat(lifecycle_phase || ':' || close_basis_revision, ',') FROM tasks",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()
-                .expect("close state")
-                .flatten(),
-            user_action_count: count(&conn, "user_action_requests"),
-            user_action_state: conn
-                .query_row(
-                    "SELECT group_concat(r.action_kind || ':' || COALESCE(s.resolved_verification_basis, 'pending'), ',') FROM user_action_requests r LEFT JOIN user_action_resolutions s ON s.user_action_request_id = r.user_action_request_id",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()
-                .expect("user-action state")
-                .flatten(),
-        }
-    }
-
-    fn count(conn: &rusqlite::Connection, table: &str) -> u64 {
-        let sql = format!("SELECT COUNT(*) FROM {table}");
-        conn.query_row(&sql, [], |row| row.get(0)).expect("count")
-    }
-
     #[test]
     fn diagnostics_cannot_change_authority_state_evidence_close_assurance_or_user_actions() {
         let fixture = CoreFixture::new("diagnostics-authority-isolation").expect("fixture");
@@ -1275,7 +1209,7 @@ mod tests {
             invocation,
         )
         .expect("pending user action");
-        let before = authority_snapshot(&fixture);
+        let before = fixture.authority_snapshot().expect("authority snapshot");
         let session_id = "mcp_runtime_session_isolation".to_owned();
 
         start_diagnostic_session(
@@ -1319,7 +1253,10 @@ mod tests {
         )
         .expect("diagnostics read");
 
-        assert_eq!(authority_snapshot(&fixture), before);
+        assert_eq!(
+            fixture.authority_snapshot().expect("authority snapshot"),
+            before
+        );
 
         fs::write(
             volicord_store::diagnostics::diagnostics_db_path(fixture.runtime_home_path()),
@@ -1333,6 +1270,9 @@ mod tests {
         )
         .expect_err("corrupt diagnostics should fail only its own report");
         assert!(matches!(error, DiagnosticsCommandError::Runtime(_)));
-        assert_eq!(authority_snapshot(&fixture), before);
+        assert_eq!(
+            fixture.authority_snapshot().expect("authority snapshot"),
+            before
+        );
     }
 }

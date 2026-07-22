@@ -71,8 +71,8 @@ mode 동작, snapshot 계약은 [MCP 전송](../../reference/mcp-transport.md), 
 
 ## 관련 테스트와 참조 담당 문서
 
-- [`crates/volicord-mcp/src/tests.rs`](../../../../crates/volicord-mcp/src/tests.rs)의
-  MCP 단위 테스트,
+- [`crates/volicord-mcp/src/tests/protocol_projection.rs`](../../../../crates/volicord-mcp/src/tests/protocol_projection.rs)의
+  MCP protocol projection 단위 테스트,
   [`crates/volicord-cli/tests/mcp_transport.rs`](../../../../crates/volicord-cli/tests/mcp_transport.rs)의
   프로세스 검증,
   [`tests/integration/mcp_connection.rs`](../../../../tests/integration/mcp_connection.rs)의

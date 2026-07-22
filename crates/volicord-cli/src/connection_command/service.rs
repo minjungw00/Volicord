@@ -1485,7 +1485,6 @@ mod init_planning_tests {
         path::{Path, PathBuf},
     };
 
-    use rusqlite::OpenFlags;
     use volicord_store::{
         bootstrap::{
             installation_profile_read_only, project_record_by_repo_root,
@@ -1493,11 +1492,12 @@ mod init_planning_tests {
         },
         sqlite::registry_db_path,
     };
-    use volicord_test_support::TempRuntimeHome;
+    use volicord_test_support::{
+        create_schema_less_sqlite, sqlite_schema_snapshot, transition_test_connection_mode,
+        TempRuntimeHome,
+    };
 
     use super::*;
-
-    type SqliteMasterRow = (String, String, Option<String>);
 
     struct PlanningProcess {
         current_exe: PathBuf,
@@ -1641,22 +1641,6 @@ mod init_planning_tests {
         Ok(output)
     }
 
-    fn sqlite_master_rows(path: &Path) -> Result<Vec<SqliteMasterRow>, Box<dyn std::error::Error>> {
-        let conn = rusqlite::Connection::open_with_flags(
-            path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        let mut stmt = conn.prepare(
-            "SELECT type, name, sql
-               FROM sqlite_master
-              ORDER BY type, name",
-        )?;
-        let rows = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
-    }
-
     #[test]
     fn init_planning_with_absent_registry_is_read_only_and_validates_projection(
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1755,10 +1739,8 @@ mod init_planning_tests {
         let fixture = TempRuntimeHome::new("init-planning-schema-less-registry")?;
         let repo_root = create_empty_product_repository(&fixture)?;
         let registry_path = registry_db_path(fixture.path());
-        let conn = rusqlite::Connection::open(&registry_path)?;
-        conn.execute_batch("VACUUM")?;
-        drop(conn);
-        let schema_before = sqlite_master_rows(&registry_path)?;
+        create_schema_less_sqlite(&registry_path)?;
+        let schema_before = sqlite_schema_snapshot(&registry_path)?;
         let registry_before = fs::read(&registry_path)?;
         let modified_before = fs::metadata(&registry_path)?.modified()?;
         let entries_before = directory_entries(fixture.path())?;
@@ -1779,7 +1761,7 @@ mod init_planning_tests {
 
         assert!(!error.to_string().is_empty());
         assert!(schema_before.is_empty());
-        assert_eq!(sqlite_master_rows(&registry_path)?, schema_before);
+        assert_eq!(sqlite_schema_snapshot(&registry_path)?, schema_before);
         assert_eq!(fs::read(&registry_path)?, registry_before);
         assert_eq!(fs::metadata(&registry_path)?.modified()?, modified_before);
         assert_eq!(directory_entries(fixture.path())?, entries_before);
@@ -1961,22 +1943,19 @@ mod init_planning_tests {
         let host_target = PathBuf::from(&plan.target_hint);
         let host_before = fs::read(&host_target)?;
         let repository_before = directory_contents(&repo_root)?;
+        transition_test_connection_mode(
+            fixture.path(),
+            &repo_root,
+            &project_id,
+            connection_id,
+            CONNECTION_MODE_READ_ONLY,
+        )?;
         let guard_manifest_before =
             list_guard_installations(fixture.path(), connection_id, Some(&project_id))?
                 .into_iter()
                 .next()
-                .expect("initial Guard Installation")
+                .expect("concurrently rebound Guard Installation")
                 .manifest_json;
-        let registry = rusqlite::Connection::open(fixture.registry_db_path())?;
-        let changed = registry.execute(
-            "UPDATE agent_connections
-                SET mode = ?2,
-                    integration_generation = integration_generation + 1
-              WHERE connection_internal_id = ?1",
-            [plan.connection_id.as_str(), CONNECTION_MODE_READ_ONLY],
-        )?;
-        assert_eq!(changed, 1);
-        drop(registry);
 
         let error = match apply_init_provisioning(plan, &mut process) {
             Err(error) => error,

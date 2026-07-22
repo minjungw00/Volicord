@@ -11,7 +11,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
 use volicord_store::{
@@ -34,7 +34,7 @@ use volicord_store::{
     operational_sessions::{
         connection_integration_revision, start_mcp_runtime_session, McpRuntimeSessionStart,
     },
-    sqlite::open_project_state_database,
+    sqlite::{open_project_state_database, open_registry_database, registry_db_path},
     StoreError, StoreResult,
 };
 use volicord_types::{
@@ -400,6 +400,65 @@ impl TempRuntimeHome {
     }
 }
 
+/// One row from SQLite schema metadata, used only to prove planning is non-mutating.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqliteSchemaRow {
+    object_type: String,
+    name: String,
+    sql: Option<String>,
+}
+
+/// Reads stable SQLite schema metadata without exposing SQL to implementation-test modules.
+pub fn sqlite_schema_snapshot(path: impl AsRef<Path>) -> StoreResult<Vec<SqliteSchemaRow>> {
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    let mut statement = conn.prepare(
+        "SELECT type, name, sql
+           FROM sqlite_master
+          ORDER BY type, name",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SqliteSchemaRow {
+                object_type: row.get(0)?,
+                name: row.get(1)?,
+                sql: row.get(2)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Creates an intentionally schema-less SQLite file for negative-path planning tests.
+pub fn create_schema_less_sqlite(path: impl AsRef<Path>) -> StoreResult<()> {
+    Connection::open(path)?.execute_batch("VACUUM")?;
+    Ok(())
+}
+
+/// Replaces a stored verification report with malformed fixture data.
+pub fn corrupt_connection_verification_report(
+    runtime_home: impl AsRef<Path>,
+    connection_id: &str,
+    report_json: &str,
+) -> StoreResult<()> {
+    let changed = open_registry_database(registry_db_path(runtime_home.as_ref()))?.execute(
+        "UPDATE agent_connections
+            SET verification_report_json = ?2
+          WHERE connection_internal_id = ?1",
+        (connection_id, report_json),
+    )?;
+    if changed != 1 {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "fixture Agent Connection `{connection_id}` was not uniquely available for corruption"
+            ),
+        });
+    }
+    Ok(())
+}
+
 /// Shared Core-method fixture builders for conformance and integration tests.
 pub mod core_fixtures {
     use std::{error::Error, fs, path::Path};
@@ -434,6 +493,21 @@ pub mod core_fixtures {
     pub const DEFAULT_BASELINE_REF: &str = "baseline_fixture";
     /// Product path allowed by the default Change Unit fixture.
     pub const DEFAULT_PRODUCT_PATH: &str = "src/export.rs";
+
+    /// Canonical authority fields captured before and after diagnostic-only CLI behavior.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ProjectAuthoritySnapshot {
+        pub state_version: u64,
+        pub enforcement_profile_json: String,
+        pub evidence_claim_count: u64,
+        pub evidence_summary_count: u64,
+        pub evidence_observation_count: u64,
+        pub assurance_levels: Option<String>,
+        pub blocker_count: u64,
+        pub close_state: Option<String>,
+        pub user_action_count: u64,
+        pub user_action_state: Option<String>,
+    }
 
     /// Automatically cleaned Volicord Runtime Home with one registered project and Agent Connection.
     #[derive(Debug)]
@@ -578,6 +652,56 @@ pub mod core_fixtures {
                 .join(&self.project_id)
                 .join("state.sqlite");
             open_project_state_database(path)
+        }
+
+        /// Captures authority-owned project state for diagnostic isolation assertions.
+        pub fn authority_snapshot(&self) -> Result<ProjectAuthoritySnapshot, StoreError> {
+            let conn = self.conn()?;
+            let count = |table: &str| -> Result<u64, StoreError> {
+                let sql = format!("SELECT COUNT(*) FROM {table}");
+                Ok(conn.query_row(&sql, [], |row| row.get(0))?)
+            };
+            Ok(ProjectAuthoritySnapshot {
+                state_version: conn.query_row(
+                    "SELECT state_version FROM project_state",
+                    [],
+                    |row| row.get(0),
+                )?,
+                enforcement_profile_json: conn.query_row(
+                    "SELECT enforcement_profile_json FROM project_state",
+                    [],
+                    |row| row.get(0),
+                )?,
+                evidence_claim_count: count("evidence_claims")?,
+                evidence_summary_count: count("evidence_summaries")?,
+                evidence_observation_count: count("evidence_observations")?,
+                assurance_levels: conn
+                    .query_row(
+                        "SELECT group_concat(assurance_level, ',') FROM evidence_observations",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .flatten(),
+                blocker_count: count("blockers")?,
+                close_state: conn
+                    .query_row(
+                        "SELECT group_concat(lifecycle_phase || ':' || close_basis_revision, ',') FROM tasks",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .flatten(),
+                user_action_count: count("user_action_requests")?,
+                user_action_state: conn
+                    .query_row(
+                        "SELECT group_concat(r.action_kind || ':' || COALESCE(s.resolved_verification_basis, 'pending'), ',') FROM user_action_requests r LEFT JOIN user_action_resolutions s ON s.user_action_request_id = r.user_action_request_id",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .flatten(),
+            })
         }
 
         /// Replaces the project-owned enforcement profile JSON for focused corruption tests.

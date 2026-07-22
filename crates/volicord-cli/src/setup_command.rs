@@ -265,7 +265,6 @@ mod tests {
         setup_report::{CommandAvailability, SetupActionKind},
         shell_path::PATH_ENV,
     };
-    use rusqlite::Connection;
     use serde_json::Value;
     use volicord_store::{
         agent_connections::CONNECTION_MODE_WORKFLOW, bootstrap::installation_profile,
@@ -1540,8 +1539,8 @@ mod tests {
     }
 
     #[test]
-    fn installation_profile_table_can_be_read_after_setup() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn installation_profile_can_be_read_through_store_after_setup(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-sql")?;
         let bin_dir = fixture.path().join("bin");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
@@ -1557,12 +1556,7 @@ mod tests {
             &process,
         )?;
 
-        let conn = Connection::open(registry_db_path(fixture.path()))?;
-        let count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM installation_profile", [], |row| {
-                row.get(0)
-            })?;
-        assert_eq!(count, 1);
+        assert!(installation_profile(fixture.path())?.is_some());
         Ok(())
     }
 }
