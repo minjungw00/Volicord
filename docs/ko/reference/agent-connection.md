@@ -250,7 +250,9 @@ guard_files -> guard_hook_execution -> guard_observation
 ```
 
 `host_session`은 managed host의 `initialize` check이고, `required_tools`는 managed host의
-`tools/list` check이며, `tool_round_trip`은 지정된 읽기 전용 도구 호출 check입니다.
+`tools/list` check이며, `tool_round_trip`은 정규 verification role 도구 호출 check입니다.
+`ToolVerificationRole::ManagedHostRoundTrip`의 정규 담당 도구는 정확히 하나이며 현재
+`volicord.list_projects`입니다.
 Managed-host 시도가 한 번도 없으면 `process_startup`부터 `tool_round_trip`까지 네 check는
 `pending`입니다. Initialize가 실패하면 `host_session`은 `failed`이고,
 `required_tools`와 `tool_round_trip`은 같은 root finding 때문에 `blocked`입니다. Managed
@@ -273,7 +275,7 @@ Blocked check의 원인이 실패한 prerequisite와 일치하지 않거나 depe
 | `process_startup` | 현재 managed host가 구성된 MCP process를 시작했습니다. | Managed-host 사용을 기다리며 managed configuration 실패가 막을 수 있습니다. | Typed host 관찰이 없으면 managed-host startup 실패를 주장하지 않으며, 관찰 부재는 대기로 남습니다. |
 | `host_session` | 현재 상태이고 host-version이 fresh인 managed-host session이 `initialize`와 initialized notification을 완료했습니다. | 조건을 충족하는 시도를 기다리며 `process_startup` 실패가 막을 수 있습니다. | 현재 시도가 initialization 또는 protocol 실패를 관찰했습니다. |
 | `required_tools` | 조건을 충족하는 `tools/list` 관찰에 모든 필수 도구가 있습니다. | 도구 검색을 기다리며 `host_session` 실패가 막을 수 있습니다. | 도구 검색이 완료됐지만 필수 도구가 없거나 유효하지 않습니다. |
-| `tool_round_trip` | 조건을 충족하는 session이 `volicord.list_projects`를 완료했습니다. | 지정 호출을 기다리며 `required_tools` 실패가 막을 수 있습니다. | 호출 자체가 protocol 또는 contract 실패를 관찰했습니다. |
+| `tool_round_trip` | 조건을 충족하는 현재 상태이고 host-version이 fresh인 session이 `verification_tool_name=volicord.list_projects`와 `verification_tool_observed_at`을 모두 기록했습니다. | 정규 role 담당 도구 호출을 기다리며 `required_tools` 실패가 막을 수 있습니다. | 호출 자체가 protocol 또는 contract 실패를 관찰했거나 기록한 도구 이름이 현재 정규 담당 도구와 다릅니다. |
 | `project_trust` | Project trust가 충족되었습니다. | 일반 trust 또는 reload action은 `pending`이고, 별도 trust check가 없는 scope는 `not_applicable`입니다. | Trust configuration이 malformed 또는 모순 상태입니다. |
 | `guard_files` | 현재 Guard manifest의 모든 file 기대값이 일치합니다. | Guard가 Connection profile에 포함될 때 적용됩니다. | Managed file, manifest, wrapper, ownership 또는 executable integrity check가 실패했습니다. |
 | `guard_hook_execution` | 현재 managed Guard hook이 실행되었습니다. | 현재 hook 활동을 기다리며 `guard_files` 실패가 막을 수 있습니다. | Hook 실행 자체가 실패를 기록했습니다. |
@@ -287,6 +289,13 @@ Guard는 최상위 운영 check로 `guard_files`, `guard_hook_execution`,
 기대값, 필수 hook phase를 담당합니다. Policy command와 runtime command는 typed invocation
 하나에서 나온 서로 다른 projection입니다. Audit은 각 관리 artifact를 정규 현재 기대값과
 비교하고, Guard 관찰은 모든 필수 phase의 호환되는 현재 event를 요구합니다.
+
+기록한 verification 도구 이름이 다르면 `tool_round_trip`은 절대 통과하지 않습니다.
+Check는 `tool_round_trip_designation_mismatch`로 실패하고 활성 검증은
+`mcp.tool_verification.designation_mismatch`를 영속합니다. 제한된 facts에는 정확한
+`expected_tool_name`과 `observed_tool_name`을 노출하며 JSON check detail과 verbose 출력도
+정확한 기대 이름과 관찰 이름을 표시합니다. 이전 revision, CLI preflight row, timestamp
+부재, stale host-version 관찰은 현재의 정확한 쌍을 대신할 수 없습니다.
 
 제한 안의 모든 Codex version은 이 동작 check를 거칩니다. Version이 바뀌면 Codex를
 reload하고 운영 동작을 다시 관찰할 때까지 현재 host 관찰이 pending이 됩니다.

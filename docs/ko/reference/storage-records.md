@@ -126,9 +126,14 @@ Milestone timestamp와 사실로 lifecycle 상태를 표현하며 중복 status 
 initialize 검증이 실패한 경우도 포함합니다. `selected_protocol_version`은 initialize가
 완료될 때 server가 선택해 반환한 revision이고, `negotiated_protocol_version`은 유효한
 initialized notification이 선택 profile의 handshake를 완전히 끝낼 때까지 null입니다.
-Store는 initialize 완료, 실제 `tools/list`마다의 응답과 required-tool-set 사실, 지정된
-안전/읽기 전용 Volicord 호출 성공, terminal 구조화 finding ID 하나, graceful close도 각각
-기록합니다. 권위 있는 Store 쓰기가 실패하면 protocol 성공을 내보내지 않습니다.
+Store는 initialize 완료, 실제 `tools/list`마다의 응답과 required-tool-set 사실,
+verification 도구의 정확한 identity/time 쌍인 `verification_tool_name`과
+`verification_tool_observed_at`, terminal 구조화 finding ID 하나, graceful close도 각각
+기록합니다. 두 필드는 모두 null이거나 모두 있어야 합니다. 이름이 있으면 1~128바이트의
+MCP 호환 ASCII 이름이어야 하고 관찰 timestamp는 initialized notification보다 이르지 않아야
+합니다. Store는 현재 enabled `managed_host` runtime과 현재 Connection revision에 대해서만
+이 쌍을 받으며 `cli_preflight`는 기록할 수 없습니다. 권위 있는 Store 쓰기가 실패하면
+protocol 성공을 내보내지 않습니다.
 Best-effort diagnostics는 분리되어 있으며 정상적인 도구 결과를 실패시킬 수 없습니다.
 
 프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 Connection을

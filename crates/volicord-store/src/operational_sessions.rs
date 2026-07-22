@@ -23,6 +23,7 @@ use crate::{
 
 const MAX_DIAGNOSTIC_FIELD_BYTES: usize = 1024;
 const MAX_PROTOCOL_FIELD_BYTES: usize = 256;
+const MAX_MCP_TOOL_NAME_BYTES: usize = 128;
 
 /// MCP process-start facts used to create an authoritative runtime session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +54,8 @@ pub struct McpRuntimeSessionRecord {
     pub initialized_notification_at: Option<String>,
     pub tools_list_observed_at: Option<String>,
     pub required_tools_present: Option<bool>,
-    pub designated_safe_tool_observed_at: Option<String>,
+    pub verification_tool_name: Option<String>,
+    pub verification_tool_observed_at: Option<String>,
     pub last_observed_at: String,
     pub terminal_finding_id: Option<String>,
     pub graceful_close_at: Option<String>,
@@ -657,26 +659,64 @@ pub fn record_mcp_tools_list(
     })
 }
 
-/// Records successful completion of a designated safe/read-only Volicord tool.
-pub fn record_mcp_designated_safe_tool_observation(
+/// Records successful completion of the exact tool selected for MCP verification.
+pub fn record_mcp_verification_tool_observation(
     runtime_home: impl AsRef<Path>,
     runtime_session_id: &str,
+    verification_tool_name: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
-    validate_timestamp("designated_safe_tool_observed_at", observed_at)?;
+    validate_mcp_tool_name(verification_tool_name)?;
+    validate_timestamp("verification_tool_observed_at", observed_at)?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.initialized_notification_at.is_none() {
             return Err(milestone_order(
                 runtime_session_id,
-                "safe tool success requires the initialized notification",
+                "verification tool success requires the initialized notification",
             ));
+        }
+        if prior.terminal_finding_id.is_some() {
+            return Err(milestone_order(
+                runtime_session_id,
+                "verification tool success cannot follow terminal failure",
+            ));
+        }
+        let connection = raw_agent_connection_record_from_conn(tx, &prior.connection_internal_id)?
+            .ok_or_else(|| StoreError::NotFound {
+                entity: "agent_connection",
+                id: prior.connection_internal_id.clone(),
+            })?;
+        if !connection.enabled
+            || prior.session_source != McpRuntimeSessionSource::ManagedHost
+            || prior.connection_integration_revision
+                != connection_integration_revision(&connection)?.as_str()
+        {
+            return Err(StoreError::Conflict {
+                entity: "mcp_runtime_session",
+                id: runtime_session_id.to_owned(),
+                detail: "verification tool observation requires a current managed-host launch owned by an enabled Agent Connection".to_owned(),
+            });
+        }
+        if prior
+            .verification_tool_name
+            .as_deref()
+            .is_some_and(|prior_name| prior_name != verification_tool_name)
+        {
+            return Err(StoreError::Conflict {
+                entity: "mcp_runtime_session",
+                id: runtime_session_id.to_owned(),
+                detail: "runtime session already records a different verification tool name"
+                    .to_owned(),
+            });
         }
         tx.execute(
             "UPDATE mcp_runtime_sessions
-                SET designated_safe_tool_observed_at = ?2, last_observed_at = ?2
+                SET verification_tool_name = ?2,
+                    verification_tool_observed_at = ?3,
+                    last_observed_at = ?3
               WHERE runtime_session_id = ?1",
-            params![runtime_session_id, observed_at],
+            params![runtime_session_id, verification_tool_name, observed_at],
         )?;
         Ok(())
     })
@@ -752,8 +792,9 @@ pub fn latest_successful_managed_runtime_session(
             AND initialized_notification_at IS NOT NULL
             AND tools_list_observed_at IS NOT NULL
             AND required_tools_present = 1
-            AND designated_safe_tool_observed_at IS NOT NULL
-          ORDER BY designated_safe_tool_observed_at DESC, runtime_session_id DESC
+            AND verification_tool_name IS NOT NULL
+            AND verification_tool_observed_at IS NOT NULL
+          ORDER BY verification_tool_observed_at DESC, runtime_session_id DESC
           LIMIT 1"
         ),
         params![connection_internal_id, revision.as_str()],
@@ -931,7 +972,7 @@ const RUNTIME_SESSION_SELECT: &str = "SELECT
     negotiated_protocol_version, process_id,
     process_started_at, initialize_completed_at, initialized_notification_at,
     tools_list_observed_at, required_tools_present,
-    designated_safe_tool_observed_at, last_observed_at,
+    verification_tool_name, verification_tool_observed_at, last_observed_at,
     terminal_finding_id, graceful_close_at
   FROM mcp_runtime_sessions";
 
@@ -985,10 +1026,11 @@ fn runtime_session_from_row(row: &Row<'_>) -> rusqlite::Result<McpRuntimeSession
         initialized_notification_at: row.get(13)?,
         tools_list_observed_at: row.get(14)?,
         required_tools_present: row.get::<_, Option<i64>>(15)?.map(|value| value == 1),
-        designated_safe_tool_observed_at: row.get(16)?,
-        last_observed_at: row.get(17)?,
-        terminal_finding_id: row.get(18)?,
-        graceful_close_at: row.get(19)?,
+        verification_tool_name: row.get(16)?,
+        verification_tool_observed_at: row.get(17)?,
+        last_observed_at: row.get(18)?,
+        terminal_finding_id: row.get(19)?,
+        graceful_close_at: row.get(20)?,
     })
 }
 
@@ -1001,6 +1043,25 @@ fn validate_runtime_session(
         .map_err(|_| corrupt(&record, "process_started_at"))?;
     validate_timestamp("last_observed_at", &record.last_observed_at)
         .map_err(|_| corrupt(&record, "last_observed_at"))?;
+    match (
+        record.verification_tool_name.as_deref(),
+        record.verification_tool_observed_at.as_deref(),
+    ) {
+        (None, None) => {}
+        (Some(name), Some(observed_at)) => {
+            validate_mcp_tool_name(name).map_err(|_| corrupt(&record, "verification_tool_name"))?;
+            validate_timestamp("verification_tool_observed_at", observed_at)
+                .map_err(|_| corrupt(&record, "verification_tool_observed_at"))?;
+            if record
+                .initialized_notification_at
+                .as_deref()
+                .is_none_or(|initialized_at| observed_at < initialized_at)
+            {
+                return Err(corrupt(&record, "verification_tool_observed_at"));
+            }
+        }
+        _ => return Err(corrupt(&record, "verification_tool_name")),
+    }
     Ok(record)
 }
 
@@ -1049,6 +1110,21 @@ fn validate_timestamp(field: &'static str, value: &str) -> StoreResult<()> {
         .map_err(|_| StoreError::InvalidInput {
             detail: format!("{field} must be an RFC 3339 timestamp"),
         })
+}
+
+fn validate_mcp_tool_name(value: &str) -> StoreResult<()> {
+    let valid = !value.is_empty()
+        && value.len() <= MAX_MCP_TOOL_NAME_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'));
+    if valid {
+        Ok(())
+    } else {
+        Err(StoreError::InvalidInput {
+            detail: "verification_tool_name must be an MCP-compatible tool name of 1 through 128 ASCII bytes".to_owned(),
+        })
+    }
 }
 
 fn require_observation_time(

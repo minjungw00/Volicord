@@ -173,7 +173,9 @@ the production registry, in its reviewed order. Each profile gets a separate
 stdio process and exact requested revision. The probe completes `initialize`,
 `notifications/initialized`, `tools/list`, validation against that revision's
 pinned schema, current-mode required-tool validation, exactly one
-`volicord.list_projects` call, and graceful EOF/shutdown. It records the
+call to the tool selected by `ToolVerificationRole::ManagedHostRoundTrip`, and
+graceful EOF/shutdown. The current role owner is exactly
+`volicord.list_projects`. The probe records the
 requested and negotiated revisions, returned tools, completed stages, and a
 typed failure per revision. The aggregate server check passes only if every
 production revision passes; one failed revision does not prevent the remaining
@@ -185,8 +187,10 @@ reviewed Codex initialize request shape with `clientInfo.name` set to
 `codex-mcp-client`, the `Codex` title, an empty current capability object, and
 the independently pinned revision `2025-06-18`. Its one tool call carries valid
 Codex native thread/session/turn correlation metadata. It executes
-`tools/list` and `volicord.list_projects`, and it never derives its requested
-revision from the server's preferred or newest profile. Multiple independently
+`tools/list` and the tool selected by
+`ToolVerificationRole::ManagedHostRoundTrip`, currently
+`volicord.list_projects`, and it never derives its requested revision from the
+server's preferred or newest profile. Multiple independently
 pinned `codex` fixtures may coexist when deployed client families require
 different revisions.
 
@@ -217,9 +221,16 @@ every tool required by the current Connection mode. Duplicate initialized
 notifications are idempotent after the first valid observation and cannot
 change the negotiated revision.
 
-Successful `volicord.status`, `volicord.get_operation_result`,
-`volicord.check_close`, and `volicord.list_projects` completions update the
-safe/read-only milestone before the tool result is emitted. Observable fatal
+Only a successful `tools/call` for the exact
+`ToolVerificationRole::ManagedHostRoundTrip` owner can record managed-host
+round-trip evidence. The current owner is `volicord.list_projects`. The call
+must carry valid current managed Codex session/thread/turn correlation, belong
+to the current enabled `managed_host` runtime and Connection revision, and
+complete without a JSON-RPC or tool error. Store then atomically records the
+exact `verification_tool_name` and `verification_tool_observed_at` pair before
+the tool result is emitted. Successful `volicord.status`,
+`volicord.get_operation_result`, and `volicord.check_close` calls do not update
+that pair. Failed or rejected designated calls also leave it absent. Observable fatal
 transport or protocol failure creates one bounded shared `DiagnosticFinding`
 and atomically links its finding ID as the runtime session's terminal finding.
 EOF-driven graceful close remains a distinct mutually exclusive terminal fact.
@@ -234,7 +245,8 @@ revision, and runtime-session coordinates; terminal failures are linked by
 finding ID rather than stored as a second free-form failure object.
 
 Connection verification starts a separate `cli_preflight` process and calls
-`volicord.list_projects` as its designated safe read-only round trip. That
+the same canonical role owner, currently `volicord.list_projects`, for its
+safe read-only self-test round trip. That
 process validates the server surface, but its lifecycle facts cannot satisfy a
 `managed_host` operational check or authorize a Connection call. Successful
 CLI verification does not fabricate managed `host_session`, `tools/list`, or
@@ -327,6 +339,13 @@ through the selected session profile; Volicord does not maintain a separate
 tool registry or server implementation for each revision. Connection mode and
 storage capability may withhold tools as listed above, but protocol revision
 does not rename or substitute the tools that remain visible.
+
+The dependency-safe canonical tool metadata also assigns typed verification
+roles. `ToolVerificationRole::ManagedHostRoundTrip` has exactly one owner and
+currently resolves deterministically to `volicord.list_projects`. Zero or
+multiple owners are invalid registry state; the MCP runtime and administrative
+CLI both consume this resolver rather than maintaining separate tool-name
+choices.
 
 | Selected profile | Emitted fields for each current Volicord tool |
 |---|---|

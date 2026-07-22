@@ -107,6 +107,18 @@ fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
 }
 
 #[test]
+fn canonical_managed_host_round_trip_role_resolves_to_one_exposed_tool() {
+    let designated = tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
+        .expect("canonical verification role");
+    assert_eq!(designated, LIST_PROJECTS_TOOL_NAME);
+    let tools = mcp_tools_for_mode(AgentConnectionMode::Workflow);
+    assert_eq!(
+        tools.iter().filter(|tool| tool.name == designated).count(),
+        1
+    );
+}
+
+#[test]
 fn mcp_visible_schemas_hide_envelope_and_metadata() {
     for tool in public_method_tools() {
         let properties = root_properties(&tool.input_schema);
@@ -1831,9 +1843,111 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
     assert!(runtime.initialize_completed_at.is_some());
     assert!(runtime.initialized_notification_at.is_some());
     assert_eq!(runtime.required_tools_present, Some(true));
-    assert!(runtime.designated_safe_tool_observed_at.is_some());
+    assert_eq!(
+        runtime.verification_tool_name.as_deref(),
+        Some(LIST_PROJECTS_TOOL_NAME)
+    );
+    assert!(runtime.verification_tool_observed_at.is_some());
     assert!(runtime.graceful_close_at.is_some());
     assert!(runtime.terminal_finding_id.is_none());
+    Ok(())
+}
+
+#[test]
+fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-nondesignated-read-only-round-trip")?;
+    let setup_adapter = adapter(&fixture)?;
+    let committed = setup_adapter.call_tool(INTAKE_TOOL_NAME, intake_args(None))?;
+    let task_id = committed.response_value["task_ref"]["record_id"]
+        .as_str()
+        .ok_or("intake task id")?
+        .to_owned();
+    let operation_result_ref = committed
+        .operation_result_ref
+        .ok_or("intake operation result ref")?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        request(2, "tools/list", json!({})),
+        tools_call_with_codex_metadata(
+            3,
+            STATUS_TOOL_NAME,
+            json!({ "detail": "workflow" }),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            "fixture_codex_turn_status",
+        ),
+        tools_call_with_codex_metadata(
+            4,
+            GET_OPERATION_RESULT_TOOL_NAME,
+            json!({ "operation_result_ref": operation_result_ref }),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            "fixture_codex_turn_result",
+        ),
+        tools_call_with_codex_metadata(
+            5,
+            CHECK_CLOSE_TOOL_NAME,
+            json!({ "task_id": task_id }),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            "fixture_codex_turn_close",
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, name),
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 5);
+    for response in &responses[2..] {
+        assert_eq!(response["result"]["isError"], false, "{response}");
+    }
+    let runtime =
+        latest_managed_runtime_session(fixture.runtime_home_path(), fixture.connection_id())?
+            .ok_or("managed runtime")?;
+    assert!(runtime.verification_tool_name.is_none());
+    assert!(runtime.verification_tool_observed_at.is_none());
+    Ok(())
+}
+
+#[test]
+fn failed_designated_tool_call_does_not_record_round_trip_evidence() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-failed-designated-round-trip")?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        request(2, "tools/list", json!({})),
+        tools_call_with_codex_metadata(
+            3,
+            LIST_PROJECTS_TOOL_NAME,
+            json!({ "unexpected": true }),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            CODEX_TEST_TURN_ID,
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, name),
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 3);
+    assert_eq!(responses[2]["result"]["isError"], true);
+    let runtime =
+        latest_managed_runtime_session(fixture.runtime_home_path(), fixture.connection_id())?
+            .ok_or("managed runtime")?;
+    assert!(runtime.verification_tool_name.is_none());
+    assert!(runtime.verification_tool_observed_at.is_none());
     Ok(())
 }
 
@@ -2089,8 +2203,8 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
             2,
             "tools/call",
             json!({
-                "name": "volicord.status",
-                "arguments": { "detail": "workflow" },
+                "name": LIST_PROJECTS_TOOL_NAME,
+                "arguments": {},
                 "_meta": {
                     "threadId": "thread invalid marker",
                     "x-codex-turn-metadata": {
@@ -2134,6 +2248,8 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
     let runtime =
         latest_managed_runtime_session(fixture.runtime_home_path(), fixture.connection_id())?
             .ok_or("managed runtime for malformed host metadata")?;
+    assert!(runtime.verification_tool_name.is_none());
+    assert!(runtime.verification_tool_observed_at.is_none());
     let findings = diagnostic_findings_for_runtime_session(
         fixture.runtime_home_path(),
         &runtime.runtime_session_id,
@@ -2891,7 +3007,8 @@ fn every_production_revision_executes_the_transport_and_eof_matrix() -> Result<(
         assert!(recorded.initialized_notification_at.is_some());
         assert!(recorded.tools_list_observed_at.is_some());
         assert_eq!(recorded.required_tools_present, Some(true));
-        assert!(recorded.designated_safe_tool_observed_at.is_some());
+        assert!(recorded.verification_tool_name.is_none());
+        assert!(recorded.verification_tool_observed_at.is_none());
         assert!(recorded.graceful_close_at.is_some());
         assert!(recorded.terminal_finding_id.is_none());
     }

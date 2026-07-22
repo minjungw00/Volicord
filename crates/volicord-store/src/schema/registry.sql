@@ -272,7 +272,15 @@ CREATE TABLE mcp_runtime_sessions (
   initialized_notification_at TEXT,
   tools_list_observed_at TEXT,
   required_tools_present INTEGER CHECK (required_tools_present IN (0, 1)),
-  designated_safe_tool_observed_at TEXT,
+  verification_tool_name TEXT CHECK (
+    verification_tool_name IS NULL
+    OR (
+      length(CAST(verification_tool_name AS BLOB)) BETWEEN 1 AND 128
+      AND length(verification_tool_name) = length(CAST(verification_tool_name AS BLOB))
+      AND verification_tool_name NOT GLOB '*[^A-Za-z0-9_.-]*'
+    )
+  ),
+  verification_tool_observed_at TEXT,
   last_observed_at TEXT NOT NULL,
   terminal_finding_id TEXT,
   graceful_close_at TEXT,
@@ -301,15 +309,19 @@ CREATE TABLE mcp_runtime_sessions (
     (tools_list_observed_at IS NULL AND required_tools_present IS NULL)
     OR (tools_list_observed_at IS NOT NULL AND required_tools_present IS NOT NULL)
   ),
+  CHECK (
+    (verification_tool_name IS NULL AND verification_tool_observed_at IS NULL)
+    OR (verification_tool_name IS NOT NULL AND verification_tool_observed_at IS NOT NULL)
+  ),
   CHECK (initialized_notification_at IS NULL OR initialize_completed_at IS NOT NULL),
   CHECK (negotiated_protocol_version IS NULL OR negotiated_protocol_version = selected_protocol_version),
-  CHECK (designated_safe_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
+  CHECK (verification_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
   CHECK (terminal_finding_id IS NULL OR graceful_close_at IS NULL),
   CHECK (last_observed_at >= process_started_at),
   CHECK (initialize_completed_at IS NULL OR initialize_completed_at >= process_started_at),
   CHECK (initialized_notification_at IS NULL OR initialized_notification_at >= initialize_completed_at),
   CHECK (tools_list_observed_at IS NULL OR tools_list_observed_at >= initialize_completed_at),
-  CHECK (designated_safe_tool_observed_at IS NULL OR designated_safe_tool_observed_at >= initialized_notification_at),
+  CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= initialized_notification_at),
   CHECK (terminal_finding_id IS NULL OR last_observed_at >= process_started_at),
   CHECK (graceful_close_at IS NULL OR graceful_close_at >= process_started_at)
 );
@@ -325,12 +337,13 @@ CREATE INDEX idx_mcp_runtime_sessions_successful_managed
   ON mcp_runtime_sessions (
     connection_internal_id,
     connection_integration_revision,
-    designated_safe_tool_observed_at
+    verification_tool_observed_at
   )
   WHERE session_source = 'managed_host'
     AND initialized_notification_at IS NOT NULL
     AND required_tools_present = 1
-    AND designated_safe_tool_observed_at IS NOT NULL;
+    AND verification_tool_name IS NOT NULL
+    AND verification_tool_observed_at IS NOT NULL;
 
 CREATE TABLE mcp_runtime_project_session_bindings (
   runtime_session_id TEXT NOT NULL,

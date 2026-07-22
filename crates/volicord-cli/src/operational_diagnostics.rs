@@ -175,6 +175,22 @@ pub enum RevisionDiagnostic {
     ObservationMismatch,
 }
 
+/// Closed MCP verification-tool diagnostic vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolVerificationDiagnostic {
+    DesignationMismatch,
+}
+
+impl ToolVerificationDiagnostic {
+    pub const ALL: [Self; 1] = [Self::DesignationMismatch];
+
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::DesignationMismatch => "mcp.tool_verification.designation_mismatch",
+        }
+    }
+}
+
 impl RevisionDiagnostic {
     pub const ALL: [Self; 2] = [Self::IntegrationStale, Self::ObservationMismatch];
 
@@ -194,6 +210,7 @@ pub enum OperationalDiagnostic {
     Guard(GuardDiagnostic),
     Trust(TrustDiagnostic),
     Revision(RevisionDiagnostic),
+    ToolVerification(ToolVerificationDiagnostic),
 }
 
 impl OperationalDiagnostic {
@@ -204,6 +221,7 @@ impl OperationalDiagnostic {
             Self::Guard(diagnostic) => diagnostic.code(),
             Self::Trust(diagnostic) => diagnostic.code(),
             Self::Revision(diagnostic) => diagnostic.code(),
+            Self::ToolVerification(diagnostic) => diagnostic.code(),
         }
     }
 
@@ -214,6 +232,7 @@ impl OperationalDiagnostic {
             Self::Guard(_) => "guard",
             Self::Trust(_) => "trust",
             Self::Revision(_) => "revision",
+            Self::ToolVerification(_) => "mcp",
         }
     }
 
@@ -228,6 +247,7 @@ impl OperationalDiagnostic {
             Self::Guard(_) => "guard_files",
             Self::Trust(_) => "repository_trust",
             Self::Revision(_) => "revision_observation",
+            Self::ToolVerification(_) => "tool_round_trip",
         }
     }
 
@@ -289,6 +309,9 @@ impl OperationalDiagnostic {
             Self::Revision(RevisionDiagnostic::ObservationMismatch) => {
                 "The observed revision does not match the current revision"
             }
+            Self::ToolVerification(ToolVerificationDiagnostic::DesignationMismatch) => {
+                "The observed verification tool does not match the canonical role owner"
+            }
         }
     }
 
@@ -304,7 +327,8 @@ impl OperationalDiagnostic {
             Self::Installation(_)
             | Self::ManagedConfig(_)
             | Self::Guard(_)
-            | Self::Trust(TrustDiagnostic::ConfigurationMalformed) => DiagnosticSeverity::Error,
+            | Self::Trust(TrustDiagnostic::ConfigurationMalformed)
+            | Self::ToolVerification(_) => DiagnosticSeverity::Error,
         }
     }
 
@@ -341,6 +365,7 @@ impl OperationalDiagnostic {
             Self::Revision(RevisionDiagnostic::ObservationMismatch) => {
                 &[Action::ReobserveCurrentRevision]
             }
+            Self::ToolVerification(_) => &[Action::VerifyDesignatedTool],
         }
     }
 }
@@ -358,6 +383,7 @@ pub enum OperationalRecommendedAction {
     TrustRepository,
     RepairTrustConfiguration,
     ReobserveCurrentRevision,
+    VerifyDesignatedTool,
 }
 
 impl OperationalRecommendedAction {
@@ -375,6 +401,7 @@ impl OperationalRecommendedAction {
             Self::TrustRepository => "action.trust.approve_repository",
             Self::RepairTrustConfiguration => "action.trust.repair_configuration",
             Self::ReobserveCurrentRevision => "action.revision.reobserve_current",
+            Self::VerifyDesignatedTool => "action.mcp.verify_designated_tool",
         }
     }
 
@@ -394,6 +421,9 @@ impl OperationalRecommendedAction {
             Self::TrustRepository => "Approve the Product Repository in the current host",
             Self::RepairTrustConfiguration => "Repair repository trust configuration",
             Self::ReobserveCurrentRevision => "Run verification against the current revision",
+            Self::VerifyDesignatedTool => {
+                "Run the canonical verification tool through the current managed host"
+            }
         }
     }
 }
@@ -406,6 +436,8 @@ pub struct OperationalDiagnosticFacts {
     pub guard_phase: Option<String>,
     pub expected_revision: Option<String>,
     pub observed_revision: Option<String>,
+    pub expected_tool_name: Option<String>,
+    pub observed_tool_name: Option<String>,
 }
 
 impl DiagnosticFactSource for OperationalDiagnosticFacts {}
@@ -418,6 +450,8 @@ struct ProjectedOperationalDiagnosticFacts<'a> {
     guard_phase: &'a Option<String>,
     expected_revision: &'a Option<String>,
     observed_revision: &'a Option<String>,
+    expected_tool_name: &'a Option<String>,
+    observed_tool_name: &'a Option<String>,
 }
 
 impl DiagnosticFactSource for ProjectedOperationalDiagnosticFacts<'_> {}
@@ -453,6 +487,8 @@ pub fn operational_diagnostic_finding(
             guard_phase: &facts.guard_phase,
             expected_revision: &facts.expected_revision,
             observed_revision: &facts.observed_revision,
+            expected_tool_name: &facts.expected_tool_name,
+            observed_tool_name: &facts.observed_tool_name,
         })?,
         observed_at,
     )?
@@ -539,6 +575,11 @@ mod tests {
                 RevisionDiagnostic::ALL
                     .into_iter()
                     .map(RevisionDiagnostic::code),
+            )
+            .chain(
+                ToolVerificationDiagnostic::ALL
+                    .into_iter()
+                    .map(ToolVerificationDiagnostic::code),
             )
         {
             assert!(
@@ -649,6 +690,38 @@ mod tests {
         assert_eq!(
             OperationalDiagnostic::Revision(RevisionDiagnostic::IntegrationStale).code(),
             "revision.integration.stale"
+        );
+    }
+
+    #[test]
+    fn verification_tool_mismatch_projects_bounded_expected_and_observed_names() {
+        let finding = operational_diagnostic_finding(
+            OperationalDiagnostic::ToolVerification(
+                ToolVerificationDiagnostic::DesignationMismatch,
+            ),
+            "finding.runtime.verification_tool_designation_mismatch",
+            "runtime_session",
+            "runtime_fixture",
+            &OperationalDiagnosticFacts {
+                expected_tool_name: Some("volicord.list_projects".to_owned()),
+                observed_tool_name: Some("volicord.status".to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            UtcTimestamp::parse("2026-07-22T00:00:00Z").expect("timestamp"),
+        )
+        .expect("typed diagnostic");
+
+        assert_eq!(
+            finding.code().as_str(),
+            "mcp.tool_verification.designation_mismatch"
+        );
+        assert_eq!(
+            finding.facts().data()["expected_tool_name"],
+            "volicord.list_projects"
+        );
+        assert_eq!(
+            finding.facts().data()["observed_tool_name"],
+            "volicord.status"
         );
     }
 }

@@ -607,7 +607,8 @@ Installation ID, 통과한 `mode_transition` check 하나, 현재 `reload_host` 
 `volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. 서버 conformance
 matrix는 프로덕션 지원 protocol profile마다 독립된 stdio process 하나를 실행합니다.
 각 revision에서 `initialize`, initialized notification, `tools/list`, 고정 schema와 필수
-도구 검증, 안전한 읽기 전용 `volicord.list_projects` 호출 정확히 하나, 계약에 정한 정상
+도구 검증, `ToolVerificationRole::ManagedHostRoundTrip`에서 해석한 도구 호출 정확히 하나,
+계약에 정한 정상
 EOF/종료 순서를 수행합니다. 모든 revision probe가 통과해야 집계 `mcp_server` check가
 통과합니다. 사전 점검과 자체 검사의 프로세스 시작 구체화는 모두
 점검 대상 호스트 구성에 사용된 정규 관리 시작 계약에서 파생합니다. 개인 연결 검증은 그
@@ -616,7 +617,8 @@ Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product 
 저장소 검색을 실행합니다. CLI 전용 검증 표식은 호출에만 적용하는 진단 값이며 생성 호스트
 구성에는 포함되지 않습니다.
 
-Self-test는 이와 별도로 독립적으로 고정한 host 호환성 fixture를 실행합니다. 현재
+이 role은 현재 `volicord.list_projects`로 해석됩니다. CLI는 첫 번째 읽기 전용 도구를
+선택하거나 독립적인 지정 도구 문자열을 유지하지 않습니다. Self-test는 이와 별도로 독립적으로 고정한 host 호환성 fixture를 실행합니다. 현재
 `codex` fixture는 검토된 Codex initialize `clientInfo` 및 capability 형태를 사용하고,
 정확한 revision `2025-06-18`을 요청하며, `volicord.list_projects` 호출 하나에 유효한
 native session correlation metadata를 보냅니다. 이 fixture는 서버의 선호 profile에서
@@ -769,7 +771,10 @@ JSON은 현재 diagnostics SQL에서 파생한 정확한 `canonical_schema_diges
 활성 Connection 검증은 관리 구성, Guard 파일과 관찰, 저장소 신뢰, revision freshness에
 대한 CLI 소유 finding을 영속화합니다. 현재 안정 code는
 `trust.repository.not_trusted`, `revision.integration.stale`,
-`revision.observation.mismatch`입니다. 한도 안의 임의 미래 Codex version 문구는 계속
+`revision.observation.mismatch`입니다. 현재 runtime에 기록된 verification 도구 이름이
+정규 role 담당 도구와 다르면 `mcp.tool_verification.designation_mismatch`를 만들며 도구
+identity facts로는 `expected_tool_name`과 `observed_tool_name`만 담습니다. JSON check
+detail과 verbose 출력도 같은 정확한 이름을 노출합니다. 한도 안의 임의 미래 Codex version 문구는 계속
 diagnostic으로 받아들입니다. 집중 host 담당 문서는 지원하지 않는 현재 host revision
 code를 정의하지 않으므로 CLI도 이를 만들어 내지 않습니다.
 

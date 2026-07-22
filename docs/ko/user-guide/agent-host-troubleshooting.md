@@ -141,6 +141,13 @@ generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_
 프로세스 제한은 [관리 CLI](../reference/admin-cli.md), MCP code 의미와 안전한 협상 사실은
 [MCP 전송](../reference/mcp-transport.md)이 담당합니다.
 
+`mcp.tool_verification.designation_mismatch`이면
+`facts.data.expected_tool_name`과 `facts.data.observed_tool_name`만 비교합니다. 그런 다음
+현재 관리 Codex 연결을 통해 expected 도구를 실행합니다. 현재 expected 도구는
+`volicord.list_projects`이며 `volicord.status`, `volicord.get_operation_result`,
+`volicord.check_close` 같은 다른 읽기 전용 도구 호출이 성공해도 managed-host 왕복 검증을
+충족하지 않습니다.
+
 `actual_mcp_peer_client_info.version`과 `path_executable_probe.version`이 다르면 먼저
 활성 Codex 프로세스와 PATH를 확인합니다. 이 warning은 유용한 evidence지만 그 자체로
 치명적 결과는 아닙니다. 보고할 때 한 version을 다른 version으로 바꾸지 않습니다.
@@ -149,8 +156,9 @@ generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_
 
 Codex가 정확한 프로젝트를 신뢰하고 현재 `.codex/config.toml`을 다시 읽었는지
 확인합니다. 관리 명령이 의도한 `volicord` 실행 파일과 Runtime Home을 가리키는지
-확인합니다. 그런 다음 Codex 도구 목록에서 읽기 전용 `volicord.status`를 실행하고
-관리 검증을 다시 수행합니다.
+확인합니다. 그런 다음 Codex 도구 목록에서 현재 정규 검증 도구인
+`volicord.list_projects`를 실행하고 관리 검증을 다시 수행합니다. 다른 읽기 전용 도구는
+연결 진단에는 도움이 되지만 지정된 왕복 evidence를 만들지 않습니다.
 
 구성이 있다고 활성 도구 검색이 증명되지는 않습니다. 현재 세션에 도구가 계속 없다면
 진단을 보존하고 같은 관리 연결에서 새 Codex 세션을 시작합니다.

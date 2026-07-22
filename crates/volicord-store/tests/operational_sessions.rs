@@ -20,10 +20,10 @@ use volicord_store::{
         current_managed_mcp_runtime_session_for_connection, current_managed_runtime_sessions,
         latest_current_managed_runtime_session, latest_managed_runtime_session,
         latest_successful_managed_runtime_session, mcp_runtime_project_session_binding,
-        mcp_runtime_session, mcp_runtime_session_for_process,
-        record_mcp_designated_safe_tool_observation, record_mcp_initialize_attempt,
+        mcp_runtime_session, mcp_runtime_session_for_process, record_mcp_initialize_attempt,
         record_mcp_initialize_completion, record_mcp_initialized_notification,
-        record_mcp_terminal_finding, record_mcp_tools_list, start_mcp_runtime_session,
+        record_mcp_terminal_finding, record_mcp_tools_list,
+        record_mcp_verification_tool_observation, start_mcp_runtime_session,
         McpRuntimeSessionStart,
     },
     sqlite::registry_db_path,
@@ -33,7 +33,7 @@ use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, DiagnosticCode, DiagnosticDomain, DiagnosticFacts,
     DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
     DiagnosticSubject, IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource,
-    UtcTimestamp,
+    UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
 };
 
 const START: &str = "2026-07-18T00:00:00Z";
@@ -104,9 +104,10 @@ fn complete(
         required_tools_present,
         TOOLS,
     )?;
-    record_mcp_designated_safe_tool_observation(
+    record_mcp_verification_tool_observation(
         fixture.runtime_home_path(),
         runtime_session_id,
+        LIST_PROJECTS_TOOL_NAME,
         SAFE,
     )?;
     Ok(())
@@ -164,7 +165,10 @@ fn managed_host_and_cli_preflight_sessions_are_distinct_authority_sources(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("operational-session-sources")?;
     let cli = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
-    complete(&fixture, &cli, true)?;
+    assert!(complete(&fixture, &cli, true).is_err());
+    let cli_record = mcp_runtime_session(fixture.runtime_home_path(), &cli)?.expect("CLI session");
+    assert!(cli_record.verification_tool_name.is_none());
+    assert!(cli_record.verification_tool_observed_at.is_none());
     assert!(latest_successful_managed_runtime_session(
         fixture.runtime_home_path(),
         fixture.connection_id()
@@ -314,9 +318,10 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
         mcp_runtime_session(fixture.runtime_home_path(), &incomplete)?.expect("runtime session");
     assert_eq!(record.required_tools_present, Some(false));
     assert_eq!(
-        record.designated_safe_tool_observed_at.as_deref(),
-        Some(SAFE)
+        record.verification_tool_name.as_deref(),
+        Some(LIST_PROJECTS_TOOL_NAME)
     );
+    assert_eq!(record.verification_tool_observed_at.as_deref(), Some(SAFE));
 
     let fatal = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let finding = terminal_finding(

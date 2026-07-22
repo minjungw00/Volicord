@@ -154,8 +154,10 @@ profile에 따라 작업 단계의 JSON-RPC batch 동작을 정확히 다음과 
 Connection 검증은 production registry의 모든 profile을 검토된 순서대로 server
 conformance matrix에서 실행합니다. Profile마다 별도 stdio process와 정확한 요청 revision을
 사용합니다. 각 probe는 `initialize`, `notifications/initialized`, `tools/list`, 해당
-revision의 고정 schema 검증, 현재 mode의 필수 도구 검증, `volicord.list_projects` 호출
-정확히 하나, 정상 EOF/종료를 완료합니다. Revision별로 요청 및 협상 revision, 반환된 도구,
+revision의 고정 schema 검증, 현재 mode의 필수 도구 검증,
+`ToolVerificationRole::ManagedHostRoundTrip`이 선택한 도구 호출 정확히 하나, 정상
+EOF/종료를 완료합니다. 현재 role 담당 도구는 정확히 `volicord.list_projects`입니다.
+Revision별로 요청 및 협상 revision, 반환된 도구,
 완료 단계, typed failure를 기록합니다. 모든 production revision이 통과해야 집계 server
 check가 통과하며, revision 하나가 실패해도 나머지 revision probe를 계속 실행합니다.
 
@@ -164,7 +166,8 @@ Host 호환성은 protocol registry projection이 아니라 host가 독립적으
 `Codex`이며 현재의 빈 capability 객체를 사용하는 검토된 Codex initialize 요청 형태와,
 독립적으로 고정한 revision `2025-06-18`을 사용합니다. 도구 호출 하나에는 유효한 Codex
 native thread/session/turn correlation metadata를 담습니다. `tools/list`와
-`volicord.list_projects`를 실행하며, 요청 revision을 서버의 선호 또는 최신 profile에서
+`ToolVerificationRole::ManagedHostRoundTrip`이 선택한 도구(현재
+`volicord.list_projects`)를 실행하며, 요청 revision을 서버의 선호 또는 최신 profile에서
 파생하지 않습니다. 배포된 client 계열이 서로 다른 revision을 요구하면 독립적으로 고정한
 `codex` fixture 여러 개를 함께 둘 수 있습니다.
 
@@ -190,9 +193,15 @@ handshake를 완전히 끝낼 때만 협상 revision이 됩니다. 실제 `tools
 모든 도구가 있었는지를 나타냅니다. 중복 initialized notification은 첫 번째 유효 관찰 뒤
 멱등이며 협상한 revision을 바꿀 수 없습니다.
 
-성공한 `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`,
-`volicord.list_projects` 완료는 도구 결과를 내보내기 전에 안전/읽기 전용 milestone을
-갱신합니다. 관찰할 수 있는 fatal transport 또는 protocol failure는 한도가 있는 공유
+정확한 `ToolVerificationRole::ManagedHostRoundTrip` 담당 도구의 `tools/call`이 성공한
+경우에만 managed-host 왕복 evidence를 기록할 수 있습니다. 현재 담당 도구는
+`volicord.list_projects`입니다. 호출은 현재 enabled `managed_host` runtime과 Connection
+revision에 속하고 유효한 현재 관리 Codex session/thread/turn correlation을 담아야 하며,
+JSON-RPC error나 tool error 없이 완료되어야 합니다. 그러면 Store는 도구 결과를 내보내기
+전에 정확한 `verification_tool_name`과 `verification_tool_observed_at` 쌍을 원자적으로
+기록합니다. 성공한 `volicord.status`, `volicord.get_operation_result`,
+`volicord.check_close` 호출은 이 쌍을 갱신하지 않습니다. 지정 호출이 실패하거나 거부된
+경우에도 이 쌍은 없는 상태로 남습니다. 관찰할 수 있는 fatal transport 또는 protocol failure는 한도가 있는 공유
 `DiagnosticFinding` 하나를 만들고 그 finding ID를 runtime session의 terminal finding으로
 원자적으로 연결합니다. EOF에 따른 graceful close는 이와 함께 있을 수 없는 별도 terminal
 사실입니다. 권위 있는 Store 쓰기가 실패하면 해당 protocol 성공을 내보내지 않습니다.
@@ -205,8 +214,8 @@ Registry를 열기 전에 발생한 실패는 stderr에 한도가 있는
 finding을 영속합니다. Terminal 실패는 두 번째 자유 형식 실패 객체로 저장하지 않고
 finding ID로 연결합니다.
 
-연결 검증은 별도의 `cli_preflight` process를 시작하고 지정된 안전한 읽기 전용 round
-trip으로 `volicord.list_projects`를 호출합니다. 이 process는 server 표면을 검증하지만
+연결 검증은 별도의 `cli_preflight` process를 시작하고 같은 정규 role 담당 도구, 현재
+`volicord.list_projects`를 안전한 읽기 전용 self-test 왕복으로 호출합니다. 이 process는 server 표면을 검증하지만
 그 lifecycle 사실은 `managed_host` 운영 check를 충족하거나 Connection 호출을 승인할 수
 없습니다. CLI 검증이 성공해도 관리 `host_session`, `tools/list`, 도구 왕복 관찰을
 꾸며내지 않습니다.
@@ -286,6 +295,12 @@ schema, annotation, 현재 값이 있는 선택적 표시 및 metadata를 소유
 도구 registry나 server 구현을 두지 않습니다. Connection mode와 저장 capability는 위
 표에 따라 도구를 숨길 수 있지만 protocol revision은 계속 보이는 도구의 이름을 바꾸거나
 다른 도구로 대체하지 않습니다.
+
+Dependency-safe 정규 도구 metadata는 typed verification role도 배정합니다.
+`ToolVerificationRole::ManagedHostRoundTrip`은 담당 도구가 정확히 하나이며 현재
+`volicord.list_projects`로 결정적으로 해석됩니다. 담당 도구가 없거나 둘 이상이면 유효하지
+않은 registry 상태입니다. MCP runtime과 관리 CLI는 별도의 도구 이름 선택을 유지하지 않고
+모두 이 resolver를 사용합니다.
 
 | 선택한 profile | 현재 Volicord 도구마다 내보내는 필드 |
 |---|---|

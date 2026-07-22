@@ -3,8 +3,10 @@ use std::collections::BTreeSet;
 use serde_json::{Map, Value};
 use volicord_types::{
     ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, DiagnosticFindingId,
-    DiagnosticReportAction, LIST_PROJECTS_TOOL_NAME,
+    DiagnosticReportAction,
 };
+
+use crate::connection_command::managed_host_round_trip_tool_name;
 
 use super::{
     human::{headline, CheckCounts},
@@ -455,7 +457,7 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
             .unwrap_or_default();
         let safe_tool = context
             .take_string("self_test.safe_read_only_tool")
-            .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
+            .unwrap_or_else(|| managed_host_round_trip_tool_name().to_owned());
         let tools = context
             .take_string_array("self_test.tools_list")
             .unwrap_or_default();
@@ -504,7 +506,7 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     let required_tools_validated = context.take_bool("self_test.required_tools_validated");
     let safe_tool = context
         .take_string("self_test.safe_read_only_tool")
-        .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
+        .unwrap_or_else(|| managed_host_round_trip_tool_name().to_owned());
     let safe_tool_completed = context.take_bool("self_test.safe_read_only_tool_completed");
     let shutdown_completed = context.take_bool("self_test.shutdown_completed");
     let preflight_passed = preflight.as_deref() == Some("passed");
@@ -792,10 +794,16 @@ fn render_required_tools(context: &mut DetailContext<'_>) {
 
 fn render_tool_round_trip(context: &mut DetailContext<'_>) {
     render_revision_pair(context);
-    let safe_tool = context
-        .take_string("safe_read_only_tool")
-        .unwrap_or_else(|| LIST_PROJECTS_TOOL_NAME.to_owned());
-    context.line("Designated read-only tool", safe_tool);
+    let expected_tool = context
+        .take_string("expected_verification_tool_name")
+        .unwrap_or_else(|| managed_host_round_trip_tool_name().to_owned());
+    context.line("Expected verification tool", expected_tool);
+    if let Some(observed_tool) = context.take_string("observed_verification_tool_name") {
+        context.line("Observed verification tool", observed_tool);
+    }
+    if let Some(observed_at) = context.take_string("verification_tool_observed_at") {
+        context.line("Verification tool observed at", observed_at);
+    }
     let completed = context
         .take_bool("call_completed")
         .unwrap_or(context.check.status() == ConnectionCheckStatus::Passed);
@@ -2105,7 +2113,7 @@ mod tests {
                 "tools_list_observed": true,
                 "tools_list": tools,
                 "required_tools_validated": status == "passed",
-                "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
+                "safe_read_only_tool": managed_host_round_trip_tool_name(),
                 "safe_read_only_tool_completed": status == "passed",
                 "shutdown_completed": status == "passed",
             },
@@ -2194,7 +2202,7 @@ mod tests {
         let safe_call_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
                 true,
-                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                Some(vec![managed_host_round_trip_tool_name().to_owned()]),
                 true,
                 false,
                 false,
@@ -2213,7 +2221,7 @@ mod tests {
         let shutdown_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
                 true,
-                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                Some(vec![managed_host_round_trip_tool_name().to_owned()]),
                 true,
                 true,
                 false,
@@ -2570,7 +2578,9 @@ mod tests {
                     Some(json!({
                         "current_integration_revision": "revision_current",
                         "observed_integration_revision": "revision_observed",
-                        "safe_read_only_tool": "volicord.list_projects",
+                        "expected_verification_tool_name": "volicord.list_projects",
+                        "observed_verification_tool_name": "volicord.status",
+                        "verification_tool_observed_at": "2026-07-20T04:00:00Z",
                         "call_completed": false,
                         "last_observed_at": "2026-07-20T04:00:00Z",
                         "terminal_finding_id": "finding.tool_contract_mismatch",
@@ -2621,7 +2631,9 @@ mod tests {
             "    guard_managed_file: 2\n",
             "    managed_host_configuration: 1\n",
             "  [fail] Read-only tool round trip\n",
-            "    Designated read-only tool: volicord.list_projects\n",
+            "    Expected verification tool: volicord.list_projects\n",
+            "    Observed verification tool: volicord.status\n",
+            "    Verification tool observed at: 2026-07-20T04:00:00Z\n",
             "    Call completed: no\n",
             "    Terminal finding: finding.tool_contract_mismatch\n",
             "  [wait] Connection verification\n",

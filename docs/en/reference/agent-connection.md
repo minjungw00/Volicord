@@ -279,8 +279,9 @@ guard_files -> guard_hook_execution -> guard_observation
 ```
 
 `host_session` is the managed-host `initialize` check, `required_tools` is the
-managed-host `tools/list` check, and `tool_round_trip` is the designated
-read-only tool-call check. When no managed-host attempt exists, the four checks
+managed-host `tools/list` check, and `tool_round_trip` is the canonical
+verification-role tool-call check. `ToolVerificationRole::ManagedHostRoundTrip`
+has exactly one canonical owner, currently `volicord.list_projects`. When no managed-host attempt exists, the four checks
 from `process_startup` through `tool_round_trip` are `pending`. An initialize
 failure makes `host_session` `failed` and makes `required_tools` and
 `tool_round_trip` `blocked` by that same root finding. A managed-configuration
@@ -304,7 +305,7 @@ The current Codex connection report contains these operational checks:
 | `process_startup` | A current managed host started the configured MCP process. | It waits for managed-host use and is blocked by failed managed configuration. | No managed-host startup failure is claimed without a typed host observation; absence remains waiting. |
 | `host_session` | A current, host-version-fresh managed-host session completed `initialize` and its initialized notification. | It waits for a qualifying attempt and is blocked by `process_startup`. | The current attempt observed an initialization or protocol failure. |
 | `required_tools` | A qualifying `tools/list` observation contains every required tool. | It waits for tool discovery and is blocked by `host_session`. | Tool discovery completed with missing or invalid required tools. |
-| `tool_round_trip` | A qualifying session completed `volicord.list_projects`. | It waits for the designated call and is blocked by `required_tools`. | The call itself observed a protocol or contract failure. |
+| `tool_round_trip` | A qualifying current, host-version-fresh session records both `verification_tool_name=volicord.list_projects` and `verification_tool_observed_at`. | It waits for the canonical role-owner call and is blocked by `required_tools`. | The call itself observed a protocol or contract failure, or the recorded tool name differs from the current canonical owner. |
 | `project_trust` | Project trust is satisfied. | A normal trust or reload action is `pending`; scopes with no separate trust check are `not_applicable`. | Trust configuration is malformed or contradictory. |
 | `guard_files` | Every current Guard manifest file expectation matches. | Applies when Guard is part of the Connection profile. | A managed file, manifest, wrapper, ownership, or executable-integrity check failed. |
 | `guard_hook_execution` | A current managed Guard hook executed. | It waits for current hook activity and is blocked by `guard_files`. | Hook execution itself recorded a failure. |
@@ -320,6 +321,15 @@ required hook phases. Policy and runtime commands are distinct projections of
 one typed invocation. Audit compares every managed artifact with its canonical
 current expectation, and Guard observation requires compatible current events
 for every required phase.
+
+A recorded verification-tool name mismatch never passes `tool_round_trip`.
+The check fails with `tool_round_trip_designation_mismatch`, and active
+verification persists
+`mcp.tool_verification.designation_mismatch`. Its bounded facts expose the exact
+`expected_tool_name` and `observed_tool_name`; JSON check details and verbose
+output likewise show the exact expected and observed names. A prior revision,
+CLI preflight row, missing timestamp, or stale host-version observation cannot
+substitute for the current exact pair.
 
 Any bounded Codex version proceeds through these behavioral checks. A changed
 version makes the current host observation pending until Codex is reloaded and

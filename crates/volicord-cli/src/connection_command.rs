@@ -42,7 +42,7 @@ use volicord_store::{
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, guard_manifest_from_json,
     ConnectionVerificationError, ConnectionVerificationReport, IntegrationProfile,
-    IntegrationRevision, ProjectId,
+    IntegrationRevision, ProjectId, ToolVerificationRole,
 };
 
 use crate::cli::{
@@ -74,6 +74,11 @@ mod planning;
 mod selection;
 mod service;
 mod verification;
+
+fn managed_host_round_trip_tool_name() -> &'static str {
+    volicord_types::tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
+        .expect("canonical managed-host round-trip role must have exactly one tool owner")
+}
 
 pub use mcp_process::{
     ConnectionProcess, ConnectionProcessOutput, HostCompatibilityProfile, McpExchangeOutcome,

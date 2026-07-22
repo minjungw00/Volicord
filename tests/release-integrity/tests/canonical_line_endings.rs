@@ -96,11 +96,11 @@ fn checked_in_schema_metadata_matches_fixed_storage_digest_vectors() {
     let metadata = generated_schema_metadata().expect("generate metadata from canonical SQL");
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:1a311d68e5862aa60d946ea8e4158830a79c9b6d7675cf75e3842b4bd60c8aa8"
+        "sha256:3786b445765cc41fdc643e7837a65b21ce361ceaa846feb347ecd8318f535150"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:8d26d6c208cbd5f9e6e7c78a893fdea956726ef10ecf6e7f3be9df8057e9f485"
+        "sha256:8b334c33827cb8158200cf5769da60f58dc528e35eb54057ed4c53aae0a8d085"
     );
 
     let manifest = current_storage_manifest().expect("build manifest from canonical SQL");

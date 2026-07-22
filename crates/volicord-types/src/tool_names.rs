@@ -1,4 +1,31 @@
 use crate::values::MethodName;
+use std::{error::Error, fmt};
+
+/// Closed semantic roles used to select a tool for operational verification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolVerificationRole {
+    /// The tool whose successful managed-host call proves an MCP round trip.
+    ManagedHostRoundTrip,
+}
+
+/// A malformed canonical verification-role assignment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolVerificationRoleResolutionError {
+    pub role: ToolVerificationRole,
+    pub owner_count: usize,
+}
+
+impl fmt::Display for ToolVerificationRoleResolutionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "verification role {:?} must have exactly one tool owner, found {}",
+            self.role, self.owner_count
+        )
+    }
+}
+
+impl Error for ToolVerificationRoleResolutionError {}
 
 /// MCP-visible tool name for `volicord.intake`.
 pub const INTAKE_TOOL_NAME: &str = MethodName::Intake.as_str();
@@ -42,6 +69,33 @@ pub const CLOSE_TASK_TOOL_NAME: &str = MethodName::CloseTask.as_str();
 /// Adapter-owned project-list utility tool name.
 pub const LIST_PROJECTS_TOOL_NAME: &str = "volicord.list_projects";
 
+const TOOL_VERIFICATION_ROLE_ASSIGNMENTS: [(ToolVerificationRole, &str); 1] = [(
+    ToolVerificationRole::ManagedHostRoundTrip,
+    LIST_PROJECTS_TOOL_NAME,
+)];
+
+/// Resolves the one canonical tool assigned to an operational verification role.
+pub fn tool_name_for_verification_role(
+    role: ToolVerificationRole,
+) -> Result<&'static str, ToolVerificationRoleResolutionError> {
+    resolve_tool_name_for_verification_role(role, &TOOL_VERIFICATION_ROLE_ASSIGNMENTS)
+}
+
+fn resolve_tool_name_for_verification_role<'a>(
+    role: ToolVerificationRole,
+    assignments: &'a [(ToolVerificationRole, &'a str)],
+) -> Result<&'a str, ToolVerificationRoleResolutionError> {
+    let mut owners = assignments
+        .iter()
+        .filter_map(|(candidate_role, tool_name)| (*candidate_role == role).then_some(*tool_name));
+    let owner = owners.next();
+    let owner_count = usize::from(owner.is_some()) + owners.count();
+    match (owner, owner_count) {
+        (Some(tool_name), 1) => Ok(tool_name),
+        _ => Err(ToolVerificationRoleResolutionError { role, owner_count }),
+    }
+}
+
 /// MCP-visible method tools exposed through workflow connections.
 pub const WORKFLOW_METHOD_TOOL_NAMES: [&str; 12] = [
     INTAKE_TOOL_NAME,
@@ -67,3 +121,54 @@ pub const READ_ONLY_METHOD_TOOL_NAMES: [&str; 3] = [
 
 /// Adapter-owned MCP utility tools that are not public Core methods.
 pub const ADAPTER_UTILITY_TOOL_NAMES: [&str; 1] = [LIST_PROJECTS_TOOL_NAME];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn managed_host_round_trip_role_has_exactly_one_canonical_owner() {
+        assert_eq!(
+            tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip),
+            Ok(LIST_PROJECTS_TOOL_NAME)
+        );
+    }
+
+    #[test]
+    fn verification_role_resolution_rejects_zero_owners() {
+        assert_eq!(
+            resolve_tool_name_for_verification_role(
+                ToolVerificationRole::ManagedHostRoundTrip,
+                &[]
+            ),
+            Err(ToolVerificationRoleResolutionError {
+                role: ToolVerificationRole::ManagedHostRoundTrip,
+                owner_count: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn verification_role_resolution_rejects_multiple_owners() {
+        let assignments = [
+            (
+                ToolVerificationRole::ManagedHostRoundTrip,
+                "volicord.list_projects",
+            ),
+            (
+                ToolVerificationRole::ManagedHostRoundTrip,
+                "volicord.status",
+            ),
+        ];
+        assert_eq!(
+            resolve_tool_name_for_verification_role(
+                ToolVerificationRole::ManagedHostRoundTrip,
+                &assignments
+            ),
+            Err(ToolVerificationRoleResolutionError {
+                role: ToolVerificationRole::ManagedHostRoundTrip,
+                owner_count: 2,
+            })
+        );
+    }
+}

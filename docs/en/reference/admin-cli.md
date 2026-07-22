@@ -656,7 +656,8 @@ command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test. The
 server-conformance matrix runs one independent stdio process for every
 production-supported protocol profile. Each revision performs `initialize`,
 the initialized notification, `tools/list`, pinned-schema and required-tool
-validation, exactly one safe read-only `volicord.list_projects` call, and the
+validation, exactly one call to the tool resolved from
+`ToolVerificationRole::ManagedHostRoundTrip`, and the
 contracted graceful EOF/shutdown sequence. The aggregate `mcp_server` check
 passes only when every revision probe passes. Preflight and self-test launch
 materialization both derive from the canonical managed launch contract used for
@@ -667,6 +668,8 @@ runs repository discovery from the canonical Product Repository root. The
 CLI-only verification marker is an invocation overlay and is not part of
 generated host configuration.
 
+The role currently resolves to `volicord.list_projects`; the CLI does not
+select the first read-only tool or carry an independent designated-tool string.
 The self-test separately runs independently pinned host-compatibility fixtures.
 The current `codex` fixture uses the reviewed Codex initialize `clientInfo` and
 capability shape, requests exact revision `2025-06-18`, sends valid native
@@ -839,7 +842,11 @@ close readiness, or resolve a UserAction.
 Active Connection verification persists CLI-owned findings for managed
 configuration, Guard files and observations, repository trust, and revision
 freshness. `trust.repository.not_trusted`, `revision.integration.stale`, and
-`revision.observation.mismatch` are current stable codes. Arbitrary bounded
+`revision.observation.mismatch` are current stable codes. A current runtime
+whose recorded verification-tool name differs from the canonical role owner
+produces `mcp.tool_verification.designation_mismatch`, with only
+`expected_tool_name` and `observed_tool_name` as tool-identity facts. JSON check
+details and verbose output expose those same exact names. Arbitrary bounded
 future Codex version text remains diagnostic and accepted; the focused host
 owner defines no unsupported-current-host-revision code, so the CLI does not
 invent one.

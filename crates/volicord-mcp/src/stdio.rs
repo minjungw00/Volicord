@@ -2284,14 +2284,19 @@ pub(crate) fn call_tool_result(
         } else {
             DiagnosticOutcome::Success
         };
+    let verification_tool_name =
+        tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
+            .expect("canonical managed-host round-trip role must have exactly one tool owner");
     if diagnostic_outcome == DiagnosticOutcome::Success
-        && (READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
-            || tool_name == LIST_PROJECTS_TOOL_NAME)
+        && tool_name == verification_tool_name
+        && state.managed_stdio_binding_active
         && !state.runtime_session_id.is_empty()
     {
-        record_mcp_designated_safe_tool_observation(
+        validate_managed_stdio_session_ownership(adapter, state)?;
+        record_mcp_verification_tool_observation(
             &adapter.runtime_home,
             &state.runtime_session_id,
+            verification_tool_name,
             &authoritative_observation_timestamp(),
         )
         .map_err(McpAdapterError::Store)?;

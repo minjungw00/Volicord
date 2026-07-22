@@ -22,17 +22,17 @@ use volicord_store::{
         latest_managed_runtime_session, mcp_runtime_session_for_process, McpRuntimeSessionRecord,
     },
 };
-#[cfg(test)]
-use volicord_types::ConnectionStatus;
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
     ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
     ConnectionVerificationReport, DiagnosticAction, DiagnosticCode, DiagnosticDomain,
     DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
     DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
-    IntegrationRevision, UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
-    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
+    IntegrationRevision, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    MAX_DIAGNOSTIC_FINDINGS,
 };
+#[cfg(test)]
+use volicord_types::{ConnectionStatus, LIST_PROJECTS_TOOL_NAME};
 
 use crate::guard_integration::audit::{
     guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
@@ -44,9 +44,9 @@ use crate::host_integration::{
     HostAdapter, HostKind, HostPlan, HostScope,
 };
 use crate::operational_diagnostics::{
-    connection_operational_finding_id, guard_artifact_kind, persist_connection_operational_finding,
-    GuardDiagnostic, OperationalDiagnostic, OperationalDiagnosticFacts, RevisionDiagnostic,
-    TrustDiagnostic,
+    connection_operational_finding_id, guard_artifact_kind, operational_diagnostic_finding,
+    persist_connection_operational_finding, GuardDiagnostic, OperationalDiagnostic,
+    OperationalDiagnosticFacts, RevisionDiagnostic, ToolVerificationDiagnostic, TrustDiagnostic,
 };
 
 use super::{
@@ -541,6 +541,7 @@ fn canonical_verification_report(
         current_revision.as_str(),
         &current_sessions,
         latest_session.as_ref(),
+        &host_findings.tool_round_trip,
     )?);
     let projects = volicord_store::agent_connections::list_connection_projects_for_diagnostics(
         runtime_home,
@@ -562,6 +563,7 @@ fn canonical_verification_report(
 struct HostBoundaryFindings {
     managed_config: Vec<DiagnosticFindingId>,
     project_trust: Vec<DiagnosticFindingId>,
+    tool_round_trip: Vec<DiagnosticFindingId>,
 }
 
 fn persist_host_boundary_findings(
@@ -625,7 +627,61 @@ fn persist_host_boundary_findings(
             )?;
         }
     }
+    let expected_tool_name = super::managed_host_round_trip_tool_name();
+    for session in current_sessions.iter().filter(|session| {
+        session.verification_tool_observed_at.is_some()
+            && session
+                .verification_tool_name
+                .as_deref()
+                .is_some_and(|observed| observed != expected_tool_name)
+    }) {
+        let finding_id = tool_designation_mismatch_finding_id(session)?;
+        if diagnostic_finding(runtime_home, &finding_id)?.is_none() {
+            let finding = operational_diagnostic_finding(
+                OperationalDiagnostic::ToolVerification(
+                    ToolVerificationDiagnostic::DesignationMismatch,
+                ),
+                finding_id.to_string(),
+                "runtime_session",
+                &session.runtime_session_id,
+                &OperationalDiagnosticFacts {
+                    expected_tool_name: Some(expected_tool_name.to_owned()),
+                    observed_tool_name: session.verification_tool_name.clone(),
+                    ..OperationalDiagnosticFacts::default()
+                },
+                current_timestamp(),
+            )
+            .and_then(|finding| {
+                finding
+                    .with_connection_id(AgentConnectionId::new(
+                        connection.connection_internal_id.clone(),
+                    ))?
+                    .with_runtime_session_id(AgentRuntimeSessionId::new(
+                        session.runtime_session_id.clone(),
+                    ))
+            })
+            .map(|finding| {
+                finding.with_integration_revision(
+                    IntegrationRevision::parse(session.connection_integration_revision.clone())
+                        .expect("persisted runtime session revision is valid"),
+                )
+            })
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+            insert_diagnostic_finding(runtime_home, &finding)?;
+        }
+        findings.tool_round_trip.push(finding_id);
+    }
     Ok(findings)
+}
+
+fn tool_designation_mismatch_finding_id(
+    session: &McpRuntimeSessionRecord,
+) -> Result<DiagnosticFindingId, ConnectionCommandError> {
+    DiagnosticFindingId::parse(format!(
+        "finding.{}.verification_tool_designation_mismatch",
+        session.runtime_session_id
+    ))
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
 
 fn managed_config_check(host: &Verification) -> Result<ConnectionCheck, ConnectionCommandError> {
@@ -748,7 +804,7 @@ pub(in crate::connection_command) fn mcp_server_check(
         "status": step.status.as_str(),
         "code": step.code,
         "diagnostic": step.details,
-        "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
+        "safe_read_only_tool": super::managed_host_round_trip_tool_name(),
     });
     if exchange.is_some_and(|exchange| {
         !exchange.conformance.is_empty() || !exchange.host_compatibility.is_empty()
@@ -921,7 +977,7 @@ fn probe_result_json<const N: usize>(
         "tools_list_observed": progress.tools_list.is_some(),
         "tools_returned": progress.tools_list.as_ref().map(Vec::len),
         "required_tools_validated": progress.required_tools_validated,
-        "safe_read_only_tool": LIST_PROJECTS_TOOL_NAME,
+        "safe_read_only_tool": super::managed_host_round_trip_tool_name(),
         "safe_read_only_tool_completed": progress.safe_tool_call_completed,
         "shutdown_completed": progress.shutdown_completed,
     });
@@ -1096,6 +1152,7 @@ fn host_session_checks(
     current_revision: &str,
     current: &[McpRuntimeSessionRecord],
     latest: Option<&McpRuntimeSessionRecord>,
+    tool_round_trip_finding_ids: &[DiagnosticFindingId],
 ) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
     let current = current
         .iter()
@@ -1112,6 +1169,7 @@ fn host_session_checks(
             || observed_host_version(session).is_none()
             || host.host_version.as_deref() == observed_host_version(session)
     };
+    let expected_verification_tool_name = super::managed_host_round_trip_tool_name();
     let details = |observed: Option<&McpRuntimeSessionRecord>| {
         json!({
             "current_integration_revision": current_revision,
@@ -1129,6 +1187,9 @@ fn host_session_checks(
             "requested_protocol_version": observed.and_then(|session| session.requested_protocol_version.as_deref()),
             "selected_protocol_version": observed.and_then(|session| session.selected_protocol_version.as_deref()),
             "negotiated_protocol_version": observed.and_then(|session| session.negotiated_protocol_version.as_deref()),
+            "expected_verification_tool_name": expected_verification_tool_name,
+            "observed_verification_tool_name": observed.and_then(|session| session.verification_tool_name.as_deref()),
+            "verification_tool_observed_at": observed.and_then(|session| session.verification_tool_observed_at.as_deref()),
             "last_observed_at": observed.map(|session| session.last_observed_at.as_str()),
             "terminal_finding_id": observed.and_then(|session| session.terminal_finding_id.as_deref()),
         })
@@ -1148,7 +1209,17 @@ fn host_session_checks(
         .copied()
         .find(|session| version_fresh(session) && session.required_tools_present == Some(true));
     let round_trip = current.iter().copied().find(|session| {
-        version_fresh(session) && session.designated_safe_tool_observed_at.is_some()
+        version_fresh(session)
+            && session.verification_tool_name.as_deref() == Some(expected_verification_tool_name)
+            && session.verification_tool_observed_at.is_some()
+    });
+    let designation_mismatch = current.iter().copied().find(|session| {
+        version_fresh(session)
+            && session.verification_tool_observed_at.is_some()
+            && session
+                .verification_tool_name
+                .as_deref()
+                .is_some_and(|observed| observed != expected_verification_tool_name)
     });
 
     let (session_status, session_code, session_summary, session_observed_at, session_detail) =
@@ -1291,49 +1362,67 @@ fn host_session_checks(
         terminal_cause_ids(tools_detail)?,
     )?;
 
-    let (round_trip_status, round_trip_code, round_trip_summary, round_trip_observed_at, round_detail) =
-        match (round_trip, diagnostic) {
-            (Some(session), _) => (
-                ConnectionCheckStatus::Passed,
-                "tool_round_trip_passed",
-                "A current managed host completed the designated read-only Volicord tool call",
-                session.designated_safe_tool_observed_at.as_deref(),
-                Some(session),
-            ),
-            (None, None) => (
-                ConnectionCheckStatus::Pending,
-                "tool_round_trip_not_observed",
-                "Current managed host has not completed the designated read-only Volicord tool call",
-                None,
-                latest,
-            ),
-            (None, Some(session)) if !version_fresh(session) => (
-                ConnectionCheckStatus::Pending,
-                "tool_round_trip_observation_stale",
-                "Newest designated read-only tool-call observation predates the current Codex version",
+    let (
+        round_trip_status,
+        round_trip_code,
+        round_trip_summary,
+        round_trip_observed_at,
+        round_detail,
+    ) = match (round_trip, designation_mismatch, diagnostic) {
+        (Some(session), _, _) => (
+            ConnectionCheckStatus::Passed,
+            "tool_round_trip_passed",
+            "A current managed host completed the canonical verification tool call",
+            session.verification_tool_observed_at.as_deref(),
+            Some(session),
+        ),
+        (None, Some(session), _) => (
+            ConnectionCheckStatus::Failed,
+            "tool_round_trip_designation_mismatch",
+            "The observed verification tool does not match the canonical role owner",
+            session.verification_tool_observed_at.as_deref(),
+            Some(session),
+        ),
+        (None, None, None) => (
+            ConnectionCheckStatus::Pending,
+            "tool_round_trip_not_observed",
+            "Current managed host has not completed the canonical verification tool call",
+            None,
+            latest,
+        ),
+        (None, None, Some(session)) if !version_fresh(session) => (
+            ConnectionCheckStatus::Pending,
+            "tool_round_trip_observation_stale",
+            "Newest verification-tool observation predates the current Codex version",
+            Some(session.last_observed_at.as_str()),
+            Some(session),
+        ),
+        (None, None, Some(session))
+            if session.required_tools_present == Some(true)
+                && session.terminal_finding_id.is_some() =>
+        {
+            (
+                ConnectionCheckStatus::Failed,
+                "tool_round_trip_failed",
+                "Newest current managed-host session reported a protocol or contract failure",
                 Some(session.last_observed_at.as_str()),
                 Some(session),
-            ),
-            (None, Some(session))
-                if session.required_tools_present == Some(true)
-                    && session.terminal_finding_id.is_some() =>
-            {
-                (
-                    ConnectionCheckStatus::Failed,
-                    "tool_round_trip_failed",
-                    "Newest current managed-host session reported a protocol or contract failure",
-                    Some(session.last_observed_at.as_str()),
-                    Some(session),
-                )
-            }
-            (None, Some(session)) => (
-                ConnectionCheckStatus::Pending,
-                "tool_round_trip_not_observed",
-                "Newest current managed host has not completed the designated read-only Volicord tool call",
-                Some(session.last_observed_at.as_str()),
-                Some(session),
-            ),
-        };
+            )
+        }
+        (None, None, Some(session)) => (
+            ConnectionCheckStatus::Pending,
+            "tool_round_trip_not_observed",
+            "Newest current managed host has not completed the canonical verification tool call",
+            Some(session.last_observed_at.as_str()),
+            Some(session),
+        ),
+    };
+    let mut round_trip_causes = terminal_cause_ids(round_detail)?;
+    if designation_mismatch.is_some() {
+        round_trip_causes.extend_from_slice(tool_round_trip_finding_ids);
+    }
+    round_trip_causes.sort();
+    round_trip_causes.dedup();
     let tool_round_trip = with_direct_causes(
         canonical_check(
             ConnectionCheckKind::ToolRoundTrip,
@@ -1343,7 +1432,7 @@ fn host_session_checks(
             Some(details(round_detail)),
             round_trip_observed_at,
         )?,
-        terminal_cause_ids(round_detail)?,
+        round_trip_causes,
     )?;
     block_failed_dependencies(vec![
         process_startup,
@@ -2181,6 +2270,17 @@ pub(in crate::connection_command) fn current_status_report(
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
+    let mut tool_round_trip_causes = Vec::new();
+    for session in current_sessions.iter().filter(|session| {
+        session.verification_tool_observed_at.is_some()
+            && session.verification_tool_name.as_deref()
+                != Some(super::managed_host_round_trip_tool_name())
+    }) {
+        let finding_id = tool_designation_mismatch_finding_id(session)?;
+        if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
+            tool_round_trip_causes.push(finding_id);
+        }
+    }
     let managed_config_causes = host
         .managed_config_diagnostic
         .map(|diagnostic| {
@@ -2210,6 +2310,7 @@ pub(in crate::connection_command) fn current_status_report(
         current_revision.as_str(),
         &current_sessions,
         latest_session.as_ref(),
+        &tool_round_trip_causes,
     )?);
     checks.extend(guard_checks_for_connection(
         runtime_home,
@@ -2266,7 +2367,10 @@ mod tests {
             initialized_notification_at: Some("2026-07-18T00:00:02Z".to_owned()),
             tools_list_observed_at: Some("2026-07-18T00:00:03Z".to_owned()),
             required_tools_present: Some(required_tools_present),
-            designated_safe_tool_observed_at: Some("2026-07-18T00:00:04Z".to_owned()),
+            verification_tool_name: Some(
+                crate::connection_command::managed_host_round_trip_tool_name().to_owned(),
+            ),
+            verification_tool_observed_at: Some("2026-07-18T00:00:04Z".to_owned()),
             last_observed_at: "2026-07-18T00:00:04Z".to_owned(),
             terminal_finding_id: None,
             graceful_close_at: None,
@@ -2290,6 +2394,7 @@ mod tests {
             "revision_current",
             std::slice::from_ref(&session),
             Some(&session),
+            &[],
         )
         .expect("valid checks");
 
@@ -2346,6 +2451,7 @@ mod tests {
             "revision_current",
             std::slice::from_ref(&session),
             Some(&session),
+            &[],
         )
         .expect("valid checks");
 
@@ -2359,6 +2465,39 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_verification_tool_fails_with_expected_and_observed_names() {
+        let host = host("future");
+        let mut session = managed_session("future", true);
+        session.verification_tool_name = Some(volicord_types::STATUS_TOOL_NAME.to_owned());
+        let cause = DiagnosticFindingId::parse(
+            "finding.mcp_runtime_fixture.verification_tool_designation_mismatch",
+        )
+        .expect("finding id");
+
+        let checks = host_session_checks(
+            &host,
+            "revision_current",
+            std::slice::from_ref(&session),
+            Some(&session),
+            std::slice::from_ref(&cause),
+        )
+        .expect("designation mismatch checks");
+        let check = check_for(&checks, ConnectionCheckKind::ToolRoundTrip);
+        assert_eq!(check.status(), ConnectionCheckStatus::Failed);
+        assert_eq!(check.code(), Some("tool_round_trip_designation_mismatch"));
+        assert_eq!(check.cause_finding_ids(), &[cause]);
+        let details = check.details().expect("round-trip details").as_object();
+        assert_eq!(
+            details["expected_verification_tool_name"],
+            crate::connection_command::managed_host_round_trip_tool_name()
+        );
+        assert_eq!(
+            details["observed_verification_tool_name"],
+            volicord_types::STATUS_TOOL_NAME
+        );
+    }
+
+    #[test]
     fn initialize_response_without_initialized_notification_remains_pending() {
         let host = host("future");
         let mut session = managed_session("future", true);
@@ -2366,13 +2505,15 @@ mod tests {
         session.initialized_notification_at = None;
         session.tools_list_observed_at = None;
         session.required_tools_present = None;
-        session.designated_safe_tool_observed_at = None;
+        session.verification_tool_name = None;
+        session.verification_tool_observed_at = None;
 
         let checks = host_session_checks(
             &host,
             "revision_current",
             std::slice::from_ref(&session),
             Some(&session),
+            &[],
         )
         .expect("initialize-response-only checks");
 
@@ -2408,11 +2549,12 @@ mod tests {
         newer.initialized_notification_at = None;
         newer.tools_list_observed_at = None;
         newer.required_tools_present = None;
-        newer.designated_safe_tool_observed_at = None;
+        newer.verification_tool_name = None;
+        newer.verification_tool_observed_at = None;
         newer.last_observed_at = "2026-07-18T00:01:00Z".to_owned();
 
         let sessions = vec![newer.clone(), completed.clone()];
-        let checks = host_session_checks(&host, "revision_current", &sessions, Some(&newer))
+        let checks = host_session_checks(&host, "revision_current", &sessions, Some(&newer), &[])
             .expect("concurrent session checks");
         assert!(checks
             .iter()
@@ -2420,7 +2562,7 @@ mod tests {
 
         newer.terminal_finding_id = Some("finding.later_crash".to_owned());
         let sessions = vec![newer.clone(), completed];
-        let checks = host_session_checks(&host, "revision_current", &sessions, Some(&newer))
+        let checks = host_session_checks(&host, "revision_current", &sessions, Some(&newer), &[])
             .expect("terminal diagnostic checks");
         assert!(checks
             .iter()
@@ -2432,8 +2574,8 @@ mod tests {
         let host = host("future");
         let mut old = managed_session("future", true);
         old.connection_integration_revision = "revision_old".to_owned();
-        let stale =
-            host_session_checks(&host, "revision_current", &[], Some(&old)).expect("stale checks");
+        let stale = host_session_checks(&host, "revision_current", &[], Some(&old), &[])
+            .expect("stale checks");
         assert!(stale
             .iter()
             .all(|check| check.status() == ConnectionCheckStatus::Pending));
@@ -2448,6 +2590,7 @@ mod tests {
             "revision_current",
             std::slice::from_ref(&old),
             Some(&old),
+            &[],
         )
         .expect("CLI-preflight checks");
         assert!(cli
@@ -2461,7 +2604,7 @@ mod tests {
 
     #[test]
     fn no_managed_host_activity_keeps_the_protocol_chain_pending() {
-        let checks = host_session_checks(&host("future"), "revision_current", &[], None)
+        let checks = host_session_checks(&host("future"), "revision_current", &[], None, &[])
             .expect("pending host checks");
         for id in [
             ConnectionCheckKind::ProcessStartup,
@@ -2621,13 +2764,15 @@ mod tests {
     fn actual_current_protocol_incompatibility_fails_only_demonstrated_checks() {
         let host = host("future");
         let mut session = managed_session("future", true);
-        session.designated_safe_tool_observed_at = None;
+        session.verification_tool_name = None;
+        session.verification_tool_observed_at = None;
         session.terminal_finding_id = Some("finding.protocol_contract_mismatch".to_owned());
         let checks = host_session_checks(
             &host,
             "revision_current",
             std::slice::from_ref(&session),
             Some(&session),
+            &[],
         )
         .expect("protocol checks");
 
@@ -2664,13 +2809,15 @@ mod tests {
         session.initialized_notification_at = None;
         session.tools_list_observed_at = None;
         session.required_tools_present = None;
-        session.designated_safe_tool_observed_at = None;
+        session.verification_tool_name = None;
+        session.verification_tool_observed_at = None;
         session.terminal_finding_id = Some("finding.initialize_failed".to_owned());
         let checks = host_session_checks(
             &host,
             "revision_current",
             std::slice::from_ref(&session),
             Some(&session),
+            &[],
         )
         .expect("protocol checks");
 
@@ -2697,13 +2844,15 @@ mod tests {
         let mut session = managed_session("future", true);
         session.tools_list_observed_at = None;
         session.required_tools_present = None;
-        session.designated_safe_tool_observed_at = None;
+        session.verification_tool_name = None;
+        session.verification_tool_observed_at = None;
         session.terminal_finding_id = Some("finding.tools_list_failed".to_owned());
         let checks = host_session_checks(
             &host,
             "revision_current",
             std::slice::from_ref(&session),
             Some(&session),
+            &[],
         )
         .expect("protocol checks");
 
@@ -2739,7 +2888,8 @@ mod tests {
             .expect("MCP check"),
         ];
         checks.extend(
-            host_session_checks(&host, "revision_current", &[], None).expect("pending host checks"),
+            host_session_checks(&host, "revision_current", &[], None, &[])
+                .expect("pending host checks"),
         );
         let report = ConnectionVerificationReport::try_new(
             current_timestamp(),
@@ -2844,7 +2994,7 @@ mod tests {
     }
 
     #[test]
-    fn mcp_server_details_use_the_public_safe_tool_name_constant() {
+    fn mcp_server_details_use_the_canonical_verification_role() {
         let check = mcp_server_check(
             &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
             &McpVerification::from_exchange(
@@ -2864,7 +3014,7 @@ mod tests {
 
         assert_eq!(
             details["self_test"]["safe_read_only_tool"],
-            LIST_PROJECTS_TOOL_NAME
+            crate::connection_command::managed_host_round_trip_tool_name()
         );
     }
 

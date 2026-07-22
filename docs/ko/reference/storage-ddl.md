@@ -408,7 +408,15 @@ CREATE TABLE mcp_runtime_sessions (
   initialized_notification_at TEXT,
   tools_list_observed_at TEXT,
   required_tools_present INTEGER CHECK (required_tools_present IN (0, 1)),
-  designated_safe_tool_observed_at TEXT,
+  verification_tool_name TEXT CHECK (
+    verification_tool_name IS NULL
+    OR (
+      length(CAST(verification_tool_name AS BLOB)) BETWEEN 1 AND 128
+      AND length(verification_tool_name) = length(CAST(verification_tool_name AS BLOB))
+      AND verification_tool_name NOT GLOB '*[^A-Za-z0-9_.-]*'
+    )
+  ),
+  verification_tool_observed_at TEXT,
   last_observed_at TEXT NOT NULL,
   terminal_finding_id TEXT,
   graceful_close_at TEXT,
@@ -437,15 +445,19 @@ CREATE TABLE mcp_runtime_sessions (
     (tools_list_observed_at IS NULL AND required_tools_present IS NULL)
     OR (tools_list_observed_at IS NOT NULL AND required_tools_present IS NOT NULL)
   ),
+  CHECK (
+    (verification_tool_name IS NULL AND verification_tool_observed_at IS NULL)
+    OR (verification_tool_name IS NOT NULL AND verification_tool_observed_at IS NOT NULL)
+  ),
   CHECK (initialized_notification_at IS NULL OR initialize_completed_at IS NOT NULL),
   CHECK (negotiated_protocol_version IS NULL OR negotiated_protocol_version = selected_protocol_version),
-  CHECK (designated_safe_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
+  CHECK (verification_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
   CHECK (terminal_finding_id IS NULL OR graceful_close_at IS NULL),
   CHECK (last_observed_at >= process_started_at),
   CHECK (initialize_completed_at IS NULL OR initialize_completed_at >= process_started_at),
   CHECK (initialized_notification_at IS NULL OR initialized_notification_at >= initialize_completed_at),
   CHECK (tools_list_observed_at IS NULL OR tools_list_observed_at >= initialize_completed_at),
-  CHECK (designated_safe_tool_observed_at IS NULL OR designated_safe_tool_observed_at >= initialized_notification_at),
+  CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= initialized_notification_at),
   CHECK (terminal_finding_id IS NULL OR last_observed_at >= process_started_at),
   CHECK (graceful_close_at IS NULL OR graceful_close_at >= process_started_at)
 );
@@ -461,12 +473,13 @@ CREATE INDEX idx_mcp_runtime_sessions_successful_managed
   ON mcp_runtime_sessions (
     connection_internal_id,
     connection_integration_revision,
-    designated_safe_tool_observed_at
+    verification_tool_observed_at
   )
   WHERE session_source = 'managed_host'
     AND initialized_notification_at IS NOT NULL
     AND required_tools_present = 1
-    AND designated_safe_tool_observed_at IS NOT NULL;
+    AND verification_tool_name IS NOT NULL
+    AND verification_tool_observed_at IS NOT NULL;
 
 CREATE TABLE mcp_runtime_project_session_bindings (
   runtime_session_id TEXT NOT NULL,
@@ -541,7 +554,7 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_project
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
 - `diagnostic_findings`는 공유 typed finding 전체 형태를 엄격한 물리 column에 저장합니다. `facts_json`은 16,384 byte 이하의 유효한 JSON object이며 `subject_json`과 `actions_json`도 한도가 있는 typed 표현입니다. Runtime과 상관된 row에는 Connection과 integration-revision 좌표가 필요합니다. 현재 Connection 및 runtime-session index는 관찰 시각과 finding ID에 따른 결정적 순서를 제공합니다.
 - `diagnostic_cause_edges`는 양 끝에 foreign key가 있는 고유한 finding-to-cause 쌍을 저장합니다. `diagnostic_cause_edges_acyclic`은 방향성 cycle을 완성하는 insert를 거부하고, cause-side index는 결정적인 역방향 조회와 제한된 순회를 지원합니다.
-- `mcp_runtime_sessions.attempted_client_name`과 `attempted_client_version`은 한도가 있는 파싱된 client 쌍입니다. `requested_protocol_version`은 client 입력이고 `selected_protocol_version`은 server가 선택한 initialize 결과이며, `negotiated_protocol_version`은 handshake 완료와 함께 있을 때만 존재하고 선택 revision과 같아야 합니다. `initialize_completed_at`, `tools_list_observed_at`, `designated_safe_tool_observed_at`은 서로 다른 milestone입니다. `terminal_finding_id`는 같은 runtime의 구조화된 error finding 하나를 가리키는 foreign key이며 graceful close와 함께 있을 수 없습니다.
+- `mcp_runtime_sessions.attempted_client_name`과 `attempted_client_version`은 한도가 있는 파싱된 client 쌍입니다. `requested_protocol_version`은 client 입력이고 `selected_protocol_version`은 server가 선택한 initialize 결과이며, `negotiated_protocol_version`은 handshake 완료와 함께 있을 때만 존재하고 선택 revision과 같아야 합니다. `initialize_completed_at`과 `tools_list_observed_at`은 서로 다른 milestone입니다. 한도가 있는 MCP 도구 이름 `verification_tool_name`과 `verification_tool_observed_at`은 정확한 null-or-present 쌍이며 observation에는 initialized notification이 필요하고 그보다 앞설 수 없습니다. `terminal_finding_id`는 같은 runtime의 구조화된 error finding 하나를 가리키는 foreign key이며 graceful close와 함께 있을 수 없습니다.
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase에 결속됩니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 모든 필수 phase의 호환되는 현재 소유 `guard_events`를 요구합니다. 이 협력적 check는 OS 수준 집행이나 쓰기 방지를 제공하지 않습니다.
 - 명시적 제거 또는 migration에 따른 Connection Project 폐기는 immediate transaction 하나에서 소유자 순서로 삭제하여 제한적인 Registry foreign key를 충족합니다. 선택한 project-session binding을 선택한 Guard Installation과 membership보다 먼저 삭제합니다. 여러 프로젝트가 있는 migration은 관련 없는 프로젝트 행과 connection 전체 runtime session을 유지합니다. 마지막 프로젝트 migration은 host 정리와 최종 재검증이 성공할 때까지 비활성 membership, binding, Guard Installation, pending-cleanup marker의 완전한 inventory를 유지한 뒤 프로젝트 소유 행과 membership만 삭제합니다. 명시적으로 마지막 membership을 제거할 때는 Connection 소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 `mcp_runtime_sessions`, `agent_connections` 순서로 삭제하며, 구조화된 finding은 영속 이력 진단으로 남습니다. 어떤 경로도 `projects`, `runtime_home`, `installation_profile`, 프로젝트 `state.sqlite` 데이터베이스로 cascade하지 않습니다.
 

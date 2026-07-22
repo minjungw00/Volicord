@@ -5,9 +5,10 @@ use volicord_mcp::MaterializedManagedMcpLaunch;
 use volicord_mcp_protocol::{McpProtocolRevision, ProtocolRegistry};
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
 use volicord_types::{
-    ADAPTER_UTILITY_TOOL_NAMES, LIST_PROJECTS_TOOL_NAME, READ_ONLY_METHOD_TOOL_NAMES,
-    WORKFLOW_METHOD_TOOL_NAMES,
+    ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
 };
+
+use crate::connection_command::managed_host_round_trip_tool_name;
 
 use super::{
     failure::{
@@ -429,7 +430,7 @@ fn perform_mcp_exchange(
     progress.required_tools_validated = true;
 
     let mut call_params = json!({
-        "name": LIST_PROJECTS_TOOL_NAME,
+        "name": managed_host_round_trip_tool_name(),
         "arguments": {}
     });
     if let Some(metadata) = &probe.call_metadata {
@@ -851,6 +852,14 @@ mod tests {
             test_revision("2024-11-05"),
         )
         .is_err());
+    }
+
+    #[test]
+    fn self_test_tool_is_resolved_from_the_canonical_verification_role() {
+        assert_eq!(
+            managed_host_round_trip_tool_name(),
+            volicord_types::LIST_PROJECTS_TOOL_NAME
+        );
     }
 
     #[test]

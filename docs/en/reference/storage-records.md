@@ -142,11 +142,16 @@ parsed, including when later initialize validation fails.
 when initialize completes; `negotiated_protocol_version` remains null until the
 valid initialized notification fully completes that selected profile's
 handshake. Store separately records initialize completion, every actual
-`tools/list` result and required-tool-set fact, a successful designated
-safe/read-only Volicord call, one terminal structured finding ID, and graceful
-close. A protocol success is not emitted when its authoritative Store write
-fails. Best-effort diagnostics remain separate and cannot make an otherwise
-valid tool result fail.
+`tools/list` result and required-tool-set fact, the exact successful
+verification-tool identity/time pair `verification_tool_name` and
+`verification_tool_observed_at`, one terminal structured finding ID, and
+graceful close. The pair is both null or both present. A present name is an
+MCP-compatible 1 through 128 byte ASCII name, and its observation timestamp is
+not earlier than the initialized notification. Store accepts this pair only
+for a current enabled `managed_host` runtime and current Connection revision;
+`cli_preflight` cannot write it. A protocol success is not emitted when its
+authoritative Store write fails. Best-effort diagnostics remain separate and
+cannot make an otherwise valid tool result fail.
 
 Project `agent_sessions` are the project-local correlation projection. Each
 row names one Connection, carries a project integration revision that adds the

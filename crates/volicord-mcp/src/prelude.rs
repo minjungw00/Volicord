@@ -45,10 +45,11 @@ pub(crate) use volicord_store::{
         list_guard_installations, AgentSessionRuntimeBinding,
     },
     operational_sessions::{
-        mcp_runtime_session, record_mcp_designated_safe_tool_observation,
-        record_mcp_graceful_close, record_mcp_initialize_attempt, record_mcp_initialize_completion,
-        record_mcp_initialized_notification, record_mcp_terminal_finding, record_mcp_tools_list,
-        start_mcp_runtime_session, McpRuntimeSessionStart,
+        mcp_runtime_session, record_mcp_graceful_close, record_mcp_initialize_attempt,
+        record_mcp_initialize_completion, record_mcp_initialized_notification,
+        record_mcp_terminal_finding, record_mcp_tools_list,
+        record_mcp_verification_tool_observation, start_mcp_runtime_session,
+        McpRuntimeSessionStart,
     },
     runtime_home::{
         resolve_runtime_home as resolve_shared_runtime_home, RuntimeHomeResolutionError,

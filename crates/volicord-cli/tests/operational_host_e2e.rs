@@ -42,8 +42,9 @@ use volicord_store::operational_sessions::{
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    guard_manifest_from_json, DiagnosticFindingId, GuardHookPhase, GuardManagedOwnership,
-    GuardManifest, McpRuntimeSessionSource,
+    guard_manifest_from_json, tool_name_for_verification_role, DiagnosticFindingId, GuardHookPhase,
+    GuardManagedOwnership, GuardManifest, McpRuntimeSessionSource, ToolVerificationRole,
+    STATUS_TOOL_NAME,
 };
 
 const FUTURE_VERSION: &str = "999.0.0";
@@ -56,6 +57,11 @@ const CODEX_VERSION_ENV: &str = "VOLICORD_TEST_CODEX_VERSION";
 const EARLY_EXIT_STDERR_BYTES: usize = 3 * 1024;
 const CODEX_COMPATIBILITY_VERSION: &str = "0.108.0-alpha.12";
 const CODEX_COMPATIBILITY_REVISION: &str = "2025-06-18";
+
+fn managed_host_round_trip_tool_name() -> &'static str {
+    tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
+        .expect("canonical managed-host round-trip role")
+}
 
 fn main() {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
@@ -98,6 +104,7 @@ fn main() {
 
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     codex_2025_06_18_compatibility_records_managed_runtime_facts()?;
+    verification_tool_designation_mismatch_is_typed()?;
     managed_launch_contracts_survive_filtered_environments()?;
     fresh_operation_version_transition_and_read_only_status()?;
     connection_mode_transition_rebinds_guard_revision()?;
@@ -108,6 +115,69 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     protocol_failures_are_authoritative()?;
     local_process_and_configuration_failures_are_structured()?;
     guard_failures_are_current_and_structured()?;
+    Ok(())
+}
+
+fn verification_tool_designation_mismatch_is_typed() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::initialized("operational-verification-tool-mismatch")?;
+    let connection_id = fixture.connection_id();
+    fixture.run_successful_managed_mcp(
+        &connection_id,
+        &fixture.project_id(),
+        FUTURE_VERSION,
+        "future.session.verification.mismatch",
+    )?;
+    let runtime = latest_current_managed_runtime_session(&fixture.runtime_home, &connection_id)?
+        .ok_or("managed runtime for verification-tool mismatch")?;
+    let registry = rusqlite::Connection::open(fixture.runtime_home.join("registry.sqlite"))?;
+    assert_eq!(
+        registry.execute(
+            "UPDATE mcp_runtime_sessions SET verification_tool_name = ?2 WHERE runtime_session_id = ?1",
+            [&runtime.runtime_session_id, STATUS_TOOL_NAME],
+        )?,
+        1
+    );
+    drop(registry);
+
+    let output = fixture.run_connection("verify", FUTURE_VERSION, true)?;
+    let report = assert_connection_report(&output, 1, "verify", "failed")?;
+    let check = report["checks"]
+        .as_array()
+        .and_then(|checks| checks.iter().find(|check| check["id"] == "tool_round_trip"))
+        .ok_or("mismatched tool_round_trip check")?;
+    assert_eq!(check["status"], "failed");
+    assert_eq!(check["code"], "tool_round_trip_designation_mismatch");
+    assert_eq!(
+        check["details"]["expected_verification_tool_name"],
+        managed_host_round_trip_tool_name()
+    );
+    assert_eq!(
+        check["details"]["observed_verification_tool_name"],
+        STATUS_TOOL_NAME
+    );
+    let finding = report["findings"]
+        .as_array()
+        .and_then(|findings| {
+            findings
+                .iter()
+                .find(|finding| finding["code"] == "mcp.tool_verification.designation_mismatch")
+        })
+        .ok_or("typed verification-tool mismatch finding")?;
+    assert_eq!(
+        finding["facts"]["data"]["expected_tool_name"],
+        managed_host_round_trip_tool_name()
+    );
+    assert_eq!(
+        finding["facts"]["data"]["observed_tool_name"],
+        STATUS_TOOL_NAME
+    );
+
+    let verbose = fixture.run_connection_verbose("status", FUTURE_VERSION)?;
+    assert_eq!(verbose.status.code(), Some(1));
+    assert!(verbose.stderr.is_empty());
+    let verbose = String::from_utf8(verbose.stdout)?;
+    assert!(verbose.contains("Expected verification tool: volicord.list_projects"));
+    assert!(verbose.contains("Observed verification tool: volicord.status"));
     Ok(())
 }
 
@@ -170,7 +240,7 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
             tools_list_request(),
             managed_tool_call(
                 3,
-                "volicord.list_projects",
+                managed_host_round_trip_tool_name(),
                 json!({}),
                 "codex.compatibility.session",
             ),
@@ -234,7 +304,11 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
     assert!(session.initialized_notification_at.is_some());
     assert!(session.tools_list_observed_at.is_some());
     assert_eq!(session.required_tools_present, Some(true));
-    assert!(session.designated_safe_tool_observed_at.is_some());
+    assert_eq!(
+        session.verification_tool_name.as_deref(),
+        Some(managed_host_round_trip_tool_name())
+    );
+    assert!(session.verification_tool_observed_at.is_some());
     Ok(())
 }
 
@@ -270,7 +344,8 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
         assert!(partial.initialized_notification_at.is_none());
         assert!(partial.tools_list_observed_at.is_none());
         assert!(partial.required_tools_present.is_none());
-        assert!(partial.designated_safe_tool_observed_at.is_none());
+        assert!(partial.verification_tool_name.is_none());
+        assert!(partial.verification_tool_observed_at.is_none());
 
         let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
         let partial_report = assert_connection_report(&partial_status, 1, "status", "failed")?;
@@ -295,7 +370,9 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
                         && session.initialized_notification_at.is_some()
                         && session.tools_list_observed_at.is_some()
                         && session.required_tools_present == Some(true)
-                        && session.designated_safe_tool_observed_at.is_some()
+                        && session.verification_tool_name.as_deref()
+                            == Some(managed_host_round_trip_tool_name())
+                        && session.verification_tool_observed_at.is_some()
                 })
         );
     }
@@ -956,6 +1033,19 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     ] {
         assert_check(&complete_report, check_id, "passed", None);
     }
+    let round_trip = complete_report["checks"]
+        .as_array()
+        .and_then(|checks| checks.iter().find(|check| check["id"] == "tool_round_trip"))
+        .ok_or("tool_round_trip check")?;
+    assert_eq!(
+        round_trip["details"]["expected_verification_tool_name"],
+        managed_host_round_trip_tool_name()
+    );
+    assert_eq!(
+        round_trip["details"]["observed_verification_tool_name"],
+        managed_host_round_trip_tool_name()
+    );
+    assert!(round_trip["details"]["verification_tool_observed_at"].is_string());
     assert_eq!(complete_report["actions"], json!([]));
     assert_canonical_connection_command_shape(&complete_report);
 
@@ -986,7 +1076,9 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
         assert!(verbose.contains(check["summary"].as_str().expect("check summary")));
     }
     assert!(verbose.contains("    Tools returned:"));
-    assert!(verbose.contains("    Designated read-only tool: volicord.list_projects"));
+    assert!(verbose.contains("    Expected verification tool: volicord.list_projects"));
+    assert!(verbose.contains("    Observed verification tool: volicord.list_projects"));
+    assert!(verbose.contains("    Verification tool observed at:"));
     assert!(!verbose.contains("Details: {"));
     assert!(!verbose.contains("\":["));
 
@@ -1483,7 +1575,12 @@ impl OperationalFixture {
                 initialize_request(version),
                 initialized_notification(),
                 tools_list_request(),
-                managed_tool_call(3, "volicord.list_projects", json!({}), native_session),
+                managed_tool_call(
+                    3,
+                    managed_host_round_trip_tool_name(),
+                    json!({}),
+                    native_session,
+                ),
             ])?,
         )?;
         assert_eq!(output.status.code(), Some(0));
@@ -1579,14 +1676,18 @@ impl OperationalFixture {
 
         child.write(&json_lines(&[managed_tool_call(
             3,
-            "volicord.list_projects",
+            managed_host_round_trip_tool_name(),
             json!({}),
             native_session,
         )])?)?;
         let started = Instant::now();
         loop {
             if latest_current_managed_runtime_session(&self.runtime_home, connection_id)?
-                .is_some_and(|session| session.designated_safe_tool_observed_at.is_some())
+                .is_some_and(|session| {
+                    session.verification_tool_name.as_deref()
+                        == Some(managed_host_round_trip_tool_name())
+                        && session.verification_tool_observed_at.is_some()
+                })
             {
                 break;
             }
@@ -1760,14 +1861,14 @@ impl OperationalFixture {
             [connection_id],
             |row| row.get(0),
         )?;
-        let complete_cli_count: i64 = registry.query_row(
-            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1 AND session_source = 'cli_preflight' AND initialize_completed_at IS NOT NULL AND initialized_notification_at IS NOT NULL AND tools_list_observed_at IS NOT NULL AND required_tools_present = 1 AND designated_safe_tool_observed_at IS NOT NULL",
+        let cli_verification_evidence_count: i64 = registry.query_row(
+            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1 AND session_source = 'cli_preflight' AND (verification_tool_name IS NOT NULL OR verification_tool_observed_at IS NOT NULL)",
             [connection_id],
             |row| row.get(0),
         )?;
         assert_eq!(managed_count, 0);
         assert!(cli_count >= 1);
-        assert!(complete_cli_count >= 1);
+        assert_eq!(cli_verification_evidence_count, 0);
         Ok(())
     }
 

@@ -147,6 +147,13 @@ exact diagnostic-reference fields and process limits are owned by
 [Administrative CLI](../reference/admin-cli.md); MCP code meanings and safe
 negotiation facts are owned by [MCP Transport](../reference/mcp-transport.md).
 
+For `mcp.tool_verification.designation_mismatch`, compare only
+`facts.data.expected_tool_name` with `facts.data.observed_tool_name`. Then run
+the expected tool through the current managed Codex connection. The current
+expected tool is `volicord.list_projects`; a successful call to another
+read-only tool such as `volicord.status`, `volicord.get_operation_result`, or
+`volicord.check_close` does not satisfy managed-host round-trip verification.
+
 If `actual_mcp_peer_client_info.version` differs from
 `path_executable_probe.version`, first confirm which Codex process and PATH are
 active. This warning is useful evidence but is not by itself a fatal result;
@@ -156,8 +163,10 @@ do not replace one version with the other when reporting it.
 
 Confirm that Codex trusts the exact project and has reloaded the current
 `.codex/config.toml`. Check that the managed command points to the intended
-`volicord` binary and Runtime Home. Then run read-only `volicord.status` from
-the Codex tool list and perform administrative verification again.
+`volicord` binary and Runtime Home. Then run the current canonical verification
+tool, `volicord.list_projects`, from the Codex tool list and perform
+administrative verification again. Another read-only tool can help diagnose
+the connection but does not create the designated round-trip evidence.
 
 Configuration presence does not prove active tool discovery. If the current
 session still has no tools, preserve the diagnostics and start a fresh Codex

@@ -3,6 +3,10 @@ use std::error::Error;
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use volicord_store::{
+    operational_sessions::{
+        record_mcp_initialize_attempt, record_mcp_initialize_completion,
+        record_mcp_initialized_notification, start_mcp_runtime_session, McpRuntimeSessionStart,
+    },
     schema::{
         current_storage_manifest, current_storage_manifest_json, generated_schema_metadata,
         initialize_project_state_schema, initialize_registry_schema,
@@ -13,10 +17,11 @@ use volicord_store::{
     },
     StoreError, StoreFailureRoute,
 };
-use volicord_test_support::TempRuntimeHome;
+use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
 use volicord_types::{
-    canonical_json_string, GeneratedRelationKind, StorageDatabaseKind, StorageManifest,
-    STORAGE_CONTRACT_ID, STORAGE_ENABLED_CAPABILITIES,
+    canonical_json_string, GeneratedRelationKind, ManagedMcpClientInfo, McpRuntimeSessionSource,
+    StorageDatabaseKind, StorageManifest, LIST_PROJECTS_TOOL_NAME, STORAGE_CONTRACT_ID,
+    STORAGE_ENABLED_CAPABILITIES,
 };
 
 #[test]
@@ -24,7 +29,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 42);
-    assert_eq!(metadata.columns.len(), 502);
+    assert_eq!(metadata.columns.len(), 503);
     assert_eq!(metadata.indexes.len(), 69);
     assert_eq!(metadata.constraints.len(), 39);
     let agent_connection_columns = metadata
@@ -123,7 +128,8 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         "negotiated_protocol_version",
         "initialize_completed_at",
         "tools_list_observed_at",
-        "designated_safe_tool_observed_at",
+        "verification_tool_name",
+        "verification_tool_observed_at",
         "terminal_finding_id",
     ] {
         assert!(runtime_columns.contains(&required), "missing {required}");
@@ -154,11 +160,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:1a311d68e5862aa60d946ea8e4158830a79c9b6d7675cf75e3842b4bd60c8aa8"
+        "sha256:3786b445765cc41fdc643e7837a65b21ce361ceaa846feb347ecd8318f535150"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:8d26d6c208cbd5f9e6e7c78a893fdea956726ef10ecf6e7f3be9df8057e9f485"
+        "sha256:8b334c33827cb8158200cf5769da60f58dc528e35eb54057ed4c53aae0a8d085"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -192,12 +198,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:1a311d68e5862aa60d946ea8e4158830a79c9b6d7675cf75e3842b4bd60c8aa8\",",
+            "{\"canonical_ddl_digest\":\"sha256:3786b445765cc41fdc643e7837a65b21ce361ceaa846feb347ecd8318f535150\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:8d26d6c208cbd5f9e6e7c78a893fdea956726ef10ecf6e7f3be9df8057e9f485\"}"
+            "\"integrity_constraints_digest\":\"sha256:8b334c33827cb8158200cf5769da60f58dc528e35eb54057ed4c53aae0a8d085\"}"
         )
     );
     Ok(())
@@ -472,6 +478,66 @@ fn canonical_constraints_remain_executable() -> Result<(), Box<dyn Error>> {
         [],
     );
     assert!(duplicate.is_err());
+    Ok(())
+}
+
+#[test]
+fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("storage-runtime-verification-tool-constraints")?;
+    let runtime = start_mcp_runtime_session(
+        fixture.runtime_home_path(),
+        McpRuntimeSessionStart {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: Some("fixture-host".to_owned()),
+            process_id: 71,
+            process_started_at: "2026-07-22T00:00:00Z".to_owned(),
+        },
+    )?;
+    let client = ManagedMcpClientInfo::new("fixture-client", "1.0")?;
+    record_mcp_initialize_attempt(
+        fixture.runtime_home_path(),
+        &runtime.runtime_session_id,
+        &client,
+        "2025-11-25",
+        "2026-07-22T00:00:01Z",
+    )?;
+    record_mcp_initialize_completion(
+        fixture.runtime_home_path(),
+        &runtime.runtime_session_id,
+        "2025-11-25",
+        "2026-07-22T00:00:01Z",
+    )?;
+    record_mcp_initialized_notification(
+        fixture.runtime_home_path(),
+        &runtime.runtime_session_id,
+        "2025-11-25",
+        "2026-07-22T00:00:02Z",
+    )?;
+
+    let registry = Connection::open(fixture.runtime_home_path().join("registry.sqlite"))?;
+    let update = |name: Option<&str>, observed_at: Option<&str>| {
+        registry.execute(
+            "UPDATE mcp_runtime_sessions
+                SET verification_tool_name = ?2, verification_tool_observed_at = ?3
+              WHERE runtime_session_id = ?1",
+            params![runtime.runtime_session_id, name, observed_at],
+        )
+    };
+    assert!(update(Some(LIST_PROJECTS_TOOL_NAME), None).is_err());
+    assert!(update(None, Some("2026-07-22T00:00:03Z")).is_err());
+    assert!(update(Some("volicord/list projects"), Some("2026-07-22T00:00:03Z")).is_err());
+    assert!(update(
+        Some("volicord.list_projects\0ignored"),
+        Some("2026-07-22T00:00:03Z")
+    )
+    .is_err());
+    assert!(update(Some(LIST_PROJECTS_TOOL_NAME), Some("2026-07-22T00:00:01Z")).is_err());
+    assert_eq!(
+        update(Some(LIST_PROJECTS_TOOL_NAME), Some("2026-07-22T00:00:03Z"))?,
+        1
+    );
     Ok(())
 }
 
