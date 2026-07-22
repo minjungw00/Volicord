@@ -85,6 +85,34 @@ pub fn insert_diagnostic_finding_graph(
     Ok(inserted)
 }
 
+/// Inserts or replaces one current-state finding and its cause edges atomically.
+///
+/// Runtime-session findings are immutable occurrences and must use the
+/// insert-only APIs above.
+pub fn upsert_current_diagnostic_finding(
+    runtime_home: impl AsRef<Path>,
+    finding: &DiagnosticFinding,
+) -> StoreResult<DiagnosticFinding> {
+    if finding.runtime_session_id().is_some() {
+        return Err(StoreError::InvalidInput {
+            detail: "current-state diagnostic upsert does not accept runtime-session findings"
+                .to_owned(),
+        });
+    }
+    let prepared = prepare_graph(std::slice::from_ref(finding))?;
+    let prepared = prepared
+        .first()
+        .expect("one current diagnostic finding was prepared");
+
+    let path = registry_db_path(runtime_home);
+    let mut conn = open_registry_database(path)?;
+    let tx = begin_immediate_transaction(&mut conn)?;
+    validate_current_finding_references(&tx, prepared)?;
+    replace_current_finding(&tx, prepared)?;
+    tx.commit()?;
+    Ok(finding.clone())
+}
+
 /// Links one runtime session to an already-persisted terminal error finding.
 pub fn link_mcp_runtime_session_terminal_finding(
     runtime_home: impl AsRef<Path>,
@@ -489,6 +517,69 @@ fn validate_graph_references(
     Ok(())
 }
 
+fn validate_current_finding_references(
+    tx: &Transaction<'_>,
+    prepared: &PreparedFinding<'_>,
+) -> StoreResult<()> {
+    let finding = prepared.finding;
+    if let Some(existing) = diagnostic_finding_from_conn(tx, finding.id().as_str())? {
+        if existing.runtime_session_id().is_some() {
+            return Err(StoreError::Conflict {
+                entity: "diagnostic_finding",
+                id: finding.id().to_string(),
+                detail: "immutable runtime-session finding cannot be replaced".to_owned(),
+            });
+        }
+    }
+    if let Some(connection_id) = finding.connection_id() {
+        if raw_agent_connection_record_from_conn(tx, connection_id.as_str())?.is_none() {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "diagnostic finding {} references missing Agent Connection {}",
+                    finding.id(),
+                    connection_id
+                ),
+            });
+        }
+    }
+    if let Some(project_id) = finding.project_id() {
+        if raw_project_record_from_conn(tx, project_id.as_str())?.is_none() {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "diagnostic finding {} references missing project {}",
+                    finding.id(),
+                    project_id
+                ),
+            });
+        }
+    }
+    for cause in finding.causes() {
+        let cause_id = cause.finding_id().as_str();
+        if cause_id == finding.id().as_str() {
+            return Err(StoreError::InvalidInput {
+                detail: format!("diagnostic finding {} cannot cause itself", finding.id()),
+            });
+        }
+        if tx
+            .query_row(
+                "SELECT 1 FROM diagnostic_findings WHERE finding_id = ?1",
+                [cause_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_none()
+        {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "diagnostic finding {} references missing cause {cause_id}",
+                    finding.id()
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn insert_prepared_graph(
     tx: &Transaction<'_>,
     prepared: &[PreparedFinding<'_>],
@@ -533,6 +624,73 @@ fn insert_prepared_graph(
                 params![item.finding.id().as_str(), cause.finding_id().as_str()],
             )?;
         }
+    }
+    Ok(())
+}
+
+fn replace_current_finding(
+    tx: &Transaction<'_>,
+    prepared: &PreparedFinding<'_>,
+) -> StoreResult<()> {
+    let finding = prepared.finding;
+    let exists = tx
+        .query_row(
+            "SELECT 1 FROM diagnostic_findings WHERE finding_id = ?1",
+            [finding.id().as_str()],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if !exists {
+        return insert_prepared_graph(tx, std::slice::from_ref(prepared));
+    }
+
+    tx.execute(
+        "DELETE FROM diagnostic_cause_edges WHERE finding_id = ?1",
+        [finding.id().as_str()],
+    )?;
+    tx.execute(
+        "UPDATE diagnostic_findings
+            SET code = ?2,
+                domain = ?3,
+                stage = ?4,
+                severity = ?5,
+                source = ?6,
+                subject_json = ?7,
+                facts_json = ?8,
+                actions_json = ?9,
+                correlation_id = ?10,
+                connection_internal_id = ?11,
+                project_internal_id = ?12,
+                runtime_session_id = NULL,
+                integration_revision = ?13,
+                observed_at = ?14
+          WHERE finding_id = ?1",
+        params![
+            finding.id().as_str(),
+            finding.code().as_str(),
+            finding.domain().as_str(),
+            finding.stage().as_str(),
+            severity_str(finding.severity()),
+            finding.source().as_str(),
+            prepared.subject_json,
+            prepared.facts_json,
+            prepared.actions_json,
+            finding.correlation_id(),
+            finding.connection_id().map(|value| value.as_str()),
+            finding.project_id().map(|value| value.as_str()),
+            finding
+                .integration_revision()
+                .map(IntegrationRevision::as_str),
+            finding.observed_at().to_canonical_string(),
+        ],
+    )?;
+    for cause in finding.causes() {
+        tx.execute(
+            "INSERT INTO diagnostic_cause_edges (finding_id, cause_finding_id)
+             VALUES (?1, ?2)",
+            params![finding.id().as_str(), cause.finding_id().as_str()],
+        )?;
     }
     Ok(())
 }

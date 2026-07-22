@@ -1827,18 +1827,27 @@ mod persisted_metadata_tests {
             .expect("verify should persist one canonical report");
         assert_eq!(output["status"], persisted.status().as_str());
         assert_eq!(output["checks"], serde_json::to_value(persisted.checks())?);
+        let finding_id_for_code = |code: &str| {
+            output["findings"]
+                .as_array()
+                .and_then(|findings| findings.iter().find(|finding| finding["code"] == code))
+                .and_then(|finding| finding["id"].as_str())
+                .expect("current typed finding")
+        };
+        let guard_root = finding_id_for_code("guard.manifest.mismatch");
+        let managed_config_root = finding_id_for_code("managed_config.entry.missing");
         assert_eq!(
             output["actions"],
             serde_json::json!([
                 {
                     "code": "action.guard.repair",
                     "summary": "Repair the current Guard installation",
-                    "root_cause_ids": ["finding.connection_fixture.guard_manifest_mismatch"]
+                    "root_cause_ids": [guard_root]
                 },
                 {
                     "code": "action.managed_config.repair",
                     "summary": "Repair the managed host configuration",
-                    "root_cause_ids": ["finding.connection_fixture.managed_config_entry_missing"]
+                    "root_cause_ids": [managed_config_root]
                 }
             ])
         );

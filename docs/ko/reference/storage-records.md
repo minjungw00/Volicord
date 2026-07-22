@@ -71,6 +71,14 @@ correlation ID, 해당하는 Connection·project·runtime-session·integration-r
 byte 한도를 검증합니다. 환경 dump, 원본 request, 제한 없는 stderr, credential, 한도 없는
 fact object는 저장하지 않습니다.
 
+Store는 두 finding lifecycle에 서로 다른 영속 경로를 제공합니다. Runtime, process,
+protocol 관찰을 포함한 발생형 finding은 insert-only graph 삽입을 사용합니다. 현재 상태
+운영 finding은 주체를 구분하는 안정적인 ID와 `upsert_current_diagnostic_finding`을
+사용합니다. 이 작업은 입력 또는 기존 runtime-session finding을 거부하고 immediate
+Registry transaction 하나에서 현재 row 데이터와 그 row에서 나가는 모든 cause edge를
+교체합니다. 검증, 원인 부재 또는 cycle 실패가 발생하면 row와 edge 교체를 모두 rollback해
+이전 snapshot을 보존합니다.
+
 `diagnostic_cause_edges`는 finding에서 원인 finding으로 향하는 edge 하나를 저장합니다.
 양쪽 끝은 기존 finding을 가리켜야 하고 composite primary key가 중복을 거부하며, insert
 trigger와 Store graph 검증이 cycle을 거부합니다. Store는 immediate transaction 하나에서
@@ -83,7 +91,10 @@ Finding은 ID별, runtime session별, 정확한 현재 Connection integration re
 수 있습니다. `runtime_session_id`가 있는 finding에는 해당 runtime의 Connection과
 integration revision도 있어야 합니다. 현재 Connection 조회는 이전 integration revision의
 finding을 현재 finding으로 해석하지 않습니다. 이 Registry finding은 `diagnostics.sqlite`의
-한도가 있는 비권한 counter와 구분됩니다.
+한도가 있는 비권한 counter와 구분됩니다. 현재 Connection 보고서는 check가 명시적으로
+참조한 finding ID에서 시작해 한도가 있는 cause chain을 읽으며, 독립적인 현재 finding은
+해당 보고서 작업이 의도적으로 선택한 경우에만 포함합니다. 같은 revision에 저장된 모든
+finding을 한꺼번에 읽지 않습니다.
 
 ## 권위 있는 운영 Session
 

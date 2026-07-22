@@ -814,6 +814,7 @@ mod tests {
     use std::{ffi::OsString, fs};
 
     use rusqlite::OptionalExtension;
+    use serde::Serialize;
     use serde_json::Value;
     use volicord_core::{CoreService, InvocationContext};
     use volicord_store::diagnostics::{
@@ -821,6 +822,10 @@ mod tests {
         start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind,
         DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
         WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
+    };
+    use volicord_store::{
+        diagnostic_findings::upsert_current_diagnostic_finding,
+        operational_sessions::connection_integration_revision,
     };
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
     use volicord_types::{
@@ -906,6 +911,76 @@ mod tests {
                 }])
             );
         }
+    }
+
+    #[derive(Serialize)]
+    struct CurrentLookupFacts<'a> {
+        observed_state: &'a str,
+    }
+
+    impl DiagnosticFactSource for CurrentLookupFacts<'_> {}
+
+    #[test]
+    fn diagnostics_show_returns_latest_current_state_for_stable_id() {
+        let fixture = CoreFixture::new("diagnostics-show-current-state").expect("fixture");
+        let connection =
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())
+                .expect("connection lookup")
+                .expect("connection");
+        let revision = connection_integration_revision(&connection).expect("revision");
+        let finding_id =
+            DiagnosticFindingId::parse("finding.current.lookup.stable").expect("finding ID");
+        let make_finding = |observed_state: &'static str, observed_at: &'static str| {
+            DiagnosticFinding::try_new(
+                finding_id.clone(),
+                DiagnosticCode::parse("managed_config.command.drift").expect("code"),
+                DiagnosticDomain::parse("configuration").expect("domain"),
+                DiagnosticStage::parse("managed_configuration").expect("stage"),
+                DiagnosticSeverity::Error,
+                DiagnosticSource::parse("administrative_cli").expect("source"),
+                DiagnosticSubject::try_new("managed_config_target", "/bounded/current/config.toml")
+                    .expect("subject"),
+                DiagnosticFacts::project(&CurrentLookupFacts { observed_state }).expect("facts"),
+                UtcTimestamp::parse(observed_at).expect("time"),
+            )
+            .and_then(|finding| {
+                finding.with_connection_id(AgentConnectionId::new(fixture.connection_id()))
+            })
+            .map(|finding| finding.with_integration_revision(revision.clone()))
+            .expect("finding")
+        };
+        let original = make_finding("missing", "2026-07-22T01:02:03Z");
+        let latest = make_finding("drift", "2026-07-22T02:03:04Z");
+        upsert_current_diagnostic_finding(fixture.runtime_home_path(), &original)
+            .expect("initial snapshot");
+        upsert_current_diagnostic_finding(fixture.runtime_home_path(), &latest)
+            .expect("replacement snapshot");
+
+        let error = run_diagnostics_command(
+            DiagnosticsArgs {
+                command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                    finding_id: finding_id.to_string(),
+                    json: true,
+                }),
+            },
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect_err("finding lookup uses the typed failure output channel");
+        let DiagnosticsCommandError::FailureOutput(output) = error else {
+            panic!("finding lookup returned an ad hoc error: {error}");
+        };
+        let report: Value = serde_json::from_str(&output).expect("diagnostic report JSON");
+        assert_eq!(report["findings"][0]["id"], finding_id.as_str());
+        assert_eq!(
+            report["findings"][0]["subject"]["reference"],
+            "/bounded/current/config.toml"
+        );
+        assert_eq!(
+            report["findings"][0]["facts"]["data"]["observed_state"],
+            "drift"
+        );
+        assert_eq!(report["findings"][0]["observed_at"], "2026-07-22T02:03:04Z");
     }
 
     #[test]

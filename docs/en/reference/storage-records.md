@@ -78,6 +78,15 @@ observation time. Store validates the shared type and serialized byte bounds
 before opening a write transaction. It never stores an environment dump, raw
 request, unrestricted stderr, credential, or unbounded fact object.
 
+Store exposes separate persistence paths for the two finding lifecycles.
+Occurrence findings, including runtime, process, and protocol observations,
+use insert-only graph insertion. Current-state operational findings use a
+subject-aware stable ID and `upsert_current_diagnostic_finding`. That operation
+rejects any incoming or existing runtime-session finding and, in one immediate
+Registry transaction, replaces the current row data and all of its outgoing
+cause edges. A validation, missing-cause, or cycle failure rolls back both the
+row replacement and edge replacement, preserving the prior snapshot.
+
 `diagnostic_cause_edges` stores one directed finding-to-cause edge. Both ends
 must name existing findings, the composite primary key rejects duplicates, and
 the insert trigger plus Store graph validation reject cycles. Store inserts all
@@ -91,7 +100,11 @@ Connection integration revision. A finding with `runtime_session_id` must also
 carry that runtime's Connection and integration revision. The current-
 Connection query does not reinterpret findings from a prior integration
 revision as current. These Registry findings remain separate from bounded
-non-authority counters in `diagnostics.sqlite`.
+non-authority counters in `diagnostics.sqlite`. A current Connection report
+starts from the finding IDs explicitly referenced by its checks, loads their
+bounded cause chains, and includes an otherwise independent current finding
+only when that report operation deliberately selects it. It does not bulk-load
+every finding stored for the same revision.
 
 ## Authoritative Operational Sessions
 

@@ -323,6 +323,15 @@ report의 projection이며 같은 root를 식별합니다. 렌더러는 summary 
 remediation category를 만들지 않고 `DiagnosticFinding`이 가린 fact를 다시 노출하지
 않습니다.
 
+현재 Connection 보고서는 `failed` 및 `blocked` check가 참조한 정확한 ID에서 finding을
+선택하고 그 finding의 한도가 있는 cause chain만 읽습니다. 독립적인 현재 finding은 작업이
+의도적으로 선택한 경우에만 나타나며, 같은 integration revision에 저장된 모든 finding을
+현재 상태로 취급하지 않습니다. CLI 소유 현재 상태 운영 finding은 typed subject로 정확한
+managed-config target, Product Repository, Guard 관리 artifact, Guard phase 또는 event,
+Guard Installation, runtime session을 식별합니다. 안정적인 ID는 해당 정규 subject의
+한도가 있는 digest를 포함하므로 artifact나 phase가 둘이면 diagnostic code가 같아도 finding
+둘을 유지하고, 주체 하나를 다시 관찰하면 그 snapshot만 갱신합니다.
+
 JSON projection은 `generated_at`을 report 시각으로 담고, 값이 있으면 Connection
 context에 정확한 현재 integration revision을 담습니다. 영속 verification의 `checked_at`은
 해당 verification 관찰 시각으로 남으며 경쟁하는 두 번째 최상위 시각으로 반복하지

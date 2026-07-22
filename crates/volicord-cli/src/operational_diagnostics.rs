@@ -1,8 +1,9 @@
 //! Typed findings for Volicord-owned administrative and integration boundaries.
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use volicord_store::{
-    diagnostic_findings::{diagnostic_finding, insert_diagnostic_finding},
+    diagnostic_findings::upsert_current_diagnostic_finding,
     operational_sessions::connection_integration_revision,
 };
 use volicord_types::{
@@ -500,19 +501,21 @@ pub(crate) fn persist_connection_operational_finding(
     runtime_home: &std::path::Path,
     connection: &volicord_store::agent_connections::AgentConnectionRecord,
     diagnostic: OperationalDiagnostic,
+    subject_kind: &'static str,
+    subject_reference: impl Into<String>,
     facts: &OperationalDiagnosticFacts,
     observed_at: UtcTimestamp,
 ) -> Result<DiagnosticFindingId, ConnectionCommandError> {
-    let finding_id = connection_operational_finding_id(connection, diagnostic)?;
-    if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
-        return Ok(finding_id);
-    }
+    let subject_reference = subject_reference.into();
+    let subject = DiagnosticSubject::try_new(subject_kind, subject_reference.clone())
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let finding_id = connection_operational_finding_id(connection, diagnostic, &subject)?;
     let revision = connection_integration_revision(connection)?;
     let finding = operational_diagnostic_finding(
         diagnostic,
         finding_id.to_string(),
-        "agent_connection",
-        &connection.connection_internal_id,
+        subject_kind,
+        subject_reference,
         facts,
         observed_at,
     )
@@ -528,20 +531,48 @@ pub(crate) fn persist_connection_operational_finding(
         )
     })
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    insert_diagnostic_finding(runtime_home, &finding)?;
+    upsert_current_diagnostic_finding(runtime_home, &finding)?;
     Ok(finding_id)
 }
 
 pub(crate) fn connection_operational_finding_id(
     connection: &volicord_store::agent_connections::AgentConnectionRecord,
     diagnostic: OperationalDiagnostic,
+    subject: &DiagnosticSubject,
 ) -> Result<DiagnosticFindingId, ConnectionCommandError> {
-    let id_suffix = diagnostic.code().replace('.', "_");
+    current_operational_finding_id(
+        &connection.connection_internal_id,
+        diagnostic.code(),
+        subject,
+    )
+}
+
+fn current_operational_finding_id(
+    connection_internal_id: &str,
+    diagnostic_code: &str,
+    subject: &DiagnosticSubject,
+) -> Result<DiagnosticFindingId, ConnectionCommandError> {
+    let id_suffix = diagnostic_code.replace('.', "_");
+    let subject_digest = current_subject_identity_digest(subject);
     DiagnosticFindingId::parse(format!(
-        "finding.{}.{}",
-        connection.connection_internal_id, id_suffix
+        "finding.{}.{}.{}",
+        connection_internal_id, id_suffix, subject_digest
     ))
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+}
+
+fn current_subject_identity_digest(subject: &DiagnosticSubject) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"volicord.current-diagnostic-subject\0");
+    digest.update(subject.kind().as_bytes());
+    digest.update(b"\0");
+    digest.update(subject.reference().as_bytes());
+    let digest = digest.finalize();
+    let mut suffix = String::with_capacity(32);
+    for byte in digest.iter().take(16) {
+        suffix.push_str(&format!("{byte:02x}"));
+    }
+    suffix
 }
 
 pub(crate) fn guard_artifact_kind(artifact: GuardManagedArtifact) -> String {
@@ -555,7 +586,8 @@ pub(crate) fn guard_artifact_kind(artifact: GuardManagedArtifact) -> String {
 
 #[cfg(test)]
 mod tests {
-    use volicord_types::GuardHookPhase;
+    use volicord_test_support::core_fixtures::CoreFixture;
+    use volicord_types::{GuardHookPhase, MAX_DIAGNOSTIC_IDENTIFIER_BYTES};
 
     use super::*;
 
@@ -690,6 +722,221 @@ mod tests {
         assert_eq!(
             OperationalDiagnostic::Revision(RevisionDiagnostic::IntegrationStale).code(),
             "revision.integration.stale"
+        );
+    }
+
+    #[test]
+    fn current_operational_ids_are_subject_aware_bounded_and_path_opaque() {
+        let code = GuardDiagnostic::ManagedFileMissing.code();
+        let first = DiagnosticSubject::try_new(
+            "guard_managed_artifact",
+            "/private/work/product/.volicord/guard-a.json",
+        )
+        .expect("first subject");
+        let second = DiagnosticSubject::try_new(
+            "guard_managed_artifact",
+            "/private/work/product/.volicord/guard-b.json",
+        )
+        .expect("second subject");
+        let first_id = current_operational_finding_id("conn_0123456789abcdef", code, &first)
+            .expect("first finding id");
+        let repeated_id = current_operational_finding_id("conn_0123456789abcdef", code, &first)
+            .expect("repeated finding id");
+        let second_id = current_operational_finding_id("conn_0123456789abcdef", code, &second)
+            .expect("second finding id");
+
+        assert_eq!(first_id, repeated_id);
+        assert_ne!(first_id, second_id);
+        assert!(first_id.as_str().len() <= MAX_DIAGNOSTIC_IDENTIFIER_BYTES);
+        assert!(!first_id.as_str().contains("private"));
+        assert!(!first_id.as_str().contains("guard-a.json"));
+        assert!(first_id
+            .as_str()
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || b"_.:-".contains(&byte)));
+    }
+
+    #[test]
+    fn same_code_guard_phases_keep_exact_distinct_subjects() {
+        let code = GuardDiagnostic::RequiredPhaseNotObserved.code();
+        let pre_tool = DiagnosticSubject::try_new("guard_phase", "pre_tool").expect("phase");
+        let post_tool = DiagnosticSubject::try_new("guard_phase", "post_tool").expect("phase");
+        let pre_id = current_operational_finding_id("conn_phase", code, &pre_tool).expect("id");
+        let post_id = current_operational_finding_id("conn_phase", code, &post_tool).expect("id");
+
+        assert_ne!(pre_id, post_id);
+        assert_eq!(pre_tool.reference(), "pre_tool");
+        assert_eq!(post_tool.reference(), "post_tool");
+    }
+
+    #[test]
+    fn persisted_guard_phases_remain_distinct_and_refresh_current_facts() {
+        let fixture = CoreFixture::new("current-guard-phase-findings").expect("fixture");
+        let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+        )
+        .expect("connection lookup")
+        .expect("connection");
+        let diagnostic = OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved);
+        let pre_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &connection,
+            diagnostic,
+            "guard_phase",
+            "pre_tool",
+            &OperationalDiagnosticFacts {
+                observed_state: Some("missing"),
+                guard_phase: Some("pre_tool".to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            UtcTimestamp::parse("2026-07-22T01:02:03Z").expect("time"),
+        )
+        .expect("pre-tool finding");
+        let post_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &connection,
+            diagnostic,
+            "guard_phase",
+            "post_tool",
+            &OperationalDiagnosticFacts {
+                observed_state: Some("missing"),
+                guard_phase: Some("post_tool".to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            UtcTimestamp::parse("2026-07-22T01:02:04Z").expect("time"),
+        )
+        .expect("post-tool finding");
+        let repeated_pre_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &connection,
+            diagnostic,
+            "guard_phase",
+            "pre_tool",
+            &OperationalDiagnosticFacts {
+                observed_state: Some("still_missing"),
+                guard_phase: Some("pre_tool".to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            UtcTimestamp::parse("2026-07-22T02:03:04Z").expect("time"),
+        )
+        .expect("refreshed pre-tool finding");
+
+        assert_ne!(pre_id, post_id);
+        assert_eq!(pre_id, repeated_pre_id);
+        let pre = volicord_store::diagnostic_findings::diagnostic_finding(
+            fixture.runtime_home_path(),
+            &pre_id,
+        )
+        .expect("pre lookup")
+        .expect("pre finding");
+        let post = volicord_store::diagnostic_findings::diagnostic_finding(
+            fixture.runtime_home_path(),
+            &post_id,
+        )
+        .expect("post lookup")
+        .expect("post finding");
+        assert_eq!(pre.subject().reference(), "pre_tool");
+        assert_eq!(post.subject().reference(), "post_tool");
+        assert_eq!(pre.facts().data()["guard_phase"], "pre_tool");
+        assert_eq!(post.facts().data()["guard_phase"], "post_tool");
+        assert_eq!(pre.facts().data()["observed_state"], "still_missing");
+        assert_eq!(
+            pre.observed_at().to_canonical_string(),
+            "2026-07-22T02:03:04Z"
+        );
+    }
+
+    #[test]
+    fn revision_snapshot_refreshes_same_subject_without_stale_facts() {
+        let fixture = CoreFixture::new("current-revision-finding").expect("fixture");
+        let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+        )
+        .expect("connection lookup")
+        .expect("connection");
+        let first_revision = connection_integration_revision(&connection).expect("revision");
+        let diagnostic = OperationalDiagnostic::Revision(RevisionDiagnostic::ObservationMismatch);
+        let first_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &connection,
+            diagnostic,
+            "guard_installation",
+            "guard_installation_revision_subject",
+            &OperationalDiagnosticFacts {
+                expected_revision: Some(first_revision.as_str().to_owned()),
+                observed_revision: Some(
+                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        .to_owned(),
+                ),
+                ..OperationalDiagnosticFacts::default()
+            },
+            UtcTimestamp::parse("2026-07-22T01:02:03Z").expect("time"),
+        )
+        .expect("first revision finding");
+
+        let registry = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+            fixture.runtime_home_path(),
+        ))
+        .expect("registry");
+        registry
+            .execute(
+                "UPDATE agent_connections
+                    SET integration_generation = integration_generation + 1,
+                        updated_at = '2026-07-22T02:03:04Z'
+                  WHERE connection_internal_id = ?1",
+                [fixture.connection_id()],
+            )
+            .expect("advance connection revision");
+        drop(registry);
+        let changed_connection =
+            volicord_store::agent_connections::agent_connection_record_read_only(
+                fixture.runtime_home_path(),
+                fixture.connection_id(),
+            )
+            .expect("changed connection lookup")
+            .expect("changed connection");
+        let changed_revision =
+            connection_integration_revision(&changed_connection).expect("changed revision");
+        assert_ne!(first_revision, changed_revision);
+        let repeated_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &changed_connection,
+            diagnostic,
+            "guard_installation",
+            "guard_installation_revision_subject",
+            &OperationalDiagnosticFacts {
+                expected_revision: Some(changed_revision.as_str().to_owned()),
+                observed_revision: Some(first_revision.as_str().to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            UtcTimestamp::parse("2026-07-22T02:03:05Z").expect("time"),
+        )
+        .expect("changed revision finding");
+
+        assert_eq!(first_id, repeated_id);
+        let current = volicord_store::diagnostic_findings::diagnostic_finding(
+            fixture.runtime_home_path(),
+            &first_id,
+        )
+        .expect("finding lookup")
+        .expect("finding");
+        assert_eq!(
+            current.facts().data()["expected_revision"],
+            changed_revision.as_str()
+        );
+        assert_eq!(
+            current.facts().data()["observed_revision"],
+            first_revision.as_str()
+        );
+        assert_eq!(
+            current
+                .integration_revision()
+                .map(IntegrationRevision::as_str),
+            Some(changed_revision.as_str())
         );
     }
 

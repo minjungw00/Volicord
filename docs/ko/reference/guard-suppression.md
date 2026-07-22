@@ -144,6 +144,14 @@ projection하지 않습니다. File, manifest, wrapper, 호환되지 않는 관�
 `action.guard.trigger_phase`를 사용합니다. Prompt-capture code는 각 집중 action을
 유지합니다. 사람용 summary를 parsing해 action을 고르지 않습니다.
 
+현재 상태 Guard 진단은 정확한 관리 artifact, installation, 필수 phase 또는 호환되지 않는
+event를 typed subject로 사용합니다. 안정적인 ID에는 관리 경로가 아니라 해당 정규
+subject의 한도가 있는 digest만 들어갑니다. 따라서 같은 Guard code가 여러 영향받는
+artifact나 phase를 충돌 없이 식별할 수 있습니다. 같은 주체를 다시 관찰하면 그 finding의
+안전한 facts, 관찰 시각, revision 좌표, cause edge를 갱신하며 오래된 현재 상태 사본을
+추가하지 않습니다. Connection 보고서는 현재 check가 참조한 Guard finding과 그 한도가
+있는 cause chain만 포함합니다.
+
 ### Guard 검증 Dependency
 
 Connection 검증은 다음과 같은 명시적인 Guard dependency graph를 사용합니다.

@@ -778,6 +778,18 @@ detail과 verbose 출력도 같은 정확한 이름을 노출합니다. 한도 �
 diagnostic으로 받아들입니다. 집중 host 담당 문서는 지원하지 않는 현재 host revision
 code를 정의하지 않으므로 CLI도 이를 만들어 내지 않습니다.
 
+이 CLI 소유 운영 finding은 Connection, code, 정규 typed subject를 key로 하는 현재 상태
+snapshot입니다. 관리 artifact나 Guard phase 두 곳에서 같은 code가 실패해도 서로 다른
+opaque ID를 가집니다. 같은 주체에 활성 검증을 반복하면 ID를 보존하면서 안전한 facts,
+관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로 갱신합니다. Runtime, process,
+protocol 발생형 finding은 insert-only로 남으며 이 현재 상태 경로로 덮어쓸 수 없습니다.
+
+Connection status 및 verification 보고서는 check가 명시적으로 참조한 현재 finding ID,
+그 한도가 있는 cause chain, 작업이 의도적으로 선택한 독립 현재 finding만 읽습니다. 같은
+revision에 저장되어 있어도 해소됐거나 관련 없는 finding은 현재 보고서에 다시 나타나지
+않습니다. 정확한 ID를 지정한 `diagnostics show`는 최신 현재 상태 snapshot을 계속
+반환하고, `diagnostics session`은 변경할 수 없는 runtime 발생 관찰 조회를 유지합니다.
+
 <a id="authority-bundle-export"></a>
 ## 권한 번들 내보내기
 

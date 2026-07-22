@@ -361,6 +361,17 @@ JSON output are projections of this same report and identify the same roots.
 No renderer derives a cause or remediation category from summary prose, and no
 projection re-exposes a fact redacted by `DiagnosticFinding`.
 
+A current Connection report selects findings from the exact IDs referenced by
+its `failed` and `blocked` checks and then loads only their bounded cause
+chains. An independent current finding appears only when the operation
+deliberately selects it; the report never treats every stored finding on the
+same integration revision as current. CLI-owned current-state operational
+findings identify the exact managed-config target, Product Repository, Guard
+managed artifact, Guard phase or event, Guard Installation, or runtime session
+in their typed subject. Stable IDs include a bounded digest of that canonical
+subject, so the same diagnostic code on two artifacts or phases remains two
+findings and re-observing one subject refreshes only its snapshot.
+
 The JSON projection includes `generated_at` as the report time and the exact
 current integration revision in Connection context when one exists. The
 persisted verification `checked_at` remains the observation time for that

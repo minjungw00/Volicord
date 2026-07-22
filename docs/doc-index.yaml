@@ -1525,6 +1525,7 @@ documents:
   - fail-closed persisted authority, policy, and typed-data corruption handling
   - shared bounded `DiagnosticFinding` fields, safe-fact projection, cause-graph integrity, and
     pre-Registry `VOLICORD_DIAGNOSTIC_V1` stderr envelope
+  - immutable occurrence findings versus subject-aware replaceable current-state operational findings
   - single current schema-2 `DiagnosticReport`, structural observation states, derived roots, and
     report-action correlation
   - prohibition on synthetic identifiers, fabricated records, fallback formats, and default-value
@@ -1557,6 +1558,7 @@ documents:
   - explicit 512-event scan budget and 513-candidate truncation detection
   - fail-safe preservation of every observed path when suppression is unavailable
   - machine-readable warning, diagnostic, and related-event reason projection
+  - subject-aware current Guard findings for exact artifacts, installations, phases, and events
   depends_on:
   - reference.failure-model
   - reference.runtime-boundaries
@@ -1667,6 +1669,7 @@ documents:
   - CLI inbox listing and CLI-only UserAction resolution
   - bounded finding and runtime-session diagnostic lookup commands, workflow metrics, policy,
     authority-bundle export, and change-reconciliation commands
+  - current-state operational finding refresh and current Connection report finding selection
   - administrative command boundary from public Volicord API methods
   depends_on:
   - reference.runtime-boundaries
@@ -2531,8 +2534,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2549,7 +2552,8 @@ documents:
   - immutable Store-owned Connection integration-instance identity and physical recreation boundary
   - single nullable canonical Agent Connection verification report persistence
   - authoritative MCP runtime sessions, integration revisions, unbound Guard-first project sessions, and runtime attachment ownership
-  - structured diagnostic findings, cause edges, current-coordinate queries, and MCP terminal-finding links
+  - immutable occurrence findings, subject-aware current-state finding upserts, atomic cause-edge replacement,
+    current-report selection, current-coordinate queries, and MCP terminal-finding links
   - revision-scoped immutable project Agent Session identity and Registry binding revision
   - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
@@ -2566,8 +2570,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
+  last_updated_on: '2026-07-22'
+  last_verified_on: '2026-07-22'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2584,7 +2588,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, Codex Record Guard configuration state, and retained observation tables
-  - structured diagnostic finding, cause-edge, and MCP runtime-session terminal-link constraints
+  - structured diagnostic finding lifecycle, atomic cause-edge replacement, and MCP runtime-session terminal-link constraints
   - strict immutable and unique Agent Connection integration-instance column and update guard
   - immutable project Agent Session revision and revision-bearing runtime binding constraints
   - verified-command and verified-tool receipt pairing and project-scoped exclusive host-invocation source-claim constraints
@@ -2706,6 +2710,7 @@ documents:
   - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
   - shared CLI diagnostic projection of canonical verification checks, findings, cause graph, and
     root-scoped actions without renderer-side cause inference
+  - subject-aware current operational findings and explicit current-report finding selection
   - typed integration revisions and authoritative managed-host operational-session evidence
   - immutable Store-owned integration-instance identity across physical Connection lifecycles
   - Store-derived revision-scoped project Agent Session identity across mode and physical lifecycles

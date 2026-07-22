@@ -13,8 +13,8 @@ use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
     diagnostic_findings::{
-        current_diagnostic_findings_for_connection, diagnostic_cause_chain, diagnostic_finding,
-        diagnostic_root_cause_ids, insert_diagnostic_finding,
+        diagnostic_cause_chain, diagnostic_finding, diagnostic_root_cause_ids,
+        insert_diagnostic_finding,
     },
     guards::{guard_observation_summary, list_guard_installations},
     operational_sessions::{
@@ -240,26 +240,7 @@ pub(in crate::connection_command) fn diagnostic_projection_for_connection(
     connection: &AgentConnectionRecord,
     report: &ConnectionVerificationReport,
 ) -> Result<(Vec<DiagnosticFinding>, IntegrationRevision), ConnectionCommandError> {
-    let current = current_diagnostic_findings_for_connection(
-        runtime_home,
-        &connection.connection_internal_id,
-    )?;
     let mut findings = BTreeMap::new();
-    for finding in current {
-        let chain = diagnostic_cause_chain(
-            runtime_home,
-            finding.id(),
-            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
-        )?;
-        for entry in chain.entries {
-            findings.insert(entry.finding.id().clone(), entry.finding);
-            if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
-                return Err(ConnectionCommandError::runtime(
-                    "diagnostic projection exceeded the shared finding bound",
-                ));
-            }
-        }
-    }
     let selected = report
         .checks()
         .iter()
@@ -582,6 +563,8 @@ fn persist_host_boundary_findings(
                 runtime_home,
                 connection,
                 OperationalDiagnostic::ManagedConfig(diagnostic),
+                "managed_config_target",
+                &connection.config_target,
                 &OperationalDiagnosticFacts {
                     observed_state: Some(host.managed_config.as_str()),
                     ..OperationalDiagnosticFacts::default()
@@ -589,26 +572,23 @@ fn persist_host_boundary_findings(
                 current_timestamp(),
             )?);
     }
-    if let Some(diagnostic) = host
-        .project_trust
-        .as_ref()
-        .and_then(|trust| TrustDiagnostic::from_status(trust.status))
-    {
-        findings
-            .project_trust
-            .push(persist_connection_operational_finding(
-                runtime_home,
-                connection,
-                OperationalDiagnostic::Trust(diagnostic),
-                &OperationalDiagnosticFacts {
-                    observed_state: host
-                        .project_trust
-                        .as_ref()
-                        .map(|trust| trust.status.as_str()),
-                    ..OperationalDiagnosticFacts::default()
-                },
-                current_timestamp(),
-            )?);
+    if let Some(trust) = host.project_trust.as_ref() {
+        if let Some(diagnostic) = TrustDiagnostic::from_status(trust.status) {
+            findings
+                .project_trust
+                .push(persist_connection_operational_finding(
+                    runtime_home,
+                    connection,
+                    OperationalDiagnostic::Trust(diagnostic),
+                    "product_repository",
+                    &trust.repo_root,
+                    &OperationalDiagnosticFacts {
+                        observed_state: Some(trust.status.as_str()),
+                        ..OperationalDiagnosticFacts::default()
+                    },
+                    current_timestamp(),
+                )?);
+        }
     }
     if current_sessions.is_empty() {
         if let Some(latest) = latest_session
@@ -618,6 +598,8 @@ fn persist_host_boundary_findings(
                 runtime_home,
                 connection,
                 OperationalDiagnostic::Revision(RevisionDiagnostic::IntegrationStale),
+                "runtime_session",
+                &latest.runtime_session_id,
                 &OperationalDiagnosticFacts {
                     expected_revision: Some(current_revision.as_str().to_owned()),
                     observed_revision: Some(latest.connection_integration_revision.clone()),
@@ -1482,7 +1464,7 @@ fn guard_checks_for_connection(
     let mut incompatible_event_ids = Vec::new();
     let mut last_current_observation_at = None;
     let mut installation_ids = Vec::new();
-    let mut observation_revision_mismatch = false;
+    let mut observation_revision_mismatch_installation_ids = Vec::new();
 
     for installation in &installations {
         installation_ids.push(installation.guard_installation_id.clone());
@@ -1494,7 +1476,10 @@ fn guard_checks_for_connection(
         ));
         let binding_is_current =
             guard_manifest_binding_valid_for_installation(installation, connection, projects);
-        observation_revision_mismatch |= !binding_is_current;
+        if !binding_is_current {
+            observation_revision_mismatch_installation_ids
+                .push(installation.guard_installation_id.clone());
+        }
         let observation =
             guard_observation_summary(runtime_home, &installation.project_id, installation)?;
         required_phases.extend(observation.required_phases.iter().cloned());
@@ -1513,6 +1498,8 @@ fn guard_checks_for_connection(
     audit.sort_dedup();
     installation_ids.sort();
     installation_ids.dedup();
+    observation_revision_mismatch_installation_ids.sort();
+    observation_revision_mismatch_installation_ids.dedup();
     required_phases.sort();
     required_phases.dedup();
     observed_phases.sort();
@@ -1581,11 +1568,12 @@ fn guard_checks_for_connection(
         runtime_home,
         connection,
         &audit,
+        &installation_ids,
         files_status == ConnectionCheckStatus::Failed,
         &missing_required_phases,
-        !incompatible_event_ids.is_empty(),
+        &incompatible_event_ids,
         prompt_capture_observed,
-        observation_revision_mismatch,
+        &observation_revision_mismatch_installation_ids,
         current_timestamp(),
         persist_findings,
     )?;
@@ -1687,11 +1675,12 @@ fn persist_guard_boundary_findings(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     audit: &GuardAuditFacts,
+    installation_ids: &[String],
     guard_files_failed: bool,
     missing_required_phases: &[String],
-    incompatible_observation: bool,
+    incompatible_event_ids: &[String],
     prompt_capture_observed: bool,
-    observation_revision_mismatch: bool,
+    observation_revision_mismatch_installation_ids: &[String],
     observed_at: UtcTimestamp,
     persist_findings: bool,
 ) -> Result<GuardBoundaryFindings, ConnectionCommandError> {
@@ -1704,6 +1693,7 @@ fn persist_guard_boundary_findings(
                 finding.artifact,
                 finding.issue,
             )),
+            ("guard_managed_artifact", finding.path.display().to_string()),
             &OperationalDiagnosticFacts {
                 artifact_kind: Some(guard_artifact_kind(finding.artifact)),
                 ..OperationalDiagnosticFacts::default()
@@ -1713,28 +1703,34 @@ fn persist_guard_boundary_findings(
         )?);
     }
     for issue in &audit.manifest_issues {
-        findings.files.push(guard_boundary_finding_id(
-            runtime_home,
-            connection,
-            OperationalDiagnostic::Guard(GuardDiagnostic::from_manifest_issue(*issue)),
-            &OperationalDiagnosticFacts::default(),
-            observed_at.clone(),
-            persist_findings,
-        )?);
-    }
-    for status in &audit.hook_path_safety_statuses {
-        if let Some(diagnostic) = GuardDiagnostic::from_hook_wrapper_status(*status) {
+        for installation_id in installation_ids {
             findings.files.push(guard_boundary_finding_id(
                 runtime_home,
                 connection,
-                OperationalDiagnostic::Guard(diagnostic),
-                &OperationalDiagnosticFacts {
-                    observed_state: Some(status.as_str()),
-                    ..OperationalDiagnosticFacts::default()
-                },
+                OperationalDiagnostic::Guard(GuardDiagnostic::from_manifest_issue(*issue)),
+                ("guard_installation", installation_id),
+                &OperationalDiagnosticFacts::default(),
                 observed_at.clone(),
                 persist_findings,
             )?);
+        }
+    }
+    for status in &audit.hook_path_safety_statuses {
+        if let Some(diagnostic) = GuardDiagnostic::from_hook_wrapper_status(*status) {
+            for installation_id in installation_ids {
+                findings.files.push(guard_boundary_finding_id(
+                    runtime_home,
+                    connection,
+                    OperationalDiagnostic::Guard(diagnostic),
+                    ("guard_installation", installation_id),
+                    &OperationalDiagnosticFacts {
+                        observed_state: Some(status.as_str()),
+                        ..OperationalDiagnosticFacts::default()
+                    },
+                    observed_at.clone(),
+                    persist_findings,
+                )?);
+            }
         }
     }
     if guard_files_failed && findings.files.is_empty() {
@@ -1742,42 +1738,41 @@ fn persist_guard_boundary_findings(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::ManifestMismatch),
+            (
+                "guard_installation_inventory",
+                &connection.connection_internal_id,
+            ),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
             persist_findings,
         )?);
     }
-    for phase in &audit.missing_required_phases {
+    let missing_phases = audit
+        .missing_required_phases
+        .iter()
+        .map(|phase| phase.as_str())
+        .chain(missing_required_phases.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>();
+    for phase in missing_phases {
         guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved),
+            ("guard_phase", phase),
             &OperationalDiagnosticFacts {
-                guard_phase: Some(phase.as_str().to_owned()),
+                guard_phase: Some(phase.to_owned()),
                 ..OperationalDiagnosticFacts::default()
             },
             observed_at.clone(),
             persist_findings,
         )?;
     }
-    for phase in missing_required_phases {
-        guard_boundary_finding_id(
-            runtime_home,
-            connection,
-            OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved),
-            &OperationalDiagnosticFacts {
-                guard_phase: Some(phase.clone()),
-                ..OperationalDiagnosticFacts::default()
-            },
-            observed_at.clone(),
-            persist_findings,
-        )?;
-    }
-    if incompatible_observation {
+    for event_id in incompatible_event_ids {
         findings.observation.push(guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::IncompatibleObservation),
+            ("guard_event", event_id),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
             persist_findings,
@@ -1788,6 +1783,7 @@ fn persist_guard_boundary_findings(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::PromptCaptureUnsupported),
+            ("guard_phase", "prompt_capture"),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
             persist_findings,
@@ -1797,22 +1793,24 @@ fn persist_guard_boundary_findings(
             runtime_home,
             connection,
             OperationalDiagnostic::Guard(GuardDiagnostic::PromptCaptureUnobserved),
+            ("guard_phase", "prompt_capture"),
             &OperationalDiagnosticFacts::default(),
             observed_at.clone(),
             persist_findings,
         )?;
     }
-    if observation_revision_mismatch {
+    for installation_id in observation_revision_mismatch_installation_ids {
         let revision = connection_integration_revision(connection)?;
         guard_boundary_finding_id(
             runtime_home,
             connection,
             OperationalDiagnostic::Revision(RevisionDiagnostic::ObservationMismatch),
+            ("guard_installation", installation_id),
             &OperationalDiagnosticFacts {
                 expected_revision: Some(revision.as_str().to_owned()),
                 ..OperationalDiagnosticFacts::default()
             },
-            observed_at,
+            observed_at.clone(),
             persist_findings,
         )?;
     }
@@ -1823,20 +1821,27 @@ fn guard_boundary_finding_id(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     diagnostic: OperationalDiagnostic,
+    subject: (&'static str, impl Into<String>),
     facts: &OperationalDiagnosticFacts,
     observed_at: UtcTimestamp,
     persist: bool,
 ) -> Result<DiagnosticFindingId, ConnectionCommandError> {
+    let (subject_kind, subject_reference) = subject;
+    let subject_reference = subject_reference.into();
     if persist {
         persist_connection_operational_finding(
             runtime_home,
             connection,
             diagnostic,
+            subject_kind,
+            subject_reference,
             facts,
             observed_at,
         )
     } else {
-        connection_operational_finding_id(connection, diagnostic)
+        let subject = DiagnosticSubject::try_new(subject_kind, subject_reference)
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        connection_operational_finding_id(connection, diagnostic, &subject)
     }
 }
 
@@ -2284,9 +2289,31 @@ pub(in crate::connection_command) fn current_status_report(
     let managed_config_causes = host
         .managed_config_diagnostic
         .map(|diagnostic| {
+            let subject =
+                DiagnosticSubject::try_new("managed_config_target", &connection.config_target)
+                    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
             connection_operational_finding_id(
                 connection,
                 OperationalDiagnostic::ManagedConfig(diagnostic),
+                &subject,
+            )
+        })
+        .transpose()?
+        .into_iter()
+        .collect();
+    let project_trust_causes = host
+        .project_trust
+        .as_ref()
+        .and_then(|trust| {
+            TrustDiagnostic::from_status(trust.status).map(|diagnostic| (trust, diagnostic))
+        })
+        .map(|(trust, diagnostic)| {
+            let subject = DiagnosticSubject::try_new("product_repository", &trust.repo_root)
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+            connection_operational_finding_id(
+                connection,
+                OperationalDiagnostic::Trust(diagnostic),
+                &subject,
             )
         })
         .transpose()?
@@ -2295,7 +2322,7 @@ pub(in crate::connection_command) fn current_status_report(
     let mut checks = vec![
         with_direct_causes(managed_config_check(&host)?, managed_config_causes)?,
         stored_mcp,
-        project_trust_check(&host)?,
+        with_direct_causes(project_trust_check(&host)?, project_trust_causes)?,
     ];
     checks.push(stored_executable.unwrap_or(canonical_check(
         ConnectionCheckKind::HostExecutable,
@@ -2332,6 +2359,8 @@ fn current_timestamp() -> UtcTimestamp {
 
 #[cfg(test)]
 mod tests {
+    use volicord_test_support::core_fixtures::CoreFixture;
+
     use super::*;
 
     fn host(version: &str) -> Verification {
@@ -3143,5 +3172,119 @@ mod tests {
         assert_eq!(completed["safe_read_only_tool_completed"], true);
         assert_eq!(completed["shutdown_completed"], true);
         assert!(completed.get("failure").is_none());
+    }
+
+    #[test]
+    fn current_projection_selects_explicit_same_code_subjects_and_excludes_history() {
+        let fixture = CoreFixture::new("current-diagnostic-projection").expect("fixture");
+        let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+        )
+        .expect("connection lookup")
+        .expect("connection");
+        let observed_at = UtcTimestamp::parse("2026-07-22T01:02:03Z").expect("time");
+        let diagnostic = OperationalDiagnostic::Guard(GuardDiagnostic::ManagedFileMissing);
+        let first_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &connection,
+            diagnostic,
+            "guard_managed_artifact",
+            "/private/product/.volicord/guard-a.json",
+            &OperationalDiagnosticFacts {
+                artifact_kind: Some("guard_a".to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            observed_at.clone(),
+        )
+        .expect("first artifact finding");
+        let second_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &connection,
+            diagnostic,
+            "guard_managed_artifact",
+            "/private/product/.volicord/guard-b.json",
+            &OperationalDiagnosticFacts {
+                artifact_kind: Some("guard_b".to_owned()),
+                ..OperationalDiagnosticFacts::default()
+            },
+            observed_at.clone(),
+        )
+        .expect("second artifact finding");
+        let historical_id = persist_connection_operational_finding(
+            fixture.runtime_home_path(),
+            &connection,
+            OperationalDiagnostic::Trust(TrustDiagnostic::RepositoryNotTrusted),
+            "product_repository",
+            "/private/product/history-only",
+            &OperationalDiagnosticFacts {
+                observed_state: Some("untrusted"),
+                ..OperationalDiagnosticFacts::default()
+            },
+            observed_at,
+        )
+        .expect("historical finding");
+
+        assert_ne!(first_id, second_id);
+        let checks = vec![with_direct_causes(
+            canonical_check(
+                ConnectionCheckKind::GuardFiles,
+                ConnectionCheckStatus::Failed,
+                "guard_files_failed",
+                "Two managed Guard artifacts are missing",
+                None,
+                None,
+            )
+            .expect("check"),
+            vec![second_id.clone(), first_id.clone()],
+        )
+        .expect("causes")];
+        let report = ConnectionVerificationReport::try_new(
+            UtcTimestamp::parse("2026-07-22T01:02:04Z").expect("time"),
+            checks.clone(),
+            actions_for_checks(&checks).expect("actions"),
+        )
+        .expect("report");
+        let (findings, _) =
+            diagnostic_projection_for_connection(fixture.runtime_home_path(), &connection, &report)
+                .expect("projection");
+        let mut expected_ids = vec![first_id.clone(), second_id.clone()];
+        expected_ids.sort();
+        assert_eq!(
+            findings
+                .iter()
+                .map(|finding| finding.id().clone())
+                .collect::<Vec<_>>(),
+            expected_ids
+        );
+        assert_eq!(findings[0].code(), findings[1].code());
+        assert_ne!(findings[0].subject(), findings[1].subject());
+        assert_ne!(findings[0].facts(), findings[1].facts());
+        assert!(!findings
+            .iter()
+            .any(|finding| finding.id() == &historical_id));
+
+        let resolved_checks = vec![canonical_check(
+            ConnectionCheckKind::GuardFiles,
+            ConnectionCheckStatus::Passed,
+            "guard_files_passed",
+            "Guard files match",
+            None,
+            None,
+        )
+        .expect("resolved check")];
+        let resolved = ConnectionVerificationReport::try_new(
+            UtcTimestamp::parse("2026-07-22T01:03:04Z").expect("time"),
+            resolved_checks.clone(),
+            actions_for_checks(&resolved_checks).expect("actions"),
+        )
+        .expect("resolved report");
+        let (resolved_findings, _) = diagnostic_projection_for_connection(
+            fixture.runtime_home_path(),
+            &connection,
+            &resolved,
+        )
+        .expect("resolved projection");
+        assert!(resolved_findings.is_empty());
     }
 }

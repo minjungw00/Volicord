@@ -28,6 +28,11 @@ volicord connection status codex --repo "<repo>" --json
 namespaced diagnostic code를 함께 보존합니다. 영어 summary, SQLite 메시지, 경로 문구,
 stderr 발췌로 실패를 분류하지 않습니다.
 
+여러 정확한 주체가 영향을 받으면 code 하나가 여러 finding ID에 나타나는 것이 정상입니다.
+Code뿐 아니라 `subject.kind`와 `subject.reference`도 비교합니다. Code가 같은 Guard
+artifact, phase, repository, managed-config target을 문제 하나로 합치지 않습니다. Opaque
+현재 상태 ID는 관리 경로를 그대로 드러내지 않습니다.
+
 Code 계열에 따라 집중 복구 경계를 선택합니다.
 
 | Code 계열 | 복구 경계 |
@@ -63,6 +68,11 @@ volicord diagnostics session "<runtime-session-id>" --json
 typed fact를 담습니다. 식별자가 없으면 `observation_state=absent`인 typed failed report를
 반환합니다. 빈 finding이나 빈 session을 관찰했다는 뜻이 아닙니다. SQLite를 scan하거나
 다른 식별자를 만들지 말고 선택한 Runtime Home과 정확한 ID를 확인합니다.
+
+현재 상태 운영 ID를 지정하면 반복 검증 뒤에도 `diagnostics show`가 그 정확한 주체의 최신
+snapshot을 반환합니다. Runtime, process, protocol 발생형 finding은 변경할 수 없는
+기록입니다. 해소된 현재 상태 finding은 현재 Connection 보고서가 더 이상 참조하지 않아도
+정확한 ID로 계속 조회할 수 있습니다.
 
 ## 명령을 사용할 수 없음
 

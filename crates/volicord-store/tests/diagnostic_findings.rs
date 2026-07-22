@@ -6,7 +6,8 @@ use volicord_store::{
         current_diagnostic_findings_for_connection, diagnostic_cause_chain, diagnostic_finding,
         diagnostic_findings_for_runtime_session, diagnostic_root_cause_ids,
         insert_diagnostic_finding, insert_diagnostic_finding_graph,
-        link_mcp_runtime_session_terminal_finding, MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
+        link_mcp_runtime_session_terminal_finding, upsert_current_diagnostic_finding,
+        MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
     },
     operational_sessions::{
         connection_integration_revision, mcp_runtime_session, start_mcp_runtime_session,
@@ -91,6 +92,45 @@ fn runtime_finding(
     .with_integration_revision(IntegrationRevision::parse(
         runtime.connection_integration_revision,
     )?))
+}
+
+fn current_finding(
+    fixture: &CoreFixture,
+    id: &str,
+    subject_reference: &str,
+    actual: &str,
+    observed_at: &str,
+    causes: &[&str],
+) -> Result<DiagnosticFinding, Box<dyn Error>> {
+    let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+    )?
+    .ok_or("connection")?;
+    let revision = connection_integration_revision(&connection)?;
+    Ok(DiagnosticFinding::try_new(
+        DiagnosticFindingId::parse(id)?,
+        DiagnosticCode::parse("guard.managed_file.missing")?,
+        DiagnosticDomain::parse("guard")?,
+        DiagnosticStage::parse("guard_files")?,
+        DiagnosticSeverity::Error,
+        DiagnosticSource::parse("store_test")?,
+        DiagnosticSubject::try_new("guard_managed_artifact", subject_reference)?,
+        DiagnosticFacts::project(&SafeFacts {
+            expected: "present".to_owned(),
+            actual: actual.to_owned(),
+        })?,
+        UtcTimestamp::parse(observed_at)?,
+    )?
+    .with_causes(
+        causes
+            .iter()
+            .map(|cause| DiagnosticFindingId::parse(*cause).map(DiagnosticCause::new))
+            .collect::<Result<Vec<_>, _>>()?,
+    )?
+    .with_connection_id(AgentConnectionId::new(fixture.connection_id()))?
+    .with_project_id(volicord_types::ProjectId::new(fixture.project_id()))?
+    .with_integration_revision(revision))
 }
 
 #[test]
@@ -193,6 +233,111 @@ fn graph_insertion_is_atomic_for_missing_causes_and_cycles() -> Result<(), Box<d
         &DiagnosticFindingId::parse("finding.left")?
     )?
     .is_none());
+    Ok(())
+}
+
+#[test]
+fn current_finding_upsert_replaces_facts_time_and_cause_edges_atomically(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("diagnostic-current-upsert")?;
+    let first_cause = finding(&fixture, "finding.cause_first", &[])?;
+    let second_cause = finding(&fixture, "finding.cause_second", &[])?;
+    insert_diagnostic_finding_graph(fixture.runtime_home_path(), &[first_cause, second_cause])?;
+
+    let first = current_finding(
+        &fixture,
+        "finding.current.guard_artifact",
+        ".volicord/guard-a.json",
+        "missing",
+        "2026-07-21T01:02:03Z",
+        &["finding.cause_first"],
+    )?;
+    upsert_current_diagnostic_finding(fixture.runtime_home_path(), &first)?;
+
+    let changed = current_finding(
+        &fixture,
+        "finding.current.guard_artifact",
+        ".volicord/guard-a.json",
+        "content_mismatch",
+        "2026-07-21T02:03:04Z",
+        &["finding.cause_second"],
+    )?;
+    upsert_current_diagnostic_finding(fixture.runtime_home_path(), &changed)?;
+    assert_eq!(
+        diagnostic_finding(fixture.runtime_home_path(), changed.id())?,
+        Some(changed.clone())
+    );
+    let chain = diagnostic_cause_chain(fixture.runtime_home_path(), changed.id(), 1)?;
+    assert_eq!(
+        chain
+            .entries
+            .iter()
+            .map(|entry| entry.finding.id().as_str())
+            .collect::<Vec<_>>(),
+        vec!["finding.current.guard_artifact", "finding.cause_second"]
+    );
+
+    let cycle_cause = finding(
+        &fixture,
+        "finding.cause_cycle",
+        &["finding.current.guard_artifact"],
+    )?;
+    insert_diagnostic_finding(fixture.runtime_home_path(), &cycle_cause)?;
+    let invalid = current_finding(
+        &fixture,
+        "finding.current.guard_artifact",
+        ".volicord/guard-a.json",
+        "permission_mismatch",
+        "2026-07-21T03:04:05Z",
+        &["finding.cause_cycle"],
+    )?;
+    assert!(upsert_current_diagnostic_finding(fixture.runtime_home_path(), &invalid).is_err());
+    assert_eq!(
+        diagnostic_finding(fixture.runtime_home_path(), changed.id())?,
+        Some(changed.clone())
+    );
+    let chain = diagnostic_cause_chain(fixture.runtime_home_path(), changed.id(), 1)?;
+    assert_eq!(
+        chain
+            .entries
+            .iter()
+            .map(|entry| entry.finding.id().as_str())
+            .collect::<Vec<_>>(),
+        vec!["finding.current.guard_artifact", "finding.cause_second"]
+    );
+    Ok(())
+}
+
+#[test]
+fn current_finding_upsert_cannot_overwrite_runtime_occurrences() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("diagnostic-current-rejects-runtime")?;
+    let runtime = start_mcp_runtime_session(
+        fixture.runtime_home_path(),
+        McpRuntimeSessionStart {
+            connection_internal_id: fixture.connection_id().to_owned(),
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            observed_host_executable_version: None,
+            process_id: 43,
+            process_started_at: "2026-07-21T01:02:00Z".to_owned(),
+        },
+    )?;
+    let occurrence = runtime_finding(&fixture, &runtime.runtime_session_id)?;
+    insert_diagnostic_finding(fixture.runtime_home_path(), &occurrence)?;
+    assert!(upsert_current_diagnostic_finding(fixture.runtime_home_path(), &occurrence).is_err());
+
+    let replacement = current_finding(
+        &fixture,
+        occurrence.id().as_str(),
+        ".volicord/not-the-runtime.json",
+        "changed",
+        "2026-07-21T04:05:06Z",
+        &[],
+    )?;
+    assert!(upsert_current_diagnostic_finding(fixture.runtime_home_path(), &replacement).is_err());
+    assert_eq!(
+        diagnostic_finding(fixture.runtime_home_path(), occurrence.id())?,
+        Some(occurrence)
+    );
     Ok(())
 }
 

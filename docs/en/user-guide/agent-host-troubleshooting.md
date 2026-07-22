@@ -30,6 +30,12 @@ runtime-session ID when present, and namespaced diagnostic code. Do not
 classify a failure from the English summary, SQLite message, path wording, or
 stderr excerpt.
 
+One code may legitimately appear under several finding IDs when several exact
+subjects are affected. Compare `subject.kind` and `subject.reference` as well
+as the code; do not collapse same-code Guard artifacts, phases, repositories,
+or managed-config targets into one incident. The opaque current-state ID does
+not reproduce a managed path.
+
 Use the code family to choose the focused recovery:
 
 | Code family | Recovery boundary |
@@ -66,6 +72,12 @@ root IDs and typed facts. A missing identifier returns a typed failed report
 with `observation_state=absent`; it is not evidence that an empty finding or
 empty session was observed. Check the selected Runtime Home and exact ID rather
 than scanning SQLite or inventing an alternate identifier.
+
+For a current-state operational ID, `diagnostics show` returns the latest
+snapshot for that exact subject after repeated verification. Runtime-,
+process-, and protocol-occurrence findings are immutable records. A resolved
+current-state finding may remain available by exact ID even though it is no
+longer referenced by the current Connection report.
 
 ## Command Is Not Available
 

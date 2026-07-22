@@ -107,6 +107,19 @@ optional correlation, Connection, project, runtime-session, and integration
 revision coordinates. Domain owners retain their closed code vocabularies and
 error-to-finding conversion rules.
 
+Persisted findings have two distinct lifecycles. An occurrence finding records
+one runtime, process, protocol, or other event-like observation and uses the
+insert-only finding path; a runtime-correlated occurrence is immutable. A
+current-state operational finding is a replaceable snapshot of one exact
+subject. Its stable ID combines the Connection coordinate and diagnostic code
+with a bounded lowercase digest of the canonical subject kind and reference.
+The exact subject remains in the typed `subject` value and is not exposed in
+the ID, so two subjects with the same code remain distinct without leaking a
+managed path. Re-observing that subject replaces its facts, actions,
+observation time, revision coordinates, and outgoing cause edges atomically.
+The current-state upsert rejects both an incoming runtime-session finding and
+an attempt to replace an existing runtime-session finding.
+
 Safe facts are bounded before storage or rendering. Their typed projection
 redacts sensitive keys and limits text size, collection size, and nesting
 depth. Raw environment maps, request bodies, tool argument sets, credentials,

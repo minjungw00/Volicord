@@ -851,6 +851,22 @@ future Codex version text remains diagnostic and accepted; the focused host
 owner defines no unsupported-current-host-revision code, so the CLI does not
 invent one.
 
+These CLI-owned operational findings are current-state snapshots keyed by the
+Connection, code, and canonical typed subject. Same-code failures on two
+managed artifacts or Guard phases have distinct opaque IDs. Repeating active
+verification for the same subject preserves its ID and atomically refreshes
+its safe facts, observation time, revision coordinates, and outgoing cause
+edges. Runtime-, process-, and protocol-occurrence findings remain insert-only
+and cannot be overwritten through this current-state path.
+
+Connection status and verification reports load only current finding IDs
+explicitly referenced by their checks, their bounded cause chains, and any
+independent current finding deliberately selected by the operation. Resolved
+or otherwise unrelated findings stored for the same revision do not reappear
+in the current report. `diagnostics show` by exact ID still returns the latest
+current-state snapshot, while `diagnostics session` retains immutable
+runtime-occurrence inspection.
+
 <a id="authority-bundle-export"></a>
 ## Authority Bundle Export
 

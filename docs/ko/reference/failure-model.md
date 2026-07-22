@@ -99,6 +99,17 @@ typed subject, 안전하게 projection한 facts, 0개 이상의 cause reference�
 revision 좌표를 담습니다. Domain 담당자는 closed code vocabulary와 오류를 finding으로
 변환하는 규칙을 계속 담당합니다.
 
+영속 finding에는 서로 다른 두 lifecycle이 있습니다. 발생형 finding은 runtime, process,
+protocol 또는 그 밖의 event 성격 관찰 하나를 기록하며 insert-only finding 경로를
+사용합니다. Runtime과 상관된 발생형 finding은 변경할 수 없습니다. 현재 상태 운영
+finding은 정확한 주체 하나에 대한 교체 가능한 snapshot입니다. 안정적인 ID는 Connection
+좌표와 diagnostic code에 정규 subject kind 및 reference의 한도가 있는 소문자 digest를
+결합합니다. 정확한 주체는 typed `subject` 값에 남고 ID에 노출되지 않으므로 같은 code를
+가진 서로 다른 주체를 구분하면서 관리 경로를 누출하지 않습니다. 같은 주체를 다시
+관찰하면 facts, actions, 관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로
+교체합니다. 현재 상태 upsert는 입력 finding에 runtime session이 있거나 기존 runtime-session
+finding을 교체하려는 경우를 모두 거부합니다.
+
 Safe facts는 저장하거나 렌더링하기 전에 한도를 검증합니다. Typed projection은 민감한
 key를 가리고 text 크기, collection 크기, nesting depth를 제한합니다. Raw environment map,
 request body, tool argument set, credential, 제한 없는 child-process output은 diagnostic
