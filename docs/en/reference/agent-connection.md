@@ -366,11 +366,22 @@ its `failed` and `blocked` checks and then loads only their bounded cause
 chains. An independent current finding appears only when the operation
 deliberately selects it; the report never treats every stored finding on the
 same integration revision as current. CLI-owned current-state operational
-findings identify the exact managed-config target, Product Repository, Guard
-managed artifact, Guard phase or event, Guard Installation, or runtime session
-in their typed subject. Stable IDs include a bounded digest of that canonical
-subject, so the same diagnostic code on two artifacts or phases remains two
-findings and re-observing one subject refreshes only its snapshot.
+findings bind each closed diagnostic value to one immutable definition and use
+typed subjects for the exact managed-config target, Product Repository trust,
+Guard managed artifact, Guard phase, Guard Installation, Guard event,
+integration revision, or verification tool. Each subject owns its scope,
+canonical identity bytes, and safe display projection. Path-bearing subjects
+canonicalize filesystem aliases before producing an opaque path-free
+reference. Stable IDs therefore keep the same diagnostic code on two artifacts
+or phases as two findings, while re-observing one subject refreshes only its
+snapshot.
+
+Active verification reconciles each complete CLI owner observation set. It
+activates or refreshes the conditions still observed and explicitly resolves
+previously active conditions omitted after a successful repair, compatible
+revision, or fresh observation. Resolved current findings remain available by
+exact ID but are not reportable current findings and do not reappear through a
+failed or blocked check's current projection.
 
 The JSON projection includes `generated_at` as the report time and the exact
 current integration revision in Connection context when one exists. The

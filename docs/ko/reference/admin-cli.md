@@ -784,6 +784,17 @@ opaque ID를 가집니다. 같은 주체에 활성 검증을 반복하면 ID를 
 관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로 갱신합니다. Runtime, process,
 protocol 발생형 finding은 insert-only로 남으며 이 현재 상태 경로로 덮어쓸 수 없습니다.
 
+각 폐쇄형 운영 diagnostic 값은 code, domain, stage, source, 기본 severity, summary를 담는
+불변 definition 하나를 가집니다. 각 subject type은 scope, 정규 identity byte, 안전한 표시
+projection을 담당합니다. Path를 담는 subject는 filesystem alias를 정규화하고 불투명하며
+path를 노출하지 않는 reference만 표시합니다. Action은 렌더링한 산문이 아니라 definition,
+typed facts, typed check state에서 선택합니다.
+
+활성 검증은 CLI 담당자마다 완전한 관찰 집합을 reconcile합니다. 관찰한 모든 current
+condition은 활성화하거나 갱신하고, 복구 또는 새로운 성공 관찰 뒤 집합에서 빠진 담당자
+소유의 이전 active condition은 명시적으로 해소합니다. 같은 condition이 다시 나타나면 같은
+key와 ID를 재활성화합니다.
+
 Connection status 및 verification 보고서는 check가 명시적으로 참조한 현재 finding ID,
 그 한도가 있는 cause chain, 작업이 의도적으로 선택한 독립 현재 finding만 읽습니다. 같은
 revision에 저장되어 있어도 해소됐거나 관련 없는 finding은 현재 보고서에 다시 나타나지

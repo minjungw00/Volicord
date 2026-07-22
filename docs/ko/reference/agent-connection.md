@@ -327,10 +327,19 @@ remediation category를 만들지 않고 `DiagnosticFinding`이 가린 fact를 �
 선택하고 그 finding의 한도가 있는 cause chain만 읽습니다. 독립적인 현재 finding은 작업이
 의도적으로 선택한 경우에만 나타나며, 같은 integration revision에 저장된 모든 finding을
 현재 상태로 취급하지 않습니다. CLI 소유 현재 상태 운영 finding은 typed subject로 정확한
-managed-config target, Product Repository, Guard 관리 artifact, Guard phase 또는 event,
-Guard Installation, runtime session을 식별합니다. 안정적인 ID는 해당 정규 subject의
-한도가 있는 digest를 포함하므로 artifact나 phase가 둘이면 diagnostic code가 같아도 finding
-둘을 유지하고, 주체 하나를 다시 관찰하면 그 snapshot만 갱신합니다.
+managed-config target, Product Repository trust, Guard 관리 artifact, Guard phase, Guard
+Installation, Guard event, integration revision, verification tool을 식별하고, 각 폐쇄형
+diagnostic 값을 불변 definition 하나에 연결합니다. 각 subject는 scope, 정규 identity byte,
+안전한 표시 projection을 담당합니다. Path를 담는 subject는 filesystem alias를 정규화한 뒤
+불투명하고 path를 노출하지 않는 reference를 만듭니다. 따라서 artifact나 phase가 둘이면
+diagnostic code가 같아도 finding 둘을 유지하고, 주체 하나를 다시 관찰하면 그 snapshot만
+갱신합니다.
+
+활성 검증은 CLI 담당자별 완전한 관찰 집합을 reconcile합니다. 계속 관찰된 condition은
+활성화하거나 갱신하고, 복구 성공, 호환 revision, 새로운 관찰 뒤 집합에서 빠진 이전 active
+condition은 명시적으로 해소합니다. 해소된 current finding은 정확한 ID로 계속 조회할 수
+있지만 보고 가능한 current finding이 아니며 failed 또는 blocked check의 현재 projection에
+다시 나타나지 않습니다.
 
 JSON projection은 `generated_at`을 report 시각으로 담고, 값이 있으면 Connection
 context에 정확한 현재 integration revision을 담습니다. 영속 verification의 `checked_at`은

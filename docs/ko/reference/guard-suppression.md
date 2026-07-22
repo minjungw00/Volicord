@@ -152,6 +152,14 @@ artifact나 phase를 충돌 없이 식별할 수 있습니다. 같은 주체를 
 추가하지 않습니다. Connection 보고서는 현재 check가 참조한 Guard finding과 그 한도가
 있는 cause chain만 포함합니다.
 
+Guard 검증은 typed 관찰의 완전한 집합을 reconcile합니다. 복구한 artifact 또는
+installation, 새로 관찰한 필수 phase, 호환되는 현재 event, 지원되는 prompt-capture 경계,
+일치하는 integration revision은 이전 condition을 집합에서 빼고 그 active finding을
+명시적으로 해소합니다. 해소된 Guard finding은 정확한 ID로 계속 조회할 수 있지만 현재
+Connection 보고서에서는 제외됩니다. 각 폐쇄형 Guard diagnostic의 불변 definition은 code,
+domain, stage, source, 기본 severity, summary를 담당하며 action 선택은 이 definition, typed
+facts, typed check state를 사용합니다.
+
 ### Guard 검증 Dependency
 
 Connection 검증은 다음과 같은 명시적인 Guard dependency graph를 사용합니다.

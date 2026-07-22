@@ -6,8 +6,9 @@ use volicord_store::{
         active_current_findings_for_scope, bounded_diagnostic_graph_from_seeds,
         diagnostic_findings_by_ids, diagnostic_occurrences_for_runtime_session,
         diagnostic_root_cause_ids, insert_and_link_runtime_terminal_occurrence,
-        insert_occurrence_finding, insert_occurrence_finding_graph, resolve_current_finding,
-        upsert_current_snapshot, MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
+        insert_occurrence_finding, insert_occurrence_finding_graph,
+        reportable_diagnostic_findings_by_ids, resolve_current_finding, upsert_current_snapshot,
+        MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
     },
     operational_sessions::{
         connection_integration_revision, mcp_runtime_session, start_mcp_runtime_session,
@@ -307,6 +308,11 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     assert_eq!(explicit[0].facts().data()["actual"], "content_mismatch");
     assert!(explicit[0].actions().is_empty());
     assert!(explicit[0].causes().is_empty());
+    assert!(reportable_diagnostic_findings_by_ids(
+        fixture.runtime_home_path(),
+        std::slice::from_ref(changed.id()),
+    )?
+    .is_empty());
 
     let reactivated = current_finding(
         &fixture,
@@ -326,6 +332,14 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     assert_eq!(
         active[0].snapshot().facts().data()["actual"],
         "missing_again"
+    );
+    assert_eq!(
+        reportable_diagnostic_findings_by_ids(
+            fixture.runtime_home_path(),
+            std::slice::from_ref(reactivated.id()),
+        )?
+        .len(),
+        1
     );
     Ok(())
 }

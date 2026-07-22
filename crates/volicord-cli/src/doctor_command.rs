@@ -42,8 +42,8 @@ use crate::{
     guard_integration::policy::validate_policy_schema,
     host_integration::HostKind,
     operational_diagnostics::{
-        operational_diagnostic_finding, InstallationDiagnostic, OperationalDiagnostic,
-        OperationalDiagnosticFacts,
+        occurrence_finding, InstallationDiagnostic, InstallationFacts, InstallationSubject,
+        OperationalCheckState, OperationalDiagnostic,
     },
     policy_command::read_validated_policy_file,
     setup_command::{path_text, CommandOutcome, CommandStatus},
@@ -2169,12 +2169,12 @@ fn doctor_installation_finding(
     diagnostic: InstallationDiagnostic,
     observed_at: UtcTimestamp,
 ) -> Result<DiagnosticFinding, DoctorCommandError> {
-    operational_diagnostic_finding(
+    let subject = InstallationSubject::current().map_err(DoctorCommandError::Runtime)?;
+    occurrence_finding(
         OperationalDiagnostic::Installation(diagnostic),
-        format!("finding.doctor.{}", diagnostic.code().replace('.', "_")),
-        "installation",
-        "current",
-        &OperationalDiagnosticFacts::default(),
+        &subject,
+        &InstallationFacts::default(),
+        OperationalCheckState::Failed,
         observed_at,
     )
     .map_err(|error| DoctorCommandError::Runtime(error.to_string()))

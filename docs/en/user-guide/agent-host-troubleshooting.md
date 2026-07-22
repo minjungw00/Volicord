@@ -79,6 +79,13 @@ process-, and protocol-occurrence findings are immutable records. A resolved
 current-state finding may remain available by exact ID even though it is no
 longer referenced by the current Connection report.
 
+After repairing a managed configuration, Guard artifact or installation,
+repository trust, integration revision, or verification-tool observation,
+rerun active verification. The successful owner check explicitly resolves any
+prior active condition no longer observed. Current reports then include only
+active findings selected by failed or blocked checks; use `diagnostics show`
+with the retained exact ID when resolved history is needed.
+
 ## Command Is Not Available
 
 Confirm that the exact `volicord` binary is on the environment used to start

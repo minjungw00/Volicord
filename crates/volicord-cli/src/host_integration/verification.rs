@@ -42,36 +42,6 @@ pub enum ManagedConfigDiagnostic {
     Unavailable,
 }
 
-impl ManagedConfigDiagnostic {
-    pub const ALL: [Self; 10] = [
-        Self::TomlParseFailure,
-        Self::EntryMissing,
-        Self::EntryDisabled,
-        Self::CommandDrift,
-        Self::ArgumentDrift,
-        Self::StaticEnvironmentDrift,
-        Self::ForwardedEnvironmentDrift,
-        Self::FingerprintMismatch,
-        Self::MalformedApprovalOverlay,
-        Self::Unavailable,
-    ];
-
-    pub const fn code(self) -> &'static str {
-        match self {
-            Self::TomlParseFailure => "managed_config.toml.parse_failed",
-            Self::EntryMissing => "managed_config.entry.missing",
-            Self::EntryDisabled => "managed_config.entry.disabled",
-            Self::CommandDrift => "managed_config.command.drift",
-            Self::ArgumentDrift => "managed_config.arguments.drift",
-            Self::StaticEnvironmentDrift => "managed_config.static_environment.drift",
-            Self::ForwardedEnvironmentDrift => "managed_config.forwarded_environment.drift",
-            Self::FingerprintMismatch => "managed_config.fingerprint.mismatch",
-            Self::MalformedApprovalOverlay => "managed_config.approval_overlay.malformed",
-            Self::Unavailable => "managed_config.observation.unavailable",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HostExecutableStatus {

@@ -74,6 +74,12 @@ snapshot을 반환합니다. Runtime, process, protocol 발생형 finding은 변
 기록입니다. 해소된 현재 상태 finding은 현재 Connection 보고서가 더 이상 참조하지 않아도
 정확한 ID로 계속 조회할 수 있습니다.
 
+관리 구성, Guard artifact 또는 installation, Product Repository trust, integration revision,
+verification-tool 관찰을 복구한 뒤 활성 검증을 다시 실행합니다. 성공한 담당 check는 더 이상
+관찰되지 않는 이전 active condition을 명시적으로 해소합니다. 그 뒤 현재 보고서에는 failed
+또는 blocked check가 선택한 active finding만 들어갑니다. 해소된 이력이 필요하면 보존한
+정확한 ID로 `diagnostics show`를 실행합니다.
+
 ## 명령을 사용할 수 없음
 
 Codex를 시작한 환경의 `PATH`에 정확한 `volicord` 실행 파일이 있는지 확인합니다.

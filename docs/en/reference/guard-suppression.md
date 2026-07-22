@@ -163,6 +163,15 @@ it does not append another stale current-state copy. A Connection report
 includes only the Guard findings referenced by its current checks and their
 bounded cause chains.
 
+Guard verification reconciles its complete typed observation set. A repaired
+artifact or installation, newly observed required phase, compatible current
+event, supported prompt-capture boundary, or matching integration revision
+omits the prior condition and explicitly resolves its active finding. Resolved
+Guard findings remain available by exact ID but are excluded from the current
+Connection report. The immutable definition for each closed Guard diagnostic
+owns its code, domain, stage, source, default severity, and summary; action
+selection consumes that definition, typed facts, and typed check state.
+
 ### Guard Verification Dependencies
 
 Connection verification uses this explicit Guard dependency graph:

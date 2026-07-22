@@ -61,6 +61,7 @@ use crate::host_integration::{
     HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ProjectContext,
 };
 use crate::{
+    operational_diagnostics::current_report_findings,
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
 };
@@ -112,8 +113,7 @@ use service::{
     ProvisionConnectionRequest,
 };
 use verification::{
-    current_status_report, diagnostic_projection_for_connection, effective_connection_report,
-    verify_connection, VerificationReport,
+    current_status_report, effective_connection_report, verify_connection, VerificationReport,
 };
 
 const PATH_ENV: &str = "PATH";
@@ -328,8 +328,7 @@ fn attach_current_diagnostic_projection(
     let Some(connection) = agent_connection_record(runtime_home, connection_id)? else {
         return Ok(report);
     };
-    let (findings, revision) =
-        diagnostic_projection_for_connection(runtime_home, &connection, current_report)?;
+    let (findings, revision) = current_report_findings(runtime_home, &connection, current_report)?;
     Ok(report.with_diagnostic_findings(findings, Some(revision)))
 }
 
@@ -410,7 +409,7 @@ fn command_connection_status(
     if persisted_metadata_corrupt {
         report = verification::connection_metadata_failure_report(&report)?;
         let (findings, integration_revision) =
-            diagnostic_projection_for_connection(&runtime_home, &connection, &report)?;
+            current_report_findings(&runtime_home, &connection, &report)?;
         let report = ConnectionCommandReport::from_verification(
             CommandOperation::Status,
             None,
@@ -439,7 +438,7 @@ fn command_connection_status(
         process,
     )?;
     let (findings, integration_revision) =
-        diagnostic_projection_for_connection(&runtime_home, &connection, &report)?;
+        current_report_findings(&runtime_home, &connection, &report)?;
     let report = ConnectionCommandReport::from_verification(
         CommandOperation::Status,
         None,

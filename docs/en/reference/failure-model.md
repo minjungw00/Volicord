@@ -134,6 +134,16 @@ Explicit ID reads may still return that resolved snapshot. A read recomputes
 the current digest and ID from the stored key and treats any mismatch as
 corrupt persisted state.
 
+A CLI-owned operational diagnostic has one immutable definition for its code,
+domain, stage, source, default severity, and summary. Its closed typed subject
+owns the scope, canonical identity bytes, and safe display projection; a
+path-bearing subject canonicalizes filesystem aliases before deriving an
+opaque path-free reference. Active verification reconciles each complete
+owner observation set: observed conditions are activated or refreshed and
+previously active owned conditions omitted from that set are explicitly
+resolved. A current report reads only active current findings selected by its
+failed or blocked checks and their bounded cause chains.
+
 Safe facts are bounded before storage or rendering. Their typed projection
 redacts sensitive keys and limits text size, collection size, and nesting
 depth. Raw environment maps, request bodies, tool argument sets, credentials,

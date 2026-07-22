@@ -121,6 +121,14 @@ edge만 교체하고 resolved condition을 다시 active로 전환합니다. Ide
 명시적 ID read는 resolved snapshot도 반환할 수 있습니다. Read는 저장된 key에서 current
 digest와 ID를 다시 계산하고 불일치하면 영속 상태 corruption으로 처리합니다.
 
+CLI 소유 운영 diagnostic은 code, domain, stage, source, 기본 severity, summary를 담는 불변
+definition 하나를 가집니다. 폐쇄형 typed subject는 scope, 정규 identity byte, 안전한 표시
+projection을 담당합니다. Path를 담는 subject는 불투명하고 path를 노출하지 않는 reference를
+만들기 전에 filesystem alias를 정규화합니다. 활성 검증은 담당자별 완전한 관찰 집합을
+reconcile합니다. 관찰한 condition은 활성화하거나 갱신하고, 이전에는 active였지만 그 집합에서
+빠진 담당 condition은 명시적으로 해소합니다. 현재 보고서는 failed 또는 blocked check가
+선택한 active current finding과 그 한도가 있는 cause chain만 읽습니다.
+
 Safe facts는 저장하거나 렌더링하기 전에 한도를 검증합니다. Typed projection은 민감한
 key를 가리고 text 크기, collection 크기, nesting depth를 제한합니다. Raw environment map,
 request body, tool argument set, credential, 제한 없는 child-process output은 diagnostic

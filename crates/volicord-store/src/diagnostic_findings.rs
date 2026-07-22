@@ -19,7 +19,7 @@ use volicord_types::{
 use crate::{
     agent_connections::raw_agent_connection_record_from_conn,
     bootstrap::raw_project_record_from_conn,
-    operational_sessions::{connection_integration_revision, runtime_session_from_conn},
+    operational_sessions::runtime_session_from_conn,
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
         registry_db_path,
@@ -306,6 +306,48 @@ pub fn diagnostic_findings_by_ids(
     Ok(findings)
 }
 
+/// Reads findings eligible for a current report by explicit ID.
+///
+/// Immutable occurrences and active current-state findings are eligible.
+/// Resolved current-state findings remain available through exact historical
+/// lookup but are deliberately absent from this current-report selection.
+pub fn reportable_diagnostic_findings_by_ids(
+    runtime_home: impl AsRef<Path>,
+    finding_ids: &[DiagnosticFindingId],
+) -> StoreResult<Vec<DiagnosticFinding>> {
+    if finding_ids.len() > MAX_DIAGNOSTIC_FINDINGS {
+        return Err(StoreError::InvalidInput {
+            detail: format!("diagnostic lookup exceeds {MAX_DIAGNOSTIC_FINDINGS} finding IDs"),
+        });
+    }
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let conn = open_registry_database_read_only(path)?;
+    let mut ids = finding_ids.to_vec();
+    ids.sort();
+    ids.dedup();
+    let mut findings = Vec::new();
+    for finding_id in ids {
+        let Some(stored) = stored_finding_from_conn(&conn, finding_id.as_str())? else {
+            continue;
+        };
+        match stored {
+            StoredFinding::Occurrence(occurrence) => {
+                findings.push(occurrence.to_diagnostic_finding());
+            }
+            StoredFinding::Current(current)
+                if current.snapshot().status() == CurrentDiagnosticStatus::Active =>
+            {
+                findings.push(current.to_diagnostic_finding());
+            }
+            StoredFinding::Current(_) => {}
+        }
+    }
+    Ok(findings)
+}
+
 /// Reads immutable occurrences for one runtime session in observation/ID order.
 pub fn diagnostic_occurrences_for_runtime_session(
     runtime_home: impl AsRef<Path>,
@@ -359,44 +401,6 @@ pub fn active_current_findings_for_scope(
         )),
     })
     .collect()
-}
-
-/// Reads active current findings for the exact current Connection revision.
-pub fn active_current_findings_for_connection(
-    runtime_home: impl AsRef<Path>,
-    connection_internal_id: &str,
-) -> StoreResult<Vec<CurrentDiagnosticFinding>> {
-    validate_lookup_id("connection_internal_id", connection_internal_id)?;
-    let runtime_home = runtime_home.as_ref();
-    let path = registry_db_path(runtime_home);
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let conn = open_registry_database_read_only(path)?;
-    let connection = raw_agent_connection_record_from_conn(&conn, connection_internal_id)?
-        .ok_or_else(|| StoreError::NotFound {
-            entity: "agent_connection",
-            id: connection_internal_id.to_owned(),
-        })?;
-    let revision = connection_integration_revision(&connection)?;
-    let scope = DiagnosticScope::try_new(
-        DiagnosticScopeKind::Connection,
-        connection_internal_id.to_owned(),
-    )
-    .map_err(|error| StoreError::InvalidInput {
-        detail: error.to_string(),
-    })?;
-    let findings = active_current_findings_for_scope(runtime_home, &scope)?;
-    Ok(findings
-        .into_iter()
-        .filter(|finding| {
-            finding
-                .snapshot()
-                .integration_revision()
-                .map(IntegrationRevision::as_str)
-                == Some(revision.as_str())
-        })
-        .collect())
 }
 
 /// Traverses a bounded diagnostic graph from one or more seed IDs.
