@@ -283,7 +283,7 @@ Schema 2의 최상위 형태는 다음과 같습니다.
 ```yaml
 DiagnosticReport:
   schema_version: 2
-  operation: init | add | status | verify | mode | remove | diagnostics_show | diagnostics_session
+  operation: init | add | status | verify | mode | remove
   status: complete | action_required | failed
   generated_at: timestamp
   connection: DiagnosticConnectionContext | null
@@ -757,17 +757,40 @@ volicord diagnostics workflow-metrics --repo PATH --json
 `diagnostics show`는 영속 finding 하나와 한도가 있는 typed cause chain을 읽습니다.
 `diagnostics session`은 authoritative MCP runtime session 하나와 여기에 correlation된 한도
 안의 finding을 읽습니다. 두 조회는 Registry Store API를 사용하고 무제한 history를
-scan하지 않으며, 선택한 Connection JSON 출력과 같은 schema 2 `DiagnosticReport`를
-표시합니다. `--json`이 없으면 같은 check, finding ID, code, safe fact, cause, action,
-limit의 한도 있는 사람용 projection을 표시합니다. Finding이나 session이 없으면 ad hoc
-오류 문자열이 아니라 `diagnostics.lookup.finding_missing` 또는
-`diagnostics.lookup.runtime_session_missing`, `observation_state=absent`,
-`action.diagnostics.check_identifier`를 포함한 failed report를 반환합니다.
+scan하지 않습니다. JSON은 선택한 Connection 보고서가 아니라 별도의 schema 1
+`DiagnosticLookupReport`를 사용합니다.
+
+```yaml
+DiagnosticLookupReport:
+  schema_version: 1
+  operation: diagnostics_show | diagnostics_session
+  lookup_status: found | not_found
+  requested_id: string
+  root: StoredDiagnosticFinding | RuntimeSessionLookupRoot | null
+  cause_graph: StoredDiagnosticGraph
+  context: DiagnosticConnectionContext | null
+  limits: string[]
+
+StoredDiagnosticFinding:
+  lifecycle: occurrence | current_state
+  current_state_status?: active | resolved
+  resolved_at?: timestamp | null
+  finding: DiagnosticFinding
+```
+
+Finding 조회에서는 root와 cause graph의 모든 entry가 같은 lifecycle-aware 저장 finding
+형태를 사용합니다. Runtime-session root는 authoritative session data와 명시적인
+`terminal_condition`을 담고, 한도가 있는 graph는 lifecycle을 보존한 occurrence record를
+유지합니다. `--json`이 없으면 사람용 projection은 같은 lookup result, 요청 ID와 root ID,
+lifecycle, 해당하는 current state와 resolution 시각, severity, code, 안전한 subject, 관찰
+시각, cause record, action, limit을 표시합니다. Finding이나 session이 없으면
+`lookup_status=not_found`로 `requested_id`를 식별하고 synthetic failed finding이나
+Connection check를 만들지 않습니다.
 
 `diagnostics workflow-metrics`는 별도의 한도 있는 비권한 operability 보고서입니다. 이
 JSON은 현재 diagnostics SQL에서 파생한 정확한 `canonical_schema_digest`와
 `contract_id=volicord.sqlite.diagnostics`로 로컬 diagnostics 저장소를 식별하며
-`DiagnosticReport.schema_version`을 사용하지 않습니다. Diagnostics 읽기는 저장소를
+어느 보고서의 schema version도 사용하지 않습니다. Diagnostics 읽기는 저장소를
 만들거나 프로젝트 권한 상태를 전진시키거나 evidence 또는 assurance, 닫기 준비 상태를
 바꾸거나 UserAction을 해결하지 않습니다.
 
@@ -805,8 +828,10 @@ key와 ID를 재활성화합니다.
 Connection status 및 verification 보고서는 check가 명시적으로 참조한 현재 finding ID,
 그 한도가 있는 cause chain, 작업이 의도적으로 선택한 독립 현재 finding만 읽습니다. 같은
 revision에 저장되어 있어도 해소됐거나 관련 없는 finding은 현재 보고서에 다시 나타나지
-않습니다. 정확한 ID를 지정한 `diagnostics show`는 최신 현재 상태 snapshot을 계속
-반환하고, `diagnostics session`은 변경할 수 없는 runtime 발생 관찰 조회를 유지합니다.
+않습니다. 정확한 ID를 지정한 `diagnostics show`는 occurrence 또는 최신 current-state
+snapshot을 반환하며 `active` 또는 `resolved` 상태와 `resolved_at`을 포함합니다.
+`diagnostics session`은 변경할 수 없는 runtime 발생 관찰 조회를 유지합니다. 찾은 record는
+severity나 terminal condition과 관계없이 성공합니다.
 
 <a id="authority-bundle-export"></a>
 ## 권한 번들 내보내기
@@ -857,9 +882,12 @@ dry run은 `0`으로 종료합니다. Typed `failed` 운영 보고서는 `1`, �
 stderr를 사용하고 `1`로 종료합니다. 종료 상태는 표시 문자열이나 다시 parsing한 JSON이
 아니라 typed report 상태로 선택합니다.
 
-같은 운영 출력 규칙을 `diagnostics show`와 `diagnostics session`에도 적용합니다. 찾은
-terminal failure나 typed missing lookup은 JSON mode를 포함해 stdout의 failed report로
-나옵니다. Workflow metrics는 별도 report와 종료 계약을 유지합니다.
+`diagnostics show`와 `diagnostics session`은 finding severity가 아니라 lookup status로
+종료 상태를 정합니다. Active finding이나 terminal occurrence의 severity가 `error`여도 찾은
+record 또는 session은 `0`으로 종료합니다. Typed `not_found` lookup은 lookup report를
+stdout에 쓰고 `1`로 종료합니다. 잘못된 finding ID는 stderr의 사용법 오류이며 `2`, Store
+corruption 또는 그 밖의 read failure는 stderr의 runtime 오류이며 `1`로 종료합니다.
+Workflow metrics는 별도 report와 종료 계약을 유지합니다.
 
 <a id="noninteractive-approval-behavior"></a>
 ## 비대화형 동작

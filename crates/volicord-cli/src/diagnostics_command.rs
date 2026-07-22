@@ -1,14 +1,12 @@
-use std::{collections::BTreeMap, fmt, path::Path, str::FromStr, time::SystemTime};
+use std::{fmt, path::Path};
 
-use chrono::{DateTime, Utc};
 use serde::Serialize;
-use serde_json::{json, Map, Value};
 use volicord_store::{
     agent_connections::{agent_connection_record, list_connection_projects_for_diagnostics},
     bootstrap::project_record_by_repo_root_read_only,
     diagnostic_findings::{
-        bounded_diagnostic_graph_from_seeds, diagnostic_findings_by_ids,
-        diagnostic_occurrences_for_runtime_session,
+        bounded_stored_diagnostic_graph_from_seeds, diagnostic_occurrences_for_runtime_session,
+        stored_diagnostic_finding_by_id,
     },
     diagnostics::{
         current_diagnostics_storage_manifest, read_workflow_metric_aggregates,
@@ -21,12 +19,9 @@ use volicord_store::{
 };
 
 use volicord_types::{
-    AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
-    ConnectionCheckStatus, ConnectionStatus, DiagnosticAction, DiagnosticCode,
-    DiagnosticConnectionContext, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
-    DiagnosticFinding, DiagnosticFindingId, DiagnosticOperation, DiagnosticReport,
-    DiagnosticReportAction, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-    DiagnosticSubject, IntegrationProfile, IntegrationRevision, UtcTimestamp,
+    AgentRuntimeSessionId, DiagnosticConnectionContext, DiagnosticFinding, DiagnosticFindingId,
+    DiagnosticLookupReport, DiagnosticLookupStatus, DiagnosticOperation, IntegrationProfile,
+    IntegrationRevision, McpRuntimeSessionSource, StoredDiagnosticFinding, StoredDiagnosticGraph,
     MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
 };
 
@@ -39,13 +34,13 @@ use crate::cli::{
 pub enum DiagnosticsCommandError {
     Usage(String),
     Runtime(String),
-    FailureOutput(String),
+    NotFoundOutput(String),
 }
 
 impl fmt::Display for DiagnosticsCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Usage(message) | Self::Runtime(message) | Self::FailureOutput(message) => {
+            Self::Usage(message) | Self::Runtime(message) | Self::NotFoundOutput(message) => {
                 formatter.write_str(message)
             }
         }
@@ -95,44 +90,109 @@ where
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let finding_id = DiagnosticFindingId::parse(options.finding_id.clone())
         .map_err(|error| DiagnosticsCommandError::Usage(error.to_string()))?;
-    let report = if let Some(finding) =
-        diagnostic_findings_by_ids(&runtime_home, std::slice::from_ref(&finding_id))?
-            .into_iter()
-            .next()
-    {
-        let findings = cause_chain_findings(&runtime_home, std::slice::from_ref(&finding))?;
-        let roots = volicord_types::diagnostic_root_cause_ids(
-            &findings,
+    let report = if let Some(root) = stored_diagnostic_finding_by_id(&runtime_home, &finding_id)? {
+        let cause_graph = bounded_stored_diagnostic_graph_from_seeds(
+            &runtime_home,
             std::slice::from_ref(&finding_id),
             MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
-        )
-        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
-        let check = diagnostic_check(
-            ConnectionCheckKind::DiagnosticLookup,
-            ConnectionCheckStatus::Failed,
-            "diagnostic_finding_found",
-            "The requested diagnostic finding and bounded cause chain were loaded",
-            roots,
-            json!({"finding_id": finding_id.as_str(), "observation_state": "observed"}),
         )?;
-        let context = finding_context(&runtime_home, &finding, &findings)?;
-        build_report(
+        let root_projection = root.to_diagnostic_finding();
+        let context = finding_context(&runtime_home, &root_projection, &cause_graph)?;
+        DiagnosticLookupReport::try_new(
             DiagnosticOperation::DiagnosticsShow,
-            ConnectionStatus::Failed,
+            DiagnosticLookupStatus::Found,
+            finding_id.as_str(),
+            Some(root),
+            cause_graph,
             context,
-            vec![check],
-            findings,
-            None,
-        )?
+            diagnostic_lookup_limits(),
+        )
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
     } else {
-        missing_lookup_report(
+        DiagnosticLookupReport::<StoredDiagnosticFinding>::try_new(
             DiagnosticOperation::DiagnosticsShow,
-            ConnectionCheckKind::DiagnosticLookup,
-            "finding",
-            &options.finding_id,
-        )?
+            DiagnosticLookupStatus::NotFound,
+            finding_id.as_str(),
+            None,
+            StoredDiagnosticGraph::empty(),
+            None,
+            diagnostic_lookup_limits(),
+        )
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
     };
-    render_lookup_report(&report, options.json)
+    render_finding_lookup_report(&report, options.json)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum RuntimeSessionTerminalCondition {
+    InProgress,
+    GracefullyClosed,
+    TerminatedWithFinding,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct RuntimeSessionLookupRoot {
+    runtime_session_id: String,
+    connection_internal_id: String,
+    session_source: McpRuntimeSessionSource,
+    connection_integration_revision: String,
+    observed_host_executable_version: Option<String>,
+    attempted_client_name: Option<String>,
+    attempted_client_version: Option<String>,
+    requested_protocol_version: Option<String>,
+    selected_protocol_version: Option<String>,
+    negotiated_protocol_version: Option<String>,
+    process_id: u32,
+    process_started_at: String,
+    initialize_completed_at: Option<String>,
+    initialized_notification_at: Option<String>,
+    tools_list_observed_at: Option<String>,
+    required_tools_present: Option<bool>,
+    verification_tool_name: Option<String>,
+    verification_tool_observed_at: Option<String>,
+    last_observed_at: String,
+    terminal_condition: RuntimeSessionTerminalCondition,
+    terminal_finding_id: Option<String>,
+    graceful_close_at: Option<String>,
+}
+
+impl From<&volicord_store::operational_sessions::McpRuntimeSessionRecord>
+    for RuntimeSessionLookupRoot
+{
+    fn from(session: &volicord_store::operational_sessions::McpRuntimeSessionRecord) -> Self {
+        let terminal_condition = if session.terminal_finding_id.is_some() {
+            RuntimeSessionTerminalCondition::TerminatedWithFinding
+        } else if session.graceful_close_at.is_some() {
+            RuntimeSessionTerminalCondition::GracefullyClosed
+        } else {
+            RuntimeSessionTerminalCondition::InProgress
+        };
+        Self {
+            runtime_session_id: session.runtime_session_id.clone(),
+            connection_internal_id: session.connection_internal_id.clone(),
+            session_source: session.session_source,
+            connection_integration_revision: session.connection_integration_revision.clone(),
+            observed_host_executable_version: session.observed_host_executable_version.clone(),
+            attempted_client_name: session.attempted_client_name.clone(),
+            attempted_client_version: session.attempted_client_version.clone(),
+            requested_protocol_version: session.requested_protocol_version.clone(),
+            selected_protocol_version: session.selected_protocol_version.clone(),
+            negotiated_protocol_version: session.negotiated_protocol_version.clone(),
+            process_id: session.process_id,
+            process_started_at: session.process_started_at.clone(),
+            initialize_completed_at: session.initialize_completed_at.clone(),
+            initialized_notification_at: session.initialized_notification_at.clone(),
+            tools_list_observed_at: session.tools_list_observed_at.clone(),
+            required_tools_present: session.required_tools_present,
+            verification_tool_name: session.verification_tool_name.clone(),
+            verification_tool_observed_at: session.verification_tool_observed_at.clone(),
+            last_observed_at: session.last_observed_at.clone(),
+            terminal_condition,
+            terminal_finding_id: session.terminal_finding_id.clone(),
+            graceful_close_at: session.graceful_close_at.clone(),
+        }
+    }
 }
 
 fn run_runtime_session<F>(
@@ -148,226 +208,50 @@ where
         mcp_runtime_session(&runtime_home, &options.runtime_session_id)?
     {
         let direct =
-            diagnostic_occurrences_for_runtime_session(&runtime_home, &options.runtime_session_id)?
-                .into_iter()
-                .map(|finding| finding.to_diagnostic_finding())
-                .collect::<Vec<_>>();
-        let findings = cause_chain_findings(&runtime_home, &direct)?;
-        let terminal_id = session
-            .terminal_finding_id
-            .as_deref()
-            .map(DiagnosticFindingId::parse)
-            .transpose()
-            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
-        let (status, check_status, code, summary, causes) = if let Some(terminal_id) = terminal_id {
-            (
-                ConnectionStatus::Failed,
-                ConnectionCheckStatus::Failed,
-                "runtime_session_terminal_failure",
-                "The runtime session ended with a typed terminal finding",
-                vec![terminal_id],
-            )
-        } else if session.graceful_close_at.is_some() {
-            (
-                ConnectionStatus::Complete,
-                ConnectionCheckStatus::Passed,
-                "runtime_session_complete",
-                "The runtime session completed without a terminal finding",
-                Vec::new(),
-            )
+            diagnostic_occurrences_for_runtime_session(&runtime_home, &options.runtime_session_id)?;
+        let seed_ids = direct
+            .iter()
+            .map(|finding| finding.id())
+            .collect::<Vec<_>>();
+        let cause_graph = if seed_ids.is_empty() {
+            StoredDiagnosticGraph::empty()
         } else {
-            (
-                ConnectionStatus::ActionRequired,
-                ConnectionCheckStatus::Pending,
-                "runtime_session_observation_incomplete",
-                "The runtime session has not reached a terminal observation",
-                Vec::new(),
-            )
+            bounded_stored_diagnostic_graph_from_seeds(
+                &runtime_home,
+                &seed_ids,
+                MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+            )?
         };
-        let check = diagnostic_check(
-            ConnectionCheckKind::RuntimeSessionLookup,
-            check_status,
-            code,
-            summary,
-            causes,
-            json!({
-                "runtime_session_id": session.runtime_session_id,
-                "session_source": session.session_source,
-                "process_id": session.process_id,
-                "process_started_at": session.process_started_at,
-                "attempted_client_info": {
-                    "name": session.attempted_client_name,
-                    "version": session.attempted_client_version,
-                },
-                "requested_protocol_version": session.requested_protocol_version,
-                "selected_protocol_version": session.selected_protocol_version,
-                "negotiated_protocol_version": session.negotiated_protocol_version,
-                "initialize_completed_at": session.initialize_completed_at,
-                "initialized_notification_at": session.initialized_notification_at,
-                "tools_list_observed_at": session.tools_list_observed_at,
-                "required_tools_present": session.required_tools_present,
-                "verification_tool_name": session.verification_tool_name,
-                "verification_tool_observed_at": session.verification_tool_observed_at,
-                "last_observed_at": session.last_observed_at,
-                "terminal_finding_id": session.terminal_finding_id,
-                "graceful_close_at": session.graceful_close_at,
-            }),
-        )?;
-        let context = runtime_session_context(&runtime_home, &session, &findings)?;
-        build_report(
+        let context = runtime_session_context(&runtime_home, &session, &cause_graph)?;
+        DiagnosticLookupReport::try_new(
             DiagnosticOperation::DiagnosticsSession,
-            status,
+            DiagnosticLookupStatus::Found,
+            options.runtime_session_id.as_str(),
+            Some(RuntimeSessionLookupRoot::from(&session)),
+            cause_graph,
             context,
-            vec![check],
-            findings,
-            None,
-        )?
+            diagnostic_lookup_limits(),
+        )
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
     } else {
-        missing_lookup_report(
+        DiagnosticLookupReport::<RuntimeSessionLookupRoot>::try_new(
             DiagnosticOperation::DiagnosticsSession,
-            ConnectionCheckKind::RuntimeSessionLookup,
-            "runtime_session",
-            &options.runtime_session_id,
-        )?
+            DiagnosticLookupStatus::NotFound,
+            options.runtime_session_id.as_str(),
+            None,
+            StoredDiagnosticGraph::empty(),
+            None,
+            diagnostic_lookup_limits(),
+        )
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
     };
-    render_lookup_report(&report, options.json)
-}
-
-fn cause_chain_findings(
-    runtime_home: &Path,
-    direct: &[DiagnosticFinding],
-) -> Result<Vec<DiagnosticFinding>, DiagnosticsCommandError> {
-    let mut findings = BTreeMap::new();
-    for finding in direct {
-        let chain = bounded_diagnostic_graph_from_seeds(
-            runtime_home,
-            std::slice::from_ref(finding.id()),
-            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
-        )?;
-        for entry in chain.entries {
-            findings.insert(entry.finding.id().clone(), entry.finding);
-            if findings.len() > MAX_DIAGNOSTIC_FINDINGS {
-                return Err(DiagnosticsCommandError::Runtime(
-                    "diagnostic lookup exceeded the shared finding bound".to_owned(),
-                ));
-            }
-        }
-    }
-    Ok(findings.into_values().collect())
-}
-
-fn diagnostic_check(
-    kind: ConnectionCheckKind,
-    status: ConnectionCheckStatus,
-    code: &str,
-    summary: &str,
-    causes: Vec<DiagnosticFindingId>,
-    details: Value,
-) -> Result<ConnectionCheck, DiagnosticsCommandError> {
-    let Value::Object(details) = details else {
-        return Err(DiagnosticsCommandError::Runtime(
-            "diagnostic lookup details must be an object".to_owned(),
-        ));
-    };
-    ConnectionCheck::try_new(
-        kind,
-        status,
-        causes,
-        Some(code.to_owned()),
-        summary,
-        Some(
-            ConnectionCheckDetails::try_new(details)
-                .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        ),
-        Some(current_timestamp()),
-    )
-    .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
-}
-
-#[derive(Serialize)]
-struct MissingLookupFacts<'a> {
-    summary: &'static str,
-    observation_state: &'static str,
-    requested_kind: &'static str,
-    requested_id: &'a str,
-}
-
-impl DiagnosticFactSource for MissingLookupFacts<'_> {}
-
-fn missing_lookup_report(
-    operation: DiagnosticOperation,
-    check_kind: ConnectionCheckKind,
-    requested_kind: &'static str,
-    requested_id: &str,
-) -> Result<DiagnosticReport, DiagnosticsCommandError> {
-    let (finding_id, code, summary) = match requested_kind {
-        "finding" => (
-            "finding.diagnostics.lookup.finding_missing",
-            "diagnostics.lookup.finding_missing",
-            "The requested diagnostic finding does not exist",
-        ),
-        _ => (
-            "finding.diagnostics.lookup.runtime_session_missing",
-            "diagnostics.lookup.runtime_session_missing",
-            "The requested runtime session does not exist",
-        ),
-    };
-    let finding = DiagnosticFinding::try_new(
-        DiagnosticFindingId::parse(finding_id)
-            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        DiagnosticCode::parse(code)
-            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        DiagnosticDomain::parse("diagnostics")
-            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        DiagnosticStage::parse("lookup")
-            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        DiagnosticSeverity::Error,
-        DiagnosticSource::parse("administrative_cli")
-            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        DiagnosticSubject::try_new(requested_kind, requested_id)
-            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        DiagnosticFacts::project(&MissingLookupFacts {
-            summary,
-            observation_state: "absent",
-            requested_kind,
-            requested_id,
-        })
-        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?,
-        current_timestamp(),
-    )
-    .and_then(|finding| {
-        finding.with_actions(vec![DiagnosticAction::try_new(
-            DiagnosticCode::parse("action.diagnostics.check_identifier")?,
-            "Check the exact diagnostic identifier and Runtime Home",
-        )?])
-    })
-    .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
-    let check = diagnostic_check(
-        check_kind,
-        ConnectionCheckStatus::Failed,
-        "diagnostic_lookup_missing",
-        summary,
-        vec![finding.id().clone()],
-        json!({
-            "requested_kind": requested_kind,
-            "requested_id": requested_id,
-            "observation_state": "absent",
-        }),
-    )?;
-    build_report(
-        operation,
-        ConnectionStatus::Failed,
-        None,
-        vec![check],
-        vec![finding],
-        None,
-    )
+    render_session_lookup_report(&report, options.json)
 }
 
 fn finding_context(
     runtime_home: &Path,
     finding: &DiagnosticFinding,
-    findings: &[DiagnosticFinding],
+    cause_graph: &StoredDiagnosticGraph,
 ) -> Result<Option<DiagnosticConnectionContext>, DiagnosticsCommandError> {
     let Some(connection_id) = finding.connection_id() else {
         return Ok(None);
@@ -380,7 +264,7 @@ fn finding_context(
         &connection,
         finding.project_id().map(|project_id| project_id.as_str()),
         finding.integration_revision().cloned(),
-        findings,
+        cause_graph,
         Vec::new(),
     )
     .map(Some)
@@ -389,7 +273,7 @@ fn finding_context(
 fn runtime_session_context(
     runtime_home: &Path,
     session: &volicord_store::operational_sessions::McpRuntimeSessionRecord,
-    findings: &[DiagnosticFinding],
+    cause_graph: &StoredDiagnosticGraph,
 ) -> Result<Option<DiagnosticConnectionContext>, DiagnosticsCommandError> {
     let Some(connection) = agent_connection_record(runtime_home, &session.connection_internal_id)?
     else {
@@ -402,7 +286,7 @@ fn runtime_session_context(
         &connection,
         None,
         Some(revision),
-        findings,
+        cause_graph,
         vec![AgentRuntimeSessionId::new(
             session.runtime_session_id.clone(),
         )],
@@ -415,7 +299,7 @@ fn connection_context(
     connection: &volicord_store::agent_connections::AgentConnectionRecord,
     project_id: Option<&str>,
     revision: Option<IntegrationRevision>,
-    findings: &[DiagnosticFinding],
+    cause_graph: &StoredDiagnosticGraph,
     mut runtime_session_ids: Vec<AgentRuntimeSessionId>,
 ) -> Result<DiagnosticConnectionContext, DiagnosticsCommandError> {
     let projects =
@@ -428,11 +312,12 @@ fn connection_context(
         })
         .or_else(|| (projects.len() == 1).then(|| &projects[0]))
         .map(|project| project.project.repo_root.to_string_lossy().into_owned());
-    runtime_session_ids.extend(
-        findings
-            .iter()
-            .filter_map(|finding| finding.runtime_session_id().cloned()),
-    );
+    runtime_session_ids.extend(cause_graph.entries().iter().filter_map(|entry| {
+        entry
+            .finding()
+            .occurrence()
+            .and_then(|finding| finding.runtime_session_id().cloned())
+    }));
     runtime_session_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
     runtime_session_ids.dedup();
     DiagnosticConnectionContext::try_new(
@@ -450,64 +335,7 @@ fn connection_context(
     .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
 }
 
-fn build_report(
-    operation: DiagnosticOperation,
-    status: ConnectionStatus,
-    connection: Option<DiagnosticConnectionContext>,
-    checks: Vec<ConnectionCheck>,
-    findings: Vec<DiagnosticFinding>,
-    operation_details: Option<Map<String, Value>>,
-) -> Result<DiagnosticReport, DiagnosticsCommandError> {
-    let selected = checks
-        .iter()
-        .flat_map(|check| check.cause_finding_ids().iter().cloned())
-        .collect::<Vec<_>>();
-    let roots = if selected.is_empty() {
-        Vec::new()
-    } else {
-        volicord_types::diagnostic_root_cause_ids(
-            &findings,
-            &selected,
-            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
-        )
-        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
-    };
-    let mut actions = BTreeMap::<String, (String, Vec<DiagnosticFindingId>)>::new();
-    for root in &roots {
-        let Some(action) = findings
-            .iter()
-            .find(|finding| finding.id() == root)
-            .and_then(|finding| finding.actions().first())
-        else {
-            continue;
-        };
-        let entry = actions
-            .entry(action.code().to_string())
-            .or_insert_with(|| (action.summary().to_owned(), Vec::new()));
-        entry.1.push(root.clone());
-    }
-    let actions = actions
-        .into_iter()
-        .map(|(code, (summary, roots))| {
-            DiagnosticReportAction::try_new(DiagnosticCode::parse(code)?, summary, roots)
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?;
-    DiagnosticReport::try_new(
-        operation,
-        status,
-        current_timestamp(),
-        connection,
-        checks,
-        findings,
-        actions,
-        operation_details,
-        diagnostic_report_limits(),
-    )
-    .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
-}
-
-fn diagnostic_report_limits() -> Vec<String> {
+fn diagnostic_lookup_limits() -> Vec<String> {
     vec![
         format!(
             "Diagnostic cause traversal is bounded to {} edges and {} findings.",
@@ -518,8 +346,8 @@ fn diagnostic_report_limits() -> Vec<String> {
     ]
 }
 
-fn render_lookup_report(
-    report: &DiagnosticReport,
+fn render_finding_lookup_report(
+    report: &DiagnosticLookupReport<StoredDiagnosticFinding>,
     json: bool,
 ) -> Result<String, DiagnosticsCommandError> {
     let output = if json {
@@ -527,35 +355,43 @@ fn render_lookup_report(
             .map(|output| format!("{output}\n"))
             .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
     } else {
-        render_lookup_text(report)
+        render_finding_lookup_text(report)
     };
-    if report.status() == ConnectionStatus::Failed {
-        Err(DiagnosticsCommandError::FailureOutput(output))
+    if report.lookup_status() == DiagnosticLookupStatus::NotFound {
+        Err(DiagnosticsCommandError::NotFoundOutput(output))
     } else {
         Ok(output)
     }
 }
 
-fn render_lookup_text(report: &DiagnosticReport) -> String {
-    let mut lines = vec![
-        format!("Diagnostic report: {}", report.status().as_str()),
-        format!("Operation: {}", report.operation().as_str()),
-    ];
-    for check in report.checks() {
-        lines.push(format!(
-            "Check {}: {} — {}",
-            check.id().as_str(),
-            check.status().as_str(),
-            check.summary()
-        ));
-        if let Some(details) = check.details() {
-            lines.push(format!(
-                "  Bounded check facts: {}",
-                serde_json::to_string(details.as_object()).unwrap_or_else(|_| "{}".to_owned())
-            ));
-        }
+fn render_session_lookup_report(
+    report: &DiagnosticLookupReport<RuntimeSessionLookupRoot>,
+    json: bool,
+) -> Result<String, DiagnosticsCommandError> {
+    let output = if json {
+        serde_json::to_string_pretty(report)
+            .map(|output| format!("{output}\n"))
+            .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))?
+    } else {
+        render_session_lookup_text(report)
+    };
+    if report.lookup_status() == DiagnosticLookupStatus::NotFound {
+        Err(DiagnosticsCommandError::NotFoundOutput(output))
+    } else {
+        Ok(output)
     }
-    if let Some(connection) = report.connection() {
+}
+
+fn lookup_text_header<T>(report: &DiagnosticLookupReport<T>) -> Vec<String>
+where
+    T: Serialize,
+{
+    let mut lines = vec![
+        format!("Diagnostic lookup: {}", report.lookup_status().as_str()),
+        format!("Operation: {}", report.operation().as_str()),
+        format!("Requested ID: {}", report.requested_id()),
+    ];
+    if let Some(connection) = report.context() {
         lines.push(format!("Runtime home: {}", connection.runtime_home()));
         lines.push(format!("Connection: {}", connection.connection_id()));
         if let Some(revision) = connection.integration_revision() {
@@ -573,22 +409,78 @@ fn render_lookup_text(report: &DiagnosticReport) -> String {
             ));
         }
     }
-    for finding in report.findings() {
-        let role = if report.root_cause_ids().contains(finding.id()) {
-            "root"
-        } else {
-            "related"
-        };
-        lines.push(format!("Finding ({role}): {}", finding.id()));
-        lines.push(format!("  Code: {}", finding.code()));
-        if let Some(summary) = finding
-            .facts()
-            .data()
-            .get("summary")
-            .and_then(Value::as_str)
-        {
-            lines.push(format!("  Summary: {summary}"));
+    lines
+}
+
+fn render_finding_lookup_text(report: &DiagnosticLookupReport<StoredDiagnosticFinding>) -> String {
+    let mut lines = lookup_text_header(report);
+    append_stored_graph(&mut lines, report.cause_graph());
+    for limit in report.limits() {
+        lines.push(format!("Limit: {limit}"));
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+fn render_session_lookup_text(report: &DiagnosticLookupReport<RuntimeSessionLookupRoot>) -> String {
+    let mut lines = lookup_text_header(report);
+    if let Some(session) = report.root() {
+        lines.push(format!("Runtime session: {}", session.runtime_session_id));
+        lines.push(format!(
+            "  Session source: {}",
+            session.session_source.as_str()
+        ));
+        lines.push(format!(
+            "  Terminal condition: {}",
+            match session.terminal_condition {
+                RuntimeSessionTerminalCondition::InProgress => "in_progress",
+                RuntimeSessionTerminalCondition::GracefullyClosed => "gracefully_closed",
+                RuntimeSessionTerminalCondition::TerminatedWithFinding => {
+                    "terminated_with_finding"
+                }
+            }
+        ));
+        if let Some(finding_id) = session.terminal_finding_id.as_deref() {
+            lines.push(format!("  Terminal finding: {finding_id}"));
         }
+        lines.push(format!("  Last observed: {}", session.last_observed_at));
+    }
+    append_stored_graph(&mut lines, report.cause_graph());
+    for limit in report.limits() {
+        lines.push(format!("Limit: {limit}"));
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+fn append_stored_graph(lines: &mut Vec<String>, graph: &StoredDiagnosticGraph) {
+    for entry in graph.entries() {
+        let stored = entry.finding();
+        let finding = stored.to_diagnostic_finding();
+        lines.push(format!(
+            "Finding (depth {}): {}",
+            entry.depth(),
+            finding.id()
+        ));
+        lines.push(format!("  Lifecycle: {}", stored.lifecycle().as_str()));
+        if let Some(current) = stored.current() {
+            lines.push(format!(
+                "  Current status: {}",
+                current.snapshot().status().as_str()
+            ));
+            if let Some(resolved_at) = current.snapshot().resolved_at() {
+                lines.push(format!("  Resolved at: {resolved_at}"));
+            }
+        }
+        lines.push(format!("  Severity: {}", finding.severity().as_str()));
+        lines.push(format!("  Code: {}", finding.code()));
+        lines.push(format!("  Domain: {}", finding.domain()));
+        lines.push(format!("  Stage: {}", finding.stage()));
+        lines.push(format!("  Source: {}", finding.source()));
+        lines.push(format!(
+            "  Subject: {} {}",
+            finding.subject().kind(),
+            finding.subject().reference()
+        ));
+        lines.push(format!("  Observed at: {}", finding.observed_at()));
         if let Some(runtime_session_id) = finding.runtime_session_id() {
             lines.push(format!("  Runtime session: {runtime_session_id}"));
         }
@@ -607,20 +499,14 @@ fn render_lookup_text(report: &DiagnosticReport) -> String {
                     .join(", ")
             ));
         }
+        for action in finding.actions() {
+            lines.push(format!(
+                "  Action: {} — {}",
+                action.code(),
+                action.summary()
+            ));
+        }
     }
-    for action in report.actions() {
-        lines.push(format!("Next: {} — {}", action.code(), action.summary()));
-    }
-    for limit in report.limits() {
-        lines.push(format!("Limit: {limit}"));
-    }
-    format!("{}\n", lines.join("\n"))
-}
-
-fn current_timestamp() -> UtcTimestamp {
-    let timestamp: DateTime<Utc> = SystemTime::now().into();
-    UtcTimestamp::from_str(&timestamp.to_rfc3339_opts(chrono::SecondsFormat::Micros, true))
-        .expect("current UTC timestamp must be canonical")
 }
 
 fn run_workflow_metrics<F>(
@@ -831,15 +717,23 @@ mod tests {
         WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     };
     use volicord_store::{
-        diagnostic_findings::upsert_current_snapshot,
-        operational_sessions::connection_integration_revision,
+        diagnostic_findings::{
+            insert_occurrence_finding, resolve_current_finding, upsert_current_snapshot,
+        },
+        operational_sessions::{
+            connection_integration_revision, record_mcp_terminal_finding,
+            start_mcp_runtime_session, McpRuntimeSessionStart,
+        },
     };
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
     use volicord_types::{
         ActorSource, AgentConnectionId, CurrentDiagnosticFinding, CurrentDiagnosticKey,
-        CurrentDiagnosticSnapshot, DiagnosticScope, DiagnosticScopeKind, DiagnosticSubjectIdentity,
-        IntegrationProfile, JudgmentKind, MethodName, ObservationConfidence, OperationCategory,
-        ProjectId,
+        CurrentDiagnosticSnapshot, DiagnosticCause, DiagnosticCode, DiagnosticDomain,
+        DiagnosticFactSource, DiagnosticFacts, DiagnosticFindingData, DiagnosticScope,
+        DiagnosticScopeKind, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+        DiagnosticSubject, DiagnosticSubjectIdentity, IntegrationProfile, JudgmentKind, MethodName,
+        ObservationConfidence, OccurrenceDiagnosticFinding, OperationCategory, ProjectId,
+        UtcTimestamp,
     };
 
     use crate::cli::DiagnosticsWorkflowMetricsArgs;
@@ -869,9 +763,7 @@ mod tests {
                     json: true,
                 }),
                 "diagnostics_show",
-                "diagnostic_lookup",
-                "finding.diagnostics.lookup.finding_missing",
-                "diagnostics.lookup.finding_missing",
+                "finding.does_not_exist",
             ),
             (
                 DiagnosticsCommand::Session(DiagnosticsSessionArgs {
@@ -879,46 +771,29 @@ mod tests {
                     json: true,
                 }),
                 "diagnostics_session",
-                "runtime_session_lookup",
-                "finding.diagnostics.lookup.runtime_session_missing",
-                "diagnostics.lookup.runtime_session_missing",
+                "runtime_session_does_not_exist",
             ),
         ];
-        for (command, operation, check_id, finding_id, finding_code) in cases {
+        for (command, operation, requested_id) in cases {
             let error = run_diagnostics_command(
                 DiagnosticsArgs { command },
                 env_for(fixture.runtime_home_path()),
                 fixture.product_repo_path().as_path(),
             )
             .expect_err("missing lookup must use the typed failure output channel");
-            let DiagnosticsCommandError::FailureOutput(output) = error else {
+            let DiagnosticsCommandError::NotFoundOutput(output) = error else {
                 panic!("missing lookup returned an ad hoc error: {error}");
             };
-            let report: Value = serde_json::from_str(&output).expect("diagnostic report JSON");
-            assert_eq!(report["schema_version"], 2);
+            let report: Value = serde_json::from_str(&output).expect("diagnostic lookup JSON");
+            assert_eq!(report["schema_version"], 1);
             assert_eq!(report["operation"], operation);
-            assert_eq!(report["status"], "failed");
-            assert_eq!(report["checks"][0]["id"], check_id);
-            assert_eq!(report["checks"][0]["status"], "failed");
-            assert_eq!(
-                report["checks"][0]["details"]["observation_state"],
-                "absent"
-            );
-            assert_eq!(report["root_cause_ids"], json!([finding_id]));
-            assert_eq!(report["findings"][0]["id"], finding_id);
-            assert_eq!(report["findings"][0]["code"], finding_code);
-            assert_eq!(
-                report["findings"][0]["facts"]["data"]["observation_state"],
-                "absent"
-            );
-            assert_eq!(
-                report["actions"],
-                json!([{
-                    "code": "action.diagnostics.check_identifier",
-                    "summary": "Check the exact diagnostic identifier and Runtime Home",
-                    "root_cause_ids": [finding_id],
-                }])
-            );
+            assert_eq!(report["lookup_status"], "not_found");
+            assert_eq!(report["requested_id"], requested_id);
+            assert!(report["root"].is_null());
+            assert_eq!(report["cause_graph"]["entries"], serde_json::json!([]));
+            assert!(report.get("status").is_none());
+            assert!(report.get("checks").is_none());
+            assert!(report.get("findings").is_none());
         }
     }
 
@@ -970,7 +845,7 @@ mod tests {
         upsert_current_snapshot(fixture.runtime_home_path(), &latest)
             .expect("replacement snapshot");
 
-        let error = run_diagnostics_command(
+        let output = run_diagnostics_command(
             DiagnosticsArgs {
                 command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
                     finding_id: finding_id.to_string(),
@@ -980,21 +855,380 @@ mod tests {
             env_for(fixture.runtime_home_path()),
             fixture.product_repo_path().as_path(),
         )
-        .expect_err("finding lookup uses the typed failure output channel");
-        let DiagnosticsCommandError::FailureOutput(output) = error else {
-            panic!("finding lookup returned an ad hoc error: {error}");
-        };
-        let report: Value = serde_json::from_str(&output).expect("diagnostic report JSON");
-        assert_eq!(report["findings"][0]["id"], finding_id.as_str());
+        .expect("found finding lookup succeeds regardless of severity");
+        let report: Value = serde_json::from_str(&output).expect("diagnostic lookup JSON");
+        assert_eq!(report["lookup_status"], "found");
+        assert_eq!(report["root"]["lifecycle"], "current_state");
+        assert_eq!(report["root"]["current_state_status"], "active");
+        assert!(report["root"]["resolved_at"].is_null());
+        assert_eq!(report["root"]["finding"]["id"], finding_id.as_str());
         assert_eq!(
-            report["findings"][0]["subject"]["reference"],
+            report["root"]["finding"]["subject"]["reference"],
             "/bounded/current/config.toml"
         );
         assert_eq!(
-            report["findings"][0]["facts"]["data"]["observed_state"],
+            report["root"]["finding"]["facts"]["data"]["observed_state"],
             "drift"
         );
-        assert_eq!(report["findings"][0]["observed_at"], "2026-07-22T02:03:04Z");
+        assert_eq!(
+            report["root"]["finding"]["observed_at"],
+            "2026-07-22T02:03:04Z"
+        );
+        assert_eq!(
+            report["cause_graph"]["entries"][0]["finding"],
+            report["root"]
+        );
+
+        let active_text = run_diagnostics_command(
+            DiagnosticsArgs {
+                command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                    finding_id: finding_id.to_string(),
+                    json: false,
+                }),
+            },
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("active finding human lookup succeeds");
+        assert!(active_text.contains("Diagnostic lookup: found"));
+        assert!(active_text.contains(&format!("Finding (depth 0): {finding_id}")));
+        assert!(active_text.contains("Lifecycle: current_state"));
+        assert!(active_text.contains("Current status: active"));
+        assert!(active_text.contains("Severity: error"));
+
+        let resolved_at = UtcTimestamp::parse("2026-07-22T03:04:05Z").expect("time");
+        resolve_current_finding(fixture.runtime_home_path(), &key, resolved_at.clone())
+            .expect("resolve current finding");
+        let resolved_json = run_diagnostics_command(
+            DiagnosticsArgs {
+                command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                    finding_id: finding_id.to_string(),
+                    json: true,
+                }),
+            },
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("resolved error finding lookup succeeds");
+        let resolved_report: Value =
+            serde_json::from_str(&resolved_json).expect("resolved lookup JSON");
+        assert_eq!(resolved_report["lookup_status"], "found");
+        assert_eq!(resolved_report["root"]["current_state_status"], "resolved");
+        assert_eq!(
+            resolved_report["root"]["resolved_at"],
+            "2026-07-22T03:04:05Z"
+        );
+        assert_eq!(resolved_report["root"]["finding"]["severity"], "error");
+        assert!(resolved_report.get("status").is_none());
+        assert!(resolved_report.get("checks").is_none());
+
+        let resolved_text = run_diagnostics_command(
+            DiagnosticsArgs {
+                command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                    finding_id: finding_id.to_string(),
+                    json: false,
+                }),
+            },
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("resolved finding human lookup succeeds");
+        assert!(resolved_text.contains("Diagnostic lookup: found"));
+        assert!(resolved_text.contains("Lifecycle: current_state"));
+        assert!(resolved_text.contains("Current status: resolved"));
+        assert!(resolved_text.contains("Resolved at: 2026-07-22T03:04:05Z"));
+        assert!(!resolved_text.contains("verification failed"));
+    }
+
+    fn test_occurrence(
+        severity: DiagnosticSeverity,
+        observed_at: &str,
+    ) -> OccurrenceDiagnosticFinding {
+        OccurrenceDiagnosticFinding::try_new(
+            DiagnosticFindingData::try_new(
+                DiagnosticCode::parse("diagnostics.test_severity").expect("code"),
+                DiagnosticDomain::parse("diagnostics").expect("domain"),
+                DiagnosticStage::parse("lookup").expect("stage"),
+                severity,
+                DiagnosticSource::parse("cli_test").expect("source"),
+                DiagnosticSubject::try_new("test_record", severity.as_str()).expect("subject"),
+                DiagnosticFacts::empty(),
+                UtcTimestamp::parse(observed_at).expect("time"),
+            )
+            .expect("finding data"),
+            None,
+        )
+        .expect("occurrence")
+    }
+
+    #[test]
+    fn diagnostics_show_found_occurrences_succeed_for_every_severity() {
+        let fixture = CoreFixture::new("diagnostics-show-severity").expect("fixture");
+        for (index, severity) in [
+            DiagnosticSeverity::Info,
+            DiagnosticSeverity::Warning,
+            DiagnosticSeverity::Error,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let finding = test_occurrence(severity, &format!("2026-07-22T04:05:0{}Z", index + 1));
+            insert_occurrence_finding(fixture.runtime_home_path(), &finding).expect("insert");
+            let output = run_diagnostics_command(
+                DiagnosticsArgs {
+                    command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                        finding_id: finding.id().to_string(),
+                        json: true,
+                    }),
+                },
+                env_for(fixture.runtime_home_path()),
+                fixture.product_repo_path().as_path(),
+            )
+            .expect("found occurrence lookup succeeds for every severity");
+            let report: Value = serde_json::from_str(&output).expect("lookup JSON");
+            assert_eq!(report["lookup_status"], "found");
+            assert_eq!(report["root"]["lifecycle"], "occurrence");
+            assert_eq!(report["root"]["finding"]["severity"], severity.as_str());
+            assert_eq!(
+                report["root"]["finding"]["observed_at"],
+                format!("2026-07-22T04:05:0{}Z", index + 1)
+            );
+        }
+    }
+
+    #[test]
+    fn diagnostics_show_json_and_text_preserve_every_lifecycle_in_the_cause_graph() {
+        let fixture = CoreFixture::new("diagnostics-show-mixed-graph").expect("fixture");
+        let occurrence_cause = test_occurrence(DiagnosticSeverity::Info, "2026-07-22T04:10:01Z");
+        insert_occurrence_finding(fixture.runtime_home_path(), &occurrence_cause)
+            .expect("occurrence cause");
+
+        let current_key = |subject: &str| {
+            CurrentDiagnosticKey::new(
+                DiagnosticScope::try_new(DiagnosticScopeKind::Connection, fixture.connection_id())
+                    .expect("scope"),
+                DiagnosticCode::parse("guard.test_condition").expect("code"),
+                DiagnosticDomain::parse("guard").expect("domain"),
+                DiagnosticStage::parse("guard_files").expect("stage"),
+                DiagnosticSource::parse("cli_test").expect("source"),
+                DiagnosticSubjectIdentity::from_canonical_bytes(subject.as_bytes()),
+            )
+        };
+        let active_key = current_key("active-current");
+        let active = CurrentDiagnosticFinding::try_new(
+            active_key,
+            CurrentDiagnosticSnapshot::try_new(
+                DiagnosticSubject::try_new("guard_artifact", "active-safe-subject")
+                    .expect("subject"),
+                DiagnosticSeverity::Warning,
+                DiagnosticFacts::empty(),
+                UtcTimestamp::parse("2026-07-22T04:10:02Z").expect("time"),
+            )
+            .and_then(|snapshot| {
+                snapshot.with_causes(vec![DiagnosticCause::new(occurrence_cause.id())])
+            })
+            .expect("active snapshot"),
+        )
+        .expect("active current");
+        upsert_current_snapshot(fixture.runtime_home_path(), &active).expect("active upsert");
+
+        let resolved_key = current_key("resolved-current");
+        let resolved = CurrentDiagnosticFinding::try_new(
+            resolved_key.clone(),
+            CurrentDiagnosticSnapshot::try_new(
+                DiagnosticSubject::try_new("guard_artifact", "resolved-safe-subject")
+                    .expect("subject"),
+                DiagnosticSeverity::Error,
+                DiagnosticFacts::empty(),
+                UtcTimestamp::parse("2026-07-22T04:10:03Z").expect("time"),
+            )
+            .expect("resolved snapshot"),
+        )
+        .expect("resolved current");
+        upsert_current_snapshot(fixture.runtime_home_path(), &resolved).expect("resolved upsert");
+        resolve_current_finding(
+            fixture.runtime_home_path(),
+            &resolved_key,
+            UtcTimestamp::parse("2026-07-22T04:10:04Z").expect("time"),
+        )
+        .expect("resolve");
+
+        let root = OccurrenceDiagnosticFinding::try_new(
+            DiagnosticFindingData::try_new(
+                DiagnosticCode::parse("diagnostics.mixed_root").expect("code"),
+                DiagnosticDomain::parse("diagnostics").expect("domain"),
+                DiagnosticStage::parse("lookup").expect("stage"),
+                DiagnosticSeverity::Error,
+                DiagnosticSource::parse("cli_test").expect("source"),
+                DiagnosticSubject::try_new("test_record", "mixed-root").expect("subject"),
+                DiagnosticFacts::empty(),
+                UtcTimestamp::parse("2026-07-22T04:10:05Z").expect("time"),
+            )
+            .and_then(|data| {
+                data.with_causes(vec![
+                    DiagnosticCause::new(active.id().clone()),
+                    DiagnosticCause::new(resolved.id().clone()),
+                ])
+            })
+            .expect("root data"),
+            None,
+        )
+        .expect("root occurrence");
+        insert_occurrence_finding(fixture.runtime_home_path(), &root).expect("root insert");
+
+        let args = |json| DiagnosticsArgs {
+            command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                finding_id: root.id().to_string(),
+                json,
+            }),
+        };
+        let json_output = run_diagnostics_command(
+            args(true),
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("mixed graph JSON lookup");
+        let report: Value = serde_json::from_str(&json_output).expect("lookup JSON");
+        let entries = report["cause_graph"]["entries"]
+            .as_array()
+            .expect("entries");
+        assert!(entries.iter().any(|entry| {
+            entry["finding"]["lifecycle"] == "occurrence"
+                && entry["finding"]["finding"]["id"] == occurrence_cause.id().as_str()
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry["finding"]["current_state_status"] == "active"
+                && entry["finding"]["finding"]["id"] == active.id().as_str()
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry["finding"]["current_state_status"] == "resolved"
+                && entry["finding"]["resolved_at"] == "2026-07-22T04:10:04Z"
+                && entry["finding"]["finding"]["id"] == resolved.id().as_str()
+        }));
+
+        let human_output = run_diagnostics_command(
+            args(false),
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("mixed graph human lookup");
+        assert!(human_output.contains(&format!("Finding (depth 0): {}", root.id())));
+        assert!(human_output.contains(&format!("Finding (depth 1): {}", active.id())));
+        assert!(human_output.contains(&format!("Finding (depth 1): {}", resolved.id())));
+        assert!(human_output.contains("Lifecycle: occurrence"));
+        assert!(human_output.contains("Current status: active"));
+        assert!(human_output.contains("Current status: resolved"));
+        assert!(human_output.contains("Resolved at: 2026-07-22T04:10:04Z"));
+    }
+
+    #[test]
+    fn invalid_finding_id_is_usage_not_not_found() {
+        let fixture = CoreFixture::new("diagnostics-show-invalid-id").expect("fixture");
+        let error = run_diagnostics_command(
+            DiagnosticsArgs {
+                command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
+                    finding_id: "invalid finding id".to_owned(),
+                    json: true,
+                }),
+            },
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect_err("invalid ID must be usage failure");
+        assert!(matches!(error, DiagnosticsCommandError::Usage(_)));
+    }
+
+    #[test]
+    fn diagnostics_session_lookup_success_is_independent_of_terminal_severity() {
+        let fixture = CoreFixture::new("diagnostics-session-terminal-error").expect("fixture");
+        let session = start_mcp_runtime_session(
+            fixture.runtime_home_path(),
+            McpRuntimeSessionStart {
+                connection_internal_id: fixture.connection_id().to_owned(),
+                session_source: McpRuntimeSessionSource::ManagedHost,
+                observed_host_executable_version: Some("future-host-999".to_owned()),
+                process_id: 42,
+                process_started_at: "2026-07-22T05:00:00Z".to_owned(),
+            },
+        )
+        .expect("runtime session");
+        let terminal = OccurrenceDiagnosticFinding::try_new(
+            DiagnosticFindingData::try_new(
+                DiagnosticCode::parse("mcp.test_terminal_error").expect("code"),
+                DiagnosticDomain::parse("mcp").expect("domain"),
+                DiagnosticStage::parse("transport").expect("stage"),
+                DiagnosticSeverity::Error,
+                DiagnosticSource::parse("cli_test").expect("source"),
+                DiagnosticSubject::try_new("runtime_session", &session.runtime_session_id)
+                    .expect("subject"),
+                DiagnosticFacts::empty(),
+                UtcTimestamp::parse("2026-07-22T05:00:01Z").expect("time"),
+            )
+            .and_then(|data| {
+                data.with_connection_id(AgentConnectionId::new(fixture.connection_id()))
+            })
+            .map(|data| {
+                data.with_integration_revision(
+                    IntegrationRevision::parse(session.connection_integration_revision.clone())
+                        .expect("revision"),
+                )
+            })
+            .expect("terminal finding data"),
+            Some(AgentRuntimeSessionId::new(
+                session.runtime_session_id.clone(),
+            )),
+        )
+        .expect("terminal occurrence");
+        record_mcp_terminal_finding(fixture.runtime_home_path(), &terminal)
+            .expect("record terminal finding");
+
+        let json_output = run_diagnostics_command(
+            DiagnosticsArgs {
+                command: DiagnosticsCommand::Session(DiagnosticsSessionArgs {
+                    runtime_session_id: session.runtime_session_id.clone(),
+                    json: true,
+                }),
+            },
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("found terminal session lookup succeeds");
+        let report: Value = serde_json::from_str(&json_output).expect("session lookup JSON");
+        assert_eq!(report["lookup_status"], "found");
+        assert_eq!(
+            report["root"]["terminal_condition"],
+            "terminated_with_finding"
+        );
+        assert_eq!(
+            report["root"]["terminal_finding_id"],
+            terminal.id().as_str()
+        );
+        assert_eq!(
+            report["cause_graph"]["entries"][0]["finding"]["lifecycle"],
+            "occurrence"
+        );
+        assert_eq!(
+            report["cause_graph"]["entries"][0]["finding"]["finding"]["severity"],
+            "error"
+        );
+        assert!(report.get("status").is_none());
+        assert!(report.get("checks").is_none());
+
+        let human_output = run_diagnostics_command(
+            DiagnosticsArgs {
+                command: DiagnosticsCommand::Session(DiagnosticsSessionArgs {
+                    runtime_session_id: session.runtime_session_id,
+                    json: false,
+                }),
+            },
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("found terminal session human lookup succeeds");
+        assert!(human_output.contains("Diagnostic lookup: found"));
+        assert!(human_output.contains("Terminal condition: terminated_with_finding"));
+        assert!(human_output.contains("Lifecycle: occurrence"));
+        assert!(human_output.contains("Severity: error"));
     }
 
     #[test]

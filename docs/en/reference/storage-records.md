@@ -95,12 +95,16 @@ missing-cause, identity, or cycle failure preserves the previous snapshot.
 `resolve_current_finding` addresses the row by `CurrentDiagnosticKey`, records
 `resolved_at`, clears actions and outgoing causes, and retains facts and other
 last-observed snapshot data. `active_current_findings_for_scope` returns only
-active rows. `diagnostic_findings_by_ids` can return resolved projections and
-reconstructs each current key from the persisted subject identity rather than
-the safe subject presentation, then recomputes every current digest and ID
-before returning data; a malformed subject identity or any mismatch is
-persisted-data corruption. `reportable_diagnostic_findings_by_ids` admits only
-immutable occurrences and active current-state rows; resolved current-state
+active rows. `stored_diagnostic_findings_by_ids` and
+`stored_diagnostic_finding_by_id` return `StoredDiagnosticFinding` values that
+retain either the complete `OccurrenceDiagnosticFinding` or the complete
+`CurrentDiagnosticFinding`. Exact current reads therefore retain
+`current_state_status` and `resolved_at`. They reconstruct each current key
+from the persisted subject identity rather than the safe subject presentation,
+then recompute every current digest and ID before returning data; a malformed
+subject identity or any mismatch is persisted-data corruption.
+`reportable_diagnostic_findings_by_ids` projects only immutable occurrences and
+active current-state rows into current-report findings. Resolved current-state
 rows are excluded as current-report seeds but remain available through exact
 ID lookup. Current identity columns and occurrence rows are also protected by
 Registry update triggers.
@@ -112,6 +116,9 @@ findings before their edges in one immediate transaction, so a rejected graph
 leaves neither a partial finding set nor a dangling edge. Cause queries order
 by depth and finding ID, reject a requested depth above 32, return at most 128
 distinct findings, and report when the selected depth cut off another edge.
+`bounded_stored_diagnostic_graph_from_seeds` returns the same
+`StoredDiagnosticFinding` lifecycle shape for every entry, so occurrence,
+active current, and resolved current causes retain their exact stored state.
 
 Finding reads are available by explicit ID, by runtime occurrence session, and
 by exact active current scope. A runtime-correlated occurrence must also carry

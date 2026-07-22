@@ -512,13 +512,14 @@ fn failed_initialize_retains_attempted_client_and_requested_revision() -> Result
     assert!(runtime.negotiated_protocol_version.is_none());
     assert!(runtime.initialize_completed_at.is_none());
     let terminal_id = runtime.terminal_finding_id.ok_or("terminal finding")?;
-    let terminal = diagnostic_findings_by_ids(
+    let terminal = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         &[volicord_types::DiagnosticFindingId::parse(terminal_id)?],
     )?
     .into_iter()
     .next()
     .ok_or("persisted terminal finding")?;
+    let terminal = terminal.to_diagnostic_finding();
     assert_eq!(
         terminal.code().as_str(),
         "mcp.protocol.capability_shape_invalid"

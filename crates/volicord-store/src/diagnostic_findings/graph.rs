@@ -8,7 +8,8 @@ use std::{
 use rusqlite::{Connection, Transaction};
 use volicord_types::{
     CurrentDiagnosticFinding, DiagnosticFinding, DiagnosticFindingId, IntegrationRevision,
-    OccurrenceDiagnosticFinding, MAX_DIAGNOSTIC_FINDINGS, MAX_DIAGNOSTIC_ROOT_CAUSES,
+    OccurrenceDiagnosticFinding, StoredDiagnosticGraph, StoredDiagnosticGraphEntry,
+    MAX_DIAGNOSTIC_FINDINGS, MAX_DIAGNOSTIC_ROOT_CAUSES,
 };
 
 use crate::{
@@ -29,26 +30,12 @@ pub const MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH: usize = 32;
 /// Maximum distinct findings returned by one cause-graph traversal.
 pub const MAX_DIAGNOSTIC_CAUSE_CHAIN_FINDINGS: usize = MAX_DIAGNOSTIC_FINDINGS;
 
-/// One finding reached at its minimum depth from the requested seed set.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagnosticCauseChainEntry {
-    pub depth: usize,
-    pub finding: DiagnosticFinding,
-}
-
-/// Deterministic bounded traversal result.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagnosticCauseChain {
-    pub entries: Vec<DiagnosticCauseChainEntry>,
-    pub depth_limit_reached: bool,
-}
-
-/// Traverses a bounded diagnostic graph from one or more seed IDs.
-pub fn bounded_diagnostic_graph_from_seeds(
+/// Traverses a bounded lifecycle-aware diagnostic graph from one or more seed IDs.
+pub fn bounded_stored_diagnostic_graph_from_seeds(
     runtime_home: impl AsRef<Path>,
     seed_ids: &[DiagnosticFindingId],
     max_depth: usize,
-) -> StoreResult<DiagnosticCauseChain> {
+) -> StoreResult<StoredDiagnosticGraph> {
     if max_depth > MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH {
         return Err(StoreError::InvalidInput {
             detail: format!(
@@ -104,13 +91,19 @@ pub fn bounded_diagnostic_graph_from_seeds(
     let mut entries = Vec::with_capacity(ordered.len());
     for (depth, id) in ordered {
         let finding = stored_finding_from_conn(&conn, &id)?
-            .ok_or_else(|| corrupt_value(&id, "cause_finding_id"))?
-            .projection();
-        entries.push(DiagnosticCauseChainEntry { depth, finding });
+            .ok_or_else(|| corrupt_value(&id, "cause_finding_id"))?;
+        entries.push(
+            StoredDiagnosticGraphEntry::try_new(depth, finding).map_err(|error| {
+                StoreError::InvalidInput {
+                    detail: error.to_string(),
+                }
+            })?,
+        );
     }
-    Ok(DiagnosticCauseChain {
-        entries,
-        depth_limit_reached,
+    StoredDiagnosticGraph::try_new(entries, depth_limit_reached).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: error.to_string(),
+        }
     })
 }
 
@@ -127,17 +120,19 @@ pub fn diagnostic_root_cause_ids(
             ),
         });
     }
-    let graph = bounded_diagnostic_graph_from_seeds(runtime_home, finding_ids, max_depth)?;
-    if graph.depth_limit_reached {
+    let graph = bounded_stored_diagnostic_graph_from_seeds(runtime_home, finding_ids, max_depth)?;
+    if graph.depth_limit_reached() {
         return Err(StoreError::InvalidInput {
             detail: format!("diagnostic root-cause traversal exceeded depth {max_depth}"),
         });
     }
     let roots = graph
-        .entries
-        .into_iter()
-        .filter(|entry| entry.finding.causes().is_empty())
-        .map(|entry| entry.finding.id().clone())
+        .entries()
+        .iter()
+        .filter_map(|entry| {
+            let finding = entry.finding().to_diagnostic_finding();
+            finding.causes().is_empty().then(|| finding.id().clone())
+        })
         .collect::<BTreeSet<_>>();
     if roots.len() > MAX_DIAGNOSTIC_ROOT_CAUSES {
         return Err(StoreError::InvalidInput {

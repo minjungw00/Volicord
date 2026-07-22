@@ -68,15 +68,18 @@ volicord diagnostics session "<runtime-session-id>"
 volicord diagnostics session "<runtime-session-id>" --json
 ```
 
-이 명령은 한도가 있는 Registry 조회입니다. 사람용 형태와 JSON 형태는 같은 root ID와
-typed fact를 담습니다. 식별자가 없으면 `observation_state=absent`인 typed failed report를
-반환합니다. 빈 finding이나 빈 session을 관찰했다는 뜻이 아닙니다. SQLite를 scan하거나
-다른 식별자를 만들지 말고 선택한 Runtime Home과 정확한 ID를 확인합니다.
+이 명령은 한도가 있는 Registry 조회입니다. 사람용 형태와 JSON 형태는 같은 lookup result,
+root ID, lifecycle, current status, 해소 시각, typed fact를 담습니다. Active 또는 terminal
+finding의 severity가 `error`여도 record나 session을 찾은 조회는 성공합니다. 식별자가 없으면
+요청 ID를 표시한 typed `lookup_status=not_found` 결과를 반환합니다. 빈 finding이나 빈
+session을 관찰했다는 뜻이 아닙니다. SQLite를 scan하거나 다른 식별자를 만들지 말고 선택한
+Runtime Home과 정확한 ID를 확인합니다.
 
 현재 상태 운영 ID를 지정하면 반복 검증 뒤에도 `diagnostics show`가 그 정확한 주체의 최신
-snapshot을 반환합니다. Runtime, process, protocol 발생형 finding은 변경할 수 없는
-기록입니다. 해소된 현재 상태 finding은 현재 Connection 보고서가 더 이상 참조하지 않아도
-정확한 ID로 계속 조회할 수 있습니다.
+snapshot을 반환하고 `active` 또는 `resolved`로 표시하며, 해소된 snapshot에는
+`resolved_at`도 표시합니다. Runtime, process, protocol 발생형 finding은 변경할 수 없는
+기록이며 `occurrence`로 표시합니다. 해소된 현재 상태 finding은 현재 Connection 보고서가 더
+이상 참조하지 않아도 정확한 ID로 계속 조회할 수 있습니다.
 
 관리 구성, Guard artifact 또는 installation, Product Repository trust, integration revision,
 verification-tool 관찰을 복구한 뒤 활성 검증을 다시 실행합니다. 성공한 담당 check는 더 이상

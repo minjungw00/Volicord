@@ -4,7 +4,7 @@ use std::path::Path;
 
 use volicord_types::{
     CurrentDiagnosticFinding, CurrentDiagnosticStatus, DiagnosticFinding, DiagnosticFindingId,
-    DiagnosticScope, OccurrenceDiagnosticFinding, MAX_DIAGNOSTIC_FINDINGS,
+    DiagnosticScope, OccurrenceDiagnosticFinding, StoredDiagnosticFinding, MAX_DIAGNOSTIC_FINDINGS,
 };
 
 use crate::{
@@ -17,11 +17,11 @@ use super::row::{
     StoredFinding,
 };
 
-/// Reads existing findings by ID after lifecycle-specific persisted validation.
-pub fn diagnostic_findings_by_ids(
+/// Reads existing lifecycle-aware findings by ID after strict persisted validation.
+pub fn stored_diagnostic_findings_by_ids(
     runtime_home: impl AsRef<Path>,
     finding_ids: &[DiagnosticFindingId],
-) -> StoreResult<Vec<DiagnosticFinding>> {
+) -> StoreResult<Vec<StoredDiagnosticFinding>> {
     if finding_ids.len() > MAX_DIAGNOSTIC_FINDINGS {
         return Err(StoreError::InvalidInput {
             detail: format!("diagnostic lookup exceeds {MAX_DIAGNOSTIC_FINDINGS} finding IDs"),
@@ -38,10 +38,23 @@ pub fn diagnostic_findings_by_ids(
     let mut findings = Vec::new();
     for finding_id in ids {
         if let Some(stored) = stored_finding_from_conn(&conn, finding_id.as_str())? {
-            findings.push(stored.projection());
+            findings.push(stored);
         }
     }
     Ok(findings)
+}
+
+/// Reads one exact lifecycle-aware finding by ID.
+pub fn stored_diagnostic_finding_by_id(
+    runtime_home: impl AsRef<Path>,
+    finding_id: &DiagnosticFindingId,
+) -> StoreResult<Option<StoredDiagnosticFinding>> {
+    let path = registry_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(path)?;
+    stored_finding_from_conn(&conn, finding_id.as_str())
 }
 
 /// Reads findings eligible for a current report by explicit ID.

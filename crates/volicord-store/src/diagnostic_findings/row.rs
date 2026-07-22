@@ -8,7 +8,7 @@ use volicord_types::{
     DiagnosticFindingId, DiagnosticFindingLifecycle, DiagnosticOccurrenceId, DiagnosticScope,
     DiagnosticScopeKind, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
     DiagnosticSubjectIdentity, IntegrationRevision, OccurrenceDiagnosticFinding, ProjectId,
-    UtcTimestamp,
+    StoredDiagnosticFinding, UtcTimestamp,
 };
 
 use crate::{StoreError, StoreResult};
@@ -100,19 +100,7 @@ impl PreparedFinding {
     }
 }
 
-pub(super) enum StoredFinding {
-    Occurrence(OccurrenceDiagnosticFinding),
-    Current(CurrentDiagnosticFinding),
-}
-
-impl StoredFinding {
-    pub(super) fn projection(&self) -> DiagnosticFinding {
-        match self {
-            Self::Occurrence(finding) => finding.to_diagnostic_finding(),
-            Self::Current(finding) => finding.to_diagnostic_finding(),
-        }
-    }
-}
+pub(super) type StoredFinding = StoredDiagnosticFinding;
 
 fn bounded_json<T: serde::Serialize + ?Sized>(
     label: &str,

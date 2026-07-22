@@ -87,9 +87,11 @@ Durable tests should cover, as applicable:
   occurrence insertion, complete-current-key digest and persisted-ID
   validation, current snapshot identity immutability, resolution and
   reactivation, active/reportable filtering, explicit report seeds and bounded
-  cause chains, typed diagnostic codes and bounded/redacted facts,
-  deterministic roots, dependency-driven `Blocked` checks, and equivalent
-  concise, verbose, and lossless JSON projections of one report;
+  lifecycle-aware exact cause chains, occurrence/active/resolved lookup
+  projection, lookup-status process exits independent of severity, typed
+  diagnostic codes and bounded/redacted facts, deterministic roots,
+  dependency-driven `Blocked` checks, and equivalent human and JSON
+  projections of their respective selected-Connection or exact-lookup report;
 - Guard manifest exact-shape and owner binding, hash-free policy commands versus
   hash-bound runtime commands, wrapper/file drift, platform-independent script
   executable expectations, current-owned hook observations, and older-event

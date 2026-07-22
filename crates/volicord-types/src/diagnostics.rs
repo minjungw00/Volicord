@@ -26,6 +26,8 @@ use crate::{
 
 /// The only current JSON representation version for [`DiagnosticReport`].
 pub const DIAGNOSTIC_REPORT_SCHEMA_VERSION: u32 = 2;
+/// The only current JSON representation version for [`DiagnosticLookupReport`].
+pub const DIAGNOSTIC_LOOKUP_REPORT_SCHEMA_VERSION: u32 = 1;
 /// Stable prefix for one pre-Registry stderr diagnostic line.
 pub const BOOTSTRAP_DIAGNOSTIC_ENVELOPE_PREFIX: &str = "VOLICORD_DIAGNOSTIC_V1";
 /// Maximum UTF-8 byte length of one complete pre-Registry stderr envelope.
@@ -343,6 +345,17 @@ pub enum DiagnosticSeverity {
     Warning,
     /// Failure that stopped or invalidated the observed operation.
     Error,
+}
+
+impl DiagnosticSeverity {
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warning => "warning",
+            Self::Error => "error",
+        }
+    }
 }
 
 /// Bounded subject identified by a stable kind and safe reference.
@@ -1690,6 +1703,177 @@ impl CurrentDiagnosticFinding {
     }
 }
 
+/// One lifecycle-aware finding reconstructed from strict persisted state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StoredDiagnosticFinding {
+    /// One immutable occurrence record.
+    Occurrence(OccurrenceDiagnosticFinding),
+    /// One active or resolved current-state record.
+    Current(CurrentDiagnosticFinding),
+}
+
+impl StoredDiagnosticFinding {
+    /// Returns the exact stored lifecycle.
+    pub const fn lifecycle(&self) -> DiagnosticFindingLifecycle {
+        match self {
+            Self::Occurrence(_) => DiagnosticFindingLifecycle::Occurrence,
+            Self::Current(_) => DiagnosticFindingLifecycle::CurrentState,
+        }
+    }
+
+    /// Returns the stable finding ID.
+    pub fn id(&self) -> DiagnosticFindingId {
+        match self {
+            Self::Occurrence(finding) => finding.id(),
+            Self::Current(finding) => finding.id().clone(),
+        }
+    }
+
+    /// Returns the lifecycle-specific occurrence when present.
+    pub fn occurrence(&self) -> Option<&OccurrenceDiagnosticFinding> {
+        match self {
+            Self::Occurrence(finding) => Some(finding),
+            Self::Current(_) => None,
+        }
+    }
+
+    /// Returns the lifecycle-specific current-state record when present.
+    pub fn current(&self) -> Option<&CurrentDiagnosticFinding> {
+        match self {
+            Self::Occurrence(_) => None,
+            Self::Current(finding) => Some(finding),
+        }
+    }
+
+    /// Projects record data into the shared report-only finding shape.
+    pub fn to_diagnostic_finding(&self) -> DiagnosticFinding {
+        match self {
+            Self::Occurrence(finding) => finding.to_diagnostic_finding(),
+            Self::Current(finding) => finding.to_diagnostic_finding(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct StoredOccurrenceWire {
+    lifecycle: DiagnosticFindingLifecycle,
+    finding: DiagnosticFinding,
+}
+
+#[derive(Serialize)]
+struct StoredCurrentWire<'a> {
+    lifecycle: DiagnosticFindingLifecycle,
+    current_state_status: CurrentDiagnosticStatus,
+    resolved_at: Option<&'a UtcTimestamp>,
+    finding: DiagnosticFinding,
+}
+
+impl Serialize for StoredDiagnosticFinding {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Occurrence(finding) => StoredOccurrenceWire {
+                lifecycle: DiagnosticFindingLifecycle::Occurrence,
+                finding: finding.to_diagnostic_finding(),
+            }
+            .serialize(serializer),
+            Self::Current(finding) => StoredCurrentWire {
+                lifecycle: DiagnosticFindingLifecycle::CurrentState,
+                current_state_status: finding.snapshot().status(),
+                resolved_at: finding.snapshot().resolved_at(),
+                finding: finding.to_diagnostic_finding(),
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+/// One lifecycle-aware finding reached at its minimum cause depth.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StoredDiagnosticGraphEntry {
+    depth: usize,
+    finding: StoredDiagnosticFinding,
+}
+
+impl StoredDiagnosticGraphEntry {
+    /// Constructs one bounded graph entry.
+    pub fn try_new(
+        depth: usize,
+        finding: StoredDiagnosticFinding,
+    ) -> Result<Self, DiagnosticError> {
+        if depth > MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH {
+            return Err(invalid(format!(
+                "stored diagnostic graph depth exceeds {MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH}"
+            )));
+        }
+        Ok(Self { depth, finding })
+    }
+
+    /// Returns the minimum depth from the requested seed set.
+    pub const fn depth(&self) -> usize {
+        self.depth
+    }
+
+    /// Returns the lifecycle-aware stored record.
+    pub fn finding(&self) -> &StoredDiagnosticFinding {
+        &self.finding
+    }
+}
+
+/// Deterministic bounded lifecycle-aware cause traversal.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StoredDiagnosticGraph {
+    entries: Vec<StoredDiagnosticGraphEntry>,
+    depth_limit_reached: bool,
+}
+
+impl StoredDiagnosticGraph {
+    /// Validates and canonically orders one stored diagnostic graph.
+    pub fn try_new(
+        mut entries: Vec<StoredDiagnosticGraphEntry>,
+        depth_limit_reached: bool,
+    ) -> Result<Self, DiagnosticError> {
+        if entries.len() > MAX_DIAGNOSTIC_FINDINGS {
+            return Err(invalid(format!(
+                "stored diagnostic graph has more than {MAX_DIAGNOSTIC_FINDINGS} findings"
+            )));
+        }
+        entries.sort_by(|left, right| {
+            (left.depth, left.finding.id()).cmp(&(right.depth, right.finding.id()))
+        });
+        let mut ids = BTreeSet::new();
+        if entries.iter().any(|entry| !ids.insert(entry.finding.id())) {
+            return Err(invalid(
+                "stored diagnostic graph contains duplicate finding ids",
+            ));
+        }
+        Ok(Self {
+            entries,
+            depth_limit_reached,
+        })
+    }
+
+    /// Returns an empty complete traversal.
+    pub fn empty() -> Self {
+        Self {
+            entries: Vec::new(),
+            depth_limit_reached: false,
+        }
+    }
+
+    /// Returns entries in canonical depth-and-ID order.
+    pub fn entries(&self) -> &[StoredDiagnosticGraphEntry] {
+        &self.entries
+    }
+
+    /// Reports whether the selected depth omitted another cause edge.
+    pub const fn depth_limit_reached(&self) -> bool {
+        self.depth_limit_reached
+    }
+}
+
 fn canonical_diagnostic_causes(
     mut causes: Vec<DiagnosticCause>,
 ) -> Result<Vec<DiagnosticCause>, DiagnosticError> {
@@ -2372,6 +2556,161 @@ impl DiagnosticConnectionContext {
 
     pub fn runtime_session_ids(&self) -> &[AgentRuntimeSessionId] {
         &self.runtime_session_ids
+    }
+}
+
+/// Outcome of one exact bounded diagnostic-record lookup.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticLookupStatus {
+    /// The requested stored record was loaded and validated.
+    Found,
+    /// No stored record exists for the requested exact identifier.
+    NotFound,
+}
+
+impl DiagnosticLookupStatus {
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Found => "found",
+            Self::NotFound => "not_found",
+        }
+    }
+}
+
+/// One lookup-specific envelope for a finding or runtime-session root.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DiagnosticLookupReport<T> {
+    schema_version: u32,
+    operation: DiagnosticOperation,
+    lookup_status: DiagnosticLookupStatus,
+    requested_id: String,
+    root: Option<T>,
+    cause_graph: StoredDiagnosticGraph,
+    context: Option<DiagnosticConnectionContext>,
+    limits: Vec<String>,
+}
+
+impl<T> DiagnosticLookupReport<T>
+where
+    T: Serialize,
+{
+    /// Validates one bounded exact-lookup result without connection-check semantics.
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        operation: DiagnosticOperation,
+        lookup_status: DiagnosticLookupStatus,
+        requested_id: impl Into<String>,
+        root: Option<T>,
+        cause_graph: StoredDiagnosticGraph,
+        context: Option<DiagnosticConnectionContext>,
+        mut limits: Vec<String>,
+    ) -> Result<Self, DiagnosticError> {
+        if !matches!(
+            operation,
+            DiagnosticOperation::DiagnosticsShow | DiagnosticOperation::DiagnosticsSession
+        ) {
+            return Err(invalid(
+                "diagnostic lookup report requires a lookup operation",
+            ));
+        }
+        let requested_id = requested_id.into();
+        validate_stable_identifier("diagnostic lookup requested id", &requested_id)?;
+        match (lookup_status, root.is_some()) {
+            (DiagnosticLookupStatus::Found, true) | (DiagnosticLookupStatus::NotFound, false) => {}
+            _ => {
+                return Err(invalid(
+                    "diagnostic lookup status and root presence do not correspond",
+                ))
+            }
+        }
+        if lookup_status == DiagnosticLookupStatus::NotFound
+            && (!cause_graph.entries().is_empty() || cause_graph.depth_limit_reached())
+        {
+            return Err(invalid(
+                "not-found diagnostic lookup cannot contain a cause graph",
+            ));
+        }
+        if limits.len() > MAX_DIAGNOSTIC_LIMITS {
+            return Err(invalid(format!(
+                "diagnostic lookup report has more than {MAX_DIAGNOSTIC_LIMITS} limits"
+            )));
+        }
+        for limit in &limits {
+            validate_bounded_text(
+                "diagnostic lookup report limit",
+                limit,
+                MAX_DIAGNOSTIC_FACT_STRING_BYTES,
+            )?;
+        }
+        limits.sort();
+        if limits.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid(
+                "diagnostic lookup report contains duplicate limits",
+            ));
+        }
+        let report = Self {
+            schema_version: DIAGNOSTIC_LOOKUP_REPORT_SCHEMA_VERSION,
+            operation,
+            lookup_status,
+            requested_id,
+            root,
+            cause_graph,
+            context,
+            limits,
+        };
+        let size = serde_json::to_vec(&report)
+            .map_err(|_| invalid("diagnostic lookup report could not be serialized"))?
+            .len();
+        if size > MAX_DIAGNOSTIC_REPORT_BYTES {
+            return Err(invalid(format!(
+                "diagnostic lookup report exceeds {MAX_DIAGNOSTIC_REPORT_BYTES} serialized bytes"
+            )));
+        }
+        Ok(report)
+    }
+
+    /// Returns the only current lookup schema version.
+    pub const fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
+    /// Returns the exact lookup operation.
+    pub const fn operation(&self) -> DiagnosticOperation {
+        self.operation
+    }
+
+    /// Returns whether the exact requested record was loaded.
+    pub const fn lookup_status(&self) -> DiagnosticLookupStatus {
+        self.lookup_status
+    }
+
+    /// Returns the exact requested identifier.
+    pub fn requested_id(&self) -> &str {
+        &self.requested_id
+    }
+
+    /// Returns the typed root when found.
+    pub fn root(&self) -> Option<&T> {
+        self.root.as_ref()
+    }
+
+    /// Returns the lifecycle-aware bounded cause graph.
+    pub fn cause_graph(&self) -> &StoredDiagnosticGraph {
+        &self.cause_graph
+    }
+
+    /// Returns optional bounded Connection context.
+    pub fn context(&self) -> Option<&DiagnosticConnectionContext> {
+        self.context.as_ref()
+    }
+
+    /// Returns bounded lookup limitations.
+    pub fn limits(&self) -> &[String] {
+        &self.limits
     }
 }
 

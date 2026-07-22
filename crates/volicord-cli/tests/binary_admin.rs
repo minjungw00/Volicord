@@ -17,11 +17,16 @@ use volicord_store::{
     bootstrap::{
         initialize_runtime_home, write_installation_profile, InstallationProfileRegistration,
     },
+    diagnostic_findings::insert_occurrence_finding,
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
     sqlite::registry_db_path,
 };
 use volicord_test_support::TempRuntimeHome;
-use volicord_types::ConnectionVerificationReport;
+use volicord_types::{
+    ConnectionVerificationReport, DiagnosticCode, DiagnosticDomain, DiagnosticFacts,
+    DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, OccurrenceDiagnosticFinding, UtcTimestamp,
+};
 
 const GENERATED_SHAPE_ERROR: &str =
     "generated host-hook capability does not match the current exact shape";
@@ -77,6 +82,17 @@ fn run(args: &[&str]) -> Result<std::process::Output, Box<dyn Error>> {
     Ok(Command::new(env!("CARGO_BIN_EXE_volicord"))
         .args(args)
         .output()?)
+}
+
+fn run_diagnostics_show(
+    runtime_home: &Path,
+    finding_id: &str,
+) -> Result<std::process::Output, Box<dyn Error>> {
+    let mut command = base_command();
+    command
+        .args(["diagnostics", "show", finding_id, "--json"])
+        .env("VOLICORD_HOME", runtime_home);
+    Ok(command.output()?)
 }
 
 fn stdout(output: &std::process::Output) -> Result<String, Box<dyn Error>> {
@@ -1249,6 +1265,59 @@ fn connection_list_empty_inventory_and_store_failure_use_owned_channels(
     assert_eq!(failed.status.code(), Some(1));
     assert_eq!(stdout(&failed)?, "");
     assert!(stderr(&failed)?.starts_with("error:"));
+    Ok(())
+}
+
+#[test]
+fn diagnostics_show_exit_status_depends_on_lookup_not_finding_severity(
+) -> Result<(), Box<dyn Error>> {
+    let temporary_root = TempRuntimeHome::new("binary-diagnostics-show-exits")?;
+    let runtime_home = temporary_root.path().join("runtime-home");
+    prepare_runtime_home(&runtime_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
+
+    let finding = OccurrenceDiagnosticFinding::try_new(
+        DiagnosticFindingData::try_new(
+            DiagnosticCode::parse("diagnostics.process_error")?,
+            DiagnosticDomain::parse("diagnostics")?,
+            DiagnosticStage::parse("lookup")?,
+            DiagnosticSeverity::Error,
+            DiagnosticSource::parse("binary_admin_test")?,
+            DiagnosticSubject::try_new("test_record", "process-exit")?,
+            DiagnosticFacts::empty(),
+            UtcTimestamp::parse("2026-07-22T08:09:10Z")?,
+        )?,
+        None,
+    )?;
+    let finding_id = finding.id().to_string();
+    insert_occurrence_finding(&runtime_home, &finding)?;
+
+    let found = run_diagnostics_show(&runtime_home, &finding_id)?;
+    assert_eq!(found.status.code(), Some(0), "{}", stderr(&found)?);
+    assert_eq!(stderr(&found)?, "");
+    let found_report: Value = serde_json::from_slice(&found.stdout)?;
+    assert_eq!(found_report["lookup_status"], "found");
+    assert_eq!(found_report["root"]["lifecycle"], "occurrence");
+    assert_eq!(found_report["root"]["finding"]["severity"], "error");
+
+    let missing_id = "finding.does_not_exist";
+    let missing = run_diagnostics_show(&runtime_home, missing_id)?;
+    assert_eq!(missing.status.code(), Some(1));
+    assert_eq!(stderr(&missing)?, "");
+    let missing_report: Value = serde_json::from_slice(&missing.stdout)?;
+    assert_eq!(missing_report["lookup_status"], "not_found");
+    assert_eq!(missing_report["requested_id"], missing_id);
+    assert!(missing_report["root"].is_null());
+
+    let invalid = run_diagnostics_show(&runtime_home, "invalid finding id")?;
+    assert_eq!(invalid.status.code(), Some(2));
+    assert_eq!(stdout(&invalid)?, "");
+    assert!(!stderr(&invalid)?.is_empty());
+
+    fs::write(registry_db_path(&runtime_home), b"not a sqlite database")?;
+    let store_failure = run_diagnostics_show(&runtime_home, &finding_id)?;
+    assert_eq!(store_failure.status.code(), Some(1));
+    assert_eq!(stdout(&store_failure)?, "");
+    assert!(stderr(&store_failure)?.starts_with("error:"));
     Ok(())
 }
 

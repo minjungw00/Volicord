@@ -25,7 +25,7 @@ use volicord_mcp::{
 };
 use volicord_store::agent_connections::{agent_connection_record, AgentConnectionRecord};
 use volicord_store::diagnostic_findings::{
-    diagnostic_findings_by_ids, diagnostic_occurrences_for_runtime_session,
+    diagnostic_occurrences_for_runtime_session, stored_diagnostic_findings_by_ids,
 };
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
@@ -1308,11 +1308,14 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
             .as_str()
             .ok_or("MCP early-exit finding ID")?,
     )?;
-    let finding =
-        diagnostic_findings_by_ids(&early_exit.runtime_home, std::slice::from_ref(&finding_id))?
-            .into_iter()
-            .next()
-            .ok_or("persisted MCP early-exit finding")?;
+    let finding = stored_diagnostic_findings_by_ids(
+        &early_exit.runtime_home,
+        std::slice::from_ref(&finding_id),
+    )?
+    .into_iter()
+    .next()
+    .ok_or("persisted MCP early-exit finding")?;
+    let finding = finding.to_diagnostic_finding();
     let facts = finding.facts().data();
     assert_eq!(facts.get("exit_code"), Some(&json!(23)));
     assert_eq!(facts.get("bounded_stderr_truncated"), Some(&json!(true)));

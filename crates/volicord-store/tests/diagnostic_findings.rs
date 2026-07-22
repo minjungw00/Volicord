@@ -3,11 +3,11 @@ use std::{collections::BTreeMap, error::Error};
 use serde::Serialize;
 use volicord_store::{
     diagnostic_findings::{
-        active_current_findings_for_scope, bounded_diagnostic_graph_from_seeds,
-        diagnostic_findings_by_ids, diagnostic_occurrences_for_runtime_session,
-        diagnostic_root_cause_ids, insert_and_link_runtime_terminal_occurrence,
-        insert_occurrence_finding, insert_occurrence_finding_graph,
-        reportable_diagnostic_findings_by_ids, resolve_current_finding, upsert_current_snapshot,
+        active_current_findings_for_scope, bounded_stored_diagnostic_graph_from_seeds,
+        diagnostic_occurrences_for_runtime_session, diagnostic_root_cause_ids,
+        insert_and_link_runtime_terminal_occurrence, insert_occurrence_finding,
+        insert_occurrence_finding_graph, reportable_diagnostic_findings_by_ids,
+        resolve_current_finding, stored_diagnostic_findings_by_ids, upsert_current_snapshot,
         MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
     },
     operational_sessions::{
@@ -25,7 +25,7 @@ use volicord_types::{
     DiagnosticFindingId, DiagnosticScope, DiagnosticScopeKind, DiagnosticSeverity,
     DiagnosticSource, DiagnosticStage, DiagnosticSubject, DiagnosticSubjectIdentity,
     IntegrationRevision, McpRuntimeSessionSource, OccurrenceDiagnosticFinding, ProjectId,
-    UtcTimestamp,
+    StoredDiagnosticFinding, UtcTimestamp,
 };
 
 const OBSERVED: &str = "2026-07-21T01:02:03Z";
@@ -170,14 +170,16 @@ fn occurrence_graph_is_insert_only_without_runtime_heuristics() -> Result<(), Bo
         &[child.clone(), first.clone(), repeated_observation.clone()],
     )?;
 
-    let stored = diagnostic_findings_by_ids(
+    let stored = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         &[child.id(), first.id(), repeated_observation.id()],
     )?;
     assert_eq!(stored.len(), 3);
-    assert!(stored
-        .iter()
-        .all(|finding| finding.runtime_session_id().is_none()));
+    assert!(stored.iter().all(|finding| finding
+        .occurrence()
+        .expect("occurrence lifecycle")
+        .runtime_session_id()
+        .is_none()));
     assert!(insert_occurrence_finding(fixture.runtime_home_path(), &first).is_err());
 
     let conn = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
@@ -271,7 +273,7 @@ fn occurrence_graph_rejects_missing_causes_atomically() -> Result<(), Box<dyn Er
         vec![DiagnosticCause::new(missing)],
     )?;
     assert!(insert_occurrence_finding(fixture.runtime_home_path(), &child).is_err());
-    assert!(diagnostic_findings_by_ids(
+    assert!(stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         std::slice::from_ref(&child.id()),
     )?
@@ -311,15 +313,15 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     assert_eq!(first.id(), changed.id());
     upsert_current_snapshot(fixture.runtime_home_path(), &changed)?;
 
-    let graph = bounded_diagnostic_graph_from_seeds(
+    let graph = bounded_stored_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),
         std::slice::from_ref(changed.id()),
         1,
     )?;
     let graph_ids = graph
-        .entries
+        .entries()
         .iter()
-        .map(|entry| entry.finding.id().to_string())
+        .map(|entry| entry.finding().id().to_string())
         .collect::<Vec<_>>();
     assert!(graph_ids.contains(&changed.id().to_string()));
     assert!(graph_ids.contains(&second_cause.id().to_string()));
@@ -336,25 +338,29 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         vec![DiagnosticCause::new(missing.clone())],
     )?;
     assert!(upsert_current_snapshot(fixture.runtime_home_path(), &rejected).is_err());
-    let preserved = diagnostic_findings_by_ids(
+    let preserved = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         std::slice::from_ref(changed.id()),
     )?;
     assert_eq!(preserved.len(), 1);
+    let preserved_projection = preserved[0].to_diagnostic_finding();
     assert_eq!(
-        preserved[0].subject().reference(),
+        preserved_projection.subject().reference(),
         "guard-a-redacted-updated"
     );
-    assert_eq!(preserved[0].facts().data()["actual"], "content_mismatch");
-    let preserved_graph = bounded_diagnostic_graph_from_seeds(
+    assert_eq!(
+        preserved_projection.facts().data()["actual"],
+        "content_mismatch"
+    );
+    let preserved_graph = bounded_stored_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),
         std::slice::from_ref(changed.id()),
         1,
     )?;
     let preserved_ids = preserved_graph
-        .entries
+        .entries()
         .iter()
-        .map(|entry| entry.finding.id().clone())
+        .map(|entry| entry.finding().id())
         .collect::<Vec<_>>();
     assert!(preserved_ids.contains(changed.id()));
     assert!(preserved_ids.contains(&second_cause.id()));
@@ -387,13 +393,25 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     assert!(resolved.snapshot().causes().is_empty());
     assert!(active_current_findings_for_scope(fixture.runtime_home_path(), &scope)?.is_empty());
 
-    let explicit = diagnostic_findings_by_ids(
+    let explicit = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         std::slice::from_ref(changed.id()),
     )?;
-    assert_eq!(explicit[0].facts().data()["actual"], "content_mismatch");
-    assert!(explicit[0].actions().is_empty());
-    assert!(explicit[0].causes().is_empty());
+    let explicit_current = explicit[0].current().expect("current lifecycle");
+    assert_eq!(
+        explicit_current.snapshot().status(),
+        CurrentDiagnosticStatus::Resolved
+    );
+    assert_eq!(
+        explicit_current.snapshot().resolved_at(),
+        Some(&UtcTimestamp::parse("2026-07-21T03:04:05Z")?)
+    );
+    assert_eq!(
+        explicit_current.snapshot().facts().data()["actual"],
+        "content_mismatch"
+    );
+    assert!(explicit_current.snapshot().actions().is_empty());
+    assert!(explicit_current.snapshot().causes().is_empty());
     assert!(reportable_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         std::slice::from_ref(changed.id()),
@@ -432,6 +450,135 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         .len(),
         1
     );
+    Ok(())
+}
+
+#[test]
+fn exact_lookup_and_graph_preserve_occurrence_active_and_resolved_lifecycles(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("diagnostic-mixed-lifecycle-graph")?;
+    let occurrence_cause = occurrence(&fixture, "occurrence-cause", Vec::new())?;
+    insert_occurrence_finding(fixture.runtime_home_path(), &occurrence_cause)?;
+
+    let active_key = current_key(&fixture, "active-current");
+    let active = current_finding(
+        &fixture,
+        active_key,
+        "active-current-display",
+        "active",
+        "2026-07-21T02:03:04Z",
+        vec![DiagnosticCause::new(occurrence_cause.id())],
+    )?;
+    upsert_current_snapshot(fixture.runtime_home_path(), &active)?;
+
+    let resolved_key = current_key(&fixture, "resolved-current");
+    let resolved = current_finding(
+        &fixture,
+        resolved_key.clone(),
+        "resolved-current-display",
+        "repaired",
+        "2026-07-21T02:04:05Z",
+        Vec::new(),
+    )?;
+    upsert_current_snapshot(fixture.runtime_home_path(), &resolved)?;
+    let resolved_at = UtcTimestamp::parse("2026-07-21T03:04:05Z")?;
+    resolve_current_finding(
+        fixture.runtime_home_path(),
+        &resolved_key,
+        resolved_at.clone(),
+    )?;
+
+    let root = occurrence(
+        &fixture,
+        "mixed-root",
+        vec![
+            DiagnosticCause::new(active.id().clone()),
+            DiagnosticCause::new(resolved.id().clone()),
+        ],
+    )?;
+    insert_occurrence_finding(fixture.runtime_home_path(), &root)?;
+
+    let exact = stored_diagnostic_findings_by_ids(
+        fixture.runtime_home_path(),
+        &[root.id(), active.id().clone(), resolved.id().clone()],
+    )?;
+    let exact = exact
+        .iter()
+        .map(|finding| (finding.id(), finding))
+        .collect::<BTreeMap<_, _>>();
+    assert!(matches!(
+        exact.get(&root.id()).copied(),
+        Some(StoredDiagnosticFinding::Occurrence(_))
+    ));
+    assert!(matches!(
+        exact.get(active.id()).copied(),
+        Some(StoredDiagnosticFinding::Current(_))
+    ));
+    assert!(matches!(
+        exact.get(resolved.id()).copied(),
+        Some(StoredDiagnosticFinding::Current(_))
+    ));
+
+    let graph = bounded_stored_diagnostic_graph_from_seeds(
+        fixture.runtime_home_path(),
+        std::slice::from_ref(&root.id()),
+        MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
+    )?;
+    let records = graph
+        .entries()
+        .iter()
+        .map(|entry| (entry.finding().id(), entry.finding()))
+        .collect::<BTreeMap<_, _>>();
+    assert!(matches!(
+        records.get(&occurrence_cause.id()).copied(),
+        Some(StoredDiagnosticFinding::Occurrence(_))
+    ));
+    assert_eq!(
+        records
+            .get(active.id())
+            .and_then(|finding| finding.current())
+            .map(|finding| finding.snapshot().status()),
+        Some(CurrentDiagnosticStatus::Active)
+    );
+    let resolved_record = records
+        .get(resolved.id())
+        .and_then(|finding| finding.current())
+        .expect("resolved current record");
+    assert_eq!(
+        resolved_record.snapshot().status(),
+        CurrentDiagnosticStatus::Resolved
+    );
+    assert_eq!(resolved_record.snapshot().resolved_at(), Some(&resolved_at));
+
+    let json = serde_json::to_value(&graph)?;
+    let entries = json["entries"].as_array().ok_or("graph entries")?;
+    assert!(entries.iter().any(|entry| {
+        entry["finding"]["lifecycle"] == "occurrence"
+            && entry["finding"]["finding"]["id"] == occurrence_cause.id().as_str()
+    }));
+    assert!(entries.iter().any(|entry| {
+        entry["finding"]["lifecycle"] == "current_state"
+            && entry["finding"]["current_state_status"] == "active"
+            && entry["finding"]["finding"]["id"] == active.id().as_str()
+    }));
+    assert!(entries.iter().any(|entry| {
+        entry["finding"]["lifecycle"] == "current_state"
+            && entry["finding"]["current_state_status"] == "resolved"
+            && entry["finding"]["resolved_at"] == "2026-07-21T03:04:05Z"
+            && entry["finding"]["finding"]["id"] == resolved.id().as_str()
+    }));
+
+    let reportable = reportable_diagnostic_findings_by_ids(
+        fixture.runtime_home_path(),
+        &[root.id(), active.id().clone(), resolved.id().clone()],
+    )?;
+    let reportable_ids = reportable
+        .iter()
+        .map(|finding| finding.id().clone())
+        .collect::<Vec<_>>();
+    assert!(reportable_ids.contains(&root.id()));
+    assert!(reportable_ids.contains(active.id()));
+    assert!(!reportable_ids.contains(resolved.id()));
     Ok(())
 }
 
@@ -538,7 +685,7 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
            FROM diagnostic_findings WHERE finding_id = ?3",
         [corrupt_id.as_str(), &corrupt_digest, current.id().as_str()],
     )?;
-    let error = diagnostic_findings_by_ids(
+    let error = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         std::slice::from_ref(&corrupt_id),
     )
@@ -558,20 +705,20 @@ fn cause_edges_and_bounded_traversal_keep_graph_integrity() -> Result<(), Box<dy
         &[leaf.clone(), root.clone(), middle.clone()],
     )?;
 
-    let bounded = bounded_diagnostic_graph_from_seeds(
+    let bounded = bounded_stored_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),
         std::slice::from_ref(&leaf.id()),
         1,
     )?;
-    assert_eq!(bounded.entries.len(), 2);
-    assert!(bounded.depth_limit_reached);
-    let complete = bounded_diagnostic_graph_from_seeds(
+    assert_eq!(bounded.entries().len(), 2);
+    assert!(bounded.depth_limit_reached());
+    let complete = bounded_stored_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),
         std::slice::from_ref(&leaf.id()),
         2,
     )?;
-    assert_eq!(complete.entries.len(), 3);
-    assert!(!complete.depth_limit_reached);
+    assert_eq!(complete.entries().len(), 3);
+    assert!(!complete.depth_limit_reached());
     assert_eq!(
         diagnostic_root_cause_ids(
             fixture.runtime_home_path(),
@@ -580,7 +727,7 @@ fn cause_edges_and_bounded_traversal_keep_graph_integrity() -> Result<(), Box<dy
         )?,
         vec![root.id()]
     );
-    assert!(bounded_diagnostic_graph_from_seeds(
+    assert!(bounded_stored_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),
         std::slice::from_ref(&leaf.id()),
         MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH + 1,

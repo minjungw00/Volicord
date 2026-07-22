@@ -100,7 +100,9 @@ fn key_diagnostic(key: &CurrentDiagnosticKey) -> Option<OperationalDiagnostic> {
 mod tests {
     use volicord_store::{
         agent_connections::agent_connection_record_read_only,
-        diagnostic_findings::{active_current_findings_for_scope, diagnostic_findings_by_ids},
+        diagnostic_findings::{
+            active_current_findings_for_scope, stored_diagnostic_findings_by_ids,
+        },
     };
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::{CurrentDiagnosticStatus, GuardHookPhase, UtcTimestamp};
@@ -160,11 +162,21 @@ mod tests {
         )
         .expect("active lookup")
         .is_empty());
-        let resolved =
-            diagnostic_findings_by_ids(fixture.runtime_home_path(), std::slice::from_ref(&id))
-                .expect("resolved exact read");
+        let resolved = stored_diagnostic_findings_by_ids(
+            fixture.runtime_home_path(),
+            std::slice::from_ref(&id),
+        )
+        .expect("resolved exact read");
         assert_eq!(resolved.len(), 1);
-        assert!(resolved[0].actions().is_empty());
+        assert_eq!(
+            resolved[0]
+                .current()
+                .expect("current lifecycle")
+                .snapshot()
+                .status(),
+            volicord_types::CurrentDiagnosticStatus::Resolved
+        );
+        assert!(resolved[0].to_diagnostic_finding().actions().is_empty());
 
         let recurrent = current_connection_finding(
             &connection,

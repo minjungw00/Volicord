@@ -73,16 +73,21 @@ volicord diagnostics session "<runtime-session-id>" --json
 ```
 
 These are bounded Registry lookups. The human and JSON forms contain the same
-root IDs and typed facts. A missing identifier returns a typed failed report
-with `observation_state=absent`; it is not evidence that an empty finding or
-empty session was observed. Check the selected Runtime Home and exact ID rather
-than scanning SQLite or inventing an alternate identifier.
+lookup result, root IDs, lifecycle, current status, resolved time, and typed
+facts. A found record or session succeeds even when an active or terminal
+finding has `error` severity. A missing identifier returns a typed
+`lookup_status=not_found` result that names the requested ID; it is not evidence
+that an empty finding or empty session was observed. Check the selected Runtime
+Home and exact ID rather than scanning SQLite or inventing an alternate
+identifier.
 
 For a current-state operational ID, `diagnostics show` returns the latest
-snapshot for that exact subject after repeated verification. Runtime-,
-process-, and protocol-occurrence findings are immutable records. A resolved
-current-state finding may remain available by exact ID even though it is no
-longer referenced by the current Connection report.
+snapshot for that exact subject after repeated verification and labels it
+`active` or `resolved`, including `resolved_at` for a resolved snapshot.
+Runtime-, process-, and protocol-occurrence findings are immutable records and
+are labelled `occurrence`. A resolved current-state finding may remain
+available by exact ID even though it is no longer referenced by the current
+Connection report.
 
 After repairing a managed configuration, Guard artifact or installation,
 repository trust, integration revision, or verification-tool observation,

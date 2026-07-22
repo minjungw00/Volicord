@@ -309,7 +309,7 @@ The schema-2 top-level shape is:
 ```yaml
 DiagnosticReport:
   schema_version: 2
-  operation: init | add | status | verify | mode | remove | diagnostics_show | diagnostics_session
+  operation: init | add | status | verify | mode | remove
   status: complete | action_required | failed
   generated_at: timestamp
   connection: DiagnosticConnectionContext | null
@@ -824,20 +824,42 @@ volicord diagnostics workflow-metrics --repo PATH --json
 `diagnostics show` reads one persisted finding and its bounded typed cause
 chain. `diagnostics session` reads one authoritative MCP runtime session and
 the bounded findings correlated with it. These lookups use the Registry Store
-APIs, do not scan unbounded history, and render the same schema-2
-`DiagnosticReport` as selected Connection JSON output. Without `--json`, they
-render a bounded human projection of the same checks, finding IDs, codes, safe
-facts, causes, actions, and limits. A missing finding or session is a failed
-report with `diagnostics.lookup.finding_missing` or
-`diagnostics.lookup.runtime_session_missing`,
-`observation_state=absent`, and `action.diagnostics.check_identifier`; it is not
-an ad hoc error string.
+APIs and do not scan unbounded history. Their JSON uses a separate schema-1
+`DiagnosticLookupReport`, not a selected-Connection report:
+
+```yaml
+DiagnosticLookupReport:
+  schema_version: 1
+  operation: diagnostics_show | diagnostics_session
+  lookup_status: found | not_found
+  requested_id: string
+  root: StoredDiagnosticFinding | RuntimeSessionLookupRoot | null
+  cause_graph: StoredDiagnosticGraph
+  context: DiagnosticConnectionContext | null
+  limits: string[]
+
+StoredDiagnosticFinding:
+  lifecycle: occurrence | current_state
+  current_state_status?: active | resolved
+  resolved_at?: timestamp | null
+  finding: DiagnosticFinding
+```
+
+The root and every cause-graph entry use the same lifecycle-aware stored
+finding shape for a finding lookup. A runtime-session root carries the
+authoritative session data and an explicit `terminal_condition`; its bounded
+graph retains lifecycle-aware occurrence records. Without `--json`, the human
+projection shows the same lookup result, requested and root IDs, lifecycle,
+current state and resolution time when applicable, severity, code, safe
+subject, observation time, cause records, actions, and limits. A missing
+finding or session has `lookup_status=not_found`, identifies `requested_id`,
+and has no synthetic failed finding or Connection check.
 
 `diagnostics workflow-metrics` remains a separate bounded non-authority
 operability report. Its JSON identifies local diagnostics storage with
 `contract_id=volicord.sqlite.diagnostics` and the exact
 `canonical_schema_digest` derived from the current diagnostics SQL; it does not
-use `DiagnosticReport.schema_version`. A diagnostics read does not create
+use either report schema version. A diagnostics read does not create
 storage, advance project authority state, change evidence or assurance, change
 close readiness, or resolve a UserAction.
 
@@ -882,9 +904,11 @@ Connection status and verification reports load only current finding IDs
 explicitly referenced by their checks, their bounded cause chains, and any
 independent current finding deliberately selected by the operation. Resolved
 or otherwise unrelated findings stored for the same revision do not reappear
-in the current report. `diagnostics show` by exact ID still returns the latest
-current-state snapshot, while `diagnostics session` retains immutable
-runtime-occurrence inspection.
+in the current report. `diagnostics show` by exact ID returns either an
+occurrence or the latest current-state snapshot, including `active` or
+`resolved` state and `resolved_at`. `diagnostics session` retains immutable
+runtime-occurrence inspection. A found record succeeds regardless of its
+severity or terminal condition.
 
 <a id="authority-bundle-export"></a>
 ## Authority Bundle Export
@@ -936,10 +960,13 @@ failed human operational report is rendered on stdout. Unexpected runtime or
 serialization errors use stderr and exit `1`. Exit selection uses the typed
 report status, never rendered text or reparsed JSON.
 
-The same operational-output rule applies to `diagnostics show` and
-`diagnostics session`: a found terminal failure or a typed missing lookup is a
-failed report on stdout, including in JSON mode. Workflow metrics retain their
-separate report and exit contract.
+`diagnostics show` and `diagnostics session` use lookup status rather than
+finding severity for exit selection. A found record or session exits `0`, even
+when an active finding or terminal occurrence has `error` severity. A typed
+`not_found` lookup writes its lookup report to stdout and exits `1`; an invalid
+finding ID is a usage error on stderr and exits `2`; Store corruption or another
+read failure is a runtime error on stderr and exits `1`. Workflow metrics retain
+their separate report and exit contract.
 
 <a id="noninteractive-approval-behavior"></a>
 ## Noninteractive Behavior

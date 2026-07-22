@@ -86,14 +86,16 @@ ID를 파생하며 `current_subject_identity`를 포함한 저장된 identity fi
 `resolve_current_finding`은 `CurrentDiagnosticKey`로 row를 지정해 `resolved_at`을 기록하고
 action 및 나가는 cause를 비우며 facts와 마지막 관찰 snapshot data는 유지합니다.
 `active_current_findings_for_scope`는 active row만 반환합니다.
-`diagnostic_findings_by_ids`는 resolved projection도 반환할 수 있고, data를 반환하기 전에
-안전한 subject 표시가 아니라 저장된 subject identity에서 각 current key를 복원한 뒤 모든
-current digest와 ID를 다시 계산합니다. 잘못된 subject identity나 불일치는 persisted-data
-corruption입니다.
+`stored_diagnostic_findings_by_ids`와 `stored_diagnostic_finding_by_id`는 완전한
+`OccurrenceDiagnosticFinding` 또는 완전한 `CurrentDiagnosticFinding`을 유지하는
+`StoredDiagnosticFinding` 값을 반환합니다. 따라서 정확한 current read는
+`current_state_status`와 `resolved_at`을 유지합니다. Data를 반환하기 전에 안전한 subject
+표시가 아니라 저장된 subject identity에서 각 current key를 복원한 뒤 모든 current digest와
+ID를 다시 계산합니다. 잘못된 subject identity나 불일치는 persisted-data corruption입니다.
 `reportable_diagnostic_findings_by_ids`는 변경할 수 없는 occurrence와 active current-state
-row만 받습니다. Resolved current-state row는 current-report seed에서 제외되지만 정확한 ID
-조회로 계속 읽을 수 있습니다. Registry update trigger도 current identity column과
-occurrence row를 보호합니다.
+row만 current-report finding으로 projection합니다. Resolved current-state row는
+current-report seed에서 제외되지만 정확한 ID 조회로 계속 읽을 수 있습니다. Registry update
+trigger도 current identity column과 occurrence row를 보호합니다.
 
 `diagnostic_cause_edges`는 finding에서 원인 finding으로 향하는 edge 하나를 저장합니다.
 양쪽 끝은 기존 finding을 가리켜야 하고 composite primary key가 중복을 거부하며, insert
@@ -102,6 +104,9 @@ trigger와 Store graph 검증이 cycle을 거부합니다. Store는 immediate tr
 dangling edge를 남기지 않습니다. 원인 조회는 depth와 finding ID 순서로 정렬하고, 32를
 넘는 요청 depth를 거부하며, 서로 다른 finding을 최대 128개 반환하고 선택한 depth 때문에
 추가 edge를 자른 경우 이를 표시합니다.
+`bounded_stored_diagnostic_graph_from_seeds`는 모든 entry에서 같은
+`StoredDiagnosticFinding` lifecycle 형태를 반환하므로 occurrence, active current, resolved
+current cause가 각각 정확한 저장 상태를 유지합니다.
 
 Finding은 명시적 ID별, runtime occurrence session별, 정확한 active current scope별로 읽을
 수 있습니다. Runtime과 상관된 occurrence에는 해당 runtime의 Connection과 integration

@@ -2,7 +2,9 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use volicord_store::diagnostic_findings::{diagnostic_findings_by_ids, insert_occurrence_finding};
+use volicord_store::diagnostic_findings::{
+    insert_occurrence_finding, stored_diagnostic_findings_by_ids,
+};
 use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
@@ -908,11 +910,14 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
         id = root.id().to_string();
         insert_occurrence_finding(fixture.runtime_home_path(), &occurrence).unwrap();
         assert_eq!(
-            diagnostic_findings_by_ids(
+            stored_diagnostic_findings_by_ids(
                 fixture.runtime_home_path(),
                 std::slice::from_ref(root.id()),
             )
-            .unwrap(),
+            .unwrap()
+            .into_iter()
+            .map(|finding| finding.to_diagnostic_finding())
+            .collect::<Vec<_>>(),
             vec![root.clone()],
             "{} did not round-trip through Registry persistence",
             scenario.name

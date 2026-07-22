@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::{
     agent_connections::AgentConnectionRecord,
     diagnostic_findings::{
-        bounded_diagnostic_graph_from_seeds, diagnostic_findings_by_ids,
-        reportable_diagnostic_findings_by_ids,
+        bounded_stored_diagnostic_graph_from_seeds, reportable_diagnostic_findings_by_ids,
+        stored_diagnostic_findings_by_ids,
     },
     operational_sessions::connection_integration_revision,
 };
@@ -130,7 +130,7 @@ pub(crate) fn current_report_findings(
         let reportable =
             reportable_diagnostic_findings_by_ids(runtime_home, std::slice::from_ref(&finding_id))?;
         if reportable.is_empty() {
-            if diagnostic_findings_by_ids(runtime_home, std::slice::from_ref(&finding_id))?
+            if stored_diagnostic_findings_by_ids(runtime_home, std::slice::from_ref(&finding_id))?
                 .is_empty()
             {
                 findings.insert(
@@ -145,21 +145,21 @@ pub(crate) fn current_report_findings(
             continue;
         }
 
-        let chain = bounded_diagnostic_graph_from_seeds(
+        let chain = bounded_stored_diagnostic_graph_from_seeds(
             runtime_home,
             std::slice::from_ref(&finding_id),
             MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
         )?;
         let chain_ids = chain
-            .entries
+            .entries()
             .iter()
-            .map(|entry| entry.finding.id().clone())
+            .map(|entry| entry.finding().id())
             .collect::<Vec<_>>();
         let reportable_chain = reportable_diagnostic_findings_by_ids(runtime_home, &chain_ids)?
             .into_iter()
             .map(|finding| (finding.id().clone(), finding))
             .collect::<BTreeMap<_, _>>();
-        if reportable_chain.len() != chain.entries.len() {
+        if reportable_chain.len() != chain.entries().len() {
             return Err(ConnectionCommandError::runtime(
                 "current diagnostic cause graph references a resolved current condition",
             ));

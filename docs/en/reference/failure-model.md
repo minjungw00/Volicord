@@ -191,8 +191,8 @@ reference, a cycle, or a path beyond that bound rejects selection rather than
 guessing a root. `DiagnosticReport.root_cause_ids` is the derived result for
 the report's findings and cannot be supplied as an independent caller choice.
 
-`DiagnosticReport` is the only current lossless diagnostic JSON envelope. Its
-`schema_version` is `2`. It contains the typed `operation`, aggregate `status`,
+`DiagnosticReport` is the lossless selected-Connection diagnostic JSON
+envelope. Its `schema_version` is `2`. It contains the typed `operation`, aggregate `status`,
 generation timestamp, optional Connection context, complete check array,
 bounded finding graph, derived root-cause IDs, deduplicated report actions,
 operation-specific typed details, and report limits. A report action contains a
@@ -201,6 +201,17 @@ Deserialization rejects any other schema version, unknown top-level member,
 duplicate check or finding ID, invalid cause graph, supplied root list that
 differs from the derived roots, duplicate action code, or action that refers to
 a non-root finding. There is no second legacy connection-report schema.
+
+Exact finding and runtime-session reads use the separate schema-1
+`DiagnosticLookupReport`. Its `lookup_status` is exactly `found` or
+`not_found` and does not use Connection aggregate or check statuses. A found
+finding root and every entry in its bounded cause graph use
+`StoredDiagnosticFinding`: an occurrence is tagged `lifecycle=occurrence`; a
+current record is tagged `lifecycle=current_state` and carries its explicit
+`current_state_status` plus `resolved_at`. The same envelope can carry the
+distinct runtime-session root while retaining lifecycle-aware terminal and
+correlated occurrences. Finding severity and current-state status describe
+stored conditions; neither changes a successful lookup into a failed lookup.
 
 Machine consumers distinguish observation outcomes structurally. An absent
 observation is an omitted optional value or an owner-defined typed

@@ -44,7 +44,7 @@ use volicord_store::agent_connections::{
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostic_findings::{
-    diagnostic_findings_by_ids, diagnostic_occurrences_for_runtime_session,
+    diagnostic_occurrences_for_runtime_session, stored_diagnostic_findings_by_ids,
 };
 use volicord_store::diagnostics::{
     diagnostics_db_path, read_diagnostic_session, read_workflow_metric_aggregates,

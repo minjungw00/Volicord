@@ -170,7 +170,7 @@ enum 순서를 비교하거나 첫 번째 실패 check를 고르지 않습니다
 `DiagnosticReport.root_cause_ids`는 report finding에서 계산한 결과이며 caller가 별도로
 선택해서 제공할 수 없습니다.
 
-`DiagnosticReport`는 현재 사용하는 유일한 lossless diagnostic JSON envelope입니다.
+`DiagnosticReport`는 선택한 Connection을 위한 lossless diagnostic JSON envelope입니다.
 `schema_version`은 `2`입니다. Typed `operation`, 집계 `status`, 생성 timestamp, 선택적인
 Connection context, 전체 check 배열, 한도가 있는 finding graph, 계산한 root-cause ID,
 중복 제거한 report action, operation별 typed detail, report limit을 담습니다. Report
@@ -179,6 +179,17 @@ action은 namespaced code, 한도가 있는 summary, 해당 action이 복구하�
 잘못된 cause graph, 계산 결과와 다른 supplied root list, 중복 action code, root가 아닌
 finding을 가리키는 action은 역직렬화에서 거부합니다. 예전 connection-report schema를
 위한 두 번째 분기는 없습니다.
+
+정확한 finding 및 runtime-session read는 별도의 schema 1
+`DiagnosticLookupReport`를 사용합니다. `lookup_status`는 정확히 `found` 또는
+`not_found`이며 Connection 집계 status나 check status를 사용하지 않습니다. 찾은 finding
+root와 한도가 있는 cause graph의 모든 entry는 `StoredDiagnosticFinding`을 사용합니다.
+Occurrence는 `lifecycle=occurrence`로 표시하고, current record는
+`lifecycle=current_state`로 표시하면서 명시적인 `current_state_status`와 `resolved_at`을
+함께 담습니다. 같은 envelope는 서로 다른 runtime-session root를 담으면서 lifecycle을
+보존한 terminal 및 correlated occurrence를 유지할 수 있습니다. Finding severity와
+current-state status는 저장된 condition을 설명하며, 어느 쪽도 성공한 lookup을 실패한
+lookup으로 바꾸지 않습니다.
 
 Machine consumer는 관찰 결과를 구조적으로 구분합니다. 관찰 부재는 생략한 optional 값
 또는 담당자가 정의한 typed `observation_state=absent`, 관찰한 빈 collection은 값이 있는
