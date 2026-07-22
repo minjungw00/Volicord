@@ -514,6 +514,23 @@ yields `CodexMcpCorrelation`, for which session, thread, and turn are required.
 Store phase checks and SQL discriminators reject cross-source or incomplete
 combinations.
 
+Guard correlation and Guard policy are separate steps. A compatible hook
+correlation may reach policy and produce `Continue`, `ContinueWithContext`,
+`ContinueWithWarning`, or `Deny`. An incompatible hook contract instead
+records an observation failure when possible, produces no policy decision, and
+does not satisfy the phase. In the Codex `record` profile, the adapter continues
+that host action with bounded context and exit `0`; it does not convert the
+observation failure into denial. Event persistence unavailability follows the
+same non-synthetic-denial rule. Only an explicit compatible `PreToolUse`
+policy `Deny` becomes a Codex permission denial. `PostToolUse` output can warn
+about or require reconciliation of an already-completed action, but cannot
+claim it prevented the action.
+
+The host-neutral boundary is `GuardHookOutcome`: observation outcome, optional
+policy decision, bounded diagnostics, and safe feedback. The Codex adapter,
+not Core or Store, owns stdout hook JSON, stderr, process exit, context,
+warning, and denial projection.
+
 A Guard observation may create normalized host, turn, and tool rows but never
 creates the MCP-only `managed_mcp_sessions` row. The first actual managed MCP
 tool call validates the current managed runtime without mutation, establishes

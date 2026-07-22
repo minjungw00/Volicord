@@ -129,6 +129,30 @@ volicord connection status codex --shared --repo "<repo>"
 
 Do not edit a verification result or infer readiness from configuration files.
 
+## Guard Hook Reports A Warning But Continues
+
+Codex `record` hooks intentionally continue with exit `0` when a hook payload
+is incompatible or its Guard event cannot be persisted. Read the bounded
+`additionalContext` and inspect the stable finding code; do not use empty
+stderr as evidence that the observation succeeded.
+
+- `guard.observation.incompatible` means the event was recorded as
+  incompatible and did not satisfy that phase. Check the named contract
+  profile, hook event kind, and missing or malformed field category, then
+  repair or reload the managed Guard integration.
+- `guard.event.persistence_unavailable` means Guard could not commit the event.
+  Restore the selected Runtime Home or project Store and trigger the phase
+  again.
+- `guard.policy.denied` is different: compatible `PreToolUse` input reached
+  policy and Codex received an explicit permission denial. Follow the policy
+  reason, such as preparing a current Write Ticket, instead of repairing the
+  parser.
+
+A post-tool warning describes an action that already completed. Reconcile any
+reported repository changes; do not read the warning as proof that Guard
+prevented or reversed them. Never copy the original prompt, tool input, tool
+response, or raw stderr into a diagnostic.
+
 ## MCP Preflight Fails
 
 Use the exact stored connection and project identifiers:

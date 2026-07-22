@@ -445,6 +445,20 @@ session과 turn만 필요합니다. Tool 상관관계에는 tool-use ID와 정�
 session, thread, turn이 모두 필요한 `CodexMcpCorrelation`을 만듭니다. Store phase check와
 SQL discriminator는 source가 교차되거나 불완전한 조합을 거부합니다.
 
+Guard 상관관계와 Guard policy는 별도 단계입니다. 호환되는 hook 상관관계는 policy에 도달해
+`Continue`, `ContinueWithContext`, `ContinueWithWarning`, `Deny` 중 하나를 낼 수 있습니다.
+반면 호환되지 않는 hook contract는 가능한 경우 관찰 실패를 기록하고 policy 판단을 만들지
+않으며 phase를 충족하지 않습니다. Codex `record` profile에서 adapter는 제한된 context와
+exit `0`으로 해당 host 동작을 계속하며, 관찰 실패를 denial로 바꾸지 않습니다. Event
+영속화를 사용할 수 없는 경우에도 합성 denial을 만들지 않는 같은 규칙을 따릅니다. 호환되는
+명시적 `PreToolUse` policy `Deny`만 Codex permission denial이 됩니다. `PostToolUse` output은
+이미 끝난 동작에 대해 warning이나 reconciliation 필요성을 알릴 수 있지만 동작을 막았다고
+주장할 수 없습니다.
+
+Host-neutral 경계는 관찰 결과, 선택적 policy 판단, 제한된 diagnostic, 안전한 feedback을
+담는 `GuardHookOutcome`입니다. Core나 Store가 아니라 Codex adapter가 stdout hook JSON,
+stderr, process exit, context, warning, denial projection을 담당합니다.
+
 Guard 관찰은 정규화한 host, turn, tool row를 만들 수 있지만 MCP 전용
 `managed_mcp_sessions` row는 만들지 않습니다. 해당 host session의 첫 실제 managed MCP
 도구 호출은 먼저 현재 managed runtime을 변경 없이 검증하고, 정확한 MCP anchor를 만들거나

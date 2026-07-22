@@ -71,6 +71,16 @@ thread coordinate from its session, environment, or runtime state. Registered
 managed-session correlation remains an independent MCP authorization check
 after successful profile decoding.
 
+For a Guard hook in the `record` profile, that `Rejected` classification
+describes the observation input; it is not a `NotAllowed` policy result and
+does not say that the host action was denied. Guard records the incompatible
+observation when Store is available, leaves `GuardPolicyDecision` absent, does
+not count the event toward phase satisfaction, and asks the host adapter to
+continue with bounded feedback. If event persistence is unavailable, the
+observation outcome remains explicitly unavailable and persistence failure
+alone does not become policy denial. An actual `NotAllowed` Guard result
+requires compatible input that reached policy and produced `Deny`.
+
 Active connection verification discovers the configured Codex executable, runs
 its version command, and reports every behavioral check using the five-state
 model defined below. Failure to find or run the executable is `Unavailable` at

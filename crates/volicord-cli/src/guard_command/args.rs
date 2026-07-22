@@ -59,6 +59,13 @@ pub(super) struct GuardInput {
     pub(super) raw_value: Value,
     pub(super) raw_sha256: String,
     pub(super) redacted_value: Value,
+    pub(super) decode_failure: Option<GuardInputDecodeFailure>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GuardInputDecodeFailure {
+    pub(super) field_category: &'static str,
+    pub(super) field: &'static str,
 }
 
 pub(super) fn guard_options(args: HookEventArgs) -> GuardOptions {
@@ -99,20 +106,33 @@ pub(super) fn read_guard_input(path: Option<&Path>) -> Result<GuardInput, GuardC
             text
         }
     };
-    if raw_text.trim().is_empty() {
-        return Err(GuardCommandError::Usage(
-            "host-hook event JSON must not be empty".to_owned(),
-        ));
-    }
-    let raw_value = serde_json::from_str::<Value>(&raw_text).map_err(|error| {
-        GuardCommandError::Usage(format!("host-hook event must be JSON: {error}"))
-    })?;
     let raw_sha256 = sha256_text(&raw_text);
+    let (raw_value, decode_failure) = if raw_text.trim().is_empty() {
+        (
+            Value::Null,
+            Some(GuardInputDecodeFailure {
+                field_category: "missing_payload",
+                field: "payload",
+            }),
+        )
+    } else {
+        match serde_json::from_str::<Value>(&raw_text) {
+            Ok(value) => (value, None),
+            Err(_) => (
+                Value::Null,
+                Some(GuardInputDecodeFailure {
+                    field_category: "malformed_json",
+                    field: "payload",
+                }),
+            ),
+        }
+    };
     let redacted_value = redact_event_value(&raw_value);
     Ok(GuardInput {
         raw_text,
         raw_value,
         raw_sha256,
         redacted_value,
+        decode_failure,
     })
 }

@@ -6,7 +6,7 @@ use volicord_store::{
     bootstrap::ProjectRecord,
     guards::{insert_expected_write, ExpectedWriteInsert},
 };
-use volicord_types::GuardDecision;
+use volicord_types::GuardPolicyDecision;
 
 use super::GuardPhaseResult;
 use crate::guard_command::{
@@ -53,7 +53,7 @@ pub(in crate::guard_command) fn handle_pre_tool(
         decision,
         json!({
             "decision": decision.as_str(),
-            "allowed": decision != GuardDecision::Deny,
+            "allowed": decision != GuardPolicyDecision::Deny,
             "reasons": reasons_json(&reasons),
             "tool": tool_observation_json(&observation),
             "write_ticket_backing": write_ticket_backing,
@@ -68,7 +68,7 @@ pub(in crate::guard_command) fn handle_pre_tool(
 fn pre_tool_decision(
     summary: &GuardStateSummary,
     observation: &ToolObservation,
-) -> (GuardDecision, Vec<GuardReason>) {
+) -> (GuardPolicyDecision, Vec<GuardReason>) {
     let mut reasons = Vec::new();
     let product_file_write_attempt = observation.deterministic_product_write_attempt();
     if observation.deterministic_write_attempt()
@@ -150,11 +150,11 @@ fn pre_tool_decision(
         });
     }
     let decision = if reasons.iter().any(|reason| reason.severity == "deny") {
-        GuardDecision::Deny
+        GuardPolicyDecision::Deny
     } else if reasons.iter().any(|reason| reason.severity == "warn") {
-        GuardDecision::Warn
+        GuardPolicyDecision::ContinueWithWarning
     } else {
-        GuardDecision::Allow
+        GuardPolicyDecision::Continue
     };
     (decision, reasons)
 }
@@ -187,9 +187,9 @@ fn expected_write_candidate(
     summary: &GuardStateSummary,
     observation: &ToolObservation,
     input: &GuardInput,
-    decision: GuardDecision,
+    decision: GuardPolicyDecision,
 ) -> Result<Option<ExpectedWriteCandidate>, GuardCommandError> {
-    if decision == GuardDecision::Deny || !confidently_expects_product_write(observation) {
+    if decision == GuardPolicyDecision::Deny || !confidently_expects_product_write(observation) {
         return Ok(None);
     }
     let Some(task_id) = summary.active_task_id.clone() else {

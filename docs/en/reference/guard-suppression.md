@@ -116,6 +116,39 @@ Corrupt persisted data remains `Corrupt`; the Guard projection uses the
 domain reason above without converting corruption into a successful empty
 suppression. Environmental read failure remains `Unavailable`.
 
+## Guard Hook Outcome Boundary
+
+Guard hook processing separates three decisions that must not be inferred from
+one another:
+
+- `GuardObservationOutcome` records whether a compatible event was committed,
+  an incompatible event was committed, or event persistence was unavailable.
+- `GuardPolicyDecision` is optional and is exactly `Continue`,
+  `ContinueWithContext`, `ContinueWithWarning`, or `Deny`. It exists only when
+  structurally compatible input reached policy evaluation.
+- The host adapter projects the outcome into host JSON, context, warning,
+  denial, stderr, and process exit behavior. These are not Core or Store
+  decisions.
+
+`GuardHookOutcome` carries the observation outcome, optional policy decision,
+at most eight typed diagnostics, and a safe context-or-warning feedback kind.
+An event incompatible with the selected hook contract therefore has
+`observation=IncompatibleRecorded` and no policy decision. It does not satisfy
+the required phase, but it is not an automatic `Deny`.
+
+For the Codex `record` profile, compatible events are recorded and non-denied
+policy decisions continue. An explicit `PreToolUse` policy `Deny` is the only
+branch projected as a Codex permission denial. Incompatible events and
+event-persistence failure produce
+bounded host context, empty stderr, and process exit `0`. Persistence failure
+alone does not manufacture a policy denial. A `PostToolUse` warning describes
+an action that already completed and never claims that Guard prevented or
+reversed it.
+
+The Codex adapter exclusively owns `hookSpecificOutput`,
+`permissionDecision`, `additionalContext`, stderr, and exit-code projection.
+Core-facing types and Store records do not encode Codex process-exit behavior.
+
 ## Diagnostics And Event Projection
 
 Every `Unavailable` outcome emits a bounded diagnostic containing the project,
@@ -142,12 +175,21 @@ than rendered summaries:
 | `guard.hook_process.failed` | A typed Guard hook process failed. |
 | `guard.phase.required_not_observed` | A required current phase has not been observed. |
 | `guard.observation.incompatible` | A current event has an incompatible hook contract. |
+| `guard.event.persistence_unavailable` | Guard could not commit the event observation. |
+| `guard.policy.denied` | Compatible pre-tool input reached policy and was denied. |
+| `guard.host_output.projection_failure` | A host adapter could not project the typed outcome. |
+| `guard.internal.unexpected_failure` | Guard encountered an unexpected failure without a narrower typed mapping. |
 | `guard.prompt_capture.unsupported` | The host boundary does not support configured prompt capture. |
 | `guard.prompt_capture.unobserved` | Supported configured prompt capture has not been observed. |
 
 Finding facts may identify only the bounded artifact kind, phase, categorical
 state, and current revision coordinates. They do not project managed-file
 contents, prompt text, arbitrary event payloads, or unrestricted paths.
+Hook occurrence facts are limited to the contract profile, hook event kind,
+missing or malformed field category and static field label, Guard Installation
+ID, integration revision, and Guard event ID when available. They never include
+complete prompts, tool inputs, tool responses, parser prose, or unrestricted
+stderr.
 File, manifest, wrapper, and incompatible-observation failures use
 `action.guard.repair`; an unobserved required phase uses
 `action.guard.trigger_phase`. Prompt-capture codes retain their focused actions.
@@ -207,8 +249,12 @@ Durable contract tests cover:
 - corrupt stored event and malformed correlation payload;
 - Run and write-ticket lookup failures;
 - path-identity calculation failure;
-- Store read failure preserving every input path; and
-- warning, diagnostic, and event reason projection without sensitive payloads.
+- Store read failure preserving every input path;
+- warning, diagnostic, and event reason projection without sensitive payloads;
+- incompatible prompt, pre-tool, and post-tool events continuing without a
+  policy denial while remaining unsatisfied observations;
+- explicit pre-tool denial and non-blocking post-tool projection; and
+- event-persistence failure continuing with bounded Codex feedback.
 
 ## Adjacent Owners
 

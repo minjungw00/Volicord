@@ -127,12 +127,6 @@
       "reason": "The compatibility fixture selects the exact reviewed Codex MCP host-contract profile."
     },
     {
-      "path": "crates/volicord-cli/src/guard_command/envelope.rs",
-      "needle": "codex-hooks-v1",
-      "classification": "product_contract",
-      "reason": "The Guard decoder reports the exact reviewed Codex Hooks host-contract profile."
-    },
-    {
       "path": "crates/volicord-cli/src/guard_command/tool_observation.rs",
       "needle": "hooks-v1",
       "classification": "product_contract",

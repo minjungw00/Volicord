@@ -801,6 +801,30 @@ and uninstall boundary belong to
 Configuration markers select the cooperative launch path; they are not
 credentials or identity evidence.
 
+## Managed Guard Hook Commands
+
+Generated Guard wrappers invoke internal `volicord hook prompt-capture`,
+`pre-tool`, and `post-tool` commands with the registered repository,
+Connection, Guard Installation, policy hash, `record` profile, and Codex host
+output selection. These are managed adapter entry points, not an alternate
+public workflow API.
+
+The command produces one host-neutral `GuardHookOutcome` before rendering.
+Compatible input records `CompatibleRecorded` and a policy decision. An
+incompatible Codex payload records `IncompatibleRecorded`, has no policy
+decision, does not satisfy that Guard phase, and continues. Event Store failure
+reports `PersistenceUnavailable`; that failure alone does not deny the host
+action.
+
+For Codex host output, the adapter writes only valid hook JSON to stdout,
+keeps stderr empty, and exits `0` for compatible continuation, incompatible
+observation, persistence-unavailable feedback, and explicit pre-tool denial.
+Only the explicit compatible `PreToolUse` policy-denial branch contains
+`permissionDecision=deny`. Prompt context and warnings use
+`additionalContext`; post-tool feedback states that the action already
+completed. This host-specific exit and JSON contract does not change the
+general administrative exit rules below.
+
 ## MCP Commands
 
 ```text

@@ -10,9 +10,11 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{Clock, CorePipelineError, SystemClock};
+use volicord_host_contract::HostContractProfileId;
 use volicord_store::{
     bootstrap::{project_record_for_execution, ProjectRecord},
     core_pipeline::CoreProjectStore,
+    diagnostic_findings::insert_occurrence_finding,
     diagnostics::{
         record_diagnostic_event, record_workflow_metric_event, start_diagnostic_session,
         DiagnosticEvent, DiagnosticEventKind, DiagnosticHostKind, DiagnosticOutcome,
@@ -27,9 +29,13 @@ use volicord_store::{
     StoreError, StoreResult,
 };
 use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_bytes, guard_manifest_from_json, GuardDecision,
-    GuardHookContractStatus, GuardHookPhase, GuardManagedArtifact, IntegrationProfile,
-    ObservationConfidence, UtcTimestamp,
+    canonical_json_bare_sha256, canonical_json_bytes, guard_manifest_from_json, DiagnosticCode,
+    DiagnosticDomain, DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource,
+    DiagnosticStage, DiagnosticSubject, GuardDecision, GuardHookContractStatus,
+    GuardHookDiagnostic, GuardHookDiagnosticCode, GuardHookDiagnosticFacts, GuardHookOutcome,
+    GuardHookPhase, GuardHostFeedback, GuardManagedArtifact, GuardObservationOutcome,
+    GuardPolicyDecision, IntegrationProfile, ObservationConfidence, OccurrenceDiagnosticFinding,
+    UtcTimestamp,
 };
 
 use crate::cli::{HookArgs, HookCommand};
@@ -41,6 +47,7 @@ const DEFAULT_INTEGRATION_PROFILE: &str = "record";
 const EXPECTED_WRITE_TTL_MINUTES: i64 = 15;
 
 mod args;
+mod codex_output;
 mod context;
 mod envelope;
 mod mutation;
@@ -53,6 +60,7 @@ mod write_ticket;
 use args::{guard_options, read_guard_input, GuardInput, GuardOptions};
 use envelope::{
     event_path_field, event_string, guard_envelope, is_managed_builtin_host, GuardEnvelope,
+    GuardEnvelopeError,
 };
 use phase::{pre_tool::persist_expected_write, GuardPhaseResult};
 use prompt_capture::handle_prompt_capture;
@@ -69,12 +77,15 @@ pub struct GuardCommandOutcome {
 pub enum GuardCommandError {
     Usage(String),
     Runtime(String),
+    Persistence(String),
 }
 
 impl fmt::Display for GuardCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Usage(message) | Self::Runtime(message) => formatter.write_str(message),
+            Self::Usage(message) | Self::Runtime(message) | Self::Persistence(message) => {
+                formatter.write_str(message)
+            }
         }
     }
 }
@@ -83,7 +94,7 @@ impl std::error::Error for GuardCommandError {}
 
 impl From<StoreError> for GuardCommandError {
     fn from(error: StoreError) -> Self {
-        Self::Runtime(error.to_string())
+        Self::Persistence(error.to_string())
     }
 }
 
@@ -132,20 +143,77 @@ where
     let project = resolve_guard_project(&runtime_home, current_dir, &options, &input.raw_value)?;
     let mut envelope = match guard_envelope(phase, &options, &input, &project) {
         Ok(envelope) => envelope,
-        Err(error) => {
-            record_guard_hook_contract_failure(
+        Err(failure) => {
+            let outcome = match record_guard_hook_contract_failure(
                 &runtime_home,
                 &project,
                 phase,
                 &options,
                 &input,
                 GuardHookContractStatus::Malformed,
+                failure,
+            ) {
+                Ok(facts) => GuardHookOutcome::new(
+                    GuardObservationOutcome::IncompatibleRecorded,
+                    None,
+                    [GuardHookDiagnostic {
+                        code: GuardHookDiagnosticCode::HostContractIncompatible,
+                        facts,
+                    }],
+                    Some(GuardHostFeedback::Warning),
+                ),
+                Err(_) => GuardHookOutcome::new(
+                    GuardObservationOutcome::PersistenceUnavailable,
+                    None,
+                    [GuardHookDiagnostic {
+                        code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
+                        facts: guard_diagnostic_facts(phase, &options, None, None, None),
+                    }],
+                    Some(GuardHostFeedback::Warning),
+                ),
+            };
+            record_guard_findings_best_effort(&runtime_home, &outcome);
+            let result = hook_outcome_result(&outcome);
+            let rendered = render_guard_command_output(
+                phase,
+                &outcome,
+                None,
+                result,
+                &options,
+                &runtime_home,
+                &project,
             )?;
-            return Err(error);
+            return Ok(GuardCommandOutcome {
+                stdout: rendered.stdout,
+                stderr: rendered.stderr,
+                exit_code: rendered.exit_code,
+            });
         }
     };
-    bind_guard_envelope(&runtime_home, &project, phase, &input, &mut envelope)?;
-    let input = protect_managed_guard_input(input, &envelope)?;
+    if let Err(error) = bind_guard_envelope(&runtime_home, &project, phase, &input, &mut envelope) {
+        return host_guard_failure(
+            &runtime_home,
+            &project,
+            phase,
+            &options,
+            Some(&envelope),
+            &error,
+        );
+    }
+    let input = match protect_managed_guard_input(input, &envelope) {
+        Ok(input) => input,
+        Err(error) if options.output == args::OutputFormat::HostNative => {
+            return host_guard_failure(
+                &runtime_home,
+                &project,
+                phase,
+                &options,
+                Some(&envelope),
+                &error,
+            );
+        }
+        Err(error) => return Err(error),
+    };
     let subject = guard_subject(phase, &input, &envelope, &project);
     if phase == GuardHookPhase::PostTool {
         if let Some(replayed) =
@@ -168,10 +236,12 @@ where
                 &replayed.result,
                 true,
             );
+            let outcome =
+                compatible_hook_outcome(phase, replayed.decision, &options, Some(&envelope));
             let rendered = render_guard_command_output(
                 phase,
-                replayed.decision,
-                &envelope,
+                &outcome,
+                Some(&envelope),
                 replayed.result,
                 &options,
                 &runtime_home,
@@ -187,22 +257,38 @@ where
     if phase == GuardHookPhase::PromptCapture {
         let _ = start_guard_diagnostic_session_best_effort(&runtime_home, &project, &envelope);
     }
-    let mut phase_result = match phase {
+    let phase_result = match phase {
         GuardHookPhase::PreTool => {
-            phase::pre_tool::handle_pre_tool(&runtime_home, &project, &envelope, &input)?
+            phase::pre_tool::handle_pre_tool(&runtime_home, &project, &envelope, &input)
         }
         GuardHookPhase::PostTool => {
-            phase::post_tool::handle_post_tool(&runtime_home, &project, &envelope, &input)?
+            phase::post_tool::handle_post_tool(&runtime_home, &project, &envelope, &input)
         }
         GuardHookPhase::PromptCapture => {
-            let (decision, result, _exits_failure) =
-                handle_prompt_capture(&runtime_home, &project, &envelope, &input)?;
-            GuardPhaseResult::new(decision, result)
+            handle_prompt_capture(&runtime_home, &project, &envelope, &input)
+                .map(|(decision, result, _exits_failure)| GuardPhaseResult::new(decision, result))
         }
+    };
+    let mut phase_result = match phase_result {
+        Ok(result) => result,
+        Err(error) if options.output == args::OutputFormat::HostNative => {
+            return host_guard_failure(
+                &runtime_home,
+                &project,
+                phase,
+                &options,
+                Some(&envelope),
+                &error,
+            );
+        }
+        Err(error) => return Err(error),
     };
     attach_guard_disclosure(&mut phase_result.result);
 
-    persist_guard_event(
+    let outcome = compatible_hook_outcome(phase, phase_result.decision, &options, Some(&envelope));
+    attach_hook_outcome(&mut phase_result.result, &outcome);
+
+    if persist_guard_event(
         &runtime_home,
         &project,
         &envelope,
@@ -210,10 +296,75 @@ where
         subject,
         &phase_result,
         &options,
-    )?;
-    if let Some(expected_write) = phase_result.expected_write {
-        persist_expected_write(&runtime_home, &project, expected_write)?;
+    )
+    .is_err()
+    {
+        let persistence_outcome = GuardHookOutcome::new(
+            GuardObservationOutcome::PersistenceUnavailable,
+            Some(phase_result.decision),
+            [GuardHookDiagnostic {
+                code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
+                facts: guard_diagnostic_facts(
+                    phase,
+                    &options,
+                    envelope.guard_installation_id.as_deref(),
+                    envelope.integration_revision.as_deref(),
+                    Some(&envelope.event_id),
+                ),
+            }],
+            Some(GuardHostFeedback::Warning),
+        );
+        record_guard_findings_best_effort(&runtime_home, &persistence_outcome);
+        let rendered = render_guard_command_output(
+            phase,
+            &persistence_outcome,
+            Some(&envelope),
+            hook_outcome_result(&persistence_outcome),
+            &options,
+            &runtime_home,
+            &project,
+        )?;
+        return Ok(GuardCommandOutcome {
+            stdout: rendered.stdout,
+            stderr: rendered.stderr,
+            exit_code: rendered.exit_code,
+        });
     }
+    if let Some(expected_write) = phase_result.expected_write {
+        if persist_expected_write(&runtime_home, &project, expected_write).is_err() {
+            let persistence_outcome = GuardHookOutcome::new(
+                GuardObservationOutcome::PersistenceUnavailable,
+                Some(phase_result.decision),
+                [GuardHookDiagnostic {
+                    code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
+                    facts: guard_diagnostic_facts(
+                        phase,
+                        &options,
+                        envelope.guard_installation_id.as_deref(),
+                        envelope.integration_revision.as_deref(),
+                        Some(&envelope.event_id),
+                    ),
+                }],
+                Some(GuardHostFeedback::Warning),
+            );
+            record_guard_findings_best_effort(&runtime_home, &persistence_outcome);
+            let rendered = render_guard_command_output(
+                phase,
+                &persistence_outcome,
+                Some(&envelope),
+                hook_outcome_result(&persistence_outcome),
+                &options,
+                &runtime_home,
+                &project,
+            )?;
+            return Ok(GuardCommandOutcome {
+                stdout: rendered.stdout,
+                stderr: rendered.stderr,
+                exit_code: rendered.exit_code,
+            });
+        }
+    }
+    record_guard_findings_best_effort(&runtime_home, &outcome);
     record_guard_diagnostic_best_effort(
         &runtime_home,
         &project,
@@ -233,8 +384,8 @@ where
     );
     let rendered = render_guard_command_output(
         phase,
-        phase_result.decision,
-        &envelope,
+        &outcome,
+        Some(&envelope),
         phase_result.result,
         &options,
         &runtime_home,
@@ -254,16 +405,18 @@ fn record_guard_hook_contract_failure(
     options: &GuardOptions,
     input: &GuardInput,
     contract_status: GuardHookContractStatus,
-) -> Result<(), GuardCommandError> {
-    let Some(connection_id) = options.connection_id.as_deref() else {
-        return Ok(());
-    };
-    let Some(guard_installation_id) = options.guard_installation_id.as_deref() else {
-        return Ok(());
-    };
-    let Some(installation) = guard_installation(runtime_home, guard_installation_id)? else {
-        return Ok(());
-    };
+    failure: GuardEnvelopeError,
+) -> Result<GuardHookDiagnosticFacts, GuardCommandError> {
+    let connection_id = options.connection_id.as_deref().ok_or_else(|| {
+        GuardCommandError::Runtime("Guard connection identity is unavailable".to_owned())
+    })?;
+    let guard_installation_id = options.guard_installation_id.as_deref().ok_or_else(|| {
+        GuardCommandError::Runtime("Guard installation identity is unavailable".to_owned())
+    })?;
+    let installation =
+        guard_installation(runtime_home, guard_installation_id)?.ok_or_else(|| {
+            GuardCommandError::Runtime("Guard installation is unavailable".to_owned())
+        })?;
     let manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
         GuardCommandError::Runtime("current Guard installation manifest is malformed".to_owned())
     })?;
@@ -279,7 +432,9 @@ fn record_guard_hook_contract_failure(
             .as_deref()
             .is_none_or(|hash| hash == manifest.policy_hash.as_str());
     if !current_owner {
-        return Ok(());
+        return Err(GuardCommandError::Runtime(
+            "Guard installation ownership is unavailable".to_owned(),
+        ));
     }
 
     let event_id = stable_id(
@@ -293,7 +448,15 @@ fn record_guard_hook_contract_failure(
         ],
     );
     if guard_event(runtime_home, &project.project_id, &event_id)?.is_some() {
-        return Ok(());
+        return Ok(GuardHookDiagnosticFacts {
+            contract_profile: Some(HostContractProfileId::CodexHooksV1.as_str().to_owned()),
+            hook_event_kind: Some(phase.as_str().to_owned()),
+            field_category: Some(failure.field_category.to_owned()),
+            field: Some(failure.field.to_owned()),
+            guard_installation_id: Some(guard_installation_id.to_owned()),
+            integration_revision: Some(manifest.integration_revision.as_str().to_owned()),
+            guard_event_id: Some(event_id),
+        });
     }
     let occurred_at =
         UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now())).to_canonical_string();
@@ -304,7 +467,6 @@ fn record_guard_hook_contract_failure(
         "project_id": project.project_id,
         "repo_root": project.repo_root.display().to_string(),
         "raw_event_sha256": input.raw_sha256,
-        "raw_event": input.redacted_value,
     }))?;
     let source_payload_sha256 = guard_event_source_payload_sha256(
         None,
@@ -317,7 +479,7 @@ fn record_guard_hook_contract_failure(
         runtime_home,
         &project.project_id,
         GuardEventInsert {
-            guard_event_id: event_id,
+            guard_event_id: event_id.clone(),
             correlation: None,
             connection_internal_id: connection_id.to_owned(),
             guard_installation_id: guard_installation_id.to_owned(),
@@ -329,8 +491,22 @@ fn record_guard_hook_contract_failure(
             subject_json,
             result_json: object_text(json!({
                 "decision": GuardDecision::Warn.as_str(),
-                "allowed": false,
+                "observation_outcome": GuardObservationOutcome::IncompatibleRecorded.as_str(),
+                "policy_decision": Value::Null,
+                "allowed": true,
                 "contract_status": contract_status.as_str(),
+                "diagnostics": [{
+                    "code": GuardHookDiagnosticCode::HostContractIncompatible.as_str(),
+                    "facts": {
+                        "contract_profile": HostContractProfileId::CodexHooksV1.as_str(),
+                        "hook_event_kind": phase.as_str(),
+                        "field_category": failure.field_category,
+                        "field": failure.field,
+                        "guard_installation_id": guard_installation_id,
+                        "integration_revision": manifest.integration_revision.as_str(),
+                        "guard_event_id": event_id,
+                    }
+                }],
                 "enforcement_level": "cooperative_guard",
             }))?,
             occurred_at,
@@ -342,19 +518,238 @@ fn record_guard_hook_contract_failure(
             .to_string(),
         },
     )?;
-    Ok(())
+    Ok(GuardHookDiagnosticFacts {
+        contract_profile: Some(HostContractProfileId::CodexHooksV1.as_str().to_owned()),
+        hook_event_kind: Some(phase.as_str().to_owned()),
+        field_category: Some(failure.field_category.to_owned()),
+        field: Some(failure.field.to_owned()),
+        guard_installation_id: Some(guard_installation_id.to_owned()),
+        integration_revision: Some(manifest.integration_revision.as_str().to_owned()),
+        guard_event_id: Some(event_id),
+    })
 }
 
 fn render_guard_command_output(
     phase: GuardHookPhase,
-    decision: GuardDecision,
-    envelope: &GuardEnvelope,
+    outcome: &GuardHookOutcome,
+    envelope: Option<&GuardEnvelope>,
     result: Value,
     options: &GuardOptions,
     _runtime_home: &Path,
     _project: &ProjectRecord,
 ) -> Result<RenderedGuardOutput, GuardCommandError> {
-    render_guard_output(phase, decision, envelope, result, options.output)
+    match render_guard_output(phase, outcome, envelope, result, options.output) {
+        Ok(rendered) => Ok(rendered),
+        Err(error) if options.output == args::OutputFormat::HostNative => {
+            let projection_outcome = GuardHookOutcome::new(
+                outcome.observation,
+                outcome.policy,
+                [GuardHookDiagnostic {
+                    code: GuardHookDiagnosticCode::HostOutputProjectionFailure,
+                    facts: guard_diagnostic_facts(
+                        phase,
+                        options,
+                        envelope.and_then(|value| value.guard_installation_id.as_deref()),
+                        envelope.and_then(|value| value.integration_revision.as_deref()),
+                        envelope.map(|value| value.event_id.as_str()),
+                    ),
+                }],
+                Some(GuardHostFeedback::Warning),
+            );
+            record_guard_findings_best_effort(_runtime_home, &projection_outcome);
+            let _ = error;
+            Ok(codex_output::render_codex_projection_failure(
+                phase,
+                outcome.policy,
+            ))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn host_guard_failure(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    phase: GuardHookPhase,
+    options: &GuardOptions,
+    envelope: Option<&GuardEnvelope>,
+    error: &GuardCommandError,
+) -> Result<GuardCommandOutcome, GuardCommandError> {
+    let (observation, code) = match error {
+        GuardCommandError::Persistence(_) => (
+            GuardObservationOutcome::PersistenceUnavailable,
+            GuardHookDiagnosticCode::EventPersistenceUnavailable,
+        ),
+        GuardCommandError::Usage(_) | GuardCommandError::Runtime(_) => (
+            GuardObservationOutcome::PersistenceUnavailable,
+            GuardHookDiagnosticCode::UnexpectedInternalFailure,
+        ),
+    };
+    let outcome = GuardHookOutcome::new(
+        observation,
+        None,
+        [GuardHookDiagnostic {
+            code,
+            facts: guard_diagnostic_facts(
+                phase,
+                options,
+                envelope.and_then(|value| value.guard_installation_id.as_deref()),
+                envelope.and_then(|value| value.integration_revision.as_deref()),
+                envelope.map(|value| value.event_id.as_str()),
+            ),
+        }],
+        Some(GuardHostFeedback::Warning),
+    );
+    record_guard_findings_best_effort(runtime_home, &outcome);
+    let rendered = render_guard_command_output(
+        phase,
+        &outcome,
+        envelope,
+        hook_outcome_result(&outcome),
+        options,
+        runtime_home,
+        project,
+    )?;
+    Ok(GuardCommandOutcome {
+        stdout: rendered.stdout,
+        stderr: rendered.stderr,
+        exit_code: rendered.exit_code,
+    })
+}
+
+fn compatible_hook_outcome(
+    phase: GuardHookPhase,
+    policy: GuardPolicyDecision,
+    options: &GuardOptions,
+    envelope: Option<&GuardEnvelope>,
+) -> GuardHookOutcome {
+    let diagnostics = (policy == GuardPolicyDecision::Deny)
+        .then(|| GuardHookDiagnostic {
+            code: GuardHookDiagnosticCode::PolicyDenied,
+            facts: guard_diagnostic_facts(
+                phase,
+                options,
+                envelope.and_then(|value| value.guard_installation_id.as_deref()),
+                envelope.and_then(|value| value.integration_revision.as_deref()),
+                envelope.map(|value| value.event_id.as_str()),
+            ),
+        })
+        .into_iter();
+    let feedback = match policy {
+        GuardPolicyDecision::Continue => None,
+        GuardPolicyDecision::ContinueWithContext => Some(GuardHostFeedback::Context),
+        GuardPolicyDecision::ContinueWithWarning | GuardPolicyDecision::Deny => {
+            Some(GuardHostFeedback::Warning)
+        }
+    };
+    GuardHookOutcome::new(
+        GuardObservationOutcome::CompatibleRecorded,
+        Some(policy),
+        diagnostics,
+        feedback,
+    )
+}
+
+fn guard_diagnostic_facts(
+    phase: GuardHookPhase,
+    options: &GuardOptions,
+    installation_id: Option<&str>,
+    integration_revision: Option<&str>,
+    event_id: Option<&str>,
+) -> GuardHookDiagnosticFacts {
+    GuardHookDiagnosticFacts {
+        contract_profile: Some(HostContractProfileId::CodexHooksV1.as_str().to_owned()),
+        hook_event_kind: Some(phase.as_str().to_owned()),
+        field_category: None,
+        field: None,
+        guard_installation_id: installation_id
+            .or(options.guard_installation_id.as_deref())
+            .map(str::to_owned),
+        integration_revision: integration_revision.map(str::to_owned),
+        guard_event_id: event_id
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned),
+    }
+}
+
+fn record_guard_findings_best_effort(runtime_home: &Path, outcome: &GuardHookOutcome) {
+    for diagnostic in &outcome.diagnostics {
+        let stage = match diagnostic.code {
+            GuardHookDiagnosticCode::HostContractIncompatible => "host_contract",
+            GuardHookDiagnosticCode::EventPersistenceUnavailable => "event_persistence",
+            GuardHookDiagnosticCode::PolicyDenied => "policy",
+            GuardHookDiagnosticCode::HostOutputProjectionFailure => "host_output",
+            GuardHookDiagnosticCode::UnexpectedInternalFailure => "internal",
+        };
+        let severity = match diagnostic.code {
+            GuardHookDiagnosticCode::PolicyDenied => DiagnosticSeverity::Warning,
+            GuardHookDiagnosticCode::HostContractIncompatible
+            | GuardHookDiagnosticCode::EventPersistenceUnavailable
+            | GuardHookDiagnosticCode::HostOutputProjectionFailure
+            | GuardHookDiagnosticCode::UnexpectedInternalFailure => DiagnosticSeverity::Error,
+        };
+        let subject_identity = diagnostic
+            .facts
+            .guard_event_id
+            .as_deref()
+            .or(diagnostic.facts.hook_event_kind.as_deref())
+            .unwrap_or("guard_hook");
+        let finding = (|| {
+            let data = DiagnosticFindingData::try_new(
+                DiagnosticCode::parse(diagnostic.code.as_str())?,
+                DiagnosticDomain::parse("guard")?,
+                DiagnosticStage::parse(stage)?,
+                severity,
+                DiagnosticSource::parse("guard_hook")?,
+                DiagnosticSubject::try_new("guard_event", subject_identity)?,
+                DiagnosticFacts::project(&diagnostic.facts)?,
+                UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now())),
+            )?;
+            OccurrenceDiagnosticFinding::try_new(data, None)
+        })();
+        if let Ok(finding) = finding {
+            let _ = insert_occurrence_finding(runtime_home, &finding);
+        }
+    }
+}
+
+fn hook_outcome_result(outcome: &GuardHookOutcome) -> Value {
+    json!({
+        "observation_outcome": outcome.observation.as_str(),
+        "policy_decision": outcome.policy.map(GuardPolicyDecision::as_str),
+        "allowed": outcome.policy != Some(GuardPolicyDecision::Deny),
+        "diagnostics": outcome.diagnostics,
+        "enforcement_level": "cooperative_guard",
+    })
+}
+
+fn attach_hook_outcome(result: &mut Value, outcome: &GuardHookOutcome) {
+    if let Some(object) = result.as_object_mut() {
+        object.insert(
+            "observation_outcome".to_owned(),
+            Value::String(outcome.observation.as_str().to_owned()),
+        );
+        object.insert(
+            "policy_decision".to_owned(),
+            outcome
+                .policy
+                .map(|decision| Value::String(decision.as_str().to_owned()))
+                .unwrap_or(Value::Null),
+        );
+        object.insert(
+            "guard_diagnostics".to_owned(),
+            serde_json::to_value(&outcome.diagnostics).unwrap_or_else(|_| Value::Array(Vec::new())),
+        );
+    }
+}
+
+const fn stored_guard_decision(policy: GuardPolicyDecision) -> GuardDecision {
+    match policy {
+        GuardPolicyDecision::Continue => GuardDecision::Allow,
+        GuardPolicyDecision::ContinueWithContext => GuardDecision::InjectContext,
+        GuardPolicyDecision::ContinueWithWarning => GuardDecision::Warn,
+        GuardPolicyDecision::Deny => GuardDecision::Deny,
+    }
 }
 
 fn replayed_guard_phase_result(
@@ -388,10 +783,10 @@ fn replayed_guard_phase_result(
         )));
     }
     let decision = match existing.decision.as_str() {
-        "allow" => GuardDecision::Allow,
-        "deny" => GuardDecision::Deny,
-        "warn" => GuardDecision::Warn,
-        "inject_context" => GuardDecision::InjectContext,
+        "allow" => GuardPolicyDecision::Continue,
+        "deny" => GuardPolicyDecision::Deny,
+        "warn" => GuardPolicyDecision::ContinueWithWarning,
+        "inject_context" => GuardPolicyDecision::ContinueWithContext,
         _ => {
             return Err(GuardCommandError::Runtime(format!(
                 "guard event {} contains an unsupported stored decision",
@@ -520,7 +915,7 @@ fn record_guard_workflow_metrics_best_effort(
     runtime_home: &Path,
     envelope: &GuardEnvelope,
     phase: GuardHookPhase,
-    decision: GuardDecision,
+    decision: GuardPolicyDecision,
     result: &Value,
     _repeated: bool,
 ) {
@@ -556,10 +951,10 @@ fn record_guard_workflow_metrics_best_effort(
                 .and_then(Value::as_str)
                 .and_then(workflow_observation_confidence);
             let metric_decision = match decision {
-                GuardDecision::Allow => Some(WorkflowMetricDecision::Allow),
-                GuardDecision::Warn => Some(WorkflowMetricDecision::Warn),
-                GuardDecision::Deny => Some(WorkflowMetricDecision::Deny),
-                GuardDecision::InjectContext => None,
+                GuardPolicyDecision::Continue => Some(WorkflowMetricDecision::Allow),
+                GuardPolicyDecision::ContinueWithWarning => Some(WorkflowMetricDecision::Warn),
+                GuardPolicyDecision::Deny => Some(WorkflowMetricDecision::Deny),
+                GuardPolicyDecision::ContinueWithContext => None,
             };
             if let (Some(metric_decision), Some(confidence)) = (metric_decision, confidence) {
                 record(
@@ -576,7 +971,7 @@ fn record_guard_workflow_metrics_best_effort(
             let structured_product_write = confidence == Some(ObservationConfidence::Structured)
                 && result.pointer("/tool/effect").and_then(Value::as_str)
                     == Some("product_file_write");
-            if decision == GuardDecision::Deny
+            if decision == GuardPolicyDecision::Deny
                 && structured_product_write
                 && matches!(task_level, Some("light" | "tracked"))
             {
@@ -740,6 +1135,7 @@ fn bind_guard_envelope(
         ));
     }
     envelope.session_id = Some(session.session_id);
+    envelope.integration_revision = Some(session.project_integration_revision.as_str().to_owned());
     envelope.event_id = stable_id(
         "guard_event",
         &[
@@ -831,7 +1227,9 @@ fn persist_guard_event(
         integration_revision: manifest.integration_revision.as_str().to_owned(),
         event_kind: phase.as_str().to_owned(),
         contract_status: GuardHookContractStatus::Compatible.as_str().to_owned(),
-        decision: phase_result.decision.as_str().to_owned(),
+        decision: stored_guard_decision(phase_result.decision)
+            .as_str()
+            .to_owned(),
         subject_json,
         result_json: object_text(phase_result.result.clone())?,
         occurred_at: envelope.occurred_at.clone(),

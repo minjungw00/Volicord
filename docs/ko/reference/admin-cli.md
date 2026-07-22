@@ -734,6 +734,26 @@ drift, 복구, launch 맥락, uninstall 경계는
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract)이 담당합니다. 구성
 marker는 협력적 launch 경로를 선택할 뿐 credential이나 identity 증거가 아닙니다.
 
+## 관리 Guard Hook 명령
+
+생성된 Guard wrapper는 등록된 repository, Connection, Guard Installation, policy hash,
+`record` profile, Codex host output 선택과 함께 내부 `volicord hook prompt-capture`,
+`pre-tool`, `post-tool` 명령을 호출합니다. 이는 관리 adapter 진입점이며 별도의 공개 workflow
+API가 아닙니다.
+
+명령은 렌더링 전에 host-neutral `GuardHookOutcome` 하나를 만듭니다. 호환되는 입력은
+`CompatibleRecorded`와 policy 판단을 기록합니다. 호환되지 않는 Codex payload는
+`IncompatibleRecorded`를 기록하고 policy 판단이 없으며, 해당 Guard phase를 충족하지 않은 채
+계속합니다. Event Store 실패는 `PersistenceUnavailable`을 보고하며 그 실패만으로 host 동작을
+거부하지 않습니다.
+
+Codex host output에서 adapter는 유효한 hook JSON만 stdout에 쓰고 stderr를 비우며, 호환되는
+계속, 호환되지 않는 관찰, persistence-unavailable feedback, 명시적인 pre-tool denial 모두
+exit `0`을 사용합니다. 호환되는 명시적 `PreToolUse` policy-denial 분기만
+`permissionDecision=deny`를 담습니다. Prompt context와 warning은 `additionalContext`를
+사용하고 post-tool feedback은 동작이 이미 끝났다고 밝힙니다. 이 host 전용 exit와 JSON
+계약은 아래의 일반 관리 명령 exit 규칙을 바꾸지 않습니다.
+
 ## MCP 명령
 
 ```text

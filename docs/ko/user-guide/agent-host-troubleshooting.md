@@ -120,6 +120,25 @@ volicord connection status codex --shared --repo "<repo>"
 
 검증 결과를 편집하거나 구성 파일만 보고 준비 상태를 추론하지 않습니다.
 
+## Guard Hook이 Warning을 내고 계속함
+
+Codex `record` hook은 hook payload가 호환되지 않거나 Guard event를 영속화할 수 없을 때
+의도적으로 exit `0`으로 계속합니다. 제한된 `additionalContext`와 안정적인 finding code를
+확인합니다. Stderr가 비었다는 사실을 관찰 성공의 증거로 사용하지 않습니다.
+
+- `guard.observation.incompatible`은 event를 호환되지 않는 관찰로 기록했고 해당 phase를
+  충족하지 않았다는 뜻입니다. 이름 붙은 contract profile, hook event kind, 누락 또는
+  malformed field 범주를 확인한 뒤 관리 Guard integration을 복구하거나 다시 불러옵니다.
+- `guard.event.persistence_unavailable`은 Guard가 event를 commit하지 못했다는 뜻입니다.
+  선택한 Runtime Home 또는 project Store를 복구하고 해당 phase를 다시 일으킵니다.
+- `guard.policy.denied`는 다릅니다. 호환되는 `PreToolUse` 입력이 policy에 도달했고 Codex가
+  명시적인 permission denial을 받았습니다. Parser를 복구하는 대신 현재 Write Ticket 준비
+  같은 policy reason을 따릅니다.
+
+Post-tool warning은 이미 끝난 동작을 설명합니다. 보고된 repository 변경을 조정하고 Guard가
+그 변경을 막거나 되돌렸다는 증거로 warning을 해석하지 않습니다. 원래 prompt, tool input,
+tool response, raw stderr를 diagnostic에 복사하지 않습니다.
+
 ## MCP 사전 점검 실패
 
 정확한 저장 연결과 프로젝트 식별자를 사용합니다.

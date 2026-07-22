@@ -64,6 +64,14 @@ payload, MCP metadata, tool input, tool response를 보관하거나 투영하지
 failure는 session, environment, runtime state에서 thread 좌표를 만들어 내지 않습니다. 등록된
 managed-session 상관관계는 profile decode가 성공한 뒤에도 독립된 MCP 권한 check로 남습니다.
 
+`record` profile의 Guard hook에서는 이 `Rejected` 분류가 관찰 입력을 설명합니다. 이는
+`NotAllowed` policy 결과가 아니며 host 동작이 거부됐다는 뜻도 아닙니다. Store를 사용할 수
+있으면 Guard는 호환되지 않는 관찰을 기록하고 `GuardPolicyDecision`을 비워 두며, 그 event를
+phase 충족에 사용하지 않고 host adapter에 제한된 feedback과 함께 계속하라고 요청합니다.
+Event 영속화를 사용할 수 없으면 관찰 결과는 명시적으로 unavailable로 남고, 영속화 실패만으로
+policy denial이 되지 않습니다. 실제 Guard `NotAllowed` 결과에는 호환되는 입력이 policy에
+도달해 `Deny`를 낸 사실이 필요합니다.
+
 활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
 아래에서 정의하는 다섯 가지 상태 모델로 보고합니다. 실행 파일을 찾거나 실행하지 못한
 경우 일반 실패 범주 경계에서는 `Unavailable`, 연결 보고서에서는 실패한

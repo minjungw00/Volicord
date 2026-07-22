@@ -1,13 +1,9 @@
 use serde_json::{json, Value};
-use volicord_types::{GuardDecision, GuardHookPhase, HostKind};
-
-use crate::disclosure::{
-    cooperative_host_decision_disclosure_json, COOPERATIVE_DECISION_DISCLOSURE_TEXT,
-};
-use crate::host_integration::contracts::{contract_for, hook_event_for_phase};
+use volicord_types::{GuardHookOutcome, GuardHookPhase, GuardPolicyDecision};
 
 use super::{
     args::OutputFormat,
+    codex_output::render_codex_output,
     context::{ActiveWriteTicketSummary, GuardReason, GuardStateSummary},
     json_error,
     mutation::PathAssessment,
@@ -15,6 +11,9 @@ use super::{
     tool_observation::ToolObservation,
     write_ticket::WriteTicketCoverage,
     GuardCommandError,
+};
+use crate::disclosure::{
+    cooperative_host_decision_disclosure_json, COOPERATIVE_DECISION_DISCLOSURE_TEXT,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,23 +25,26 @@ pub(super) struct RenderedGuardOutput {
 
 pub(super) fn render_guard_output(
     phase: GuardHookPhase,
-    decision: GuardDecision,
-    envelope: &super::envelope::GuardEnvelope,
+    outcome: &GuardHookOutcome,
+    envelope: Option<&super::envelope::GuardEnvelope>,
     result: Value,
     output: OutputFormat,
 ) -> Result<RenderedGuardOutput, GuardCommandError> {
-    let exit_code = i32::from(decision == GuardDecision::Deny);
+    let decision = outcome.policy.unwrap_or(GuardPolicyDecision::Continue);
+    let exit_code = i32::from(decision == GuardPolicyDecision::Deny);
     match output {
         OutputFormat::VolicordJson => Ok(RenderedGuardOutput {
             stdout: format!(
-                "{}\\n",
+                "{}\n",
                 serde_json::to_string_pretty(&json!({
                     "phase": phase.as_str(),
-                    "decision": decision.as_str(),
-                    "allowed": decision != GuardDecision::Deny,
+                    "observation_outcome": outcome.observation.as_str(),
+                    "policy_decision": outcome.policy.map(GuardPolicyDecision::as_str),
+                    "allowed": decision != GuardPolicyDecision::Deny,
+                    "diagnostics": outcome.diagnostics,
                     "disclosure": cooperative_host_decision_disclosure_json(),
-                    "guard_event_id": envelope.event_id,
-                    "session_id": envelope.session_id,
+                    "guard_event_id": envelope.map(|value| &value.event_id),
+                    "session_id": envelope.and_then(|value| value.session_id.as_deref()),
                     "result": result
                 }))
                 .map_err(json_error)?
@@ -52,96 +54,26 @@ pub(super) fn render_guard_output(
         }),
         OutputFormat::Text => Ok(RenderedGuardOutput {
             stdout: format!(
-                "Volicord host-hook {}: {} ({})\\n{}\\n",
+                "Volicord host-hook {}: {} ({})\n{}{}\n",
                 phase.command_name(),
                 decision.as_str(),
-                if decision == GuardDecision::Deny {
+                if decision == GuardPolicyDecision::Deny {
                     "blocked"
                 } else {
                     "allowed"
                 },
+                outcome
+                    .diagnostics
+                    .first()
+                    .map(|diagnostic| format!("Diagnostic: {}\n", diagnostic.code.as_str()))
+                    .unwrap_or_default(),
                 COOPERATIVE_DECISION_DISCLOSURE_TEXT
             ),
             stderr: String::new(),
             exit_code,
         }),
-        OutputFormat::HostNative => render_codex_output(phase, decision, result),
+        OutputFormat::HostNative => render_codex_output(phase, outcome, &result),
     }
-}
-
-fn render_codex_output(
-    phase: GuardHookPhase,
-    decision: GuardDecision,
-    result: Value,
-) -> Result<RenderedGuardOutput, GuardCommandError> {
-    let event_name = contract_for(HostKind::Codex)
-        .and_then(|contract| hook_event_for_phase(contract, phase))
-        .map(|event| event.event_name)
-        .ok_or_else(|| {
-            GuardCommandError::Runtime(
-                "Codex host contract is missing the current Guard hook phase".to_owned(),
-            )
-        })?;
-    let context = match phase {
-        GuardHookPhase::PromptCapture => result
-            .get("model_context")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        GuardHookPhase::PostTool if decision != GuardDecision::Allow => Some(
-            "Volicord recorded a post-tool Guard warning. Inspect the hook result and reconcile unrecorded Product Repository changes before close."
-                .to_owned(),
-        ),
-        GuardHookPhase::PreTool if matches!(decision, GuardDecision::Warn | GuardDecision::InjectContext) => {
-            first_reason_message(&result)
-        }
-        _ => None,
-    };
-    let value = if phase == GuardHookPhase::PreTool && decision == GuardDecision::Deny {
-        Some(json!({
-            "hookSpecificOutput": {
-                "hookEventName": event_name,
-                "permissionDecision": "deny",
-                "permissionDecisionReason": native_message(
-                    &first_reason_message(&result)
-                        .unwrap_or_else(|| "Volicord denied this write attempt.".to_owned())
-                )
-            }
-        }))
-    } else {
-        context
-            .filter(|message| !message.trim().is_empty())
-            .map(|message| {
-                json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": event_name,
-                        "additionalContext": native_message(&message)
-                    }
-                })
-            })
-    };
-    Ok(RenderedGuardOutput {
-        stdout: value
-            .map(|value| serde_json::to_string(&value).map(|text| format!("{text}\n")))
-            .transpose()
-            .map_err(json_error)?
-            .unwrap_or_default(),
-        stderr: String::new(),
-        exit_code: 0,
-    })
-}
-
-fn first_reason_message(result: &Value) -> Option<String> {
-    result
-        .get("reasons")
-        .and_then(Value::as_array)
-        .and_then(|reasons| reasons.first())
-        .and_then(|reason| reason.get("message"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-}
-
-fn native_message(message: &str) -> String {
-    format!("{message} {COOPERATIVE_DECISION_DISCLOSURE_TEXT}.")
 }
 
 pub(super) fn context_json(summary: &GuardStateSummary) -> Value {
@@ -310,4 +242,48 @@ pub(super) fn reasons_json(reasons: &[GuardReason]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+    use volicord_types::{
+        GuardHookDiagnostic, GuardHookDiagnosticCode, GuardHookDiagnosticFacts,
+        GuardObservationOutcome,
+    };
+
+    #[test]
+    fn human_and_json_diagnostics_use_the_same_typed_code() {
+        let outcome = GuardHookOutcome::new(
+            GuardObservationOutcome::IncompatibleRecorded,
+            None,
+            [GuardHookDiagnostic {
+                code: GuardHookDiagnosticCode::HostContractIncompatible,
+                facts: GuardHookDiagnosticFacts::default(),
+            }],
+            None,
+        );
+        let human = render_guard_output(
+            GuardHookPhase::PreTool,
+            &outcome,
+            None,
+            json!({}),
+            OutputFormat::Text,
+        )
+        .unwrap();
+        let json_output = render_guard_output(
+            GuardHookPhase::PreTool,
+            &outcome,
+            None,
+            json!({}),
+            OutputFormat::VolicordJson,
+        )
+        .unwrap();
+        let code = GuardHookDiagnosticCode::HostContractIncompatible.as_str();
+        assert!(human.stdout.contains(code));
+        assert_eq!(
+            serde_json::from_str::<Value>(&json_output.stdout).unwrap()["diagnostics"][0]["code"],
+            code
+        );
+    }
 }

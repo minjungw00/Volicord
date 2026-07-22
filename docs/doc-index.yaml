@@ -559,8 +559,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -1538,14 +1538,14 @@ documents:
   path_en: docs/en/reference/guard-suppression.md
   path_ko: docs/ko/reference/guard-suppression.md
   kind: reference
-  summary: Reference contract for typed recorded-change suppression outcomes, bounded scanning,
+  summary: Reference contract for Guard hook outcomes, typed recorded-change suppression,
     conservative unavailable behavior, and machine-readable diagnostics.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1647,8 +1647,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles

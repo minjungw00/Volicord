@@ -23,8 +23,9 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    canonical_git_object_id, canonical_json_bare_sha256, GuardDecision, MethodName, ProjectId,
-    TaskId, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis, WriteTicketValidityBasis,
+    canonical_git_object_id, canonical_json_bare_sha256, GuardPolicyDecision, MethodName,
+    ProjectId, TaskId, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis,
+    WriteTicketValidityBasis,
 };
 
 use super::GuardPhaseResult;
@@ -254,9 +255,9 @@ pub(in crate::guard_command) fn handle_post_tool(
         .collect::<Vec<_>>();
     let suppression_reasons = suppression_diagnostics.clone();
     let decision = if correlation.unrecorded_changes.is_empty() && !suppression_unavailable {
-        GuardDecision::Allow
+        GuardPolicyDecision::Continue
     } else {
-        GuardDecision::Warn
+        GuardPolicyDecision::ContinueWithWarning
     };
     Ok(GuardPhaseResult::new(
         decision,

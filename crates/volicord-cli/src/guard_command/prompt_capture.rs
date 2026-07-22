@@ -10,7 +10,7 @@ use volicord_store::{
     },
 };
 use volicord_types::{
-    guard_manifest_from_json, ActorSource, AgentSafeUserActionRequestSummary, GuardDecision,
+    guard_manifest_from_json, ActorSource, AgentSafeUserActionRequestSummary, GuardPolicyDecision,
     PromptCaptureStatus, TaskId, UserActionRequestId, UserActionStatus, UtcTimestamp,
 };
 
@@ -111,14 +111,14 @@ pub(super) fn handle_prompt_capture(
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
-) -> Result<(GuardDecision, Value, bool), GuardCommandError> {
+) -> Result<(GuardPolicyDecision, Value, bool), GuardCommandError> {
     let availability = prompt_capture_availability_for_event(runtime_home, project, envelope)?;
     let capture = record_prompt_capture(runtime_home, project, envelope, input)?;
     let available = availability.is_operational();
     let decision = if available {
-        GuardDecision::Allow
+        GuardPolicyDecision::Continue
     } else {
-        GuardDecision::Warn
+        GuardPolicyDecision::ContinueWithContext
     };
     let model_context = (!available).then(|| {
         format!(

@@ -1,5 +1,5 @@
 use serde_json::Value;
-use volicord_types::GuardDecision;
+use volicord_types::GuardPolicyDecision;
 
 use self::pre_tool::ExpectedWriteCandidate;
 
@@ -8,13 +8,13 @@ pub(super) mod pre_tool;
 
 #[derive(Debug, Clone)]
 pub(super) struct GuardPhaseResult {
-    pub(super) decision: GuardDecision,
+    pub(super) decision: GuardPolicyDecision,
     pub(super) result: Value,
     pub(super) expected_write: Option<ExpectedWriteCandidate>,
 }
 
 impl GuardPhaseResult {
-    pub(super) fn new(decision: GuardDecision, result: Value) -> Self {
+    pub(super) fn new(decision: GuardPolicyDecision, result: Value) -> Self {
         Self {
             decision,
             result,
@@ -23,7 +23,7 @@ impl GuardPhaseResult {
     }
 
     pub(super) fn with_expected_write(
-        decision: GuardDecision,
+        decision: GuardPolicyDecision,
         result: Value,
         expected_write: Option<ExpectedWriteCandidate>,
     ) -> Self {

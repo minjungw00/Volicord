@@ -1362,15 +1362,145 @@ fn guard_failures_are_current_and_structured() -> Result<(), Box<dyn Error>> {
         &manifest,
     )?;
 
-    let command = manifest.runtime_commands.get(GuardHookPhase::PreTool);
-    let malformed_event = json!({
-        "session_id": "future.session.guard.failure",
-        "turn_id": "future.turn.guard.malformed",
-        "tool_name": "Read",
-        "tool_input": {"path": fixture.repo_root.join("README.md")}
-    });
-    let failed_hook = fixture.run_guard_command(command, &malformed_event)?;
-    assert!(!failed_hook.status.success());
+    for (phase, malformed_event) in [
+        (
+            GuardHookPhase::PromptCapture,
+            json!({
+                "session_id": "future.session.guard.failure",
+                "turn_id": "future.turn.guard.malformed.prompt",
+                "prompt": "not persisted in diagnostics"
+            }),
+        ),
+        (
+            GuardHookPhase::PreTool,
+            json!({
+                "session_id": "future.session.guard.failure",
+                "turn_id": "future.turn.guard.malformed.pre",
+                "tool_use_id": "future.tool-use.malformed.pre",
+                "tool_name": "Read",
+                "tool_input": {"path": fixture.repo_root.join("README.md")}
+            }),
+        ),
+        (
+            GuardHookPhase::PostTool,
+            json!({
+                "session_id": "future.session.guard.failure",
+                "turn_id": "future.turn.guard.malformed.post",
+                "tool_use_id": "future.tool-use.malformed.post",
+                "tool_name": "Read",
+                "tool_input": {"path": fixture.repo_root.join("README.md")},
+                "tool_response": {"success": true, "stdout": "not persisted in diagnostics"}
+            }),
+        ),
+    ] {
+        let output =
+            fixture.run_guard_command(manifest.runtime_commands.get(phase), &malformed_event)?;
+        assert_eq!(output.status.code(), Some(0));
+        assert!(output.stderr.is_empty());
+        let host_output: Value = serde_json::from_slice(&output.stdout)?;
+        assert_eq!(
+            host_output.pointer("/hookSpecificOutput/hookEventName"),
+            Some(&json!(match phase {
+                GuardHookPhase::PromptCapture => "UserPromptSubmit",
+                GuardHookPhase::PreTool => "PreToolUse",
+                GuardHookPhase::PostTool => "PostToolUse",
+            }))
+        );
+        assert!(host_output
+            .pointer("/hookSpecificOutput/additionalContext")
+            .and_then(Value::as_str)
+            .is_some_and(|message| {
+                message.contains("guard.observation.incompatible")
+                    && (message.contains("continues") || message.contains("completed"))
+            }));
+        assert!(host_output
+            .pointer("/hookSpecificOutput/permissionDecision")
+            .is_none());
+    }
+
+    let invalid_json = fixture.run_guard_command_raw(
+        manifest.runtime_commands.get(GuardHookPhase::PreTool),
+        "{not-json\n".to_owned(),
+    )?;
+    assert_eq!(invalid_json.status.code(), Some(0));
+    assert!(invalid_json.stderr.is_empty());
+    let invalid_json_output: Value = serde_json::from_slice(&invalid_json.stdout)?;
+    assert!(invalid_json_output
+        .pointer("/hookSpecificOutput/additionalContext")
+        .and_then(Value::as_str)
+        .is_some_and(|message| message.contains("incompatible")));
+
+    let denied = fixture.run_guard_command(
+        manifest.runtime_commands.get(GuardHookPhase::PreTool),
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "future.session.guard.failure",
+            "turn_id": "future.turn.guard.denied",
+            "tool_use_id": "future.tool-use.denied",
+            "tool_name": "Write",
+            "tool_input": {"path": fixture.repo_root.join("README.md"), "content": "denied"}
+        }),
+    )?;
+    assert_eq!(denied.status.code(), Some(0));
+    assert!(denied.stderr.is_empty());
+    let denied_output: Value = serde_json::from_slice(&denied.stdout)?;
+    assert_eq!(
+        denied_output.pointer("/hookSpecificOutput/permissionDecision"),
+        Some(&json!("deny"))
+    );
+
+    let registry = rusqlite::Connection::open(&snapshot.path)?;
+    for code in ["guard.observation.incompatible", "guard.policy.denied"] {
+        let count: i64 = registry.query_row(
+            "SELECT COUNT(*) FROM diagnostic_findings WHERE lifecycle = 'occurrence' AND code = ?1",
+            [code],
+            |row| row.get(0),
+        )?;
+        assert!(count > 0, "missing typed Guard finding {code}");
+    }
+    let incompatible_facts: String = registry.query_row(
+        "SELECT facts_json FROM diagnostic_findings WHERE code = 'guard.observation.incompatible' ORDER BY observed_at DESC LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    assert!(incompatible_facts.contains("field_category"));
+    assert!(!incompatible_facts.contains("not persisted in diagnostics"));
+    drop(registry);
+
+    let state_db = fixture.project_state_db_path();
+    let displaced = state_db.with_extension("sqlite.guard-displaced");
+    fs::rename(&state_db, &displaced)?;
+    let unavailable = fixture.run_guard_command(
+        manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+        &json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "future.session.guard.failure",
+            "turn_id": "future.turn.guard.persistence-unavailable",
+            "prompt": "persistence probe"
+        }),
+    );
+    if state_db.exists() {
+        fs::remove_file(&state_db)?;
+    }
+    fs::rename(&displaced, &state_db)?;
+    let unavailable = unavailable?;
+    assert_eq!(unavailable.status.code(), Some(0));
+    assert!(unavailable.stderr.is_empty());
+    let unavailable_output: Value = serde_json::from_slice(&unavailable.stdout)?;
+    assert!(unavailable_output
+        .pointer("/hookSpecificOutput/additionalContext")
+        .and_then(Value::as_str)
+        .is_some_and(|message| {
+            message.contains("guard.event.persistence_unavailable")
+                && message.contains("could not persist")
+        }));
+    let registry = rusqlite::Connection::open(&snapshot.path)?;
+    let persistence_findings: i64 = registry.query_row(
+        "SELECT COUNT(*) FROM diagnostic_findings WHERE lifecycle = 'occurrence' AND code = 'guard.event.persistence_unavailable'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert!(persistence_findings > 0);
 
     let status = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let report = assert_connection_report(&status, 1, "status", "failed")?;
@@ -1959,14 +2089,19 @@ impl OperationalFixture {
         command_spec: &volicord_types::GuardCommand,
         event: &Value,
     ) -> Result<support::binary_fixture::CapturedChildOutput, Box<dyn Error>> {
+        self.run_guard_command_raw(command_spec, format!("{}\n", serde_json::to_string(event)?))
+    }
+
+    fn run_guard_command_raw(
+        &self,
+        command_spec: &volicord_types::GuardCommand,
+        input: String,
+    ) -> Result<support::binary_fixture::CapturedChildOutput, Box<dyn Error>> {
         let mut command = self.base_command(&command_spec.command, FUTURE_VERSION);
         command
             .env("VOLICORD_MANAGED_WRAPPER", "codex-record")
             .args(&command_spec.args);
-        run_child(
-            command,
-            ChildStdin::WriteAndClose(format!("{}\n", serde_json::to_string(event)?)),
-        )
+        run_child(command, ChildStdin::WriteAndClose(input))
     }
 
     fn assert_failed_status(&self, check_id: &str, code: &str) -> Result<(), Box<dyn Error>> {

@@ -430,7 +430,9 @@ impl From<GuardCommandError> for CliError {
     fn from(error: GuardCommandError) -> Self {
         match error {
             GuardCommandError::Usage(message) => Self::Usage(message),
-            GuardCommandError::Runtime(message) => Self::Runtime(message),
+            GuardCommandError::Runtime(message) | GuardCommandError::Persistence(message) => {
+                Self::Runtime(message)
+            }
         }
     }
 }

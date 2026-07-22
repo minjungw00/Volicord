@@ -110,6 +110,33 @@ Reason 경계는 다음과 같습니다.
 억제로 바꾸지 않고 위 도메인 reason을 사용합니다. 환경 읽기 실패는
 `Unavailable`로 남습니다.
 
+## Guard Hook 결과 경계
+
+Guard hook 처리는 서로 추론해서는 안 되는 세 가지 판단을 분리합니다.
+
+- `GuardObservationOutcome`은 호환 event를 commit했는지, 호환되지 않는 event를
+  commit했는지, event 영속화를 사용할 수 없는지를 기록합니다.
+- `GuardPolicyDecision`은 선택 값이며 정확히 `Continue`, `ContinueWithContext`,
+  `ContinueWithWarning`, `Deny` 중 하나입니다. 구조적으로 호환되는 입력이 policy
+  평가에 도달했을 때만 존재합니다.
+- Host adapter는 결과를 host JSON, context, warning, denial, stderr, process exit
+  동작으로 projection합니다. 이는 Core나 Store의 판단이 아닙니다.
+
+`GuardHookOutcome`은 관찰 결과, 선택적 policy 판단, 최대 8개의 typed diagnostic,
+안전한 context 또는 warning feedback kind를 담습니다. 따라서 선택한 hook contract와
+호환되지 않는 event는 `observation=IncompatibleRecorded`이고 policy 판단은 없습니다.
+필수 phase를 충족하지 않지만 자동 `Deny`도 아닙니다.
+
+Codex `record` profile에서 호환 event를 기록하고 denial이 아닌 policy 판단은 계속합니다.
+명시적인 `PreToolUse` policy `Deny` 분기만 Codex permission denial로 projection합니다.
+호환되지 않는 event와 event 영속화 실패는 제한된 host context, 빈 stderr, process exit
+`0`을 냅니다. 영속화 실패만으로 policy denial을 만들지 않습니다. `PostToolUse` warning은
+이미 끝난 동작을 설명하며 Guard가 그 동작을 막거나 되돌렸다고 주장하지 않습니다.
+
+Codex adapter만 `hookSpecificOutput`, `permissionDecision`, `additionalContext`, stderr,
+exit-code projection을 담당합니다. Core-facing type과 Store record는 Codex process-exit
+동작을 encode하지 않습니다.
+
 ## 진단과 Event Projection
 
 모든 `Unavailable` 결과는 project, Guard event 식별자,
@@ -134,12 +161,19 @@ Guard 설치와 관찰 진단은 렌더링한 summary가 아니라 닫힌 원인
 | `guard.hook_process.failed` | Typed Guard hook 프로세스가 실패했습니다. |
 | `guard.phase.required_not_observed` | 현재 필수 phase를 아직 관찰하지 못했습니다. |
 | `guard.observation.incompatible` | 현재 event의 hook contract가 호환되지 않습니다. |
+| `guard.event.persistence_unavailable` | Guard가 event 관찰을 commit하지 못했습니다. |
+| `guard.policy.denied` | 호환되는 pre-tool 입력이 policy에 도달해 거부됐습니다. |
+| `guard.host_output.projection_failure` | Host adapter가 typed 결과를 projection하지 못했습니다. |
+| `guard.internal.unexpected_failure` | 더 좁은 typed mapping이 없는 예상 밖 Guard 실패입니다. |
 | `guard.prompt_capture.unsupported` | Host 경계가 구성된 prompt capture를 지원하지 않습니다. |
 | `guard.prompt_capture.unobserved` | 지원되고 구성된 prompt capture를 아직 관찰하지 못했습니다. |
 
 Finding 사실에는 한도가 있는 artifact kind, phase, 범주형 상태, 현재 revision 좌표만 담을
 수 있습니다. 관리 파일 내용, prompt text, 임의 event payload, 제한 없는 경로는
-projection하지 않습니다. File, manifest, wrapper, 호환되지 않는 관찰 실패에는
+projection하지 않습니다. Hook occurrence fact는 사용할 수 있는 contract profile, hook event
+kind, 누락 또는 malformed field 범주와 정적 field label, Guard Installation ID, integration
+revision, Guard event ID로 제한합니다. 전체 prompt, tool input, tool response, parser prose,
+제한 없는 stderr는 절대 포함하지 않습니다. File, manifest, wrapper, 호환되지 않는 관찰 실패에는
 `action.guard.repair`를 사용하고, 관찰하지 못한 필수 phase에는
 `action.guard.trigger_phase`를 사용합니다. Prompt-capture code는 각 집중 action을
 유지합니다. 사람용 summary를 parsing해 action을 고르지 않습니다.
@@ -195,6 +229,10 @@ graph와 report 집계 상태는 [Agent Connection](agent-connection.md)이 담�
 - path-identity 계산 실패
 - Store 읽기 실패가 모든 입력 경로를 보존하는지 여부
 - 민감 payload 없이 warning, 진단과 event reason이 projection되는지 여부
+- 호환되지 않는 prompt, pre-tool, post-tool event가 policy denial 없이 계속되면서 관찰
+  충족에는 사용되지 않는지 여부
+- 명시적인 pre-tool denial과 non-blocking post-tool projection
+- event 영속화 실패가 제한된 Codex feedback과 함께 계속되는지 여부
 
 ## 인접 담당 문서
 
