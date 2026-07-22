@@ -1271,6 +1271,8 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml_edit",
+ "volicord-mcp",
+ "volicord-mcp-protocol",
 ]
 
 [[package]]

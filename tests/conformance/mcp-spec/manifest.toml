@@ -1,4 +1,4 @@
-format_version = 1
+format_version = 2
 upstream_repository = "https://github.com/modelcontextprotocol/modelcontextprotocol.git"
 
 [[license]]
@@ -29,7 +29,7 @@ upstream_release = "2024-10-07"
 upstream_commit = "ed35f718be83a2e3e1e568f7ba3562b81ed69c40"
 license_id = "mcp-mit-2025"
 production_supported = true
-conformance_tested = false
+volicord_conformance_covered = true
 pre_release_only = false
 
 [[revision.artifact]]
@@ -45,7 +45,7 @@ upstream_release = "2024-11-05-final"
 upstream_commit = "48234828288ec5e5011398f17b8736f61645f130"
 license_id = "mcp-mit-2025"
 production_supported = true
-conformance_tested = false
+volicord_conformance_covered = true
 pre_release_only = false
 
 [[revision.artifact]]
@@ -61,7 +61,7 @@ upstream_release = "2025-03-26"
 upstream_commit = "9236eb1cbfa02c17ab45c83a7bdbe55c450070be"
 license_id = "mcp-mit-2025"
 production_supported = true
-conformance_tested = false
+volicord_conformance_covered = true
 pre_release_only = false
 
 [[revision.artifact]]
@@ -77,7 +77,7 @@ upstream_release = "2025-06-18"
 upstream_commit = "f5ccad944fdf2b7d9cc70cf817f66ca5a8aa03a4"
 license_id = "mcp-mit-2025"
 production_supported = true
-conformance_tested = false
+volicord_conformance_covered = true
 pre_release_only = false
 
 [[revision.artifact]]
@@ -93,7 +93,7 @@ upstream_release = "2025-11-25"
 upstream_commit = "38c84e9f93ad191d9eb26d92b945d17bd0efcaf3"
 license_id = "mcp-mit-2025"
 production_supported = true
-conformance_tested = false
+volicord_conformance_covered = true
 pre_release_only = false
 
 [[revision.artifact]]
@@ -109,7 +109,7 @@ upstream_release = "2026-07-28-RC"
 upstream_commit = "9d700ed62dcf86cb77475c9b81930611a9182f46"
 license_id = "mcp-2026-transition"
 production_supported = false
-conformance_tested = false
+volicord_conformance_covered = false
 pre_release_only = true
 
 [[revision.artifact]]

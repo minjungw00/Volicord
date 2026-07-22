@@ -118,6 +118,17 @@ The production-supported initialization revisions are exactly:
 - `2025-06-18`
 - `2025-11-25`
 
+A revision is production-supported only when the specification manifest marks
+it released and not pre-release-only, pins its schema artifacts, provides a
+matching production protocol profile, and sets
+`volicord_conformance_covered=true`. The coverage field means that Volicord's
+repository-owned offline runtime conformance matrix exercises the revision; it
+is not an upstream or third-party MCP certification. The offline specification
+gate requires exact revision-set parity among production-supported manifest
+entries, production protocol profiles, and conformance-harness coverage. A
+tracked pre-release revision does not become production-supported merely by
+being pinned.
+
 The request's string `protocolVersion` is the requested revision. An exact
 member of this closed set selects the same profile and the initialize result
 returns the same revision. Any other string that belongs to the
@@ -168,9 +179,21 @@ only notifications produces no response.
 
 ## CLI Conformance And Host Compatibility Probes
 
-Connection verification runs a server-conformance matrix over every profile in
-the production registry, in its reviewed order. Each profile gets a separate
-stdio process and exact requested revision. The probe completes `initialize`,
+The adapter-owned offline conformance declaration contains exactly the five
+production revisions above. Durable coverage for every declared revision
+combines the process probe with revision-scoped adapter cases for standalone
+`initialize`, `notifications/initialized`, `tools/list`, pinned-schema and
+required-tool validation, the exact designated round-trip tool,
+revision-specific tool and result projection, initialization-batch rejection,
+operation-phase batching, invalid lifecycle behavior, and EOF/shutdown.
+Initialization batching is rejected for all five cases; valid operation-phase
+batching is exercised only for `2025-03-26`.
+
+Connection verification runs a server-conformance matrix over every revision
+in the adapter-owned conformance declaration, in its deterministic order. The
+offline parity gate requires each revision to have the matching production
+profile. Each revision gets a separate stdio process and exact request. The
+probe completes `initialize`,
 `notifications/initialized`, `tools/list`, validation against that revision's
 pinned schema, current-mode required-tool validation, exactly one
 call to the tool selected by `ToolVerificationRole::ManagedHostRoundTrip`, and
@@ -182,7 +205,8 @@ production revision passes; one failed revision does not prevent the remaining
 revisions from being probed.
 
 Host compatibility is a separate, host-owned fixture list rather than a
-projection of the protocol registry. The current `codex` fixture uses the
+projection of the protocol registry or a substitute for the complete revision
+matrix. The current `codex` fixture uses the
 reviewed Codex initialize request shape with `clientInfo.name` set to
 `codex-mcp-client`, the `Codex` title, an empty current capability object, and
 the independently pinned revision `2025-06-18`. Its one tool call carries valid

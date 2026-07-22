@@ -9,6 +9,7 @@
 
 mod adapter;
 mod build_info;
+mod conformance;
 mod constants;
 mod diagnostics;
 mod errors;
@@ -26,6 +27,7 @@ mod util;
 
 pub use adapter::{McpAdapter, McpAdapterBoundary};
 pub use build_info::{build_id, build_info, BuildInfo};
+pub use conformance::volicord_conformance_covered_revisions;
 pub use constants::{
     ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
 };

@@ -10,8 +10,8 @@ use toml_edit::{DocumentMut, Item};
 mod mcp_spec;
 
 pub use mcp_spec::{
-    check_mcp_spec_fixture, run_mcp_spec_check, run_mcp_spec_sync, McpSpecCheckReport,
-    McpSpecSyncReport,
+    check_mcp_spec_fixture, check_mcp_spec_fixture_with_declared_revisions, run_mcp_spec_check,
+    run_mcp_spec_sync, McpSpecCheckReport, McpSpecSyncReport,
 };
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";

@@ -70,9 +70,10 @@ fn run_mcp_spec_check_command() -> ExitCode {
     match result {
         Ok(report) => {
             println!(
-                "mcp-spec-check passed: {} revision(s), {} production-supported, {} pre-release-only",
-                report.revision_count(),
+                "mcp-spec-check passed: {} pinned revision(s), {} production-supported, {} Volicord-conformance-covered, {} tracked pre-release",
+                report.pinned_revision_count(),
                 report.production_supported_count(),
+                report.volicord_conformance_covered_count(),
                 report.pre_release_only_count()
             );
             ExitCode::SUCCESS

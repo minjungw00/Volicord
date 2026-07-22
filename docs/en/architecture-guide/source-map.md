@@ -92,6 +92,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared managed MCP command, arguments, static and forwarded environment bindings, strict launch-shape validation, projection, and fingerprint inputs. |
+| `crates/volicord-mcp/src/conformance.rs` | The deterministic repository-owned offline runtime conformance revision declaration shared by adapter tests, the CLI revision matrix, and the specification checker. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio lifecycle and framing, typed initialization-profile selection, revision-aware message handling, and process preflight. |
 | `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch, and wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Assembly of owner-provided tool names and schemas into canonical tool definitions/results, plus revision-specific wire projection through the selected protocol profile. |
@@ -104,7 +105,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
-| `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
+| `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed production-support and Volicord-conformance-coverage flags, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
 | `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and release-workflow integrity tests. |
 | `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store, and request helpers. |
 
@@ -112,8 +113,8 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `xtask/src/mcp_spec.rs` | Offline pinned-spec validation and explicit networked synchronization through a verified temporary candidate. |
-| `xtask/tests/mcp_spec.rs` | Manifest parsing, classification, immutable-pin, checksum, required-artifact, ordering, and offline-success coverage. |
+| `xtask/src/mcp_spec.rs` | Offline pinned-spec validation, exact manifest/profile/harness set parity, deterministic count reporting, and explicit networked synchronization through a verified temporary candidate while preserving reviewed metadata. |
+| `xtask/tests/mcp_spec.rs` | Strict manifest parsing, classification, parity failures, immutable-pin, checksum, required-artifact, ordering, reporting, and offline-success coverage. |
 
 Update this map when a durable responsibility moves. Do not list removed,
 generated, or private scratch paths.

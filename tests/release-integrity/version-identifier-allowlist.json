@@ -115,6 +115,36 @@
       "reason": "The registry fixture test selects the externally standardized MCP 2026-07-28 release-candidate revision."
     },
     {
+      "path": "crates/volicord-mcp/src/conformance.rs",
+      "needle": "V20241007",
+      "classification": "external_standard",
+      "reason": "The repository-owned conformance declaration selects the externally standardized MCP 2024-10-07 revision."
+    },
+    {
+      "path": "crates/volicord-mcp/src/conformance.rs",
+      "needle": "V20241105",
+      "classification": "external_standard",
+      "reason": "The repository-owned conformance declaration selects the externally standardized MCP 2024-11-05 revision."
+    },
+    {
+      "path": "crates/volicord-mcp/src/conformance.rs",
+      "needle": "V20250326",
+      "classification": "external_standard",
+      "reason": "The repository-owned conformance declaration selects the externally standardized MCP 2025-03-26 revision."
+    },
+    {
+      "path": "crates/volicord-mcp/src/conformance.rs",
+      "needle": "V20250618",
+      "classification": "external_standard",
+      "reason": "The repository-owned conformance declaration selects the externally standardized MCP 2025-06-18 revision."
+    },
+    {
+      "path": "crates/volicord-mcp/src/conformance.rs",
+      "needle": "V20251125",
+      "classification": "external_standard",
+      "reason": "The repository-owned conformance declaration selects the externally standardized MCP 2025-11-25 revision."
+    },
+    {
       "path": "crates/volicord-cli/src/connection_command/mcp_process/host_compatibility.rs",
       "needle": "V20250618",
       "classification": "external_standard",

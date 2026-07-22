@@ -23,16 +23,25 @@
 upstream schema와 라이선스 저작자 표시를 담당합니다. 이 경로의 manifest는 확정된
 초기화 기반 revision과 pre-release 전용 입력을 분리하고, 전체 upstream commit을
 고정하며, handshake family와 release 분류를 기록하고, 모든 로컬 artifact의 checksum을
-관리합니다. 이 fixture 목록은 구현 입력일 뿐이며 Volicord 런타임 MCP 상호운용성을
-정의하거나 알리지 않습니다.
+관리하며, `volicord_conformance_covered`를 기록합니다. 이 필드는 해당 revision이
+Volicord 저장소가 소유하는 오프라인 런타임 적합성 매트릭스에 포함된다는 뜻일 뿐이며
+외부 MCP 인증을 뜻하지 않습니다. 프로덕션 지원에는 릴리스되었고 pre-release 전용이
+아닌 항목, 고정 schema, 프로덕션 protocol profile,
+`volicord_conformance_covered=true`가 모두 필요합니다. 추적 중인 pre-release 항목은
+프로덕션 지원 밖에 있으며 `volicord_conformance_covered`는 `false`입니다.
 
 `cargo run -p xtask -- mcp-spec-check`는 오프라인 무결성 gate입니다. 네트워크 접근 없이
 manifest를 parsing하고, 분류와 변경 불가능한 참조를 검증하며, schema 존재 여부,
-schema family, 저작자 표시, checksum을 확인합니다. `cargo run -p xtask -- mcp-spec-sync`는
-명시적으로 실행하는 유지보수 작업입니다. 기록된 release가 고정 commit으로 해석되는지
-확인하고 임시 디렉터리에 내려받은 다음, 후보 전체를 검증한 뒤에만 fixture를
-교체합니다. 일반 build와 test는 네트워크를 사용하는 sync 경로를 실행하지 않으며,
-sync가 pre-release 분류를 승격하지도 않습니다.
+schema family, 저작자 표시, checksum뿐 아니라 manifest의 프로덕션 지원 집합, 컴파일된
+프로덕션 protocol profile 집합, 어댑터 소유 적합성 revision 선언의 정확한 집합 일치를
+확인합니다. 보고서는 전체 고정 revision, 프로덕션 지원 revision,
+`volicord_conformance_covered=true`인 revision, 추적 중인 pre-release revision 수를
+결정론적으로 제공합니다.
+`cargo run -p xtask -- mcp-spec-sync`는 명시적으로 실행하는 유지보수 작업입니다. 기록된
+release가 고정 commit으로 해석되는지 확인하고 임시 디렉터리에 내려받으면서 검토된 지원
+및 `volicord_conformance_covered` metadata를 보존한 다음, 후보 전체를 검증한 뒤에만
+fixture를 교체합니다.
+일반 build와 test는 네트워크를 사용하는 sync 경로를 실행하지 않습니다.
 
 ## 필수 경계 coverage
 
@@ -48,13 +57,17 @@ sync가 pre-release 분류를 승격하지도 않습니다.
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
 - 권위 있는 MCP runtime-session source 분리, milestone ordering, 현재 revision,
   프로젝트 binding, diagnostics 비권위성
-- 프로덕션 protocol registry와 `production_supported=true`인 모든 released
-  initialize-handshake manifest entry의 정확한 일치 및 프로덕션 지원에서 추적 중인
-  pre-release generation 제외
+- `production_supported=true`인 manifest 항목, 프로덕션 protocol profile,
+  `volicord_conformance_covered=true`인 항목, 어댑터 소유 적합성 case 사이의 정확한
+  revision 집합 일치 및 프로덕션 지원에서 추적 중인 pre-release generation 제외
+- `volicord_conformance_covered=true`인 모든 revision의 독립된 `initialize`, initialized notification,
+  `tools/list`, 고정 schema 검증, 필수 도구, 지정 왕복 도구, revision별 도구 projection과
+  작업 단계 batching, 잘못된 lifecycle 동작, 초기화 batch 거절, EOF/종료
 - exact-match와 counter-offer 협상, profile별 initialize capability, batching,
   `tools/list`, `tools/call` wire projection
-- 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정한 Codex host fixture,
-  CLI conformance evidence와 실제 `managed_host` 관찰의 분리
+- 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정하며 revision 적합성을
+  대신하지 않는 Codex host fixture, CLI conformance evidence와 실제 `managed_host`
+  관찰의 분리
 - typed diagnostic code와 한도 및 민감정보 제거가 적용된 fact, finding 및 cause의
   transaction 영속화, 결정론적 root, dependency에 따른 `Blocked` check, 보고서 하나를
   사용하는 동등한 concise·verbose·lossless JSON projection

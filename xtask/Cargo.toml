@@ -14,6 +14,8 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 tempfile = "3"
 toml_edit = { version = "0.22", features = ["serde"] }
+volicord-mcp = { path = "../crates/volicord-mcp" }
+volicord-mcp-protocol = { path = "../crates/volicord-mcp-protocol" }
 
 [lib]
 path = "src/lib.rs"
