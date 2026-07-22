@@ -60,15 +60,9 @@ use volicord_types::{
     ResidualRiskInput, StagedArtifactHandle, CODEX_MANAGED_MCP_CLIENT_NAME,
 };
 
-fn conformance_profiles(
+fn production_profiles(
 ) -> impl ExactSizeIterator<Item = &'static volicord_mcp_protocol::McpProtocolProfile> {
-    crate::volicord_conformance_covered_revisions()
-        .iter()
-        .map(|revision| {
-            ProtocolRegistry::production()
-                .profile(*revision)
-                .expect("conformance-covered revision must have a production profile")
-        })
+    ProtocolRegistry::production().oldest_to_newest()
 }
 
 use super::*;
@@ -2946,9 +2940,8 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
 }
 
 #[test]
-fn every_conformance_covered_revision_executes_the_transport_and_eof_matrix(
-) -> Result<(), Box<dyn Error>> {
-    for (index, profile) in conformance_profiles().enumerate() {
+fn every_production_profile_executes_the_transport_and_eof_matrix() -> Result<(), Box<dyn Error>> {
+    for (index, profile) in production_profiles().enumerate() {
         let revision = profile.revision().as_str();
         let fixture = CoreFixture::new(&format!("mcp-negotiate-production-{index}"))?;
         let connection_adapter = adapter(&fixture)?;
@@ -3067,9 +3060,9 @@ fn every_conformance_covered_revision_executes_the_transport_and_eof_matrix(
 }
 
 #[test]
-fn every_conformance_covered_revision_projects_tools_results_and_request_failures(
+fn every_production_profile_projects_tools_results_and_request_failures(
 ) -> Result<(), Box<dyn Error>> {
-    for (index, profile) in conformance_profiles().enumerate() {
+    for (index, profile) in production_profiles().enumerate() {
         let fixture = CoreFixture::new(&format!("mcp-revision-call-shape-{index}"))?;
         let connection_adapter = adapter(&fixture)?;
         let mut state = ConnectionState::default();
@@ -3251,9 +3244,9 @@ fn property_arbitrary_json_rpc_values_never_panic() -> Result<(), Box<dyn Error>
 }
 
 #[test]
-fn initialization_batches_are_rejected_without_selecting_a_profile_for_every_covered_revision(
+fn initialization_batches_are_rejected_without_selecting_any_production_profile(
 ) -> Result<(), Box<dyn Error>> {
-    for (index, profile) in conformance_profiles().enumerate() {
+    for (index, profile) in production_profiles().enumerate() {
         let fixture = CoreFixture::new(&format!("mcp-initialization-batch-{index}"))?;
         let connection_adapter = adapter(&fixture)?;
         let mut state = ConnectionState::default();
@@ -3311,7 +3304,7 @@ fn initialization_batches_are_rejected_without_selecting_a_profile_for_every_cov
 #[test]
 fn ready_2025_03_26_session_batches_operations_in_order_and_omits_notifications(
 ) -> Result<(), Box<dyn Error>> {
-    let batching_revisions = conformance_profiles()
+    let batching_revisions = production_profiles()
         .filter(|profile| profile.messages().json_rpc_batching() == JsonRpcBatching::Allowed)
         .map(|profile| profile.revision().as_str())
         .collect::<Vec<_>>();
@@ -3384,7 +3377,7 @@ fn ready_2025_03_26_session_batches_operations_in_order_and_omits_notifications(
 #[test]
 fn non_batching_profiles_reject_ready_operation_batches_without_tool_observations(
 ) -> Result<(), Box<dyn Error>> {
-    for (index, profile) in conformance_profiles()
+    for (index, profile) in production_profiles()
         .filter(|profile| profile.messages().json_rpc_batching() == JsonRpcBatching::Disallowed)
         .enumerate()
     {

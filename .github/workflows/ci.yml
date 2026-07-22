@@ -61,6 +61,9 @@ jobs:
       - name: Check pinned MCP specification fixtures
         run: cargo run --locked -p xtask -- mcp-spec-check
 
+      - name: Check registry-driven MCP protocol conformance
+        run: cargo test --locked -p volicord-mcp --test protocol_conformance
+
       - name: Run maintainability report
         run: cargo run --locked -p xtask -- maintainability-report
 

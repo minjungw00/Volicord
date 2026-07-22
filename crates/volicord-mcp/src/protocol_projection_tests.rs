@@ -175,19 +175,13 @@ fn canonical_runtime_tools() -> Vec<crate::CanonicalToolDefinition> {
     )
 }
 
-fn conformance_profiles(
+fn production_profiles(
 ) -> impl ExactSizeIterator<Item = &'static volicord_mcp_protocol::McpProtocolProfile> {
-    crate::volicord_conformance_covered_revisions()
-        .iter()
-        .map(|revision| {
-            ProtocolRegistry::production()
-                .profile(*revision)
-                .expect("conformance-covered revision must have a production profile")
-        })
+    ProtocolRegistry::production().oldest_to_newest()
 }
 
 #[test]
-fn every_conformance_covered_tools_list_is_a_projection_of_one_canonical_registry() {
+fn every_production_profile_tools_list_is_a_projection_of_one_canonical_registry() {
     let canonical = canonical_runtime_tools();
     let canonical_names = canonical
         .iter()
@@ -199,7 +193,7 @@ fn every_conformance_covered_tools_list_is_a_projection_of_one_canonical_registr
         .collect::<Vec<_>>();
     assert_eq!(canonical_names, expected_names);
 
-    for profile in conformance_profiles() {
+    for profile in production_profiles() {
         let schema = pinned_schema(profile);
         let tools = canonical
             .iter()
@@ -259,7 +253,7 @@ fn every_conformance_covered_tools_list_is_a_projection_of_one_canonical_registr
 }
 
 #[test]
-fn every_conformance_covered_call_tool_result_uses_its_pinned_wire_shape() {
+fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
     let success_body = json!({
         "base": {
             "response_kind": "result",
@@ -285,7 +279,7 @@ fn every_conformance_covered_call_tool_result_uses_its_pinned_wire_shape() {
         }]
     });
 
-    for profile in conformance_profiles() {
+    for profile in production_profiles() {
         for (is_error, body) in [(false, &success_body), (true, &error_body)] {
             let canonical = CanonicalToolResult {
                 metadata: None,
@@ -333,7 +327,7 @@ fn every_conformance_covered_call_tool_result_uses_its_pinned_wire_shape() {
 }
 
 #[test]
-fn bounded_budget_recovery_shape_remains_bounded_for_every_covered_revision() {
+fn bounded_budget_recovery_shape_remains_bounded_for_every_production_profile() {
     let recovery = CanonicalToolResult {
         metadata: None,
         content: vec![CanonicalContent::Text(
@@ -354,7 +348,7 @@ fn bounded_budget_recovery_shape_remains_bounded_for_every_covered_revision() {
         is_error: false,
     };
 
-    for profile in conformance_profiles() {
+    for profile in production_profiles() {
         let projected = recovery
             .project(profile)
             .expect("recovery result should project")

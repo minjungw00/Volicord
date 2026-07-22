@@ -7,12 +7,11 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use volicord_mcp::volicord_conformance_covered_revisions;
 use volicord_mcp_protocol::ProtocolRegistry;
 
 const FIXTURE_PATH: &str = "tests/conformance/mcp-spec";
 const MANIFEST_NAME: &str = "manifest.toml";
-const MANIFEST_FORMAT_VERSION: u32 = 2;
+const MANIFEST_FORMAT_VERSION: u32 = 3;
 const OFFICIAL_REPOSITORY: &str =
     "https://github.com/modelcontextprotocol/modelcontextprotocol.git";
 const REQUIRED_DRAFT_PROTOCOLS: &[&str] = &["2026-07-28"];
@@ -49,7 +48,6 @@ struct Revision {
     upstream_commit: String,
     license_id: String,
     production_supported: bool,
-    volicord_conformance_covered: bool,
     pre_release_only: bool,
     artifact: Vec<SchemaArtifact>,
 }
@@ -80,7 +78,6 @@ struct SchemaArtifact {
 pub struct McpSpecCheckReport {
     pinned_revision_count: usize,
     production_supported_count: usize,
-    volicord_conformance_covered_count: usize,
     pre_release_only_count: usize,
 }
 
@@ -91,10 +88,6 @@ impl McpSpecCheckReport {
 
     pub fn production_supported_count(self) -> usize {
         self.production_supported_count
-    }
-
-    pub fn volicord_conformance_covered_count(self) -> usize {
-        self.volicord_conformance_covered_count
     }
 
     pub fn pre_release_only_count(self) -> usize {
@@ -128,27 +121,18 @@ pub fn check_mcp_spec_fixture(fixture_root: &Path) -> Result<McpSpecCheckReport>
         .oldest_to_newest()
         .map(|profile| profile.revision().as_str())
         .collect::<Vec<_>>();
-    let conformance_cases = volicord_conformance_covered_revisions()
-        .iter()
-        .map(|revision| revision.as_str())
-        .collect::<Vec<_>>();
-    check_mcp_spec_fixture_with_declared_revisions(
-        fixture_root,
-        &production_profiles,
-        &conformance_cases,
-    )
+    check_mcp_spec_fixture_with_production_profiles(fixture_root, &production_profiles)
 }
 
-/// Checks a fixture against explicit production-profile and conformance-case
-/// declarations. The ordinary command supplies the compiled repository-owned
-/// declarations; explicit sets keep parity failures durably testable.
-pub fn check_mcp_spec_fixture_with_declared_revisions(
+/// Checks a fixture against explicit production profiles. The ordinary command
+/// supplies the compiled protocol registry; an explicit set keeps both parity
+/// failure directions durably testable without another production list.
+pub fn check_mcp_spec_fixture_with_production_profiles(
     fixture_root: &Path,
     production_profiles: &[&str],
-    conformance_cases: &[&str],
 ) -> Result<McpSpecCheckReport> {
     let manifest = read_manifest(fixture_root)?;
-    validate_manifest_metadata(&manifest, production_profiles, conformance_cases)?;
+    validate_manifest_metadata(&manifest, production_profiles)?;
     validate_pinned_files(fixture_root, &manifest)?;
 
     Ok(McpSpecCheckReport {
@@ -157,11 +141,6 @@ pub fn check_mcp_spec_fixture_with_declared_revisions(
             .revision
             .iter()
             .filter(|revision| revision.production_supported)
-            .count(),
-        volicord_conformance_covered_count: manifest
-            .revision
-            .iter()
-            .filter(|revision| revision.volicord_conformance_covered)
             .count(),
         pre_release_only_count: manifest
             .revision
@@ -179,11 +158,7 @@ pub fn run_mcp_spec_sync(root: &Path) -> Result<McpSpecSyncReport> {
         .oldest_to_newest()
         .map(|profile| profile.revision().as_str())
         .collect::<Vec<_>>();
-    let conformance_cases = volicord_conformance_covered_revisions()
-        .iter()
-        .map(|revision| revision.as_str())
-        .collect::<Vec<_>>();
-    validate_manifest_metadata(&manifest, &production_profiles, &conformance_cases)?;
+    validate_manifest_metadata(&manifest, &production_profiles)?;
 
     let fixture_parent = fixture_root
         .parent()
@@ -288,11 +263,7 @@ fn render_manifest(manifest: &Manifest) -> Result<String> {
     Ok(rendered)
 }
 
-fn validate_manifest_metadata(
-    manifest: &Manifest,
-    production_profiles: &[&str],
-    conformance_cases: &[&str],
-) -> Result<()> {
+fn validate_manifest_metadata(manifest: &Manifest, production_profiles: &[&str]) -> Result<()> {
     if manifest.format_version != MANIFEST_FORMAT_VERSION {
         bail!(
             "MCP specification manifest format_version must be {MANIFEST_FORMAT_VERSION}, found {}",
@@ -404,12 +375,6 @@ fn validate_manifest_metadata(
                 revision.protocol_version
             );
         }
-        if revision.production_supported && !revision.volicord_conformance_covered {
-            bail!(
-                "production-supported MCP revision {} must set volicord_conformance_covered=true",
-                revision.protocol_version
-            );
-        }
         if revision.artifact.is_empty() {
             bail!(
                 "MCP revision {} has no pinned schema artifacts",
@@ -430,16 +395,12 @@ fn validate_manifest_metadata(
         }
     }
 
-    validate_revision_set_parity(manifest, production_profiles, conformance_cases)?;
+    validate_revision_set_parity(manifest, production_profiles)?;
 
     Ok(())
 }
 
-fn validate_revision_set_parity(
-    manifest: &Manifest,
-    production_profiles: &[&str],
-    conformance_cases: &[&str],
-) -> Result<()> {
+fn validate_revision_set_parity(manifest: &Manifest, production_profiles: &[&str]) -> Result<()> {
     let manifest_revisions = manifest
         .revision
         .iter()
@@ -451,24 +412,12 @@ fn validate_revision_set_parity(
         .filter(|revision| revision.production_supported)
         .map(|revision| revision.protocol_version.as_str())
         .collect::<BTreeSet<_>>();
-    let manifest_covered = manifest
-        .revision
-        .iter()
-        .filter(|revision| revision.volicord_conformance_covered)
-        .map(|revision| revision.protocol_version.as_str())
-        .collect::<BTreeSet<_>>();
     let production_profiles = checked_revision_set(production_profiles, "production profiles")?;
-    let conformance_cases = checked_revision_set(conformance_cases, "conformance harness cases")?;
 
-    for revision in &manifest_covered {
+    for revision in &manifest_production {
         if !production_profiles.contains(revision) {
             bail!(
-                "Volicord-conformance-covered MCP revision {revision} has no production protocol profile"
-            );
-        }
-        if !conformance_cases.contains(revision) {
-            bail!(
-                "Volicord-conformance-covered MCP revision {revision} has no conformance harness case"
+                "production-supported released MCP revision {revision} has no production protocol profile"
             );
         }
     }
@@ -482,23 +431,9 @@ fn validate_revision_set_parity(
             );
         }
     }
-    for revision in &conformance_cases {
-        if !manifest_revisions.contains(revision) {
-            bail!("conformance harness revision {revision} is missing from the MCP specification manifest");
-        }
-        if !manifest_covered.contains(revision) {
-            bail!(
-                "conformance harness revision {revision} is not marked volicord_conformance_covered in the MCP specification manifest"
-            );
-        }
-    }
-
-    if manifest_production != production_profiles
-        || manifest_production != manifest_covered
-        || manifest_production != conformance_cases
-    {
+    if manifest_production != production_profiles {
         bail!(
-            "MCP production support, production protocol profiles, Volicord conformance coverage, and conformance harness cases must have exact revision-set parity"
+            "released MCP production support and production protocol profiles must have exact revision-set parity"
         );
     }
     Ok(())
@@ -775,7 +710,7 @@ mod tests {
     ));
 
     #[test]
-    fn sync_rendering_preserves_reviewed_support_and_coverage_metadata() {
+    fn sync_rendering_preserves_reviewed_production_support_metadata() {
         let manifest: Manifest =
             toml_edit::de::from_str(CURRENT_MANIFEST).expect("current manifest should parse");
         let before = manifest
@@ -785,7 +720,6 @@ mod tests {
                 (
                     revision.protocol_version.clone(),
                     revision.production_supported,
-                    revision.volicord_conformance_covered,
                     revision.pre_release_only,
                 )
             })
@@ -801,7 +735,6 @@ mod tests {
                 (
                     revision.protocol_version.clone(),
                     revision.production_supported,
-                    revision.volicord_conformance_covered,
                     revision.pre_release_only,
                 )
             })

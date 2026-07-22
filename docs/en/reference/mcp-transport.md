@@ -119,15 +119,15 @@ The production-supported initialization revisions are exactly:
 - `2025-11-25`
 
 A revision is production-supported only when the specification manifest marks
-it released and not pre-release-only, pins its schema artifacts, provides a
-matching production protocol profile, and sets
-`volicord_conformance_covered=true`. The coverage field means that Volicord's
-repository-owned offline runtime conformance matrix exercises the revision; it
-is not an upstream or third-party MCP certification. The offline specification
-gate requires exact revision-set parity among production-supported manifest
-entries, production protocol profiles, and conformance-harness coverage. A
-tracked pre-release revision does not become production-supported merely by
-being pinned.
+it released and not pre-release-only, pins its schema artifacts, and provides a
+matching production protocol profile. The offline specification gate requires
+exact revision-set parity between released manifest entries marked
+`production_supported=true` and production profiles in `ProtocolRegistry`.
+Executable runtime conformance is established independently by running the
+registry-driven protocol conformance test for every production profile; it is
+not represented as manifest metadata or an upstream or third-party MCP
+certification. A tracked pre-release revision does not become
+production-supported merely by being pinned.
 
 The request's string `protocolVersion` is the requested revision. An exact
 member of this closed set selects the same profile and the initialize result
@@ -179,21 +179,19 @@ only notifications produces no response.
 
 ## CLI Conformance And Host Compatibility Probes
 
-The adapter-owned offline conformance declaration contains exactly the five
-production revisions above. Durable coverage for every declared revision
-combines the process probe with revision-scoped adapter cases for standalone
-`initialize`, `notifications/initialized`, `tools/list`, pinned-schema and
-required-tool validation, the exact designated round-trip tool,
-revision-specific tool and result projection, initialization-batch rejection,
-operation-phase batching, invalid lifecycle behavior, and EOF/shutdown.
-Initialization batching is rejected for all five cases; valid operation-phase
-batching is exercised only for `2025-03-26`.
+The executable protocol conformance test and the CLI server-conformance probe
+both iterate production profiles directly from `ProtocolRegistry` in its
+deterministic order. Adding a production profile therefore adds it to each
+generic matrix without another revision declaration. The focused executable
+case covers standalone `initialize`, `notifications/initialized`, `tools/list`,
+pinned-schema and required-tool validation, the exact designated round-trip
+tool, revision-specific definition and result projection,
+initialization-batch rejection, profile-selected operation-phase batching or
+rejection, invalid lifecycle behavior, and EOF/shutdown. Initialization
+batching is rejected for every production profile.
 
-Connection verification runs a server-conformance matrix over every revision
-in the adapter-owned conformance declaration, in its deterministic order. The
-offline parity gate requires each revision to have the matching production
-profile. Each revision gets a separate stdio process and exact request. The
-probe completes `initialize`,
+Connection verification gives each production profile a separate stdio
+process and exact request. The probe completes `initialize`,
 `notifications/initialized`, `tools/list`, validation against that revision's
 pinned schema, current-mode required-tool validation, exactly one
 call to the tool selected by `ToolVerificationRole::ManagedHostRoundTrip`, and
@@ -201,8 +199,8 @@ graceful EOF/shutdown. The current role owner is exactly
 `volicord.list_projects`. The probe records the
 requested and negotiated revisions, returned tools, completed stages, and a
 typed failure per revision. The aggregate server check passes only if every
-production revision passes; one failed revision does not prevent the remaining
-revisions from being probed.
+production profile passes; one failed profile does not prevent the remaining
+profiles from being probed.
 
 Host compatibility is a separate, host-owned fixture list rather than a
 projection of the protocol registry or a substitute for the complete revision

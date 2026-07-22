@@ -49,7 +49,6 @@ struct ManifestRevision {
     release_status: String,
     handshake_family: String,
     production_supported: bool,
-    volicord_conformance_covered: bool,
     pre_release_only: bool,
 }
 
@@ -247,7 +246,6 @@ fn production_registry_matches_the_pinned_manifest() {
             McpProtocolGeneration::InitializeHandshake
         );
         assert_eq!(pinned.handshake_family, "initialization-based");
-        assert!(pinned.volicord_conformance_covered);
         assert!(!pinned.pre_release_only);
     }
 }
@@ -271,7 +269,6 @@ fn pre_release_discover_generation_is_tracked_but_excluded() {
         Ok(revision)
     );
     assert!(!pinned.production_supported);
-    assert!(!pinned.volicord_conformance_covered);
     assert!(pinned.pre_release_only);
     assert_eq!(pinned.release_status, "release-candidate");
     assert_eq!(pinned.handshake_family, "per-request-metadata");

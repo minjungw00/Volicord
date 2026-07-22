@@ -9,7 +9,6 @@
 
 mod adapter;
 mod build_info;
-mod conformance;
 mod constants;
 mod diagnostics;
 mod errors;
@@ -27,7 +26,6 @@ mod util;
 
 pub use adapter::{McpAdapter, McpAdapterBoundary};
 pub use build_info::{build_id, build_info, BuildInfo};
-pub use conformance::volicord_conformance_covered_revisions;
 pub use constants::{AgentToolCategory, AgentToolId, AgentToolOwner, ToolVerificationRole};
 pub use diagnostics::bootstrap_diagnostic_envelope;
 pub use errors::McpAdapterError;

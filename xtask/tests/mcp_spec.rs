@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
+use toml_edit::DocumentMut;
 
 const COMMIT: &str = "38c84e9f93ad191d9eb26d92b945d17bd0efcaf3";
 const ATTRIBUTION: &str = "Copyright (c) MCP fixture authors";
@@ -15,7 +16,6 @@ struct RevisionFixture {
     handshake_family: &'static str,
     upstream_release: &'static str,
     production_supported: bool,
-    volicord_conformance_covered: bool,
     pre_release_only: bool,
     upstream_commit: String,
 }
@@ -35,7 +35,6 @@ fn released_revisions() -> Vec<RevisionFixture> {
         handshake_family: "initialization-based",
         upstream_release: protocol_version,
         production_supported: true,
-        volicord_conformance_covered: true,
         pre_release_only: false,
         upstream_commit: COMMIT.to_owned(),
     })
@@ -49,7 +48,6 @@ fn draft_revision() -> RevisionFixture {
         handshake_family: "per-request-metadata",
         upstream_release: "2026-07-28-RC",
         production_supported: false,
-        volicord_conformance_covered: false,
         pre_release_only: true,
         upstream_commit: COMMIT.to_owned(),
     }
@@ -73,7 +71,7 @@ fn fixture(
     fs::write(&license_path, LICENSE_TEXT).expect("write license");
 
     let mut manifest = format!(
-        "format_version = 2\nupstream_repository = \"https://github.com/modelcontextprotocol/modelcontextprotocol.git\"\n\n[[license]]\nid = \"test-license\"\nspdx_expression = \"MIT\"\nattribution = \"{ATTRIBUTION}\"\nupstream_release = \"2025-11-25\"\nupstream_commit = \"{COMMIT}\"\nupstream_path = \"LICENSE\"\nlocal_path = \"licenses/MIT.txt\"\nsha256 = \"{}\"\n",
+        "format_version = 3\nupstream_repository = \"https://github.com/modelcontextprotocol/modelcontextprotocol.git\"\n\n[[license]]\nid = \"test-license\"\nspdx_expression = \"MIT\"\nattribution = \"{ATTRIBUTION}\"\nupstream_release = \"2025-11-25\"\nupstream_commit = \"{COMMIT}\"\nupstream_path = \"LICENSE\"\nlocal_path = \"licenses/MIT.txt\"\nsha256 = \"{}\"\n",
         sha256(LICENSE_TEXT.as_bytes())
     );
 
@@ -102,14 +100,13 @@ fn fixture(
         };
         write!(
             &mut manifest,
-            "\n[[revision]]\nprotocol_version = \"{}\"\nrelease_status = \"{}\"\nhandshake_family = \"{}\"\nupstream_release = \"{}\"\nupstream_commit = \"{}\"\nlicense_id = \"test-license\"\nproduction_supported = {}\nvolicord_conformance_covered = {}\npre_release_only = {}\n\n[[revision.artifact]]\nupstream_path = \"schema/{}/schema.json\"\nlocal_path = \"{}\"\nsha256 = \"{}\"\n",
+            "\n[[revision]]\nprotocol_version = \"{}\"\nrelease_status = \"{}\"\nhandshake_family = \"{}\"\nupstream_release = \"{}\"\nupstream_commit = \"{}\"\nlicense_id = \"test-license\"\nproduction_supported = {}\npre_release_only = {}\n\n[[revision.artifact]]\nupstream_path = \"schema/{}/schema.json\"\nlocal_path = \"{}\"\nsha256 = \"{}\"\n",
             revision.protocol_version,
             revision.release_status,
             revision.handshake_family,
             revision.upstream_release,
             revision.upstream_commit,
             revision.production_supported,
-            revision.volicord_conformance_covered,
             revision.pre_release_only,
             revision.protocol_version,
             local_path,
@@ -148,18 +145,17 @@ fn current_released_production_revisions_have_exact_parity_and_deterministic_cou
     assert_eq!(repeated, report);
     assert_eq!(report.pinned_revision_count(), 6);
     assert_eq!(report.production_supported_count(), 5);
-    assert_eq!(report.volicord_conformance_covered_count(), 5);
     assert_eq!(report.pre_release_only_count(), 1);
 }
 
 #[test]
-fn rejects_a_missing_required_released_revision() {
+fn registry_only_production_profile_fails_parity() {
     let mut revisions = all_revisions();
     revisions.retain(|revision| revision.protocol_version != "2024-10-07");
     let fixture = fixture(&revisions, None, None);
 
     let error = xtask::check_mcp_spec_fixture(fixture.path())
-        .expect_err("missing released revision must fail");
+        .expect_err("registry-only production profile must fail parity");
 
     assert!(error
         .to_string()
@@ -167,91 +163,19 @@ fn rejects_a_missing_required_released_revision() {
 }
 
 #[test]
-fn rejects_production_support_without_volicord_conformance_coverage() {
-    let mut revisions = all_revisions();
-    revisions[0].volicord_conformance_covered = false;
-    let fixture = fixture(&revisions, None, None);
-
-    let error = xtask::check_mcp_spec_fixture(fixture.path())
-        .expect_err("production support without local conformance coverage must fail");
-
-    assert!(error
-        .to_string()
-        .contains("must set volicord_conformance_covered=true"));
-}
-
-#[test]
-fn rejects_covered_revision_without_a_production_protocol_profile() {
+fn manifest_only_production_revision_fails_parity() {
     let fixture = fixture(&all_revisions(), None, None);
     let production_profiles = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
-    let conformance_cases = [
-        "2024-10-07",
-        "2024-11-05",
-        "2025-03-26",
-        "2025-06-18",
-        "2025-11-25",
-    ];
 
-    let error = xtask::check_mcp_spec_fixture_with_declared_revisions(
+    let error = xtask::check_mcp_spec_fixture_with_production_profiles(
         fixture.path(),
         &production_profiles,
-        &conformance_cases,
     )
-    .expect_err("covered revision without a profile must fail");
+    .expect_err("manifest-only production revision must fail parity");
 
-    assert!(error
-        .to_string()
-        .contains("2024-10-07 has no production protocol profile"));
-}
-
-#[test]
-fn rejects_covered_revision_without_a_conformance_harness_case() {
-    let fixture = fixture(&all_revisions(), None, None);
-    let production_profiles = [
-        "2024-10-07",
-        "2024-11-05",
-        "2025-03-26",
-        "2025-06-18",
-        "2025-11-25",
-    ];
-    let conformance_cases = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
-
-    let error = xtask::check_mcp_spec_fixture_with_declared_revisions(
-        fixture.path(),
-        &production_profiles,
-        &conformance_cases,
-    )
-    .expect_err("covered revision without a conformance case must fail");
-
-    assert!(error
-        .to_string()
-        .contains("2024-10-07 has no conformance harness case"));
-}
-
-#[test]
-fn rejects_conformance_harness_revision_missing_from_the_manifest() {
-    let mut revisions = all_revisions();
-    revisions.retain(|revision| revision.protocol_version != "2024-10-07");
-    let fixture = fixture(&revisions, None, None);
-    let production_profiles = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
-    let conformance_cases = [
-        "2024-10-07",
-        "2024-11-05",
-        "2025-03-26",
-        "2025-06-18",
-        "2025-11-25",
-    ];
-
-    let error = xtask::check_mcp_spec_fixture_with_declared_revisions(
-        fixture.path(),
-        &production_profiles,
-        &conformance_cases,
-    )
-    .expect_err("harness revision missing from the manifest must fail");
-
-    assert!(error
-        .to_string()
-        .contains("conformance harness revision 2024-10-07 is missing"));
+    assert!(error.to_string().contains(
+        "production-supported released MCP revision 2024-10-07 has no production protocol profile"
+    ));
 }
 
 #[test]
@@ -332,13 +256,13 @@ fn rejects_mutable_upstream_reference() {
 }
 
 #[test]
-fn manifest_parser_accepts_only_the_current_coverage_shape() {
+fn manifest_parser_rejects_a_generic_unknown_field() {
     let fixture = fixture(&all_revisions(), None, None);
     let manifest_path = fixture.path().join("manifest.toml");
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
     let manifest = manifest.replacen(
-        "volicord_conformance_covered = true",
-        "volicord_conformance_covered = true\nconformance_tested = false",
+        "production_supported = true",
+        "production_supported = true\nunexpected_metadata = \"not-reviewed\"",
         1,
     );
     fs::write(manifest_path, manifest).expect("write manifest with unsupported field");
@@ -346,19 +270,45 @@ fn manifest_parser_accepts_only_the_current_coverage_shape() {
     let error = xtask::check_mcp_spec_fixture(fixture.path())
         .expect_err("unsupported manifest fields must fail strict parsing");
 
-    assert!(format!("{error:#}").contains("unknown field `conformance_tested`"));
+    assert!(format!("{error:#}").contains("unknown field `unexpected_metadata`"));
 }
 
 #[test]
-fn manifest_parser_requires_coverage_metadata_for_every_revision() {
+fn manifest_parser_requires_production_support_metadata_for_every_revision() {
     let fixture = fixture(&all_revisions(), None, None);
     let manifest_path = fixture.path().join("manifest.toml");
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
-    let manifest = manifest.replacen("volicord_conformance_covered = true\n", "", 1);
-    fs::write(manifest_path, manifest).expect("write manifest without coverage metadata");
+    let manifest = manifest.replacen("production_supported = true\n", "", 1);
+    fs::write(manifest_path, manifest).expect("write manifest without support metadata");
 
     let error = xtask::check_mcp_spec_fixture(fixture.path())
-        .expect_err("coverage metadata is required by the current exact shape");
+        .expect_err("production support metadata is required by the current exact shape");
 
-    assert!(format!("{error:#}").contains("missing field `volicord_conformance_covered`"));
+    assert!(format!("{error:#}").contains("missing field `production_supported`"));
+}
+
+#[test]
+fn mcp_spec_checker_keeps_the_lightweight_xtask_dependency_boundary() {
+    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let manifest = fs::read_to_string(manifest_path)
+        .expect("read xtask manifest")
+        .parse::<DocumentMut>()
+        .expect("parse xtask manifest");
+    let dependencies = manifest["dependencies"]
+        .as_table()
+        .expect("xtask dependencies table");
+
+    assert!(dependencies.contains_key("volicord-mcp-protocol"));
+    for forbidden in [
+        "volicord-mcp",
+        "volicord-core",
+        "volicord-store",
+        "volicord-platform-fs",
+        "volicord-platform-process",
+    ] {
+        assert!(
+            !dependencies.contains_key(forbidden),
+            "xtask must not depend directly on {forbidden}"
+        );
+    }
 }

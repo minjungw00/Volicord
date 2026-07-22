@@ -23,26 +23,30 @@ prove behavior of a real Codex installation or platform support.
 license attribution needed for deterministic MCP conformance work. Its manifest
 keeps finalized initialization-based revisions separate from pre-release-only
 inputs, pins full upstream commits, records the handshake family and release
-classification, checksums every local artifact, and records
-`volicord_conformance_covered`. That field means only that the revision is in
-Volicord's repository-owned offline runtime conformance matrix; it is not
-external MCP certification. Production support requires a released,
-non-pre-release entry with a pinned schema, a production protocol profile, and
-`volicord_conformance_covered=true`. A tracked pre-release entry remains outside
-production support and has the coverage field set to `false`.
+classification, checksums every local artifact, and records the reviewed
+`production_supported` and `pre_release_only` facts. Production support
+requires a released, non-pre-release entry with pinned artifacts and an exact
+matching profile in `ProtocolRegistry`. A tracked pre-release entry remains
+outside production support.
 
 `cargo run -p xtask -- mcp-spec-check` is the offline integrity gate. It parses
 the manifest, validates classifications and immutable references, and verifies
 schema presence, schema family, attribution, checksums, and exact set parity
-among manifest production support, compiled production protocol profiles, and
-the adapter-owned conformance revision declaration without network access. Its
-report gives deterministic counts for all pinned revisions,
-production-supported revisions, Volicord-conformance-covered revisions, and
-tracked pre-release revisions. `cargo run -p xtask -- mcp-spec-sync` is an
+between released manifest entries marked `production_supported=true` and the
+compiled production profiles without network access. Its report gives
+deterministic counts for all pinned revisions, production-supported revisions,
+and tracked pre-release revisions. `cargo run -p xtask -- mcp-spec-sync` is an
 explicit maintenance action: it resolves the recorded releases to their pinned
 commits, downloads into a temporary directory, preserves the reviewed support
-and coverage metadata, validates the complete candidate, and only then replaces
-the fixture. Ordinary builds and tests never invoke the networked sync path.
+metadata, validates the complete candidate, and only then replaces the fixture.
+Ordinary builds and tests never invoke the networked sync path.
+
+Executable wire conformance is an independent gate:
+`cargo test -p volicord-mcp --test protocol_conformance`. Its generic runner
+iterates `ProtocolRegistry::production().oldest_to_newest()` directly, so adding
+a production profile automatically adds the same focused case to the matrix.
+The manifest records reviewed upstream and support facts; it does not record
+whether executable tests ran.
 
 ## Required Boundary Coverage
 
@@ -59,18 +63,18 @@ Durable tests should cover, as applicable:
 - MCP rejection of hidden context and CLI-only UserAction resolution;
 - authoritative MCP runtime-session source separation, milestone ordering,
   current revisions, project binding, and diagnostics non-authority;
-- exact revision-set parity among `production_supported=true` manifest entries,
-  production protocol profiles, `volicord_conformance_covered=true` entries,
-  and adapter-owned conformance cases, with tracked pre-release generations
-  excluded from production support;
+- exact revision-set parity between released `production_supported=true`
+  manifest entries and production protocol profiles, with tracked pre-release
+  generations excluded from production support;
 - `AgentToolId` wire-name uniqueness and round-trip parsing, exact canonical
   registry identity, mode availability, and the compile-time
   `ManagedHostRoundTrip` binding used by the CLI, MCP runtime, and Store;
-- for every conformance-covered revision, standalone `initialize`, the
-  initialized notification, `tools/list`, pinned-schema validation, required
-  tools, the designated round-trip identity, revision-specific tool projection and
-  operation batching, invalid lifecycle behavior, initialization-batch
-  rejection, and EOF/shutdown;
+- for every production profile selected directly from `ProtocolRegistry`,
+  standalone `initialize`, the initialized notification, `tools/list`,
+  pinned-schema validation, required tools, the designated round-trip identity,
+  revision-specific definition and result projection, profile-selected
+  operation batching or rejection, invalid lifecycle behavior,
+  initialization-batch rejection, and EOF/shutdown;
 - exact-match and counter-offer negotiation plus profile-specific initialize
   capabilities, batching, `tools/list`, and `tools/call` wire projection;
 - independently pinned Codex host fixtures that are not derived from the

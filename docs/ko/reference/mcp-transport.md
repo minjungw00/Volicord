@@ -110,12 +110,12 @@ name/version, JSON-RPC 오류 code, 안전한 오류 data, runtime session ID를
 
 Revision을 프로덕션에서 지원하려면 명세 manifest가 해당 항목을 릴리스 상태이면서
 pre-release 전용이 아닌 것으로 표시하고, schema artifact를 고정하고, 일치하는 프로덕션
-protocol profile을 제공하고, `volicord_conformance_covered=true`로 설정해야 합니다. 이
-`volicord_conformance_covered` 필드는 Volicord 저장소가 소유하는 오프라인 런타임 적합성
-매트릭스가 해당 revision을 실행한다는 뜻이며 upstream 또는 제3자의 MCP 인증을 뜻하지
-않습니다. 오프라인 명세 gate는 프로덕션 지원 manifest 항목, 프로덕션 protocol profile,
-적합성 harness가 다루는 revision 집합이 정확히 일치하도록 요구합니다. Pre-release
-revision은 추적을 위해 고정했다는 이유만으로 프로덕션 지원 대상이 되지 않습니다.
+protocol profile을 제공해야 합니다. 오프라인 명세 gate는 릴리스 상태이면서
+`production_supported=true`인 manifest 항목과 `ProtocolRegistry`의 프로덕션 profile이
+정확히 일치하도록 요구합니다. 실행 가능한 런타임 적합성은 이 metadata가 아니라 모든
+프로덕션 profile에 registry 기반 protocol 적합성 테스트를 실행하여 독립적으로 확인합니다.
+이 결과는 upstream 또는 제3자의 MCP 인증이 아닙니다. Pre-release revision은 추적을 위해
+고정했다는 이유만으로 프로덕션 지원 대상이 되지 않습니다.
 
 요청의 문자열 `protocolVersion`은 요청 revision입니다. 이 닫힌 집합의 정확한 구성원을
 요청하면 같은 profile을 선택하고 initialize 결과도 같은 revision을 반환합니다. 초기화 기반
@@ -160,23 +160,22 @@ profile에 따라 작업 단계의 JSON-RPC batch 동작을 정확히 다음과 
 
 ## CLI Conformance 및 Host 호환성 Probe
 
-어댑터가 소유하는 오프라인 적합성 선언에는 위의 프로덕션 revision 다섯 개만 있습니다.
-선언된 모든 revision의 지속 coverage는 프로세스 probe와 revision 범위 어댑터 case를
-조합하여 독립된 `initialize`, `notifications/initialized`, `tools/list`, 고정 schema 및
-필수 도구 검증, 정확한 지정 왕복 도구, revision별 도구 및 결과 projection, 초기화 batch
-거절, 작업 단계 batching, 잘못된 lifecycle 동작, EOF/종료를 실행합니다. 다섯 case 모두
-초기화 batching을 거절하며, 유효한 작업 단계 batching은 `2025-03-26`에서만 실행합니다.
+실행 가능한 protocol 적합성 테스트와 CLI server conformance probe는 모두
+`ProtocolRegistry`의 프로덕션 profile을 결정론적 순서대로 직접 순회합니다. 따라서
+프로덕션 profile을 추가하면 별도 revision 선언 없이 각 일반 matrix에 자동으로 들어갑니다.
+집중 실행 case는 독립된 `initialize`, `notifications/initialized`, `tools/list`, 고정 schema
+및 필수 도구 검증, 정확한 지정 왕복 도구, revision별 정의와 결과 projection, 초기화 batch
+거절, profile에 따른 작업 단계 batch 허용 또는 거절, 잘못된 lifecycle 동작, EOF/종료를
+다룹니다. 모든 프로덕션 profile에서 초기화 batching을 거절합니다.
 
-Connection 검증은 어댑터 소유 적합성 선언의 모든 revision을 결정론적 순서대로 server
-conformance matrix에서 실행합니다. 오프라인 parity gate는 각 revision에 일치하는
-프로덕션 profile이 있도록 강제합니다. Revision마다 별도 stdio process와 정확한 요청을
-사용합니다. 각 probe는 `initialize`, `notifications/initialized`, `tools/list`, 해당
+Connection 검증은 프로덕션 profile마다 별도 stdio process와 정확한 요청을 사용합니다.
+각 probe는 `initialize`, `notifications/initialized`, `tools/list`, 해당
 revision의 고정 schema 검증, 현재 mode의 필수 도구 검증,
 `ToolVerificationRole::ManagedHostRoundTrip`이 선택한 도구 호출 정확히 하나, 정상
 EOF/종료를 완료합니다. 현재 role 담당 도구는 정확히 `volicord.list_projects`입니다.
-Revision별로 요청 및 협상 revision, 반환된 도구,
-완료 단계, typed failure를 기록합니다. 모든 production revision이 통과해야 집계 server
-check가 통과하며, revision 하나가 실패해도 나머지 revision probe를 계속 실행합니다.
+Revision별로 요청 및 협상 revision, 반환된 도구, 완료 단계, typed failure를 기록합니다.
+모든 프로덕션 profile이 통과해야 집계 server check가 통과하며, profile 하나가 실패해도
+나머지 profile probe를 계속 실행합니다.
 
 Host 호환성은 protocol registry projection도 전체 revision 매트릭스의 대체물도 아닌,
 host가 독립적으로 소유하는 fixture 목록입니다. 현재 `codex` fixture는

@@ -10,7 +10,7 @@ use toml_edit::{DocumentMut, Item};
 mod mcp_spec;
 
 pub use mcp_spec::{
-    check_mcp_spec_fixture, check_mcp_spec_fixture_with_declared_revisions, run_mcp_spec_check,
+    check_mcp_spec_fixture, check_mcp_spec_fixture_with_production_profiles, run_mcp_spec_check,
     run_mcp_spec_sync, McpSpecCheckReport, McpSpecSyncReport,
 };
 

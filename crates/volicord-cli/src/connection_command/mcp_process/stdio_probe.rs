@@ -1,7 +1,7 @@
 use std::{process::Command, time::Duration};
 
 use serde_json::{json, Value};
-use volicord_mcp::{volicord_conformance_covered_revisions, MaterializedManagedMcpLaunch};
+use volicord_mcp::MaterializedManagedMcpLaunch;
 use volicord_mcp_protocol::{McpProtocolRevision, ProtocolRegistry};
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
 use volicord_types::{AgentConnectionMode, AgentToolId};
@@ -202,13 +202,10 @@ fn verify_mcp_stdio_command_factory(
     mode: &str,
     timeout: Duration,
 ) -> McpExchangeOutcome {
-    let conformance = volicord_conformance_covered_revisions()
-        .iter()
-        .copied()
-        .map(|revision| {
-            ProtocolRegistry::production()
-                .profile(revision)
-                .expect("conformance-covered revision must have a production profile");
+    let conformance = ProtocolRegistry::production()
+        .oldest_to_newest()
+        .map(|profile| {
+            let revision = profile.revision();
             let outcome = verify_mcp_probe_command(
                 command(),
                 mode,
@@ -898,16 +895,16 @@ mod tests {
     }
 
     #[test]
-    fn matrix_probes_every_conformance_covered_revision_and_independent_codex_fixture() {
+    fn matrix_probes_every_production_profile_and_independent_codex_fixture() {
         let outcome = verify_mcp_stdio_command_factory(
             || test_child::command("stdio-success"),
             CONNECTION_MODE_READ_ONLY,
             Duration::from_secs(1),
         );
         assert!(outcome.failure.is_none(), "{outcome:?}");
-        let expected_revisions = volicord_conformance_covered_revisions()
-            .iter()
-            .map(|revision| revision.as_str())
+        let expected_revisions = ProtocolRegistry::production()
+            .oldest_to_newest()
+            .map(|profile| profile.revision().as_str())
             .collect::<Vec<_>>();
         assert_eq!(
             outcome

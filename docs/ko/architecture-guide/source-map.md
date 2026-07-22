@@ -99,7 +99,6 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 관리형 MCP 명령, 인자, 정적 및 전달 환경 binding, 엄격한 시작 형태 검증, projection, fingerprint 입력. |
-| `crates/volicord-mcp/src/conformance.rs` | 어댑터 테스트, CLI revision 매트릭스, 명세 checker가 공유하는 결정론적 저장소 소유 오프라인 런타임 적합성 revision 선언. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio 생명주기와 프레이밍, typed initialization profile 선택, revision-aware message 처리, 프로세스 사전 점검. |
 | `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치, wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema와 metadata를 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 revision별 wire 이름을 투영하는 구현. |
@@ -111,8 +110,9 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
+| `crates/volicord-mcp/tests/protocol_conformance.rs` | 모든 프로덕션 profile에 적용하는 하나의 registry 기반 wire 적합성 case. 고정 schema 검증, 필수 도구, 지정 왕복, profile별 projection 및 batching, lifecycle 거절, EOF를 다룹니다. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
-| `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 프로덕션 지원 및 `volicord_conformance_covered` 값, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
+| `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 `production_supported`와 `pre_release_only` 사실, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
 | `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 릴리스 workflow 무결성 테스트. |
 | `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store, 요청 도우미. |
 
@@ -120,7 +120,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `xtask/src/mcp_spec.rs` | 고정 명세의 오프라인 검증, manifest/profile/harness의 정확한 집합 일치, 결정론적 개수 보고, 검토된 metadata를 보존하면서 검증된 임시 후보를 거치는 명시적 네트워크 동기화. |
+| `xtask/src/mcp_spec.rs` | 가벼운 고정 명세 오프라인 검증, manifest/registry의 정확한 프로덕션 집합 일치, 결정론적 개수 보고, 검토된 지원 metadata를 보존하면서 검증된 임시 후보를 거치는 명시적 네트워크 동기화. |
 | `xtask/tests/mcp_spec.rs` | 엄격한 manifest parsing, 분류, 집합 불일치, 변경 불가능한 pin, checksum, 필수 artifact, ordering, 보고, 오프라인 성공 coverage. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를
