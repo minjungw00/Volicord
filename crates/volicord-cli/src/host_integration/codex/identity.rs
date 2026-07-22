@@ -5,9 +5,7 @@ use std::{
 
 use toml_edit::{Item, Table};
 use volicord_mcp::ManagedMcpLaunchSpec;
-use volicord_types::{
-    ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
-};
+use volicord_types::AgentToolId;
 
 use crate::host_integration::verification::{ManagedConfigDiagnostic, ManagedConfigStatus};
 use crate::host_integration::{
@@ -227,9 +225,7 @@ fn codex_tool_approval_overlay_is_valid(table: &Table) -> bool {
 }
 
 fn is_known_volicord_tool(tool_name: &str) -> bool {
-    WORKFLOW_METHOD_TOOL_NAMES.contains(&tool_name)
-        || READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
-        || ADAPTER_UTILITY_TOOL_NAMES.contains(&tool_name)
+    AgentToolId::from_wire_name(tool_name).is_ok()
 }
 
 pub(crate) fn managed_identity_evaluation_for_plan(

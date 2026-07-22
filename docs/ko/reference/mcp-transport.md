@@ -211,8 +211,9 @@ handshake를 완전히 끝낼 때만 협상 revision이 됩니다. 실제 `tools
 모든 도구가 있었는지를 나타냅니다. 중복 initialized notification은 첫 번째 유효 관찰 뒤
 멱등이며 협상한 revision을 바꿀 수 없습니다.
 
-정확한 `ToolVerificationRole::ManagedHostRoundTrip` 담당 도구의 `tools/call`이 성공한
-경우에만 managed-host 왕복 evidence를 기록할 수 있습니다. 현재 담당 도구는
+`ToolVerificationRole::ManagedHostRoundTrip`에 결합된 정확한 도구의 `tools/call`이
+성공한 경우에만 managed-host 왕복 evidence를 기록할 수 있습니다. 이 role은 컴파일
+시점에 `AgentToolId::LIST_PROJECTS`에 결합되고, 그 wire 이름 투영은
 `volicord.list_projects`입니다. 호출은 현재 enabled `managed_host` runtime과 Connection
 revision에 속하고 유효한 현재 관리 Codex session/thread/turn correlation을 담아야 하며,
 JSON-RPC error나 tool error 없이 완료되어야 합니다. 그러면 Store는 도구 결과를 내보내기
@@ -307,18 +308,23 @@ Task 상태와 이전 호출은 도구를 동적으로 추가하지 않습니다
 없이 실패합니다. `volicord.resolve_user_action`은 공개 Core API 메서드이지만 MCP 도구는
 아닙니다.
 
-정식 도구 registry 하나가 각 공개 도구의 이름, 설명, 간결한 입력 schema, 간결한 출력
-schema, annotation, 현재 값이 있는 선택적 표시 및 metadata를 소유합니다. `tools/list`는
-이 모델을 선택한 session profile에 맞춰 projection합니다. Volicord는 revision마다 별도
-도구 registry나 server 구현을 두지 않습니다. Connection mode와 저장 capability는 위
-표에 따라 도구를 숨길 수 있지만 protocol revision은 계속 보이는 도구의 이름을 바꾸거나
-다른 도구로 대체하지 않습니다.
+`AgentToolId`는 모든 Agent Connection MCP 도구의 정규 typed identity이자 catalog입니다.
+Core 소유 identity는 `MethodName`을 재사용하고, `AgentToolId::LIST_PROJECTS`를 포함한
+adapter utility도 같은 폐쇄형 catalog에 속합니다. 각 identity는 안정적인 MCP wire 이름
+투영, category, Connection mode별 가용성, Core method 또는 adapter utility 소유권, 선택적
+운영 verification role을 소유합니다.
 
-Dependency-safe 정규 도구 metadata는 typed verification role도 배정합니다.
-`ToolVerificationRole::ManagedHostRoundTrip`은 담당 도구가 정확히 하나이며 현재
-`volicord.list_projects`로 결정적으로 해석됩니다. 담당 도구가 없거나 둘 이상이면 유효하지
-않은 registry 상태입니다. MCP runtime과 관리 CLI는 별도의 도구 이름 선택을 유지하지 않고
-모두 이 resolver를 사용합니다.
+정규 도구 registry는 각 정의를 `AgentToolId`로 식별하고 설명, 간결한 입력 schema,
+간결한 출력 schema, annotation, 현재 값이 있는 선택적 표시 및 metadata를 제공합니다.
+`tools/list`는 선택한 session profile을 통해 identity의 wire 이름을 투영합니다. Volicord는
+revision마다 별도 도구 registry나 server 구현을 두지 않습니다. Connection mode와 저장
+capability는 위 표에 따라 도구를 숨길 수 있지만 protocol revision은 계속 보이는 도구의
+이름을 바꾸거나 다른 도구로 대체하지 않습니다.
+
+`ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
+`AgentToolId::LIST_PROJECTS`에 결합됩니다. MCP runtime, 관리 CLI, Store 관찰, 진단 비교는
+이 identity를 함께 사용하고 wire 또는 영속 이름 경계에서만 `volicord.list_projects`를
+투영합니다.
 
 | 선택한 profile | 현재 Volicord 도구마다 내보내는 필드 |
 |---|---|

@@ -189,11 +189,13 @@ fn conformance_profiles(
 #[test]
 fn every_conformance_covered_tools_list_is_a_projection_of_one_canonical_registry() {
     let canonical = canonical_runtime_tools();
-    let canonical_names = canonical.iter().map(|tool| tool.name).collect::<Vec<_>>();
-    let expected_names = PUBLIC_METHOD_TOOL_NAMES
+    let canonical_names = canonical
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        .copied()
+        .map(|tool| tool.id.wire_name())
+        .collect::<Vec<_>>();
+    let expected_names = AgentToolId::ALL
+        .iter()
+        .map(|tool| tool.wire_name())
         .collect::<Vec<_>>();
     assert_eq!(canonical_names, expected_names);
 
@@ -222,7 +224,7 @@ fn every_conformance_covered_tools_list_is_a_projection_of_one_canonical_registr
                 panic!(
                     "{} tool {}: {error}",
                     profile.revision(),
-                    canonical_tool.name
+                    canonical_tool.id.wire_name()
                 )
             });
             let fields = projected
@@ -232,7 +234,7 @@ fn every_conformance_covered_tools_list_is_a_projection_of_one_canonical_registr
                 .map(String::as_str)
                 .collect::<BTreeSet<_>>();
             assert!(fields.is_subset(&permitted));
-            assert_eq!(projected["name"], canonical_tool.name);
+            assert_eq!(projected["name"], canonical_tool.id.wire_name());
             assert!(projected.get("description").is_some());
             assert!(projected.get("inputSchema").is_some());
             assert_eq!(
@@ -270,7 +272,7 @@ fn every_conformance_covered_call_tool_result_uses_its_pinned_wire_shape() {
     });
     let error_body = json!({
         "code": "MCP_INVALID_ARGUMENTS",
-        "tool_name": STATUS_TOOL_NAME,
+        "tool_name": AgentToolId::STATUS.wire_name(),
         "retryable": true,
         "reached_core": false,
         "committed": false,
@@ -292,7 +294,7 @@ fn every_conformance_covered_call_tool_result_uses_its_pinned_wire_shape() {
                 is_error,
             };
             if profile.tools().structured_content() {
-                validate_mcp_tool_output(STATUS_TOOL_NAME, body)
+                validate_mcp_tool_output(AgentToolId::STATUS.wire_name(), body)
                     .expect("structured output should match the advertised runtime schema");
             }
             let projected = canonical

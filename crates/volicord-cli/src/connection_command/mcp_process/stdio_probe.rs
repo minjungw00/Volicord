@@ -4,11 +4,9 @@ use serde_json::{json, Value};
 use volicord_mcp::{volicord_conformance_covered_revisions, MaterializedManagedMcpLaunch};
 use volicord_mcp_protocol::{McpProtocolRevision, ProtocolRegistry};
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
-use volicord_types::{
-    ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES, WORKFLOW_METHOD_TOOL_NAMES,
-};
+use volicord_types::{AgentConnectionMode, AgentToolId};
 
-use crate::connection_command::managed_host_round_trip_tool_name;
+use crate::connection_command::managed_host_round_trip_tool;
 
 use super::{
     failure::{
@@ -433,7 +431,7 @@ fn perform_mcp_exchange(
     progress.required_tools_validated = true;
 
     let mut call_params = json!({
-        "name": managed_host_round_trip_tool_name(),
+        "name": managed_host_round_trip_tool().wire_name(),
         "arguments": {}
     });
     if let Some(metadata) = &probe.call_metadata {
@@ -778,10 +776,10 @@ fn validate_safe_tool_response(
 fn validate_tools_for_mode_problem(mode: &str, tools: &[String]) -> Result<(), ProtocolProblem> {
     match mode {
         CONNECTION_MODE_READ_ONLY => {
-            validate_required_tools_problem(tools, read_only_required_tool_names())
+            validate_required_tools_problem(tools, read_only_required_tools())
         }
         CONNECTION_MODE_WORKFLOW => {
-            validate_required_tools_problem(tools, workflow_required_tool_names())
+            validate_required_tools_problem(tools, workflow_required_tools())
         }
         other => Err(ProtocolProblem::new(
             McpProtocolFailureKind::Unexpected,
@@ -792,12 +790,12 @@ fn validate_tools_for_mode_problem(mode: &str, tools: &[String]) -> Result<(), P
 
 fn validate_required_tools_problem(
     tools: &[String],
-    expected: impl IntoIterator<Item = &'static str>,
+    expected: impl IntoIterator<Item = AgentToolId>,
 ) -> Result<(), ProtocolProblem> {
     let missing_tools = expected
         .into_iter()
-        .filter(|name| !tools.iter().any(|tool| tool == name))
-        .map(str::to_owned)
+        .filter(|expected| !tools.iter().any(|tool| tool == expected.wire_name()))
+        .map(|tool| tool.wire_name().to_owned())
         .collect::<Vec<_>>();
     if missing_tools.is_empty() {
         Ok(())
@@ -806,18 +804,18 @@ fn validate_required_tools_problem(
     }
 }
 
-pub(super) fn workflow_required_tool_names() -> impl Iterator<Item = &'static str> {
-    WORKFLOW_METHOD_TOOL_NAMES
+pub(super) fn workflow_required_tools() -> impl Iterator<Item = AgentToolId> {
+    AgentToolId::ALL
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
         .copied()
+        .filter(|tool| tool.available_in(AgentConnectionMode::Workflow))
 }
 
-pub(super) fn read_only_required_tool_names() -> impl Iterator<Item = &'static str> {
-    READ_ONLY_METHOD_TOOL_NAMES
+pub(super) fn read_only_required_tools() -> impl Iterator<Item = AgentToolId> {
+    AgentToolId::ALL
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
         .copied()
+        .filter(|tool| tool.available_in(AgentConnectionMode::ReadOnly))
 }
 
 #[cfg(test)]
@@ -859,10 +857,7 @@ mod tests {
 
     #[test]
     fn self_test_tool_is_resolved_from_the_canonical_verification_role() {
-        assert_eq!(
-            managed_host_round_trip_tool_name(),
-            volicord_types::LIST_PROJECTS_TOOL_NAME
-        );
+        assert_eq!(managed_host_round_trip_tool(), AgentToolId::LIST_PROJECTS);
     }
 
     #[test]
@@ -1111,7 +1106,11 @@ mod tests {
         assert!(outcome.progress.initialize_completed);
         assert_eq!(
             outcome.progress.tools_list,
-            Some(read_only_required_tool_names().map(str::to_owned).collect())
+            Some(
+                read_only_required_tools()
+                    .map(|tool| tool.wire_name().to_owned())
+                    .collect(),
+            )
         );
         assert!(outcome.progress.required_tools_validated);
         assert!(!outcome.progress.safe_tool_call_completed);
@@ -1126,8 +1125,8 @@ mod tests {
 
     #[test]
     fn shutdown_failure_preserves_every_completed_exchange_observation() {
-        let expected_tools = read_only_required_tool_names()
-            .map(str::to_owned)
+        let expected_tools = read_only_required_tools()
+            .map(|tool| tool.wire_name().to_owned())
             .collect::<Vec<_>>();
         let outcome = verify_mcp_stdio_command(
             test_child::command("shutdown-failure"),

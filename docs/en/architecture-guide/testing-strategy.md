@@ -63,9 +63,12 @@ Durable tests should cover, as applicable:
   production protocol profiles, `volicord_conformance_covered=true` entries,
   and adapter-owned conformance cases, with tracked pre-release generations
   excluded from production support;
+- `AgentToolId` wire-name uniqueness and round-trip parsing, exact canonical
+  registry identity, mode availability, and the compile-time
+  `ManagedHostRoundTrip` binding used by the CLI, MCP runtime, and Store;
 - for every conformance-covered revision, standalone `initialize`, the
   initialized notification, `tools/list`, pinned-schema validation, required
-  tools, the designated round-trip tool, revision-specific tool projection and
+  tools, the designated round-trip identity, revision-specific tool projection and
   operation batching, invalid lifecycle behavior, initialization-batch
   rejection, and EOF/shutdown;
 - exact-match and counter-offer negotiation plus profile-specific initialize

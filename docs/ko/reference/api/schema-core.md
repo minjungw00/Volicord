@@ -34,6 +34,12 @@
 - 저장소 기록과 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
 - MCP revision별 도구 정의, 결과 carrier, 오류 flag: [MCP 전송](../mcp-transport.md)
 
+Core 소유 MCP 도구의 정규 `AgentToolId` identity는 기존 `MethodName` domain을 재사용하고
+안정적인 MCP wire 이름을 투영합니다. Adapter utility도 같은 폐쇄형 identity catalog에
+속합니다. 운영 `ToolVerificationRole::ManagedHostRoundTrip`과
+`AgentToolId::LIST_PROJECTS`의 결합은 이 catalog의 컴파일 시점 metadata이며, 별도의 Core
+method identity를 정의하지 않습니다.
+
 ## 스키마 표기 규칙
 
 의미:

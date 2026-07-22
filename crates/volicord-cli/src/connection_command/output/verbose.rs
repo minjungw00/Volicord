@@ -6,7 +6,7 @@ use volicord_types::{
     DiagnosticReportAction,
 };
 
-use crate::connection_command::managed_host_round_trip_tool_name;
+use crate::connection_command::managed_host_round_trip_tool;
 
 use super::{
     human::{headline, CheckCounts},
@@ -457,7 +457,7 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
             .unwrap_or_default();
         let safe_tool = context
             .take_string("self_test.safe_read_only_tool")
-            .unwrap_or_else(|| managed_host_round_trip_tool_name().to_owned());
+            .unwrap_or_else(|| managed_host_round_trip_tool().wire_name().to_owned());
         let tools = context
             .take_string_array("self_test.tools_list")
             .unwrap_or_default();
@@ -506,7 +506,7 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     let required_tools_validated = context.take_bool("self_test.required_tools_validated");
     let safe_tool = context
         .take_string("self_test.safe_read_only_tool")
-        .unwrap_or_else(|| managed_host_round_trip_tool_name().to_owned());
+        .unwrap_or_else(|| managed_host_round_trip_tool().wire_name().to_owned());
     let safe_tool_completed = context.take_bool("self_test.safe_read_only_tool_completed");
     let shutdown_completed = context.take_bool("self_test.shutdown_completed");
     let preflight_passed = preflight.as_deref() == Some("passed");
@@ -796,7 +796,7 @@ fn render_tool_round_trip(context: &mut DetailContext<'_>) {
     render_revision_pair(context);
     let expected_tool = context
         .take_string("expected_verification_tool_name")
-        .unwrap_or_else(|| managed_host_round_trip_tool_name().to_owned());
+        .unwrap_or_else(|| managed_host_round_trip_tool().wire_name().to_owned());
     context.line("Expected verification tool", expected_tool);
     if let Some(observed_tool) = context.take_string("observed_verification_tool_name") {
         context.line("Observed verification tool", observed_tool);
@@ -2113,7 +2113,7 @@ mod tests {
                 "tools_list_observed": true,
                 "tools_list": tools,
                 "required_tools_validated": status == "passed",
-                "safe_read_only_tool": managed_host_round_trip_tool_name(),
+                "safe_read_only_tool": managed_host_round_trip_tool().wire_name(),
                 "safe_read_only_tool_completed": status == "passed",
                 "shutdown_completed": status == "passed",
             },
@@ -2202,7 +2202,7 @@ mod tests {
         let safe_call_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
                 true,
-                Some(vec![managed_host_round_trip_tool_name().to_owned()]),
+                Some(vec![managed_host_round_trip_tool().wire_name().to_owned()]),
                 true,
                 false,
                 false,
@@ -2221,7 +2221,7 @@ mod tests {
         let shutdown_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
                 true,
-                Some(vec![managed_host_round_trip_tool_name().to_owned()]),
+                Some(vec![managed_host_round_trip_tool().wire_name().to_owned()]),
                 true,
                 true,
                 false,

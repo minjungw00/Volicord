@@ -3,10 +3,7 @@
 use std::error::Error;
 
 use serde_json::{json, Value};
-use volicord_mcp::{
-    mcp_tools_for_mode, McpAdapter, McpConnectionContext, ADAPTER_UTILITY_TOOL_NAMES,
-    PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
-};
+use volicord_mcp::{mcp_tools_for_mode, McpAdapter, McpConnectionContext};
 use volicord_store::{
     agent_connections::{
         add_connection_project, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
@@ -15,48 +12,45 @@ use volicord_store::{
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
-use volicord_types::{
-    AgentConnectionMode, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME,
-    RECONCILE_CHANGES_TOOL_NAME, REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME,
-};
+use volicord_types::{AgentConnectionMode, AgentToolId, MethodName};
 
 #[test]
 fn workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only() {
     let tools = mcp_tools_for_mode(AgentConnectionMode::Workflow);
     let names = tool_names(&tools);
-    let expected = PUBLIC_METHOD_TOOL_NAMES
+    let expected = AgentToolId::ALL
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        .copied()
+        .map(|tool| tool.wire_name())
         .collect::<Vec<_>>();
 
     assert_eq!(names, expected);
-    assert!(PUBLIC_METHOD_TOOL_NAMES.contains(&RECONCILE_CHANGES_TOOL_NAME));
-    assert!(names.contains(&INTAKE_TOOL_NAME));
-    assert!(names.contains(&PREPARE_WRITE_TOOL_NAME));
-    assert!(names.contains(&REQUEST_USER_ACTION_TOOL_NAME));
-    assert!(names.contains(&RECONCILE_CHANGES_TOOL_NAME));
-    assert!(names.contains(&CLOSE_TASK_TOOL_NAME));
-    assert!(!names.contains(&RESOLVE_USER_ACTION_TOOL_NAME));
+    assert!(AgentToolId::ALL.contains(&AgentToolId::RECONCILE_CHANGES));
+    assert!(names.contains(&AgentToolId::INTAKE.wire_name()));
+    assert!(names.contains(&AgentToolId::PREPARE_WRITE.wire_name()));
+    assert!(names.contains(&AgentToolId::REQUEST_USER_ACTION.wire_name()));
+    assert!(names.contains(&AgentToolId::RECONCILE_CHANGES.wire_name()));
+    assert!(names.contains(&AgentToolId::CLOSE_TASK.wire_name()));
+    assert!(!names.contains(&MethodName::ResolveUserAction.as_str()));
 }
 
 #[test]
 fn read_only_tools_expose_only_read_operations_and_project_discovery() {
     let tools = mcp_tools_for_mode(AgentConnectionMode::ReadOnly);
     let names = tool_names(&tools);
-    let expected = READ_ONLY_METHOD_TOOL_NAMES
+    let expected = AgentToolId::ALL
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
         .copied()
+        .filter(|tool| tool.available_in(AgentConnectionMode::ReadOnly))
+        .map(AgentToolId::wire_name)
         .collect::<Vec<_>>();
 
     assert_eq!(names, expected);
     for mutation_tool in [
-        INTAKE_TOOL_NAME,
-        PREPARE_WRITE_TOOL_NAME,
-        REQUEST_USER_ACTION_TOOL_NAME,
-        RECONCILE_CHANGES_TOOL_NAME,
-        CLOSE_TASK_TOOL_NAME,
+        AgentToolId::INTAKE.wire_name(),
+        AgentToolId::PREPARE_WRITE.wire_name(),
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
+        AgentToolId::RECONCILE_CHANGES.wire_name(),
+        AgentToolId::CLOSE_TASK.wire_name(),
     ] {
         assert!(!names.contains(&mutation_tool));
     }
@@ -169,9 +163,9 @@ fn user_only_action_resolution_is_not_available_to_agent_mcp() -> Result<(), Box
     assert!(!adapter
         .tools()?
         .iter()
-        .any(|tool| tool.name == RESOLVE_USER_ACTION_TOOL_NAME));
+        .any(|tool| tool.id.wire_name() == MethodName::ResolveUserAction.as_str()));
     let error = adapter
-        .call_tool(RESOLVE_USER_ACTION_TOOL_NAME, json!({}))
+        .call_tool(MethodName::ResolveUserAction.as_str(), json!({}))
         .expect_err("agent MCP must not expose user-only action resolution");
     assert!(error.to_string().contains("unknown MCP tool"));
     Ok(())
@@ -299,7 +293,10 @@ fn mcp_intake_args(project_selector: Option<&str>) -> Value {
 }
 
 fn tool_names(tools: &[volicord_mcp::CanonicalToolDefinition]) -> Vec<&'static str> {
-    tools.iter().map(|tool| tool.name).collect::<Vec<_>>()
+    tools
+        .iter()
+        .map(|tool| tool.id.wire_name())
+        .collect::<Vec<_>>()
 }
 
 #[test]

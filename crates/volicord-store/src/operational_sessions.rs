@@ -7,7 +7,7 @@ use volicord_types::{
     project_agent_session_id, validate_managed_host_native_session_id,
     ConnectionIntegrationRevisionBasis, DurableIdGenerator, DurableIdKind, IntegrationRevision,
     ManagedMcpClientInfo, McpRuntimeSessionSource, OccurrenceDiagnosticFinding,
-    RandomDurableIdGenerator, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
+    RandomDurableIdGenerator, ToolVerificationRole, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::{
@@ -663,10 +663,11 @@ pub fn record_mcp_tools_list(
 pub fn record_mcp_verification_tool_observation(
     runtime_home: impl AsRef<Path>,
     runtime_session_id: &str,
-    verification_tool_name: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
-    validate_mcp_tool_name(verification_tool_name)?;
+    let verification_tool_name = ToolVerificationRole::ManagedHostRoundTrip
+        .tool()
+        .wire_name();
     validate_timestamp("verification_tool_observed_at", observed_at)?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;

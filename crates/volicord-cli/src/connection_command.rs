@@ -40,7 +40,7 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    canonical_json_sha256, canonical_json_string, guard_manifest_from_json,
+    canonical_json_sha256, canonical_json_string, guard_manifest_from_json, AgentToolId,
     ConnectionVerificationError, ConnectionVerificationReport, IntegrationProfile,
     IntegrationRevision, ProjectId, ToolVerificationRole,
 };
@@ -76,9 +76,8 @@ mod selection;
 mod service;
 mod verification;
 
-fn managed_host_round_trip_tool_name() -> &'static str {
-    volicord_types::tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
-        .expect("canonical managed-host round-trip role must have exactly one tool owner")
+const fn managed_host_round_trip_tool() -> AgentToolId {
+    ToolVerificationRole::ManagedHostRoundTrip.tool()
 }
 
 pub use mcp_process::{

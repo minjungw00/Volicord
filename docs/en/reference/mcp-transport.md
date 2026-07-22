@@ -245,9 +245,11 @@ every tool required by the current Connection mode. Duplicate initialized
 notifications are idempotent after the first valid observation and cannot
 change the negotiated revision.
 
-Only a successful `tools/call` for the exact
-`ToolVerificationRole::ManagedHostRoundTrip` owner can record managed-host
-round-trip evidence. The current owner is `volicord.list_projects`. The call
+Only a successful `tools/call` for the exact tool bound to
+`ToolVerificationRole::ManagedHostRoundTrip` can record managed-host
+round-trip evidence. The role's compile-time binding is
+`AgentToolId::LIST_PROJECTS`, whose wire-name projection is
+`volicord.list_projects`. The call
 must carry valid current managed Codex session/thread/turn correlation, belong
 to the current enabled `managed_host` runtime and Connection revision, and
 complete without a JSON-RPC or tool error. Store then atomically records the
@@ -356,20 +358,26 @@ Task state and previous calls do not dynamically add tools. A withheld mutation
 fails without Core effects. `volicord.resolve_user_action` is a public Core API
 method but is never an MCP tool.
 
-One canonical tool registry owns each public tool name, description, compact
-input schema, compact output schema, annotations, and any currently populated
-optional presentation or metadata values. `tools/list` projects that model
-through the selected session profile; Volicord does not maintain a separate
-tool registry or server implementation for each revision. Connection mode and
-storage capability may withhold tools as listed above, but protocol revision
-does not rename or substitute the tools that remain visible.
+`AgentToolId` is the canonical typed identity and catalog for every Agent
+Connection MCP tool. Core-owned identities reuse `MethodName`; adapter
+utilities, including `AgentToolId::LIST_PROJECTS`, belong to the same closed
+catalog. Each identity owns its stable MCP wire-name projection, category,
+Connection-mode availability, Core-method or adapter-utility ownership, and
+optional operational verification role.
 
-The dependency-safe canonical tool metadata also assigns typed verification
-roles. `ToolVerificationRole::ManagedHostRoundTrip` has exactly one owner and
-currently resolves deterministically to `volicord.list_projects`. Zero or
-multiple owners are invalid registry state; the MCP runtime and administrative
-CLI both consume this resolver rather than maintaining separate tool-name
-choices.
+The canonical tool registry keys each definition by `AgentToolId` and supplies
+its description, compact input schema, compact output schema, annotations, and
+any populated optional presentation or metadata values. `tools/list` emits the
+identity's wire-name projection through the selected session profile; Volicord
+does not maintain a separate tool registry or server implementation for each
+revision. Connection mode and storage capability may withhold tools as listed
+above, but protocol revision does not rename or substitute the tools that
+remain visible.
+
+`ToolVerificationRole::ManagedHostRoundTrip` is bound at compile time to
+`AgentToolId::LIST_PROJECTS`. The MCP runtime, administrative CLI, Store
+observation, and diagnostic comparison use that identity and project
+`volicord.list_projects` only at wire or persisted-name boundaries.
 
 | Selected profile | Emitted fields for each current Volicord tool |
 |---|---|

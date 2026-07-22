@@ -90,45 +90,42 @@ fn mcp_boundary_wraps_core_boundary() {
 fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
     let workflow = mcp_tools_for_mode(AgentConnectionMode::Workflow);
     let workflow_names = tool_names(&workflow);
-    assert_eq!(
-        &workflow_names[..PUBLIC_METHOD_TOOL_NAMES.len()],
-        PUBLIC_METHOD_TOOL_NAMES
-    );
-    assert!(workflow_names.contains(&"volicord.request_user_action"));
-    assert!(workflow_names.contains(&"volicord.reconcile_changes"));
-    assert!(workflow_names.contains(&PREPARE_EVIDENCE_CAPTURE_TOOL_NAME));
-    assert!(workflow_names.contains(&CHECK_CLOSE_TOOL_NAME));
-    assert!(workflow_names.contains(&"volicord.close_task"));
-    assert!(!workflow_names.contains(&"volicord.resolve_user_action"));
+    let expected = AgentToolId::ALL
+        .iter()
+        .map(|tool| tool.wire_name())
+        .collect::<Vec<_>>();
+    assert_eq!(workflow_names, expected);
+    assert!(workflow_names.contains(&AgentToolId::REQUEST_USER_ACTION.wire_name()));
+    assert!(workflow_names.contains(&AgentToolId::RECONCILE_CHANGES.wire_name()));
+    assert!(workflow_names.contains(&AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name()));
+    assert!(workflow_names.contains(&AgentToolId::CHECK_CLOSE.wire_name()));
+    assert!(workflow_names.contains(&AgentToolId::CLOSE_TASK.wire_name()));
+    assert!(!workflow_names.contains(&MethodName::ResolveUserAction.as_str()));
     assert_eq!(
         workflow_names.last().copied(),
-        Some(LIST_PROJECTS_TOOL_NAME)
+        Some(AgentToolId::LIST_PROJECTS.wire_name())
     );
 
     let read_only = mcp_tools_for_mode(AgentConnectionMode::ReadOnly);
     let read_only_names = tool_names(&read_only);
-    assert!(!read_only_names.contains(&PREPARE_EVIDENCE_CAPTURE_TOOL_NAME));
+    assert!(!read_only_names.contains(&AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name()));
     assert_eq!(
         read_only_names,
         vec![
-            "volicord.status",
-            GET_OPERATION_RESULT_TOOL_NAME,
-            CHECK_CLOSE_TOOL_NAME,
-            LIST_PROJECTS_TOOL_NAME
+            AgentToolId::STATUS.wire_name(),
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
+            AgentToolId::CHECK_CLOSE.wire_name(),
+            AgentToolId::LIST_PROJECTS.wire_name()
         ]
     );
 }
 
 #[test]
 fn canonical_managed_host_round_trip_role_resolves_to_one_exposed_tool() {
-    let designated = tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
-        .expect("canonical verification role");
-    assert_eq!(designated, LIST_PROJECTS_TOOL_NAME);
+    let designated = ToolVerificationRole::ManagedHostRoundTrip.tool();
+    assert_eq!(designated, AgentToolId::LIST_PROJECTS);
     let tools = mcp_tools_for_mode(AgentConnectionMode::Workflow);
-    assert_eq!(
-        tools.iter().filter(|tool| tool.name == designated).count(),
-        1
-    );
+    assert_eq!(tools.iter().filter(|tool| tool.id == designated).count(), 1);
 }
 
 #[test]
@@ -139,12 +136,12 @@ fn mcp_visible_schemas_hide_envelope_and_metadata() {
         assert!(
             properties.contains(&"project_selector".to_owned()),
             "{} should expose the public project selector",
-            tool.name
+            tool.id.wire_name()
         );
         assert!(
             !required.contains(&"project_selector".to_owned()),
             "{} should not require project selection for single-project connections",
-            tool.name
+            tool.id.wire_name()
         );
         for forbidden in [
             "envelope",
@@ -162,13 +159,13 @@ fn mcp_visible_schemas_hide_envelope_and_metadata() {
             assert!(
                 !properties.contains(&forbidden.to_owned()),
                 "{} should not expose MCP-internal field {forbidden}",
-                tool.name
+                tool.id.wire_name()
             );
         }
         assert!(
             !schema_has_definition(&tool.input_schema, "ToolEnvelope"),
             "{} should not include the internal ToolEnvelope schema",
-            tool.name
+            tool.id.wire_name()
         );
     }
 }
@@ -219,7 +216,10 @@ fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
 
             assert_eq!(tool_names(&runtime), tool_names(&documentation));
             for (runtime_tool, documentation_tool) in runtime.iter().zip(&documentation) {
-                assert_eq!(runtime_tool.name, documentation_tool.name);
+                assert_eq!(
+                    runtime_tool.id.wire_name(),
+                    documentation_tool.id.wire_name()
+                );
                 assert_eq!(runtime_tool.annotations, documentation_tool.annotations);
                 assert_eq!(runtime_tool.output_schema, json!({ "type": "object" }));
                 assert_eq!(documentation_tool.output_schema["type"], "object");
@@ -228,19 +228,19 @@ fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
                     root_properties(&runtime_tool.input_schema),
                     root_properties(&documentation_tool.input_schema),
                     "{} compact schema must preserve top-level properties",
-                    runtime_tool.name
+                    runtime_tool.id.wire_name()
                 );
                 assert_eq!(
                     root_required_fields(&runtime_tool.input_schema),
                     root_required_fields(&documentation_tool.input_schema),
                     "{} compact schema must preserve top-level required fields",
-                    runtime_tool.name
+                    runtime_tool.id.wire_name()
                 );
                 assert_eq!(
                     runtime_tool.input_schema.get("additionalProperties"),
                     documentation_tool.input_schema.get("additionalProperties"),
                     "{} compact schema must preserve the closed root",
-                    runtime_tool.name
+                    runtime_tool.id.wire_name()
                 );
 
                 let mut documented_input = documentation_tool.input_schema.clone();
@@ -253,9 +253,12 @@ fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
                 assert!(
                     !json_member_exists(&runtime_tool.input_schema, "examples"),
                     "{} runtime input schema must not contain examples",
-                    runtime_tool.name
+                    runtime_tool.id.wire_name()
                 );
-                assert_local_schema_refs_resolve(&runtime_tool.input_schema, runtime_tool.name);
+                assert_local_schema_refs_resolve(
+                    &runtime_tool.input_schema,
+                    runtime_tool.id.wire_name(),
+                );
             }
 
             let payload = serde_json::to_vec(&json!({ "tools": runtime }))
@@ -333,11 +336,19 @@ fn stdio_workflow_metrics_record_exact_tools_list_method_outcomes_and_status_rer
         initialize_request(1, json!({})),
         initialized_notification(),
         request(2, "tools/list", json!({})),
-        tools_call(3, STATUS_TOOL_NAME, json!({ "detail": "workflow" })),
-        tools_call(4, STATUS_TOOL_NAME, json!({ "detail": "workflow" })),
+        tools_call(
+            3,
+            AgentToolId::STATUS.wire_name(),
+            json!({ "detail": "workflow" }),
+        ),
+        tools_call(
+            4,
+            AgentToolId::STATUS.wire_name(),
+            json!({ "detail": "workflow" }),
+        ),
         tools_call(
             5,
-            CHECK_CLOSE_TOOL_NAME,
+            AgentToolId::CHECK_CLOSE.wire_name(),
             json!({
                 "private_marker": private_marker
             }),
@@ -413,11 +424,11 @@ fn mcp_readonly_degraded_tools_have_valid_schemas() {
     assert_eq!(
         tool_names(&tools),
         vec![
-            STATUS_TOOL_NAME,
-            GET_OPERATION_RESULT_TOOL_NAME,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            CHECK_CLOSE_TOOL_NAME,
-            LIST_PROJECTS_TOOL_NAME
+            AgentToolId::STATUS.wire_name(),
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
+            AgentToolId::CHECK_CLOSE.wire_name(),
+            AgentToolId::LIST_PROJECTS.wire_name()
         ]
     );
     assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
@@ -430,8 +441,10 @@ fn mcp_workflow_tools_have_valid_schemas() {
         AgentConnectionMode::Workflow,
         McpStorageCapability::ReadWrite,
     );
-    let mut expected = PUBLIC_METHOD_TOOL_NAMES.to_vec();
-    expected.push(LIST_PROJECTS_TOOL_NAME);
+    let expected = AgentToolId::ALL
+        .iter()
+        .map(|tool| tool.wire_name())
+        .collect::<Vec<_>>();
 
     assert_eq!(tool_names(&tools), expected);
     assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
@@ -445,76 +458,61 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
         McpStorageCapability::ReadWrite,
     ) {
         assert_eq!(
-            tool.output_schema["type"], "object",
+            tool.output_schema["type"],
+            "object",
             "{} output schema should have an object root",
-            tool.name
+            tool.id.wire_name()
         );
         assert!(
             schema_has_definition(&tool.output_schema, "McpToolErrorResponse"),
             "{} output schema should cover structured adapter failures",
-            tool.name
+            tool.id.wire_name()
         );
-        if !matches!(
-            tool.name,
-            STATUS_TOOL_NAME
-                | GET_OPERATION_RESULT_TOOL_NAME
-                | CHECK_CLOSE_TOOL_NAME
-                | LIST_PROJECTS_TOOL_NAME
-        ) {
+        if !matches!(tool.id.category(), AgentToolCategory::ReadOnly) {
             assert!(
                 schema_has_definition(&tool.output_schema, "McpMutationResponseBudgetExceeded"),
                 "{} output schema should cover compact response-budget failures",
-                tool.name
+                tool.id.wire_name()
             );
             assert!(
                 schema_has_definition(&tool.output_schema, "McpMutationPostEffectFailure"),
                 "{} output schema should cover post-effect adapter failures",
-                tool.name
+                tool.id.wire_name()
             );
         }
 
-        let expected_annotations = match tool.name {
-            STATUS_TOOL_NAME
-            | GET_OPERATION_RESULT_TOOL_NAME
-            | CHECK_CLOSE_TOOL_NAME
-            | LIST_PROJECTS_TOOL_NAME => CanonicalToolAnnotations {
+        let expected_annotations = match tool.id.category() {
+            AgentToolCategory::ReadOnly => CanonicalToolAnnotations {
                 read_only_hint: true,
                 destructive_hint: false,
                 idempotent_hint: true,
                 open_world_hint: false,
             },
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME
-            | PREPARE_WRITE_TOOL_NAME
-            | STAGE_ARTIFACT_TOOL_NAME => CanonicalToolAnnotations {
+            AgentToolCategory::NonDestructiveMutation => CanonicalToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: false,
                 idempotent_hint: false,
                 open_world_hint: false,
             },
-            INTAKE_TOOL_NAME
-            | UPDATE_SCOPE_TOOL_NAME
-            | RECORD_RUN_TOOL_NAME
-            | REQUEST_USER_ACTION_TOOL_NAME
-            | RECONCILE_CHANGES_TOOL_NAME
-            | CLOSE_TASK_TOOL_NAME => CanonicalToolAnnotations {
+            AgentToolCategory::DestructiveMutation => CanonicalToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: true,
                 idempotent_hint: false,
                 open_world_hint: false,
             },
-            _ => panic!("missing expected MCP annotations for {}", tool.name),
         };
         assert_eq!(
-            tool.annotations, expected_annotations,
+            tool.annotations,
+            expected_annotations,
             "{} annotations should match its effect boundary",
-            tool.name
+            tool.id.wire_name()
         );
     }
 }
 
 #[test]
 fn request_user_action_output_schema_covers_compound_agent_safe_response() {
-    let schema = tool_definition(REQUEST_USER_ACTION_TOOL_NAME).output_schema;
+    let schema = tool_definition(AgentToolId::REQUEST_USER_ACTION.wire_name()).output_schema;
 
     assert!(schema_has_definition(&schema, "RequestUserActionResult"));
     assert!(schema_has_definition(
@@ -550,7 +548,7 @@ fn request_user_action_output_schema_covers_compound_agent_safe_response() {
 fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<dyn Error>> {
     let cases = [
         (
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             "create_new",
             vec![
                 ("initial_context_refs", json!([])),
@@ -558,7 +556,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             ],
         ),
         (
-            UPDATE_SCOPE_TOOL_NAME,
+            AgentToolId::UPDATE_SCOPE.wire_name(),
             UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
             vec![
                 ("goal_summary", Value::Null),
@@ -572,7 +570,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             ],
         ),
         (
-            PREPARE_WRITE_TOOL_NAME,
+            AgentToolId::PREPARE_WRITE.wire_name(),
             PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
             vec![
                 ("task_id", Value::Null),
@@ -581,7 +579,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             ],
         ),
         (
-            STAGE_ARTIFACT_TOOL_NAME,
+            AgentToolId::STAGE_ARTIFACT.wire_name(),
             "stage_safe_text",
             vec![
                 ("expected_sha256", Value::Null),
@@ -590,7 +588,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             ],
         ),
         (
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::RECORD_RUN.wire_name(),
             RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
             vec![
                 ("run_id", Value::Null),
@@ -627,11 +625,11 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         }
     }
 
-    let tool = tool_definition(REQUEST_USER_ACTION_TOOL_NAME);
+    let tool = tool_definition(AgentToolId::REQUEST_USER_ACTION.wire_name());
     let decoded = decode_mcp_arguments_to_value(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         canonical_example_value(
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
         )?,
     )?;
@@ -644,16 +642,20 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
     ] {
         assert!(
             !create_required.iter().any(|required| required == field),
-            "{REQUEST_USER_ACTION_TOOL_NAME}{pointer} should be omittable"
+            "{}{pointer} should be omittable",
+            AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
         assert_eq!(
-            create_schema["properties"][field]["default"], expected,
-            "{REQUEST_USER_ACTION_TOOL_NAME}{pointer} should advertise its exact omission default"
+            create_schema["properties"][field]["default"],
+            expected,
+            "{}{pointer} should advertise its exact omission default",
+            AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
         assert_eq!(
             decoded.pointer(pointer),
             Some(&expected),
-            "{REQUEST_USER_ACTION_TOOL_NAME}{pointer} omission should decode to the advertised default"
+            "{}{pointer} omission should decode to the advertised default",
+            AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
     }
     let choice_schema = &tool.input_schema["definitions"]["UserActionChoiceDraft"];
@@ -668,17 +670,18 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         Value::Null
     );
 
-    for tool_name in [
-        INTAKE_TOOL_NAME,
-        UPDATE_SCOPE_TOOL_NAME,
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
-        PREPARE_WRITE_TOOL_NAME,
-        STAGE_ARTIFACT_TOOL_NAME,
-        RECORD_RUN_TOOL_NAME,
-        REQUEST_USER_ACTION_TOOL_NAME,
-        RECONCILE_CHANGES_TOOL_NAME,
-        CLOSE_TASK_TOOL_NAME,
+    for tool in [
+        AgentToolId::INTAKE,
+        AgentToolId::UPDATE_SCOPE,
+        AgentToolId::PREPARE_EVIDENCE_CAPTURE,
+        AgentToolId::PREPARE_WRITE,
+        AgentToolId::STAGE_ARTIFACT,
+        AgentToolId::RECORD_RUN,
+        AgentToolId::REQUEST_USER_ACTION,
+        AgentToolId::RECONCILE_CHANGES,
+        AgentToolId::CLOSE_TASK,
     ] {
+        let tool_name = tool.wire_name();
         let tool = tool_definition(tool_name);
         assert!(!root_required_fields(&tool.input_schema)
             .iter()
@@ -687,7 +690,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             tool.input_schema["properties"]["detail"]["default"],
             "summary"
         );
-        let example = canonical_tool_examples(tool_name)
+        let example = canonical_tool_examples(tool.id)
             .first()
             .expect("mutation tool should advertise an example");
         let decoded = decode_mcp_arguments_to_value(
@@ -695,8 +698,10 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             serde_json::from_str(example.arguments_json)?,
         )?;
         let example_detail = if matches!(
-            tool_name,
-            PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME | RECONCILE_CHANGES_TOOL_NAME
+            tool.id,
+            AgentToolId::PREPARE_WRITE
+                | AgentToolId::STAGE_ARTIFACT
+                | AgentToolId::RECONCILE_CHANGES
         ) {
             "full"
         } else {
@@ -706,9 +711,11 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
     }
 
     assert_eq!(
-        root_required_fields(&tool_definition(REQUEST_USER_ACTION_TOOL_NAME).input_schema)
-            .into_iter()
-            .collect::<BTreeSet<_>>(),
+        root_required_fields(
+            &tool_definition(AgentToolId::REQUEST_USER_ACTION.wire_name()).input_schema
+        )
+        .into_iter()
+        .collect::<BTreeSet<_>>(),
         BTreeSet::from(["request".to_owned()])
     );
     Ok(())
@@ -769,7 +776,7 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
 
     for (arguments, expected_capture, foreign_field) in cases {
         crate::schema_validation::validate_mcp_tool_arguments(
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
             &arguments,
         )?;
         let decoded: McpPrepareEvidenceCaptureArguments =
@@ -781,7 +788,7 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
         let mut invalid = arguments;
         invalid["capture"][foreign_field] = json!("not allowed for this capture kind");
         assert!(crate::schema_validation::validate_mcp_tool_arguments(
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
             &invalid,
         )
         .is_err());
@@ -795,11 +802,11 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
 fn mcp_omission_defaults_do_not_change_core_request_required_members() {
     let cases = [
         (
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             &["initial_context_refs", "initial_source_refs"][..],
         ),
         (
-            UPDATE_SCOPE_TOOL_NAME,
+            AgentToolId::UPDATE_SCOPE.wire_name(),
             &[
                 "goal_summary",
                 "scope_update",
@@ -812,15 +819,15 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
             ][..],
         ),
         (
-            PREPARE_WRITE_TOOL_NAME,
+            AgentToolId::PREPARE_WRITE.wire_name(),
             &["task_id", "change_unit_id", "sensitive_categories"][..],
         ),
         (
-            STAGE_ARTIFACT_TOOL_NAME,
+            AgentToolId::STAGE_ARTIFACT.wire_name(),
             &["expected_sha256", "expected_size_bytes", "relation_hint"][..],
         ),
         (
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::RECORD_RUN.wire_name(),
             &[
                 "run_id",
                 "write_ticket_id",
@@ -831,7 +838,7 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
             ][..],
         ),
         (
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             &["change_unit_id", "expires_at"][..],
         ),
     ];
@@ -848,12 +855,14 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
         }
     }
 
-    let schema = volicord_types::public_request_schema(REQUEST_USER_ACTION_TOOL_NAME)
-        .expect("request-user-action public Core schema should exist");
+    let schema =
+        volicord_types::public_request_schema(AgentToolId::REQUEST_USER_ACTION.wire_name())
+            .expect("request-user-action public Core schema should exist");
     for field in ["affected_refs", "sensitive_action_scope"] {
         assert!(
             schema_requires_property(&schema, field),
-            "{REQUEST_USER_ACTION_TOOL_NAME}.action.{field} should remain a required Core request member"
+            "{}.action.{field} should remain a required Core request member",
+            AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
     }
 }
@@ -862,7 +871,7 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
 fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(), Box<dyn Error>> {
     let expected_branches: &[(&str, &[&str])] = &[
         (
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             &[
                 "create_new",
                 "resume_active",
@@ -871,7 +880,7 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
             ],
         ),
         (
-            UPDATE_SCOPE_TOOL_NAME,
+            AgentToolId::UPDATE_SCOPE.wire_name(),
             &[
                 UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
                 "create_current_change_unit",
@@ -879,50 +888,59 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
             ],
         ),
         (
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS.wire_name(),
             &["summary_status", STATUS_READ_ONLY_EXAMPLE_ID, "full_status"],
         ),
         (
-            GET_OPERATION_RESULT_TOOL_NAME,
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
             &[GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID],
         ),
         (
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
             &[
                 PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
                 PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID,
             ],
         ),
-        (PREPARE_WRITE_TOOL_NAME, &[PREPARE_WRITE_SIMPLE_EXAMPLE_ID]),
-        (STAGE_ARTIFACT_TOOL_NAME, &["stage_safe_text"]),
         (
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::PREPARE_WRITE.wire_name(),
+            &[PREPARE_WRITE_SIMPLE_EXAMPLE_ID],
+        ),
+        (
+            AgentToolId::STAGE_ARTIFACT.wire_name(),
+            &["stage_safe_text"],
+        ),
+        (
+            AgentToolId::RECORD_RUN.wire_name(),
             &[
                 RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
                 "evidence_bearing_record_run",
             ],
         ),
         (
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             &[
                 REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
                 "resume_user_action",
             ],
         ),
-        (RECONCILE_CHANGES_TOOL_NAME, &["reconcile_current_task"]),
         (
-            CHECK_CLOSE_TOOL_NAME,
+            AgentToolId::RECONCILE_CHANGES.wire_name(),
+            &["reconcile_current_task"],
+        ),
+        (
+            AgentToolId::CHECK_CLOSE.wire_name(),
             &[CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID],
         ),
         (
-            CLOSE_TASK_TOOL_NAME,
+            AgentToolId::CLOSE_TASK.wire_name(),
             &["close_complete", "close_cancel", "close_supersede"],
         ),
     ];
 
     for (tool_name, expected_ids) in expected_branches {
         let tool = tool_definition(tool_name);
-        let canonical = canonical_tool_examples(tool_name);
+        let canonical = canonical_tool_examples(tool.id);
         assert_eq!(
             canonical
                 .iter()
@@ -960,7 +978,7 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
 
 #[test]
 fn record_run_discovery_exposes_advisor_no_write_compatibility() -> Result<(), Box<dyn Error>> {
-    let tool = tool_definition(RECORD_RUN_TOOL_NAME);
+    let tool = tool_definition(AgentToolId::RECORD_RUN.wire_name());
     for compatibility in [
         "advisor/shaping_update",
         "direct/direct",
@@ -973,7 +991,7 @@ fn record_run_discovery_exposes_advisor_no_write_compatibility() -> Result<(), B
     }
 
     let arguments = canonical_example_value(
-        RECORD_RUN_TOOL_NAME,
+        AgentToolId::RECORD_RUN.wire_name(),
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     assert_eq!(arguments["kind"], "shaping_update");
@@ -986,7 +1004,7 @@ fn record_run_discovery_exposes_advisor_no_write_compatibility() -> Result<(), B
     );
     assert_eq!(arguments["observed_changes"]["changed_paths"], json!([]));
 
-    let decoded = decode_mcp_arguments_to_value(RECORD_RUN_TOOL_NAME, arguments)?;
+    let decoded = decode_mcp_arguments_to_value(AgentToolId::RECORD_RUN.wire_name(), arguments)?;
     assert!(decoded["write_ticket_id"].is_null());
     Ok(())
 }
@@ -996,15 +1014,15 @@ fn record_run_invalid_observed_changes_reports_expected_shape() -> Result<(), Bo
     let fixture = CoreFixture::new("mcp-invalid-record-run-observed-changes")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        RECORD_RUN_TOOL_NAME,
+        AgentToolId::RECORD_RUN.wire_name(),
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["observed_changes"] = json!([]);
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("invalid observed_changes should fail before Core");
-    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
     let issue = tool_error_issue(&response, "/observed_changes", "MCP_ARGUMENT_TYPE_MISMATCH");
     assert!(issue["message"]
         .as_str()
@@ -1017,15 +1035,15 @@ fn record_run_invalid_kind_reports_allowed_values() -> Result<(), Box<dyn Error>
     let fixture = CoreFixture::new("mcp-invalid-record-run-kind")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        RECORD_RUN_TOOL_NAME,
+        AgentToolId::RECORD_RUN.wire_name(),
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["kind"] = json!("test");
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("invalid kind should fail before Core");
-    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
     let issue = tool_error_issue(&response, "/kind", "MCP_ARGUMENT_ENUM_VALUE");
     let message = issue["message"].as_str().expect("enum issue message");
     assert!(message.contains("shaping_update"));
@@ -1042,7 +1060,7 @@ fn record_run_artifact_input_source_uses_public_value_set() -> Result<(), Box<dy
     for unsupported in ["captured_artifact", "native_artifact"] {
         let before = fixture.counts()?;
         let mut arguments = canonical_example_value(
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::RECORD_RUN.wire_name(),
             RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
         )?;
         arguments["artifact_inputs"] = json!([{
@@ -1058,9 +1076,9 @@ fn record_run_artifact_input_source_uses_public_value_set() -> Result<(), Box<dy
         }]);
 
         let error = adapter
-            .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+            .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
             .expect_err("unsupported artifact input source should fail before Core");
-        let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+        let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
         let issue = tool_error_issue(
             &response,
             "/artifact_inputs/0/source_kind",
@@ -1084,7 +1102,7 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
     let fixture = CoreFixture::new("mcp-invalid-record-run-evidence-observation")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        RECORD_RUN_TOOL_NAME,
+        AgentToolId::RECORD_RUN.wire_name(),
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["evidence_observations"] = json!([
@@ -1097,9 +1115,9 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
     ]);
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("invalid evidence observation should fail before Core");
-    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
     for field in ["source_kind", "assurance_level", "observed_at"] {
         tool_error_issue(
             &response,
@@ -1112,9 +1130,15 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
 
 #[test]
 fn record_run_evidence_example_expands_nested_omission_defaults() -> Result<(), Box<dyn Error>> {
-    let arguments = canonical_example_value(RECORD_RUN_TOOL_NAME, "evidence_bearing_record_run")?;
-    crate::schema_validation::validate_mcp_tool_arguments(RECORD_RUN_TOOL_NAME, &arguments)?;
-    let decoded = decode_mcp_arguments_to_value(RECORD_RUN_TOOL_NAME, arguments)?;
+    let arguments = canonical_example_value(
+        AgentToolId::RECORD_RUN.wire_name(),
+        "evidence_bearing_record_run",
+    )?;
+    crate::schema_validation::validate_mcp_tool_arguments(
+        AgentToolId::RECORD_RUN.wire_name(),
+        &arguments,
+    )?;
+    let decoded = decode_mcp_arguments_to_value(AgentToolId::RECORD_RUN.wire_name(), arguments)?;
 
     let coverage = &decoded["evidence_updates"][0];
     assert_eq!(coverage["supporting_run_refs"], json!([]));
@@ -1142,15 +1166,17 @@ fn record_run_nested_evidence_unknown_fields_fail_before_core() -> Result<(), Bo
     let fixture = CoreFixture::new("mcp-invalid-record-run-nested-evidence-field")?;
     let adapter = adapter(&fixture)?;
     let before = fixture.counts()?;
-    let mut arguments =
-        canonical_example_value(RECORD_RUN_TOOL_NAME, "evidence_bearing_record_run")?;
+    let mut arguments = canonical_example_value(
+        AgentToolId::RECORD_RUN.wire_name(),
+        "evidence_bearing_record_run",
+    )?;
     arguments["evidence_updates"][0]["unsupported_ref"] = json!("not accepted");
     arguments["evidence_observations"][0]["unsupported_metadata"] = json!(true);
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("unknown nested evidence fields should fail before Core");
-    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
     tool_error_issue(
         &response,
         "/evidence_updates/0/unsupported_ref",
@@ -1174,15 +1200,15 @@ fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<
     let fixture = CoreFixture::new("mcp-invalid-record-run-root-field")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        RECORD_RUN_TOOL_NAME,
+        AgentToolId::RECORD_RUN.wire_name(),
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["unexpected"] = json!("not accepted");
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("unknown root field should fail before Core");
-    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
     tool_error_issue(&response, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
     Ok(())
 }
@@ -1192,7 +1218,7 @@ fn request_user_action_invalid_options_report_option_id_shape() -> Result<(), Bo
     let fixture = CoreFixture::new("mcp-invalid-judgment-options")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
     arguments["request"]["action"]["judgment_kind"] = json!("product_decision");
@@ -1207,9 +1233,9 @@ fn request_user_action_invalid_options_report_option_id_shape() -> Result<(), Bo
     ]);
 
     let error = adapter
-        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments)
         .expect_err("invalid options should fail before Core");
-    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::REQUEST_USER_ACTION.wire_name(), &error);
     tool_error_issue(
         &response,
         "/request/action/options/0/option_id",
@@ -1228,15 +1254,15 @@ fn request_user_action_invalid_visible_risk_reports_expected_shape() -> Result<(
     let fixture = CoreFixture::new("mcp-invalid-judgment-visible-risk")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
     arguments["request"]["action"]["context"]["visible_risks"] = json!(["plain risk text"]);
 
     let error = adapter
-        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments)
         .expect_err("invalid visible risk should fail before Core");
-    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::REQUEST_USER_ACTION.wire_name(), &error);
     tool_error_issue(
         &response,
         "/request/action/context/visible_risks/0",
@@ -1252,7 +1278,7 @@ fn request_user_action_operation_union_rejects_missing_invalid_and_mixed_shapes(
     let adapter = adapter(&fixture)?;
     let before = fixture.counts()?;
     let create = canonical_example_value(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
 
@@ -1284,9 +1310,9 @@ fn request_user_action_operation_union_rejects_missing_invalid_and_mixed_shapes(
         (mixed_resume, "/request/task_id", "MCP_ARGUMENT_UNKNOWN"),
     ] {
         let error = adapter
-            .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
+            .call_tool(AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments)
             .expect_err("invalid create/resume union shape should fail before Core");
-        let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
+        let response = structured_tool_error(AgentToolId::REQUEST_USER_ACTION.wire_name(), &error);
         tool_error_issue(&response, path, code);
     }
     assert_eq!(fixture.counts()?, before);
@@ -1308,9 +1334,9 @@ fn known_tool_validation_aggregates_independent_issues_without_core_effects(
     });
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("independent argument failures should be rejected together");
-    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
 
     for field in ["task_id", "change_unit_id", "baseline_ref", "summary"] {
         tool_error_issue(&response, &format!("/{field}"), "MCP_ARGUMENT_REQUIRED");
@@ -1346,15 +1372,15 @@ fn nullable_object_union_prefers_matching_branch_and_keeps_nested_issues(
     let fixture = CoreFixture::new("mcp-nullable-object-validation")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        RECORD_RUN_TOOL_NAME,
+        AgentToolId::RECORD_RUN.wire_name(),
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
     )?;
     arguments["close_assessment"] = json!({});
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::RECORD_RUN.wire_name(), arguments)
         .expect_err("empty close assessment should expose its nested missing fields");
-    let response = structured_tool_error(RECORD_RUN_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::RECORD_RUN.wire_name(), &error);
 
     for field in [
         "result_summary",
@@ -1385,15 +1411,15 @@ fn decoder_only_failure_is_one_structured_issue_without_core_effects() -> Result
     let adapter = adapter(&fixture)?;
     let before = fixture.counts()?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
     arguments["request"]["expires_at"] = json!("not-a-timestamp");
 
     let error = adapter
-        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments)
         .expect_err("invalid timestamp format should fail typed decoding");
-    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::REQUEST_USER_ACTION.wire_name(), &error);
 
     assert_eq!(response["issues"].as_array().map(Vec::len), Some(1));
     assert_eq!(response["reported_issue_count"], 1);
@@ -1411,15 +1437,15 @@ fn decoder_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn E
     let _guard = make_project_state_readonly(&fixture)?;
     let before = fixture.counts()?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
     arguments["request"]["expires_at"] = json!("not-a-timestamp");
 
     let error = adapter
-        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
+        .call_tool(AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments)
         .expect_err("typed argument decoding should precede storage preconditions");
-    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
+    let response = structured_tool_error(AgentToolId::REQUEST_USER_ACTION.wire_name(), &error);
 
     assert_eq!(response["code"], "MCP_INVALID_ARGUMENTS");
     tool_error_issue(&response, "", "MCP_ARGUMENT_DECODE_FAILED");
@@ -1428,9 +1454,9 @@ fn decoder_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn E
 }
 
 #[test]
-fn mcp_minimal_smoke_tool_lists_hello() {
+fn mcp_minimal_smoke_definition_uses_canonical_identity() {
     let tools = vec![CanonicalToolDefinition {
-        name: "hello",
+        id: AgentToolId::STATUS,
         title: None,
         description: "Minimal diagnostic smoke fixture.",
         input_schema: json!({
@@ -1455,8 +1481,8 @@ fn mcp_minimal_smoke_tool_lists_hello() {
         metadata: None,
     }];
 
-    assert_eq!(tool_names(&tools), vec!["hello"]);
-    assert_eq!(mcp_tool_naming_style(&tools), "plain");
+    assert_eq!(tool_names(&tools), vec![AgentToolId::STATUS.wire_name()]);
+    assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
     assert_compatible_tool_definitions(&tools);
 }
 
@@ -1601,12 +1627,12 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
     let names = tool_names(&adapter.tools()?);
 
     assert_report_line(&report, "effective_tool_mode: read_only_degraded");
-    assert!(names.contains(&STATUS_TOOL_NAME));
-    assert!(names.contains(&GET_OPERATION_RESULT_TOOL_NAME));
-    assert!(names.contains(&REQUEST_USER_ACTION_TOOL_NAME));
-    assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
-    assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
-    assert!(!names.contains(&INTAKE_TOOL_NAME));
+    assert!(names.contains(&AgentToolId::STATUS.wire_name()));
+    assert!(names.contains(&AgentToolId::GET_OPERATION_RESULT.wire_name()));
+    assert!(names.contains(&AgentToolId::REQUEST_USER_ACTION.wire_name()));
+    assert!(names.contains(&AgentToolId::CHECK_CLOSE.wire_name()));
+    assert!(names.contains(&AgentToolId::LIST_PROJECTS.wire_name()));
+    assert!(!names.contains(&AgentToolId::INTAKE.wire_name()));
     Ok(())
 }
 
@@ -1801,7 +1827,7 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
         request(2, "tools/list", json!({})),
         tools_call_with_codex_metadata(
             3,
-            LIST_PROJECTS_TOOL_NAME,
+            AgentToolId::LIST_PROJECTS.wire_name(),
             json!({}),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
@@ -1858,7 +1884,7 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
     assert_eq!(runtime.required_tools_present, Some(true));
     assert_eq!(
         runtime.verification_tool_name.as_deref(),
-        Some(LIST_PROJECTS_TOOL_NAME)
+        Some(AgentToolId::LIST_PROJECTS.wire_name())
     );
     assert!(runtime.verification_tool_observed_at.is_some());
     assert!(runtime.graceful_close_at.is_some());
@@ -1871,7 +1897,7 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-nondesignated-read-only-round-trip")?;
     let setup_adapter = adapter(&fixture)?;
-    let committed = setup_adapter.call_tool(INTAKE_TOOL_NAME, intake_args(None))?;
+    let committed = setup_adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))?;
     let task_id = committed.response_value["task_ref"]["record_id"]
         .as_str()
         .ok_or("intake task id")?
@@ -1885,7 +1911,7 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         request(2, "tools/list", json!({})),
         tools_call_with_codex_metadata(
             3,
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS.wire_name(),
             json!({ "detail": "workflow" }),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
@@ -1893,7 +1919,7 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         ),
         tools_call_with_codex_metadata(
             4,
-            GET_OPERATION_RESULT_TOOL_NAME,
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
             json!({ "operation_result_ref": operation_result_ref }),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
@@ -1901,7 +1927,7 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         ),
         tools_call_with_codex_metadata(
             5,
-            CHECK_CLOSE_TOOL_NAME,
+            AgentToolId::CHECK_CLOSE.wire_name(),
             json!({ "task_id": task_id }),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
@@ -1938,7 +1964,7 @@ fn failed_designated_tool_call_does_not_record_round_trip_evidence() -> Result<(
         request(2, "tools/list", json!({})),
         tools_call_with_codex_metadata(
             3,
-            LIST_PROJECTS_TOOL_NAME,
+            AgentToolId::LIST_PROJECTS.wire_name(),
             json!({ "unexpected": true }),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
@@ -2091,7 +2117,7 @@ fn managed_codex_new_client_version_uses_protocol_and_call_binding() -> Result<(
         initialized_notification(),
         tools_call_with_codex_metadata(
             2,
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS.wire_name(),
             json!({"detail":"workflow"}),
             CODEX_TEST_SESSION_ID,
             CODEX_TEST_THREAD_ID,
@@ -2218,7 +2244,7 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
             2,
             "tools/call",
             json!({
-                "name": LIST_PROJECTS_TOOL_NAME,
+                "name": AgentToolId::LIST_PROJECTS.wire_name(),
                 "arguments": {},
                 "_meta": {
                     "threadId": "thread invalid marker",
@@ -2415,11 +2441,11 @@ fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<
     assert_eq!(
         names,
         vec![
-            STATUS_TOOL_NAME,
-            GET_OPERATION_RESULT_TOOL_NAME,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            CHECK_CLOSE_TOOL_NAME,
-            LIST_PROJECTS_TOOL_NAME
+            AgentToolId::STATUS.wire_name(),
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
+            AgentToolId::CHECK_CLOSE.wire_name(),
+            AgentToolId::LIST_PROJECTS.wire_name()
         ]
     );
     assert!(responses[1].get("error").is_none());
@@ -2435,14 +2461,14 @@ fn mcp_readonly_storage_exposes_read_tools_and_user_action_resume() -> Result<()
 
     let names = tool_names(&adapter.tools()?);
 
-    assert!(names.contains(&STATUS_TOOL_NAME));
-    assert!(names.contains(&GET_OPERATION_RESULT_TOOL_NAME));
-    assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
-    assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
-    assert!(names.contains(&REQUEST_USER_ACTION_TOOL_NAME));
-    assert!(!names.contains(&INTAKE_TOOL_NAME));
-    assert!(!names.contains(&RECORD_RUN_TOOL_NAME));
-    assert!(!names.contains(&CLOSE_TASK_TOOL_NAME));
+    assert!(names.contains(&AgentToolId::STATUS.wire_name()));
+    assert!(names.contains(&AgentToolId::GET_OPERATION_RESULT.wire_name()));
+    assert!(names.contains(&AgentToolId::LIST_PROJECTS.wire_name()));
+    assert!(names.contains(&AgentToolId::CHECK_CLOSE.wire_name()));
+    assert!(names.contains(&AgentToolId::REQUEST_USER_ACTION.wire_name()));
+    assert!(!names.contains(&AgentToolId::INTAKE.wire_name()));
+    assert!(!names.contains(&AgentToolId::RECORD_RUN.wire_name()));
+    assert!(!names.contains(&AgentToolId::CLOSE_TASK.wire_name()));
     Ok(())
 }
 
@@ -2451,8 +2477,10 @@ fn mcp_readwrite_storage_exposes_workflow_tools() -> Result<(), Box<dyn Error>> 
     let fixture = CoreFixture::new("mcp-readwrite-exposes-workflow")?;
     let adapter = adapter(&fixture)?;
 
-    let mut expected = PUBLIC_METHOD_TOOL_NAMES.to_vec();
-    expected.push(LIST_PROJECTS_TOOL_NAME);
+    let expected = AgentToolId::ALL
+        .iter()
+        .map(|tool| tool.wire_name())
+        .collect::<Vec<_>>();
 
     assert_eq!(tool_names(&adapter.tools()?), expected);
     Ok(())
@@ -2465,7 +2493,10 @@ fn mcp_status_succeeds_with_readonly_storage() -> Result<(), Box<dyn Error>> {
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response = adapter.call_tool(STATUS_TOOL_NAME, json!({ "detail": "workflow" }))?;
+    let response = adapter.call_tool(
+        AgentToolId::STATUS.wire_name(),
+        json!({ "detail": "workflow" }),
+    )?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
@@ -2486,7 +2517,8 @@ fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response = adapter.call_tool(STATUS_TOOL_NAME, json!({ "detail": "full" }))?;
+    let response =
+        adapter.call_tool(AgentToolId::STATUS.wire_name(), json!({ "detail": "full" }))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(read_only_state_version(&fixture)?, before_version);
@@ -2506,20 +2538,21 @@ fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-operation-result-exact-page")?;
     let setup_adapter = adapter(&fixture)?;
-    let committed = setup_adapter.call_tool(INTAKE_TOOL_NAME, intake_args(None))?;
+    let committed = setup_adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))?;
     let operation_result_ref = committed
         .operation_result_ref
         .clone()
         .ok_or("committed agent-workflow result should expose a lookup ref")?;
     set_mode(&fixture, CONNECTION_MODE_READ_ONLY)?;
     let read_only_adapter = adapter(&fixture)?;
-    assert!(tool_names(&read_only_adapter.tools()?).contains(&GET_OPERATION_RESULT_TOOL_NAME));
+    assert!(tool_names(&read_only_adapter.tools()?)
+        .contains(&AgentToolId::GET_OPERATION_RESULT.wire_name()));
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
         tools_call(
             2,
-            GET_OPERATION_RESULT_TOOL_NAME,
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
             json!({ "operation_result_ref": operation_result_ref.clone() }),
         ),
     ])?);
@@ -2554,7 +2587,7 @@ fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
     set_connection_enabled(fixture.runtime_home_path(), fixture.connection_id(), false)?;
     let disabled = stale_adapter
         .call_tool(
-            GET_OPERATION_RESULT_TOOL_NAME,
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
             json!({ "operation_result_ref": operation_result_ref }),
         )
         .expect_err("every result page should recheck current connection access");
@@ -2609,7 +2642,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     let change_unit_summary = bounded_unicode_text("change-unit", 0);
 
     let omitted = call_stdio(
-        UPDATE_SCOPE_TOOL_NAME,
+        AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
             "detail": "full",
             "task_id": task_id,
@@ -2663,7 +2696,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     assert!(stored.response_json.contains(omitted_exact_marker));
 
     let advanced = call_stdio(
-        UPDATE_SCOPE_TOOL_NAME,
+        AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
             "task_id": task_id,
             "change_unit": { "operation": "keep_current" }
@@ -2688,7 +2721,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
         if let Some(next_cursor) = cursor.take() {
             arguments["cursor"] = Value::String(next_cursor);
         }
-        let response = call_stdio(GET_OPERATION_RESULT_TOOL_NAME, arguments)?;
+        let response = call_stdio(AgentToolId::GET_OPERATION_RESULT.wire_name(), arguments)?;
         let result = &response["result"];
         let page = &result["structuredContent"];
         assert_eq!(result["isError"], false);
@@ -2725,7 +2758,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
     assert_eq!(reconstructed.as_bytes(), stored.response_json.as_bytes());
 
     let status = call_stdio(
-        STATUS_TOOL_NAME,
+        AgentToolId::STATUS.wire_name(),
         json!({ "detail": "summary", "task_id": task_id }),
     )?;
     let status_structured = &status["result"]["structuredContent"];
@@ -2748,7 +2781,7 @@ fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response = adapter.call_tool(INTAKE_TOOL_NAME, intake_args(None))?;
+    let response = adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
@@ -2783,7 +2816,7 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
     let adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&adapter)?;
     let created = adapter.call_tool(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         product_action_args(&fixture, &task_id, state_version),
     )?;
     assert!(!created.replayed);
@@ -2800,9 +2833,9 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
     let before_requests = read_only_table_count(&fixture, "user_action_requests")?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    assert!(tool_names(&adapter.tools()?).contains(&REQUEST_USER_ACTION_TOOL_NAME));
+    assert!(tool_names(&adapter.tools()?).contains(&AgentToolId::REQUEST_USER_ACTION.wire_name()));
     let rejected_create = adapter.call_tool(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         product_action_args(&fixture, &task_id, before_version),
     )?;
     assert_eq!(
@@ -2815,7 +2848,7 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
     );
 
     let resumed = adapter.call_tool(
-        REQUEST_USER_ACTION_TOOL_NAME,
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
         resume_user_action_args(&fixture, &user_action_request_id),
     )?;
     assert!(resumed.replayed);
@@ -2864,7 +2897,7 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
 
     let cases = [
         (
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             json!({
                 "plain_language_request": "Exercise read-only rejection.",
                 "requested_mode": "work",
@@ -2883,7 +2916,7 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
             }),
         ),
         (
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
             json!({
                 "task_id": "task_read_only_capture",
                 "change_unit_id": "cu_read_only_capture",
@@ -2960,7 +2993,7 @@ fn every_conformance_covered_revision_executes_the_transport_and_eof_matrix(
         let premature_tools = handle_json_rpc_message(
             &connection_adapter,
             &mut state,
-            tools_call(2, STATUS_TOOL_NAME, json!({})),
+            tools_call(2, AgentToolId::STATUS.wire_name(), json!({})),
         )?
         .expect("premature tools/call should return an error");
         assert_eq!(premature_tools["error"]["code"], -32600);
@@ -2991,7 +3024,7 @@ fn every_conformance_covered_revision_executes_the_transport_and_eof_matrix(
             initialized_notification(),
             request(11, "ping", json!({})),
             request(12, "tools/list", json!({})),
-            tools_call(13, LIST_PROJECTS_TOOL_NAME, json!({})),
+            tools_call(13, AgentToolId::LIST_PROJECTS.wire_name(), json!({})),
         ])?);
         let mut output = Vec::new();
         run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
@@ -3085,10 +3118,7 @@ fn every_conformance_covered_revision_projects_tools_results_and_request_failure
             .iter()
             .filter_map(|tool| tool["name"].as_str())
             .collect::<BTreeSet<_>>();
-        for required in PUBLIC_METHOD_TOOL_NAMES
-            .iter()
-            .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        {
+        for required in AgentToolId::ALL.map(AgentToolId::wire_name) {
             assert!(
                 tool_names.contains(required),
                 "{} omitted required tool {required}",
@@ -3120,7 +3150,7 @@ fn every_conformance_covered_revision_projects_tools_results_and_request_failure
         let success = handle_json_rpc_message(
             &connection_adapter,
             &mut state,
-            tools_call(4, LIST_PROJECTS_TOOL_NAME, json!({})),
+            tools_call(4, AgentToolId::LIST_PROJECTS.wire_name(), json!({})),
         )?
         .expect("list-projects response");
         let success_body = projected_authoritative_tool_result(&success["result"])?;
@@ -3146,14 +3176,17 @@ fn every_conformance_covered_revision_projects_tools_results_and_request_failure
             &mut state,
             tools_call(
                 5,
-                RECORD_RUN_TOOL_NAME,
+                AgentToolId::RECORD_RUN.wire_name(),
                 json!({ "kind": "unsupported", "unexpected": true }),
             ),
         )?
         .expect("known-tool validation response");
         let invalid_body = projected_authoritative_tool_result(&invalid_arguments["result"])?;
         assert_eq!(invalid_body["code"], "MCP_INVALID_ARGUMENTS");
-        assert_eq!(invalid_body["tool_name"], RECORD_RUN_TOOL_NAME);
+        assert_eq!(
+            invalid_body["tool_name"],
+            AgentToolId::RECORD_RUN.wire_name()
+        );
 
         let invalid_params = handle_json_rpc_message(
             &connection_adapter,
@@ -3181,14 +3214,14 @@ fn every_conformance_covered_revision_projects_tools_results_and_request_failure
             &mut state,
             tools_call(
                 8,
-                STATUS_TOOL_NAME,
+                AgentToolId::STATUS.wire_name(),
                 json!({"project_selector": "project_that_is_not_registered"}),
             ),
         )?
         .expect("tool execution error response");
         let execution_body = projected_authoritative_tool_result(&execution_error["result"])?;
         assert_eq!(execution_body["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
-        assert_eq!(execution_body["tool_name"], STATUS_TOOL_NAME);
+        assert_eq!(execution_body["tool_name"], AgentToolId::STATUS.wire_name());
 
         let unknown_tool = handle_json_rpc_message(
             &connection_adapter,
@@ -3650,7 +3683,7 @@ fn lifecycle_rejects_tools_before_initialize_and_a_second_initialize() -> Result
 
     for message in [
         request(1, "tools/list", json!({})),
-        tools_call(2, STATUS_TOOL_NAME, json!({})),
+        tools_call(2, AgentToolId::STATUS.wire_name(), json!({})),
     ] {
         let response = handle_json_rpc_message(&adapter, &mut state, message)?
             .expect("pre-initialize request should return an error");
@@ -3777,8 +3810,10 @@ fn mcp_tools_list_is_available_after_initialize() -> Result<(), Box<dyn Error>> 
         .iter()
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<Vec<_>>();
-    let mut expected = PUBLIC_METHOD_TOOL_NAMES.to_vec();
-    expected.push(LIST_PROJECTS_TOOL_NAME);
+    let expected = AgentToolId::ALL
+        .iter()
+        .map(|tool| tool.wire_name())
+        .collect::<Vec<_>>();
     assert_eq!(names, expected);
     Ok(())
 }
@@ -3811,9 +3846,9 @@ fn mcp_tools_list_remains_available_after_initialized_notification() -> Result<(
         names,
         vec![
             "volicord.status",
-            GET_OPERATION_RESULT_TOOL_NAME,
-            CHECK_CLOSE_TOOL_NAME,
-            LIST_PROJECTS_TOOL_NAME
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
+            AgentToolId::CHECK_CLOSE.wire_name(),
+            AgentToolId::LIST_PROJECTS.wire_name()
         ]
     );
     Ok(())
@@ -3860,7 +3895,7 @@ fn stdio_aggregated_validation_error_is_structured_and_has_no_core_effects(
         initialized_notification(),
         tools_call(
             2,
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::RECORD_RUN.wire_name(),
             json!({
                 "kind": "unsupported",
                 "observed_changes": {},
@@ -3875,7 +3910,7 @@ fn stdio_aggregated_validation_error_is_structured_and_has_no_core_effects(
     let responses = stdio_responses(&output)?;
     let error = structured_error_result(&responses[1]["result"]);
     assert_eq!(error["code"], "MCP_INVALID_ARGUMENTS");
-    assert_eq!(error["tool_name"], RECORD_RUN_TOOL_NAME);
+    assert_eq!(error["tool_name"], AgentToolId::RECORD_RUN.wire_name());
     assert_eq!(error["retryable"], true);
     tool_error_issue(&error, "/task_id", "MCP_ARGUMENT_REQUIRED");
     tool_error_issue(&error, "/unexpected", "MCP_ARGUMENT_UNKNOWN");
@@ -3900,9 +3935,12 @@ fn known_tool_validation_error_bounds_issue_fields_and_complete_result(
     }
 
     let error = adapter
-        .call_tool(RECORD_RUN_TOOL_NAME, Value::Object(arguments))
+        .call_tool(
+            AgentToolId::RECORD_RUN.wire_name(),
+            Value::Object(arguments),
+        )
         .expect_err("pathological invalid arguments should be rejected");
-    let result = tool_execution_error_result(RECORD_RUN_TOOL_NAME, &error);
+    let result = tool_execution_error_result(AgentToolId::RECORD_RUN.wire_name(), &error);
     let response = structured_error_result(&result);
     let issues = response["issues"].as_array().expect("issues");
 
@@ -3938,7 +3976,7 @@ fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
-        tools_call(2, STATUS_TOOL_NAME, json!({})),
+        tools_call(2, AgentToolId::STATUS.wire_name(), json!({})),
     ])?);
     let mut output = Vec::new();
 
@@ -3947,7 +3985,7 @@ fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
     let responses = stdio_responses(&output)?;
     let error = structured_error_result(&responses[1]["result"]);
     assert_eq!(error["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
-    assert_eq!(error["tool_name"], STATUS_TOOL_NAME);
+    assert_eq!(error["tool_name"], AgentToolId::STATUS.wire_name());
     assert_eq!(error["retryable"], false);
     assert_eq!(error["reported_issue_count"], 1);
     assert_eq!(error["truncated"], false);
@@ -3971,7 +4009,7 @@ fn project_bound_stdio_rejects_a_guessed_repository_name_as_project_selector(
         initialized_notification(),
         tools_call(
             2,
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS.wire_name(),
             json!({
                 "detail": "workflow",
                 "project_selector": "product-repo"
@@ -3985,7 +4023,7 @@ fn project_bound_stdio_rejects_a_guessed_repository_name_as_project_selector(
     let responses = stdio_responses(&output)?;
     let error = structured_error_result(&responses[1]["result"]);
     assert_eq!(error["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
-    assert_eq!(error["tool_name"], STATUS_TOOL_NAME);
+    assert_eq!(error["tool_name"], AgentToolId::STATUS.wire_name());
     let issue = tool_error_issue(
         &error,
         "/project_selector",
@@ -3994,7 +4032,7 @@ fn project_bound_stdio_rejects_a_guessed_repository_name_as_project_selector(
     let message = issue["message"].as_str().expect("routing issue message");
     assert!(message.contains("outside this MCP transport project allowlist"));
     assert!(!message.contains("HTTP serve"));
-    assert!(message.contains("Use volicord.list_projects"));
+    assert!(message.contains(&format!("Use {}", AgentToolId::LIST_PROJECTS.wire_name())));
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -4012,7 +4050,7 @@ fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_du
         let input = Cursor::new(json_lines(&[
             initialize_request(1, json!({})),
             initialized_notification(),
-            tools_call(2, INTAKE_TOOL_NAME, arguments),
+            tools_call(2, AgentToolId::INTAKE.wire_name(), arguments),
         ])?);
         let mut output = Vec::new();
         run_stdio(adapter, BufReader::new(input), &mut output)?;
@@ -4107,7 +4145,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     let (stage_task_id, _) = create_task(&adapter(&stage_fixture)?)?;
     let staged = call_default(
         &stage_fixture,
-        STAGE_ARTIFACT_TOOL_NAME,
+        AgentToolId::STAGE_ARTIFACT.wire_name(),
         json!({
             "task_id": stage_task_id,
             "display_name": "default-stage.log",
@@ -4130,7 +4168,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     let capture_adapter = adapter(&capture_fixture)?;
     let (capture_task_id, _) = create_task(&capture_adapter)?;
     let capture_scope = capture_adapter.call_tool(
-        UPDATE_SCOPE_TOOL_NAME,
+        AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
             "task_id": capture_task_id,
             "goal_summary": null,
@@ -4158,7 +4196,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         .ok_or("scope response should expose the acceptance criterion")?;
     let capture = call_default(
         &capture_fixture,
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+        AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
         json!({
             "task_id": capture_task_id,
             "change_unit_id": capture_change_unit_id,
@@ -4190,14 +4228,14 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     assert!(capture["authority_receipt"].is_object());
     assert_eq!(
         capture["operation_result_ref"]["source_method"],
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME
+        AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name()
     );
 
     let record_fixture = CoreFixture::new("mcp-default-compact-record-run")?;
     let record_adapter = adapter(&record_fixture)?;
     let (record_task_id, _) = create_task(&record_adapter)?;
     let scope = record_adapter.call_tool(
-        UPDATE_SCOPE_TOOL_NAME,
+        AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
             "task_id": record_task_id,
             "goal_summary": null,
@@ -4223,7 +4261,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
         .as_str()
         .ok_or("scope response should expose the acceptance criterion")?;
     let staged_for_run = record_adapter.call_tool(
-        STAGE_ARTIFACT_TOOL_NAME,
+        AgentToolId::STAGE_ARTIFACT.wire_name(),
         json!({
             "task_id": record_task_id,
             "display_name": "record-compact.log",
@@ -4239,7 +4277,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     });
     let recorded = call_default(
         &record_fixture,
-        RECORD_RUN_TOOL_NAME,
+        AgentToolId::RECORD_RUN.wire_name(),
         json!({
             "task_id": record_task_id,
             "change_unit_id": change_unit_id,
@@ -4364,7 +4402,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     let prepare_adapter = adapter(&prepare_fixture)?;
     let (prepare_task_id, _) = create_task(&prepare_adapter)?;
     let scope = prepare_adapter.call_tool(
-        UPDATE_SCOPE_TOOL_NAME,
+        AgentToolId::UPDATE_SCOPE.wire_name(),
         json!({
             "task_id": prepare_task_id,
             "goal_summary": null,
@@ -4385,7 +4423,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     assert_eq!(scope.response_value["base"]["response_kind"], "result");
     let prepared = call_default(
         &prepare_fixture,
-        PREPARE_WRITE_TOOL_NAME,
+        AgentToolId::PREPARE_WRITE.wire_name(),
         json!({
             "task_id": prepare_task_id,
             "change_unit_id": null,
@@ -4411,7 +4449,7 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     let (reconcile_task_id, _) = create_task(&adapter(&reconcile_fixture)?)?;
     let reconciled = call_default(
         &reconcile_fixture,
-        RECONCILE_CHANGES_TOOL_NAME,
+        AgentToolId::RECONCILE_CHANGES.wire_name(),
         json!({"task_id": reconcile_task_id}),
     )?;
     assert!(reconciled["method_result"]["unresolved_changes"].is_array());
@@ -4432,7 +4470,7 @@ fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Resul
         initialized_notification(),
         tools_call(
             2,
-            CLOSE_TASK_TOOL_NAME,
+            AgentToolId::CLOSE_TASK.wire_name(),
             json!({
                 "task_id": task_id,
                 "intent": "cancel",
@@ -4482,10 +4520,10 @@ fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
         initialized_notification(),
         tools_call(
             2,
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS.wire_name(),
             json!({"unexpected_private_value": sensitive_sentinel}),
         ),
-        tools_call(3, STATUS_TOOL_NAME, json!({})),
+        tools_call(3, AgentToolId::STATUS.wire_name(), json!({})),
     ])?);
     let mut output = Vec::new();
 
@@ -4505,7 +4543,7 @@ fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
     let status = diagnostics
         .tools
         .iter()
-        .find(|tool| tool.tool_name == STATUS_TOOL_NAME)
+        .find(|tool| tool.tool_name == AgentToolId::STATUS.wire_name())
         .expect("status metrics");
     assert_eq!(status.call_count, 2);
     assert_eq!(status.validation_failures, 1);
@@ -4561,7 +4599,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_mcp_core_result() -> Result<(), Box<
         initialize_request(1, json!({})),
         initialized_notification(),
         request(2, "tools/list", json!({})),
-        tools_call(3, STATUS_TOOL_NAME, json!({})),
+        tools_call(3, AgentToolId::STATUS.wire_name(), json!({})),
     ])?);
     let mut output = Vec::new();
 
@@ -4592,7 +4630,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_managed_codex_binding() -> Result<()
         initialized_notification(),
         tools_call_with_codex_metadata(
             2,
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS.wire_name(),
             json!({}),
             native_session_id,
             native_thread_id,
@@ -4600,7 +4638,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_managed_codex_binding() -> Result<()
         ),
         tools_call_with_codex_metadata(
             3,
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS.wire_name(),
             json!({}),
             native_session_id,
             native_thread_id,
@@ -4661,7 +4699,7 @@ fn stdio_pending_user_action_returns_cli_inbox_recovery() -> Result<(), Box<dyn 
     assert_eq!(values.len(), 2);
     assert_eq!(
         values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
-        REQUEST_USER_ACTION_TOOL_NAME
+        AgentToolId::REQUEST_USER_ACTION.wire_name()
     );
     let response = volicord_response_from_tool(&values[1])?;
     let workflow = &response["agent_workflow_result"];
@@ -4716,7 +4754,7 @@ fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
     assert_eq!(values.len(), 2);
     assert_eq!(
         values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
-        REQUEST_USER_ACTION_TOOL_NAME
+        AgentToolId::REQUEST_USER_ACTION.wire_name()
     );
     let response = volicord_response_from_tool(&values[1])?;
     let workflow = &response["agent_workflow_result"];
@@ -4766,7 +4804,7 @@ fn request_user_action_agent_projection_is_only_the_exact_pending_user_summary(
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
-        tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, arguments),
+        tools_call(2, AgentToolId::REQUEST_USER_ACTION.wire_name(), arguments),
     ])?);
     let mut output = Vec::new();
 
@@ -4905,7 +4943,11 @@ fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), B
         let input = Cursor::new(json_lines(&[
             initialize_request(1, json!({})),
             initialized_notification(),
-            tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, prepared.arguments),
+            tools_call(
+                2,
+                AgentToolId::REQUEST_USER_ACTION.wire_name(),
+                prepared.arguments,
+            ),
         ])?);
         let mut output = Vec::new();
 
@@ -5067,7 +5109,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
         initialized_notification(),
         tools_call(
             2,
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             product_action_args(&fixture, &task_id, state_version),
         ),
     ])?);
@@ -5157,7 +5199,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
     let wrong_adapter = adapter_for_additional_connection(&fixture, wrong_connection_id)?;
     let wrong_error = wrong_adapter
         .call_tool(
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             resume_user_action_args(&fixture, &user_action_request_id),
         )
         .expect_err("another Agent Connection must not resume the originating result");
@@ -5169,7 +5211,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
         initialized_notification(),
         tools_call(
             4,
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             resume_user_action_args(&fixture, &user_action_request_id),
         ),
     ])?);
@@ -5290,7 +5332,10 @@ fn project_tool_rejects_missing_managed_session_coordinates() -> Result<(), Box<
     let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
 
     let error = adapter
-        .call_tool(STATUS_TOOL_NAME, json!({"detail": "workflow"}))
+        .call_tool(
+            AgentToolId::STATUS.wire_name(),
+            json!({"detail": "workflow"}),
+        )
         .expect_err("project tools require current managed session coordinates");
     assert!(error.to_string().contains("agent_session_missing"));
     Ok(())
@@ -5307,7 +5352,7 @@ fn invented_session_coordinates_do_not_authorize_or_insert_a_project_session(
 
     let error = adapter
         .call_tool_for_session(
-            STATUS_TOOL_NAME,
+            AgentToolId::STATUS,
             json!({"detail": "workflow"}),
             Some(AgentSessionCoordinates {
                 runtime_session_id: "mcp_invented_runtime",
@@ -6188,7 +6233,10 @@ fn stored_action_record(
 }
 
 fn tool_names(tools: &[CanonicalToolDefinition]) -> Vec<&'static str> {
-    tools.iter().map(|tool| tool.name).collect::<Vec<_>>()
+    tools
+        .iter()
+        .map(|tool| tool.id.wire_name())
+        .collect::<Vec<_>>()
 }
 
 fn tool_definition(tool_name: &str) -> CanonicalToolDefinition {
@@ -6197,7 +6245,7 @@ fn tool_definition(tool_name: &str) -> CanonicalToolDefinition {
         McpStorageCapability::ReadWrite,
     )
     .into_iter()
-    .find(|tool| tool.name == tool_name)
+    .find(|tool| tool.id.wire_name() == tool_name)
     .unwrap_or_else(|| panic!("missing tool definition for {tool_name}"))
 }
 
@@ -6205,10 +6253,13 @@ fn canonical_example(
     tool_name: &str,
     example_id: &str,
 ) -> &'static crate::tool_registry::McpToolExample {
-    canonical_tool_examples(tool_name)
-        .iter()
-        .find(|example| example.id == example_id)
-        .unwrap_or_else(|| panic!("missing canonical example {example_id} for {tool_name}"))
+    canonical_tool_examples(
+        AgentToolId::from_wire_name(tool_name)
+            .unwrap_or_else(|_| panic!("unknown canonical tool {tool_name}")),
+    )
+    .iter()
+    .find(|example| example.id == example_id)
+    .unwrap_or_else(|| panic!("missing canonical example {example_id} for {tool_name}"))
 }
 
 fn canonical_example_value(tool_name: &str, example_id: &str) -> Result<Value, Box<dyn Error>> {
@@ -6221,41 +6272,43 @@ fn decode_mcp_arguments_to_value(
     tool_name: &str,
     value: Value,
 ) -> Result<Value, serde_json::Error> {
-    match tool_name {
-        INTAKE_TOOL_NAME => {
+    match AgentToolId::from_wire_name(tool_name)
+        .unwrap_or_else(|_| panic!("unsupported MCP tool example decoder: {tool_name}"))
+    {
+        AgentToolId::INTAKE => {
             serde_json::to_value(serde_json::from_value::<McpIntakeArguments>(value)?)
         }
-        UPDATE_SCOPE_TOOL_NAME => {
+        AgentToolId::UPDATE_SCOPE => {
             serde_json::to_value(serde_json::from_value::<McpUpdateScopeArguments>(value)?)
         }
-        STATUS_TOOL_NAME => {
+        AgentToolId::STATUS => {
             serde_json::to_value(serde_json::from_value::<McpStatusArguments>(value)?)
         }
-        GET_OPERATION_RESULT_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+        AgentToolId::GET_OPERATION_RESULT => serde_json::to_value(serde_json::from_value::<
             McpGetOperationResultArguments,
         >(value)?),
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+        AgentToolId::PREPARE_EVIDENCE_CAPTURE => serde_json::to_value(serde_json::from_value::<
             McpPrepareEvidenceCaptureArguments,
         >(value)?),
-        PREPARE_WRITE_TOOL_NAME => {
+        AgentToolId::PREPARE_WRITE => {
             serde_json::to_value(serde_json::from_value::<McpPrepareWriteArguments>(value)?)
         }
-        STAGE_ARTIFACT_TOOL_NAME => {
+        AgentToolId::STAGE_ARTIFACT => {
             serde_json::to_value(serde_json::from_value::<McpStageArtifactArguments>(value)?)
         }
-        RECORD_RUN_TOOL_NAME => {
+        AgentToolId::RECORD_RUN => {
             serde_json::to_value(serde_json::from_value::<McpRecordRunArguments>(value)?)
         }
-        REQUEST_USER_ACTION_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+        AgentToolId::REQUEST_USER_ACTION => serde_json::to_value(serde_json::from_value::<
             McpRequestUserActionArguments,
         >(value)?),
-        RECONCILE_CHANGES_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+        AgentToolId::RECONCILE_CHANGES => serde_json::to_value(serde_json::from_value::<
             McpReconcileChangesArguments,
         >(value)?),
-        CHECK_CLOSE_TOOL_NAME => {
+        AgentToolId::CHECK_CLOSE => {
             serde_json::to_value(serde_json::from_value::<McpCheckCloseArguments>(value)?)
         }
-        CLOSE_TASK_TOOL_NAME => {
+        AgentToolId::CLOSE_TASK => {
             serde_json::to_value(serde_json::from_value::<McpCloseTaskArguments>(value)?)
         }
         other => panic!("unsupported MCP tool example decoder: {other}"),
@@ -6577,10 +6630,10 @@ fn latest_runtime_session_id(fixture: &CoreFixture) -> Result<String, Box<dyn Er
 }
 
 #[test]
-fn workflow_public_tool_names_are_unique() {
-    let unique = PUBLIC_METHOD_TOOL_NAMES
+fn canonical_agent_tool_names_are_unique() {
+    let unique = AgentToolId::ALL
         .iter()
-        .copied()
+        .map(|tool| tool.wire_name())
         .collect::<BTreeSet<_>>();
-    assert_eq!(unique.len(), PUBLIC_METHOD_TOOL_NAMES.len());
+    assert_eq!(unique.len(), AgentToolId::ALL.len());
 }

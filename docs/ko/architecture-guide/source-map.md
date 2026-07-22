@@ -17,7 +17,7 @@
 | `crates/volicord-types/src/connection_verification.rs` | 정규 connection 상태, check, action, 검증 보고서 타입. |
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
-| `crates/volicord-types/src/tool_names.rs` | 정규 공개 method 및 adapter utility MCP 도구 이름 집합. |
+| `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, 안정적인 MCP wire 이름 투영. |
 
 ## 플랫폼 파일시스템 경계
 
@@ -102,7 +102,7 @@
 | `crates/volicord-mcp/src/conformance.rs` | 어댑터 테스트, CLI revision 매트릭스, 명세 checker가 공유하는 결정론적 저장소 소유 오프라인 런타임 적합성 revision 선언. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio 생명주기와 프레이밍, typed initialization profile 선택, revision-aware message 처리, 프로세스 사전 점검. |
 | `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치, wrapping. |
-| `crates/volicord-mcp/src/tool_registry.rs` | 담당자가 제공하는 도구 이름과 schema를 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 revision별 wire projection을 수행하는 구현. |
+| `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema와 metadata를 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 revision별 wire 이름을 투영하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색과 현재 Connection/project routing. |
 

@@ -6,10 +6,7 @@ use serde_json::{json, Map, Value};
 use volicord_mcp::{mcp_tools_for_mode, CanonicalToolDefinition};
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, public_request_schema, AgentConnectionMode,
-    CHECK_CLOSE_TOOL_NAME, CLOSE_TASK_TOOL_NAME, GET_OPERATION_RESULT_TOOL_NAME, INTAKE_TOOL_NAME,
-    PREPARE_EVIDENCE_CAPTURE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME,
-    RECORD_RUN_TOOL_NAME, REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME,
-    STAGE_ARTIFACT_TOOL_NAME, STATUS_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
+    AgentToolId, MethodName,
 };
 
 const UPDATE_ENV: &str = "VOLICORD_UPDATE_CONTRACT_SNAPSHOTS";
@@ -22,19 +19,19 @@ const SNAPSHOT_UPDATE_COMMAND: &str = concat!(
 );
 
 const PUBLIC_API_METHOD_NAMES: &[&str] = &[
-    INTAKE_TOOL_NAME,
-    UPDATE_SCOPE_TOOL_NAME,
-    STATUS_TOOL_NAME,
-    GET_OPERATION_RESULT_TOOL_NAME,
-    CHECK_CLOSE_TOOL_NAME,
-    PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
-    PREPARE_WRITE_TOOL_NAME,
-    STAGE_ARTIFACT_TOOL_NAME,
-    RECORD_RUN_TOOL_NAME,
-    REQUEST_USER_ACTION_TOOL_NAME,
-    RESOLVE_USER_ACTION_TOOL_NAME,
-    RECONCILE_CHANGES_TOOL_NAME,
-    CLOSE_TASK_TOOL_NAME,
+    AgentToolId::INTAKE.wire_name(),
+    AgentToolId::UPDATE_SCOPE.wire_name(),
+    AgentToolId::STATUS.wire_name(),
+    AgentToolId::GET_OPERATION_RESULT.wire_name(),
+    AgentToolId::CHECK_CLOSE.wire_name(),
+    AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
+    AgentToolId::PREPARE_WRITE.wire_name(),
+    AgentToolId::STAGE_ARTIFACT.wire_name(),
+    AgentToolId::RECORD_RUN.wire_name(),
+    AgentToolId::REQUEST_USER_ACTION.wire_name(),
+    MethodName::ResolveUserAction.as_str(),
+    AgentToolId::RECONCILE_CHANGES.wire_name(),
+    AgentToolId::CLOSE_TASK.wire_name(),
 ];
 
 #[test]
@@ -142,7 +139,7 @@ fn mcp_tools_contract_snapshot(
 
 fn tool_projection(tool: &CanonicalToolDefinition) -> Value {
     json!({
-        "name": tool.name,
+        "name": tool.id.wire_name(),
         "description": tool.description,
         "input_schema": schema_projection(&tool.input_schema),
         "output_schema": schema_projection(&tool.output_schema),

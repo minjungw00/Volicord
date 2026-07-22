@@ -251,8 +251,10 @@ guard_files -> guard_hook_execution -> guard_observation
 
 `host_session`은 managed host의 `initialize` check이고, `required_tools`는 managed host의
 `tools/list` check이며, `tool_round_trip`은 정규 verification role 도구 호출 check입니다.
-`ToolVerificationRole::ManagedHostRoundTrip`의 정규 담당 도구는 정확히 하나이며 현재
-`volicord.list_projects`입니다.
+`ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
+`AgentToolId::LIST_PROJECTS`에 결합되며, 영속 이름과 MCP wire 이름으로는
+`volicord.list_projects`를 투영합니다. CLI probe, MCP runtime, Store 관찰, 검증 보고서
+비교는 모두 같은 typed identity를 사용합니다.
 Managed-host 시도가 한 번도 없으면 `process_startup`부터 `tool_round_trip`까지 네 check는
 `pending`입니다. Initialize가 실패하면 `host_session`은 `failed`이고,
 `required_tools`와 `tool_round_trip`은 같은 root finding 때문에 `blocked`입니다. Managed

@@ -30,10 +30,10 @@ use volicord_store::{
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
 use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, DiagnosticCode, DiagnosticDomain, DiagnosticFacts,
-    DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    AgentConnectionId, AgentRuntimeSessionId, AgentToolId, DiagnosticCode, DiagnosticDomain,
+    DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
     DiagnosticSubject, IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource,
-    OccurrenceDiagnosticFinding, UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
+    OccurrenceDiagnosticFinding, UtcTimestamp,
 };
 
 const START: &str = "2026-07-18T00:00:00Z";
@@ -107,7 +107,6 @@ fn complete(
     record_mcp_verification_tool_observation(
         fixture.runtime_home_path(),
         runtime_session_id,
-        LIST_PROJECTS_TOOL_NAME,
         SAFE,
     )?;
     Ok(())
@@ -321,7 +320,7 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
     assert_eq!(record.required_tools_present, Some(false));
     assert_eq!(
         record.verification_tool_name.as_deref(),
-        Some(LIST_PROJECTS_TOOL_NAME)
+        Some(AgentToolId::LIST_PROJECTS.wire_name())
     );
     assert_eq!(record.verification_tool_observed_at.as_deref(), Some(SAFE));
 

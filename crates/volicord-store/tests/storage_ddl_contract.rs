@@ -19,8 +19,8 @@ use volicord_store::{
 };
 use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
 use volicord_types::{
-    canonical_json_string, GeneratedRelationKind, ManagedMcpClientInfo, McpRuntimeSessionSource,
-    StorageDatabaseKind, StorageManifest, LIST_PROJECTS_TOOL_NAME, STORAGE_CONTRACT_ID,
+    canonical_json_string, AgentToolId, GeneratedRelationKind, ManagedMcpClientInfo,
+    McpRuntimeSessionSource, StorageDatabaseKind, StorageManifest, STORAGE_CONTRACT_ID,
     STORAGE_ENABLED_CAPABILITIES,
 };
 
@@ -671,7 +671,7 @@ fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
             params![runtime.runtime_session_id, name, observed_at],
         )
     };
-    assert!(update(Some(LIST_PROJECTS_TOOL_NAME), None).is_err());
+    assert!(update(Some(AgentToolId::LIST_PROJECTS.wire_name()), None).is_err());
     assert!(update(None, Some("2026-07-22T00:00:03Z")).is_err());
     assert!(update(Some("volicord/list projects"), Some("2026-07-22T00:00:03Z")).is_err());
     assert!(update(
@@ -679,9 +679,16 @@ fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
         Some("2026-07-22T00:00:03Z")
     )
     .is_err());
-    assert!(update(Some(LIST_PROJECTS_TOOL_NAME), Some("2026-07-22T00:00:01Z")).is_err());
+    assert!(update(
+        Some(AgentToolId::LIST_PROJECTS.wire_name()),
+        Some("2026-07-22T00:00:01Z")
+    )
+    .is_err());
     assert_eq!(
-        update(Some(LIST_PROJECTS_TOOL_NAME), Some("2026-07-22T00:00:03Z"))?,
+        update(
+            Some(AgentToolId::LIST_PROJECTS.wire_name()),
+            Some("2026-07-22T00:00:03Z")
+        )?,
         1
     );
     Ok(())

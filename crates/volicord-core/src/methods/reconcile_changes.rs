@@ -910,7 +910,7 @@ fn plan_reconciliation_user_action(
                 expires_at: RequiredNullable::null(),
                 created_at: now.clone(),
                 metadata_json: serde_json::to_string(&json!({
-                "created_by": RECONCILE_CHANGES_TOOL_NAME,
+                "created_by": MethodName::ReconcileChanges.as_str(),
                 "unrecorded_change_id": record.unrecorded_change_id
                 }))?,
             },
@@ -1044,7 +1044,7 @@ fn resolution_mutation(resolution: &PlannedResolution) -> CoreResult<CoreStorage
                 "resolution_basis": resolution.basis,
                 "capture_basis": resolution.capture_basis,
                 "user_action_resolution_ref": resolution.user_action_resolution_ref,
-                "resolved_by_method": RECONCILE_CHANGES_TOOL_NAME
+                "resolved_by_method": MethodName::ReconcileChanges.as_str()
             }))?,
             resolved_at: resolution.resolved_at.to_string(),
             resolved_by_actor_source: resolution.resolved_by_actor_source.to_canonical_string(),

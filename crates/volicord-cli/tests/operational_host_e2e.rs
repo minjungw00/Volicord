@@ -21,8 +21,7 @@ use support::json::adapter_tool_response;
 use toml_edit::DocumentMut;
 use volicord_mcp::{
     ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
-    ManagedMcpWorkingDirectory, ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES,
-    READ_ONLY_METHOD_TOOL_NAMES, VOLICORD_HOME_ENV,
+    ManagedMcpWorkingDirectory, VOLICORD_HOME_ENV,
 };
 use volicord_store::agent_connections::{agent_connection_record, AgentConnectionRecord};
 use volicord_store::diagnostic_findings::{
@@ -42,9 +41,9 @@ use volicord_store::operational_sessions::{
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    guard_manifest_from_json, tool_name_for_verification_role, DiagnosticFindingId, GuardHookPhase,
-    GuardManagedOwnership, GuardManifest, McpRuntimeSessionSource, ToolVerificationRole,
-    STATUS_TOOL_NAME,
+    guard_manifest_from_json, AgentConnectionMode, AgentToolId, DiagnosticFindingId,
+    GuardHookPhase, GuardManagedOwnership, GuardManifest, McpRuntimeSessionSource,
+    ToolVerificationRole,
 };
 
 const FUTURE_VERSION: &str = "999.0.0";
@@ -58,9 +57,8 @@ const EARLY_EXIT_STDERR_BYTES: usize = 3 * 1024;
 const CODEX_COMPATIBILITY_VERSION: &str = "0.108.0-alpha.12";
 const CODEX_COMPATIBILITY_REVISION: &str = "2025-06-18";
 
-fn managed_host_round_trip_tool_name() -> &'static str {
-    tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
-        .expect("canonical managed-host round-trip role")
+fn managed_host_round_trip_tool() -> AgentToolId {
+    ToolVerificationRole::ManagedHostRoundTrip.tool()
 }
 
 fn main() {
@@ -133,7 +131,7 @@ fn verification_tool_designation_mismatch_is_typed() -> Result<(), Box<dyn Error
     assert_eq!(
         registry.execute(
             "UPDATE mcp_runtime_sessions SET verification_tool_name = ?2 WHERE runtime_session_id = ?1",
-            [&runtime.runtime_session_id, STATUS_TOOL_NAME],
+            [&runtime.runtime_session_id, AgentToolId::STATUS.wire_name()],
         )?,
         1
     );
@@ -149,11 +147,11 @@ fn verification_tool_designation_mismatch_is_typed() -> Result<(), Box<dyn Error
     assert_eq!(check["code"], "tool_round_trip_designation_mismatch");
     assert_eq!(
         check["details"]["expected_verification_tool_name"],
-        managed_host_round_trip_tool_name()
+        managed_host_round_trip_tool().wire_name()
     );
     assert_eq!(
         check["details"]["observed_verification_tool_name"],
-        STATUS_TOOL_NAME
+        AgentToolId::STATUS.wire_name()
     );
     let finding = report["findings"]
         .as_array()
@@ -165,11 +163,11 @@ fn verification_tool_designation_mismatch_is_typed() -> Result<(), Box<dyn Error
         .ok_or("typed verification-tool mismatch finding")?;
     assert_eq!(
         finding["facts"]["data"]["expected_tool_name"],
-        managed_host_round_trip_tool_name()
+        managed_host_round_trip_tool().wire_name()
     );
     assert_eq!(
         finding["facts"]["data"]["observed_tool_name"],
-        STATUS_TOOL_NAME
+        AgentToolId::STATUS.wire_name()
     );
 
     let verbose = fixture.run_connection_verbose("status", FUTURE_VERSION)?;
@@ -240,7 +238,7 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
             tools_list_request(),
             managed_tool_call(
                 3,
-                managed_host_round_trip_tool_name(),
+                managed_host_round_trip_tool().wire_name(),
                 json!({}),
                 "codex.compatibility.session",
             ),
@@ -264,10 +262,9 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
                 .ok_or("Codex tool name should be a string")
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let expected_tools = PUBLIC_METHOD_TOOL_NAMES
+    let expected_tools = AgentToolId::ALL
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        .copied()
+        .map(|tool| tool.wire_name())
         .collect::<Vec<_>>();
     assert_eq!(actual_tools, expected_tools);
     assert_eq!(responses[2]["result"]["isError"], false);
@@ -306,7 +303,7 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
     assert_eq!(session.required_tools_present, Some(true));
     assert_eq!(
         session.verification_tool_name.as_deref(),
-        Some(managed_host_round_trip_tool_name())
+        Some(managed_host_round_trip_tool().wire_name())
     );
     assert!(session.verification_tool_observed_at.is_some());
     Ok(())
@@ -371,7 +368,7 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
                         && session.tools_list_observed_at.is_some()
                         && session.required_tools_present == Some(true)
                         && session.verification_tool_name.as_deref()
-                            == Some(managed_host_round_trip_tool_name())
+                            == Some(managed_host_round_trip_tool().wire_name())
                         && session.verification_tool_observed_at.is_some()
                 })
         );
@@ -1039,11 +1036,11 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
         .ok_or("tool_round_trip check")?;
     assert_eq!(
         round_trip["details"]["expected_verification_tool_name"],
-        managed_host_round_trip_tool_name()
+        managed_host_round_trip_tool().wire_name()
     );
     assert_eq!(
         round_trip["details"]["observed_verification_tool_name"],
-        managed_host_round_trip_tool_name()
+        managed_host_round_trip_tool().wire_name()
     );
     assert!(round_trip["details"]["verification_tool_observed_at"].is_string());
     assert_eq!(complete_report["actions"], json!([]));
@@ -1583,7 +1580,7 @@ impl OperationalFixture {
                 tools_list_request(),
                 managed_tool_call(
                     3,
-                    managed_host_round_trip_tool_name(),
+                    managed_host_round_trip_tool().wire_name(),
                     json!({}),
                     native_session,
                 ),
@@ -1597,15 +1594,15 @@ impl OperationalFixture {
         let connection = agent_connection_record(&self.runtime_home, connection_id)?
             .ok_or("managed MCP acceptance Connection should exist")?;
         let expected_tools = match connection.mode.as_str() {
-            "workflow" => PUBLIC_METHOD_TOOL_NAMES
+            "workflow" => AgentToolId::ALL
                 .iter()
-                .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-                .copied()
+                .map(|tool| tool.wire_name())
                 .collect::<Vec<_>>(),
-            "read_only" => READ_ONLY_METHOD_TOOL_NAMES
+            "read_only" => AgentToolId::ALL
                 .iter()
-                .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
                 .copied()
+                .filter(|tool| tool.available_in(AgentConnectionMode::ReadOnly))
+                .map(AgentToolId::wire_name)
                 .collect::<Vec<_>>(),
             mode => return Err(format!("unexpected Connection mode {mode}").into()),
         };
@@ -1682,7 +1679,7 @@ impl OperationalFixture {
 
         child.write(&json_lines(&[managed_tool_call(
             3,
-            managed_host_round_trip_tool_name(),
+            managed_host_round_trip_tool().wire_name(),
             json!({}),
             native_session,
         )])?)?;
@@ -1691,7 +1688,7 @@ impl OperationalFixture {
             if latest_current_managed_runtime_session(&self.runtime_home, connection_id)?
                 .is_some_and(|session| {
                     session.verification_tool_name.as_deref()
-                        == Some(managed_host_round_trip_tool_name())
+                        == Some(managed_host_round_trip_tool().wire_name())
                         && session.verification_tool_observed_at.is_some()
                 })
             {

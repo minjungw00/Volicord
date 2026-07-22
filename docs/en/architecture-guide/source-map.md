@@ -17,7 +17,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/connection_verification.rs` | Canonical connection status, check, action, and verification-report types. |
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/project integration revision bases and derivation. |
 | `crates/volicord-types/src/guard_manifest.rs` | Canonical Guard manifest, managed-artifact, hook-phase, and typed command contracts. |
-| `crates/volicord-types/src/tool_names.rs` | Canonical public-method and adapter-utility MCP tool-name sets. |
+| `crates/volicord-types/src/tool_names.rs` | Closed `AgentToolId` catalog, `MethodName` reuse for Core-owned tools, category and mode metadata, compile-time verification-role binding, and stable MCP wire-name projection. |
 
 ## Platform Filesystem Boundary
 
@@ -102,7 +102,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/conformance.rs` | The deterministic repository-owned offline runtime conformance revision declaration shared by adapter tests, the CLI revision matrix, and the specification checker. |
 | `crates/volicord-mcp/src/stdio.rs` | stdio lifecycle and framing, typed initialization-profile selection, revision-aware message handling, and process preflight. |
 | `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch, and wrapping. |
-| `crates/volicord-mcp/src/tool_registry.rs` | Assembly of owner-provided tool names and schemas into canonical tool definitions/results, plus revision-specific wire projection through the selected protocol profile. |
+| `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed schemas and metadata into canonical tool definitions/results, plus revision-specific wire-name projection through the selected protocol profile. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |
 | `crates/volicord-mcp/src/routing.rs` | Bound Product Repository discovery and current Connection/project routing. |
 

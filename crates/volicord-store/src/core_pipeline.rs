@@ -7,13 +7,12 @@ use std::{
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use volicord_types::{
     effective_user_action_status as derive_user_action_status, validate_channel_submission_id,
-    ArtifactRef, ContinuityCursor, CurrentCloseBasis, ObservedChanges, PersistedArtifactProducer,
-    PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata, PersistedCloseSummary,
-    PersistedUserActionRequest, ProjectEnforcementProfile, RunId, StagedArtifactHandleId, TaskId,
-    UserActionBasis, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
-    UserActionOptionAction, UserActionRequestBody, UserActionResolutionBody, UserActionStatus,
-    UtcTimestamp, MAX_CONTINUITY_PAGE_SIZE, RECONCILE_CHANGES_TOOL_NAME,
-    REQUEST_USER_ACTION_TOOL_NAME,
+    ArtifactRef, ContinuityCursor, CurrentCloseBasis, MethodName, ObservedChanges,
+    PersistedArtifactProducer, PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata,
+    PersistedCloseSummary, PersistedUserActionRequest, ProjectEnforcementProfile, RunId,
+    StagedArtifactHandleId, TaskId, UserActionBasis, UserActionBasisStatus, UserActionChannelKind,
+    UserActionKind, UserActionOptionAction, UserActionRequestBody, UserActionResolutionBody,
+    UserActionStatus, UtcTimestamp, MAX_CONTINUITY_PAGE_SIZE,
 };
 
 use crate::{
@@ -3090,10 +3089,9 @@ fn decode_user_action_request_record(
     validate_json_text("user_action_requests.metadata_json", &raw.metadata_json).map_err(|_| {
         StoreError::corrupt_owner_state_json("user_action_requests", record_id, "metadata_json")
     })?;
-    if !matches!(
-        raw.source_method.as_str(),
-        REQUEST_USER_ACTION_TOOL_NAME | RECONCILE_CHANGES_TOOL_NAME
-    ) {
+    if raw.source_method != MethodName::RequestUserAction.as_str()
+        && raw.source_method != MethodName::ReconcileChanges.as_str()
+    {
         return Err(StoreError::corrupt_owner_state_value(
             "user_action_requests",
             record_id,

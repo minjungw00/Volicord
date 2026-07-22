@@ -10,7 +10,7 @@ use std::{
 };
 
 use serde_json::{json, Value};
-use volicord_types::{ADAPTER_UTILITY_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES};
+use volicord_types::{AgentConnectionMode, AgentToolId};
 
 const LARGE_STDERR_BYTES: usize = 8 * 1024;
 const SUSTAINED_STDERR_BYTES: usize = 256 * 1024;
@@ -138,10 +138,11 @@ fn run_stdio(scenario: Scenario<'_>) -> Result<(), Box<dyn Error>> {
     let tools = if matches!(scenario, Scenario::MissingRequiredTools) {
         vec!["fixture.alpha", "fixture.beta"]
     } else {
-        READ_ONLY_METHOD_TOOL_NAMES
+        AgentToolId::ALL
             .iter()
-            .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
             .copied()
+            .filter(|tool| tool.available_in(AgentConnectionMode::ReadOnly))
+            .map(AgentToolId::wire_name)
             .collect()
     };
     let mut tool_definitions = tools

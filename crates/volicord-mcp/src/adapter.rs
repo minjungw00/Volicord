@@ -279,14 +279,16 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
     ) -> Result<PipelineResponse, McpAdapterError> {
+        let tool = AgentToolId::from_wire_name(tool_name)
+            .map_err(|_| McpAdapterError::UnknownTool(tool_name.to_owned()))?;
         let coordinates = self
             .default_agent_session_binding
             .as_ref()
-            .map(|binding| self.ensure_agent_session_binding_for_tool(tool_name, &params, binding))
+            .map(|binding| self.ensure_agent_session_binding_for_tool(tool, &params, binding))
             .transpose()?
             .flatten();
         self.call_tool_for_session(
-            tool_name,
+            tool,
             params,
             coordinates.as_ref().map(|value| value.borrowed()),
         )
@@ -294,31 +296,36 @@ impl McpAdapter {
 
     pub(crate) fn call_tool_for_session(
         &self,
-        tool_name: &str,
+        tool: AgentToolId,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
+        let tool_name = tool.wire_name();
         validate_mcp_tool_arguments(tool_name, &params)?;
-        match tool_name {
-            INTAKE_TOOL_NAME => self.call_intake(tool_name, params, session),
-            UPDATE_SCOPE_TOOL_NAME => self.call_update_scope(tool_name, params, session),
-            STATUS_TOOL_NAME => self.call_status(tool_name, params, session),
-            GET_OPERATION_RESULT_TOOL_NAME => {
+        match tool.method() {
+            Some(MethodName::Intake) => self.call_intake(tool_name, params, session),
+            Some(MethodName::UpdateScope) => self.call_update_scope(tool_name, params, session),
+            Some(MethodName::Status) => self.call_status(tool_name, params, session),
+            Some(MethodName::GetOperationResult) => {
                 self.call_get_operation_result(tool_name, params, session)
             }
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => {
+            Some(MethodName::PrepareEvidenceCapture) => {
                 self.call_prepare_evidence_capture(tool_name, params, session)
             }
-            PREPARE_WRITE_TOOL_NAME => self.call_prepare_write(tool_name, params, session),
-            STAGE_ARTIFACT_TOOL_NAME => self.call_stage_artifact(tool_name, params, session),
-            RECORD_RUN_TOOL_NAME => self.call_record_run(tool_name, params, session),
-            REQUEST_USER_ACTION_TOOL_NAME => {
+            Some(MethodName::PrepareWrite) => self.call_prepare_write(tool_name, params, session),
+            Some(MethodName::StageArtifact) => self.call_stage_artifact(tool_name, params, session),
+            Some(MethodName::RecordRun) => self.call_record_run(tool_name, params, session),
+            Some(MethodName::RequestUserAction) => {
                 self.call_request_user_action(tool_name, params, session)
             }
-            RECONCILE_CHANGES_TOOL_NAME => self.call_reconcile_changes(tool_name, params, session),
-            CHECK_CLOSE_TOOL_NAME => self.call_check_close(tool_name, params, session),
-            CLOSE_TASK_TOOL_NAME => self.call_close_task(tool_name, params, session),
-            other => Err(McpAdapterError::UnknownTool(other.to_owned())),
+            Some(MethodName::ReconcileChanges) => {
+                self.call_reconcile_changes(tool_name, params, session)
+            }
+            Some(MethodName::CheckClose) => self.call_check_close(tool_name, params, session),
+            Some(MethodName::CloseTask) => self.call_close_task(tool_name, params, session),
+            None | Some(MethodName::ResolveUserAction) => {
+                Err(McpAdapterError::UnknownTool(tool_name.to_owned()))
+            }
         }
     }
 
@@ -462,14 +469,15 @@ impl McpAdapter {
             None
         };
         let session = session.or_else(|| owned_session.as_ref().map(|value| value.borrowed()));
+        let status_tool_name = AgentToolId::STATUS.wire_name();
         let envelope = self.generated_envelope(
-            STATUS_TOOL_NAME,
+            status_tool_name,
             project_id,
             Some(task_id),
             OperationCategory::Read,
         )?;
         self.call_core_request(
-            STATUS_TOOL_NAME,
+            status_tool_name,
             StatusRequest {
                 envelope,
                 continuity_page: None,
@@ -857,39 +865,41 @@ impl McpAdapter {
 
     pub(crate) fn call_adapter_tool(
         &self,
-        tool_name: &str,
+        tool: AgentToolId,
         params: Value,
         _session_id: Option<&str>,
     ) -> Result<Value, McpAdapterError> {
+        let tool_name = tool.wire_name();
         validate_mcp_tool_arguments(tool_name, &params)?;
-        match tool_name {
-            LIST_PROJECTS_TOOL_NAME => {
+        match tool {
+            AgentToolId::LIST_PROJECTS => {
                 let object = params
                     .as_object()
                     .ok_or_else(|| McpAdapterError::ToolExecution {
                         tool_name: tool_name.to_owned(),
-                        message: format!("{LIST_PROJECTS_TOOL_NAME} arguments must be an object"),
+                        message: format!("{tool_name} arguments must be an object"),
                     })?;
                 if !object.is_empty() {
                     return Err(McpAdapterError::ToolExecution {
                         tool_name: tool_name.to_owned(),
-                        message: format!("{LIST_PROJECTS_TOOL_NAME} does not accept arguments"),
+                        message: format!("{tool_name} does not accept arguments"),
                     });
                 }
                 let result = self.list_projects_result()?;
                 serde_json::to_value(result).map_err(McpAdapterError::Json)
             }
-            other => Err(McpAdapterError::UnknownTool(other.to_owned())),
+            other => Err(McpAdapterError::UnknownTool(other.wire_name().to_owned())),
         }
     }
 
     fn list_projects_result(&self) -> Result<ListProjectsResult, McpAdapterError> {
+        let tool_name = AgentToolId::LIST_PROJECTS.wire_name();
         let connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
-            LIST_PROJECTS_TOOL_NAME,
+            tool_name,
         )?;
-        let availabilities = self.allowed_project_availabilities(LIST_PROJECTS_TOOL_NAME)?;
+        let availabilities = self.allowed_project_availabilities(tool_name)?;
         let items = availabilities
             .iter()
             .map(|project| ListProjectItem {
@@ -901,7 +911,7 @@ impl McpAdapter {
             .collect::<Vec<_>>();
         let mode = parse_connection_mode(&connection.mode).map_err(|error| {
             McpAdapterError::ToolExecution {
-                tool_name: LIST_PROJECTS_TOOL_NAME.to_owned(),
+                tool_name: tool_name.to_owned(),
                 message: error.to_string(),
             }
         })?;
@@ -941,20 +951,18 @@ impl McpAdapter {
 
     pub(crate) fn ensure_agent_session_binding_for_tool(
         &self,
-        tool_name: &str,
+        tool: AgentToolId,
         params: &Value,
         binding: &ManagedAgentSessionBinding,
     ) -> Result<Option<OwnedAgentSessionCoordinates>, McpAdapterError> {
-        if !PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) && tool_name != LIST_PROJECTS_TOOL_NAME {
-            return Ok(None);
-        }
+        let tool_name = tool.wire_name();
         let object = params
             .as_object()
             .ok_or_else(|| McpAdapterError::ToolExecution {
                 tool_name: tool_name.to_owned(),
                 message: "tool arguments must be an object".to_owned(),
             })?;
-        let project_id = if tool_name == LIST_PROJECTS_TOOL_NAME {
+        let project_id = if tool == AgentToolId::LIST_PROJECTS {
             let projects = self.allowed_project_availabilities(tool_name)?;
             let [project] = projects.as_slice() else {
                 return Ok(None);
@@ -1260,15 +1268,15 @@ fn invalid_argument_guidance(
     source: &serde_json::Error,
 ) -> Option<String> {
     let source_text = source.to_string();
-    match tool_name {
-        RECORD_RUN_TOOL_NAME => record_run_invalid_argument_guidance(params, &source_text),
-        REQUEST_USER_ACTION_TOOL_NAME => {
+    match AgentToolId::from_wire_name(tool_name).ok()? {
+        AgentToolId::RECORD_RUN => record_run_invalid_argument_guidance(params, &source_text),
+        AgentToolId::REQUEST_USER_ACTION => {
             request_user_action_invalid_argument_guidance(params, &source_text)
         }
-        UPDATE_SCOPE_TOOL_NAME => update_scope_invalid_argument_guidance(params, &source_text),
-        PREPARE_WRITE_TOOL_NAME => prepare_write_invalid_argument_guidance(params, &source_text),
-        STATUS_TOOL_NAME => status_invalid_argument_guidance(params, &source_text),
-        CHECK_CLOSE_TOOL_NAME => check_close_invalid_argument_guidance(params, &source_text),
+        AgentToolId::UPDATE_SCOPE => update_scope_invalid_argument_guidance(params, &source_text),
+        AgentToolId::PREPARE_WRITE => prepare_write_invalid_argument_guidance(params, &source_text),
+        AgentToolId::STATUS => status_invalid_argument_guidance(params, &source_text),
+        AgentToolId::CHECK_CLOSE => check_close_invalid_argument_guidance(params, &source_text),
         _ => None,
     }
 }
@@ -1798,21 +1806,9 @@ fn request_envelope<T: HasEnvelope>(request: &T) -> &ToolEnvelope {
 }
 
 fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> {
-    match tool_name {
-        STATUS_TOOL_NAME | GET_OPERATION_RESULT_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => {
-            Some(OperationCategory::Read)
-        }
-        INTAKE_TOOL_NAME
-        | UPDATE_SCOPE_TOOL_NAME
-        | PREPARE_EVIDENCE_CAPTURE_TOOL_NAME
-        | PREPARE_WRITE_TOOL_NAME
-        | STAGE_ARTIFACT_TOOL_NAME
-        | RECORD_RUN_TOOL_NAME
-        | REQUEST_USER_ACTION_TOOL_NAME
-        | RECONCILE_CHANGES_TOOL_NAME
-        | CLOSE_TASK_TOOL_NAME => Some(OperationCategory::AgentWorkflow),
-        _ => None,
-    }
+    let tool = AgentToolId::from_wire_name(tool_name).ok()?;
+    matches!(tool.owner(), AgentToolOwner::CoreMethod(_))
+        .then(|| tool.category().operation_category())
 }
 
 struct PreparedMcpArguments<T> {

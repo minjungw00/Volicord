@@ -76,11 +76,11 @@ pub(crate) fn validate_mcp_tool_output(
 fn cached_tool_input_schemas() -> &'static HashMap<&'static str, Value> {
     static SCHEMAS: OnceLock<HashMap<&'static str, Value>> = OnceLock::new();
     SCHEMAS.get_or_init(|| {
-        PUBLIC_METHOD_TOOL_NAMES
+        AgentToolId::ALL
             .iter()
-            .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
             .copied()
-            .map(|tool_name| {
+            .map(|tool| {
+                let tool_name = tool.wire_name();
                 (
                     tool_name,
                     mcp_tool_input_schema(tool_name)

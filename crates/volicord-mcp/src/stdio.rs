@@ -1149,10 +1149,9 @@ pub(crate) fn handle_json_rpc_request(
             .and_then(Value::as_object)
             .and_then(|params| params.get("name"))
             .and_then(Value::as_str)
-            .filter(|name| {
-                READ_ONLY_METHOD_TOOL_NAMES.contains(name) || *name == LIST_PROJECTS_TOOL_NAME
-            })
-            .map(str::to_owned)
+            .and_then(|name| AgentToolId::from_wire_name(name).ok())
+            .filter(|tool| matches!(tool.category(), AgentToolCategory::ReadOnly))
+            .map(|tool| tool.wire_name().to_owned())
     } else {
         None
     };
@@ -1505,20 +1504,23 @@ fn required_tool_set_present(
     .ok_or_else(|| {
         McpAdapterError::Environment("tools/list Agent Connection disappeared".to_owned())
     })?;
-    let expected_methods: &[&str] = match connection.mode.as_str() {
-        CONNECTION_MODE_WORKFLOW => &PUBLIC_METHOD_TOOL_NAMES,
-        CONNECTION_MODE_READ_ONLY => &READ_ONLY_METHOD_TOOL_NAMES,
+    let mode = match connection.mode.as_str() {
+        CONNECTION_MODE_WORKFLOW => AgentConnectionMode::Workflow,
+        CONNECTION_MODE_READ_ONLY => AgentConnectionMode::ReadOnly,
         _ => {
             return Err(McpAdapterError::Environment(
                 "tools/list Agent Connection has an invalid mode".to_owned(),
             ))
         }
     };
-    let actual = tools.iter().map(|tool| tool.name).collect::<BTreeSet<_>>();
-    Ok(expected_methods
+    let actual = tools
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        .all(|tool_name| actual.contains(tool_name)))
+        .map(|tool| tool.id.wire_name())
+        .collect::<BTreeSet<_>>();
+    Ok(AgentToolId::ALL
+        .iter()
+        .filter(|tool| tool.available_in(mode))
+        .all(|tool| actual.contains(tool.wire_name())))
 }
 
 fn lifecycle_error_with_diagnostic(
@@ -1828,7 +1830,7 @@ pub(crate) fn initialize_result(session: &NegotiatedMcpSession) -> Value {
         .messages()
         .initialize_result_instructions()
     {
-        result["instructions"] = Value::String(SERVER_INSTRUCTIONS.to_owned());
+        result["instructions"] = Value::String(server_instructions());
     }
     result
 }
@@ -1984,8 +1986,8 @@ pub(crate) fn call_tool_result(
         .and_then(Value::as_object)
         .and_then(|object| object.get("name"))
         .and_then(Value::as_str)
-        .filter(|tool_name| is_known_mcp_tool(tool_name))
-        .map(str::to_owned);
+        .and_then(|tool_name| AgentToolId::from_wire_name(tool_name).ok())
+        .map(|tool| tool.wire_name().to_owned());
     let object = match required_object_params(id, params, "tools/call") {
         Ok(object) => object,
         Err(error) => {
@@ -2025,7 +2027,7 @@ pub(crate) fn call_tool_result(
         return Ok(Err(error));
     }
 
-    let tool_name = match object.get("name").and_then(Value::as_str) {
+    let requested_tool_name = match object.get("name").and_then(Value::as_str) {
         Some(tool_name) => tool_name,
         None => {
             let error = invalid_params_response(id, "tools/call params.name must be a string");
@@ -2046,27 +2048,32 @@ pub(crate) fn call_tool_result(
             return Ok(Err(error));
         }
     };
-    if !is_known_mcp_tool(tool_name) {
-        let error = json_rpc_error(
-            id.clone(),
-            -32602,
-            "Invalid params",
-            Some(format!("unknown MCP tool: {tool_name}")),
-        );
-        state.pending_finding = Some(McpDiagnostic::ToolCall(McpToolCallDiagnostic::UnknownTool));
-        record_tool_diagnostic_best_effort(
-            adapter,
-            state,
-            diagnostic_started,
-            diagnostic_request_bytes,
-            None,
-            Some(&error),
-            ToolDiagnosticFacts::default(),
-            true,
-            DiagnosticOutcome::ValidationFailure,
-        );
-        return Ok(Err(error));
-    }
+    let tool = match AgentToolId::from_wire_name(requested_tool_name) {
+        Ok(tool) => tool,
+        Err(_) => {
+            let error = json_rpc_error(
+                id.clone(),
+                -32602,
+                "Invalid params",
+                Some(format!("unknown MCP tool: {requested_tool_name}")),
+            );
+            state.pending_finding =
+                Some(McpDiagnostic::ToolCall(McpToolCallDiagnostic::UnknownTool));
+            record_tool_diagnostic_best_effort(
+                adapter,
+                state,
+                diagnostic_started,
+                diagnostic_request_bytes,
+                None,
+                Some(&error),
+                ToolDiagnosticFacts::default(),
+                true,
+                DiagnosticOutcome::ValidationFailure,
+            );
+            return Ok(Err(error));
+        }
+    };
+    let tool_name = tool.wire_name();
     let arguments = match object.get("arguments") {
         None => json!({}),
         Some(Value::Object(_)) => object
@@ -2104,30 +2111,28 @@ pub(crate) fn call_tool_result(
             record_tools_list_metric_best_effort(adapter, state, serialized_bytes);
         }
     }
-    if tool_name == STATUS_TOOL_NAME {
+    if tool == AgentToolId::STATUS {
         state.status_method_call_count = state.status_method_call_count.saturating_add(1);
     }
-    let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
+    let mutation_detail = mutation_detail_for_tool(tool, &arguments);
 
     let binding = state.managed_agent_session_binding();
     let coordinates = binding
         .as_ref()
-        .map(|binding| {
-            adapter.ensure_agent_session_binding_for_tool(tool_name, &arguments, binding)
-        })
+        .map(|binding| adapter.ensure_agent_session_binding_for_tool(tool, &arguments, binding))
         .transpose()?
         .flatten();
 
-    let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
+    let output = if matches!(tool.owner(), AgentToolOwner::CoreMethod(_)) {
         let call_result = if let Some(coordinates) = coordinates.as_ref() {
-            adapter.call_tool_for_session(tool_name, arguments, Some(coordinates.borrowed()))
+            adapter.call_tool_for_session(tool, arguments, Some(coordinates.borrowed()))
         } else if adapter.has_default_agent_session() {
             adapter.call_tool(tool_name, arguments)
         } else {
-            adapter.call_tool_for_session(tool_name, arguments, None)
+            adapter.call_tool_for_session(tool, arguments, None)
         };
         match call_result {
-            Ok(response) if tool_name == REQUEST_USER_ACTION_TOOL_NAME => {
+            Ok(response) if tool == AgentToolId::REQUEST_USER_ACTION => {
                 let pending_response = response.clone();
                 match user_action_tool_output(adapter, response) {
                     Ok(output) => output,
@@ -2137,7 +2142,7 @@ pub(crate) fn call_tool_result(
                         ),
                 }
             }
-            Ok(response) if tool_name == GET_OPERATION_RESULT_TOOL_NAME => {
+            Ok(response) if tool == AgentToolId::GET_OPERATION_RESULT => {
                 ToolCallOutput::from_operation_result_response_for_profile(
                     &response,
                     selected_profile,
@@ -2196,7 +2201,7 @@ pub(crate) fn call_tool_result(
             }
         }
     } else {
-        let response = match adapter.call_adapter_tool(tool_name, arguments, None) {
+        let response = match adapter.call_adapter_tool(tool, arguments, None) {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
@@ -2281,11 +2286,9 @@ pub(crate) fn call_tool_result(
         } else {
             DiagnosticOutcome::Success
         };
-    let verification_tool_name =
-        tool_name_for_verification_role(ToolVerificationRole::ManagedHostRoundTrip)
-            .expect("canonical managed-host round-trip role must have exactly one tool owner");
+    let verification_tool = ToolVerificationRole::ManagedHostRoundTrip.tool();
     if diagnostic_outcome == DiagnosticOutcome::Success
-        && tool_name == verification_tool_name
+        && tool == verification_tool
         && state.managed_stdio_binding_active
         && !state.runtime_session_id.is_empty()
     {
@@ -2293,7 +2296,6 @@ pub(crate) fn call_tool_result(
         record_mcp_verification_tool_observation(
             &adapter.runtime_home,
             &state.runtime_session_id,
-            verification_tool_name,
             &authoritative_observation_timestamp(),
         )
         .map_err(McpAdapterError::Store)?;
@@ -2313,9 +2315,11 @@ pub(crate) fn call_tool_result(
     Ok(Ok(response))
 }
 
-fn mutation_detail_for_tool(tool_name: &str, arguments: &Value) -> Option<MutationDetailLevel> {
-    (!READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
-        && PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name))
+fn mutation_detail_for_tool(tool: AgentToolId, arguments: &Value) -> Option<MutationDetailLevel> {
+    matches!(
+        tool.category(),
+        AgentToolCategory::NonDestructiveMutation | AgentToolCategory::DestructiveMutation
+    )
     .then(|| {
         arguments
             .get("detail")
@@ -2821,8 +2825,10 @@ fn compact_mutation_method_result(
     method_result: &Value,
 ) -> Result<Value, McpAdapterError> {
     let effect = compact_mutation_effect(method_result)?;
-    match tool_name {
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => {
+    let tool = AgentToolId::from_wire_name(tool_name)
+        .map_err(|_| McpAdapterError::UnknownTool(tool_name.to_owned()))?;
+    match tool {
+        AgentToolId::PREPARE_EVIDENCE_CAPTURE => {
             let result: PrepareEvidenceCaptureResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
             serde_json::to_value(McpPrepareEvidenceCaptureCompactResult {
@@ -2833,7 +2839,7 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        PREPARE_WRITE_TOOL_NAME => {
+        AgentToolId::PREPARE_WRITE => {
             let result: PrepareWriteResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
             serde_json::to_value(McpPrepareWriteCompactResult {
@@ -2850,7 +2856,7 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        STAGE_ARTIFACT_TOOL_NAME => {
+        AgentToolId::STAGE_ARTIFACT => {
             let result: StageArtifactResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
             serde_json::to_value(McpStageArtifactCompactResult {
@@ -2861,7 +2867,7 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        RECORD_RUN_TOOL_NAME => {
+        AgentToolId::RECORD_RUN => {
             let result: RecordRunResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
             let evidence_observation_refs = result
@@ -2905,8 +2911,10 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        REQUEST_USER_ACTION_TOOL_NAME => compact_request_user_action_result(effect, method_result),
-        RECONCILE_CHANGES_TOOL_NAME => {
+        AgentToolId::REQUEST_USER_ACTION => {
+            compact_request_user_action_result(effect, method_result)
+        }
+        AgentToolId::RECONCILE_CHANGES => {
             let result: ReconcileChangesResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
             serde_json::to_value(McpReconcileChangesCompactResult {
@@ -2918,7 +2926,7 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        INTAKE_TOOL_NAME | UPDATE_SCOPE_TOOL_NAME | CLOSE_TASK_TOOL_NAME => {
+        AgentToolId::INTAKE | AgentToolId::UPDATE_SCOPE | AgentToolId::CLOSE_TASK => {
             serde_json::to_value(effect).map_err(McpAdapterError::Json)
         }
         _ => Err(McpAdapterError::Protocol(format!(
@@ -3264,21 +3272,7 @@ fn authoritative_refresh_failure_output(
 }
 
 fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
-    match tool_name {
-        INTAKE_TOOL_NAME => Some(MethodName::Intake),
-        UPDATE_SCOPE_TOOL_NAME => Some(MethodName::UpdateScope),
-        STATUS_TOOL_NAME => Some(MethodName::Status),
-        GET_OPERATION_RESULT_TOOL_NAME => Some(MethodName::GetOperationResult),
-        CHECK_CLOSE_TOOL_NAME => Some(MethodName::CheckClose),
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => Some(MethodName::PrepareEvidenceCapture),
-        PREPARE_WRITE_TOOL_NAME => Some(MethodName::PrepareWrite),
-        STAGE_ARTIFACT_TOOL_NAME => Some(MethodName::StageArtifact),
-        RECORD_RUN_TOOL_NAME => Some(MethodName::RecordRun),
-        REQUEST_USER_ACTION_TOOL_NAME => Some(MethodName::RequestUserAction),
-        RECONCILE_CHANGES_TOOL_NAME => Some(MethodName::ReconcileChanges),
-        CLOSE_TASK_TOOL_NAME => Some(MethodName::CloseTask),
-        _ => None,
-    }
+    AgentToolId::from_wire_name(tool_name).ok()?.method()
 }
 
 fn bounded_mutation_compatibility_text(text: String) -> String {
@@ -3651,7 +3645,7 @@ fn cli_inbox_fallback_text() -> String {
 }
 
 pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
-    PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) || ADAPTER_UTILITY_TOOL_NAMES.contains(&tool_name)
+    AgentToolId::from_wire_name(tool_name).is_ok()
 }
 
 #[cfg(test)]
@@ -3689,7 +3683,8 @@ fn tool_execution_error_result_for_profile(
                 (
                     "/project_selector".to_owned(),
                     format!(
-                        "{message}. Use volicord.list_projects when project selection is unclear."
+                        "{message}. Use {} when project selection is unclear.",
+                        AgentToolId::LIST_PROJECTS.wire_name()
                     ),
                 )
             } else {
@@ -4280,11 +4275,14 @@ mod mutation_output_tests {
             .clone()
             .expect("replay preserves the resolved Task identity");
 
-        let detail = mutation_detail_for_tool(INTAKE_TOOL_NAME, &json!({}));
+        let detail = mutation_detail_for_tool(AgentToolId::INTAKE, &json!({}));
         assert_eq!(detail, Some(MutationDetailLevel::Summary));
         let output = ToolCallOutput::from_pipeline_response(&replayed)?;
-        let output =
-            finalize_mutation_output_with_refresh(INTAKE_TOOL_NAME, detail, output, |context| {
+        let output = finalize_mutation_output_with_refresh(
+            AgentToolId::INTAKE.wire_name(),
+            detail,
+            output,
+            |context| {
                 assert_eq!(context.project_id.as_str(), fixture.project_id());
                 assert_eq!(context.task_id, task_id);
                 core.status(
@@ -4295,7 +4293,8 @@ mod mutation_output_tests {
                     test_agent_invocation(&fixture, OperationCategory::Read),
                 )
                 .map_err(McpAdapterError::Core)
-            })?;
+            },
+        )?;
 
         assert!(!output.is_error);
         assert!(output.diagnostic_facts.replayed);
@@ -4358,7 +4357,7 @@ mod mutation_output_tests {
         )?;
 
         let output = finalize_mutation_output_with_refresh(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             Some(MutationDetailLevel::Full),
             ToolCallOutput::from_pipeline_response(&intake)?,
             |context| {
@@ -4414,7 +4413,7 @@ mod mutation_output_tests {
         });
 
         let output = finalize_mutation_output_with_refresh(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             Some(MutationDetailLevel::Summary),
             output,
             |_| Err(McpAdapterError::Environment(private_error.to_owned())),
@@ -4451,8 +4450,10 @@ mod mutation_output_tests {
             .resolved_task_id
             .clone()
             .expect("committed intake resolves a Task");
-        let expected_compact =
-            compact_mutation_method_result(INTAKE_TOOL_NAME, &committed.response_value)?;
+        let expected_compact = compact_mutation_method_result(
+            AgentToolId::INTAKE.wire_name(),
+            &committed.response_value,
+        )?;
         let mut mismatched_refresh = core.status(
             fixture.status_request(
                 "req_mcp_refresh_freshness_mismatch_status",
@@ -4463,7 +4464,7 @@ mod mutation_output_tests {
         mismatched_refresh.response_value["authority_receipt"]["state_version"] = json!(999);
 
         let output = finalize_mutation_output_with_refresh(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             Some(MutationDetailLevel::Summary),
             ToolCallOutput::from_pipeline_response(&committed)?,
             |_| Ok(mismatched_refresh),
@@ -4512,15 +4513,17 @@ mod mutation_output_tests {
             ),
             test_agent_invocation(&fixture, OperationCategory::Read),
         )?;
-        let expected_compact =
-            compact_mutation_method_result(INTAKE_TOOL_NAME, &committed.response_value)?;
+        let expected_compact = compact_mutation_method_result(
+            AgentToolId::INTAKE.wire_name(),
+            &committed.response_value,
+        )?;
         let mut output = ToolCallOutput::from_pipeline_response(&committed)?;
         output.structured_content["adapter_test_padding"] =
             Value::String("x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES));
         let output =
             output.with_post_effect_failure(McpPostEffectFailureCode::McpPostEffectAdapterFailed);
         let output = finalize_mutation_output_with_refresh(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             Some(MutationDetailLevel::Summary),
             output,
             |_| Ok(refreshed),
@@ -4612,7 +4615,7 @@ mod mutation_output_tests {
         assert!(output.structured_content["user_channel_resolution"].is_null());
         assert_eq!(output.structured_content["derived_refs"], json!([]));
         let output = finalize_mutation_output_with_refresh(
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             Some(MutationDetailLevel::Summary),
             output,
             |context| {
@@ -4631,7 +4634,7 @@ mod mutation_output_tests {
         assert!(output.structured_content.get("code").is_none());
         assert_eq!(
             output.structured_content["operation_result_ref"]["source_method"],
-            REQUEST_USER_ACTION_TOOL_NAME
+            AgentToolId::REQUEST_USER_ACTION.wire_name()
         );
         assert_eq!(
             output.structured_content["method_result"]["status"],
@@ -4702,7 +4705,7 @@ mod mutation_output_tests {
         let output = ToolCallOutput::from_pipeline_response(&pending_response)?
             .with_post_effect_failure(McpPostEffectFailureCode::McpPostEffectAdapterFailed);
         let output = finalize_mutation_output_with_refresh(
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             Some(MutationDetailLevel::Summary),
             output,
             |context| {
@@ -4771,7 +4774,7 @@ mod mutation_output_tests {
         output.structured_content["base"]["effect_kind"] = json!("invalid_projection_fixture");
         let exact_unprojectable_result = output.structured_content.clone();
         let output = finalize_mutation_output_with_refresh(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             Some(MutationDetailLevel::Summary),
             output,
             |_| Ok(refreshed),
@@ -4853,7 +4856,7 @@ mod mutation_output_tests {
         );
 
         let output = finalize_mutation_output_with_refresh(
-            STAGE_ARTIFACT_TOOL_NAME,
+            AgentToolId::STAGE_ARTIFACT.wire_name(),
             Some(MutationDetailLevel::Summary),
             output,
             |_| {
@@ -4930,7 +4933,7 @@ mod mutation_output_tests {
             let output = ToolCallOutput::from_pipeline_response(&committed)?;
             let refreshed = refreshed.clone();
             let output = finalize_mutation_output_with_refresh(
-                INTAKE_TOOL_NAME,
+                AgentToolId::INTAKE.wire_name(),
                 Some(detail),
                 output,
                 |_| Ok(refreshed),
@@ -4978,7 +4981,7 @@ mod mutation_output_tests {
         let output = ToolCallOutput::from_pipeline_response(&committed)?
             .with_post_effect_failure(McpPostEffectFailureCode::McpPostEffectAdapterFailed);
         let output = finalize_mutation_output_with_refresh(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             Some(MutationDetailLevel::Summary),
             output,
             |_| Ok(refreshed),
@@ -5005,9 +5008,12 @@ mod mutation_output_tests {
         let (_fixture, committed, receipt) =
             committed_intake_with_receipt("mcp-post-effect-recovery-order")?;
 
-        let compact = compact_mutation_method_result(INTAKE_TOOL_NAME, &committed.response_value)?;
+        let compact = compact_mutation_method_result(
+            AgentToolId::INTAKE.wire_name(),
+            &committed.response_value,
+        )?;
         let both_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt.clone()),
             Some(committed.response_value.clone()),
@@ -5024,10 +5030,12 @@ mod mutation_output_tests {
         let mut oversized_exact_result = committed.response_value.clone();
         oversized_exact_result["adapter_test_padding"] =
             Value::String("x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES));
-        let expected_compact =
-            compact_mutation_method_result(INTAKE_TOOL_NAME, &oversized_exact_result)?;
+        let expected_compact = compact_mutation_method_result(
+            AgentToolId::INTAKE.wire_name(),
+            &oversized_exact_result,
+        )?;
         let receipt_and_compact_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt.clone()),
             Some(oversized_exact_result.clone()),
@@ -5045,7 +5053,7 @@ mod mutation_output_tests {
         assert_compact_budget(receipt_and_compact)?;
 
         let compact_only_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt_with_message_padding(
                 &receipt,
@@ -5073,7 +5081,7 @@ mod mutation_output_tests {
         unprojectable_result["adapter_test_padding"] =
             Value::String("x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES));
         let effect_facts_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt_with_message_padding(
                 &receipt,
@@ -5160,7 +5168,7 @@ mod mutation_output_tests {
 
         for (name, receipt, exact, compact, expect_receipt, expected_marker) in cases {
             let outcome = recovery_outcome(
-                INTAKE_TOOL_NAME,
+                AgentToolId::INTAKE.wire_name(),
                 MutationDetailLevel::Summary,
                 Some(receipt),
                 Some(exact),
@@ -5199,7 +5207,7 @@ mod mutation_output_tests {
         let small_result = json!({"effect_kind": "core_committed"});
 
         let both_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Full,
             Some(receipt.clone()),
             None,
@@ -5214,7 +5222,7 @@ mod mutation_output_tests {
         assert_compact_budget(both)?;
 
         let receipt_only_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt_with_message_padding(&receipt, 36 * 1024)),
             None,
@@ -5232,7 +5240,7 @@ mod mutation_output_tests {
         assert_compact_budget(receipt_only)?;
 
         let compact_only_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt_with_message_padding(
                 &receipt,
@@ -5253,7 +5261,7 @@ mod mutation_output_tests {
         assert_compact_budget(compact_only)?;
 
         let effect_facts_outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt_with_message_padding(
                 &receipt,
@@ -5294,7 +5302,7 @@ mod mutation_output_tests {
             };
 
         let normal = finalize_mutation_output_with_refresh(
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::RECORD_RUN.wire_name(),
             Some(default_detail),
             ToolCallOutput::from_pipeline_response(&recorded)?,
             |_| Ok(refreshed.clone()),
@@ -5319,14 +5327,14 @@ mod mutation_output_tests {
         projection_output.post_effect_failure =
             Some(McpPostEffectFailureCode::McpResponseProjectionFailed);
         let projection_recovery = finalize_mutation_output_with_refresh(
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::RECORD_RUN.wire_name(),
             Some(default_detail),
             projection_output,
             |_| Ok(refreshed.clone()),
         )?;
 
         let budget_recovery = finalize_mutation_output_with_refresh(
-            RECORD_RUN_TOOL_NAME,
+            AgentToolId::RECORD_RUN.wire_name(),
             Some(MutationDetailLevel::Full),
             ToolCallOutput::from_pipeline_response(&oversized_recorded)?,
             |_| Ok(refreshed.clone()),
@@ -5399,7 +5407,7 @@ mod mutation_output_tests {
             "derived_refs": [derived_ref.clone()]
         });
         let outcome = recovery_outcome(
-            REQUEST_USER_ACTION_TOOL_NAME,
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
             MutationDetailLevel::Summary,
             Some(receipt_with_message_padding(
                 &receipt,
@@ -5458,7 +5466,7 @@ mod mutation_output_tests {
             "oversized": "x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES * 2),
         });
         let outcome = recovery_outcome(
-            INTAKE_TOOL_NAME,
+            AgentToolId::INTAKE.wire_name(),
             MutationDetailLevel::Summary,
             None,
             None,
@@ -5527,7 +5535,7 @@ mod mutation_output_tests {
         refreshed.response_json = serde_json::to_string(&refreshed.response_value)?;
 
         let output = finalize_mutation_output_with_refresh(
-            STAGE_ARTIFACT_TOOL_NAME,
+            AgentToolId::STAGE_ARTIFACT.wire_name(),
             Some(MutationDetailLevel::Summary),
             ToolCallOutput::from_pipeline_response(&staged)?,
             |_| Ok(refreshed),

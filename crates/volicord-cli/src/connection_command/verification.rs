@@ -31,7 +31,7 @@ use volicord_types::{
     MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 #[cfg(test)]
-use volicord_types::{ConnectionStatus, LIST_PROJECTS_TOOL_NAME};
+use volicord_types::{AgentToolId, ConnectionStatus};
 
 use crate::guard_integration::audit::{
     guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
@@ -546,7 +546,7 @@ fn persist_host_boundary_findings(
             )?);
         }
     }
-    let expected_tool_name = super::managed_host_round_trip_tool_name();
+    let expected_tool_name = super::managed_host_round_trip_tool().wire_name();
     for session in current_sessions.iter().filter(|session| {
         session.verification_tool_observed_at.is_some()
             && session
@@ -718,7 +718,7 @@ pub(in crate::connection_command) fn mcp_server_check(
         "status": step.status.as_str(),
         "code": step.code,
         "diagnostic": step.details,
-        "safe_read_only_tool": super::managed_host_round_trip_tool_name(),
+        "safe_read_only_tool": super::managed_host_round_trip_tool().wire_name(),
     });
     if exchange.is_some_and(|exchange| {
         !exchange.conformance.is_empty() || !exchange.host_compatibility.is_empty()
@@ -891,7 +891,7 @@ fn probe_result_json<const N: usize>(
         "tools_list_observed": progress.tools_list.is_some(),
         "tools_returned": progress.tools_list.as_ref().map(Vec::len),
         "required_tools_validated": progress.required_tools_validated,
-        "safe_read_only_tool": super::managed_host_round_trip_tool_name(),
+        "safe_read_only_tool": super::managed_host_round_trip_tool().wire_name(),
         "safe_read_only_tool_completed": progress.safe_tool_call_completed,
         "shutdown_completed": progress.shutdown_completed,
     });
@@ -1086,7 +1086,7 @@ fn host_session_checks(
             || observed_host_version(session).is_none()
             || host.host_version.as_deref() == observed_host_version(session)
     };
-    let expected_verification_tool_name = super::managed_host_round_trip_tool_name();
+    let expected_verification_tool_name = super::managed_host_round_trip_tool().wire_name();
     let details = |observed: Option<&McpRuntimeSessionRecord>| {
         json!({
             "current_integration_revision": current_revision,
@@ -2234,7 +2234,7 @@ pub(in crate::connection_command) fn current_status_report(
     for session in current_sessions.iter().filter(|session| {
         session.verification_tool_observed_at.is_some()
             && session.verification_tool_name.as_deref()
-                != Some(super::managed_host_round_trip_tool_name())
+                != Some(super::managed_host_round_trip_tool().wire_name())
     }) {
         let subject = VerificationToolSubject::for_runtime_session(
             &connection.connection_internal_id,
@@ -2248,7 +2248,7 @@ pub(in crate::connection_command) fn current_status_report(
             ),
             &subject,
             &VerificationToolFacts::new(
-                super::managed_host_round_trip_tool_name(),
+                super::managed_host_round_trip_tool().wire_name(),
                 session
                     .verification_tool_name
                     .as_deref()
@@ -2390,7 +2390,9 @@ mod tests {
             tools_list_observed_at: Some("2026-07-18T00:00:03Z".to_owned()),
             required_tools_present: Some(required_tools_present),
             verification_tool_name: Some(
-                crate::connection_command::managed_host_round_trip_tool_name().to_owned(),
+                crate::connection_command::managed_host_round_trip_tool()
+                    .wire_name()
+                    .to_owned(),
             ),
             verification_tool_observed_at: Some("2026-07-18T00:00:04Z".to_owned()),
             last_observed_at: "2026-07-18T00:00:04Z".to_owned(),
@@ -2490,7 +2492,8 @@ mod tests {
     fn mismatched_verification_tool_fails_with_expected_and_observed_names() {
         let host = host("future");
         let mut session = managed_session("future", true);
-        session.verification_tool_name = Some(volicord_types::STATUS_TOOL_NAME.to_owned());
+        session.verification_tool_name =
+            Some(volicord_types::AgentToolId::STATUS.wire_name().to_owned());
         let cause = DiagnosticFindingId::parse(
             "finding.mcp_runtime_fixture.verification_tool_designation_mismatch",
         )
@@ -2511,11 +2514,11 @@ mod tests {
         let details = check.details().expect("round-trip details").as_object();
         assert_eq!(
             details["expected_verification_tool_name"],
-            crate::connection_command::managed_host_round_trip_tool_name()
+            crate::connection_command::managed_host_round_trip_tool().wire_name()
         );
         assert_eq!(
             details["observed_verification_tool_name"],
-            volicord_types::STATUS_TOOL_NAME
+            volicord_types::AgentToolId::STATUS.wire_name()
         );
     }
 
@@ -3023,7 +3026,7 @@ mod tests {
                 crate::connection_command::McpExchangeOutcome::completed(
                     crate::connection_command::McpExchangeProgress::observed(
                         true,
-                        Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                        Some(vec![AgentToolId::LIST_PROJECTS.wire_name().to_owned()]),
                         true,
                         true,
                         true,
@@ -3036,7 +3039,7 @@ mod tests {
 
         assert_eq!(
             details["self_test"]["safe_read_only_tool"],
-            crate::connection_command::managed_host_round_trip_tool_name()
+            crate::connection_command::managed_host_round_trip_tool().wire_name()
         );
     }
 
@@ -3105,7 +3108,7 @@ mod tests {
         let safe_call_failed = projected_self_test(
             crate::connection_command::McpExchangeProgress::observed(
                 true,
-                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                Some(vec![AgentToolId::LIST_PROJECTS.wire_name().to_owned()]),
                 true,
                 false,
                 false,
@@ -3118,7 +3121,7 @@ mod tests {
         assert_eq!(safe_call_failed["tools_list_observed"], true);
         assert_eq!(
             safe_call_failed["tools_list"],
-            json!([LIST_PROJECTS_TOOL_NAME])
+            json!([AgentToolId::LIST_PROJECTS.wire_name()])
         );
         assert_eq!(safe_call_failed["required_tools_validated"], true);
         assert_eq!(safe_call_failed["safe_read_only_tool_completed"], false);
@@ -3126,7 +3129,7 @@ mod tests {
         let shutdown_failed = projected_self_test(
             crate::connection_command::McpExchangeProgress::observed(
                 true,
-                Some(vec![LIST_PROJECTS_TOOL_NAME.to_owned()]),
+                Some(vec![AgentToolId::LIST_PROJECTS.wire_name().to_owned()]),
                 true,
                 true,
                 false,
@@ -3140,7 +3143,7 @@ mod tests {
         assert_eq!(shutdown_failed["tools_list_observed"], true);
         assert_eq!(
             shutdown_failed["tools_list"],
-            json!([LIST_PROJECTS_TOOL_NAME])
+            json!([AgentToolId::LIST_PROJECTS.wire_name()])
         );
         assert_eq!(shutdown_failed["required_tools_validated"], true);
         assert_eq!(shutdown_failed["safe_read_only_tool_completed"], true);

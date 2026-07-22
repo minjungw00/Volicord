@@ -60,8 +60,11 @@ fixture를 교체합니다.
 - `production_supported=true`인 manifest 항목, 프로덕션 protocol profile,
   `volicord_conformance_covered=true`인 항목, 어댑터 소유 적합성 case 사이의 정확한
   revision 집합 일치 및 프로덕션 지원에서 추적 중인 pre-release generation 제외
+- `AgentToolId` wire 이름의 유일성과 왕복 파싱, 정규 registry identity의 정확한 일치,
+  mode별 가용성, CLI·MCP runtime·Store가 함께 사용하는 컴파일 시점
+  `ManagedHostRoundTrip` 결합
 - `volicord_conformance_covered=true`인 모든 revision의 독립된 `initialize`, initialized notification,
-  `tools/list`, 고정 schema 검증, 필수 도구, 지정 왕복 도구, revision별 도구 projection과
+  `tools/list`, 고정 schema 검증, 필수 도구, 지정 왕복 identity, revision별 도구 projection과
   작업 단계 batching, 잘못된 lifecycle 동작, 초기화 batch 거절, EOF/종료
 - exact-match와 counter-offer 협상, profile별 initialize capability, batching,
   `tools/list`, `tools/call` wire projection

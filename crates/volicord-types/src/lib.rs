@@ -99,17 +99,17 @@ mod tests {
     }
 
     #[test]
-    fn prepare_evidence_capture_method_and_workflow_tool_name_are_stable() {
+    fn prepare_evidence_capture_method_and_agent_tool_identity_are_stable() {
         assert_eq!(
             MethodName::PrepareEvidenceCapture.as_str(),
             "volicord.prepare_evidence_capture"
         );
         assert_eq!(
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            AgentToolId::PREPARE_EVIDENCE_CAPTURE.wire_name(),
             "volicord.prepare_evidence_capture"
         );
-        assert!(WORKFLOW_METHOD_TOOL_NAMES.contains(&PREPARE_EVIDENCE_CAPTURE_TOOL_NAME));
-        assert!(!READ_ONLY_METHOD_TOOL_NAMES.contains(&PREPARE_EVIDENCE_CAPTURE_TOOL_NAME));
+        assert!(AgentToolId::PREPARE_EVIDENCE_CAPTURE.available_in(AgentConnectionMode::Workflow));
+        assert!(!AgentToolId::PREPARE_EVIDENCE_CAPTURE.available_in(AgentConnectionMode::ReadOnly));
     }
 
     #[test]
@@ -1036,7 +1036,8 @@ mod tests {
         );
         assert_eq!(continuity_cursor["additionalProperties"], false);
 
-        let mcp_status = mcp_request_schema("volicord.status").expect("status MCP argument schema");
+        let mcp_status =
+            mcp_request_schema(AgentToolId::STATUS).expect("status MCP argument schema");
         assert_schema_allows_null_property(&mcp_status, "continuity_page");
         assert_eq!(
             definition(&mcp_status, "ContinuityPageRequest")["properties"]["page_size"]["maximum"],
@@ -1125,7 +1126,7 @@ mod tests {
 
     #[test]
     fn mcp_record_run_evidence_defaults_expand_to_the_complete_core_shape() {
-        let mcp = mcp_request_schema("volicord.record_run").expect("record_run MCP schema");
+        let mcp = mcp_request_schema(AgentToolId::RECORD_RUN).expect("record_run MCP schema");
         assert_required(
             definition(&mcp, "McpEvidenceCoverageUpdate"),
             &["target", "coverage_state"],
@@ -1296,7 +1297,7 @@ mod tests {
 
     #[test]
     fn generated_mcp_response_schema_includes_stable_adapter_error_shape() {
-        let schema = mcp_response_schema("volicord.status").expect("status MCP response schema");
+        let schema = mcp_response_schema(AgentToolId::STATUS).expect("status MCP response schema");
         assert_eq!(schema["type"], "object");
 
         let error = definition(&schema, "McpToolErrorResponse");
@@ -1368,7 +1369,7 @@ mod tests {
 
     #[test]
     fn generated_mutation_response_schemas_cover_fresh_wrappers_and_recovery_facts() {
-        let action = mcp_response_schema("volicord.request_user_action")
+        let action = mcp_response_schema(AgentToolId::REQUEST_USER_ACTION)
             .expect("user-action MCP response schema");
         assert_required(
             definition(&action, "McpMutationFullResponse"),
@@ -1520,27 +1521,27 @@ mod tests {
             "McpMutationPostEffectFailure",
         );
 
-        for (tool_name, compact_name) in [
+        for (tool, compact_name) in [
             (
-                "volicord.prepare_evidence_capture",
+                AgentToolId::PREPARE_EVIDENCE_CAPTURE,
                 "McpPrepareEvidenceCaptureCompactResult",
             ),
-            ("volicord.prepare_write", "McpPrepareWriteCompactResult"),
-            ("volicord.stage_artifact", "McpStageArtifactCompactResult"),
-            ("volicord.record_run", "McpRecordRunCompactResult"),
+            (AgentToolId::PREPARE_WRITE, "McpPrepareWriteCompactResult"),
+            (AgentToolId::STAGE_ARTIFACT, "McpStageArtifactCompactResult"),
+            (AgentToolId::RECORD_RUN, "McpRecordRunCompactResult"),
             (
-                "volicord.reconcile_changes",
+                AgentToolId::RECONCILE_CHANGES,
                 "McpReconcileChangesCompactResult",
             ),
         ] {
-            let schema = mcp_response_schema(tool_name).expect("mutation MCP response schema");
+            let schema = mcp_response_schema(tool).expect("mutation MCP response schema");
             assert!(
                 definition(&schema, compact_name)["properties"].is_object(),
-                "{tool_name} should advertise {compact_name}"
+                "{tool} should advertise {compact_name}"
             );
         }
 
-        let prepare_capture = mcp_response_schema("volicord.prepare_evidence_capture")
+        let prepare_capture = mcp_response_schema(AgentToolId::PREPARE_EVIDENCE_CAPTURE)
             .expect("prepare-evidence-capture MCP response schema");
         assert_required(
             definition(&prepare_capture, "McpPrepareEvidenceCaptureCompactResult"),
@@ -1554,7 +1555,7 @@ mod tests {
         );
 
         let record_run =
-            mcp_response_schema("volicord.record_run").expect("record-run MCP response schema");
+            mcp_response_schema(AgentToolId::RECORD_RUN).expect("record-run MCP response schema");
         assert_required(
             definition(&record_run, "McpRecordRunCompactResult"),
             &[
@@ -1790,24 +1791,24 @@ mod tests {
         })
         .expect("dry-run response should serialize");
 
-        for tool_name in [
-            "volicord.intake",
-            "volicord.update_scope",
-            "volicord.prepare_write",
-            "volicord.stage_artifact",
-            "volicord.record_run",
-            "volicord.request_user_action",
-            "volicord.reconcile_changes",
-            "volicord.close_task",
+        for tool in [
+            AgentToolId::INTAKE,
+            AgentToolId::UPDATE_SCOPE,
+            AgentToolId::PREPARE_WRITE,
+            AgentToolId::STAGE_ARTIFACT,
+            AgentToolId::RECORD_RUN,
+            AgentToolId::REQUEST_USER_ACTION,
+            AgentToolId::RECONCILE_CHANGES,
+            AgentToolId::CLOSE_TASK,
         ] {
-            let schema = mcp_response_schema(tool_name).expect("mutation MCP response schema");
+            let schema = mcp_response_schema(tool).expect("mutation MCP response schema");
             assert!(
                 validate_json_schema(&schema, &rejected).is_ok(),
-                "{tool_name} output schema should accept the runtime rejected branch"
+                "{tool} output schema should accept the runtime rejected branch"
             );
             assert!(
                 validate_json_schema(&schema, &dry_run).is_ok(),
-                "{tool_name} output schema should accept the runtime dry-run branch"
+                "{tool} output schema should accept the runtime dry-run branch"
             );
         }
     }

@@ -1687,10 +1687,9 @@ impl ProjectMutation<'_> {
             validate_timestamp("expires_at", expires_at)?;
         }
         validate_json_text("user_action_requests.metadata_json", &input.metadata_json)?;
-        if !matches!(
-            input.source_method.as_str(),
-            REQUEST_USER_ACTION_TOOL_NAME | RECONCILE_CHANGES_TOOL_NAME
-        ) {
+        if input.source_method != MethodName::RequestUserAction.as_str()
+            && input.source_method != MethodName::ReconcileChanges.as_str()
+        {
             return Err(StoreError::InvalidInput {
                 detail: "user-action request source_method is not an allowed creator".to_owned(),
             });

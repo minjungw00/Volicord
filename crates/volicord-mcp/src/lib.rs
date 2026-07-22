@@ -28,9 +28,7 @@ mod util;
 pub use adapter::{McpAdapter, McpAdapterBoundary};
 pub use build_info::{build_id, build_info, BuildInfo};
 pub use conformance::volicord_conformance_covered_revisions;
-pub use constants::{
-    ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
-};
+pub use constants::{AgentToolCategory, AgentToolId, AgentToolOwner, ToolVerificationRole};
 pub use diagnostics::bootstrap_diagnostic_envelope;
 pub use errors::McpAdapterError;
 pub use managed_launch::{

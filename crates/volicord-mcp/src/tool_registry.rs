@@ -47,7 +47,8 @@ impl CanonicalToolAnnotations {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CanonicalToolDefinition {
-    pub name: &'static str,
+    #[serde(rename = "name")]
+    pub id: AgentToolId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<&'static str>,
     pub description: &'static str,
@@ -145,7 +146,10 @@ impl CanonicalToolDefinition {
                     projected.insert("inputSchema".to_owned(), self.input_schema.clone());
                 }
                 ToolDefinitionField::Name => {
-                    projected.insert("name".to_owned(), Value::String(self.name.to_owned()));
+                    projected.insert(
+                        "name".to_owned(),
+                        Value::String(self.id.wire_name().to_owned()),
+                    );
                 }
                 ToolDefinitionField::OutputSchema => {
                     projected.insert("outputSchema".to_owned(), self.output_schema.clone());
@@ -433,26 +437,32 @@ const CLOSE_TASK_EXAMPLES: [McpToolExample; 3] = [
     },
 ];
 
-pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExample] {
-    match tool_name {
-        INTAKE_TOOL_NAME => &INTAKE_EXAMPLES,
-        UPDATE_SCOPE_TOOL_NAME => &UPDATE_SCOPE_EXAMPLES,
-        STATUS_TOOL_NAME => &STATUS_EXAMPLES,
-        GET_OPERATION_RESULT_TOOL_NAME => &GET_OPERATION_RESULT_EXAMPLES,
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => &PREPARE_EVIDENCE_CAPTURE_EXAMPLES,
-        PREPARE_WRITE_TOOL_NAME => &PREPARE_WRITE_EXAMPLES,
-        STAGE_ARTIFACT_TOOL_NAME => &STAGE_ARTIFACT_EXAMPLES,
-        RECORD_RUN_TOOL_NAME => &RECORD_RUN_EXAMPLES,
-        REQUEST_USER_ACTION_TOOL_NAME => &REQUEST_USER_ACTION_EXAMPLES,
-        RECONCILE_CHANGES_TOOL_NAME => &RECONCILE_CHANGES_EXAMPLES,
-        CHECK_CLOSE_TOOL_NAME => &CHECK_CLOSE_EXAMPLES,
-        CLOSE_TASK_TOOL_NAME => &CLOSE_TASK_EXAMPLES,
-        _ => &[],
+pub(crate) fn canonical_tool_examples(tool: AgentToolId) -> &'static [McpToolExample] {
+    match tool.method() {
+        Some(MethodName::Intake) => &INTAKE_EXAMPLES,
+        Some(MethodName::UpdateScope) => &UPDATE_SCOPE_EXAMPLES,
+        Some(MethodName::Status) => &STATUS_EXAMPLES,
+        Some(MethodName::GetOperationResult) => &GET_OPERATION_RESULT_EXAMPLES,
+        Some(MethodName::PrepareEvidenceCapture) => &PREPARE_EVIDENCE_CAPTURE_EXAMPLES,
+        Some(MethodName::PrepareWrite) => &PREPARE_WRITE_EXAMPLES,
+        Some(MethodName::StageArtifact) => &STAGE_ARTIFACT_EXAMPLES,
+        Some(MethodName::RecordRun) => &RECORD_RUN_EXAMPLES,
+        Some(MethodName::RequestUserAction) => &REQUEST_USER_ACTION_EXAMPLES,
+        Some(MethodName::ReconcileChanges) => &RECONCILE_CHANGES_EXAMPLES,
+        Some(MethodName::CheckClose) => &CHECK_CLOSE_EXAMPLES,
+        Some(MethodName::CloseTask) => &CLOSE_TASK_EXAMPLES,
+        None | Some(MethodName::ResolveUserAction) => &[],
     }
 }
 
 pub fn public_method_tools() -> Vec<CanonicalToolDefinition> {
-    method_tools(PUBLIC_METHOD_TOOL_NAMES, ToolSchemaDetail::Documentation)
+    tool_definitions(
+        AgentToolId::ALL
+            .iter()
+            .copied()
+            .filter(|tool| matches!(tool.owner(), AgentToolOwner::CoreMethod(_))),
+        ToolSchemaDetail::Documentation,
+    )
 }
 
 /// Returns adapter utility tool definitions.
@@ -461,22 +471,13 @@ pub fn adapter_utility_tools() -> Vec<CanonicalToolDefinition> {
 }
 
 fn adapter_utility_tools_with_detail(detail: ToolSchemaDetail) -> Vec<CanonicalToolDefinition> {
-    ADAPTER_UTILITY_TOOL_NAMES
-        .iter()
-        .map(|name| CanonicalToolDefinition {
-            name,
-            title: None,
-            description: tool_description(name, detail),
-            input_schema: mcp_tool_input_schema_with_detail(name, detail)
-                .expect("adapter utility tool input schema should exist"),
-            output_schema: match detail {
-                ToolSchemaDetail::RuntimeCompact => compact_output_schema(),
-                ToolSchemaDetail::Documentation => list_projects_output_schema(),
-            },
-            annotations: CanonicalToolAnnotations::read_only(),
-            metadata: None,
-        })
-        .collect()
+    tool_definitions(
+        AgentToolId::ALL
+            .iter()
+            .copied()
+            .filter(|tool| matches!(tool.owner(), AgentToolOwner::AdapterUtility)),
+        detail,
+    )
 }
 
 /// Returns workflow-mode MCP-visible tools.
@@ -486,14 +487,13 @@ pub fn mcp_tools() -> Vec<CanonicalToolDefinition> {
 
 /// Returns MCP-visible tools for the supplied Agent Connection mode.
 pub fn mcp_tools_for_mode(mode: AgentConnectionMode) -> Vec<CanonicalToolDefinition> {
-    let mut tools = match mode {
-        AgentConnectionMode::ReadOnly => {
-            method_tools(READ_ONLY_METHOD_TOOL_NAMES, ToolSchemaDetail::Documentation)
-        }
-        AgentConnectionMode::Workflow => public_method_tools(),
-    };
-    tools.extend(adapter_utility_tools());
-    tools
+    tool_definitions(
+        AgentToolId::ALL
+            .iter()
+            .copied()
+            .filter(|tool| tool.available_in(mode)),
+        ToolSchemaDetail::Documentation,
+    )
 }
 
 /// Returns MCP-visible tools for the effective connection and storage capability.
@@ -514,22 +514,24 @@ pub(crate) fn mcp_tools_for_mode_and_storage_with_detail(
     storage_capability: McpStorageCapability,
     detail: ToolSchemaDetail,
 ) -> Vec<CanonicalToolDefinition> {
-    let mut tools = match effective_tool_mode_for_mode_and_storage(mode, storage_capability) {
-        McpEffectiveToolMode::Unavailable => Vec::new(),
-        McpEffectiveToolMode::ReadOnly => method_tools(READ_ONLY_METHOD_TOOL_NAMES, detail),
-        McpEffectiveToolMode::ReadOnlyDegraded => method_tools(
-            [
-                STATUS_TOOL_NAME,
-                GET_OPERATION_RESULT_TOOL_NAME,
-                REQUEST_USER_ACTION_TOOL_NAME,
-                CHECK_CLOSE_TOOL_NAME,
-            ],
-            detail,
-        ),
-        McpEffectiveToolMode::Workflow => method_tools(PUBLIC_METHOD_TOOL_NAMES, detail),
-    };
-    tools.extend(adapter_utility_tools_with_detail(detail));
-    tools
+    let effective_mode = effective_tool_mode_for_mode_and_storage(mode, storage_capability);
+    tool_definitions(
+        AgentToolId::ALL
+            .iter()
+            .copied()
+            .filter(|tool| match effective_mode {
+                McpEffectiveToolMode::Unavailable => {
+                    matches!(tool.owner(), AgentToolOwner::AdapterUtility)
+                }
+                McpEffectiveToolMode::ReadOnly => tool.available_in(AgentConnectionMode::ReadOnly),
+                McpEffectiveToolMode::ReadOnlyDegraded => {
+                    matches!(tool.category(), AgentToolCategory::ReadOnly)
+                        || *tool == AgentToolId::REQUEST_USER_ACTION
+                }
+                McpEffectiveToolMode::Workflow => tool.available_in(AgentConnectionMode::Workflow),
+            }),
+        detail,
+    )
 }
 
 pub(crate) fn tools_list_schema_validation_status(
@@ -546,9 +548,9 @@ pub(crate) fn mcp_tool_naming_style(tools: &[CanonicalToolDefinition]) -> &'stat
     if tools.is_empty() {
         return "empty";
     }
-    if tools.iter().all(|tool| tool.name.contains('.')) {
+    if tools.iter().all(|tool| tool.id.wire_name().contains('.')) {
         "dotted_namespace"
-    } else if tools.iter().all(|tool| !tool.name.contains('.')) {
+    } else if tools.iter().all(|tool| !tool.id.wire_name().contains('.')) {
         "plain"
     } else {
         "mixed"
@@ -617,25 +619,28 @@ pub(crate) fn validate_tools_list_json_compatibility(tools: &[Value]) -> Result<
     }
 }
 
-pub(crate) fn method_tools<const N: usize>(
-    names: [&'static str; N],
+pub(crate) fn tool_definitions(
+    tools: impl IntoIterator<Item = AgentToolId>,
     detail: ToolSchemaDetail,
 ) -> Vec<CanonicalToolDefinition> {
-    names
-        .iter()
-        .map(|name| CanonicalToolDefinition {
-            name,
+    tools
+        .into_iter()
+        .map(|id| CanonicalToolDefinition {
+            id,
             title: None,
-            description: tool_description(name, detail),
-            input_schema: mcp_tool_input_schema_with_detail(name, detail)
+            description: tool_description(id, detail),
+            input_schema: mcp_tool_input_schema_with_detail(id, detail)
                 .expect("MCP tool schema should exist"),
             output_schema: match detail {
                 ToolSchemaDetail::RuntimeCompact => compact_output_schema(),
-                ToolSchemaDetail::Documentation => {
-                    mcp_response_schema(name).expect("MCP tool response schema should exist")
-                }
+                ToolSchemaDetail::Documentation => match id.owner() {
+                    AgentToolOwner::CoreMethod(_) => {
+                        mcp_response_schema(id).expect("MCP tool response schema should exist")
+                    }
+                    AgentToolOwner::AdapterUtility => list_projects_output_schema(),
+                },
             },
-            annotations: tool_annotations(name),
+            annotations: tool_annotations(id),
             metadata: None,
         })
         .collect()
@@ -646,31 +651,29 @@ pub(crate) fn compact_output_schema() -> Value {
 }
 
 pub(crate) fn mcp_tool_output_schema(name: &str) -> Option<Value> {
-    is_known_tool_name(name).then(compact_output_schema)
-}
-
-fn is_known_tool_name(name: &str) -> bool {
-    PUBLIC_METHOD_TOOL_NAMES.contains(&name) || ADAPTER_UTILITY_TOOL_NAMES.contains(&name)
+    AgentToolId::from_wire_name(name)
+        .ok()
+        .map(|_| compact_output_schema())
 }
 
 pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
-    mcp_tool_input_schema_with_detail(name, ToolSchemaDetail::Documentation)
+    let tool = AgentToolId::from_wire_name(name).ok()?;
+    mcp_tool_input_schema_with_detail(tool, ToolSchemaDetail::Documentation)
 }
 
-fn mcp_tool_input_schema_with_detail(name: &str, detail: ToolSchemaDetail) -> Option<Value> {
-    let mut schema = if name == LIST_PROJECTS_TOOL_NAME {
-        json!({
+fn mcp_tool_input_schema_with_detail(tool: AgentToolId, detail: ToolSchemaDetail) -> Option<Value> {
+    let mut schema = match tool.owner() {
+        AgentToolOwner::AdapterUtility => json!({
             "type": "object",
             "properties": {},
             "additionalProperties": false
-        })
-    } else {
-        mcp_request_schema(name)?
+        }),
+        AgentToolOwner::CoreMethod(_) => mcp_request_schema(tool)?,
     };
     match detail {
         ToolSchemaDetail::RuntimeCompact => compact_runtime_schema(&mut schema),
         ToolSchemaDetail::Documentation => {
-            let examples = canonical_tool_examples(name)
+            let examples = canonical_tool_examples(tool)
                 .iter()
                 .map(|example| {
                     serde_json::from_str(example.arguments_json)
@@ -1093,105 +1096,97 @@ fn base36(mut value: usize) -> String {
     digits.iter().rev().collect()
 }
 
-fn tool_annotations(name: &str) -> CanonicalToolAnnotations {
-    match name {
-        STATUS_TOOL_NAME | GET_OPERATION_RESULT_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => {
-            CanonicalToolAnnotations::read_only()
-        }
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME | PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => {
+fn tool_annotations(tool: AgentToolId) -> CanonicalToolAnnotations {
+    match tool.category() {
+        AgentToolCategory::ReadOnly => CanonicalToolAnnotations::read_only(),
+        AgentToolCategory::NonDestructiveMutation => {
             CanonicalToolAnnotations::non_destructive_mutation()
         }
-        INTAKE_TOOL_NAME
-        | UPDATE_SCOPE_TOOL_NAME
-        | RECORD_RUN_TOOL_NAME
-        | REQUEST_USER_ACTION_TOOL_NAME
-        | RECONCILE_CHANGES_TOOL_NAME
-        | CLOSE_TASK_TOOL_NAME => CanonicalToolAnnotations::destructive_mutation(),
-        _ => panic!("missing MCP annotation policy for tool `{name}`"),
+        AgentToolCategory::DestructiveMutation => CanonicalToolAnnotations::destructive_mutation(),
     }
 }
 
-pub(crate) fn tool_description(name: &str, detail: ToolSchemaDetail) -> &'static str {
-    match (detail, name) {
-        (ToolSchemaDetail::RuntimeCompact, INTAKE_TOOL_NAME) => {
+pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &'static str {
+    match (detail, tool) {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::INTAKE) => {
             "Start or resume work and return its authority state."
         }
-        (ToolSchemaDetail::RuntimeCompact, UPDATE_SCOPE_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::UPDATE_SCOPE) => {
             "Update Task scope and Change Unit before more work."
         }
-        (ToolSchemaDetail::RuntimeCompact, STATUS_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::STATUS) => {
             "Refresh unknown Task authority, blockers, and next action."
         }
-        (ToolSchemaDetail::RuntimeCompact, GET_OPERATION_RESULT_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::GET_OPERATION_RESULT) => {
             "Read one bounded immutable mutation-result page."
         }
-        (ToolSchemaDetail::RuntimeCompact, PREPARE_EVIDENCE_CAPTURE_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::PREPARE_EVIDENCE_CAPTURE) => {
             "Before capture, register an evidence intent; this records no Evidence."
         }
-        (ToolSchemaDetail::RuntimeCompact, PREPARE_WRITE_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::PREPARE_WRITE) => {
             "Before editing, check Product Repository paths and get a write decision."
         }
-        (ToolSchemaDetail::RuntimeCompact, STAGE_ARTIFACT_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::STAGE_ARTIFACT) => {
             "Stage an Evidence attachment; staging records no Evidence."
         }
-        (ToolSchemaDetail::RuntimeCompact, RECORD_RUN_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECORD_RUN) => {
             "After work, record its Run, changes, and evidence."
         }
-        (ToolSchemaDetail::RuntimeCompact, REQUEST_USER_ACTION_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::REQUEST_USER_ACTION) => {
             "Create or resume one user action; complete pending requests through `volicord inbox`."
         }
-        (ToolSchemaDetail::RuntimeCompact, RECONCILE_CHANGES_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::RECONCILE_CHANGES) => {
             "Reconcile unresolved Product Repository changes with current authority."
         }
-        (ToolSchemaDetail::RuntimeCompact, CHECK_CLOSE_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::CHECK_CLOSE) => {
             "Read close readiness without requesting a terminal change."
         }
-        (ToolSchemaDetail::RuntimeCompact, CLOSE_TASK_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::CLOSE_TASK) => {
             "Request completion, cancellation, or supersession to end the Task."
         }
-        (ToolSchemaDetail::RuntimeCompact, LIST_PROJECTS_TOOL_NAME) => {
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::LIST_PROJECTS) => {
             "List projects available to this MCP connection."
         }
-        (_, INTAKE_TOOL_NAME) => {
+        (_, AgentToolId::INTAKE) => {
             "Start, resume, supersede, or reject an ordinary user work loop."
         }
-        (_, UPDATE_SCOPE_TOOL_NAME) => {
+        (_, AgentToolId::UPDATE_SCOPE) => {
             "Update the current Task scope and keep, create, or replace its current Change Unit."
         }
-        (_, STATUS_TOOL_NAME) => {
+        (_, AgentToolId::STATUS) => {
             "Read the current Core status view without creating Core authority state."
         }
-        (_, GET_OPERATION_RESULT_TOOL_NAME) => {
+        (_, AgentToolId::GET_OPERATION_RESULT) => {
             "Read one bounded page of an immutable historical mutation response; read current status separately."
         }
-        (_, PREPARE_EVIDENCE_CAPTURE_TOOL_NAME) => {
+        (_, AgentToolId::PREPARE_EVIDENCE_CAPTURE) => {
             "Create a short-lived, current-basis intent for a registered evidence source. This does not execute the source or record Evidence."
         }
-        (_, PREPARE_WRITE_TOOL_NAME) => {
+        (_, AgentToolId::PREPARE_WRITE) => {
             "Check a proposed Product Repository write against current Core scope. The default result includes the decision and any issued write ticket."
         }
-        (_, STAGE_ARTIFACT_TOOL_NAME) => {
+        (_, AgentToolId::STAGE_ARTIFACT) => {
             "Prepare an Evidence attachment input; staging alone is not recorded Evidence. The default compact result includes the staged handle and expiry."
         }
-        (_, RECORD_RUN_TOOL_NAME) => {
+        (_, AgentToolId::RECORD_RUN) => {
             "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
         }
-        (_, REQUEST_USER_ACTION_TOOL_NAME) => {
+        (_, AgentToolId::REQUEST_USER_ACTION) => {
             "Create or resume one focused user action. MCP returns only a bounded pending summary; user-owned delivery and resolution use `volicord inbox`."
         }
-        (_, RECONCILE_CHANGES_TOOL_NAME) => {
+        (_, AgentToolId::RECONCILE_CHANGES) => {
             "Reconcile unresolved Product Repository changes without agent-only dismissal. The default result includes per-finding outcomes."
         }
-        (_, CHECK_CLOSE_TOOL_NAME) => {
+        (_, AgentToolId::CHECK_CLOSE) => {
             "Read current close readiness without requesting a terminal mutation."
         }
-        (_, CLOSE_TASK_TOOL_NAME) => {
+        (_, AgentToolId::CLOSE_TASK) => {
             "Request the complete, cancel, or supersede terminal path for one Task."
         }
-        (_, LIST_PROJECTS_TOOL_NAME) => {
+        (_, AgentToolId::LIST_PROJECTS) => {
             "List projects explicitly allowed for this MCP connection."
         }
-        _ => "Unsupported Volicord method.",
+        _ => unreachable!("AgentToolId cannot contain a non-MCP MethodName"),
     }
 }
 

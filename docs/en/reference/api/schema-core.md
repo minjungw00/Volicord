@@ -36,6 +36,13 @@ This document does not own:
 - MCP revision-specific tool definitions, result carriers, or error flags; see
   [MCP transport](../mcp-transport.md)
 
+For Core-owned MCP tools, the canonical `AgentToolId` identity reuses the
+existing `MethodName` domain and projects its stable MCP wire name. Adapter
+utilities belong to the same closed identity catalog. The operational
+`ToolVerificationRole::ManagedHostRoundTrip` binding to
+`AgentToolId::LIST_PROJECTS` is compile-time metadata on that catalog; it does
+not define another Core method identity.
+
 ## Schema notation
 
 Meaning:

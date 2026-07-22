@@ -21,6 +21,7 @@ use crate::schema::{
     UserActionResolutionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
     CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
+use crate::tool_names::AgentToolId;
 use crate::values::{
     AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
     CloseState, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
@@ -1413,73 +1414,73 @@ pub fn public_response_schema(method_name: &str) -> Option<Value> {
 }
 
 /// Returns the generated JSON Schema for one MCP-visible tool argument shape.
-pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
-    match tool_name {
-        "volicord.intake" => Some(request_schema::<McpIntakeArguments>()),
-        "volicord.update_scope" => Some(request_schema::<McpUpdateScopeArguments>()),
-        "volicord.status" => Some(request_schema::<McpStatusArguments>()),
-        "volicord.get_operation_result" => Some(request_schema::<McpGetOperationResultArguments>()),
-        "volicord.prepare_evidence_capture" => {
+pub fn mcp_request_schema(tool: AgentToolId) -> Option<Value> {
+    match tool.method()? {
+        MethodName::Intake => Some(request_schema::<McpIntakeArguments>()),
+        MethodName::UpdateScope => Some(request_schema::<McpUpdateScopeArguments>()),
+        MethodName::Status => Some(request_schema::<McpStatusArguments>()),
+        MethodName::GetOperationResult => Some(request_schema::<McpGetOperationResultArguments>()),
+        MethodName::PrepareEvidenceCapture => {
             Some(request_schema::<McpPrepareEvidenceCaptureArguments>())
         }
-        "volicord.prepare_write" => Some(request_schema::<McpPrepareWriteArguments>()),
-        "volicord.stage_artifact" => Some(request_schema::<McpStageArtifactArguments>()),
-        "volicord.record_run" => Some(request_schema::<McpRecordRunArguments>()),
-        "volicord.request_user_action" => Some(request_schema::<McpRequestUserActionArguments>()),
-        "volicord.reconcile_changes" => Some(request_schema::<McpReconcileChangesArguments>()),
-        "volicord.check_close" => Some(request_schema::<McpCheckCloseArguments>()),
-        "volicord.close_task" => Some(request_schema::<McpCloseTaskArguments>()),
-        _ => None,
+        MethodName::PrepareWrite => Some(request_schema::<McpPrepareWriteArguments>()),
+        MethodName::StageArtifact => Some(request_schema::<McpStageArtifactArguments>()),
+        MethodName::RecordRun => Some(request_schema::<McpRecordRunArguments>()),
+        MethodName::RequestUserAction => Some(request_schema::<McpRequestUserActionArguments>()),
+        MethodName::ReconcileChanges => Some(request_schema::<McpReconcileChangesArguments>()),
+        MethodName::CheckClose => Some(request_schema::<McpCheckCloseArguments>()),
+        MethodName::CloseTask => Some(request_schema::<McpCloseTaskArguments>()),
+        MethodName::ResolveUserAction => None,
     }
 }
 
 /// Returns the generated JSON Schema for one MCP-visible public method result.
-pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
-    match tool_name {
-        "volicord.request_user_action" => Some(response_schema::<
+pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
+    match tool.method()? {
+        MethodName::RequestUserAction => Some(response_schema::<
             McpMutationStructuredContent<
                 McpRequestUserActionResponse,
                 McpRequestUserActionCompactResult,
             >,
         >()),
-        "volicord.intake" => Some(response_schema::<
+        MethodName::Intake => Some(response_schema::<
             McpMutationStructuredContent<IntakeResponse, McpMutationEffectSummary>,
         >()),
-        "volicord.update_scope" => Some(response_schema::<
+        MethodName::UpdateScope => Some(response_schema::<
             McpMutationStructuredContent<UpdateScopeResponse, McpMutationEffectSummary>,
         >()),
-        "volicord.status" => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
-        "volicord.get_operation_result" => Some(response_schema::<
+        MethodName::Status => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
+        MethodName::GetOperationResult => Some(response_schema::<
             McpToolStructuredContent<GetOperationResultResponse>,
         >()),
-        "volicord.prepare_evidence_capture" => Some(response_schema::<
+        MethodName::PrepareEvidenceCapture => Some(response_schema::<
             McpMutationStructuredContent<
                 PrepareEvidenceCaptureResponse,
                 McpPrepareEvidenceCaptureCompactResult,
             >,
         >()),
-        "volicord.prepare_write" => Some(response_schema::<
+        MethodName::PrepareWrite => Some(response_schema::<
             McpMutationStructuredContent<PrepareWriteResponse, McpPrepareWriteCompactResult>,
         >()),
-        "volicord.stage_artifact" => Some(response_schema::<
+        MethodName::StageArtifact => Some(response_schema::<
             McpMutationStructuredContent<StageArtifactResponse, McpStageArtifactCompactResult>,
         >()),
-        "volicord.record_run" => Some(response_schema::<
+        MethodName::RecordRun => Some(response_schema::<
             McpMutationStructuredContent<RecordRunResponse, McpRecordRunCompactResult>,
         >()),
-        "volicord.reconcile_changes" => Some(response_schema::<
+        MethodName::ReconcileChanges => Some(response_schema::<
             McpMutationStructuredContent<
                 ReconcileChangesResponse,
                 McpReconcileChangesCompactResult,
             >,
         >()),
-        "volicord.check_close" => Some(response_schema::<
+        MethodName::CheckClose => Some(response_schema::<
             McpToolStructuredContent<CheckCloseResponse>,
         >()),
-        "volicord.close_task" => Some(response_schema::<
+        MethodName::CloseTask => Some(response_schema::<
             McpMutationStructuredContent<CloseTaskResponse, McpMutationEffectSummary>,
         >()),
-        _ => None,
+        MethodName::ResolveUserAction => None,
     }
 }
 

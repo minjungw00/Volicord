@@ -6,18 +6,11 @@ use std::{collections::BTreeSet, error::Error, fs, path::PathBuf, process::Comma
 
 use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
-use volicord_mcp::{
-    ADAPTER_UTILITY_TOOL_NAMES, PUBLIC_METHOD_TOOL_NAMES, READ_ONLY_METHOD_TOOL_NAMES,
-};
 use volicord_store::{
     agent_connections::CONNECTION_MODE_READ_ONLY, core_pipeline::StorageEffectCounts,
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
-use volicord_types::{
-    ActorSource, AgentConnectionId, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME,
-    INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME,
-    REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
-};
+use volicord_types::{ActorSource, AgentConnectionId, AgentToolId, OperationCategory, ProjectId};
 
 use support::{
     assertions::{
@@ -420,11 +413,11 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
     let read_only_names = tool_names_from_tools(read_only_tools);
     assert_eq!(read_only_names, expected_read_only_tools());
     for mutation_tool in [
-        INTAKE_TOOL_NAME,
-        PREPARE_WRITE_TOOL_NAME,
-        REQUEST_USER_ACTION_TOOL_NAME,
-        RECONCILE_CHANGES_TOOL_NAME,
-        CLOSE_TASK_TOOL_NAME,
+        AgentToolId::INTAKE.wire_name(),
+        AgentToolId::PREPARE_WRITE.wire_name(),
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
+        AgentToolId::RECONCILE_CHANGES.wire_name(),
+        AgentToolId::CLOSE_TASK.wire_name(),
     ] {
         assert!(!read_only_names.contains(&mutation_tool));
     }
@@ -698,23 +691,27 @@ fn tool_names_from_tools(tools: &[Value]) -> Vec<&str> {
 }
 
 fn expected_workflow_tools() -> Vec<&'static str> {
-    PUBLIC_METHOD_TOOL_NAMES
+    AgentToolId::ALL
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
-        .copied()
+        .map(|tool| tool.wire_name())
         .collect()
 }
 
 fn expected_read_only_tools() -> Vec<&'static str> {
-    READ_ONLY_METHOD_TOOL_NAMES
+    AgentToolId::ALL
         .iter()
-        .chain(ADAPTER_UTILITY_TOOL_NAMES.iter())
         .copied()
+        .filter(|tool| tool.available_in(volicord_types::AgentConnectionMode::ReadOnly))
+        .map(AgentToolId::wire_name)
         .collect()
 }
 
 fn public_method_tool_set() -> BTreeSet<&'static str> {
-    PUBLIC_METHOD_TOOL_NAMES.iter().copied().collect()
+    AgentToolId::ALL
+        .iter()
+        .copied()
+        .filter_map(|tool| tool.method().map(|_| tool.wire_name()))
+        .collect()
 }
 
 fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
@@ -725,17 +722,14 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
             tool["outputSchema"]["type"], "object",
             "{name} output schema should have an object root"
         );
-        let read_only = READ_ONLY_METHOD_TOOL_NAMES.contains(&name)
-            || ADAPTER_UTILITY_TOOL_NAMES.contains(&name);
+        let identity = AgentToolId::from_wire_name(name).expect("advertised canonical tool");
+        let read_only = matches!(
+            identity.category(),
+            volicord_types::AgentToolCategory::ReadOnly
+        );
         let destructive = matches!(
-            name,
-            INTAKE_TOOL_NAME
-                | UPDATE_SCOPE_TOOL_NAME
-                | RECORD_RUN_TOOL_NAME
-                | REQUEST_USER_ACTION_TOOL_NAME
-                | RESOLVE_USER_ACTION_TOOL_NAME
-                | RECONCILE_CHANGES_TOOL_NAME
-                | CLOSE_TASK_TOOL_NAME
+            identity.category(),
+            volicord_types::AgentToolCategory::DestructiveMutation
         );
         assert_eq!(tool["annotations"]["readOnlyHint"], read_only);
         assert_eq!(tool["annotations"]["destructiveHint"], destructive);

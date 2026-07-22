@@ -281,7 +281,10 @@ guard_files -> guard_hook_execution -> guard_observation
 `host_session` is the managed-host `initialize` check, `required_tools` is the
 managed-host `tools/list` check, and `tool_round_trip` is the canonical
 verification-role tool-call check. `ToolVerificationRole::ManagedHostRoundTrip`
-has exactly one canonical owner, currently `volicord.list_projects`. When no managed-host attempt exists, the four checks
+is bound at compile time to `AgentToolId::LIST_PROJECTS`; its persisted and MCP
+wire-name projection is `volicord.list_projects`. The CLI probe, MCP runtime,
+Store observation, and verification report comparison use that same typed
+identity. When no managed-host attempt exists, the four checks
 from `process_startup` through `tool_round_trip` are `pending`. An initialize
 failure makes `host_session` `failed` and makes `required_tools` and
 `tool_round_trip` `blocked` by that same root finding. A managed-configuration
